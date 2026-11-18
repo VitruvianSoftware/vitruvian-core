@@ -63,6 +63,194 @@ pub fn version_from_build_file(build_path: &Path) -> Option<String> {
     }
 }
 
+pub fn min_sdk_from_build_file(build_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(build_path).ok()?;
+    let pattern = "\"minSdkVersion\":";
+    let idx = content.find(pattern)?;
+    let rest = &content[idx + pattern.len()..];
+    let open_quote = rest.find('"')?;
+    let after_open = &rest[open_quote + 1..];
+    let close_quote = after_open.find('"')?;
+    let value = &after_open[..close_quote];
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+/// The versionCode BUILD stamps: `major*10000 + minor*100 + patch`, for plain
+/// `X.Y.Z` with minor and patch under 100 (the app refuses anything else).
+pub fn version_code(version: &str) -> Option<u64> {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return None;
+    }
+    let n: Vec<u64> = parts
+        .iter()
+        .map(|p| p.parse().ok())
+        .collect::<Option<_>>()?;
+    if n[1] > 99 || n[2] > 99 || parts[1].len() > 2 || parts[2].len() > 2 {
+        return None;
+    }
+    Some(n[0] * 10000 + n[1] * 100 + n[2])
+}
+
+/// `[text](url)` -> `text`, for every link in `line`.
+fn unlink(line: &str) -> String {
+    let mut out = String::new();
+    let mut rest = line;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        match (after.find("]("), after.find(']')) {
+            (Some(close), Some(first)) if close == first => {
+                let tail = &after[close + 2..];
+                if let Some(end) = tail.find(')') {
+                    out.push_str(&rest[..open]);
+                    out.push_str(&after[..close]);
+                    rest = &tail[end + 1..];
+                    continue;
+                }
+                out.push_str(&rest[..=open]);
+                rest = after;
+            }
+            _ => {
+                out.push_str(&rest[..=open]);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// One CHANGELOG bullet as a sentence for the phone: no scope, no PR or commit links.
+fn clean_note(bullet: &str) -> String {
+    let mut s = bullet.trim().to_string();
+    // release-please's trailing "([#123](...)) ([abc1234](...))" groups.
+    loop {
+        let t = s.trim_end();
+        if t.ends_with("))") {
+            if let Some(start) = t.rfind(" ([") {
+                s = t[..start].to_string();
+                continue;
+            }
+        }
+        break;
+    }
+    // A leading "**scope:** ".
+    if s.starts_with("**") {
+        if let Some(end) = s[2..].find(":**") {
+            s = s[2 + end + 3..].trim_start().to_string();
+        }
+    }
+    unlink(&s).trim().to_string()
+}
+
+/// The release date and the changes CHANGELOG.md lists for `version`.
+pub fn release_notes(changelog: &str, version: &str) -> (Option<String>, Vec<String>) {
+    let heading_link = format!("## [{}]", version);
+    let heading_plain = format!("## {}", version);
+    let mut date = None;
+    let mut notes = Vec::new();
+    let mut inside = false;
+    for line in changelog.lines() {
+        if line.starts_with("## ") {
+            if inside {
+                break;
+            }
+            let rest = line
+                .strip_prefix(&heading_link)
+                .or_else(|| line.strip_prefix(&heading_plain));
+            if let Some(rest) = rest {
+                if rest.is_empty() || rest.starts_with('(') || rest.starts_with(' ') {
+                    inside = true;
+                    if let (Some(open), Some(close)) = (rest.rfind('('), rest.rfind(')')) {
+                        let d = &rest[open + 1..close];
+                        if d.len() == 10 && d.as_bytes()[4] == b'-' && d.as_bytes()[7] == b'-' {
+                            date = Some(d.to_string());
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if inside {
+            if let Some(bullet) = line.strip_prefix("* ") {
+                let note = clean_note(bullet);
+                if !note.is_empty() {
+                    notes.push(note);
+                }
+            }
+        }
+    }
+    (date, notes)
+}
+
+fn json_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// What the app's update check reads (UpdateFeed.kt): the release's version,
+/// APK, size, SHA-256 and changes. Laid out as prettier lays out JSON, so the
+/// file the release opens a pull request with passes the format check as is.
+pub struct Feed<'a> {
+    pub version: &'a str,
+    pub version_code: u64,
+    pub min_sdk: &'a str,
+    pub published: &'a str,
+    pub url: &'a str,
+    pub size: u64,
+    pub sha256: &'a str,
+    pub notes: &'a [String],
+}
+
+pub fn render_feed(feed: &Feed) -> String {
+    let notes = if feed.notes.is_empty() {
+        "[]".to_string()
+    } else {
+        let quoted: Vec<String> = feed.notes.iter().map(|n| json_string(n)).collect();
+        let inline = format!("[{}]", quoted.join(", "));
+        // prettier keeps an array on the key's line when it fits in 80 columns.
+        if "  \"notes\": ".len() + inline.len() <= 80 {
+            inline
+        } else {
+            let lines: Vec<String> = quoted.iter().map(|q| format!("    {}", q)).collect();
+            format!("[\n{}\n  ]", lines.join(",\n"))
+        }
+    };
+    format!(
+        "{{\n  \"kind\": \"vitruvian-android-update\",\n  \"schema\": 1,\n  \"packageName\": \"dev.vitruvian.remote\",\n  \"version\": {},\n  \"versionCode\": {},\n  \"minSdk\": {},\n  \"published\": {},\n  \"apk\": {{\n    \"url\": {},\n    \"size\": {},\n    \"sha256\": {}\n  }},\n  \"notes\": {}\n}}\n",
+        json_string(feed.version),
+        feed.version_code,
+        feed.min_sdk,
+        json_string(feed.published),
+        json_string(feed.url),
+        feed.size,
+        json_string(feed.sha256),
+        notes,
+    )
+}
+
+pub const FEED_NAME: &str = "vitruvian-remote-update.json";
+
 pub fn resolve_version(tag: &str, app_dir: &Path) -> String {
     if !tag.is_empty() {
         let v = strip_version_prefix(tag);
@@ -233,6 +421,53 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
+    let sha_text =
+        fs::read_to_string(dist_dir.join(format!("{}.sha256", apk_name))).unwrap_or_default();
+    let sha = sha_text.split_whitespace().next().unwrap_or("").to_string();
+    let size = fs::metadata(&dest_apk).map(|m| m.len()).unwrap_or(0);
+    let code = match version_code(&version) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "Error: {} is not a plain X.Y.Z version; the update feed needs one",
+                version
+            );
+            return 1;
+        }
+    };
+    let min_sdk =
+        min_sdk_from_build_file(&app_dir.join("BUILD")).unwrap_or_else(|| "26".to_string());
+    let changelog = fs::read_to_string(app_dir.join("CHANGELOG.md")).unwrap_or_default();
+    let (date, notes) = release_notes(&changelog, &version);
+    let url = format!(
+        "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v{v}/VitruvianRemote-{v}.apk",
+        v = version
+    );
+    if sha.len() != 64 || size == 0 {
+        eprintln!("Error: could not read the APK's size and SHA-256 for the update feed");
+        return 1;
+    }
+    let feed_path = dist_dir.join(FEED_NAME);
+    let feed = render_feed(&Feed {
+        version: &version,
+        version_code: code,
+        min_sdk: &min_sdk,
+        published: date.as_deref().unwrap_or(""),
+        url: &url,
+        size,
+        sha256: &sha,
+        notes: &notes,
+    });
+    if let Err(e) = fs::write(&feed_path, feed) {
+        eprintln!("Error: failed to write the update feed: {}", e);
+        return 1;
+    }
+    println!(
+        "==> Wrote the update feed {} ({} notes)",
+        FEED_NAME,
+        notes.len()
+    );
+
     if dry_run {
         println!("==> Dry run: verified release artifact successfully created in dist/:");
         if let Ok(meta) = fs::metadata(&dest_apk) {
@@ -264,6 +499,7 @@ pub fn run(args: &[String]) -> i32 {
             &tag,
             dest_apk.to_str().unwrap_or(""),
             sha_path.to_str().unwrap_or(""),
+            feed_path.to_str().unwrap_or(""),
             "--repo",
             &repo,
             "--clobber",
@@ -405,6 +641,116 @@ mod tests {
         fs::write(&manifest, r#"{"apps/mobile/vitruvian-remote": "7.8.9"}"#).unwrap();
         assert_eq!(resolve_version("", &dir), "7.8.9");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn version_codes_follow_build() {
+        assert_eq!(version_code("0.1.46"), Some(146));
+        assert_eq!(version_code("1.2.3"), Some(10203));
+        assert_eq!(version_code("0.1.100"), None);
+        assert_eq!(version_code("1.2"), None);
+        assert_eq!(version_code("1.2.3-rc.1"), None);
+        assert_eq!(version_code("dev"), None);
+    }
+
+    #[test]
+    fn min_sdk_is_read_from_build() {
+        let dir = env::temp_dir().join("publish_test_min_sdk");
+        let _ = fs::create_dir_all(&dir);
+        let build = dir.join("BUILD");
+        fs::write(&build, "_M = {\n    \"minSdkVersion\": \"26\",\n}").unwrap();
+        assert_eq!(min_sdk_from_build_file(&build), Some("26".to_string()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    const CHANGELOG: &str = "# Changelog\n\n## [0.1.47](https://github.com/x/compare/a...b) (2026-11-18)\n\n\n### Features\n\n* **vitruvian-remote:** update the app from Settings, About ([#5111](https://github.com/x/issues/5111)) ([abc1234](https://github.com/x/commit/abc1234))\n* plain change with a [link](https://example.com) inside\n\n### Bug Fixes\n\n* **sentry:** quieter \"crash\" reports ([#1](u)) ([2](v))\n\n## [0.1.46](https://github.com/x/compare/c...d) (2026-11-16)\n\n* older change\n";
+
+    #[test]
+    fn notes_come_from_this_versions_section_only() {
+        let (date, notes) = release_notes(CHANGELOG, "0.1.47");
+        assert_eq!(date.as_deref(), Some("2026-11-18"));
+        assert_eq!(
+            notes,
+            vec![
+                "update the app from Settings, About".to_string(),
+                "plain change with a link inside".to_string(),
+                "quieter \"crash\" reports".to_string(),
+            ]
+        );
+        let (date, notes) = release_notes(CHANGELOG, "0.1.46");
+        assert_eq!(date.as_deref(), Some("2026-11-16"));
+        assert_eq!(notes, vec!["older change".to_string()]);
+        // 0.1.4 must not match the 0.1.47 or 0.1.46 headings.
+        assert_eq!(release_notes(CHANGELOG, "0.1.4"), (None, vec![]));
+    }
+
+    #[test]
+    fn the_feed_is_what_the_app_reads_laid_out_as_prettier_does() {
+        let notes =
+            vec!["move the Android apps to Sentry 8 with one shared privacy setup".to_string()];
+        let feed = render_feed(&Feed {
+            version: "0.1.46",
+            version_code: 146,
+            min_sdk: "26",
+            published: "2026-11-16",
+            url: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.46/VitruvianRemote-0.1.46.apk",
+            size: 9682039,
+            sha256: "6e751e3699e145c06c97936167ef687cd4dcb28eaa291fb9bf2c9190c25ba7fd",
+            notes: &notes,
+        });
+        // Byte for byte what prettier leaves alone, and what the app's
+        // update_feed_test reads from catalog/android/ with the app's own parser.
+        let expected = r#"{
+  "kind": "vitruvian-android-update",
+  "schema": 1,
+  "packageName": "dev.vitruvian.remote",
+  "version": "0.1.46",
+  "versionCode": 146,
+  "minSdk": 26,
+  "published": "2026-11-16",
+  "apk": {
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.46/VitruvianRemote-0.1.46.apk",
+    "size": 9682039,
+    "sha256": "6e751e3699e145c06c97936167ef687cd4dcb28eaa291fb9bf2c9190c25ba7fd"
+  },
+  "notes": ["move the Android apps to Sentry 8 with one shared privacy setup"]
+}
+"#;
+        assert_eq!(feed, expected);
+        let quoted = ["a \"q\"".to_string()];
+        let short = render_feed(&Feed {
+            notes: &quoted,
+            ..sample()
+        });
+        assert!(short.contains("  \"notes\": [\"a \\\"q\\\"\"]\n"));
+        let none = render_feed(&Feed {
+            notes: &[],
+            ..sample()
+        });
+        // Too long for one line: one note per line, as prettier writes it.
+        let long = ["a".repeat(60), "b".repeat(10)];
+        let wide = render_feed(&Feed {
+            notes: &long,
+            ..sample()
+        });
+        assert!(wide.contains(&format!(
+            "  \"notes\": [\n    \"{}\",\n    \"{}\"\n  ]\n",
+            long[0], long[1]
+        )));
+        assert!(none.contains("  \"notes\": []\n"));
+    }
+
+    fn sample() -> Feed<'static> {
+        Feed {
+            version: "1.0.0",
+            version_code: 10000,
+            min_sdk: "26",
+            published: "",
+            url: "u",
+            size: 1,
+            sha256: "s",
+            notes: &[],
+        }
     }
 
     struct TempDir(PathBuf);

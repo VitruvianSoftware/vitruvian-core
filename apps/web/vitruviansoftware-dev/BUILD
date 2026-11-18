@@ -48,6 +48,22 @@ exports_files(
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
+# What the Android app verifies with the catalogue key it is built with: the
+# signed tool catalogue, and Vitruvian Remote's signed update feed, both
+# written by catalog-publish. allow_empty: the feed's first signed copy is
+# written after the change that adds it merges.
+filegroup(
+    name = "signed_feeds",
+    srcs = [
+        "tools/catalog/tools.json",
+        "tools/catalog/tools.json.sig",
+    ] + glob(
+        ["updates/android/*"],
+        allow_empty = True,
+    ),
+    visibility = ["//apps/mobile/vitruvian-remote:__pkg__"],
+)
+
 # The downloads catalog: //tools/sync-downloads keeps it current, and its test
 # checks each entry it updates has the labels it writes.
 exports_files(

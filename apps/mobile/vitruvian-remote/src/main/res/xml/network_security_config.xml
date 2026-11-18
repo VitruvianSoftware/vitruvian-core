@@ -29,8 +29,10 @@
 
   It is allowed GLOBALLY rather than per-domain because the agent is dialled
   by whatever the user typed (usually a bare 100.x.y.z tailnet IP) and
-  this config cannot express "any address in 100.64.0.0/10". The app makes
-  no other network request today (see AndroidManifest.xml). When the exec
+  this config cannot express "any address in 100.64.0.0/10". The other
+  requests the app makes are HTTPS: crash reports, and the update check and
+  download, which refuse any connection that is not HTTPS in code
+  (update/AppUpdater.kt) rather than relying on this file. When the exec
   slice lands it brings its own token; that is the point to revisit this.
 -->
 <network-security-config>

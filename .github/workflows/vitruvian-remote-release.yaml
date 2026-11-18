@@ -28,6 +28,10 @@
 #    zips it as VitruvianRemote-X.Y.Z-tool.zip with a SHA-256 sidecar, and
 #    attaches both: the zip the Vitruvian catalog (catalog/tools.json) pins.
 # 5. Asks GitHub what the release holds, and fails naming any file missing.
+# 6. Writes the release's update feed (vitruvian-remote-update.json, from
+#    step 3) to catalog/android/vitruvian-remote.json in a pull request that
+#    merges itself; catalog-publish then signs it into the website, where the
+#    app's Settings > About checks for updates.
 name: vitruvian-remote-release
 
 on:
@@ -170,7 +174,8 @@ jobs:
             "VitruvianRemote-${version}.apk" \
             "VitruvianRemote-${version}.apk.sha256" \
             "VitruvianRemote-${version}-tool.zip" \
-            "VitruvianRemote-${version}-tool.zip.sha256"; do
+            "VitruvianRemote-${version}-tool.zip.sha256" \
+            "vitruvian-remote-update.json"; do
             size="$(awk -F '\t' -v f="${file}" '$1 == f { print $2 }' <<<"${listing}")"
             if [[ -z "${size}" || "${size}" == "0" ]]; then
               echo "::error::${TAG} has no ${file}"
@@ -187,3 +192,113 @@ jobs:
             --pattern "VitruvianRemote-${version}-tool.zip.sha256"
           (cd "${dir}" && sha256sum -c "VitruvianRemote-${version}-tool.zip.sha256")
           echo "For the catalog entry: size $(stat -c %s "${dir}/VitruvianRemote-${version}-tool.zip"), sha256 $(cut -d' ' -f1 "${dir}/VitruvianRemote-${version}-tool.zip.sha256")"
+
+  # The update feed, into main. A pull request and not a push, as
+  # catalog-publish explains: what the website serves, signed, is only ever
+  # what the merge queue saw. It checks the feed names the APK the release
+  # holds -- the size and SHA-256 of the file as GitHub serves it, and the
+  # digest GitHub recorded on upload -- and never moves the feed backwards, so
+  # re-publishing an old tag by hand leaves it alone.
+  publish-update-feed:
+    needs: [release-please, check-release]
+    if: ${{ always() && !cancelled() && needs.check-release.result == 'success' && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    concurrency:
+      group: vitruvian-remote-update-feed
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      # For //tools/format and //tools/ci:site_pr_automerge.
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Mint App token for PR operations
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
+      - name: Check the release's feed against its APK
+        id: feed
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${TAG#vitruvian-remote-v}"
+          apk="VitruvianRemote-${version}.apk"
+          dir="$(mktemp -d)"
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir "${dir}" \
+            --pattern vitruvian-remote-update.json --pattern "${apk}"
+          feed="${dir}/vitruvian-remote-update.json"
+          [[ "$(jq -r .version "${feed}")" == "${version}" ]] \
+            || { echo "::error::the feed names $(jq -r .version "${feed}"), not ${version}"; exit 1; }
+          want_sha="$(jq -r .apk.sha256 "${feed}")"
+          have_sha="$(sha256sum "${dir}/${apk}" | cut -d' ' -f1)"
+          [[ "${want_sha}" == "${have_sha}" ]] \
+            || { echo "::error::the feed's SHA-256 is not the APK's"; exit 1; }
+          [[ "$(jq -r .apk.size "${feed}")" == "$(stat -c %s "${dir}/${apk}")" ]] \
+            || { echo "::error::the feed's size is not the APK's"; exit 1; }
+          recorded="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
+            --jq ".assets[] | select(.name == \"${apk}\") | .digest // \"\"" 2>/dev/null || true)"
+          if [[ -n "${recorded}" && "${recorded}" != "sha256:${have_sha}" ]]; then
+            echo "::error::GitHub recorded ${recorded} for ${apk} on upload, not sha256:${have_sha}"
+            exit 1
+          fi
+          current="catalog/android/vitruvian-remote.json"
+          if [[ -f "${current}" ]] && (( $(jq -r .versionCode "${current}") >= $(jq -r .versionCode "${feed}") )); then
+            echo "The feed already names $(jq -r .version "${current}"); ${version} is not newer. Nothing to do."
+            echo "write=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          cp "${feed}" "${current}"
+          # prettier's layout, so the pull request passes the format check.
+          bazel run //tools/format -- "${current}"
+          echo "write=true" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      # The App's full token: arming auto-merge needs the right to merge
+      # (contents: write) as well as pull-requests: write, as in
+      # catalog-publish.
+      - name: Open or update the pull request, and arm auto-merge
+        if: ${{ steps.feed.outputs.write == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.feed.outputs.version }}
+        run: |
+          set -euo pipefail
+          file=catalog/android/vitruvian-remote.json
+          git add "${file}"
+          if git diff --cached --quiet; then
+            echo "main already has this feed. Nothing to do."
+            exit 0
+          fi
+          branch="auto/remote-update-feed"
+          git config user.name "vitruvian-wren-agent[bot]"
+          git config user.email "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
+          gh auth setup-git
+          bazel run //tools/ci:site_pr_automerge -- disarm --branch "${branch}"
+          git checkout -B "${branch}"
+          git commit -m "chore(catalog): Vitruvian Remote ${VERSION} update feed"
+          git push -f origin "${branch}"
+          sha="$(git rev-parse HEAD)"
+          body="Points Vitruvian Remote's update feed (\`${file}\`) at ${VERSION}: its APK on the release, that APK's size and SHA-256, and its changes from CHANGELOG.md.
+
+          Generated by \`vitruvian-remote-release\` after the release's files were checked: the feed's SHA-256 and size are the APK's as GitHub serves it, and match the digest GitHub recorded on upload. Once this merges, \`catalog-publish\` signs the feed into the website and the app offers the update in Settings > About. It arms auto-merge; to hold it, label it \`do-not-automerge\` and turn auto-merge off."
+          existing="$(gh pr list --head "${branch}" --base main --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing}" ]]; then
+            gh pr edit "${existing}" --title "chore(catalog): Vitruvian Remote ${VERSION} update feed" --body "${body}"
+            echo "PR #${existing} already open for ${branch}: updated."
+          else
+            gh pr create --title "chore(catalog): Vitruvian Remote ${VERSION} update feed" \
+              --body "${body}" --base main --head "${branch}"
+          fi
+          bazel run //tools/ci:site_pr_automerge -- arm --branch "${branch}" --sha "${sha}"

@@ -64,6 +64,8 @@ import dev.vitruvian.remote.R
 import dev.vitruvian.remote.state.AboutPage
 import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.update.UpdateCopy
+import dev.vitruvian.remote.update.UpdateUi
 import kotlinx.coroutines.delay
 
 private val ABOUT_MARK_SIZE = Space.s5
@@ -145,6 +147,8 @@ private fun AboutMainContent(state: RemoteState) {
       }
     }
 
+    if (state.canUpdate) UpdatePlate(state)
+
     Plate(modifier = Modifier.fillMaxWidth()) {
       Column(
           modifier = Modifier.padding(Space.s4).fillMaxWidth(),
@@ -208,6 +212,90 @@ private fun AboutMainContent(state: RemoteState) {
       iconPath = VitruvianIcons.EXTERNAL_LINK,
       onClick = state::openInstallGuide,
   )
+}
+
+/**
+ * Updates: what the signed feed says, and the one button that acts on it. Checking happens when
+ * this screen opens (at most hourly) or on Check again, never in the background.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UpdatePlate(state: RemoteState) {
+  val colors = Vitruvian
+  val ui = state.update
+  LaunchedEffect(Unit) { state.checkForUpdatesIfStale() }
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(Space.s4).fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        Label("Updates")
+        if (ui is UpdateUi.Available) Tag(text = "new", tone = TagTone.Ok)
+      }
+      VText(
+          text = UpdateCopy.headline(ui, state.appVersion),
+          style = VitruvianType.body,
+          color = colors.text,
+      )
+      val notes = ui.release?.notes.orEmpty()
+      if (ui is UpdateUi.Available && notes.isNotEmpty()) {
+        notes.forEach { note ->
+          VText(text = "• $note", style = VitruvianType.listSub, color = colors.textDim)
+        }
+      }
+      when (ui) {
+        is UpdateUi.NeedsPermission ->
+            VText(
+                text = UpdateCopy.PERMISSION, style = VitruvianType.listSub, color = colors.textDim)
+        is UpdateUi.Installing ->
+            VText(
+                text = UpdateCopy.INSTALLING, style = VitruvianType.listSub, color = colors.textDim)
+        is UpdateUi.Confirm ->
+            VText(text = UpdateCopy.CONFIRM, style = VitruvianType.listSub, color = colors.textDim)
+        is UpdateUi.Available ->
+            VText(
+                text = UpdateCopy.WHERE_FROM, style = VitruvianType.listSub, color = colors.textDim)
+        else -> Unit
+      }
+      FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+          verticalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        when (ui) {
+          is UpdateUi.Available ->
+              VButton(
+                  label = "Update", onClick = state::installUpdate, variant = ButtonVariant.Primary)
+          is UpdateUi.NeedsPermission ->
+              VButton(
+                  label = "Allow in Settings",
+                  onClick = state::allowUpdateInstalls,
+                  variant = ButtonVariant.Primary,
+                  trailingIcon = VitruvianIcons.EXTERNAL_LINK,
+              )
+          is UpdateUi.Confirm ->
+              VButton(
+                  label = "Confirm",
+                  onClick = state::confirmUpdateInstall,
+                  variant = ButtonVariant.Primary,
+              )
+          is UpdateUi.Failed ->
+              if (ui.release != null) {
+                VButton(label = "Try again", onClick = state::installUpdate)
+              } else {
+                VButton(label = "Check again", onClick = state::checkForUpdates)
+              }
+          UpdateUi.UpToDate,
+          is UpdateUi.NeedsNewerAndroid ->
+              VButton(label = "Check again", onClick = state::checkForUpdates)
+          else -> Unit
+        }
+      }
+    }
+  }
 }
 
 @Composable

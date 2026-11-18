@@ -18,8 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! sign.py: signs catalog/tools.json and writes the two files the website
-//! serves.
+//! sign.py: signs catalog/tools.json (or the file --catalog names) and
+//! writes the two files the website serves.
 
 use crate::argparse::{Kind, Opt, Parser};
 use crate::pyerr::{self, Crash, Res};
@@ -120,9 +120,13 @@ fn run(catalog: &str, public_key: &str, key_env: &str, out_arg: &str) -> Res<i32
         return Ok(2);
     }
     make_dirs(&out)?;
-    let tools = pypath::join(&out, "tools.json");
+    // Named after the file signed: tools.json by default, and Vitruvian
+    // Remote's Android update feed (catalog/android/vitruvian-remote.json)
+    // when catalog-publish passes it with --catalog.
+    let name = pypath::name(catalog);
+    let tools = pypath::join(&out, &name);
     pyerr::write_bytes(&tools, &data)?;
-    pyerr::write_bytes(&pypath::join(&out, "tools.json.sig"), &signature)?;
+    pyerr::write_bytes(&pypath::join(&out, &format!("{}.sig", name)), &signature)?;
     println!(
         "sign: wrote {} ({} bytes) and its signature",
         tools,

@@ -21,6 +21,9 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 exports_files([
+    # Vitruvian Remote's Android update feed. catalog-publish signs it next to
+    # tools.json; the app's //apps/mobile/vitruvian-remote:update_feed_test reads it.
+    "android/vitruvian-remote.json",
     "catalog.schema.json",
     "public-key.txt",
     "sources.json",

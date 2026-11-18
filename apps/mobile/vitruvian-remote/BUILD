@@ -70,6 +70,9 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
+            "src/main/kotlin/dev/vitruvian/remote/update/Ed25519.kt",
+            "src/main/kotlin/dev/vitruvian/remote/update/UpdateFeed.kt",
+            "src/main/kotlin/dev/vitruvian/remote/update/UpdateUi.kt",
         ],
     ),
     custom_package = "dev.vitruvian.remote",
@@ -83,6 +86,7 @@ kt_android_library(
         ":format",
         ":hid_codes",
         ":tuning",
+        ":update",
         ":wake_on_lan",
         ":wire",
         "//packages/android-crash-privacy",
@@ -387,6 +391,49 @@ kt_jvm_library(
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Wire.kt"],
 )
 
+# The update check's trust decisions -- the feed's signature, its fields, the
+# version comparison and the downloaded APK's checksum and signer -- split out
+# of :lib for the same reason as :hid_codes. These fail DANGEROUSLY rather than
+# quietly: a check that passes what it should refuse installs someone else's
+# APK, so each refusal has its own test.
+kt_jvm_library(
+    name = "update",
+    srcs = [
+        "src/main/kotlin/dev/vitruvian/remote/update/Ed25519.kt",
+        "src/main/kotlin/dev/vitruvian/remote/update/UpdateFeed.kt",
+        "src/main/kotlin/dev/vitruvian/remote/update/UpdateUi.kt",
+    ],
+    deps = [":wire"],
+)
+
+kt_jvm_test(
+    name = "ed25519_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/update/Ed25519Test.kt"],
+    data = ["//apps/web/vitruviansoftware-dev:signed_feeds"],
+    test_class = "dev.vitruvian.remote.update.Ed25519Test",
+    deps = [
+        ":update",
+        "@maven//:junit_junit",
+    ],
+)
+
+kt_jvm_test(
+    name = "update_feed_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/update/UpdateFeedTest.kt"],
+    data = [
+        "//apps/web/vitruviansoftware-dev:signed_feeds",
+        "//catalog:android/vitruvian-remote.json",
+        "//catalog:public-key.txt",
+    ],
+    test_class = "dev.vitruvian.remote.update.UpdateFeedTest",
+    deps = [
+        ":update",
+        "@maven//:junit_junit",
+    ],
+)
+
 kt_jvm_test(
     name = "wire_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/WireTest.kt"],
@@ -529,11 +576,13 @@ pipeline_unit(
         ":app_info_test",
         ":bridge_policy_test",
         ":derive_test",
+        ":ed25519_test",
         ":format_test",
         ":hid_codes_test",
         ":lib",
         ":mock_host_walk_test",
         ":tuning_test",
+        ":update_feed_test",
         ":wake_on_lan_test",
         ":wire_test",
     ],

@@ -359,7 +359,9 @@ public class AppInfoTest {
     val talkStatement = AppInfo.privacyTrailingStatements.first()
     assertTrue(
         talkStatement.startsWith(
-            "This phone talks to the Macs you add, and to Vitruvian Software's crash server if crash reports are on.",
+            "This phone talks to the Macs you add, to Vitruvian Software's crash server if " +
+                "crash reports are on, and to vitruviansoftware.dev to check for updates when " +
+                "you open About.",
         ),
     )
     assertFalse(talkStatement.contains("talks only to the Macs you add"))
