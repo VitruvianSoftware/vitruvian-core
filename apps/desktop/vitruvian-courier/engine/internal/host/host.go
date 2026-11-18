@@ -30,54 +30,23 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 )
 
-// The backwards backfill queue's pace (see Start).
-const (
-	QueueBatchSize         = 100 // messages fetched per batch
-	QueueBatchDelaySeconds = 30  // between any two batches of one bridge
-	QueueMaxBatches        = 100 // per chat: at most QueueBatchSize*QueueMaxBatches messages of history
-)
-
-// queueMaxBatchesByNetwork lowers QueueMaxBatches for networks that reach their history through an unofficial
-// client API, where a long run of history requests is more likely to look like a bot and cost the person their
-// session. 20 batches is 2,000 messages a chat.
-var queueMaxBatchesByNetwork = map[string]int{"facebook": 20, "instagram": 20, "twitter": 20, "linkedin": 20}
-
-// queueMaxBatchesByRoomType lowers the limit for chats that can be huge, on the networks whose bridge asks for a
-// limit per kind of chat (Telegram, Slack, Discord, X: bridgev2's max_batches_override; a bridge that doesn't ask
-// uses the network's limit). A one-to-one or small group chat gets the full limit; a public channel does not need
-// ten thousand messages of someone else's history on this Mac.
-var queueMaxBatchesByRoomType = map[string]int{"channel": 10, "supergroup": 20, "topic": 10}
-
-// noBackfillQueue is the networks whose backwards queue stays off, with why.
-var noBackfillQueue = map[string]string{
-	// iMessage's chats say they can't be backfilled (CanBackfill false), so the queue would never get a task for one,
-	// and its FetchMessages does not page (it reads the chat's first rows and ignores the direction and anchor), so
-	// should that change the queue must not be what finds out. It already reads the Mac's whole chat.db.
+// noOlderHistory is the networks that can't load older history on demand, with why. Actions.LoadOlder answers "nothing
+// more" for them without asking the network.
+var noOlderHistory = map[string]string{
+	// iMessage's chats say they can't be backfilled (CanBackfill false), so bridgev2 never makes a backfill task for
+	// one, and its FetchMessages does not page (it reads the chat's first rows and ignores the direction and anchor).
+	// The whole of chat.db is read on this Mac already.
 	"imessage": "its chats can't be backfilled and its fetch does not page",
 }
 
-// backfillQueue is network's backwards backfill queue: off for a network in noBackfillQueue, and otherwise paced as
-// the constants above and the per-network limits say.
-func backfillQueue(network string) bridgeconfig.BackfillQueueConfig {
-	if _, off := noBackfillQueue[network]; off {
-		return bridgeconfig.BackfillQueueConfig{}
-	}
-	max := QueueMaxBatches
-	if n, ok := queueMaxBatchesByNetwork[network]; ok {
-		max = n
-	}
-	override := make(map[string]int, len(queueMaxBatchesByRoomType))
-	for kind, n := range queueMaxBatchesByRoomType {
-		override[kind] = min(n, max)
-	}
-	return bridgeconfig.BackfillQueueConfig{
-		Enabled:            true,
-		BatchSize:          QueueBatchSize,
-		BatchDelay:         QueueBatchDelaySeconds,
-		MaxBatches:         max,
-		MaxBatchesOverride: override,
-	}
+// CanLoadOlder reports whether network can load a chat's older history on demand (Actions.LoadOlder).
+func CanLoadOlder(network string) bool {
+	_, no := noOlderHistory[network]
+	return !no
 }
+
+// PageSize is how many messages one page of older history asks for.
+const PageSize = 100
 
 // Host is one running bridge for one network.
 type Host struct {
@@ -174,25 +143,20 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The first three
 		// numbers are mautrix's own example-config defaults.
 		//
-		// The backwards queue is on. bridgev2 runs it only when the Matrix side can batch-send (it writes history
-		// before a chat's first message), and the example config says it "only applies to Beeper" because a real
-		// Matrix server can't do that. Vitruvian Courier's store can (localmatrix.Connector.BatchSend: events sit in a
-		// chat by their own time), so each chat now pages back past its newest 50 messages.
-		//
-		// The pace is deliberately slow, for the networks' sake and the machine's. The queue does one batch at a time
-		// for the whole bridge, BatchDelay seconds apart, so a network sees at most 120 history requests an hour,
-		// however many chats it has. A batch is 100 messages; a chat stops after MaxBatches of them (10,000 messages:
-		// a year of a very busy chat) or when its network has no more, whichever is first. A chat with 5,000
-		// messages to fetch takes about 25 minutes by itself, and a network with hundreds of chats fills in over
-		// hours. A network whose client has no backwards fetch is left alone by bridgev2; the per-network limits and
-		// the networks left out are above (backfillQueue, noBackfillQueue).
+		// Older history is loaded on demand, never in the background: the backwards queue (Queue.Enabled) stays off, so
+		// no chat is filled behind the person's back. When they scroll to the top of a chat, Actions.LoadOlder runs ONE
+		// backwards page for it (bridgev2's ManualBackfill), which needs the connector to batch-send
+		// (localmatrix.Connector.BatchSend writes history before a chat's first message). Manual is on, not for the
+		// queue (Enabled is what runs it) but because mautrix-whatsapp keeps the history its phone sent for such a
+		// chat only while some queue setting is on (it deletes it after the first backfill otherwise). BatchSize is a
+		// page; MaxBatches -1 puts no limit on how far back a person may scroll.
 		Backfill: bridgeconfig.BackfillConfig{
 			Enabled:              true,
 			MaxInitialMessages:   50,
 			MaxCatchupMessages:   500,
 			UnreadHoursThreshold: 720,
 			Threads:              bridgeconfig.BackfillThreadsConfig{MaxInitialMessages: 50},
-			Queue:                backfillQueue(network),
+			Queue:                bridgeconfig.BackfillQueueConfig{Enabled: false, Manual: true, BatchSize: PageSize, MaxBatches: -1},
 		},
 		CleanupOnLogout: bridgeconfig.CleanupOnLogouts{Enabled: false},
 	}

@@ -185,8 +185,8 @@ const whatsappDisplaynameTemplate = `{{or .FullName .BusinessName .PushName .Pho
 // whatsappSpec is WhatsApp's example config with these changes. A chat archived on the phone is tagged
 // m.lowpriority, which the store takes in as archived: the example leaves archive_tag empty, so archived chats
 // would arrive in the inbox. Polls arrive as polls (extev_polls), not as text asking people to vote on the
-// phone. A person is named in full, without the " (WA)" tag (whatsappDisplaynameTemplate). And history reaches
-// back a year, not three months (whatsappHistory).
+// phone. A person is named in full, without the " (WA)" tag (whatsappDisplaynameTemplate). And older history is
+// asked of the phone on demand (whatsappHistory).
 func whatsappSpec() (engine.Spec, error) {
 	return engine.Spec{
 		Name:        "whatsapp",
@@ -208,26 +208,13 @@ func whatsappSpec() (engine.Spec, error) {
 	}, nil
 }
 
-// The history WhatsApp is asked for. WhatsApp sends its history once, when a device is paired, so the full-sync
-// request only matters for a login made after this: it asks the phone for a year instead of three months.
-// mautrix-whatsapp sends the day limit only when all three numbers are set (pkg/connector/connector.go), so the size
-// and storage limits are here to let the day limit through; they are mautrix's documented figures, not ours to tune.
-const (
-	whatsappHistoryDays      = 365
-	whatsappHistorySizeMB    = 512
-	whatsappHistoryStorageMB = 1024
-)
-
-// whatsappHistory asks for a year of history at pairing (request_full_sync, full_sync_config), and turns on
-// backwards_on_demand: the bridge deletes the history it was sent once a chat is backfilled unless the backfill
-// queue is on, so a chat that is already paired has nothing left locally to page back through, and with
-// backwards_on_demand the queue asks the phone for the 50 messages before the oldest one it has (a history-sync
-// request, the same one WhatsApp Web sends when scrolling up) until the phone says it has no more.
+// whatsappHistory turns on backwards_on_demand. WhatsApp sends its history once, at pairing (three months), and
+// Vitruvian Courier does not ask the phone for more then (no request_full_sync). Older messages are asked for when the
+// person scrolls to the top of a chat: the load (Actions.LoadOlder) runs a manual backwards backfill, and with
+// backwards_on_demand mautrix-whatsapp's FetchMessages sends the phone a history-sync request for the 50 messages
+// before the oldest one it has (fetchMessagesFromPhone), the same one WhatsApp Web sends when scrolling up. The phone
+// answers later (the bridge then backfills the answer by itself) and says whether more remain.
 func whatsappHistory(cfg *whatsapp.Config) {
-	cfg.HistorySync.RequestFullSync = true
-	cfg.HistorySync.FullSyncConfig.DaysLimit = whatsappHistoryDays
-	cfg.HistorySync.FullSyncConfig.SizeLimit = whatsappHistorySizeMB
-	cfg.HistorySync.FullSyncConfig.StorageQuota = whatsappHistoryStorageMB
 	cfg.HistorySync.BackwardsOnDemand = true
 }
 

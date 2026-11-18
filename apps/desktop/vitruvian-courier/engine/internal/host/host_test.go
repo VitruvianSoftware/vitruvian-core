@@ -155,13 +155,10 @@ func TestStartGivesLocalUserAdminAndBackfill(t *testing.T) {
 	require.Equal(t, 500, bf.MaxCatchupMessages, "messages missed while courier was closed")
 	require.Equal(t, 720, bf.UnreadHoursThreshold)
 	require.Equal(t, 50, bf.Threads.MaxInitialMessages)
-	require.True(t, bf.Queue.Enabled, "older history is fetched by the backwards queue (localmatrix BatchSend makes it possible)")
-	require.False(t, bf.Queue.Manual)
-	require.Equal(t, 100, bf.Queue.BatchSize)
-	require.Equal(t, 30, bf.Queue.BatchDelay, "at most 120 batches an hour per network")
-	require.Equal(t, 100, bf.Queue.MaxBatches)
-	require.Equal(t, 10, bf.Queue.GetOverride("channel"), "public channels are capped lower")
-	require.Equal(t, 100, bf.Queue.GetOverride("dm"))
+	require.False(t, bf.Queue.Enabled, "no chat is filled in the background: older history loads when the person scrolls to the top")
+	require.True(t, bf.Queue.Manual, "a manual backfill page (Actions.LoadOlder) is allowed, and WhatsApp keeps its synced history for it")
+	require.Equal(t, PageSize, bf.Queue.BatchSize)
+	require.Equal(t, -1, bf.Queue.MaxBatches, "no limit on scrolling back")
 	require.False(t, h.Bridge.Config.CleanupOnLogout.Enabled)
 	require.FileExists(t, filepath.Join(dir, "bridges", "fake.db"), "each network gets its own database")
 }
@@ -450,11 +447,8 @@ func TestCreateRoomSpaceAndLinkParentState(t *testing.T) {
 	require.Empty(t, page)
 }
 
-func TestBackfillQueuePerNetwork(t *testing.T) {
-	im := backfillQueue("imessage")
-	require.False(t, im.AnyEnabled(), "iMessage is left out: "+noBackfillQueue["imessage"])
-	ig, wa := backfillQueue("instagram"), backfillQueue("whatsapp")
-	require.Equal(t, 20, ig.MaxBatches, "unofficial APIs get a shorter run")
-	require.Equal(t, 20, ig.GetOverride("supergroup"), "a room-type limit never exceeds the network's")
-	require.Equal(t, 100, wa.MaxBatches)
+func TestOlderHistoryIsOnDemandForEveryNetworkButIMessage(t *testing.T) {
+	require.False(t, CanLoadOlder("imessage"), noOlderHistory["imessage"])
+	require.True(t, CanLoadOlder("whatsapp"))
+	require.True(t, CanLoadOlder("telegram"))
 }

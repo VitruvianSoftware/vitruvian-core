@@ -289,9 +289,12 @@ type Network struct {
 	plain   bool // the client takes no tags, mutes, unread marks or request accepts
 	chatsMu sync.Mutex
 	chats   map[string]Chat
-	history map[string][]HistoryMessage // SetHistory: a chat's past, oldest first
-	fetches []Fetch                     // every FetchMessages the bridge made
-	featMu  sync.Mutex                  // guards Features and loginFeatures after the bridge has started
+	// FetchGate, when set before the bridge asks, makes every backwards fetch wait until a value is sent on it (or the
+	// request ends), so a test can hold a page mid-load.
+	FetchGate chan struct{}
+	history   map[string][]HistoryMessage // SetHistory: a chat's past, oldest first
+	fetches   []Fetch                     // every FetchMessages the bridge made
+	featMu    sync.Mutex                  // guards Features and loginFeatures after the bridge has started
 	// loginFeatures is SetLoginFeatures': what one login's client says, by login ID, over Features.
 	loginFeatures map[string]*event.RoomFeatures
 	rawMu         sync.Mutex
@@ -629,7 +632,7 @@ var (
 // after the anchor (a chat's first backfill has none), a backwards one the newest Count before the anchor or, after
 // the first page, before its cursor (the time of the oldest message it gave, in nanoseconds), and says whether older
 // ones remain. A chat with no history gives no response at all.
-func (c *client) FetchMessages(_ context.Context, p bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+func (c *client) FetchMessages(ctx context.Context, p bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
 	chatID := string(p.Portal.ID)
 	c.n.chatsMu.Lock()
 	c.n.fetches = append(c.n.fetches, Fetch{ChatID: chatID, Forward: p.Forward, Count: p.Count, Cursor: string(p.Cursor)})
@@ -637,6 +640,13 @@ func (c *client) FetchMessages(_ context.Context, p bridgev2.FetchMessagesParams
 	all := c.n.historyOf(chatID)
 	if len(all) == 0 {
 		return nil, nil
+	}
+	if !p.Forward && c.n.FetchGate != nil {
+		select {
+		case <-c.n.FetchGate:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	var pool []HistoryMessage
 	more := false

@@ -1,6 +1,6 @@
 {
   "name": "Vitruvian Courier engine protocol",
-  "protocol": 12,
+  "protocol": 13,
   "doc": "How Vitruvian Courier.app talks to its vitruvian-courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -707,6 +707,23 @@
     "RoomParams": {
       "fields": {
         "room_id": { "type": "string" }
+      }
+    },
+    "LoadOlderResult": {
+      "doc": "What room.loadOlder did.",
+      "fields": {
+        "added": {
+          "type": "int",
+          "doc": "How many messages the page stored (each part of a message counts)."
+        },
+        "has_more": {
+          "type": "bool",
+          "doc": "Older messages may remain. False once the network has no more, or can't give any (iMessage): the app then shows nothing further."
+        },
+        "loading": {
+          "type": "bool",
+          "doc": "The page isn't in yet: another load of this chat is running, or the network was asked and will answer later (WhatsApp asks the phone). Its messages arrive as new events."
+        }
       }
     },
     "MarkReadParams": {
@@ -2810,6 +2827,12 @@
       "doc": "One page of a chat's history, newest first: the newest page, the one older than before, the one newer than after, or the one around a message (to open the chat at a search result); or, with thread, one page of a thread. Paging out from any page with its before and after reads every event once.",
       "params": "RoomEventsParams",
       "result": "EventsPage",
+      "errors": [-32020]
+    },
+    "room.loadOlder": {
+      "doc": "Load ONE page of a chat's older history from its network (a manual backwards backfill) into the store, and say how many messages came and whether more remain. The app calls it only when the person scrolls to the oldest message it holds and the engine has no older one; nothing is filled in the background. One load per chat at a time (a call while one runs answers loading), and a chat with nothing older answers has_more false from a short cooldown. A network that can't load older history (iMessage), or a chat with nothing to backfill, answers has_more false; a network that isn't running or a login that isn't connected answers has_more true with nothing added. After a page, read the older events with room.events before. An unknown chat is -32020.",
+      "params": "RoomParams",
+      "result": "LoadOlderResult",
       "errors": [-32020]
     },
     "room.markRead": {

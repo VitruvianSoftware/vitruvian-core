@@ -181,6 +181,8 @@ type Actions struct {
 	untold untold // chat changes not told to their network yet (retell)
 
 	typing typingState // my typing per chat, as the networks were last told it (SetTyping)
+
+	older olderState // loads of older history that run, and chats that have no more (LoadOlder)
 }
 
 // New returns the actions over a running engine. m may be nil if SendFile is never used.
