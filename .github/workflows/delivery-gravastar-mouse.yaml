@@ -55,6 +55,7 @@
 # mean something even for a unit that renders no job yet.
 #   - gravastar-mouse-publish  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
 #       paths:  packages/peripherals/
+#       except: packages/peripherals/CHANGELOG\.md packages/peripherals/(.*/)?README\.md$
 #       render: transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package"
 
 name: delivery-gravastar-mouse

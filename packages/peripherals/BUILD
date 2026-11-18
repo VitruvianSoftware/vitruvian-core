@@ -163,6 +163,10 @@ delivery(
         "beta",
         "production",
     ],
+    exclude_paths = [
+        "packages/peripherals/CHANGELOG\\.md",
+        "packages/peripherals/(.*/)?README\\.md$",
+    ],
     # Path-only mode: this regex IS the unit's complete trigger set
     # (//tools/ci:deploy_affected, step 2), so it names the whole package.
     extra_paths = ["packages/peripherals/"],

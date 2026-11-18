@@ -33,6 +33,15 @@ on:
     branches: [main]
     paths:
       - "apps/embedded/vitruvian-deck/**"
+      - "!apps/embedded/vitruvian-deck/.github/**"
+      - "!apps/embedded/vitruvian-deck/docs/**"
+      - "!apps/embedded/vitruvian-deck/mkdocs.yml"
+      - "!apps/embedded/vitruvian-deck/catalog-info.yaml"
+      - "!apps/embedded/vitruvian-deck/OWNERS"
+      - "!apps/embedded/vitruvian-deck/LICENSE"
+      - "!apps/embedded/vitruvian-deck/release-please-config.json"
+      - "!apps/embedded/vitruvian-deck/.release-please-manifest.json"
+      - "!apps/embedded/vitruvian-deck/**/*.md"
       - ".github/workflows/iot-vitruvian-deck.yaml"
 
 permissions:

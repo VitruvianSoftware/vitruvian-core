@@ -1358,6 +1358,342 @@ pub fn check_ci_gate_lists_match(ctx: &Context) {
 }
 
 // ---------------------------------------------------------------------------
+// CHECK: container image workflow triggers (*-image.yaml)
+// ---------------------------------------------------------------------------
+//
+// Container-image workflows (e.g. vitruvian-slack-mcp-image.yaml) build with
+// Docker/Cargo/pnpm rather than Bazel. Using a broad `<app>/**` path filter
+// without negations causes Bazel BUILD edits, docs updates, or chart edits
+// (e.g. #5095 removing a visibility line in apps/mcp/vitruvian-slack-mcp/BUILD)
+// to publish new image digests and open spurious image-bump PRs (#5117).
+
+/// Strip an unquoted trailing YAML comment (` # ...` or `#...` at start).
+fn strip_yaml_inline_comment(s: &str) -> &str {
+    let bytes = s.as_bytes();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' if !in_double => in_single = !in_single,
+            b'"' if !in_single => in_double = !in_double,
+            b'#' if !in_single && !in_double => {
+                if i == 0 || bytes[i - 1].is_ascii_whitespace() {
+                    return s[..i].trim_end();
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    s.trim()
+}
+
+/// Extract `(paths, has_paths_ignore)` for `on.<event>` (`push` or `pull_request`).
+pub(crate) fn extract_event_paths(content: &str, event: &str) -> (Vec<String>, bool) {
+    let mut in_on = false;
+    let mut event_indent: Option<usize> = None;
+    let mut in_event = false;
+    let mut paths_indent: Option<usize> = None;
+    let mut has_paths_ignore = false;
+    let mut out = Vec::new();
+    let event_key = format!("{}:", event);
+
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let ind = indent(line);
+        let trimmed = strip(line);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if line.starts_with("on:") && strip(&line["on:".len()..]).is_empty() {
+            in_on = true;
+            continue;
+        }
+        if !in_on {
+            continue;
+        }
+        if ind == 0 {
+            break;
+        }
+        if event_indent.is_none() {
+            event_indent = Some(ind);
+        }
+        if Some(ind) == event_indent {
+            in_event = trimmed.starts_with(&event_key);
+            paths_indent = None;
+            continue;
+        }
+        if !in_event {
+            continue;
+        }
+        if let Some(pi) = paths_indent {
+            if ind > pi && trimmed.starts_with("- ") {
+                let item = strip_yaml_inline_comment(trimmed.strip_prefix("- ").unwrap_or(""));
+                let clean = unquote(item).to_string();
+                if !clean.is_empty() {
+                    out.push(clean);
+                }
+                continue;
+            }
+            if ind <= pi {
+                paths_indent = None;
+            }
+        }
+        if trimmed.starts_with("paths-ignore:") {
+            has_paths_ignore = true;
+        } else if trimmed.starts_with("paths:") {
+            paths_indent = Some(ind);
+        }
+    }
+    (out, has_paths_ignore)
+}
+
+fn seg_match(pat: &[u8], text: &[u8]) -> bool {
+    let (mut pi, mut ti) = (0usize, 0usize);
+    let (mut star_p, mut star_t) = (None, 0usize);
+    while ti < text.len() {
+        if pi < pat.len() && (pat[pi] == b'?' || pat[pi] == text[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < pat.len() && pat[pi] == b'*' {
+            star_p = Some(pi);
+            star_t = ti;
+            pi += 1;
+        } else if let Some(sp) = star_p {
+            pi = sp + 1;
+            star_t += 1;
+            ti = star_t;
+        } else {
+            return false;
+        }
+    }
+    while pi < pat.len() && pat[pi] == b'*' {
+        pi += 1;
+    }
+    pi == pat.len()
+}
+
+fn match_segments(pat: &[&str], path: &[&str]) -> bool {
+    if pat.is_empty() {
+        return path.is_empty();
+    }
+    if pat[0] == "**" {
+        if pat.len() == 1 {
+            // Trailing `/**` matches one or more path segments underneath the directory.
+            return !path.is_empty();
+        }
+        if match_segments(&pat[1..], path) {
+            return true;
+        }
+        return !path.is_empty() && match_segments(pat, &path[1..]);
+    }
+    if path.is_empty() {
+        return false;
+    }
+    seg_match(pat[0].as_bytes(), path[0].as_bytes()) && match_segments(&pat[1..], &path[1..])
+}
+
+/// Evaluate a GitHub Actions `paths:` filter list against a repo-relative path.
+pub(crate) fn workflow_paths_match(patterns: &[String], candidate: &str) -> bool {
+    let cand_segs: Vec<&str> = candidate.split('/').collect();
+    let mut matched = false;
+    for raw in patterns {
+        let (is_neg, pat) = match raw.strip_prefix('!') {
+            Some(p) => (true, p),
+            None => (false, raw.as_str()),
+        };
+        let pat_segs: Vec<&str> = pat.split('/').collect();
+        if match_segments(&pat_segs, &cand_segs) {
+            matched = !is_neg;
+        }
+    }
+    matched
+}
+
+fn derive_image_roots(patterns: &[String]) -> Vec<String> {
+    let mut roots = BTreeSet::new();
+    for p in patterns {
+        if p.starts_with('!') || p.starts_with(".github/workflows/") {
+            continue;
+        }
+        if let Some(dir) = p.strip_suffix("/**") {
+            if !dir.is_empty() && !dir.contains('*') {
+                roots.insert(dir.to_string());
+            }
+            continue;
+        }
+        for suffix in [
+            "/Dockerfile",
+            "/Cargo.toml",
+            "/Cargo.lock",
+            "/.dockerignore",
+        ] {
+            if let Some(dir) = p.strip_suffix(suffix) {
+                if !dir.is_empty() && !dir.contains('*') {
+                    roots.insert(dir.to_string());
+                }
+                break;
+            }
+        }
+    }
+    roots.into_iter().collect()
+}
+
+/// Validate a `*-image.yaml` workflow's `on.push.paths` and `on.pull_request.paths`.
+/// Returns `(found, wanted, why)` triples; empty when clean.
+pub(crate) fn image_workflow_problems(
+    wf_rel: &str,
+    content: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let (push_paths, push_ignore) = extract_event_paths(content, "push");
+    let (pr_paths, pr_ignore) = extract_event_paths(content, "pull_request");
+
+    if push_ignore || pr_ignore {
+        problems.push((
+            "paths-ignore".to_string(),
+            "paths: with ! exclusions".to_string(),
+            "workflow uses paths-ignore alongside paths (rejected by actionlint or hides exclusions)".to_string(),
+        ));
+    }
+    if push_paths.is_empty() || pr_paths.is_empty() {
+        problems.push((
+            format!("push={} pr={}", push_paths.len(), pr_paths.len()),
+            "non-empty push.paths and pull_request.paths".to_string(),
+            "image workflow runs unconditionally on every push or PR instead of scoping to image inputs".to_string(),
+        ));
+        return problems;
+    }
+    if push_paths != pr_paths {
+        problems.push((
+            "push != pull_request".to_string(),
+            "identical paths:".to_string(),
+            "push and pull_request paths lists diverged, so PR verification and main publishing trigger on different files".to_string(),
+        ));
+    }
+
+    if !workflow_paths_match(&push_paths, wf_rel) {
+        problems.push((
+            format!("{} ignored", wf_rel),
+            "matches self".to_string(),
+            "workflow file itself does not match its paths filter, so changes to the image build never run".to_string(),
+        ));
+    }
+
+    let roots = derive_image_roots(&push_paths);
+    if roots.is_empty() {
+        problems.push((
+            "0 app/package roots".to_string(),
+            ">=1 image root".to_string(),
+            "no app/package root pattern found in push.paths".to_string(),
+        ));
+        return problems;
+    }
+
+    // Verify at least one real build/source path outside .github/workflows matches.
+    let mut any_runtime_match = false;
+    for p in &push_paths {
+        if p.starts_with('!') || p.starts_with(".github/workflows/") {
+            continue;
+        }
+        let probe = if let Some(prefix) = p.strip_suffix("/**") {
+            format!("{}/src/main.rs", prefix)
+        } else {
+            p.clone()
+        };
+        if workflow_paths_match(&push_paths, &probe) {
+            any_runtime_match = true;
+            break;
+        }
+    }
+    if !any_runtime_match {
+        problems.push((
+            "over-negated".to_string(),
+            "matches source/Dockerfile".to_string(),
+            "paths filter excludes every source and Dockerfile input".to_string(),
+        ));
+    }
+
+    for root in &roots {
+        let mut inert_candidates = vec![
+            format!("{}/BUILD", root),
+            format!("{}/BUILD.bazel", root),
+            format!("{}/OWNERS", root),
+            format!("{}/README.md", root),
+        ];
+        if !root.ends_with("/src") && !root.starts_with("tools/ci/src/") {
+            inert_candidates.push(format!("{}/mkdocs.yml", root));
+            inert_candidates.push(format!("{}/deploy/chart/Chart.yaml", root));
+            inert_candidates.push(format!("{}/deploy/chart/values.yaml", root));
+        }
+        for cand in inert_candidates {
+            if workflow_paths_match(&push_paths, &cand) {
+                problems.push((
+                    cand,
+                    "ignored".to_string(),
+                    "non-image file (Bazel BUILD, docs, OWNERS, or Helm chart) triggers an image rebuild and digest bump".to_string(),
+                ));
+            }
+        }
+    }
+
+    problems
+}
+
+pub fn check_image_workflow_paths(ctx: &Context) {
+    if !Path::new(&ctx.workflows_dir).is_dir() {
+        return;
+    }
+    let mut count = 0u32;
+    for wf in &list_workflows(&ctx.workflows_dir) {
+        let wf_name = Path::new(wf)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
+        if !wf_name.ends_with("-image.yaml") {
+            continue;
+        }
+        count += 1;
+        let wf_rel = format!(".github/workflows/{}", wf_name);
+        let Ok(content) = fs::read_to_string(wf) else {
+            continue;
+        };
+        let problems = image_workflow_problems(&wf_rel, &content);
+        if problems.is_empty() {
+            ctx.emit_ok(
+                "imgpaths",
+                &wf_rel,
+                "scoped",
+                "push == PR, inert excluded",
+                "triggers only on Docker/source inputs; BUILD, docs, OWNERS, and charts excluded",
+            );
+        } else {
+            for (found, want, why) in problems {
+                ctx.emit_fail(
+                    "imgpaths",
+                    &wf_rel,
+                    &found,
+                    &want,
+                    &why,
+                    &format!("scope push.paths and pull_request.paths identically in {} and exclude BUILD/OWNERS/docs/deploy", wf_rel),
+                );
+            }
+        }
+    }
+    if count == 0 {
+        ctx.emit_fail(
+            "imgpaths",
+            ".github/workflows",
+            "0 matched",
+            ">=1 *-image.yaml",
+            "no *-image.yaml workflow found — the filename convention or workflow directory moved",
+            "update check_image_workflow_paths in tools/conformance/src/checks/ci.rs",
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1758,5 +2094,173 @@ var (
         let checks = extract_required_checks(tmp.to_str().unwrap());
         assert_eq!(checks, vec!["real"]);
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn workflow_paths_match_handles_wildcards_and_negations() {
+        let pats: Vec<String> = [
+            "apps/mcp/vitruvian-slack-mcp/Dockerfile",
+            "apps/mcp/vitruvian-slack-mcp/.dockerignore",
+            "apps/mcp/vitruvian-slack-mcp/rs/**",
+            "!apps/mcp/vitruvian-slack-mcp/rs/**/BUILD",
+            "!apps/mcp/vitruvian-slack-mcp/rs/**/BUILD.bazel",
+            "!apps/mcp/vitruvian-slack-mcp/rs/**/OWNERS",
+            "!apps/mcp/vitruvian-slack-mcp/rs/**/*.md",
+            "!apps/mcp/vitruvian-slack-mcp/rs/rustfmt.toml",
+            "packages/rust/vitruvian-mcp-auth/Cargo.toml",
+            "packages/rust/vitruvian-mcp-auth/src/**",
+            "!packages/rust/vitruvian-mcp-auth/**/*.md",
+            ".github/workflows/vitruvian-slack-mcp-image.yaml",
+        ]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+
+        assert!(workflow_paths_match(
+            &pats,
+            "apps/mcp/vitruvian-slack-mcp/rs/src/lib.rs"
+        ));
+        assert!(workflow_paths_match(
+            &pats,
+            "apps/mcp/vitruvian-slack-mcp/Dockerfile"
+        ));
+        assert!(workflow_paths_match(
+            &pats,
+            "packages/rust/vitruvian-mcp-auth/src/lib.rs"
+        ));
+        assert!(workflow_paths_match(
+            &pats,
+            ".github/workflows/vitruvian-slack-mcp-image.yaml"
+        ));
+
+        assert!(!workflow_paths_match(
+            &pats,
+            "apps/mcp/vitruvian-slack-mcp/BUILD"
+        ));
+        assert!(!workflow_paths_match(
+            &pats,
+            "packages/rust/vitruvian-mcp-auth/BUILD"
+        ));
+        assert!(!workflow_paths_match(
+            &pats,
+            "apps/mcp/vitruvian-slack-mcp/deploy/chart/values.yaml"
+        ));
+        assert!(!workflow_paths_match(
+            &pats,
+            "apps/mcp/vitruvian-slack-mcp/README.md"
+        ));
+        assert!(!workflow_paths_match(
+            &pats,
+            "apps/mcp/vitruvian-slack-mcp/rs/README.md"
+        ));
+    }
+
+    #[test]
+    fn image_workflow_problems_rejects_unscoped_dir_glob() {
+        let pre_fix = r#"
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mcp/vitruvian-slack-mcp/**'
+      - 'packages/rust/vitruvian-mcp-auth/**'
+      - '.github/workflows/vitruvian-slack-mcp-image.yaml'
+  pull_request:
+    paths:
+      - 'apps/mcp/vitruvian-slack-mcp/**'
+      - 'packages/rust/vitruvian-mcp-auth/**'
+      - '.github/workflows/vitruvian-slack-mcp-image.yaml'
+"#;
+        let probs =
+            image_workflow_problems(".github/workflows/vitruvian-slack-mcp-image.yaml", pre_fix);
+        let found: Vec<&str> = probs.iter().map(|p| p.0.as_str()).collect();
+        assert!(
+            found.contains(&"apps/mcp/vitruvian-slack-mcp/BUILD"),
+            "{found:?}"
+        );
+        assert!(
+            found.contains(&"packages/rust/vitruvian-mcp-auth/BUILD"),
+            "{found:?}"
+        );
+        assert!(
+            found.contains(&"apps/mcp/vitruvian-slack-mcp/deploy/chart/Chart.yaml"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn image_workflow_problems_rejects_push_pr_drift() {
+        let drifted = r#"
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ci-runner/Dockerfile'
+      - 'tools/ci-runner/src/**'
+      - '!tools/ci-runner/**/*.md'
+      - '.github/workflows/ci-runner-image.yaml'
+  pull_request:
+    paths:
+      - 'tools/ci-runner/Dockerfile'
+      - '.github/workflows/ci-runner-image.yaml'
+"#;
+        let probs = image_workflow_problems(".github/workflows/ci-runner-image.yaml", drifted);
+        assert!(
+            probs.iter().any(|p| p.0 == "push != pull_request"),
+            "{probs:?}"
+        );
+    }
+
+    #[test]
+    fn image_workflow_problems_accepts_scoped_shapes() {
+        let good_slack = r#"
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mcp/vitruvian-slack-mcp/Dockerfile'
+      - 'apps/mcp/vitruvian-slack-mcp/.dockerignore'
+      - 'apps/mcp/vitruvian-slack-mcp/rs/**'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/BUILD'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/BUILD.bazel'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/OWNERS'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/deploy/**'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/mkdocs.yml'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/*.md'
+      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
+      - 'packages/rust/vitruvian-mcp-auth/src/**'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
+      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
+      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - '.github/workflows/vitruvian-slack-mcp-image.yaml'
+  pull_request:
+    paths:
+      - 'apps/mcp/vitruvian-slack-mcp/Dockerfile'
+      - 'apps/mcp/vitruvian-slack-mcp/.dockerignore'
+      - 'apps/mcp/vitruvian-slack-mcp/rs/**'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/BUILD'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/BUILD.bazel'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/OWNERS'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/deploy/**'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/mkdocs.yml'
+      - '!apps/mcp/vitruvian-slack-mcp/rs/**/*.md'
+      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
+      - 'packages/rust/vitruvian-mcp-auth/src/**'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
+      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
+      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - '.github/workflows/vitruvian-slack-mcp-image.yaml'
+"#;
+        assert_eq!(
+            image_workflow_problems(
+                ".github/workflows/vitruvian-slack-mcp-image.yaml",
+                good_slack
+            ),
+            Vec::new()
+        );
     }
 }

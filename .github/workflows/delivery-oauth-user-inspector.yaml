@@ -55,13 +55,14 @@
 # mean something even for a unit that renders no job yet.
 #   - oauth-user-inspector  kind=cloud-run  run=//apps/web/oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  apps/web/oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
-#       except: apps/web/oauth-user-inspector/infra/identity/ apps/web/oauth-user-inspector/catalog-info\.yaml apps/web/oauth-user-inspector/deploy/ apps/web/oauth-user-inspector/docs/ apps/web/oauth-user-inspector/mkdocs\.yml apps/web/oauth-user-inspector/CHANGELOG\.md
+#       except: apps/web/oauth-user-inspector/infra/identity/ apps/web/oauth-user-inspector/catalog-info\.yaml apps/web/oauth-user-inspector/deploy/ apps/web/oauth-user-inspector/docs/ apps/web/oauth-user-inspector/mkdocs\.yml apps/web/oauth-user-inspector/CHANGELOG\.md apps/web/oauth-user-inspector/\.github/ apps/web/oauth-user-inspector/OWNERS apps/web/oauth-user-inspector/AGENTS\.md apps/web/oauth-user-inspector/(.*/)?README\.md$
 #       soak:   promotion blocked while development is red
 #   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
 #       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
+#       except: infrastructure/pulumi/platform/zitadel-apps/(.*/)?(README|APPLYING-FROM-CI)\.md$
 
 name: delivery-oauth-user-inspector
 

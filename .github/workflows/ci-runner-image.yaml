@@ -31,11 +31,25 @@ on:
   push:
     branches: [main]
     paths:
-      - 'tools/ci-runner/**'
+      - 'tools/ci-runner/Dockerfile'
+      - 'tools/ci-runner/.dockerignore'
+      - 'tools/ci-runner/src/**'
+      - '!tools/ci-runner/**/BUILD'
+      - '!tools/ci-runner/**/BUILD.bazel'
+      - '!tools/ci-runner/**/OWNERS'
+      - '!tools/ci-runner/**/*.md'
+      - '.bazelversion'
       - '.github/workflows/ci-runner-image.yaml'
   pull_request:
     paths:
-      - 'tools/ci-runner/**'
+      - 'tools/ci-runner/Dockerfile'
+      - 'tools/ci-runner/.dockerignore'
+      - 'tools/ci-runner/src/**'
+      - '!tools/ci-runner/**/BUILD'
+      - '!tools/ci-runner/**/BUILD.bazel'
+      - '!tools/ci-runner/**/OWNERS'
+      - '!tools/ci-runner/**/*.md'
+      - '.bazelversion'
       - '.github/workflows/ci-runner-image.yaml'
 
 permissions:

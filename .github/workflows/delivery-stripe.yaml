@@ -55,6 +55,7 @@
 # mean something even for a unit that renders no job yet.
 #   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox,production  promotion=push-all
 #       paths:  infrastructure/pulumi/platform/stripe/
+#       except: infrastructure/pulumi/platform/stripe/(.*/)?README\.md$
 #       render: transcribed
 
 name: delivery-stripe

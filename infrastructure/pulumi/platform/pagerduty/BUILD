@@ -48,6 +48,9 @@ delivery(
     environments = [
         "production",
     ],
+    exclude_paths = [
+        "infrastructure/pulumi/platform/pagerduty/(.*/)?README\\.md$",
+    ],
     extra_paths = [
         "infrastructure/pulumi/platform/pagerduty/",
     ],

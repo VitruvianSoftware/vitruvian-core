@@ -55,6 +55,7 @@
 # mean something even for a unit that renders no job yet.
 #   - vitruvian-deck  kind=publish  run=//apps/embedded/vitruvian-deck:publish  envs=beta,production  promotion=release:vitruvian-deck-v
 #       paths:  apps/embedded/vitruvian-deck/
+#       except: apps/embedded/vitruvian-deck/\.github/ apps/embedded/vitruvian-deck/catalog-info\.yaml apps/embedded/vitruvian-deck/docs/ apps/embedded/vitruvian-deck/mkdocs\.yml apps/embedded/vitruvian-deck/OWNERS apps/embedded/vitruvian-deck/CHANGELOG\.md apps/embedded/vitruvian-deck/AGENTS\.md apps/embedded/vitruvian-deck/(.*/)?README\.md$
 #       render: transcribed from .github/workflows/iot-vitruvian-deck.yaml job "release-and-publish"
 
 name: delivery-vitruvian-deck
