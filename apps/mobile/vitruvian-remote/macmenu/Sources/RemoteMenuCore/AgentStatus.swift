@@ -59,10 +59,18 @@ public struct PhoneLink: Decodable, Equatable, Sendable {
     public struct Device: Decodable, Equatable, Sendable {
         public var model: String?
         public var android: String?
+        /// The Vitruvian Remote version on the phone; older phones leave it out.
+        public var appVersion: String?
 
-        public init(model: String? = nil, android: String? = nil) {
+        public init(model: String? = nil, android: String? = nil, appVersion: String? = nil) {
             self.model = model
             self.android = android
+            self.appVersion = appVersion
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case model, android
+            case appVersion = "app_version"
         }
     }
 
@@ -107,12 +115,34 @@ public struct StatusSnapshot: Equatable, Sendable {
     /// Whether the agent answers on this Mac's Tailscale address, the one the
     /// phone uses. Nil when not checked (agent down, or no Tailscale here).
     public var tailnetReachable: Bool?
+    /// The newest phone app version from the signed update feed; nil when the
+    /// feed is absent or did not verify.
+    public var latestPhoneApp: String?
 
-    public init(state: AgentState, health: AgentHealth? = nil, phone: PhoneLink? = nil, tailnetReachable: Bool? = nil) {
+    public init(
+        state: AgentState,
+        health: AgentHealth? = nil,
+        phone: PhoneLink? = nil,
+        tailnetReachable: Bool? = nil,
+        latestPhoneApp: String? = nil
+    ) {
         self.state = state
         self.health = health
         self.phone = phone
         self.tailnetReachable = tailnetReachable
+        self.latestPhoneApp = latestPhoneApp
+    }
+
+    /// Said only when the linked phone runs an older Vitruvian Remote than the
+    /// signed feed names. Nothing when they match, the phone did not say its
+    /// version, or there is no verified feed.
+    public var phoneUpdateLine: String? {
+        guard let phone, phone.connected,
+              let installed = phone.device?.appVersion,
+              let latest = latestPhoneApp,
+              PhoneAppVersion.isBehind(phone: installed, latest: latest)
+        else { return nil }
+        return "Phone app \(installed) · update \(latest) available — open Settings → About on the phone"
     }
 
     /// Said only when it is a problem: the agent runs, but the phone can't

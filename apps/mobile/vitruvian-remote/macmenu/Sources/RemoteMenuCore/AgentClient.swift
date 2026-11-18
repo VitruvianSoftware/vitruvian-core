@@ -26,17 +26,25 @@ public struct AgentClient: Sendable {
     public var baseURL: URL
     public var paths: AgentPaths
     public var binaryURL: URL
+    /// Where the newest phone app version comes from (the signed update feed).
+    public var feed: PhoneAppFeedCache
 
-    public init(baseURL: URL = AgentPaths.baseURL, paths: AgentPaths = AgentPaths()) {
+    public init(
+        baseURL: URL = AgentPaths.baseURL,
+        paths: AgentPaths = AgentPaths(),
+        feed: PhoneAppFeedCache = .shared
+    ) {
         self.baseURL = baseURL
         self.paths = paths
         self.binaryURL = paths.binary
+        self.feed = feed
     }
 
-    public init(baseURL: URL = AgentPaths.baseURL, binaryURL: URL) {
+    public init(baseURL: URL = AgentPaths.baseURL, binaryURL: URL, feed: PhoneAppFeedCache = .shared) {
         self.baseURL = baseURL
         self.paths = AgentPaths()
         self.binaryURL = binaryURL
+        self.feed = feed
     }
 
     public func snapshot() async -> StatusSnapshot {
@@ -52,7 +60,10 @@ public struct AgentClient: Sendable {
                 tailnet = await answers(on: address)
             }
         }
-        return StatusSnapshot(state: state, health: health, phone: phone, tailnetReachable: tailnet)
+        // Only worth knowing while a phone is linked; never waits on the network.
+        let latest = phone?.connected == true ? await feed.latest() : nil
+        return StatusSnapshot(
+            state: state, health: health, phone: phone, tailnetReachable: tailnet, latestPhoneApp: latest)
     }
 
     /// Synchronous snapshot for the single-threaded Vitruvian tool loop.

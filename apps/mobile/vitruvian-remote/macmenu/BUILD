@@ -60,6 +60,8 @@ swift_test(
         ["Tests/**/*.swift"],
         exclude = ["Tests/RemoteToolTests/**"],
     ),
+    # PhoneAppUpdateTests checks the built-in feed key against this file.
+    data = ["//catalog:public-key.txt"],
     tags = ["manual"],
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":RemoteMenuCore"],

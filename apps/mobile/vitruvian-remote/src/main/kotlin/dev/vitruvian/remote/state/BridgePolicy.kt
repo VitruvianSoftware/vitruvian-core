@@ -235,17 +235,35 @@ public object BridgePolicy {
         }
       }
 
-  /** The `POST /v1/phone/link` body. */
-  public fun encodeLinkBody(model: String, android: String, tools: List<ToolDescriptor>): String =
-      buildString {
-        append("{\"device\":{\"model\":")
-        quote(model)
-        append(",\"android\":")
-        quote(android)
-        append("},\"tools\":")
-        append(encodeDescriptors(tools))
-        append('}')
-      }
+  /**
+   * This app's version, as the link body reports it. Set once by `BridgeHub.attach` from the
+   * package manager (this file has no Android imports); blank until then.
+   */
+  @Volatile public var appVersion: String = ""
+
+  /**
+   * The `POST /v1/phone/link` body. [appVersion] defaults to the one `BridgeHub.attach` recorded.
+   */
+  public fun encodeLinkBody(
+      model: String,
+      android: String,
+      tools: List<ToolDescriptor>,
+      appVersion: String = this.appVersion,
+  ): String = buildString {
+    append("{\"device\":{\"model\":")
+    quote(model)
+    append(",\"android\":")
+    quote(android)
+    // The Mac compares it with the signed update feed and says when this phone is behind.
+    // Left out while unknown, so an older Mac agent and a newer one both read the body.
+    if (appVersion.isNotBlank()) {
+      append(",\"app_version\":")
+      quote(appVersion)
+    }
+    append("},\"tools\":")
+    append(encodeDescriptors(tools))
+    append('}')
+  }
 
   /**
    * The `POST /v1/phone/result` body: a text content item, and an image one when there is a

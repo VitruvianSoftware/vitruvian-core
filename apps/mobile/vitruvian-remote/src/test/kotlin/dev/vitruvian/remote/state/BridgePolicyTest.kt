@@ -205,6 +205,20 @@ public class BridgePolicyTest {
   }
 
   @Test
+  public fun linkBodyCarriesTheAppVersionWhenKnown() {
+    val body = BridgePolicy.encodeLinkBody("Pixel Fold", "16", emptyList(), appVersion = "0.1.48")
+    val device = (JsonReader(body).readValue() as Map<*, *>)["device"] as Map<*, *>
+    assertEquals("0.1.48", device["app_version"])
+  }
+
+  @Test
+  public fun linkBodyLeavesOutAnUnknownAppVersion() {
+    val body = BridgePolicy.encodeLinkBody("Pixel Fold", "16", emptyList(), appVersion = "")
+    val device = (JsonReader(body).readValue() as Map<*, *>)["device"] as Map<*, *>
+    assertEquals(false, device.containsKey("app_version"))
+  }
+
+  @Test
   public fun resultCarriesOneTextItemAndTheErrorFlag() {
     val body = JsonReader(BridgePolicy.encodeResult("c-17", "{\"ok\":true}", false))
     val o = body.readValue() as Map<*, *>

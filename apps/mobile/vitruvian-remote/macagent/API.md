@@ -233,9 +233,13 @@ Design and tool list: `docs/phone-bridge.md`. The agent is a relay; the tools li
 
 ## Phone link (phone → agent)
 
-`POST /v1/phone/link` — act tier. Body `{"device":{"model":"Pixel Fold","android":"16"},
+`POST /v1/phone/link` — act tier. Body `{"device":{"model":"Pixel Fold","android":"16","app_version":"0.1.48"},
 "tools":[{"name":"sms.list","description":"…","inputSchema":{…},"tier":"read"}, …]}`. The reply
-is `text/event-stream`, held open for as long as the phone keeps it. Events:
+is `text/event-stream`, held open for as long as the phone keeps it. `device.app_version` is the
+Vitruvian Remote version on the phone (0.1.48 and later send it; older phones leave it out). The
+agent keeps at most 32 printable ASCII characters of it and returns it in `GET /v1/phone`'s
+`device`; the Mac menu compares it with the signed update feed and says when the phone is behind.
+Events:
 
 ```
 event: hello
