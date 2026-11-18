@@ -35,6 +35,7 @@ mindmap
       //tools/saas-cli:*
       //tools/sentry:pagerduty-install
       //tools/pagerduty:read
+      //tools/pagerduty:resolve-incident
     Ship & Preview
       //tools/ci:gen
       //tools/deploy:cloud-run
@@ -180,6 +181,7 @@ break-glass — the cluster's source of truth is git, reconciled by ArgoCD.
 | `//tools/github-app-key` | Create a GitHub App (`--create`), or store/rotate its private key as a repo secret; checks it is the right App first |
 | `//tools/saas-cli:{neon,upstash,whoami}` | Pre-authenticated vendor CLIs for troubleshooting. **Read-mostly** — provisioning belongs to the Pulumi data stacks, not these CLIs |
 | `//tools/pagerduty:read -- <api-path>` | Read-only GET against the PagerDuty REST API (schedules, users, notification rules, incidents) with contact details masked; changes belong to the PagerDuty Pulumi stack |
+| `//tools/pagerduty:resolve-incident -- <id> --from <email>` | Resolve one PagerDuty incident (a test page, a known false alarm) with an exported write key; key on curl stdin only |
 | `//tools/sentry:pagerduty-install` | One-shot, idempotent bootstrap for self-hosted Sentry's PagerDuty integration via the `integration_pipeline` API (requires `SENTRY_TOKEN` user token `sntryu_...`) |
 
 The three-tier secrets model itself (Secret Manager / sealed-secrets / env-injected
