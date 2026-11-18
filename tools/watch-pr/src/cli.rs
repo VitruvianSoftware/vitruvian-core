@@ -788,9 +788,12 @@ pub fn run(script: &str, args: &[String]) -> i32 {
             }
             Decision::Unexpected(rc) => {
                 warn(&format!(
-                    "Unexpected pipeline-status return code ({rc}). Retrying in {interval}s..."
+                    "Unexpected pipeline-status return code ({rc}; attempt {}/{TOOL_ERROR_RETRIES}). Retrying in {interval}s...",
+                    tool_errors.consecutive + 1
                 ));
-                sh::sleep(&interval);
+                if tool_errors.consecutive + 1 < TOOL_ERROR_RETRIES {
+                    sh::sleep(&interval);
+                }
             }
         }
         // The exit code comes from the decision alone: only Green is 0, Failed
