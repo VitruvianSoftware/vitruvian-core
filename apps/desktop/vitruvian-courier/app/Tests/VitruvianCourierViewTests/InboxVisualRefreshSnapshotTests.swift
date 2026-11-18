@@ -453,6 +453,47 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
             "restoreAnchor target ($m1) must land near the top below the header, got \(restoredAnchorFrame)"
         )
 
+        // 1b. Older messages that join without a scroll of the person's asking (a page the network answered later, read
+        // by `readEarlier`): the model names the message that was first, and the view keeps the person on it. Here
+        // there is no older page to ask for (hasOlder is false), so no ProgressView set restoreAnchor.
+        for _ in 0 ..< 4 {
+            if let docView = scrollView.documentView {
+                let docBounds = docView.bounds
+                let topPoint = docView.isFlipped
+                    ? NSPoint(x: 0, y: docBounds.minY)
+                    : NSPoint(x: 0, y: max(docBounds.minY, docBounds.maxY - scrollView.contentView.bounds.height))
+                scrollView.contentView.scroll(to: topPoint)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
+            pump(for: 0.12)
+            if frames["item/$old1"] != nil { break }
+        }
+        let evenOlderEvents: [Event] = (1 ... 5).map { idx in
+            Fixture.text(
+                "$older\(idx)",
+                "Earlier history message #\(idx)",
+                mine: false,
+                ts: 200 - idx,
+                sender: "@eddie:courier.local",
+                name: "Eddie Stecker"
+            )
+        }
+        conversation.setEarlierAnchorForTesting("$old1")
+        conversation.setSnapshotItemsForTesting(Fixture.items(evenOlderEvents + olderEvents + baseEvents, isDirect: false), hasOlder: false)
+        pump(for: 0.25)
+        // (ts is minutes ago: 200 is older than everything, so these rows sort above $old1.) The view took the anchor
+        // (an unanchored view leaves it for the next taker) and put its message back below the header.
+        XCTAssertNil(conversation.takeEarlierAnchor(), "the view must have used the earlier-history anchor")
+        let arrivedAnchorFrame = try XCTUnwrap(frames["item/$old1"], "the anchor $old1 must be laid out")
+        XCTAssertGreaterThanOrEqual(
+            arrivedAnchorFrame.minY, baseHeader.maxY - 0.5,
+            "the earlier-history anchor ($old1) must land below the header (\(baseHeader.maxY)), got \(arrivedAnchorFrame)"
+        )
+        XCTAssertLessThanOrEqual(
+            arrivedAnchorFrame.minY, baseHeader.maxY + ConversationView.timelineVerticalPadding + 16,
+            "the earlier-history anchor ($old1) must stay near the top below the header, got \(arrivedAnchorFrame)"
+        )
+
         // 2. Jump-to-message (scrollToMessageRequest).
         conversation.scrollToMessageForTesting("$m2")
         pump(for: 0.35)

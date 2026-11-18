@@ -1206,3 +1206,25 @@ func TestSlackAndTelegramSyncFullParticipantRosters(t *testing.T) {
 	require.Equal(t, 10000, tgCfg.MemberList.MaxInitialSync)
 	require.True(t, tgCfg.MemberList.SkipDeleted)
 }
+
+// WhatsApp sends its history once, at pairing, and Vitruvian Courier does not ask the phone for more then: no full
+// sync request, and none of the limits that go with it. Older messages are asked of the phone when a person scrolls to
+// the top of a chat, which is backwards_on_demand.
+func TestWhatsAppAsksForOlderHistoryOnlyOnDemand(t *testing.T) {
+	wa, ok := Get("whatsapp")
+	require.True(t, ok)
+	spec, err := wa.Spec()
+	require.NoError(t, err)
+	nc, err := spec.Connector()
+	require.NoError(t, err)
+	example, data, _ := nc.GetConfig()
+	require.NoError(t, yaml.Unmarshal([]byte(example), data))
+	cfg := &nc.(*whatsapp.WhatsAppConnector).Config
+	require.False(t, cfg.HistorySync.BackwardsOnDemand, "the example's default, which the spec replaces")
+	require.NoError(t, spec.Configure(data))
+	require.False(t, cfg.HistorySync.RequestFullSync, "no year of history at login")
+	require.Zero(t, cfg.HistorySync.FullSyncConfig.DaysLimit)
+	require.Zero(t, cfg.HistorySync.FullSyncConfig.SizeLimit)
+	require.Zero(t, cfg.HistorySync.FullSyncConfig.StorageQuota)
+	require.True(t, cfg.HistorySync.BackwardsOnDemand, "a scroll to the top asks the phone for the 50 messages before the oldest")
+}

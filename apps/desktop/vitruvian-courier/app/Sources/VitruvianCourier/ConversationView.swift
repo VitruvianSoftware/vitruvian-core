@@ -50,6 +50,10 @@ struct ConversationView: View {
     /// When the person last scrolled, clicked or pressed a key in the window: the bottom leaving the view soon
     /// after is their doing; otherwise content grew under it (a picture's real size, a status line).
     @State private var lastUserScroll = Date.distantPast
+    /// The last scroll wheel, key or drag by the person (not a click, which opens chats): older history is loaded
+    /// from the network only after one, never because a short chat opened with its top in view.
+    @State private var lastScrollGesture = Date.distantPast
+    @State private var earlierTopInView = false
     @State private var userScrollMonitor: Any?
     @State private var inviteCandidates: [ContactCandidate] = []
     /// The thread's and Chat Info's widths, for their headers in the toolbar.
@@ -685,6 +689,9 @@ struct ConversationView: View {
                                 .onDisappear { topInView = false }
                         }
                     }
+                    if !conversation.hasOlder, conversation.canLoadEarlier {
+                        earlierRow
+                    }
                     ForEach(conversation.items) { item in
                         TimelineItemView(item: item, isSelected: conversation.selectedMessageID == item.id,
                                          isHighlighted: conversation.highlightedMessageID == item.id,
@@ -801,7 +808,16 @@ struct ConversationView: View {
                     userScrollMonitor = NSEvent.addLocalMonitorForEvents(
                         matching: [.scrollWheel, .keyDown, .leftMouseDown, .leftMouseDragged]
                     ) { event in
-                        MainActor.assumeIsolated { lastUserScroll = Date() }
+                        MainActor.assumeIsolated {
+                            lastUserScroll = Date()
+                            if event.type != .leftMouseDown {
+                                lastScrollGesture = Date()
+                                // Scrolling up with the oldest message already in view: ask the network for more.
+                                if earlierTopInView, event.type != .scrollWheel || event.scrollingDeltaY > 0 {
+                                    conversation.loadEarlier()
+                                }
+                            }
+                        }
                         return event
                     }
                 }
@@ -819,7 +835,10 @@ struct ConversationView: View {
             }
             .onChange(of: firstMessageID) { _, _ in
                 // Older messages came in above: stay where the person was, cleared below the header overlay.
-                guard let anchor = restoreAnchor else { return }
+                // Older messages that joined without a scroll of the person's asking (a page the network answered
+                // later) are anchored the same way.
+                let arrived = conversation.takeEarlierAnchor()
+                guard let anchor = restoreAnchor ?? arrived else { return }
                 restoreAnchor = nil
                 scrollToBelowHeader(proxy, id: anchor, preferCenter: false)
             }
@@ -831,6 +850,32 @@ struct ConversationView: View {
         [composerChromeSignature,
          conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight),
          conversation.typingLine == nil ? "" : "typing"]
+    }
+
+    /// At the top of the timeline when this Mac holds no older message but the network may: the "Loading earlier
+    /// messages…" row while a page loads, and otherwise an empty row whose appearing, after the person scrolled,
+    /// asks for one. Nothing is asked when a chat opens (the person has not scrolled).
+    @ViewBuilder
+    private var earlierRow: some View {
+        Group {
+            if conversation.isLoadingEarlier {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading earlier messages…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .accessibilityElement(children: .combine)
+            } else {
+                Color.clear.frame(height: 1)
+            }
+        }
+        .onAppear {
+            earlierTopInView = true
+            if Date().timeIntervalSince(lastScrollGesture) < 1.0 { conversation.loadEarlier() }
+        }
+        .onDisappear { earlierTopInView = false }
     }
 
     private func requestOlder() {

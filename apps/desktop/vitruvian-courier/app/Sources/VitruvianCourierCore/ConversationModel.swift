@@ -314,6 +314,24 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var isLoadingOlder = false
     /// The last read of an older page failed: the view offers a button instead of trying again by itself.
     @Published public private(set) var olderFailed = false
+    /// The network may hold messages older than this Mac does (`room.loadOlder` has not said otherwise): when the
+    /// person scrolls to the oldest message and there is none older here, `loadEarlier` asks for them. False once the
+    /// engine says there are none, and until the chat is opened again.
+    @Published public private(set) var canLoadEarlier = true
+    /// A page of older history is being loaded from the network: the view shows "Loading earlier messages…".
+    @Published public private(set) var isLoadingEarlier = false
+    /// An older page from the network may arrive on its own: a load said `has_more` (a network that answers later,
+    /// like WhatsApp's phone, says it with `loading`). While it is set, every change the engine publishes for the open
+    /// chat is followed by a local read of what is older than the oldest message held (`readEarlier`).
+    private var earlierMayArrive = false
+    private var earlierRead: Task<Void, Never>?
+    /// The message the person was looking at when older messages last joined the top of the timeline, for the view to
+    /// keep their place with (`takeEarlierAnchor`).
+    private var earlierAnchorID: String?
+    /// How long `room.loadOlder` may take, in seconds. The engine waits up to 45 s for a page (`loadOlderWait` in
+    /// the engine's actions/older.go) and the app's calls give up at 30 s, so this one waits longer than the engine
+    /// does. A variable so a test can shorten it.
+    static var loadOlderTimeout: TimeInterval = 60
     @Published public private(set) var problem: ConversationProblem?
     /// Messages from others that came while the chat was scrolled up: the jump-to-bottom button's count.
     @Published public private(set) var newMessageCount = 0
@@ -957,6 +975,12 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// Sets the anchor `takeEarlierAnchor` gives, as `readEarlier` does just before older messages join the top, for view
+    /// tests without an engine.
+    public func setEarlierAnchorForTesting(_ messageID: String?) {
+        earlierAnchorID = messageID
+    }
+
     /// Populates unread thread state in view tests without an engine.
     public func setUnreadThreadsForTesting(_ threads: [UnreadThread]) {
         unreadThreads = threads
@@ -1414,6 +1438,12 @@ public final class ConversationModel: ObservableObject {
         hasOlder = false
         isLoadingOlder = false
         olderFailed = false
+        canLoadEarlier = true
+        isLoadingEarlier = false
+        earlierMayArrive = false
+        earlierRead?.cancel()
+        earlierRead = nil
+        earlierAnchorID = nil
         isLoadingNewer = false
         problem = nil
         isAwayFromLatest = false
@@ -1520,6 +1550,7 @@ public final class ConversationModel: ObservableObject {
             guard matchesOpenRoom(room) else { return } // a kept chat is read again whenever it is opened
             if anchorID != nil { hasNewerWhileAway = true }
             requestRefetch()
+            if earlierMayArrive { readEarlier() }
             readUnreadThreads()
         case let .read(room, _):
             guard matchesOpenRoom(room) else { return }
@@ -2127,6 +2158,81 @@ public final class ConversationModel: ObservableObject {
             // message in it deleted for me) and a cursor further back reads on.
             if page.events.isEmpty, let next = page.before, next != cursor { self.loadOlder() }
         }
+    }
+
+    /// The person scrolled to the oldest message this Mac holds and there is none older here: asks the engine to load
+    /// a page of older history from the chat's network (`room.loadOlder`), as Beeper does. It does nothing while a
+    /// load runs, once the engine has said there is no more, in a merged chat, or while older messages are still on
+    /// this Mac (`loadOlder` reads those). The view calls it only for a scroll by the person, never when a chat opens.
+    ///
+    /// When the page is in, what it added is read and put at the top (`readEarlier`). A network that answers later
+    /// (`loading`) shows its page the same way, on the first change of the chat after the answer is stored.
+    public func loadEarlier() {
+        guard !isLocked, let room = roomID, isLoaded, !hasOlder, canLoadEarlier, !isLoadingEarlier,
+              appModel.mergedChats[room] == nil, let client = appModel.client else { return }
+        isLoadingEarlier = true
+        let owner = generation
+        Task { [weak self] in
+            let result: LoadOlderResult?
+            do {
+                result = try await client.call("room.loadOlder", RoomParams(roomID: room), timeout: Self.loadOlderTimeout)
+            } catch {
+                result = nil
+            }
+            guard let self, owner == self.generation else { return }
+            self.isLoadingEarlier = false
+            guard client === self.appModel.client, self.roomID == room else { return }
+            // A failed load says nothing about whether more remain: the next scroll to the top tries again.
+            guard let result else { return }
+            self.canLoadEarlier = result.hasMore
+            self.earlierMayArrive = result.hasMore
+            if result.added > 0 { self.readEarlier() }
+        }
+    }
+
+    /// Reads what is older than the oldest message held, and puts it at the top of the timeline when there is any.
+    /// Run after a load that added messages, and on every change the engine publishes for the chat while an older page
+    /// may arrive (`earlierMayArrive`): a page the network answers later is stored by the engine on its own, and this
+    /// is how it shows without another scroll. The latest read wins; the view keeps the person's place
+    /// (`takeEarlierAnchor`).
+    private func readEarlier() {
+        guard !hasOlder, let room = roomID, appModel.mergedChats[room] == nil, let client = appModel.client,
+              let oldest = events.values.map(Self.position).min() else { return }
+        let before = Cursor(ts: oldest.ts, seq: oldest.seq)
+        let owner = generation
+        earlierRead?.cancel()
+        earlierRead = Task { [weak self] in
+            let page: EventsPage? = try? await client.call(
+                "room.events", self?.eventsParams(room: room, before: before, limit: Self.pageSize)
+                    ?? RoomEventsParams(roomID: room, before: before, limit: Self.pageSize))
+            guard let self, !Task.isCancelled, owner == self.generation, client === self.appModel.client,
+                  self.roomID == room, !self.hasOlder, let page, !page.events.isEmpty else { return }
+            self.earlierAnchorID = self.firstMessageID
+            for event in page.events {
+                self.events[event.eventID] = event
+                self.seenIDs.insert(event.eventID)
+            }
+            self.olderPagesLoaded = true
+            self.olderCursor = page.before
+            self.hasOlder = page.before != nil
+            self.rebuild()
+        }
+    }
+
+    /// The first message of the timeline (what the view anchors on when older messages join above it).
+    private var firstMessageID: String? {
+        for item in items.prefix(3) {
+            if case let .message(message) = item { return message.id }
+        }
+        return nil
+    }
+
+    /// The message that was first when older messages last joined the top without the view asking for a page (a load
+    /// that added some, or an answer the network sent later), once: the view scrolls back to it so the person keeps
+    /// their place. Nil when there is none to keep.
+    public func takeEarlierAnchor() -> String? {
+        defer { earlierAnchorID = nil }
+        return earlierAnchorID
     }
 
     /// A message of mine was sent from one of this chat's composers.

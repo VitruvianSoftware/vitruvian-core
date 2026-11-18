@@ -4,6 +4,7 @@ go_library(
     name = "localmatrix",
     srcs = [
         "arrived.go",
+        "batch.go",
         "connector.go",
         "intent.go",
         "repair_gmessages.go",
@@ -30,6 +31,8 @@ go_test(
     name = "localmatrix_test",
     srcs = [
         "arrived_test.go",
+        "backfill_test.go",
+        "batch_test.go",
         "connector_test.go",
         "intent_test.go",
         "repair_gmessages_test.go",
@@ -40,6 +43,7 @@ go_test(
         "//apps/desktop/vitruvian-courier/engine/internal/fakenet",
         "//apps/desktop/vitruvian-courier/engine/internal/ids",
         "//apps/desktop/vitruvian-courier/engine/internal/media",
+        "//apps/desktop/vitruvian-courier/engine/internal/searchtext",
         "//apps/desktop/vitruvian-courier/engine/internal/sqlite",
         "//apps/desktop/vitruvian-courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",

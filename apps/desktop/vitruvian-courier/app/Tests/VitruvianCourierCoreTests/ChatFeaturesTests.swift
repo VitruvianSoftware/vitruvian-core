@@ -376,7 +376,7 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     func testMediaCapabilityAndProtocolV7TypesRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 12)
+        XCTAssertEqual(CourierProtocol.version, 13)
 
         let voiceCap = FileKindFeatures(
             supported: true,

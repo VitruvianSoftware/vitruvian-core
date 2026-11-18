@@ -704,3 +704,41 @@ func (s *Store) SetMuted(ctx context.Context, roomID string, muted bool) error {
 	}
 	return err
 }
+
+// NetworkReadMarkers gives, for each of roomIDs the network has told me a read position in, that position as a
+// Cursor: the message I read up to on another device, as the network itself reported it (SetRead, which a bridge's read
+// receipt for me and a backfilled batch that came already read both call). It is the "reads" marker alone: what I read
+// on this Mac (MarkReadLocal, local_reads) is never in it, so a chat read here still has no network position. A room
+// with none is left out. Seq is the marker's event's seq, or the largest number when the event isn't stored (compare on
+// ts alone, as the unread count does). The notification path skips a message at or before it: read elsewhere is not news.
+func (s *Store) NetworkReadMarkers(ctx context.Context, roomIDs []string) (map[string]Cursor, error) {
+	out := map[string]Cursor{}
+	const chunk = 400
+	for start := 0; start < len(roomIDs); start += chunk {
+		ids := roomIDs[start:min(start+chunk, len(roomIDs))]
+		args := make([]any, len(ids))
+		marks := make([]string, len(ids))
+		for i, id := range ids {
+			args[i], marks[i] = id, "$"+strconv.Itoa(i+1)
+		}
+		rows, err := s.db.Query(ctx, `SELECT rd.room_id, rd.ts, `+markerSeq("rd", "rde")+`
+			FROM reads rd LEFT JOIN events rde ON rde.event_id = rd.event_id AND rde.ts = rd.ts
+			WHERE rd.room_id IN (`+strings.Join(marks, ",")+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var room string
+			var ts, seq int64
+			if err := rows.Scan(&room, &ts, &seq); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[room] = Cursor{TS: time.UnixMilli(ts), Seq: seq}
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
