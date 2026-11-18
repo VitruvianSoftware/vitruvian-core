@@ -56,4 +56,4 @@ jobs:
             //apps/desktop/vitruvian-courier/app:engine_contract_test
             //apps/desktop/vitruvian-courier/app:inject_app_credentials_test
             //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test
-        run: tools/ci-bench/bench.sh jobs2
+        run: tools/ci-bench/bench.sh jobs3

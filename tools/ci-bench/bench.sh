@@ -192,8 +192,23 @@ jobs2)
     timed "b local compile of the view tests, jobs=${j}" build "${BASE[@]}" "${flags[@]}" "$V"
   done
   ;;
+jobs3)
+  # A middle setting: how much of the cache-walk gain does 8 or 16 keep, and
+  # how much of the local-compile loss does it avoid?
+  timed "prime (fetch + analysis)" build --nobuild "${BASE[@]}" "${TARGETS[@]}"
+  bazel build --nobuild "${BASE[@]}" --jobs=8 "${TARGETS[@]}" >/dev/null 2>&1
+  timed "a all hits, jobs=8, first build on the runner" build "${BASE[@]}" --jobs=8 "${TARGETS[@]}"
+  V=//apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests
+  for j in default 8 16 16 8 default; do
+    flags=(--noremote_accept_cached)
+    if [ "$j" != default ]; then flags+=("--jobs=$j"); fi
+    bazel clean >/dev/null 2>&1
+    bazel build --nobuild "${BASE[@]}" "${flags[@]}" "$V" >/dev/null 2>&1
+    timed "b local compile of the view tests, jobs=${j}" build "${BASE[@]}" "${flags[@]}" "$V"
+  done
+  ;;
 *)
-  echo "usage: bench.sh compression|downloader|split|jobs|jobs2" >&2
+  echo "usage: bench.sh compression|downloader|split|jobs|jobs2|jobs3" >&2
   exit 2
   ;;
 esac
