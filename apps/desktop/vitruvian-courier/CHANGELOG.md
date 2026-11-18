@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.26...vitruvian-courier-v0.3.27) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** a way into Send Later, requests you can tell apart, a labelled rail, one-line pins ([#5053](https://github.com/VitruvianSoftware/vitruvian-core/issues/5053)) ([1f39f44](https://github.com/VitruvianSoftware/vitruvian-core/commit/1f39f44cf6bd8b12ac12211490db3db81f6b8ce0))
+* **vitruvian-courier:** chat info: accurate encryption, Shared and Bookmarks, a Contact box, grouped sections ([#5058](https://github.com/VitruvianSoftware/vitruvian-core/issues/5058)) ([8faf5f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/8faf5f82092560708e38b178729a77641d7183e6))
+* **vitruvian-courier:** draw the Go to Inbox button so it shows in the sidebar ([#5076](https://github.com/VitruvianSoftware/vitruvian-core/issues/5076)) ([69a076a](https://github.com/VitruvianSoftware/vitruvian-core/commit/69a076a5df8e50f951db838a4b5166a7eb7e02fe))
+* **vitruvian-courier:** no avatar column in one-to-one chats, one colour per person, YouTube cards with a picture ([#5054](https://github.com/VitruvianSoftware/vitruvian-core/issues/5054)) ([a165ff3](https://github.com/VitruvianSoftware/vitruvian-core/commit/a165ff337697c1715ca5251be3449bb2a331cb0e))
+* **vitruvian-courier:** request titles that fit, a Go to Inbox button that looks clickable ([#5064](https://github.com/VitruvianSoftware/vitruvian-core/issues/5064)) ([b808a0f](https://github.com/VitruvianSoftware/vitruvian-core/commit/b808a0fd49201c092dd500aba9bce89332bc616d))
+
 ## [0.3.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.25...vitruvian-courier-v0.3.26) (2026-11-17)
 
 
