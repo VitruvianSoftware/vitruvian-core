@@ -50,6 +50,7 @@ go_test(
         "members.go",
         "members_test.go",
         "older_history_test.go",
+        "older_history_walk_test.go",
         "rooms.go",
         "send.go",
         "sync.go",
