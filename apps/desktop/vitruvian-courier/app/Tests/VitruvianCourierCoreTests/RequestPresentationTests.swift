@@ -29,6 +29,10 @@ final class RequestPresentationTests: XCTestCase {
         XCTAssertEqual(RequestPresentation.title(name: "   ", networkName: "  Instagram  "),
                        "Unknown Instagram contact")
         XCTAssertEqual(RequestPresentation.title(name: "", networkName: ""), "Unknown contact")
+        // The app names Messenger "Facebook Messenger"; the title drops "Facebook" so it fits on one line.
+        XCTAssertEqual(RequestPresentation.title(name: "Facebook user", networkName: "Facebook Messenger"),
+                       "Unknown Messenger contact")
+        XCTAssertEqual(RequestPresentation.shortNetworkName("Facebook"), "Facebook")
     }
 
     func testAllKnownNetworkPlaceholdersAreRecognised() {
