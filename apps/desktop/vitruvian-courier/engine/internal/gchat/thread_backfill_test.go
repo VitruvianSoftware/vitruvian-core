@@ -141,10 +141,8 @@ func TestBackfillFetchesThreadRepliesOfTopicsThatHaveThem(t *testing.T) {
 	require.Equal(t, "dm_threads", srv.listMessages[0].GetParentId().GetTopicId().GetGroupId().GetDmId().GetDmId())
 	require.Equal(t, int32(repliesPageSize), srv.listMessages[0].GetPageSize())
 	require.Equal(t, tbHeadC, srv.listMessages[1].GetParentId().GetTopicId().GetTopicId())
-	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
-		GroupId:           pb.DMGroupID("dm_threads"),
-		PageSizeForTopics: pb.Int32(50),
-	}), listTopicsBodyWithoutHeader(t, srv.listTopics[0]), "list_topics still carries no replies page-size fields")
+	require.Equal(t, pb.MustMarshal(websiteListTopicsRequest(pb.DMGroupID("dm_threads"), 30, 0, 0)),
+		listTopicsBodyWithoutHeader(t, srv.listTopics[0]), "list_topics is shaped like chat.google.com's, page size 30 even for Count 50")
 	srv.listMessages = nil
 	srv.mu.Unlock()
 

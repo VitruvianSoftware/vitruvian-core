@@ -439,10 +439,30 @@ func listTopicsBodyWithoutHeader(t *testing.T, req []byte) []byte {
 	return pb.MustMarshal(&r)
 }
 
-// The reference client (ref pkg/connector/backfill.go fetchTopicHeadMessages, live-tested in
-// ref pkg/gchatmeow/live_test.go) sends list_topics with only group_id and page_size_for_topics, for spaces and
-// DMs alike. We used to add page_size_for_replies, page_size_for_unread_replies and page_size_for_read_replies,
-// and every such request came back HTTP 500; DMs went to list_messages with an empty topic id instead.
+// websiteListTopicsRequest is list_topics as chat.google.com sends it (captured live: page_size_for_topics 30,
+// fetch options [3,1,4], reply page sizes 1000 and 20, field 11 = 2), written out field by field so a test does
+// not lean on the code that builds the real request. olderThan is the field-4 cursor; 0 omits it.
+func websiteListTopicsRequest(gid *pb.GroupId, pageSize int32, olderThan, userRev int64) *pb.ListTopicsRequest {
+	req := &pb.ListTopicsRequest{
+		GroupId:                  gid,
+		PageSizeForTopics:        pb.Int32(pageSize),
+		PageSizeForUnreadReplies: pb.Int32(1000),
+		PageSizeForReadReplies:   pb.Int32(20),
+		FetchOptions:             []pb.ListTopicsRequest_FetchOptions{3, 1, 4},
+		Unknown_11:               pb.Int32(2),
+	}
+	if olderThan > 0 {
+		req.OlderThanSortTime = &pb.TopicSortTimeCursor{Timestamp: pb.Int64(olderThan)}
+	}
+	if userRev > 0 {
+		req.UserNotOlderThan = &pb.ReferenceRevision{Timestamp: pb.Int64(userRev)}
+	}
+	return req
+}
+
+// list_topics must look like chat.google.com's own request, for spaces and DMs, initial and forward: the old
+// shape (group_id and page size only, 50 for a DM, the backfill's Count for others) came back HTTP 500 for a
+// Family space. Page size is capped at 30.
 func TestBackfillListTopicsRequestMatchesReference(t *testing.T) {
 	ctx := context.Background()
 	var mu sync.Mutex
@@ -522,14 +542,11 @@ func TestBackfillListTopicsRequestMatchesReference(t *testing.T) {
 	defer mu.Unlock()
 	require.Zero(t, listMessagesCalls)
 	require.Len(t, listTopicsReqs, 3)
-	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
-		GroupId:           pb.SpaceGroupID("space_xyz"),
-		PageSizeForTopics: pb.Int32(30),
-	}), listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), "space list_topics must carry only group_id and page_size_for_topics")
-	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
-		GroupId:           pb.DMGroupID("dm_abc"),
-		PageSizeForTopics: pb.Int32(50),
-	}), listTopicsBodyWithoutHeader(t, listTopicsReqs[1]), "DM history uses list_topics with the DM group id")
+	spaceWant := websiteListTopicsRequest(pb.SpaceGroupID("space_xyz"), 30, 0, 0)
+	spaceWant.GroupNotOlderThan = &pb.ReferenceRevision{Timestamp: pb.Int64(120)}
+	require.Equal(t, pb.MustMarshal(spaceWant), listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), "space list_topics has the website's shape")
+	require.Equal(t, pb.MustMarshal(websiteListTopicsRequest(pb.DMGroupID("dm_abc"), 30, 0, 0)),
+		listTopicsBodyWithoutHeader(t, listTopicsReqs[1]), "DM list_topics has the website's shape, page size 30 although Count was 50")
 	require.Equal(t, listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), listTopicsBodyWithoutHeader(t, listTopicsReqs[2]))
 }
 

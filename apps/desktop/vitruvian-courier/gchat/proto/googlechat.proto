@@ -1258,10 +1258,21 @@ message ListTopicsRequest {
 		USER = 1;
 		TOTAL_MESSAGE_COUNTS = 2;
 		READ_RECEIPTS = 3;
+		// Sent by chat.google.com alongside READ_RECEIPTS and USER; its meaning is not known.
+		FETCH_OPTION_4 = 4;
 	}
 	repeated FetchOptions fetch_options = 5;
 	optional ReferenceRevision user_not_older_than = 9;
 	optional ReferenceRevision group_not_older_than = 10;
+	// Paging cursor, field 4. When the web client scrolls up it sends the sort time (microseconds) of the oldest
+	// topic it has loaded, and the answer is the page of topics with an older sort time. Absent = the newest page.
+	optional TopicSortTimeCursor older_than_sort_time = 4;
+	// chat.google.com sends 2 here on every list_topics request; its meaning is not known.
+	optional int32 unknown_11 = 11;
+}
+
+message TopicSortTimeCursor {
+	optional int64 timestamp = 1;
 }
 
 message ListMessagesRequest {

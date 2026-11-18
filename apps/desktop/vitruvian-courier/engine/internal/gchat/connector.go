@@ -46,6 +46,10 @@ type PortalMetadata struct {
 	// retried for appRosterRetryAfter, so one that keeps failing is not asked again on every connect.
 	AppRosterAttemptedAt int64 `json:"app_roster_attempted_at,omitempty"`
 	NameFromGoogle       bool  `json:"name_from_google,omitempty"`
+	// OldestTopicSortTime is the oldest Topic.sort_time (microseconds) list_topics has returned for this chat, the
+	// minimum seen. Google pages history by sort time (a topic's last activity), so this is the cursor the next
+	// backwards page sends, as chat.google.com does. 0 = never recorded (a chat synced before this existed).
+	OldestTopicSortTime int64 `json:"oldest_topic_sort_time,omitempty"`
 }
 
 // GhostMetadata stores per-ghost Google Chat metadata.
