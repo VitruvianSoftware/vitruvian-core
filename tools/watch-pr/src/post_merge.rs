@@ -21,7 +21,10 @@ pub enum Decision {
     /// No push runs after the grace period: still not a pass; poll again until
     /// the watchdog deadline turns this into a timeout.
     NoRunsStillWaiting,
-    /// A return code pipeline-status does not define: retry.
+    /// A return code pipeline-status does not define (0-3), so it gave no
+    /// answer: most often Bazel's own code for failing to launch it (37 when
+    /// the checkout vanished mid-watch, 36 for a local environment error).
+    /// Retried, and counted with `ToolError` towards `EXIT_TOOL_ERROR`.
     Unexpected(i32),
     /// pipeline-status never ran: Bazel could not build or launch it (a
     /// broken local cache, a crashed server). Its exit code says nothing
@@ -87,7 +90,8 @@ pub fn judge(rc: i32, secs_since_landing: i64, report: &Report) -> Decision {
     decide(rc, secs_since_landing)
 }
 
-/// Counts `ToolError` polls in a row; any other decision resets it.
+/// Counts polls in a row where pipeline-status gave no answer (`ToolError`
+/// or `Unexpected`); any real answer resets it.
 #[derive(Debug, Default)]
 pub struct ToolErrors {
     pub consecutive: u32,
@@ -97,7 +101,7 @@ impl ToolErrors {
     /// Record one poll's decision. Returns `Some(EXIT_TOOL_ERROR)` once
     /// pipeline-status has failed to run `TOOL_ERROR_RETRIES` times in a row.
     pub fn record(&mut self, decision: &Decision) -> Option<i32> {
-        if *decision == Decision::ToolError {
+        if matches!(decision, Decision::ToolError | Decision::Unexpected(_)) {
             self.consecutive += 1;
             (self.consecutive >= TOOL_ERROR_RETRIES).then_some(EXIT_TOOL_ERROR)
         } else {
@@ -248,6 +252,28 @@ mod tests {
             assert_eq!(t.record(&Decision::ToolError), None);
         }
         assert_eq!(t.record(&Decision::ToolError), Some(EXIT_TOOL_ERROR));
+    }
+
+    /// PR #5130's own watch: its worktree was pruned right after it landed,
+    /// every later `bazel run` exited 37 with no ERROR: line, and watch-pr
+    /// retried for 20 minutes, then reported a timeout.
+    #[test]
+    fn bazel_launch_codes_give_up_as_a_tool_error_not_a_timeout() {
+        let quiet = read_report("");
+        let mut t = ToolErrors::default();
+        for _ in 1..TOOL_ERROR_RETRIES {
+            let d = judge(37, 600, &quiet);
+            assert_eq!(d, Decision::Unexpected(37));
+            assert_eq!(d.exit_code(), None);
+            assert_eq!(t.record(&d), None);
+        }
+        // A mix of no-answer kinds still adds up.
+        assert_eq!(t.record(&Decision::ToolError), Some(EXIT_TOOL_ERROR));
+        // pipeline-status' own codes never count.
+        let mut t = ToolErrors::default();
+        for rc in [2, 3, 2, 3, 2, 3] {
+            assert_eq!(t.record(&judge(rc, 600, &quiet)), None, "rc {rc}");
+        }
         assert_ne!(EXIT_TOOL_ERROR, EXIT_FAILED);
         assert_ne!(EXIT_TOOL_ERROR, EXIT_TIMEOUT);
         assert_ne!(EXIT_TOOL_ERROR, 3, "3 is a bad argument");
