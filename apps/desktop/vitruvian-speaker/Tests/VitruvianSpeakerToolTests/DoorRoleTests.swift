@@ -215,6 +215,7 @@ final class DoorRoleTests: XCTestCase {
     private var asked: [ChatMonitorAction] = []
     private var mayRun: [Bool] = []
     private var marks: [MarkChoice] = []
+    private var holdsLiveLock = true
 
     override func setUpWithError() throws {
         root = try scratchDir()
@@ -244,7 +245,8 @@ final class DoorRoleTests: XCTestCase {
             controlChatMonitor: { [unowned self] in asked.append($0) },
             role: { [unowned self] in role }, other: app, door: door,
             sendStatus: { [unowned self] in marks.append($0) },
-            monitorMayRun: { [unowned self] in mayRun.append($0) }))
+            monitorMayRun: { [unowned self] in mayRun.append($0) },
+            holdsLiveLock: { [unowned self] in holdsLiveLock }))
     }
 
     private func choose(_ chosen: VitruvianSpeakerProfile.Door, at date: Date) throws {
@@ -336,6 +338,21 @@ final class DoorRoleTests: XCTestCase {
         XCTAssertEqual(mayRun, [true])
         tool.refreshRole()
         XCTAssertEqual(asked, [.start], "asked once")
+    }
+
+    /// A second process, refused the live lock at start (the old one still
+    /// exiting), reads chat once it has taken it on a later tick (#3357).
+    func testTheMonitorStartsOnceThisProcessTakesTheLiveLock() throws {
+        holdsLiveLock = false
+        let tool = tool()
+        tool.start()
+        tool.refreshRole()
+        XCTAssertEqual(asked, [], "another process holds the lock: it reads, not this one")
+        XCTAssertEqual(mayRun, [])
+        holdsLiveLock = true
+        tool.refreshRole()
+        XCTAssertEqual(asked, [.start], "taken on this tick: this process reads now")
+        XCTAssertEqual(mayRun, [true])
     }
 
     func testAnActiveSideWithEverySourceOffStartsNothing() throws {
@@ -558,7 +575,7 @@ final class ExtensionPartsTests: XCTestCase {
     static let appProgram = URL(fileURLWithPath: "/nonexistent/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
 
     private func rig(
-        appInstalled: Bool = false, holdsLiveLock: Bool = true, session: URLSession = StandInChat.session
+        appInstalled: Bool = false, holdsLiveLock: @escaping () -> Bool = { true }, session: URLSession = StandInChat.session
     ) throws -> Rig {
         let root = try scratchDir()
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
@@ -700,7 +717,7 @@ final class ExtensionPartsTests: XCTestCase {
     }
 
     func testAProcessWithoutTheLockNeverReadsChat() async throws {
-        let rig = try rig(holdsLiveLock: false)
+        let rig = try rig(holdsLiveLock: { false })
         rig.engine.config.config.effectiveChatMonitor.slackEnabled = true
         try rig.engine.config.trySaveConfig()
         let tokens = ExtensionSide.watch(engine: rig.engine, monitor: rig.gate)
@@ -721,11 +738,41 @@ final class ExtensionPartsTests: XCTestCase {
         XCTAssertEqual(rig.monitor.calls, [], "the process without the lock started its monitor")
 
         // Control: the same, holding the lock, starts it.
-        let holder = try self.rig(holdsLiveLock: true)
+        let holder = try self.rig(holdsLiveLock: { true })
         holder.engine.config.config.effectiveChatMonitor.slackEnabled = true
         try holder.engine.config.trySaveConfig()
         VitruvianSpeakerTool(parts: holder.parts).start()
         XCTAssertEqual(holder.monitor.calls, ["start"])
+    }
+
+    /// #3357: a second `bin/tool`, refused the lock at start because the
+    /// old one was still exiting, outlives it. It takes the lock on a later
+    /// role tick and reads chat, with no restart. The keeper is the real
+    /// one, as `main.swift` builds it, on a real `flock`.
+    func testAProcessRefusedTheLockReadsChatOnceTheOldOneHasGone() throws {
+        let lockURL = try scratchDir().appendingPathComponent("running.lock")
+        let old = try LiveLock.hold(at: lockURL)
+        var listened = 0
+        let keeper = LiveLockKeeper(url: lockURL) { listened += 1 }
+        XCTAssertEqual(listened, 0, "refused at start")
+        let rig = try rig(holdsLiveLock: { keeper.holds() })
+        rig.engine.config.config.effectiveChatMonitor.slackEnabled = true
+        try rig.engine.config.trySaveConfig()
+        let tool = VitruvianSpeakerTool(parts: rig.parts)
+        tool.start()
+        tool.refreshRole()
+        XCTAssertFalse(rig.gate.permission.value, "the old process still holds it")
+        XCTAssertEqual(rig.monitor.calls, [])
+
+        old.release()
+        tool.refreshRole()
+        XCTAssertTrue(rig.gate.permission.value, "taken on this tick")
+        XCTAssertEqual(rig.monitor.calls, ["start"], "and this process reads chat now")
+        XCTAssertEqual(listened, 1, "and listens for the hook's runs")
+        XCTAssertTrue(LiveLock.isHeld(at: lockURL))
+        tool.refreshRole()
+        XCTAssertEqual(rig.monitor.calls, ["start"], "started once")
+        XCTAssertEqual(listened, 1)
     }
 
     func testAQuietSideIgnoresSettingsAndNotices() async throws {

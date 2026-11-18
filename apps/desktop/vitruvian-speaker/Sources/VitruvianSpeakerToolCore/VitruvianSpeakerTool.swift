@@ -138,6 +138,13 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         /// longer: the monitor's own triggers (its settings changing on
         /// disk, a sign-in, the control message) start nothing otherwise.
         public var monitorMayRun: (Bool) -> Void
+        /// Whether this process holds its side's live lock (`running.lock`),
+        /// asked on each role tick. A second process that could not take it
+        /// at start (the old one still exiting) tries again here
+        /// (`LiveLockKeeper.holds`), and its chat monitor may run only once
+        /// it has it: the process that holds the lock is the one that
+        /// reads (#3357). The default, for the app and tests, holds it.
+        public var holdsLiveLock: () -> Bool
         /// This Vitruvian Speaker's files, and the app's: what the choice card
         /// compares and copies (design 7.4, 7.5). Nil in a test that has
         /// none, and then nothing is compared or copied.
@@ -189,7 +196,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                     otherInstalled: @escaping () -> Bool = { false },
                     credentialsChangedIn: @escaping (VitruvianSpeakerProfile) -> Void = { _ in },
                     volumeRestoreReport: @escaping () -> String? = { nil },
-                    onSnoozeChanged: @escaping @Sendable () -> Void = {}) {
+                    onSnoozeChanged: @escaping @Sendable () -> Void = {},
+                    holdsLiveLock: @escaping () -> Bool = { true }) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -217,6 +225,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             self.copy = copy
             self.sendStatus = sendStatus
             self.monitorMayRun = monitorMayRun
+            self.holdsLiveLock = holdsLiveLock
             self.profile = profile
             self.appProfile = appProfile
             self.appProgram = appProgram
@@ -1353,6 +1362,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             doorReport = [Pages.DoorWords.choiceChanged]
         }
         if otherStarting, parts.other?.isRunning ?? true || !role.isQuiet { otherStarting = false }
+        // Asked whatever the role, as at start: the lock is also what the
+        // hook's runs ask about (`LiveLock.isHeld`).
+        let holdsLiveLock = parts.holdsLiveLock()
         var mayRun = false
         if runs {
             if parts.repairsHooks { repairStrandedHooks() }
@@ -1369,8 +1381,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                 let since = parts.door?.read()?.chosenAt ?? runsSince ?? now
                 return now.timeIntervalSince(since) >= Self.otherStopsWithin
             }()
-            mayRun = !(otherRunning && appFound && Self.isOld(parts.other)) && waited
-            if mayRun { waitedForTheOther = true }
+            let free = !(otherRunning && appFound && Self.isOld(parts.other)) && waited
+            if free { waitedForTheOther = true }
+            mayRun = free && holdsLiveLock
         }
         if mayRun != monitorMayRun {
             monitorMayRun = mayRun

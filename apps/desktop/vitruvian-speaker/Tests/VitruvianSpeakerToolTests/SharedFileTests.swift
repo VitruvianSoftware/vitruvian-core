@@ -137,7 +137,7 @@ final class SharedFileTests: XCTestCase {
         let parts = VitruvianSpeakerTool.Parts.extension(
             engine: engine, program: root.appendingPathComponent("bin/tool"), link: Link(), later: { $0() },
             driverParts: EngineDriver.Parts(engine: engine, otherSecrets: { nil }), monitor: GatedMonitor(NoMonitor()),
-            holdsLiveLock: true, check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
+            holdsLiveLock: { true }, check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
             appProgram: { nil },
             appProfile: VitruvianSpeakerProfile(
                 door: .app, settingsURL: appsFile, historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),

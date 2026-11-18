@@ -212,19 +212,20 @@ func runProgram() -> Never {
     let engine = VitruvianSpeakerEngine(profile: profile)
 
     // One long-lived process per side: it puts volumes back and holds
-    // paused media for the hook's runs, which ask whether it is alive.
-    var live: LiveLock?
-    var tokens: [NSObjectProtocol] = []
-    if let lockURL = profile.liveLockURL {
-        do {
-            live = try LiveLock.hold(at: lockURL)
-            tokens += engine.listen()
-        } catch {
-            FileHandle.standardError.write(Data(
-                ("another Vitruvian Speaker extension holds \(lockURL.path): this one does not listen "
-                    + "or read chat\n").utf8))
-        }
+    // paused media for the hook's runs, which ask whether it is alive. A
+    // process that finds the lock held (the old one still exiting) tries
+    // again on each role tick, and listens once it has it (#3357).
+    final class Listening: @unchecked Sendable { var tokens: [NSObjectProtocol] = [] }
+    let listening = Listening()
+    let live = profile.liveLockURL.map { url in
+        LiveLockKeeper(url: url) { listening.tokens += engine.listen() }
     }
+    if let live, !live.holds() {
+        FileHandle.standardError.write(Data(
+            ("another Vitruvian Speaker extension holds \(live.url.path): this one listens and reads "
+                + "chat once it has let go\n").utf8))
+    }
+    var tokens: [NSObjectProtocol] = []
 
     // The chat monitor, in this process, on the engine; it starts only
     // while this side may run (`VitruvianSpeakerTool.refreshRole`), and never
@@ -250,7 +251,7 @@ func runProgram() -> Never {
     let speaker = VitruvianSpeakerTool(parts: .extension(
         engine: engine, program: program, link: link,
         later: { work in waker.later { _ in work() } },
-        driverParts: driverParts, monitor: gate, holdsLiveLock: live != nil, check: check,
+        driverParts: driverParts, monitor: gate, holdsLiveLock: { live?.holds() ?? false }, check: check,
         // Found afresh at each switch: the app may be installed, moved or
         // put in the Trash while the extension runs.
         appProgram: { locateApp() },
@@ -280,7 +281,7 @@ func runProgram() -> Never {
 
     KitThread(tool: tool, link: link, speaker: speaker, located: located, program: program, door: door).start()
     // The kit's thread exits the process when the app says goodbye.
-    withExtendedLifetime((engine, live, tokens, monitor, gate, snoozeCoordinator)) { MainThreadLoop.run() }
+    withExtendedLifetime((engine, live, listening, tokens, monitor, gate, snoozeCoordinator)) { MainThreadLoop.run() }
 }
 
 // Top-level code runs on the main thread.

@@ -37,13 +37,16 @@ final class DoorWindow {
     private var watching: AnyCancellable?
 
     private init() {
-        // Going quiet while running (a choice made in the extension) shows
-        // the window too, so the person is told.
+        // A change while running opens the window too: going quiet, or
+        // starting to ask (`Plan.opensWindow`). `launch` has shown it for
+        // the plan at start.
+        var last = AppSide.shared.door.plan
         watching = AppSide.shared.door.$plan
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] plan in
-                if plan.showsQuiet { self?.show() }
+                defer { last = plan }
+                if plan.opensWindow(after: last) { self?.show() }
             }
     }
 

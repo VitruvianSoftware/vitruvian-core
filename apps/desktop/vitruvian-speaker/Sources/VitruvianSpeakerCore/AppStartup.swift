@@ -61,6 +61,16 @@ public enum AppStartup {
 
         /// The app runs: the hook, the chat monitor, listening.
         public var runs: Bool { !starts.isEmpty }
+
+        /// Whether a change of plan while the app runs, from `old` to this
+        /// one, opens the choice window: going quiet (a choice made in the
+        /// extension), so the person is told; or starting to ask (the
+        /// extension installed while the app runs), so someone who never
+        /// opens the menu still sees the question (#3356). Asking that goes
+        /// on asking opens nothing again.
+        public func opensWindow(after old: Plan) -> Bool {
+            showsQuiet || (asks && !old.asks)
+        }
     }
 
     /// The plan for `role`. Until the person picks (`activeAsking`) the app
