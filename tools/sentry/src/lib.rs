@@ -22,6 +22,7 @@
 //! `integration_pipeline` session API without registering a PagerDuty OAuth app.
 
 pub mod http;
+pub mod send_test_event;
 
 use http::{HttpClient, Response};
 use serde::Serialize;

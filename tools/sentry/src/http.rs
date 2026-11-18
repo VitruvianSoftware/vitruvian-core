@@ -75,16 +75,42 @@ pub mod signals {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthHeader {
+    Bearer(String),
+    SentryAuth { public_key: String, client: String },
+}
+
+impl AuthHeader {
+    pub fn header_line(&self) -> String {
+        match self {
+            Self::Bearer(token) => format!("Authorization: Bearer {token}"),
+            Self::SentryAuth { public_key, client } => format!(
+                "X-Sentry-Auth: Sentry sentry_version=7, sentry_key={public_key}, sentry_client={client}"
+            ),
+        }
+    }
+
+    pub fn secret(&self) -> &str {
+        match self {
+            Self::Bearer(token) => token,
+            Self::SentryAuth { public_key, .. } => public_key,
+        }
+    }
+}
+
 pub struct CurlClient {
     curl_bin: String,
-    token: String,
+    auth: AuthHeader,
+    content_type: String,
+    extra_headers: Vec<String>,
     temp_dir: PathBuf,
     cookie_jar: PathBuf,
     timeout_secs: u64,
 }
 
 impl CurlClient {
-    pub fn new(curl_bin: impl Into<String>, token: impl Into<String>) -> Result<Self, String> {
+    pub fn new(curl_bin: impl Into<String>, auth: AuthHeader) -> Result<Self, String> {
         signals::install();
 
         let base = safe_temp_base();
@@ -124,11 +150,23 @@ impl CurlClient {
 
         Ok(Self {
             curl_bin: curl_bin.into(),
-            token: token.into(),
+            auth,
+            content_type: "application/json".into(),
+            extra_headers: Vec::new(),
             temp_dir,
             cookie_jar,
             timeout_secs: DEFAULT_TIMEOUT_SECS,
         })
+    }
+
+    pub fn with_content_type(mut self, content_type: impl Into<String>) -> Self {
+        self.content_type = content_type.into();
+        self
+    }
+
+    pub fn with_header(mut self, header: impl Into<String>) -> Self {
+        self.extra_headers.push(header.into());
+        self
     }
 
     pub fn temp_dir(&self) -> &Path {
@@ -192,6 +230,10 @@ impl HttpClient for CurlClient {
         if signals::interrupted() {
             return Err("interrupted".into());
         }
+        if !url.starts_with("https://") || url.chars().any(|c| c.is_control() || c.is_whitespace())
+        {
+            return Err("refusing non-https or malformed URL".into());
+        }
 
         let jar = self.cookie_jar.to_string_lossy();
         let mut config = String::new();
@@ -200,24 +242,28 @@ impl HttpClient for CurlClient {
         config.push_str(&format!("max-time = {}\n", self.timeout_secs));
         config.push_str(&format!("cookie = {}\n", quote(&jar)));
         config.push_str(&format!("cookie-jar = {}\n", quote(&jar)));
-        config.push_str(&format!(
-            "header = {}\n",
-            quote(&format!("Authorization: Bearer {}", self.token))
-        ));
+        config.push_str(&format!("header = {}\n", quote(&self.auth.header_line())));
         config.push_str("header = \"Accept: application/json\"\n");
+        for h in &self.extra_headers {
+            config.push_str(&format!("header = {}\n", quote(h)));
+        }
         if let Some(b) = body {
-            config.push_str("header = \"Content-Type: application/json\"\n");
+            config.push_str(&format!(
+                "header = {}\n",
+                quote(&format!("Content-Type: {}", self.content_type))
+            ));
             config.push_str(&format!("data-binary = {}\n", quote(b)));
         }
         config.push_str("write-out = \"\\n__sentry_pagerduty_install_status__%{http_code}\"\n");
 
         let mut child = Command::new(&self.curl_bin)
             // -q first: ignore ~/.curlrc, so no personal config can turn off
-            // TLS checks or add a proxy for a request that carries the token.
+            // TLS checks or add a proxy for a request that carries credentials.
             .args(["-q", "-sS", "-K", "-"])
-            // The token reaches curl only through the stdin config; keep it
+            // Credentials reach curl only through the stdin config; keep them
             // out of the child's environment (readable via ps eww).
             .env_remove("SENTRY_TOKEN")
+            .env_remove("SENTRY_DSN")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -225,7 +271,7 @@ impl HttpClient for CurlClient {
             .map_err(|e| {
                 redact(
                     &format!("failed to start {}: {e}", self.curl_bin),
-                    &self.token,
+                    self.auth.secret(),
                 )
             })?;
 
@@ -234,7 +280,7 @@ impl HttpClient for CurlClient {
                 if e.kind() != std::io::ErrorKind::BrokenPipe {
                     return Err(redact(
                         &format!("failed to write curl config to stdin: {e}"),
-                        &self.token,
+                        self.auth.secret(),
                     ));
                 }
             }
@@ -242,7 +288,7 @@ impl HttpClient for CurlClient {
 
         let out = child
             .wait_with_output()
-            .map_err(|e| redact(&format!("curl wait failed: {e}"), &self.token))?;
+            .map_err(|e| redact(&format!("curl wait failed: {e}"), self.auth.secret()))?;
 
         if self.cookie_jar.exists() {
             let _ = fs::set_permissions(&self.cookie_jar, fs::Permissions::from_mode(0o600));
@@ -263,7 +309,7 @@ impl HttpClient for CurlClient {
                 } else {
                     trimmed.to_string()
                 };
-                return Err(redact(&msg, &self.token));
+                return Err(redact(&msg, self.auth.secret()));
             }
         };
 
@@ -302,8 +348,51 @@ mod tests {
     }
 
     #[test]
+    fn auth_header_formats_bearer_and_sentry_auth() {
+        let bearer = AuthHeader::Bearer("sntryu_abc".into());
+        assert_eq!(bearer.header_line(), "Authorization: Bearer sntryu_abc");
+        assert_eq!(bearer.secret(), "sntryu_abc");
+
+        let sentry = AuthHeader::SentryAuth {
+            public_key: "pub123".into(),
+            client: "vitruvian-send-test-event/1.0".into(),
+        };
+        assert_eq!(
+            sentry.header_line(),
+            "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=pub123, sentry_client=vitruvian-send-test-event/1.0"
+        );
+        assert_eq!(sentry.secret(), "pub123");
+    }
+
+    #[test]
+    fn curl_client_rejects_non_https_urls_without_invoking_curl() {
+        let mut client = CurlClient::new(
+            "/nonexistent/curl",
+            AuthHeader::SentryAuth {
+                public_key: "pub123".into(),
+                client: "vitruvian-send-test-event/1.0".into(),
+            },
+        )
+        .unwrap();
+
+        let err = client
+            .request("POST", "http://sentry.example/api/1/envelope/", Some("{}"))
+            .unwrap_err();
+        assert!(err.contains("non-https"), "{err}");
+
+        let err_ws = client
+            .request(
+                "POST",
+                "https://sentry.example/api/1/envelope/ bad",
+                Some("{}"),
+            )
+            .unwrap_err();
+        assert!(err_ws.contains("malformed"), "{err_ws}");
+    }
+
+    #[test]
     fn curl_client_creates_0600_cookie_jar_and_cleans_up_on_drop() {
-        let client = CurlClient::new("curl", "sntryu_test").unwrap();
+        let client = CurlClient::new("curl", AuthHeader::Bearer("sntryu_test".into())).unwrap();
         let dir = client.temp_dir().to_path_buf();
         let jar = client.cookie_jar().to_path_buf();
 

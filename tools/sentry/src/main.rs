@@ -20,7 +20,7 @@
 
 //! CLI entrypoint for `//tools/sentry:pagerduty-install`.
 
-use sentry_tools::http::CurlClient;
+use sentry_tools::http::{AuthHeader, CurlClient};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -47,7 +47,7 @@ fn main() -> ExitCode {
     };
 
     let curl_bin = std::env::var("SENTRY_CURL_BIN").unwrap_or_else(|_| "curl".into());
-    let mut client = match CurlClient::new(curl_bin, token) {
+    let mut client = match CurlClient::new(curl_bin, AuthHeader::Bearer(token)) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("pagerduty-install: {e}");

@@ -18,9 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""One-shot, idempotent bootstrap for Sentry's PagerDuty integration.
+"""Operational CLI tools for self-hosted Sentry (PagerDuty install & test event).
 
   bazel run //tools/sentry:pagerduty-install -- --subdomain vitruviansoftware --name "Vitruvian Software"
+  bazel run //tools/sentry:send-test-event -- --dsn <DSN> [--level fatal] [--message <text>]
 
 See tools/sentry/README.md.
 """
@@ -34,6 +35,7 @@ rust_library(
     srcs = [
         "src/http.rs",
         "src/lib.rs",
+        "src/send_test_event.rs",
     ],
     crate_name = "sentry_tools",
     crate_root = "src/lib.rs",
@@ -48,6 +50,15 @@ rust_library(
 rust_binary(
     name = "pagerduty-install",
     srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":sentry_lib"],
+)
+
+rust_binary(
+    name = "send-test-event",
+    srcs = ["src/bin/send_test_event.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
@@ -70,6 +81,18 @@ rust_test(
     data = [":pagerduty-install"],
     edition = "2021",
     env = {"PAGERDUTY_INSTALL_BIN": "$(rootpath :pagerduty-install)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["@crates//:serde_json"],
+)
+
+rust_test(
+    name = "send_test_event_test",
+    size = "small",
+    srcs = ["tests/send_test_event_test.rs"],
+    crate_root = "tests/send_test_event_test.rs",
+    data = [":send-test-event"],
+    edition = "2021",
+    env = {"SEND_TEST_EVENT_BIN": "$(rootpath :send-test-event)"},
     rustc_flags = ["-Copt-level=3"],
     deps = ["@crates//:serde_json"],
 )

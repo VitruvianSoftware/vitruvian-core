@@ -34,6 +34,7 @@ mindmap
       //tools/sync-env-secrets:*
       //tools/saas-cli:*
       //tools/sentry:pagerduty-install
+      //tools/sentry:send-test-event
       //tools/pagerduty:read
     Ship & Preview
       //tools/ci:gen
@@ -181,6 +182,7 @@ break-glass — the cluster's source of truth is git, reconciled by ArgoCD.
 | `//tools/saas-cli:{neon,upstash,whoami}` | Pre-authenticated vendor CLIs for troubleshooting. **Read-mostly** — provisioning belongs to the Pulumi data stacks, not these CLIs |
 | `//tools/pagerduty:read -- <api-path>` | Read-only GET against the PagerDuty REST API (schedules, users, notification rules, incidents) with contact details masked; changes belong to the PagerDuty Pulumi stack |
 | `//tools/sentry:pagerduty-install` | One-shot, idempotent bootstrap for self-hosted Sentry's PagerDuty integration via the `integration_pipeline` API (requires `SENTRY_TOKEN` user token `sntryu_...`) |
+| `//tools/sentry:send-test-event` | Sends one synthetic Sentry envelope event (`--dsn`, optional `--level`, `--message`) with a unique fingerprint to prove Sentry → PagerDuty alerting end to end; creates a real issue to resolve afterwards |
 
 The three-tier secrets model itself (Secret Manager / sealed-secrets / env-injected
 stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling).
