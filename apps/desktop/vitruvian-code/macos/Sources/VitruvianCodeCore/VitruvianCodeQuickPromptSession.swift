@@ -1548,8 +1548,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stopTranscriptFollower()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        awaitingAnswers = []
-        expirePendingQuestionCards()
+        // The agent is told to cancel, which cancels whatever it is still
+        // waiting on, so no card may look answerable after Stop: pending
+        // approvals read as denied and pending questions as expired.
+        cancelPendingApprovalCards()
         if let active = connection {
             if let immediate = active as? any _ImmediateAgentConnection {
                 immediate.cancelImmediateTurn()

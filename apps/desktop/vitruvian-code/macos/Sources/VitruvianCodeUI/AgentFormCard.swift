@@ -238,15 +238,11 @@ public struct AgentQuestionForm: Equatable, Sendable {
                 let validOptions = Set(field.options.map(\.value))
                 let selected = (multiChoiceValues[field.id] ?? []).filter { validOptions.contains($0) }
                 if selected.isEmpty {
-                    if let minItems = field.minItems, minItems > 0 {
-                        if field.required { return nil }
-                    } else if field.required {
-                        if field.minItems == 0 {
-                            output[field.id] = Self.encodeMultiChoice([])
-                        } else {
-                            return nil
-                        }
-                    }
+                    // A required field needs at least one pick, with or
+                    // without the agent's minItems: "required" means the
+                    // user must choose, and an empty list is not a choice.
+                    // An optional field left empty is simply not sent.
+                    if field.required { return nil }
                 } else {
                     if let minItems = field.minItems, selected.count < minItems {
                         return nil

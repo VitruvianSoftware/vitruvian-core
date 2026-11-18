@@ -26,7 +26,12 @@ import XCTest
 
 /// Snapshot tests for agent approval option cards and question form cards in light and dark mode.
 final class AgentCardSnapshotTests: XCTestCase {
-    private static let snapshotFolderPath = "/private/tmp/vitruvian-code-snapshots"
+    /// Bazel's undeclared outputs folder when there is one (the PNGs land in
+    /// the test's `test.outputs`), else a folder in the temporary directory.
+    private static var snapshotFolderPath: String {
+        ProcessInfo.processInfo.environment["TEST_UNDECLARED_OUTPUTS_DIR"]
+            ?? (NSTemporaryDirectory() as NSString).appendingPathComponent("vitruvian-code-snapshots")
+    }
 
     @MainActor
     func testRendersApprovalOptionsAndQuestionFormCardsLightAndDark() throws {
@@ -116,8 +121,6 @@ final class AgentCardSnapshotTests: XCTestCase {
         _ = NSApplication.shared
         let folderURL = URL(fileURLWithPath: Self.snapshotFolderPath, isDirectory: true)
         try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
-        let undeclaredOutputsURL = ProcessInfo.processInfo.environment["TEST_UNDECLARED_OUTPUTS_DIR"]
-            .map { URL(fileURLWithPath: $0, isDirectory: true) }
 
         for shot in shots {
             for (schemeName, scheme, appearanceName) in [
@@ -147,9 +150,6 @@ final class AgentCardSnapshotTests: XCTestCase {
                 let fileName = "\(shot.name)-\(schemeName).png"
                 let destination = folderURL.appendingPathComponent(fileName)
                 try data.write(to: destination)
-                if let undeclaredOutputsURL {
-                    try? data.write(to: undeclaredOutputsURL.appendingPathComponent(fileName))
-                }
                 print("agent card snapshot: \(destination.path)")
                 XCTAssertGreaterThan(bitmap.pixelsWide, 100)
                 XCTAssertGreaterThan(bitmap.pixelsHigh, 80)

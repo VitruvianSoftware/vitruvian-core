@@ -735,6 +735,87 @@ final class ApprovalAndQuestionCardTests: XCTestCase {
         await session.stopAll()
     }
 
+    /// Stop cancels the agent's turn, which cancels any approval it waits on,
+    /// so the card must read as denied and a later click must not look like
+    /// it did something (scout round 2: the card stayed clickable and showed
+    /// "Approved" while nothing was sent).
+    @MainActor
+    func testStopDeniesPendingApprovalCardsAndIgnoresLateClicks() async throws {
+        let connections = LockedCardBox<[CardMockPersistentConnection]>([])
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let conn = CardMockPersistentConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        })
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: CardMockSessionHost())
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.agyACPProvider)
+
+        session.send("Approve before stop", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("prompt started for approval stop test") { connections.value.first?.promptCalls.count == 1 }
+        let conn = connections.value[0]
+
+        conn.emit(.approval(VitruvianCodeApprovalRequest(
+            id: "call-stop",
+            toolName: "Bash",
+            commandOrPath: "rm -rf build",
+            requestID: "perm-stop",
+            options: [
+                AgentPermissionOption(id: "allow-once", name: "Allow once", kind: .allowOnce),
+                AgentPermissionOption(id: "reject-once", name: "Reject", kind: .rejectOnce),
+            ]
+        )))
+        try await waitUntil("approval pending before stop") {
+            session.hasPendingApproval && session.messages.contains { $0.approvalRequest?.requestID == "perm-stop" }
+        }
+        let cardMsg = try XCTUnwrap(session.messages.first { $0.approvalRequest?.requestID == "perm-stop" })
+
+        session.stop()
+
+        XCTAssertFalse(session.hasPendingApproval)
+        XCTAssertEqual(session.messages.first { $0.id == cardMsg.id }?.approvalRequest?.status, .denied)
+
+        session.decideApproval(messageID: cardMsg.id, optionID: "allow-once")
+        session.decideApproval(messageID: cardMsg.id, decision: .approved)
+        try? await Task.sleep(nanoseconds: 25_000_000)
+        XCTAssertTrue(conn.answers.isEmpty, "a click after Stop must send nothing")
+        XCTAssertEqual(
+            session.messages.first { $0.id == cardMsg.id }?.approvalRequest?.status, .denied,
+            "a click after Stop must not change the card"
+        )
+
+        conn.emit(.finished(status: "cancelled", response: nil, error: nil, conversationID: "s-stop"))
+        conn.finishPrompt(with: .cancelled)
+        try await waitUntil("turn ended after approval stop") { !session.isRunning }
+        await session.stopAll()
+    }
+
+    /// A required multi-choice needs at least one pick whether or not the
+    /// agent gave minItems (scout round 2: an explicit minItems of 0 let an
+    /// empty answer through while the same field without it did not).
+    func testRequiredMultiChoiceNeedsOnePickWithOrWithoutMinItems() {
+        let options = [
+            AgentQuestion.Option(value: "a", label: "A"),
+            AgentQuestion.Option(value: "b", label: "B"),
+        ]
+        for minItems in [nil, 0] as [Int?] {
+            let question = AgentQuestion(requestID: "mc-\(String(describing: minItems))", message: "Pick", fields: [
+                AgentQuestion.Field(id: "tags", type: .multiChoice, label: "Tags", required: true,
+                                    options: options, minItems: minItems),
+            ])
+            var form = AgentQuestionForm(question: question)
+            XCTAssertNil(form.buildAnswers(), "empty required pick must not send (minItems \(String(describing: minItems)))")
+            form.toggleMultiChoice(fieldID: "tags", value: "a")
+            XCTAssertEqual(form.buildAnswers(), ["tags": #"["a"]"#])
+        }
+        let optional = AgentQuestion(requestID: "mc-opt", message: "Pick", fields: [
+            AgentQuestion.Field(id: "tags", type: .multiChoice, label: "Tags", required: false,
+                                options: options, minItems: 0),
+        ])
+        XCTAssertEqual(AgentQuestionForm(question: optional).buildAnswers(), [:],
+                       "an optional pick left empty is not sent")
+    }
+
     func testURLCanOpenAllowsOnlyHTTPAndHTTPSWithHostAndDisablesUnsafeOpen() {
         for allowed in [
             "https://auth.example.com/oauth/start?x=1",
