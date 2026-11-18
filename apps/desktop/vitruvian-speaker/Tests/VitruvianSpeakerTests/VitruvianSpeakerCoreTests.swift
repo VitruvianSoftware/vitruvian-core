@@ -43,6 +43,18 @@ import Testing
         #expect(!output.contains("file://"))
         #expect(output == "All checks passed.")
     }
+
+    @Test func markdownLinksAndBareUrlsCleanWithoutDanglingBrackets() {
+        let prInput = "See [PR #5136](https://github.com/VitruvianSoftware/vitruvian-core/pull/5136). Merged ([PR #3787](https://a.b/1) and [PR #3791](https://a.b/2))."
+        let prOut = GoogleHomeClient.cleanForSpeech(prInput, length: .full)
+        #expect(prOut == "See PR #5136. Merged (PR #3787 and PR #3791).")
+        #expect(!prOut.contains("]("))
+        #expect(!prOut.contains("["))
+
+        let bareInput = "See https://example.com/foo.html. Next sentence."
+        let bareOut = GoogleHomeClient.cleanForSpeech(bareInput, length: .full)
+        #expect(bareOut == "See . Next sentence.")
+    }
 }
 
 @Suite struct SpeakerConfigCodableTests {

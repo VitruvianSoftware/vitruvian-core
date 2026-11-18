@@ -386,7 +386,7 @@ public enum ClaudeStopHook {
         let lead = SourceLabel.lead(
             config.effectiveAnnounceSource, agent: agent, session: session, history: history.load())
         let sent = (try? await broadcaster((lead ?? "") + spoken, target, config.structureId, config)) ?? false
-        let cooldown = sent ? AnnouncementTiming.seconds(for: spoken, extra: 0) : 0
+        let cooldown = sent ? AnnouncementTiming.seconds(for: spoken, extra: 2.0) : 0
         lease?.release(cooldownUntil: cooldown > 0 ? Date().addingTimeInterval(cooldown) : nil)
         if sent {
             _ = try? history.append(BroadcastLogItem(

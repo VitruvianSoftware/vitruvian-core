@@ -83,10 +83,11 @@ public actor GoogleHomeClient {
         s = s.replacingOccurrences(of: "<agent-embed\\b[^>]*>[\\s\\S]*?</agent-embed>", with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: "<agent-embed\\b[^>]*/?>", with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
-        // Remove URLs
-        s = s.replacingOccurrences(of: "https?://\\S+", with: "", options: .regularExpression)
-        // Remove markdown links [title](url) -> title
+        // Convert markdown links [title](url) -> title before stripping bare URLs,
+        // so URL removal never eats the closing ')' and leaves dangling "[title](".
         s = s.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^)]+\\)", with: "$1", options: .regularExpression)
+        // Remove remaining bare URLs while preserving trailing sentence punctuation and closing delimiters.
+        s = s.replacingOccurrences(of: "https?://[^\\s)\\]>]+?(?=[.,;:!?]?(?:[\\s)\\]>]|$))", with: "", options: .regularExpression)
         // Remove bold, italics, strikethrough, headers
         s = s.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "\\*([^*]+)\\*", with: "$1", options: .regularExpression)

@@ -89,6 +89,14 @@ public struct PhoneSpeaker: PhoneSpeaking {
         self.send = send
     }
 
+    /// Computes a request timeout scaled to the actual WAV playback duration (or estimated TTS
+    /// speech duration) plus a 50 s setup/transfer margin, clamped to `[75, 240]` seconds.
+    public static func requestTimeout(text: String, wav: Data?) -> TimeInterval {
+        let wavSeconds = wav.flatMap(GeminiSpeaker.duration(ofWAV:)) ?? 0
+        let speechSeconds = max(wavSeconds, LocalSpeaker.estimatedSeconds(for: text))
+        return min(240, max(75, speechSeconds + 50))
+    }
+
     public func speak(
         _ text: String,
         wav: Data?,
@@ -106,7 +114,7 @@ public struct PhoneSpeaker: PhoneSpeaking {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = max(75, LocalSpeaker.estimatedSeconds(for: text) + 30)
+        request.timeoutInterval = Self.requestTimeout(text: text, wav: wav)
         request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.withoutEscapingSlashes])
 
         let data: Data

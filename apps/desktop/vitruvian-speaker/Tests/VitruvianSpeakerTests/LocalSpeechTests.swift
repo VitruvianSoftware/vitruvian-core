@@ -793,4 +793,21 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         #expect(testApp.speechLockURL.path.hasPrefix(scratchDir.path))
         #expect(testExt.speechLockURL.path.hasPrefix(scratchDir.path))
     }
+
+    @Test func speechLockCooldownHonorsUpTo120Seconds() throws {
+        #expect(SpeechLock.maxCooldownSeconds == 120)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("speech-lock-120-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockURL = dir.appendingPathComponent("speech.lock")
+
+        let now = Date()
+        let lease = try #require(SpeechLock.tryAcquire(at: lockURL, now: now))
+        lease.release(cooldownUntil: now.addingTimeInterval(90))
+
+        // At +75 s (past the old 60 s cap), the lock must still report busy.
+        #expect(SpeechLock.isBusy(at: lockURL, now: now.addingTimeInterval(75)))
+        // At +95 s (past the 90 s cooldown), it is free again.
+        #expect(!SpeechLock.isBusy(at: lockURL, now: now.addingTimeInterval(95)))
+    }
 }

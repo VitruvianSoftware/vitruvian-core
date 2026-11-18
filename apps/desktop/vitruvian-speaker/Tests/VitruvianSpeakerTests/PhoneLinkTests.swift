@@ -407,3 +407,17 @@ private struct FakeProbe: PhoneLinkProbing {
         #expect(engine.phoneLink.read()?.connected == true)
     }
 }
+
+@Suite struct PhoneSpeakerRequestTimeoutTests {
+    @Test func requestTimeoutScalesWithActualWavDuration() {
+        #expect(PhoneSpeaker.requestTimeout(text: "hi", wav: nil) == 75)
+
+        // 78 s WAV at 48,000 bytes/s -> 3,744,000 bytes PCM -> 78 + 50 = 128 s.
+        let wav78 = GeminiSpeaker.wav(from: Data(count: 78 * 48_000), mimeType: nil)
+        #expect(PhoneSpeaker.requestTimeout(text: "hi", wav: wav78) == 128)
+
+        // 250 s WAV clamps at 240 s.
+        let wav250 = GeminiSpeaker.wav(from: Data(count: 250 * 48_000), mimeType: nil)
+        #expect(PhoneSpeaker.requestTimeout(text: "hi", wav: wav250) == 240)
+    }
+}

@@ -39,8 +39,9 @@ pub const SPEAKER_BINARY: &str =
     "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker";
 pub const DEFAULT_LOCAL_VOICE: &str = "com.apple.ttsbundle.siri_Aaron_en-US_premium";
 pub const RECENT_BROADCASTS: usize = 5;
-pub const MAX_PHONE_SAY_BODY: usize = 8 << 20;
+pub const MAX_PHONE_SAY_BODY: usize = 12 << 20;
 pub const PHONE_SAY_TIMEOUT: Duration = Duration::from_secs(60);
+pub const MAX_PHONE_SAY_TIMEOUT: Duration = Duration::from_secs(210);
 pub const SAY_LIMIT: Duration = Duration::from_secs(90);
 pub const VOLUME_LIMIT: Duration = Duration::from_secs(45);
 /// The oldest Vitruvian Speaker that answers `--state` and `--apply`. Older programs would take them
@@ -2362,12 +2363,9 @@ impl VitruvianSpeaker {
             JsonValue::Bool(headphones_only),
         );
         log_act("speaker", &format!("phone-say {text}"));
+        let timeout = phone_say_timeout(wav_base64, &text);
 
-        let res = match phone.dispatch(
-            "phone.speak",
-            JsonValue::Object(args_obj),
-            PHONE_SAY_TIMEOUT,
-        ) {
+        let res = match phone.dispatch("phone.speak", JsonValue::Object(args_obj), timeout) {
             Ok(r) => r,
             Err(e) => {
                 log_phone_say_outcome(&format!("failed: {e}"));
@@ -2477,6 +2475,78 @@ impl Default for VitruvianSpeaker {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Scales the `phone.speak` dispatch timeout to the actual WAV duration (or text length for TTS)
+/// plus a 45 s setup/transfer margin, clamped to `[PHONE_SAY_TIMEOUT, MAX_PHONE_SAY_TIMEOUT]`.
+pub fn phone_say_timeout(wav_base64: &str, text: &str) -> Duration {
+    const DEFAULT_WAV_BYTE_RATE: usize = 48_000; // 24 kHz 16-bit mono PCM (Gemini TTS)
+    const MARGIN_SECS: u64 = 45;
+
+    let trimmed = wav_base64.trim();
+    let speech_secs: u64 = if !trimmed.is_empty() {
+        let padding = trimmed.bytes().rev().take(2).filter(|&b| b == b'=').count();
+        let approx_wav_bytes = (trimmed.len() / 4)
+            .saturating_mul(3)
+            .saturating_sub(padding)
+            .max((trimmed.len().saturating_mul(3)) / 4);
+        let prefix: String = trimmed
+            .bytes()
+            .filter(|b| !b.is_ascii_whitespace())
+            .take(64)
+            .map(|b| b as char)
+            .collect();
+        let byte_rate = decode_base64_prefix(&prefix)
+            .and_then(|hdr| {
+                if hdr.len() >= 32
+                    && &hdr[0..4] == b"RIFF"
+                    && &hdr[8..12] == b"WAVE"
+                    && &hdr[12..16] == b"fmt "
+                {
+                    let br = u32::from_le_bytes([hdr[28], hdr[29], hdr[30], hdr[31]]) as usize;
+                    (br > 0).then_some(br)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(DEFAULT_WAV_BYTE_RATE);
+        (approx_wav_bytes / byte_rate).max(1) as u64
+    } else {
+        (text.chars().count() / 10).max(1) as u64
+    };
+    let secs = speech_secs
+        .saturating_add(MARGIN_SECS)
+        .clamp(PHONE_SAY_TIMEOUT.as_secs(), MAX_PHONE_SAY_TIMEOUT.as_secs());
+    Duration::from_secs(secs)
+}
+
+fn decode_base64_prefix(s: &str) -> Option<Vec<u8>> {
+    fn val(b: u8) -> Option<u8> {
+        match b {
+            b'A'..=b'Z' => Some(b - b'A'),
+            b'a'..=b'z' => Some(b - b'a' + 26),
+            b'0'..=b'9' => Some(b - b'0' + 52),
+            b'+' | b'-' => Some(62),
+            b'/' | b'_' => Some(63),
+            _ => None,
+        }
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity((bytes.len() / 4) * 3);
+    for chunk in bytes.chunks_exact(4) {
+        let a = val(chunk[0])?;
+        let b = val(chunk[1])?;
+        out.push((a << 2) | (b >> 4));
+        if chunk[2] != b'=' {
+            let c = val(chunk[2])?;
+            out.push((b << 4) | (c >> 2));
+            if chunk[3] != b'=' {
+                let d = val(chunk[3])?;
+                out.push((c << 6) | d);
+            }
+        }
+    }
+    Some(out)
 }
 
 /// One line per phone-say, with the time, saying what became of it. It never
@@ -5796,5 +5866,36 @@ mod tests {
         let (out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
         assert_eq!(out.get_str("reason"), "phone link is busy");
         assert_eq!(outcome_line(&log), "phone-say: failed: phone link is busy");
+    }
+
+    #[test]
+    fn phone_say_timeout_scales_with_wav_and_text_duration() {
+        assert_eq!(phone_say_timeout("", "hello"), Duration::from_secs(60));
+        assert_eq!(
+            phone_say_timeout("", &"a".repeat(1500)),
+            Duration::from_secs(195)
+        );
+
+        // Short 24 kHz 16-bit mono WAV header (48,000 byte_rate).
+        let short_wav_b64 = "UklGRkQAAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YSAAAAAA";
+        assert_eq!(
+            phone_say_timeout(short_wav_b64, "short"),
+            Duration::from_secs(60)
+        );
+
+        // ~80 s at 48,000 bytes/s = 3,840,000 WAV bytes -> ~5,120,000 base64 chars.
+        let header_48k = "UklGRkQAAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YSAAAAAA";
+        let eighty_sec_b64 = format!("{header_48k}{}", "A".repeat(5_120_000));
+        assert_eq!(
+            phone_say_timeout(&eighty_sec_b64, "long"),
+            Duration::from_secs(125)
+        );
+
+        // Huge payload caps at 210 s.
+        let huge_b64 = format!("{header_48k}{}", "A".repeat(12_000_000));
+        assert_eq!(
+            phone_say_timeout(&huge_b64, "huge"),
+            Duration::from_secs(210)
+        );
     }
 }
