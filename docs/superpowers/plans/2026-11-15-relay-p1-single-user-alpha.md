@@ -1,5 +1,5 @@
 ---
-status: planned
+status: completed
 date: 2026-11-15
 ---
 
@@ -504,16 +504,53 @@ This task ships as **two PRs** (step 2 says why). **PR A:** the Dockerfile, char
 
 Manual, with James.
 
-- [ ] **Step 1:** `vrelay login` first (`bazel run //apps/suites/vitruvian-relay/connector:vrelay -- login`; one sign-in or two, per James's Task 10 decision). It prints the MCP URL. Then `bazel run //apps/suites/vitruvian-relay/connector/scripts:install`, and `vrelay status` shows connected.
-- [ ] **Step 2:** James adds that URL in Claude (web) as a custom connector with the `relay-claude` client id (`398912442404439866`, the `claudeClientId` output) and signs in.
-- [ ] **Step 3:** From the **Claude phone app**: "list the files in my Downloads folder" runs without a prompt (a read). Relay log shows `tools/call` from client `398912442404439866`, no arguments.
-- [ ] **Step 4:** From the phone: "run `uname -a`". The "Allow?" dialog appears on the Mac; Allow → the output comes back to the phone. Repeat and Deny → Claude shows "Denied on the computer."
-- [ ] **Step 5:** Leave a "run" request's dialog unanswered for 60 s: Claude
+- [x] **Step 1:** `vrelay login` first (`bazel run //apps/suites/vitruvian-relay/connector:vrelay -- login`; one sign-in or two, per James's Task 10 decision). It prints the MCP URL. Then `bazel run //apps/suites/vitruvian-relay/connector/scripts:install`, and `vrelay status` shows connected.
+- [x] **Step 2:** James adds that URL in Claude (web) as a custom connector with the `relay-claude` client id (`398912442404439866`, the `claudeClientId` output) and signs in.
+- [x] **Step 3:** From the **Claude phone app**: "list the files in my Downloads folder" runs without a prompt (a read). Relay log shows `tools/call` from client `398912442404439866`, no arguments.
+- [x] **Step 4:** From the phone: "run `uname -a`". The "Allow?" dialog appears on the Mac; Allow → the output comes back to the phone. Repeat and Deny → Claude shows "Denied on the computer."
+- [x] **Step 5:** Leave a "run" request's dialog unanswered for 60 s: Claude
   shows "Denied on the computer." Then send one and stop it from the phone while
   the dialog is open: the dialog should close and nothing run (`calls.log`
   says `cancelled at prompt`). Nothing yet shows whether Claude sends
   `notifications/cancelled` or drops the request when the user stops; if it
   does neither, record that here (the dialog then times out as Deny) and raise
   it as a P2 item.
-- [ ] **Step 6:** Turn the Mac's Wi-Fi off mid-command: the phone gets "Your computer disconnected; try again." within about 6 s. Wi-Fi on: `vrelay status` shows connected within about a minute.
-- [ ] **Step 7:** Record the result in this plan (yes or no, with log lines), set `status: completed`, and update spec §10's P1 row.
+- [x] **Step 6:** Turn the Mac's Wi-Fi off mid-command: the phone gets "Your computer disconnected; try again." within about 6 s. Wi-Fi on: `vrelay status` shows connected within about a minute.
+- [x] **Step 7:** Record the result in this plan (yes or no, with log lines), set `status: completed`, and update spec §10's P1 row.
+
+#### Results (2026-11-17/18, with James): **yes**
+
+P1's "done when" holds: Claude on James's phone ran commands on his Mac, and the
+"ask first" dialog appeared on the Mac. Every step below was checked in the
+relay log (`//tools/gitops:logs -- -n relay deploy/vitruvian-relay`) and the
+connector's `~/Library/Logs/vrelay/calls.log`.
+
+| Step | Result |
+|---|---|
+| 1. Sign in, install | One sign-in, not two: the device page and Claude's sign-in shared one Zitadel session. `vrelay status` connected |
+| 2. Add the connector | Added in Claude (web) with client `398912442404439866`; the phone app picked it up |
+| 3. Read, no prompt | `list_directory ~/Downloads`: `calls.log` `approval: no_prompt`, `ran`; relay `call` from client `398912442404439866`, argument sizes only |
+| 4. Allow / Deny | `uname -a`: dialog on the Mac, Allow, ran in 236 ms, output on the phone. `whoami`: Deny, `decision: denied`, phone said "Denied on the computer." |
+| 5. Unanswered / stopped | Stop works: `cancelled at prompt`, dialog closed, nothing ran. The 60 s timeout **cannot be reached from Claude**: Claude gives up on a call after 15 s and retries it on its own (relay `outcome: cancelled`, `duration_ms: 14998`). P2 item below |
+| 6. Network cut mid-call | Ethernet unplugged (the Mac has no Wi-Fi in use) with the dialog open: relay `disconnect` "3 pings unanswered" and `outcome: disconnected` after **8.0 s** (not "about 6 s": three 2 s pings plus up to one ping of phase); `calls.log` `link dropped at prompt`; the dialog closed. Cable back: connected again, and a read after a minute idle ran in 104 ms |
+
+Findings to carry forward:
+
+- **Claude's MCP calls time out at 15 s and retry (P2).** A dialog left for more
+  than 15 s is cancelled and re-asked. Either keep the call alive while the
+  dialog waits (check whether progress notifications reset Claude's timer), or
+  tell the user in the dialog to answer within 15 s.
+- **The MCP endpoint had to work without a session.** Claude speaks MCP
+  2026-07-28, which sends no session; the relay now serves those requests
+  without one (PR #5004, deployed in PR #5008).
+- **Link drops while the Mac sleeps are expected, not a fault.** All 54
+  "3 pings unanswered" drops on 2026-11-17 fell inside the two windows the Mac
+  slept (08:00–09:33 and 19:45–20:51 PST, `pmset -g log`); none while awake.
+  Each Power Nap dark wake reconnects, sends the hello, and sleeps before it can
+  answer a ping. We first suspected the tunnel and upgraded cloudflared to
+  2026.11.1 (PR #5030); the drops came back on the new version, and the sleep
+  log explains them. Whether the connector should hold the Mac awake is a P2
+  product decision.
+- **Open, minor:** while awake, about 25 "connection reset by peer" cuts from
+  the far end between 10:00 and 13:00 PST, each reconnected within about 1 s.
+  Cause not found; a call in flight at that moment would fail.
