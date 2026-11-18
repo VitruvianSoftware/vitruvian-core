@@ -172,8 +172,28 @@ jobs)
     timed "${i} jobs=${j}" build "${BASE[@]}" ${flags[@]+"${flags[@]}"} "${TARGETS[@]}"
   done
   ;;
+jobs2)
+  # (a) The first build on a runner is the slow one whatever it is, and every
+  # real job is a first build: so here the high setting goes first.
+  timed "prime (fetch + analysis)" build --nobuild "${BASE[@]}" "${TARGETS[@]}"
+  bazel build --nobuild "${BASE[@]}" --jobs=48 "${TARGETS[@]}" >/dev/null 2>&1
+  timed "a1 all hits, jobs=48, first build on the runner" build "${BASE[@]}" --jobs=48 "${TARGETS[@]}"
+  bazel clean >/dev/null 2>&1
+  bazel build --nobuild "${BASE[@]}" "${TARGETS[@]}" >/dev/null 2>&1
+  timed "a2 all hits, jobs=default, second build" build "${BASE[@]}" "${TARGETS[@]}"
+  # (b) Nothing from the cache, everything compiled on the runner: does a
+  # high --jobs overload a 3-core machine, or do Bazel's CPU limits hold?
+  V=//apps/desktop/vitruvian-courier/app:VitruvianCourierViewTests
+  for j in 48 default default 48; do
+    flags=(--noremote_accept_cached)
+    if [ "$j" != default ]; then flags+=("--jobs=$j"); fi
+    bazel clean >/dev/null 2>&1
+    bazel build --nobuild "${BASE[@]}" "${flags[@]}" "$V" >/dev/null 2>&1
+    timed "b local compile of the view tests, jobs=${j}" build "${BASE[@]}" "${flags[@]}" "$V"
+  done
+  ;;
 *)
-  echo "usage: bench.sh compression|downloader|split|jobs" >&2
+  echo "usage: bench.sh compression|downloader|split|jobs|jobs2" >&2
   exit 2
   ;;
 esac

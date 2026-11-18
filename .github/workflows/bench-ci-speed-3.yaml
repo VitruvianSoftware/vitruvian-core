@@ -56,33 +56,4 @@ jobs:
             //apps/desktop/vitruvian-courier/app:engine_contract_test
             //apps/desktop/vitruvian-courier/app:inject_app_credentials_test
             //apps/desktop/vitruvian-courier/app:release_engine_has_no_seed_test
-        run: tools/ci-bench/bench.sh jobs
-
-  jobs-linux:
-    name: jobs linux
-    if: github.head_ref == 'exp/ci-speed-bench-3'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 45
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/free-disk-space
-      - uses: ./.github/actions/setup-bazel
-      - uses: ./.github/actions/llvm-cache-restore
-        with:
-          restore-only: "true"
-      - name: bench
-        env:
-          BENCH_EXTRA: --android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64
-          BENCH_TARGETS: >-
-            //apps/mobile/vitruvian-remote:app
-            //apps/mobile/vitruvian-remote:app_info_test
-            //apps/mobile/vitruvian-remote:bridge_policy_test
-            //apps/mobile/vitruvian-remote:derive_test
-            //apps/mobile/vitruvian-remote:wire_test
-            //tools/ci:rdeps_map_ref
-            //tools/pipeline/plan
-        run: tools/ci-bench/bench.sh jobs
+        run: tools/ci-bench/bench.sh jobs2
