@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.47](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.46...vitruvian-remote-v0.1.47) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** log when the phone link opens and closes, and each phone-say outcome ([#5110](https://github.com/VitruvianSoftware/vitruvian-core/issues/5110)) ([565eb3c](https://github.com/VitruvianSoftware/vitruvian-core/commit/565eb3c048aecda52b0558274315548cc80a91a9))
+
 ## [0.1.46](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.45...vitruvian-remote-v0.1.46) (2026-11-16)
 
 
