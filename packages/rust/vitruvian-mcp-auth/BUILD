@@ -30,7 +30,7 @@ rust_library(
 )
 
 # The same sources built against vitruvian-slack-mcp's crate hub, for the Slack
-# MCP (and the relay spike, which builds on it). A crate can only link one
+# MCP. A crate can only link one
 # copy of serde_json, rustls and ureq, so each hub gets its own build of this
 # library; the tests above run once, against the relay's.
 rust_library(
@@ -45,7 +45,6 @@ rust_library(
     edition = "2021",
     visibility = [
         "//apps/mcp/vitruvian-slack-mcp:__subpackages__",
-        "//apps/suites/vitruvian-relay/spike:__pkg__",
     ],
     deps = [
         "@vitruvian_slack_mcp_crates//:ring",

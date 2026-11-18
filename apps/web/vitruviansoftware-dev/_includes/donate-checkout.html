@@ -1,8 +1,12 @@
 {%- comment -%}
-  Shared redirect + attribution script for /donate/ and /donate/<key>/.
-  Forwards click source (?src=, ?source=, ?utm_source=, or sanitized
-  document.referrer) to Stripe via ?client_reference_id=<source> so both
-  unpaid and completed Checkout Sessions record where the click originated.
+  Shared checkout attribution and analytics script for /donate/ and
+  /donate/<key>/. Resolves click source (?src=, ?source=, ?utm_source=, or
+  sanitized document.referrer), appends ?client_reference_id=<source> to
+  #donate-checkout-btn, and sets data-umami-event-source=<source> so both
+  Stripe Checkout Sessions and Umami click events record where the donor
+  came from. Fires a "donate-view" Umami event on load and never
+  auto-redirects; without JavaScript, the button keeps its plain Stripe
+  Payment Link href.
 {%- endcomment -%}
 <script>
   (function () {
@@ -47,17 +51,17 @@
     } catch (e) {}
 
     var btn = document.getElementById("donate-checkout-btn");
-    if (btn) btn.href = target;
+    if (btn) {
+      btn.href = target;
+      if (source) btn.setAttribute("data-umami-event-source", source);
+    }
 
     window.addEventListener("load", function () {
       try {
         if (window.umami && typeof window.umami.track === "function") {
-          window.umami.track("donate-redirect", { app: key, source: source });
+          window.umami.track("donate-view", { app: key, source: source });
         }
       } catch (e) {}
-      setTimeout(function () {
-        window.location.replace(target);
-      }, 250);
     });
   })();
 </script>

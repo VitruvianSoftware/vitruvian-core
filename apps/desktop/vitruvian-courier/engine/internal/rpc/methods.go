@@ -189,6 +189,7 @@ var methods = map[string]handler{
 	"accounts.list":        accountsList,
 	"inbox.list":           inboxList,
 	"room.events":          roomEvents,
+	"room.loadOlder":       roomLoadOlder,
 	"room.markRead":        roomMarkRead,
 	"thread.markRead":      threadMarkRead,
 	"thread.unread":        threadUnread,
@@ -2277,4 +2278,22 @@ func storageCleanup(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 		filter.IncludeStickers = *p.IncludeStickers
 	}
 	return d.Store.CleanupStorage(ctx, filter)
+}
+
+// roomLoadOlder loads one page of a chat's older history from its network, when the person has scrolled to the top
+// of what this Mac holds (Actions.LoadOlder).
+func roomLoadOlder(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return d.Actions.LoadOlder(ctx, *p.RoomID) // an unknown chat is store.ErrNotFound
 }

@@ -63,7 +63,8 @@ import (
 // Protocol 12 adds the local API's settings, tokens and pairing (integrations.status, integrations.update,
 // integrations.tokens, integrations.createToken, integrations.revokeToken, integrations.setCanSend,
 // integrations.answerPairing) and two notifications besides changed: integrations.pairRequest and app.focus.
-const Protocol = 12
+// Protocol 13 adds room.loadOlder: a page of a chat's older history from its network, when the person scrolls to the top.
+const Protocol = 13
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20

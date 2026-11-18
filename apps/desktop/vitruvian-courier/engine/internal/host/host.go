@@ -30,6 +30,24 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 )
 
+// noOlderHistory is the networks that can't load older history on demand, with why. Actions.LoadOlder answers "nothing
+// more" for them without asking the network.
+var noOlderHistory = map[string]string{
+	// iMessage's chats say they can't be backfilled (CanBackfill false), so bridgev2 never makes a backfill task for
+	// one, and its FetchMessages does not page (it reads the chat's first rows and ignores the direction and anchor).
+	// The whole of chat.db is read on this Mac already.
+	"imessage": "its chats can't be backfilled and its fetch does not page",
+}
+
+// CanLoadOlder reports whether network can load a chat's older history on demand (Actions.LoadOlder).
+func CanLoadOlder(network string) bool {
+	_, no := noOlderHistory[network]
+	return !no
+}
+
+// PageSize is how many messages one page of older history asks for.
+const PageSize = 100
+
 // Host is one running bridge for one network.
 type Host struct {
 	Bridge  *bridgev2.Bridge
@@ -122,14 +140,23 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		//  - PersonalFilteringSpaces stays false: a space per login is a Matrix-client feature the app has no use for.
 		//  - KickMatrixUsers stays false: @me is the only Matrix user and must never be removed from a room.
 		Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
-		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The numbers are
-		// mautrix's own example-config defaults. The backwards queue stays off; it only applies to Beeper's server.
+		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The first three
+		// numbers are mautrix's own example-config defaults.
+		//
+		// Older history is loaded on demand, never in the background: the backwards queue (Queue.Enabled) stays off, so
+		// no chat is filled behind the person's back. When they scroll to the top of a chat, Actions.LoadOlder runs ONE
+		// backwards page for it (bridgev2's ManualBackfill), which needs the connector to batch-send
+		// (localmatrix.Connector.BatchSend writes history before a chat's first message). Manual is on, not for the
+		// queue (Enabled is what runs it) but because mautrix-whatsapp keeps the history its phone sent for such a
+		// chat only while some queue setting is on (it deletes it after the first backfill otherwise). BatchSize is a
+		// page; MaxBatches -1 puts no limit on how far back a person may scroll.
 		Backfill: bridgeconfig.BackfillConfig{
 			Enabled:              true,
 			MaxInitialMessages:   50,
 			MaxCatchupMessages:   500,
 			UnreadHoursThreshold: 720,
 			Threads:              bridgeconfig.BackfillThreadsConfig{MaxInitialMessages: 50},
+			Queue:                bridgeconfig.BackfillQueueConfig{Enabled: false, Manual: true, BatchSize: PageSize, MaxBatches: -1},
 		},
 		CleanupOnLogout: bridgeconfig.CleanupOnLogouts{Enabled: false},
 	}

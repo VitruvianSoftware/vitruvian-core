@@ -28,11 +28,24 @@ public enum PhoneSpeakResult: Equatable, Sendable {
 
 public enum PhoneSpeechError: LocalizedError, Equatable, Sendable {
     case failed(String)
+    /// The relay has no phone on its link: the announcement is dropped for
+    /// the phone, and the outage is recorded (`PhoneLinkStatusFile`).
+    case notConnected
 
     public var errorDescription: String? {
         switch self {
         case .failed(let reason): return reason
+        case .notConnected: return "not connected"
         }
+    }
+
+    /// The relay's reasons for "no phone on the link": the steady answer,
+    /// and the one a race between the check and the send gives.
+    static let notConnectedReasons: Set<String> = ["no phone connected", "phone not connected"]
+
+    static func isNotConnected(_ reason: String?) -> Bool {
+        guard let reason else { return false }
+        return notConnectedReasons.contains(reason.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 }
 
@@ -120,6 +133,9 @@ public struct PhoneSpeaker: PhoneSpeaking {
             return .spoken
         }
         let reason = (json?["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if PhoneSpeechError.isNotConnected(reason) {
+            throw PhoneSpeechError.notConnected
+        }
         let errorMsg = (json?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let detail = (reason?.isEmpty == false ? reason : nil)
             ?? (errorMsg?.isEmpty == false ? errorMsg : nil)

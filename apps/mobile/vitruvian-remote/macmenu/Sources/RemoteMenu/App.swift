@@ -64,6 +64,9 @@ struct MenuContent: View {
             if let phone = model.snapshot.phoneLine() {
                 Text(phone)
             }
+            if let update = model.snapshot.phoneUpdateLine {
+                Text(update)
+            }
             if let tailnet = model.snapshot.tailnetLine {
                 Text(tailnet)
             }

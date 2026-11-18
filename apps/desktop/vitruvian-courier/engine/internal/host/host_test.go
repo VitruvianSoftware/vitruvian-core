@@ -155,7 +155,10 @@ func TestStartGivesLocalUserAdminAndBackfill(t *testing.T) {
 	require.Equal(t, 500, bf.MaxCatchupMessages, "messages missed while courier was closed")
 	require.Equal(t, 720, bf.UnreadHoursThreshold)
 	require.Equal(t, 50, bf.Threads.MaxInitialMessages)
-	require.False(t, bf.Queue.AnyEnabled(), "the backwards queue only applies to Beeper's server")
+	require.False(t, bf.Queue.Enabled, "no chat is filled in the background: older history loads when the person scrolls to the top")
+	require.True(t, bf.Queue.Manual, "a manual backfill page (Actions.LoadOlder) is allowed, and WhatsApp keeps its synced history for it")
+	require.Equal(t, PageSize, bf.Queue.BatchSize)
+	require.Equal(t, -1, bf.Queue.MaxBatches, "no limit on scrolling back")
 	require.False(t, h.Bridge.Config.CleanupOnLogout.Enabled)
 	require.FileExists(t, filepath.Join(dir, "bridges", "fake.db"), "each network gets its own database")
 }
@@ -442,4 +445,10 @@ func TestCreateRoomSpaceAndLinkParentState(t *testing.T) {
 	page, _, err := s.InboxPage(ctx, store.InboxQuery{Space: "inbox"})
 	require.NoError(t, err)
 	require.Empty(t, page)
+}
+
+func TestOlderHistoryIsOnDemandForEveryNetworkButIMessage(t *testing.T) {
+	require.False(t, CanLoadOlder("imessage"), noOlderHistory["imessage"])
+	require.True(t, CanLoadOlder("whatsapp"))
+	require.True(t, CanLoadOlder("telegram"))
 }

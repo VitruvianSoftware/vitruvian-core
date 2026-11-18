@@ -210,6 +210,15 @@ type inboxRow struct {
 	// stacked picture; left out (as an engine before it leaves it out) for a one-to-one chat, a group with a
 	// picture and one with nobody else.
 	MembersPreview []rowMemberJSON `json:"members_preview,omitempty"`
+	// NetworkRead is the position the network last told me I read up to in this chat (never one made on this Mac);
+	// left out when it has told none.
+	NetworkRead *readPositionJSON `json:"network_read,omitempty"`
+}
+
+// readPositionJSON is a place in a chat on the wire: the protocol's Cursor.
+type readPositionJSON struct {
+	TS  int64 `json:"ts"`
+	Seq int64 `json:"seq"`
 }
 
 // rowMemberJSON is a RowMember: someone in a chat, for its inbox row's picture.
@@ -352,6 +361,14 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]string, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	networkRead, err := d.Store.NetworkReadMarkers(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		typing, err := d.typingNames(ctx, r.ID, names)
 		if err != nil {
@@ -378,6 +395,9 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 			MutedBy: r.MutedBy, MutedByName: r.MutedByName, Typing: typing, UnreadMentions: r.UnreadMentions,
 			PreviewMediaPath: d.path(r.PreviewMediaURI), ReadAloud: r.ReadAloud,
 			PreviewSenderName: r.PreviewSenderName,
+		}
+		if c, ok := networkRead[r.ID]; ok {
+			row.NetworkRead = &readPositionJSON{TS: ms(c.TS), Seq: c.Seq}
 		}
 		for _, m := range previews[r.ID] {
 			row.MembersPreview = append(row.MembersPreview, rowMemberJSON{UserID: m.UserID, Name: m.Name, AvatarPath: d.path(m.AvatarURI)})

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -111,7 +110,9 @@ func (c *Connector) endState() {
 func (c *Connector) GetCapabilities() *bridgev2.MatrixCapabilities {
 	// AutoJoinInvites: no real invites exist locally. ArbitraryMemberChange: we write any member row directly.
 	// ExtraProfileMeta: bridges send identifiers (phone/username/email), timezone and bot flags via SetExtraProfileMeta.
-	return &bridgev2.MatrixCapabilities{AutoJoinInvites: true, ArbitraryMemberChange: true, ExtraProfileMeta: true}
+	// BatchSending: the store places an event by its own time, so a page of older history can be written into a chat
+	// (BatchSend); bridgev2's backwards backfill queue runs only where this is true.
+	return &bridgev2.MatrixCapabilities{AutoJoinInvites: true, ArbitraryMemberChange: true, ExtraProfileMeta: true, BatchSending: true}
 }
 
 func (c *Connector) ParseGhostMXID(userID id.UserID) (networkid.UserID, bool) {
@@ -272,11 +273,6 @@ func (c *Connector) GetMemberInfo(ctx context.Context, roomID id.RoomID, userID 
 		return nil, err
 	}
 	return all[userID], nil
-}
-
-func (c *Connector) BatchSend(context.Context, id.RoomID, *mautrix.ReqBeeperBatchSend, []*bridgev2.MatrixSendExtra) (*mautrix.RespBeeperBatchSend, error) {
-	// GetCapabilities reports BatchSending=false, so bridgev2 backfills through SendMessage instead.
-	return nil, fmt.Errorf("batch send not supported")
 }
 
 func (c *Connector) GenerateDeterministicRoomID(key networkid.PortalKey) id.RoomID {

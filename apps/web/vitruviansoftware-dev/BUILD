@@ -48,6 +48,22 @@ exports_files(
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
+# What the Android app verifies with the catalogue key it is built with: the
+# signed tool catalogue, and Vitruvian Remote's signed update feed, both
+# written by catalog-publish. allow_empty: the feed's first signed copy is
+# written after the change that adds it merges.
+filegroup(
+    name = "signed_feeds",
+    srcs = [
+        "tools/catalog/tools.json",
+        "tools/catalog/tools.json.sig",
+    ] + glob(
+        ["updates/android/*"],
+        allow_empty = True,
+    ),
+    visibility = ["//apps/mobile/vitruvian-remote:__pkg__"],
+)
+
 # The downloads catalog: //tools/sync-downloads keeps it current, and its test
 # checks each entry it updates has the labels it writes.
 exports_files(
@@ -55,12 +71,18 @@ exports_files(
     visibility = ["//tools/sync-downloads:__pkg__"],
 )
 
-# The donate pages and the links they forward to. The stripe stack's
-# donations_pages_test.go checks they list the same apps as its
+# The donate pages, shared card includes, and the links/amounts they read. The
+# stripe stack's donations_pages_test.go checks they list the same apps as its
 # donations.apps, so each app's donations reach its own Payment Link.
 filegroup(
     name = "donate_pages",
-    srcs = ["_data/donations.yml"] + glob(["donate/*.html"]),
+    srcs = [
+        "_data/donation_amounts.yml",
+        "_data/donations.yml",
+    ] + glob([
+        "_includes/donate-*.html",
+        "donate/*.html",
+    ]),
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
 

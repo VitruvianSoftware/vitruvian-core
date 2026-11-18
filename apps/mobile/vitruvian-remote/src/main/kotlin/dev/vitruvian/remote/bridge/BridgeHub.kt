@@ -242,8 +242,26 @@ public object BridgeHub {
     store = persistence
     trustUntil = persistence.bridgeTrustUntil
     audit = persistence.bridgeAudit
+    BridgePolicy.appVersion = installedVersion(application)
     createChannels(application)
   }
+
+  /** This app's versionName, or blank when the package manager will not say. */
+  private fun installedVersion(context: Context): String =
+      runCatching {
+            val info =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                  context.packageManager.getPackageInfo(
+                      context.packageName, PackageManager.PackageInfoFlags.of(0))
+                } else {
+                  @Suppress("DEPRECATION")
+                  context.packageManager.getPackageInfo(context.packageName, 0)
+                }
+            info.versionName
+          }
+          .getOrNull()
+          ?.trim()
+          .orEmpty()
 
   /** Whether the service should be running, as last chosen. */
   public fun enabled(): Boolean = store?.bridgeEnabled ?: false

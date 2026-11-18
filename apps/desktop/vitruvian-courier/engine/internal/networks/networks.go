@@ -182,10 +182,11 @@ func simpleSpec(name, displayName, modulePath string, newConnector func() bridge
 // network is already shown by the chat's badge, so the tag only crowds the name.
 const whatsappDisplaynameTemplate = `{{or .FullName .BusinessName .PushName .Phone .RedactedPhone "Unknown user"}}`
 
-// whatsappSpec is WhatsApp's example config with three changes. A chat archived on the phone is tagged
+// whatsappSpec is WhatsApp's example config with these changes. A chat archived on the phone is tagged
 // m.lowpriority, which the store takes in as archived: the example leaves archive_tag empty, so archived chats
 // would arrive in the inbox. Polls arrive as polls (extev_polls), not as text asking people to vote on the
-// phone. And a person is named in full, without the " (WA)" tag (whatsappDisplaynameTemplate).
+// phone. A person is named in full, without the " (WA)" tag (whatsappDisplaynameTemplate). And older history is
+// asked of the phone on demand (whatsappHistory).
 func whatsappSpec() (engine.Spec, error) {
 	return engine.Spec{
 		Name:        "whatsapp",
@@ -201,9 +202,20 @@ func whatsappSpec() (engine.Spec, error) {
 			cfg.ExtEvPolls = true
 			// The connector parsed the example's template when it decoded the config: parse ours the same way.
 			cfg.DisplaynameTemplate = whatsappDisplaynameTemplate
+			whatsappHistory(cfg)
 			return cfg.PostProcess()
 		},
 	}, nil
+}
+
+// whatsappHistory turns on backwards_on_demand. WhatsApp sends its history once, at pairing (three months), and
+// Vitruvian Courier does not ask the phone for more then (no request_full_sync). Older messages are asked for when the
+// person scrolls to the top of a chat: the load (Actions.LoadOlder) runs a manual backwards backfill, and with
+// backwards_on_demand mautrix-whatsapp's FetchMessages sends the phone a history-sync request for the 50 messages
+// before the oldest one it has (fetchMessagesFromPhone), the same one WhatsApp Web sends when scrolling up. The phone
+// answers later (the bridge then backfills the answer by itself) and says whether more remain.
+func whatsappHistory(cfg *whatsapp.Config) {
+	cfg.HistorySync.BackwardsOnDemand = true
 }
 
 // slackSpec raises mautrix-slack's channel participant sync limit from the example config's default of 5

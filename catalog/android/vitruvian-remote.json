@@ -1,0 +1,15 @@
+{
+  "kind": "vitruvian-android-update",
+  "schema": 1,
+  "packageName": "dev.vitruvian.remote",
+  "version": "0.1.48",
+  "versionCode": 148,
+  "minSdk": 26,
+  "published": "2026-11-18",
+  "apk": {
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.48/VitruvianRemote-0.1.48.apk",
+    "size": 9714807,
+    "sha256": "f17c3941dd29aac9aa8c354a08402f53cb4012e8cea3814d8746bca188bcdaa7"
+  },
+  "notes": ["update the app from Settings, About"]
+}

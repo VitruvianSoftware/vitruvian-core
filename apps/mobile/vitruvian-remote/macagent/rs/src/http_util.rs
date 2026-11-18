@@ -1051,10 +1051,11 @@ pub fn log_line(msg: &str) {
 pub fn log_act(kind: &str, command: &str) {
     const N: usize = 80;
     let c = command.trim().replace('\n', " ");
-    let truncated = if c.len() > N {
-        format!("{}...", &c[..N])
-    } else {
-        c
+    // Cut on a character boundary: a byte slice panics inside a multi-byte
+    // character (an accented word or an emoji in an announcement).
+    let truncated = match c.char_indices().nth(N) {
+        Some((i, _)) => format!("{}...", &c[..i]),
+        None => c,
     };
     agent_log(&format!("act {}: {}", kind, truncated));
 }
@@ -1094,6 +1095,19 @@ pub fn write_sse_json(stream: &mut dyn Write, event: &str, val: &JsonValue) -> s
 mod tests {
     use super::*;
     use std::sync::Barrier;
+
+    #[test]
+    fn log_act_truncates_multibyte_text_without_panicking() {
+        let capture = LogCapture::start();
+        // 79 ASCII bytes, then a two-byte character straddling byte 80.
+        let text = format!("{}é and more", "a".repeat(79));
+        log_act("speaker", &text);
+        let log = capture.contents();
+        assert!(
+            log.contains(&format!("act speaker: {}é...", "a".repeat(79))),
+            "{log}"
+        );
+    }
 
     #[test]
     fn test_log_captures_isolate_concurrent_servers_and_ignore_uncaptured_noise() {

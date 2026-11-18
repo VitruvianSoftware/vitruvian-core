@@ -639,6 +639,56 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	return inserted, nil
 }
 
+// InsertEvents is InsertEvent for a batch of events (a backfill's history), written in ONE transaction: either all of
+// them are stored or none are, and a failure half way leaves no half-filled page of history behind. It returns how
+// many were new (an event already stored is skipped, so running the same batch again changes nothing). An event is
+// placed in the timeline by its own time (ts, seq), so events older than the chat's first land before it; the chat's
+// preview and last-message time move only for one newer than what the chat had, and the search index takes in every
+// event written. Nothing is published until the transaction has committed, and then one "event" change per new event
+// goes out, as InsertEvent's does.
+func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
+	if len(events) == 0 {
+		return 0, nil
+	}
+	type landed struct {
+		e                  Event
+		seq                int64
+		inserted, cameBack bool
+	}
+	out := make([]landed, 0, len(events))
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		out = out[:0] // a retried transaction starts again
+		for _, e := range events {
+			seq := s.nextSeq()
+			inserted, cameBack, err := s.insertEvent(ctx, e, seq)
+			if err != nil {
+				return err
+			}
+			out = append(out, landed{e, seq, inserted, cameBack})
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, l := range out {
+		if l.inserted {
+			n++
+		}
+		s.publishInserted(l.e, l.seq, l.inserted, l.cameBack)
+	}
+	return n, nil
+}
+
+// RoomHasNoMessages reports whether roomID has no message yet (a message, sticker or poll: not a reaction, an edit
+// or a state change): a backfill's first batch goes into such a chat as its start, not as older history.
+func (s *Store) RoomHasNoMessages(ctx context.Context, roomID string) (bool, error) {
+	var any bool
+	err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM events WHERE room_id=$1 AND type IN (`+unreadTypes+`))`, roomID).Scan(&any)
+	return !any, err
+}
+
 // nextSeq hands out the next arrival order.
 func (s *Store) nextSeq() int64 {
 	s.mu.Lock()

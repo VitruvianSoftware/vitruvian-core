@@ -5,7 +5,7 @@
 
 # Privacy
 
-This phone talks to the Macs you add, and to Vitruvian Software's crash server if crash reports are on. It has no user account, no cloud dashboard, and no ad libraries. Crash reports are on by default and can be turned off in the app.
+This phone talks to the Macs you add, to Vitruvian Software's crash server if crash reports are on, and to vitruviansoftware.dev to check for updates when you open About. Tapping **Update** downloads the new version from Vitruvian's releases on GitHub; nothing is downloaded or installed until you tap it. It has no user account, no cloud dashboard, and no ad libraries. Crash reports are on by default and can be turned off in the app.
 
 ## The short version
 

@@ -320,6 +320,7 @@
 
 /* Button at the top of a chat when older messages could not be read: try again. */
 "Load older messages" = "Load older messages";
+"Loading earlier messages…" = "Loading earlier messages…";
 
 /* A send or reaction was refused: the chat's network has no account. */
 "This chat’s network isn’t linked." = "This chat’s network isn’t linked.";

@@ -345,14 +345,14 @@ public final class NotificationCoordinator {
         let page: EventsPage? = try? await client.call(
             "room.events", RoomEventsParams(roomID: roomID, limit: Self.pageSize))
         guard let page, client === appModel.client else { return }
-        // The row is the inbox's when it has the chat, and read only for a chat it has not listed yet.
-        var chat = row(roomID)
-        if chat == nil {
-            chat = await lookUp(roomID, with: client)
-            guard client === appModel.client else { return }
-        }
-        guard let chat else { return }
-        announce(page.events, in: chat)
+        // The row is the inbox's when it has the chat. The engine's own row is read besides, for the position the
+        // network last said I had read up to (`networkRead`) as it is now: a message at or before it was read elsewhere
+        // (on the phone, or in a batch of history that came in already read) and is not news. A read made on this Mac
+        // is no part of it, so a chat the person reads here, or is looking at, still notifies as the settings say.
+        let fresh = await lookUp(roomID, with: client)
+        guard client === appModel.client else { return }
+        guard let chat = row(roomID) ?? fresh else { return }
+        announce(page.events, in: chat, networkRead: fresh?.networkRead)
     }
 
     /// The chat's row, wherever it is (archived, hidden, in another space). Nil when the engine doesn't have it.
@@ -522,7 +522,12 @@ public final class NotificationCoordinator {
     }
 
     /// `events` are newest first, as room.events has them; the oldest is announced first.
-    private func announce(_ events: [Event], in room: InboxRow) {
+    ///
+    /// `networkRead` is where the network last said I had read up to in this chat, nil when it has said nothing or it is
+    /// not known. A message from someone else at or before it (by time, then order) has been read elsewhere: it never
+    /// notifies and makes no sound, whatever its age. Nothing is skipped on any other ground, and with no position
+    /// everything is announced: a notification missed is worse than one too many.
+    private func announce(_ events: [Event], in room: InboxRow, networkRead: Cursor? = nil) {
         // Read at the moment of deciding: the person may have moved on while the page was on its way.
         guard let context = context() else { return }
         // A message deleted before it was announced is not announced.
@@ -536,6 +541,8 @@ public final class NotificationCoordinator {
                 endTypingBurst(room.roomID)
             }
             guard !deleted.contains(event.eventID) else { continue }
+            if let networkRead, Timeline.isIncomingMessage(event),
+               (event.ts, event.seq) <= (networkRead.ts, networkRead.seq) { continue }
             playSoundEffectIfEligible(
                 for: event,
                 in: room,

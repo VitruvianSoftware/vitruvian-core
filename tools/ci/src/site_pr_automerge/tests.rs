@@ -303,9 +303,23 @@ fn arm_without_sha_is_refused_before_any_gh_call() {
 
 #[test]
 fn no_repo_is_refused_before_any_gh_call() {
-    let c = run(ARM, &[("REPO", "")]);
+    let c = run(ARM, &[("REPO", ""), ("GITHUB_REPOSITORY", "")]);
     assert_eq!(c.out.code, 2);
     assert!(c.log.is_empty(), "log: {}", c.log);
+}
+
+#[test]
+fn without_repo_the_actions_repository_is_used() {
+    let c = run(ARM, &[("REPO", ""), ("GITHUB_REPOSITORY", "o/r")]);
+    assert_eq!(c.out.code, 0, "log: {}", c.log);
+    assert!(c.armed_at("sha1"), "log: {}", c.log);
+}
+
+#[test]
+fn repo_wins_over_the_actions_repository() {
+    let c = run(DISARM, &[("GITHUB_REPOSITORY", "elsewhere/x")]);
+    assert!(c.log.contains("--repo o/r"), "log: {}", c.log);
+    assert!(!c.log.contains("elsewhere/x"), "log: {}", c.log);
 }
 
 #[test]

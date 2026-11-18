@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.27...vitruvian-courier-v0.3.28) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-courier:** load older messages when you scroll to the top of a chat ([#5111](https://github.com/VitruvianSoftware/vitruvian-core/issues/5111)) ([391caa7](https://github.com/VitruvianSoftware/vitruvian-core/commit/391caa75bb96d1c5dd5d51fb4c9e3e28d2fc76b3))
+
 ## [0.3.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.26...vitruvian-courier-v0.3.27) (2026-11-18)
 
 

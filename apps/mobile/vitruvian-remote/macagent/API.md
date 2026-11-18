@@ -19,6 +19,22 @@ Two tiers:
 Everything an act endpoint runs is logged to the agent log with its kind and
 the first 80 characters, so the Mac has a record of what the phone did.
 
+The phone link and phone announcements also log, each line starting with the
+UTC time to the second, so a dropped link can be dated and explained later:
+
+```
+2026-11-18T16:50:03Z phone link: open id=4 model="Pixel Fold" tools=19
+2026-11-18T18:12:41Z phone link: closed id=4 reason=stream ended lasted=1h22m38s
+2026-11-18T18:15:00Z phone-say: no phone connected
+```
+
+`reason` is `stream ended` (the phone or the network closed it), `replaced by a
+new link`, `write error` (a call could not be sent) or `ping failure` (the
+20-second keep-alive could not be sent). `phone-say:` says `spoken engine=…`,
+`skipped reason=…`, `not spoken reason=…`, `no phone connected` or `failed: …`.
+These lines never carry the announcement text or a token; the `act speaker:`
+line logs the first 80 characters of the text, as before.
+
 ## Read (no auth)
 
 | Method | Path | Body / query | Response |
@@ -217,9 +233,13 @@ Design and tool list: `docs/phone-bridge.md`. The agent is a relay; the tools li
 
 ## Phone link (phone → agent)
 
-`POST /v1/phone/link` — act tier. Body `{"device":{"model":"Pixel Fold","android":"16"},
+`POST /v1/phone/link` — act tier. Body `{"device":{"model":"Pixel Fold","android":"16","app_version":"0.1.49"},
 "tools":[{"name":"sms.list","description":"…","inputSchema":{…},"tier":"read"}, …]}`. The reply
-is `text/event-stream`, held open for as long as the phone keeps it. Events:
+is `text/event-stream`, held open for as long as the phone keeps it. `device.app_version` is the
+Vitruvian Remote version on the phone (0.1.49 and later send it; older phones leave it out). The
+agent keeps at most 32 printable ASCII characters of it and returns it in `GET /v1/phone`'s
+`device`; the Mac menu compares it with the signed update feed and says when the phone is behind.
+Events:
 
 ```
 event: hello

@@ -347,7 +347,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 12, Protocol, "engine speaks protocol 12")
+	require.Equal(t, 13, Protocol, "engine speaks protocol 13")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -976,7 +976,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		step, err := w.d.Start(ctx, "whatsapp", fakenet.ScriptFlow, login.StartOptions{AccountID: waAccount()})
 		require.NoError(t, err)
 		params["login_id"] = step.LoginID
-	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.markRead-threads", "room.setMuted":
+	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.markRead-threads", "room.setMuted", "room.loadOlder":
 		params["room_id"] = w.room
 	case "room.events-older":
 		_, before, err := w.s.EventsBefore(ctx, w.room, nil, 2)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.1...vitruvian-speaker-v1.45.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** say once when the phone is not connected, and show it everywhere ([#5112](https://github.com/VitruvianSoftware/vitruvian-core/issues/5112)) ([5d2a965](https://github.com/VitruvianSoftware/vitruvian-core/commit/5d2a965a641925b1054d71014b6dc94b3ba08ba2))
+
 ## [1.45.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.0...vitruvian-speaker-v1.45.1) (2026-11-18)
 
 

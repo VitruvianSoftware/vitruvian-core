@@ -51,6 +51,12 @@ public final class VitruvianSpeakerEngine {
     public let auth: GoogleAuth
     public let home: GoogleHomeClient
     public let announcer: Announcer
+    /// Whether the phone's link was last seen down (`PhoneLinkStatusFile`).
+    public let phoneLink: PhoneLinkStatusFile
+    /// Clears a recorded phone outage once the relay sees the phone again;
+    /// started by `listen`, so only the long-lived process runs it.
+    public private(set) lazy var phoneLinkWatcher = PhoneLinkWatcher(
+        statusFile: phoneLink, config: { [unowned self] in self.config.config })
     /// Holds paused media for the profile's short-lived processes.
     public let mediaPause: MediaPauseCoordinator
     /// Puts speakers back after the profile's announcements.
@@ -66,6 +72,7 @@ public final class VitruvianSpeakerEngine {
         auth: .shared,
         home: .shared,
         announcer: .shared,
+        phoneLink: PhoneLinkStatusFile(url: VitruvianSpeakerProfile.app().phoneLinkStatusURL),
         mediaPause: .shared,
         volumeRestore: .shared)
 
@@ -82,6 +89,7 @@ public final class VitruvianSpeakerEngine {
         let snoozeQueue = SnoozeQueue(fileURL: profile.snoozeQueueURL)
         let auth = GoogleAuth(store: secrets, session: session, shippedClient: { profile.shippedClient })
         let home = GoogleHomeClient(auth: auth, session: session, messages: profile)
+        let phoneLink = PhoneLinkStatusFile(url: profile.phoneLinkStatusURL)
         self.init(
             profile: profile,
             config: {
@@ -89,7 +97,8 @@ public final class VitruvianSpeakerEngine {
                     configPath: profile.settingsURL,
                     history: history,
                     secrets: secrets,
-                    snoozeQueue: snoozeQueue)
+                    snoozeQueue: snoozeQueue,
+                    phoneLink: phoneLink)
             },
             secrets: secrets,
             history: history,
@@ -99,7 +108,8 @@ public final class VitruvianSpeakerEngine {
             announcer: Announcer(
                 home: home, local: local, media: SharedMediaPause(profile: profile),
                 geminiKey: { secrets.load().geminiApiKey }, speechLockURL: profile.speechLockURL,
-                snoozeQueue: snoozeQueue),
+                snoozeQueue: snoozeQueue, phoneLink: phoneLink),
+            phoneLink: phoneLink,
             mediaPause: MediaPauseCoordinator(),
             volumeRestore: VolumeRestoreCoordinator(client: home))
     }
@@ -113,6 +123,7 @@ public final class VitruvianSpeakerEngine {
         auth: GoogleAuth,
         home: GoogleHomeClient,
         announcer: Announcer,
+        phoneLink: PhoneLinkStatusFile,
         mediaPause: MediaPauseCoordinator,
         volumeRestore: VolumeRestoreCoordinator
     ) {
@@ -124,6 +135,7 @@ public final class VitruvianSpeakerEngine {
         self.auth = auth
         self.home = home
         self.announcer = announcer
+        self.phoneLink = phoneLink
         self.mediaPause = mediaPause
         self.volumeRestore = volumeRestore
     }
@@ -131,12 +143,20 @@ public final class VitruvianSpeakerEngine {
     /// Makes this process the profile's long-lived one: it holds paused
     /// media and puts speakers back for the Stop hook and `--say`, which
     /// exit before an announcement ends. Listens on the profile's names
-    /// only. Keep the tokens to stop listening.
+    /// only. Keep the tokens to stop listening. Also starts looking for
+    /// the phone's return while a phone outage is recorded
+    /// (`phoneLinkWatcher`); `stopWatchingPhoneLink` stops that.
     public func listen() -> [NSObjectProtocol] {
-        [
+        phoneLinkWatcher.start()
+        return [
             MediaPauseRequest.listen(with: mediaPause, profile: profile),
             VolumeRestoreRequest.listen(with: volumeRestore, profile: profile),
         ]
+    }
+
+    /// Stops what `listen` started besides the listeners.
+    public func stopWatchingPhoneLink() {
+        phoneLinkWatcher.stop()
     }
 
     /// Signs this Vitruvian Speaker out of every Google login, or only Google

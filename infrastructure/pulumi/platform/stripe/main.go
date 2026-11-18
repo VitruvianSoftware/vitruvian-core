@@ -138,6 +138,9 @@ func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct ac
 				},
 			},
 			// Labels the button "Donate" on Stripe's hosted page.
+			// Note: CustomText is intentionally omitted because the bridged
+			// stripe/stripe Terraform provider omits line_items[0][id] on
+			// PaymentLink updates, causing Stripe API 400 parameter_missing.
 			SubmitType: pulumi.String("donate"),
 			AfterCompletion: &stripe.PaymentLinkAfterCompletionArgs{
 				Type: pulumi.String("hosted_confirmation"),

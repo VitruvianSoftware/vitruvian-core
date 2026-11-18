@@ -1,0 +1,12 @@
+# Donation amount bounds in USD cents, shown on /donate/ and /donate/<key>/.
+#
+# Mirrors `vitruvian-stripe:donations.amounts` in
+# infrastructure/pulumi/platform/stripe/Pulumi.production.yaml (and
+# Pulumi.sandbox.yaml). Must be changed together with those stack configs
+# whenever the Stripe Price's custom_unit_amount bounds change.
+# Kept separate from _data/donations.yml because donations_pages_test.go
+# unmarshals every top-level key of _data/donations.yml as an app entry.
+
+minimum: 100
+preset: 500
+maximum: 100000

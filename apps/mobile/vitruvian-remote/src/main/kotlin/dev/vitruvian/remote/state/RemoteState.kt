@@ -38,6 +38,10 @@ import dev.vitruvian.remote.hid.HidCodes
 import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.hid.HidSender
 import dev.vitruvian.remote.trackpad.TrackpadTuning
+import dev.vitruvian.remote.update.AppUpdates
+import dev.vitruvian.remote.update.UpdateCheck
+import dev.vitruvian.remote.update.UpdateInstallHub
+import dev.vitruvian.remote.update.UpdateUi
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -46,6 +50,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -138,6 +143,11 @@ public class RemoteState(
      */
     private val bluetooth: BluetoothControl? = null,
     /**
+     * Checks the signed update feed and installs the app's own updates -- a port for the same
+     * reason as [notifier]. Null in previews and tests, and About then shows no Updates plate.
+     */
+    private val updates: AppUpdates? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -164,6 +174,25 @@ public class RemoteState(
 
   public var versionCopied: Boolean by mutableStateOf(false)
     private set
+
+  // --- updates ----------------------------------------------------------
+  /** Where the app's own update stands; drawn on Settings → About. */
+  public var update: UpdateUi by mutableStateOf(UpdateUi.Idle)
+    private set
+
+  public val canUpdate: Boolean
+    get() = updates != null
+
+  private var lastUpdateCheckMs: Long = 0L
+
+  init {
+    // One state per activity; a recreated activity's state takes the installer's answers over.
+    if (updates != null) {
+      UpdateInstallHub.listener = { event ->
+        scope.launch { update = UpdateUi.after(update, event) }
+      }
+    }
+  }
 
   public var dockOpen: Boolean by mutableStateOf(persistence.dockOpen)
     private set
@@ -7156,6 +7185,88 @@ public class RemoteState(
     fallbackUrl = null
   }
 
+  /**
+   * Checks the feed when About opens, at most once an hour unless the last check failed. Only here,
+   * never in the background: the request is visible and asked for.
+   */
+  public fun checkForUpdatesIfStale(nowMs: Long = System.currentTimeMillis()) {
+    if (updates == null) return
+    val stale = nowMs - lastUpdateCheckMs >= UPDATE_CHECK_INTERVAL_MS
+    if (UpdateUi.shouldRecheck(update, stale)) checkForUpdates()
+  }
+
+  public fun checkForUpdates() {
+    val port = updates ?: return
+    if (update.busy) return
+    update = UpdateUi.Checking
+    scope.launch {
+      val found =
+          try {
+            port.check()
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            UpdateCheck.Failed("Couldn't check for updates. Try again later.")
+          }
+      lastUpdateCheckMs = System.currentTimeMillis()
+      update = UpdateUi.from(found)
+    }
+  }
+
+  /** The Update button: asks for "Install unknown apps" first if it is off, then installs. */
+  public fun installUpdate() {
+    val port = updates ?: return
+    val release = update.release ?: return
+    if (update.busy) return
+    if (!port.canInstall()) {
+      update = UpdateUi.NeedsPermission(release)
+      return
+    }
+    update = UpdateUi.Downloading(release, 0f)
+    var shown = 0
+    scope.launch {
+      val failure =
+          try {
+            port.downloadAndInstall(release) { fraction ->
+              val percent = (fraction * 100).toInt()
+              if (percent != shown) {
+                shown = percent
+                scope.launch {
+                  if (update is UpdateUi.Downloading)
+                      update = UpdateUi.Downloading(release, fraction)
+                }
+              }
+            }
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            // Never left on "Downloading": say so, and Try again works.
+            "The update didn't install. Nothing changed; try again."
+          }
+      update =
+          if (failure == null) {
+            // The receiver may already have moved it on (to Confirm, or Failed).
+            if (update is UpdateUi.Downloading) UpdateUi.Installing(release) else update
+          } else {
+            UpdateUi.Failed(failure, release)
+          }
+    }
+  }
+
+  public fun allowUpdateInstalls() {
+    updates?.openInstallPermission()
+  }
+
+  public fun confirmUpdateInstall() {
+    updates?.confirmPendingInstall()
+  }
+
+  /** Back from Settings with "Install unknown apps" now on: carry on with the update. */
+  public fun onAppResumed() {
+    val port = updates ?: return
+    if (update is UpdateUi.NeedsPermission && port.canInstall()) installUpdate()
+  }
+
   public fun updateSendCrashReports(enabled: Boolean) {
     sendCrashReports = enabled
     persistence.sendCrashReports = enabled
@@ -9579,6 +9690,9 @@ public class RemoteState(
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 
     const val PAIR_TTL_MS = 5 * 60 * 1000L
+
+    /** How long a successful update check stands before opening About checks again. */
+    const val UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000L
     const val PAIR_CODE_BOUND = 1_000_000
     const val CLAUDE_TIMEOUT_S = 180
     const val RECENT_COMMANDS = 20

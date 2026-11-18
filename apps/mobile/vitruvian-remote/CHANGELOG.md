@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.49](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.48...vitruvian-remote-v0.1.49) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-remote:** tell the Mac when the phone app is out of date ([#5124](https://github.com/VitruvianSoftware/vitruvian-core/issues/5124)) ([20da3b3](https://github.com/VitruvianSoftware/vitruvian-core/commit/20da3b3d328a5ec484a8d9206e1ea0d221db32bf))
+
+## [0.1.48](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.47...vitruvian-remote-v0.1.48) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-remote:** update the app from Settings, About ([#5113](https://github.com/VitruvianSoftware/vitruvian-core/issues/5113)) ([8c59df6](https://github.com/VitruvianSoftware/vitruvian-core/commit/8c59df6f46e1804884475d294a7160a09cb655aa))
+
+## [0.1.47](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.46...vitruvian-remote-v0.1.47) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** log when the phone link opens and closes, and each phone-say outcome ([#5110](https://github.com/VitruvianSoftware/vitruvian-core/issues/5110)) ([565eb3c](https://github.com/VitruvianSoftware/vitruvian-core/commit/565eb3c048aecda52b0558274315548cc80a91a9))
+
 ## [0.1.46](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.45...vitruvian-remote-v0.1.46) (2026-11-16)
 
 

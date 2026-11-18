@@ -29,7 +29,6 @@
 # dependency here, re-lock every server that uses it:
 #   bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay
 #   bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs
-#   bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay/spike
 #
 # The Slack MCP's standalone repo carries a copy of this crate at mcp-auth/
 # (tools/copybara/copy.bara.sky exports it there), so its image builds alone.

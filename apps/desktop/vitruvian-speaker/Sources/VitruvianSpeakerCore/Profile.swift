@@ -36,6 +36,7 @@ import Foundation
 /// | History | `~/.gemini/speaker_history.json` | `<data>/history.json` |
 /// | Snooze queue | `~/.gemini/speaker_snooze_queue.json` | `<data>/snooze_queue.json` |
 /// | Chat monitor status | `~/.gemini/speaker_monitor_status.json` | `<data>/speaker_monitor_status.json` |
+/// | Phone link | `~/.gemini/speaker_phone_link.json` | `<data>/phone_link.json` |
 /// | Messages | `com.vitruviansoftware.speaker.*` | `dev.vitruvian.speaker.*` |
 /// | "Am I alive" | the running app's bundle id | a lock on `<data>/running.lock` |
 public struct VitruvianSpeakerProfile: Sendable, Equatable {
@@ -71,6 +72,10 @@ public struct VitruvianSpeakerProfile: Sendable, Equatable {
 
     /// The chat monitor's status file, beside the settings.
     public var monitorStatusURL: URL { ChatMonitorStatusFile.url(beside: settingsURL) }
+
+    /// Whether the phone's link was last seen down (`PhoneLinkStatusFile`),
+    /// beside the settings.
+    public var phoneLinkStatusURL: URL { PhoneLinkStatusFile.url(beside: settingsURL, door: door) }
 
     /// Pending announcements queued while snoozed, beside the settings.
     public var snoozeQueueURL: URL {

@@ -191,6 +191,24 @@ public struct MenuBarView: View {
                     .accessibilityLabel("Settings file problem: \(problem)")
             }
 
+            // Phone output is on and the phone is not connected: its
+            // announcements are dropped until it is, so say so and how.
+            if let since = configManager.phoneOutageSince {
+                let headline = PhoneLinkStatusFile.headline(since: since)
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(headline, systemImage: "iphone.slash")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Text(PhoneLinkStatusFile.hint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(headline). \(PhoneLinkStatusFile.hint)")
+            }
+
             if configManager.config.enabled {
                 if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
                     HStack {

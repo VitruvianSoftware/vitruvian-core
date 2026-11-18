@@ -192,7 +192,9 @@ public struct SharedMediaPause: MediaPausing {
 // MARK: - The announcer
 
 public struct Announcer: Sendable {
-    public static let shared = Announcer(speechLockURL: SpeechLock.defaultURL, snoozeQueue: .shared)
+    public static let shared = Announcer(
+        speechLockURL: SpeechLock.defaultURL, snoozeQueue: .shared,
+        phoneLink: PhoneLinkStatusFile(url: VitruvianSpeakerProfile.app().phoneLinkStatusURL))
 
     public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "announcer")
 
@@ -213,6 +215,9 @@ public struct Announcer: Sendable {
     let speechLockURL: URL?
     /// Optional persistent queue used when `snooze_queue` is enabled.
     let snoozeQueue: SnoozeQueue?
+    /// Where a phone outage is recorded, so it is said once and shown
+    /// (`PhoneLinkStatusFile`). Nil records nothing.
+    let phoneLink: PhoneLinkStatusFile?
     let log: @Sendable (String) -> Void
 
     public init(
@@ -226,6 +231,7 @@ public struct Announcer: Sendable {
         geminiKey: @escaping @Sendable () -> String? = { SecretStore.shared.load().geminiApiKey },
         speechLockURL: URL? = nil,
         snoozeQueue: SnoozeQueue? = nil,
+        phoneLink: PhoneLinkStatusFile? = nil,
         log: @escaping @Sendable (String) -> Void = { Announcer.logger.notice("\($0, privacy: .public)") }
     ) {
         self.home = home
@@ -238,6 +244,7 @@ public struct Announcer: Sendable {
         self.geminiKey = geminiKey
         self.speechLockURL = speechLockURL
         self.snoozeQueue = snoozeQueue
+        self.phoneLink = phoneLink
         self.log = log
     }
 
@@ -412,7 +419,7 @@ public struct Announcer: Sendable {
                         }
                     }
                 }
-                return await sendPhone(spoken, wav: wavForPhone, config: config)
+                return await sendPhone(spoken, wav: wavForPhone, config: config, at: date)
             }()
             let (homeOut, l, p) = await (homeResult, localStatus, phoneStatus)
             let h = homeOut.status
@@ -458,19 +465,33 @@ public struct Announcer: Sendable {
         return true
     }
 
-    private func sendPhone(_ text: String, wav: Data?, config: SpeakerConfig) async -> OutputStatus {
+    private func sendPhone(_ text: String, wav: Data?, config: SpeakerConfig, at date: Date) async -> OutputStatus {
         do {
-            switch try await phone.speak(
+            let result = try await phone.speak(
                 text,
                 wav: wav,
                 pauseMedia: config.effectivePhonePauseMedia,
                 headphonesOnly: config.effectivePhoneHeadphonesOnly
-            ) {
+            )
+            // The phone answered: an outage, if one was recorded, is over.
+            phoneLink?.recordConnected(at: date)
+            switch result {
             case .spoken:
                 return .spoken
             case .skipped(let why):
                 return .skipped(why)
             }
+        } catch PhoneSpeechError.notConnected {
+            // Dropped for the phone, not queued. Announcements are "right
+            // now" status, and speech hours late misleads; the snooze queue
+            // replays a whole announcement on every output, so it would say
+            // it again on the Home speakers and this Mac that already spoke;
+            // and it drains when snooze ends, not when the link returns. So
+            // the outage is recorded and said once, on the transition.
+            if phoneLink?.recordNotConnected(at: date) == true {
+                log(PhoneLinkStatusFile.droppedNotice)
+            }
+            return .failed(PhoneSpeechError.notConnected.errorDescription ?? "not connected")
         } catch {
             return .failed(error.localizedDescription)
         }

@@ -177,6 +177,14 @@ and audio endpoint for Vitruvian Speaker through the paired Mac agent
   the text through `POST /v1/speaker/phone-say` (with automatic fallback to the
   phone's own voice if no key is saved or Gemini fails), with optional **Pause
   media on your phone** and **Only with headphones on** controls.
+- **When the phone is not connected**: announcements made while the phone's
+  link to Vitruvian Remote is down are dropped for the phone (the other outputs
+  still speak) and are not replayed later, since they are "right now" news.
+  Vitruvian Speaker says so once per outage: one log line, plus "Your phone: not
+  connected" in `--status`, the menu bar, the extension's island and `--state`
+  (`phone_connected: false`). To fix it, open Vitruvian Remote → Settings →
+  Phone Bridge → Run Phone Bridge. The warning clears on the next announcement
+  the phone takes, or within a minute of it reconnecting.
 - **Zero-lag file sync**: `macagent` reads and atomically rewrites the active
   door's config (`~/.gemini/speaker_broadcast.json` or the Vitruvian extension's
   `ToolData/dev.vitruvian.speaker/settings.json`), and Vitruvian Speaker watches

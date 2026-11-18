@@ -1,0 +1,40 @@
+{%- comment -%}
+  Shared live-mode donation card rendered by both /donate/ (donate/index.html)
+  and /donate/<key>/ (_includes/donate-app.html) so general and per-app pages
+  cannot drift. Formats USD cent bounds from _data/donation_amounts.yml
+  (handling non-zero cent remainders cleanly) and includes
+  _includes/donate-checkout.html for source attribution and Umami analytics.
+  Expects: key (Stripe app key), name (display name), link (live Stripe URL).
+{%- endcomment -%}
+{%- assign amounts = site.data.donation_amounts -%}
+{%- assign min_d = amounts.minimum | divided_by: 100 -%}
+{%- assign min_r = amounts.minimum | modulo: 100 -%}
+{%- capture min_usd -%}${{ min_d }}{%- if min_r != 0 -%}.{%- if min_r < 10 -%}0{%- endif -%}{{ min_r }}{%- endif -%}{%- endcapture -%}
+{%- assign preset_d = amounts.preset | divided_by: 100 -%}
+{%- assign preset_r = amounts.preset | modulo: 100 -%}
+{%- capture preset_usd -%}${{ preset_d }}{%- if preset_r != 0 -%}.{%- if preset_r < 10 -%}0{%- endif -%}{{ preset_r }}{%- endif -%}{%- endcapture -%}
+{%- assign max_d = amounts.maximum | divided_by: 100 -%}
+{%- assign max_r = amounts.maximum | modulo: 100 -%}
+{%- capture max_usd -%}${{ max_d }}{%- if max_r != 0 -%}.{%- if max_r < 10 -%}0{%- endif -%}{{ max_r }}{%- endif -%}{%- endcapture -%}
+<section class="donate-section">
+  <div class="container">
+    <article class="plate donate-card">
+      <span class="eyebrow">One-time donation</span>
+      <h1>Support {{ include.name }}</h1>
+      <p class="donate-lead">Everything we build stays free and open source. Your contribution goes directly toward {{ include.name }}.</p>
+      <div class="donate-reassurance">
+        <p class="donate-reassurance-title">One-time donation — no recurring charges.</p>
+        <p class="donate-reassurance-sub">No account needed, no subscription, and you choose the amount on Stripe.</p>
+      </div>
+      <div class="donate-amount">
+        <span class="donate-amount-label">Amount (USD)</span>
+        <span class="donate-amount-value">{{ preset_usd }} suggested — pay what you want, {{ min_usd }} to {{ max_usd }}</span>
+      </div>
+      <div class="donate-actions">
+        <a id="donate-checkout-btn" class="btn btn-primary donate-cta" href="{{ include.link }}" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}">Continue to Stripe</a>
+      </div>
+      <p class="donate-note">Payments are processed securely by Stripe.</p>
+    </article>
+  </div>
+</section>
+{%- include donate-checkout.html key=include.key link=include.link -%}

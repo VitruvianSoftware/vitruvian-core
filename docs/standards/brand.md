@@ -41,7 +41,7 @@ Verified against `apps/`, `packages/`, `catalog/` and `StandaloneRepo` in
 | **Vitruvian Tabs** | Tabula | `apps/suites/vitruvian-tabs` | CLI `vitruvian-tabs` | `vitruvian-tabs-{api,cli,extension,shared,web}` | — *(monorepo-only)* |
 | **Vitruvian Wand** | Wand | `apps/suites/vitruvian-wand` | `com.vitruviansoftware.wand`, CLI `vitruvian-wand` | `vitruvian-wand` | — *(monorepo-only)* |
 | **Vitruvian Watch** | Wear OS app | `apps/mobile/vitruvian-watch` | `com.vitruviansoftware.watch.{pulse,remote,home,code}` | `vitruvian-watch` | — *(monorepo-only)* |
-| **Vitruvian Relay** | Relay | `apps/suites/vitruvian-relay` | `vitruvian-relay-spike` *(spike)* | — *(pre-release)* | — *(monorepo-only)* |
+| **Vitruvian Relay** | Relay | `apps/suites/vitruvian-relay` | `vitruvian-relay`, connector CLI `vrelay` | — *(pre-release)* | — *(monorepo-only)* |
 | **Vitruvian DevX CLI** | `devx` | `apps/cli/vitruvian-devx` | CLI `devx` (kept) | `vitruvian-devx` | `vitruvian-devx` |
 | **Vitruvian Homelab** | `homelab` | `apps/cli/vitruvian-homelab` | CLI `homelab` (kept) | `vitruvian-homelab` | `vitruvian-homelab` |
 | **Vitruvian Deck** | ESP32-S3 desk companion | `apps/embedded/vitruvian-deck` | `vitruvian-deck.local` | `vitruvian-deck` | `vitruvian-deck` |

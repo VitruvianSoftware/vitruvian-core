@@ -91,6 +91,17 @@
       how long agents stay trusted, and carries Stop. RECEIVE_BOOT_COMPLETED
       restarts the bridge after a reboot only when the user left it enabled.
     -->
+    <!--
+      Updates (Settings, About, Update): the app installs its own new release,
+      after checking it against Vitruvian Software's signed update feed.
+      REQUEST_INSTALL_PACKAGES is what lets it ask; the person still has to
+      turn on "Install unknown apps" for it once, and nothing is installed
+      until they tap Update. UPDATE_PACKAGES_WITHOUT_USER_ACTION (Android 13+)
+      lets that install skip Android's second confirmation when Android allows
+      it, which it does only for an app updating itself.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -309,6 +320,13 @@
         -->
         <receiver
             android:name=".VitruvianSpeakerNotificationReceiver"
+            android:exported="false" />
+        <!--
+          The installer's verdict on an update the app committed. Not exported:
+          only Android's installer, through the app's own PendingIntent, sends it.
+        -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
             android:exported="false" />
     </application>
 </manifest>
