@@ -158,12 +158,19 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         _ => return usage(),
     }
 
-    let repo = match env("REPO") {
-        Some(v) if !v.is_empty() => v,
-        _ => {
-            err(b"REPO (owner/name) is not set\n");
-            return 2;
-        }
+    // REPO first; else the repository every GitHub Actions job is told it runs
+    // in. A workflow step that forgot `REPO: ${{ github.repository }}` is the
+    // same repository, and refusing it stranded vitruvian-remote-release's
+    // update-feed pull request for 0.1.48.
+    let repo = match env("REPO").filter(|v| !v.is_empty()) {
+        Some(v) => v,
+        None => match env("GITHUB_REPOSITORY").filter(|v| !v.is_empty()) {
+            Some(v) => v,
+            None => {
+                err(b"REPO (owner/name) is not set, and neither is GITHUB_REPOSITORY\n");
+                return 2;
+            }
+        },
     };
     let summary = env("GITHUB_STEP_SUMMARY").unwrap_or_default();
 
