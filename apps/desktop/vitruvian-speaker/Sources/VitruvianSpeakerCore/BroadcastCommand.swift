@@ -637,6 +637,7 @@ public enum BroadcastCommand {
         fileManager: FileManager = .default,
         systemVoices: @Sendable () -> [LocalVoice] = { LocalSpeaker.shared.englishVoices() },
         announcerOverride: Announcer? = nil,
+        phoneLinkProbe: PhoneLinkProbing = PhoneLinkProbe(),
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> VitruvianSpeakerCommandLine.Action {
@@ -676,7 +677,8 @@ public enum BroadcastCommand {
                 systemVoices: systemVoices(),
                 hasGeminiKey: hasGeminiKey,
                 queuedCount: targetEngine.snoozeQueue.count(),
-                phoneLink: targetEngine.phoneLink.read(),
+                // No watcher may be running: look once before saying it is down.
+                phoneLink: targetEngine.phoneLink.refreshedRead(config: config, probe: phoneLinkProbe, at: now),
                 now: now,
                 calendar: calendar
             )

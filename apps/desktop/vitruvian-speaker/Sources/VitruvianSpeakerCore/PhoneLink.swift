@@ -115,6 +115,28 @@ public struct PhoneLinkStatusFile: Sendable {
         }
     }
 
+    /// `read()`, for a short-lived reader (`--status`, `--state`) that no
+    /// watcher keeps fresh: while phone output is on and an outage is
+    /// recorded, it asks the relay once (up to `wait`) and clears the
+    /// outage if the phone is back. Without an outage, or with phone output
+    /// off, nothing is asked. Blocks the caller for at most `wait`.
+    public func refreshedRead(
+        config: SpeakerConfig, probe: PhoneLinkProbing = PhoneLinkProbe(),
+        wait: TimeInterval = 3, at date: Date = Date()
+    ) -> PhoneLinkStatus? {
+        let status = read()
+        guard config.effectiveSpeakPhone, status?.connected == false else { return status }
+        let answer = ProbeAnswer()
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            answer.set(await probe.isConnected())
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + wait) == .success, answer.get() == true else { return status }
+        recordConnected(at: date)
+        return read()
+    }
+
     private func write(_ status: PhoneLinkStatus) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -134,6 +156,14 @@ public struct PhoneLinkStatusFile: Sendable {
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }
+}
+
+/// One probe answer handed from a detached task to a waiting caller.
+private final class ProbeAnswer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Bool?
+    func set(_ v: Bool?) { lock.withLock { value = v } }
+    func get() -> Bool? { lock.withLock { value } }
 }
 
 /// Asks the relay whether the phone is connected.
@@ -232,7 +262,11 @@ public final class PhoneLinkWatcher {
     public func check() async -> Bool {
         guard config().effectiveSpeakPhone, statusFile.read()?.connected == false else { return false }
         guard await probe.isConnected() == true else { return false }
-        statusFile.recordConnected(at: now())
+        // The write takes a file lock another process may hold: not on the
+        // main actor.
+        let file = statusFile
+        let at = now()
+        await Task.detached { file.recordConnected(at: at) }.value
         return true
     }
 }

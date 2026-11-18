@@ -311,7 +311,7 @@ private struct FakeProbe: PhoneLinkProbing {
         engine.phoneLink.recordNotConnected(at: fixedDate)
         guard case .now(let out) = BroadcastCommand.action(
             for: ["--status"], engine: engine, parts: VitruvianSpeakerCommandLine.Parts.app(),
-            systemVoices: { [] }, calendar: utc) else {
+            systemVoices: { [] }, phoneLinkProbe: FakeProbe(answer: false), calendar: utc) else {
             Issue.record("expected .now output for --status")
             return
         }
@@ -328,6 +328,7 @@ private struct FakeProbe: PhoneLinkProbing {
             secrets: SecretStore(fileURL: dir.appendingPathComponent("secrets.json")),
             history: BroadcastHistory(fileURL: dir.appendingPathComponent("speaker_history.json")),
             monitorStatusFile: ChatMonitorStatusFile(url: dir.appendingPathComponent("speaker_monitor_status.json")),
+            phoneLinkProbe: FakeProbe(answer: nil),
             doorFile: DoorFile(url: dir.appendingPathComponent("speaker_door.json")),
             otherInstalled: { _ in false }, appRunning: { true }, extensionRunning: { _ in false },
             gwsInstalled: { false },
@@ -344,5 +345,65 @@ private struct FakeProbe: PhoneLinkProbing {
         seam.phoneLinkStatusFile.recordNotConnected(at: fixedDate)
         try configFile.write(phoneOnly(false))
         #expect(phoneConnected() is NSNull, "phone output off")
+    }
+
+    /// A probe that counts how often it was asked.
+    private final class CountingProbe: PhoneLinkProbing, @unchecked Sendable {
+        let answer: Bool?
+        private let lock = NSLock()
+        private var _asked = 0
+        var asked: Int { lock.withLock { _asked } }
+        init(_ answer: Bool?) { self.answer = answer }
+        func isConnected() async -> Bool? {
+            lock.withLock { _asked += 1 }
+            return answer
+        }
+    }
+
+    @Test func aShortLivedReaderLooksOnceAndClearsAnOutageThePhoneIsBackFrom() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = PhoneLinkStatusFile(url: dir.appendingPathComponent(PhoneLinkStatusFile.appFileName))
+
+        let idle = CountingProbe(true)
+        #expect(file.refreshedRead(config: phoneOnly(), probe: idle) == nil)
+        file.recordConnected(at: fixedDate)
+        #expect(idle.asked == 0, "no outage recorded: nothing is asked")
+
+        file.recordNotConnected(at: fixedDate)
+        let off = CountingProbe(true)
+        #expect(file.refreshedRead(config: phoneOnly(false), probe: off)?.connected == false)
+        #expect(off.asked == 0, "phone output off: nothing is asked")
+
+        let stillDown = CountingProbe(false)
+        #expect(file.refreshedRead(config: phoneOnly(), probe: stillDown)?.connected == false)
+        let unreachable = CountingProbe(nil)
+        #expect(file.refreshedRead(config: phoneOnly(), probe: unreachable)?.connected == false)
+        #expect(stillDown.asked == 1 && unreachable.asked == 1)
+
+        let back = CountingProbe(true)
+        #expect(file.refreshedRead(config: phoneOnly(), probe: back)?.connected == true)
+        #expect(file.read()?.connected == true, "the outage is cleared in the file too")
+    }
+
+    @MainActor
+    @Test func statusDoesNotSayDownWhenThePhoneIsBack() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let profile = VitruvianSpeakerProfile.extension(
+            dataFolder: dir.appendingPathComponent("data"), toolFolder: nil,
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
+        try SpeakerConfigFile(url: profile.settingsURL).write(phoneOnly())
+        let engine = VitruvianSpeakerEngine(profile: profile)
+        engine.phoneLink.recordNotConnected(at: fixedDate)
+        guard case .now(let out) = BroadcastCommand.action(
+            for: ["--status"], engine: engine, parts: VitruvianSpeakerCommandLine.Parts.app(),
+            systemVoices: { [] }, phoneLinkProbe: FakeProbe(answer: true), calendar: utc) else {
+            Issue.record("expected .now output for --status")
+            return
+        }
+        #expect(!out.stdout.contains { $0.hasPrefix(PhoneLinkStatusFile.headline) })
+        #expect(!out.stdout.contains(PhoneLinkStatusFile.hint))
+        #expect(engine.phoneLink.read()?.connected == true)
     }
 }
