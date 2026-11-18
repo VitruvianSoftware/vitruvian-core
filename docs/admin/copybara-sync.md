@@ -399,8 +399,15 @@ repeat it.
 
 **Do it as two PRs, in this order.** The export workflow in the second PR needs the key from the
 first. If the export reaches `main` before the key exists, it has nothing to push with.
-One PR also works now: each export caller's `await-repo-config` job waits for the Repo Config
-Apply that the same push starts, so the key exists before the export loads it (#4414, #5084).
+**One PR is not enough for a brand-new mirror.** The `await-repo-config` job does hold the export
+until the Repo Config Apply from the same push finishes. But the run evidently reads its secrets when it is
+triggered, so a `<COMP>_SYNC_SSH_KEY` that the apply creates is still empty in that run. The export
+then fails with `Load key "/root/.ssh/id_rsa": invalid format` and `Permission denied (publickey)`.
+This happened to the first Wand export after #5084 (run 44252366231): the secret was created at
+06:39Z, the export job started at 07:04Z with an empty key. Re-running the failed job
+after the apply picks up the key: `bazel run //tools/agent-app -- run-rerun <run-id> --failed`.
+Two PRs avoid the red run altogether. The wait does protect a key that already exists from being
+replaced mid-export (#4661).
 
 #### PR 1: the key
 
