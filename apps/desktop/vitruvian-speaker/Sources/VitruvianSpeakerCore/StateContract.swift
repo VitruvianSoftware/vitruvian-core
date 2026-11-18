@@ -263,9 +263,12 @@ public enum VitruvianSpeakerStateContract {
             configProblem = err.localizedDescription
         }
 
+        let loadedSecrets = seam.secrets.load()
+        let hasGeminiKey = !(loadedSecrets.geminiApiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
         let voices = seam.systemVoices()
         let speakerVol = seam.speakerVolume()
-        let catalog = SettingsCatalog(config: config, systemVoices: voices)
+        let catalog = SettingsCatalog(config: config, systemVoices: voices, hasGeminiKey: hasGeminiKey)
         let settingsArray: [[String: Any]] = catalog.entries.map { entry in
             var item: [String: Any] = [
                 "key": entry.key,
@@ -275,7 +278,16 @@ public enum VitruvianSpeakerStateContract {
                 "shown": entry.shown,
             ]
             if !entry.choices.isEmpty {
-                item["choices"] = entry.choices.map { ["value": $0.value, "label": $0.label] }
+                item["choices"] = entry.choices.map { choice in
+                    var choiceDict: [String: Any] = [
+                        "value": choice.value,
+                        "label": choice.label,
+                    ]
+                    if let help = choice.help {
+                        choiceDict["help"] = help
+                    }
+                    return choiceDict
+                }
             }
             if let limits = entry.limits {
                 item["limits"] = [
@@ -284,6 +296,12 @@ public enum VitruvianSpeakerStateContract {
                     "step": limits.step,
                     "default_value": limits.defaultValue,
                 ]
+            }
+            if let help = entry.help {
+                item["help"] = help
+            }
+            if let note = entry.note {
+                item["note"] = note
             }
             return item
         }
@@ -305,14 +323,12 @@ public enum VitruvianSpeakerStateContract {
             return dict
         }
 
-        let loadedSecrets = seam.secrets.load()
         let signedIn = !(loadedSecrets.google?.refreshToken ?? "").isEmpty
         let email = loadedSecrets.google?.email ?? loadedSecrets.googleChat?.email
         let hasOAuthClient = OAuthClient.resolve(secrets: loadedSecrets, shipped: seam.shippedOAuthClient()) != nil
         let customClientId = (loadedSecrets.oauthClientIdOverride ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let hasCustomSecret = !(loadedSecrets.oauthClientSecretOverride ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasAntigravity = seam.antigravityTokensAvailable()
-        let hasGeminiKey = !(loadedSecrets.geminiApiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         let signInDict: [String: Any] = [
             "signed_in": signedIn,

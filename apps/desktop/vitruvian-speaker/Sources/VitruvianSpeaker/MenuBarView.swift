@@ -377,7 +377,9 @@ public struct MenuBarView: View {
     }
 
     private var speakerPicker: some View {
-        let catalog = SettingsCatalog(config: configManager.config)
+        let hasGeminiKey = !(configManager.secrets.load().geminiApiKey ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let catalog = SettingsCatalog(config: configManager.config, hasGeminiKey: hasGeminiKey)
         return VStack(alignment: .leading, spacing: 4) {
             // Where to speak, one click away. Always available when broadcasting is on.
             Text("Speak on")
@@ -439,6 +441,35 @@ public struct MenuBarView: View {
                             .padding(.top, 2)
                     }
                 }
+            }
+            if SettingsCatalog.Key.phoneVoiceEngine.shown(config: configManager.config) {
+                let phoneVoiceEntry = catalog.entry(.phoneVoiceEngine)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(phoneVoiceEntry.label)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Picker(phoneVoiceEntry.label, selection: Binding(
+                            get: { configManager.config.effectivePhoneVoiceEngine.rawValue },
+                            set: { configManager.applySetting(.phoneVoiceEngine, .string($0)) }
+                        )) {
+                            ForEach(phoneVoiceEntry.choices, id: \.value) { opt in
+                                Text(opt.label).tag(opt.value)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .accessibilityLabel(phoneVoiceEntry.label)
+                    }
+                    if let note = phoneVoiceEntry.note {
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 2)
             }
             outputsLine
                 .padding(.top, 2)
@@ -509,7 +540,7 @@ public struct MenuBarView: View {
                 chatSwitch("Beeper", \.beeperEnabled)
                 chatSwitch("Courier", \.courierEnabled)
                     // Off until a Courier token is saved in Settings.
-                    .disabled(SecretStore.shared.load().token(for: .courier) == nil
+                    .disabled(configManager.secrets.load().token(for: .courier) == nil
                         && !configManager.config.effectiveChatMonitor.courierEnabled)
             }
             .toggleStyle(.checkbox)

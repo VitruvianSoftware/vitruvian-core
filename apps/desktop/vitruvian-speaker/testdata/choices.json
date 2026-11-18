@@ -61,6 +61,24 @@
       ]
     },
     {
+      "key": "phone_voice_engine",
+      "label": "Phone voice",
+      "kind": "choice",
+      "default_value": "phone",
+      "choices": [
+        {
+          "value": "phone",
+          "label": "Phone's own voice",
+          "help": "Uses your phone's text-to-speech. Free, and changes with your phone's voice settings."
+        },
+        {
+          "value": "gemini",
+          "label": "Gemini voice",
+          "help": "Sounds like your speakers (currently: Kore · Warm & clear). Uses your Gemini API key."
+        }
+      ]
+    },
+    {
       "key": "gemini_voice",
       "label": "Gemini voice",
       "kind": "choice",

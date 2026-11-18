@@ -943,6 +943,26 @@
       "value": "com.apple.voice.premium.en-US.Ava"
     },
     {
+      "choices": [
+        {
+          "help": "Uses your phone's text-to-speech. Free, and changes with your phone's voice settings.",
+          "label": "Phone's own voice",
+          "value": "phone"
+        },
+        {
+          "help": "Sounds like your speakers (currently: Kore · Warm & clear). Uses your Gemini API key.",
+          "label": "Gemini voice",
+          "value": "gemini"
+        }
+      ],
+      "help": "Sounds like your speakers (currently: Kore · Warm & clear). Uses your Gemini API key.",
+      "key": "phone_voice_engine",
+      "kind": "choice",
+      "label": "Phone voice",
+      "shown": true,
+      "value": "gemini"
+    },
+    {
       "key": "phone_pause_media",
       "kind": "toggle",
       "label": "Pause phone media while announcing",

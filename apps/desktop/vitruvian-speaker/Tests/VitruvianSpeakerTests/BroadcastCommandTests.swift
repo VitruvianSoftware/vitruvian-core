@@ -266,6 +266,7 @@ private func makeSampleConfig(
             #expect(text.contains("Active Target: office (Office Speaker, Room: Home Office)"))
             #expect(text.contains("Home Speakers: ON"))
             #expect(text.contains("This Mac: ON (voice: Ava (en-US) · Premium)"))
+            #expect(text.contains("Your phone: OFF (voice: Phone's own voice)"))
             #expect(text.contains("Speaks On: Office Speaker (home speaker) + This Mac (voice: Ava (en-US) · Premium)"))
             #expect(text.contains("Quiet Hours: ACTIVE (22:00 - 07:00)"))
         } else {
@@ -280,6 +281,29 @@ private func makeSampleConfig(
             #expect(text.contains("Use --help for usage details."))
         } else {
             Issue.record("expected .now output for zero arguments")
+        }
+
+        // --status phone voice summary: phone's own voice, Gemini without key fallback, and Gemini with key.
+        var phoneConfig = config
+        phoneConfig.effectiveSpeakPhone = true
+        phoneConfig.effectivePhoneVoiceEngine = .phone
+        let phoneLines = BroadcastCommand.formatStatus(config: phoneConfig, systemVoices: voices, hasGeminiKey: true)
+        #expect(phoneLines.contains("Your phone: ON (voice: Phone's own voice)"))
+        #expect(phoneLines.contains { $0.contains("Your phone (voice: Phone's own voice)") })
+
+        phoneConfig.effectivePhoneVoiceEngine = .gemini
+        let noKeyLines = BroadcastCommand.formatStatus(config: phoneConfig, systemVoices: voices, hasGeminiKey: false)
+        #expect(noKeyLines.contains("Your phone: ON (voice: Phone's own voice)"))
+
+        try engine.secrets.save(Secrets(geminiApiKey: "secret-key")) // gitleaks:allow
+        try SpeakerConfigFile(url: profile.settingsURL).write(phoneConfig)
+        if case .now(let out) = BroadcastCommand.action(for: ["--status"], engine: engine, parts: parts, systemVoices: { voices }, now: noon) {
+            #expect(out.exitCode == 0)
+            let text = out.stdout.joined(separator: "\n")
+            #expect(text.contains("Your phone: ON (voice: Gemini (Kore · Warm & clear))"))
+            #expect(text.contains("Your phone (voice: Gemini (Kore · Warm & clear))"))
+        } else {
+            Issue.record("expected .now output for --status with Gemini phone key")
         }
     }
 

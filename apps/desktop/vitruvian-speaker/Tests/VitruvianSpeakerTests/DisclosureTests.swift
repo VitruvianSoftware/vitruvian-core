@@ -53,8 +53,14 @@ import Testing
         c.speakHome = false
         #expect(!c.showsVoiceEngine && !c.showsGeminiVoice, "every output off")
         c.speakPhone = true
-        #expect(c.showsVoiceEngine && c.showsGeminiVoice)
+        #expect(!c.showsVoiceEngine && !c.showsGeminiVoice, "phone defaults to Android's own voice; Mac engine stays hidden")
+        #expect(SettingsCatalog.Key.phoneVoiceEngine.shown(config: c))
+        c.phoneVoiceEngine = .gemini
+        #expect(!c.showsVoiceEngine && c.showsGeminiVoice, "phone Gemini reveals Gemini voice picker without revealing Mac engine")
+        c.speakLocal = true
         c.localEngine = .apple
+        #expect(c.showsVoiceEngine && c.showsGeminiVoice)
+        c.phoneVoiceEngine = .phone
         #expect(c.showsVoiceEngine && !c.showsGeminiVoice)
     }
 

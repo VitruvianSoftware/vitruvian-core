@@ -321,13 +321,18 @@ public struct Announcer: Sendable {
 
         return await SpeechLock.withLockReportingCooldown(at: speechLockURL) {
             let geminiKeyTrimmed = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let geminiReady = config.effectiveLocalEngine == .gemini && !geminiKeyTrimmed.isEmpty
+            let hasGeminiKey = !geminiKeyTrimmed.isEmpty
+            let localGeminiReady = config.effectiveLocalEngine == .gemini && hasGeminiKey
+            let phoneGeminiReady = wantPhone && config.effectivePhoneVoiceEngine == .gemini && hasGeminiKey
             // The Home speakers play the Gemini voice, cast over the LAN.
-            let castHome = wantHome && config.effectiveHomeCastVoice && geminiReady
-            if wantHome && config.effectiveHomeCastVoice && !geminiReady {
+            let castHome = wantHome && config.effectiveHomeCastVoice && localGeminiReady
+            if wantHome && config.effectiveHomeCastVoice && !localGeminiReady {
                 log(config.effectiveLocalEngine == .gemini
                     ? "Home speaker voice: no Gemini API key saved; using Google Assistant broadcast."
                     : "Home speaker voice is on but the voice engine is not Gemini; using Google Assistant broadcast.")
+            }
+            if wantPhone && config.effectivePhoneVoiceEngine == .gemini && !hasGeminiKey {
+                log("Phone voice: no Gemini API key saved; using phone's own voice.")
             }
 
             // Home only: exactly the path that existed before local speech,
@@ -354,11 +359,12 @@ public struct Announcer: Sendable {
                 return c
             }()
 
-            // One Gemini synthesis, started once, when the phone or the Home
-            // speakers (cast) need the WAV itself: the Home speakers (cast),
-            // this phone (WAV payload) and this Mac (through GeminiAudioCache)
-            // all share it. A Home broadcast does not wait for it.
-            let sharedWavTask: Task<Data?, Error>? = ((wantPhone || castHome) && geminiReady)
+            // One Gemini synthesis, started once, when the phone (in Gemini mode
+            // with a key) or the Home speakers (cast) need the WAV itself: the
+            // Home speakers (cast), this phone (WAV payload) and this Mac (when
+            // local_engine is Gemini, through GeminiAudioCache) share it. A Home
+            // broadcast or a phone in its own voice never calls Gemini synthesis.
+            let sharedWavTask: Task<Data?, Error>? = (phoneGeminiReady || castHome)
                 ? Task { [gemini, spoken, voice = config.effectiveGeminiVoice] in
                     try await gemini.synthesizeWAV(spoken, voice: voice, apiKey: geminiKeyTrimmed)
                 }
@@ -384,7 +390,7 @@ public struct Announcer: Sendable {
             }()
             async let localStatus: OutputStatus = {
                 guard wantLocal else { return .off }
-                if let sharedWavTask {
+                if localGeminiReady, let sharedWavTask {
                     do {
                         _ = try await sharedWavTask.value
                     } catch {
@@ -397,11 +403,11 @@ public struct Announcer: Sendable {
             async let phoneStatus: OutputStatus = {
                 guard wantPhone else { return .off }
                 var wavForPhone: Data?
-                if let sharedWavTask {
+                if phoneGeminiReady, let sharedWavTask {
                     do {
                         wavForPhone = try await sharedWavTask.value
                     } catch {
-                        if !wantLocal {
+                        if !(wantLocal && localGeminiReady) && !castHome {
                             log("Gemini voice failed (\(error.localizedDescription)); using phone voice.")
                         }
                     }

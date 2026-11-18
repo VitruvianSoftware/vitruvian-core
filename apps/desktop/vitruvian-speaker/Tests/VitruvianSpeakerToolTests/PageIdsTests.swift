@@ -352,6 +352,7 @@ final class PageIdsTests: XCTestCase {
         XCTAssertTrue(ManifestRules.isWellFormedName(Pages.Block.beeperNetwork(key)))
         // Every value a picker can draw as a list row from an enum.
         let enumValues = Pages.Section.allCases.map(\.rawValue) + SpeechLength.allCases.map(\.rawValue)
+            + PhoneVoiceEngine.allCases.map(\.rawValue)
             + ChatMonitorConfig.BeeperAnnounce.allCases.map(\.rawValue) + ChatMonitorConfig.GoogleChatSource.allCases.map(\.rawValue)
         for value in enumValues {
             XCTAssertTrue(ManifestRules.isWellFormedName(value), value)

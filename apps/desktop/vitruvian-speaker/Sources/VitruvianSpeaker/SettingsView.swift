@@ -564,7 +564,7 @@ public struct SettingsView: View {
 
     // MARK: - Speakers Tab
 
-    private var speakersTab: some View {
+    var speakersTab: some View {
         Form {
             outputsSection
 
@@ -655,7 +655,8 @@ public struct SettingsView: View {
     /// The Gemini API key, as a token is shown: the field, Save Key, Clear.
     @ViewBuilder
     private var geminiKeyControls: some View {
-        let hasSavedKey = !(SecretStore.shared.load().geminiApiKey ?? "").isEmpty
+        let hasSavedKey = !(configManager.secrets.load().geminiApiKey ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hasSavedKey && !viewModel.showReplaceGeminiKey {
             HStack {
                 Label("Gemini API key saved", systemImage: "checkmark.circle.fill")
@@ -700,14 +701,16 @@ public struct SettingsView: View {
     private func saveGeminiKey() {
         do {
             let key = viewModel.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            try SecretStore.shared.update { $0.geminiApiKey = key.isEmpty ? nil : key }
+            try configManager.secrets.update { $0.geminiApiKey = key.isEmpty ? nil : key }
             status(key.isEmpty ? "Gemini API key cleared." : "Gemini API key saved.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 
     /// Where announcements play: the Google Home speaker, this Mac, this phone, or any combination.
     private var outputsSection: some View {
-        let catalog = SettingsCatalog(config: configManager.config, systemVoices: viewModel.macVoices)
+        let hasGeminiKey = !(configManager.secrets.load().geminiApiKey ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let catalog = SettingsCatalog(config: configManager.config, systemVoices: viewModel.macVoices, hasGeminiKey: hasGeminiKey)
         return Section {
             Toggle(SettingsCatalog.Key.speakHome.label(), isOn: Binding(
                 get: { configManager.config.effectiveSpeakHome },
@@ -747,12 +750,6 @@ public struct SettingsView: View {
             ))
             .accessibilityHint("Also reads announcements aloud on this Mac")
 
-            Toggle(SettingsCatalog.Key.speakPhone.label(), isOn: Binding(
-                get: { configManager.config.effectiveSpeakPhone },
-                set: { configManager.applySetting(.speakPhone, .bool($0)) }
-            ))
-            .accessibilityHint("Plays announcements on the paired Android phone")
-
             if SettingsCatalog.Key.localEngine.shown(config: configManager.config) {
                 Picker(SettingsCatalog.Key.localEngine.label(), selection: Binding(
                     get: { configManager.config.effectiveLocalEngine.rawValue },
@@ -760,19 +757,10 @@ public struct SettingsView: View {
                 )) {
                     ForEach(SettingsCatalog.voiceEngineChoices, id: \.value) { Text($0.label).tag($0.value) }
                 }
-                .accessibilityHint("What speaks on this Mac, your phone, and the Home speakers when they use the selected voice")
+                .accessibilityHint("What speaks on this Mac and on Home speakers when casting")
 
                 if SettingsCatalog.Key.geminiVoice.shown(config: configManager.config) {
-                    Picker(SettingsCatalog.Key.geminiVoice.label(), selection: Binding(
-                        get: { configManager.config.effectiveGeminiVoice },
-                        set: { configManager.applySetting(.geminiVoice, .string($0)) }
-                    )) {
-                        ForEach(SettingsCatalog.geminiVoiceChoices(for: configManager.config), id: \.value) { opt in
-                            Text(opt.label).tag(opt.value)
-                        }
-                    }
-                    .accessibilityHint("The Gemini voice this Mac, your phone and the Home speakers (Cast) speak in")
-                    geminiKeyControls
+                    geminiVoiceAndKeyControls
                 }
             }
 
@@ -797,7 +785,41 @@ public struct SettingsView: View {
                 }
             }
 
-            if SettingsCatalog.Key.phonePauseMedia.shown(config: configManager.config) {
+            Toggle(SettingsCatalog.Key.speakPhone.label(), isOn: Binding(
+                get: { configManager.config.effectiveSpeakPhone },
+                set: { configManager.applySetting(.speakPhone, .bool($0)) }
+            ))
+            .accessibilityHint("Plays announcements on the paired Android phone")
+
+            if SettingsCatalog.Key.phoneVoiceEngine.shown(config: configManager.config) {
+                let phoneVoiceEntry = catalog.entry(.phoneVoiceEngine)
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker(phoneVoiceEntry.label, selection: Binding(
+                        get: { configManager.config.effectivePhoneVoiceEngine.rawValue },
+                        set: { configManager.applySetting(.phoneVoiceEngine, .string($0)) }
+                    )) {
+                        ForEach(phoneVoiceEntry.choices, id: \.value) { opt in
+                            Text(opt.label).tag(opt.value)
+                        }
+                    }
+                    .accessibilityHint("What speaks announcements on your paired Android phone")
+                    if let help = phoneVoiceEntry.help {
+                        Text(help)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let note = phoneVoiceEntry.note {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if !SettingsCatalog.Key.localEngine.shown(config: configManager.config),
+                   SettingsCatalog.Key.geminiVoice.shown(config: configManager.config) {
+                    geminiVoiceAndKeyControls
+                }
                 Toggle(SettingsCatalog.Key.phonePauseMedia.label(), isOn: Binding(
                     get: { configManager.config.effectivePhonePauseMedia },
                     set: { configManager.applySetting(.phonePauseMedia, .bool($0)) }
@@ -815,6 +837,20 @@ public struct SettingsView: View {
         } footer: {
             Text(outputsFooter)
         }
+    }
+
+    @ViewBuilder
+    private var geminiVoiceAndKeyControls: some View {
+        Picker(SettingsCatalog.Key.geminiVoice.label(), selection: Binding(
+            get: { configManager.config.effectiveGeminiVoice },
+            set: { configManager.applySetting(.geminiVoice, .string($0)) }
+        )) {
+            ForEach(SettingsCatalog.geminiVoiceChoices(for: configManager.config), id: \.value) { opt in
+                Text(opt.label).tag(opt.value)
+            }
+        }
+        .accessibilityHint("The Gemini voice used when Gemini speaks")
+        geminiKeyControls
     }
 
     private var outputsFooter: String {

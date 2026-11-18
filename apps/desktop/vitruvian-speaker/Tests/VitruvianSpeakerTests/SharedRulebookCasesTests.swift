@@ -114,6 +114,7 @@ struct SharedRulebookCasesTests {
     private struct ChoiceItemSpec: Decodable {
         let value: String
         let label: String
+        let help: String?
         let max_characters: Int?
         let max_sentences: Int?
     }
@@ -148,7 +149,7 @@ struct SharedRulebookCasesTests {
             #expect(entry.label == list.label, "Label mismatch for \(list.key)")
             #expect(entry.kind.rawValue == list.kind, "Kind mismatch for \(list.key)")
 
-            let expectedChoices = list.choices.map { SettingsCatalog.Choice(value: $0.value, label: $0.label) }
+            let expectedChoices = list.choices.map { SettingsCatalog.Choice(value: $0.value, label: $0.label, help: $0.help) }
             #expect(entry.choices == expectedChoices, "Choices mismatch for \(list.key)")
 
             switch list.key {
@@ -169,6 +170,12 @@ struct SharedRulebookCasesTests {
             case "local_engine":
                 #expect(defaultConfig.effectiveLocalEngine.rawValue == list.default_value)
                 #expect(LocalVoiceEngine.allCases.map { SettingsCatalog.Choice(value: $0.rawValue, label: $0.label) } == expectedChoices)
+            case "phone_voice_engine":
+                #expect(defaultConfig.effectivePhoneVoiceEngine.rawValue == list.default_value)
+                let voiceName = defaultConfig.geminiVoiceDisplayName()
+                #expect(PhoneVoiceEngine.allCases.map {
+                    SettingsCatalog.Choice(value: $0.rawValue, label: $0.label, help: $0.help(geminiVoiceName: voiceName))
+                } == expectedChoices)
             case "gemini_voice":
                 #expect(defaultConfig.effectiveGeminiVoice == list.default_value)
                 #expect(GeminiVoice.allCases.map { SettingsCatalog.Choice(value: $0.rawValue, label: $0.label) } == expectedChoices)
@@ -307,6 +314,7 @@ struct SharedRulebookCasesTests {
             let speak_local: Bool
             let speak_phone: Bool
             let local_engine: String
+            let phone_voice_engine: String?
             let announcement_style: String
             let style_model: String
             let announce_volume_enabled: Bool
@@ -358,6 +366,7 @@ struct SharedRulebookCasesTests {
             c.speakLocal = tc.config.speak_local
             c.speakPhone = tc.config.speak_phone
             c.localEngine = LocalVoiceEngine(rawValue: tc.config.local_engine)
+            c.phoneVoiceEngine = tc.config.phone_voice_engine.flatMap(PhoneVoiceEngine.init(rawValue:))
             c.announcementStyle = AnnouncementStyle(rawValue: tc.config.announcement_style)
             c.styleModel = StyleModel(rawValue: tc.config.style_model)
             c.announceVolumeEnabled = tc.config.announce_volume_enabled

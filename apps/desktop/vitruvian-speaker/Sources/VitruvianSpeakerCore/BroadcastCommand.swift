@@ -523,6 +523,7 @@ public enum BroadcastCommand {
     public static func formatStatus(
         config: SpeakerConfig,
         systemVoices: [LocalVoice] = [],
+        hasGeminiKey: Bool = false,
         queuedCount: Int = 0,
         now: Date = Date(),
         calendar: Calendar = .current
@@ -560,6 +561,14 @@ public enum BroadcastCommand {
         }
         lines.append("This Mac: \(config.effectiveSpeakLocal ? "ON" : "OFF") (voice: \(voiceDescription))")
 
+        let phoneVoiceDescription: String
+        if config.effectivePhoneVoiceEngine == .gemini && hasGeminiKey {
+            phoneVoiceDescription = "Gemini (\(config.geminiVoiceDisplayName()))"
+        } else {
+            phoneVoiceDescription = PhoneVoiceEngine.phone.label
+        }
+        lines.append("\(SettingsCatalog.macPhoneOutputLabel): \(config.effectiveSpeakPhone ? "ON" : "OFF") (voice: \(phoneVoiceDescription))")
+
         var outputs: [String] = []
         if config.effectiveSpeakHome {
             let targetLabel = config.defaultDevice?.name ?? (config.defaultTarget.isEmpty ? "home speaker" : config.defaultTarget)
@@ -569,7 +578,7 @@ public enum BroadcastCommand {
             outputs.append("This Mac (voice: \(voiceDescription))")
         }
         if config.effectiveSpeakPhone {
-            outputs.append(SettingsCatalog.macPhoneOutputLabel)
+            outputs.append("\(SettingsCatalog.macPhoneOutputLabel) (voice: \(phoneVoiceDescription))")
         }
         lines.append("Speaks On: \(outputs.isEmpty ? "nothing (home speakers and this Mac are both off)" : outputs.joined(separator: " + "))")
 
@@ -655,9 +664,12 @@ public enum BroadcastCommand {
             case .unreadable(let err):
                 return .now(CLIOutput(stderr: [err.localizedDescription], exitCode: 1))
             }
+            let hasGeminiKey = !(targetEngine.secrets.load().geminiApiKey ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             var lines = formatStatus(
                 config: config,
                 systemVoices: systemVoices(),
+                hasGeminiKey: hasGeminiKey,
                 queuedCount: targetEngine.snoozeQueue.count(),
                 now: now,
                 calendar: calendar
