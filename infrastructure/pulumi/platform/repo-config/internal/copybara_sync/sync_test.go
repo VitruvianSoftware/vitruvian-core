@@ -173,6 +173,7 @@ func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
 		{"home-speaker", "vitruvian-speaker", "HOME_SPEAKER_SYNC_SSH_KEY"},
 		{"vitruvian-remote", "vitruvian-remote", "VITRUVIAN_REMOTE_SYNC_SSH_KEY"},
 		{"esp32-desk-companion", "vitruvian-deck", "ESP32_DESK_COMPANION_SYNC_SSH_KEY"},
+		{"vitruvian-wand", "vitruvian-wand", "VITRUVIAN_WAND_SYNC_SSH_KEY"},
 	} {
 		t.Run(mirror.repo, func(t *testing.T) {
 			if r := got[mirror.resource]; r.typeToken != "github:index/repository:Repository" {

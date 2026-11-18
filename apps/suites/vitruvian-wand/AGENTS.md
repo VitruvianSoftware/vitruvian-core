@@ -66,7 +66,7 @@ Vitruvian Wand uses ideas from the public README of `kaminoer/Dream-Mouse` as fu
 
 ## Standard Bazel Targets
 
-Always use Bazel entrypoints for building, testing, and formatting. Never invoke raw `cargo` or `gradle`:
+In the vitruvian-core monorepo, always use Bazel entrypoints for building, testing, and formatting. Never invoke raw `cargo` or `gradle` there. (In the standalone `VitruvianSoftware/vitruvian-wand` mirror there is no Bazel; use the Cargo commands in the README.)
 
 ```bash
 # Run all unit and replay tests for vitruvian-wand-core

@@ -491,6 +491,18 @@ var syncedProjects = []syncedProject{
 		CreateRepo:     true,
 		Description:    "Firmware that turns a Waveshare ESP32-S3 touch display into a Mac desk companion: live metrics and shortcut buttons",
 	},
+	{
+		// Vitruvian Wand (apps/suites/vitruvian-wand), MIT: the Daydream
+		// controller air mouse for macOS, Linux, Android and Android TV.
+		// Export-only: developed and released from the monorepo, the mirror is
+		// its public source. VITRUVIAN_WAND_SYNC_SSH_KEY, consumed by
+		// copybara-export-vitruvian-wand.yaml.
+		Name:           "vitruvian-wand",
+		StandaloneRepo: "vitruvian-wand",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Vitruvian Wand: a Google Daydream controller as an air mouse for macOS, Linux, Android and Android TV",
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its

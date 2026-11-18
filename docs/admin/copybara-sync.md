@@ -21,7 +21,7 @@ bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirecti
 | Shape | Flag | Components | Generates |
 |---|---|---|---|
 | **One-way w/ PR-import** | `is_one_way=True` | `vitruvian-slack-mcp`, `vitruvian-roborock-mcp`, `vitruvian-devx`, `vitruvian-homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
-| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-github`, `vitruvian-atrium`, `vitruvian-courier`, `vitruvian-speaker`, `vitruvian-remote`, `vitruvian-deck` | `export_<comp>` only — no import path of any kind |
+| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-github`, `vitruvian-atrium`, `vitruvian-courier`, `vitruvian-speaker`, `vitruvian-remote`, `vitruvian-deck`, `vitruvian-wand` | `export_<comp>` only — no import path of any kind |
 | **Bidirectional** | `is_one_way=False` | *(none)* | legacy shape, retained as a knob only |
 
 There is deliberately **no push-to-`main` `import_<comp>`** for any component. External
@@ -399,6 +399,8 @@ repeat it.
 
 **Do it as two PRs, in this order.** The export workflow in the second PR needs the key from the
 first. If the export reaches `main` before the key exists, it has nothing to push with.
+One PR also works now: each export caller's `await-repo-config` job waits for the Repo Config
+Apply that the same push starts, so the key exists before the export loads it (#4414, #5084).
 
 #### PR 1: the key
 

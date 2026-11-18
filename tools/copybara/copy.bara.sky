@@ -693,6 +693,25 @@ COMPONENTS = [
         ],
         "export_only": True,
     },
+    # vitruvian-wand: EXPORT-ONLY mirror of apps/suites/vitruvian-wand (MIT), the
+    # Daydream controller air mouse. The mirror builds core and desktop with plain
+    # cargo (its root Cargo workspace); the APK and release builds need Bazel.
+    {
+        "name": "vitruvian-wand",
+        "repo": "vitruvian-wand",
+        "subtree": "apps/suites/vitruvian-wand",
+        "standalone_rev_id": "VITRUVIAN_WAND_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        # release-please and the monorepo's catalog and owners files.
+        "origin_only_exclude": [
+            "apps/suites/vitruvian-wand/release-please-config.json",
+            "apps/suites/vitruvian-wand/.release-please-manifest.json",
+            "apps/suites/vitruvian-wand/catalog-info.yaml",
+            "apps/suites/vitruvian-wand/OWNERS",
+        ],
+        "export_only": True,
+    },
 ]
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):

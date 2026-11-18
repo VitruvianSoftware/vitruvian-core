@@ -135,7 +135,7 @@ class WandSentryTest {
           setTag("isSideLoaded", "true")
           setExtra("secret", "x")
           debugMeta = DebugMeta()
-          serverName = "james-macbook-pro"
+          serverName = "example-laptop"
           threads = listOf(SentryThread().apply { name = "main" })
           setModule("io.sentry:sentry", "8.64.0")
           request = Request().apply { url = "http://10.0.2.2:7499/v1/state" }
