@@ -60,6 +60,7 @@ import dev.vitruvian.remote.state.BridgeControl
 import dev.vitruvian.remote.state.BridgePending
 import dev.vitruvian.remote.state.BridgePermissionState
 import dev.vitruvian.remote.state.BridgePolicy
+import dev.vitruvian.remote.state.BridgeRestartPolicy
 import dev.vitruvian.remote.state.BridgeStatus
 import dev.vitruvian.remote.state.DeepLink
 import dev.vitruvian.remote.state.Derive
@@ -284,7 +285,10 @@ public class MainActivity : ComponentActivity() {
     // The system kills a foreground service under memory pressure and does not
     // always bring it back. Starting it here means opening the app repairs a
     // bridge that went quiet, which is otherwise invisible from the phone.
-    if (BridgeHub.enabled()) {
+    if (BridgeRestartPolicy.shouldStartOnForeground(
+        bridgeEnabled = BridgeHub.enabled(),
+        serviceRunning = PhoneBridgeService.running,
+    )) {
       // Not "off": the service has not run yet, and "off" while switched on
       // reads as a stopped service -- a false alarm for the second it takes.
       if (!BridgeHub.linked) BridgeHub.setLink(false, "starting…")
@@ -473,8 +477,18 @@ public class MainActivity : ComponentActivity() {
     // Settings (re-read by onForeground), and everything the bridge did while
     // nobody was looking.
     state.onForeground(true)
-    if (!hadNotifications && state.notificationsGranted && BridgeHub.enabled()) {
-      // The service re-posts its foreground notice on start (PhoneBridgeService.kt:108).
+    val needsRestart =
+        BridgeRestartPolicy.shouldStartOnForeground(
+            bridgeEnabled = BridgeHub.enabled(),
+            serviceRunning = PhoneBridgeService.running,
+        )
+    val notificationsNewlyGranted =
+        !hadNotifications && state.notificationsGranted && BridgeHub.enabled()
+    if (needsRestart || notificationsNewlyGranted) {
+      // Repairs a bridge that stopped while the activity sat in the background
+      // (for example after onTimeout), or re-posts its foreground notice once
+      // notification permission is granted.
+      if (!BridgeHub.linked) BridgeHub.setLink(false, "starting…")
       PhoneBridgeService.start(this)
     }
     state.refreshBridgePermissions()

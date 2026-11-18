@@ -7,12 +7,15 @@
 
     <!--
       INTERNET reaches the Mac agent over Tailscale; ACCESS_NETWORK_STATE
-      backs the unreachable banner; the wake-on-LAN magic packet needs
+      backs the unreachable banner; CHANGE_NETWORK_STATE satisfies Android 14+'s
+      connectedDevice foreground-service prerequisite as a normal install-time
+      permission (no runtime prompt); the wake-on-LAN magic packet needs
       multicast on the local segment. Nothing here is granted for the mock
       data - they are the permissions the real transport needs.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!--
@@ -80,9 +83,13 @@
       android:foregroundServiceType is a SecurityException at start rather than
       a warning.
 
-      dataSync is the honest type: a long-lived transfer with the user's own
-      machine. The notification it obliges us to show is the feature: it says
-      whether the link is up, how long agents stay trusted, and carries Stop.
+      connectedDevice is the right type: a continuous network connection to the
+      user's own paired Mac. Unlike dataSync (which Android 15 caps at 6 hours
+      per 24 hours and blocks from BOOT_COMPLETED), connectedDevice has no
+      daily runtime cap and is permitted from BOOT_COMPLETED. The notification
+      it obliges us to show is the feature: it says whether the link is up,
+      how long agents stay trusted, and carries Stop. RECEIVE_BOOT_COMPLETED
+      restarts the bridge after a reboot only when the user left it enabled.
     -->
     <!--
       Updates (Settings, About, Update): the app installs its own new release,
@@ -96,7 +103,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
       Dictation runs in the phone's OWN speech recognizer, which is why this
@@ -178,7 +186,24 @@
         <service
             android:name=".bridge.PhoneBridgeService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="connectedDevice" />
+
+        <!--
+          Brings the phone bridge back after a reboot or an app update when the
+          user left it switched on. BOOT_COMPLETED (not LOCKED_BOOT_COMPLETED)
+          because bridgeEnabled and the paired host token live in credential-
+          encrypted storage, which unlocks only after the user's first unlock.
+          exported="false" blocks other apps from spoofing these intents while
+          still allowing system_server to deliver both protected broadcasts.
+        -->
+        <receiver
+            android:name=".bridge.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!--
           Approve and Deny on an approval notification. exported="false" for a

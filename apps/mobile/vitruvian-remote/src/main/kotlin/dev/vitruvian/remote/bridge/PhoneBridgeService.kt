@@ -39,6 +39,7 @@ import dev.vitruvian.remote.state.AgentClient
 import dev.vitruvian.remote.state.AgentHostEntry
 import dev.vitruvian.remote.state.BridgeDecision
 import dev.vitruvian.remote.state.BridgePolicy
+import dev.vitruvian.remote.state.BridgeRestartPolicy
 import dev.vitruvian.remote.state.DeepLink
 import dev.vitruvian.remote.state.ExecStreamHandle
 import dev.vitruvian.remote.state.Persistence
@@ -61,9 +62,11 @@ import org.json.JSONObject
  * The phone's half of the bridge: one outbound link to the Mac agent, held open.
  *
  * A foreground service because that is the only way Android keeps a socket alive while the phone is
- * in a pocket. `dataSync` is the type: this is a long-lived transfer with the user's own machine,
- * and the notification it obliges us to show is the feature -- it says whether the link is up and
- * how long agents stay trusted, and it carries the Stop button.
+ * in a pocket. `connectedDevice` is the type: this is a continuous network connection to the user's
+ * own paired Mac, has no 6-hour per 24-hour runtime limit on Android 15+ (unlike `dataSync`), and
+ * is allowed to start from `BOOT_COMPLETED`. The notification it obliges us to show is the feature
+ * -- it says whether the link is up and how long agents stay trusted, and it carries the Stop
+ * button.
  *
  * The phone never listens. It dials out, reads `call` events, runs the tool, and posts the answer
  * back. That is what makes this work over cellular, behind NAT, with no second pairing and no wifi
@@ -74,6 +77,8 @@ public class PhoneBridgeService : Service() {
   private val registry = ToolRegistry()
   private var scope: CoroutineScope? = null
   private var link: Job? = null
+  private var stopped: Boolean = false
+  private var inForeground: Boolean = false
   private val handle = ExecStreamHandle()
 
   /**
@@ -99,14 +104,26 @@ public class PhoneBridgeService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    BridgeHub.attach(this)
     if (intent?.action == ACTION_STOP) {
-      // A user-pressed Stop must also mean "stay stopped": without this the
-      // next app launch would start the bridge again and look like a bug.
-      BridgeHub.setEnabled(false)
-      stop()
+      // A user-pressed Stop must also mean "stay stopped": without this a reboot,
+      // app update, or the next app launch would start the bridge again.
+      val outcome = BridgeRestartPolicy.onUserStop()
+      BridgeHub.setEnabled(outcome.bridgeEnabled)
+      stop(outcome.linkStatus)
       return START_NOT_STICKY
     }
-    startForegroundNotification()
+    stopped = false
+    if (!startForegroundNotification()) {
+      // Android refused startForeground (ForegroundServiceStartNotAllowedException on
+      // API 31+ or SecurityException). Stop cleanly and return START_NOT_STICKY so
+      // START_STICKY never turns a refused start into a crash loop, while keeping
+      // bridgeEnabled true so opening the app resumes the bridge.
+      val outcome = BridgeRestartPolicy.onStartRefused(BridgeHub.enabled())
+      stop(outcome.linkStatus)
+      return START_NOT_STICKY
+    }
+    running = true
     // Reconnect also starts the service when it was not running, so the
     // loop below is launched either way; the kick only matters to one asleep.
     if (intent?.action == ACTION_RECONNECT) kick.trySend(Unit)
@@ -122,19 +139,36 @@ public class PhoneBridgeService : Service() {
     return START_STICKY
   }
 
+  override fun onTimeout(startId: Int, fgsType: Int) {
+    // Android 15+ defence: connectedDevice has no system time cap today, but if
+    // the platform ever times this foreground service out we must stopSelf()
+    // within seconds to avoid a RemoteServiceException crash while keeping
+    // bridgeEnabled true so the bridge comes back when next allowed.
+    BridgeHub.attach(this)
+    val outcome = BridgeRestartPolicy.onSystemTimeout(BridgeHub.enabled())
+    stop(outcome.linkStatus)
+  }
+
   override fun onDestroy() {
     stop()
     super.onDestroy()
   }
 
-  private fun stop() {
+  private fun stop(status: String = BridgeRestartPolicy.STATUS_OFF) {
+    running = false
     handle.cancel()
     link = null
     scope?.cancel()
     scope = null
-    BridgeHub.setLink(false, "off")
-    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-    stopSelf()
+    if (!stopped) {
+      stopped = true
+      BridgeHub.setLink(false, status)
+    }
+    if (inForeground) {
+      inForeground = false
+      runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
+    }
+    runCatching { stopSelf() }
   }
 
   // --- the link ---------------------------------------------------------
@@ -298,14 +332,26 @@ public class PhoneBridgeService : Service() {
 
   // --- the notification -------------------------------------------------
 
-  private fun startForegroundNotification() {
+  private fun startForegroundNotification(): Boolean {
     val type =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         } else {
           0
         }
-    ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
+    return try {
+      ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
+      inForeground = true
+      true
+    } catch (_: SecurityException) {
+      false
+    } catch (e: IllegalStateException) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        false
+      } else {
+        throw e
+      }
+    }
   }
 
   /**
@@ -367,6 +413,11 @@ public class PhoneBridgeService : Service() {
   }
 
   public companion object {
+    /** Whether [PhoneBridgeService] is currently active in this process. */
+    @Volatile
+    public var running: Boolean = false
+      private set
+
     /** The notification action, and what the Stop button sends. */
     public const val ACTION_STOP: String = "dev.vitruvian.remote.bridge.STOP"
 
