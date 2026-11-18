@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.48](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.47...vitruvian-remote-v0.1.48) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-remote:** update the app from Settings, About ([#5113](https://github.com/VitruvianSoftware/vitruvian-core/issues/5113)) ([8c59df6](https://github.com/VitruvianSoftware/vitruvian-core/commit/8c59df6f46e1804884475d294a7160a09cb655aa))
+
 ## [0.1.47](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.46...vitruvian-remote-v0.1.47) (2026-11-18)
 
 
