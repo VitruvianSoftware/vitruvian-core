@@ -68,6 +68,7 @@ import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.update.AppUpdater
 import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -276,6 +277,7 @@ public class MainActivity : ComponentActivity() {
                     ensurePermission = ::ensureBluetoothPermission,
                     enableBluetooth = ::requestEnableBluetoothSystem,
                 ),
+            updates = AppUpdater(this),
         )
     BridgeHub.addListener(bridgeListener)
     pushBridgeStatus()
@@ -477,6 +479,8 @@ public class MainActivity : ComponentActivity() {
     }
     state.refreshBridgePermissions()
     pushBridgeStatus()
+    // Back from "Install unknown apps" with it switched on: the update carries on.
+    state.onAppResumed()
   }
 
   override fun onPause() {

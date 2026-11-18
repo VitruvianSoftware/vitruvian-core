@@ -129,7 +129,51 @@ Pre-compiled release APKs with multi-ABI support (`arm64-v8a` and `x86_64`) and 
 - **Downloads Portal:** [`vitruviansoftware.dev/downloads/#mobile`](https://vitruviansoftware.dev/downloads/#mobile)
 - **GitHub Releases:** [`VitruvianSoftware/vitruvian-core/releases?q=vitruvian-remote`](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-remote)
 
-Releases are managed via release-please (`release-please-config.json`, `.release-please-manifest.json`) and automated via `.github/workflows/vitruvian-remote-release.yaml`. When a release PR merges on `main`, the workflow compiles the APK via `scripts/publish.sh` and attaches `VitruvianRemote-X.Y.Z.apk` to the tag.
+Releases are managed via release-please (`release-please-config.json`, `.release-please-manifest.json`) and automated via `.github/workflows/vitruvian-remote-release.yaml`. When a release PR merges on `main`, the workflow compiles the APK with `tools/src/publish.rs` and attaches `VitruvianRemote-X.Y.Z.apk` to the tag.
+
+## Updates
+
+**In the app.** Settings → About checks for a newer version when it opens (at most
+once an hour) and shows "Update available: X.Y.Z" with what changed. **Update**
+downloads the APK and installs it over the app, so Macs, pairings and settings
+stay. The first time, Android asks you to allow Vitruvian Remote to "Install
+unknown apps"; the app explains why before sending you there.
+
+What it trusts, in order:
+
+1. **The feed's signature.** `vitruviansoftware.dev/updates/android/vitruvian-remote.json`
+   names the release's APK, its size and SHA-256. It is signed with the same
+   Ed25519 key as the Mac app's tool catalogue (`catalog/public-key.txt`), by
+   `catalog-publish`, over the bytes merged to `main`. The app refuses a feed
+   that doesn't verify, names another package, or points anywhere but this
+   repository's own `vitruvian-remote-v*` releases.
+2. **The download.** Size and SHA-256 must match the feed, and the bytes are hashed
+   again as they go into Android's installer.
+3. **The signer.** The APK must be signed by the installed app's certificate (or a
+   key that certificate rotated to). Android would refuse anything else; checking
+   first turns that into a clear sentence and never a reinstall that loses data.
+
+On Android 12+ the install asks for no second confirmation when Android allows
+it, which it does for an app updating itself. It does not claim update
+ownership (Android 14), so Obtainium and `adb install` keep working.
+
+How a release reaches the feed: the release workflow writes
+`vitruvian-remote-update.json` with the APK, checks it against the APK on the
+release, and opens a pull request that updates `catalog/android/vitruvian-remote.json`
+and merges itself; `catalog-publish` then signs it into the website. The code is
+`src/main/kotlin/dev/vitruvian/remote/update/`, tested by `:update_feed_test` and
+`:ed25519_test`.
+
+**Without the app's help: Obtainium.** [Obtainium](https://github.com/ImranR98/Obtainium)
+(on F-Droid) can follow the GitHub releases directly. Add
+`https://github.com/VitruvianSoftware/vitruvian-core`, set **Filter release
+titles by regular expression** to `^vitruvian-remote-v`, and **Filter APKs by
+regular expression** to `VitruvianRemote-.*\.apk$`. Obtainium checks the signer
+matches on every update, as Android does.
+
+There is no F-Droid repository: it would need the APKs hosted on the website and
+a second signing key, for what Obtainium already does with no setup on our side.
+
 
 ## What is missing
 

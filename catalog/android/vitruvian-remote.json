@@ -1,0 +1,15 @@
+{
+  "kind": "vitruvian-android-update",
+  "schema": 1,
+  "packageName": "dev.vitruvian.remote",
+  "version": "0.1.46",
+  "versionCode": 146,
+  "minSdk": 26,
+  "published": "2026-11-16",
+  "apk": {
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.46/VitruvianRemote-0.1.46.apk",
+    "size": 9682039,
+    "sha256": "6e751e3699e145c06c97936167ef687cd4dcb28eaa291fb9bf2c9190c25ba7fd"
+  },
+  "notes": ["move the Android apps to Sentry 8 with one shared privacy setup"]
+}

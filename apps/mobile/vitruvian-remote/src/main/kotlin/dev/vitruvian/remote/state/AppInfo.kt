@@ -208,8 +208,10 @@ public object AppInfo {
 
   public val privacyTrailingStatements: List<String> =
       listOf(
-          "This phone talks to the Macs you add, and to Vitruvian Software's crash server if " +
-              "crash reports are on. Trackpad and keys go straight to your Mac over Bluetooth.",
+          "This phone talks to the Macs you add, to Vitruvian Software's crash server if " +
+              "crash reports are on, and to vitruviansoftware.dev to check for updates when " +
+              "you open About. Tapping Update downloads the new version from Vitruvian's " +
+              "releases on GitHub. Trackpad and keys go straight to your Mac over Bluetooth.",
           "Phone Bridge is off until you turn it on. When it's on, AI agents on your own Mac " +
               "can use only the permissions you grant ($phoneBridgeCapabilitiesCommaList). " +
               "The most recent requests are listed on the Phone Bridge page.",
