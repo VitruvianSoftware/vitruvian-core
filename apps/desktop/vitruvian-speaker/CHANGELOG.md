@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.2...vitruvian-speaker-v1.44.0) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-speaker:** choose the snooze length and queue announcements while snoozed ([#5078](https://github.com/VitruvianSoftware/vitruvian-core/issues/5078)) ([0306f1e](https://github.com/VitruvianSoftware/vitruvian-core/commit/0306f1eae68f7281ae60f159ba867714caa46d39))
+
 ## [1.43.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.1...vitruvian-speaker-v1.43.2) (2026-11-14)
 
 
