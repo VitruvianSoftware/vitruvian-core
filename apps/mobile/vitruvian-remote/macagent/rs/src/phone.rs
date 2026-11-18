@@ -75,6 +75,9 @@ impl PhoneTool {
 pub struct PhoneDevice {
     pub model: String,
     pub android: String,
+    /// The Vitruvian Remote version on the phone. Empty from phones older than
+    /// 0.1.48, which do not send it.
+    pub app_version: String,
 }
 
 impl PhoneDevice {
@@ -82,6 +85,13 @@ impl PhoneDevice {
         Self {
             model: v.get_str("model").to_string(),
             android: v.get_str("android").to_string(),
+            // Bounded and printable: it is the phone's claim, shown in a menu.
+            app_version: v
+                .get_str("app_version")
+                .chars()
+                .filter(|c| c.is_ascii_graphic())
+                .take(32)
+                .collect(),
         }
     }
 
@@ -92,6 +102,9 @@ impl PhoneDevice {
         }
         if !self.android.is_empty() {
             m.insert("android", JsonValue::from_str_val(&self.android));
+        }
+        if !self.app_version.is_empty() {
+            m.insert("app_version", JsonValue::from_str_val(&self.app_version));
         }
         JsonValue::Object(m)
     }
@@ -736,7 +749,39 @@ mod tests {
         PhoneDevice {
             model: model.to_string(),
             android: "16".to_string(),
+            app_version: String::new(),
         }
+    }
+
+    #[test]
+    fn device_keeps_the_phone_app_version_and_reports_it() {
+        let v = JsonValue::parse(r#"{"model":"Pixel Fold","android":"16","app_version":"0.1.47"}"#)
+            .unwrap();
+        let dev = PhoneDevice::from_json(&v);
+        assert_eq!(dev.app_version, "0.1.47");
+        let out = dev.to_json_value();
+        assert_eq!(out.get_str("app_version"), "0.1.47");
+    }
+
+    #[test]
+    fn device_from_an_older_phone_has_no_app_version_field() {
+        let v = JsonValue::parse(r#"{"model":"Pixel","android":"15"}"#).unwrap();
+        let dev = PhoneDevice::from_json(&v);
+        assert_eq!(dev.app_version, "");
+        assert!(dev.to_json_value().get("app_version").is_none());
+    }
+
+    #[test]
+    fn device_app_version_is_bounded_and_printable() {
+        let long = format!("0.1.47\n{}", "9".repeat(100));
+        let v = JsonValue::parse(&format!(
+            r#"{{"model":"Pixel","android":"15","app_version":{:?}}}"#,
+            long
+        ))
+        .unwrap();
+        let dev = PhoneDevice::from_json(&v);
+        assert_eq!(dev.app_version.len(), 32);
+        assert!(dev.app_version.starts_with("0.1.479"));
     }
 
     /// `2026-11-18T16:50:03Z` and nothing longer: the stamp is to the second.

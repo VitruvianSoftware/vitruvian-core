@@ -174,6 +174,7 @@ public enum RemotePages {
         public static let statusAgent = "statusAgent"
         public static let statusPhone = "statusPhone"
         public static let statusTailnet = "statusTailnet"
+        public static let statusPhoneUpdate = "statusPhoneUpdate"
         public static let statusNotifications = "statusNotifications"
         public static let statusClaudeHook = "statusClaudeHook"
 
@@ -565,6 +566,16 @@ public enum RemotePages {
                 icon: phoneIcon
             )
         )
+
+        if let update = state.snapshot.phoneUpdateLine {
+            blocks.append(
+                row(
+                    Block.statusPhoneUpdate,
+                    .plain(update),
+                    icon: "arrow.down.circle"
+                )
+            )
+        }
 
         if let tailnetWarning = state.snapshot.tailnetLine {
             blocks.append(
