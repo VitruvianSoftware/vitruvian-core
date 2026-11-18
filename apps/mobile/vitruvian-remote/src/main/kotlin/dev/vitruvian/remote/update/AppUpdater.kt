@@ -38,6 +38,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import javax.net.ssl.HttpsURLConnection
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -105,9 +106,11 @@ public class AppUpdater(private val context: Context) : AppUpdates {
   override suspend fun check(): UpdateCheck =
       withContext(Dispatchers.IO) {
         try {
-          val feed = fetch(UpdateFeed.FEED_URL, UpdateFeed.MAX_FEED_BYTES)
-          val signature = fetch(UpdateFeed.SIGNATURE_URL, UpdateFeed.MAX_SIGNATURE_BYTES)
-          when (val result = UpdateFeed.verify(feed, String(signature, Charsets.US_ASCII))) {
+          // The feed and its signature are two requests; mid-deploy they can come from two
+          // versions of the site. One more try tells that apart from a feed that is really bad.
+          var result = fetchAndVerify()
+          if (result is UpdateFeed.Result.Refused) result = fetchAndVerify()
+          when (result) {
             is UpdateFeed.Result.Refused -> UpdateCheck.Failed(result.reason)
             is UpdateFeed.Result.Ok ->
                 UpdateCheck.Decided(
@@ -117,8 +120,18 @@ public class AppUpdater(private val context: Context) : AppUpdates {
           }
         } catch (e: IOException) {
           UpdateCheck.Failed(OFFLINE)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          UpdateCheck.Failed(CHECK_FAILED)
         }
       }
+
+  private fun fetchAndVerify(): UpdateFeed.Result {
+    val feed = fetch(UpdateFeed.FEED_URL, UpdateFeed.MAX_FEED_BYTES)
+    val signature = fetch(UpdateFeed.SIGNATURE_URL, UpdateFeed.MAX_SIGNATURE_BYTES)
+    return UpdateFeed.verify(feed, String(signature, Charsets.US_ASCII))
+  }
 
   override fun canInstall(): Boolean = pm.canRequestPackageInstalls()
 
@@ -141,20 +154,31 @@ public class AppUpdater(private val context: Context) : AppUpdates {
         dir.deleteRecursively()
         dir.mkdirs()
         val apk = File(dir, "VitruvianRemote-${release.version}.apk")
+        val sha =
+            try {
+              download(release, apk, progress)
+            } catch (e: IOException) {
+              apk.delete()
+              return@withContext OFFLINE_DOWNLOAD
+            }
+        // Everything after the download: PackageManager and the installer session can throw
+        // IllegalStateException, NameNotFoundException and others, and none may crash the app.
         try {
-          val sha = download(release, apk, progress)
           val refusal = ApkCheck.refusal(facts(apk, sha), release, installedSigning())
           if (refusal != null) {
             apk.delete()
             return@withContext refusal
           }
           install(apk, release)
-        } catch (e: IOException) {
-          apk.delete()
-          OFFLINE_DOWNLOAD
         } catch (e: SecurityException) {
           apk.delete()
           "Android didn't let the app install updates. Allow it under Install unknown apps."
+        } catch (e: CancellationException) {
+          apk.delete()
+          throw e
+        } catch (e: Exception) {
+          apk.delete()
+          INSTALL_FAILED
         }
       }
 
@@ -175,13 +199,16 @@ public class AppUpdater(private val context: Context) : AppUpdates {
     connection.readTimeout = TIMEOUT_MS
     connection.instanceFollowRedirects = true
     connection.setRequestProperty("User-Agent", "VitruvianRemote")
-    if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+    try {
+      val code = connection.responseCode
+      if (code != HttpURLConnection.HTTP_OK) throw IOException("HTTP $code")
+      // HttpURLConnection only follows https to https, but say so rather than rely on it.
+      if (connection.url.protocol != "https") throw IOException("redirected off https")
+      return connection
+    } catch (e: Exception) {
       connection.disconnect()
-      throw IOException("HTTP ${connection.responseCode}")
+      throw e
     }
-    // HttpURLConnection only follows https to https, but say so rather than rely on it.
-    if (connection.url.protocol != "https") throw IOException("redirected off https")
-    return connection
   }
 
   private fun fetch(url: String, limit: Int): ByteArray {
@@ -354,6 +381,9 @@ public class AppUpdater(private val context: Context) : AppUpdates {
     const val TIMEOUT_MS = 15_000
     const val OFFLINE = "Couldn't reach vitruviansoftware.dev to check for updates."
     const val OFFLINE_DOWNLOAD = "The download didn't finish. Check the connection and try again."
+    const val CHECK_FAILED = "Couldn't check for updates. Try again later."
+    const val INSTALL_FAILED =
+        "The update couldn't be handed to Android's installer. Nothing changed; try again."
   }
 }
 

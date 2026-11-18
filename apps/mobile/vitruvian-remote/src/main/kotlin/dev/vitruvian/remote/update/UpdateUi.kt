@@ -61,6 +61,20 @@ public sealed interface UpdateUi {
       UpdateUi
 
   public companion object {
+    /**
+     * Whether opening About should check the feed again. Never while something runs, and never over
+     * a step waiting on the person (Confirm, NeedsPermission): a fresh Available would hide the
+     * button they still need. Otherwise when there is no result yet, the last one failed, or it has
+     * gone [stale].
+     */
+    public fun shouldRecheck(ui: UpdateUi, stale: Boolean): Boolean =
+        when {
+          ui.busy -> false
+          ui is Confirm || ui is NeedsPermission -> false
+          ui is Idle || ui is Failed -> true
+          else -> stale
+        }
+
     public fun from(check: UpdateCheck): UpdateUi =
         when (check) {
           is UpdateCheck.Failed -> Failed(check.reason, null)

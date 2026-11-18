@@ -39,6 +39,7 @@ import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.hid.HidSender
 import dev.vitruvian.remote.trackpad.TrackpadTuning
 import dev.vitruvian.remote.update.AppUpdates
+import dev.vitruvian.remote.update.UpdateCheck
 import dev.vitruvian.remote.update.UpdateInstallHub
 import dev.vitruvian.remote.update.UpdateUi
 import java.net.DatagramPacket
@@ -49,6 +50,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -7188,10 +7190,9 @@ public class RemoteState(
    * never in the background: the request is visible and asked for.
    */
   public fun checkForUpdatesIfStale(nowMs: Long = System.currentTimeMillis()) {
-    if (updates == null || update.busy) return
-    val fresh = nowMs - lastUpdateCheckMs < UPDATE_CHECK_INTERVAL_MS
-    if (fresh && update !is UpdateUi.Idle && update !is UpdateUi.Failed) return
-    checkForUpdates()
+    if (updates == null) return
+    val stale = nowMs - lastUpdateCheckMs >= UPDATE_CHECK_INTERVAL_MS
+    if (UpdateUi.shouldRecheck(update, stale)) checkForUpdates()
   }
 
   public fun checkForUpdates() {
@@ -7199,7 +7200,14 @@ public class RemoteState(
     if (update.busy) return
     update = UpdateUi.Checking
     scope.launch {
-      val found = port.check()
+      val found =
+          try {
+            port.check()
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            UpdateCheck.Failed("Couldn't check for updates. Try again later.")
+          }
       lastUpdateCheckMs = System.currentTimeMillis()
       update = UpdateUi.from(found)
     }
@@ -7218,14 +7226,22 @@ public class RemoteState(
     var shown = 0
     scope.launch {
       val failure =
-          port.downloadAndInstall(release) { fraction ->
-            val percent = (fraction * 100).toInt()
-            if (percent != shown) {
-              shown = percent
-              scope.launch {
-                if (update is UpdateUi.Downloading) update = UpdateUi.Downloading(release, fraction)
+          try {
+            port.downloadAndInstall(release) { fraction ->
+              val percent = (fraction * 100).toInt()
+              if (percent != shown) {
+                shown = percent
+                scope.launch {
+                  if (update is UpdateUi.Downloading)
+                      update = UpdateUi.Downloading(release, fraction)
+                }
               }
             }
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            // Never left on "Downloading": say so, and Try again works.
+            "The update didn't install. Nothing changed; try again."
           }
       update =
           if (failure == null) {

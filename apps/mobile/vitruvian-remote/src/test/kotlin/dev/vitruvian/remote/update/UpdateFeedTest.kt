@@ -246,6 +246,26 @@ class UpdateFeedTest {
   }
 
   @Test
+  fun aboutRechecksOnlyWhenNothingWaitsOnThePerson() {
+    val release = (check(feed()) as UpdateFeed.Result.Ok).release
+    for (stale in listOf(true, false)) {
+      // Waiting on the person: a re-check would replace their Confirm or Allow button.
+      assertEquals(false, UpdateUi.shouldRecheck(UpdateUi.Confirm(release), stale))
+      assertEquals(false, UpdateUi.shouldRecheck(UpdateUi.NeedsPermission(release), stale))
+      // Running.
+      assertEquals(false, UpdateUi.shouldRecheck(UpdateUi.Checking, stale))
+      assertEquals(false, UpdateUi.shouldRecheck(UpdateUi.Downloading(release, 0.5f), stale))
+      assertEquals(false, UpdateUi.shouldRecheck(UpdateUi.Installing(release), stale))
+      // Nothing yet, or a failure: always.
+      assertEquals(true, UpdateUi.shouldRecheck(UpdateUi.Idle, stale))
+      assertEquals(true, UpdateUi.shouldRecheck(UpdateUi.Failed("x", null), stale))
+      // A good answer stands until it is stale.
+      assertEquals(stale, UpdateUi.shouldRecheck(UpdateUi.UpToDate, stale))
+      assertEquals(stale, UpdateUi.shouldRecheck(UpdateUi.Available(release), stale))
+    }
+  }
+
+  @Test
   fun aboutSaysWhatIsAvailableInPlainWords() {
     val release = (check(feed()) as UpdateFeed.Result.Ok).release
     assertEquals(
