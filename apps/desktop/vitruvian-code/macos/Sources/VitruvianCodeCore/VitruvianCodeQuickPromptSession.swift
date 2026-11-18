@@ -1548,6 +1548,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stopTranscriptFollower()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
+        awaitingAnswers = []
+        expirePendingQuestionCards()
         if let active = connection {
             if let immediate = active as? any _ImmediateAgentConnection {
                 immediate.cancelImmediateTurn()

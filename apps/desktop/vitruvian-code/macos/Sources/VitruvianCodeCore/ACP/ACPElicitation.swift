@@ -109,7 +109,9 @@ public struct ACPElicitationForm: Equatable, Sendable {
                     label: label,
                     description: description,
                     required: requiredSet.contains(key),
-                    options: parsed.options
+                    options: parsed.options,
+                    minItems: parsed.minItems,
+                    maxItems: parsed.maxItems
                 )
             )
         }
@@ -144,7 +146,14 @@ public struct ACPElicitationForm: Equatable, Sendable {
         var output: [String: ACPJSONValue] = [:]
         for id in fieldOrder {
             guard let rule = rules[id] else { continue }
-            if let raw = answers[id], let typed = Self.typedAnswer(rule: rule, raw: raw) {
+            if let raw = answers[id] {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty && !requiredFields.contains(id) {
+                    continue
+                }
+                guard let typed = Self.typedAnswer(rule: rule, raw: raw) else {
+                    return nil
+                }
                 output[id] = typed
             } else if requiredFields.contains(id) {
                 return nil
@@ -197,14 +206,14 @@ public struct ACPElicitationForm: Equatable, Sendable {
 
     private static func parseField(
         property: [String: ACPJSONValue]
-    ) -> (rule: FieldRule, fieldType: AgentQuestion.FieldType, options: [AgentQuestion.Option])? {
+    ) -> (rule: FieldRule, fieldType: AgentQuestion.FieldType, options: [AgentQuestion.Option], minItems: Int?, maxItems: Int?)? {
         guard let typeName = property["type"]?.stringValue else { return nil }
         switch typeName {
         case "string":
             let rawEnum = nonNull(property["enum"])
             let rawOneOf = nonNull(property["oneOf"])
             if rawEnum == nil && rawOneOf == nil {
-                return (.text, .text, [])
+                return (.text, .text, [], nil, nil)
             }
             let parsedOptions: [AgentQuestion.Option]?
             if let oneOfArray = rawOneOf?.arrayValue {
@@ -216,7 +225,7 @@ public struct ACPElicitationForm: Equatable, Sendable {
             }
             guard let options = parsedOptions, !options.isEmpty else { return nil }
             let values = Set(options.map(\.value))
-            return (.choice(values: values), .choice, options)
+            return (.choice(values: values), .choice, options, nil, nil)
 
         case "array":
             guard let itemsObj = property["items"]?.objectValue else { return nil }
@@ -230,26 +239,28 @@ public struct ACPElicitationForm: Equatable, Sendable {
             }
             guard let options = parsedOptions, !options.isEmpty else { return nil }
             let values = Set(options.map(\.value))
-            let minItems = property["minItems"]?.intValue ?? 0
-            let maxItems = property["maxItems"]?.intValue ?? Int.max
+            let explicitMinItems = property["minItems"]?.intValue
+            let explicitMaxItems = property["maxItems"]?.intValue
+            let minItems = explicitMinItems ?? 0
+            let maxItems = explicitMaxItems ?? Int.max
             // Empty-only or impossible bounds cannot be answered (`elicitationForm.ts:112-116`).
             if minItems < 0 || maxItems == 0 || minItems > maxItems || minItems > values.count {
                 return nil
             }
-            return (.multiChoice(values: values, minItems: minItems, maxItems: maxItems), .multiChoice, options)
+            return (.multiChoice(values: values, minItems: minItems, maxItems: maxItems), .multiChoice, options, explicitMinItems, explicitMaxItems)
 
         case "boolean":
             let options = [
                 AgentQuestion.Option(value: "true", label: "true", description: "Yes"),
                 AgentQuestion.Option(value: "false", label: "false", description: "No"),
             ]
-            return (.boolean, .boolean, options)
+            return (.boolean, .boolean, options, nil, nil)
 
         case "number":
-            return (.number(integer: false), .number, [])
+            return (.number(integer: false), .number, [], nil, nil)
 
         case "integer":
-            return (.number(integer: true), .integer, [])
+            return (.number(integer: true), .integer, [], nil, nil)
 
         default:
             return nil
@@ -321,7 +332,11 @@ public struct ACPElicitationForm: Equatable, Sendable {
             if integer {
                 guard parsed.rounded() == parsed,
                       parsed >= Double(Int.min),
-                      parsed <= Double(Int.max) else {
+                      parsed < Double(Int.max) else {
+                    return nil
+                }
+                if let decimal = Decimal(string: trimmed, locale: Locale(identifier: "en_US_POSIX")),
+                   decimal < Decimal(Int.min) || decimal > Decimal(Int.max) {
                     return nil
                 }
                 return .int(Int(parsed))

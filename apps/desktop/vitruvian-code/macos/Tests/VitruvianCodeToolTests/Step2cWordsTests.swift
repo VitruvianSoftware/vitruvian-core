@@ -60,6 +60,7 @@ final class Step2cWordsTests: XCTestCase {
             XCTAssertNotEqual(Words.text("waitingForAnswer", language), Words.text("waitingForAnswer", "en"), language)
             XCTAssertNotEqual(Words.text("moreApprovalOptions", language), Words.text("moreApprovalOptions", "en"), language)
             XCTAssertNotEqual(Words.text("permissionRequest", language), Words.text("permissionRequest", "en"), language)
+            XCTAssertNotEqual(Words.text("requiredField", language), Words.text("requiredField", "en"), language)
         }
     }
 }

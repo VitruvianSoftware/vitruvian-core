@@ -26,6 +26,8 @@ import XCTest
 
 /// Snapshot tests for agent approval option cards and question form cards in light and dark mode.
 final class AgentCardSnapshotTests: XCTestCase {
+    private static let snapshotFolderPath = "/private/tmp/vitruvian-code-snapshots"
+
     @MainActor
     func testRendersApprovalOptionsAndQuestionFormCardsLightAndDark() throws {
         let approvalOptions: [AgentPermissionOption] = [
@@ -98,7 +100,7 @@ final class AgentCardSnapshotTests: XCTestCase {
                 requestID: "q-url",
                 title: "Sign in",
                 message: "Open the sign-in page to continue.",
-                url: "https://auth.example.com/oauth/start"
+                url: "https://auth.example.com/oauth/start?client_id=vitruvian&redirect_uri=http://localhost:8080/cb"
             ),
             questionStatus: .pending
         )
@@ -111,9 +113,17 @@ final class AgentCardSnapshotTests: XCTestCase {
             ("form-card-url", urlQuestionMsg),
         ]
 
-        let folder = ProcessInfo.processInfo.environment["TEST_UNDECLARED_OUTPUTS_DIR"] ?? NSTemporaryDirectory()
+        _ = NSApplication.shared
+        let folderURL = URL(fileURLWithPath: Self.snapshotFolderPath, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        let undeclaredOutputsURL = ProcessInfo.processInfo.environment["TEST_UNDECLARED_OUTPUTS_DIR"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+
         for shot in shots {
-            for (schemeName, scheme) in [("dark", ColorScheme.dark), ("light", ColorScheme.light)] {
+            for (schemeName, scheme, appearanceName) in [
+                ("light", ColorScheme.light, NSAppearance.Name.aqua),
+                ("dark", ColorScheme.dark, NSAppearance.Name.darkAqua),
+            ] {
                 let view = VitruvianCodeMessageBubble(
                     message: shot.message,
                     strings: VitruvianCodeChatStrings(),
@@ -121,20 +131,141 @@ final class AgentCardSnapshotTests: XCTestCase {
                 )
                 .frame(width: 560)
                 .padding(16)
+                .fixedSize(horizontal: false, vertical: true)
                 .background(scheme == .dark ? Color(white: 0.12) : Color(white: 0.97))
                 .environment(\.colorScheme, scheme)
 
-                let renderer = ImageRenderer(content: view)
-                renderer.scale = 2
-                guard let image = renderer.cgImage else {
-                    throw XCTSkip("ImageRenderer drew nothing here")
+                let bitmap = try Self.renderViewToBitmap(view, width: 592, appearanceName: appearanceName)
+                let yellowShare = Self.placeholderYellowShare(in: bitmap)
+                XCTAssertLessThan(
+                    yellowShare,
+                    0.01,
+                    "\(shot.name)-\(schemeName) contains placeholder yellow (\(String(format: "%.2f", yellowShare * 100))%)"
+                )
+
+                let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let fileName = "\(shot.name)-\(schemeName).png"
+                let destination = folderURL.appendingPathComponent(fileName)
+                try data.write(to: destination)
+                if let undeclaredOutputsURL {
+                    try? data.write(to: undeclaredOutputsURL.appendingPathComponent(fileName))
                 }
-                let data = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-                let url = URL(fileURLWithPath: folder).appendingPathComponent("\(shot.name)-\(schemeName).png")
-                try data.write(to: url)
-                XCTAssertGreaterThan(image.width, 100)
-                XCTAssertGreaterThan(image.height, 80)
+                print("agent card snapshot: \(destination.path)")
+                XCTAssertGreaterThan(bitmap.pixelsWide, 100)
+                XCTAssertGreaterThan(bitmap.pixelsHigh, 80)
             }
         }
+    }
+
+    func testReturnToSendSubmitsValidFormAndSendsNothingWhenInvalid() {
+        let question = AgentQuestion(
+            requestID: "q-ret",
+            title: "Deploy",
+            message: "Choose target and count",
+            fields: [
+                AgentQuestion.Field(
+                    id: "env",
+                    type: .choice,
+                    label: "Environment",
+                    required: true,
+                    options: [AgentQuestion.Option(value: "prod", label: "Production")]
+                ),
+                AgentQuestion.Field(id: "replicas", type: .integer, label: "Replicas", required: true),
+            ]
+        )
+
+        var form = AgentQuestionForm(question: question)
+        XCTAssertNil(form.submitOnReturn(status: .pending), "incomplete form must send nothing on Return")
+
+        form.selectChoice(fieldID: "env", value: "prod")
+        form.setText(fieldID: "replicas", value: "not-an-int")
+        XCTAssertNil(form.submitOnReturn(status: .pending), "invalid form must send nothing on Return")
+
+        form.setText(fieldID: "replicas", value: "3")
+        XCTAssertEqual(
+            form.submitOnReturn(status: .pending),
+            ["env": "prod", "replicas": "3"],
+            "valid form must submit answers on Return"
+        )
+        XCTAssertNil(form.submitOnReturn(status: .expired), "non-pending card must send nothing on Return")
+        XCTAssertNil(form.submitOnReturn(status: .skipped))
+    }
+
+    @MainActor
+    private static func renderViewToBitmap<V: View>(
+        _ view: V,
+        width: CGFloat,
+        appearanceName: NSAppearance.Name
+    ) throws -> NSBitmapImageRep {
+        let host = NSHostingView(rootView: view)
+        host.appearance = NSAppearance(named: appearanceName)
+        let initialFitting = host.fittingSize
+        let initialSize = NSSize(width: max(initialFitting.width, width), height: max(initialFitting.height, 1))
+        let window = NSWindow(
+            contentRect: NSRect(x: -10_000, y: -10_000, width: initialSize.width, height: initialSize.height),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: appearanceName)
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: initialSize)
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        for _ in 0 ..< 25 {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.004))
+            host.layoutSubtreeIfNeeded()
+        }
+        let finalSize = NSSize(width: max(host.fittingSize.width, width), height: max(host.fittingSize.height, 1))
+        if finalSize != window.frame.size {
+            window.setContentSize(finalSize)
+            host.frame = NSRect(origin: .zero, size: finalSize)
+            host.layoutSubtreeIfNeeded()
+        }
+        window.displayIfNeeded()
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            throw NSError(domain: "AgentCardSnapshotTests", code: 1)
+        }
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        return bitmap
+    }
+
+    private static func placeholderYellowShare(in bitmap: NSBitmapImageRep) -> Double {
+        guard let cgImage = bitmap.cgImage else { return 1.0 }
+        let width = cgImage.width
+        let height = cgImage.height
+        let total = width * height
+        guard total > 0,
+              let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(
+                  data: nil,
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bytesPerRow: width * 4,
+                  space: colorSpace,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ),
+              let data = ctx.data else {
+            return 1.0
+        }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let ptr = data.bindMemory(to: UInt8.self, capacity: total * 4)
+        var yellowCount = 0
+        for i in 0 ..< total {
+            let offset = i * 4
+            let r = Int(ptr[offset])
+            let g = Int(ptr[offset + 1])
+            let b = Int(ptr[offset + 2])
+            if abs(r - 255) <= 25 && abs(g - 204) <= 25 && b <= 40 {
+                yellowCount += 1
+            }
+        }
+        return Double(yellowCount) / Double(total)
     }
 }

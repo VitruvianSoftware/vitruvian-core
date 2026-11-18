@@ -553,6 +553,273 @@ final class ApprovalAndQuestionCardTests: XCTestCase {
         }
     }
 
+    // MARK: - Round-1 QA Fixes
+
+    func testIntegerOverflowBoundsRejectedInFormAndElicitation() throws {
+        let schema: ACPJSONValue = .object([
+            "type": .string("object"),
+            "required": .array([.string("count")]),
+            "properties": .object([
+                "count": .object([
+                    "type": .string("integer"),
+                    "title": .string("Count"),
+                ]),
+            ]),
+        ])
+        let params = ACPElicitationCreateParams(
+            sessionId: "s-int",
+            mode: "form",
+            title: "Integer bounds",
+            message: "Enter count",
+            requestedSchema: schema
+        )
+        let elicitation = try XCTUnwrap(ACPElicitationForm.parse(requestID: "req-int", params: params))
+
+        for bad in ["9223372036854775808", "-9223372036854775809"] {
+            XCTAssertFalse(AgentQuestionForm.isValidNumber(bad, integer: true), "\(bad) must be rejected by form")
+            var cardForm = AgentQuestionForm(question: elicitation.question)
+            cardForm.setText(fieldID: "count", value: bad)
+            XCTAssertTrue(cardForm.hasParseError(fieldID: "count"), "\(bad) must flag parse error")
+            XCTAssertNil(cardForm.buildAnswers(), "\(bad) must fail buildAnswers")
+            XCTAssertEqual(
+                elicitation.resolve(answer: .form(["count": bad])).action,
+                .decline,
+                "\(bad) must be declined by ACPElicitationForm"
+            )
+        }
+
+        let safeValues: [(String, Int)] = [
+            ("9007199254740991", 9_007_199_254_740_991),
+            ("-9007199254740991", -9_007_199_254_740_991),
+            ("-9223372036854775808", Int.min),
+            ("42", 42),
+        ]
+        for (raw, expected) in safeValues {
+            XCTAssertTrue(AgentQuestionForm.isValidNumber(raw, integer: true), "\(raw) must be accepted by form")
+            var cardForm = AgentQuestionForm(question: elicitation.question)
+            cardForm.setText(fieldID: "count", value: raw)
+            XCTAssertFalse(cardForm.hasParseError(fieldID: "count"))
+            let built = try XCTUnwrap(cardForm.buildAnswers())
+            let resolved = elicitation.resolve(answer: .form(built))
+            XCTAssertEqual(resolved.action, .accept, "\(raw) must be accepted by ACPElicitationForm")
+            XCTAssertEqual(resolved.content?["count"], .int(expected))
+        }
+    }
+
+    func testMultiChoiceMinAndMaxItemsEnforcedEndToEndAndLegacyFieldDecodes() throws {
+        func makeMultiChoiceSchema(required: Bool) -> ACPJSONValue {
+            .object([
+                "type": .string("object"),
+                "required": .array(required ? [.string("items")] : []),
+                "properties": .object([
+                    "items": .object([
+                        "type": .string("array"),
+                        "title": .string("Items"),
+                        "minItems": .int(2),
+                        "maxItems": .int(3),
+                        "items": .object([
+                            "type": .string("string"),
+                            "enum": .array([.string("a"), .string("b"), .string("c"), .string("d")]),
+                        ]),
+                    ]),
+                ]),
+            ])
+        }
+
+        let requiredParams = ACPElicitationCreateParams(
+            sessionId: "s-mc",
+            mode: "form",
+            title: "Pick items",
+            message: "Choose 2 to 3 items",
+            requestedSchema: makeMultiChoiceSchema(required: true)
+        )
+        let elicitation = try XCTUnwrap(ACPElicitationForm.parse(requestID: "req-mc", params: requiredParams))
+        XCTAssertEqual(elicitation.question.fields.first?.minItems, 2)
+        XCTAssertEqual(elicitation.question.fields.first?.maxItems, 3)
+
+        let allOptions = ["a", "b", "c", "d"]
+        for count in 0 ... 4 {
+            var cardForm = AgentQuestionForm(question: elicitation.question)
+            let chosen = Array(allOptions.prefix(count))
+            for value in chosen {
+                cardForm.toggleMultiChoice(fieldID: "items", value: value)
+            }
+            let rawAnswer = ["items": AgentQuestionForm.encodeMultiChoice(chosen)]
+            if (2 ... 3).contains(count) {
+                XCTAssertTrue(cardForm.canSubmit, "count \(count) within 2...3 must enable Send")
+                let built = try XCTUnwrap(cardForm.buildAnswers())
+                let resolved = elicitation.resolve(answer: .form(built))
+                XCTAssertEqual(resolved.action, .accept, "count \(count) must be accepted by resolve")
+                XCTAssertEqual(resolved.content?["items"], .array(chosen.map(ACPJSONValue.string)))
+            } else {
+                XCTAssertFalse(cardForm.canSubmit, "count \(count) outside 2...3 must disable Send")
+                XCTAssertNil(cardForm.buildAnswers(), "count \(count) outside 2...3 must return nil from buildAnswers")
+                XCTAssertEqual(
+                    elicitation.resolve(answer: .form(rawAnswer)).action,
+                    .decline,
+                    "count \(count) outside 2...3 must be declined by resolve"
+                )
+            }
+        }
+
+        // Optional multi_choice enforces minItems/maxItems when any items are chosen.
+        let optionalParams = ACPElicitationCreateParams(
+            sessionId: "s-mc-opt",
+            mode: "form",
+            message: "Optionally pick 2 to 3",
+            requestedSchema: makeMultiChoiceSchema(required: false)
+        )
+        let optionalElicitation = try XCTUnwrap(ACPElicitationForm.parse(requestID: "req-mc-opt", params: optionalParams))
+        for count in [1, 4] {
+            var cardForm = AgentQuestionForm(question: optionalElicitation.question)
+            let chosen = Array(allOptions.prefix(count))
+            for value in chosen {
+                cardForm.toggleMultiChoice(fieldID: "items", value: value)
+            }
+            XCTAssertFalse(cardForm.canSubmit)
+            XCTAssertNil(cardForm.buildAnswers())
+            XCTAssertEqual(
+                optionalElicitation.resolve(answer: .form(["items": AgentQuestionForm.encodeMultiChoice(chosen)])).action,
+                .decline
+            )
+        }
+        let emptyOptionalForm = AgentQuestionForm(question: optionalElicitation.question)
+        XCTAssertTrue(emptyOptionalForm.canSubmit)
+        XCTAssertEqual(emptyOptionalForm.buildAnswers(), [:])
+        XCTAssertEqual(optionalElicitation.resolve(answer: .form([:])).action, .accept)
+
+        // Legacy serialized field data without minItems/maxItems still decodes cleanly.
+        let legacyJSON = #"{"id":"tags","type":"multi_choice","label":"Tags","required":true,"options":[{"value":"x","label":"X"}]}"#
+        let decodedLegacy = try JSONDecoder().decode(AgentQuestion.Field.self, from: Data(legacyJSON.utf8))
+        XCTAssertNil(decodedLegacy.minItems)
+        XCTAssertNil(decodedLegacy.maxItems)
+        XCTAssertEqual(decodedLegacy.id, "tags")
+    }
+
+    func testStopExpiresPendingQuestionsAndIgnoresLateAnswerOrSkip() async throws {
+        let connections = LockedCardBox<[CardMockPersistentConnection]>([])
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let conn = CardMockPersistentConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        })
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: CardMockSessionHost())
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.agyACPProvider)
+
+        session.send("Ask before stop", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("prompt started for stop test") { connections.value.first?.promptCalls.count == 1 }
+        let conn = connections.value[0]
+
+        conn.emit(.question(AgentQuestion(requestID: "q-stop-1", message: "Should I proceed?")))
+        try await waitUntil("question pending before stop") {
+            session.hasPendingApproval && session.messages.contains { $0.question?.requestID == "q-stop-1" }
+        }
+        let qMsg = try XCTUnwrap(session.messages.first { $0.question?.requestID == "q-stop-1" })
+
+        session.stop()
+
+        XCTAssertFalse(session.hasPendingApproval)
+        XCTAssertTrue(session.awaitingAnswers.isEmpty)
+        XCTAssertEqual(session.messages.first { $0.id == qMsg.id }?.questionStatus, .expired)
+
+        session.answerQuestion(messageID: qMsg.id, answers: ["k": "v"])
+        session.skipQuestion(messageID: qMsg.id)
+        try? await Task.sleep(nanoseconds: 25_000_000)
+        XCTAssertTrue(conn.answers.isEmpty, "late answer/skip after stop() must send nothing")
+        XCTAssertEqual(session.messages.first { $0.id == qMsg.id }?.questionStatus, .expired)
+
+        conn.emit(.finished(status: "cancelled", response: nil, error: nil, conversationID: "s-stop"))
+        conn.finishPrompt(with: .cancelled)
+        try await waitUntil("turn ended after stop") { !session.isRunning }
+        await session.stopAll()
+    }
+
+    func testURLCanOpenAllowsOnlyHTTPAndHTTPSWithHostAndDisablesUnsafeOpen() {
+        for allowed in [
+            "https://auth.example.com/oauth/start?x=1",
+            "http://localhost:8080/callback",
+            "HTTPS://EXAMPLE.COM/path",
+            "Http://sub.domain.org",
+        ] {
+            XCTAssertTrue(AgentQuestionForm.canOpen(allowed), "\(allowed) must be allowed")
+        }
+
+        for rejected in [
+            "javascript:alert(1)",
+            "javascript://evil.com/%0aalert(1)",
+            "file:///etc/passwd",
+            "file://localhost/etc/passwd",
+            "vitruvian://open",
+            "mailto:user@example.com",
+            "http://",
+            "https:///path-only",
+            "http:example.com",
+            "https://bad host.com",
+            "not a url",
+            "",
+            "   ",
+        ] {
+            XCTAssertFalse(AgentQuestionForm.canOpen(rejected), "\(rejected) must be rejected")
+        }
+    }
+
+    func testSingleRequiredFieldShowsRequiredMarkAndDistinctDescription() {
+        let singleRequired = AgentQuestion.Field(
+            id: "branch",
+            type: .text,
+            label: "Branch",
+            description: "Git ref to deploy",
+            required: true
+        )
+        XCTAssertTrue(AgentQuestionForm.showsRequiredMark(field: singleRequired, fieldCount: 1))
+        XCTAssertEqual(
+            AgentQuestionForm.fieldDescriptionToShow(field: singleRequired, message: "Enter deployment details"),
+            "Git ref to deploy"
+        )
+        XCTAssertNil(AgentQuestionForm.fieldDescriptionToShow(field: singleRequired, message: "Git ref to deploy"))
+        XCTAssertNil(
+            AgentQuestionForm.fieldDescriptionToShow(
+                field: AgentQuestion.Field(id: "b", type: .text, label: "Branch", description: "Branch", required: true),
+                message: "Other"
+            )
+        )
+        XCTAssertNil(
+            AgentQuestionForm.fieldDescriptionToShow(
+                field: AgentQuestion.Field(id: "b", type: .text, label: "Branch", description: "   ", required: true),
+                message: "Other"
+            )
+        )
+
+        let singleAlreadyLabeled = AgentQuestion.Field(
+            id: "branch",
+            type: .text,
+            label: "Branch (Required)",
+            required: true
+        )
+        XCTAssertFalse(AgentQuestionForm.showsRequiredMark(field: singleAlreadyLabeled, fieldCount: 1))
+        XCTAssertTrue(
+            AgentQuestionForm.showsRequiredMark(field: singleAlreadyLabeled, fieldCount: 1, hasOptionalField: true),
+            "required mark stays visible whenever an optional field exists"
+        )
+        XCTAssertTrue(
+            AgentQuestionForm.showsRequiredMark(field: singleAlreadyLabeled, fieldCount: 2),
+            "required mark stays visible whenever multiple fields exist"
+        )
+
+        let singleOptional = AgentQuestion.Field(id: "note", type: .text, label: "Note", required: false)
+        XCTAssertFalse(AgentQuestionForm.showsRequiredMark(field: singleOptional, fieldCount: 1))
+        XCTAssertFalse(AgentQuestionForm.showsRequiredMark(field: singleOptional, fieldCount: 2))
+    }
+
+    func testDigitKeyActionOnlyConsumesValidOptionWhenComposerUnfocused() {
+        XCTAssertFalse(AgentQuestionForm.digitKeyAction(digit: 1, optionCount: 0, composerFocused: false))
+        XCTAssertFalse(AgentQuestionForm.digitKeyAction(digit: 4, optionCount: 2, composerFocused: false))
+        XCTAssertFalse(AgentQuestionForm.digitKeyAction(digit: 1, optionCount: 3, composerFocused: true))
+        XCTAssertTrue(AgentQuestionForm.digitKeyAction(digit: 1, optionCount: 3, composerFocused: false))
+        XCTAssertTrue(AgentQuestionForm.digitKeyAction(digit: 3, optionCount: 3, composerFocused: false))
+    }
+
     // MARK: - End-to-End Synthetic Fixture (`agy-question-synthetic.ndjson`)
 
     func testAgyQuestionSyntheticFixtureAnswersSelectedOptionIdThroughSession() async throws {

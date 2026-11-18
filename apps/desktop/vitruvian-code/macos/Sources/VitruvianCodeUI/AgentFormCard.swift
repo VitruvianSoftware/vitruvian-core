@@ -117,6 +117,31 @@ public struct AgentQuestionForm: Equatable, Sendable {
         textValues[fieldID] = value
     }
 
+    /// Number of options on the first choice/multi_choice field eligible for 1...9 shortcuts.
+    public var shortcutOptionCount: Int {
+        guard question.url == nil,
+              let field = question.fields.first(where: { $0.type == .choice || $0.type == .multiChoice }) else {
+            return 0
+        }
+        return field.options.count
+    }
+
+    /// Returns `true` when a `1...9` digit keypress should be consumed to select an option;
+    /// `false` when the keypress should pass through unchanged.
+    public static func digitKeyAction(
+        digit: Int,
+        optionCount: Int,
+        composerFocused: Bool
+    ) -> Bool {
+        guard !composerFocused,
+              (1...9).contains(digit),
+              optionCount > 0,
+              digit <= optionCount else {
+            return false
+        }
+        return true
+    }
+
     /// Selects or toggles the 1-based option index on the first choice/multi_choice field.
     @discardableResult
     public mutating func applyDigitShortcut(_ digit: Int) -> Bool {
@@ -148,9 +173,16 @@ public struct AgentQuestionForm: Equatable, Sendable {
             return false
         }
         if integer {
-            return parsed.rounded() == parsed
-                && parsed >= Double(Int.min)
-                && parsed <= Double(Int.max)
+            guard parsed.rounded() == parsed,
+                  parsed >= Double(Int.min),
+                  parsed < Double(Int.max) else {
+                return false
+            }
+            if let decimal = Decimal(string: trimmed, locale: Locale(identifier: "en_US_POSIX")),
+               decimal < Decimal(Int.min) || decimal > Decimal(Int.max) {
+                return false
+            }
+            return true
         }
         return true
     }
@@ -206,8 +238,22 @@ public struct AgentQuestionForm: Equatable, Sendable {
                 let validOptions = Set(field.options.map(\.value))
                 let selected = (multiChoiceValues[field.id] ?? []).filter { validOptions.contains($0) }
                 if selected.isEmpty {
-                    if field.required { return nil }
+                    if let minItems = field.minItems, minItems > 0 {
+                        if field.required { return nil }
+                    } else if field.required {
+                        if field.minItems == 0 {
+                            output[field.id] = Self.encodeMultiChoice([])
+                        } else {
+                            return nil
+                        }
+                    }
                 } else {
+                    if let minItems = field.minItems, selected.count < minItems {
+                        return nil
+                    }
+                    if let maxItems = field.maxItems, selected.count > maxItems {
+                        return nil
+                    }
                     output[field.id] = Self.encodeMultiChoice(selected)
                 }
 
@@ -240,6 +286,92 @@ public struct AgentQuestionForm: Equatable, Sendable {
 
     public var canSubmit: Bool {
         buildAnswers() != nil
+    }
+
+    /// Returns answers to submit when pressing Return on a pending form, or `nil` when invalid or inactive.
+    public func submitOnReturn(status: AgentQuestionStatus = .pending) -> [String: String]? {
+        guard status == .pending else { return nil }
+        return buildAnswers()
+    }
+
+    /// True only for well-formed `http` or `https` URLs (case-insensitive) with a non-empty host.
+    public static func canOpen(_ rawURL: String) -> Bool {
+        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              let components = URLComponents(string: trimmed),
+              components.url != nil,
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              trimmed.dropFirst(scheme.count).hasPrefix("://"),
+              let host = components.host,
+              !host.isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    /// Whether the "Required" badge should be shown for `field`.
+    public static func showsRequiredMark(
+        field: AgentQuestion.Field,
+        fieldCount: Int,
+        hasOptionalField: Bool = false,
+        requiredLabel: String = "Required"
+    ) -> Bool {
+        guard field.required else { return false }
+        if fieldCount > 1 || hasOptionalField {
+            return true
+        }
+        return !labelAlreadyStatesRequired(field.label, requiredLabel: requiredLabel)
+    }
+
+    private static func labelAlreadyStatesRequired(_ label: String, requiredLabel: String) -> Bool {
+        if label.contains("*") {
+            return true
+        }
+        let words = label.lowercased().split { !$0.isLetter && !$0.isNumber }
+        if words.contains("required") {
+            return true
+        }
+        let trimmedRequired = requiredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedRequired.isEmpty,
+           trimmedRequired.lowercased() != "required",
+           label.localizedCaseInsensitiveContains(trimmedRequired) {
+            return true
+        }
+        return false
+    }
+
+    /// Returns the trimmed field description when non-empty and distinct from both `message` and `label`.
+    public static func fieldDescriptionToShow(
+        field: AgentQuestion.Field,
+        message: String
+    ) -> String? {
+        guard let desc = field.description?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !desc.isEmpty else {
+            return nil
+        }
+        let trimmedLabel = field.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard desc != trimmedLabel, desc != trimmedMessage else {
+            return nil
+        }
+        return desc
+    }
+
+    /// Whether `field.label` should be rendered above its control.
+    public static func showsFieldLabel(
+        field: AgentQuestion.Field,
+        question: AgentQuestion
+    ) -> Bool {
+        if question.fields.count > 1 {
+            return true
+        }
+        let trimmedLabel = field.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedLabel.isEmpty else { return false }
+        let trimmedMessage = question.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = (question.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedLabel != trimmedMessage && trimmedLabel != trimmedTitle
     }
 
     public static func urlHost(for rawURL: String) -> String {
@@ -372,8 +504,15 @@ struct AgentFormCard: View {
         .background(
             FormCardKeyMonitor(
                 isActive: { isPending && isShortcutActive },
-                onDigit: { digit in
-                    form.applyDigitShortcut(digit)
+                onDigit: { digit, textFocused in
+                    guard AgentQuestionForm.digitKeyAction(
+                        digit: digit,
+                        optionCount: form.shortcutOptionCount,
+                        composerFocused: textFocused || !isShortcutActive
+                    ) else {
+                        return false
+                    }
+                    return form.applyDigitShortcut(digit)
                 },
                 onReturn: {
                     submitIfValid()
@@ -425,17 +564,28 @@ struct AgentFormCard: View {
 
     @ViewBuilder
     private func urlBody(rawURL: String) -> some View {
-        Text(AgentQuestionForm.urlHost(for: rawURL))
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.primary.opacity(0.85))
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-            )
+        let allowedToOpen = AgentQuestionForm.canOpen(rawURL)
+        let host = AgentQuestionForm.urlHost(for: rawURL)
+        VStack(alignment: .leading, spacing: 3) {
+            if allowedToOpen && host != rawURL {
+                Text(host)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(Color.secondary)
+            }
+            Text(rawURL)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.primary.opacity(0.85))
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
 
         switch status {
         case .pending:
@@ -461,9 +611,11 @@ struct AgentFormCard: View {
                 .onHover { hoveredButton = $0 ? "decline" : nil }
 
                 Button {
-                    if let parsed = URL(string: rawURL) {
-                        openURL(parsed)
+                    guard allowedToOpen,
+                          let parsed = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                        return
                     }
+                    openURL(parsed)
                     onAnswer([AgentQuestionForm.urlDecisionKey: "accept"])
                 } label: {
                     Text(strings.openLink)
@@ -472,11 +624,14 @@ struct AgentFormCard: View {
                         .padding(.vertical, 4)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(hoveredButton == "accept" ? VitruvianCodeTheme.warmCoralLight : VitruvianCodeTheme.warmCoral)
+                                .fill(allowedToOpen
+                                    ? (hoveredButton == "accept" ? VitruvianCodeTheme.warmCoralLight : VitruvianCodeTheme.warmCoral)
+                                    : Color.primary.opacity(0.08))
                         )
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(allowedToOpen ? Color.white : Color.primary.opacity(0.35))
                 }
                 .buttonStyle(.plain)
+                .disabled(!allowedToOpen)
                 .onHover { hoveredButton = $0 ? "accept" : nil }
 
                 Spacer(minLength: 0)
@@ -496,12 +651,10 @@ struct AgentFormCard: View {
         switch status {
         case .pending:
             VStack(alignment: .leading, spacing: 10) {
-                let showFieldLabels = question.fields.count > 1
                 let shortcutFieldID = form.shortcutFieldID
                 ForEach(question.fields) { field in
                     fieldView(
                         field,
-                        showLabel: showFieldLabels,
                         showsShortcuts: field.id == shortcutFieldID
                     )
                 }
@@ -517,29 +670,41 @@ struct AgentFormCard: View {
     }
 
     @ViewBuilder
-    private func fieldView(_ field: AgentQuestion.Field, showLabel: Bool, showsShortcuts: Bool) -> some View {
+    private func fieldView(_ field: AgentQuestion.Field, showsShortcuts: Bool) -> some View {
+        let showLabelText = AgentQuestionForm.showsFieldLabel(field: field, question: question)
+        let hasOptionalField = question.fields.contains(where: { !$0.required })
+        let showRequired = AgentQuestionForm.showsRequiredMark(
+            field: field,
+            fieldCount: question.fields.count,
+            hasOptionalField: hasOptionalField,
+            requiredLabel: strings.requiredField
+        )
+        let descriptionText = AgentQuestionForm.fieldDescriptionToShow(field: field, message: question.message)
+
         VStack(alignment: .leading, spacing: 5) {
-            if showLabel {
-                HStack(spacing: 4) {
-                    Text(field.label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if field.required {
-                        Text("*")
-                            .font(.system(size: 11, weight: .bold))
+            if showLabelText || showRequired {
+                HStack(spacing: 5) {
+                    if showLabelText {
+                        Text(field.label)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if showRequired {
+                        Text(strings.requiredField)
+                            .font(.system(size: 9.5, weight: .semibold))
                             .foregroundStyle(VitruvianCodeTheme.warmCoral)
-                            .accessibilityLabel(strings.requiredField)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(VitruvianCodeTheme.warmCoral.opacity(0.12)))
                     }
                 }
-                if let desc = field.description?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !desc.isEmpty,
-                   desc != field.label {
-                    Text(desc)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Color.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            }
+            if let descriptionText {
+                Text(descriptionText)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             switch field.type {
@@ -783,9 +948,11 @@ struct AgentFormCard: View {
         }
     }
 
-    private func submitIfValid() {
-        guard isPending, let answers = form.buildAnswers() else { return }
+    @discardableResult
+    private func submitIfValid() -> Bool {
+        guard let answers = form.submitOnReturn(status: status) else { return false }
         onAnswer(answers)
+        return true
     }
 }
 
@@ -793,8 +960,8 @@ struct AgentFormCard: View {
 /// and neither the composer nor a form text field has focus.
 private struct FormCardKeyMonitor: NSViewRepresentable {
     let isActive: () -> Bool
-    let onDigit: (Int) -> Void
-    let onReturn: () -> Void
+    let onDigit: (Int, Bool) -> Bool
+    let onReturn: () -> Bool
 
     func makeNSView(context: Context) -> MonitorView {
         let view = MonitorView()
@@ -816,8 +983,8 @@ private struct FormCardKeyMonitor: NSViewRepresentable {
 
     final class MonitorView: NSView {
         var isActive: (() -> Bool)?
-        var onDigit: ((Int) -> Void)?
-        var onReturn: (() -> Void)?
+        var onDigit: ((Int, Bool) -> Bool)?
+        var onReturn: (() -> Bool)?
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -831,21 +998,18 @@ private struct FormCardKeyMonitor: NSViewRepresentable {
                       self.isActive?() == true else {
                     return event
                 }
-                if window.firstResponder is NSText {
-                    return event
-                }
+                let textFocused = window.firstResponder is NSText
                 let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
                 guard modifiers.isEmpty else { return event }
                 if event.keyCode == 36 || event.keyCode == 76 {
-                    self.onReturn?()
-                    return nil
+                    guard !textFocused else { return event }
+                    return (self.onReturn?() == true) ? nil : event
                 }
                 if let chars = event.charactersIgnoringModifiers,
                    chars.count == 1,
                    let digit = Int(chars),
                    (1...9).contains(digit) {
-                    self.onDigit?(digit)
-                    return nil
+                    return (self.onDigit?(digit, textFocused) == true) ? nil : event
                 }
                 return event
             }
