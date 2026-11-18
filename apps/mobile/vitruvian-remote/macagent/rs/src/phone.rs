@@ -76,7 +76,7 @@ pub struct PhoneDevice {
     pub model: String,
     pub android: String,
     /// The Vitruvian Remote version on the phone. Empty from phones older than
-    /// 0.1.48, which do not send it.
+    /// 0.1.49, which do not send it.
     pub app_version: String,
 }
 
