@@ -116,6 +116,10 @@ id = "RUSTSEC-2026-0173"
 reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+reason = "PERMANENT: no fixed version exists in any range ('chrono is unmaintained', a notice, not a flaw; issued 2026-11-17). crates.io chrono 0.4.45, reached via attest, pbjson-types and serde_with in libsignal (apps/desktop/vitruvian-courier/libsignal/Cargo.lock), all upstream of us. Not time-boxed because no future date makes it actionable; revisit when libsignal moves to jiff or time, or the lock is re-pinned."
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2026-0192"
 reason = "PERMANENT: no fixed version exists in any range ('ttf-parser is unmaintained', a notice, not a flaw). crates.io ttf-parser 0.25.1, reached via ab_glyph <- sctk-adwaita (Wayland window decorations) in eframe, Linux only (apps/suites/vitruvian-wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/winit drop it or apps/suites/vitruvian-wand is re-locked."
 
