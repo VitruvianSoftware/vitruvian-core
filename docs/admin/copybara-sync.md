@@ -405,7 +405,7 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
 - the push created the export run at 06:34:42Z;
 - Repo Config Apply wrote `VITRUVIAN_WAND_SYNC_SSH_KEY` during its run, 06:35 to 06:40Z;
 - the export job started at 07:04Z, after `await-repo-config`, and still got an empty key;
-- re-running the failed job (attempt 2, 07:17Z) got the key and pushed the first export.
+- re-running the failed job (attempt 2, 07:15 to 07:18Z) got the key and pushed the first export.
 
 The likely cause is that a run takes its secrets when it is created, so a secret made after the push
 is missing from that run. This is inferred from the timings, not confirmed. Either way: after a
