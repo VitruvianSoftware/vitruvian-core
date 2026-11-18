@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.51](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.50...vitruvian-remote-v0.1.51) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-speaker:** prevent announcement audio and text clipping ([#5141](https://github.com/VitruvianSoftware/vitruvian-core/issues/5141)) ([c99a9f2](https://github.com/VitruvianSoftware/vitruvian-core/commit/c99a9f23a2e140c79a47c41a191fea4a3ab778a4))
+
 ## [0.1.50](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.49...vitruvian-remote-v0.1.50) (2026-11-18)
 
 
