@@ -42,6 +42,7 @@ go_test(
         "client.go",
         "connector.go",
         "ffi.go",
+        "gap_repro_test.go",
         "gchat_test.go",
         "linkpreview.go",
         "linkpreview_test.go",

@@ -132,11 +132,15 @@ func TestBackwardBackfillHasMoreFollowsPageFullness(t *testing.T) {
 	require.Len(t, full.Messages, 30)
 	require.True(t, full.HasMore, "a full page of topics means there may be older ones")
 
+	// The first load stored a cursor (topic 30); these cases are independent walks, so start each without one and
+	// the anchor's create time is the cursor.
+	portal.Metadata = &PortalMetadata{}
 	short, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: portal, Count: 30, AnchorMessage: olderAnchor(11)})
 	require.NoError(t, err)
 	require.Len(t, short.Messages, 10, "topics 1..10")
 	require.False(t, short.HasMore, "a short page is the start of the space")
 
+	portal.Metadata = &PortalMetadata{}
 	none, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: portal, Count: 30, AnchorMessage: olderAnchor(1)})
 	require.NoError(t, err)
 	require.Empty(t, none.Messages)
