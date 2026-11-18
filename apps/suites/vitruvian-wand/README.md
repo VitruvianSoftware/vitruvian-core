@@ -125,6 +125,25 @@ bazel build //apps/suites/vitruvian-wand/desktop:vitruvian-wand
 bazel build //apps/suites/vitruvian-wand/android:vitruvian_wand_apk
 ```
 
+### From the standalone repository
+
+[VitruvianSoftware/vitruvian-wand](https://github.com/VitruvianSoftware/vitruvian-wand)
+is a read-only mirror of this folder, copied out of the
+[vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-wand)
+monorepo on every change. Send changes to the monorepo; pull requests on the
+mirror are not merged there.
+
+The engine and the desktop app build with plain Cargo (Rust 1.98 or newer):
+
+```bash
+cargo test --workspace --locked
+cargo build --release --locked -p vitruvian-wand-desktop   # target/release/vitruvian-wand
+```
+
+The Android APK and the release packaging (DMG, Linux tarball) build only
+inside the monorepo: they use its Bazel toolchains and its shared Android
+design system, which the mirror does not carry.
+
 ---
 
 ## Credits and Clean-Room Provenance

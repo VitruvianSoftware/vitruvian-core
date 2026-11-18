@@ -148,6 +148,7 @@ jobs:
             VitruvianSoftware/vitruvian-speaker
             VitruvianSoftware/vitruvian-remote
             VitruvianSoftware/vitruvian-deck
+            VitruvianSoftware/vitruvian-wand
           NOTIFY_BIN: ${{ steps.notify-bin.outputs.path }}
         run: '"$NOTIFY_BIN"'
 
