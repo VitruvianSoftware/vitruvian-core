@@ -40,8 +40,8 @@ Component package providing implementation for `tools/pipeline/gen/src`.
 ## Side Effects
 - [gostr.rs:265]: `/// Go's `os.WriteFile(path, data, 0o644)`, with its error text.`
 - [render.rs:149]: `// query below is allowed 15 (see --timeout-sec), plus checkout and setup.`
-- [render.rs:168]: `b.push_str("          fetch-depth: 0\n\n");`
-- [render.rs:350]: `b.push_str("      - name: Fetch the dependency map kept under a git ref\n");`
+- [render.rs:168]: `b.push_str("          fetch-depth: 0\n");`
+- [render.rs:360]: `b.push_str("      - name: Fetch the dependency map kept under a git ref\n");`
 
 ## Verification
 - Run: `bazel test //tools/pipeline/gen/src/...`

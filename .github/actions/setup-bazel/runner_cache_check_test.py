@@ -273,6 +273,22 @@ def test_a_dry_run_writes_and_clears_nothing(tmp_path):
     assert sorted(p for p, _, _ in os.walk(tmp_path)) == before
 
 
+def test_the_check_does_not_take_most_of_setup_on_the_pool():
+    # At 20 seconds the check was most of setup-bazel on the queue runners, in
+    # every job. A wide sample is not what finds 2026-11-08's kind of damage
+    # (test_wide_damage_moves_the_whole_contents_cache_aside): many jobs each
+    # taking a short one do.
+    here = os.path.dirname(os.path.abspath(__file__))
+    action = open(os.path.join(here, "action.yml")).read()
+    budgets = [
+        float(l.split()[1])
+        for l in action.splitlines()
+        if l.strip().startswith("--budget-seconds")
+    ]
+    assert len(budgets) == 1, "setup-bazel no longer sets one --budget-seconds"
+    assert 0 < budgets[0] <= 5, budgets
+
+
 def test_self_hosted_runners_do_not_restore_the_bazelisk_cache():
     # The shared NFS bazelisk cache must not be overwritten from the Actions
     # cache on every job (2026-11-09: torn binary, EIO in every queue job).

@@ -59,6 +59,10 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
+        # The token file is mounted root-owned; fsGroup gives it group 1000
+        # so this non-root user can read it (mode 0440 below). Without it the
+        # exporter crashed at start reading the file (2026-11-17).
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -106,4 +110,4 @@ spec:
         - name: api-token
           secret:
             secretName: pagerduty-exporter
-            defaultMode: 0400
+            defaultMode: 0440
