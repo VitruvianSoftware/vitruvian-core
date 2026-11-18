@@ -30,6 +30,55 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 )
 
+// The backwards backfill queue's pace (see Start).
+const (
+	QueueBatchSize         = 100 // messages fetched per batch
+	QueueBatchDelaySeconds = 30  // between any two batches of one bridge
+	QueueMaxBatches        = 100 // per chat: at most QueueBatchSize*QueueMaxBatches messages of history
+)
+
+// queueMaxBatchesByNetwork lowers QueueMaxBatches for networks that reach their history through an unofficial
+// client API, where a long run of history requests is more likely to look like a bot and cost the person their
+// session. 20 batches is 2,000 messages a chat.
+var queueMaxBatchesByNetwork = map[string]int{"facebook": 20, "instagram": 20, "twitter": 20, "linkedin": 20}
+
+// queueMaxBatchesByRoomType lowers the limit for chats that can be huge, on the networks whose bridge asks for a
+// limit per kind of chat (Telegram, Slack, Discord, X: bridgev2's max_batches_override; a bridge that doesn't ask
+// uses the network's limit). A one-to-one or small group chat gets the full limit; a public channel does not need
+// ten thousand messages of someone else's history on this Mac.
+var queueMaxBatchesByRoomType = map[string]int{"channel": 10, "supergroup": 20, "topic": 10}
+
+// noBackfillQueue is the networks whose backwards queue stays off, with why.
+var noBackfillQueue = map[string]string{
+	// iMessage's chats say they can't be backfilled (CanBackfill false), so the queue would never get a task for one,
+	// and its FetchMessages does not page (it reads the chat's first rows and ignores the direction and anchor), so
+	// should that change the queue must not be what finds out. It already reads the Mac's whole chat.db.
+	"imessage": "its chats can't be backfilled and its fetch does not page",
+}
+
+// backfillQueue is network's backwards backfill queue: off for a network in noBackfillQueue, and otherwise paced as
+// the constants above and the per-network limits say.
+func backfillQueue(network string) bridgeconfig.BackfillQueueConfig {
+	if _, off := noBackfillQueue[network]; off {
+		return bridgeconfig.BackfillQueueConfig{}
+	}
+	max := QueueMaxBatches
+	if n, ok := queueMaxBatchesByNetwork[network]; ok {
+		max = n
+	}
+	override := make(map[string]int, len(queueMaxBatchesByRoomType))
+	for kind, n := range queueMaxBatchesByRoomType {
+		override[kind] = min(n, max)
+	}
+	return bridgeconfig.BackfillQueueConfig{
+		Enabled:            true,
+		BatchSize:          QueueBatchSize,
+		BatchDelay:         QueueBatchDelaySeconds,
+		MaxBatches:         max,
+		MaxBatchesOverride: override,
+	}
+}
+
 // Host is one running bridge for one network.
 type Host struct {
 	Bridge  *bridgev2.Bridge
@@ -122,14 +171,28 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		//  - PersonalFilteringSpaces stays false: a space per login is a Matrix-client feature the app has no use for.
 		//  - KickMatrixUsers stays false: @me is the only Matrix user and must never be removed from a room.
 		Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
-		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The numbers are
-		// mautrix's own example-config defaults. The backwards queue stays off; it only applies to Beeper's server.
+		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The first three
+		// numbers are mautrix's own example-config defaults.
+		//
+		// The backwards queue is on. bridgev2 runs it only when the Matrix side can batch-send (it writes history
+		// before a chat's first message), and the example config says it "only applies to Beeper" because a real
+		// Matrix server can't do that. Vitruvian Courier's store can (localmatrix.Connector.BatchSend: events sit in a
+		// chat by their own time), so each chat now pages back past its newest 50 messages.
+		//
+		// The pace is deliberately slow, for the networks' sake and the machine's. The queue does one batch at a time
+		// for the whole bridge, BatchDelay seconds apart, so a network sees at most 120 history requests an hour,
+		// however many chats it has. A batch is 100 messages; a chat stops after MaxBatches of them (10,000 messages:
+		// a year of a very busy chat) or when its network has no more, whichever is first. A chat with 5,000
+		// messages to fetch takes about 25 minutes by itself, and a network with hundreds of chats fills in over
+		// hours. A network whose client has no backwards fetch is left alone by bridgev2; the per-network limits and
+		// the networks left out are above (backfillQueue, noBackfillQueue).
 		Backfill: bridgeconfig.BackfillConfig{
 			Enabled:              true,
 			MaxInitialMessages:   50,
 			MaxCatchupMessages:   500,
 			UnreadHoursThreshold: 720,
 			Threads:              bridgeconfig.BackfillThreadsConfig{MaxInitialMessages: 50},
+			Queue:                backfillQueue(network),
 		},
 		CleanupOnLogout: bridgeconfig.CleanupOnLogouts{Enabled: false},
 	}

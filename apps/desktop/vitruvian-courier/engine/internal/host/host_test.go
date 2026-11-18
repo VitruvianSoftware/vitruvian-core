@@ -155,7 +155,13 @@ func TestStartGivesLocalUserAdminAndBackfill(t *testing.T) {
 	require.Equal(t, 500, bf.MaxCatchupMessages, "messages missed while courier was closed")
 	require.Equal(t, 720, bf.UnreadHoursThreshold)
 	require.Equal(t, 50, bf.Threads.MaxInitialMessages)
-	require.False(t, bf.Queue.AnyEnabled(), "the backwards queue only applies to Beeper's server")
+	require.True(t, bf.Queue.Enabled, "older history is fetched by the backwards queue (localmatrix BatchSend makes it possible)")
+	require.False(t, bf.Queue.Manual)
+	require.Equal(t, 100, bf.Queue.BatchSize)
+	require.Equal(t, 30, bf.Queue.BatchDelay, "at most 120 batches an hour per network")
+	require.Equal(t, 100, bf.Queue.MaxBatches)
+	require.Equal(t, 10, bf.Queue.GetOverride("channel"), "public channels are capped lower")
+	require.Equal(t, 100, bf.Queue.GetOverride("dm"))
 	require.False(t, h.Bridge.Config.CleanupOnLogout.Enabled)
 	require.FileExists(t, filepath.Join(dir, "bridges", "fake.db"), "each network gets its own database")
 }
@@ -442,4 +448,13 @@ func TestCreateRoomSpaceAndLinkParentState(t *testing.T) {
 	page, _, err := s.InboxPage(ctx, store.InboxQuery{Space: "inbox"})
 	require.NoError(t, err)
 	require.Empty(t, page)
+}
+
+func TestBackfillQueuePerNetwork(t *testing.T) {
+	im := backfillQueue("imessage")
+	require.False(t, im.AnyEnabled(), "iMessage is left out: "+noBackfillQueue["imessage"])
+	ig, wa := backfillQueue("instagram"), backfillQueue("whatsapp")
+	require.Equal(t, 20, ig.MaxBatches, "unofficial APIs get a shorter run")
+	require.Equal(t, 20, ig.GetOverride("supergroup"), "a room-type limit never exceeds the network's")
+	require.Equal(t, 100, wa.MaxBatches)
 }
