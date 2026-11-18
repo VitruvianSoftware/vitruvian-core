@@ -209,6 +209,12 @@ private func item(_ text: String, source: String = "Test", at time: Date = Date(
     /// A second process (perl, which ships with macOS and calls the same
     /// flock(2)) does the same locked read-modify-write while this process
     /// appends from two threads. Nothing is lost on either side.
+    ///
+    /// Every wait has a deadline (#5096): perl gives up on the lock after
+    /// 20 s, and this side stops waiting for perl after 60 s and kills it.
+    /// Its stderr goes to a file, not a pipe, so a chatty perl can never
+    /// block on a full pipe. A stall fails here in seconds, saying where,
+    /// instead of holding the whole suite to its 5-minute limit.
     @Test func anotherProcessWritingAtTheSameTimeLosesNothing() async throws {
         let dir = try scratchDir()
         let url = dir.appendingPathComponent("h.json")
@@ -221,7 +227,11 @@ private func item(_ text: String, source: String = "Test", at time: Date = Date(
         my $n = 0;
         for my $id (@ids) {
             open(my $lock, '>>', "$file.lock") or die "lock: $!";
-            flock($lock, LOCK_EX) or die "flock: $!";
+            my $deadline = time + 20;
+            until (flock($lock, LOCK_EX | LOCK_NB)) {
+                die "flock: still held after 20 s (item $n)" if time > $deadline;
+                usleep(500);
+            }
             my $items = [];
             if (open(my $in, '<', $file)) { local $/; my $raw = <$in>; close $in; $items = eval { $json->decode($raw) } || []; }
             unshift @$items, { id => $id, timestamp => 0.0 + $n, text => "perl $n", targetName => "Perl", source => "Perl" };
@@ -238,7 +248,10 @@ private func item(_ text: String, source: String = "Test", at time: Date = Date(
         let perl = Process()
         perl.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
         perl.arguments = [scriptURL.path, url.path] + perlIDs.map(\.uuidString)
-        let stderr = Pipe()
+        let stderrURL = dir.appendingPathComponent("writer.stderr")
+        FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+        let stderr = try FileHandle(forWritingTo: stderrURL)
+        defer { try? stderr.close() }
         perl.standardError = stderr
         try perl.run()
 
@@ -250,8 +263,17 @@ private func item(_ text: String, source: String = "Test", at time: Date = Date(
                 }
             }
         }
-        perl.waitUntilExit()
-        let perlErrors = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let deadline = Date().addingTimeInterval(60)
+        while perl.isRunning, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let stillRunning = perl.isRunning
+        if stillRunning {
+            perl.terminate()
+            perl.waitUntilExit()
+        }
+        let perlErrors = (try? String(contentsOf: stderrURL, encoding: .utf8)) ?? ""
+        #expect(!stillRunning, "perl writer still running after 60 s, killed: \(perlErrors)")
         #expect(perl.terminationStatus == 0, "perl writer failed: \(perlErrors)")
 
         let saved = history.load()
