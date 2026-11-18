@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.49](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.48...vitruvian-remote-v0.1.49) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-remote:** tell the Mac when the phone app is out of date ([#5124](https://github.com/VitruvianSoftware/vitruvian-core/issues/5124)) ([20da3b3](https://github.com/VitruvianSoftware/vitruvian-core/commit/20da3b3d328a5ec484a8d9206e1ea0d221db32bf))
+
 ## [0.1.48](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.47...vitruvian-remote-v0.1.48) (2026-11-18)
 
 
