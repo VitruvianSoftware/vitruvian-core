@@ -230,3 +230,110 @@ func TestBatchSendEmptyIsANoOp(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, resp.EventIDs)
 }
+
+// An edit and a reaction that arrive in an older batch before the message they target still apply once the target's
+// own older batch arrives, and re-running the first batch adds nothing.
+func TestBatchSendEditAndReactionBeforeTheirTarget(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	room, friend := chatWithMessages(t, c, 1000)
+
+	editContent := &event.MessageEventContent{MsgType: event.MsgText, Body: "edited message 100"}
+	editContent.SetEdit("$old100")
+	batch1 := []*event.Event{
+		{
+			ID: "$react200", RoomID: room, Sender: friend.mxid, Type: event.EventReaction,
+			Timestamp: time.Unix(200, 0).UnixMilli(),
+			Content: event.Content{Parsed: &event.ReactionEventContent{
+				RelatesTo: event.RelatesTo{Type: event.RelAnnotation, EventID: "$old100", Key: "👍"},
+			}},
+		},
+		{
+			ID: "$edit210", RoomID: room, Sender: friend.mxid, Type: event.EventMessage,
+			Timestamp: time.Unix(210, 0).UnixMilli(),
+			Content:   event.Content{Parsed: editContent},
+		},
+	}
+	batch1Extras := []*bridgev2.MatrixSendExtra{{}, {}}
+	_, err := c.BatchSend(ctx, room, &mautrix.ReqBeeperBatchSend{Events: batch1}, batch1Extras)
+	require.NoError(t, err)
+
+	batch2, batch2Extras := historyBatch(c, room, friend.mxid, "old", 100)
+	_, err = c.BatchSend(ctx, room, &mautrix.ReqBeeperBatchSend{Events: batch2}, batch2Extras)
+	require.NoError(t, err)
+
+	target, ok, err := c.store.GetEvent(ctx, "$old100")
+	require.NoError(t, err)
+	require.True(t, ok)
+	text, err := c.store.CurrentText(ctx, target)
+	require.NoError(t, err)
+	require.Equal(t, "edited message 100", text)
+
+	hits, _, err := c.store.SearchMessages(ctx, store.MessageQuery{Terms: searchtext.Parse("edited")})
+	require.NoError(t, err)
+	require.Len(t, hits, 1)
+	require.Equal(t, "$old100", hits[0].Event.EventID)
+	staleHits, _, err := c.store.SearchMessages(ctx, store.MessageQuery{Terms: searchtext.Parse("old")})
+	require.NoError(t, err)
+	require.Empty(t, staleHits)
+
+	rels, err := c.store.RelationsOf(ctx, string(room), []string{"$old100"})
+	require.NoError(t, err)
+	hasReaction := false
+	for _, rel := range rels {
+		if rel.Type == event.EventReaction.Type && rel.EventID == "$react200" {
+			hasReaction = true
+		}
+	}
+	require.True(t, hasReaction, "reaction to $old100 must be present")
+
+	beforeBodies := bodiesOldestFirst(t, c, room)
+	require.Len(t, beforeBodies, 3) // $old100, $edit210, live 1000
+	beforeEvents, err := c.store.Events(ctx, string(room), 1000)
+	require.NoError(t, err)
+
+	_, err = c.BatchSend(ctx, room, &mautrix.ReqBeeperBatchSend{Events: batch1}, batch1Extras)
+	require.NoError(t, err)
+	afterEvents, err := c.store.Events(ctx, string(room), 1000)
+	require.NoError(t, err)
+	require.Len(t, afterEvents, len(beforeEvents), "running batch 1 again must add nothing")
+}
+
+// A redaction that arrives in a batch before the message it deletes marks that message redacted as soon as the later
+// batch brings it, so M never shows in the chat, inbox or search.
+func TestBatchSendRedactionBeforeItsTarget(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	room, friend := chatWithMessages(t, c, 1000)
+
+	redBatch := []*event.Event{{
+		ID: "$red200", RoomID: room, Sender: friend.mxid, Type: event.EventRedaction,
+		Timestamp: time.Unix(200, 0).UnixMilli(),
+		Content:   event.Content{Parsed: &event.RedactionEventContent{Redacts: "$old100"}},
+	}}
+	_, err := c.BatchSend(ctx, room, &mautrix.ReqBeeperBatchSend{Events: redBatch}, []*bridgev2.MatrixSendExtra{{}})
+	require.NoError(t, err)
+
+	targetBatch, targetExtras := historyBatch(c, room, friend.mxid, "old", 100)
+	_, err = c.BatchSend(ctx, room, &mautrix.ReqBeeperBatchSend{Events: targetBatch}, targetExtras)
+	require.NoError(t, err)
+
+	deleted, err := c.store.RedactedAmong(ctx, []string{"$old100"})
+	require.NoError(t, err)
+	require.True(t, deleted["$old100"], "target arriving after its redaction must be marked redacted")
+
+	hits, _, err := c.store.SearchMessages(ctx, store.MessageQuery{Terms: searchtext.Parse("old")})
+	require.NoError(t, err)
+	require.Empty(t, hits, "redacted target must not appear in search")
+
+	evs, err := c.store.Events(ctx, string(room), 1000)
+	require.NoError(t, err)
+	var visible []string
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Type == event.EventMessage.Type && !deleted[evs[i].EventID] {
+			visible = append(visible, string(evs[i].Content))
+		}
+	}
+	require.Len(t, visible, 1)
+	require.Contains(t, visible[0], "live message 1000")
+	require.Equal(t, 1, unreadOf(t, c, room))
+	require.Equal(t, "live message 1000", rowOf(t, c, room).Preview)
+}

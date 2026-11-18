@@ -56,3 +56,38 @@ func TestInsertEventsSkipsWhatIsStoredAndPublishesWhatIsNew(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, empty)
 }
+
+func TestInsertEventsOneHundredEventsAcrossTwentyChats(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const (
+		chats       = 20
+		totalEvents = 100
+	)
+	for i := range chats {
+		require.NoError(t, s.UpsertRoom(ctx, Room{ID: fmt.Sprintf("!r%d:courier.local", i), Network: "whatsapp"}))
+	}
+	batch := make([]Event, 0, totalEvents)
+	for i := range totalEvents {
+		room := fmt.Sprintf("!r%d:courier.local", i%chats)
+		batch = append(batch, historyEvent(room, fmt.Sprintf("$e%d", i), int64(100+i), fmt.Sprintf("message %d", i)))
+	}
+
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	start := time.Now()
+	n, err := s.InsertEvents(ctx, batch)
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	require.Equal(t, totalEvents, n)
+	t.Logf("InsertEvents(%d events across %d chats) took %s", totalEvents, chats, elapsed)
+
+	eventChanges := 0
+	for len(ch) > 0 {
+		c := <-ch
+		if c.Kind == "event" {
+			eventChanges++
+		}
+	}
+	require.Equal(t, totalEvents, eventChanges)
+}
