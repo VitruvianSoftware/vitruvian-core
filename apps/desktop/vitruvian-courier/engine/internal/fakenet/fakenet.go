@@ -289,7 +289,9 @@ type Network struct {
 	plain   bool // the client takes no tags, mutes, unread marks or request accepts
 	chatsMu sync.Mutex
 	chats   map[string]Chat
-	featMu  sync.Mutex // guards Features and loginFeatures after the bridge has started
+	history map[string][]HistoryMessage // SetHistory: a chat's past, oldest first
+	fetches []Fetch                     // every FetchMessages the bridge made
+	featMu  sync.Mutex                  // guards Features and loginFeatures after the bridge has started
 	// loginFeatures is SetLoginFeatures': what one login's client says, by login ID, over Features.
 	loginFeatures map[string]*event.RoomFeatures
 	rawMu         sync.Mutex
@@ -385,6 +387,46 @@ func (n *Network) SetChat(chatID string, c Chat) {
 		n.chats = map[string]Chat{}
 	}
 	n.chats[chatID] = c
+}
+
+// HistoryMessage is one message of a chat's past on the fake network.
+type HistoryMessage struct {
+	ID, Sender, Body string
+	At               time.Time
+}
+
+// Fetch is one FetchMessages call the bridge made of the fake network.
+type Fetch struct {
+	ChatID  string
+	Forward bool
+	Count   int
+	Cursor  string
+}
+
+// SetHistory gives chatID a past (oldest first, by At), which the bridge backfills through BackfillingNetworkAPI:
+// the newest Count messages of it for a chat's first backfill, and then pages further back while the backwards
+// queue runs, until none is left. A chat with no history answers every fetch with nothing, as before, and says it
+// can't be backfilled. Set it before the chat is made.
+func (n *Network) SetHistory(chatID string, msgs []HistoryMessage) {
+	n.chatsMu.Lock()
+	defer n.chatsMu.Unlock()
+	if n.history == nil {
+		n.history = map[string][]HistoryMessage{}
+	}
+	n.history[chatID] = append([]HistoryMessage(nil), msgs...)
+}
+
+func (n *Network) historyOf(chatID string) []HistoryMessage {
+	n.chatsMu.Lock()
+	defer n.chatsMu.Unlock()
+	return n.history[chatID]
+}
+
+// Fetches lists the FetchMessages calls the bridge has made, oldest first.
+func (n *Network) Fetches() []Fetch {
+	n.chatsMu.Lock()
+	defer n.chatsMu.Unlock()
+	return append([]Fetch(nil), n.fetches...)
 }
 
 func (n *Network) chat(chatID string) Chat {
@@ -578,7 +620,76 @@ func (n *Network) SetLoggedIn(login *bridgev2.UserLogin, on bool) {
 	login.BridgeState.Send(status.BridgeState{StateEvent: state})
 }
 
-var _ bridgev2.NetworkAPI = (*client)(nil)
+var (
+	_ bridgev2.NetworkAPI            = (*client)(nil)
+	_ bridgev2.BackfillingNetworkAPI = (*client)(nil)
+)
+
+// FetchMessages serves SetHistory's past the way a real network does: a forward fetch gives the newest Count messages
+// after the anchor (a chat's first backfill has none), a backwards one the newest Count before the anchor or, after
+// the first page, before its cursor (the time of the oldest message it gave, in nanoseconds), and says whether older
+// ones remain. A chat with no history gives no response at all.
+func (c *client) FetchMessages(_ context.Context, p bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
+	chatID := string(p.Portal.ID)
+	c.n.chatsMu.Lock()
+	c.n.fetches = append(c.n.fetches, Fetch{ChatID: chatID, Forward: p.Forward, Count: p.Count, Cursor: string(p.Cursor)})
+	c.n.chatsMu.Unlock()
+	all := c.n.historyOf(chatID)
+	if len(all) == 0 {
+		return nil, nil
+	}
+	var pool []HistoryMessage
+	more := false
+	if p.Forward {
+		for _, m := range all {
+			if p.AnchorMessage == nil || m.At.After(p.AnchorMessage.Timestamp) {
+				pool = append(pool, m)
+			}
+		}
+		if len(pool) > p.Count {
+			pool = pool[len(pool)-p.Count:]
+		}
+	} else {
+		before := time.Now().Add(time.Hour)
+		if p.AnchorMessage != nil {
+			before = p.AnchorMessage.Timestamp
+		}
+		if p.Cursor != "" {
+			ns, err := strconv.ParseInt(string(p.Cursor), 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			if t := time.Unix(0, ns); t.Before(before) {
+				before = t
+			}
+		}
+		for _, m := range all {
+			if m.At.Before(before) {
+				pool = append(pool, m)
+			}
+		}
+		if len(pool) > p.Count {
+			pool, more = pool[len(pool)-p.Count:], true
+		}
+	}
+	resp := &bridgev2.FetchMessagesResponse{Forward: p.Forward, HasMore: more}
+	if len(pool) > 0 && !p.Forward {
+		resp.Cursor = networkid.PaginationCursor(strconv.FormatInt(pool[0].At.UnixNano(), 10))
+	}
+	for _, m := range pool {
+		resp.Messages = append(resp.Messages, &bridgev2.BackfillMessage{
+			ConvertedMessage: &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{{
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: m.Body},
+			}}},
+			Sender:      bridgev2.EventSender{Sender: networkid.UserID(m.Sender), IsFromMe: m.Sender == "me"},
+			ID:          networkid.MessageID(m.ID),
+			Timestamp:   m.At,
+			StreamOrder: m.At.UnixMicro(),
+		})
+	}
+	return resp, nil
+}
 
 // base is the plain client under every kind of this network's client.
 func (c *client) base() *client { return c }
@@ -620,7 +731,7 @@ func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 	if ch.Name != nil {
 		name = *ch.Name
 	}
-	info := &bridgev2.ChatInfo{Name: &name}
+	info := &bridgev2.ChatInfo{Name: &name, CanBackfill: len(c.n.historyOf(string(portal.ID))) > 0}
 	if ch.Tag != nil || ch.MutedUntil != nil {
 		info.UserLocal = &bridgev2.UserLocalPortalInfo{Tag: ch.Tag, MutedUntil: ch.MutedUntil}
 	}
