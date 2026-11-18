@@ -57,8 +57,11 @@ public sealed interface UpdateUi {
   /** Android wants the person to confirm on its own screen. */
   public data class Confirm(override val release: UpdateFeed.Release) : UpdateUi
 
-  public data class Failed(val reason: String, override val release: UpdateFeed.Release?) :
-      UpdateUi
+  public data class Failed(
+      val reason: String,
+      override val release: UpdateFeed.Release?,
+      val detail: String? = null,
+  ) : UpdateUi
 
   public companion object {
     /**
@@ -92,7 +95,7 @@ public sealed interface UpdateUi {
       return when (event) {
         InstallEvent.NeedsConfirmation -> if (release != null) Confirm(release) else current
         InstallEvent.Installed -> UpToDate
-        is InstallEvent.Failed -> Failed(event.reason, release)
+        is InstallEvent.Failed -> Failed(event.reason, release, event.detail)
       }
     }
   }
@@ -114,7 +117,19 @@ public sealed interface InstallEvent {
   /** Rarely seen: when the app updates itself, Android stops it as the new version goes in. */
   public data object Installed : InstallEvent
 
-  public data class Failed(val reason: String) : InstallEvent
+  public data class Failed(val reason: String, val detail: String? = null) : InstallEvent
+}
+
+/**
+ * Outcome reported by Android's `PackageInstaller` when an install does not succeed. Mirrors the
+ * `PackageInstaller.STATUS_FAILURE_*` constants so failure classification can be tested on the JVM.
+ */
+public enum class InstallFailureKind {
+  Aborted,
+  Blocked,
+  Storage,
+  ConflictOrIncompatible,
+  Other,
 }
 
 /** The words About uses. Plain, and true to what the code does. */
@@ -153,4 +168,49 @@ public object UpdateCopy {
       "Updates come from Vitruvian Software's releases on GitHub. Before installing, the app " +
           "checks the update list's signature, the download's checksum, and that the new " +
           "version is signed with the same key as this one."
+
+  public const val PLAY_PROTECT_HINT: String =
+      "Because Vitruvian Remote updates come from GitHub rather than the Play Store, Google Play " +
+          "Protect may show \"Harmful app blocked\". Tap Try again, then tap More details → " +
+          "Install anyway and confirm with your screen lock."
+
+  public const val BLOCKED_HINT: String =
+      "If Google Play Protect showed a warning, tap Try again, then tap More details → Install " +
+          "anyway and confirm with your screen lock. Otherwise check your phone's security or " +
+          "work-profile settings."
+
+  public const val INSTALL_GENERIC_FAILURE: String =
+      "The update didn't install. Nothing changed; try again later."
+
+  public fun installFailure(
+      kind: InstallFailureKind,
+      statusMessage: String?,
+  ): InstallEvent.Failed {
+    val msg = statusMessage.orEmpty()
+    return when {
+      msg.contains("INSTALL_FAILED_VERIFICATION_FAILURE", ignoreCase = true) ->
+          InstallEvent.Failed(
+              reason = "Google Play Protect blocked the update. Nothing changed.",
+              detail = PLAY_PROTECT_HINT,
+          )
+      msg.contains("INSTALL_FAILED_VERIFICATION_TIMEOUT", ignoreCase = true) ->
+          InstallEvent.Failed(
+              reason = "Play Protect's security check timed out. Nothing changed.",
+              detail = PLAY_PROTECT_HINT,
+          )
+      kind == InstallFailureKind.Aborted ->
+          InstallEvent.Failed("The update was cancelled. Nothing changed.")
+      kind == InstallFailureKind.Storage ->
+          InstallEvent.Failed("There isn't enough space on the phone for the update.")
+      kind == InstallFailureKind.ConflictOrIncompatible ->
+          InstallEvent.Failed(
+              "Android refused the update because it doesn't match the installed app. Nothing changed.")
+      kind == InstallFailureKind.Blocked ->
+          InstallEvent.Failed(
+              reason = "Android blocked the update. Nothing changed.",
+              detail = BLOCKED_HINT,
+          )
+      else -> InstallEvent.Failed(INSTALL_GENERIC_FAILURE)
+    }
+  }
 }

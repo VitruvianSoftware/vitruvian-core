@@ -279,6 +279,64 @@ class UpdateFeedTest {
     assertTrue(UpdateCopy.INSTALLING.contains("settings stay"))
   }
 
+  @Test
+  fun installerFailuresDistinguishPlayProtectFromCancellation() {
+    val release = (check(feed()) as UpdateFeed.Result.Ok).release
+
+    val playProtectAborted =
+        UpdateCopy.installFailure(
+            InstallFailureKind.Aborted,
+            "INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed for file:///data/app/vmdl252221048.tmp",
+        )
+    assertTrue(playProtectAborted.reason.contains("Play Protect"))
+    assertEquals(UpdateCopy.PLAY_PROTECT_HINT, playProtectAborted.detail)
+    assertTrue(playProtectAborted.detail!!.contains("More details"))
+    assertTrue(playProtectAborted.detail!!.contains("Install anyway"))
+
+    val uiFailed = UpdateUi.after(UpdateUi.Installing(release), playProtectAborted)
+    assertEquals(
+        UpdateUi.Failed(playProtectAborted.reason, release, UpdateCopy.PLAY_PROTECT_HINT),
+        uiFailed,
+    )
+
+    val playProtectBlocked =
+        UpdateCopy.installFailure(
+            InstallFailureKind.Blocked,
+            "INSTALL_FAILED_VERIFICATION_FAILURE: blocked",
+        )
+    assertEquals(playProtectAborted, playProtectBlocked)
+
+    val playProtectTimeout =
+        UpdateCopy.installFailure(
+            InstallFailureKind.Aborted,
+            "INSTALL_FAILED_VERIFICATION_TIMEOUT: timed out",
+        )
+    assertTrue(playProtectTimeout.reason.contains("timed out"))
+    assertEquals(UpdateCopy.PLAY_PROTECT_HINT, playProtectTimeout.detail)
+
+    for (msg in listOf(null, "INSTALL_FAILED_ABORTED: User rejected permissions")) {
+      val cancelled = UpdateCopy.installFailure(InstallFailureKind.Aborted, msg)
+      assertEquals("The update was cancelled. Nothing changed.", cancelled.reason)
+      assertNull(cancelled.detail)
+    }
+
+    val genericBlocked = UpdateCopy.installFailure(InstallFailureKind.Blocked, null)
+    assertEquals("Android blocked the update. Nothing changed.", genericBlocked.reason)
+    assertEquals(UpdateCopy.BLOCKED_HINT, genericBlocked.detail)
+
+    val storage = UpdateCopy.installFailure(InstallFailureKind.Storage, null)
+    assertEquals("There isn't enough space on the phone for the update.", storage.reason)
+    assertNull(storage.detail)
+
+    val conflict = UpdateCopy.installFailure(InstallFailureKind.ConflictOrIncompatible, null)
+    assertTrue(conflict.reason.contains("doesn't match"))
+    assertNull(conflict.detail)
+
+    val other = UpdateCopy.installFailure(InstallFailureKind.Other, null)
+    assertEquals(UpdateCopy.INSTALL_GENERIC_FAILURE, other.reason)
+    assertNull(other.detail)
+  }
+
   private val root = File(System.getenv("TEST_SRCDIR"), System.getenv("TEST_WORKSPACE"))
 
   @Test
