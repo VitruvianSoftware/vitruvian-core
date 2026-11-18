@@ -167,13 +167,21 @@ private struct SilentLocal: LocalSpeaking {
     }
 
     /// The wait is short: a real holder still refuses a second one, soon.
+    /// "Soon" is checked by counting the retries, not by timing them: a
+    /// wall-clock bound fails whenever a busy CI Mac oversleeps (#4529).
     @Test func aRealHolderStillRefusesASecondOneSoon() throws {
         let url = try scratchDir().appendingPathComponent("running.lock")
         let holder = try LiveLock.hold(at: url)
-        let started = Date()
-        #expect(throws: (any Error).self) { try LiveLock.hold(at: url) }
-        #expect(Date().timeIntervalSince(started) < 2, "a real holder is refused within moments")
-        holder.release()
+        defer { holder.release() }
+        var busyCalls = 0
+        #expect(throws: (any Error).self) {
+            _ = try LiveLock.hold(
+                at: url, retries: LiveLock.retries, wait: LiveLock.retryWait,
+                onBusy: { _ in busyCalls += 1 })
+        }
+        #expect(busyCalls == LiveLock.retries, "it gives up after its retries, not later")
+        let budget = Double(LiveLock.retries) * Double(LiveLock.retryWait) / 1_000_000
+        #expect(budget < 1, "the whole wait is well under a second")
     }
 
     @Test func canRestoreAsksTheLockForTheExtension() async throws {
