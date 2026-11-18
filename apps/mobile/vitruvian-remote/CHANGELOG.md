@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.50](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.49...vitruvian-remote-v0.1.50) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** keep Phone Bridge running past Android's time limit ([#5116](https://github.com/VitruvianSoftware/vitruvian-core/issues/5116)) ([a2ec912](https://github.com/VitruvianSoftware/vitruvian-core/commit/a2ec912f569f16634c62f7dac980f9c131e6b522))
+
 ## [0.1.49](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.48...vitruvian-remote-v0.1.49) (2026-11-18)
 
 
