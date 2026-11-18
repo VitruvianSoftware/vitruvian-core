@@ -24,7 +24,9 @@
 
 use crate::arith::{self, Vars};
 use crate::checks::parse_checks_json;
-use crate::post_merge::{self, decide, Decision, EXIT_TIMEOUT, POST_MERGE_GRACE};
+use crate::post_merge::{
+    self, judge, Decision, ToolErrors, EXIT_TIMEOUT, POST_MERGE_GRACE, TOOL_ERROR_RETRIES,
+};
 use crate::queue::{self, Verdict};
 use crate::sh::{
     self, capture, capture_merged, capture_or_echo, die, env_or, info, now, ok, on_path, prefix,
@@ -53,6 +55,7 @@ Exit codes:
   1: Check or workflow failure (diagnostic logs printed)
   2: Timeout reached
   3: Invalid argument or configuration error
+  4: Could not build or run pipeline-status (CI state unknown, not a failure)
 ";
 
 const PIPELINE_SCRIPT: &str = "tools/pipeline-status/pipeline-status.sh";
@@ -670,6 +673,7 @@ pub fn run(script: &str, args: &[String]) -> i32 {
     // One forced re-mint per run of failed reads: a failure a new token does
     // not fix (a permissions error, an outage) must not re-mint every poll.
     let mut reminted_for_failure = false;
+    let mut tool_errors = ToolErrors::default();
     loop {
         let now = now();
         if now >= deadline {
@@ -711,7 +715,7 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         if report.no_verdict.is_none() {
             reminted_for_failure = false;
         }
-        let decision = decide(status.status, post_elapsed);
+        let decision = judge(status.status, post_elapsed, &report);
         match decision {
             Decision::Green => {
                 ok(&format!(
@@ -771,6 +775,17 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 ));
                 sh::sleep(&interval);
             }
+            Decision::ToolError => {
+                // Bazel's exit code, not pipeline-status': say nothing about CI.
+                let why = report.tool_failure.as_deref().unwrap_or_default();
+                warn(&format!(
+                    "Could not run //tools/pipeline-status (attempt {}/{TOOL_ERROR_RETRIES}): {why}",
+                    tool_errors.consecutive + 1
+                ));
+                if tool_errors.consecutive + 1 < TOOL_ERROR_RETRIES {
+                    sh::sleep(&interval);
+                }
+            }
             Decision::Unexpected(rc) => {
                 warn(&format!(
                     "Unexpected pipeline-status return code ({rc}). Retrying in {interval}s..."
@@ -781,6 +796,13 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         // The exit code comes from the decision alone: only Green is 0, Failed
         // is 1, and every waiting state keeps polling.
         if let Some(code) = decision.exit_code() {
+            return code;
+        }
+        if let Some(code) = tool_errors.record(&decision) {
+            die(&format!(
+                "Could not build or run //tools/pipeline-status {TOOL_ERROR_RETRIES} times in a row, so the post-merge state of {short} is UNKNOWN (this is not a CI failure). Fix the local Bazel setup (e.g. `bazel fetch --force --repo=@@<repo>` for a missing external repo), then run `bazel run //tools/pipeline-status -- {short}`."
+            ));
+            sh::err_text(&format!("{}\n", status.out));
             return code;
         }
     }
@@ -812,6 +834,7 @@ mod tests {
 #   1: Failure detected in CI checks, merge queue, or post-merge workflows (diagnostics printed).
 #   2: Timeout reached.
 #   3: Invalid argument or configuration error.
+#   4: Could not build or run pipeline-status (CI state unknown, not a failure).
 set -uo pipefail
 
 REPO="${WATCH_PR_REPO:-VitruvianSoftware/vitruvian-core}"
@@ -847,6 +870,7 @@ Exit codes:
   1: Check or workflow failure (diagnostic logs printed)
   2: Timeout reached
   3: Invalid argument or configuration error
+  4: Could not build or run pipeline-status (CI state unknown, not a failure)
 EOF
 }
 "#;
