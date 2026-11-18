@@ -219,6 +219,9 @@ public enum Pages {
         public var volumeRestoreReport: String?
         /// Number of announcements waiting in the snooze queue.
         public var queuedCount = 0
+        /// When the phone's link went down, while phone output is on and
+        /// it has not been seen back (`PhoneLinkStatusFile.outageSince`).
+        public var phoneOutageSince: Date?
         /// Whether Custom… is open in the island's snooze interval picker.
         public var customIslandSnoozeOpen = false
         /// Whether Custom… is open for Default snooze length in General settings.
@@ -643,6 +646,7 @@ public enum Pages {
             doorCardBlocks(status)
             doorReportBlocks(status)
             configProblemBlocks(status)
+            phoneLinkBlocks(status)
             if config.enabled { chatWarningBlocks(status) }
             // Before setup only this Mac or this phone can speak: offer the field
             // when it would. What you type plays regardless of automatic broadcasting.
@@ -737,6 +741,16 @@ public enum Pages {
             return [button(Block.moreSettings, UIText.plain(moreSettingsButton))]
         }
         return [text(UIText.plain(moreSettings), style: .caption)]
+    }
+
+    /// Phone output is on and the phone is not connected: its
+    /// announcements are being dropped, so say so and how to fix it.
+    static func phoneLinkBlocks(_ status: Status, calendar: Calendar = .current) -> [UIBlock] {
+        guard let since = status.phoneOutageSince else { return [] }
+        return [
+            row(nil, UIText.plain(PhoneLinkStatusFile.headline(since: since, calendar: calendar)),
+                subtitle: UIText.plain(PhoneLinkStatusFile.hint), icon: "iphone.slash"),
+        ]
     }
 
     /// The settings file is there and does not read: said first, on both

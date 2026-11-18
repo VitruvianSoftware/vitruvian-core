@@ -566,7 +566,11 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     ) {
         self.configManager = configManager ?? .shared
         self.secrets = secrets
-        self.announcer = announcer ?? Announcer(home: home, geminiKey: { secrets.load().geminiApiKey })
+        // The app's monitor (the extension passes its engine's announcer):
+        // a phone outage is recorded beside its status file.
+        self.announcer = announcer ?? Announcer(
+            home: home, geminiKey: { secrets.load().geminiApiKey },
+            phoneLink: statusFile.map { PhoneLinkStatusFile(url: PhoneLinkStatusFile.url(beside: $0.url, door: .app)) })
         self.statusFile = statusFile
         self.auth = auth
         self.chatSession = chatSession

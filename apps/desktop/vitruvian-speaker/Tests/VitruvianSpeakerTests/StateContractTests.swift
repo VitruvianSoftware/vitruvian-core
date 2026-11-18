@@ -128,6 +128,8 @@ struct StateContractTests {
                 secrets: secrets,
                 history: history,
                 monitorStatusFile: monitorStatusFile,
+                // Never the real relay on this Mac.
+                phoneLinkProbe: NoRelayProbe(),
                 doorFile: doorFile,
                 otherInstalled: { _ in otherInstalled },
                 appRunning: { appRunning },
@@ -2480,4 +2482,9 @@ struct StateContractTests {
         let badErr = try #require((JSONSerialization.jsonObject(with: Data(badOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
         #expect(badErr["code"] as? String == "invalid_choice")
     }
+}
+
+/// A relay that is never there: `--state` tests must not reach a real one.
+private struct NoRelayProbe: PhoneLinkProbing {
+    func isConnected() async -> Bool? { nil }
 }

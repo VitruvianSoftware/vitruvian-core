@@ -170,6 +170,7 @@ final class AppSide {
         stopListening = { [unowned self] in
             for token in self.listeners { DistributedNotificationCenter.default().removeObserver(token) }
             self.listeners = []
+            engine.stopWatchingPhoneLink()
             coordinator.stop()
         }
     }

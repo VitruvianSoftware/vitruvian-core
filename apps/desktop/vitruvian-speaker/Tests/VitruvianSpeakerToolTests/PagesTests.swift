@@ -140,6 +140,21 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(lines.contains("History · /data/history.json"))
     }
 
+    /// Phone output on and the phone not connected: the island says so,
+    /// with how to fix it. Nothing otherwise.
+    func testTheIslandSaysWhenThePhoneIsNotConnected() {
+        var status = Pages.Status()
+        status.config = configured
+        status.config.speakPhone = true
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
+        XCTAssertFalse(texts(Pages.island(status)).contains { $0.hasPrefix(PhoneLinkStatusFile.headline) })
+        status.phoneOutageSince = Date(timeIntervalSince1970: 0)
+        let rows = texts(Pages.island(status)).filter { $0.hasPrefix(PhoneLinkStatusFile.headline) }
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows[0].hasSuffix(" · " + PhoneLinkStatusFile.hint))
+        XCTAssertTrue(rows[0].hasPrefix(PhoneLinkStatusFile.headline + " (since "))
+    }
+
     /// An app before 3.48: the speaker list and the typed volume, as
     /// before, with Mute a switch and no Quieter, Louder or Read.
     func testTheIslandPageHasTheFieldTheSwitchesAndTheSpeaker() {

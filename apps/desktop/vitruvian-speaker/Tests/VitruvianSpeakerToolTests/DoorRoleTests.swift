@@ -242,12 +242,15 @@ final class DoorRoleTests: XCTestCase {
             link: link, store: store, driver: driver, later: { $0() }, now: { [unowned self] in now },
             account: account, historyURL: VitruvianSpeakerToolTests.noHistory,
             monitorStatusURL: root.appendingPathComponent("data/speaker_monitor_status.json"),
+            phoneLinkURL: phoneLinkURL,
             controlChatMonitor: { [unowned self] in asked.append($0) },
             role: { [unowned self] in role }, other: app, door: door,
             sendStatus: { [unowned self] in marks.append($0) },
             monitorMayRun: { [unowned self] in mayRun.append($0) },
             holdsLiveLock: { [unowned self] in holdsLiveLock }))
     }
+
+    private var phoneLinkURL: URL { root.appendingPathComponent("data/phone_link.json") }
 
     private func choose(_ chosen: VitruvianSpeakerProfile.Door, at date: Date) throws {
         try door.update {
@@ -541,6 +544,30 @@ final class DoorRoleTests: XCTestCase {
                                      targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")])
         _ = tool.islandPage()
         XCTAssertTrue(tool.statusInputs().setUp, "a speaker")
+    }
+
+    /// The extension reads its own phone link file: an outage shows on the
+    /// mark and the island while phone output is on, and goes once the
+    /// phone is seen back.
+    func testAPhoneOutageShowsOnTheMarkAndTheIsland() throws {
+        try FileManager.default.createDirectory(at: phoneLinkURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let file = PhoneLinkStatusFile(url: phoneLinkURL)
+        store.config?.speakPhone = true
+        let tool = tool()
+        _ = tool.islandPage()
+        XCTAssertFalse(tool.statusInputs().phoneNotConnected)
+        file.recordNotConnected(at: now)
+        tool.refreshRole()
+        XCTAssertTrue(tool.statusInputs().phoneNotConnected)
+        XCTAssertEqual(IslandStatus.mark(tool.statusInputs()).icon, "iphone.slash")
+        XCTAssertTrue(texts(tool.islandPage()).contains { $0.hasPrefix(PhoneLinkStatusFile.headline) })
+        store.config?.speakPhone = false
+        _ = tool.islandPage()
+        XCTAssertFalse(tool.statusInputs().phoneNotConnected, "phone output off")
+        store.config?.speakPhone = true
+        _ = tool.islandPage()
+        file.recordConnected(at: now)
+        XCTAssertFalse(tool.statusInputs().phoneNotConnected, "seen back")
     }
 }
 

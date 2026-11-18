@@ -485,6 +485,7 @@ extension VitruvianSpeakerTool.Parts {
             historyURL: profile.historyURL,
             snoozeQueueURL: profile.snoozeQueueURL,
             monitorStatusURL: profile.monitorStatusURL,
+            phoneLinkURL: profile.phoneLinkStatusURL,
             controlChatMonitor: { action in onMain { ChatMonitorControlNotice.apply(action, monitor: monitor) } },
             role: { check.role(me: .extension) },
             other: other,
