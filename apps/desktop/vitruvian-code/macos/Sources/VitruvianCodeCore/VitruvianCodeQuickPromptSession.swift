@@ -45,6 +45,8 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
     public var thinkingText: String?
     public var totalCostUSD: Double?
     public var approvalRequest: VitruvianCodeApprovalRequest?
+    public var question: AgentQuestion?
+    public var questionStatus: AgentQuestionStatus?
     /// How full the context window was after this reply's latest step.
     public var contextUsage: VitruvianCodeContextUsage?
     /// Reasoning tokens the model reported for this reply.
@@ -73,6 +75,8 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
         thinkingText: String? = nil,
         totalCostUSD: Double? = nil,
         approvalRequest: VitruvianCodeApprovalRequest? = nil,
+        question: AgentQuestion? = nil,
+        questionStatus: AgentQuestionStatus? = nil,
         contextUsage: VitruvianCodeContextUsage? = nil,
         thinkingTokens: Int? = nil,
         thinkingDurationMs: Int? = nil,
@@ -94,6 +98,8 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
         self.thinkingText = thinkingText
         self.totalCostUSD = totalCostUSD
         self.approvalRequest = approvalRequest
+        self.question = question
+        self.questionStatus = questionStatus
         self.contextUsage = contextUsage
         self.thinkingTokens = thinkingTokens
         self.thinkingDurationMs = thinkingDurationMs
@@ -308,7 +314,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     public private(set) var sessionAllowedTools: Set<String> = []
     /// The `request_id`s this turn's agent is waiting on an answer to. An
     /// approval card from an earlier turn answers nothing.
-    private var awaitingAnswers: Set<String> = []
+    var awaitingAnswers: Set<String> = []
     /// True once the turn's result has come and its input is closed.
     private var turnInputClosed = false
     /// True once a step of this turn has said how much context it used.
@@ -1497,6 +1503,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     ) {
         connection = nil
         isRunning = false
+        expirePendingQuestionCards()
+        refreshPendingApproval()
         if !isCustomCommand {
             stopTranscriptFollower()
         }
@@ -1540,6 +1548,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stopTranscriptFollower()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
+        // The agent is told to cancel, which cancels whatever it is still
+        // waiting on, so no card may look answerable after Stop: pending
+        // approvals read as denied and pending questions as expired.
+        cancelPendingApprovalCards()
         if let active = connection {
             if let immediate = active as? any _ImmediateAgentConnection {
                 immediate.cancelImmediateTurn()
@@ -1745,6 +1757,24 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             messages[index].approvalRequest?.status = .denied
             changed = true
         }
+        for index in messages.indices where messages[index].questionStatus == .pending {
+            messages[index].questionStatus = .expired
+            changed = true
+        }
+        if changed {
+            refreshPendingApproval()
+        }
+    }
+
+    private func expirePendingQuestionCards() {
+        var changed = false
+        for index in messages.indices where messages[index].questionStatus == .pending {
+            messages[index].questionStatus = .expired
+            if let reqID = messages[index].question?.requestID {
+                awaitingAnswers.remove(reqID)
+            }
+            changed = true
+        }
         if changed {
             refreshPendingApproval()
         }
@@ -1780,7 +1810,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     // MARK: - Stream
 
     private func refreshPendingApproval() {
-        let pending = isRunning && messages.contains { $0.approvalRequest?.status == .pending }
+        let pending = isRunning && messages.contains {
+            $0.approvalRequest?.status == .pending || $0.questionStatus == .pending
+        }
         if hasPendingApproval != pending {
             hasPendingApproval = pending
         }
@@ -1817,15 +1849,20 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     // Allowed for the session already: answered at once,
                     // and shown as such rather than asked again.
                     req.status = .sessionAllowed
+                    if !req.options.isEmpty {
+                        req.chosenOptionID = (req.options.first(where: { $0.kind == .allowAlways })
+                            ?? req.options.first(where: { $0.kind == .allowOnce }))?.id
+                    }
                     answer(req, decision: .sessionAllowed)
                 }
             }
             activity = strings.usingTool(req.toolName)
             currentToolCalls += 1
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
-                if let shown = messages[idx].approvalRequest, shown.status == .pending, shown.id != req.id {
+                if (messages[idx].approvalRequest?.status == .pending && messages[idx].approvalRequest?.id != req.id)
+                    || messages[idx].question != nil {
                     // Parallel tool calls ask together; a card still
-                    // waiting is kept, and this one gets its own bubble.
+                    // waiting or holding a question is kept, and this one gets its own bubble.
                     let nextMsg = VitruvianCodeChatMessage(role: .agent, text: "", toolCalls: currentToolCalls,
                                                         modelName: messages[idx].modelName, approvalRequest: req,
                                                         createdAt: Date())
@@ -1898,6 +1935,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             // until its input ends; the turn is over, so it is ended.
             turnInputClosed = true
             awaitingAnswers = []
+            expirePendingQuestionCards()
             if let id { assignConversationID(id) }
             if let response, currentReplyText.isEmpty { appendToReply(response) }
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
@@ -1938,6 +1976,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             for index in messages.indices where messages[index].approvalRequest?.status == .pending {
                 messages[index].approvalRequest?.status = .denied
             }
+            expirePendingQuestionCards()
             refreshPendingApproval()
             if !reportedError {
                 reportedError = true
@@ -1958,18 +1997,52 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             }
         case .question(let question):
             finishThinkingIfNeeded()
-            // Step 2b interim behavior: display the agent question as an agent message and answer
-            // `.cancelled` so the turn never hangs waiting for user input until Step 2c adds AgentFormCard.
-            appendToReply(Self.formatInterimQuestionMessage(question))
-            if let active = connection ?? liveConnection {
-                if let immediate = active as? any _ImmediateAgentConnection {
-                    immediate.sendImmediateAnswer(question.requestID, .cancelled)
+            guard !turnInputClosed else { break }
+            awaitingAnswers.insert(question.requestID)
+            if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
+                if messages[idx].text.isEmpty && messages[idx].approvalRequest == nil && messages[idx].question == nil {
+                    messages[idx].question = question
+                    messages[idx].questionStatus = .pending
                 } else {
-                    Task { @MainActor in
-                        try? await active.answer(question.requestID, .cancelled)
-                    }
+                    let nextMsg = VitruvianCodeChatMessage(
+                        role: .agent,
+                        text: "",
+                        modelName: messages[idx].modelName,
+                        question: question,
+                        questionStatus: .pending,
+                        createdAt: Date()
+                    )
+                    messages.append(nextMsg)
+                    self.replyID = nextMsg.id
                 }
+            } else {
+                let msg = VitruvianCodeChatMessage(
+                    role: .agent,
+                    text: "",
+                    question: question,
+                    questionStatus: .pending,
+                    createdAt: Date()
+                )
+                messages.append(msg)
+                replyID = msg.id
             }
+            refreshPendingApproval()
+            let detail = question.title.flatMap {
+                let trimmed = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : "\(trimmed): \(question.message)"
+            } ?? question.message
+            let questionNotice = VitruvianCodeTurnNotice(
+                providerName: providerName,
+                text: detail,
+                failed: false,
+                endedCleanly: false
+            )
+            inboxCenter.recordApprovalNeeded(
+                questionNotice,
+                sessionID: conversationID,
+                worktreeName: worktreeMode ? "worktree" : nil
+            )
+            host.turnNeedsApproval(questionNotice)
         case .planReplaced,
              .configOptions,
              .compaction,
@@ -1978,20 +2051,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
              .usageLimit:
             break
         }
-    }
-
-    private nonisolated static func formatInterimQuestionMessage(_ question: AgentQuestion) -> String {
-        var lines: [String] = []
-        let trimmed = question.message.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            lines.append(trimmed)
-        }
-        for field in question.fields where !field.options.isEmpty {
-            for option in field.options {
-                lines.append("- \(option.label)")
-            }
-        }
-        return lines.joined(separator: "\n")
     }
 
     /// Maps the interim Step 2b approval card buttons to ACP option IDs (`allow_once`, `allow_always`,
@@ -2041,7 +2100,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
     }
 
-    /// Resolves an interactive tool execution approval request.
+    /// Resolves an interactive tool execution approval request using a legacy button status.
     /// The decision is shown on the card; when the agent is waiting on it
     /// (Claude Code's `can_use_tool` or ACP `session/request_permission`), it is
     /// also sent back so the tool runs or is refused. Allow for Session also
@@ -2052,16 +2111,78 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
               let request = messages[idx].approvalRequest,
               request.status == .pending else { return }
         messages[idx].approvalRequest?.status = decision
+        if !request.options.isEmpty,
+           case .option(let chosenID) = Self.approvalAnswer(for: request.options, decision: decision) {
+            messages[idx].approvalRequest?.chosenOptionID = chosenID
+        }
         if decision == .sessionAllowed { sessionAllowedTools.insert(request.toolName) }
         refreshPendingApproval()
         answer(request, decision: decision)
     }
 
+    /// Resolves an interactive ACP approval request by selecting one of the agent's own permission options.
+    public func decideApproval(messageID: UUID, optionID: String) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageID }),
+              let request = messages[idx].approvalRequest,
+              request.status == .pending,
+              let option = request.options.first(where: { $0.id == optionID }) else { return }
+        let status: VitruvianCodeApprovalRequest.Status
+        switch option.kind {
+        case .allowOnce:
+            status = .approved
+        case .allowAlways:
+            status = .sessionAllowed
+        case .rejectOnce, .rejectAlways:
+            status = .denied
+        }
+        messages[idx].approvalRequest?.status = status
+        messages[idx].approvalRequest?.chosenOptionID = option.id
+        if status == .sessionAllowed {
+            sessionAllowedTools.insert(request.toolName)
+        }
+        refreshPendingApproval()
+        sendInteractionAnswer(requestID: request.requestID, choice: .option(option.id))
+    }
+
+    /// Submits the user's form or URL-consent response for a pending question card.
+    public func answerQuestion(messageID: UUID, answers: [String: String]) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageID }),
+              let question = messages[idx].question,
+              messages[idx].questionStatus == .pending else { return }
+        messages[idx].questionStatus = .answered(answers)
+        refreshPendingApproval()
+        let choice: AgentAnswer
+        if question.url != nil {
+            let raw = (answers["decision"] ?? answers["action"] ?? answers["url"] ?? answers.values.first ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let declined = raw == "decline" || raw == "reject" || raw == "deny" || raw == "false"
+            choice = .option(declined ? "decline" : "accept")
+        } else {
+            choice = .form(answers)
+        }
+        sendInteractionAnswer(requestID: question.requestID, choice: choice)
+    }
+
+    /// Skips a pending question card and cancels the underlying agent request.
+    public func skipQuestion(messageID: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageID }),
+              let question = messages[idx].question,
+              messages[idx].questionStatus == .pending else { return }
+        messages[idx].questionStatus = .skipped
+        refreshPendingApproval()
+        sendInteractionAnswer(requestID: question.requestID, choice: .cancelled)
+    }
+
     /// Sends a decision to the agent, once, if this turn's agent is the
     /// one waiting on it.
     private func answer(_ request: VitruvianCodeApprovalRequest, decision: VitruvianCodeApprovalRequest.Status) {
-        guard let requestID = request.requestID, awaitingAnswers.remove(requestID) != nil else { return }
         let choice = Self.approvalAnswer(for: request.options, decision: decision)
+        sendInteractionAnswer(requestID: request.requestID, choice: choice)
+    }
+
+    private func sendInteractionAnswer(requestID: String?, choice: AgentAnswer) {
+        guard let requestID, awaitingAnswers.remove(requestID) != nil else { return }
         guard let active = connection ?? liveConnection else { return }
         if let immediate = active as? any _ImmediateAgentConnection {
             immediate.sendImmediateAnswer(requestID, choice)
@@ -2077,6 +2198,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         finishThinkingIfNeeded()
         connection = nil
         isRunning = false
+        expirePendingQuestionCards()
         refreshPendingApproval()
         recordCurrentTranscriptState()
         activity = nil
@@ -2084,6 +2206,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         elapsedTimer = nil
         let completedReply = currentReplyText
         let hadError = reportedError || (status != 0 && completedReply.isEmpty)
+        let replyHasCard = replyID.flatMap { id in
+            messages.first(where: { $0.id == id })
+        }.map { $0.question != nil || $0.approvalRequest != nil } ?? false
         // True on the two paths below where nothing went wrong, which is
         // when the host plays its "done" sound.
         var endedCleanly = false
@@ -2092,7 +2217,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // the user stopped before anything arrived has no such bubble.
         var failureDetail = reportedErrorText
         if stoppedByUser {
-            if currentReplyText.isEmpty { replace(reply: strings.replyStopped, isError: false) }
+            if currentReplyText.isEmpty && !replyHasCard { replace(reply: strings.replyStopped, isError: false) }
         } else if currentReplyText.isEmpty {
             if reportedError {
                 // agy said what went wrong in a bubble of its own.
@@ -2104,7 +2229,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 failureDetail = detail
                 lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
             } else {
-                replace(reply: strings.emptyReply, isError: false)
+                if !replyHasCard {
+                    replace(reply: strings.emptyReply, isError: false)
+                }
                 endedCleanly = true
             }
         } else {
@@ -2257,7 +2384,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     private func removeReply() {
         guard let replyID else { return }
-        messages.removeAll { $0.id == replyID }
+        messages.removeAll { $0.id == replyID && $0.question == nil && $0.approvalRequest == nil }
     }
 }
 

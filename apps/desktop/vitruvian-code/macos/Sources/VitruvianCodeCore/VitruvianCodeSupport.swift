@@ -1696,6 +1696,8 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
     public let requestID: String?
     /// Permission choices offered by an ACP agent (`allow_once`, `allow_always`, etc.).
     public var options: [AgentPermissionOption]
+    /// The option ID chosen by the user (or auto-approved for the session) when `options` is non-empty.
+    public var chosenOptionID: String?
 
     public enum Status: String, Sendable, Equatable {
         case pending
@@ -1710,7 +1712,8 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
         commandOrPath: String,
         status: Status = .pending,
         requestID: String? = nil,
-        options: [AgentPermissionOption] = []
+        options: [AgentPermissionOption] = [],
+        chosenOptionID: String? = nil
     ) {
         self.id = id
         self.toolName = toolName
@@ -1718,6 +1721,7 @@ public struct VitruvianCodeApprovalRequest: Identifiable, Equatable, Sendable {
         self.status = status
         self.requestID = requestID
         self.options = options
+        self.chosenOptionID = chosenOptionID
     }
 }
 
@@ -1967,6 +1971,8 @@ public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
         public let description: String?
         public let required: Bool
         public let options: [Option]
+        public let minItems: Int?
+        public let maxItems: Int?
 
         public init(
             id: String,
@@ -1974,7 +1980,9 @@ public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
             label: String,
             description: String? = nil,
             required: Bool = false,
-            options: [Option] = []
+            options: [Option] = [],
+            minItems: Int? = nil,
+            maxItems: Int? = nil
         ) {
             self.id = id
             self.type = type
@@ -1982,6 +1990,43 @@ public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
             self.description = description
             self.required = required
             self.options = options
+            self.minItems = minItems
+            self.maxItems = maxItems
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id
+            case type
+            case label
+            case description
+            case required
+            case options
+            case minItems
+            case maxItems
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.id = try container.decode(String.self, forKey: .id)
+            self.type = try container.decode(FieldType.self, forKey: .type)
+            self.label = try container.decode(String.self, forKey: .label)
+            self.description = try container.decodeIfPresent(String.self, forKey: .description)
+            self.required = try container.decodeIfPresent(Bool.self, forKey: .required) ?? false
+            self.options = try container.decodeIfPresent([Option].self, forKey: .options) ?? []
+            self.minItems = try container.decodeIfPresent(Int.self, forKey: .minItems)
+            self.maxItems = try container.decodeIfPresent(Int.self, forKey: .maxItems)
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(type, forKey: .type)
+            try container.encode(label, forKey: .label)
+            try container.encodeIfPresent(description, forKey: .description)
+            try container.encode(required, forKey: .required)
+            try container.encode(options, forKey: .options)
+            try container.encodeIfPresent(minItems, forKey: .minItems)
+            try container.encodeIfPresent(maxItems, forKey: .maxItems)
         }
     }
 
@@ -2005,6 +2050,14 @@ public struct AgentQuestion: Identifiable, Equatable, Sendable, Codable {
         self.url = url
         self.fields = fields
     }
+}
+
+/// Lifecycle state of an interactive question form or URL-consent card in a chat message.
+public enum AgentQuestionStatus: Equatable, Sendable, Codable {
+    case pending
+    case answered([String: String])
+    case skipped
+    case expired
 }
 
 /// Why a live agent connection failed mid-session or on startup.

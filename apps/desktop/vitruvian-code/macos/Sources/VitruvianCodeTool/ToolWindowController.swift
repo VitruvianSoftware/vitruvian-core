@@ -212,6 +212,15 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.timelineOf, "timelineOf"), (\.timelineWaitingForReply, "timelineWaitingForReply"),
         (\.timelineMoveLeft, "timelineMoveLeft"), (\.timelineMoveRight, "timelineMoveRight"),
         (\.approvalAuto, "approvalAuto"),
+        (\.permissionRequest, "permissionRequest"), (\.awaitingConfirmation, "awaitingConfirmation"),
+        (\.approved, "approved"), (\.denied, "denied"), (\.allowedForSession, "allowedForSession"),
+        (\.allow, "allow"), (\.deny, "deny"), (\.allowForSession, "allowForSession"),
+        (\.moreApprovalOptions, "moreApprovalOptions"),
+        (\.questionTitle, "questionTitle"), (\.waitingForAnswer, "waitingForAnswer"),
+        (\.answered, "answered"), (\.skipped, "skipped"), (\.noLongerWaiting, "noLongerWaiting"),
+        (\.skipQuestion, "skipQuestion"), (\.openLink, "openLink"), (\.declineLink, "declineLink"),
+        (\.requiredField, "requiredField"), (\.invalidNumber, "invalidNumber"),
+        (\.invalidInteger, "invalidInteger"), (\.booleanYes, "booleanYes"), (\.booleanNo, "booleanNo"),
     ]
 
     private func ensurePanel() -> NSPanel {

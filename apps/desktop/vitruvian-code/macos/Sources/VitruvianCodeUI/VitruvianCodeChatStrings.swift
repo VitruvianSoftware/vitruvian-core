@@ -176,10 +176,27 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var approved: String
     public var denied: String
     public var allowedForSession: String
-    /// Its three buttons.
+    /// Its three buttons and overflow menu.
     public var allow: String
     public var deny: String
     public var allowForSession: String
+    public var moreApprovalOptions: String
+
+    // MARK: Question form card
+
+    public var questionTitle: String
+    public var waitingForAnswer: String
+    public var answered: String
+    public var skipped: String
+    public var noLongerWaiting: String
+    public var skipQuestion: String
+    public var openLink: String
+    public var declineLink: String
+    public var requiredField: String
+    public var invalidNumber: String
+    public var invalidInteger: String
+    public var booleanYes: String
+    public var booleanNo: String
 
     // MARK: Plan mode, worktree mode and subagents
 
@@ -370,6 +387,20 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
         allow: String = "Allow",
         deny: String = "Deny",
         allowForSession: String = "Allow for Session",
+        moreApprovalOptions: String = "More approval options",
+        questionTitle: String = "Question",
+        waitingForAnswer: String = "Waiting for your answer",
+        answered: String = "Answered",
+        skipped: String = "Skipped",
+        noLongerWaiting: String = "No longer waiting",
+        skipQuestion: String = "Skip",
+        openLink: String = "Open link",
+        declineLink: String = "Decline",
+        requiredField: String = "Required",
+        invalidNumber: String = "Enter a valid number",
+        invalidInteger: String = "Enter a whole number",
+        booleanYes: String = "Yes",
+        booleanNo: String = "No",
         plan: String = "Plan",
         worktree: String = "Worktree",
         planContext: String = "Read-only — agent will explain without making changes",
@@ -466,6 +497,20 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
         self.allow = allow
         self.deny = deny
         self.allowForSession = allowForSession
+        self.moreApprovalOptions = moreApprovalOptions
+        self.questionTitle = questionTitle
+        self.waitingForAnswer = waitingForAnswer
+        self.answered = answered
+        self.skipped = skipped
+        self.noLongerWaiting = noLongerWaiting
+        self.skipQuestion = skipQuestion
+        self.openLink = openLink
+        self.declineLink = declineLink
+        self.requiredField = requiredField
+        self.invalidNumber = invalidNumber
+        self.invalidInteger = invalidInteger
+        self.booleanYes = booleanYes
+        self.booleanNo = booleanNo
         self.plan = plan
         self.worktree = worktree
         self.planContext = planContext
