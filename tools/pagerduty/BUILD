@@ -51,6 +51,20 @@ rust_binary(
     ],
 )
 
+# Resolve one incident (e.g. a test page). Writes, so it takes only an
+# exported PAGERDUTY_TOKEN, never the read-key file.
+rust_binary(
+    name = "resolve-incident",
+    srcs = ["src/resolve.rs"],
+    crate_root = "src/resolve.rs",
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pagerduty_lib",
+        "@crates//:serde_json",
+    ],
+)
+
 rust_test(
     name = "pagerduty_lib_test",
     size = "small",

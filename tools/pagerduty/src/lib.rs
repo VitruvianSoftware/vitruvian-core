@@ -78,6 +78,40 @@ pub fn mask(v: &mut Value) {
     }
 }
 
+/// A PagerDuty object id, such as an incident id `Q3TYP5OP5GR0HZ`: upper-case
+/// letters and digits only, so it cannot change the request path.
+pub fn is_object_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 32
+        && id
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
+/// The PUT /incidents/{id} body that resolves one incident.
+pub fn resolve_body() -> String {
+    r#"{"incident":{"type":"incident_reference","status":"resolved"}}"#.to_string()
+}
+
+/// A bare email address for PagerDuty's required `From` header: one `@`, a
+/// dot in the domain, and no characters that could break the header line.
+pub fn is_from_email(email: &str) -> bool {
+    let Some((user, domain)) = email.split_once('@') else {
+        return false;
+    };
+    !user.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && email.matches('@').count() == 1
+        && domain
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+        && user
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._+-".contains(c))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +156,30 @@ mod tests {
         assert_eq!(v["contact_methods"][1]["address"], "***ev");
         assert_eq!(v["user"]["email"], "***ev");
         assert_eq!(v["user"]["name"], "James");
+    }
+
+    #[test]
+    fn object_ids_are_upper_alphanumeric_only() {
+        assert!(is_object_id("Q3TYP5OP5GR0HZ"));
+        assert!(!is_object_id(""));
+        assert!(!is_object_id("q3typ"));
+        assert!(!is_object_id("Q3/../users"));
+        assert!(!is_object_id("Q3?x=1"));
+    }
+
+    #[test]
+    fn resolve_body_sets_status_resolved() {
+        let v: Value = serde_json::from_str(&resolve_body()).unwrap();
+        assert_eq!(v["incident"]["status"], "resolved");
+        assert_eq!(v["incident"]["type"], "incident_reference");
+    }
+
+    #[test]
+    fn from_email_must_be_a_bare_address() {
+        assert!(is_from_email("james@vitruviansoftware.dev"));
+        assert!(!is_from_email("james"));
+        assert!(!is_from_email("James <james@vitruviansoftware.dev>"));
+        assert!(!is_from_email("a@b.dev\nX-Evil: 1"));
+        assert!(!is_from_email("a@nodot"));
     }
 }
