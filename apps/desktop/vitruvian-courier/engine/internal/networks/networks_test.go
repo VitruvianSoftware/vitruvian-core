@@ -1206,3 +1206,25 @@ func TestSlackAndTelegramSyncFullParticipantRosters(t *testing.T) {
 	require.Equal(t, 10000, tgCfg.MemberList.MaxInitialSync)
 	require.True(t, tgCfg.MemberList.SkipDeleted)
 }
+
+// WhatsApp sends its history once, at pairing, and only three months unless the device asks for more. The spec asks
+// for a year (and the size and storage limits mautrix needs before it sends the day limit at all), and lets the
+// backfill queue ask the phone for older messages on a chat that is already paired.
+func TestWhatsAppAsksForAYearOfHistory(t *testing.T) {
+	wa, ok := Get("whatsapp")
+	require.True(t, ok)
+	spec, err := wa.Spec()
+	require.NoError(t, err)
+	nc, err := spec.Connector()
+	require.NoError(t, err)
+	example, data, _ := nc.GetConfig()
+	require.NoError(t, yaml.Unmarshal([]byte(example), data))
+	cfg := &nc.(*whatsapp.WhatsAppConnector).Config
+	require.False(t, cfg.HistorySync.RequestFullSync, "the example's default, which the spec replaces")
+	require.NoError(t, spec.Configure(data))
+	require.True(t, cfg.HistorySync.RequestFullSync)
+	require.EqualValues(t, 365, cfg.HistorySync.FullSyncConfig.DaysLimit)
+	require.NotZero(t, cfg.HistorySync.FullSyncConfig.SizeLimit, "without all three limits the day limit is not sent")
+	require.NotZero(t, cfg.HistorySync.FullSyncConfig.StorageQuota, "without all three limits the day limit is not sent")
+	require.True(t, cfg.HistorySync.BackwardsOnDemand, "the queue pages back through the phone for an already paired chat")
+}
