@@ -136,7 +136,7 @@ pub fn run() -> i32 {
 
     let os_release_path = env_or_default("OS_RELEASE_PATH", "/etc/os-release");
     let runner_home = env_or_default("RUNNER_HOME", "/home/runner");
-    let bazel_version = env_or_default("BAZEL_VERSION", "9.3.0");
+    let bazel_version = env_or_default("BAZEL_VERSION", "9.3.2");
     let rust_version = env_or_default("RUST_VERSION", "1.75.0");
 
     let vid = read_version_id(&os_release_path);
