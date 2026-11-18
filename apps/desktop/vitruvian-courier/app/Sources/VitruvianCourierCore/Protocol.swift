@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 12
+    public static let version = 13
     public static let schemaVersion = 11
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
@@ -1341,6 +1341,30 @@ public struct RoomParams: ProtocolType, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
+    }
+}
+
+/// `room.loadOlder`: what loading a page of a chat's older history from its network did.
+public struct LoadOlderResult: ProtocolType, Equatable {
+    public static let protocolName = "LoadOlderResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// How many messages the page stored.
+    public var added: Int
+    /// Older messages may remain: false once the network has none, or can't give any.
+    public var hasMore: Bool
+    /// The page isn't in yet (another load runs, or the network will answer later): its messages arrive as events.
+    public var loading: Bool
+
+    public init(added: Int, hasMore: Bool, loading: Bool) {
+        self.added = added
+        self.hasMore = hasMore
+        self.loading = loading
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case added
+        case hasMore = "has_more"
+        case loading
     }
 }
 
@@ -5545,6 +5569,7 @@ public enum ProtocolMethods {
         "autoArchive.delete": .userInitiatedMutation,
         "search.query": .readOnlyOrBackground,
         "room.events": .readOnlyOrBackground,
+        "room.loadOlder": .userInitiatedMutation,
         "room.features": .readOnlyOrBackground,
         "room.markRead": .userInitiatedMutation,
         "thread.markRead": .userInitiatedMutation,
@@ -5659,6 +5684,7 @@ public enum ProtocolMethods {
         "autoArchive.set": (AutoArchiveRule.self, AutoArchiveRule.self),
         "autoArchive.delete": (RuleIDParams.self, Empty.self),
         "room.events": (RoomEventsParams.self, EventsPage.self),
+        "room.loadOlder": (RoomParams.self, LoadOlderResult.self),
         "search.query": (SearchParams.self, SearchResult.self),
         "room.markRead": (MarkReadParams.self, Empty.self),
         "thread.markRead": (ThreadParams.self, Empty.self),
@@ -5750,7 +5776,7 @@ public enum ProtocolMethods {
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetReadAloudParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
         AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, MarkReadParams.self,
-        ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self,
+        ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self, LoadOlderResult.self,
         Event.self, Reader.self, PollTally.self, PollOption.self, ThreadSummary.self, EventsPage.self,
         SearchParams.self, SearchFilters.self, SearchResult.self, PersonHit.self, MessageHits.self, MessageHit.self,
         TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, TextEntity.self, ChatFeatures.self,

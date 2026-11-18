@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import XCTest
 
 @testable import VitruvianCourierCore
@@ -575,6 +576,69 @@ final class ConversationModelTests: XCTestCase {
         h.conversation.loadOlder()
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(h.count("room.events"), calls, "no more pages, no more calls")
+        await stop(h)
+    }
+
+    // MARK: - Older history from the network (room.loadOlder)
+
+    /// Opening a chat, even a short one whose top is in view at once, never asks the network for older history.
+    func testOpeningAChatNeverLoadsOlderHistoryFromTheNetwork() async throws {
+        let h = try await start(["!a": history(5)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertFalse(h.conversation.hasOlder, "everything this Mac holds is loaded")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("room.loadOlder"), 0)
+        XCTAssertFalse(h.conversation.isLoadingEarlier)
+    }
+
+    /// Scrolling to the oldest message asks once, shows the loading row while it runs, and reads the older messages
+    /// that came; when the engine says there are no more, nothing further is asked or shown.
+    func testScrollingToTheOldestMessageLoadsEarlierHistoryOnce() async throws {
+        let h = try await start(["!a": history(5)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        var loadingStates: [Bool] = []
+        let watch = h.conversation.$isLoadingEarlier.sink { loadingStates.append($0) }
+        defer { watch.cancel() }
+
+        // The engine has older messages now, and says so: one page added, more remain.
+        h.script.add("!a", textEvent(id: "$0", room: "!a", at: 0, body: "Message 0"))
+        h.script.overrides["room.loadOlder"] = .result(["added": 1, "has_more": true, "loading": false])
+        h.conversation.loadEarlier()
+        h.conversation.loadEarlier() // a second scroll event while it runs asks nothing
+        XCTAssertTrue(h.conversation.isLoadingEarlier, "the loading row shows while it runs")
+        try await waitUntil { !h.conversation.isLoadingEarlier && h.conversation.hasOlder }
+        XCTAssertEqual(h.count("room.loadOlder"), 1)
+        XCTAssertEqual(loadingStates, [false, true, false])
+        XCTAssertEqual(Set(try XCTUnwrap(h.server.receivedParams("room.loadOlder").last).keys), ["room_id"])
+
+        // The view reads on from what the engine added, through the ordinary older-page read.
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().first == "$0" }
+        XCTAssertTrue(h.conversation.canLoadEarlier)
+
+        // At the new top the network has nothing more.
+        h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": false, "loading": false])
+        try await waitUntil { !h.conversation.hasOlder }
+        h.conversation.loadEarlier()
+        try await waitUntil { !h.conversation.canLoadEarlier }
+        XCTAssertEqual(h.count("room.loadOlder"), 2)
+        h.conversation.loadEarlier()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(h.count("room.loadOlder"), 2, "nothing more is asked once the engine says there is none")
+        XCTAssertFalse(h.conversation.isLoadingEarlier)
+        await stop(h)
+    }
+
+    /// Older messages on this Mac are read first: the network is asked only when none is left here.
+    func testEarlierHistoryIsAskedOnlyWhenNothingOlderIsLeftOnThisMac() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        h.conversation.loadEarlier()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(h.count("room.loadOlder"), 0)
         await stop(h)
     }
 
