@@ -795,7 +795,12 @@ public class WireTest {
     val json = readRunfile("apps/mobile/vitruvian-remote/macagent/golden_speaker_v1.json")
     val s = VitruvianSpeakerWire.sources(json)
 
-    assertEquals(39, s.settings.size)
+    // Every setting parses, with no duplicate keys. The count is not pinned: Vitruvian Speaker adds
+    // settings without a phone release, and DeriveTest's "Other settings" list is where a new key
+    // must be named.
+    assertTrue("at least the 39 settings this test was written against", s.settings.size >= 39)
+    assertEquals(s.settings.size, s.settings.map { it.key }.toSet().size)
+    assertTrue(s.settings.all { it.key.isNotEmpty() && it.kind.isNotEmpty() })
     assertFalse(s.catalog.isEmpty)
 
     // "Say who it's from": a choice the phone shows and sends back by its catalog key.
