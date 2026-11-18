@@ -309,6 +309,9 @@ struct EmptyStateView: View {
             }
             if guidance.actions.contains(.goToInbox) {
                 Button(String(localized: "Go to Inbox"), action: goToInbox)
+                    // A real button, not faint text: the empty list's one way out has to look clickable.
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
                     .padding(.top, 4)
             }
         }
