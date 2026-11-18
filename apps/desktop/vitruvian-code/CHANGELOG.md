@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.37.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.36.0...vitruvian-code-v1.37.0) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-code:** run agy over ACP, one connection per chat, behind the hidden setting ([#5077](https://github.com/VitruvianSoftware/vitruvian-core/issues/5077)) ([6b94ce0](https://github.com/VitruvianSoftware/vitruvian-core/commit/6b94ce09fa988e38d280e80516f89d8258e41691))
+
 ## [1.36.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.35.1...vitruvian-code-v1.36.0) (2026-11-15)
 
 
