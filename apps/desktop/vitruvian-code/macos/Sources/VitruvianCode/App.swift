@@ -21,11 +21,31 @@
 #if canImport(SentryLite)
 import SentryLite
 #endif
+import AppKit
 import SwiftUI
 import VitruvianCodeCore
 
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var botManager: BotManager?
+    private var isTerminating = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isTerminating, let botManager = Self.botManager else {
+            return .terminateNow
+        }
+        isTerminating = true
+        Task { @MainActor in
+            await botManager.stopForQuit()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+}
+
 @main
 struct VitruvianCodeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
 
     init() {
@@ -84,6 +104,7 @@ class AppState: ObservableObject {
         self.botManager = bot
         self.configManager = config
         self.updateChecker = updater
+        AppDelegate.botManager = bot
 
         // The chat window shows the engine's chat, and tells the engine
         // whether it is on screen.

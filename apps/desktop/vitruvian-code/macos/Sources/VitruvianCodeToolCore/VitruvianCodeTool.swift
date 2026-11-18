@@ -215,6 +215,13 @@ public final class VitruvianCodeTool {
         parts.engine.stopForQuit()
     }
 
+    /// Awaits termination of every live connection and process group before exiting.
+    public func stopAll(timeout: TimeInterval = VitruvianCodeEngine.quitStopTimeout) async {
+        if parts.window.isDockedInSlot { parts.window.undockFromSlot(popOut: false) }
+        parts.window.hide()
+        await parts.engine.stopAll(timeout: timeout)
+    }
+
     public func run(command: String) throws {
         switch command {
         case Command.quickPrompt:
