@@ -2379,7 +2379,12 @@ impl VitruvianSpeaker {
         };
         let raw_text = first_text_content(&res);
         if res.is_error {
-            log_phone_say_outcome(&format!("failed: {raw_text}"));
+            // The phone's error is its own words; keep the announcement out
+            // of the log even if the phone quotes it back.
+            log_phone_say_outcome(&format!(
+                "failed: {}",
+                raw_text.replace(text.as_str(), "<text>")
+            ));
             return HttpResponse::json(
                 200,
                 &phone_say_response_json(false, false, false, &raw_text, ""),
@@ -5758,5 +5763,38 @@ mod tests {
         assert!(line.ends_with("..."), "{line}");
         assert!(line.chars().count() < 120, "{line}");
         assert!(!log.contains("second line"));
+    }
+
+    #[test]
+    fn phone_say_failure_never_logs_the_text_the_phone_quotes_back() {
+        let bridge = Arc::new(PhoneBridge::new());
+        bridge.attach_fake_phone_for_test(|_call| {
+            (
+                "could not speak \"the vault code is 4711\"".to_string(),
+                true,
+            )
+        });
+        let (_out, log) = phone_say_log(&bridge, r#"{"text":"the vault code is 4711"}"#);
+        assert_eq!(
+            outcome_line(&log),
+            r#"phone-say: failed: could not speak "<text>""#
+        );
+    }
+
+    #[test]
+    fn phone_say_logs_a_garbled_answer_and_a_dead_link() {
+        let bridge = Arc::new(PhoneBridge::new());
+        bridge.attach_fake_phone_for_test(|_call| ("not json".to_string(), false));
+        let (_out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
+        assert_eq!(
+            outcome_line(&log),
+            "phone-say: failed: invalid phone.speak response"
+        );
+
+        let bridge = Arc::new(PhoneBridge::new());
+        bridge.attach_dead_phone_for_test();
+        let (out, log) = phone_say_log(&bridge, r#"{"text":"hello"}"#);
+        assert_eq!(out.get_str("reason"), "phone link is busy");
+        assert_eq!(outcome_line(&log), "phone-say: failed: phone link is busy");
     }
 }

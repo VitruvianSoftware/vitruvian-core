@@ -444,6 +444,15 @@ impl PhoneBridge {
         });
         link_id
     }
+
+    /// Test-only: a linked phone whose stream is already gone, so sending it
+    /// a call fails at once.
+    #[cfg(test)]
+    pub fn attach_dead_phone_for_test(self: &Arc<Self>) -> u64 {
+        let (link_id, rx) = self.install(PhoneDevice::default(), Vec::new(), CancelToken::new());
+        drop(rx);
+        link_id
+    }
 }
 
 /// Why a phone link ended. Logged so a dropped link can be explained later.
@@ -541,7 +550,8 @@ fn run_link(
     cancel: CancelToken,
     ping_interval: Duration,
 ) -> LinkEnd {
-    let model = device.model.clone();
+    // The phone names itself; cap it so a long name cannot flood the log.
+    let model: String = device.model.chars().take(64).collect();
     let tool_count = tools.len();
     let (link_id, rx) = bridge.install(device, tools, cancel.clone());
     let opened = Instant::now();
