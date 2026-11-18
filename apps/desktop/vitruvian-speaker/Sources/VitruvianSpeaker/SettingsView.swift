@@ -55,12 +55,25 @@ public class SettingsViewModel: ObservableObject {
     /// Installed English voices for the "This Mac" picker, best first.
     @Published public var macVoices: [LocalVoice] = []
     @Published public var isPreviewingVoice = false
+    @Published public var snoozeDefaultPresetSelection: String = "\(SpeakerConfig.defaultSnoozeMinutes)"
+    @Published public var customDefaultSnoozeText: String = "\(SpeakerConfig.defaultSnoozeMinutes)"
+    @Published public var customDefaultSnoozeError: String?
 
     public enum Tab: Hashable { case general, speakers, monitor, agents, googleCloud }
 
     public init() {}
 
-    func refresh(secrets: SecretStore = .shared, config: ConfigManager = .shared) {
+    func syncSnoozeFields(from config: SpeakerConfig) {
+        let minutes = config.effectiveSnoozeDefaultMinutes
+        snoozeDefaultPresetSelection = SpeakerConfig.snoozePresets.contains(minutes)
+            ? "\(minutes)"
+            : "custom"
+        customDefaultSnoozeText = "\(minutes)"
+        customDefaultSnoozeError = nil
+    }
+
+    func refresh(secrets: SecretStore = .shared, config: ConfigManager? = nil) {
+        let resolvedConfig = config ?? ConfigManager.shared
         agents = CodingAgent.allCases.map { AgentIntegration.shared.status(of: $0) }
         legacyLaunchAgentInstalled = AgentIntegration.shared.isLegacyLaunchAgentInstalled()
         launchAtLogin = LoginItem.isEnabled
@@ -71,7 +84,7 @@ public class SettingsViewModel: ObservableObject {
         showReplaceBeeperToken = false
         courierToken = s.courierToken ?? ""
         showReplaceCourierToken = false
-        let monitor = config.config.effectiveChatMonitor
+        let monitor = resolvedConfig.config.effectiveChatMonitor
         chatAppAddresses = Dictionary(uniqueKeysWithValues: ChatApp.allCases.map { ($0, monitor.address(for: $0)) })
         geminiApiKey = s.geminiApiKey ?? ""
         showReplaceGeminiKey = false
@@ -79,6 +92,7 @@ public class SettingsViewModel: ObservableObject {
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
         hasBundledOAuthClient = VitruvianSpeakerProfile.current.shippedClient != nil
         macVoices = LocalSpeaker.shared.englishVoices()
+        syncSnoozeFields(from: resolvedConfig.config)
     }
 }
 
@@ -89,23 +103,29 @@ public struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @ObservedObject var mediaPause: MediaPauseCoordinator = .shared
     @ObservedObject var volumeRestore: VolumeRestoreCoordinator = .shared
-    @ObservedObject var door: AppDoor = AppSide.shared.door
-    @ObservedObject var switcher: AppSwitch = AppSide.shared.switcher
+    @ObservedObject var door: AppDoor
+    @ObservedObject var switcher: AppSwitch
 
     public init(
         configManager: ConfigManager,
         monitorService: ChatMonitorService,
-        viewModel: SettingsViewModel
+        viewModel: SettingsViewModel,
+        door: AppDoor? = nil,
+        switcher: AppSwitch? = nil
     ) {
         self.configManager = configManager
         self.monitorService = monitorService
         self.viewModel = viewModel
+        self.door = door ?? AppSide.shared.door
+        self.switcher = switcher ?? AppSide.shared.switcher
     }
 
     public init() {
         self.configManager = .shared
         self.monitorService = .shared
         self.viewModel = .shared
+        self.door = AppSide.shared.door
+        self.switcher = AppSide.shared.switcher
     }
 
     public var body: some View {
@@ -128,7 +148,7 @@ public struct SettingsView: View {
         }
         .frame(width: 540, height: 440)
         .onAppear {
-            viewModel.refresh()
+            viewModel.refresh(config: configManager)
             configManager.checkConnection()
             viewModel.selectedHomeId = configManager.config.structureId
         }
@@ -234,9 +254,27 @@ public struct SettingsView: View {
         viewModel.statusMessage = (isError ? "Error: " : "") + text
     }
 
+    private func applyCustomDefaultSnooze() {
+        do {
+            let minutes = try SettingsActions.parseSnoozeMinutes(
+                viewModel.customDefaultSnoozeText,
+                key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue
+            )
+            _ = try configManager.setSetting(.snoozeDefaultMinutes, value: .int(minutes), clampNumbers: false)
+            viewModel.customDefaultSnoozeError = nil
+            viewModel.snoozeDefaultPresetSelection = SpeakerConfig.snoozePresets.contains(minutes)
+                ? "\(minutes)"
+                : "custom"
+        } catch let refusal as SettingsActions.Refusal {
+            viewModel.customDefaultSnoozeError = refusal.localizedDescription
+        } catch {
+            viewModel.customDefaultSnoozeError = error.localizedDescription
+        }
+    }
+
     // MARK: - General Tab
 
-    private var generalTab: some View {
+    var generalTab: some View {
         Form {
             if let problem = configManager.configProblem {
                 Section("Settings File") {
@@ -424,6 +462,99 @@ public struct SettingsView: View {
                 Text("Quiet Hours")
             } footer: {
                 Text("Automated announcements are held during quiet hours. Quick Announcements you type yourself still play.")
+            }
+
+            Section {
+                Picker(SettingsCatalog.Key.snoozeDefaultMinutes.label(), selection: Binding(
+                    get: {
+                        if viewModel.snoozeDefaultPresetSelection == "custom" { return "custom" }
+                        let current = configManager.config.effectiveSnoozeDefaultMinutes
+                        return SpeakerConfig.snoozePresets.contains(current) ? "\(current)" : "custom"
+                    },
+                    set: { value in
+                        viewModel.customDefaultSnoozeError = nil
+                        if value == "custom" {
+                            viewModel.snoozeDefaultPresetSelection = "custom"
+                            viewModel.customDefaultSnoozeText = "\(configManager.config.effectiveSnoozeDefaultMinutes)"
+                        } else if let minutes = Int(value) {
+                            viewModel.snoozeDefaultPresetSelection = value
+                            viewModel.customDefaultSnoozeText = value
+                            do {
+                                _ = try configManager.setSetting(.snoozeDefaultMinutes, value: .int(minutes), clampNumbers: false)
+                            } catch {
+                                viewModel.customDefaultSnoozeError = error.localizedDescription
+                            }
+                        }
+                    }
+                )) {
+                    ForEach(SpeakerConfig.snoozePresets, id: \.self) { preset in
+                        Text("\(preset) min").tag("\(preset)")
+                    }
+                    Text("Custom…").tag("custom")
+                }
+                .accessibilityHint("Default length used when snoozing without specifying minutes")
+
+                if viewModel.snoozeDefaultPresetSelection == "custom" ||
+                    !SpeakerConfig.snoozePresets.contains(configManager.config.effectiveSnoozeDefaultMinutes) {
+                    LabeledContent("Custom length") {
+                        HStack(spacing: 8) {
+                            TextField("", text: $viewModel.customDefaultSnoozeText)
+                                .labelsHidden()
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 64)
+                                .onChange(of: viewModel.customDefaultSnoozeText) { _, _ in
+                                    viewModel.customDefaultSnoozeError = nil
+                                }
+                                .onSubmit {
+                                    applyCustomDefaultSnooze()
+                                }
+                                .accessibilityLabel("Custom default snooze minutes")
+                            Stepper(
+                                value: Binding(
+                                    get: {
+                                        (try? SettingsActions.parseSnoozeMinutes(
+                                            viewModel.customDefaultSnoozeText,
+                                            key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue
+                                        )) ?? configManager.config.effectiveSnoozeDefaultMinutes
+                                    },
+                                    set: { value in
+                                        viewModel.customDefaultSnoozeText = "\(value)"
+                                        viewModel.customDefaultSnoozeError = nil
+                                        _ = try? configManager.setSetting(.snoozeDefaultMinutes, value: .int(value), clampNumbers: false)
+                                    }
+                                ),
+                                in: SpeakerConfig.minSnoozeMinutes...SpeakerConfig.maxSnoozeMinutes,
+                                step: 5
+                            ) {
+                                EmptyView()
+                            }
+                            .labelsHidden()
+                            Text("min")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Apply") {
+                                applyCustomDefaultSnooze()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                    if let error = viewModel.customDefaultSnoozeError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Toggle(SettingsCatalog.Key.snoozeQueue.label(), isOn: Binding(
+                    get: { configManager.config.effectiveSnoozeQueue },
+                    set: { configManager.applySetting(.snoozeQueue, .bool($0)) }
+                ))
+                .accessibilityHint("Hold automated announcements while snoozed and speak them when snooze ends")
+            } header: {
+                Text("Snooze")
+            } footer: {
+                Text("Pick 15, 30, 60 or 120 minutes, or any length from 1 to 240. With queueing on, announcements wait and play when the snooze ends.")
             }
 
             statusSection

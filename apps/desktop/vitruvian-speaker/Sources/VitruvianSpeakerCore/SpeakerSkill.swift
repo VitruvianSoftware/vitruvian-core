@@ -89,6 +89,9 @@ public enum SpeakerSkill {
         \(command) --on
         \(command) --off
         \(command) --toggle
+        \(command) --snooze
+        \(command) --snooze 60
+        \(command) --resume
         \(command) --status
         ```
 

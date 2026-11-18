@@ -59,6 +59,7 @@ public enum VitruvianSpeakerStateContract {
         public var configFile: SpeakerConfigFile
         public var secrets: SecretStore
         public var history: BroadcastHistory
+        public var snoozeQueue: SnoozeQueue
         public var monitorStatusFile: ChatMonitorStatusFile
         public var doorFile: DoorFile
         public var otherInstalled: @Sendable (DoorRecord?) -> Bool
@@ -92,6 +93,7 @@ public enum VitruvianSpeakerStateContract {
             configFile: SpeakerConfigFile,
             secrets: SecretStore,
             history: BroadcastHistory,
+            snoozeQueue: SnoozeQueue? = nil,
             monitorStatusFile: ChatMonitorStatusFile,
             doorFile: DoorFile,
             otherInstalled: @escaping @Sendable (DoorRecord?) -> Bool,
@@ -117,6 +119,9 @@ public enum VitruvianSpeakerStateContract {
             self.configFile = configFile
             self.secrets = secrets
             self.history = history
+            let defaultQueueName = program == .app ? "speaker_snooze_queue.json" : "snooze_queue.json"
+            self.snoozeQueue = snoozeQueue ?? SnoozeQueue(
+                fileURL: configFile.url.deletingLastPathComponent().appendingPathComponent(defaultQueueName))
             self.monitorStatusFile = monitorStatusFile
             self.doorFile = doorFile
             self.otherInstalled = otherInstalled
@@ -165,6 +170,7 @@ public enum VitruvianSpeakerStateContract {
                 configFile: SpeakerConfigFile(url: profile.settingsURL),
                 secrets: SecretStore(fileURL: profile.secretsURL),
                 history: BroadcastHistory(fileURL: profile.historyURL),
+                snoozeQueue: SnoozeQueue(fileURL: profile.snoozeQueueURL),
                 monitorStatusFile: ChatMonitorStatusFile(url: profile.monitorStatusURL),
                 doorFile: doorFile,
                 otherInstalled: otherInstalled,
@@ -549,6 +555,7 @@ public enum VitruvianSpeakerStateContract {
             "homes": homesArray,
             "quiet_hours": quietHoursDict,
             "snooze_until": snoozeUntilValue,
+            "queued_count": seam.snoozeQueue.count(),
             "outputs_label": config.activeOutputsLabel,
             "outputs_footer": config.outputsFooter,
             "warnings": warnings,
@@ -1013,11 +1020,22 @@ public enum VitruvianSpeakerStateContract {
                                 throw indexedError(from: refusal, at: index)
                             }
                         } else {
-                            throw IndexedApplyError(
-                                opIndex: index,
-                                code: "invalid_snooze",
-                                message: "\"snooze\" requires either \"minutes\" (1...240) or \"clear\": true."
-                            )
+                            let minutes = config.effectiveSnoozeDefaultMinutes
+                            do {
+                                let until = try SettingsActions.applySnooze(
+                                    minutes: minutes,
+                                    now: seam.now(),
+                                    to: &config
+                                )
+                                configDirty = true
+                                opResults.append([
+                                    "op": "snooze",
+                                    "minutes": minutes,
+                                    "snooze_until": until.map(SpeakerConfig.formatISO8601UTC) ?? NSNull(),
+                                ])
+                            } catch let refusal as SettingsActions.Refusal {
+                                throw indexedError(from: refusal, at: index)
+                            }
                         }
 
                     case "setNetwork":

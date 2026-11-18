@@ -31,6 +31,9 @@ public class MenuBarViewModel: ObservableObject {
     @Published public var broadcastFeedback: String?
     @Published public var feedbackIsError: Bool = false
     @Published public var isBusy: Bool = false
+    @Published public var showingCustomSnooze: Bool = false
+    @Published public var customSnoozeMinutesText: String = ""
+    @Published public var customSnoozeError: String?
 
     private var clearTask: Task<Void, Never>?
 
@@ -50,6 +53,43 @@ public class MenuBarViewModel: ObservableObject {
             self?.broadcastFeedback = nil
         }
     }
+
+    public func snooze(minutes: Int?, configManager: ConfigManager) {
+        var draft = configManager.config
+        do {
+            _ = try SettingsActions.applySnooze(minutes: minutes, to: &draft)
+            configManager.config = draft
+            configManager.saveConfig()
+            showingCustomSnooze = false
+            customSnoozeError = nil
+        } catch let refusal as SettingsActions.Refusal {
+            customSnoozeError = refusal.localizedDescription
+        } catch {
+            customSnoozeError = error.localizedDescription
+        }
+    }
+
+    public func toggleCustomSnooze(defaultMinutes: Int) {
+        if showingCustomSnooze {
+            showingCustomSnooze = false
+            customSnoozeError = nil
+        } else {
+            customSnoozeMinutesText = "\(defaultMinutes)"
+            customSnoozeError = nil
+            showingCustomSnooze = true
+        }
+    }
+
+    public func applyCustomSnooze(configManager: ConfigManager) {
+        do {
+            let minutes = try SettingsActions.parseSnoozeMinutes(customSnoozeMinutesText, key: "snooze")
+            snooze(minutes: minutes, configManager: configManager)
+        } catch let refusal as SettingsActions.Refusal {
+            customSnoozeError = refusal.localizedDescription
+        } catch {
+            customSnoozeError = error.localizedDescription
+        }
+    }
 }
 
 @MainActor
@@ -58,23 +98,29 @@ public struct MenuBarView: View {
     @ObservedObject var monitorService: ChatMonitorService
     @ObservedObject var viewModel: MenuBarViewModel
     @FocusState private var quickTextFocused: Bool
-    @ObservedObject var door: AppDoor = AppSide.shared.door
-    @ObservedObject var switcher: AppSwitch = AppSide.shared.switcher
+    @ObservedObject var door: AppDoor
+    @ObservedObject var switcher: AppSwitch
 
     public init(
         configManager: ConfigManager,
         monitorService: ChatMonitorService,
-        viewModel: MenuBarViewModel
+        viewModel: MenuBarViewModel,
+        door: AppDoor? = nil,
+        switcher: AppSwitch? = nil
     ) {
         self.configManager = configManager
         self.monitorService = monitorService
         self.viewModel = viewModel
+        self.door = door ?? AppSide.shared.door
+        self.switcher = switcher ?? AppSide.shared.switcher
     }
 
     public init() {
         self.configManager = .shared
         self.monitorService = .shared
         self.viewModel = .shared
+        self.door = AppSide.shared.door
+        self.switcher = AppSide.shared.switcher
     }
 
     private var broadcastingBinding: Binding<Bool> {
@@ -126,11 +172,12 @@ public struct MenuBarView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("Quiet hours active until \(until)")
             } else if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
-                Label(SpeakerConfig.snoozedUntilLine(until), systemImage: "bell.slash.fill")
+                let statusLine = SpeakerConfig.snoozedStatusLine(until, queuedCount: configManager.queuedCount)
+                Label(statusLine, systemImage: "bell.slash.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(SpeakerConfig.snoozedUntilLine(until))
+                    .accessibilityLabel(statusLine)
             }
 
             // The settings file did not read: say so, since nothing changed
@@ -145,21 +192,58 @@ public struct MenuBarView: View {
             }
 
             if configManager.config.enabled {
-                HStack {
-                    if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
+                if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
+                    HStack {
                         Button("Resume now (snoozed until \(SpeakerConfig.localTimeHHmm(until)))") {
-                            _ = try? SettingsActions.applySnooze(minutes: nil, to: &configManager.config)
-                            configManager.saveConfig()
+                            viewModel.snooze(minutes: nil, configManager: configManager)
                         }
                         .controlSize(.small)
-                    } else {
-                        Button("Snooze 30 min") {
-                            _ = try? SettingsActions.applySnooze(minutes: 30, to: &configManager.config)
-                            configManager.saveConfig()
-                        }
-                        .controlSize(.small)
+                        Spacer()
                     }
-                    Spacer()
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            let defaultMinutes = configManager.config.effectiveSnoozeDefaultMinutes
+                            Button("Snooze \(defaultMinutes) min") {
+                                viewModel.snooze(minutes: defaultMinutes, configManager: configManager)
+                            }
+                            .controlSize(.small)
+
+                            Menu("Snooze") {
+                                ForEach(SpeakerConfig.snoozePresets, id: \.self) { preset in
+                                    Button {
+                                        viewModel.snooze(minutes: preset, configManager: configManager)
+                                    } label: {
+                                        if preset == defaultMinutes {
+                                            Label("\(preset) min (default)", systemImage: "checkmark")
+                                        } else {
+                                            Text("\(preset) min")
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button {
+                                    viewModel.toggleCustomSnooze(defaultMinutes: defaultMinutes)
+                                } label: {
+                                    if !SpeakerConfig.snoozePresets.contains(defaultMinutes) {
+                                        Label("Custom… (\(defaultMinutes) min, default)", systemImage: "checkmark")
+                                    } else {
+                                        Text("Custom…")
+                                    }
+                                }
+                            }
+                            .menuStyle(.borderedButton)
+                            .controlSize(.small)
+                            .fixedSize()
+                            .accessibilityLabel("Snooze interval options")
+
+                            Spacer()
+                        }
+
+                        if viewModel.showingCustomSnooze {
+                            customSnoozeRow(defaultMinutes: configManager.config.effectiveSnoozeDefaultMinutes)
+                        }
+                    }
                 }
                 broadcastingControls
             }
@@ -178,6 +262,7 @@ public struct MenuBarView: View {
             // `--say` and the Stop hook add to the history from their own
             // processes; show what they wrote since the menu last opened.
             configManager.reloadHistory()
+            configManager.refreshQueuedCount()
             // The popover window is not yet key when onAppear fires; defer one
             // runloop hop so the focus request lands.
             Task { @MainActor in
@@ -188,6 +273,63 @@ public struct MenuBarView: View {
     }
 
     // MARK: Sections
+
+    @ViewBuilder
+    private func customSnoozeRow(defaultMinutes: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                TextField("1-240", text: $viewModel.customSnoozeMinutesText)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .frame(width: 72)
+                    .onChange(of: viewModel.customSnoozeMinutesText) { _, _ in
+                        viewModel.customSnoozeError = nil
+                    }
+                    .onSubmit {
+                        viewModel.applyCustomSnooze(configManager: configManager)
+                    }
+                    .accessibilityLabel("Custom snooze minutes")
+                Stepper(
+                    value: Binding(
+                        get: {
+                            (try? SettingsActions.parseSnoozeMinutes(viewModel.customSnoozeMinutesText, key: "snooze"))
+                                ?? defaultMinutes
+                        },
+                        set: { value in
+                            viewModel.customSnoozeMinutesText = "\(value)"
+                            viewModel.customSnoozeError = nil
+                        }
+                    ),
+                    in: SpeakerConfig.minSnoozeMinutes...SpeakerConfig.maxSnoozeMinutes,
+                    step: 5
+                ) {
+                    EmptyView()
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                Text("min")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Snooze") {
+                    viewModel.applyCustomSnooze(configManager: configManager)
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                Button("Cancel") {
+                    viewModel.showingCustomSnooze = false
+                    viewModel.customSnoozeError = nil
+                }
+                .controlSize(.small)
+            }
+            if let error = viewModel.customSnoozeError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
     /// Everything the Broadcasting switch governs: where to speak,
     /// the style, what may speak and background monitoring problems.
@@ -607,7 +749,7 @@ public struct MenuBarView: View {
                 viewModel.setFeedback("Broadcasting is switched off.", isError: true)
             case .quietHours(let until):
                 viewModel.setFeedback("Quiet hours until \(until).", isError: true)
-            case .snoozed(let until):
+            case .snoozed(let until), .queued(let until):
                 viewModel.setFeedback("\(SpeakerConfig.snoozedUntilLine(until)).", isError: true)
             case .noOutputs:
                 viewModel.setFeedback("All outputs are off. Turn one on in Settings.", isError: true)

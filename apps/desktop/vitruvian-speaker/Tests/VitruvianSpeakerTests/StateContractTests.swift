@@ -1583,6 +1583,19 @@ struct StateContractTests {
         #expect(stateClear["snooze_until"] is NSNull)
         #expect(rig.readConfig()?.snoozeUntil == nil)
 
+        // Omitted `minutes` and `clear` uses configured `snooze_default_minutes`.
+        let setDefaultAndSnooze = VitruvianSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"snooze_default_minutes","value":45},{"op":"snooze"}]}"#,
+            seam: seam
+        )
+        #expect(setDefaultAndSnooze.exitCode == 0)
+        let expectedDefaultUntil = ScratchRig.fixedDate.addingTimeInterval(45 * 60)
+        #expect(rig.readConfig()?.effectiveSnoozeDefaultMinutes == 45)
+        #expect(rig.readConfig()?.snoozeUntil == expectedDefaultUntil)
+        let parsedDefault = try #require(JSONSerialization.jsonObject(with: Data(setDefaultAndSnooze.stdout[0].utf8)) as? [String: Any])
+        let stateDefault = try #require(parsedDefault["state"] as? [String: Any])
+        #expect(stateDefault["snooze_until"] as? String == SpeakerConfig.formatISO8601UTC(expectedDefaultUntil))
+
         // Out of range & malformed refusals
         let refusalCases: [(payload: String, expectedCode: String)] = [
             (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":0}]}"#, "out_of_range"),
@@ -1590,7 +1603,6 @@ struct StateContractTests {
             (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":241}]}"#, "out_of_range"),
             (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":true}]}"#, "wrong_kind"),
             (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":15.5}]}"#, "wrong_kind"),
-            (#"{"contract_version":1,"operations":[{"op":"snooze"}]}"#, "invalid_snooze"),
             (#"{"contract_version":1,"operations":[{"op":"snooze","clear":false}]}"#, "invalid_snooze"),
             (#"{"contract_version":1,"operations":[{"op":"snooze","clear":true,"minutes":30}]}"#, "invalid_snooze"),
         ]
@@ -1601,6 +1613,45 @@ struct StateContractTests {
             let err = try #require(parsed["error"] as? [String: Any])
             #expect(err["code"] as? String == expectedCode, "Expected \(expectedCode) for \(payload), got \(err)")
         }
+    }
+
+    @Test("State JSON exposes queued_count and set updates snooze_default_minutes and snooze_queue")
+    func stateExposesQueuedCountAndAppliesSnoozeSettings() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+        let emptyOut = VitruvianSpeakerCommandLine.state(seam: seam)
+        #expect(emptyOut.exitCode == 0)
+        let emptyJSON = try #require(JSONSerialization.jsonObject(with: Data(emptyOut.stdout[0].utf8)) as? [String: Any])
+        #expect(emptyJSON["queued_count"] as? Int == 0)
+
+        try seam.snoozeQueue.append(SnoozeQueueItem(text: "First", source: "Slack", timestamp: ScratchRig.fixedDate))
+        try seam.snoozeQueue.append(SnoozeQueueItem(text: "Second", source: "CLI", timestamp: ScratchRig.fixedDate))
+
+        let applyOut = VitruvianSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"snooze_default_minutes","value":60},{"op":"set","key":"snooze_queue","value":true}]}"#,
+            seam: seam
+        )
+        #expect(applyOut.exitCode == 0)
+        #expect(rig.readConfig()?.effectiveSnoozeDefaultMinutes == 60)
+        #expect(rig.readConfig()?.effectiveSnoozeQueue == true)
+        let parsed = try #require(JSONSerialization.jsonObject(with: Data(applyOut.stdout[0].utf8)) as? [String: Any])
+        let state = try #require(parsed["state"] as? [String: Any])
+        #expect(state["queued_count"] as? Int == 2)
+
+        let settings = try #require(state["settings"] as? [[String: Any]])
+        let defaultEntry = try #require(settings.first { $0["key"] as? String == "snooze_default_minutes" })
+        #expect(defaultEntry["value"] as? Int == 60)
+        let queueEntry = try #require(settings.first { $0["key"] as? String == "snooze_queue" })
+        #expect(queueEntry["value"] as? Bool == true)
+
+        let badKind = VitruvianSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"snooze_default_minutes","value":"sixty"}]}"#,
+            seam: seam
+        )
+        #expect(badKind.exitCode == 1)
     }
 
     @Test("setNetwork and setReadAnyway update Beeper/Courier muted networks and Courier read-anyway lists and refuse invalid inputs")

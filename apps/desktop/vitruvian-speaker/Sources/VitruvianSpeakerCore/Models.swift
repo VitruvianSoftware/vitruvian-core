@@ -272,6 +272,13 @@ public struct SpeakerConfig: Codable, Equatable {
     public var quietHoursStart: String?
     public var quietHoursEnd: String?
     public var snoozeUntil: Date?
+    /// Default snooze duration in minutes (1...240). Optional so older
+    /// configs decode as 30; read through `effectiveSnoozeDefaultMinutes`.
+    public var snoozeDefaultMinutes: Int?
+    /// Whether automated announcements queue while snoozed instead of being
+    /// dropped. Optional so older configs decode as false; read through
+    /// `effectiveSnoozeQueue`.
+    public var snoozeQueue: Bool?
     /// Chat/Slack monitor settings. Optional so configs written before this
     /// key existed still decode; read through `effectiveChatMonitor`.
     public var chatMonitor: ChatMonitorConfig?
@@ -328,6 +335,8 @@ public struct SpeakerConfig: Codable, Equatable {
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
         case snoozeUntil = "snooze_until"
+        case snoozeDefaultMinutes = "snooze_default_minutes"
+        case snoozeQueue = "snooze_queue"
         case chatMonitor = "chat_monitor"
         case speakHome = "speak_home"
         case speakLocal = "speak_local"
@@ -365,6 +374,8 @@ public struct SpeakerConfig: Codable, Equatable {
         quietHoursStart: String? = "22:00",
         quietHoursEnd: String? = "07:00",
         snoozeUntil: Date? = nil,
+        snoozeDefaultMinutes: Int? = nil,
+        snoozeQueue: Bool? = nil,
         chatMonitor: ChatMonitorConfig? = nil
     ) {
         self.enabled = enabled
@@ -377,8 +388,15 @@ public struct SpeakerConfig: Codable, Equatable {
         self.quietHoursStart = quietHoursStart
         self.quietHoursEnd = quietHoursEnd
         self.snoozeUntil = snoozeUntil
+        self.snoozeDefaultMinutes = snoozeDefaultMinutes
+        self.snoozeQueue = snoozeQueue
         self.chatMonitor = chatMonitor
     }
+
+    public static let minSnoozeMinutes = 1
+    public static let maxSnoozeMinutes = 240
+    public static let defaultSnoozeMinutes = 30
+    public static let snoozePresets: [Int] = [15, 30, 60, 120]
 
     public static let minVolume = 0
     public static let maxVolume = 100
@@ -412,6 +430,8 @@ public struct SpeakerConfig: Codable, Equatable {
         } else {
             self.snoozeUntil = nil
         }
+        self.snoozeDefaultMinutes = try? container.decodeIfPresent(Int.self, forKey: .snoozeDefaultMinutes)
+        self.snoozeQueue = try? container.decodeIfPresent(Bool.self, forKey: .snoozeQueue)
         self.chatMonitor = try container.decodeIfPresent(ChatMonitorConfig.self, forKey: .chatMonitor)
         self.speakHome = try container.decodeIfPresent(Bool.self, forKey: .speakHome)
         self.speakLocal = try container.decodeIfPresent(Bool.self, forKey: .speakLocal)
@@ -452,6 +472,8 @@ public struct SpeakerConfig: Codable, Equatable {
         if let snoozeUntil {
             try container.encode(Self.formatISO8601UTC(snoozeUntil), forKey: .snoozeUntil)
         }
+        try container.encodeIfPresent(snoozeDefaultMinutes, forKey: .snoozeDefaultMinutes)
+        try container.encodeIfPresent(snoozeQueue, forKey: .snoozeQueue)
         try container.encodeIfPresent(chatMonitor, forKey: .chatMonitor)
         try container.encodeIfPresent(speakHome, forKey: .speakHome)
         try container.encodeIfPresent(speakLocal, forKey: .speakLocal)
@@ -493,6 +515,16 @@ public struct SpeakerConfig: Codable, Equatable {
     public var effectivePauseMediaExtraSeconds: Double {
         get { pauseMediaExtraSeconds ?? Double(Self.defaultPauseMediaExtraSeconds) }
         set { pauseMediaExtraSeconds = min(max(newValue, Double(Self.minPauseMediaExtraSeconds)), Double(Self.maxPauseMediaExtraSeconds)) }
+    }
+
+    public var effectiveSnoozeDefaultMinutes: Int {
+        get { min(max(snoozeDefaultMinutes ?? Self.defaultSnoozeMinutes, Self.minSnoozeMinutes), Self.maxSnoozeMinutes) }
+        set { snoozeDefaultMinutes = min(max(newValue, Self.minSnoozeMinutes), Self.maxSnoozeMinutes) }
+    }
+
+    public var effectiveSnoozeQueue: Bool {
+        get { snoozeQueue ?? false }
+        set { snoozeQueue = newValue }
     }
 
     public var effectiveSpeechLength: SpeechLength {
@@ -921,6 +953,14 @@ public struct SpeakerConfig: Codable, Equatable {
     /// `"Snoozed until HH:mm"` in local time.
     public static func snoozedUntilLine(_ date: Date, calendar: Calendar = .current) -> String {
         "Snoozed until \(localTimeHHmm(date, calendar: calendar))"
+    }
+
+    /// `"Snoozed until HH:mm"` when no announcements are queued, or
+    /// `"Snoozed until HH:mm · N queued"` when `queuedCount > 0`.
+    public static func snoozedStatusLine(_ date: Date, queuedCount: Int, calendar: Calendar = .current) -> String {
+        let base = snoozedUntilLine(date, calendar: calendar)
+        guard queuedCount > 0 else { return base }
+        return "\(base) · \(queuedCount) queued"
     }
 
     // MARK: Targets

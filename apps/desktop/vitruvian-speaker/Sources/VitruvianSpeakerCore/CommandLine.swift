@@ -662,7 +662,8 @@ public enum VitruvianSpeakerCommandLine {
             return CLIOutput(stderr: ["no default speaker; open Vitruvian Speaker and pick one"], exitCode: 1)
         }
         let (outcome, spoken) = await announcer.announceReporting(
-            text, config: config, force: force, restyle: restyle, lead: lead, at: date)
+            text, config: config, force: force, restyle: restyle, lead: lead,
+            source: source, session: session, at: date)
         // A reworded reply is listed as it was heard; the label is not
         // listed, Recent Broadcasts names the source already.
         let reworded = restyle && AnnouncementStylist.rewrites(config)
@@ -679,6 +680,8 @@ public enum VitruvianSpeakerCommandLine {
             out.stderr.append("Quiet hours active until \(until). Nothing spoken.")
         case .snoozed(let until):
             out.stderr.append("\(SpeakerConfig.snoozedUntilLine(until)). Nothing spoken.")
+        case .queued(let until):
+            out.stderr.append("\(SpeakerConfig.snoozedUntilLine(until)). Queued — it will be spoken when snooze ends.")
         case .noOutputs:
             out.stdout.append(AnnounceOutcome.noOutputsMessage)
         case .nothingToSay:

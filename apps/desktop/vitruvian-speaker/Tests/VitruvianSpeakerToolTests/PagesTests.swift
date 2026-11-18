@@ -150,7 +150,7 @@ final class PagesTests: XCTestCase {
         status.quietNow = true
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
-                                     "snooze", "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
+                                     "snooze", "snoozePreset", "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
                                      "courierEnabled"])
         XCTAssertFalse(texts(page).contains("Vitruvian Speaker"), "the island's header names it already")
@@ -176,7 +176,7 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking…") && texts(Pages.island(status)).contains("Sent to Kitchen"))
         status.config.defaultTarget = ""
         XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
-                                                 "snooze", "speakers", "output.home", "output.local", "output.phone",
+                                                 "snooze", "snoozePreset", "speakers", "output.home", "output.local", "output.phone",
                                                  "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
                                                  "courierEnabled"],
                        "no speaker, no volume controls")
@@ -192,7 +192,7 @@ final class PagesTests: XCTestCase {
         status.offersChoice = true
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
-                                     "snooze", "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
+                                     "snooze", "snoozePreset", "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
                                      "courierEnabled"])
         guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
@@ -310,9 +310,9 @@ final class PagesTests: XCTestCase {
         status.config.effectiveAnnounceVolumeEnabled = true
         let page = Pages.settings(status)
         XCTAssertEqual(ids(page), ["section", "signIn", "openGoogleCloud", "broadcasting", "speechLength", "announcementStyle", "announceVolume", "announceLevel",
-                                   "pauseMedia", "quiet", "quietStart", "quietEnd"])
-        XCTAssertEqual(texts(page).filter { ["Google Home Account", "Broadcast Controls", "Quiet Hours"].contains($0) },
-                       ["Google Home Account", "Broadcast Controls", "Quiet Hours"])
+                                   "pauseMedia", "quiet", "quietStart", "quietEnd", "snoozeDefaultLength", "snoozeQueue"])
+        XCTAssertEqual(texts(page).filter { ["Google Home Account", "Broadcast Controls", "Quiet Hours", "Snooze"].contains($0) },
+                       ["Google Home Account", "Broadcast Controls", "Quiet Hours", "Snooze"])
         guard case .list(let lengths)? = page.blocks.first(where: { $0.id == "speechLength" })?.content else { return XCTFail("no list") }
         XCTAssertEqual(lengths.rows.map(\.id), ["headline", "summary", "full"])
         XCTAssertEqual(lengths.rows.map { $0.trailing?.text(for: "en") }, [nil, "✓", nil], "summary is the default")
@@ -325,7 +325,7 @@ final class PagesTests: XCTestCase {
         status.offersChoice = true
         let more = Pages.settings(status)
         XCTAssertEqual(ids(more), ["section", "signOut", "broadcasting", "speechLength", "announcementStyle", "announceVolume", "pauseMedia",
-                                   "pauseExtra", "testMediaPause", "quiet", "quietStart", "quietEnd"])
+                                   "pauseExtra", "testMediaPause", "quiet", "quietStart", "quietEnd", "snoozeDefaultLength", "snoozeQueue"])
         guard case .choice(let choice)? = more.blocks.first(where: { $0.id == "speechLength" })?.content else { return XCTFail("no choice") }
         XCTAssertEqual(choice.options.map { $0.title.text(for: "en") }, SpeechLength.allCases.map(\.label))
     }
@@ -614,5 +614,99 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(volume.isDisjoint(with: shown), "Home speakers off: no speaker volume to set")
         XCTAssertTrue(shown.contains(Pages.Block.speechLength))
         XCTAssertTrue(shown.contains(Pages.Block.pauseMedia))
+    }
+
+    func testSnoozeIslandAndSettingsPagesRenderDefaultLengthCustomAndQueuedCount() throws {
+        var status = Pages.Status()
+        status.config = configured
+        status.offersChoice = true
+        status.config.snoozeDefaultMinutes = 45
+        status.config.snoozeQueue = true
+
+        let island = Pages.island(status)
+        guard case .button(let snoozeBtn)? = island.blocks.first(where: { $0.id == Pages.Block.snooze })?.content else {
+            return XCTFail("missing snooze button")
+        }
+        XCTAssertEqual(snoozeBtn.title.text(for: "en"), "Snooze 45 min")
+        guard case .choice(let presetChoice)? = island.blocks.first(where: { $0.id == Pages.Block.snoozePreset })?.content else {
+            return XCTFail("missing snoozePreset choice")
+        }
+        XCTAssertEqual(presetChoice.options.map(\.value), ["15", "30", "60", "120", "custom"])
+
+        status.customIslandSnoozeOpen = true
+        XCTAssertNotNil(Pages.island(status).blocks.first { $0.id == Pages.Block.snoozeCustomMinutes })
+
+        status.customIslandSnoozeOpen = false
+        status.config.snoozeUntil = status.effectiveNow.addingTimeInterval(45 * 60)
+        status.queuedCount = 3
+        let snoozedIsland = Pages.island(status)
+        XCTAssertTrue(texts(snoozedIsland).contains { $0.contains("· 3 queued") })
+        guard case .button(let resumeBtn)? = snoozedIsland.blocks.first(where: { $0.id == Pages.Block.snooze })?.content else {
+            return XCTFail("missing resume button")
+        }
+        XCTAssertTrue(resumeBtn.title.text(for: "en").contains("· 3 queued"))
+
+        let settings = Pages.settings(status)
+        guard case .choice(let defaultChoice)? = settings.blocks.first(where: { $0.id == Pages.Block.snoozeDefaultLength })?.content else {
+            return XCTFail("missing snoozeDefaultLength choice")
+        }
+        XCTAssertEqual(defaultChoice.value, "custom")
+        guard case .field(let customField)? = settings.blocks.first(where: { $0.id == Pages.Block.snoozeDefaultCustom })?.content else {
+            return XCTFail("missing snoozeDefaultCustom field")
+        }
+        XCTAssertEqual(customField.value, "45")
+        guard case .toggle(let queueToggle)? = settings.blocks.first(where: { $0.id == Pages.Block.snoozeQueue })?.content else {
+            return XCTFail("missing snoozeQueue toggle")
+        }
+        XCTAssertTrue(queueToggle.value)
+    }
+
+    func testToolHandlesIslandCustomSnoozeAndSettingsSnoozeEvents() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-speaker-pages-snooze-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let link = VitruvianSpeakerToolTests.Link()
+        link.features = [.choice, .sections]
+        let store = VitruvianSpeakerToolTests.Store()
+        store.config = configured
+        let fixedNow = Date(timeIntervalSince1970: 1_800_000_000)
+        let tool = VitruvianSpeakerTool(parts: .init(
+            link: link,
+            store: store,
+            driver: VitruvianSpeakerToolTests.Driver(),
+            later: { $0() },
+            now: { fixedNow },
+            settingsURL: dir.appendingPathComponent("settings.json"),
+            historyURL: dir.appendingPathComponent("history.json"),
+            snoozeQueueURL: dir.appendingPathComponent("snooze_queue.json")
+        ))
+
+        _ = tool.islandPage()
+        guard case .page(let withCustomField) = tool.islandEvent(
+            PanelEvent(block: Pages.Block.snoozePreset, kind: .change, value: .string("custom"))
+        ) else {
+            return XCTFail("expected island page with custom snooze field")
+        }
+        XCTAssertNotNil(withCustomField.blocks.first { $0.id == Pages.Block.snoozeCustomMinutes })
+
+        // Out-of-bounds custom snooze is refused with a notice and does not set snoozeUntil.
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.snoozeCustomMinutes, kind: .submit, value: .string("999")))
+        XCTAssertNotNil(tool.notice)
+        XCTAssertNil(store.config?.snoozeUntil)
+
+        // Valid custom snooze sets snoozeUntil and closes the custom field.
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.snoozeCustomMinutes, kind: .submit, value: .string("75")))
+        XCTAssertNil(tool.notice)
+        XCTAssertEqual(store.config?.snoozeUntil, fixedNow.addingTimeInterval(75 * 60))
+
+        // Settings snooze_default_minutes custom + snooze_queue toggle persist cleanly.
+        _ = tool.settingsPage()
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.snoozeDefaultLength, kind: .change, value: .string("custom")))
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.snoozeDefaultCustom, kind: .submit, value: .string("50")))
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.snoozeQueue, kind: .toggle, value: .bool(true)))
+        XCTAssertEqual(store.config?.effectiveSnoozeDefaultMinutes, 50)
+        XCTAssertEqual(store.config?.effectiveSnoozeQueue, true)
     }
 }

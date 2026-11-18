@@ -217,6 +217,12 @@ public enum Pages {
         /// What the engine said when it last put a speaker back
         /// (`VolumeRestoreCoordinator.lastReport`); nil until it has.
         public var volumeRestoreReport: String?
+        /// Number of announcements waiting in the snooze queue.
+        public var queuedCount = 0
+        /// Whether Custom… is open in the island's snooze interval picker.
+        public var customIslandSnoozeOpen = false
+        /// Whether Custom… is open for Default snooze length in General settings.
+        public var customDefaultSnoozeOpen = false
 
         public init() {}
 
@@ -289,9 +295,19 @@ public enum Pages {
     public static let sayClipboardButton = "Speak clipboard"
     /// The island's button that pauses automated announcements for 30 minutes.
     public static let snoozeButton = "Snooze 30 min"
+    /// The island's button label for pausing automated announcements for `minutes`.
+    public static func snoozeButton(minutes: Int) -> String {
+        "Snooze \(minutes) min"
+    }
     /// The island's button while snoozed, showing local end time and clearing snooze.
-    public static func resumeSnoozeButton(until: Date, calendar: Calendar = .current) -> String {
-        "Resume now (snoozed until \(SpeakerConfig.localTimeHHmm(until, calendar: calendar)))"
+    public static func resumeSnoozeButton(
+        until: Date, queuedCount: Int = 0, calendar: Calendar = .current
+    ) -> String {
+        let time = SpeakerConfig.localTimeHHmm(until, calendar: calendar)
+        if queuedCount > 0 {
+            return "Resume now (snoozed until \(time) · \(queuedCount) queued)"
+        }
+        return "Resume now (snoozed until \(time))"
     }
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
@@ -304,6 +320,11 @@ public enum Pages {
         public static let broadcasting = "broadcasting"
         public static let quiet = "quiet"
         public static let snooze = "snooze"
+        public static let snoozePreset = "snoozePreset"
+        public static let snoozeCustomMinutes = "snoozeCustomMinutes"
+        public static let snoozeDefaultLength = "snoozeDefaultLength"
+        public static let snoozeDefaultCustom = "snoozeDefaultCustom"
+        public static let snoozeQueue = "snoozeQueue"
         /// The island's Mute switch: on mutes, off unmutes.
         public static let mute = "mute"
         public static let volume = "volume"
@@ -668,9 +689,20 @@ public enum Pages {
             }
             let now = status.effectiveNow
             if config.isSnoozed(at: now), let until = config.snoozeUntil {
-                button(Block.snooze, UIText.plain(resumeSnoozeButton(until: until)))
+                if status.queuedCount > 0 {
+                    text(UIText.plain(SpeakerConfig.snoozedStatusLine(until, queuedCount: status.queuedCount)), style: .caption)
+                }
+                button(Block.snooze, UIText.plain(resumeSnoozeButton(until: until, queuedCount: status.queuedCount)))
             } else {
-                button(Block.snooze, UIText.plain(snoozeButton))
+                let defaultMinutes = config.effectiveSnoozeDefaultMinutes
+                button(Block.snooze, UIText.plain(snoozeButton(minutes: defaultMinutes)))
+                let pickedValue = status.customIslandSnoozeOpen ? "custom" : "\(defaultMinutes)"
+                picker(Block.snoozePreset, title: "Snooze interval", value: pickedValue,
+                       options: snoozeOptions(custom: true), choice: status.offersChoice)
+                if status.customIslandSnoozeOpen {
+                    field(Block.snoozeCustomMinutes, title: "Custom snooze minutes (1-240)",
+                          value: "\(defaultMinutes)", placeholder: "1-240", kind: .number)
+                }
             }
             divider()
             if config.effectiveSpeakHome {
@@ -1427,7 +1459,30 @@ public enum Pages {
                 quietHourBlocks(status)
             }
             captionUnlessHelp(quietHoursHelp, report: nil, status)
+
+            heading("Snooze")
+            let defaultMinutes = config.effectiveSnoozeDefaultMinutes
+            let showCustomDefault = status.customDefaultSnoozeOpen || !SpeakerConfig.snoozePresets.contains(defaultMinutes)
+            picker(Block.snoozeDefaultLength, title: SettingsCatalog.Key.snoozeDefaultMinutes.label(),
+                   value: showCustomDefault ? "custom" : "\(defaultMinutes)",
+                   options: snoozeOptions(custom: true), choice: status.offersChoice)
+            if showCustomDefault {
+                field(Block.snoozeDefaultCustom, title: "Custom snooze minutes (1-240)",
+                      value: "\(defaultMinutes)", kind: .number)
+            }
+            toggle(Block.snoozeQueue, UIText.plain(SettingsCatalog.Key.snoozeQueue.label()),
+                   isOn: config.effectiveSnoozeQueue)
         }.blocks
+    }
+
+    static func snoozeOptions(custom: Bool) -> [UIChoiceOption] {
+        var options = SpeakerConfig.snoozePresets.map {
+            UIChoiceOption(value: "\($0)", title: UIText.plain("\($0) min"))
+        }
+        if custom {
+            options.append(UIChoiceOption(value: "custom", title: UIText.plain("Custom…")))
+        }
+        return options
     }
 
     /// `caption` as a control's help, for an app that draws help (it draws
@@ -1632,7 +1687,7 @@ public enum Pages {
                 beeperNetworkBlocks(status)
                 field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "",
                       placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
-                      kind: .secret)
+                      kind: .secret, help: help(beeperHelp, true, status))
                 button(Block.saveBeeperToken, UIText.plain(saveTokenButton), style: .prominent)
                 if chat.hasBeeperToken {
                     row(nil, "Beeper token saved", icon: "checkmark.circle.fill")
@@ -1642,7 +1697,7 @@ public enum Pages {
                 }
                 field(Block.beeperAddress, title: UIText.plain(SettingsCatalog.Key.beeperAddress.label()),
                       value: monitor.beeperAddress, placeholder: UIText.plain(ChatApp.beeper.defaultBaseURL.absoluteString))
-                text(UIText.plain(beeperHelp), style: .caption)
+                captionUnlessHelp(beeperHelp, report: nil, status)
             }
 
             courierSettings(status)
@@ -1665,7 +1720,8 @@ public enum Pages {
         return UITree {
             heading("Courier")
             toggle(Block.courierEnabled, UIText.plain(SettingsCatalog.Key.courierEnabled.label()),
-                   isOn: monitor.courierEnabled, enabled: !needsTokenFirst)
+                   isOn: monitor.courierEnabled, enabled: !needsTokenFirst,
+                   help: help(courierTokenFirst, needsTokenFirst, status))
             if monitor.courierEnabled {
                 announcePicker(.courier, status)
                 networkBlocks(.courier, status)
@@ -1673,7 +1729,7 @@ public enum Pages {
             if monitor.courierEnabled || needsTokenFirst {
                 field(Block.courierToken, title: UIText.plain(beeperTokenTitle), value: "",
                       placeholder: hasToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
-                      kind: .secret)
+                      kind: .secret, help: help(courierHelp, true, status))
                 button(Block.saveCourierToken, UIText.plain(saveTokenButton), style: .prominent)
                 if hasToken {
                     row(nil, "Courier token saved", icon: "checkmark.circle.fill")
@@ -1685,8 +1741,10 @@ public enum Pages {
                     field(Block.courierAddress, title: UIText.plain(SettingsCatalog.Key.courierAddress.label()),
                           value: monitor.courierAddress, placeholder: UIText.plain(ChatApp.courier.defaultBaseURL.absoluteString))
                 }
-                if needsTokenFirst { text(UIText.plain(courierTokenFirst), style: .caption) }
-                for line in courierHelpLines { text(UIText.plain(line), style: .caption) }
+                if needsTokenFirst { captionUnlessHelp(courierTokenFirst, report: nil, status) }
+                if !status.offersSections {
+                    for line in courierHelpLines { text(UIText.plain(line), style: .caption) }
+                }
             }
         }.blocks
     }

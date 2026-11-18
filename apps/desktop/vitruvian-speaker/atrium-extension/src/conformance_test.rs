@@ -55,6 +55,7 @@ const AGENT_BUTTONS: &[&str] = &[
 const APP_FILES: &[&str] = &[
     "speaker_broadcast.json",
     "speaker_history.json",
+    "speaker_snooze_queue.json",
     "speaker_monitor_status.json",
 ];
 const DOOR_FILE: &str = "speaker_door.json";

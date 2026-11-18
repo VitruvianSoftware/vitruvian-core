@@ -88,6 +88,8 @@ public struct SettingsCatalog: Sendable, Equatable {
         case quietHoursEnabled = "quiet_hours_enabled"
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
+        case snoozeDefaultMinutes = "snooze_default_minutes"
+        case snoozeQueue = "snooze_queue"
         case speakHome = "speak_home"
         case homeCastVoice = "home_cast_voice"
         case defaultTarget = "default_target"
@@ -249,6 +251,26 @@ public struct SettingsCatalog: Sendable, Equatable {
         defaultValue: ChatMonitorConfig.defaultPollInterval
     )
 
+    public static let snoozeMinutesLimits = Limits(
+        min: SpeakerConfig.minSnoozeMinutes,
+        max: SpeakerConfig.maxSnoozeMinutes,
+        step: 15,
+        defaultValue: SpeakerConfig.defaultSnoozeMinutes
+    )
+
+    public static func snoozePresetChoices(keeping current: Int) -> [Choice] {
+        var minutes = SpeakerConfig.snoozePresets
+        if (SpeakerConfig.minSnoozeMinutes...SpeakerConfig.maxSnoozeMinutes).contains(current),
+           !minutes.contains(current) {
+            minutes.append(current)
+            minutes.sort()
+        }
+        return minutes.map { value in
+            let label = SpeakerConfig.snoozePresets.contains(value) ? "\(value) min" : "\(value) min (custom)"
+            return Choice(value: "\(value)", label: label)
+        }
+    }
+
     // MARK: - Quiet Hours Choices
 
     public static let defaultQuietHoursStart = "22:00"
@@ -399,6 +421,20 @@ public struct SettingsCatalog: Sendable, Equatable {
                 kind: .time,
                 choices: Self.quietHoursChoices(keeping: quietEnd),
                 shown: quietHoursOn
+            ),
+            Entry(
+                id: .snoozeDefaultMinutes,
+                label: "Default snooze length",
+                kind: .number,
+                choices: Self.snoozePresetChoices(keeping: config.effectiveSnoozeDefaultMinutes),
+                limits: Self.snoozeMinutesLimits,
+                shown: true
+            ),
+            Entry(
+                id: .snoozeQueue,
+                label: "Queue announcements while snoozed",
+                kind: .toggle,
+                shown: true
             ),
             Entry(
                 id: .speakHome,

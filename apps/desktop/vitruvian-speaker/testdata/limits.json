@@ -70,6 +70,25 @@
         { "input": 300, "expected": 300 },
         { "input": 600, "expected": 300 }
       ]
+    },
+    {
+      "key": "snooze_default_minutes",
+      "label": "Default snooze length",
+      "kind": "number",
+      "min": 1,
+      "max": 240,
+      "step": 15,
+      "default_value": 30,
+      "discrete_steps": [15, 30, 60, 120],
+      "clamping_cases": [
+        { "input": -5, "expected": 1 },
+        { "input": 0, "expected": 1 },
+        { "input": 1, "expected": 1 },
+        { "input": 30, "expected": 30 },
+        { "input": 45, "expected": 45 },
+        { "input": 240, "expected": 240 },
+        { "input": 300, "expected": 240 }
+      ]
     }
   ]
 }

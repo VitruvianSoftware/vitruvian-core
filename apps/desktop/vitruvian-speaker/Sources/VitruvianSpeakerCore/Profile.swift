@@ -34,6 +34,7 @@ import Foundation
 /// | Settings | `~/.gemini/speaker_broadcast.json` | `<data>/settings.json` |
 /// | Sign-ins (0600) | `~/Library/Application Support/Vitruvian Speaker/secrets.json` | `<data>/secrets.json` |
 /// | History | `~/.gemini/speaker_history.json` | `<data>/history.json` |
+/// | Snooze queue | `~/.gemini/speaker_snooze_queue.json` | `<data>/snooze_queue.json` |
 /// | Chat monitor status | `~/.gemini/speaker_monitor_status.json` | `<data>/speaker_monitor_status.json` |
 /// | Messages | `com.vitruviansoftware.speaker.*` | `dev.vitruvian.speaker.*` |
 /// | "Am I alive" | the running app's bundle id | a lock on `<data>/running.lock` |
@@ -70,6 +71,13 @@ public struct VitruvianSpeakerProfile: Sendable, Equatable {
 
     /// The chat monitor's status file, beside the settings.
     public var monitorStatusURL: URL { ChatMonitorStatusFile.url(beside: settingsURL) }
+
+    /// Pending announcements queued while snoozed, beside the settings.
+    public var snoozeQueueURL: URL {
+        settingsURL.deletingLastPathComponent().appendingPathComponent(
+            door == .app ? "speaker_snooze_queue.json" : "snooze_queue.json"
+        )
+    }
 
     /// Cross-process speech lock URL: both real doors share
     /// `/tmp/vitruvian_speaker_speech.lock` so an app announcement and an extension
