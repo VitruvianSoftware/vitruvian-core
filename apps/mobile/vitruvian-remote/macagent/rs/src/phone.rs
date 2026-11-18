@@ -403,10 +403,12 @@ impl PhoneBridge {
         (link_id, rx)
     }
 
-    fn unlink(&self, link_id: u64) {
+    /// Drops the link if it is still the current one. Returns false when a
+    /// newer link already replaced it, so the caller can say why it ended.
+    fn unlink(&self, link_id: u64) -> bool {
         let mut g = self.inner.lock().unwrap();
         if g.link.as_ref().map(|l| l.id) != Some(link_id) {
-            return;
+            return false;
         }
         g.link = None;
         g.tools.clear();
@@ -414,7 +416,156 @@ impl PhoneBridge {
         for (_, tx) in g.inflight.drain() {
             let _ = tx.send(tool_error_result("phone not connected"));
         }
+        true
     }
+
+    /// Test-only: link a fake phone in-process. Every call is answered by
+    /// `answer` (text, is_error) on a background thread.
+    #[cfg(test)]
+    pub fn attach_fake_phone_for_test<F>(self: &Arc<Self>, answer: F) -> u64
+    where
+        F: Fn(&PhoneCall) -> (String, bool) + Send + 'static,
+    {
+        let (link_id, rx) = self.install(PhoneDevice::default(), Vec::new(), CancelToken::new());
+        let bridge = Arc::clone(self);
+        std::thread::spawn(move || {
+            for call in rx {
+                let (text, is_error) = answer(&call);
+                bridge.deliver(PhoneResult {
+                    id: call.id.clone(),
+                    content: vec![PhoneContentBlock {
+                        kind: "text".to_string(),
+                        text,
+                    }],
+                    is_error,
+                    trust_until: None,
+                });
+            }
+        });
+        link_id
+    }
+}
+
+/// Why a phone link ended. Logged so a dropped link can be explained later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkEnd {
+    /// The phone closed the connection (or the network dropped it).
+    StreamEnded,
+    /// A newer link from the phone took this one's place.
+    Replaced,
+    /// Sending a call or the hello to the phone failed.
+    WriteError,
+    /// The keep-alive ping could not be written.
+    PingFailure,
+}
+
+impl LinkEnd {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LinkEnd::StreamEnded => "stream ended",
+            LinkEnd::Replaced => "replaced by a new link",
+            LinkEnd::WriteError => "write error",
+            LinkEnd::PingFailure => "ping failure",
+        }
+    }
+}
+
+/// The current time in UTC to the second, e.g. `2026-11-18T16:50:03Z`.
+/// Log lines that need a time start with it.
+pub fn utc_stamp() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    Timestamp::from_unix_secs(secs).to_rfc3339()
+}
+
+/// A link's lifetime for the log: `45s`, `12m05s`, `3h02m09s`.
+pub fn format_link_duration(d: Duration) -> String {
+    let total = d.as_secs();
+    let (h, m, s) = (total / 3600, (total % 3600) / 60, total % 60);
+    if h > 0 {
+        format!("{h}h{m:02}m{s:02}s")
+    } else if m > 0 {
+        format!("{m}m{s:02}s")
+    } else {
+        format!("{s}s")
+    }
+}
+
+/// Feeds calls and keep-alive pings to one linked phone until the link ends,
+/// and says how it ended. Split out of `handle_phone_link` so the ping
+/// interval can be shortened in tests.
+fn serve_link(
+    sink: &mut dyn SseSink,
+    cancel: &CancelToken,
+    rx: &Receiver<PhoneCall>,
+    ping_interval: Duration,
+) -> LinkEnd {
+    if sink.write_event("hello", "{}").is_err() {
+        return LinkEnd::WriteError;
+    }
+    let mut last_ping = Instant::now();
+    loop {
+        if cancel.is_cancelled() {
+            return LinkEnd::StreamEnded;
+        }
+        match rx.recv_timeout(Duration::from_millis(25)) {
+            Ok(call) => {
+                if sink.write_event("call", &call.to_json_string()).is_err() {
+                    return LinkEnd::WriteError;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if last_ping.elapsed() >= ping_interval {
+                    last_ping = Instant::now();
+                    if sink.write_event("ping", "{}").is_err() {
+                        return LinkEnd::PingFailure;
+                    }
+                }
+            }
+            // The sender lives in the bridge's link slot; it is dropped only
+            // when another link replaces this one.
+            Err(mpsc::RecvTimeoutError::Disconnected) => return LinkEnd::Replaced,
+        }
+    }
+}
+
+/// Runs one link from install to close, logging when it opened, when it
+/// closed, why, and how long it lasted.
+fn run_link(
+    bridge: &PhoneBridge,
+    device: PhoneDevice,
+    tools: Vec<PhoneTool>,
+    sink: &mut dyn SseSink,
+    cancel: CancelToken,
+    ping_interval: Duration,
+) -> LinkEnd {
+    let model = device.model.clone();
+    let tool_count = tools.len();
+    let (link_id, rx) = bridge.install(device, tools, cancel.clone());
+    let opened = Instant::now();
+    agent_log(&format!(
+        "{} phone link: open id={} model={:?} tools={}",
+        utc_stamp(),
+        link_id,
+        model,
+        tool_count
+    ));
+    let mut end = serve_link(sink, &cancel, &rx, ping_interval);
+    // A replaced link is cancelled by its successor, which looks like the
+    // stream ending from inside the loop. The bridge knows which it was.
+    if !bridge.unlink(link_id) {
+        end = LinkEnd::Replaced;
+    }
+    agent_log(&format!(
+        "{} phone link: closed id={} reason={} lasted={}",
+        utc_stamp(),
+        link_id,
+        end.as_str(),
+        format_link_duration(opened.elapsed())
+    ));
+    end
 }
 
 fn tool_error_result(msg: &str) -> PhoneResult {
@@ -496,41 +647,8 @@ pub fn handle_phone_link(bridge: Arc<PhoneBridge>, req: &HttpRequest) -> HttpRes
         }
     }
 
-    agent_log(&format!(
-        "phone link: model={:?} tools={}",
-        device.model,
-        tools.len()
-    ));
-
     HttpResponse::sse(move |sink: &mut dyn SseSink, cancel: CancelToken| {
-        let (link_id, rx) = bridge.install(device, tools, cancel.clone());
-        if sink.write_event("hello", "{}").is_err() {
-            bridge.unlink(link_id);
-            return;
-        }
-        let mut last_ping = Instant::now();
-        loop {
-            if cancel.is_cancelled() {
-                break;
-            }
-            match rx.recv_timeout(Duration::from_millis(25)) {
-                Ok(call) => {
-                    if sink.write_event("call", &call.to_json_string()).is_err() {
-                        break;
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if last_ping.elapsed() >= PHONE_PING_INTERVAL {
-                        last_ping = Instant::now();
-                        if sink.write_event("ping", "{}").is_err() {
-                            break;
-                        }
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            }
-        }
-        bridge.unlink(link_id);
+        run_link(&bridge, device, tools, sink, cancel, PHONE_PING_INTERVAL);
     })
 }
 
@@ -573,5 +691,199 @@ impl PhoneBridge {
 
     pub fn handle_status(&self) -> HttpResponse {
         HttpResponse::json(200, &self.status().to_json_value())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http_util::LogCapture;
+
+    /// An SSE sink that fails the first write of `fail_on`.
+    struct FailingSink {
+        fail_on: &'static str,
+        events: Vec<String>,
+    }
+
+    impl SseSink for FailingSink {
+        fn write_event(&mut self, event: &str, _data: &str) -> std::io::Result<()> {
+            if event == self.fail_on {
+                return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "gone"));
+            }
+            self.events.push(event.to_string());
+            Ok(())
+        }
+    }
+
+    fn sink(fail_on: &'static str) -> FailingSink {
+        FailingSink {
+            fail_on,
+            events: Vec::new(),
+        }
+    }
+
+    fn device(model: &str) -> PhoneDevice {
+        PhoneDevice {
+            model: model.to_string(),
+            android: "16".to_string(),
+        }
+    }
+
+    /// `2026-11-18T16:50:03Z` and nothing longer: the stamp is to the second.
+    fn is_utc_stamp(s: &str) -> bool {
+        let b = s.as_bytes();
+        s.len() == 20
+            && b[4] == b'-'
+            && b[7] == b'-'
+            && b[10] == b'T'
+            && b[13] == b':'
+            && b[16] == b':'
+            && b[19] == b'Z'
+            && s.chars()
+                .enumerate()
+                .all(|(i, c)| [4, 7, 10, 13, 16, 19].contains(&i) || c.is_ascii_digit())
+    }
+
+    fn line_with<'a>(log: &'a str, needle: &str) -> &'a str {
+        log.lines()
+            .find(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no log line containing {needle:?} in:\n{log}"))
+    }
+
+    #[test]
+    fn format_link_duration_reads_as_hours_minutes_seconds() {
+        assert_eq!(format_link_duration(Duration::from_secs(0)), "0s");
+        assert_eq!(format_link_duration(Duration::from_secs(45)), "45s");
+        assert_eq!(format_link_duration(Duration::from_secs(725)), "12m05s");
+        assert_eq!(
+            format_link_duration(Duration::from_secs(3 * 3600 + 129)),
+            "3h02m09s"
+        );
+    }
+
+    #[test]
+    fn utc_stamp_is_rfc3339_to_the_second() {
+        let s = utc_stamp();
+        assert!(is_utc_stamp(&s), "{s}");
+    }
+
+    #[test]
+    fn a_link_the_phone_hangs_up_logs_open_and_close_with_time_and_reason() {
+        let capture = LogCapture::start();
+        let bridge = PhoneBridge::new();
+        let cancel = CancelToken::new();
+        cancel.cancel(); // the phone has already gone
+        let end = run_link(
+            &bridge,
+            device("Pixel Fold"),
+            Vec::new(),
+            &mut sink("none"),
+            cancel,
+            PHONE_PING_INTERVAL,
+        );
+        assert_eq!(end, LinkEnd::StreamEnded);
+        assert!(!bridge.connected());
+
+        let log = capture.contents();
+        let open = line_with(&log, "phone link: open");
+        assert!(is_utc_stamp(&open[..20]), "{open}");
+        assert!(
+            open.ends_with(r#"phone link: open id=1 model="Pixel Fold" tools=0"#),
+            "{open}"
+        );
+        let closed = line_with(&log, "phone link: closed");
+        assert!(is_utc_stamp(&closed[..20]), "{closed}");
+        assert!(
+            closed.ends_with("phone link: closed id=1 reason=stream ended lasted=0s"),
+            "{closed}"
+        );
+    }
+
+    #[test]
+    fn a_failed_ping_closes_the_link_and_says_so() {
+        let capture = LogCapture::start();
+        let bridge = PhoneBridge::new();
+        let end = run_link(
+            &bridge,
+            device("Pixel"),
+            Vec::new(),
+            &mut sink("ping"),
+            CancelToken::new(),
+            Duration::from_millis(1),
+        );
+        assert_eq!(end, LinkEnd::PingFailure);
+        assert!(!bridge.connected());
+        assert!(
+            line_with(&capture.contents(), "phone link: closed").contains("reason=ping failure")
+        );
+    }
+
+    #[test]
+    fn a_failed_call_write_closes_the_link_and_says_so() {
+        let capture = LogCapture::start();
+        let bridge = Arc::new(PhoneBridge::new());
+        let b = Arc::clone(&bridge);
+        let caller = std::thread::spawn(move || {
+            // Wait for the link, then send it a call it cannot deliver.
+            for _ in 0..200 {
+                if b.connected() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            b.call("phone.speak", JsonValue::Null, Duration::from_secs(2))
+        });
+        let end = run_link(
+            &bridge,
+            device("Pixel"),
+            Vec::new(),
+            &mut sink("call"),
+            CancelToken::new(),
+            PHONE_PING_INTERVAL,
+        );
+        assert_eq!(end, LinkEnd::WriteError);
+        let res = caller.join().unwrap().unwrap();
+        assert!(
+            res.is_error,
+            "the waiting call is failed, not left to time out"
+        );
+        assert!(line_with(&capture.contents(), "phone link: closed").contains("reason=write error"));
+    }
+
+    #[test]
+    fn a_link_replaced_by_a_newer_one_says_it_was_replaced() {
+        let capture = LogCapture::start();
+        let bridge = Arc::new(PhoneBridge::new());
+        let b = Arc::clone(&bridge);
+        let old = std::thread::spawn(move || {
+            let mut s = sink("none");
+            let log = LogCapture::start();
+            let end = run_link(
+                &b,
+                device("old"),
+                Vec::new(),
+                &mut s,
+                CancelToken::new(),
+                PHONE_PING_INTERVAL,
+            );
+            (end, log.contents())
+        });
+        for _ in 0..200 {
+            if bridge.connected() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // The phone reconnects: a new link takes the slot.
+        let (_new_id, _rx) = bridge.install(device("new"), Vec::new(), CancelToken::new());
+        let (end, old_log) = old.join().unwrap();
+        assert_eq!(end, LinkEnd::Replaced);
+        assert!(
+            line_with(&old_log, "phone link: closed id=1")
+                .contains("reason=replaced by a new link"),
+            "{old_log}"
+        );
+        assert!(bridge.connected(), "the new link stays up");
+        drop(capture);
     }
 }
