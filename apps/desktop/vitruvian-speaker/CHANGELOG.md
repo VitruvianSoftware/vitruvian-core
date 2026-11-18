@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.44.0...vitruvian-speaker-v1.45.0) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-speaker:** default phone speech to the phone's own voice ([#5088](https://github.com/VitruvianSoftware/vitruvian-core/issues/5088)) ([baee027](https://github.com/VitruvianSoftware/vitruvian-core/commit/baee0276ebffb6267d5f6fea4f9dbb339f481106))
+
 ## [1.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.43.2...vitruvian-speaker-v1.44.0) (2026-11-18)
 
 
