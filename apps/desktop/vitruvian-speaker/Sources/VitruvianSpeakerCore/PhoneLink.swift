@@ -119,7 +119,10 @@ public struct PhoneLinkStatusFile: Sendable {
     /// watcher keeps fresh: while phone output is on and an outage is
     /// recorded, it asks the relay once (up to `wait`) and clears the
     /// outage if the phone is back. Without an outage, or with phone output
-    /// off, nothing is asked. Blocks the caller for at most `wait`.
+    /// off, nothing is asked. Blocks the caller for at most `wait`, and
+    /// clearing takes the file lock on the caller's thread: meant for the
+    /// short-lived command-line process, never a UI loop (the long-lived
+    /// app and extension clear through `PhoneLinkWatcher` instead).
     public func refreshedRead(
         config: SpeakerConfig, probe: PhoneLinkProbing = PhoneLinkProbe(),
         wait: TimeInterval = 3, at date: Date = Date()
