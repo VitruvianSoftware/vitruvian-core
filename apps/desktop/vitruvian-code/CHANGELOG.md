@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.37.0...vitruvian-code-v1.38.0) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-code:** agent approval options and question form cards ([#5103](https://github.com/VitruvianSoftware/vitruvian-core/issues/5103)) ([5d9dea3](https://github.com/VitruvianSoftware/vitruvian-core/commit/5d9dea3a2c429a710103717a960df1379506c3cb))
+
 ## [1.37.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.36.0...vitruvian-code-v1.37.0) (2026-11-18)
 
 
