@@ -399,15 +399,19 @@ repeat it.
 
 **Do it as two PRs, in this order.** The export workflow in the second PR needs the key from the
 first. If the export reaches `main` before the key exists, it has nothing to push with.
-**One PR is not enough for a brand-new mirror.** The `await-repo-config` job does hold the export
-until the Repo Config Apply from the same push finishes. But the run evidently reads its secrets when it is
-triggered, so a `<COMP>_SYNC_SSH_KEY` that the apply creates is still empty in that run. The export
-then fails with `Load key "/root/.ssh/id_rsa": invalid format` and `Permission denied (publickey)`.
-This happened to the first Wand export after #5084 (run 44252366231): the secret was created at
-06:39Z, the export job started at 07:04Z with an empty key. Re-running the failed job
-after the apply picks up the key: `bazel run //tools/agent-app -- run-rerun <run-id> --failed`.
-Two PRs avoid the red run altogether. The wait does protect a key that already exists from being
-replaced mid-export (#4661).
+**One PR is not enough for a brand-new mirror.** The first Wand export after #5084 (run
+44252366231) failed with `Load key "/root/.ssh/id_rsa": invalid format` and
+`Permission denied (publickey)`: its key was empty. What was observed:
+- the push created the export run at 06:34:42Z;
+- Repo Config Apply wrote `VITRUVIAN_WAND_SYNC_SSH_KEY` during its run, 06:35 to 06:40Z;
+- the export job started at 07:04Z, after `await-repo-config`, and still got an empty key;
+- re-running the failed job (attempt 2, 07:17Z) got the key and pushed the first export.
+
+The likely cause is that a run takes its secrets when it is created, so a secret made after the push
+is missing from that run. This is inferred from the timings, not confirmed. Either way: after a
+one-PR onboarding, re-run the failed export once the apply has finished
+(`bazel run //tools/agent-app -- run-rerun <run-id> --failed`), or use two PRs, which likely avoids
+the red run. The wait does protect an existing key from being replaced mid-export (#4661).
 
 #### PR 1: the key
 
