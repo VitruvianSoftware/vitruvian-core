@@ -83,7 +83,9 @@ flowchart LR
 
 For donations, one shared price keeps the suggested amount in one place. One link per app
 keeps attribution: each link carries `metadata.app`, so Stripe's dashboard and
-exports show which app a donation came from, at no extra cost.
+exports show which app a donation came from, at no extra cost. Each link also sets
+`submit_type=donate` and `custom_text.submit.message` (updated in place) beside the
+Donate button so donors see it is a one-time charge with no recurring billing.
 
 ## Why this provider
 

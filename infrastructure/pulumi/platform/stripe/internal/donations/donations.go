@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // Amounts are in the currency's smallest unit (cents for usd), the unit
@@ -56,12 +57,31 @@ type App struct {
 	Name string `json:"name" yaml:"name"`
 }
 
+// DefaultSubmitMessage is shown beside Stripe's Donate button on hosted
+// checkout when Settings.SubmitMessage is unset, reassuring donors that
+// the donation is a single charge with no recurring billing.
+const DefaultSubmitMessage = "One-time donation — you will only be charged once. No subscription, no recurring charges."
+
+// maxSubmitMessageLen caps custom_text.submit.message within our 1000-char
+// budget (Stripe's API accepts up to 1200 characters).
+const maxSubmitMessageLen = 1000
+
 // Settings is the `donations` object of a stack's config.
 type Settings struct {
 	ProductName     string  `json:"productName" yaml:"productName"`
 	Amounts         Amounts `json:"amounts" yaml:"amounts"`
 	ThankYouMessage string  `json:"thankYouMessage" yaml:"thankYouMessage"`
+	SubmitMessage   string  `json:"submitMessage,omitempty" yaml:"submitMessage,omitempty"`
 	Apps            []App   `json:"apps" yaml:"apps"`
+}
+
+// SubmitText returns the message for custom_text.submit.message on each
+// donation Payment Link, falling back to DefaultSubmitMessage when unset.
+func (s Settings) SubmitText() string {
+	if s.SubmitMessage != "" {
+		return s.SubmitMessage
+	}
+	return DefaultSubmitMessage
 }
 
 // Stripe caps a single amount at 8 digits in the smallest unit
@@ -78,6 +98,13 @@ func (s Settings) Validate() error {
 
 	if strings.TrimSpace(s.ProductName) == "" {
 		add("donations.productName is required (it is what donors see on the checkout page)")
+	}
+
+	submitMsg := s.SubmitText()
+	if strings.TrimSpace(submitMsg) == "" {
+		add("donations.submitMessage must not be blank")
+	} else if n := utf8.RuneCountInString(submitMsg); n > maxSubmitMessageLen {
+		add("donations.submitMessage must be at most %d characters, got %d", maxSubmitMessageLen, n)
 	}
 
 	a := s.Amounts
