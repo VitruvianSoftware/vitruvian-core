@@ -226,6 +226,7 @@ struct StateContractTests {
             config.announceVolumeEnabled = true
             config.announceVolume = 65
             config.localEngine = .gemini
+            config.phoneVoiceEngine = .gemini
             config.geminiVoice = "Kore"
             config.customVoices = [CustomVoice(id: "cloned-1", name: "Studio Narrator")]
             config.announcementStyle = .briefing
@@ -2424,5 +2425,59 @@ struct StateContractTests {
         let resetHomes = try #require(afterResetState["homes"] as? [[String: Any]])
         #expect(resetHomes.count == 3)
         #expect(resetHomes[1]["selected"] as? Bool == true)
+    }
+
+    @Test("phone_voice_engine defaults to phone without key, round-trips through --apply set, and notes missing Gemini key")
+    func phoneVoiceEngineStateAndApplyContract() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        let seam = rig.makeSeam(program: .app)
+
+        // Legacy config without phone_voice_engine reads as "phone".
+        let legacyJSON = #"{"enabled":true,"default_target":"","structure_id":"","targets":{},"speak_phone":true}"#
+        try Data(legacyJSON.utf8).write(to: rig.configFile.url)
+        let legacyState = try #require(
+            JSONSerialization.jsonObject(with: Data(VitruvianSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any]
+        )
+        let legacySettings = try #require(legacyState["settings"] as? [[String: Any]])
+        let legacyEntry = try #require(legacySettings.first(where: { $0["key"] as? String == "phone_voice_engine" }))
+        #expect(legacyEntry["label"] as? String == "Phone voice")
+        #expect(legacyEntry["value"] as? String == "phone")
+        #expect(legacyEntry["shown"] as? Bool == true)
+        #expect(legacyEntry["note"] == nil)
+        let choices = try #require(legacyEntry["choices"] as? [[String: Any]])
+        #expect(choices.map { $0["value"] as? String } == ["phone", "gemini"])
+        #expect(choices.map { $0["label"] as? String } == ["Phone's own voice", "Gemini voice"])
+
+        // Switching to "gemini" without a Gemini API key surfaces the catalog no-key note.
+        let toGeminiOut = VitruvianSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"phone_voice_engine","value":"gemini"}]}"#,
+            seam: seam
+        )
+        #expect(toGeminiOut.exitCode == 0)
+        let toGeminiState = try #require(
+            (JSONSerialization.jsonObject(with: Data(toGeminiOut.stdout[0].utf8)) as? [String: Any])?["state"] as? [String: Any]
+        )
+        let toGeminiSettings = try #require(toGeminiState["settings"] as? [[String: Any]])
+        let toGeminiEntry = try #require(toGeminiSettings.first(where: { $0["key"] as? String == "phone_voice_engine" }))
+        #expect(toGeminiEntry["value"] as? String == "gemini")
+        #expect(toGeminiEntry["note"] as? String == PhoneVoiceEngine.noApiKeyNote)
+
+        // Switching back to "phone" persists cleanly and clears the note.
+        let toPhoneOut = VitruvianSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"phone_voice_engine","value":"phone"}]}"#,
+            seam: seam
+        )
+        #expect(toPhoneOut.exitCode == 0)
+        #expect(rig.readConfig()?.effectivePhoneVoiceEngine == .phone)
+
+        // Invalid choice is refused without changing config on disk.
+        let badOut = VitruvianSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"phone_voice_engine","value":"robot"}]}"#,
+            seam: seam
+        )
+        #expect(badOut.exitCode == 1)
+        let badErr = try #require((JSONSerialization.jsonObject(with: Data(badOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
+        #expect(badErr["code"] as? String == "invalid_choice")
     }
 }

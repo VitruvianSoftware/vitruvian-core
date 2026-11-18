@@ -434,6 +434,8 @@ private struct FixedDiscovery: CastDiscovering {
         #expect(c.chatMessagesSentTo == "Messages are sent to Google Home, and to Gemini to be spoken on your Home speakers (Gemini TTS); nowhere else.")
         c.speakLocal = true
         c.speakPhone = true
+        #expect(c.chatMessagesSentTo == "Messages are sent to Google Home, and to Gemini to be spoken on your Home speakers and this Mac (Gemini TTS); nowhere else.")
+        c.phoneVoiceEngine = .gemini
         #expect(c.chatMessagesSentTo == "Messages are sent to Google Home, and to Gemini to be spoken on your Home speakers, this Mac and your phone (Gemini TTS); nowhere else.")
         c.speakHome = false
         #expect(c.chatMessagesSentTo == "Messages are sent to Google Home, and to Gemini to be spoken on this Mac and your phone (Gemini TTS); nowhere else.")
@@ -531,8 +533,10 @@ private struct CastRig {
 
     @Test func homeMacAndPhoneShareOneSynthesis() async {
         let rig = CastRig()
+        var c = CastRig.config(home: true, local: true, phone: true)
+        c.phoneVoiceEngine = .gemini
         let outcome = await rig.announcer.announce(
-            "All three.", config: CastRig.config(home: true, local: true, phone: true), force: false)
+            "All three.", config: c, force: false)
         #expect(outcome == .announced(home: .spoken, local: .spoken, phone: .spoken))
         #expect(rig.gemini.synthCalls == 1)
         #expect(rig.cast.calls.count == 1)

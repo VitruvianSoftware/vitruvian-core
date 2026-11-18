@@ -141,17 +141,25 @@ private struct Rig {
 
 @Suite struct LocalSpeechConfigTests {
     @Test func anOldConfigDecodesToHomeOnly() throws {
-        // Written before these keys existed: must behave exactly as before.
+        // Written before these keys existed: must behave exactly as before, and
+        // any paired phone defaults to its own text-to-speech voice.
         let json = #"{"enabled":true,"default_target":"lake","structure_id":"s","targets":{}}"#
         let c = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
         #expect(c.speakHome == nil && c.speakLocal == nil && c.localVoice == nil)
-        #expect(c.speakPhone == nil && c.phonePauseMedia == nil && c.phoneHeadphonesOnly == nil)
+        #expect(c.speakPhone == nil && c.phoneVoiceEngine == nil && c.phonePauseMedia == nil && c.phoneHeadphonesOnly == nil)
         #expect(c.effectiveSpeakHome == true)
         #expect(c.effectiveSpeakLocal == false)
         #expect(c.effectiveSpeakPhone == false)
+        #expect(c.effectivePhoneVoiceEngine == .phone)
         #expect(c.effectivePhonePauseMedia == false)
         #expect(c.effectivePhoneHeadphonesOnly == false)
         #expect(c.effectiveLocalVoice == "com.apple.ttsbundle.siri_Aaron_en-US_premium")
+
+        // A config with speak_phone enabled and no phone_voice_engine key also reads as .phone.
+        let phoneJson = #"{"enabled":true,"default_target":"lake","structure_id":"s","targets":{},"speak_phone":true}"#
+        let phoneConfig = try JSONDecoder().decode(SpeakerConfig.self, from: Data(phoneJson.utf8))
+        #expect(phoneConfig.phoneVoiceEngine == nil)
+        #expect(phoneConfig.effectivePhoneVoiceEngine == .phone)
     }
 
     @Test func anOldConfigRoundTripsWithoutGainingKeys() throws {
@@ -159,13 +167,15 @@ private struct Rig {
         let c = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
         let out = String(decoding: try JSONEncoder().encode(c), as: UTF8.self)
         #expect(!out.contains("speak_home") && !out.contains("speak_local") && !out.contains("local_voice")
-                && !out.contains("speak_phone") && !out.contains("phone_pause_media") && !out.contains("phone_headphones_only"),
+                && !out.contains("speak_phone") && !out.contains("phone_voice_engine")
+                && !out.contains("phone_pause_media") && !out.contains("phone_headphones_only"),
                 "saving an old config must not switch anything on by writing defaults")
     }
 
     @Test func theNewKeysRoundTripInSnakeCase() throws {
         var c = config(home: false, local: true, phone: true)
         c.localVoice = "com.apple.voice.premium.en-US.Zoe"
+        c.phoneVoiceEngine = .gemini
         c.phonePauseMedia = true
         c.phoneHeadphonesOnly = true
         let data = try JSONEncoder().encode(c)
@@ -173,6 +183,7 @@ private struct Rig {
         #expect(obj["speak_home"] as? Bool == false)
         #expect(obj["speak_local"] as? Bool == true)
         #expect(obj["speak_phone"] as? Bool == true)
+        #expect(obj["phone_voice_engine"] as? String == "gemini")
         #expect(obj["phone_pause_media"] as? Bool == true)
         #expect(obj["phone_headphones_only"] as? Bool == true)
         #expect(obj["local_voice"] as? String == "com.apple.voice.premium.en-US.Zoe")
@@ -549,7 +560,7 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         #expect(skippedOutcome.failureMessages.isEmpty)
         #expect(skippedOutcome.spokenLines(homeName: "Lake Office") == ["skipped on your phone (no headphones connected)"])
 
-        // Gemini synthesis passes WAV payload to PhoneSpeaker and speaks on Home + Mac + Phone.
+        // Gemini synthesis passes WAV payload to PhoneSpeaker when phoneVoiceEngine is gemini and speaks on Home + Mac + Phone.
         let log = EventLog()
         let home = FakeHome(log: log)
         let local = FakeLocal(log: log)
@@ -558,11 +569,130 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         let gemAnnouncer = Announcer(home: home, local: local, phone: phone, media: FakeMedia(log: log), gemini: gemini, geminiKey: { "gem-key" })
         var gemConfig = config(home: true, local: true, phone: true)
         gemConfig.localEngine = .gemini
+        gemConfig.phoneVoiceEngine = .gemini
         let gemOutcome = await gemAnnouncer.announce("All three outputs.", config: gemConfig, force: false)
         #expect(gemOutcome == .announced(home: .spoken, local: .spoken, phone: .spoken))
         #expect(gemOutcome.spokenLabel(homeName: "Lake Office") == "Lake Office + This Mac + Your phone")
         #expect(gemini.synthCalls == 1)
         #expect(phone.calls.first?.wav == gemini.wav)
+    }
+
+    @Test func phoneVoiceDefaultSkipsGeminiAndOmitsWavBase64() async throws {
+        // (a) With phone (the default) and Home not casting, no Gemini call is made
+        // and POST /v1/speaker/phone-say has no wav_base64 key.
+        let box = CapturedRequest()
+        let realPhone = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!) { req in
+            box.request = req
+            return (Data(#"{"ok":true,"spoken":true}"#.utf8),
+                    HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let log = EventLog()
+        let gemini = SynthGemini()
+        let announcer = Announcer(
+            home: FakeHome(log: log),
+            local: FakeLocal(log: log),
+            phone: realPhone,
+            media: FakeMedia(log: log),
+            gemini: gemini,
+            geminiKey: { "gem-key" }
+        )
+        var c = config(home: false, local: false, phone: true)
+        c.localEngine = .gemini // even when Mac uses Gemini, phone defaults to its own voice
+        let outcome = await announcer.announce("Build green.", config: c, force: false)
+        #expect(outcome == .announced(home: .off, local: .off, phone: .spoken))
+        #expect(gemini.synthCalls == 0)
+        #expect(gemini.speakCalls == 0)
+        let req = try #require(box.request)
+        let body = try #require(try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any])
+        #expect(body["text"] as? String == "Build green.")
+        #expect(body["wav_base64"] == nil)
+
+        // When Home IS casting Gemini audio while phone is in default mode, Gemini synthesizes
+        // for the Home cast, but the phone still receives text only without wav_base64.
+        let castPhone = FakePhone(log: log)
+        let castLog = EventLog()
+        let cast = FakeCast(log: castLog)
+        let castGemini = SynthGemini()
+        let castAnnouncer = Announcer(
+            home: FakeHome(log: castLog),
+            local: FakeLocal(log: castLog),
+            phone: castPhone,
+            cast: cast,
+            media: FakeMedia(log: castLog),
+            gemini: castGemini,
+            geminiKey: { "gem-key" }
+        )
+        var castConfig = config(home: true, local: false, phone: true)
+        castConfig.localEngine = .gemini
+        castConfig.homeCastVoice = true
+        castConfig.phoneVoiceEngine = .phone
+        let castOutcome = await castAnnouncer.announce("Home casts, phone speaks natively.", config: castConfig, force: false)
+        #expect(castOutcome == .announced(home: .spoken, local: .off, phone: .spoken))
+        #expect(castGemini.synthCalls == 1)
+        #expect(cast.calls.count == 1)
+        #expect(castPhone.calls.count == 1)
+        #expect(castPhone.calls.first?.wav == nil)
+    }
+
+    @Test func phoneVoiceGeminiSendsWavWhenKeyPresent() async throws {
+        // (b) With phone_voice_engine: gemini and a saved key, POST /v1/speaker/phone-say includes wav_base64
+        // even when Mac uses Apple's voice and Home is off.
+        let box = CapturedRequest()
+        let realPhone = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!) { req in
+            box.request = req
+            return (Data(#"{"ok":true,"spoken":true}"#.utf8),
+                    HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let log = EventLog()
+        let gemini = SynthGemini()
+        let announcer = Announcer(
+            home: FakeHome(log: log),
+            local: FakeLocal(log: log),
+            phone: realPhone,
+            media: FakeMedia(log: log),
+            gemini: gemini,
+            geminiKey: { "gem-key" }
+        )
+        var c = config(home: false, local: false, phone: true)
+        c.localEngine = .apple
+        c.phoneVoiceEngine = .gemini
+        let outcome = await announcer.announce("Hello in Gemini.", config: c, force: false)
+        #expect(outcome == .announced(home: .off, local: .off, phone: .spoken))
+        #expect(gemini.synthCalls == 1)
+        let req = try #require(box.request)
+        let body = try #require(try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any])
+        #expect(body["text"] as? String == "Hello in Gemini.")
+        #expect(body["wav_base64"] as? String == gemini.wav.base64EncodedString())
+    }
+
+    @Test func phoneVoiceGeminiWithoutKeyFallsBackToTextOnly() async throws {
+        // (c) With phone_voice_engine: gemini and no Gemini key, Gemini is not called and
+        // POST /v1/speaker/phone-say sends text only without wav_base64.
+        let box = CapturedRequest()
+        let realPhone = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!) { req in
+            box.request = req
+            return (Data(#"{"ok":true,"spoken":true}"#.utf8),
+                    HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let log = EventLog()
+        let gemini = SynthGemini()
+        let announcer = Announcer(
+            home: FakeHome(log: log),
+            local: FakeLocal(log: log),
+            phone: realPhone,
+            media: FakeMedia(log: log),
+            gemini: gemini,
+            geminiKey: { nil }
+        )
+        var c = config(home: false, local: false, phone: true)
+        c.phoneVoiceEngine = .gemini
+        let outcome = await announcer.announce("Fallback text only.", config: c, force: false)
+        #expect(outcome == .announced(home: .off, local: .off, phone: .spoken))
+        #expect(gemini.synthCalls == 0)
+        let req = try #require(box.request)
+        let body = try #require(try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any])
+        #expect(body["text"] as? String == "Fallback text only.")
+        #expect(body["wav_base64"] == nil)
     }
 
     @Test func concurrentAnnouncementsWaitInLineOnSpeechLock() async throws {

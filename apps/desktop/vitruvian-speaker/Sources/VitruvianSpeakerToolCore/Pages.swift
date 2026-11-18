@@ -347,6 +347,7 @@ public enum Pages {
         public static let homeCastVoice = "homeCastVoice"
         public static let speakLocal = "speakLocal"
         public static let speakPhone = "speakPhone"
+        public static let phoneVoiceEngine = "phoneVoiceEngine"
         public static let phonePauseMedia = "phonePauseMedia"
         public static let phoneHeadphonesOnly = "phoneHeadphonesOnly"
         public static let announceVolume = "announceVolume"
@@ -1144,6 +1145,25 @@ public enum Pages {
                choice: status.offersChoice)
     }
 
+    /// What speaks on the paired phone: the phone's own text-to-speech, or Gemini.
+    static func phoneVoiceEngineBlocks(_ status: Status) -> [UIBlock] {
+        let entry = SettingsCatalog(config: status.config, hasGeminiKey: status.chat.hasGeminiKey).entry(.phoneVoiceEngine)
+        var blocks = picker(
+            Block.phoneVoiceEngine,
+            title: entry.label,
+            value: status.config.effectivePhoneVoiceEngine.rawValue,
+            options: entry.choices.map { UIChoiceOption(value: $0.value, title: UIText.plain($0.label)) },
+            choice: status.offersChoice
+        )
+        if let help = entry.help {
+            blocks.append(text(UIText.plain(help), style: .caption))
+        }
+        if let note = entry.note {
+            blocks.append(text(UIText.plain(note), style: .caption))
+        }
+        return blocks
+    }
+
     /// The Gemini voice, including cloned custom voices and any unknown active voice.
     static func geminiVoicePicker(_ status: Status) -> [UIBlock] {
         let current = status.config.effectiveGeminiVoice
@@ -1522,10 +1542,10 @@ public enum Pages {
             toggle(Block.speakPhone, UIText.plain(SettingsCatalog.Key.speakPhone.label()), isOn: config.effectiveSpeakPhone)
             if SettingsCatalog.Key.localEngine.shown(config: config) {
                 localEnginePicker(status)
-                if SettingsCatalog.Key.geminiVoice.shown(config: config) {
-                    geminiVoicePicker(status)
-                    geminiKeyBlocks(status)
-                }
+            }
+            if SettingsCatalog.Key.geminiVoice.shown(config: config) {
+                geminiVoicePicker(status)
+                geminiKeyBlocks(status)
             }
             if SettingsCatalog.Key.localVoice.shown(config: config) {
                 // The Mac voice always: with Gemini it is what speaks when
@@ -1534,7 +1554,8 @@ public enum Pages {
                        value: config.effectiveLocalVoice, options: voiceOptions(status), choice: status.offersChoice)
                 button(Block.previewVoice, status.previewing ? "Speaking…" : "Preview", enabled: !status.previewing)
             }
-            if config.effectiveSpeakPhone {
+            if SettingsCatalog.Key.phoneVoiceEngine.shown(config: config) {
+                phoneVoiceEngineBlocks(status)
                 toggle(Block.phonePauseMedia, UIText.plain(SettingsCatalog.Key.phonePauseMedia.label()),
                        isOn: config.effectivePhonePauseMedia)
                 toggle(Block.phoneHeadphonesOnly, UIText.plain(SettingsCatalog.Key.phoneHeadphonesOnly.label()),

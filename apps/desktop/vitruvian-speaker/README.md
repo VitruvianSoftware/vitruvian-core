@@ -50,7 +50,7 @@ flowchart LR
     subgraph Outputs["3 Audio Outputs"]
         O1["Google Home & Nest Displays\n• Cloud Broadcast API, or\n• Local CastV2 WAV (home_cast_voice)"]
         O2["This Mac (speak_local)\n• Gemini TTS (Prebuilt + Custom Voices)\n• Apple System Voice"]
-        O3["Your Android Phone (speak_phone)\n• Streamed over Vitruvian Remote\n  Phone Bridge (Pause Media / Headphones)"]
+        O3["Your Android Phone (speak_phone)\n• Phone's own TextToSpeech (default) or\n  Gemini voice WAV over Vitruvian Remote Bridge"]
     end
 
     S1 & S2 & S3 & S4 --> CFG
@@ -85,9 +85,9 @@ flowchart TD
 
     SpeakHome -. "ON" .-> HomeControls["• Speaker Dropdown (1 row, not N rows)\n• Volume & Set Announce Volume\n• Cast Selected Voice (when Gemini TTS)\n• Manage Discovered Speakers (collapsible)"]
     SpeakMac -. "ON" .-> MacControls["• Pause Mac Media (+ Extra Seconds when ON)"]
-    SpeakPhone -. "ON" .-> PhoneControls["• Pause Phone Media\n• Headphones Only"]
+    SpeakPhone -. "ON" .-> PhoneControls["• Phone Voice (Phone's own voice / Gemini voice)\n• Pause Phone Media\n• Headphones Only"]
 
-    SpeakHome & SpeakMac & SpeakPhone -. "Any uses Voice Engine" .-> VoiceGroup["Voice Engine Dropdown (Apple / Gemini TTS)"]
+    SpeakHome & SpeakMac -. "Any uses Voice Engine" .-> VoiceGroup["Voice Engine Dropdown (Apple / Gemini TTS)"]
     VoiceGroup -. "Gemini TTS" .-> GeminiControls["• Gemini Voice Dropdown (Prebuilt + Custom Voices)\n• API Key Status ('Saved · Replace…')"]
     VoiceGroup -. "Apple" .-> AppleControls["• Mac System Voice Dropdown"]
 
@@ -171,10 +171,12 @@ and audio endpoint for Vitruvian Speaker through the paired Mac agent
   per-agent and per-chat sources (including Beeper network filters), and send or
   replay announcements.
 - **Phone as an audio output (`speak_phone`)**: when **Your phone** is turned
-  on, Vitruvian Speaker streams synthesized audio (or text fallback) through
-  `POST /v1/speaker/phone-say` over the active phone bridge so your Android
-  phone speaks announcements aloud—with optional **Pause media on your phone**
-  and **Only with headphones on** controls.
+  on, your phone speaks announcements aloud using Android's own text-to-speech by
+  default—free and controlled by your phone's voice settings—or you can switch
+  **Phone voice** to **Gemini voice** to stream synthesized Gemini audio alongside
+  the text through `POST /v1/speaker/phone-say` (with automatic fallback to the
+  phone's own voice if no key is saved or Gemini fails), with optional **Pause
+  media on your phone** and **Only with headphones on** controls.
 - **Zero-lag file sync**: `macagent` reads and atomically rewrites the active
   door's config (`~/.gemini/speaker_broadcast.json` or the Vitruvian extension's
   `ToolData/dev.vitruvian.speaker/settings.json`), and Vitruvian Speaker watches

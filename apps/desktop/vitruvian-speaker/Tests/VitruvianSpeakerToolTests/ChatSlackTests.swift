@@ -1065,15 +1065,19 @@ final class ChatSlackTests: XCTestCase {
         for style in AnnouncementStyle.allCases {
             for model in StyleModel.allCases {
                 for engine in LocalVoiceEngine.allCases {
-                    var config = saved
-                    config.effectiveSpeakLocal = true
-                    config.effectiveAnnouncementStyle = style
-                    config.effectiveStyleModel = model
-                    config.effectiveLocalEngine = engine
-                    store.config = config
-                    let tree = settings(on: .general, sections: true).settingsPage()
-                    let all = ids(tree)
-                    XCTAssertEqual(all.count, Set(all).count, "\(style) \(model) \(engine): \(all)")
+                    for phoneEngine in PhoneVoiceEngine.allCases {
+                        var config = saved
+                        config.effectiveSpeakLocal = true
+                        config.effectiveSpeakPhone = true
+                        config.effectiveAnnouncementStyle = style
+                        config.effectiveStyleModel = model
+                        config.effectiveLocalEngine = engine
+                        config.effectivePhoneVoiceEngine = phoneEngine
+                        store.config = config
+                        let tree = settings(on: .general, sections: true).settingsPage()
+                        let all = ids(tree)
+                        XCTAssertEqual(all.count, Set(all).count, "\(style) \(model) \(engine) \(phoneEngine): \(all)")
+                    }
                 }
             }
         }
@@ -1094,13 +1098,27 @@ final class ChatSlackTests: XCTestCase {
         let tool = settings(on: .speakers)
         var tree = tool.settingsPage()
         XCTAssertTrue(ids(tree).contains(Pages.Block.speakPhone))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.phoneVoiceEngine))
         XCTAssertFalse(ids(tree).contains(Pages.Block.phonePauseMedia))
         XCTAssertFalse(ids(tree).contains(Pages.Block.phoneHeadphonesOnly))
 
         tree = event(tool, Pages.Block.speakPhone, .toggle, .bool(true))
         XCTAssertEqual(saved.effectiveSpeakPhone, true)
+        XCTAssertTrue(ids(tree).contains(Pages.Block.phoneVoiceEngine))
         XCTAssertTrue(ids(tree).contains(Pages.Block.phonePauseMedia))
         XCTAssertTrue(ids(tree).contains(Pages.Block.phoneHeadphonesOnly))
+        XCTAssertTrue(texts(tree).contains(PhoneVoiceEngine.phone.help(geminiVoiceName: saved.geminiVoiceDisplayName())))
+
+        tree = event(tool, Pages.Block.phoneVoiceEngine, .change, .string(PhoneVoiceEngine.gemini.rawValue))
+        XCTAssertEqual(saved.effectivePhoneVoiceEngine, .gemini)
+        XCTAssertTrue(ids(tree).contains(Pages.Block.geminiVoice))
+        XCTAssertTrue(ids(tree).contains(Pages.Block.geminiApiKey))
+        XCTAssertTrue(texts(tree).contains(PhoneVoiceEngine.gemini.help(geminiVoiceName: saved.geminiVoiceDisplayName())))
+        XCTAssertTrue(texts(tree).contains(PhoneVoiceEngine.noApiKeyNote))
+
+        tree = event(tool, Pages.Block.phoneVoiceEngine, .change, .string(PhoneVoiceEngine.phone.rawValue))
+        XCTAssertEqual(saved.effectivePhoneVoiceEngine, .phone)
+        XCTAssertFalse(ids(tree).contains(Pages.Block.geminiVoice))
 
         tree = event(tool, Pages.Block.phonePauseMedia, .toggle, .bool(true))
         XCTAssertEqual(saved.effectivePhonePauseMedia, true)

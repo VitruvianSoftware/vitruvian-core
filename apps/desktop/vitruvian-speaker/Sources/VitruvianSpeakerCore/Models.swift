@@ -173,6 +173,41 @@ public enum LocalVoiceEngine: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// What speaks on the paired Android phone: Android's own on-device
+/// text-to-speech, or Gemini's speech model (`gemini-3.8-flash-tts`),
+/// with the phone's own voice when there is no key or Gemini fails.
+public enum PhoneVoiceEngine: String, Codable, CaseIterable, Sendable {
+    /// Android's own text-to-speech (`TextToSpeech`).
+    case phone
+    /// Gemini's speech model (`gemini_voice`), with the phone's own voice when
+    /// there is no key or Gemini fails.
+    case gemini
+
+    public var label: String {
+        switch self {
+        case .phone: return "Phone's own voice"
+        case .gemini: return "Gemini voice"
+        }
+    }
+
+    public func help(geminiVoiceName: String) -> String {
+        switch self {
+        case .phone:
+            return "Uses your phone's text-to-speech. Free, and changes with your phone's voice settings."
+        case .gemini:
+            return "Sounds like your speakers (currently: \(geminiVoiceName)). Uses your Gemini API key."
+        }
+    }
+
+    /// Shown when Gemini is chosen for the phone and no Gemini API key is saved.
+    public static let noApiKeyNote = "Needs a Gemini API key; until then the phone's own voice is used"
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = PhoneVoiceEngine(rawValue: raw) ?? .phone
+    }
+}
+
 /// The prebuilt Gemini voices offered in Settings. Gemini has more; the
 /// stored value is the voice's name, so one set by hand still works.
 public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
@@ -289,6 +324,9 @@ public struct SpeakerConfig: Codable, Equatable {
     public var speakHome: Bool?
     public var speakLocal: Bool?
     public var speakPhone: Bool?
+    /// What speaks on the paired Android phone: the phone's own text-to-speech
+    /// unless Gemini is chosen.
+    public var phoneVoiceEngine: PhoneVoiceEngine?
     public var phonePauseMedia: Bool?
     public var phoneHeadphonesOnly: Bool?
     /// `AVSpeechSynthesisVoice` identifier used on this Mac.
@@ -341,6 +379,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case speakHome = "speak_home"
         case speakLocal = "speak_local"
         case speakPhone = "speak_phone"
+        case phoneVoiceEngine = "phone_voice_engine"
         case phonePauseMedia = "phone_pause_media"
         case phoneHeadphonesOnly = "phone_headphones_only"
         case localVoice = "local_voice"
@@ -436,6 +475,7 @@ public struct SpeakerConfig: Codable, Equatable {
         self.speakHome = try container.decodeIfPresent(Bool.self, forKey: .speakHome)
         self.speakLocal = try container.decodeIfPresent(Bool.self, forKey: .speakLocal)
         self.speakPhone = try container.decodeIfPresent(Bool.self, forKey: .speakPhone)
+        self.phoneVoiceEngine = try container.decodeIfPresent(PhoneVoiceEngine.self, forKey: .phoneVoiceEngine)
         self.phonePauseMedia = try container.decodeIfPresent(Bool.self, forKey: .phonePauseMedia)
         self.phoneHeadphonesOnly = try container.decodeIfPresent(Bool.self, forKey: .phoneHeadphonesOnly)
         self.localVoice = try container.decodeIfPresent(String.self, forKey: .localVoice)
@@ -478,6 +518,7 @@ public struct SpeakerConfig: Codable, Equatable {
         try container.encodeIfPresent(speakHome, forKey: .speakHome)
         try container.encodeIfPresent(speakLocal, forKey: .speakLocal)
         try container.encodeIfPresent(speakPhone, forKey: .speakPhone)
+        try container.encodeIfPresent(phoneVoiceEngine, forKey: .phoneVoiceEngine)
         try container.encodeIfPresent(phonePauseMedia, forKey: .phonePauseMedia)
         try container.encodeIfPresent(phoneHeadphonesOnly, forKey: .phoneHeadphonesOnly)
         try container.encodeIfPresent(localVoice, forKey: .localVoice)
@@ -553,6 +594,12 @@ public struct SpeakerConfig: Codable, Equatable {
     public var effectiveSpeakPhone: Bool {
         get { speakPhone ?? false }
         set { speakPhone = newValue }
+    }
+
+    /// What speaks on the paired phone: the phone's own text-to-speech unless Gemini is chosen.
+    public var effectivePhoneVoiceEngine: PhoneVoiceEngine {
+        get { phoneVoiceEngine ?? .phone }
+        set { phoneVoiceEngine = newValue }
     }
 
     /// Pause media on the phone while announcing on the phone. Off unless switched on.
@@ -661,10 +708,10 @@ public struct SpeakerConfig: Codable, Equatable {
         set { announceSource = newValue }
     }
 
-    /// Whether the voice engine choice matters anywhere: this Mac, the
-    /// phone, or the Home speakers when they cast the selected voice.
+    /// Whether the Mac/Cast voice engine choice matters anywhere: this Mac, or
+    /// the Home speakers when they cast the selected voice.
     public var usesVoiceEngine: Bool {
-        effectiveSpeakLocal || effectiveSpeakPhone || (effectiveSpeakHome && effectiveHomeCastVoice)
+        effectiveSpeakLocal || (effectiveSpeakHome && effectiveHomeCastVoice)
     }
 
     // MARK: What the settings surfaces show
@@ -688,10 +735,10 @@ public struct SpeakerConfig: Codable, Equatable {
     /// Gemini engine chosen, the one engine a Home speaker can cast.
     public var showsHomeCastVoice: Bool { effectiveSpeakHome && effectiveLocalEngine == .gemini }
 
-    /// The voice engine picker: while an output it could drive is on. That
-    /// includes the Home speakers on their own, since picking Gemini there is
-    /// what offers casting; otherwise casting could never be reached.
-    public var showsVoiceEngine: Bool { effectiveSpeakLocal || effectiveSpeakPhone || effectiveSpeakHome }
+    /// The voice engine picker: while an output it could drive is on (this Mac,
+    /// or the Home speakers on their own since picking Gemini there offers
+    /// casting).
+    public var showsVoiceEngine: Bool { effectiveSpeakLocal || effectiveSpeakHome }
 
     /// The Gemini voice (and its key): only where Gemini actually speaks.
     public var showsGeminiVoice: Bool { geminiSpeaks }
@@ -725,7 +772,7 @@ public struct SpeakerConfig: Codable, Equatable {
             return "All outputs are off, so nothing is spoken anywhere."
         }
         var lines: [String] = []
-        if (c.effectiveSpeakLocal || c.effectiveSpeakPhone) && c.effectiveLocalEngine == .gemini {
+        if c.effectiveSpeakLocal && c.effectiveLocalEngine == .gemini {
             lines.append("Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead.")
         }
         if let cast = homeCastFooter(c) { lines.append(cast) }
@@ -733,7 +780,7 @@ public struct SpeakerConfig: Codable, Equatable {
             lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
         }
         if c.effectiveSpeakPhone {
-            lines.append(c.effectiveLocalEngine == .gemini
+            lines.append(c.effectivePhoneVoiceEngine == .gemini
                 ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
                 : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
         }
@@ -748,7 +795,8 @@ public struct SpeakerConfig: Codable, Equatable {
 
     /// Whether Gemini speaks somewhere, so its key is asked for.
     public var geminiSpeaks: Bool {
-        usesVoiceEngine && effectiveLocalEngine == .gemini
+        (usesVoiceEngine && effectiveLocalEngine == .gemini)
+            || (effectiveSpeakPhone && effectivePhoneVoiceEngine == .gemini)
     }
 
     /// Where chat messages go once read, for the chat monitor's privacy
@@ -756,17 +804,19 @@ public struct SpeakerConfig: Codable, Equatable {
     /// the Home speakers, this Mac or this phone. (The rewording is for
     /// coding agents' replies only.)
     public var chatMessagesSentTo: String {
+        var places: [String] = []
         if effectiveLocalEngine == .gemini {
-            var places: [String] = []
             if effectiveSpeakHome && effectiveHomeCastVoice { places.append("your Home speakers") }
             if effectiveSpeakLocal { places.append("this Mac") }
-            if effectiveSpeakPhone { places.append("your phone") }
-            if !places.isEmpty {
-                let joined = places.count == 1
-                    ? places[0]
-                    : places.dropLast().joined(separator: ", ") + " and " + places.last!
-                return "Messages are sent to Google Home, and to Gemini to be spoken on \(joined) (Gemini TTS); nowhere else."
-            }
+        }
+        if effectiveSpeakPhone && effectivePhoneVoiceEngine == .gemini {
+            places.append("your phone")
+        }
+        if !places.isEmpty {
+            let joined = places.count == 1
+                ? places[0]
+                : places.dropLast().joined(separator: ", ") + " and " + places.last!
+            return "Messages are sent to Google Home, and to Gemini to be spoken on \(joined) (Gemini TTS); nowhere else."
         }
         return "Nothing is sent anywhere except to Google Home."
     }

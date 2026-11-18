@@ -25,7 +25,7 @@ import Foundation
 ///
 /// Every choice list, numeric range, and visibility rule comes from the
 /// existing `VitruvianSpeakerCore` model types (`SpeechLength`, `AnnouncementStyle`,
-/// `StyleModel`, `LocalVoiceEngine`, `GeminiVoice`, `CodingAgent`,
+/// `StyleModel`, `LocalVoiceEngine`, `PhoneVoiceEngine`, `GeminiVoice`, `CodingAgent`,
 /// `ChatMonitorConfig`, and `SpeakerConfig`) so there is one place that defines
 /// what each setting is called, what values it accepts, and when it appears.
 public struct SettingsCatalog: Sendable, Equatable {
@@ -42,10 +42,12 @@ public struct SettingsCatalog: Sendable, Equatable {
     public struct Choice: Codable, Sendable, Equatable {
         public let value: String
         public let label: String
+        public let help: String?
 
-        public init(value: String, label: String) {
+        public init(value: String, label: String, help: String? = nil) {
             self.value = value
             self.label = label
+            self.help = help
         }
     }
 
@@ -98,6 +100,7 @@ public struct SettingsCatalog: Sendable, Equatable {
         case localEngine = "local_engine"
         case geminiVoice = "gemini_voice"
         case localVoice = "local_voice"
+        case phoneVoiceEngine = "phone_voice_engine"
         case phonePauseMedia = "phone_pause_media"
         case phoneHeadphonesOnly = "phone_headphones_only"
         case announceClaudeCode = "announce_claude_code"
@@ -146,6 +149,8 @@ public struct SettingsCatalog: Sendable, Equatable {
         public let choices: [Choice]
         public let limits: Limits?
         public let shown: Bool
+        public let help: String?
+        public let note: String?
 
         public init(
             id: Key,
@@ -153,7 +158,9 @@ public struct SettingsCatalog: Sendable, Equatable {
             kind: Kind,
             choices: [Choice] = [],
             limits: Limits? = nil,
-            shown: Bool
+            shown: Bool,
+            help: String? = nil,
+            note: String? = nil
         ) {
             self.id = id
             self.label = label
@@ -161,6 +168,8 @@ public struct SettingsCatalog: Sendable, Equatable {
             self.choices = choices
             self.limits = limits
             self.shown = shown
+            self.help = help
+            self.note = note
         }
     }
 
@@ -184,6 +193,13 @@ public struct SettingsCatalog: Sendable, Equatable {
 
     public static var voiceEngineChoices: [Choice] {
         LocalVoiceEngine.allCases.map { Choice(value: $0.rawValue, label: $0.label) }
+    }
+
+    public static func phoneVoiceChoices(for config: SpeakerConfig) -> [Choice] {
+        let voiceName = config.geminiVoiceDisplayName()
+        return PhoneVoiceEngine.allCases.map {
+            Choice(value: $0.rawValue, label: $0.label, help: $0.help(geminiVoiceName: voiceName))
+        }
     }
 
     public static var prebuiltGeminiVoiceChoices: [Choice] {
@@ -317,9 +333,11 @@ public struct SettingsCatalog: Sendable, Equatable {
     // MARK: - Catalog Entries for a Config
 
     public let entries: [Entry]
+    public let hasGeminiKey: Bool
     private let byKey: [Key: Entry]
 
-    public init(config: SpeakerConfig, systemVoices: [LocalVoice] = []) {
+    public init(config: SpeakerConfig = SpeakerConfig(), systemVoices: [LocalVoice] = [], hasGeminiKey: Bool = true) {
+        self.hasGeminiKey = hasGeminiKey
         let chat = config.effectiveChatMonitor
         let quietHoursOn = config.quietHoursEnabled == true
         let quietStart = config.quietHoursStart.flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultQuietHoursStart
@@ -333,6 +351,13 @@ public struct SettingsCatalog: Sendable, Equatable {
         }
         let localVoiceChoices = Self.localVoiceChoices(config: config, systemVoices: systemVoices)
         let localVoiceLabel = config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice"
+        let phoneVoiceChoices = Self.phoneVoiceChoices(for: config)
+        let phoneVoiceHelp = phoneVoiceChoices.first(where: {
+            $0.value == config.effectivePhoneVoiceEngine.rawValue
+        })?.help
+        let phoneVoiceNote = (config.effectivePhoneVoiceEngine == .gemini && !hasGeminiKey)
+            ? PhoneVoiceEngine.noApiKeyNote
+            : nil
 
         let built: [Entry] = [
             Entry(
@@ -487,6 +512,15 @@ public struct SettingsCatalog: Sendable, Equatable {
                 kind: .choice,
                 choices: localVoiceChoices,
                 shown: config.effectiveSpeakLocal
+            ),
+            Entry(
+                id: .phoneVoiceEngine,
+                label: "Phone voice",
+                kind: .choice,
+                choices: phoneVoiceChoices,
+                shown: config.effectiveSpeakPhone,
+                help: phoneVoiceHelp,
+                note: phoneVoiceNote
             ),
             Entry(
                 id: .phonePauseMedia,

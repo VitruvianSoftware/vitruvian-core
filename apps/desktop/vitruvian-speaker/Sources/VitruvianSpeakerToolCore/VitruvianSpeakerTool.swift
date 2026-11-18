@@ -945,7 +945,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                  Pages.Block.courierEnabled?, Pages.Block.courierAnnounce?, Pages.Block.courierAddress?, Pages.Block.courierNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?,
-                 Pages.Block.announceSource?, Pages.Block.announcementStyle?, Pages.Block.styleModel?, Pages.Block.localEngine?, Pages.Block.geminiVoice?:
+                 Pages.Block.announceSource?, Pages.Block.announcementStyle?, Pages.Block.styleModel?,
+                 Pages.Block.localEngine?, Pages.Block.phoneVoiceEngine?, Pages.Block.geminiVoice?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
             case let id? where Pages.Block.networkKey(id) != nil:
                 // A Beeper or Courier network's switch, saved as the others are.
@@ -1127,6 +1128,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         case Pages.Block.localEngine?:
             guard let picked else { return false }
             return try applySetting(.localEngine, picked)
+        case Pages.Block.phoneVoiceEngine?:
+            guard let picked else { return false }
+            return try applySetting(.phoneVoiceEngine, picked)
         case Pages.Block.geminiVoice?:
             guard let picked else { return false }
             return try applySetting(.geminiVoice, picked)
@@ -1981,7 +1985,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         status.customDefaultSnoozeOpen = customDefaultSnoozeOpen
         let account = parts.account
         let islandOpen = openPanels.contains(Self.islandPanel)
-        let usesGemini = config.effectiveLocalEngine == .gemini || config.effectiveStyleModel == .gemini
+        let usesGemini = config.effectiveLocalEngine == .gemini
+            || config.effectivePhoneVoiceEngine == .gemini
+            || config.effectiveStyleModel == .gemini
         if islandOpen || openPanels.contains(Self.settingsPanel) {
             drawnConfig = config
             drawnConfigProblem = configProblem

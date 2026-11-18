@@ -408,6 +408,7 @@ public enum SettingsActions {
         case .localEngine: return .string(config.effectiveLocalEngine.rawValue)
         case .geminiVoice: return .string(config.effectiveGeminiVoice)
         case .localVoice: return .string(config.effectiveLocalVoice)
+        case .phoneVoiceEngine: return .string(config.effectivePhoneVoiceEngine.rawValue)
         case .googleChatSource: return .string(config.effectiveChatMonitor.googleChatSource.rawValue)
         case .beeperAnnounce: return .string(config.effectiveChatMonitor.beeperAnnounce.rawValue)
         case .courierAnnounce: return .string(config.effectiveChatMonitor.courierAnnounce.rawValue)
@@ -485,6 +486,8 @@ public enum SettingsActions {
             config.defaultTarget = choice
         case .localEngine:
             if let v = LocalVoiceEngine(rawValue: choice) { config.localEngine = v }
+        case .phoneVoiceEngine:
+            if let v = PhoneVoiceEngine(rawValue: choice) { config.phoneVoiceEngine = v }
         case .geminiVoice:
             config.geminiVoice = choice
         case .localVoice:

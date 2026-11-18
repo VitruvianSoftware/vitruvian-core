@@ -16,10 +16,11 @@ Vitruvian Speaker can speak an announcement on the Mac it runs on, in a natural 
 | `home_cast_voice` | bool | `false` | When `speak_home` is on and `local_engine` is `gemini`, cast synthesized Gemini TTS (prebuilt or custom cloned voice) directly to the target speaker over local CastV2 + Bonjour (`_googlecast._tcp`), falling back to Google Home's native broadcast voice for `Whole Home` or if local casting is unreachable. |
 | `speak_local` | bool | `false` | Also speak them on this Mac. |
 | `speak_phone` | bool | `false` | Also speak them on the paired Android phone through Vitruvian Remote's Mac agent bridge. |
+| `phone_voice_engine` | `phone` / `gemini` | `phone` | What speaks on your phone: Android's own text-to-speech (`phone`), or Gemini's speech model (`gemini`) sent as WAV audio alongside the text (falling back to the phone's own voice when no Gemini key is saved or Gemini fails). |
 | `phone_pause_media` | bool | `false` | Pause media playing on the phone during a phone announcement. |
 | `phone_headphones_only` | bool | `false` | Only speak on the phone when wired or Bluetooth headphones are connected. |
 | `local_voice` | string | `com.apple.ttsbundle.siri_Aaron_en-US_premium` ("Aaron (Enhanced)") | `AVSpeechSynthesisVoice` identifier for the Mac. |
-| `local_engine` | `apple` / `gemini` | `apple` | What speaks on this Mac (and on the phone / Cast-enabled Home speakers): a system voice, or Gemini's speech model (`gemini-3.8-flash-tts`). |
+| `local_engine` | `apple` / `gemini` | `apple` | What speaks on this Mac (and Cast-enabled Home speakers): a system voice, or Gemini's speech model (`gemini-3.8-flash-tts`). |
 | `gemini_voice` | string | `Kore` | The Gemini prebuilt voice name (`Kore`, `Puck`, `Aoede`, `Charon`, `Zephyr`, `Fenrir`, `Leda`, `Orus`), a built-in custom voice (`voice_vaoo7ayczx69` `Freeman`, `voice_o1be80ujj8bb` `James`), or the ID of a custom cloned voice (`voice_…`). |
 | `custom_voices` | array | `[]` | Custom cloned voices (`{id, name, created_at}`), whose audio clips live in `voices/<id>/` alongside `secrets.json`. |
 | `announcement_style` | `verbatim` / `plain` / `briefing` / `casual` / `custom` | `verbatim` | How a coding agent's reply is worded. Anything but `verbatim` has a model say it in a sentence or two. |
@@ -62,7 +63,12 @@ available to apps.
     memory. No key, an error, or no answer within 12 s → the `local_voice` rule above speaks it
     instead, and why is logged. A paused-media hold is kept alive while Gemini answers, then held
     for the audio's exact length.
-11. `announcement_style` rewords coding agents' replies only (the Stop hook's `--announce`); chat
+11. `phone_voice_engine`: defaults to `phone`, which sends only the text to the phone so Android's
+    own `TextToSpeech` speaks it — no Gemini audio is generated for the phone (and Gemini is
+    skipped completely unless Home Cast or this Mac needs Gemini audio). Choosing `gemini` sends
+    synthesized Gemini audio alongside the text, falling back to text-only (the phone's own voice)
+    when no key is saved or Gemini fails.
+12. `announcement_style` rewords coding agents' replies only (the Stop hook's `--announce`); chat
     messages, Quick Announce and `--say` are read as written. Gemini (with a key) is tried first
     when chosen, then Apple's model, each for at most 4 s, then the reply as written. Whatever
     comes back is cleaned for speech again. With a style on, the Stop hook always hands the whole
@@ -70,6 +76,6 @@ available to apps.
 
 ## Phone (Vitruvian Remote → Apps → Vitruvian Speaker)
 
-Two switches, "Home speakers" and "This Mac", plus the Mac's voice name. The Mac agent reads and
-writes the three keys above in the same file, the same way it already writes `enabled`,
-`pause_media` and the volume (see `apps/mobile/vitruvian-remote/macagent/vitruvian-speaker.go`).
+Your paired phone uses its own on-device text-to-speech by default, with Gemini voice as an option
+under **Phone voice**. The Mac agent reads and writes these settings in the same file as the Mac
+app and extension (see `apps/mobile/vitruvian-remote/macagent/vitruvian-speaker.go`).

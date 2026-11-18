@@ -734,11 +734,14 @@ public enum VitruvianSpeakerCommandLine {
         }
         if config.effectiveSpeakLocal || config.effectiveSpeakPhone {
             timeout += LocalSpeaker.timeLimit(for: spoken)
-            // Gemini's answer, and its audio failing late, before the Mac
+            // Gemini's answer, and its audio failing late, before the fallback
             // voice says it after all.
-            if config.effectiveLocalEngine == .gemini {
+            if (config.effectiveSpeakLocal && config.effectiveLocalEngine == .gemini)
+                || (config.effectiveSpeakPhone && config.effectivePhoneVoiceEngine == .gemini) {
                 timeout += GeminiSpeaker.synthesisTimeout + LocalSpeaker.timeLimit(for: spoken)
             }
+        } else if config.effectiveSpeakHome && config.effectiveHomeCastVoice && config.effectiveLocalEngine == .gemini {
+            timeout += GeminiSpeaker.synthesisTimeout
         }
         // With nobody else alive to hold paused media, this process waits
         // out the hold itself (`MediaPausing.waitUntilReleased`): it must
