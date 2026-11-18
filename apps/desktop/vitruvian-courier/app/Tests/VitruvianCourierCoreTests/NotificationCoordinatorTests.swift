@@ -235,12 +235,15 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
-    /// Read state wins: a message the person has already read elsewhere (on the phone, or in a batch that came in
-    /// already read) is not news, however recent it is. The engine's unread count says which.
-    func testAMessageAlreadyReadElsewhereDoesNotNotify() async throws {
+    /// Read state wins, as the network reports it: a message at or before the position the network said the person
+    /// read up to (on the phone, or a batch that came in already read) is not news, however recent it is.
+    func testAMessageAlreadyReadOnTheNetworkDoesNotNotify() async throws {
         let h = try await start()
         h.clock.advance(seconds: 10)
-        h.script.rooms = [room("!a", ts: 1, unread: 0, name: "Chat A")]
+        // The engine's unread count says nothing here (it may count more than the page shows): the position decides.
+        var row = room("!a", ts: 1, unread: 5, name: "Chat A")
+        row["network_read"] = ["ts": connectedMillis + 2000, "seq": 1]
+        h.script.rooms = [row]
         h.script.events["!a"] = [
             message("$2", ts: connectedMillis + 2000, text: "second"),
             message("$1", ts: connectedMillis + 1000, text: "first"),
@@ -251,20 +254,36 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
-    /// Unread messages still notify, and when only some of a page are unread, only those: the newest ones.
-    func testUnreadMessagesStillNotifyAndReadOnesDoNot() async throws {
+    /// Only the messages after the network's position notify; one in the same millisecond but later in order does too.
+    func testOnlyMessagesAfterTheNetworksReadPositionNotify() async throws {
         let h = try await start()
         h.clock.advance(seconds: 10)
-        h.script.rooms = [room("!a", ts: 1, unread: 2, name: "Chat A")]
+        var row = room("!a", ts: 1, unread: 5, name: "Chat A")
+        row["network_read"] = ["ts": connectedMillis + 1000, "seq": 1]
+        h.script.rooms = [row]
+        var sameMillisecondLater = message("$2", ts: connectedMillis + 1000, text: "same millisecond, later")
+        sameMillisecondLater["seq"] = 2
         h.script.events["!a"] = [
             message("$3", ts: connectedMillis + 3000, text: "third"),
-            message("$2", ts: connectedMillis + 2000, text: "second"),
+            sameMillisecondLater,
             message("$1", ts: connectedMillis + 1000, text: "first"),
         ]
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$3"])
         try await waitUntil { h.delivery.delivered.count == 2 }
         try await settle(h)
-        XCTAssertEqual(h.delivery.delivered.map(\.body), ["second", "third"], "the first was read elsewhere")
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["same millisecond, later", "third"], "the first was read on the network")
+        await finish(h)
+    }
+
+    /// A chat the person has read on this Mac says nothing of the network: with no network position (and an unread
+    /// count of 0, from a local read) every message still notifies. A missed notification is worse than an extra one.
+    func testALocalReadIsNotANetworkReadAndAnUnknownPositionNotifies() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 10)
+        h.script.rooms = [room("!a", ts: 1, unread: 0, name: "Chat A")] // read here: no network_read
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 1000, text: "hello")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
         await finish(h)
     }
 
@@ -325,6 +344,26 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$2"])
         try await waitUntil { h.delivery.delivered.count == 2 }
         XCTAssertEqual(h.delivery.delivered.map(\.body), ["elsewhere", "now"])
+        await finish(h)
+    }
+
+    func testTheChatInFrontNotifiesWhenFocusNotificationsAreOn() async throws {
+        let h = try await start()
+        h.preferences.notifications.notifyWhenInFocus = true
+        h.clock.advance(seconds: 5)
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        // ConversationModel marks an open, looked-at chat read as soon as the message arrives, so unread is 0 when the
+        // coordinator reads the engine's row.
+        h.script.rooms = [room("!a", ts: 1, unread: 0, name: "Chat A")]
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 1000, text: "hello")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await settle(h)
+        XCTAssertEqual(
+            h.delivery.delivered.map(\.body),
+            ["hello"],
+            "notifyWhenInFocus is on: the open chat notifies even after ConversationModel marked it read"
+        )
         await finish(h)
     }
 
@@ -829,6 +868,35 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r"])
         try await settle(h)
         XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
+    func testARedactedMessageDoesNotHideAnUnreadOne() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        var chatRow = inboxRow("!a", name: "Chat A")
+        chatRow.unread = 1
+        h.window.rows["!a"] = chatRow
+        h.script.rooms = [room("!a", ts: 1, unread: 1, name: "Chat A")]
+        let redaction: [String: Any] = [
+            "event_id": "$r", "room_id": "!a", "sender": "@other:courier.local", "sender_name": "Sam",
+            "sender_avatar_path": "", "mine": false, "type": "m.room.redaction", "content": ["redacts": "$2"],
+            "ts": connectedMillis + 3000, "seq": 3, "status": "sent", "status_reason": "", "media_path": "",
+            "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+            "delivered": false, "read_by": [[String: Any]](),
+        ]
+        var redacted = message("$2", ts: connectedMillis + 2000, text: "oops")
+        redacted["seq"] = 2
+        redacted["is_redacted"] = true
+        let unread = message("$1", ts: connectedMillis + 1000, text: "first")
+        h.script.events["!a"] = [redaction, redacted, unread]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r"])
+        try await settle(h)
+        XCTAssertEqual(
+            h.delivery.delivered.map(\.body),
+            ["first"],
+            "a redacted message is not counted unread and must not take the unread slot from $1"
+        )
         await finish(h)
     }
 

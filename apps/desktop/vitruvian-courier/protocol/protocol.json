@@ -322,6 +322,10 @@
           "type": "string?",
           "values": ["always", "never"],
           "doc": "Per-chat Vitruvian Speaker announcement override; left out for Default."
+        },
+        "network_read": {
+          "type": "Cursor?",
+          "doc": "The place the chat's network last told the engine I had read up to (a read on another device, or a batch of history that arrived already read): the (ts, seq) of that message, with seq the largest number when the message isn't stored. A read made on this Mac never moves it. Left out when the network has told none. A client that shows a notification for a new message skips one at or before it (it is read elsewhere); with it left out, or from an engine that doesn't send it, the client notifies."
         }
       }
     },

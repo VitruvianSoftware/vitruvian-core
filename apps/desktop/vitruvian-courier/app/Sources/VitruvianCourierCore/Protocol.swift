@@ -460,6 +460,10 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     public var mergeID: String
     /// Per-chat Vitruvian Speaker announcement preference (`"always"`, `"never"`, or `nil` for Default).
     public var readAloud: ChatReadAloud?
+    /// Where the chat's network last told the engine I had read up to (a read on another device, or a batch of history
+    /// that came in already read), as a place in the chat. Nil when it has told none, or from an engine that doesn't
+    /// say. A read made on this Mac never moves it. A message at or before it is read elsewhere and is not notified.
+    public var networkRead: Cursor?
 
     public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
                 preview: String, previewKind: PreviewKind, previewMine: Bool, unread: Int, muted: Bool,
@@ -470,7 +474,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
                 previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "",
                 remoteName: String = "", localName: String = "", localAvatarPath: String = "",
                 mergeID: String = "", previewInThread: Bool = false, readAloud: ChatReadAloud? = nil,
-                previewSenderName: String = "", memberPreview: [RowMember] = []) {
+                previewSenderName: String = "", memberPreview: [RowMember] = [], networkRead: Cursor? = nil) {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -507,6 +511,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         self.localAvatarPath = localAvatarPath
         self.mergeID = mergeID
         self.readAloud = readAloud == .default ? nil : readAloud
+        self.networkRead = networkRead
     }
 
     /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
@@ -552,6 +557,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         case localAvatarPath = "local_avatar_path"
         case mergeID = "merge_id"
         case readAloud = "read_aloud"
+        case networkRead = "network_read"
     }
 
     public init(from decoder: Decoder) throws {
@@ -592,6 +598,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         localAvatarPath = try container.decodeIfPresent(String.self, forKey: .localAvatarPath) ?? ""
         mergeID = try container.decodeIfPresent(String.self, forKey: .mergeID) ?? ""
         readAloud = try container.decodeIfPresent(ChatReadAloud.self, forKey: .readAloud)
+        networkRead = try container.decodeIfPresent(Cursor.self, forKey: .networkRead)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -630,6 +637,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         try container.encode(localAvatarPath, forKey: .localAvatarPath)
         try container.encode(mergeID, forKey: .mergeID)
         try container.encodeIfPresent(readAloud, forKey: .readAloud)
+        try container.encodeIfPresent(networkRead, forKey: .networkRead)
         // Optional on the wire: left out when empty, as an engine before them leaves them out.
         if !previewSenderName.isEmpty { try container.encode(previewSenderName, forKey: .previewSenderName) }
         if !memberPreview.isEmpty { try container.encode(memberPreview, forKey: .memberPreview) }

@@ -48,6 +48,10 @@ type wireRow struct {
 		Condition string `json:"condition"`
 		Fired     bool   `json:"fired"`
 	} `json:"reminder"`
+	NetworkRead *struct {
+		TS  int64 `json:"ts"`
+		Seq int64 `json:"seq"`
+	} `json:"network_read"`
 }
 
 type wirePage struct {
@@ -929,4 +933,27 @@ func TestNeedsMembersPreview(t *testing.T) {
 	require.True(t, needsMembersPreview(row(false, "", "")), "a group with no picture")
 	require.False(t, needsMembersPreview(row(false, "mxc://x/a", "")), "a group with a network picture")
 	require.False(t, needsMembersPreview(row(false, "", "file:///a")), "a group with a local picture")
+}
+
+// inbox.list says where the network last told the engine I had read up to, and only that: a read made on this Mac
+// (room.markRead) never moves it, and a chat the network has told nothing about leaves it out.
+func TestInboxRowsCarryTheNetworksReadPositionNotTheLocalOne(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+	require.Nil(t, c.row(w.room).NetworkRead, "the network has told nothing yet")
+
+	c.ok("room.markRead", map[string]any{"room_id": w.room}, nil)
+	require.Equal(t, 0, c.row(w.room).Unread, "read on this Mac")
+	require.Nil(t, c.row(w.room).NetworkRead, "a local read is not the network's")
+
+	ctx := context.Background()
+	e, ok, err := w.s.GetEvent(ctx, w.events[1])
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, w.s.SetRead(ctx, w.room, w.events[1], e.TS)) // the phone reports a read
+	got := c.row(w.room).NetworkRead
+	require.NotNil(t, got)
+	require.Equal(t, e.TS.UnixMilli(), got.TS)
+	require.Equal(t, e.Seq, got.Seq)
 }

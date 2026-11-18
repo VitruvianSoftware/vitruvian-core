@@ -68,6 +68,7 @@ go_test(
         "labels_test.go",
         "membershipnotes_test.go",
         "migrate_test.go",
+        "networkread_test.go",
         "outbox_test.go",
         "pollmessage_test.go",
         "polls_test.go",
