@@ -2,14 +2,14 @@
   "kind": "vitruvian-android-update",
   "schema": 1,
   "packageName": "dev.vitruvian.remote",
-  "version": "0.1.48",
-  "versionCode": 148,
+  "version": "0.1.50",
+  "versionCode": 150,
   "minSdk": 26,
   "published": "2026-11-18",
   "apk": {
-    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.48/VitruvianRemote-0.1.48.apk",
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.50/VitruvianRemote-0.1.50.apk",
     "size": 9714807,
-    "sha256": "f17c3941dd29aac9aa8c354a08402f53cb4012e8cea3814d8746bca188bcdaa7"
+    "sha256": "6f154dfd97c5274bfe63fb54dc5743dd2fe3a027128cfca64d94b0f481004ed8"
   },
-  "notes": ["update the app from Settings, About"]
+  "notes": ["keep Phone Bridge running past Android's time limit"]
 }
