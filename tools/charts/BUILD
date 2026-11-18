@@ -88,6 +88,9 @@ delivery(
     name = "charts",
     app = "charts",
     environments = ["publish"],
+    exclude_paths = [
+        "tools/charts/(.*/)?README\\.md$",
+    ],
     extra_paths = [
         # The legacy `**/deploy/chart/**` glob, as the ERE the affected engine
         # anchors at path start.

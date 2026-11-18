@@ -29,10 +29,24 @@ on:
     branches: [main]
     paths:
       - 'packages/design-system/**'
+      - '!packages/design-system/**/BUILD'
+      - '!packages/design-system/**/BUILD.bazel'
+      - '!packages/design-system/**/OWNERS'
+      - '!packages/design-system/deploy/**'
+      - '!packages/design-system/mkdocs.yml'
+      - '!packages/design-system/tools/**'
+      - '!packages/design-system/**/*.md'
       - '.github/workflows/storybook-image.yaml'
   pull_request:
     paths:
       - 'packages/design-system/**'
+      - '!packages/design-system/**/BUILD'
+      - '!packages/design-system/**/BUILD.bazel'
+      - '!packages/design-system/**/OWNERS'
+      - '!packages/design-system/deploy/**'
+      - '!packages/design-system/mkdocs.yml'
+      - '!packages/design-system/tools/**'
+      - '!packages/design-system/**/*.md'
       - '.github/workflows/storybook-image.yaml'
 
 permissions:

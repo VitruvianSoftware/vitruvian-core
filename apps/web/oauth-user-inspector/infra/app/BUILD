@@ -97,6 +97,10 @@ delivery(
         # Touched by every release-please release; the version bump that DOES
         # matter lands in package.json, which is not excluded.
         "apps/web/oauth-user-inspector/CHANGELOG\\.md",
+        "apps/web/oauth-user-inspector/\\.github/",
+        "apps/web/oauth-user-inspector/OWNERS",
+        "apps/web/oauth-user-inspector/AGENTS\\.md",
+        "apps/web/oauth-user-inspector/(.*/)?README\\.md$",
     ],
     extra_paths = [
         "apps/web/oauth-user-inspector/",

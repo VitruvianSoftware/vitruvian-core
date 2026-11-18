@@ -88,6 +88,9 @@ delivery(
         "sandbox",
         "production",
     ],
+    exclude_paths = [
+        "infrastructure/pulumi/platform/stripe/(.*/)?README\\.md$",
+    ],
     extra_paths = [
         "infrastructure/pulumi/platform/stripe/",
     ],

@@ -104,6 +104,16 @@ delivery(
         "beta",
         "production",
     ],
+    exclude_paths = [
+        "apps/embedded/vitruvian-deck/\\.github/",
+        "apps/embedded/vitruvian-deck/catalog-info\\.yaml",
+        "apps/embedded/vitruvian-deck/docs/",
+        "apps/embedded/vitruvian-deck/mkdocs\\.yml",
+        "apps/embedded/vitruvian-deck/OWNERS",
+        "apps/embedded/vitruvian-deck/CHANGELOG\\.md",
+        "apps/embedded/vitruvian-deck/AGENTS\\.md",
+        "apps/embedded/vitruvian-deck/(.*/)?README\\.md$",
+    ],
     # Path-only mode: this regex IS the unit's complete trigger set
     # (//tools/ci:deploy_affected, step 2), so it names the whole package.
     extra_paths = ["apps/embedded/vitruvian-deck/"],

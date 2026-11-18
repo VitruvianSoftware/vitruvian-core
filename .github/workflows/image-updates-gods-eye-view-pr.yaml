@@ -73,9 +73,6 @@ jobs:
               --image ghcr.io/vitruviansoftware/gods-eye-view \
               --values-file gitops/argocd/platform/gods-eye-view/kustomization.yaml \
               --path apps/web/gods-eye-view \
-              --shared-path MODULE.bazel \
-              --shared-path MODULE.bazel.lock \
-              --shared-path .bazelversion \
               --shared-path .nvmrc \
               --shared-path package.json \
               --shared-path pnpm-lock.yaml \

@@ -73,9 +73,6 @@ jobs:
               --image ghcr.io/vitruviansoftware/backstage \
               --values-file gitops/argocd/platform/backstage/values.yaml \
               --path apps/web/backstage \
-              --shared-path MODULE.bazel \
-              --shared-path MODULE.bazel.lock \
-              --shared-path .bazelversion \
               --shared-path .nvmrc \
               --shared-path package.json \
               --shared-path pnpm-lock.yaml \

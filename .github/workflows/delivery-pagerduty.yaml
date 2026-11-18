@@ -55,6 +55,7 @@
 # mean something even for a unit that renders no job yet.
 #   - pagerduty  kind=pulumi  run=//infrastructure/pulumi/platform/pagerduty:up  envs=production  promotion=push-all
 #       paths:  infrastructure/pulumi/platform/pagerduty/
+#       except: infrastructure/pulumi/platform/pagerduty/(.*/)?README\.md$
 #       render: transcribed
 
 name: delivery-pagerduty

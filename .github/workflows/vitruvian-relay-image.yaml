@@ -38,11 +38,29 @@ on:
   push:
     branches: [main]
     paths:
-      # The whole workspace: the image builds from its Cargo.lock, and cargo
-      # loads every member's manifest.
-      - 'apps/suites/vitruvian-relay/**'
+      - 'apps/suites/vitruvian-relay/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/Cargo.lock'
+      - 'apps/suites/vitruvian-relay/relay/Dockerfile'
+      - 'apps/suites/vitruvian-relay/relay/.dockerignore'
+      - 'apps/suites/vitruvian-relay/relay/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/relay/src/**'
+      - 'apps/suites/vitruvian-relay/protocol/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/protocol/src/**'
+      # Cargo loads every workspace member's manifest even for -p vitruvian-relay;
+      # connector source/DC/testdata/BUILD edits cannot change the relay image.
+      - 'apps/suites/vitruvian-relay/connector/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/connector/scripts/Cargo.toml'
+      - '!apps/suites/vitruvian-relay/**/BUILD'
+      - '!apps/suites/vitruvian-relay/**/BUILD.bazel'
+      - '!apps/suites/vitruvian-relay/**/OWNERS'
+      - '!apps/suites/vitruvian-relay/**/*.md'
       # The relay builds the shared token checker in.
-      - 'packages/rust/vitruvian-mcp-auth/**'
+      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
+      - 'packages/rust/vitruvian-mcp-auth/src/**'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
+      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
+      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-relay-image.yaml'
   # PR runs BUILD AND VERIFY BUT DO NOT PUSH. This is the only place the image
   # is exercised before it can reach a cluster, and it is deliberately not just
@@ -58,11 +76,29 @@ on:
   # without deleting these filters and gating the work in a step instead.
   pull_request:
     paths:
-      # The whole workspace: the image builds from its Cargo.lock, and cargo
-      # loads every member's manifest.
-      - 'apps/suites/vitruvian-relay/**'
+      - 'apps/suites/vitruvian-relay/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/Cargo.lock'
+      - 'apps/suites/vitruvian-relay/relay/Dockerfile'
+      - 'apps/suites/vitruvian-relay/relay/.dockerignore'
+      - 'apps/suites/vitruvian-relay/relay/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/relay/src/**'
+      - 'apps/suites/vitruvian-relay/protocol/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/protocol/src/**'
+      # Cargo loads every workspace member's manifest even for -p vitruvian-relay;
+      # connector source/DC/testdata/BUILD edits cannot change the relay image.
+      - 'apps/suites/vitruvian-relay/connector/Cargo.toml'
+      - 'apps/suites/vitruvian-relay/connector/scripts/Cargo.toml'
+      - '!apps/suites/vitruvian-relay/**/BUILD'
+      - '!apps/suites/vitruvian-relay/**/BUILD.bazel'
+      - '!apps/suites/vitruvian-relay/**/OWNERS'
+      - '!apps/suites/vitruvian-relay/**/*.md'
       # The relay builds the shared token checker in.
-      - 'packages/rust/vitruvian-mcp-auth/**'
+      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
+      - 'packages/rust/vitruvian-mcp-auth/src/**'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
+      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
+      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
+      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-relay-image.yaml'
 
 permissions:

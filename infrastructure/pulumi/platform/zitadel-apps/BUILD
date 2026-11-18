@@ -38,6 +38,9 @@ delivery(
         "nonproduction",
         "production",
     ],
+    exclude_paths = [
+        "infrastructure/pulumi/platform/zitadel-apps/(.*/)?(README|APPLYING-FROM-CI)\\.md$",
+    ],
     extra_paths = [
         "infrastructure/pulumi/platform/zitadel-apps/",
         "\\.github/workflows/_zitadel-apps-apply\\.yaml",

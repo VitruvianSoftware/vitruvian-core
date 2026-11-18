@@ -72,13 +72,10 @@ jobs:
             out="$("$CHANGELOG_BIN" \
               --image ghcr.io/vitruviansoftware/vitruvian-slack-mcp \
               --values-file gitops/argocd/platform/mcp-slack/values.yaml \
-              --path apps/mcp/vitruvian-slack-mcp \
-              --shared-path MODULE.bazel \
-              --shared-path MODULE.bazel.lock \
-              --shared-path .bazelversion \
-              --shared-path tools/toolchains \
-              --shared-path Cargo.toml \
-              --shared-path Cargo.lock \
+              --path apps/mcp/vitruvian-slack-mcp/rs \
+              --path apps/mcp/vitruvian-slack-mcp/Dockerfile \
+              --path packages/rust/vitruvian-mcp-auth/Cargo.toml \
+              --path packages/rust/vitruvian-mcp-auth/src \
               --shared-path .github/workflows/vitruvian-slack-mcp-image.yaml \
               2>"$err_file")" || rc=$?
             if [ "$rc" -eq 0 ] && [ -n "$out" ]; then
