@@ -370,8 +370,11 @@ backstage:
       - host: github.com
         # Catalog fetches, the GitHub org sync and scaffolder PRs authenticate as
         # the vitruvian-backstage GitHub App: hour-long installation tokens,
-        # scoped to metadata/actions/members read and contents/pull_requests
-        # write. Backstage prefers an app over `token` for any owner the app is
+        # scoped to metadata/actions/members read and administration/contents/
+        # pull_requests/workflows write. Administration is for the bazel-*
+        # templates (their own repos), whose publish:github step creates a new
+        # private repo; workflows lets that first push carry .github/workflows.
+        # Backstage prefers an app over `token` for any owner the app is
         # installed on.
         apps:
         - appId: 5824092
