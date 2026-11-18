@@ -608,15 +608,15 @@ final class ConversationModelTests: XCTestCase {
         h.conversation.loadEarlier()
         h.conversation.loadEarlier() // a second scroll event while it runs asks nothing
         XCTAssertTrue(h.conversation.isLoadingEarlier, "the loading row shows while it runs")
-        try await waitUntil { !h.conversation.isLoadingEarlier && h.conversation.hasOlder }
+        try await waitUntil { !h.conversation.isLoadingEarlier && h.messageIDs().first == "$0" }
         XCTAssertEqual(h.count("room.loadOlder"), 1)
         XCTAssertEqual(loadingStates, [false, true, false])
         XCTAssertEqual(Set(try XCTUnwrap(h.server.receivedParams("room.loadOlder").last).keys), ["room_id"])
 
-        // The view reads on from what the engine added, through the ordinary older-page read.
-        h.conversation.loadOlder()
-        try await waitUntil { h.messageIDs().first == "$0" }
+        // What the engine added is read and put at the top, and the view is told which message to keep the person on.
+        XCTAssertEqual(h.conversation.takeEarlierAnchor(), "$1")
         XCTAssertTrue(h.conversation.canLoadEarlier)
+        try await waitUntil { !h.conversation.hasOlder }
 
         // At the new top the network has nothing more.
         h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": false, "loading": false])
@@ -639,6 +639,133 @@ final class ConversationModelTests: XCTestCase {
         h.conversation.loadEarlier()
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(h.count("room.loadOlder"), 0)
+        await stop(h)
+    }
+
+    /// A network that answers later (WhatsApp's phone): the load says `loading`, the engine stores the answer on its
+    /// own and publishes an event change for the chat, and the older messages show at the top without another scroll,
+    /// with the message the person was on kept as the anchor.
+    func testAnAnswerThatArrivesLaterShowsOnItsOwn() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        h.conversation.loadOlder()
+        try await waitUntil { !h.conversation.hasOlder && !h.conversation.isLoadingOlder }
+        XCTAssertEqual(h.messageIDs().first, "$1")
+
+        h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": true, "loading": true])
+        h.conversation.loadEarlier()
+        try await waitUntil { !h.conversation.isLoadingEarlier }
+        XCTAssertEqual(h.messageIDs().first, "$1", "nothing is in yet")
+
+        h.script.add("!a", textEvent(id: "$0", room: "!a", at: 0, body: "Message 0"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$0"])
+        try await waitUntil(timeout: 2) { h.messageIDs().first == "$0" }
+        XCTAssertEqual(h.conversation.takeEarlierAnchor(), "$1", "the view keeps the person on the message that was first")
+        XCTAssertNil(h.conversation.takeEarlierAnchor(), "an anchor is used once")
+        XCTAssertEqual(h.count("room.loadOlder"), 1, "no second scroll was needed")
+        await stop(h)
+    }
+
+    /// A live message at the newest end while the answer is pending does not use the wait up: the answer that comes
+    /// after it still shows.
+    func testAnAnswerThatArrivesAfterALiveMessageStillShows() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        h.conversation.loadOlder()
+        try await waitUntil { !h.conversation.hasOlder && !h.conversation.isLoadingOlder }
+
+        h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": true, "loading": true])
+        h.conversation.loadEarlier()
+        try await waitUntil { !h.conversation.isLoadingEarlier }
+
+        h.script.add("!a", textEvent(id: "$61", room: "!a", at: 61, body: "Message 61"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$61"])
+        try await waitUntil { h.messageIDs().last == "$61" }
+        XCTAssertEqual(h.messageIDs().first, "$1")
+
+        h.script.add("!a", textEvent(id: "$0", room: "!a", at: 0, body: "Message 0"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$0"])
+        try await waitUntil(timeout: 2) { h.messageIDs().first == "$0" }
+        XCTAssertEqual(h.count("room.loadOlder"), 1)
+        await stop(h)
+    }
+
+    /// Once the engine says there is no more, a change of the chat reads nothing for older history.
+    func testNoEarlierReadsOnceTheEngineSaysThereIsNoMore() async throws {
+        let h = try await start(["!a": history(5)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": false, "loading": false])
+        h.conversation.loadEarlier()
+        try await waitUntil { !h.conversation.canLoadEarlier }
+        let reads = h.count("room.events")
+        h.script.add("!a", textEvent(id: "$6", room: "!a", at: 6, body: "Message 6"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$6"])
+        try await waitUntil { h.messageIDs().last == "$6" }
+        XCTAssertEqual(h.count("room.events"), reads + 1, "only the newest page was read")
+        await stop(h)
+    }
+
+    /// room.loadOlder has a time limit of its own, longer than the 30 s of other calls and than the 45 s the engine
+    /// waits for a page; past it the load ends and the next scroll tries again. (The 60 s is not waited out here: the
+    /// test shortens the limit and checks that this call is the one that uses it.)
+    func testLoadingEarlierGivesUpAtItsOwnTimeLimit() async throws {
+        XCTAssertEqual(ConversationModel.loadOlderTimeout, 60)
+        XCTAssertGreaterThan(ConversationModel.loadOlderTimeout, 45, "the engine's wait for a page (older.go loadOlderWait)")
+        let h = try await start(["!a": history(5)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        ConversationModel.loadOlderTimeout = 0.2
+        defer { ConversationModel.loadOlderTimeout = 60 }
+        h.script.overrides["room.loadOlder"] = .later // never answered
+        h.conversation.loadEarlier()
+        XCTAssertTrue(h.conversation.isLoadingEarlier)
+        try await waitUntil(timeout: 3) { !h.conversation.isLoadingEarlier }
+        XCTAssertTrue(h.conversation.canLoadEarlier, "a timeout says nothing about whether more remain")
+        h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": false, "loading": false])
+        h.conversation.loadEarlier()
+        try await waitUntil { !h.conversation.canLoadEarlier }
+        XCTAssertEqual(h.count("room.loadOlder"), 2, "the next scroll asked again")
+        await stop(h)
+    }
+
+    /// While locked, scrolling to the top neither calls `room.loadOlder` nor shows the loading row.
+    func testLockedAppNeverAsksForEarlierHistory() async throws {
+        let h = try await start(["!a": history(5)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+
+        let suiteName = "courier.test.lockearlier.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+        defer {
+            AppLockGate.shared.resetForTesting()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+        AppLockGate.shared.resetForTesting()
+        let lifecycle = SystemLifecycleModel(defaults: defaults, loginItem: NoopLoginItem(), biometrics: AlwaysBiometric())
+        lifecycle.lockNow()
+        XCTAssertTrue(h.conversation.isLocked)
+
+        var loadingStates: [Bool] = []
+        let watch = h.conversation.$isLoadingEarlier.sink { loadingStates.append($0) }
+        defer { watch.cancel() }
+
+        h.conversation.loadEarlier()
+        XCTAssertFalse(h.conversation.isLoadingEarlier, "locked app must not show the loading row")
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(h.count("room.loadOlder"), 0)
+        XCTAssertEqual(loadingStates, [false])
         await stop(h)
     }
 

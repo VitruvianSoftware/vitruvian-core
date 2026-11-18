@@ -658,7 +658,7 @@ final class InboxModelTests: XCTestCase {
         _ = coordinator
         let reads = h.count("inbox.list")
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        h.script.archivedRooms = [room("!new", ts: now, name: "New Chat", archived: true)]
+        h.script.archivedRooms = [room("!new", ts: now, unread: 1, name: "New Chat", archived: true)]
         h.script.events["!new"] = [message("$1", ts: now, text: "first words", room: "!new")]
         h.server.notify(["kind": "event", "room_id": "!new", "event_id": "$1"])
         try await waitUntil { delivery.delivered.count == 1 }

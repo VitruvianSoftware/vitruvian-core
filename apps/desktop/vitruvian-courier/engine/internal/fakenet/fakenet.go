@@ -292,9 +292,12 @@ type Network struct {
 	// FetchGate, when set before the bridge asks, makes every backwards fetch wait until a value is sent on it (or the
 	// request ends), so a test can hold a page mid-load.
 	FetchGate chan struct{}
-	history   map[string][]HistoryMessage // SetHistory: a chat's past, oldest first
-	fetches   []Fetch                     // every FetchMessages the bridge made
-	featMu    sync.Mutex                  // guards Features and loginFeatures after the bridge has started
+	// PendingBackwards makes every backwards fetch answer "pending" with nothing, as WhatsApp does when it asks the
+	// phone; the page is delivered later by AnswerPending.
+	PendingBackwards bool
+	history          map[string][]HistoryMessage // SetHistory: a chat's past, oldest first
+	fetches          []Fetch                     // every FetchMessages the bridge made
+	featMu           sync.Mutex                  // guards Features and loginFeatures after the bridge has started
 	// loginFeatures is SetLoginFeatures': what one login's client says, by login ID, over Features.
 	loginFeatures map[string]*event.RoomFeatures
 	rawMu         sync.Mutex
@@ -637,8 +640,7 @@ func (c *client) FetchMessages(ctx context.Context, p bridgev2.FetchMessagesPara
 	c.n.chatsMu.Lock()
 	c.n.fetches = append(c.n.fetches, Fetch{ChatID: chatID, Forward: p.Forward, Count: p.Count, Cursor: string(p.Cursor)})
 	c.n.chatsMu.Unlock()
-	all := c.n.historyOf(chatID)
-	if len(all) == 0 {
+	if len(c.n.historyOf(chatID)) == 0 {
 		return nil, nil
 	}
 	if !p.Forward && c.n.FetchGate != nil {
@@ -648,24 +650,38 @@ func (c *client) FetchMessages(ctx context.Context, p bridgev2.FetchMessagesPara
 			return nil, ctx.Err()
 		}
 	}
+	if !p.Forward && c.n.PendingBackwards {
+		// WhatsApp asks the phone and has nothing to give yet: the page comes later (AnswerPending).
+		return &bridgev2.FetchMessagesResponse{Forward: false, HasMore: true, Pending: true}, nil
+	}
+	var anchor *time.Time
+	if p.AnchorMessage != nil {
+		anchor = &p.AnchorMessage.Timestamp
+	}
+	return c.n.page(chatID, p.Forward, anchor, string(p.Cursor), p.Count)
+}
+
+// page is one page of chatID's history: see client.FetchMessages.
+func (n *Network) page(chatID string, forward bool, anchor *time.Time, cursor string, count int) (*bridgev2.FetchMessagesResponse, error) {
+	all := n.historyOf(chatID)
 	var pool []HistoryMessage
 	more := false
-	if p.Forward {
+	if forward {
 		for _, m := range all {
-			if p.AnchorMessage == nil || m.At.After(p.AnchorMessage.Timestamp) {
+			if anchor == nil || m.At.After(*anchor) {
 				pool = append(pool, m)
 			}
 		}
-		if len(pool) > p.Count {
-			pool = pool[len(pool)-p.Count:]
+		if len(pool) > count {
+			pool = pool[len(pool)-count:]
 		}
 	} else {
 		before := time.Now().Add(time.Hour)
-		if p.AnchorMessage != nil {
-			before = p.AnchorMessage.Timestamp
+		if anchor != nil {
+			before = *anchor
 		}
-		if p.Cursor != "" {
-			ns, err := strconv.ParseInt(string(p.Cursor), 10, 64)
+		if cursor != "" {
+			ns, err := strconv.ParseInt(cursor, 10, 64)
 			if err != nil {
 				return nil, err
 			}
@@ -678,12 +694,12 @@ func (c *client) FetchMessages(ctx context.Context, p bridgev2.FetchMessagesPara
 				pool = append(pool, m)
 			}
 		}
-		if len(pool) > p.Count {
-			pool, more = pool[len(pool)-p.Count:], true
+		if len(pool) > count {
+			pool, more = pool[len(pool)-count:], true
 		}
 	}
-	resp := &bridgev2.FetchMessagesResponse{Forward: p.Forward, HasMore: more}
-	if len(pool) > 0 && !p.Forward {
+	resp := &bridgev2.FetchMessagesResponse{Forward: forward, HasMore: more}
+	if len(pool) > 0 && !forward {
 		resp.Cursor = networkid.PaginationCursor(strconv.FormatInt(pool[0].At.UnixNano(), 10))
 	}
 	for _, m := range pool {
@@ -699,6 +715,30 @@ func (c *client) FetchMessages(ctx context.Context, p bridgev2.FetchMessagesPara
 		})
 	}
 	return resp, nil
+}
+
+// AnswerPending delivers, for chatID, the page a pending backwards fetch (PendingBackwards) is waiting for, as
+// WhatsApp's phone does: later, on its own, as a backfill event the bridge writes through the connector. It is the
+// page before the chat's oldest stored message, of the configured page size.
+func (n *Network) AnswerPending(ctx context.Context, login *bridgev2.UserLogin, chatID string) error {
+	key := networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID}
+	first, err := n.br.DB.Message.GetFirstPortalMessage(ctx, key)
+	if err != nil {
+		return err
+	}
+	var anchor *time.Time
+	if first != nil {
+		anchor = &first.Timestamp
+	}
+	resp, err := n.page(chatID, false, anchor, "", n.br.Config.Backfill.Queue.BatchSize)
+	if err != nil {
+		return err
+	}
+	n.br.QueueRemoteEvent(login, &simplevent.Backfill{
+		EventMeta: simplevent.EventMeta{Type: bridgev2.RemoteEventBackfill, PortalKey: key},
+		Data:      resp,
+	})
+	return nil
 }
 
 // base is the plain client under every kind of this network's client.

@@ -835,7 +835,10 @@ struct ConversationView: View {
             }
             .onChange(of: firstMessageID) { _, _ in
                 // Older messages came in above: stay where the person was, cleared below the header overlay.
-                guard let anchor = restoreAnchor else { return }
+                // Older messages that joined without a scroll of the person's asking (a page the network answered
+                // later) are anchored the same way.
+                let arrived = conversation.takeEarlierAnchor()
+                guard let anchor = restoreAnchor ?? arrived else { return }
                 restoreAnchor = nil
                 scrollToBelowHeader(proxy, id: anchor, preferCenter: false)
             }

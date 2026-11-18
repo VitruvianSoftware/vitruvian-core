@@ -124,3 +124,54 @@ func TestLoadOlderUnknownChatAndNetworksWithoutHistory(t *testing.T) {
 	require.False(t, res.HasMore, "no backfill task: nothing more, so the app shows nothing")
 	require.Zero(t, backwardFetches(w.n))
 }
+
+// WhatsApp's flow: the phone is asked, nothing comes now, and the answer arrives later on its own. LoadOlder says
+// loading; when the answer is in, its messages are stored (the store publishes an event change for each, which is what
+// the app reads older history on), and the chat may be loaded again at once.
+func TestLoadOlderWhenTheNetworkAnswersLater(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.PendingBackwards = true
+	base := time.Now().Add(-1000 * time.Hour).Truncate(time.Second)
+	var h []fakenet.HistoryMessage
+	for i := range 250 {
+		h = append(h, fakenet.HistoryMessage{ID: fmt.Sprintf("h%03d", i), Sender: "alice", Body: fmt.Sprintf("history %03d", i), At: base.Add(time.Duration(i) * time.Minute)})
+	}
+	n.SetHistory("chat", h)
+	w := startWorldOn(t, "fake", n, true, zerolog.Nop())
+	room, _ := w.chat(t, "chat", "live")
+	require.Eventually(t, func() bool { return countMessages(t, w.s, room) == 50+1 }, 5*time.Second, 20*time.Millisecond)
+
+	res, err := w.a.LoadOlder(ctx, room)
+	require.NoError(t, err)
+	require.Equal(t, LoadOlderResult{HasMore: true, Loading: true}, res, "the phone was asked: nothing yet")
+	require.Equal(t, 51, countMessages(t, w.s, room))
+	require.Equal(t, 1, backwardFetches(n))
+
+	// Asking again before the answer is in does not ask the phone again.
+	res, err = w.a.LoadOlder(ctx, room)
+	require.NoError(t, err)
+	require.True(t, res.Loading)
+	require.Equal(t, 1, backwardFetches(n))
+
+	feed := w.s.Feed()
+	defer feed.Close()
+	require.NoError(t, n.AnswerPending(ctx, w.login, "chat"))
+	require.Eventually(t, func() bool { return countMessages(t, w.s, room) == 151 }, 5*time.Second, 20*time.Millisecond,
+		"the answer is batch-inserted without anyone asking again")
+	sawEvent := false
+	require.Eventually(t, func() bool {
+		for len(feed.C) > 0 {
+			if ch := <-feed.C; ch.Kind == "event" && ch.RoomID == room {
+				sawEvent = true
+			}
+		}
+		return sawEvent
+	}, 5*time.Second, 20*time.Millisecond, "the store publishes an event change for the room, which is what the app reads older history on")
+
+	// The chat can be asked for its next page now: the phone is asked again (and again answers later).
+	require.Eventually(t, func() bool {
+		r, err := w.a.LoadOlder(ctx, room)
+		return err == nil && r.Loading && backwardFetches(n) == 2
+	}, 5*time.Second, 50*time.Millisecond)
+}

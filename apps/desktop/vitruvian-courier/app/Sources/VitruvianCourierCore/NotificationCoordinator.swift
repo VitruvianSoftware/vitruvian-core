@@ -345,14 +345,13 @@ public final class NotificationCoordinator {
         let page: EventsPage? = try? await client.call(
             "room.events", RoomEventsParams(roomID: roomID, limit: Self.pageSize))
         guard let page, client === appModel.client else { return }
-        // The row is the inbox's when it has the chat, and read only for a chat it has not listed yet.
-        var chat = row(roomID)
-        if chat == nil {
-            chat = await lookUp(roomID, with: client)
-            guard client === appModel.client else { return }
-        }
-        guard let chat else { return }
-        announce(page.events, in: chat)
+        // The row is the inbox's when it has the chat. The engine's own row is read besides, for its unread count as it
+        // is now (the inbox's may not have caught up with the change that brought us here): what is not unread was
+        // read elsewhere (on the phone, or by a batch that came already read) and is not news.
+        let fresh = await lookUp(roomID, with: client)
+        guard client === appModel.client else { return }
+        guard let chat = row(roomID) ?? fresh else { return }
+        announce(page.events, in: chat, unread: fresh?.unread)
     }
 
     /// The chat's row, wherever it is (archived, hidden, in another space). Nil when the engine doesn't have it.
@@ -522,13 +521,19 @@ public final class NotificationCoordinator {
     }
 
     /// `events` are newest first, as room.events has them; the oldest is announced first.
-    private func announce(_ events: [Event], in room: InboxRow) {
+    ///
+    /// `unread` is the chat's unread count as the engine has it, nil when not known. A message from someone else that
+    /// the person has already read (on the network, or a batch of history that came marked read) never notifies, and
+    /// makes no sound: read state wins over how new a message is. The unread messages are the newest `unread` incoming
+    /// ones, which is how the engine counts them (after the read marker).
+    private func announce(_ events: [Event], in room: InboxRow, unread: Int? = nil) {
         // Read at the moment of deciding: the person may have moved on while the page was on its way.
         guard let context = context() else { return }
         // A message deleted before it was announced is not announced.
         let deleted = NotificationPolicy.redactedEventIDs(in: events)
         let notifPrefs = preferences.notifications
         let accountKey = resolveAccountKey(for: room)
+        let stillUnread: Set<String>? = unread.map { Set(events.filter(Timeline.isIncomingMessage).prefix($0).map(\.eventID)) }
         for event in events.reversed() where seen.insert(event.eventID) {
             // Their message ends the typing burst: its notification makes way for the message's own.
             if Timeline.isIncomingMessage(event) {
@@ -536,6 +541,7 @@ public final class NotificationCoordinator {
                 endTypingBurst(room.roomID)
             }
             guard !deleted.contains(event.eventID) else { continue }
+            if let stillUnread, Timeline.isIncomingMessage(event), !stillUnread.contains(event.eventID) { continue }
             playSoundEffectIfEligible(
                 for: event,
                 in: room,

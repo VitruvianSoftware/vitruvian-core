@@ -235,6 +235,39 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// Read state wins: a message the person has already read elsewhere (on the phone, or in a batch that came in
+    /// already read) is not news, however recent it is. The engine's unread count says which.
+    func testAMessageAlreadyReadElsewhereDoesNotNotify() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 10)
+        h.script.rooms = [room("!a", ts: 1, unread: 0, name: "Chat A")]
+        h.script.events["!a"] = [
+            message("$2", ts: connectedMillis + 2000, text: "second"),
+            message("$1", ts: connectedMillis + 1000, text: "first"),
+        ]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$2"])
+        try await settle(h)
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "read on the network: nothing to tell")
+        await finish(h)
+    }
+
+    /// Unread messages still notify, and when only some of a page are unread, only those: the newest ones.
+    func testUnreadMessagesStillNotifyAndReadOnesDoNot() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 10)
+        h.script.rooms = [room("!a", ts: 1, unread: 2, name: "Chat A")]
+        h.script.events["!a"] = [
+            message("$3", ts: connectedMillis + 3000, text: "third"),
+            message("$2", ts: connectedMillis + 2000, text: "second"),
+            message("$1", ts: connectedMillis + 1000, text: "first"),
+        ]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$3"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        try await settle(h)
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["second", "third"], "the first was read elsewhere")
+        await finish(h)
+    }
+
     func testEachNewEventInAPageNotifiesOldestFirst() async throws {
         let h = try await start()
         h.clock.advance(seconds: 10)
@@ -299,7 +332,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let h = try await start()
         h.clock.advance(seconds: 5)
         h.window.rows = [:]
-        h.script.rooms = [inboxRowJSON("!new", name: "New Chat")]
+        h.script.rooms = [room("!new", ts: 1, unread: 1, name: "New Chat")]
         h.script.events["!new"] = [message("$1", ts: connectedMillis + 1000, text: "first words", room: "!new")]
         h.server.notify(["kind": "event", "room_id": "!new", "event_id": "$1"])
         try await waitUntil { h.delivery.delivered.count == 1 }
@@ -1685,6 +1718,8 @@ func inboxRow(_ id: String, name: String, direct: Bool = true, muted: Bool = fal
              request: request, mutedBy: mutedBy)
 }
 
-func inboxRowJSON(_ id: String, name: String) -> [String: Any] {
-    room(id, ts: 1, name: name)
+/// A chat row as the engine has it when a message just came into it: one unread (the coordinator tells only what is
+/// unread: what was read elsewhere is not news).
+func inboxRowJSON(_ id: String, name: String, unread: Int = 1) -> [String: Any] {
+    room(id, ts: 1, unread: unread, name: name)
 }

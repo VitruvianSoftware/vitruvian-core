@@ -135,6 +135,11 @@ func (a *Actions) loadOlder(ctx context.Context, h *host.Host, roomID string) (r
 		case done <- e:
 		default:
 		}
+		// A network that answers later (WhatsApp's phone) calls this when its answer is in: the chat may be asked for
+		// the next page again, without waiting out the cooldown of the pending one.
+		a.older.mu.Lock()
+		delete(a.older.cooldown, roomID)
+		a.older.mu.Unlock()
 	}}
 	returned := make(chan struct{})
 	go func() { defer close(returned); mt.Do(bg) }()
