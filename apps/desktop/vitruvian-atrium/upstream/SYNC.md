@@ -63,7 +63,10 @@ upstream commits piled up. Work like this instead:
 
 1. Start from the latest `origin/main`. If an open pull request already ports an
    upstream batch (its title contains "port upstream batch"), drive that one to
-   merged before starting another.
+   merged before starting another. A cloud session's checkout holds only recent
+   history, and `track_upstream` needs all of it to find where this copy left
+   upstream, so in a fresh session run `git fetch --unshallow origin` first
+   (the 2026-11-16 sync needed it).
 2. Run `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- status`. If nothing
    is untriaged or pending, stop and report "caught up at" the upstream commit.
 3. Run `triage`, and commit the ledger on its own as
