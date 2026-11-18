@@ -46,7 +46,11 @@ struct VitruvianSpeakerApp: App {
             // the menu bar has to notice or it will write stale state back.
             // The choice file sits in the same folder: a choice made in the
             // extension reaches the app within a second.
-            ConfigManager.shared.onFolderChange = { side.door.refresh() }
+            ConfigManager.shared.onFolderChange = {
+                side.door.refresh()
+                side.snoozeCoordinator?.poke()
+            }
+            ConfigManager.shared.onConfigChange = { side.snoozeCoordinator?.poke() }
             ConfigManager.shared.startWatchingConfigFile()
             let engine = VitruvianSpeakerEngine.app
             // `VitruvianSpeaker --sign-out` runs as another process; without
@@ -95,6 +99,7 @@ final class AppSide {
     /// The media and volume listeners while the app runs.
     private var listeners: [NSObjectProtocol] = []
     private var timer: Timer?
+    private(set) var snoozeCoordinator: SnoozeQueueCoordinator?
 
     private init() {
         let engine = VitruvianSpeakerEngine.app
@@ -145,10 +150,27 @@ final class AppSide {
                 NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
                 return true
             }))
-        startListening = { [unowned self] in self.listeners = engine.listen() }
+        let coordinator = SnoozeQueueCoordinator(
+            snoozeQueue: engine.snoozeQueue,
+            announcer: engine.announcer,
+            history: engine.history,
+            configProvider: { ConfigManager.shared.config },
+            onQueueChanged: {
+                ConfigManager.shared.refreshQueuedCount()
+            },
+            onDeliveredLog: { _ in
+                ConfigManager.shared.reloadHistory()
+            }
+        )
+        self.snoozeCoordinator = coordinator
+        startListening = { [unowned self] in
+            self.listeners = engine.listen()
+            coordinator.start()
+        }
         stopListening = { [unowned self] in
             for token in self.listeners { DistributedNotificationCenter.default().removeObserver(token) }
             self.listeners = []
+            coordinator.stop()
         }
     }
 

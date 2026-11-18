@@ -162,6 +162,7 @@
   "outputs_label": "Office Mini + This Mac + Your phone",
   "owner_running": true,
   "program": "app",
+  "queued_count": 0,
   "quiet_hours": {
     "active": true,
     "enabled": true,
@@ -766,6 +767,44 @@
       "label": "End",
       "shown": true,
       "value": "07:00"
+    },
+    {
+      "choices": [
+        {
+          "label": "15 min",
+          "value": "15"
+        },
+        {
+          "label": "30 min",
+          "value": "30"
+        },
+        {
+          "label": "60 min",
+          "value": "60"
+        },
+        {
+          "label": "120 min",
+          "value": "120"
+        }
+      ],
+      "key": "snooze_default_minutes",
+      "kind": "number",
+      "label": "Default snooze length",
+      "limits": {
+        "default_value": 30,
+        "max": 240,
+        "min": 1,
+        "step": 15
+      },
+      "shown": true,
+      "value": 30
+    },
+    {
+      "key": "snooze_queue",
+      "kind": "toggle",
+      "label": "Queue announcements while snoozed",
+      "shown": true,
+      "value": false
     },
     {
       "key": "speak_home",

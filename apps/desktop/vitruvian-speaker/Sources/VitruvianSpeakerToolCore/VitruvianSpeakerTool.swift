@@ -109,6 +109,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         /// lists: by default beside the settings file, so a test's
         /// temporary settings never read this Mac's history.
         public var historyURL: URL
+        /// Persistent snooze queue file beside `settingsURL`.
+        public var snoozeQueueURL: URL
         /// What Vitruvian Speaker's chat monitor last wrote about itself
         /// (`ChatMonitorStatusFile`): by default beside the settings file,
         /// so a test's temporary settings never read this Mac's.
@@ -161,6 +163,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         /// What the engine said when it last put a speaker back after an
         /// announcement (`VolumeRestoreCoordinator.lastReport`).
         public var volumeRestoreReport: () -> String?
+        /// Wakes any in-process snooze queue coordinator after snooze or
+        /// delivery-rule settings change from the extension.
+        public var onSnoozeChanged: @Sendable () -> Void
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
@@ -172,7 +177,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                     settingsURL: URL = ConfigManager.defaultConfigURL(), secretsURL: URL = SecretStore.defaultURL(),
                     vitruvianSpeakerVersion: @escaping () -> String? = { nil },
                     launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
-                    historyURL: URL? = nil, monitorStatusURL: URL? = nil,
+                    historyURL: URL? = nil, snoozeQueueURL: URL? = nil, monitorStatusURL: URL? = nil,
                     controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in },
                     role: @escaping () -> DoorRole = { .active }, other: (any OtherAppControlling)? = nil,
                     door: DoorFile? = nil,
@@ -183,7 +188,8 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                     repairsHooks: Bool = false,
                     otherInstalled: @escaping () -> Bool = { false },
                     credentialsChangedIn: @escaping (VitruvianSpeakerProfile) -> Void = { _ in },
-                    volumeRestoreReport: @escaping () -> String? = { nil }) {
+                    volumeRestoreReport: @escaping () -> String? = { nil },
+                    onSnoozeChanged: @escaping @Sendable () -> Void = {}) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -202,6 +208,7 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             self.vitruvianSpeakerVersion = vitruvianSpeakerVersion
             self.launchctlBootout = launchctlBootout
             self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
+            self.snoozeQueueURL = snoozeQueueURL ?? Self.snoozeQueueURL(beside: settingsURL, door: profile?.door ?? .extension)
             self.monitorStatusURL = monitorStatusURL ?? ChatMonitorStatusFile.url(beside: settingsURL)
             self.controlChatMonitor = controlChatMonitor
             self.role = role
@@ -217,12 +224,21 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             self.otherInstalled = otherInstalled
             self.credentialsChangedIn = credentialsChangedIn
             self.volumeRestoreReport = volumeRestoreReport
+            self.onSnoozeChanged = onSnoozeChanged
         }
 
         /// `speaker_history.json` in the settings file's folder, where
         /// Vitruvian Speaker keeps it (`BroadcastHistory.defaultURL()`).
         public static func historyURL(beside settingsURL: URL) -> URL {
             settingsURL.deletingLastPathComponent().appendingPathComponent("speaker_history.json")
+        }
+
+        /// Snooze queue file beside `settingsURL`.
+        public static func snoozeQueueURL(
+            beside settingsURL: URL, door: VitruvianSpeakerProfile.Door = .extension
+        ) -> URL {
+            let filename = door == .app ? "speaker_snooze_queue.json" : "snooze_queue.json"
+            return settingsURL.deletingLastPathComponent().appendingPathComponent(filename)
         }
     }
 
@@ -315,6 +331,10 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
     public private(set) var doorStep: Pages.DoorStep?
     /// What the last step did, a sentence each, until a page opens afresh.
     public private(set) var doorReport: [String] = []
+    /// Whether the Custom… field is open under Snooze on the island.
+    public private(set) var customIslandSnoozeOpen = false
+    /// Whether the Custom… field is open under Default snooze length in General settings.
+    public private(set) var customDefaultSnoozeOpen = false
     /// The app was opened when the person picked it, and has not been seen
     /// running since.
     public private(set) var otherStarting = false
@@ -374,13 +394,14 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         case "snooze", "toggleSnooze":
             reload()
             let now = parts.now()
-            if let until = try SettingsActions.applySnooze(
-                minutes: config.isSnoozed(at: now) ? nil : 30, now: now, to: &config) {
-                try save()
-                parts.link.showMessage(SpeakerConfig.snoozedUntilLine(until), icon: "bell.slash")
-            } else {
+            if config.isSnoozed(at: now) {
+                _ = try SettingsActions.applySnooze(minutes: nil, now: now, to: &config)
                 try save()
                 parts.link.showMessage("Broadcasting resumed", icon: "hifispeaker.2")
+            } else {
+                let until = try SettingsActions.applyDefaultSnooze(now: now, to: &config)
+                try save()
+                parts.link.showMessage(SpeakerConfig.snoozedUntilLine(until), icon: "bell.slash")
             }
         case Command.mute: try speakerJob(.mute)
         case Command.unmute: try speakerJob(.unmute)
@@ -516,11 +537,33 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                 guard event.kind == .tap else { return .keep }
                 reload()
                 let now = parts.now()
-                _ = try SettingsActions.applySnooze(
-                    minutes: config.isSnoozed(at: now) ? nil : 30,
-                    now: now,
-                    to: &config
-                )
+                if config.isSnoozed(at: now) {
+                    _ = try SettingsActions.applySnooze(minutes: nil, now: now, to: &config)
+                } else {
+                    _ = try SettingsActions.applyDefaultSnooze(now: now, to: &config)
+                }
+                customIslandSnoozeOpen = false
+                try save()
+            case Pages.Block.snoozePreset?:
+                guard let picked = event.text ?? event.row, !picked.isEmpty else { return .keep }
+                if picked == "custom" {
+                    customIslandSnoozeOpen = true
+                    notice = nil
+                    return .page(Pages.island(status()))
+                }
+                let minutes = try SettingsActions.parseSnoozeMinutes(picked, key: "snooze")
+                reload()
+                _ = try SettingsActions.applySnooze(minutes: minutes, now: parts.now(), to: &config)
+                customIslandSnoozeOpen = false
+                notice = nil
+                try save()
+            case Pages.Block.snoozeCustomMinutes?:
+                guard event.kind == .submit, let text = event.text else { return .keep }
+                let minutes = try SettingsActions.parseSnoozeMinutes(text, key: "snooze")
+                reload()
+                _ = try SettingsActions.applySnooze(minutes: minutes, now: parts.now(), to: &config)
+                customIslandSnoozeOpen = false
+                notice = nil
                 try save()
             case Pages.Block.mute?:
                 guard let isOn = event.isOn else { return .keep }
@@ -862,11 +905,41 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                 removingSpeakers.toggle()
             case Pages.Block.previewVoice?:
                 preview()
+            case Pages.Block.snoozeDefaultLength?:
+                guard let picked, !picked.isEmpty else { return .keep }
+                if picked == "custom" {
+                    customDefaultSnoozeOpen = true
+                    setupNotice = nil
+                    refusalNotice = nil
+                    return .page(settingsTree())
+                }
+                let minutes = try SettingsActions.parseSnoozeMinutes(
+                    picked,
+                    key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue
+                )
+                customDefaultSnoozeOpen = false
+                let changed = try applySetting(.snoozeDefaultMinutes, "\(minutes)")
+                if changed {
+                    try save()
+                }
+                if let notice = setupNotice, notice == refusalNotice || Invalid.all.contains(notice) {
+                    setupNotice = nil
+                    refusalNotice = nil
+                }
+            case Pages.Block.snoozeDefaultCustom?:
+                guard event.kind == .submit, let text = event.text else { return .keep }
+                let changed = try saveSetting(event, picked: text)
+                customDefaultSnoozeOpen = !SpeakerConfig.snoozePresets.contains(config.effectiveSnoozeDefaultMinutes)
+                if !changed, setupNotice == refusalNotice {
+                    setupNotice = nil
+                    refusalNotice = nil
+                }
             case Pages.Block.broadcasting?, Pages.Block.speechLength?, Pages.Block.speakHome?, Pages.Block.homeCastVoice?,
                  Pages.Block.speakLocal?,
                  Pages.Block.speakPhone?, Pages.Block.phonePauseMedia?, Pages.Block.phoneHeadphonesOnly?,
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
-                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.speakers?, Pages.Block.voice?,
+                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.snoozeQueue?,
+                 Pages.Block.targets?, Pages.Block.speakers?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperAddress?, Pages.Block.beeperNetworks?,
                  Pages.Block.courierEnabled?, Pages.Block.courierAnnounce?, Pages.Block.courierAddress?, Pages.Block.courierNetworks?,
@@ -938,7 +1011,13 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             min: SettingsCatalog.chatPollIntervalLimits.min,
             max: SettingsCatalog.chatPollIntervalLimits.max
         ).localizedDescription
-        public static let all = [quietHour, announceLevel, pauseExtra, pollInterval]
+        public static let snoozeDefault = SettingsActions.Refusal.outOfRange(
+            key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue,
+            value: 0,
+            min: SettingsCatalog.snoozeMinutesLimits.min,
+            max: SettingsCatalog.snoozeMinutesLimits.max
+        ).localizedDescription
+        public static let all = [quietHour, announceLevel, pauseExtra, pollInterval, snoozeDefault]
     }
 
     /// Saves the typed client in one write. A secret left untyped keeps
@@ -1088,6 +1167,16 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
             guard let text = event.text else { return false }
             let key: SettingsCatalog.Key = event.block == Pages.Block.quietStart ? .quietHoursStart : .quietHoursEnd
             _ = try applySetting(key, text)
+        case Pages.Block.snoozeDefaultCustom?:
+            guard let text = event.text else { return false }
+            let minutes = try SettingsActions.parseSnoozeMinutes(
+                text,
+                key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue
+            )
+            return try applySetting(.snoozeDefaultMinutes, "\(minutes)")
+        case Pages.Block.snoozeQueue?:
+            guard let isOn = event.isOn else { return false }
+            return try applySetting(.snoozeQueue, String(isOn))
         case Pages.Block.targets?:
             guard let key = Pages.Block.rowValue(event.row, among: config.targets.keys) else { return false }
             let before = config.defaultTarget
@@ -1289,7 +1378,9 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
                 parts.controlChatMonitor(.stop)
             }
         }
-        if changed || (!openPanels.isEmpty && (config != drawnConfig || configProblem != drawnConfigProblem)) || drawnStarting != otherStarting {
+        let currentQueued = SnoozeQueue(fileURL: parts.snoozeQueueURL).count()
+        let currentSnoozed = config.isSnoozed(at: now)
+        if changed || (!openPanels.isEmpty && (config != drawnConfig || configProblem != drawnConfigProblem || currentQueued != drawnQueuedCount || currentSnoozed != drawnSnoozed)) || drawnStarting != otherStarting {
             refreshOpenPanels()
         }
         drawnStarting = otherStarting
@@ -1298,10 +1389,12 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
 
     /// Whether the open pages last showed the app as starting.
     private var drawnStarting = false
-    /// The settings and config problem last drawn on an open panel, so an
-    /// external change on disk redraws open panels on the next tick or watch.
+    /// The settings, config problem, queue count and active snooze state last
+    /// drawn on an open panel, so external edits or snooze expiry redraw.
     private var drawnConfig: SpeakerConfig?
     private var drawnConfigProblem: String?
+    private var drawnQueuedCount = 0
+    private var drawnSnoozed = false
 
     /// An app that cannot hear the choice file: older than 1.19, or of a
     /// version that does not read.
@@ -1882,12 +1975,18 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         let role = parts.role()
         status.door = doorState(role: role)
         status.volumeRestoreReport = parts.volumeRestoreReport()
+        let queuedCount = SnoozeQueue(fileURL: parts.snoozeQueueURL).count()
+        status.queuedCount = queuedCount
+        status.customIslandSnoozeOpen = customIslandSnoozeOpen
+        status.customDefaultSnoozeOpen = customDefaultSnoozeOpen
         let account = parts.account
         let islandOpen = openPanels.contains(Self.islandPanel)
         let usesGemini = config.effectiveLocalEngine == .gemini || config.effectiveStyleModel == .gemini
         if islandOpen || openPanels.contains(Self.settingsPanel) {
             drawnConfig = config
             drawnConfigProblem = configProblem
+            drawnQueuedCount = queuedCount
+            drawnSnoozed = config.isSnoozed(at: status.effectiveNow)
             // Whether a Gemini key is saved, whenever Gemini is chosen:
             // the chat status below reads it only while a chat source is on.
             if usesGemini { status.chat.hasGeminiKey = parts.chat.hasGeminiKey }
@@ -2311,7 +2410,10 @@ public final class VitruvianSpeakerTool: @unchecked Sendable {
         try parts.store.save(config)
         drawnConfig = config
         drawnConfigProblem = configProblem
+        drawnQueuedCount = SnoozeQueue(fileURL: parts.snoozeQueueURL).count()
+        drawnSnoozed = config.isSnoozed(at: parts.now())
         updateMark()
+        parts.onSnoozeChanged()
     }
 
     /// An error as a sentence for the page: a refusal's own words, not

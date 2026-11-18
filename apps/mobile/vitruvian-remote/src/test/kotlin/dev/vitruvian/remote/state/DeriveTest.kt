@@ -3306,7 +3306,7 @@ public class DeriveTest {
     // Today every golden key has a hand-designed home, so "Other settings" is empty. A key
     // Vitruvian Speaker adds later lands here and shows on the phone with no phone release; this
     // line then names it, which is the prompt to decide whether it deserves a hand-made row.
-    assertEquals(emptyList<String>(), generic)
+    assertEquals(listOf("snooze_default_minutes", "snooze_queue"), generic)
   }
 
   @Test

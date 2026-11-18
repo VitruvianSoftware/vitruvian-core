@@ -231,6 +231,12 @@ func runProgram() -> Never {
     // in a process that does not hold the lock above.
     let monitor = ExtensionSide.chatMonitor(engine: engine)
     let gate = GatedMonitor(monitor)
+    let snoozeCoordinator = SnoozeQueueCoordinator(
+        snoozeQueue: engine.snoozeQueue,
+        announcer: engine.announcer,
+        history: engine.history,
+        configProvider: { engine.config.config }
+    )
 
     let tool = Tool(version: ToolVersion.current)
     let link = KitLink()
@@ -256,12 +262,15 @@ func runProgram() -> Never {
         voices: { LocalSpeaker.shared.englishVoices() },
         previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) },
         gwsLocation: { GwsChatClient.locate() },
-        sendStatus: { link.sendStatus($0) }))
+        sendStatus: { link.sendStatus($0) },
+        snoozeCoordinator: snoozeCoordinator))
 
     tokens += ExtensionSide.watch(
         engine: engine,
         monitor: gate,
+        onConfigChange: { snoozeCoordinator.poke() },
         onFolderChange: {
+            ExtensionSide.onMain { snoozeCoordinator.poke() }
             waker.later { _ in
                 speaker.refreshMonitorStatus()
                 speaker.refreshRole()
@@ -271,7 +280,7 @@ func runProgram() -> Never {
 
     KitThread(tool: tool, link: link, speaker: speaker, located: located, program: program, door: door).start()
     // The kit's thread exits the process when the app says goodbye.
-    withExtendedLifetime((engine, live, tokens, monitor, gate)) { MainThreadLoop.run() }
+    withExtendedLifetime((engine, live, tokens, monitor, gate, snoozeCoordinator)) { MainThreadLoop.run() }
 }
 
 // Top-level code runs on the main thread.

@@ -150,9 +150,12 @@ public enum ExtensionSide {
     /// Keep the tokens to stop listening.
     @MainActor
     public static func watch(
-        engine: VitruvianSpeakerEngine, monitor: GatedMonitor, onFolderChange: (() -> Void)? = nil
+        engine: VitruvianSpeakerEngine, monitor: GatedMonitor,
+        onConfigChange: (@MainActor () -> Void)? = nil,
+        onFolderChange: (() -> Void)? = nil
     ) -> [NSObjectProtocol] {
         engine.config.chatMonitor = monitor
+        engine.config.onConfigChange = onConfigChange
         engine.config.onFolderChange = onFolderChange
         engine.config.startWatchingConfigFile()
         return engine.listenForNotices(monitor: monitor) + [
@@ -452,7 +455,8 @@ extension VitruvianSpeakerTool.Parts {
         voices: @escaping () -> [LocalVoice] = { [] },
         previewVoice: @escaping @Sendable (String) async throws -> Void = { _ in },
         gwsLocation: @escaping () -> String? = { nil },
-        sendStatus: @escaping (MarkChoice) -> Void = { _ in }
+        sendStatus: @escaping (MarkChoice) -> Void = { _ in },
+        snoozeCoordinator: SnoozeQueueCoordinator? = nil
     ) -> Self {
         let profile = engine.profile
         let permission = monitor.permission
@@ -478,6 +482,7 @@ extension VitruvianSpeakerTool.Parts {
             secretsURL: profile.secretsURL,
             vitruvianSpeakerVersion: { VitruvianSpeakerVersion.current },
             historyURL: profile.historyURL,
+            snoozeQueueURL: profile.snoozeQueueURL,
             monitorStatusURL: profile.monitorStatusURL,
             controlChatMonitor: { action in onMain { ChatMonitorControlNotice.apply(action, monitor: monitor) } },
             role: { check.role(me: .extension) },
@@ -485,7 +490,19 @@ extension VitruvianSpeakerTool.Parts {
             door: check.file,
             copy: DoorCopy.copy,
             sendStatus: sendStatus,
-            monitorMayRun: { permission.set(holdsLiveLock && $0) },
+            monitorMayRun: { mayRun in
+                let active = holdsLiveLock && mayRun
+                permission.set(active)
+                if let snoozeCoordinator {
+                    onMain {
+                        if active {
+                            snoozeCoordinator.start()
+                        } else {
+                            snoozeCoordinator.stop()
+                        }
+                    }
+                }
+            },
             profile: profile,
             appProfile: appProfile,
             appProgram: appProgram,
@@ -494,6 +511,11 @@ extension VitruvianSpeakerTool.Parts {
             // After a copy, the side that took it: the app's names when the
             // app took it, so the running app re-reads its sign-ins.
             credentialsChangedIn: { CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0)) },
-            volumeRestoreReport: { restored.value })
+            volumeRestoreReport: { restored.value },
+            onSnoozeChanged: {
+                if let snoozeCoordinator {
+                    onMain { snoozeCoordinator.poke() }
+                }
+            })
     }
 }

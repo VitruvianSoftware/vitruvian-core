@@ -122,6 +122,16 @@ public enum BroadcastCommand {
             category: .command
         ),
         OptionSpec(
+            syntax: "--snooze [minutes]",
+            summary: "Snooze automated announcements (default: configured length, 1-240 min)",
+            category: .command
+        ),
+        OptionSpec(
+            syntax: "--resume",
+            summary: "End an active snooze and resume announcements",
+            category: .command
+        ),
+        OptionSpec(
             syntax: "-s, --set-target <alias>",
             summary: "Change the persistent default speaker (exact or loose match)",
             category: .command
@@ -156,6 +166,8 @@ public enum BroadcastCommand {
         case list
         case setEnabled(ToggleAction)
         case setTarget(String)
+        case snooze(Int?)
+        case resume
         case speak(message: String, target: String?, force: Bool)
     }
 
@@ -210,6 +222,8 @@ public enum BroadcastCommand {
             case list
             case enabled(ToggleAction)
             case setTarget(String)
+            case snooze(Int?)
+            case resume
         }
 
         var mode: ModeFlag?
@@ -259,6 +273,44 @@ public enum BroadcastCommand {
                 if arg == "--toggle" {
                     if mode != nil { return .failure(UsageError("conflicting options: \(arg)")) }
                     mode = .enabled(.toggle)
+                    index += 1
+                    continue
+                }
+                if arg == "--snooze" {
+                    if mode != nil { return .failure(UsageError("conflicting options: \(arg)")) }
+                    if index + 1 < arguments.count {
+                        let next = arguments[index + 1]
+                        let looksLikeOption = next.hasPrefix("-") && Int(next) == nil
+                        if !looksLikeOption {
+                            guard let minutes = try? SettingsActions.parseSnoozeMinutes(next, key: "snooze") else {
+                                return .failure(UsageError(
+                                    "--snooze minutes must be a whole number from \(SpeakerConfig.minSnoozeMinutes) to \(SpeakerConfig.maxSnoozeMinutes)"
+                                ))
+                            }
+                            mode = .snooze(minutes)
+                            index += 2
+                            continue
+                        }
+                    }
+                    mode = .snooze(nil)
+                    index += 1
+                    continue
+                }
+                if arg.hasPrefix("--snooze=") {
+                    if mode != nil { return .failure(UsageError("conflicting options: --snooze")) }
+                    let value = String(arg.dropFirst("--snooze=".count))
+                    guard let minutes = try? SettingsActions.parseSnoozeMinutes(value, key: "snooze") else {
+                        return .failure(UsageError(
+                            "--snooze minutes must be a whole number from \(SpeakerConfig.minSnoozeMinutes) to \(SpeakerConfig.maxSnoozeMinutes)"
+                        ))
+                    }
+                    mode = .snooze(minutes)
+                    index += 1
+                    continue
+                }
+                if arg == "--resume" {
+                    if mode != nil { return .failure(UsageError("conflicting options: \(arg)")) }
+                    mode = .resume
                     index += 1
                     continue
                 }
@@ -323,7 +375,7 @@ public enum BroadcastCommand {
 
         if let mode {
             if sawMessageTokens || targetOverride != nil || force {
-                return .failure(UsageError("mode flags (--status, --list, --on, --off, --toggle, --set-target) cannot be combined with a message or --target/--force"))
+                return .failure(UsageError("mode flags (--status, --list, --on, --off, --toggle, --snooze, --resume, --set-target) cannot be combined with a message or --target/--force"))
             }
             switch mode {
             case .help: return .success(.help)
@@ -331,6 +383,8 @@ public enum BroadcastCommand {
             case .list: return .success(.list)
             case .enabled(let toggle): return .success(.setEnabled(toggle))
             case .setTarget(let alias): return .success(.setTarget(alias))
+            case .snooze(let minutes): return .success(.snooze(minutes))
+            case .resume: return .success(.resume)
             }
         }
 
@@ -469,6 +523,7 @@ public enum BroadcastCommand {
     public static func formatStatus(
         config: SpeakerConfig,
         systemVoices: [LocalVoice] = [],
+        queuedCount: Int = 0,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [String] {
@@ -476,7 +531,10 @@ public enum BroadcastCommand {
         lines.append("Speaker Broadcast Status: \(config.enabled ? "ENABLED" : "DISABLED")")
 
         if config.isSnoozed(at: now), let until = config.snoozeUntil {
-            lines.append("Snoozed: until \(SpeakerConfig.localTimeHHmm(until, calendar: calendar))")
+            let base = "Snoozed: until \(SpeakerConfig.localTimeHHmm(until, calendar: calendar))"
+            lines.append(queuedCount > 0 ? "\(base) · \(queuedCount) queued" : base)
+        } else if queuedCount > 0 {
+            lines.append("Snooze Queue: \(queuedCount) waiting")
         }
 
         if let device = config.defaultDevice {
@@ -597,7 +655,13 @@ public enum BroadcastCommand {
             case .unreadable(let err):
                 return .now(CLIOutput(stderr: [err.localizedDescription], exitCode: 1))
             }
-            var lines = formatStatus(config: config, systemVoices: systemVoices(), now: now, calendar: calendar)
+            var lines = formatStatus(
+                config: config,
+                systemVoices: systemVoices(),
+                queuedCount: targetEngine.snoozeQueue.count(),
+                now: now,
+                calendar: calendar
+            )
             if case .showDefaultStatus = request {
                 lines.append("")
                 lines.append("Use --help for usage details.")
@@ -732,6 +796,43 @@ public enum BroadcastCommand {
                     force: force,
                     at: now
                 )
+            }
+
+        case .snooze(let explicitMinutes):
+            let current: SpeakerConfig
+            switch configFile.read() {
+            case .loaded(let loaded):
+                current = loaded
+            case .missing:
+                current = parts.inUseSettings() ?? SpeakerConfig()
+            case .unreadable(let err):
+                return .now(CLIOutput(stderr: [err.localizedDescription], exitCode: 1))
+            }
+            let minutes = explicitMinutes ?? current.effectiveSnoozeDefaultMinutes
+            do {
+                guard let until = try SettingsActions.snooze(minutes: minutes, now: now, in: configFile) else {
+                    return .now(CLIOutput(stdout: ["Snooze cleared."], exitCode: 0))
+                }
+                let queueNote = current.effectiveSnoozeQueue ? " Automated announcements will queue until it ends." : ""
+                return .now(CLIOutput(
+                    stdout: ["\(SpeakerConfig.snoozedUntilLine(until, calendar: calendar)).\(queueNote)"],
+                    exitCode: 0
+                ))
+            } catch {
+                return .now(CLIOutput(stderr: [error.localizedDescription], exitCode: 1))
+            }
+
+        case .resume:
+            if case .unreadable(let err) = configFile.read() {
+                return .now(CLIOutput(stderr: [err.localizedDescription], exitCode: 1))
+            }
+            do {
+                _ = try SettingsActions.snooze(minutes: nil, now: now, in: configFile)
+                let waiting = targetEngine.snoozeQueue.count()
+                let suffix = waiting > 0 ? " (\(waiting) queued announcement(s) ready for delivery.)" : ""
+                return .now(CLIOutput(stdout: ["Snooze ended. Announcements resumed.\(suffix)"], exitCode: 0))
+            } catch {
+                return .now(CLIOutput(stderr: [error.localizedDescription], exitCode: 1))
             }
         }
     }

@@ -25,10 +25,11 @@ public class ConfigManager: ObservableObject {
     /// The app's settings, on the app's history and secrets: the parts of
     /// `VitruvianSpeakerEngine.app`.
     public static let shared = ConfigManager(
-        configPath: ConfigManager.defaultConfigURL(), history: .shared, secrets: .shared)
+        configPath: ConfigManager.defaultConfigURL(), history: .shared, secrets: .shared, snoozeQueue: .shared)
 
     @Published public var config: SpeakerConfig
     @Published public var recentBroadcasts: [BroadcastLogItem] = []
+    @Published public private(set) var queuedCount: Int = 0
     @Published public var isConnectedToGoogle: Bool = false
     @Published public var googleEmail: String?
     /// Set when the config file exists but does not read as a config (bad
@@ -42,12 +43,17 @@ public class ConfigManager: ObservableObject {
     /// chat monitor's settings, so the running poller follows. Weak: the
     /// service holds this manager, not the other way round.
     public weak var chatMonitor: (any ChatMonitorControlling)?
+    /// Told after settings load externally or save locally, and when a
+    /// local snooze expiry timer fires.
+    public var onConfigChange: (@MainActor () -> Void)?
 
     private let fileManager = FileManager.default
     private let configPath: URL
     private let file: SpeakerConfigFile
     /// The history list this manager adds to and shows.
     public let history: BroadcastHistory
+    /// The snooze queue paired with this profile.
+    public let snoozeQueue: SnoozeQueue
     /// The secrets the Google connection is read from.
     public let secrets: SecretStore
 
@@ -55,6 +61,7 @@ public class ConfigManager: ObservableObject {
     /// notification for our own save is not mistaken for someone else's edit.
     private var lastWritten: Data?
     private var watcher: DispatchSourceFileSystemObject?
+    private var snoozeExpiryTimer: Timer?
 
     /// The config lives at ~/.gemini/speaker_broadcast.json because the
     /// `speaker-broadcast` CLI and the Gemini/Antigravity skills read the same
@@ -72,11 +79,14 @@ public class ConfigManager: ObservableObject {
         configPath: URL = ConfigManager.defaultConfigURL(),
         historyPath: URL = ConfigManager.defaultHistoryURL(),
         secrets: SecretStore = .shared,
+        snoozeQueue: SnoozeQueue? = nil,
         fileSystem: ConfigFileSystem = LocalConfigFileSystem()
     ) {
+        let queue = snoozeQueue ?? SnoozeQueue(
+            fileURL: configPath.deletingLastPathComponent().appendingPathComponent("speaker_snooze_queue.json"))
         self.init(
             configPath: configPath, history: BroadcastHistory(fileURL: historyPath),
-            secrets: secrets, fileSystem: fileSystem)
+            secrets: secrets, snoozeQueue: queue, fileSystem: fileSystem)
     }
 
     /// The settings at `configPath`, adding to `history` and reading the
@@ -85,15 +95,18 @@ public class ConfigManager: ObservableObject {
         configPath: URL,
         history: BroadcastHistory,
         secrets: SecretStore,
+        snoozeQueue: SnoozeQueue = .shared,
         fileSystem: ConfigFileSystem = LocalConfigFileSystem()
     ) {
         self.configPath = configPath
         self.file = SpeakerConfigFile(url: configPath, fileSystem: fileSystem)
         self.history = history
         self.secrets = secrets
+        self.snoozeQueue = snoozeQueue
         self.config = SpeakerConfig()
         loadConfig()
         reloadHistory()
+        refreshQueuedCount()
         checkConnection()
     }
 
@@ -108,10 +121,12 @@ public class ConfigManager: ObservableObject {
         case .loaded(let loaded):
             configProblem = nil
             config = loaded
+            scheduleSnoozeExpiryRefresh()
         case .unreadable(let why):
             configProblem = why.localizedDescription
             print("Error loading speaker config: \(why.localizedDescription)")
         }
+        refreshQueuedCount()
     }
 
     /// Saves, or logs why not. False when nothing was written.
@@ -135,6 +150,9 @@ public class ConfigManager: ObservableObject {
         }
         do {
             lastWritten = try file.write(config)
+            refreshQueuedCount()
+            scheduleSnoozeExpiryRefresh()
+            onConfigChange?()
         } catch let error as ConfigFileError {
             configProblem = error.localizedDescription
             throw error
@@ -174,15 +192,40 @@ public class ConfigManager: ObservableObject {
     public var onFolderChange: (@MainActor () -> Void)?
 
     /// Something in the watched folder changed: the settings are re-read,
-    /// then `onFolderChange` is told. Public so a test can drive it.
+    /// queued items are counted again, then `onFolderChange` is told.
     public func folderChanged() {
         reloadIfChangedExternally()
+        refreshQueuedCount()
         onFolderChange?()
     }
 
     public func stopWatchingConfigFile() {
         watcher?.cancel()
         watcher = nil
+        snoozeExpiryTimer?.invalidate()
+        snoozeExpiryTimer = nil
+    }
+
+    public func refreshQueuedCount() {
+        let count = snoozeQueue.count()
+        if queuedCount != count { queuedCount = count }
+    }
+
+    private func scheduleSnoozeExpiryRefresh() {
+        snoozeExpiryTimer?.invalidate()
+        snoozeExpiryTimer = nil
+        guard let until = config.snoozeUntil else { return }
+        let remaining = until.timeIntervalSinceNow
+        guard remaining > 0 else { return }
+        let delay = remaining + 0.05
+        snoozeExpiryTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.objectWillChange.send()
+                self.refreshQueuedCount()
+                self.onConfigChange?()
+            }
+        }
     }
 
     /// Applies the on-disk config when it differs from what this process
@@ -200,6 +243,9 @@ public class ConfigManager: ObservableObject {
             let before = config.effectiveChatMonitor
             if fresh != config { config = fresh }
             reconcileChatMonitor(from: before, to: fresh.effectiveChatMonitor)
+            refreshQueuedCount()
+            scheduleSnoozeExpiryRefresh()
+            onConfigChange?()
         case .unreadable(let why):
             configProblem = why.localizedDescription
         case .missing:

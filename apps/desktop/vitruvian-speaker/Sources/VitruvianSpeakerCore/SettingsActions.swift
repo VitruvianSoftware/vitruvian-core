@@ -74,7 +74,7 @@ public enum SettingsActions {
                     return "The poll interval is a whole number of seconds from \(min) to \(max)"
                 case SettingsCatalog.Key.speakerVolume.rawValue:
                     return "A volume is a whole number from \(min) to \(max)"
-                case "snooze":
+                case "snooze", SettingsCatalog.Key.snoozeDefaultMinutes.rawValue:
                     return "Snooze is a whole number of minutes from \(min) to \(max)"
                 default:
                     return "Value must be between \(min) and \(max)"
@@ -414,6 +414,8 @@ public enum SettingsActions {
         case .speakerVolume: return .int(0)
         case .announceVolume: return .int(config.effectiveAnnounceVolume)
         case .pauseMediaExtraSeconds: return .int(Int(config.effectivePauseMediaExtraSeconds))
+        case .snoozeDefaultMinutes: return .int(config.effectiveSnoozeDefaultMinutes)
+        case .snoozeQueue: return .bool(config.effectiveSnoozeQueue)
         case .pollIntervalSeconds: return .int(config.effectiveChatMonitor.pollIntervalSeconds)
         case .customStylePrompt: return .string(config.customStylePrompt ?? "")
         case .gwsAccount: return .string(config.effectiveChatMonitor.gwsAccount)
@@ -434,6 +436,8 @@ public enum SettingsActions {
             config.pauseMedia = flag
         case .quietHoursEnabled:
             config.quietHoursEnabled = flag
+        case .snoozeQueue:
+            config.snoozeQueue = flag
         case .speakHome:
             config.speakHome = flag
         case .homeCastVoice:
@@ -512,6 +516,8 @@ public enum SettingsActions {
             config.announceVolume = number
         case .pauseMediaExtraSeconds:
             config.pauseMediaExtraSeconds = Double(number)
+        case .snoozeDefaultMinutes:
+            config.snoozeDefaultMinutes = number
         case .pollIntervalSeconds:
             config.effectiveChatMonitor.pollIntervalSeconds = number
         default:
@@ -1134,6 +1140,41 @@ public enum SettingsActions {
             outcome = try? applySnooze(minutes: minutes, now: now, to: &config)
         }
         return outcome
+    }
+
+    /// Pure in-memory snooze using `config.effectiveSnoozeDefaultMinutes`.
+    @discardableResult
+    public static func applyDefaultSnooze(
+        now: Date = Date(),
+        to config: inout SpeakerConfig
+    ) throws -> Date {
+        let minutes = config.effectiveSnoozeDefaultMinutes
+        return try applySnooze(minutes: minutes, now: now, to: &config)!
+    }
+
+    /// Writes `snoozeUntil` in `configFile` under its lock using `config.effectiveSnoozeDefaultMinutes`.
+    @discardableResult
+    public static func snoozeDefault(
+        now: Date = Date(),
+        in configFile: SpeakerConfigFile
+    ) throws -> Date {
+        var outcome: Date?
+        try configFile.modify { config in
+            outcome = try? applyDefaultSnooze(now: now, to: &config)
+        }
+        return outcome!
+    }
+
+    /// Parses and validates a whole-number snooze duration string in `1...240`.
+    public static func parseSnoozeMinutes(_ raw: String, key: String = "snooze") throws -> Int {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let minutes = Int(trimmed) else {
+            throw Refusal.outOfRange(key: key, value: 0, min: minSnoozeMinutes, max: maxSnoozeMinutes)
+        }
+        guard (minSnoozeMinutes...maxSnoozeMinutes).contains(minutes) else {
+            throw Refusal.outOfRange(key: key, value: minutes, min: minSnoozeMinutes, max: maxSnoozeMinutes)
+        }
+        return minutes
     }
 
     /// Pure in-memory chat network mute/unmute update using

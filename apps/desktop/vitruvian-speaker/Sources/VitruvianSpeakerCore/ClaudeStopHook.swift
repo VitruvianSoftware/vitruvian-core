@@ -340,6 +340,15 @@ public enum ClaudeStopHook {
         guard let text = textToSpeak(entries: entries) else { return }
         let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
         guard !spoken.isEmpty, !isDuplicate(spoken: spoken, directory: lockDirectory) else { return }
+        if config.isSnoozed() {
+            if config.effectiveSnoozeQueue {
+                let forwarded = AnnouncementStylist.rewrites(config)
+                    ? String(text.prefix(detachedTextLimit))
+                    : spoken
+                launchDetached(forwarded)
+            }
+            return
+        }
 
         // The agent stops the hook after 10 s, and this Mac speaking a
         // summary takes longer, as can rewording it in a style (up to

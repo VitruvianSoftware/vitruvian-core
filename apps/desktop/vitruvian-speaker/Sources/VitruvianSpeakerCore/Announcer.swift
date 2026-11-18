@@ -49,6 +49,8 @@ public enum AnnounceOutcome: Equatable, Sendable {
     case quietHours(until: String)
     /// Rule 2b: snoozed until `until`.
     case snoozed(until: Date)
+    /// Rule 2b (with `snooze_queue` on): held in the snooze queue until snooze ends.
+    case queued(until: Date)
     /// Rule 3: both outputs are off.
     case noOutputs
     /// The text cleaned down to nothing.
@@ -190,7 +192,7 @@ public struct SharedMediaPause: MediaPausing {
 // MARK: - The announcer
 
 public struct Announcer: Sendable {
-    public static let shared = Announcer(speechLockURL: SpeechLock.defaultURL)
+    public static let shared = Announcer(speechLockURL: SpeechLock.defaultURL, snoozeQueue: .shared)
 
     public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "announcer")
 
@@ -209,6 +211,8 @@ public struct Announcer: Sendable {
     /// Cross-process lock file held while speaking so concurrent announcements
     /// wait in FIFO order instead of talking over each other.
     let speechLockURL: URL?
+    /// Optional persistent queue used when `snooze_queue` is enabled.
+    let snoozeQueue: SnoozeQueue?
     let log: @Sendable (String) -> Void
 
     public init(
@@ -221,6 +225,7 @@ public struct Announcer: Sendable {
         stylist: AnnouncementStyling? = nil,
         geminiKey: @escaping @Sendable () -> String? = { SecretStore.shared.load().geminiApiKey },
         speechLockURL: URL? = nil,
+        snoozeQueue: SnoozeQueue? = nil,
         log: @escaping @Sendable (String) -> Void = { Announcer.logger.notice("\($0, privacy: .public)") }
     ) {
         self.home = home
@@ -232,6 +237,7 @@ public struct Announcer: Sendable {
         self.stylist = stylist ?? AnnouncementStylist(geminiKey: geminiKey)
         self.geminiKey = geminiKey
         self.speechLockURL = speechLockURL
+        self.snoozeQueue = snoozeQueue
         self.log = log
     }
 
@@ -244,9 +250,13 @@ public struct Announcer: Sendable {
     /// reply (`--announce`). Chat messages, Quick Announce and `--say` are
     /// someone's own words and are read as written.
     public func announce(
-        _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false, at date: Date = Date()
+        _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false,
+        source: String = "CLI", session: SessionOrigin? = nil, at date: Date = Date()
     ) async -> AnnounceOutcome {
-        await announceReporting(text, config: config, force: force, restyle: restyle, at: date).outcome
+        await announceReporting(
+            text, config: config, force: force, restyle: restyle,
+            source: source, session: session, at: date
+        ).outcome
     }
 
     /// `lead` is said first, after the cleaning and rewording, so neither
@@ -257,6 +267,7 @@ public struct Announcer: Sendable {
     /// the reply it was made from.
     public func announceReporting(
         _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false, lead: String? = nil,
+        source: String = "CLI", session: SessionOrigin? = nil, bypassSnoozeQueue: Bool = false,
         at date: Date = Date()
     ) async -> (outcome: AnnounceOutcome, spoken: String?) {
         // 1. The master switch.
@@ -265,8 +276,28 @@ public struct Announcer: Sendable {
         if GoogleHomeClient.isSuppressedByQuietHours(config: config, force: force, at: date) {
             return (.quietHours(until: config.quietHoursEnd ?? ""), nil)
         }
-        // 2b. Snooze holds all outputs unless forced.
+        // 2b. Snooze holds all outputs unless forced (and optionally queues).
         if !force, config.isSnoozed(at: date), let until = config.snoozeUntil {
+            if !bypassSnoozeQueue, config.effectiveSnoozeQueue, let snoozeQueue {
+                let hasContent = restyle
+                    ? !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    : !GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength).isEmpty
+                guard hasContent else { return (.nothingToSay, nil) }
+                let item = SnoozeQueueItem(
+                    text: text,
+                    source: source,
+                    timestamp: date,
+                    restyle: restyle,
+                    lead: lead,
+                    session: session
+                )
+                do {
+                    try snoozeQueue.append(item)
+                    return (.queued(until: until), nil)
+                } catch {
+                    log("Snooze queue write failed: \(error.localizedDescription)")
+                }
+            }
             return (.snoozed(until: until), nil)
         }
         // 3. Nowhere to speak.

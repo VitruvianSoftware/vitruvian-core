@@ -47,6 +47,7 @@ public final class VitruvianSpeakerEngine {
     private let makeConfig: @MainActor () -> ConfigManager
     public let secrets: SecretStore
     public let history: BroadcastHistory
+    public let snoozeQueue: SnoozeQueue
     public let auth: GoogleAuth
     public let home: GoogleHomeClient
     public let announcer: Announcer
@@ -61,6 +62,7 @@ public final class VitruvianSpeakerEngine {
         config: { .shared },
         secrets: .shared,
         history: .shared,
+        snoozeQueue: .shared,
         auth: .shared,
         home: .shared,
         announcer: .shared,
@@ -77,18 +79,27 @@ public final class VitruvianSpeakerEngine {
     ) {
         let secrets = SecretStore(fileURL: profile.secretsURL)
         let history = BroadcastHistory(fileURL: profile.historyURL)
+        let snoozeQueue = SnoozeQueue(fileURL: profile.snoozeQueueURL)
         let auth = GoogleAuth(store: secrets, session: session, shippedClient: { profile.shippedClient })
         let home = GoogleHomeClient(auth: auth, session: session, messages: profile)
         self.init(
             profile: profile,
-            config: { ConfigManager(configPath: profile.settingsURL, history: history, secrets: secrets) },
+            config: {
+                ConfigManager(
+                    configPath: profile.settingsURL,
+                    history: history,
+                    secrets: secrets,
+                    snoozeQueue: snoozeQueue)
+            },
             secrets: secrets,
             history: history,
+            snoozeQueue: snoozeQueue,
             auth: auth,
             home: home,
             announcer: Announcer(
                 home: home, local: local, media: SharedMediaPause(profile: profile),
-                geminiKey: { secrets.load().geminiApiKey }, speechLockURL: profile.speechLockURL),
+                geminiKey: { secrets.load().geminiApiKey }, speechLockURL: profile.speechLockURL,
+                snoozeQueue: snoozeQueue),
             mediaPause: MediaPauseCoordinator(),
             volumeRestore: VolumeRestoreCoordinator(client: home))
     }
@@ -98,6 +109,7 @@ public final class VitruvianSpeakerEngine {
         config: @escaping @MainActor () -> ConfigManager,
         secrets: SecretStore,
         history: BroadcastHistory,
+        snoozeQueue: SnoozeQueue,
         auth: GoogleAuth,
         home: GoogleHomeClient,
         announcer: Announcer,
@@ -108,6 +120,7 @@ public final class VitruvianSpeakerEngine {
         self.makeConfig = config
         self.secrets = secrets
         self.history = history
+        self.snoozeQueue = snoozeQueue
         self.auth = auth
         self.home = home
         self.announcer = announcer

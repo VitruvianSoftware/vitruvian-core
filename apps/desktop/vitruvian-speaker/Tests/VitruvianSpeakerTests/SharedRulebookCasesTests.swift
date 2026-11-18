@@ -65,6 +65,7 @@ struct SharedRulebookCasesTests {
             "limits.json",
             "visibility.json",
             "quiet_hours.json",
+            "snooze.json",
             "speakers.json",
             "outputs_label.json",
             "chat_monitor_status.json",
@@ -276,6 +277,14 @@ struct SharedRulebookCasesTests {
                 for clamp in item.clamping_cases {
                     let chat = ChatMonitorConfig(pollIntervalSeconds: clamp.input)
                     #expect(chat.clampedPollInterval == clamp.expected)
+                }
+            case "snooze_default_minutes":
+                #expect(SpeakerConfig().effectiveSnoozeDefaultMinutes == item.default_value)
+                #expect(SpeakerConfig.snoozePresets == item.discrete_steps)
+                for clamp in item.clamping_cases {
+                    var c = SpeakerConfig()
+                    c.effectiveSnoozeDefaultMinutes = clamp.input
+                    #expect(c.effectiveSnoozeDefaultMinutes == clamp.expected)
                 }
             default:
                 Issue.record("Unexpected numeric setting key in limits.json: \(item.key)")
@@ -676,6 +685,316 @@ struct SharedRulebookCasesTests {
 
             #expect(secrets.oauthClientIdOverride == tc.expected_id, "\(tc.name): client ID")
             #expect(secrets.oauthClientSecretOverride == tc.expected_secret, "\(tc.name): client secret")
+        }
+    }
+
+    // MARK: - 9. Snooze Durations & Queue Rules (snooze.json)
+
+    private struct SnoozeSuite: Decodable {
+        struct PresetChoiceCase: Decodable {
+            struct ExpectedChoice: Decodable, Equatable {
+                let value: String
+                let label: String
+            }
+            let name: String
+            let saved: Int
+            let expected: [ExpectedChoice]
+        }
+        struct ParseCase: Decodable {
+            let input: String
+            let expected: Int?
+        }
+        struct OmittedMinutesCase: Decodable {
+            let name: String
+            let snooze_default_minutes: Int?
+            let expected_minutes: Int
+        }
+        struct AnnounceOutcomeCase: Decodable {
+            let name: String
+            let snooze_queue: Bool
+            let force: Bool
+            let expected: String
+        }
+        struct QueueRules: Decodable {
+            let max_items: Int
+            let max_age_hours: Int
+            let lead_in: String
+        }
+        struct StatusLineCase: Decodable {
+            let queued_count: Int
+            let expected: String
+        }
+        struct BoundsRefusalCase: Decodable {
+            let input: Int
+        }
+        struct CapCase: Decodable {
+            let enqueue_count: Int
+            let expected_count: Int
+            let expected_first: String
+            let expected_last: String
+        }
+        struct DeliveryCase: Decodable {
+            struct ItemSpec: Decodable {
+                let text: String
+                let age_seconds: TimeInterval
+            }
+            let name: String
+            let items: [ItemSpec]
+            let enabled: Bool
+            let quiet_hours_enabled: Bool
+            let quiet_start: String?
+            let quiet_end: String?
+            let initial_hour: Int
+            let initial_minute: Int
+            let expected_initial_disposition: String
+            let expected_initial_spoken: [String]
+            let expected_remaining_after_initial: Int
+            let expected_dropped_expired: Int
+            let retry_enabled: Bool?
+            let retry_hour: Int?
+            let retry_minute: Int?
+            let retry_next_day: Bool?
+            let expected_retry_disposition: String?
+            let expected_retry_spoken: [String]?
+            let expected_remaining_after_retry: Int?
+        }
+
+        let suite: String
+        let default_minutes: Int
+        let min_minutes: Int
+        let max_minutes: Int
+        let presets: [Int]
+        let preset_choice_cases: [PresetChoiceCase]
+        let parse_cases: [ParseCase]
+        let omitted_minutes_default_cases: [OmittedMinutesCase]
+        let announce_outcome_cases: [AnnounceOutcomeCase]
+        let queue_rules: QueueRules
+        let status_line_cases: [StatusLineCase]
+        let bounds_refusal_cases: [BoundsRefusalCase]
+        let cap_case: CapCase
+        let delivery_cases: [DeliveryCase]
+    }
+
+    @Test("Snooze presets, bounds, default fallback, queue rules, and status lines match engine (snooze.json)")
+    func snoozeRulebookMatchesEngine() async throws {
+        let spec = try Self.loadJSON("snooze.json", as: SnoozeSuite.self)
+        #expect(spec.suite == "snooze")
+        #expect(SpeakerConfig.defaultSnoozeMinutes == spec.default_minutes)
+        #expect(SpeakerConfig.minSnoozeMinutes == spec.min_minutes)
+        #expect(SpeakerConfig.maxSnoozeMinutes == spec.max_minutes)
+        #expect(SpeakerConfig.snoozePresets == spec.presets)
+        #expect(SnoozeQueue.maxItems == spec.queue_rules.max_items)
+        #expect(Int(SnoozeQueue.maxAgeSeconds / 3600) == spec.queue_rules.max_age_hours)
+        #expect(SnoozeQueue.leadIn == spec.queue_rules.lead_in)
+
+        for tc in spec.preset_choice_cases {
+            let actual = SettingsCatalog.snoozePresetChoices(keeping: tc.saved).map {
+                SnoozeSuite.PresetChoiceCase.ExpectedChoice(value: $0.value, label: $0.label)
+            }
+            #expect(actual == tc.expected, "\(tc.name)")
+        }
+
+        for tc in spec.parse_cases {
+            let parsed = try? SettingsActions.parseSnoozeMinutes(tc.input, key: "snooze_default_minutes")
+            #expect(parsed == tc.expected, "parse('\(tc.input)')")
+        }
+
+        for tc in spec.bounds_refusal_cases {
+            var config = SpeakerConfig()
+            #expect(throws: SettingsActions.Refusal.outOfRange(
+                key: "snooze",
+                value: tc.input,
+                min: spec.min_minutes,
+                max: spec.max_minutes
+            )) {
+                try SettingsActions.applySnooze(minutes: tc.input, to: &config)
+            }
+            #expect(throws: SettingsActions.Refusal.outOfRange(
+                key: "snooze_default_minutes",
+                value: tc.input,
+                min: spec.min_minutes,
+                max: spec.max_minutes
+            )) {
+                try SettingsActions.applySet(
+                    key: .snoozeDefaultMinutes,
+                    value: .int(tc.input),
+                    to: &config,
+                    clampNumbers: false
+                )
+            }
+        }
+
+        let baseNow = Date(timeIntervalSince1970: 1_800_000_000)
+        for tc in spec.omitted_minutes_default_cases {
+            var config = SpeakerConfig(snoozeDefaultMinutes: tc.snooze_default_minutes)
+            let until = try SettingsActions.applyDefaultSnooze(now: baseNow, to: &config)
+            #expect(until == baseNow.addingTimeInterval(TimeInterval(tc.expected_minutes * 60)), "\(tc.name)")
+        }
+
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitruvian-speaker-snooze-rule-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        final class FakeHome: HomeBroadcasting, @unchecked Sendable {
+            private let lock = NSLock()
+            private var spoken: [String] = []
+            func speakerHoldSeconds(for text: String) -> TimeInterval { 0 }
+            func broadcast(
+                text: String,
+                target: SpeakerDevice,
+                structureId: String,
+                config: SpeakerConfig?,
+                force: Bool,
+                at date: Date
+            ) async throws -> Bool {
+                lock.withLock { spoken.append(text) }
+                return true
+            }
+            func recorded() -> [String] { lock.withLock { spoken } }
+            func clearRecorded() { lock.withLock { spoken.removeAll() } }
+        }
+
+        for tc in spec.announce_outcome_cases {
+            let queue = SnoozeQueue(fileURL: scratch.appendingPathComponent("\(tc.name)-queue.json"))
+            let announcer = Announcer(home: FakeHome(), snoozeQueue: queue)
+            var config = SpeakerConfig(
+                enabled: true,
+                defaultTarget: "kitchen",
+                structureId: "s1",
+                targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")],
+                quietHoursEnabled: false,
+                snoozeUntil: baseNow.addingTimeInterval(1800),
+                snoozeQueue: tc.snooze_queue
+            )
+            config.speakHome = true
+            let outcome = await announcer.announce("Hello world", config: config, force: tc.force, at: baseNow)
+            switch tc.expected {
+            case "snoozed":
+                #expect(outcome == .snoozed(until: config.snoozeUntil!), "\(tc.name)")
+                #expect(queue.load().isEmpty, "\(tc.name): queue remains empty when off")
+            case "queued":
+                #expect(outcome == .queued(until: config.snoozeUntil!), "\(tc.name)")
+                #expect(queue.count() == 1, "\(tc.name): item appended")
+            case "announced":
+                guard case .announced = outcome else {
+                    Issue.record("Expected announced for \(tc.name), got \(outcome)")
+                    continue
+                }
+                #expect(queue.load().isEmpty, "\(tc.name): forced announcement bypasses queue")
+            default:
+                Issue.record("Unexpected expected outcome: \(tc.expected)")
+            }
+        }
+
+        // Cap 50 rule: adding 55 keeps newest 50.
+        let capQueue = SnoozeQueue(fileURL: scratch.appendingPathComponent("cap-queue.json"))
+        for index in 1...spec.cap_case.enqueue_count {
+            try capQueue.append(SnoozeQueueItem(
+                text: "item-\(index)",
+                source: "CLI",
+                timestamp: baseNow.addingTimeInterval(TimeInterval(index))
+            ))
+        }
+        let capped = capQueue.load()
+        #expect(capped.count == spec.cap_case.expected_count)
+        #expect(capped.first?.text == spec.cap_case.expected_first)
+        #expect(capped.last?.text == spec.cap_case.expected_last)
+
+        let localCal = Calendar.current
+        func localDate(dayOffset: Int = 0, hour: Int, minute: Int) -> Date {
+            let baseDay = localCal.date(from: DateComponents(year: 2026, month: 11, day: 10, hour: hour, minute: minute))!
+            return localCal.date(byAdding: .day, value: dayOffset, to: baseDay)!
+        }
+
+        for tc in spec.delivery_cases {
+            let queue = SnoozeQueue(fileURL: scratch.appendingPathComponent("delivery-\(tc.name).json"))
+            let fakeHome = FakeHome()
+            let announcer = Announcer(home: fakeHome, snoozeQueue: queue)
+            let initialNow = localDate(hour: tc.initial_hour, minute: tc.initial_minute)
+            for itemSpec in tc.items {
+                try queue.append(SnoozeQueueItem(
+                    text: itemSpec.text,
+                    source: "Slack",
+                    timestamp: initialNow.addingTimeInterval(-itemSpec.age_seconds)
+                ))
+            }
+
+            var config = SpeakerConfig(
+                enabled: tc.enabled,
+                defaultTarget: "kitchen",
+                structureId: "s1",
+                targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")],
+                quietHoursEnabled: tc.quiet_hours_enabled,
+                quietHoursStart: tc.quiet_start ?? "22:00",
+                quietHoursEnd: tc.quiet_end ?? "07:00",
+                snoozeUntil: initialNow.addingTimeInterval(-60),
+                snoozeQueue: true
+            )
+            config.speakHome = true
+            config.pauseMedia = false
+
+            let initialConfig = config
+            let disp = await queue.drainIfReady(
+                configProvider: { initialConfig },
+                now: { initialNow },
+                announcer: announcer
+            )
+            switch tc.expected_initial_disposition {
+            case "drained":
+                guard case .drained(_, let dropped) = disp else {
+                    Issue.record("\(tc.name): expected .drained, got \(disp)")
+                    continue
+                }
+                #expect(dropped == tc.expected_dropped_expired, "\(tc.name): dropped count")
+            case "held_quiet_hours":
+                guard case .held(.quietHours) = disp else {
+                    Issue.record("\(tc.name): expected .held(.quietHours), got \(disp)")
+                    continue
+                }
+            case "held_disabled":
+                guard case .held(.disabled) = disp else {
+                    Issue.record("\(tc.name): expected .held(.disabled), got \(disp)")
+                    continue
+                }
+            default:
+                Issue.record("Unexpected expected_initial_disposition: \(tc.expected_initial_disposition)")
+            }
+            #expect(fakeHome.recorded() == tc.expected_initial_spoken, "\(tc.name): initial spoken")
+            #expect(queue.count() == tc.expected_remaining_after_initial, "\(tc.name): initial remaining")
+
+            if let expectedRetryDisp = tc.expected_retry_disposition,
+               let retryHour = tc.retry_hour,
+               let retryMinute = tc.retry_minute {
+                fakeHome.clearRecorded()
+                config.enabled = tc.retry_enabled ?? config.enabled
+                let retryNow = localDate(
+                    dayOffset: (tc.retry_next_day ?? false) ? 1 : 0,
+                    hour: retryHour,
+                    minute: retryMinute
+                )
+                let retryConfig = config
+                let retryDisp = await queue.drainIfReady(
+                    configProvider: { retryConfig },
+                    now: { retryNow },
+                    announcer: announcer
+                )
+                if expectedRetryDisp == "drained" {
+                    guard case .drained = retryDisp else {
+                        Issue.record("\(tc.name): expected retry .drained, got \(retryDisp)")
+                        continue
+                    }
+                }
+                #expect(fakeHome.recorded() == (tc.expected_retry_spoken ?? []), "\(tc.name): retry spoken")
+                #expect(queue.count() == (tc.expected_remaining_after_retry ?? 0), "\(tc.name): retry remaining")
+            }
+        }
+
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let twoThirty = utcCal.date(from: DateComponents(year: 2026, month: 11, day: 10, hour: 14, minute: 30))!
+        for tc in spec.status_line_cases {
+            #expect(SpeakerConfig.snoozedStatusLine(twoThirty, queuedCount: tc.queued_count, calendar: utcCal) == tc.expected)
         }
     }
 }

@@ -15,6 +15,7 @@ These JSON files capture the single rulebook for Vitruvian Speaker's settings ca
 - `limits.json` — Numeric limits, steps, defaults, and clamping cases for speaker volume, announcement volume, media pause margin, and chat poll interval.
 - `visibility.json` — `SpeakerConfig` visibility flags (`showsHomeControls`, `showsHomeCastVoice`, `showsVoiceEngine`, `usesVoiceEngine`, `geminiSpeaks`, `showsGeminiVoice`, `showsAnnouncementStyle`, `showsStyleGeminiKey`) and `SettingsCatalog` entry visibility across configurations.
 - `quiet_hours.json` — `HH:mm` parsing, same-day and overnight window evaluation, and the 48 half-hour picker options with off-grid saved times kept first.
+- `snooze.json` — Snooze bounds (`1...240`), preset intervals (`15, 30, 60, 120`), omitted-minutes default fallback, custom duration parsing, `snooze_queue` announce outcomes, delivery cap (`50`) / 12h expiry / lead-in, and status formatting with queued count.
 - `speakers.json` — `SpeakerDevice.displayLine`, `SpeakerConfig.uniqueTargets()` deduplication and name sorting, and `SpeakerConfig.removeTarget(_:)` picking the next speaker by name.
 - `outputs_label.json` — `SpeakerConfig.activeOutputsLabel` across output combinations and the phone's `"Your phone"` → `"This phone"` substitution.
 - `chat_monitor_status.json` — `ChatMonitorStatus.believed(ownerRunning:)` clearing `isRunning` and `lastError` when the owning process is no longer running.

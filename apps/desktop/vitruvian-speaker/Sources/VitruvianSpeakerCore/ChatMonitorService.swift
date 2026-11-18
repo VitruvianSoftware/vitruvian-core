@@ -856,8 +856,10 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             if echoes.isEcho(m) { continue }
             let line = m.spokenLine
             // One at a time: the Mac finishes one message before the next.
-            let outcome = await announcer.announce(line, config: config, force: false)
-            if outcome.anySpoke {
+            let outcome = await announcer.announce(line, config: config, force: false, source: m.source.rawValue)
+            if case .queued = outcome {
+                configManager.refreshQueuedCount()
+            } else if outcome.anySpoke {
                 configManager.addLogItem(BroadcastLogItem(
                     text: line, targetName: outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers"),
                     source: m.source.rawValue))

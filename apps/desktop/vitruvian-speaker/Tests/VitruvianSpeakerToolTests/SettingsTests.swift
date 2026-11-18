@@ -237,11 +237,15 @@ final class SettingsTests: XCTestCase {
         store.config?.quietHoursEnabled = true
         store.config?.effectiveLocalEngine = .gemini  // casting is offered with Gemini only
         store.config?.effectiveChatMonitor.slackEnabled = true
+        store.config?.effectiveChatMonitor.beeperEnabled = true
         let moved: [String: String] = [
             Pages.Block.announceVolume: Pages.announceVolumeHelp,
             Pages.Block.pauseMedia: Pages.pauseMediaHelp,
             Pages.Block.quiet: Pages.quietHoursHelp,
             Pages.Block.slackToken: Pages.slackTokenHelp,
+            Pages.Block.beeperToken: Pages.beeperHelp,
+            Pages.Block.courierEnabled: Pages.courierTokenFirst,
+            Pages.Block.courierToken: Pages.courierHelp,
             Pages.Block.homeCastVoice: Pages.homeCastVoiceHelp,
         ]
         link.features = [.choice, .sections]
@@ -249,6 +253,9 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(helped(all), moved, "these captions, and only these, are their control's help")
         for caption in moved.values {
             XCTAssertFalse(texts(all).contains(caption), "and no longer a caption: \(caption)")
+        }
+        for line in Pages.courierHelpLines {
+            XCTAssertFalse(texts(all).contains(line), "and no longer a caption: \(line)")
         }
 
         // Without sections each is the caption it was.

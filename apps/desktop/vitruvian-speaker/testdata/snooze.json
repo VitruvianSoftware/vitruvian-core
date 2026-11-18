@@ -1,0 +1,181 @@
+{
+  "suite": "snooze",
+  "default_minutes": 30,
+  "min_minutes": 1,
+  "max_minutes": 240,
+  "presets": [15, 30, 60, 120],
+  "preset_choice_cases": [
+    {
+      "name": "default_preset_30",
+      "saved": 30,
+      "expected": [
+        { "value": "15", "label": "15 min" },
+        { "value": "30", "label": "30 min" },
+        { "value": "60", "label": "60 min" },
+        { "value": "120", "label": "120 min" }
+      ]
+    },
+    {
+      "name": "custom_45_kept_sorted",
+      "saved": 45,
+      "expected": [
+        { "value": "15", "label": "15 min" },
+        { "value": "30", "label": "30 min" },
+        { "value": "45", "label": "45 min (custom)" },
+        { "value": "60", "label": "60 min" },
+        { "value": "120", "label": "120 min" }
+      ]
+    }
+  ],
+  "parse_cases": [
+    { "input": "1", "expected": 1 },
+    { "input": "30", "expected": 30 },
+    { "input": " 45 ", "expected": 45 },
+    { "input": "240", "expected": 240 },
+    { "input": "0", "expected": null },
+    { "input": "-5", "expected": null },
+    { "input": "241", "expected": null },
+    { "input": "abc", "expected": null },
+    { "input": "", "expected": null }
+  ],
+  "omitted_minutes_default_cases": [
+    {
+      "name": "default_when_nil",
+      "snooze_default_minutes": null,
+      "expected_minutes": 30
+    },
+    {
+      "name": "custom_default_45",
+      "snooze_default_minutes": 45,
+      "expected_minutes": 45
+    },
+    {
+      "name": "preset_default_120",
+      "snooze_default_minutes": 120,
+      "expected_minutes": 120
+    }
+  ],
+  "announce_outcome_cases": [
+    {
+      "name": "queue_off_returns_snoozed",
+      "snooze_queue": false,
+      "force": false,
+      "expected": "snoozed"
+    },
+    {
+      "name": "queue_on_returns_queued",
+      "snooze_queue": true,
+      "force": false,
+      "expected": "queued"
+    },
+    {
+      "name": "queue_on_forced_bypasses",
+      "snooze_queue": true,
+      "force": true,
+      "expected": "announced"
+    }
+  ],
+  "queue_rules": {
+    "max_items": 50,
+    "max_age_hours": 12,
+    "lead_in": "While you were snoozed: "
+  },
+  "status_line_cases": [
+    { "queued_count": 0, "expected": "Snoozed until 14:30" },
+    { "queued_count": 3, "expected": "Snoozed until 14:30 · 3 queued" }
+  ],
+  "bounds_refusal_cases": [{ "input": 0 }, { "input": -5 }, { "input": 241 }],
+  "cap_case": {
+    "enqueue_count": 55,
+    "expected_count": 50,
+    "expected_first": "item-6",
+    "expected_last": "item-55"
+  },
+  "delivery_cases": [
+    {
+      "name": "in_order_with_single_lead_in",
+      "items": [
+        { "text": "Build finished", "age_seconds": 300 },
+        { "text": "Deploy green", "age_seconds": 180 },
+        { "text": "Tests passed", "age_seconds": 60 }
+      ],
+      "enabled": true,
+      "quiet_hours_enabled": false,
+      "initial_hour": 14,
+      "initial_minute": 35,
+      "expected_initial_disposition": "drained",
+      "expected_initial_spoken": [
+        "While you were snoozed: Build finished",
+        "Deploy green",
+        "Tests passed"
+      ],
+      "expected_remaining_after_initial": 0,
+      "expected_dropped_expired": 0
+    },
+    {
+      "name": "drops_items_older_than_12_hours",
+      "items": [
+        { "text": "Too old", "age_seconds": 43201 },
+        { "text": "Exactly twelve hours", "age_seconds": 43200 },
+        { "text": "Recent one", "age_seconds": 600 }
+      ],
+      "enabled": true,
+      "quiet_hours_enabled": false,
+      "initial_hour": 14,
+      "initial_minute": 35,
+      "expected_initial_disposition": "drained",
+      "expected_initial_spoken": [
+        "While you were snoozed: Exactly twelve hours",
+        "Recent one"
+      ],
+      "expected_remaining_after_initial": 0,
+      "expected_dropped_expired": 1
+    },
+    {
+      "name": "quiet_hours_hold_then_drain_after_window",
+      "items": [
+        { "text": "Queued one", "age_seconds": 120 },
+        { "text": "Queued two", "age_seconds": 60 }
+      ],
+      "enabled": true,
+      "quiet_hours_enabled": true,
+      "quiet_start": "22:00",
+      "quiet_end": "07:00",
+      "initial_hour": 23,
+      "initial_minute": 0,
+      "expected_initial_disposition": "held_quiet_hours",
+      "expected_initial_spoken": [],
+      "expected_remaining_after_initial": 2,
+      "expected_dropped_expired": 0,
+      "retry_enabled": true,
+      "retry_hour": 7,
+      "retry_minute": 30,
+      "retry_next_day": true,
+      "expected_retry_disposition": "drained",
+      "expected_retry_spoken": [
+        "While you were snoozed: Queued one",
+        "Queued two"
+      ],
+      "expected_remaining_after_retry": 0
+    },
+    {
+      "name": "disabled_hold_then_drain_after_reenable",
+      "items": [{ "text": "Waiting message", "age_seconds": 60 }],
+      "enabled": false,
+      "quiet_hours_enabled": false,
+      "initial_hour": 14,
+      "initial_minute": 35,
+      "expected_initial_disposition": "held_disabled",
+      "expected_initial_spoken": [],
+      "expected_remaining_after_initial": 1,
+      "expected_dropped_expired": 0,
+      "retry_enabled": true,
+      "retry_hour": 14,
+      "retry_minute": 40,
+      "retry_next_day": false,
+      "expected_retry_disposition": "drained",
+      "expected_retry_spoken": ["While you were snoozed: Waiting message"],
+      "expected_remaining_after_retry": 0
+    }
+  ]
+}
