@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.28...vitruvian-courier-v0.3.29) (2026-11-18)
+
+
+### Features
+
+* **vitruvian-courier:** load older Google Chat history when you scroll up ([#5136](https://github.com/VitruvianSoftware/vitruvian-core/issues/5136)) ([24b5741](https://github.com/VitruvianSoftware/vitruvian-core/commit/24b5741f54cfb712f0adef7fe7ab8da0e326bd89))
+
 ## [0.3.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.27...vitruvian-courier-v0.3.28) (2026-11-18)
 
 
