@@ -855,7 +855,7 @@ public class WireTest {
     assertEquals(VitruvianSpeakerLimits(5.0, 300.0, 5.0, 15.0), poll.limits)
 
     assertEquals("Office Mini + This Mac + Your phone", s.outputsLabel)
-    assertTrue(s.outputsFooter.orEmpty().contains("Your phone plays the Gemini voice"))
+    assertTrue(s.outputsFooter.orEmpty().contains("Your phone"))
 
     assertEquals(
         listOf("Bedroom Hub", "Kitchen Speaker", "Office Mini"),

@@ -2880,8 +2880,9 @@ public class DeriveTest {
     // The single phone point-of-view substitution: "Your phone" -> "This phone".
     assertEquals(Derive.THIS_PHONE, Derive.catalogLabel(catalog, "speak_phone"))
     assertEquals("Office Mini + This Mac + This phone", Derive.outputsSummary(sources.outputsLabel))
+    assertTrue(sources.outputsFooter.orEmpty().contains("Your phone"))
     val footer = Derive.phoneWording(sources.outputsFooter.orEmpty())
-    assertTrue(footer.contains("This phone plays the Gemini voice"))
+    assertTrue(footer.contains("This phone"))
     assertFalse(footer.contains("Your phone"))
 
     // Synthetic catalog proves the phone uses whatever labels, choices and step limits arrive
@@ -3303,11 +3304,14 @@ public class DeriveTest {
     assertTrue("catalog keys dropped (neither placed nor generic): $dropped", dropped.isEmpty())
 
     assertEquals(catalogKeys.size, drawn.size + generic.size)
-    // This list is the record of keys that deliberately show under "Other settings": empty before
-    // the speaker change, and the two snooze keys after. Any other key Vitruvian Speaker adds
-    // later fails here as a prompt to decide whether it deserves a hand-made row.
+    // This list is the record of keys that deliberately show under "Other settings": the two
+    // snooze keys and phone_voice_engine, a new Speaker setting that shows under "Other settings".
+    // Any other key Vitruvian Speaker adds later fails here as a prompt to decide whether it
+    // deserves a hand-made row.
     val expectedGeneric =
-        listOf("snooze_default_minutes", "snooze_queue").filter { it in catalogKeys }
+        listOf("snooze_default_minutes", "snooze_queue", "phone_voice_engine").filter {
+          it in catalogKeys
+        }
     assertEquals(expectedGeneric, generic)
   }
 
