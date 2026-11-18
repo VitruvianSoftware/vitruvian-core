@@ -506,6 +506,41 @@ final class AttachmentMentionEmbedTests: XCTestCase {
                      "only pictures already on this Mac")
     }
 
+    /// What the WhatsApp bridge stores for a link with a thumbnail: the matched address, a title, the picture saved on
+    /// this Mac (a local media path) and its size. No page address of its own, no site name, no description.
+    private func whatsAppPreview(_ url: String, picture: String) -> LinkPreviewItem {
+        LinkPreviewItem(matchedURL: url, title: "A WhatsApp link", imagePath: picture, imageWidth: 160, imageHeight: 90)
+    }
+
+    func testAWhatsAppPreviewPictureIsDrawnInTheLinkCardAndTheYouTubeCard() throws {
+        let picture = try redPicture()
+
+        // The ordinary link card.
+        let plain = whatsAppPreview("https://example.com/article", picture: picture)
+        try Snapshot.render("whatsapp-link-card", width: 360, prepare: settleUntilRed) {
+            LinkPreviewCardView(preview: plain).padding(14)
+        }
+
+        // The YouTube card, fed the way the message row feeds it: the picture comes from the message's own preview.
+        let youTubeURL = "https://youtu.be/dQw4w9WgXcQ"
+        var event = Fixture.event("$wa", mine: false, ts: 1, content: [
+            "msgtype": .string("m.text"), "body": .string(youTubeURL),
+        ])
+        event.linkPreviews = [whatsAppPreview(youTubeURL, picture: picture)]
+        let message = try XCTUnwrap(Fixture.messages([event]).first)
+        let embedPicture = try XCTUnwrap(ExternalEmbedDescriptor.previewImagePath(in: message))
+        let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: youTubeURL))
+        try Snapshot.render("whatsapp-youtube-card", width: 360, prepare: settleUntilRed) {
+            EmbedConsentCard(messageID: "$wa", descriptor: descriptor, isLoaded: false, previewImagePath: embedPicture,
+                             onLoadEmbed: {}).padding(14)
+        }
+
+        for suffix in ["light", "dark"] {
+            XCTAssertGreaterThan(try redPixelCount("whatsapp-link-card", suffix), 500, "the link card draws the picture")
+            XCTAssertGreaterThan(try redPixelCount("whatsapp-youtube-card", suffix), 500, "the YouTube card draws the picture")
+        }
+    }
+
     func testBrokenLocalPreviewStillMakesNoYouTubeRequestWhenExternalContentIsOff() throws {
         let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/K9mPq2LwX-_"))
         EmbedThumbnail.clearCache()
