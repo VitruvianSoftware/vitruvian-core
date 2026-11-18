@@ -49,6 +49,7 @@ go_test(
         "media.go",
         "members.go",
         "members_test.go",
+        "older_history_test.go",
         "rooms.go",
         "send.go",
         "sync.go",

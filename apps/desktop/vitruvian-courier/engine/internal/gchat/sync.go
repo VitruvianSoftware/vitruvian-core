@@ -26,7 +26,6 @@ import (
 const (
 	worldSectionPageSize      = 999
 	defaultTopicsPageSize     = 30
-	defaultMessagesPageSize   = 50
 	typingNotificationTimeout = 6 * time.Second
 	initialChatSyncCap        = 30
 )
@@ -800,15 +799,57 @@ func (c *Client) queueReceiptsAfterCurrent(ctx context.Context, evts []bridgev2.
 	}()
 }
 
+// listTopicsPageSize is the page size list_topics always asks for. chat.google.com sends 30, and Google answers
+// HTTP 500 to some larger sizes (a Family space did, asked for the backfill's Count).
+const listTopicsPageSize = defaultTopicsPageSize
+
+// buildListTopicsRequest builds list_topics exactly as chat.google.com sends it when it opens a space and when
+// it scrolls up (captured live, 2026-11): page_size_for_topics 30, fetch options READ_RECEIPTS, USER and 4, reply
+// page sizes 1000 (unread) and 20 (read), the group, the user and group revisions we last saw, and field 11 = 2.
+// olderThanMicros > 0 adds the paging cursor the website sends when scrolling up: the sort time of the oldest
+// topic already loaded, so that Google answers the page of topics older than it.
+//
+// Which part of the old request (group_id and page size only, then 50 for DMs or Count for any chat) made Google
+// answer HTTP 500 for some spaces could not be proved without live calls, so this takes the website's whole shape,
+// which is known to work.
+func buildListTopicsRequest(groupID *pb.GroupId, pageSize int, userRev, groupRev, olderThanMicros int64) *pb.ListTopicsRequest {
+	req := &pb.ListTopicsRequest{
+		GroupId:                  groupID,
+		PageSizeForTopics:        pb.Int32(int32(pageSize)),
+		PageSizeForUnreadReplies: pb.Int32(1000),
+		PageSizeForReadReplies:   pb.Int32(20),
+		FetchOptions:             []pb.ListTopicsRequest_FetchOptions{pb.ListTopicsRequest_READ_RECEIPTS, pb.ListTopicsRequest_USER, pb.ListTopicsRequest_FETCH_OPTION_4},
+		Unknown_11:               pb.Int32(2),
+	}
+	if userRev > 0 {
+		req.UserNotOlderThan = &pb.ReferenceRevision{Timestamp: pb.Int64(userRev)}
+	}
+	if groupRev > 0 {
+		req.GroupNotOlderThan = &pb.ReferenceRevision{Timestamp: pb.Int64(groupRev)}
+	}
+	if olderThanMicros > 0 {
+		req.OlderThanSortTime = &pb.TopicSortTimeCursor{Timestamp: pb.Int64(olderThanMicros)}
+	}
+	return req
+}
+
 // FetchMessages implements bridgev2.BackfillingNetworkAPI with one POST /u/0/api/list_topics for
-// spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages).
-// The request carries only group_id and page_size_for_topics: adding the page_size_for_*replies fields
-// made Google answer HTTP 500, and list_messages cannot list a whole DM because it needs a topic id.
-// Without those fields Google returns essentially each topic's head only (a live Vitruvian Courier stored 567 heads and 4
-// replies across 15 spaces), so the replies of the topics that have some come from list_messages on each topic id
-// (fetchTopicReplies), at most maxReplyTopicsPerFetch topics a call.
+// spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages), with the
+// request shaped like chat.google.com's own (buildListTopicsRequest).
+//
+// A backwards backfill (scroll-to-load older history) with an anchor sends the paging cursor: the anchor's
+// create time. Google returns the topics whose sort time (last activity) is older than that, so every message of
+// those topics is older than the anchor. The anchor is the oldest message stored, and a topic's sort time is never
+// before its head's create time, so a topic that could hold messages older than the anchor is not skipped except
+// when the anchor's own topic had later replies (the cursor then undershoots the sort time Google would use, and
+// topics sorted in between are not listed; a stored sort time would close that, none is kept).
+// HasMore is true when a backwards load got a full page of topics (an initial or forward fetch says false). ListTopicsResponse's contains_first_topic and
+// contains_last_topic are not used: which end each names has not been proved.
+//
 // A forward backfill keeps only messages newer than the anchor, so a chat resync fills a gap without
-// re-sending what is already stored. History sync is strictly read-only (MarkRead: false, HasMore: false).
+// re-sending what is already stored. The topics' replies come from list_messages on each topic id
+// (fetchTopicReplies), at most maxReplyTopicsPerFetch topics a call. History sync is strictly read-only
+// (MarkRead: false).
 func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
 	if fetchParams.Portal == nil {
 		return nil, fmt.Errorf("FetchMessages called with nil portal")
@@ -818,17 +859,26 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		return nil, err
 	}
 
-	topicsPageSize := defaultTopicsPageSize
-	if isDM {
-		topicsPageSize = defaultMessagesPageSize
+	anchor := fetchParams.AnchorMessage
+	var anchorMicros int64
+	if anchor != nil {
+		anchorMicros = anchor.Timestamp.UnixMicro()
 	}
-	if fetchParams.Count > 0 {
+
+	topicsPageSize := listTopicsPageSize
+	if fetchParams.Count > 0 && fetchParams.Count < topicsPageSize {
 		topicsPageSize = fetchParams.Count
 	}
-	reqBytes, err := pb.Marshal(&pb.ListTopicsRequest{
-		GroupId:           pb.PartsToGroupID(rawID, isDM),
-		PageSizeForTopics: pb.Int32(int32(topicsPageSize)),
-	})
+	var cursorMicros int64
+	if !fetchParams.Forward && anchor != nil {
+		cursorMicros = anchorMicros
+	}
+	var groupRev int64
+	if meta, ok := fetchParams.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		groupRev = meta.GroupRevision
+	}
+	groupID := pb.PartsToGroupID(rawID, isDM)
+	reqBytes, err := pb.Marshal(buildListTopicsRequest(groupID, topicsPageSize, c.storedUserRevision(), groupRev, cursorMicros))
 	if err != nil {
 		return nil, fmt.Errorf("marshal list_topics request: %w", err)
 	}
@@ -842,14 +892,9 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 	if err := pb.Unmarshal(respBytes, &resp); err != nil {
 		return nil, fmt.Errorf("decode list_topics response: %w", err)
 	}
+	hasMore := cursorMicros > 0 && len(resp.GetTopics()) >= topicsPageSize
 
 	c.queueReceiptsAfterCurrent(ctx, c.readReceiptEvents(ctx, isDM, rawID, resp.GetReadReceiptSet()))
-
-	anchor := fetchParams.AnchorMessage
-	var anchorMicros int64
-	if anchor != nil {
-		anchorMicros = anchor.Timestamp.UnixMicro()
-	}
 
 	var parsed []parsedMessage
 	seen := make(map[networkid.MessageID]struct{})
@@ -870,7 +915,6 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 			add(parseMessageFromProto(reply), topicFallbackID)
 		}
 	}
-	groupID := pb.PartsToGroupID(rawID, isDM)
 	for _, topicID := range topicsWithReplies(resp.GetTopics(), fetchParams.Forward, anchorMicros) {
 		replies, err := c.fetchTopicReplies(ctx, groupID, topicID)
 		if err != nil {
@@ -926,7 +970,7 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages: backfillMsgs,
-		HasMore:  false,
+		HasMore:  hasMore,
 		MarkRead: false,
 		// A resync fetches the same topics again: drop whatever is already stored, by message id, so replies
 		// and heads that arrived live or in an earlier backfill are not sent twice.
