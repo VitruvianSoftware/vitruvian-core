@@ -33,6 +33,7 @@ go_test(
         "connector_test.go",
         "intent_test.go",
         "repair_gmessages_test.go",
+        "whatsapp_preview_test.go",
     ],
     embed = [":localmatrix"],
     deps = [
@@ -43,6 +44,13 @@ go_test(
         "//apps/desktop/vitruvian-courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
+        "@fi_mau_go_mautrix_whatsapp//pkg/msgconv",
+        "@fi_mau_go_mautrix_whatsapp//pkg/waid",
+        "@fi_mau_go_whatsmeow//:whatsmeow",
+        "@fi_mau_go_whatsmeow//proto/waE2E",
+        "@fi_mau_go_whatsmeow//store",
+        "@fi_mau_go_whatsmeow//types",
+        "@fi_mau_go_whatsmeow//util/log",
         "@net_maunium_go_mautrix//:mautrix",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/bridgeconfig",
@@ -52,5 +60,6 @@ go_test(
         "@net_maunium_go_mautrix//bridgev2/status",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
+        "@org_golang_google_protobuf//proto",
     ],
 )
