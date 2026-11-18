@@ -89,9 +89,14 @@ swift_test(
 # broken layout before. SwiftPM's VitruvianCourierViewTests is the same harness against the executable target.
 # Large (900 s): on CI's hosted Macs the suite already took 254 s of medium's 300 on main, and each new snapshot
 # pushes it closer; a timeout there fails the merge queue for no fault in the change (PR #4238).
+# An eternal timeout (3,600 s) on top, because large's 900 s ran out the same way: on 2026-11-17 the suite took
+# 641 to 898 s in the eight merge-queue runs that ran it and then timed out at 905 s in a ninth, which threw
+# PR #5054 out of the queue. Bazel has no step between 900 and 3,600; the unit's 60-minute job limit is what
+# stops a real hang. The suite's own time is the thing to fix: one run a day earlier took about 565 s.
 swift_test(
     name = "VitruvianCourierViewTests",
     size = "large",
+    timeout = "eternal",
     srcs = glob(["Tests/VitruvianCourierViewTests/**/*.swift"]),
     # The made-up chats the test copy can open with: SeedScenarioSnapshotTests draws one (SeedScenario.swift).
     data = [
