@@ -424,7 +424,11 @@ fn redact_bearer_tokens(input: &str) -> String {
         let mut next = String::with_capacity(out.len());
         let mut rest = out.as_str();
         while let Some(idx) = rest.find(prefix) {
-            let prev_byte = if idx > 0 { Some(rest.as_bytes()[idx - 1]) } else { None };
+            let prev_byte = if idx > 0 {
+                Some(rest.as_bytes()[idx - 1])
+            } else {
+                None
+            };
             if prefix == "sk-" && !is_token_boundary(prev_byte) {
                 next.push_str(&rest[..idx + prefix.len()]);
                 rest = &rest[idx + prefix.len()..];
@@ -506,7 +510,10 @@ impl RecorderState {
         let Ok(mut val) = JsonParser::new(trimmed).parse() else {
             return;
         };
-        let method = val.get("method").and_then(|v| v.as_str()).map(str::to_string);
+        let method = val
+            .get("method")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
         let id = val.get("id").cloned();
 
         if let Some(method_name) = method {
@@ -515,7 +522,10 @@ impl RecorderState {
             }
             self.redactor.redact_value(&mut val);
             let record = JsonValue::Object(vec![
-                ("direction".to_string(), JsonValue::String("client".to_string())),
+                (
+                    "direction".to_string(),
+                    JsonValue::String("client".to_string()),
+                ),
                 ("method".to_string(), JsonValue::String(method_name)),
                 ("raw".to_string(), val),
             ]);
@@ -563,7 +573,10 @@ impl RecorderState {
         }
         self.redactor.redact_value(&mut val);
         let record = JsonValue::Object(vec![
-            ("direction".to_string(), JsonValue::String("agent".to_string())),
+            (
+                "direction".to_string(),
+                JsonValue::String("agent".to_string()),
+            ),
             ("send".to_string(), val),
         ]);
         self.write_line(&record.to_json_string());
@@ -813,7 +826,9 @@ mod tests {
         };
         state.record_client_line(r#"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{}}"#);
         state.record_agent_line(r#"{"jsonrpc":"2.0","id":7,"result":{"protocolVersion":1}}"#);
-        state.record_client_line(r#"{"jsonrpc":"2.0","id":"perm-1","result":{"outcome":{"outcome":"cancelled"}}}"#);
+        state.record_client_line(
+            r#"{"jsonrpc":"2.0","id":"perm-1","result":{"outcome":{"outcome":"cancelled"}}}"#,
+        );
         drop(state);
 
         let text = fs::read_to_string(&out_path).unwrap();
