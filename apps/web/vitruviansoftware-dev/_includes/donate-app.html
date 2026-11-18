@@ -6,11 +6,13 @@
   so that every app's donations arrive on its own Payment Link and Stripe
   shows which app they back.
 
-  It forwards to the app's `url` in _data/donations.yml, and only to a
-  live-mode Stripe Payment Link: an address on https://buy.stripe.com/ or
-  https://donate.stripe.com/ (Stripe serves links whose submit type is
-  "donate" from the second), never a test_ link. Until then it says donations
-  open soon and offers a star on the app's `repo`.
+  It validates the app's `url` in _data/donations.yml is a live-mode Stripe
+  Payment Link (an address on https://buy.stripe.com/ or
+  https://donate.stripe.com/ — Stripe serves links whose submit type is
+  "donate" from the second — never a test_ link) and renders the shared
+  one-time donation card (_includes/donate-card.html) so the donor reads the
+  terms and clicks through to Stripe (never auto-redirecting). Until then it
+  says donations open soon and offers a star on the app's `repo`.
 {%- endcomment -%}
 {%- assign app = site.data.donations[include.key] -%}
 {%- assign link = app.url | strip -%}
@@ -21,22 +23,17 @@
 {%- if donate == "https://donate.stripe.com/" and link.size > 26 -%}{%- assign live = true -%}{%- endif -%}
 {%- if link contains "/test_" -%}{%- assign live = false -%}{%- endif -%}
 
+{%- if live %}
+{%- include donate-card.html key=include.key name=app.name link=link -%}
+{%- else %}
 <section class="not-found">
   <div class="container">
-    {%- if live %}
-    <h1>Taking you to Stripe...</h1>
-    <p class="lead">Thank you for supporting {{ app.name }}. You choose the amount on Stripe's checkout page.</p>
-    <div class="btn-row">
-      <a id="donate-checkout-btn" class="btn btn-primary" href="{{ link }}" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}">Continue to checkout</a>
-    </div>
-    {%- include donate-redirect.html key=include.key link=link -%}
-    {%- else %}
     <h1>Donations for {{ app.name }} open soon.</h1>
     <p class="lead">Thank you for wanting to help. Until then, a star on GitHub helps more people find {{ app.name }}.</p>
     <div class="btn-row">
       <a class="btn btn-primary" href="{{ app.repo }}">Star on GitHub</a>
       <a class="btn" href="{{ '/downloads/' | relative_url }}">Downloads</a>
     </div>
-    {%- endif %}
   </div>
 </section>
+{%- endif %}

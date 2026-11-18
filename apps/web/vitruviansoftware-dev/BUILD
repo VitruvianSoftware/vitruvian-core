@@ -55,12 +55,18 @@ exports_files(
     visibility = ["//tools/sync-downloads:__pkg__"],
 )
 
-# The donate pages and the links they forward to. The stripe stack's
-# donations_pages_test.go checks they list the same apps as its
+# The donate pages, shared card includes, and the links/amounts they read. The
+# stripe stack's donations_pages_test.go checks they list the same apps as its
 # donations.apps, so each app's donations reach its own Payment Link.
 filegroup(
     name = "donate_pages",
-    srcs = ["_data/donations.yml"] + glob(["donate/*.html"]),
+    srcs = [
+        "_data/donation_amounts.yml",
+        "_data/donations.yml",
+    ] + glob([
+        "_includes/donate-*.html",
+        "donate/*.html",
+    ]),
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
 

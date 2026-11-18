@@ -137,8 +137,14 @@ func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct ac
 					Quantity: pulumi.Float64(1),
 				},
 			},
-			// Labels the button "Donate" on Stripe's hosted page.
+			// Labels the button "Donate" on Stripe's hosted page, and reassures
+			// donors beside it that this is a single charge, not a subscription.
 			SubmitType: pulumi.String("donate"),
+			CustomText: &stripe.PaymentLinkCustomTextArgs{
+				Submit: &stripe.PaymentLinkCustomTextSubmitArgs{
+					Message: pulumi.String(s.SubmitText()),
+				},
+			},
 			AfterCompletion: &stripe.PaymentLinkAfterCompletionArgs{
 				Type: pulumi.String("hosted_confirmation"),
 				HostedConfirmation: &stripe.PaymentLinkAfterCompletionHostedConfirmationArgs{
