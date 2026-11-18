@@ -63,6 +63,7 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/AppInfo.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/BridgeRestartPolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Markdown.kt",
@@ -79,6 +80,7 @@ kt_android_library(
     deps = [
         ":app_info",
         ":bridge_policy",
+        ":bridge_restart_policy",
         ":derive",
         ":format",
         ":hid_codes",
@@ -236,6 +238,7 @@ kt_jvm_test(
     deps = [
         ":app_info",
         ":bridge_policy",
+        ":bridge_restart_policy",
         ":derive",
         ":format",
         ":hid_codes",
@@ -333,6 +336,7 @@ kt_jvm_test(
     runtime_deps = [":android_sdk_stub_jar"],
     deps = [
         ":app_info",
+        ":bridge_restart_policy",
         ":derive",
         ":format",
         ":hid_codes",
@@ -435,6 +439,21 @@ kt_jvm_test(
     ],
 )
 
+kt_jvm_library(
+    name = "bridge_restart_policy",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/BridgeRestartPolicy.kt"],
+)
+
+kt_jvm_test(
+    name = "bridge_restart_policy_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/BridgeRestartPolicyTest.kt"],
+    test_class = "dev.vitruvian.remote.state.BridgeRestartPolicyTest",
+    deps = [
+        ":bridge_restart_policy",
+        "@maven//:junit_junit",
+    ],
+)
+
 kt_jvm_test(
     name = "tuning_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/trackpad/TuningTest.kt"],
@@ -528,6 +547,7 @@ pipeline_unit(
         ":app",
         ":app_info_test",
         ":bridge_policy_test",
+        ":bridge_restart_policy_test",
         ":derive_test",
         ":format_test",
         ":hid_codes_test",

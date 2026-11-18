@@ -47,6 +47,24 @@ and shows the newest 20 on **Settings → Phone Bridge** and in the agent log. T
 Bridge** switch on that page (or **Stop bridge** in the foreground service notification) ends the
 service and the link.
 
+## Keeping the link alive
+
+- **Foreground service type (`connectedDevice`):** Phone Bridge runs as an Android `connectedDevice`
+  foreground service (`FOREGROUND_SERVICE_CONNECTED_DEVICE` with the install-time
+  `CHANGE_NETWORK_STATE` permission), matching a continuous network link to the user's paired Mac
+  with no daily runtime limit (replacing `dataSync`, which Android 15 caps at six hours in 24).
+- **Reboots and app updates:** When **Run Phone Bridge** is on, `BootReceiver` starts the service
+  again after the phone finishes booting and is unlocked (`BOOT_COMPLETED`, once credential-encrypted
+  storage is readable) and after an app update (`MY_PACKAGE_REPLACED`). Tapping **Stop bridge** in
+  the notification or turning **Run Phone Bridge** off clears the saved switch so reboots, updates,
+  and opening the app leave it off.
+- **Timeout and refusal defence:** On Android 15+, if the system ever calls `onTimeout` on the
+  service or refuses a background `startForeground` (`ForegroundServiceStartNotAllowedException` or
+  `SecurityException`), Phone Bridge stops cleanly and returns `START_NOT_STICKY` instead of
+  crash-looping, leaves **Run Phone Bridge** switched on, shows the reason on the Phone Bridge page
+  (`"Phone Bridge stopped by Android, open the app to resume"` on a refused start), and starts again
+  automatically the next time Vitruvian Remote is opened.
+
 ## Wire contract (Mac agent, "v1.3 additions" in API.md)
 
 - `POST /v1/phone/link` (act tier, paired token). Body: `{"device":{"model","android"},"tools":[…]}`
