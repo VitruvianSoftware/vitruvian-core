@@ -3303,10 +3303,12 @@ public class DeriveTest {
     assertTrue("catalog keys dropped (neither placed nor generic): $dropped", dropped.isEmpty())
 
     assertEquals(catalogKeys.size, drawn.size + generic.size)
-    // Today every golden key has a hand-designed home, so "Other settings" is empty. A key
-    // Vitruvian Speaker adds later lands here and shows on the phone with no phone release; this
-    // line then names it, which is the prompt to decide whether it deserves a hand-made row.
-    assertEquals(emptyList<String>(), generic)
+    // This list is the record of keys that deliberately show under "Other settings": empty before
+    // the speaker change, and the two snooze keys after. Any other key Vitruvian Speaker adds
+    // later fails here as a prompt to decide whether it deserves a hand-made row.
+    val expectedGeneric =
+        listOf("snooze_default_minutes", "snooze_queue").filter { it in catalogKeys }
+    assertEquals(expectedGeneric, generic)
   }
 
   @Test
