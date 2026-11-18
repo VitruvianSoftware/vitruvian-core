@@ -399,6 +399,8 @@ repeat it.
 
 **Do it as two PRs, in this order.** The export workflow in the second PR needs the key from the
 first. If the export reaches `main` before the key exists, it has nothing to push with.
+One PR also works now: each export caller's `await-repo-config` job waits for the Repo Config
+Apply that the same push starts, so the key exists before the export loads it (#4414, #5084).
 
 #### PR 1: the key
 

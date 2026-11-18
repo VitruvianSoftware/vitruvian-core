@@ -46,7 +46,11 @@ The radial menu is not bound to any button by default. It is opt-in: configure a
 
 ## Desktop CLI and Subcommands
 
-The desktop binary (`vitruvian-wand`) supports GUI launch, diagnostics, session recording, and deterministic replay:
+The desktop binary (`vitruvian-wand`) supports GUI launch, diagnostics, session recording, and deterministic replay.
+The commands below run inside the vitruvian-core monorepo. From a clone of the
+standalone mirror, use `cargo run --release -p vitruvian-wand-desktop --` in place of
+`bazel run //apps/suites/vitruvian-wand/desktop:vitruvian-wand --` (see
+[From the standalone repository](#from-the-standalone-repository)).
 
 - **Launch GUI & Tray**:
   ```bash
@@ -112,7 +116,8 @@ Platform setup instructions:
 
 ## Building and Testing
 
-Build and test Vitruvian Wand using Bazel targets:
+Inside the vitruvian-core monorepo, build and test Vitruvian Wand with Bazel
+(the standalone mirror uses Cargo instead; see below):
 
 ```bash
 # Run pure engine unit tests and replay test suites
@@ -133,7 +138,10 @@ is a read-only mirror of this folder, copied out of the
 monorepo on every change. Send changes to the monorepo; pull requests on the
 mirror are not merged there.
 
-The engine and the desktop app build with plain Cargo (Rust 1.98 or newer):
+The engine and the desktop app build with plain Cargo (Rust 1.98 or newer).
+This is checked on macOS. On Linux the desktop app should build the same way
+but has not been tried with Cargo; it needs a C compiler, because the `dbus`
+crate builds libdbus from source.
 
 ```bash
 cargo test --workspace --locked
