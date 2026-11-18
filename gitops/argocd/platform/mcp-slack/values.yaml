@@ -27,7 +27,7 @@
 image:
   # Updated automatically by argocd-image-updater when a new digest lands
   # behind ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main.
-  digest: "main@sha256:49fd943d62c23624adc119726afbb304d5b654e8f571d08399ed308f4209dd2c"
+  digest: "main@sha256:f18ddd05c45fbfa90349f3d1a36fd86d527bae53d313867ce2eeadbd882fe975"
   # Must match the ImageUpdater's imageName (imageupdater-mcp-slack.yaml): the image
   # build publishes only under this name, so the updater watching any other name
   # never sees a new build.
