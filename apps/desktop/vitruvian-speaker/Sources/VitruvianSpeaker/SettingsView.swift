@@ -496,45 +496,47 @@ public struct SettingsView: View {
 
                 if viewModel.snoozeDefaultPresetSelection == "custom" ||
                     !SpeakerConfig.snoozePresets.contains(configManager.config.effectiveSnoozeDefaultMinutes) {
-                    HStack(spacing: 8) {
-                        TextField("1-240", text: $viewModel.customDefaultSnoozeText)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .onChange(of: viewModel.customDefaultSnoozeText) { _, _ in
-                                viewModel.customDefaultSnoozeError = nil
+                    LabeledContent("Custom length") {
+                        HStack(spacing: 8) {
+                            TextField("", text: $viewModel.customDefaultSnoozeText)
+                                .labelsHidden()
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 64)
+                                .onChange(of: viewModel.customDefaultSnoozeText) { _, _ in
+                                    viewModel.customDefaultSnoozeError = nil
+                                }
+                                .onSubmit {
+                                    applyCustomDefaultSnooze()
+                                }
+                                .accessibilityLabel("Custom default snooze minutes")
+                            Stepper(
+                                value: Binding(
+                                    get: {
+                                        (try? SettingsActions.parseSnoozeMinutes(
+                                            viewModel.customDefaultSnoozeText,
+                                            key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue
+                                        )) ?? configManager.config.effectiveSnoozeDefaultMinutes
+                                    },
+                                    set: { value in
+                                        viewModel.customDefaultSnoozeText = "\(value)"
+                                        viewModel.customDefaultSnoozeError = nil
+                                        _ = try? configManager.setSetting(.snoozeDefaultMinutes, value: .int(value), clampNumbers: false)
+                                    }
+                                ),
+                                in: SpeakerConfig.minSnoozeMinutes...SpeakerConfig.maxSnoozeMinutes,
+                                step: 5
+                            ) {
+                                EmptyView()
                             }
-                            .onSubmit {
+                            .labelsHidden()
+                            Text("min")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Apply") {
                                 applyCustomDefaultSnooze()
                             }
-                            .accessibilityLabel("Custom default snooze minutes")
-                        Stepper(
-                            value: Binding(
-                                get: {
-                                    (try? SettingsActions.parseSnoozeMinutes(
-                                        viewModel.customDefaultSnoozeText,
-                                        key: SettingsCatalog.Key.snoozeDefaultMinutes.rawValue
-                                    )) ?? configManager.config.effectiveSnoozeDefaultMinutes
-                                },
-                                set: { value in
-                                    viewModel.customDefaultSnoozeText = "\(value)"
-                                    viewModel.customDefaultSnoozeError = nil
-                                    _ = try? configManager.setSetting(.snoozeDefaultMinutes, value: .int(value), clampNumbers: false)
-                                }
-                            ),
-                            in: SpeakerConfig.minSnoozeMinutes...SpeakerConfig.maxSnoozeMinutes,
-                            step: 5
-                        ) {
-                            EmptyView()
+                            .controlSize(.small)
                         }
-                        .labelsHidden()
-                        Text("min (1-240)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Apply") {
-                            applyCustomDefaultSnooze()
-                        }
-                        .controlSize(.small)
                     }
                     if let error = viewModel.customDefaultSnoozeError {
                         Text(error)
@@ -552,7 +554,7 @@ public struct SettingsView: View {
             } header: {
                 Text("Snooze")
             } footer: {
-                Text("Choose a preset (15, 30, 60, or 120 min) or a custom length (1–240 min). When queueing is on, automated announcements wait until snooze ends.")
+                Text("Pick 15, 30, 60 or 120 minutes, or any length from 1 to 240. With queueing on, announcements wait and play when the snooze ends.")
             }
 
             statusSection
