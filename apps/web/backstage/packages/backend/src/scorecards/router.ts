@@ -28,6 +28,7 @@ import type {
 } from "@backstage/backend-plugin-api";
 import type { Entity } from "@backstage/catalog-model";
 import { evaluateEntityScorecard } from "./evaluator";
+import { githubTokenSource } from "./githubToken";
 
 export type RouterOptions = {
   catalogClient?: CatalogClient;
@@ -44,21 +45,10 @@ export async function createScorecardRouter(
   const router = Router();
   const repoRoot =
     options.repoRoot ?? resolve(__dirname, "../../../../../../..");
-  let githubToken =
-    options.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-
-  if (!githubToken && options.config) {
-    try {
-      if (options.config.has("integrations.github")) {
-        const githubConfigs = options.config.getOptionalConfigArray(
-          "integrations.github",
-        );
-        githubToken = githubConfigs?.[0]?.getOptionalString("token");
-      }
-    } catch {
-      // In smoke tests or standalone runs with minimal config schemas, ignore
-    }
-  }
+  const githubToken = githubTokenSource({
+    githubToken: options.githubToken,
+    config: options.config,
+  });
 
   router.get("/entities/:kind/:namespace/:name", async (req, res) => {
     const { kind, namespace, name } = req.params;

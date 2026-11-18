@@ -22,6 +22,7 @@ import { promises as fs } from "fs";
 import { resolve } from "path";
 import type { Entity } from "@backstage/catalog-model";
 import type { ComponentArchetype, LiveDiagnostics } from "./types";
+import { type GithubTokenSource, tokenFor } from "./githubToken";
 
 // In-memory cache for remote API calls with 5-minute TTL to avoid rate-limiting
 const memoryCache = new Map<string, { data: any; expiresAt: number }>();
@@ -178,7 +179,7 @@ export async function collectUptimeFacts(
 
 export async function collectCiQualityFacts(
   entity: Entity,
-  githubToken?: string,
+  githubTokenSource?: GithubTokenSource,
 ): Promise<LiveDiagnostics["ciHealth"]> {
   const annotations = entity.metadata.annotations ?? {};
   const workflow =
@@ -214,6 +215,7 @@ export async function collectCiQualityFacts(
     return cached;
   }
 
+  const githubToken = await tokenFor(githubTokenSource, slug);
   if (githubToken) {
     try {
       const url = `https://api.github.com/repos/${slug}/actions/workflows/${encodeURIComponent(

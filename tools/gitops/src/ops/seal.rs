@@ -25,7 +25,9 @@
 //! seal_pagerduty_readonly.sh. Each value goes to
 //! kubectl or kubeseal on stdin, never on a command line, and is never printed.
 
-use std::os::unix::fs::PermissionsExt;
+use std::io::Write;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 use shell_compat as sc;
 
@@ -1099,5 +1101,227 @@ mod pagerduty_readonly_tests {
             "backstage-pagerduty",
             "api-token"
         )));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// seal-backstage-github-app
+// ---------------------------------------------------------------------------
+
+/// The `vitruvian-backstage` GitHub App (created 2026-11-18 to replace the
+/// personal access token in `backstage-github-token`).
+pub const BACKSTAGE_APP_ID: &str = "5824092";
+
+/// A GitHub App's OAuth client id and secret, as `//tools/agent-app -- convert
+/// <code> <pem> <creds.json>` writes them. GitHub App client ids start `Iv`
+/// (an OAuth App's start `Ov`, and would be the wrong kind of app); client
+/// secrets are 40 lower-case hex characters.
+pub fn backstage_app_creds(json: &[u8]) -> Result<(String, String), String> {
+    let v: serde_json::Value =
+        serde_json::from_slice(json).map_err(|e| format!("credentials file is not JSON: {e}"))?;
+    let get = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_owned();
+    let (id, secret) = (get("client_id"), get("client_secret"));
+    if !id.starts_with("Iv")
+        || id.len() < 10
+        || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
+    {
+        return Err("client_id is not a GitHub App client id (expected Iv...)".into());
+    }
+    if secret.len() != 40
+        || !secret
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err("client_secret is not 40 lower-case hex characters".into());
+    }
+    Ok((id, secret))
+}
+
+/// Seal the vitruvian-backstage App's id, client id, client secret and private
+/// key into backstage/backstage-github-app, which Backstage's
+/// `integrations.github[].apps` reads. Nothing secret goes on a command line:
+/// each value reaches kubectl through a mode-600 file in a mode-700 directory
+/// that is removed afterwards.
+///
+///   bazel run //tools/gitops:seal-backstage-github-app -- <key.pem> <creds.json> [--apply]
+pub fn backstage_github_app(args: &[Vec<u8>]) -> i32 {
+    code(backstage_app_run(args))
+}
+
+fn backstage_app_run(args: &[Vec<u8>]) -> Res<i32> {
+    const USAGE: &[u8] = b"usage: bazel run //tools/gitops:seal-backstage-github-app -- <key.pem> <creds.json> [--apply]";
+    let (ns, secret) = ("backstage", "backstage-github-app");
+    let mut apply = false;
+    let mut pos: Vec<Vec<u8>> = Vec::new();
+    for a in args {
+        if a == b"--apply" {
+            apply = true;
+        } else if a.starts_with(b"-") {
+            return die(2, USAGE);
+        } else {
+            pos.push(a.clone());
+        }
+    }
+    if pos.len() != 2 {
+        return die(2, USAGE);
+    }
+    // Absolute before cd_workspace moves us; relative paths are the caller's.
+    let abs = |p: &[u8]| -> Vec<u8> {
+        let pb = std::path::Path::new(std::ffi::OsStr::from_bytes(p));
+        if pb.is_absolute() {
+            p.to_vec()
+        } else {
+            let base = std::env::var_os("BUILD_WORKING_DIRECTORY")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            base.join(pb).into_os_string().into_vec()
+        }
+    };
+    let (key, creds) = (abs(&pos[0]), abs(&pos[1]));
+    default_kubeconfig(0)?;
+    let k = kctx();
+    need_tools(&["kubectl", "kubeseal", "openssl"], false)?;
+    for p in [&key, &creds] {
+        let mode = mode_string(p).unwrap_or_default();
+        if mode != "600" {
+            return die(
+                1,
+                &sc::cat(&[
+                    b"ERROR: ",
+                    p,
+                    format!(" is mode '{}'; expected 600. Nothing was sealed.", mode).as_bytes(),
+                ]),
+            );
+        }
+    }
+    if run_quiet(
+        0,
+        cmd("openssl", &[b"rsa", b"-in", &key, b"-check", b"-noout"]),
+    ) != 0
+    {
+        return die(
+            1,
+            &sc::cat(&[
+                b"ERROR: ",
+                &key,
+                b" is not a valid RSA private key. Nothing was sealed.",
+            ]),
+        );
+    }
+    let (client_id, client_secret) =
+        match backstage_app_creds(&std::fs::read(sc::path(&creds)).unwrap_or_default()) {
+            Ok(c) => c,
+            Err(e) => return die(1, format!("ERROR: {e}. Nothing was sealed.").as_bytes()),
+        };
+    let app_id = sc::env_or("BACKSTAGE_APP_ID", BACKSTAGE_APP_ID.as_bytes());
+    cd_workspace(0)?;
+    let out = out_path(secret);
+
+    let dir = std::env::temp_dir().join(format!("seal-backstage-app.{}", std::process::id()));
+    if let Err(e) = std::fs::create_dir(&dir) {
+        return die(
+            1,
+            format!("ERROR: cannot create {}: {e}", dir.display()).as_bytes(),
+        );
+    }
+    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    let r = (|| -> Res<i32> {
+        let put = |name: &str, val: &[u8]| -> Res<Vec<u8>> {
+            let p = dir.join(name);
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&p)
+                .map_err(|_| 1)?;
+            f.write_all(val).map_err(|_| 1)?;
+            Ok(p.into_os_string().into_vec())
+        };
+        let f_id = put("id", &app_id)?;
+        let f_cid = put("cid", client_id.as_bytes())?;
+        let f_cs = put("cs", client_secret.as_bytes())?;
+        let tmp = dir.join("sealed.yaml").into_os_string().into_vec();
+        write_new(0, &tmp, LICENSE_HEADER.as_bytes())?;
+        let o = append_to(0, &tmp)?;
+        let create = kubectl(
+            &k,
+            &[
+                b"create",
+                b"secret",
+                b"generic",
+                secret.as_bytes(),
+                b"-n",
+                ns.as_bytes(),
+                b"--dry-run=client",
+                b"-o",
+                b"yaml",
+                &sc::cat(&[b"--from-file=GITHUB_APP_ID=", &f_id]),
+                &sc::cat(&[b"--from-file=GITHUB_APP_CLIENT_ID=", &f_cid]),
+                &sc::cat(&[b"--from-file=GITHUB_APP_CLIENT_SECRET=", &f_cs]),
+                &sc::cat(&[b"--from-file=GITHUB_APP_PRIVATE_KEY=", &key]),
+            ],
+        );
+        let st = pipeline(0, vec![create, kubeseal_yaml(&k)], None, Some(o));
+        if st != 0 {
+            return Err(st);
+        }
+        let text = std::fs::read(sc::path(&tmp)).unwrap_or_default();
+        for want in [
+            "GITHUB_APP_ID",
+            "GITHUB_APP_CLIENT_ID",
+            "GITHUB_APP_CLIENT_SECRET",
+            "GITHUB_APP_PRIVATE_KEY",
+        ] {
+            if !has_sealed_value(&text, want) {
+                return die(
+                    1,
+                    format!("ERROR: kubeseal produced no sealed {want}. Nothing was written.")
+                        .as_bytes(),
+                );
+            }
+        }
+        mv(0, &tmp, &out)?;
+        Ok(0)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    r?;
+    say(&sc::cat(&[
+        "\u{2713} sealed \u{2192} ".as_bytes(),
+        &out,
+        format!(" (SealedSecret {}/{}: App ", ns, secret).as_bytes(),
+        &app_id,
+        b")",
+    ]));
+    apply_or_next(
+        &k,
+        &out,
+        ns,
+        secret,
+        apply,
+        "\u{2713} applied: the sealed-secrets controller will materialize",
+    )
+}
+
+#[cfg(test)]
+mod backstage_app_tests {
+    use super::backstage_app_creds;
+
+    #[test]
+    fn accepts_github_app_credentials() {
+        let j = br#"{"client_id":"Iv23liABCDEFGHIJKLMN","client_secret":"0123456789abcdef0123456789abcdef01234567"}"#;
+        let (id, s) = backstage_app_creds(j).unwrap();
+        assert_eq!(id, "Iv23liABCDEFGHIJKLMN");
+        assert_eq!(s.len(), 40);
+    }
+
+    #[test]
+    fn refuses_an_oauth_app_or_a_malformed_secret() {
+        let oauth = br#"{"client_id":"Ov23liABCDEFGHIJKLMN","client_secret":"0123456789abcdef0123456789abcdef01234567"}"#;
+        assert!(backstage_app_creds(oauth)
+            .unwrap_err()
+            .contains("GitHub App"));
+        let short = br#"{"client_id":"Iv23liABCDEFGHIJKLMN","client_secret":"abc"}"#;
+        assert!(backstage_app_creds(short).unwrap_err().contains("40"));
+        assert!(backstage_app_creds(b"not json").is_err());
     }
 }

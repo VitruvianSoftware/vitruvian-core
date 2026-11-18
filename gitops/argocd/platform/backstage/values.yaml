@@ -72,6 +72,23 @@ backstage:
       secretKeyRef:
         name: backstage-github-token
         key: GITHUB_TOKEN
+  # The vitruvian-backstage GitHub App (app id 5824092). Its private key mints
+  # hour-long installation tokens; see the integrations block below.
+  - name: GITHUB_APP_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: backstage-github-app
+        key: GITHUB_APP_CLIENT_ID
+  - name: GITHUB_APP_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: backstage-github-app
+        key: GITHUB_APP_CLIENT_SECRET
+  - name: GITHUB_APP_PRIVATE_KEY
+    valueFrom:
+      secretKeyRef:
+        name: backstage-github-app
+        key: GITHUB_APP_PRIVATE_KEY
   - name: ARGOCD_TOKEN
     valueFrom:
       secretKeyRef:
@@ -351,9 +368,19 @@ backstage:
     integrations:
       github:
       - host: github.com
-        # Authenticates catalog-info.yaml fetches (previously anonymous, and so
-        # capped at GitHub's 60 req/hr unauthenticated limit) and is the
-        # credential publish:github uses to create scaffolded repositories.
+        # Catalog fetches, the GitHub org sync and scaffolder PRs authenticate as
+        # the vitruvian-backstage GitHub App: hour-long installation tokens,
+        # scoped to metadata/actions/members read and contents/pull_requests
+        # write. Backstage prefers an app over `token` for any owner the app is
+        # installed on.
+        apps:
+        - appId: 5824092
+          clientId: ${GITHUB_APP_CLIENT_ID}
+          clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+          privateKey: ${GITHUB_APP_PRIVATE_KEY}
+          allowedInstallationOwners: [VitruvianSoftware]
+        # Fallback only, until scorecards read the app token too; then this and
+        # backstage-github-token (James's personal token) are removed.
         token: ${GITHUB_TOKEN}
     catalog:
       providers:

@@ -1085,3 +1085,26 @@ fn pr_status_args_parses_repo_and_json() {
     assert!(parsed.json);
     assert!(pr_status_args("u", &v(&["--bogus"])).is_err());
 }
+
+#[test]
+fn client_creds_json_keeps_id_and_secret_only() {
+    let resp = br#"{"id":1,"slug":"x","client_id":"Iv23abc","client_secret":"s3cret","webhook_secret":null,"pem":"-----BEGIN RSA PRIVATE KEY-----"}"#;
+    let out = super::client_creds_json(resp).unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["client_id"], "Iv23abc");
+    assert_eq!(v["client_secret"], "s3cret");
+    assert!(
+        v.get("webhook_secret").is_none(),
+        "null webhook secret is omitted"
+    );
+    assert!(
+        v.get("pem").is_none(),
+        "the private key never lands in the creds file"
+    );
+}
+
+#[test]
+fn client_creds_json_rejects_a_response_without_a_secret() {
+    let err = super::client_creds_json(br#"{"client_id":"Iv23abc"}"#).unwrap_err();
+    assert!(err.contains("client_secret"), "{err}");
+}

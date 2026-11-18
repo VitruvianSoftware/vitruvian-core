@@ -20,7 +20,7 @@
 
 """The API half of standing up a per-agent GitHub App identity.
 
-  bazel run //tools/agent-app -- convert <manifest-code> <out.pem>
+  bazel run //tools/agent-app -- convert <manifest-code> <out.pem> [<out.creds.json>]
   bazel run //tools/agent-app -- installations <app-id> <key.pem>
   bazel run //tools/agent-app -- repos <app-id> <key.pem> <installation-id>
   bazel run //tools/agent-app -- token <app-id> <key.pem> <installation-id>
