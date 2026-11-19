@@ -263,6 +263,19 @@ public struct ChatAISummary: Equatable, Sendable {
 /// that went changes: the networks mark it read then anyway), or by hand (⌘⇧U, Mark as Read, Mark All as Read, which
 /// are the inbox's). Turning Incognito off sends nothing for chats already open: what was looked at while it was on
 /// waits for the next message. Turning it on (`setIncognito`) asks whether to also hide that I'm typing.
+/// Whether the newest message is on screen, and how many came while it was not. Kept apart from the conversation's
+/// other state on purpose: it changes whenever the person scrolls off or back to the end, and anything watching the
+/// whole conversation (the timeline, with every row in it) would be evaluated again for each change. Only the
+/// jump-to-latest button watches this.
+@MainActor
+public final class BottomState: ObservableObject {
+    /// Messages from others that came while the chat was scrolled up: the jump-to-bottom button's count.
+    @Published public fileprivate(set) var newMessageCount = 0
+    @Published public fileprivate(set) var isAtBottom = true
+
+    public init() {}
+}
+
 @MainActor
 public final class ConversationModel: ObservableObject {
     public static let pageSize = 50
@@ -333,9 +346,11 @@ public final class ConversationModel: ObservableObject {
     /// does. A variable so a test can shorten it.
     static var loadOlderTimeout: TimeInterval = 60
     @Published public private(set) var problem: ConversationProblem?
-    /// Messages from others that came while the chat was scrolled up: the jump-to-bottom button's count.
-    @Published public private(set) var newMessageCount = 0
-    @Published public private(set) var isAtBottom = true
+    /// Whether the newest message is on screen (and the count of those that came while it was not): its own object,
+    /// see `BottomState`.
+    public let bottom = BottomState()
+    public var newMessageCount: Int { bottom.newMessageCount }
+    public var isAtBottom: Bool { bottom.isAtBottom }
     /// Goes up by one each time the view is asked to scroll to the newest message.
     @Published public private(set) var jumpToBottomRequest = 0
     /// The message a keyboard action (⌘R) is about.
@@ -1453,8 +1468,8 @@ public final class ConversationModel: ObservableObject {
             typingLine = nil
             lastOutgoingID = nil
             isLoaded = false
-            newMessageCount = 0
-            isAtBottom = true
+            bottom.newMessageCount = 0
+            bottom.isAtBottom = true
             selectedMessageID = nil
             scrollToMessageRequest = nil
             // Opened before, at its newest messages: drawn at once from what it had, while the newest page is read.
@@ -1733,7 +1748,7 @@ public final class ConversationModel: ObservableObject {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
                 holdsRead = false // a new message: the chat is read as usual again
-                if !isAtBottom { newMessageCount += incoming.count }
+                if !isAtBottom { bottom.newMessageCount += incoming.count }
                 if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
             }
             // A reply of mine from this Mac's composers may have gone. Only those count (Ruling 24): a scheduled
@@ -2087,7 +2102,7 @@ public final class ConversationModel: ObservableObject {
         missedChanges = false
         isAwayFromLatest = false
         hasNewerWhileAway = false
-        newMessageCount = 0
+        bottom.newMessageCount = 0
         clearHighlight()
         pageEpoch += 1 // older and newer pages of the window join nothing now
         dropPending = true
@@ -2338,8 +2353,8 @@ public final class ConversationModel: ObservableObject {
     /// The view says whether the newest message is on screen.
     public func scrolled(toBottom: Bool) {
         guard isAtBottom != toBottom else { return }
-        isAtBottom = toBottom
-        if toBottom { newMessageCount = 0 }
+        bottom.isAtBottom = toBottom
+        if toBottom { bottom.newMessageCount = 0 }
     }
 
     /// ⌘↓, the jump button ("Jump to latest" while away), and sending: scroll to the newest message. While the

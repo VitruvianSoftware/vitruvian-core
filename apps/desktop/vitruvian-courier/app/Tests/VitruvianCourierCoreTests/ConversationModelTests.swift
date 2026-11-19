@@ -1090,6 +1090,29 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Reaching or leaving the end of the timeline is told to the jump button's own object, not to the conversation:
+    /// the timeline watches the conversation, and every row in it is evaluated again for each change it announces
+    /// (about 9 ms with a screenful of rows). Scrolling must not announce one.
+    func testReachingOrLeavingTheBottomDoesNotChangeTheConversation() async throws {
+        let h = try await start(["!a": history(3)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        var conversationChanges = 0
+        var bottomChanges = 0
+        let watching = [
+            h.conversation.objectWillChange.sink { conversationChanges += 1 },
+            h.conversation.bottom.objectWillChange.sink { bottomChanges += 1 },
+        ]
+        h.conversation.scrolled(toBottom: false)
+        XCTAssertFalse(h.conversation.isAtBottom)
+        h.conversation.scrolled(toBottom: true)
+        XCTAssertTrue(h.conversation.isAtBottom)
+        XCTAssertEqual(conversationChanges, 0, "scrolling to or from the end announces nothing on the conversation")
+        XCTAssertGreaterThanOrEqual(bottomChanges, 2, "the jump button's object hears both")
+        watching.forEach { $0.cancel() }
+        await stop(h)
+    }
+
     // MARK: - Opening at a message
 
     func testJumpOpensAroundTheMessage() async throws {
