@@ -2,14 +2,14 @@
   "kind": "vitruvian-android-update",
   "schema": 1,
   "packageName": "dev.vitruvian.remote",
-  "version": "0.1.53",
-  "versionCode": 153,
+  "version": "0.1.54",
+  "versionCode": 154,
   "minSdk": 26,
   "published": "2026-11-19",
   "apk": {
-    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.53/VitruvianRemote-0.1.53.apk",
-    "size": 9722999,
-    "sha256": "da0c465b10bf3d893f788185e43273c2079f22f554d583ea2ada2d9a2be885ed"
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.54/VitruvianRemote-0.1.54.apk",
+    "size": 12794576,
+    "sha256": "fc196b3c48b7e9af9aacc5429ca2e0a19b8bcbedebb8476e62a8622b15debd8e"
   },
-  "notes": ["add 1h, 8h, and Always trust presets for Phone Bridge"]
+  "notes": ["use ML Kit GenAI TTS for phone.speak with Android TTS fallback"]
 }
