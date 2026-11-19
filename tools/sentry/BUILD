@@ -18,10 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Operational CLI tools for self-hosted Sentry (PagerDuty install & test event).
+"""Operational CLI tools for self-hosted Sentry (PagerDuty install, test event & CI token).
 
   bazel run //tools/sentry:pagerduty-install -- --subdomain vitruviansoftware --name "Vitruvian Software"
   bazel run //tools/sentry:send-test-event -- --dsn <DSN> [--level fatal] [--message <text>]
+  bazel run //tools/sentry:ci-token -- --name vitruvian-ci --out <path> [--url https://sentry.lab.ipv1337.dev] [--org sentry]
 
 See tools/sentry/README.md.
 """
@@ -33,6 +34,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 rust_library(
     name = "sentry_lib",
     srcs = [
+        "src/ci_token.rs",
         "src/http.rs",
         "src/lib.rs",
         "src/send_test_event.rs",
@@ -59,6 +61,15 @@ rust_binary(
 rust_binary(
     name = "send-test-event",
     srcs = ["src/bin/send_test_event.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":sentry_lib"],
+)
+
+rust_binary(
+    name = "ci-token",
+    srcs = ["src/bin/ci_token.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
@@ -93,6 +104,18 @@ rust_test(
     data = [":send-test-event"],
     edition = "2021",
     env = {"SEND_TEST_EVENT_BIN": "$(rootpath :send-test-event)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["@crates//:serde_json"],
+)
+
+rust_test(
+    name = "ci_token_test",
+    size = "small",
+    srcs = ["tests/ci_token_test.rs"],
+    crate_root = "tests/ci_token_test.rs",
+    data = [":ci-token"],
+    edition = "2021",
+    env = {"CI_TOKEN_BIN": "$(rootpath :ci-token)"},
     rustc_flags = ["-Copt-level=3"],
     deps = ["@crates//:serde_json"],
 )

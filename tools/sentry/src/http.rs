@@ -78,23 +78,37 @@ pub mod signals {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthHeader {
     Bearer(String),
-    SentryAuth { public_key: String, client: String },
+    SentryAuth {
+        public_key: String,
+        client: String,
+    },
+    /// Cookie-jar session authentication (no `Authorization` header sent; e.g.
+    /// Sentry's `SessionNoAuthTokenAuthentication` rejects any `Authorization` header).
+    Session {
+        redact_secret: String,
+    },
 }
 
 impl AuthHeader {
-    pub fn header_line(&self) -> String {
+    pub fn header_line_opt(&self) -> Option<String> {
         match self {
-            Self::Bearer(token) => format!("Authorization: Bearer {token}"),
-            Self::SentryAuth { public_key, client } => format!(
+            Self::Bearer(token) => Some(format!("Authorization: Bearer {token}")),
+            Self::SentryAuth { public_key, client } => Some(format!(
                 "X-Sentry-Auth: Sentry sentry_version=7, sentry_key={public_key}, sentry_client={client}"
-            ),
+            )),
+            Self::Session { .. } => None,
         }
+    }
+
+    pub fn header_line(&self) -> String {
+        self.header_line_opt().unwrap_or_default()
     }
 
     pub fn secret(&self) -> &str {
         match self {
             Self::Bearer(token) => token,
             Self::SentryAuth { public_key, .. } => public_key,
+            Self::Session { redact_secret } => redact_secret,
         }
     }
 }
@@ -176,6 +190,33 @@ impl CurlClient {
     pub fn cookie_jar(&self) -> &Path {
         &self.cookie_jar
     }
+
+    /// Append a Netscape-format cookie entry to the private `0600` cookie jar.
+    pub fn seed_cookie(
+        &self,
+        host: &str,
+        secure: bool,
+        name: &str,
+        value: &str,
+    ) -> Result<(), String> {
+        for part in [host, name, value] {
+            if part.is_empty() || part.chars().any(|c| c.is_control() || c.is_whitespace()) {
+                return Err(
+                    "cookie field cannot be empty or contain whitespace/control chars".into(),
+                );
+            }
+        }
+        let mut f = OpenOptions::new()
+            .append(true)
+            .open(&self.cookie_jar)
+            .map_err(|e| format!("failed to open cookie jar: {e}"))?;
+        let secure_flag = if secure { "TRUE" } else { "FALSE" };
+        writeln!(f, "{host}\tFALSE\t/\t{secure_flag}\t0\t{name}\t{value}")
+            .map_err(|e| format!("failed to write cookie jar: {e}"))?;
+        fs::set_permissions(&self.cookie_jar, fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("failed to set cookie jar permissions: {e}"))?;
+        Ok(())
+    }
 }
 
 impl Drop for CurlClient {
@@ -242,7 +283,9 @@ impl HttpClient for CurlClient {
         config.push_str(&format!("max-time = {}\n", self.timeout_secs));
         config.push_str(&format!("cookie = {}\n", quote(&jar)));
         config.push_str(&format!("cookie-jar = {}\n", quote(&jar)));
-        config.push_str(&format!("header = {}\n", quote(&self.auth.header_line())));
+        if let Some(auth_line) = self.auth.header_line_opt() {
+            config.push_str(&format!("header = {}\n", quote(&auth_line)));
+        }
         config.push_str("header = \"Accept: application/json\"\n");
         for h in &self.extra_headers {
             config.push_str(&format!("header = {}\n", quote(h)));
@@ -264,6 +307,8 @@ impl HttpClient for CurlClient {
             // out of the child's environment (readable via ps eww).
             .env_remove("SENTRY_TOKEN")
             .env_remove("SENTRY_DSN")
+            .env_remove("SENTRY_USER")
+            .env_remove("SENTRY_PASSWORD")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -362,6 +407,39 @@ mod tests {
             "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=pub123, sentry_client=vitruvian-send-test-event/1.0"
         );
         assert_eq!(sentry.secret(), "pub123");
+
+        let session = AuthHeader::Session {
+            redact_secret: "pw123".into(),
+        };
+        assert_eq!(session.header_line_opt(), None);
+        assert_eq!(session.header_line(), "");
+        assert_eq!(session.secret(), "pw123");
+    }
+
+    #[test]
+    fn curl_client_seed_cookie_writes_netscape_line_and_keeps_0600() {
+        let client = CurlClient::new(
+            "curl",
+            AuthHeader::Session {
+                redact_secret: "pw123".into(),
+            },
+        )
+        .unwrap();
+        client
+            .seed_cookie("sentry.example.com", true, "sc", "0123456789abcdef")
+            .unwrap();
+        let jar = fs::read_to_string(client.cookie_jar()).unwrap();
+        assert_eq!(
+            jar,
+            "sentry.example.com\tFALSE\t/\tTRUE\t0\tsc\t0123456789abcdef\n"
+        );
+        assert_eq!(
+            fs::metadata(client.cookie_jar()).unwrap().mode() & 0o777,
+            0o600
+        );
+        assert!(client
+            .seed_cookie("sentry.example.com", true, "sc", "bad\nval")
+            .is_err());
     }
 
     #[test]

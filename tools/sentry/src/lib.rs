@@ -21,6 +21,7 @@
 //! Idempotent bootstrap for Sentry's PagerDuty integration via Sentry's
 //! `integration_pipeline` session API without registering a PagerDuty OAuth app.
 
+pub mod ci_token;
 pub mod http;
 pub mod send_test_event;
 
@@ -68,7 +69,7 @@ pub struct Integration {
     pub name: String,
 }
 
-fn valid_url(url: &str) -> bool {
+pub(crate) fn valid_url(url: &str) -> bool {
     if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return false;
     }
@@ -81,7 +82,7 @@ fn valid_url(url: &str) -> bool {
     !host.is_empty()
 }
 
-fn valid_org(org: &str) -> bool {
+pub(crate) fn valid_org(org: &str) -> bool {
     !org.is_empty()
         && org
             .bytes()
