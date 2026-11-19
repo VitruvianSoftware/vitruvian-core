@@ -45,6 +45,7 @@ metadata:
 spec:
   targets:
     - ./apps/web/backstage/catalog-info.yaml
+    - ./apps/web/mini-party/catalog-info.yaml
     - ./apps/cli/vitruvian-devx/catalog-info.yaml
     - ./apps/cli/vitruvian-homelab/catalog-info.yaml
     - ./apps/embedded/vitruvian-deck/catalog-info.yaml
