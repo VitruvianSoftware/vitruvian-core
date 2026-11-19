@@ -813,6 +813,11 @@ public struct EnhancedImageView: View {
         self.forceBlurHashPlaceholder = forceBlurHashPlaceholder
         self.forceErrorState = forceErrorState
         self.onOpenLightbox = onOpenLightbox
+        // A picture the loader already holds is drawn in the row's first frame, not after a placeholder.
+        if !forceBlurHashPlaceholder, !forceErrorState, preloadedImage == nil, !message.isGIF,
+           let path = Self.localPath(of: message) {
+            _loadedCGImage = State(initialValue: ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image)
+        }
     }
 
     private var decodedBlurHash: CGImage? {
@@ -820,7 +825,9 @@ public struct EnhancedImageView: View {
         return BlurHashDecoder.decode(hash, width: 32, height: 32)
     }
 
-    private var localPath: String? {
+    private var localPath: String? { Self.localPath(of: message) }
+
+    private static func localPath(of message: TimelineMessage) -> String? {
         if isLocalMediaStorePath(message.mediaPath) {
             return message.mediaPath
         }
@@ -886,7 +893,8 @@ public struct EnhancedImageView: View {
             failed = true
             return
         }
-        loadedCGImage = nil
+        // A picture the loader holds replaces the old one at once; resetting to nil first would flash the placeholder.
+        loadedCGImage = localPath.flatMap { ThumbnailLoader.shared.cachedThumbnail(atPath: $0) }?.image
         loadedAnimatedImage = nil
         failed = false
         guard let path = localPath else {
@@ -973,8 +981,9 @@ public struct EnhancedImageView: View {
         if let w = message.width, let h = message.height, w > 0, h > 0 {
             return Self.proportionalSize(width: w, height: h)
         }
-        if let diskSize {
-            return Self.proportionalSize(width: Int(diskSize.width), height: Int(diskSize.height))
+        // A picture's own size is reserved before it loads; one already read is known in the row's first frame.
+        if let disk = diskSize ?? ImagePixelSizeReader.sizeNow(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
+            return Self.proportionalSize(width: Int(disk.width), height: Int(disk.height))
         }
         return Self.proportionalSize(width: nil, height: nil)
     }
@@ -998,17 +1007,45 @@ public struct EnhancedImageView: View {
 /// without width/height.
 actor ImagePixelSizeReader {
     static let shared = ImagePixelSizeReader()
-    private var cache: [String: CGSize] = [:]
 
-    func size(ofFirstReadable paths: [String?]) -> CGSize? {
+    /// Sizes already read, for any thread: a header read is small but it is a file read, and a row that scrolls
+    /// back into view should know its picture's size in its first frame. A file that could not be read is kept
+    /// as `.zero` so it is not tried again on every layout.
+    private nonisolated static let known = KnownSizes()
+
+    private final class KnownSizes: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sizes: [String: CGSize] = [:]
+
+        func size(at path: String) -> CGSize? {
+            lock.lock()
+            defer { lock.unlock() }
+            return sizes[path]
+        }
+
+        func set(_ size: CGSize, at path: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            sizes[path] = size
+        }
+    }
+
+    /// The size of the first readable local picture among `paths`, reading a header on this thread if need be.
+    nonisolated static func sizeNow(ofFirstReadable paths: [String?]) -> CGSize? {
         for path in paths.compactMap({ $0 }) where isLocalMediaStorePath(path) {
-            if let known = cache[path] { return known }
-            if let size = Self.read(path) {
-                cache[path] = size
-                return size
+            if let remembered = known.size(at: path) {
+                if remembered != .zero { return remembered }
+                continue
             }
+            let read = Self.read(path)
+            known.set(read ?? .zero, at: path)
+            if let read { return read }
         }
         return nil
+    }
+
+    func size(ofFirstReadable paths: [String?]) -> CGSize? {
+        Self.sizeNow(ofFirstReadable: paths)
     }
 
     nonisolated static func read(_ path: String) -> CGSize? {

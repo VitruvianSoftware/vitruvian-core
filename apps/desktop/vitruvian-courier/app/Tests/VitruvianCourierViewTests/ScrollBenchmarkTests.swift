@@ -138,6 +138,8 @@ final class ScrollBenchmarkTests: XCTestCase {
     private struct Stats {
         let steps: Int
         var photoHeightChanges = 0
+        /// Which step was slowest (0-based), to look at what the content there was.
+        let slowestStep: Int
         let medianMS, p95MS, maxMS: Double
         let over8: Int, over16: Int
         let rowBodiesPerStep, geometryPerStep: Double
@@ -145,6 +147,7 @@ final class ScrollBenchmarkTests: XCTestCase {
         init(_ times: [Double], rowBodies: Int, geometry: Int) {
             let sorted = times.sorted()
             steps = times.count
+            slowestStep = times.firstIndex(of: sorted.last ?? 0) ?? 0
             medianMS = sorted[sorted.count / 2]
             p95MS = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
             maxMS = sorted.last ?? 0
@@ -156,7 +159,7 @@ final class ScrollBenchmarkTests: XCTestCase {
 
         var json: String {
             func f(_ v: Double) -> String { String(format: "%.2f", v) }
-            return "{\"steps\":\(steps),\"median_ms\":\(f(medianMS)),\"p95_ms\":\(f(p95MS)),\"max_ms\":\(f(maxMS)),"
+            return "{\"steps\":\(steps),\"median_ms\":\(f(medianMS)),\"p95_ms\":\(f(p95MS)),\"max_ms\":\(f(maxMS)),\"slowest_step\":\(slowestStep),"
                 + "\"photo_height_changes\":\(photoHeightChanges),\"over_8_3ms\":\(over8),\"over_16_7ms\":\(over16),\"row_bodies_per_step\":\(f(rowBodiesPerStep)),"
                 + "\"geometry_callbacks_per_step\":\(f(geometryPerStep))}"
         }
@@ -297,22 +300,29 @@ final class ScrollBenchmarkTests: XCTestCase {
         // The floor: the same step without moving (the cost of the harness and an idle layout pass).
         let idle = phase(0)
 
-        // A conversation-level change (the bottom flag flipping), with the timeline in view: how many rows' bodies
-        // does each one evaluate?
-        ScrollPerfCounters.reset()
+        // A conversation-level change (the bottom flag flipping: the person leaves the newest message, or comes
+        // back), with the timeline in view: what does each one cost, and how many rows' bodies does it evaluate?
         let toggles = 20
+        var toggleTimes: [Double] = []
+        ScrollPerfCounters.reset()
         for index in 0 ..< toggles {
+            let start = now()
             conversation.scrolled(toBottom: index % 2 == 1)
             RunLoop.main.run(mode: .default, before: Date())
             host.layoutSubtreeIfNeeded()
+            host.displayIfNeeded()
+            CATransaction.flush()
+            toggleTimes.append(now() - start)
         }
         let rowsPerToggle = Double(ScrollPerfCounters.rowBodies) / Double(toggles)
+        let toggleMedian = toggleTimes.sorted()[toggles / 2]
 
         let jpegMB = jpegBytes.map { String(format: "%.1f", Double($0) / 1_048_576) }.joined(separator: "/")
         let line = "COURIER_SCROLL_BENCH_RESULT {\"mode\":\"\(renders ? "render" : "layout")\",\"messages\":\(events.count),"
             + "\"photos\":\(photoCount),\"jpeg_mb\":\"\(jpegMB)\","
             + "\"up\":\(up.json),\"down\":\(down.json),\"idle\":\(idle.json),"
-            + "\"row_bodies_per_conversation_change\":\(String(format: "%.1f", rowsPerToggle))}"
+            + "\"conversation_change\":{\"median_ms\":\(String(format: "%.2f", toggleMedian)),"
+            + "\"row_bodies\":\(String(format: "%.1f", rowsPerToggle))}}"
         print(line)
         XCTAssertGreaterThan(up.steps, 0)
     }
