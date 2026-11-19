@@ -95,7 +95,6 @@ Flags:
 pub struct Ctx {
     pub min_credential_len: usize,
     pub gcloud_bin: OsString,
-    pub install_dir: PathBuf,
     pub state_dir: PathBuf,
     pub bashrc: PathBuf,
     pub session_env: PathBuf,
@@ -158,7 +157,6 @@ impl Ctx {
                 .parse()
                 .unwrap_or(20),
             gcloud_bin: sh::os(&sh::env_or("GCLOUD_BIN", "gcloud")).to_os_string(),
-            install_dir: sh::path(&sh::env_or("CLOUD_BOOTSTRAP_INSTALL_DIR", "/usr/local/bin")),
             session_env: state_dir.join("session.env"),
             state_dir,
             bashrc: sh::path(&sh::env_or(

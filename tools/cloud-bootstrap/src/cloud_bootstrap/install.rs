@@ -78,18 +78,151 @@ fn tmp(name: &str, suffix: &str) -> PathBuf {
     PathBuf::from(p)
 }
 
+/// Default system install locations (used when root, passwordless sudo is
+/// available, or the directories are directly writable).
+const DEFAULT_INSTALL_DIR: &str = "/usr/local/bin";
+const DEFAULT_GCLOUD_ROOT: &str = "/usr/local";
+
+#[derive(Debug, PartialEq, Eq)]
+struct InstallTarget {
+    install_dir: PathBuf,
+    gcloud_root: PathBuf,
+    sudo: bool,
+    used_user_fallback: bool,
+}
+
+/// Probe whether the current user can create a file inside `dir`.
+///
+/// Using an actual create/unlink probe rather than `stat` mode bits handles
+/// read-only bind mounts (e.g. sandboxed cloud VMs where `/` is `ro`).
+fn is_dir_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".cloud-bootstrap-probe.{}", std::process::id()));
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Resolve where binaries and gcloud should be installed and whether to use
+/// `sudo`.
+///
+/// Preserves existing behavior identically when running as root or when
+/// passwordless `sudo` works. Only when neither is available does it disable
+/// `sudo` and fall back to `$HOME/.local/bin` / `$HOME/.local` if the system
+/// directories are not writable.
+fn resolve_install_target<F>(
+    explicit_install_dir: Option<PathBuf>,
+    explicit_gcloud_root: Option<PathBuf>,
+    home: Option<PathBuf>,
+    is_root: bool,
+    has_passwordless_sudo: bool,
+    mut dir_writable: F,
+) -> InstallTarget
+where
+    F: FnMut(&Path) -> bool,
+{
+    let default_bin = PathBuf::from(DEFAULT_INSTALL_DIR);
+    let default_gcloud = PathBuf::from(DEFAULT_GCLOUD_ROOT);
+
+    if is_root || has_passwordless_sudo {
+        return InstallTarget {
+            install_dir: explicit_install_dir.unwrap_or(default_bin),
+            gcloud_root: explicit_gcloud_root.unwrap_or(default_gcloud),
+            sudo: !is_root && has_passwordless_sudo,
+            used_user_fallback: false,
+        };
+    }
+
+    let mut used_user_fallback = false;
+    let install_dir = match explicit_install_dir {
+        Some(dir) => dir,
+        None if dir_writable(&default_bin) => default_bin,
+        None => match home.as_ref() {
+            Some(h) => {
+                used_user_fallback = true;
+                h.join(".local/bin")
+            }
+            None => default_bin,
+        },
+    };
+
+    let gcloud_root = match explicit_gcloud_root {
+        Some(root) => root,
+        None if dir_writable(&default_gcloud) => default_gcloud,
+        None => match home.as_ref() {
+            Some(h) => h.join(".local"),
+            None => default_gcloud,
+        },
+    };
+
+    InstallTarget {
+        install_dir,
+        gcloud_root,
+        sudo: false,
+        used_user_fallback,
+    }
+}
+
+/// Prepend `dir` to `PATH` in the current process if it is not already present.
+fn ensure_dir_on_path(dir: &Path) {
+    let current = std::env::var_os("PATH").unwrap_or_default();
+    let mut paths: Vec<PathBuf> = std::env::split_paths(&current).collect();
+    if paths.iter().any(|p| p == dir) {
+        return;
+    }
+    paths.insert(0, dir.to_path_buf());
+    if let Ok(joined) = std::env::join_paths(paths) {
+        std::env::set_var("PATH", joined);
+    }
+}
+
 pub struct Installer<'a> {
     ctx: &'a Ctx,
-    /// `sudo` when not root and sudo exists, computed once on first use.
+    install_dir: PathBuf,
+    gcloud_root: PathBuf,
+    /// `sudo` when not root and passwordless `sudo` works.
     sudo: bool,
+    used_user_fallback: bool,
 }
 
 impl<'a> Installer<'a> {
     pub fn new(ctx: &'a Ctx) -> Self {
         let uid = sh::capture(Command::new("id").arg("-u"));
         let root = uid.ok && sh::subst(uid.stdout) == b"0";
-        let sudo = uid.ok && !root && has("sudo");
-        Installer { ctx, sudo }
+        let has_passwordless_sudo =
+            uid.ok && !root && has("sudo") && sh::quiet(Command::new("sudo").args(["-n", "true"]));
+        let explicit_install_dir = sh::env("CLOUD_BOOTSTRAP_INSTALL_DIR")
+            .filter(|v| !v.is_empty())
+            .map(|v| sh::path(&v));
+        let explicit_gcloud_root = sh::env("CLOUD_BOOTSTRAP_GCLOUD_ROOT")
+            .filter(|v| !v.is_empty())
+            .map(|v| sh::path(&v));
+        let home = sh::env("HOME")
+            .filter(|v| !v.is_empty())
+            .map(|v| sh::path(&v));
+
+        let target = resolve_install_target(
+            explicit_install_dir,
+            explicit_gcloud_root,
+            home,
+            root,
+            has_passwordless_sudo,
+            is_dir_writable,
+        );
+        Installer {
+            ctx,
+            install_dir: target.install_dir,
+            gcloud_root: target.gcloud_root,
+            sudo: target.sudo,
+            used_user_fallback: target.used_user_fallback,
+        }
     }
 
     /// A command run with the privilege prefix ("${priv[@]}").
@@ -104,7 +237,25 @@ impl<'a> Installer<'a> {
     }
 
     fn dest(&self, name: &str) -> PathBuf {
-        self.ctx.install_dir.join(name)
+        self.install_dir.join(name)
+    }
+
+    fn prepare_user_install_dir(&self) {
+        if !self.sudo {
+            let _ = fs::create_dir_all(&self.install_dir);
+            ensure_dir_on_path(&self.install_dir);
+        }
+        if self.used_user_fallback {
+            note(&format!(
+                "no passwordless sudo; installing tools to {}",
+                sh::path_str(&self.install_dir)
+            ));
+            let quoted = sh::lossy(&sh::shell_quote(sh::path_str(&self.install_dir).as_bytes()));
+            let line = format!("export PATH={quoted}:\"$PATH\"");
+            if !sh::file_contains(&self.ctx.bashrc, line.as_bytes()) {
+                let _ = sh::append(&self.ctx.bashrc, format!("\n{line}\n").as_bytes());
+            }
+        }
     }
 
     /// fetch_to: download, or fail with the URL named.
@@ -226,7 +377,10 @@ impl<'a> Installer<'a> {
         }
         let v = sh::env_str("GCLOUD_VERSION", GCLOUD_VERSION);
         let t = tmp("gcloud", ".tar.gz");
-        let root = sh::path(&sh::env_or("CLOUD_BOOTSTRAP_GCLOUD_ROOT", "/usr/local"));
+        let root = &self.gcloud_root;
+        if !self.sudo {
+            let _ = fs::create_dir_all(root);
+        }
         let url = format!(
             "https://storage.googleapis.com/cloud-sdk-release/google-cloud-cli-{v}-linux-{}.tar.gz",
             arch_gcloud()
@@ -237,7 +391,7 @@ impl<'a> Installer<'a> {
                     .arg("-xzf")
                     .arg(&t)
                     .arg("-C")
-                    .arg(&root),
+                    .arg(root),
             ))
         {
             return false;
@@ -275,7 +429,7 @@ impl<'a> Installer<'a> {
                 self.privileged("install")
                     .args(["-m", "0755"])
                     .args(&bins)
-                    .arg(format!("{}/", sh::path_str(&self.ctx.install_dir))),
+                    .arg(format!("{}/", sh::path_str(&self.install_dir))),
             );
         }
         let _ = fs::remove_file(&t);
@@ -342,6 +496,7 @@ impl<'a> Installer<'a> {
         if tools.is_empty() {
             return;
         }
+        self.prepare_user_install_dir();
         let mut ok = 0;
         let mut failed: Vec<&str> = Vec::new();
         for key in tools {
@@ -378,12 +533,118 @@ impl<'a> Installer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::gcloud_arch;
+    use super::{gcloud_arch, resolve_install_target, InstallTarget};
+    use std::path::PathBuf;
 
     #[test]
     fn gcloud_asset_names_are_the_published_ones() {
         // google-cloud-cli-<v>-linux-{x86_64,arm}.tar.gz; `linux-arm64` is a 404.
         assert_eq!(gcloud_arch("x86_64"), "x86_64");
         assert_eq!(gcloud_arch("aarch64"), "arm");
+    }
+
+    #[test]
+    fn root_keeps_system_defaults_without_sudo() {
+        let got = resolve_install_target(
+            None,
+            None,
+            Some(PathBuf::from("/root")),
+            true,
+            false,
+            |_| false,
+        );
+        assert_eq!(
+            got,
+            InstallTarget {
+                install_dir: PathBuf::from("/usr/local/bin"),
+                gcloud_root: PathBuf::from("/usr/local"),
+                sudo: false,
+                used_user_fallback: false,
+            }
+        );
+    }
+
+    #[test]
+    fn passwordless_sudo_keeps_system_defaults_with_sudo() {
+        let got = resolve_install_target(
+            None,
+            None,
+            Some(PathBuf::from("/home/user")),
+            false,
+            true,
+            |_| false,
+        );
+        assert_eq!(
+            got,
+            InstallTarget {
+                install_dir: PathBuf::from("/usr/local/bin"),
+                gcloud_root: PathBuf::from("/usr/local"),
+                sudo: true,
+                used_user_fallback: false,
+            }
+        );
+    }
+
+    #[test]
+    fn unprivileged_without_sudo_falls_back_to_home_local() {
+        let got = resolve_install_target(
+            None,
+            None,
+            Some(PathBuf::from("/home/antigravity")),
+            false,
+            false,
+            |_| false,
+        );
+        assert_eq!(
+            got,
+            InstallTarget {
+                install_dir: PathBuf::from("/home/antigravity/.local/bin"),
+                gcloud_root: PathBuf::from("/home/antigravity/.local"),
+                sudo: false,
+                used_user_fallback: true,
+            }
+        );
+    }
+
+    #[test]
+    fn unprivileged_respects_explicit_overrides() {
+        let got = resolve_install_target(
+            Some(PathBuf::from("/tmp/custom-bin")),
+            Some(PathBuf::from("/tmp/custom-gcloud")),
+            Some(PathBuf::from("/home/antigravity")),
+            false,
+            false,
+            |_| false,
+        );
+        assert_eq!(
+            got,
+            InstallTarget {
+                install_dir: PathBuf::from("/tmp/custom-bin"),
+                gcloud_root: PathBuf::from("/tmp/custom-gcloud"),
+                sudo: false,
+                used_user_fallback: false,
+            }
+        );
+    }
+
+    #[test]
+    fn unprivileged_uses_system_dir_when_directly_writable() {
+        let got = resolve_install_target(
+            None,
+            None,
+            Some(PathBuf::from("/home/antigravity")),
+            false,
+            false,
+            |_| true,
+        );
+        assert_eq!(
+            got,
+            InstallTarget {
+                install_dir: PathBuf::from("/usr/local/bin"),
+                gcloud_root: PathBuf::from("/usr/local"),
+                sudo: false,
+                used_user_fallback: false,
+            }
+        );
     }
 }
