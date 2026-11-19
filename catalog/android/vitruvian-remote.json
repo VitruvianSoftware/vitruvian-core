@@ -2,14 +2,14 @@
   "kind": "vitruvian-android-update",
   "schema": 1,
   "packageName": "dev.vitruvian.remote",
-  "version": "0.1.51",
-  "versionCode": 151,
+  "version": "0.1.52",
+  "versionCode": 152,
   "minSdk": 26,
-  "published": "2026-11-18",
+  "published": "2026-11-19",
   "apk": {
-    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.51/VitruvianRemote-0.1.51.apk",
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.52/VitruvianRemote-0.1.52.apk",
     "size": 9718903,
-    "sha256": "6b2ee3e57f1076cb782d9f7e3d2bc5e7c7f08ad82c4c89a07749fbe21eea502c"
+    "sha256": "4680f1bce99698ac3c2fc19f189bd380be0b6565b695967efe666fae81649d0c"
   },
-  "notes": ["prevent announcement audio and text clipping"]
+  "notes": ["explain Play Protect verification blocks during updates"]
 }
