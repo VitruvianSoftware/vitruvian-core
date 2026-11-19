@@ -24,12 +24,13 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// The GitHub Environment that .github/workflows/sentry-pagerduty-apply.yaml
-// binds. Holds SENTRY_TOKEN (the dedicated CI Sentry internal-integration
-// token) and HEADSCALE_CI_AUTHKEY (reusable ephemeral tag:ci pre-auth key) so
-// only main deploys may read them; no required reviewer is attached because
-// the stack reconciles Sentry PagerDuty alert rules automatically on push and
-// on schedule.
+// The GitHub Environment that .github/workflows/sentry-apply.yaml binds.
+// Holds SENTRY_TOKEN (the dedicated CI Sentry internal-integration token) and
+// HEADSCALE_CI_AUTHKEY (reusable ephemeral tag:ci pre-auth key) so only main
+// deploys may read them; no required reviewer is attached because the workflow
+// reconciles both platform/sentry and platform/sentry-pagerduty automatically
+// on push and on schedule (with a non-destructive plan guard refusing any
+// delete or replace).
 //
 // The secrets themselves are NOT managed here, for the reason oauthEnvironment
 // gives; //tools/sync-env-secrets sets them (`set -- sentry-production

@@ -268,7 +268,7 @@ fn committed_allowlist_pins_the_foundation_entries() {
         Some(v(&["unit", "environment"]))
     );
     assert_eq!(
-        allowlist_entry(&list, b"sentry-pagerduty-apply.yaml"),
+        allowlist_entry(&list, b"sentry-apply.yaml"),
         Some(v(&["action"]))
     );
 }

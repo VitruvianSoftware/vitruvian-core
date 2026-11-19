@@ -219,14 +219,14 @@ up to Bitwarden), then `apply -- pagerduty-production`.
 ## `sentry-production`
 
 Secrets of the GitHub Environment that
-[`sentry-pagerduty-apply.yaml`](../../.github/workflows/sentry-pagerduty-apply.yaml)'s
+[`sentry-apply.yaml`](../../.github/workflows/sentry-apply.yaml)'s
 `apply` job binds. The environment is declared in
 [`repo-config`](../../infrastructure/pulumi/platform/repo-config/sentry_environments.go):
 only `main` may deploy to it, with no required reviewer.
 
 | Environment | Secret | What it is |
 |---|---|---|
-| `sentry-production` | `SENTRY_TOKEN` | Dedicated CI Sentry internal-integration token minted by `bazel run //tools/sentry:ci-token`, used by `vitruvian-sentry-pagerduty` to enumerate projects and reconcile PagerDuty workflow alert rules. |
+| `sentry-production` | `SENTRY_TOKEN` | Dedicated CI Sentry internal-integration token minted by `bazel run //tools/sentry:ci-token`, used by both `sentry` (`platform/sentry`) and `vitruvian-sentry-pagerduty` (`platform/sentry-pagerduty`) to reconcile org/team/project configuration and PagerDuty workflow alert rules. |
 | `sentry-production` | `HEADSCALE_CI_AUTHKEY` | Headscale pre-auth key (reusable, ephemeral, `tag:ci`) used to join the mesh via `.github/actions/homelab-tunnel-setup` — the same value seeded in the `oauth-user-inspector-*` environments. |
 
 To set them: `set -- sentry-production SENTRY_TOKEN` (using the token from

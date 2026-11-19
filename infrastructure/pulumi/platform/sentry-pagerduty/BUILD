@@ -21,8 +21,8 @@
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/sentry-pagerduty:{setup,preview,up,config}`.
-# Applied in CI by .github/workflows/sentry-pagerduty-apply.yaml over the
-# Headscale mesh (Envoy Gateway https-sentry NodePort :31103), with
+# Applied in CI by .github/workflows/sentry-apply.yaml (after platform/sentry)
+# over the Headscale mesh (Envoy Gateway https-sentry NodePort :31103), with
 # `sentry-production` holding SENTRY_TOKEN + HEADSCALE_CI_AUTHKEY.
 pulumi_project(
     name = "sentry-pagerduty",

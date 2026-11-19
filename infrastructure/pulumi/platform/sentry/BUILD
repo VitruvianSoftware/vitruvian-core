@@ -20,14 +20,21 @@
 
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
+# `bazel run //infrastructure/pulumi/platform/sentry:{setup,preview,up,config}`.
+# Applied in CI by .github/workflows/sentry-apply.yaml over the Headscale mesh
+# (Envoy Gateway https-sentry NodePort :31103), with `sentry-production`
+# holding SENTRY_TOKEN + HEADSCALE_CI_AUTHKEY.
 pulumi_project(
     name = "sentry",
     dir = "infrastructure/pulumi/platform/sentry",
 )
 
-# Checks the organization privacy settings (IP scrubbing) and their command
-# resource under Pulumi mocks.
+# Checks committed stack config (secret/unknown-key guards) and the
+# organization privacy settings, dashboards, and inbound filters under mocks.
 pulumi_go_test(
     # Cold `go test` compilation of the Pulumi SDKs can exceed the 300 s default.
     timeout = "long",
+    extra_data = [
+        "Pulumi.production.yaml",
+    ],
 )

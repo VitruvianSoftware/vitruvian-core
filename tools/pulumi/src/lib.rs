@@ -34,6 +34,7 @@ pub mod pulumi_go_test;
 pub mod pulumi_setup;
 pub mod pyerr;
 pub mod pystr;
+pub mod refuse_destructive_plan;
 pub mod resolve_identity;
 pub mod retry_concurrent_update;
 pub mod tools;

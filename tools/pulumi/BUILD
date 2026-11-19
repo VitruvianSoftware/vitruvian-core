@@ -98,6 +98,7 @@ rust_binary(
 #   pulumi-go-test           every pulumi_go_test()
 #   resolve-identity         <map> <infra-dir> -> "account<TAB>project"
 #   retry-concurrent-update  retries ONLY Pulumi Cloud's concurrent-update 409
+#   refuse-destructive-plan  fails closed when `pulumi preview --json` plans delete/replace
 #   create-app               the one-time org App bootstrap
 [
     rust_binary(
@@ -134,6 +135,23 @@ rust_binary(
     visibility = ["//visibility:public"],
 )
 
+# Built from its own file plus src/refuse_destructive_plan.rs, with no crate
+# deps, because CI jobs without Bazel (sentry-apply.yaml) build the same
+# binary with a bare
+#   rustc --edition 2021 -O tools/pulumi/src/bin/refuse_destructive_plan.rs
+# Adding a dependency here would break those jobs, not this build.
+rust_binary(
+    name = "refuse-destructive-plan",
+    srcs = [
+        "src/bin/refuse_destructive_plan.rs",
+        "src/refuse_destructive_plan.rs",
+    ],
+    crate_root = "src/bin/refuse_destructive_plan.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
+
 # Behaviour suites: each runs its binary as a subprocess with stub programs
 # (pulumi, gcloud, gh, go, sleep, ...) on a private PATH. tests/common holds
 # the shared helpers.
@@ -156,6 +174,7 @@ rust_binary(
         "pulumi-go-test",
         "resolve-identity",
         "retry-concurrent-update",
+        "refuse-destructive-plan",
         "create-app",
     ]
 ]

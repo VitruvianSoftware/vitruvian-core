@@ -34,6 +34,11 @@ Pulumi.*.yaml
 # PAGERDUTY_TOKEN in CI or Pulumi ciphertext locally; a test rejects a
 # plaintext token in the file.
 !platform/pagerduty/Pulumi.production.yaml
+# platform/sentry commits its stack config: non-secret Sentry settings
+# (base URL, organization, team, project list). The Sentry token is
+# SENTRY_TOKEN in CI or Bitwarden locally; a test rejects a plaintext token,
+# non-allowlisted `secure:` value, or unknown config key in the file.
+!platform/sentry/Pulumi.production.yaml
 # platform/sentry-pagerduty commits its stack config: non-secret Sentry and
 # PagerDuty wiring settings. The Sentry token is SENTRY_TOKEN or Pulumi
 # ciphertext locally, and the PagerDuty routing key is read via StackReference;
@@ -90,6 +95,7 @@ platform/zitadel-apps/zitadel-apps
 platform/zitadel-apps-mcp-slack/zitadel-apps-mcp-slack
 platform/zitadel-apps-relay/zitadel-apps-relay
 platform/pagerduty/pagerduty
+platform/sentry/sentry
 platform/sentry-pagerduty/sentry-pagerduty
 /foundation/gcp-bootstrap/foundation-0-bootstrap
 /foundation/org-folders/foundation-org-folders

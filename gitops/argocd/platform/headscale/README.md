@@ -90,8 +90,8 @@ Update this table when a key is minted, rotated or retired.
 ## CI pre-auth key (`HEADSCALE_CI_AUTHKEY`)
 
 The Zitadel apply workflows (`zitadel-apps-relay-apply`,
-`zitadel-apps-mcp-slack-apply`, `_zitadel-apps-apply`) and the Sentry PagerDuty
-apply workflow (`sentry-pagerduty-apply`) join the mesh from GitHub Actions with
+`zitadel-apps-mcp-slack-apply`, `_zitadel-apps-apply`) and the Sentry apply
+workflow (`sentry-apply`) join the mesh from GitHub Actions with
 one shared pre-auth key: user `james` (id 1), reusable, ephemeral (a runner's
 node is removed when it goes offline), tagged `tag:ci`.
 

@@ -45,7 +45,7 @@ const DELIVERY_LEGACY_FLOOR: &[&str] = &[
     ".github/workflows/foundation-net-deploy.yaml",
     ".github/workflows/foundation-proj-deploy.yaml",
     ".github/workflows/foundation-release.yaml",
-    ".github/workflows/sentry-pagerduty-apply.yaml",
+    ".github/workflows/sentry-apply.yaml",
     ".github/workflows/vitruvian-tabs-data-stack.yaml",
     ".github/workflows/vitruvian-tabs-release.yaml",
     ".github/workflows/zitadel-apps-mcp-slack-apply.yaml",
