@@ -1643,6 +1643,22 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
                 t("bazel test //apps/desktop/<app>:<Tests> (macOS-only targets are tagged manual)", None),
             ));
         }
+        // `swift probe.swift` runs a throwaway script. One that lives outside
+        // every vitruvian-core checkout (a scratchpad, /tmp) is research, e.g.
+        // probing a system framework, not an operation on the repo: allow it.
+        // A script inside a checkout stays refused. The first non-option
+        // argument is the script; an option that takes a value makes that
+        // value the first one, which is not a .swift file, so it stays refused.
+        if prog == "swift" {
+            if let Some(script) = args.iter().find(|a| !a.starts_with('-')) {
+                if script.ends_with(".swift") {
+                    let path = realpath(&expand_path(script, &cwd, &ctx.home));
+                    if repo_root_of(&path).is_none() {
+                        return here(None);
+                    }
+                }
+            }
+        }
         let ps = format!("{} {}", prog, sub);
         let ps = py_strip(&ps);
         if inl(&["build", "run", "package"], sub) || prog == "swiftc" {
