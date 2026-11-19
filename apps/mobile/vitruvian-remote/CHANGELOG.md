@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.54](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.53...vitruvian-remote-v0.1.54) (2026-11-19)
+
+
+### Features
+
+* **vitruvian-remote:** use ML Kit GenAI TTS for phone.speak with Android TTS fallback ([#5185](https://github.com/VitruvianSoftware/vitruvian-core/issues/5185)) ([894f63f](https://github.com/VitruvianSoftware/vitruvian-core/commit/894f63f03f301720e3410de9a18f40b9e9078e82))
+
 ## [0.1.53](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.52...vitruvian-remote-v0.1.53) (2026-11-19)
 
 
