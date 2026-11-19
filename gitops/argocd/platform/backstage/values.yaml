@@ -67,11 +67,6 @@ backstage:
   # Picked up by GoogleAuth's ADC chain in the cloud-run backend plugin.
   - name: GOOGLE_APPLICATION_CREDENTIALS
     value: /etc/gcp/credentials.json
-  - name: GITHUB_TOKEN
-    valueFrom:
-      secretKeyRef:
-        name: backstage-github-token
-        key: GITHUB_TOKEN
   # The vitruvian-backstage GitHub App (app id 5824092). Its private key mints
   # hour-long installation tokens; see the integrations block below.
   - name: GITHUB_APP_CLIENT_ID
@@ -382,9 +377,6 @@ backstage:
           clientSecret: ${GITHUB_APP_CLIENT_SECRET}
           privateKey: ${GITHUB_APP_PRIVATE_KEY}
           allowedInstallationOwners: [VitruvianSoftware]
-        # Fallback only, until scorecards read the app token too; then this and
-        # backstage-github-token (James's personal token) are removed.
-        token: ${GITHUB_TOKEN}
     catalog:
       providers:
         # Ingests VitruvianSoftware members and teams as User/Group entities.
