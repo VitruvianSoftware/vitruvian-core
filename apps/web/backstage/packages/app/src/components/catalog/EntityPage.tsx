@@ -200,7 +200,9 @@ const defaultEntityPage = (
             create one anyway. See docs/backstage-pagerduty.md. */}
         <EntitySwitch>
           <EntitySwitch.Case if={isPagerDutyAvailable}>
-            <Grid item md={6} xs={12}>
+            {/* Full width: at half width the card's status, insights and
+                tabs stack into a cramped column. */}
+            <Grid item xs={12}>
               <EntityPagerDutyCard readOnly />
             </Grid>
           </EntitySwitch.Case>
@@ -343,7 +345,9 @@ const systemPage = (
             map to a PagerDuty service (pagerduty.com/service-id). */}
         <EntitySwitch>
           <EntitySwitch.Case if={isPagerDutyAvailable}>
-            <Grid item md={6} xs={12}>
+            {/* Full width: at half width the card's status, insights and
+                tabs stack into a cramped column. */}
+            <Grid item xs={12}>
               <EntityPagerDutyCard readOnly />
             </Grid>
           </EntitySwitch.Case>
