@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.29...vitruvian-courier-v0.3.30) (2026-11-19)
+
+
+### Performance Improvements
+
+* **vitruvian-courier:** smoother timeline scrolling ([#5191](https://github.com/VitruvianSoftware/vitruvian-core/issues/5191)) ([e8ca0cc](https://github.com/VitruvianSoftware/vitruvian-core/commit/e8ca0cc643f183e39023b15c738731fc6f3a6023))
+
 ## [0.3.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.28...vitruvian-courier-v0.3.29) (2026-11-18)
 
 
