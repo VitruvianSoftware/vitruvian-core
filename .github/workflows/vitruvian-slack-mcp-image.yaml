@@ -128,12 +128,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # binfmt handlers for the arm64 half of PLATFORMS. Without this the arm64
-      # build fails on the first RUN rather than at configuration time, which
-      # reads like a Dockerfile bug.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
+      # Built on the host architecture via cross-compilation inside the builder
+      # stage and zero-RUN distroless runtime stages, so no QEMU binfmt setup is
+      # needed.
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -148,35 +145,32 @@ jobs:
           docker buildx build --load \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform linux/amd64 \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             --tag vitruvian-slack-mcp:verify \
             --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/mcp/vitruvian-slack-mcp/
 
       # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
-      # a UID that exists in no image layer. If any file the process reads is not
-      # world-readable the pod CrashLoops on a MODULE_NOT_FOUND that reads like a
-      # build fault. Run as that exact UID, under the same read-only rootfs and
-      # single writable /tmp the chart imposes, and require the entrypoint and a
-      # runtime dependency to be readable.
-      #
-      # It IMPORTS the runtime dependencies rather than merely stat-ing them.
-      # Reading a path proves a permission bit; resolving and evaluating the
-      # module proves the dependency tree the image actually ships is intact —
-      # which is the property `--ignore-scripts` in the Dockerfile could
-      # plausibly break, and a file-existence check would not notice.
-      #
-      # It deliberately does NOT start the server: that needs a real Slack token
-      # and a reachable IdP, and a start attempt failing on config would not
-      # discriminate a permission fault from a missing variable.
+      # a UID that exists in no image layer. Run as that exact UID under the same
+      # read-only rootfs and single writable /tmp the chart imposes, and assert
+      # `--version` prints the real binary banner (catching stub binaries too).
       - name: Verify UID 10001 can read and load the image
         run: |
           set -euo pipefail
-          docker run --rm \
+          out="$(docker run --rm \
             --user 10001:10001 \
             --read-only --tmpfs /tmp \
             --entrypoint /app/vitruvian-slack-mcp \
             vitruvian-slack-mcp:verify \
-            --version
+            --version)"
+          echo "$out"
+          case "$out" in
+            "vitruvian-slack-mcp "*) ;;
+            *)
+              echo "::error::unexpected --version output: ${out}" >&2
+              exit 1
+              ;;
+          esac
 
       # ASSERTION 2 — the provenance label. Nothing injects this automatically:
       # the repo's other Dockerfile carries no LABEL at all and its buildx call
@@ -213,6 +207,8 @@ jobs:
           docker buildx build \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
+            --sbom=true \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/mcp/vitruvian-slack-mcp/
 
@@ -237,6 +233,8 @@ jobs:
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
             --sbom=true \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
+            --cache-to "type=registry,ref=${IMAGE}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
