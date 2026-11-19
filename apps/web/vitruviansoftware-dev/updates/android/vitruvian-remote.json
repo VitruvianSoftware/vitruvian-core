@@ -2,14 +2,14 @@
   "kind": "vitruvian-android-update",
   "schema": 1,
   "packageName": "dev.vitruvian.remote",
-  "version": "0.1.52",
-  "versionCode": 152,
+  "version": "0.1.53",
+  "versionCode": 153,
   "minSdk": 26,
   "published": "2026-11-19",
   "apk": {
-    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.52/VitruvianRemote-0.1.52.apk",
-    "size": 9718903,
-    "sha256": "4680f1bce99698ac3c2fc19f189bd380be0b6565b695967efe666fae81649d0c"
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.53/VitruvianRemote-0.1.53.apk",
+    "size": 9722999,
+    "sha256": "da0c465b10bf3d893f788185e43273c2079f22f554d583ea2ada2d9a2be885ed"
   },
-  "notes": ["explain Play Protect verification blocks during updates"]
+  "notes": ["add 1h, 8h, and Always trust presets for Phone Bridge"]
 }
