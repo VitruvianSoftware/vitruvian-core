@@ -687,14 +687,17 @@ public interface PhoneVoices {
   /** Every voice the phone offers for its language, with whether it is downloaded. */
   public suspend fun list(): List<PhoneVoiceOption>
 
-  /** Starts downloading [name]; the user picked it, so this runs on any network. */
-  public fun download(name: String)
+  /**
+   * Starts downloading [name]; the user picked it, so this runs on any network. False when that
+   * voice is already downloading. Returns at once; the work runs off the caller's thread.
+   */
+  public suspend fun download(name: String): Boolean
 
   /** Plays a short sample in [name]. Null when it played, otherwise why it did not. */
   public suspend fun preview(name: String): String?
 
-  /** Tells the announcement path the choice changed, so the next announcement uses it. */
-  public fun choiceChanged()
+  /** Tells the announcement path the choice is now [name] (empty = automatic). */
+  public suspend fun choiceChanged(name: String)
 }
 
 /**

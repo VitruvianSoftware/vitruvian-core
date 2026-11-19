@@ -983,14 +983,27 @@ public class RemoteState(
   public val phoneVoiceInUse: String?
     get() = BridgePolicy.voiceInUse(phoneVoiceOptions, phoneVoice)
 
-  /** Loads the voice list. Called when the Phone Bridge page shows, and after a download starts. */
+  private var phoneVoicesRefresh: kotlinx.coroutines.Job? = null
+  private var phoneVoicesRefreshToken = 0
+
+  /**
+   * Loads the voice list. Called when the Phone Bridge page shows, and after a pick. A new refresh
+   * cancels the one before it, so an older, slower answer can never overwrite a newer one.
+   */
   public fun refreshPhoneVoices() {
     val voices = phoneVoices ?: return
+    phoneVoicesRefresh?.cancel()
+    val token = ++phoneVoicesRefreshToken
     phoneVoicesLoading = true
-    scope.launch {
-      phoneVoiceOptions = BridgePolicy.sortVoicesForPicker(voices.list())
-      phoneVoicesLoading = false
-    }
+    phoneVoicesRefresh =
+        scope.launch {
+          try {
+            phoneVoiceOptions = BridgePolicy.sortVoicesForPicker(voices.list())
+          } finally {
+            // Only the newest refresh clears the spinner; a cancelled one leaves it to that.
+            if (token == phoneVoicesRefreshToken) phoneVoicesLoading = false
+          }
+        }
   }
 
   /**
@@ -1001,21 +1014,20 @@ public class RemoteState(
     val voices = phoneVoices ?: return
     phoneVoice = name
     persistence.phoneVoice = name
-    voices.choiceChanged()
     val option = phoneVoiceOptions.firstOrNull { it.name == name }
-    phoneVoiceNote =
-        if (option?.status == BridgePolicy.MlKitVoiceStatus.Downloadable) {
-          voices.download(name)
-          phoneVoiceOptions =
-              phoneVoiceOptions.map {
-                if (it.name == name) it.copy(status = BridgePolicy.MlKitVoiceStatus.Downloading)
-                else it
-              }
-          "Downloading. Announcements switch to it when it finishes."
-        } else {
-          null
-        }
+    phoneVoiceNote = null
     log("info", "voice · ${name.ifEmpty { "automatic" }}")
+    scope.launch {
+      voices.choiceChanged(name)
+      if (option?.status == BridgePolicy.MlKitVoiceStatus.Downloadable) {
+        val started = voices.download(name)
+        phoneVoiceNote =
+            if (started) "Downloading. Announcements switch to it when it finishes."
+            else "Already downloading. Announcements switch to it when it finishes."
+      }
+      // The list now reports the download (the tool tracks it), so this cannot undo the change.
+      refreshPhoneVoices()
+    }
   }
 
   /** Plays a sample of [name]. One at a time; a sample never plays over an announcement. */

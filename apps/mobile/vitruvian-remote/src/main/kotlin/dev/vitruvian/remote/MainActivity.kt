@@ -329,30 +329,30 @@ public class MainActivity : ComponentActivity() {
   }
 
   /**
-   * The bridge, behind the state's port.
-   *
-   * An inner class because granting a permission needs the activity's result launcher, which only
-   * an activity can own -- everything else here is a call into the process-wide hub or the service.
-   */
-  /**
-   * The picker's port onto [PhoneTools]' ML Kit voices; the blocking calls run off the main thread.
+   * The picker's port onto [PhoneTools]' ML Kit voices. Every call runs on IO: the tool's calls
+   * block on the speech engine and take its lock, which an announcement may be holding.
    */
   private inner class DevicePhoneVoices : PhoneVoices {
     override suspend fun list(): List<PhoneVoiceOption> =
         withContext(Dispatchers.IO) { PhoneTools.listMlKitVoices() }
 
-    override fun download(name: String) {
-      PhoneTools.downloadMlKitVoice(name)
-    }
+    override suspend fun download(name: String): Boolean =
+        withContext(Dispatchers.IO) { PhoneTools.downloadMlKitVoice(name) }
 
     override suspend fun preview(name: String): String? =
         withContext(Dispatchers.IO) { PhoneTools.previewMlKitVoice(this@MainActivity, name) }
 
-    override fun choiceChanged() {
-      PhoneTools.forgetMlKitVoice()
+    override suspend fun choiceChanged(name: String) {
+      withContext(Dispatchers.IO) { PhoneTools.setPreferredMlKitVoice(name) }
     }
   }
 
+  /**
+   * The bridge, behind the state's port.
+   *
+   * An inner class because granting a permission needs the activity's result launcher, which only
+   * an activity can own -- everything else here is a call into the process-wide hub or the service.
+   */
   private inner class ServiceBridge : BridgeControl {
     override fun setEnabled(enabled: Boolean) {
       BridgeHub.setEnabled(enabled)

@@ -434,6 +434,18 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
   }
 }
 
+/**
+ * The saved announcement voice, read straight from prefs without building a [Persistence]: the
+ * phone bridge service calls this off the main thread, and [Persistence]'s constructor runs
+ * migrations that must not race the activity's.
+ */
+public fun readPhoneVoice(context: Context): String =
+    context.applicationContext
+        .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_PHONE_VOICE, "")
+        .orEmpty()
+        .trim()
+
 /** Creates a [Persistence] backed by the app's Android [SharedPreferences]. */
 public fun Persistence(context: Context): Persistence =
     Persistence(

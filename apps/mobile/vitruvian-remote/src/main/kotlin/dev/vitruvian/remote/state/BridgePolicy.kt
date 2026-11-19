@@ -110,6 +110,23 @@ public data class BridgeAuditEntry(
     val approver: String,
 )
 
+/**
+ * Guards a cache against a slow fill landing after the cache was invalidated: take a [begin] token
+ * before the slow work, and only store the result if [stillCurrent] says no [invalidate] happened
+ * since. Thread-safe.
+ */
+public class GenerationGate {
+  private val generation = java.util.concurrent.atomic.AtomicLong(0)
+
+  public fun begin(): Long = generation.get()
+
+  public fun invalidate() {
+    generation.incrementAndGet()
+  }
+
+  public fun stillCurrent(token: Long): Boolean = generation.get() == token
+}
+
 /** One on-device announcement voice the phone offers, as the voice picker shows it. */
 public data class PhoneVoiceOption(
     /** The engine's own id for the voice, stored as the choice. */
@@ -582,6 +599,14 @@ public object BridgePolicy {
       // to the plain Android voice. The picker starts that download itself.
       val match = candidates.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
       if (match?.status == MlKitVoiceStatus.Available) return MlKitVoiceSelection.Ready(match.name)
+      // Nothing is ready at all: the picked voice is the one worth fetching, not the first one.
+      if (match != null && candidates.none { it.status == MlKitVoiceStatus.Available }) {
+        when (match.status) {
+          MlKitVoiceStatus.Downloadable -> return MlKitVoiceSelection.NeedsDownload(match.name)
+          MlKitVoiceStatus.Downloading -> return MlKitVoiceSelection.Unavailable
+          else -> Unit
+        }
+      }
     }
     candidates
         .firstOrNull { it.status == MlKitVoiceStatus.Available }
@@ -623,11 +648,15 @@ public object BridgePolicy {
    * The picker's subtitle: gender when known and status, plus the language only when the list mixes
    * languages ([showLanguage]), e.g. "female · on this phone".
    */
-  public fun voiceSubtitle(voice: PhoneVoiceOption, showLanguage: Boolean = false): String =
+  public fun voiceSubtitle(
+      voice: PhoneVoiceOption,
+      showLanguage: Boolean = false,
+      displayLocale: java.util.Locale = java.util.Locale.getDefault(),
+  ): String =
       listOf(
               if (showLanguage)
                   java.util.Locale.forLanguageTag(voice.languageTag)
-                      .getDisplayName(java.util.Locale.getDefault())
+                      .getDisplayName(displayLocale)
                       .ifBlank { voice.languageTag }
               else "",
               voice.gender,
@@ -675,6 +704,23 @@ public object BridgePolicy {
    * announcements in between skip the lookup and go straight to the Android voice.
    */
   public const val MLKIT_NOT_READY_CACHE_MS: Long = 10L * 60L * 1000L
+
+  /**
+   * The status the picker shows: [Downloading][MlKitVoiceStatus.Downloading] while this app has a
+   * download of [name] running, even if the engine has not caught up yet, so Get never reappears
+   * mid-download.
+   */
+  public fun statusWithInFlight(
+      status: MlKitVoiceStatus,
+      name: String,
+      inFlight: Set<String>,
+  ): MlKitVoiceStatus =
+      if (status == MlKitVoiceStatus.Downloadable && name in inFlight) MlKitVoiceStatus.Downloading
+      else status
+
+  /** The picker's Get starts a download unless that same voice is already downloading. */
+  public fun pickerShouldStartDownload(name: String, inFlight: Set<String>): Boolean =
+      name.isNotBlank() && name !in inFlight
 
   /** Whether a cached voice lookup [ageMs] old is still fresh enough to reuse. */
   public fun mlKitVoiceCacheFresh(ageMs: Long, ready: Boolean): Boolean =
@@ -745,6 +791,14 @@ public object BridgePolicy {
 
   /** How long ML Kit may take to start speaking before the Android voice takes over. */
   public const val MLKIT_START_TIMEOUT_MS: Long = 10_000L
+
+  /**
+   * Milliseconds left for ML Kit to finish once it has started: the whole [timeoutSeconds] minus
+   * the time already spent ([elapsedMs]), never negative. Measured from the real start, not by
+   * subtracting the full start window, which would leave a short sample almost no time.
+   */
+  public fun mlKitFinishWindowMs(timeoutSeconds: Long, elapsedMs: Long): Long =
+      (timeoutSeconds * 1000L - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(0L)
 
   /** Seconds the Android voice needs to start up, on top of the speech itself. */
   public const val ANDROID_TTS_STARTUP_S: Long = 5L
