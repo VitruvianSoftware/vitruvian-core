@@ -620,8 +620,8 @@ public class BridgePolicyTest {
 
   @Test
   public fun phoneBudgetStaysUnderTheMacWait() {
-    // The Mac waits speech + 45 s, clamped to 60–210 s (speaker.rs phone_say_timeout); the phone's whole
-    // budget, fallback included, must end before that.
+    // The Mac waits speech + 45 s, clamped to 60–210 s (speaker.rs phone_say_timeout).
+    // The phone's whole budget, fallback included, must end before that.
     for (len in listOf(1, 50, 400, 1500, 5000)) {
       val speech = maxOf(1L, len / 10L)
       val macWait = (speech + 45L).coerceIn(60L, 210L)
