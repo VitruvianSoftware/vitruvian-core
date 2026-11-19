@@ -148,12 +148,35 @@ impl PhoneContentBlock {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrustUntil {
+    Until(Timestamp),
+    Always,
+}
+
+impl TrustUntil {
+    pub fn parse(s: &str) -> Option<Self> {
+        let trimmed = s.trim();
+        if trimmed.eq_ignore_ascii_case("always") {
+            return Some(Self::Always);
+        }
+        Timestamp::parse_rfc3339(trimmed).ok().map(Self::Until)
+    }
+
+    pub fn to_json_value(&self) -> JsonValue {
+        match self {
+            Self::Until(ts) => JsonValue::from_str_val(ts.to_rfc3339()),
+            Self::Always => JsonValue::from_str_val("always"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PhoneResult {
     pub id: String,
     pub content: Vec<PhoneContentBlock>,
     pub is_error: bool,
-    pub trust_until: Option<Timestamp>,
+    pub trust_until: Option<TrustUntil>,
 }
 
 impl PhoneResult {
@@ -175,7 +198,7 @@ impl PhoneResult {
         let trust_until = obj
             .get("trust_until")
             .and_then(|t| t.as_str())
-            .and_then(|s| Timestamp::parse_rfc3339(s).ok());
+            .and_then(TrustUntil::parse);
         Ok(Self {
             id,
             content,
@@ -190,7 +213,7 @@ pub struct PhoneStatus {
     pub connected: bool,
     pub device: Option<PhoneDevice>,
     pub since: Option<Timestamp>,
-    pub trust_until: Option<Timestamp>,
+    pub trust_until: Option<TrustUntil>,
     pub tools: Vec<String>,
 }
 
@@ -206,7 +229,7 @@ impl PhoneStatus {
             None => m.insert("since", JsonValue::Null),
         }
         match &self.trust_until {
-            Some(ts) => m.insert("trust_until", JsonValue::from_str_val(ts.to_rfc3339())),
+            Some(tu) => m.insert("trust_until", tu.to_json_value()),
             None => m.insert("trust_until", JsonValue::Null),
         }
         m.insert(
@@ -235,7 +258,7 @@ struct BridgeInner {
     next_link_id: u64,
     link: Option<PhoneLinkState>,
     tools: Vec<PhoneTool>,
-    trust_until: Option<Timestamp>,
+    trust_until: Option<TrustUntil>,
     seq: u64,
     inflight: HashMap<String, Sender<PhoneResult>>,
 }
@@ -352,9 +375,9 @@ impl PhoneBridge {
         let result = match rx.recv_timeout(timeout) {
             Ok(res) => {
                 if tool == "phone.status" && !res.is_error {
-                    if let Some(t) = read_trust_until(&res) {
+                    if let Some(updated) = read_trust_until(&res) {
                         if let Ok(mut g) = self.inner.lock() {
-                            g.trust_until = Some(t);
+                            g.trust_until = updated;
                         }
                     }
                 }
@@ -628,13 +651,17 @@ pub fn phone_call_timeout(tier: &str) -> Duration {
     }
 }
 
-pub fn read_trust_until(res: &PhoneResult) -> Option<Timestamp> {
+pub fn read_trust_until(res: &PhoneResult) -> Option<Option<TrustUntil>> {
     for c in &res.content {
         if let Ok(v) = JsonValue::parse(&c.text) {
-            let s = v.get_str("trust_until");
-            if !s.is_empty() {
-                if let Ok(ts) = Timestamp::parse_rfc3339(s) {
-                    return Some(ts);
+            if let Some(val) = v.get("trust_until") {
+                if val.is_null() {
+                    return Some(None);
+                }
+                if let Some(s) = val.as_str() {
+                    if let Some(tu) = TrustUntil::parse(s) {
+                        return Some(Some(tu));
+                    }
                 }
             }
         }

@@ -37,8 +37,8 @@ This phone talks to the Macs you add, to Vitruvian Software's crash server if cr
 5. **Phone Bridge (off until you turn it on).**
    Phone Bridge starts turned off. When you switch **Run Phone Bridge** on in **Settings → Phone Bridge**, the phone holds an outbound connection to your paired Mac helper so AI agents on your Mac can read texts, contacts, call history, and location, and use notifications and screen control, within the permissions you grant:
    - Reading tools (`phone.status`, `notifications.list`, `sms.list`, `contacts.search`, `calls.log`, `location.current`, `screen.screenshot`, `screen.tree`) run without an interactive prompt and are recorded in the call log.
-   - Action tools (`apps.open`, `notifications.dismiss`, `screen.tap`, `screen.long_press`, `screen.swipe`, `screen.type`, `screen.key`) are refused unless you open the one-hour trust window (**Trust agents for 1 hour**).
-   - Outbound tools (`sms.send`, `calls.dial`, `notifications.reply`) ask you to approve each request on the phone (waiting up to 60 seconds), unless the one-hour trust window is open.
+   - Action tools (`apps.open`, `notifications.dismiss`, `screen.tap`, `screen.long_press`, `screen.swipe`, `screen.type`, `screen.key`) are refused unless you open the trust window (**1 hour**, **8 hours**, or **Always** after confirmation).
+   - Outbound tools (`sms.send`, `calls.dial`, `notifications.reply`) ask you to approve each request on the phone (waiting up to 60 seconds), unless the trust window (**1 hour**, **8 hours**, or **Always**) is open.
 
    The Phone Bridge page displays the last 20 requests from the local audit log.
 

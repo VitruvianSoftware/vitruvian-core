@@ -57,6 +57,18 @@ public enum class ToolTier(public val wire: String) {
   Outbound("outbound"),
 }
 
+/** Preset durations for opening the Phone Bridge trust window. */
+public enum class TrustDuration(
+    public val label: String,
+    public val millis: Long?,
+    public val auditArgument: String,
+    public val logPhrase: String,
+) {
+  OneHour("1 hour", BridgePolicy.TRUST_WINDOW_MS, "for 60 min", "for 1 hour"),
+  EightHours("8 hours", BridgePolicy.TRUST_WINDOW_8H_MS, "for 480 min", "for 8 hours"),
+  Always("Always", null, "always", "always"),
+}
+
 /** What [BridgePolicy.decide] concluded. */
 public sealed interface BridgeDecision {
   /** Run it now. */
@@ -100,8 +112,17 @@ public data class BridgeAuditEntry(
 
 /** The rules. */
 public object BridgePolicy {
-  /** The trust window's length, and what the button on the Hosts screen promises. */
+  /** Default one-hour trust window duration. */
   public const val TRUST_WINDOW_MS: Long = 60 * 60 * 1000L
+
+  /** Eight-hour trust window duration. */
+  public const val TRUST_WINDOW_8H_MS: Long = 8 * 60 * 60 * 1000L
+
+  /** Sentinel deadline meaning agents stay trusted until the person taps End trust. */
+  public const val TRUST_FOREVER: Long = Long.MAX_VALUE
+
+  /** Wire value reported in `phone.status` when permanent trust is enabled. */
+  public const val TRUST_UNTIL_ALWAYS: String = "always"
 
   /** How long an approval notification waits before it gives up. */
   public const val APPROVAL_TIMEOUT_MS: Long = 60_000L
@@ -123,7 +144,7 @@ public object BridgePolicy {
   /** What an act tool says when the window is shut. Names the button, not the rule. */
   public const val ACT_DENIED: String =
       "denied: the trust window is closed. On the phone: Settings → Phone bridge → " +
-          "\"Trust agents for 1 hour\"."
+          "trust agents (1 hour, 8 hours, or Always)."
 
   /** What an outbound tool says when nobody answered the prompt. */
   public const val NO_ANSWER: String = "denied: no answer in 60 s"
@@ -141,8 +162,16 @@ public object BridgePolicy {
   /** Argument keys whose value is prose the user wrote or received. */
   private val TEXT_KEYS = setOf("body", "text", "message", "prompt")
 
+  /** Whether the trust window was opened permanently (until ended manually). */
+  public fun isAlwaysTrusted(trustUntilMs: Long): Boolean = trustUntilMs == TRUST_FOREVER
+
+  /** Computes the deadline for [duration] starting at [nowMs], or [TRUST_FOREVER]. */
+  public fun trustDeadline(duration: TrustDuration, nowMs: Long): Long =
+      duration.millis?.let { nowMs + it } ?: TRUST_FOREVER
+
   /** Whether the trust window is open. Exactly [nowMs] is closed: the window has run out. */
-  public fun trustOpen(trustUntilMs: Long, nowMs: Long): Boolean = trustUntilMs > nowMs
+  public fun trustOpen(trustUntilMs: Long, nowMs: Long): Boolean =
+      isAlwaysTrusted(trustUntilMs) || trustUntilMs > nowMs
 
   /**
    * The approval rule from `docs/phone-bridge.md`, in one function.
@@ -168,6 +197,7 @@ public object BridgePolicy {
    * and stays there reads as a stuck clock rather than as a shut door.
    */
   public fun trustRemaining(trustUntilMs: Long, nowMs: Long): String {
+    if (isAlwaysTrusted(trustUntilMs)) return TRUST_UNTIL_ALWAYS
     if (!trustOpen(trustUntilMs, nowMs)) return "closed"
     val left = trustUntilMs - nowMs
     // Rounded UP: with 30 seconds left "0 min" would read as expired while
@@ -180,16 +210,16 @@ public object BridgePolicy {
   }
 
   /**
-   * The trust window as `phone.status` reports it: an ISO instant, or null.
+   * The trust window as `phone.status` reports it: `"always"`, an ISO instant, or null.
    *
    * Null rather than a past timestamp when it is shut, because the Mac agent republishes this
    * verbatim on `GET /v1/phone` and an expired timestamp there would read as "open until then".
    */
   public fun trustUntilIso(trustUntilMs: Long, nowMs: Long): String? =
-      if (!trustOpen(trustUntilMs, nowMs)) {
-        null
-      } else {
-        DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(trustUntilMs))
+      when {
+        isAlwaysTrusted(trustUntilMs) -> TRUST_UNTIL_ALWAYS
+        !trustOpen(trustUntilMs, nowMs) -> null
+        else -> DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(trustUntilMs))
       }
 
   /**

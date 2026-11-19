@@ -656,8 +656,8 @@ public interface BridgeControl {
   /** Starts or stops the service, and remembers which. */
   public fun setEnabled(enabled: Boolean)
 
-  /** Opens the trust window for an hour. */
-  public fun trustForAnHour()
+  /** Opens the trust window for [duration]. */
+  public fun trust(duration: TrustDuration)
 
   /** Shuts it now. */
   public fun endTrust()

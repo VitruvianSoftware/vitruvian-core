@@ -59,7 +59,6 @@ import dev.vitruvian.remote.state.BluetoothControl
 import dev.vitruvian.remote.state.BridgeControl
 import dev.vitruvian.remote.state.BridgePending
 import dev.vitruvian.remote.state.BridgePermissionState
-import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.BridgeRestartPolicy
 import dev.vitruvian.remote.state.BridgeStatus
 import dev.vitruvian.remote.state.DeepLink
@@ -69,6 +68,7 @@ import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.TrustDuration
 import dev.vitruvian.remote.update.AppUpdater
 import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.CoroutineScope
@@ -347,8 +347,8 @@ public class MainActivity : ComponentActivity() {
       PhoneBridgeService.reconnect(this@MainActivity)
     }
 
-    override fun trustForAnHour() {
-      BridgeHub.trustFor(BridgePolicy.TRUST_WINDOW_MS)
+    override fun trust(duration: TrustDuration) {
+      BridgeHub.trust(duration)
     }
 
     override fun endTrust() {
