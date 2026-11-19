@@ -54,9 +54,14 @@ jobs:
     # Apply can still replace the mirror key: see _await-repo-config.yaml.
     await-repo-config:
         uses: ./.github/workflows/_await-repo-config.yaml
+        permissions:
+            contents: read
+            actions: write # may start a fresh run of this export (see _await-repo-config.yaml)
 
     export:
         needs: await-repo-config
+        # Skipped when the wait handed this export to a fresh run.
+        if: needs.await-repo-config.outputs.restarted != 'true'
         uses: ./.github/workflows/_copybara-export.yaml
         with:
             component: vitruvian-sdk
