@@ -1762,7 +1762,6 @@ enum LinkedText {
         cache.countLimit = 2000
         return cache
     }()
-    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
     /// Web and mail links drawn underlined in `color` (the bubble's own text colour, never the system accent), each
     /// followed by a small "↗". Dates and everything else are left as they are.
@@ -1797,7 +1796,7 @@ enum LinkedText {
         if let known = cache.object(forKey: cacheKey) { return known.value }
         var result = AttributedString(text)
         let whole = NSRange(text.startIndex..., in: text)
-        for match in detector?.matches(in: text, range: whole) ?? [] {
+        for match in SharedLinkDetector.matches(in: text, range: whole) {
             guard let url = match.url, ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? ""),
                   let range = Range(match.range, in: text), let target = Range(range, in: result) else { continue }
             result[target].link = url

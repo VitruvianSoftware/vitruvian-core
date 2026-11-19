@@ -1678,6 +1678,7 @@ public final class ConversationModel: ObservableObject {
         }
         // Only the answer for the chat that is open now, from the engine that is up now, not older than one
         // already shown, and not while the chat is held at a message.
+        await ImagePixelSizeReader.shared.warm(events: page.events)
         guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == nil else {
             staleAnswerDropped?()
             return
@@ -1944,6 +1945,7 @@ public final class ConversationModel: ObservableObject {
         }
         // As for the newest page; and only while the chat is still held at this message ("Jump to latest" may
         // have let go of it meanwhile).
+        await ImagePixelSizeReader.shared.warm(events: page.events)
         guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == eventID else {
             staleAnswerDropped?()
             return
@@ -2054,6 +2056,9 @@ public final class ConversationModel: ObservableObject {
             } catch {
                 page = nil // reaching the bottom again tries again
             }
+            if let page {
+                await ImagePixelSizeReader.shared.warm(events: page.events)
+            }
             guard let self, owner == self.generation else { return }
             self.isLoadingNewer = false
             // The window may have been dropped ("Jump to latest", a resync) while this was out: then it joins nothing.
@@ -2153,6 +2158,9 @@ public final class ConversationModel: ObservableObject {
             } catch {
                 page = nil
             }
+            if let page {
+                await ImagePixelSizeReader.shared.warm(events: page.events)
+            }
             guard let self, owner == self.generation else { return }
             self.isLoadingOlder = false
             // The pages may have been dropped (a resync) while this was out: then it joins nothing.
@@ -2220,6 +2228,9 @@ public final class ConversationModel: ObservableObject {
             let page: EventsPage? = try? await client.call(
                 "room.events", self?.eventsParams(room: room, before: before, limit: Self.pageSize)
                     ?? RoomEventsParams(roomID: room, before: before, limit: Self.pageSize))
+            if let page, !page.events.isEmpty {
+                await ImagePixelSizeReader.shared.warm(events: page.events)
+            }
             guard let self, !Task.isCancelled, owner == self.generation, client === self.appModel.client,
                   self.roomID == room, !self.hasOlder, let page, !page.events.isEmpty else { return }
             self.earlierAnchorID = self.firstMessageID

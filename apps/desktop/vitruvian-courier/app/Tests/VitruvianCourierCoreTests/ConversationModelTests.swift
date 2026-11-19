@@ -1113,6 +1113,45 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testBottomStatePublishesCountAndResetsAcrossRoomSwitchAndLeaveWindow() async throws {
+        let h = try await start(["!a": history(120), "!b": history(3, room: "!b")])
+        h.app.selectedRoomID = "!a"
+        h.conversation.setWindowKey(true)
+        try await waitUntil { h.conversation.isLoaded && h.count("room.markRead") == 1 }
+        XCTAssertTrue(h.conversation.bottom.isAtBottom)
+        XCTAssertEqual(h.conversation.bottom.newMessageCount, 0)
+
+        var bottomChanges = 0
+        let bottomSub = h.conversation.bottom.objectWillChange.sink { bottomChanges += 1 }
+        defer { bottomSub.cancel() }
+
+        h.conversation.scrolled(toBottom: false)
+        XCTAssertFalse(h.conversation.bottom.isAtBottom)
+        let beforeIncoming = bottomChanges
+
+        // Incoming message while scrolled up increments bottom.newMessageCount and still marks read when looking.
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$121"])
+        try await waitUntil { h.messageIDs().last == "$121" && h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.conversation.bottom.newMessageCount, 1)
+        XCTAssertGreaterThan(bottomChanges, beforeIncoming)
+
+        // Switching rooms resets bottom.isAtBottom and bottom.newMessageCount.
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.conversation.isLoaded && h.messageIDs().count == 3 }
+        XCTAssertTrue(h.conversation.bottom.isAtBottom)
+        XCTAssertEqual(h.conversation.bottom.newMessageCount, 0)
+
+        // Jumping to latest from an away window clears any accumulated newMessageCount on bottom.
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        h.conversation.scrolled(toBottom: false)
+        h.conversation.jumpToBottom()
+        try await waitUntil { !h.conversation.isAwayFromLatest && h.messageIDs().last == "$121" }
+        XCTAssertEqual(h.conversation.bottom.newMessageCount, 0)
+        await stop(h)
+    }
+
     // MARK: - Opening at a message
 
     func testJumpOpensAroundTheMessage() async throws {

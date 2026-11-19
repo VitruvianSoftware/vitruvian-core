@@ -981,8 +981,8 @@ public struct EnhancedImageView: View {
         if let w = message.width, let h = message.height, w > 0, h > 0 {
             return Self.proportionalSize(width: w, height: h)
         }
-        // A picture's own size is reserved before it loads; one already read is known in the row's first frame.
-        if let disk = diskSize ?? ImagePixelSizeReader.sizeNow(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
+        // A picture's own size is reserved before it loads; one already warmed in memory is known in the row's first frame.
+        if let disk = diskSize ?? ImagePixelSizeReader.cachedSize(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
             return Self.proportionalSize(width: Int(disk.width), height: Int(disk.height))
         }
         return Self.proportionalSize(width: nil, height: nil)
@@ -1000,63 +1000,6 @@ public struct EnhancedImageView: View {
         }
         let scale = min(1, longestSide / CGFloat(max(width, height)))
         return CGSize(width: max(80, CGFloat(width) * scale), height: max(60, CGFloat(height) * scale))
-    }
-}
-
-/// Reads a picture's real pixel size from its file header (no decoding), cached, for bridged images that arrive
-/// without width/height.
-actor ImagePixelSizeReader {
-    static let shared = ImagePixelSizeReader()
-
-    /// Sizes already read, for any thread: a header read is small but it is a file read, and a row that scrolls
-    /// back into view should know its picture's size in its first frame. A file that could not be read is kept
-    /// as `.zero` so it is not tried again on every layout.
-    private nonisolated static let known = KnownSizes()
-
-    private final class KnownSizes: @unchecked Sendable {
-        private let lock = NSLock()
-        private var sizes: [String: CGSize] = [:]
-
-        func size(at path: String) -> CGSize? {
-            lock.lock()
-            defer { lock.unlock() }
-            return sizes[path]
-        }
-
-        func set(_ size: CGSize, at path: String) {
-            lock.lock()
-            defer { lock.unlock() }
-            sizes[path] = size
-        }
-    }
-
-    /// The size of the first readable local picture among `paths`, reading a header on this thread if need be.
-    nonisolated static func sizeNow(ofFirstReadable paths: [String?]) -> CGSize? {
-        for path in paths.compactMap({ $0 }) where isLocalMediaStorePath(path) {
-            if let remembered = known.size(at: path) {
-                if remembered != .zero { return remembered }
-                continue
-            }
-            let read = Self.read(path)
-            known.set(read ?? .zero, at: path)
-            if let read { return read }
-        }
-        return nil
-    }
-
-    func size(ofFirstReadable paths: [String?]) -> CGSize? {
-        Self.sizeNow(ofFirstReadable: paths)
-    }
-
-    nonisolated static func read(_ path: String) -> CGSize? {
-        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              var w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
-              var h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
-              w > 0, h > 0 else { return nil }
-        // EXIF orientations 5-8 are rotated a quarter turn.
-        if let o = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue, (5 ... 8).contains(o) { swap(&w, &h) }
-        return CGSize(width: w, height: h)
     }
 }
 

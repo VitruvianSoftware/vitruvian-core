@@ -103,9 +103,6 @@ public final class CalendarBridge: ObservableObject {
         "webex.com",
     ]
 
-    private nonisolated static let linkDetector = try? NSDataDetector(
-        types: NSTextCheckingResult.CheckingType.link.rawValue
-    )
     private nonisolated static let dateDetector = try? NSDataDetector(
         types: NSTextCheckingResult.CheckingType.date.rawValue
     )
@@ -151,9 +148,9 @@ public final class CalendarBridge: ObservableObject {
     /// Extracts the first allowed `https://` video-meeting URL (`meet.google.com`, `zoom.us`,
     /// `teams.microsoft.com`, `webex.com` or their subdomains) from `text`.
     nonisolated public static func extractMeetingURL(from text: String) -> URL? {
-        guard !text.isEmpty, let detector = linkDetector else { return nil }
+        guard !text.isEmpty else { return nil }
         let whole = NSRange(text.startIndex..., in: text)
-        for match in detector.matches(in: text, options: [], range: whole) {
+        for match in SharedLinkDetector.matches(in: text, options: [], range: whole) {
             if let url = match.url, isAllowedMeetingURL(url) {
                 return url
             }
@@ -173,11 +170,9 @@ public final class CalendarBridge: ObservableObject {
         let whole = NSRange(text.startIndex..., in: text)
 
         var forbidden = excludedRanges
-        if let linkDetector {
-            for linkMatch in linkDetector.matches(in: text, options: [], range: whole) {
-                if let r = Range(linkMatch.range, in: text) {
-                    forbidden.append(r)
-                }
+        for linkMatch in SharedLinkDetector.matches(in: text, options: [], range: whole) {
+            if let r = Range(linkMatch.range, in: text) {
+                forbidden.append(r)
             }
         }
         forbidden.append(contentsOf: inlineBacktickCodeRanges(in: text))

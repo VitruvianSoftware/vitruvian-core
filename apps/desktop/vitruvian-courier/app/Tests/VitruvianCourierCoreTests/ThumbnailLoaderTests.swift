@@ -119,4 +119,61 @@ final class ThumbnailLoaderTests: XCTestCase {
         let count = await loader.cachedCount
         XCTAssertEqual(count, 2, "two fit in 100,000 bytes")
     }
+
+    func testCachedThumbnailMirrorReflectsStoreEvictionAndLargeEXIFOrientation() async throws {
+        let loader = ThumbnailLoader(maxCount: 2)
+        let a = try makePNG("mirror-a.png", width: 80, height: 60)
+        let b = try makePNG("mirror-b.png", width: 80, height: 60)
+        let c = try makePNG("mirror-c.png", width: 80, height: 60)
+
+        XCTAssertNil(loader.cachedThumbnail(atPath: a), "mirror never loads synchronously before thumbnail(atPath:)")
+        let loadedA = await loader.thumbnail(atPath: a)
+        XCTAssertNotNil(loadedA)
+        XCTAssertTrue(loader.cachedThumbnail(atPath: a)?.image === loadedA?.image)
+
+        _ = await loader.thumbnail(atPath: b)
+        _ = await loader.thumbnail(atPath: c) // evicts oldest (a)
+        XCTAssertNil(loader.cachedThumbnail(atPath: a), "evicted entry leaves the synchronous mirror too")
+        XCTAssertNotNil(loader.cachedThumbnail(atPath: b))
+        XCTAssertNotNil(loader.cachedThumbnail(atPath: c))
+
+        // Large (> 640 px) portrait JPEG stored landscape with EXIF orientation 6 decodes upright.
+        let space = CGColorSpaceCreateDeviceRGB()
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 1200, height: 800, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.3, green: 0.6, blue: 0.9, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 1200, height: 800))
+        let cg = try XCTUnwrap(context.makeImage())
+        let exifURL = directory.appendingPathComponent("exif6-large.jpg")
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(exifURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, cg, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+
+        let rotated = await loader.thumbnail(atPath: exifURL.path)
+        let rotatedImage = try XCTUnwrap(rotated?.image)
+        XCTAssertEqual(rotatedImage.height, 640)
+        XCTAssertLessThan(rotatedImage.width, rotatedImage.height, "EXIF orientation 6 rotates >640px thumbnail upright")
+    }
+
+    func testSmallEXIFOrientation6JPEGDrawsUpright() async throws {
+        let loader = ThumbnailLoader()
+        let space = CGColorSpaceCreateDeviceRGB()
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 400, height: 300, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.3, green: 0.6, blue: 0.9, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
+        let cg = try XCTUnwrap(context.makeImage())
+        let exifURL = directory.appendingPathComponent("exif6-small.jpg")
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(exifURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, cg, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+
+        let rotated = await loader.thumbnail(atPath: exifURL.path)
+        let rotatedImage = try XCTUnwrap(rotated?.image)
+        XCTAssertEqual(rotatedImage.width, 300)
+        XCTAssertEqual(rotatedImage.height, 400)
+        XCTAssertLessThan(rotatedImage.width, rotatedImage.height, "EXIF orientation 6 rotates <=640px thumbnail upright")
+    }
 }
