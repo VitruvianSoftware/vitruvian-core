@@ -229,8 +229,15 @@ pub fn parse_args(argv: &[String]) -> Result<CiIntegrationArgs, String> {
             "--url" => url = take_value()?,
             "--org" => org = take_value()?,
             "--check" => return Err("--check does not take a value".into()),
-            other if other.starts_with('-') => return Err(format!("unknown argument: {other}")),
-            other => return Err(format!("unexpected positional argument: {other}")),
+            other if other.starts_with('-') => {
+                return Err("unknown argument (value not shown, in case it is a secret)".into())
+            }
+            other => {
+                return Err(
+                    "unexpected positional argument (value not shown, in case it is a secret)"
+                        .into(),
+                )
+            }
         }
     }
 
@@ -258,12 +265,12 @@ pub fn parse_args(argv: &[String]) -> Result<CiIntegrationArgs, String> {
 
     if !valid_url(&url) {
         return Err(format!(
-            "--url '{url}' must be an https:// URL (credentials must not travel in cleartext)"
+            "--url must be an https:// URL (credentials must not travel in cleartext)"
         ));
     }
     if !valid_org(&org) {
         return Err(format!(
-            "--org '{org}' must contain only ASCII letters, digits, '.', '_', or '-'"
+            "--org must be a Sentry organization slug: ASCII letters, digits, '.', '_' or '-', starting and ending with a letter or digit"
         ));
     }
 
@@ -660,6 +667,42 @@ pub fn execute_check<C: HttpClient>(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn org_dot_segments_are_refused() {
+        for bad in ["..", "."] {
+            let argv: Vec<String> = ["--name", "vitruvian-ci", "--org", bad]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            assert!(parse_args(&argv).is_err(), "--org {bad:?} must be refused");
+        }
+    }
+
+    #[test]
+    fn argument_errors_never_echo_the_value() {
+        let secret = "sntryu_0123456789abcdef0123456789abcdef";
+        for argv in [
+            vec![secret.to_string()],
+            vec![format!("--{secret}")],
+            vec![
+                "--name".into(),
+                "x".into(),
+                "--org".into(),
+                format!("{secret}/"),
+            ],
+            vec![
+                "--name".into(),
+                "x".into(),
+                "--url".into(),
+                format!("http://{secret}"),
+            ],
+        ] {
+            let err = parse_args(&argv).unwrap_err();
+            assert!(!err.contains(secret), "error echoed the value: {err}");
+        }
+    }
+
     use super::*;
     use std::collections::VecDeque;
 

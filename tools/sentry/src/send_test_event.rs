@@ -267,8 +267,15 @@ pub fn parse_args(argv: &[String]) -> Result<SendArgs, String> {
             "--dsn" => dsn_raw = Some(take_value()?),
             "--level" => level_raw = Some(take_value()?),
             "--message" => message = Some(take_value()?),
-            other if other.starts_with('-') => return Err(format!("unknown argument: {other}")),
-            other => return Err(format!("unexpected positional argument: {other}")),
+            other if other.starts_with('-') => {
+                return Err("unknown argument (value not shown, in case it is a secret)".into())
+            }
+            other => {
+                return Err(
+                    "unexpected positional argument (value not shown, in case it is a secret)"
+                        .into(),
+                )
+            }
         }
     }
 
