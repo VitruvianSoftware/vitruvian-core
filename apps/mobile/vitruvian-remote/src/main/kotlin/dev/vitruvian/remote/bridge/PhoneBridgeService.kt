@@ -155,6 +155,7 @@ public class PhoneBridgeService : Service() {
   override fun onDestroy() {
     BridgeHub.removeListener(hubListener)
     stop()
+    PhoneTools.shutdownMlKitTts()
     super.onDestroy()
   }
 

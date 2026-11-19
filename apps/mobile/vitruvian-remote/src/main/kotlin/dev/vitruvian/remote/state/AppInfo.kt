@@ -142,6 +142,17 @@ public object AppInfo {
               mavenTargets = setOf("@maven//:io_sentry_sentry_android_core"),
           ),
           OpenSourceLicense(
+              name = "Google ML Kit GenAI Text-to-Speech",
+              detail = "com.google.mlkit:genai-text-to-speech, genai-common, common",
+              license = "ML Kit Terms of Service",
+              mavenTargets =
+                  setOf(
+                      "@maven//:com_google_mlkit_common",
+                      "@maven//:com_google_mlkit_genai_common",
+                      "@maven//:com_google_mlkit_genai_text_to_speech",
+                  ),
+          ),
+          OpenSourceLicense(
               name = "JetBrains Mono",
               detail = "The JetBrains Mono Project Authors · typeface",
               license = "SIL OFL 1.1",
