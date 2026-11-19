@@ -57,6 +57,7 @@ _BUILD_CI_TOOLS = [
     "backstage_boot_smoke",
     "changelog_summary",
     "chart_render",
+    "deploy_affected",
     "foundation_app_digest_guard",
     "gitops_validate",
     "gitops_values_render",
@@ -78,6 +79,7 @@ _BUILD_CI_TOOLS = [
     "release_pr_dequeue",
     "relevant_paths",
     "resolve_deploy_base",
+    "resolve_unit_bases",
     "secret_scan",
 ]
 
@@ -210,6 +212,7 @@ rust_test(
         "//:composite_actions",
         "//:github_files",
         "//:workflow_files",
+        "//catalog:srcs",
         "//tools/gomod:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rust_toolchain",

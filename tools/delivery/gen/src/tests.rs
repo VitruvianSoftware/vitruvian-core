@@ -937,3 +937,67 @@ fn pagerduty_rung_checks_token_and_rejects_unknown_env() {
         "unexpected error: {err}"
     );
 }
+
+#[test]
+fn path_only_workflows_use_no_bazel_fast_path_and_fall_through() {
+    // Single-unit path-only group (stripe): uses filter: blob:none + build-ci-tool
+    // fast path and gates setup-bazel + manifest + upload on fast != 'false'.
+    let stripe: Vec<Unit> = fixtures()
+        .into_iter()
+        .filter(|u| u.name == "stripe")
+        .collect();
+    let got = must_render(&stripe, 2);
+    let orch = got
+        .split_once("\n  stripe-sandbox:\n")
+        .expect("stripe-sandbox job follows orchestrate")
+        .0;
+    for want in [
+        "          filter: blob:none\n",
+        "      affected_stripe: ${{ steps.manifest.outputs.affected_stripe || steps.fast_stripe.outputs.affected }}\n",
+        "        tool: resolve_deploy_base\n",
+        "        tool: resolve_unit_bases\n",
+        "        tool: deploy_affected\n",
+        "      - name: Fast path check (stripe)\n",
+        "        id: fast_stripe\n",
+        "          EXTRA_PATH_REGEX: 'infrastructure/pulumi/platform/stripe/'\n",
+        "      - if: steps.fast_stripe.outputs.affected != 'false'\n        uses: ./.github/actions/setup-bazel\n",
+        "      - name: Compute the delivery manifest\n        id: manifest\n        if: steps.fast_stripe.outputs.affected != 'false'\n",
+        "      - name: Upload the delivery manifest\n        if: steps.fast_stripe.outputs.affected != 'false'\n",
+    ] {
+        assert!(orch.contains(want), "single-unit path-only orchestrate lacks {want:?}:\n{orch}");
+    }
+    assert!(
+        !orch.contains("continue-on-error:"),
+        "durable-base conformance forbids continue-on-error in delivery workflows"
+    );
+
+    // Multi-unit path-only group (oauth-user-inspector + identity + zitadel-apps).
+    let oauth: Vec<Unit> = fixtures()
+        .into_iter()
+        .filter(|u| u.app == "oauth-user-inspector")
+        .collect();
+    assert_eq!(oauth.len(), 3);
+    let got_oauth = must_render(&oauth, 2);
+    let orch_oauth = got_oauth
+        .split_once("\n  # ======== unit:")
+        .expect("fan-out follows orchestrate")
+        .0;
+    let want_if = "steps.fast_oauth_user_inspector.outputs.affected != 'false' || steps.fast_oauth_user_inspector_identity.outputs.affected != 'false' || steps.fast_zitadel_apps.outputs.affected != 'false'";
+    assert!(
+        orch_oauth.contains(&format!(
+            "      - if: {want_if}\n        uses: ./.github/actions/setup-bazel\n"
+        )),
+        "multi-unit setup-bazel must fall through if any unit != 'false':\n{orch_oauth}"
+    );
+    assert!(
+        orch_oauth.contains("affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector || steps.fast_oauth_user_inspector.outputs.affected }}\n")
+            && orch_oauth.contains("affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps || steps.fast_zitadel_apps.outputs.affected }}\n")
+    );
+
+    // Removing extra_paths from one unit drops back to full Bazel mode (no blob:none).
+    let mut no_paths = stripe;
+    no_paths[0].extra_paths.clear();
+    let fallback = must_render(&no_paths, 2);
+    assert!(!fallback.contains("filter: blob:none"));
+    assert!(!fallback.contains("build-ci-tool"));
+}

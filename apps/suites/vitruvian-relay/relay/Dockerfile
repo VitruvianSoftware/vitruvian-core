@@ -35,26 +35,72 @@
 # the repo, so that path resolves unchanged. vitruvian-mcp-auth has no lock of
 # its own: the workspace's lock covers it.
 #
-# Every workspace member's manifest and sources are copied, because cargo loads
-# the whole workspace even for `-p vitruvian-relay`; only the relay, the
-# protocol crate and vitruvian-mcp-auth are compiled. spike/ is a separate
-# workspace and is not copied.
+# Every workspace member's manifest is copied because cargo loads the whole
+# workspace even for `-p vitruvian-relay`. Connector crates stay dummy stubs
+# (dev-dep only, never compiled into the relay binary); third-party crates are
+# prebuilt against manifests+stubs before copying real relay/protocol/mcpauth
+# sources, on $BUILDPLATFORM with cross-compilation rather than QEMU.
 
-FROM rust:1.98.1-slim-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.98.1-slim-bookworm AS build
+ARG TARGETARCH
+ARG BUILDARCH
+
+RUN set -eu; \
+    : > /tmp/cross.env; \
+    case "$TARGETARCH" in \
+      amd64) RUST_TARGET=x86_64-unknown-linux-gnu; APT_PKGS="gcc-x86-64-linux-gnu libc6-dev-amd64-cross"; TRIPLET=x86_64-linux-gnu; ENV_SLUG=x86_64_unknown_linux_gnu; LINKER_SLUG=X86_64_UNKNOWN_LINUX_GNU; ELF_EM=3e00 ;; \
+      arm64) RUST_TARGET=aarch64-unknown-linux-gnu; APT_PKGS="gcc-aarch64-linux-gnu libc6-dev-arm64-cross"; TRIPLET=aarch64-linux-gnu; ENV_SLUG=aarch64_unknown_linux_gnu; LINKER_SLUG=AARCH64_UNKNOWN_LINUX_GNU; ELF_EM=b700 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    echo "RUST_TARGET=$RUST_TARGET" >> /tmp/cross.env; \
+    echo "ELF_EM=$ELF_EM" >> /tmp/cross.env; \
+    if [ "$TARGETARCH" != "$BUILDARCH" ]; then \
+      rustup target add "$RUST_TARGET"; \
+      apt-get update && apt-get install -y --no-install-recommends $APT_PKGS && rm -rf /var/lib/apt/lists/*; \
+      echo "export CC_${ENV_SLUG}=${TRIPLET}-gcc" >> /tmp/cross.env; \
+      echo "export AR_${ENV_SLUG}=${TRIPLET}-ar" >> /tmp/cross.env; \
+      echo "export CARGO_TARGET_${LINKER_SLUG}_LINKER=${TRIPLET}-gcc" >> /tmp/cross.env; \
+    fi
+
 COPY --from=mcpauth Cargo.toml /src/packages/rust/vitruvian-mcp-auth/
-COPY --from=mcpauth src /src/packages/rust/vitruvian-mcp-auth/src
+RUN mkdir -p /src/packages/rust/vitruvian-mcp-auth/src && \
+    printf '// stub for dependency prebuild\n' > /src/packages/rust/vitruvian-mcp-auth/src/lib.rs
 WORKDIR /src/apps/suites/vitruvian-relay
 COPY Cargo.toml Cargo.lock ./
 COPY relay/Cargo.toml relay/
-COPY relay/src relay/src
 COPY protocol/Cargo.toml protocol/
-COPY protocol/src protocol/src
 COPY connector/Cargo.toml connector/
-COPY connector/src connector/src
 COPY connector/scripts/Cargo.toml connector/scripts/
-COPY connector/scripts/src connector/scripts/src
-RUN cargo build --release --locked -p vitruvian-relay --bin vitruvian-relay && \
-    install -m 0755 target/release/vitruvian-relay /vitruvian-relay
+RUN set -eu; \
+    . /tmp/cross.env; \
+    mkdir -p relay/src protocol/src connector/src connector/scripts/src && \
+    printf '// stub for dependency prebuild\n' > relay/src/lib.rs && \
+    printf 'fn main() { std::process::exit(97); }\n' > relay/src/main.rs && \
+    printf '// stub for dependency prebuild\n' > protocol/src/lib.rs && \
+    printf '// stub for workspace member\n' > connector/src/lib.rs && \
+    printf 'fn main() { std::process::exit(97); }\n' > connector/src/main.rs && \
+    printf '// stub for workspace member\n' > connector/scripts/src/lib.rs && \
+    printf 'fn main() { std::process::exit(97); }\n' > connector/scripts/src/main.rs && \
+    cargo build --release --locked --target "$RUST_TARGET" -p vitruvian-relay --bin vitruvian-relay
+
+COPY --from=mcpauth src /src/packages/rust/vitruvian-mcp-auth/src
+COPY relay/src relay/src
+COPY protocol/src protocol/src
+RUN set -eu; \
+    . /tmp/cross.env; \
+    find /src/packages/rust/vitruvian-mcp-auth/src relay/src protocol/src -type f -name '*.rs' -exec touch {} + && \
+    rm -rf target/"$RUST_TARGET"/release/vitruvian-relay* \
+           target/"$RUST_TARGET"/release/deps/*vitruvian_relay* \
+           target/"$RUST_TARGET"/release/deps/*vitruvian_mcp_auth* \
+           target/"$RUST_TARGET"/release/.fingerprint/vitruvian-relay-* \
+           target/"$RUST_TARGET"/release/.fingerprint/vitruvian-mcp-auth-* && \
+    cargo build --release --locked --target "$RUST_TARGET" -p vitruvian-relay --bin vitruvian-relay && \
+    install -m 0755 target/"$RUST_TARGET"/release/vitruvian-relay /vitruvian-relay && \
+    got="$(od -An -tx1 -j18 -N2 /vitruvian-relay | tr -d ' \n')"; \
+    if [ "$got" != "$ELF_EM" ]; then \
+      echo "unexpected ELF e_machine=$got expected=$ELF_EM (TARGETARCH=$TARGETARCH)" >&2; \
+      exit 1; \
+    fi
 
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app

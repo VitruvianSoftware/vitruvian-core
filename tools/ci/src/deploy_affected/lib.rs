@@ -42,8 +42,7 @@
 //! `deploy-affected: affected=<v> (<reason>)` line on stdout either way.
 
 use shell_compat::{
-    capture, capture_stdout, cat, env, env_or_empty, err, indent, mktemp_dir, os, out, status,
-    subst,
+    capture, cat, env, env_or_empty, err, indent, mktemp_dir, os, out, status, subst,
 };
 use std::process::Command;
 
@@ -310,15 +309,29 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         );
     }
 
-    let diff_r = capture_stdout(
+    // --no-renames keeps the diff tree-only (partial clones never need to fetch
+    // historical blobs for rename similarity) and ensures moving a file OUT of
+    // a watched path still lists the old path as changed.
+    let diff_r = capture(
         127,
         Command::new("git")
             .arg("diff")
+            .arg("--no-renames")
             .arg("--name-only")
             .arg(os(&before_rev))
             .arg(os(&after_rev))
             .arg("--"),
     );
+    if !diff_r.ok() {
+        if !diff_r.stderr.is_empty() {
+            err(&diff_r.stderr);
+        }
+        return emit(
+            b"true",
+            b"git diff failed -- cannot determine changed files",
+            b"degraded",
+        );
+    }
     let changed_files = subst(diff_r.stdout);
     if changed_files.is_empty() {
         return emit(

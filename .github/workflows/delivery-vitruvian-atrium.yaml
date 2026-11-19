@@ -181,7 +181,7 @@ jobs:
       # phase). The affected_* pairs are the convenience form a job-level
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
-      affected_vitruvian_atrium: ${{ steps.manifest.outputs.affected_vitruvian_atrium }}
+      affected_vitruvian_atrium: ${{ steps.manifest.outputs.affected_vitruvian_atrium || steps.fast_vitruvian_atrium.outputs.affected }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -193,10 +193,28 @@ jobs:
           # perfectly healthy. That is exactly #1763: the gate was not
           # broken, it could not see.
           fetch-depth: 0
-      - uses: ./.github/actions/setup-bazel
+          # Path-only units diff tree paths with --no-renames, so historical
+          # blobs are never needed unless a unit falls through to Bazel.
+          filter: blob:none
+      - name: Build resolve_deploy_base (no Bazel on fast path)
+        id: resolve-deploy-base-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: resolve_deploy_base
+      - name: Build resolve_unit_bases (no Bazel on fast path)
+        id: resolve-unit-bases-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: resolve_unit_bases
+      - name: Build deploy_affected (no Bazel on fast path)
+        id: deploy-affected-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: deploy_affected
       - name: Resolve the durable diff base (#1351)
         id: durable-base
         env:
+          RESOLVE_DEPLOY_BASE_BIN: ${{ steps.resolve-deploy-base-bin.outputs.path }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WORKFLOW_FILE: delivery-vitruvian-atrium.yaml
           LEGACY_WORKFLOW_FILE: delivery.yaml
@@ -207,10 +225,11 @@ jobs:
         # delivered it before the per-app split). Always exits 0: an empty
         # base_sha means "could not determine", and the step below falls
         # back.
-        run: bazel run //tools/ci:resolve_deploy_base
+        run: "$RESOLVE_DEPLOY_BASE_BIN"
       - name: Resolve per-unit durable bases (#1842)
         id: unit-bases
         env:
+          RESOLVE_UNIT_BASES_BIN: ${{ steps.resolve-unit-bases-bin.outputs.path }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WORKFLOW_FILE: delivery-vitruvian-atrium.yaml
           LEGACY_WORKFLOW_FILE: delivery.yaml
@@ -221,9 +240,21 @@ jobs:
         # This resolves each unit's own laggiest last delivery instead.
         # Always exits 0; an empty object means every unit keeps the single
         # base, which is exactly the previous behaviour.
-        run: bazel run //tools/ci:resolve_unit_bases
+        run: "$RESOLVE_UNIT_BASES_BIN"
+      - name: Fast path check (vitruvian-atrium)
+        id: fast_vitruvian_atrium
+        env:
+          DEPLOY_AFFECTED_BIN: ${{ steps.deploy-affected-bin.outputs.path }}
+          BEFORE_REV: ${{ fromJSON(steps.unit-bases.outputs.unit_bases || '{}')['vitruvian-atrium'] || steps.durable-base.outputs.base_sha || github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+          EXTRA_PATH_REGEX: 'apps/desktop/vitruvian-atrium/|packages/peripherals/'
+          EXCLUDE_PATH_REGEX: 'apps/desktop/vitruvian-atrium/\.github/|apps/desktop/vitruvian-atrium/docs/|apps/desktop/vitruvian-atrium/CHANGELOG\.md|apps/desktop/vitruvian-atrium/(AGENTS|REFACTOR|TRADEMARKS|UPSTREAM)\.md$|apps/desktop/vitruvian-atrium/(.*/)?README\.md$|packages/peripherals/CHANGELOG\.md|packages/peripherals/(.*/)?README\.md$'
+        run: "$DEPLOY_AFFECTED_BIN"
+      - if: steps.fast_vitruvian_atrium.outputs.affected != 'false'
+        uses: ./.github/actions/setup-bazel
       - name: Compute the delivery manifest
         id: manifest
+        if: steps.fast_vitruvian_atrium.outputs.affected != 'false'
         env:
           # Durable base first, github.event.before only as the fallback
           # (empty is falsy in a GitHub Actions expression). The engine
@@ -244,6 +275,7 @@ jobs:
           ORCHESTRATE_UNITS: vitruvian-atrium
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
+        if: steps.fast_vitruvian_atrium.outputs.affected != 'false'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: delivery-manifest

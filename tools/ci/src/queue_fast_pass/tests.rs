@@ -808,3 +808,36 @@ fn presubmit_skips_only_on_an_explicit_hit() {
         "the planner no longer plans nothing for an explicit hit"
     );
 }
+
+#[test]
+fn tidy_check_yaml_skips_only_on_an_explicit_hit_and_runs_when_queued_skips() {
+    let tidy = std::fs::read_to_string(".github/workflows/tidy-check.yaml").unwrap();
+    let q = workflow_job_text(&tidy, "queued");
+    assert!(
+        q.contains("\n      hit: ${{ steps.lookup.outputs.verdict == 'hit' }}\n"),
+        "queued's hit output must be exactly verdict == 'hit':\n{q}"
+    );
+    let bad = verdict_fail_open(&tidy, "lookup", "hit");
+    assert!(bad.is_empty(), "tidy-check.yaml:\n{}", bad.join("\n"));
+
+    let jobs = workflow_jobs(&tidy);
+    let check = jobs
+        .iter()
+        .find(|j| j.id == "tidy-check")
+        .expect("tidy-check job");
+    assert!(
+        names_job(&check.needs, "queued"),
+        "tidy-check does not need queued: {:?}",
+        check.needs
+    );
+    assert!(
+        check.cond.contains("needs.queued.outputs.hit != 'true'"),
+        "tidy-check does not skip on a hit: {}",
+        check.cond
+    );
+    assert!(
+        check.cond.contains("!cancelled()") || check.cond.contains("always()"),
+        "tidy-check would be skipped when queued is skipped: {}",
+        check.cond
+    );
+}
