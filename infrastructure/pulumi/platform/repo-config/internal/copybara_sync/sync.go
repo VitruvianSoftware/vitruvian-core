@@ -603,6 +603,15 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				// HttpsEnforced is left unset: GitHub refuses it until the
 				// domain's certificate exists, which takes minutes after the
 				// DNS record resolves.
+				//
+				// The custom domain takes TWO applies. The provider's create
+				// (terraform-provider-github resource_github_repository_pages.go)
+				// stores the empty cname from GitHub's enable-Pages response
+				// before it reads the requested one, so it never sends it: the
+				// first apply enables Pages with no domain. That apply records
+				// the empty cname in state, so the next repo-config apply sees
+				// the difference and sets the domain. mini-party's domain was
+				// set that way, by the apply after the one that created it.
 				if _, err := github.NewRepositoryPages(ctx, project.StandaloneRepo+"-pages", &github.RepositoryPagesArgs{
 					Repository: repo.Name,
 					BuildType:  pulumi.String("workflow"),
