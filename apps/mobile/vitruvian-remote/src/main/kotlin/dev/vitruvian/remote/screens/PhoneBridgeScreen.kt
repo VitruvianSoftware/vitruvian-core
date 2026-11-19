@@ -380,12 +380,13 @@ private fun AnnouncementVoicePicker(state: RemoteState) {
           VButton("Use", { state.selectPhoneVoice("") })
         }
       }
+      val showLanguage = BridgePolicy.voicesMixLanguages(state.phoneVoiceOptions)
       state.phoneVoiceOptions.forEach { voice ->
         val picked = state.phoneVoice == voice.name
         val ready = voice.status == BridgePolicy.MlKitVoiceStatus.Available
         ListItem(
-            title = voice.name,
-            subtitle = BridgePolicy.voiceSubtitle(voice),
+            title = BridgePolicy.voiceTitle(voice.name),
+            subtitle = BridgePolicy.voiceSubtitle(voice, showLanguage),
             status =
                 when {
                   voice.name == inUse && picked -> StatusTone.Ok
@@ -416,7 +417,8 @@ private fun AnnouncementVoicePicker(state: RemoteState) {
       }
       if (state.phoneVoice.isNotEmpty() && inUse != null && inUse != state.phoneVoice) {
         VText(
-            text = "Until your pick is on this phone, announcements use $inUse.",
+            text =
+                "Until your pick is on this phone, announcements use ${BridgePolicy.voiceTitle(inUse)}.",
             style = VitruvianType.listSub,
             color = colors.textDim,
         )

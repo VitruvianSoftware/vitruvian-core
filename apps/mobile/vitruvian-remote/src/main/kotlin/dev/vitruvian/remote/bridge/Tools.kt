@@ -50,6 +50,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.telephony.SmsManager
 import android.util.Base64
+import android.util.Log
 import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.texttospeech.SpeechSynthesis
@@ -1003,40 +1004,22 @@ public object PhoneTools {
                   .setUsage(AudioAttributes.USAGE_MEDIA)
                   .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                   .build()
-          val failed = AtomicReference<String?>(null)
-          val request =
-              SpeechSynthesizerRequest(
-                  SpeechSynthesizerRequest.Input.Text(PREVIEW_TEXT, voice),
+          // The same playback path announcements use, so a sample sounds and behaves exactly like
+          // the real thing (start window, stop handling).
+          val outcome =
+              speakMlKitTts(
+                  context,
+                  context.getSystemService(AudioManager::class.java),
                   attrs,
-                  TextToSpeech.QUEUE_FLUSH,
+                  PREVIEW_TEXT,
+                  pauseMedia = true,
+                  headphonesOnly = false,
+                  timeoutSeconds = PREVIEW_TIMEOUT_S,
+                  voiceOverride = voice,
               )
-          withTransientAudioFocus(
-              context.getSystemService(AudioManager::class.java), attrs, pauseMedia = true) {
-                val finished =
-                    runBlocking(Dispatchers.IO) {
-                      withTimeoutOrNull(PREVIEW_TIMEOUT_MS) {
-                        synthesizer
-                            .synthesize(request)
-                            .takeWhile { response ->
-                              when (response) {
-                                is SpeechSynthesizerResponse.Error -> {
-                                  failed.set("The voice could not play (${response.errorCode})")
-                                  false
-                                }
-                                is SpeechSynthesizerResponse.StatusUpdate ->
-                                    response.status == SpeechSynthesizerResponse.Status.START
-                                is SpeechSynthesizerResponse.AudioAvailable -> true
-                              }
-                            }
-                            .collect {}
-                        true
-                      }
-                    } != null
-                if (!finished) runCatching { synthesizer.stop() }
-              }
-          failed.get()
+          if (outcome.result.isError) "The sample did not play: ${outcome.result.text}" else null
         } catch (t: Throwable) {
-          "The voice could not play: ${t.message}"
+          "The sample did not play: ${t.message}"
         }
       }
 
@@ -1160,12 +1143,15 @@ public object PhoneTools {
       pauseMedia: Boolean,
       headphonesOnly: Boolean,
       timeoutSeconds: Long,
+      voiceOverride: VoiceInfo? = null,
   ): WavPlayOutcome {
     fun fallback(reason: String) = WavPlayOutcome(ToolResult(reason, true), allowTtsFallback = true)
     return try {
       val synthesizer = getOrCreateMlKitSynthesizer()
       val voice =
-          readyMlKitVoice(context, synthesizer) ?: return fallback("ML Kit TTS voice not ready")
+          voiceOverride
+              ?: readyMlKitVoice(context, synthesizer)
+              ?: return fallback("ML Kit TTS voice not ready")
 
       val unplugged = AtomicBoolean(false)
       val started = AtomicBoolean(false)
@@ -1201,6 +1187,13 @@ public object PhoneTools {
                   synthesizer
                       .synthesize(request)
                       .takeWhile { response ->
+                        if (response !is SpeechSynthesizerResponse.AudioAvailable ||
+                            !started.get()) {
+                          // Kinds only, never the announcement text.
+                          Log.d(
+                              TTS_LOG_TAG,
+                              "mlkit: ${response.javaClass.simpleName} ${(response as? SpeechSynthesizerResponse.StatusUpdate)?.status ?: ""}")
+                        }
                         when (response) {
                           is SpeechSynthesizerResponse.Error -> {
                             errorCode.set(response.errorCode)
@@ -1261,6 +1254,7 @@ public object PhoneTools {
               val outcome =
                   BridgePolicy.classifyMlKitEnd(
                       end.get() ?: BridgePolicy.MlKitEnd.Stopped, started.get(), unplugged.get())
+              Log.i(TTS_LOG_TAG, "mlkit: end=${end.get()} started=${started.get()} -> $outcome")
               when (outcome) {
                 BridgePolicy.MlKitOutcome.Spoken ->
                     WavPlayOutcome(
@@ -1434,6 +1428,7 @@ public object PhoneTools {
   private const val FIX_TIMEOUT_S = 10L
   private const val TTS_INIT_TIMEOUT_S = 10L
   private const val MLKIT_LOOKUP_TIMEOUT_MS = 5_000L
-  private const val PREVIEW_TIMEOUT_MS = 20_000L
+  private const val PREVIEW_TIMEOUT_S = 30L
+  private const val TTS_LOG_TAG = "VitruvianTts"
   private const val PREVIEW_TEXT = "This is how your announcements will sound."
 }

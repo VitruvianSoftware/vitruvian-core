@@ -609,19 +609,36 @@ public object BridgePolicy {
       }
 
   /**
-   * The picker's subtitle: language, gender when known, and status, e.g. "English (United States) ·
-   * female · on this phone".
+   * The picker's title for a voice: the engine id without its language prefix, readable, e.g.
+   * `en-us-x-star02` becomes "Star 02". Falls back to the raw id when it has no such shape.
    */
-  public fun voiceSubtitle(voice: PhoneVoiceOption): String =
+  public fun voiceTitle(name: String): String {
+    val core = name.substringAfterLast("-x-", name).substringBefore("-local")
+    val match = Regex("^([a-z]+)(\\d+)$").matchEntire(core) ?: return name
+    val (word, number) = match.destructured
+    return "${word.replaceFirstChar { it.uppercase() }} $number"
+  }
+
+  /**
+   * The picker's subtitle: gender when known and status, plus the language only when the list mixes
+   * languages ([showLanguage]), e.g. "female · on this phone".
+   */
+  public fun voiceSubtitle(voice: PhoneVoiceOption, showLanguage: Boolean = false): String =
       listOf(
-              java.util.Locale.forLanguageTag(voice.languageTag)
-                  .getDisplayName(java.util.Locale.getDefault())
-                  .ifBlank { voice.languageTag },
+              if (showLanguage)
+                  java.util.Locale.forLanguageTag(voice.languageTag)
+                      .getDisplayName(java.util.Locale.getDefault())
+                      .ifBlank { voice.languageTag }
+              else "",
               voice.gender,
               voiceStatusLabel(voice.status),
           )
           .filter { it.isNotBlank() }
           .joinToString(" · ")
+
+  /** Whether the voices span more than one language, so each row needs to say which. */
+  public fun voicesMixLanguages(voices: List<PhoneVoiceOption>): Boolean =
+      voices.map { it.languageTag.lowercase() }.distinct().size > 1
 
   /**
    * Voices in the order the picker lists them: ready ones first, then downloadable, then the rest,

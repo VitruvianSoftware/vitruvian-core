@@ -707,12 +707,30 @@ public class BridgePolicyTest {
   }
 
   @Test
-  public fun voiceSubtitleSaysLanguageGenderAndStatus() {
+  public fun voiceSubtitleSaysGenderAndStatusAndLanguageOnlyWhenMixed() {
     assertEquals(
-        "English (United States) · female · on this phone",
+        "female · on this phone",
         BridgePolicy.voiceSubtitle(voice("a", BridgePolicy.MlKitVoiceStatus.Available, "female")))
     assertEquals(
         "English (United States) · download to use",
-        BridgePolicy.voiceSubtitle(voice("a", BridgePolicy.MlKitVoiceStatus.Downloadable)))
+        BridgePolicy.voiceSubtitle(
+            voice("a", BridgePolicy.MlKitVoiceStatus.Downloadable), showLanguage = true))
+    assertFalse(
+        BridgePolicy.voicesMixLanguages(
+            listOf(voice("a", BridgePolicy.MlKitVoiceStatus.Available))))
+    assertTrue(
+        BridgePolicy.voicesMixLanguages(
+            listOf(
+                voice("a", BridgePolicy.MlKitVoiceStatus.Available),
+                PhoneVoiceOption("b", "en-GB", "", BridgePolicy.MlKitVoiceStatus.Available))))
+  }
+
+  @Test
+  public fun voiceTitleIsReadable() {
+    // The ids this Pixel actually reported.
+    assertEquals("Star 02", BridgePolicy.voiceTitle("en-us-x-star02"))
+    assertEquals("Star 05", BridgePolicy.voiceTitle("en-us-x-star05-local"))
+    assertEquals("Orus", BridgePolicy.voiceTitle("Orus"))
+    assertEquals("weird-name", BridgePolicy.voiceTitle("weird-name"))
   }
 }
