@@ -226,6 +226,11 @@ func TestTheMiniPartyMirrorPublishesItsSiteAtItsDomain(t *testing.T) {
 			t.Errorf("pages %s is %q, want %q", field, v, want)
 		}
 	}
+	// Step 1 of 2: false resyncs state with GitHub (see sync.go); step 2
+	// flips this to true.
+	if v, ok := r.inputs["httpsEnforced"]; !ok || !v.IsBool() || v.BoolValue() {
+		t.Errorf("pages httpsEnforced is %v, want false for the state resync", v)
+	}
 	for name, s := range got {
 		if s.typeToken == "github:index/repositoryPages:RepositoryPages" && name != "mini-party-pages" {
 			t.Errorf("unexpected Pages site %q: only mini-party publishes one from this package", name)
