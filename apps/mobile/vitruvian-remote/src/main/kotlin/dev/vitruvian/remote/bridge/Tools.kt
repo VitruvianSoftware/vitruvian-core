@@ -60,6 +60,8 @@ import com.google.mlkit.genai.texttospeech.SpeechSynthesizerResponse
 import com.google.mlkit.genai.texttospeech.VoiceInfo
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.Derive
+import dev.vitruvian.remote.state.Persistence
+import dev.vitruvian.remote.state.PhoneVoiceOption
 import dev.vitruvian.remote.state.ToolDescriptor
 import dev.vitruvian.remote.state.ToolTier
 import java.time.Instant
@@ -933,9 +935,110 @@ public object PhoneTools {
     }
   }
 
-  private fun forgetMlKitVoice() {
+  /** Drops the cached voice, so the next announcement looks again (and sees a new choice). */
+  public fun forgetMlKitVoice() {
     synchronized(mlKitLock) { mlKitVoiceCache = null }
   }
+
+  private suspend fun supportedMlKitVoices(synthesizer: SpeechSynthesizer): List<VoiceInfo> {
+    val defaultLocale = Locale.getDefault()
+    return synthesizer.getSupportedVoices(defaultLocale).ifEmpty {
+      if (defaultLocale != Locale.US) synthesizer.getSupportedVoices(Locale.US) else emptyList()
+    }
+  }
+
+  /** Every on-device voice for the phone's language, for the voice picker. Empty if unsupported. */
+  public fun listMlKitVoices(): List<PhoneVoiceOption> =
+      runCatching {
+            val synthesizer = getOrCreateMlKitSynthesizer()
+            runBlocking(Dispatchers.IO) {
+              withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
+                supportedMlKitVoices(synthesizer).map { voice ->
+                  PhoneVoiceOption(
+                      name = voice.name,
+                      languageTag = voice.locale.toLanguageTag(),
+                      gender =
+                          when (voice.gender) {
+                            VoiceInfo.Gender.FEMALE -> "female"
+                            VoiceInfo.Gender.MALE -> "male"
+                            else -> ""
+                          },
+                      status = mapFeatureStatus(synthesizer.checkStatus(voice)),
+                  )
+                }
+              }
+            }
+          }
+          .getOrNull()
+          .orEmpty()
+
+  /** Downloads [name] because the user picked it: any network, since they asked for it. */
+  public fun downloadMlKitVoice(name: String) {
+    runCatching {
+      val synthesizer = getOrCreateMlKitSynthesizer()
+      mlKitDownloadScope.launch {
+        supportedMlKitVoices(synthesizer)
+            .firstOrNull { it.name == name }
+            ?.let { startBackgroundVoiceDownload(synthesizer, it) }
+      }
+    }
+  }
+
+  /**
+   * Plays a short sample in [name] for the picker. Null when it played, otherwise why not. Holds
+   * the speak lock, so a sample and an announcement never talk over each other.
+   */
+  public fun previewMlKitVoice(context: Context, name: String): String? =
+      synchronized(speakLock) {
+        try {
+          val synthesizer = getOrCreateMlKitSynthesizer()
+          val voice =
+              runBlocking(Dispatchers.IO) {
+                withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
+                  supportedMlKitVoices(synthesizer).firstOrNull { it.name == name }
+                }
+              } ?: return@synchronized "That voice is not on this phone any more"
+          val attrs =
+              AudioAttributes.Builder()
+                  .setUsage(AudioAttributes.USAGE_MEDIA)
+                  .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                  .build()
+          val failed = AtomicReference<String?>(null)
+          val request =
+              SpeechSynthesizerRequest(
+                  SpeechSynthesizerRequest.Input.Text(PREVIEW_TEXT, voice),
+                  attrs,
+                  TextToSpeech.QUEUE_FLUSH,
+              )
+          withTransientAudioFocus(
+              context.getSystemService(AudioManager::class.java), attrs, pauseMedia = true) {
+                val finished =
+                    runBlocking(Dispatchers.IO) {
+                      withTimeoutOrNull(PREVIEW_TIMEOUT_MS) {
+                        synthesizer
+                            .synthesize(request)
+                            .takeWhile { response ->
+                              when (response) {
+                                is SpeechSynthesizerResponse.Error -> {
+                                  failed.set("The voice could not play (${response.errorCode})")
+                                  false
+                                }
+                                is SpeechSynthesizerResponse.StatusUpdate ->
+                                    response.status == SpeechSynthesizerResponse.Status.START
+                                is SpeechSynthesizerResponse.AudioAvailable -> true
+                              }
+                            }
+                            .collect {}
+                        true
+                      }
+                    } != null
+                if (!finished) runCatching { synthesizer.stop() }
+              }
+          failed.get()
+        } catch (t: Throwable) {
+          "The voice could not play: ${t.message}"
+        }
+      }
 
   // ML Kit initializes itself at app start through the MlKitInitProvider its AAR merges into our
   // manifest (checked in the built APK), so no internal init call is needed here.
@@ -948,6 +1051,10 @@ public object PhoneTools {
                         .build())
                 .also { mlKitSynthesizer = it }
       }
+
+  /** The voice picked in Phone Bridge settings; empty means automatic. */
+  private fun preferredVoice(context: Context): String =
+      runCatching { Persistence(context).phoneVoice }.getOrDefault("")
 
   /** Unmetered by the underlying network, so Tailscale's VPN does not hide home Wi-Fi. */
   private fun isUnmetered(context: Context): Boolean =
@@ -990,12 +1097,7 @@ public object PhoneTools {
     val voice =
         runBlocking(Dispatchers.IO) {
           withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
-            val defaultLocale = Locale.getDefault()
-            val voices =
-                synthesizer.getSupportedVoices(defaultLocale).ifEmpty {
-                  if (defaultLocale != Locale.US) synthesizer.getSupportedVoices(Locale.US)
-                  else emptyList()
-                }
+            val voices = supportedMlKitVoices(synthesizer)
             val candidates =
                 voices.map { voice ->
                   BridgePolicy.MlKitVoiceCandidate(
@@ -1004,7 +1106,7 @@ public object PhoneTools {
                       status = mapFeatureStatus(synthesizer.checkStatus(voice)),
                   )
                 }
-            val selection = BridgePolicy.selectMlKitVoice(candidates)
+            val selection = BridgePolicy.selectMlKitVoice(candidates, preferredVoice(context))
             if (BridgePolicy.shouldDownloadMlKitVoice(
                 selection, isUnmetered(context), mlKitDownloadInFlight.get())) {
               val name = (selection as BridgePolicy.MlKitVoiceSelection.NeedsDownload).name
@@ -1332,4 +1434,6 @@ public object PhoneTools {
   private const val FIX_TIMEOUT_S = 10L
   private const val TTS_INIT_TIMEOUT_S = 10L
   private const val MLKIT_LOOKUP_TIMEOUT_MS = 5_000L
+  private const val PREVIEW_TIMEOUT_MS = 20_000L
+  private const val PREVIEW_TEXT = "This is how your announcements will sound."
 }

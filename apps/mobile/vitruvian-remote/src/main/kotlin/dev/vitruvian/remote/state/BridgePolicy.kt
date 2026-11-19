@@ -110,6 +110,17 @@ public data class BridgeAuditEntry(
     val approver: String,
 )
 
+/** One on-device announcement voice the phone offers, as the voice picker shows it. */
+public data class PhoneVoiceOption(
+    /** The engine's own id for the voice, stored as the choice. */
+    val name: String,
+    /** BCP 47 language tag, e.g. `en-US`. */
+    val languageTag: String,
+    /** `female`, `male`, or empty when the engine does not say. */
+    val gender: String,
+    val status: BridgePolicy.MlKitVoiceStatus,
+)
+
 /** The rules. */
 public object BridgePolicy {
   /** Default one-hour trust window duration. */
@@ -566,14 +577,11 @@ public object BridgePolicy {
     if (candidates.isEmpty()) return MlKitVoiceSelection.Unavailable
     val wanted = preferredName?.trim()?.takeIf { it.isNotEmpty() }
     if (wanted != null) {
+      // The picked voice when it is on the phone. Until its download finishes, the automatic
+      // choice below speaks instead: a picked voice never makes an announcement wait or fall back
+      // to the plain Android voice. The picker starts that download itself.
       val match = candidates.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
-      when (match?.status) {
-        MlKitVoiceStatus.Available -> return MlKitVoiceSelection.Ready(match.name)
-        MlKitVoiceStatus.Downloadable -> return MlKitVoiceSelection.NeedsDownload(match.name)
-        MlKitVoiceStatus.Downloading -> return MlKitVoiceSelection.Unavailable
-        MlKitVoiceStatus.Unavailable,
-        null -> Unit
-      }
+      if (match?.status == MlKitVoiceStatus.Available) return MlKitVoiceSelection.Ready(match.name)
     }
     candidates
         .firstOrNull { it.status == MlKitVoiceStatus.Available }
@@ -589,6 +597,56 @@ public object BridgePolicy {
           return MlKitVoiceSelection.NeedsDownload(it.name)
         }
     return MlKitVoiceSelection.Unavailable
+  }
+
+  /** The picker's one-line status for a voice. */
+  public fun voiceStatusLabel(status: MlKitVoiceStatus): String =
+      when (status) {
+        MlKitVoiceStatus.Available -> "on this phone"
+        MlKitVoiceStatus.Downloadable -> "download to use"
+        MlKitVoiceStatus.Downloading -> "downloading"
+        MlKitVoiceStatus.Unavailable -> "not available"
+      }
+
+  /**
+   * The picker's subtitle: language, gender when known, and status, e.g. "English (United States) ·
+   * female · on this phone".
+   */
+  public fun voiceSubtitle(voice: PhoneVoiceOption): String =
+      listOf(
+              java.util.Locale.forLanguageTag(voice.languageTag)
+                  .getDisplayName(java.util.Locale.getDefault())
+                  .ifBlank { voice.languageTag },
+              voice.gender,
+              voiceStatusLabel(voice.status),
+          )
+          .filter { it.isNotBlank() }
+          .joinToString(" · ")
+
+  /**
+   * Voices in the order the picker lists them: ready ones first, then downloadable, then the rest,
+   * each group by name, so the voices you can hear right now are at the top.
+   */
+  public fun sortVoicesForPicker(voices: List<PhoneVoiceOption>): List<PhoneVoiceOption> =
+      voices.sortedWith(
+          compareBy<PhoneVoiceOption>({
+                when (it.status) {
+                  MlKitVoiceStatus.Available -> 0
+                  MlKitVoiceStatus.Downloading -> 1
+                  MlKitVoiceStatus.Downloadable -> 2
+                  MlKitVoiceStatus.Unavailable -> 3
+                }
+              })
+              .thenBy { it.name.lowercase() })
+
+  /**
+   * The voice the picker marks as in use: the saved choice when the phone still offers it,
+   * otherwise the one automatic mode would speak with ([selectMlKitVoice] with no preference). Null
+   * when none can speak now.
+   */
+  public fun voiceInUse(voices: List<PhoneVoiceOption>, saved: String): String? {
+    val candidates = voices.map { MlKitVoiceCandidate(it.name, it.languageTag, it.status) }
+    return (selectMlKitVoice(candidates, saved) as? MlKitVoiceSelection.Ready)?.name
   }
 
   /** How long a cached voice that was ready to speak is trusted before it is looked up again. */

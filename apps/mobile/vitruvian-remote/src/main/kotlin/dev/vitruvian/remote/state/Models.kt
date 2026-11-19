@@ -679,6 +679,25 @@ public interface BridgeControl {
 }
 
 /**
+ * The phone's on-device announcement voices (Google's ML Kit voices), as a port for the same reason
+ * as [BridgeControl]: listing, downloading and playing them needs a `Context`. Null in previews and
+ * tests, and the picker is then not drawn.
+ */
+public interface PhoneVoices {
+  /** Every voice the phone offers for its language, with whether it is downloaded. */
+  public suspend fun list(): List<PhoneVoiceOption>
+
+  /** Starts downloading [name]; the user picked it, so this runs on any network. */
+  public fun download(name: String)
+
+  /** Plays a short sample in [name]. Null when it played, otherwise why it did not. */
+  public suspend fun preview(name: String): String?
+
+  /** Tells the announcement path the choice changed, so the next announcement uses it. */
+  public fun choiceChanged()
+}
+
+/**
  * Which confirmation dialog is open, if any.
  *
  * A sealed hierarchy rather than an enum since v1.2, because two of these confirm something about a

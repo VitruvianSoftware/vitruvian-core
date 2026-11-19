@@ -67,6 +67,8 @@ import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
+import dev.vitruvian.remote.state.PhoneVoiceOption
+import dev.vitruvian.remote.state.PhoneVoices
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TrustDuration
 import dev.vitruvian.remote.update.AppUpdater
@@ -74,6 +76,7 @@ import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /**
@@ -279,6 +282,7 @@ public class MainActivity : ComponentActivity() {
                     enableBluetooth = ::requestEnableBluetoothSystem,
                 ),
             updates = AppUpdater(this),
+            phoneVoices = DevicePhoneVoices(),
         )
     BridgeHub.addListener(bridgeListener)
     pushBridgeStatus()
@@ -330,6 +334,25 @@ public class MainActivity : ComponentActivity() {
    * An inner class because granting a permission needs the activity's result launcher, which only
    * an activity can own -- everything else here is a call into the process-wide hub or the service.
    */
+  /**
+   * The picker's port onto [PhoneTools]' ML Kit voices; the blocking calls run off the main thread.
+   */
+  private inner class DevicePhoneVoices : PhoneVoices {
+    override suspend fun list(): List<PhoneVoiceOption> =
+        withContext(Dispatchers.IO) { PhoneTools.listMlKitVoices() }
+
+    override fun download(name: String) {
+      PhoneTools.downloadMlKitVoice(name)
+    }
+
+    override suspend fun preview(name: String): String? =
+        withContext(Dispatchers.IO) { PhoneTools.previewMlKitVoice(this@MainActivity, name) }
+
+    override fun choiceChanged() {
+      PhoneTools.forgetMlKitVoice()
+    }
+  }
+
   private inner class ServiceBridge : BridgeControl {
     override fun setEnabled(enabled: Boolean) {
       BridgeHub.setEnabled(enabled)
