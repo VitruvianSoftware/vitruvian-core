@@ -786,17 +786,27 @@ private struct AnimatedGIFImageView: NSViewRepresentable {
 /// if missing/broken, loops animated GIFs, shows a subtle `Transcoded` badge when applicable, and opens the
 /// in-app lightbox on click.
 public struct EnhancedImageView: View {
+    private struct LoadedMedia {
+        let path: String
+        var cgImage: CGImage?
+        var animatedImage: NSImage?
+    }
+
+    private struct CachedDiskSize {
+        let key: String
+        let size: CGSize
+    }
+
     public let message: TimelineMessage
     public var preloadedImage: NSImage?
     public var forceBlurHashPlaceholder: Bool
     public var forceErrorState: Bool
     public var onOpenLightbox: (String) -> Void
 
-    @State private var loadedCGImage: CGImage?
-    @State private var loadedAnimatedImage: NSImage?
-    @State private var failed = false
+    @State private var loadedMedia: LoadedMedia?
+    @State private var failedPath: String?
     /// The picture's real pixel size read from disk, when the message carries no width/height (common for bridged images).
-    @State private var diskSize: CGSize?
+    @State private var diskSize: CachedDiskSize?
 
     /// The longest side of a picture in the timeline, in points.
     public static let longestSide: CGFloat = 400
@@ -815,8 +825,10 @@ public struct EnhancedImageView: View {
         self.onOpenLightbox = onOpenLightbox
         // A picture the loader already holds is drawn in the row's first frame, not after a placeholder.
         if !forceBlurHashPlaceholder, !forceErrorState, preloadedImage == nil, !message.isGIF,
-           let path = Self.localPath(of: message) {
-            _loadedCGImage = State(initialValue: ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image)
+           let path = Self.localPath(of: message),
+           let cached = ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image
+        {
+            _loadedMedia = State(initialValue: LoadedMedia(path: path, cgImage: cached, animatedImage: nil))
         }
     }
 
@@ -826,6 +838,27 @@ public struct EnhancedImageView: View {
     }
 
     private var localPath: String? { Self.localPath(of: message) }
+
+    private var diskSizeKey: String {
+        "\(message.mediaPath)|\(message.thumbnailPath ?? "")"
+    }
+
+    private var currentCGImage: CGImage? {
+        guard let path = localPath else { return nil }
+        if loadedMedia?.path == path, let cg = loadedMedia?.cgImage {
+            return cg
+        }
+        return message.isGIF ? nil : ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image
+    }
+
+    private var currentAnimatedImage: NSImage? {
+        guard let path = localPath, message.isGIF else { return nil }
+        return loadedMedia?.path == path ? loadedMedia?.animatedImage : nil
+    }
+
+    private var isFailed: Bool {
+        forceErrorState || (failedPath == message.mediaPath && !message.mediaPath.isEmpty)
+    }
 
     private static func localPath(of message: TimelineMessage) -> String? {
         if isLocalMediaStorePath(message.mediaPath) {
@@ -847,10 +880,10 @@ public struct EnhancedImageView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
             .onTapGesture {
-                guard !forceErrorState, !failed else { return }
+                guard !isFailed else { return }
                 onOpenLightbox(message.id)
             }
-            .task(id: message.mediaPath) { await loadImage() }
+            .task(id: "\(message.mediaPath)|\(message.thumbnailPath ?? "")|\(message.isGIF)") { await loadImage() }
             .accessibilityElement()
             .accessibilityLabel(message.fileName.isEmpty ? String(localized: "Image") : message.fileName)
             .accessibilityAddTraits(.isImage)
@@ -859,7 +892,7 @@ public struct EnhancedImageView: View {
     @ViewBuilder
     private var mediaStack: some View {
         ZStack {
-            if forceErrorState || failed {
+            if isFailed {
                 ImageErrorCard(fileName: message.fileName, size: size)
             } else if !forceBlurHashPlaceholder, let preloadedImage {
                 if message.isGIF {
@@ -870,10 +903,10 @@ public struct EnhancedImageView: View {
                         .scaledToFill()
                 }
                 badgesOverlay
-            } else if !forceBlurHashPlaceholder, let loadedAnimatedImage, message.isGIF {
+            } else if !forceBlurHashPlaceholder, let loadedAnimatedImage = currentAnimatedImage {
                 AnimatedGIFImageView(image: loadedAnimatedImage)
                 badgesOverlay
-            } else if !forceBlurHashPlaceholder, let loadedCGImage {
+            } else if !forceBlurHashPlaceholder, let loadedCGImage = currentCGImage {
                 Image(decorative: loadedCGImage, scale: 2)
                     .resizable()
                     .scaledToFill()
@@ -886,32 +919,39 @@ public struct EnhancedImageView: View {
 
     private func loadImage() async {
         if (message.width ?? 0) <= 0 || (message.height ?? 0) <= 0 {
-            diskSize = await ImagePixelSizeReader.shared.size(ofFirstReadable: [message.mediaPath, message.thumbnailPath])
+            let key = diskSizeKey
+            if let readSize = await ImagePixelSizeReader.shared.size(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
+                diskSize = CachedDiskSize(key: key, size: readSize)
+            }
         }
         guard !forceBlurHashPlaceholder, preloadedImage == nil else { return }
         if forceErrorState {
-            failed = true
+            failedPath = message.mediaPath
             return
         }
         // A picture the loader holds replaces the old one at once; resetting to nil first would flash the placeholder.
-        loadedCGImage = localPath.flatMap { ThumbnailLoader.shared.cachedThumbnail(atPath: $0) }?.image
-        loadedAnimatedImage = nil
-        failed = false
         guard let path = localPath else {
             if !message.mediaPath.isEmpty {
                 // Reject non-local paths immediately as an error.
-                failed = true
+                failedPath = message.mediaPath
             }
             return
         }
+        if !message.isGIF, let cached = ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image {
+            loadedMedia = LoadedMedia(path: path, cgImage: cached, animatedImage: nil)
+            if failedPath == message.mediaPath { failedPath = nil }
+            return
+        }
         if message.isGIF, let nsImage = NSImage(contentsOfFile: path) {
-            loadedAnimatedImage = nsImage
+            loadedMedia = LoadedMedia(path: path, cgImage: nil, animatedImage: nsImage)
+            if failedPath == message.mediaPath { failedPath = nil }
             return
         }
         if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
-            loadedCGImage = thumbnail.image
+            loadedMedia = LoadedMedia(path: path, cgImage: thumbnail.image, animatedImage: nil)
+            if failedPath == message.mediaPath { failedPath = nil }
         } else {
-            failed = true
+            failedPath = message.mediaPath
         }
     }
 
@@ -982,7 +1022,8 @@ public struct EnhancedImageView: View {
             return Self.proportionalSize(width: w, height: h)
         }
         // A picture's own size is reserved before it loads; one already warmed in memory is known in the row's first frame.
-        if let disk = diskSize ?? ImagePixelSizeReader.cachedSize(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
+        let knownDisk = diskSize?.key == diskSizeKey ? diskSize?.size : nil
+        if let disk = knownDisk ?? ImagePixelSizeReader.cachedSize(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
             return Self.proportionalSize(width: Int(disk.width), height: Int(disk.height))
         }
         return Self.proportionalSize(width: nil, height: nil)

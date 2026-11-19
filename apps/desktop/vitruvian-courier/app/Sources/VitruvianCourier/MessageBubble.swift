@@ -311,7 +311,7 @@ private struct TimerNoteRow: View {
         .contextMenu {
             MessageMenuItems(
                 sections: actions.menu(message),
-                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeys: actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys,
                 hotkeyDispatcher: actions.hotkeyDispatcher
             ) { actions.perform($0, message.id) }
         }
@@ -353,7 +353,7 @@ private struct CallNoteRow: View {
         .contextMenu {
             MessageMenuItems(
                 sections: actions.menu(message),
-                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeys: actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys,
                 hotkeyDispatcher: actions.hotkeyDispatcher
             ) { actions.perform($0, message.id) }
         }
@@ -585,9 +585,23 @@ struct MessageRowView: View {
         .contextMenu {
             MessageMenuItems(
                 sections: actions.menu(message),
-                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeys: actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys,
                 hotkeyDispatcher: actions.hotkeyDispatcher
             ) { actions.perform($0, message.id) }
+        }
+        .onChange(of: message.id) { _, _ in
+            if pointer != ActionBarPointer() { pointer = ActionBarPointer() }
+            if settling != nil { settling?.cancel(); settling = nil }
+            if hoveredChip != nil { hoveredChip = nil }
+            if cardChip != nil { cardChip = nil }
+            if openCard != nil { openCard?.cancel(); openCard = nil }
+            if cardSize != .zero { cardSize = .zero }
+            if showsMenu { showsMenu = false }
+            if activeDetectedDate != nil { activeDetectedDate = nil }
+            if linkOpenedAt != nil { linkOpenedAt = nil }
+            if lastRowClick != nil { lastRowClick = nil }
+            let targetHighlight: Double = isHighlighted ? 1 : 0
+            if highlight != targetHighlight { fadeHighlight(isHighlighted) }
         }
         .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
             showsMenu = false
@@ -916,6 +930,7 @@ struct MessageRowView: View {
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
+                        .id(message.id)
                         .takesOwnClick()
                     }
                 }
@@ -976,6 +991,7 @@ struct MessageRowView: View {
             caption
         } else if !message.galleryItems.isEmpty {
             GalleryGridView(message: message, onOpenLightbox: actions.openLightbox)
+                .id(message.id)
             caption
         } else {
             switch message.kind {
@@ -990,6 +1006,7 @@ struct MessageRowView: View {
             case .sticker:
                 if let sticker = message.sticker {
                     StickerAttachmentView(message: message, sticker: sticker, onOpenLightbox: actions.openLightbox)
+                        .id(message.id)
                 } else {
                     EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
                     caption
@@ -1002,6 +1019,7 @@ struct MessageRowView: View {
                         onPopOutPiP: { actions.popOutPiP(message) },
                         onOpenLightbox: actions.openLightbox
                     )
+                    .id(message.id)
                     caption
                 } else {
                     EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
@@ -1015,6 +1033,7 @@ struct MessageRowView: View {
                         onPopOutPiP: { actions.popOutPiP(message) },
                         onOpenLightbox: actions.openLightbox
                     )
+                    .id(message.id)
                     caption
                 } else {
                     InlineVideoPlayer(
@@ -1030,6 +1049,7 @@ struct MessageRowView: View {
                         onPopOutPiP: { actions.popOutPiP(message) },
                         onOpenLightbox: { actions.openLightbox(message.id) }
                     )
+                    .id(message.id)
                     caption
                 }
             case .voiceNote:
@@ -1042,10 +1062,12 @@ struct MessageRowView: View {
                     onCopyTranscript: actions.copyPlainText,
                     onReadAloudTranscript: { text in actions.readAloudTranscript(message, text) }
                 )
+                .id(message.id)
                 caption
             case .file:
                 if InlinePDFView.canDisplay(message) {
                     InlinePDFView(message: message)
+                        .id(message.id)
                 } else {
                     FileAttachmentChip(message: message, preferences: actions.composerPreferences)
                 }
@@ -1476,13 +1498,19 @@ private struct ReactionAvatarStack: View {
 }
 
 private struct ReactorAvatarCircle: View {
+    private struct LoadedImage {
+        let path: String
+        let image: NSImage
+    }
+
     let item: ReactionAvatarItem
     let isRedacted: Bool
-    @State private var image: NSImage?
+    @State private var loaded: LoadedImage?
 
     private var effectiveImage: NSImage? {
         guard !isRedacted, !item.avatarPath.isEmpty else { return nil }
-        return image ?? AvatarCache.shared.cachedImage(atPath: item.avatarPath)
+        let matched = loaded?.path == item.avatarPath ? loaded?.image : nil
+        return matched ?? AvatarCache.shared.cachedImage(atPath: item.avatarPath)
     }
 
     var body: some View {
@@ -1512,13 +1540,14 @@ private struct ReactorAvatarCircle: View {
         .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1))
         .task(id: "\(isRedacted)|\(item.avatarPath)") {
             guard !isRedacted, !item.avatarPath.isEmpty else {
-                image = nil
+                if loaded != nil { loaded = nil }
                 return
             }
-            if let cached = AvatarCache.shared.cachedImage(atPath: item.avatarPath) {
-                image = cached
-            } else {
-                image = await AvatarCache.shared.image(atPath: item.avatarPath)
+            let path = item.avatarPath
+            if let cached = AvatarCache.shared.cachedImage(atPath: path) {
+                loaded = LoadedImage(path: path, image: cached)
+            } else if let fetched = await AvatarCache.shared.image(atPath: path) {
+                loaded = LoadedImage(path: path, image: fetched)
             }
         }
     }
@@ -1536,14 +1565,27 @@ struct MessageTimeLabel: View {
 /// What a reaction is: the emoji as text, or, for a custom emoji (an `mxc://` address), its picture at the emoji's
 /// height. The address itself is never shown, not even in a tooltip or to VoiceOver.
 struct ReactionKeyView: View {
+    private struct LoadedEmoji {
+        let key: String
+        let image: CGImage
+    }
+
     let chip: ReactionChip
     let size: CGFloat
-    @State private var image: CGImage?
+    @State private var loaded: LoadedEmoji?
+
+    private var currentImage: CGImage? {
+        if loaded?.key == chip.key, let image = loaded?.image {
+            return image
+        }
+        guard chip.isCustomImage, let path = ThumbnailLoader.resolveMediaPath(chip.key) else { return nil }
+        return ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image
+    }
 
     var body: some View {
         if chip.isCustomImage {
             Group {
-                if let image {
+                if let image = currentImage {
                     Image(decorative: image, scale: 1)
                         .resizable()
                         .scaledToFit()
@@ -1554,8 +1596,11 @@ struct ReactionKeyView: View {
             .frame(width: size * 1.2, height: size * 1.2)
             .accessibilityLabel(chip.spokenKey)
             .task(id: chip.key) {
-                guard let path = ThumbnailLoader.resolveMediaPath(chip.key) else { return }
-                image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+                let key = chip.key
+                guard let path = ThumbnailLoader.resolveMediaPath(key) else { return }
+                if let thumb = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image {
+                    loaded = LoadedEmoji(key: key, image: thumb)
+                }
             }
         } else {
             Text(chip.key).font(size > 14 ? .system(size: size) : nil)

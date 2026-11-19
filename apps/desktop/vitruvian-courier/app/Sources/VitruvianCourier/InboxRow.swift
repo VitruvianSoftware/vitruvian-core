@@ -619,15 +619,21 @@ struct NetworkTileView: View {
 /// A picture, or initials on a colour. The colour comes from `identity` (a user or room ID, see `AvatarColor`), never
 /// from the name, so one person has one colour on every screen.
 struct AvatarView: View {
+    private struct LoadedImage {
+        let path: String
+        let image: NSImage
+    }
+
     let path: String
     let initials: String
     let identity: String
     var size: CGFloat = 40
-    @State private var image: NSImage?
+    @State private var loaded: LoadedImage?
 
     private var effectiveImage: NSImage? {
         guard !path.isEmpty else { return nil }
-        return image ?? AvatarCache.shared.cachedImage(atPath: path)
+        let matched = loaded?.path == path ? loaded?.image : nil
+        return matched ?? AvatarCache.shared.cachedImage(atPath: path)
     }
 
     var body: some View {
@@ -649,13 +655,13 @@ struct AvatarView: View {
         .accessibilityHidden(true)
         .task(id: path) {
             guard !path.isEmpty else {
-                image = nil
+                if loaded != nil { loaded = nil }
                 return
             }
             if let cached = AvatarCache.shared.cachedImage(atPath: path) {
-                image = cached
-            } else {
-                image = await AvatarCache.shared.image(atPath: path)
+                loaded = LoadedImage(path: path, image: cached)
+            } else if let fetched = await AvatarCache.shared.image(atPath: path) {
+                loaded = LoadedImage(path: path, image: fetched)
             }
         }
     }

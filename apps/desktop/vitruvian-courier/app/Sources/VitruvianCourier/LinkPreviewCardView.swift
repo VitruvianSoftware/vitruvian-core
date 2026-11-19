@@ -10,11 +10,16 @@ import WebKit
 ///
 /// Never fetches the target URL or any remote image. Clicking the card opens the `http(s)` URL in the default browser.
 public struct LinkPreviewCardView: View {
+    private struct LoadedThumbnail {
+        let path: String
+        let image: CGImage
+    }
+
     public let preview: LinkPreviewItem
     public var onBubble: Bool
     public var onOpenURL: (URL) -> Void
 
-    @State private var loadedCGImage: CGImage?
+    @State private var loaded: LoadedThumbnail?
 
     public static let userVisibleStrings: [String] = [
         String(localized: "Link Preview"),
@@ -78,6 +83,12 @@ public struct LinkPreviewCardView: View {
         return path
     }
 
+    private var currentCGImage: CGImage? {
+        guard let path = localThumbnailPath else { return nil }
+        if loaded?.path == path, let img = loaded?.image { return img }
+        return ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image
+    }
+
     private var synchronousLocalThumbnail: NSImage? {
         guard let path = localThumbnailPath else { return nil }
         return NSImage(contentsOfFile: path)
@@ -90,7 +101,7 @@ public struct LinkPreviewCardView: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                if let cgImage = loadedCGImage {
+                if let cgImage = currentCGImage {
                     Image(decorative: cgImage, scale: 2)
                         .resizable()
                         .scaledToFill()
@@ -146,10 +157,11 @@ public struct LinkPreviewCardView: View {
         }
         .buttonStyle(.plain)
         .task(id: preview.imagePath) {
-            loadedCGImage = nil
             guard let path = localThumbnailPath else { return }
-            if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
-                loadedCGImage = thumbnail.image
+            if let cached = ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image {
+                loaded = LoadedThumbnail(path: path, image: cached)
+            } else if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
+                loaded = LoadedThumbnail(path: path, image: thumbnail.image)
             }
         }
         .help(targetURL?.absoluteString ?? String(localized: "Open Link"))

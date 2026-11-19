@@ -188,6 +188,8 @@ public actor ThumbnailLoader {
 /// without width/height.
 public actor ImagePixelSizeReader {
     public static let shared = ImagePixelSizeReader()
+    public nonisolated static let didLearnSizeNotification = Notification.Name("VitruvianCourier.ImagePixelSizeReader.didLearnSize")
+    public nonisolated static let pathUserInfoKey = "path"
 
     private struct FileStamp: Equatable, Sendable {
         let dev: dev_t
@@ -213,11 +215,14 @@ public actor ImagePixelSizeReader {
             return sizes[path]
         }
 
-        func set(_ size: CGSize, at path: String) {
+        @discardableResult
+        func set(_ size: CGSize, at path: String) -> Bool {
             lock.lock()
             defer { lock.unlock() }
             failedStamps.removeValue(forKey: path)
+            let changed = sizes[path] != size
             sizes[path] = size
+            return changed
         }
 
         func hasFailed(_ stamp: FileStamp, at path: String) -> Bool {
@@ -265,7 +270,15 @@ public actor ImagePixelSizeReader {
             guard let stamp = fileStamp(at: path) else { continue }
             if known.hasFailed(stamp, at: path) { continue }
             if let read = Self.read(path) {
-                known.set(read, at: path)
+                if known.set(read, at: path) {
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(
+                            name: didLearnSizeNotification,
+                            object: nil,
+                            userInfo: [pathUserInfoKey: path]
+                        )
+                    }
+                }
                 return read
             }
             known.recordFailure(stamp, at: path)

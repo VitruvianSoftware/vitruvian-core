@@ -6,13 +6,27 @@ import SwiftUI
 
 /// A message's menu (02 §3.4.2's order, the 4.3 subset), from `MessageMenu.sections`: the sections a divider apart,
 /// each item with its key, a greyed one with why as its tooltip, and the greyed lines that only say something.
+@MainActor
 struct MessageMenuItems: View {
-    let sections: [[MessageMenuItem]]
-    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    private let makeSections: () -> [[MessageMenuItem]]
+    @ObservedObject var hotkeys: HotkeyRegistry
     var hotkeyDispatcher: HotkeyDispatcher? = nil
     let choose: (MessageMenuItem.Command) -> Void
 
+    init(
+        sections: @autoclosure @escaping () -> [[MessageMenuItem]],
+        hotkeys: HotkeyRegistry? = nil,
+        hotkeyDispatcher: HotkeyDispatcher? = nil,
+        choose: @escaping (MessageMenuItem.Command) -> Void
+    ) {
+        self.makeSections = sections
+        self._hotkeys = ObservedObject(wrappedValue: hotkeys ?? MessageRowActions.sharedFallbackHotkeys)
+        self.hotkeyDispatcher = hotkeyDispatcher
+        self.choose = choose
+    }
+
     var body: some View {
+        let sections = makeSections()
         ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
             if index > 0 { Divider() }
             ForEach(section) { item in
@@ -159,6 +173,8 @@ extension MenuKey {
 /// thread, and a click on a held message when "Click pending messages to undo send" is on.
 @MainActor
 enum MessageRowActions {
+    static let sharedFallbackHotkeys = HotkeyRegistry()
+
     static func make(conversation: ConversationModel, messageActions: MessageActionsModel,
                      preferences: ComposerPreferences, composer: ComposerModel, ui: MessageUI, source: MessageSource,
                      deselect: @escaping () -> Void = {},
