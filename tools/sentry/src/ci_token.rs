@@ -19,9 +19,10 @@
 // SOFTWARE.
 
 //! Provision or reconcile a self-hosted Sentry internal integration and mint a
-//! scoped CI token for `infrastructure/pulumi/platform/sentry-pagerduty`.
+//! scoped CI token for `infrastructure/pulumi/platform/sentry` and
+//! `infrastructure/pulumi/platform/sentry-pagerduty`.
 //!
-//! Endpoint paths, payloads, and auth semantics verified against
+//! Endpoint paths, payloads, and scope/auth semantics verified against
 //! `getsentry/sentry` @ tag `26.10.1`.
 
 use crate::http::{redact, HttpClient, Response};
@@ -35,23 +36,105 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Scopes granted to the internal integration for
-/// `infrastructure/pulumi/platform/sentry-pagerduty`.
-/// Validated against `ApiScopes` (`src/sentry/models/apiscopes.py`) and closed
-/// under `SENTRY_SCOPE_HIERARCHY_MAPPING` (`src/sentry/conf/server.py`).
-/// `org:write` is required because the stack POSTs the PagerDuty service table
-/// to `/api/0/organizations/{org}/integrations/{id}/`.
-pub const REQUIRED_SCOPES: [&str; 5] = [
+/// Scopes granted to the internal integration for CI applies of
+/// `infrastructure/pulumi/platform/sentry` (`sentry`) and
+/// `infrastructure/pulumi/platform/sentry-pagerduty` (`sentry-pagerduty`).
+///
+/// Closed under `SENTRY_SCOPE_HIERARCHY_MAPPING` (`src/sentry/conf/server.py`)
+/// and valid in `ApiScopes` (`src/sentry/models/apiscopes.py`). All `*:admin`
+/// scopes are intentionally omitted so CI cannot delete projects
+/// (`src/sentry/core/endpoints/project_details.py`) or teams
+/// (`src/sentry/api/bases/team.py`).
+///
+/// Scope-to-stack mapping verified against `getsentry/sentry` @ tag `26.10.1`:
+/// - `alerts:read` (`sentry-pagerduty`): read error detectors
+///   (`GET /api/0/organizations/{org}/detectors/`,
+///   `src/sentry/workflow_engine/endpoints/organization_detector_index.py`,
+///   `OrganizationDetectorPermission` in `src/sentry/api/bases/organization.py`)
+///   and workflow alerts (`GET /api/0/organizations/{org}/workflows/[{id}/]`,
+///   `src/sentry/workflow_engine/endpoints/organization_workflow_index.py`,
+///   `src/sentry/workflow_engine/endpoints/organization_workflow_details.py`).
+/// - `alerts:write` (`sentry-pagerduty`): create/update/delete workflow alerts
+///   (`POST`/`PUT`/`DELETE` `/api/0/organizations/{org}/workflows/[{id}/]`,
+///   `src/sentry/workflow_engine/endpoints/organization_workflow_index.py`,
+///   `src/sentry/workflow_engine/endpoints/organization_workflow_details.py`,
+///   `src/sentry/workflow_engine/endpoints/utils/permissions.py`,
+///   `src/sentry/workflow_engine/endpoints/validators/utils.py`).
+/// - `org:read` (`sentry`, `sentry-pagerduty`): `sentry` lists custom dashboards
+///   (`GET /api/0/organizations/{org}/dashboards/`,
+///   `src/sentry/dashboards/endpoints/organization_dashboards.py`; translated to
+///   `dashboard:read`/`dashboard:write` via `DEPRECATED_SCOPE_TRANSLATIONS` in
+///   `src/sentry/conf/server.py`); `sentry-pagerduty` reads PagerDuty org
+///   integrations (`GET /api/0/organizations/{org}/integrations/[{id}/]`,
+///   `src/sentry/integrations/api/endpoints/organization_integrations_index.py`,
+///   `src/sentry/integrations/api/endpoints/organization_integration_details.py`,
+///   `OrganizationIntegrationsPermission` in `src/sentry/api/bases/organization.py`)
+///   and lists org projects (`GET /api/0/organizations/{org}/projects/`,
+///   `src/sentry/core/endpoints/organization_projects.py`).
+/// - `org:write` (`sentry`, `sentry-pagerduty`): `sentry` updates org
+///   `scrubIPAddresses` (`PUT /api/0/organizations/{org}/`,
+///   `src/sentry/core/endpoints/organization_details.py`,
+///   `OrganizationPermission` in `src/sentry/api/bases/organization.py`),
+///   creates/updates custom dashboards
+///   (`POST`/`PUT` `/api/0/organizations/{org}/dashboards/[{id}/]`,
+///   `src/sentry/dashboards/endpoints/organization_dashboards.py`,
+///   `src/sentry/dashboards/endpoints/organization_dashboard_details.py`), and
+///   permits project creation when `disable_member_project_creation` is set
+///   (`src/sentry/core/endpoints/team_projects.py`); `sentry-pagerduty` posts the
+///   PagerDuty service table (`POST /api/0/organizations/{org}/integrations/{id}/`,
+///   `src/sentry/integrations/api/endpoints/organization_integration_details.py`,
+///   `OrganizationIntegrationsPermission` in `src/sentry/api/bases/organization.py`;
+///   internal integrations cannot be granted `org:integrations` without
+///   `org:admin` per `src/sentry/conf/server.py`).
+/// - `project:read` (`sentry`, `sentry-pagerduty`): `sentry` reads projects
+///   (`GET /api/0/projects/{org}/{project}/`,
+///   `src/sentry/core/endpoints/project_details.py`), reads DSN client keys
+///   (`GET /api/0/projects/{org}/{project}/keys/[{key_id}/]`,
+///   `src/sentry/core/endpoints/project_keys.py`,
+///   `src/sentry/core/endpoints/project_key_details.py`, `ProjectPermission` in
+///   `src/sentry/api/bases/project.py`), and validates dashboard widget project
+///   filters (`src/sentry/dashboards/endpoints/organization_dashboards.py`);
+///   `sentry-pagerduty` enumerates accessible projects for `GetAllProjects`,
+///   detectors, and workflow links
+///   (`src/sentry/core/endpoints/organization_projects.py`,
+///   `src/sentry/workflow_engine/endpoints/organization_detector_index.py`,
+///   `src/sentry/workflow_engine/endpoints/validators/utils.py`).
+/// - `project:write` (`sentry`): creates projects
+///   (`POST /api/0/teams/{org}/{team}/projects/`,
+///   `src/sentry/core/endpoints/team_projects.py`), updates project settings
+///   (`PUT /api/0/projects/{org}/{project}/`,
+///   `src/sentry/core/endpoints/project_details.py`), attaches/detaches project
+///   teams (`POST`/`DELETE /api/0/projects/{org}/{project}/teams/{team}/`,
+///   `src/sentry/core/endpoints/project_team_details.py`), creates/updates DSN
+///   client keys (`POST`/`PUT` `/api/0/projects/{org}/{project}/keys/...`,
+///   `src/sentry/core/endpoints/project_keys.py`,
+///   `src/sentry/core/endpoints/project_key_details.py`, `ProjectPermission` in
+///   `src/sentry/api/bases/project.py`), and enables inbound data filters
+///   (`PUT /api/0/projects/{org}/{project}/filters/{filter_id}/`,
+///   `src/sentry/api/endpoints/project_filter_details.py`).
+/// - `team:read` (`sentry`): reads teams (`GET /api/0/teams/{org}/{team}/`,
+///   `src/sentry/core/endpoints/team_details.py`, `TeamPermission` in
+///   `src/sentry/api/bases/team.py`).
+/// - `team:write` (`sentry`): creates teams
+///   (`POST /api/0/organizations/{org}/teams/`,
+///   `src/sentry/core/endpoints/organization_teams.py`) and updates teams
+///   (`PUT /api/0/teams/{org}/{team}/`,
+///   `src/sentry/core/endpoints/team_details.py`, `TeamPermission` in
+///   `src/sentry/api/bases/team.py`).
+pub const REQUIRED_SCOPES: [&str; 8] = [
     "alerts:read",
     "alerts:write",
     "org:read",
     "org:write",
     "project:read",
+    "project:write",
+    "team:read",
+    "team:write",
 ];
 
 pub const APP_AUTHOR: &str = "Vitruvian Software";
 pub const APP_OVERVIEW: &str =
-    "CI applies infrastructure/pulumi/platform/sentry-pagerduty. Managed by //tools/sentry:ci-token.";
+    "CI applies infrastructure/pulumi/platform/sentry and infrastructure/pulumi/platform/sentry-pagerduty. Managed by //tools/sentry:ci-token.";
 
 /// `SentryAppParser.validate_name` caps names at `64 - UUID_CHARS_IN_SLUG (6) - 1 = 57`
 /// (`src/sentry/sentry_apps/api/parsers/sentry_app.py`).
@@ -63,8 +146,8 @@ pub const USAGE: &str = "\
 usage: bazel run //tools/sentry:ci-token -- --name <name> --out <path> [--url <url>] [--org <org>] [--force] [--revoke-others]
 
 Ensure an internal Sentry integration exists with the exact CI scopes needed by
-infrastructure/pulumi/platform/sentry-pagerduty, mint an API token for it, and
-write the raw token to --out (mode 0600, parent dirs 0700).
+infrastructure/pulumi/platform/sentry and infrastructure/pulumi/platform/sentry-pagerduty,
+mint an API token for it, and write the raw token to --out (mode 0600, parent dirs 0700).
 
 Required:
   --name <name>            Internal integration name (e.g. vitruvian-ci; max 57 chars)
@@ -78,9 +161,9 @@ Options:
   -h, --help               Show this help message and exit
 
 Environment:
-  SENTRY_TOKEN             Sentry user auth token (prefix sntryu_) with org:write/org:admin.
-  SENTRY_USER              Optional Sentry username/email for session auth when the server
-  SENTRY_PASSWORD          enforces SessionNoAuthTokenAuthentication on /api-tokens/.
+  SENTRY_TOKEN             Sentry user auth token (prefix sntryu_) with org:write plus all
+                           granted scopes (alerts:read/write, org:read/write, project:read/write,
+                           team:read/write).
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,29 +175,6 @@ pub struct CiTokenArgs {
     pub force: bool,
     pub revoke_others: bool,
     pub help: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AuthConfig {
-    Bearer(String),
-    Session {
-        username: String,
-        password: String,
-        extra_redact: Option<String>,
-    },
-}
-
-impl AuthConfig {
-    pub fn is_bearer(&self) -> bool {
-        matches!(self, Self::Bearer(_))
-    }
-
-    pub fn redact_secret(&self) -> &str {
-        match self {
-            Self::Bearer(t) => t,
-            Self::Session { password, .. } => password,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,32 +294,6 @@ pub fn parse_args(argv: &[String]) -> Result<CiTokenArgs, String> {
     })
 }
 
-pub fn resolve_auth(
-    sentry_token: Option<&str>,
-    sentry_user: Option<&str>,
-    sentry_password: Option<&str>,
-) -> Result<AuthConfig, String> {
-    let user_set = sentry_user.filter(|s| !s.is_empty());
-    let pass_set = sentry_password.filter(|s| !s.is_empty());
-    match (user_set, pass_set) {
-        (Some(u), Some(p)) => {
-            if u.chars().any(|c| c.is_control()) || p.chars().any(|c| c.is_control()) {
-                return Err(
-                    "SENTRY_USER / SENTRY_PASSWORD contains invalid control characters".into(),
-                );
-            }
-            Ok(AuthConfig::Session {
-                username: u.to_string(),
-                password: p.to_string(),
-                extra_redact: sentry_token.filter(|s| !s.is_empty()).map(str::to_string),
-            })
-        }
-        (Some(_), None) => Err("SENTRY_USER is set without SENTRY_PASSWORD".into()),
-        (None, Some(_)) => Err("SENTRY_PASSWORD is set without SENTRY_USER".into()),
-        (None, None) => Ok(AuthConfig::Bearer(crate::validate_token(sentry_token)?)),
-    }
-}
-
 pub fn valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug
@@ -272,26 +306,6 @@ pub fn valid_token_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-}
-
-pub fn extract_host_from_url(url: &str) -> Result<String, String> {
-    let after = url
-        .strip_prefix("https://")
-        .ok_or_else(|| "URL must start with https://".to_string())?;
-    let authority = after.split(['/', '?']).next().unwrap_or("");
-    let host = if let Some(rest) = authority.strip_prefix('[') {
-        rest.split(']')
-            .next()
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| "invalid IPv6 host in --url".to_string())?
-    } else {
-        authority
-            .split(':')
-            .next()
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| "missing host in --url".to_string())?
-    };
-    Ok(host.to_string())
 }
 
 #[derive(Serialize)]
@@ -311,14 +325,6 @@ struct CreateAppPayload<'a> {
 #[derive(Serialize)]
 struct UpdateScopesPayload<'a> {
     scopes: &'a [&'static str],
-}
-
-#[derive(Serialize)]
-struct LoginPayload<'a> {
-    username: &'a str,
-    password: &'a str,
-    #[serde(rename = "orgSlug")]
-    org_slug: &'a str,
 }
 
 /// Request payload for `POST /api/0/sentry-apps/` following
@@ -345,17 +351,6 @@ pub fn build_update_scopes_body() -> String {
         scopes: &REQUIRED_SCOPES,
     })
     .expect("update scopes payload serializes")
-}
-
-/// Request payload for `POST /api/0/auth/login/` following
-/// `AuthLoginEndpoint.post` (`src/sentry/api/endpoints/auth_login.py`).
-pub fn build_login_body(username: &str, password: &str, org: &str) -> String {
-    serde_json::to_string(&LoginPayload {
-        username,
-        password,
-        org_slug: org,
-    })
-    .expect("login payload serializes")
 }
 
 fn parse_sentry_app_value(val: &Value, context: &str) -> Result<SentryApp, String> {
@@ -543,7 +538,7 @@ fn redact_all(text: &str, secrets: &[&str]) -> String {
 
 fn check_http(
     resp: &Response,
-    bearer_token_api_hint: bool,
+    is_token_endpoint: bool,
     secrets: &[&str],
     err: &mut dyn Write,
 ) -> bool {
@@ -551,11 +546,10 @@ fn check_http(
         return true;
     }
     let detail = redact_all(&extract_error_detail(&resp.body), secrets);
-    if bearer_token_api_hint && matches!(resp.status, 401 | 403) {
+    if is_token_endpoint && resp.status == 403 {
         let _ = writeln!(
             err,
-            "ci-token: HTTP {}: {detail} (Sentry 26.10.1 /api-tokens/ uses SessionNoAuthTokenAuthentication, which rejects Bearer tokens; re-run with SENTRY_USER and SENTRY_PASSWORD set)",
-            resp.status
+            "ci-token: HTTP 403: {detail} (Sentry 26.10.1 /api-tokens/ uses SessionNoAuthTokenAuthentication, which rejects Bearer tokens; the mint step needs a session-based login that the lead has not yet approved)"
         );
     } else {
         let _ = writeln!(err, "ci-token: HTTP {}: {detail}", resp.status);
@@ -696,62 +690,10 @@ pub fn write_secret_file(path: &Path, secret: &str, force: bool) -> Result<(), S
     Ok(())
 }
 
-/// Authenticate the cookie jar via Django session login when `SENTRY_USER` and
-/// `SENTRY_PASSWORD` are supplied:
-/// 1. `GET /api/0/auth/config/` sets Django's session test cookie
-///    (`src/sentry/api/endpoints/auth_config.py`).
-/// 2. `POST /api/0/auth/login/` logs in with `{username, password, orgSlug}`
-///    (`src/sentry/api/endpoints/auth_login.py`).
-pub fn login_session<C: HttpClient>(
-    base_url: &str,
-    org: &str,
-    username: &str,
-    password: &str,
-    client: &mut C,
-    err: &mut dyn Write,
-) -> Result<(), ()> {
-    let base = base_url.trim_end_matches('/');
-    let secrets = [password];
-
-    let config_url = format!("{base}/api/0/auth/config/");
-    let resp = match client.request("GET", &config_url, None) {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = writeln!(err, "ci-token: {}", redact_all(&e, &secrets));
-            return Err(());
-        }
-    };
-    if !check_http(&resp, false, &secrets, err) {
-        return Err(());
-    }
-
-    let login_url = format!("{base}/api/0/auth/login/");
-    let login_body = build_login_body(username, password, org);
-    let resp = match client.request("POST", &login_url, Some(&login_body)) {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = writeln!(err, "ci-token: {}", redact_all(&e, &secrets));
-            return Err(());
-        }
-    };
-    if resp.status == 202 {
-        let _ = writeln!(
-            err,
-            "ci-token: login requires interactive MFA (HTTP 202); non-interactive session login cannot proceed"
-        );
-        return Err(());
-    }
-    if !check_http(&resp, false, &secrets, err) {
-        return Err(());
-    }
-    Ok(())
-}
-
 pub fn execute<C: HttpClient>(
     args: &CiTokenArgs,
     out_path: &Path,
-    is_bearer_auth: bool,
-    secret_to_redact: &str,
+    caller_token: &str,
     client: &mut C,
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -764,7 +706,7 @@ pub fn execute<C: HttpClient>(
     let base = args.url.trim_end_matches('/');
     let org_apps_url = format!("{base}/api/0/organizations/{}/sentry-apps/", args.org);
     let apps_url = format!("{base}/api/0/sentry-apps/");
-    let caller_secrets = [secret_to_redact];
+    let caller_secrets = [caller_token];
 
     // 1. Find internal integration by name on `OrganizationSentryAppsEndpoint.get`
     // (`src/sentry/sentry_apps/api/endpoints/organization_sentry_apps.py`).
@@ -863,7 +805,7 @@ pub fn execute<C: HttpClient>(
             return 1;
         }
     };
-    if !check_http(&resp, is_bearer_auth, &caller_secrets, err) {
+    if !check_http(&resp, true, &caller_secrets, err) {
         return 1;
     }
     let minted = match parse_minted_token(&resp.body) {
@@ -873,7 +815,7 @@ pub fn execute<C: HttpClient>(
             return 1;
         }
     };
-    let all_secrets = [secret_to_redact, minted.token.as_str()];
+    let all_secrets = [caller_token, minted.token.as_str()];
 
     if args.revoke_others && minted.id.is_none() {
         let _ = writeln!(
@@ -901,7 +843,7 @@ pub fn execute<C: HttpClient>(
                 return 1;
             }
         };
-        if !check_http(&resp, is_bearer_auth, &all_secrets, err) {
+        if !check_http(&resp, true, &all_secrets, err) {
             return 1;
         }
         let ids = match parse_token_ids(&resp.body) {
@@ -923,7 +865,7 @@ pub fn execute<C: HttpClient>(
                     return 1;
                 }
             };
-            if !check_http(&resp, is_bearer_auth, &all_secrets, err) {
+            if !check_http(&resp, true, &all_secrets, err) {
                 return 1;
             }
         }
@@ -1075,24 +1017,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_auth_handles_bearer_and_session_without_leaking_secrets() {
-        assert_eq!(
-            resolve_auth(Some("sntryu_abc"), None, None).unwrap(),
-            AuthConfig::Bearer("sntryu_abc".into())
-        );
-        assert_eq!(
-            resolve_auth(None, Some("admin@ipv1337.dev"), Some("pw_secret")).unwrap(),
-            AuthConfig::Session {
-                username: "admin@ipv1337.dev".into(),
-                password: "pw_secret".into(),
-                extra_redact: None,
-            }
-        );
-        let partial_err = resolve_auth(None, None, Some("pw_secret_should_not_echo")).unwrap_err();
-        assert!(!partial_err.contains("pw_secret_should_not_echo"));
-    }
-
-    #[test]
     fn builds_exact_create_and_update_payloads() {
         let created: Value =
             serde_json::from_str(&build_create_app_body("vitruvian-ci", "sentry")).unwrap();
@@ -1106,7 +1030,10 @@ mod tests {
                 "alerts:write",
                 "org:read",
                 "org:write",
-                "project:read"
+                "project:read",
+                "project:write",
+                "team:read",
+                "team:write"
             ])
         );
         assert_eq!(created["verifyInstall"], false);
@@ -1154,7 +1081,7 @@ mod tests {
             resp(200, "[]"),
             resp(
                 201,
-                r#"{"name":"vitruvian-ci","slug":"vitruvian-ci-abc123","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read"]}"#,
+                r#"{"name":"vitruvian-ci","slug":"vitruvian-ci-abc123","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read","project:write","team:read","team:write"]}"#,
             ),
             resp(201, &format!(r#"{{"id":"9","token":"{minted}"}}"#)),
         ]);
@@ -1164,7 +1091,6 @@ mod tests {
         let code = execute(
             &args,
             &out_path,
-            true,
             "sntryu_caller",
             &mut client,
             &mut out,
@@ -1175,7 +1101,7 @@ mod tests {
         assert_eq!(
             stdout,
             format!(
-                "token written: {} app=vitruvian-ci-abc123 scopes=alerts:read,alerts:write,org:read,org:write,project:read\n",
+                "token written: {} app=vitruvian-ci-abc123 scopes=alerts:read,alerts:write,org:read,org:write,project:read,project:write,team:read,team:write\n",
                 out_path.display()
             )
         );
@@ -1202,7 +1128,7 @@ mod tests {
         let mut client = FakeHttp::new(vec![
             resp(
                 200,
-                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-111111","status":"internal","scopes":["project:read","org:write","org:read","alerts:write","alerts:read"]}]"#,
+                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-111111","status":"internal","scopes":["team:write","team:read","project:write","project:read","org:write","org:read","alerts:write","alerts:read"]}]"#,
             ),
             resp(201, r#"{"id":"7","token":"sntrya_existing_ok"}"#),
         ]);
@@ -1212,7 +1138,6 @@ mod tests {
         let code = execute(
             &args,
             &out_path,
-            true,
             "sntryu_caller",
             &mut client,
             &mut out,
@@ -1236,11 +1161,11 @@ mod tests {
         let mut client = FakeHttp::new(vec![
             resp(
                 200,
-                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-222222","status":"internal","scopes":["org:read","project:read"]}]"#,
+                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-222222","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read"]}]"#,
             ),
             resp(
                 200,
-                r#"{"name":"vitruvian-ci","slug":"vitruvian-ci-222222","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read"]}"#,
+                r#"{"name":"vitruvian-ci","slug":"vitruvian-ci-222222","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read","project:write","team:read","team:write"]}"#,
             ),
             resp(201, r#"{"id":"55","token":"sntrya_rotated_55"}"#),
             resp(
@@ -1256,7 +1181,6 @@ mod tests {
         let code = execute(
             &args,
             &out_path,
-            true,
             "sntryu_caller",
             &mut client,
             &mut out,
@@ -1268,6 +1192,21 @@ mod tests {
         assert_eq!(
             client.calls[1].url,
             "https://sentry.lab.ipv1337.dev/api/0/sentry-apps/vitruvian-ci-222222/"
+        );
+        let put_body: Value =
+            serde_json::from_str(client.calls[1].body.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            put_body["scopes"],
+            serde_json::json!([
+                "alerts:read",
+                "alerts:write",
+                "org:read",
+                "org:write",
+                "project:read",
+                "project:write",
+                "team:read",
+                "team:write"
+            ])
         );
         assert_eq!(client.calls[3].method, "GET");
         assert_eq!(client.calls[4].method, "DELETE");
@@ -1296,7 +1235,6 @@ mod tests {
         let code = execute(
             &args,
             &out_path,
-            true,
             "sntryu_caller",
             &mut client,
             &mut out,
@@ -1305,6 +1243,43 @@ mod tests {
         assert_eq!(code, 1);
         assert!(client.calls.is_empty());
         assert_eq!(fs::read_to_string(&out_path).unwrap(), "keep-me");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn execute_mint_403_reports_unapproved_session_login_limitation() {
+        let dir = tempdir("mint-403");
+        let out_path = dir.join("token");
+        let args = default_args(&out_path);
+        let caller = "sntryu_caller_403_secret";
+        let mut client = FakeHttp::new(vec![
+            resp(
+                200,
+                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-555555","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read","project:write","team:read","team:write"]}]"#,
+            ),
+            resp(
+                403,
+                r#"{"detail":"Authentication credentials were not provided."}"#,
+            ),
+        ]);
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let code = execute(&args, &out_path, caller, &mut client, &mut out, &mut err);
+        assert_eq!(code, 1);
+        assert!(out.is_empty());
+        assert!(!out_path.exists());
+        let err_str = String::from_utf8(err).unwrap();
+        assert!(err_str.contains("403"), "{err_str}");
+        assert!(
+            err_str.contains("Authentication credentials were not provided."),
+            "{err_str}"
+        );
+        assert!(
+            err_str.contains("session-based login that the lead has not yet approved"),
+            "{err_str}"
+        );
+        assert!(!err_str.contains(caller));
         let _ = fs::remove_dir_all(&dir);
     }
 }

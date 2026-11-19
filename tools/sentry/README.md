@@ -22,7 +22,7 @@ The tool first queries `GET /api/0/organizations/<org>/integrations/?provider_ke
 
 ## Token needed
 
-Set `SENTRY_TOKEN` in the environment to a **user** auth token (prefix `sntryu_`) with `org:integrations` (or `org:write` / `org:admin`) scope. Export it from Bitwarden item `sentry.lab.ipv1337.dev`, field `SENTRY_TOKEN` (see [infrastructure/pulumi/platform/sentry/README.md](../../infrastructure/pulumi/platform/sentry/README.md)). The token is passed to `curl` only via stdin config (`-K -`) and never placed on the command line or logged; session cookies live in a mode-`0600` file inside a temporary directory deleted on exit.
+Set `SENTRY_TOKEN` in the environment to a **user** auth token (prefix `sntryu_`) with `org:write` plus all scopes granted by `ci-token` (`alerts:read`, `alerts:write`, `org:read`, `org:write`, `project:read`, `project:write`, `team:read`, `team:write`, since `SentryAppParser.validate_scopes` requires the caller to hold every scope granted to the internal integration; `org:write` also authorizes `pagerduty-install`). Export it from Bitwarden item `sentry.lab.ipv1337.dev`, field `SENTRY_TOKEN` (see [infrastructure/pulumi/platform/sentry/README.md](../../infrastructure/pulumi/platform/sentry/README.md)). The token is passed to `curl` only via stdin config (`-K -`) and never placed on the command line or logged; session cookies live in a mode-`0600` file inside a temporary directory deleted on exit.
 
 ## Send a synthetic test event (`send-test-event`)
 
@@ -36,18 +36,29 @@ Each invocation generates a fresh random `event_id` and includes it in `fingerpr
 
 ## Mint/rotate CI internal integration token (`ci-token`)
 
-Idempotently ensure self-hosted Sentry has an internal integration (`isInternal=true`, `status: "internal"`) scoped for CI applies of `infrastructure/pulumi/platform/sentry-pagerduty`, mint an API token, and write the raw token to `--out`:
+Idempotently ensure self-hosted Sentry has an internal integration (`isInternal=true`, `status: "internal"`) scoped for CI applies of `infrastructure/pulumi/platform/sentry` and `infrastructure/pulumi/platform/sentry-pagerduty`, mint an API token, and write the raw token to `--out`:
 
 ```sh
 bazel run //tools/sentry:ci-token -- --name vitruvian-ci --out <path> [--url https://sentry.lab.ipv1337.dev] [--org sentry] [--force] [--revoke-others]
 ```
 
-Granted scopes (`REQUIRED_SCOPES`): `alerts:read`, `alerts:write`, `org:read`, `org:write`, `project:read`. `org:write` is required because the Pulumi stack POSTs the PagerDuty service table to `/api/0/organizations/{org}/integrations/{id}/` (which accepts `org:write`/`org:admin`/`org:integrations`, and internal integrations cannot be granted `org:integrations` alone).
+Granted scopes (`REQUIRED_SCOPES`, closed under `SENTRY_SCOPE_HIERARCHY_MAPPING` with no `*:admin` scopes so CI cannot delete projects or teams):
+
+- `project:read` — `sentry` & `sentry-pagerduty`: read projects, DSN client keys, and dashboard widget project filters.
+- `project:write` — `sentry`: create/update projects, attach/detach project teams, create/update DSN client keys, and enable inbound data filters.
+- `team:read` — `sentry`: read teams.
+- `team:write` — `sentry`: create and update teams.
+- `org:read` — `sentry` & `sentry-pagerduty`: read org details, list org dashboards (`sentry`), list org projects, and look up PagerDuty org integrations (`sentry-pagerduty`).
+- `org:write` — `sentry` & `sentry-pagerduty`: update org privacy settings (`scrubIPAddresses`) and create/update custom dashboards (`sentry`), plus POST the PagerDuty service table to `/api/0/organizations/{org}/integrations/{id}/` (`sentry-pagerduty`, since internal integrations cannot be granted `org:integrations` without `org:admin`).
+- `alerts:read` — `sentry-pagerduty`: read project error detectors and workflow alerts.
+- `alerts:write` — `sentry-pagerduty`: create, update, and delete workflow-engine alerts.
+
+Behaviour:
 
 - **Idempotency & scope reconciliation**: queries `GET /api/0/organizations/{org}/sentry-apps/` and matches `status == "internal"` (since `SentryAppSerializer` emits `"status": "internal"` rather than `isInternal`). Creates the app via `POST /api/0/sentry-apps/` if missing, or updates scopes via `PUT /api/0/sentry-apps/{slug}/` if they drift.
 - **Output file safety**: refuses to overwrite an existing `--out` file unless `--force` is passed (checked before any API call). Creates missing parent directories with mode `0700` and writes the raw token with mode `0600` without printing it.
 - **Rotation (`--revoke-others`)**: after writing the new token to `--out`, lists `GET /api/0/sentry-apps/{slug}/api-tokens/` and `DELETE`s every other token ID so rotation leaves one live token.
-- **Auth (`SENTRY_TOKEN` vs session login)**: sends `SENTRY_TOKEN` (`sntryu_...`) by default. Note that in Sentry `26.10.1`, `/api/0/sentry-apps/{slug}/api-tokens/` enforces `SessionNoAuthTokenAuthentication`, which rejects any `Authorization` header (`403`); when that occurs, set `SENTRY_USER` and `SENTRY_PASSWORD` to authenticate via `/api/0/auth/config/` + `/api/0/auth/login/` using the `0600` session cookie jar instead.
+- **Auth (`SENTRY_TOKEN`) & open item**: authenticates strictly with `SENTRY_TOKEN` (`sntryu_...`). **Open item**: on Sentry `26.10.1`, `/api/0/sentry-apps/{slug}/api-tokens/` sets `authentication_classes = (SessionNoAuthTokenAuthentication,)` (`src/sentry/sentry_apps/api/endpoints/sentry_internal_app_tokens.py`, `src/sentry/api/authentication.py`), which rejects Bearer token auth (`403`). When that occurs, `ci-token` exits non-zero explaining that the mint step needs a session-based login that the lead has not yet approved.
 
 ## Tests
 

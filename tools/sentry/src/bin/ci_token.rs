@@ -20,12 +20,8 @@
 
 //! CLI entrypoint for `//tools/sentry:ci-token`.
 
-use sentry_tools::ci_token::{
-    execute, extract_host_from_url, login_session, parse_args, preflight_out_path, resolve_auth,
-    AuthConfig, USAGE,
-};
+use sentry_tools::ci_token::{execute, parse_args, preflight_out_path, USAGE};
 use sentry_tools::http::{AuthHeader, CurlClient};
-use sentry_tools::send_test_event::generate_event_id;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -63,14 +59,8 @@ fn main() -> ExitCode {
     }
 
     let raw_token = std::env::var("SENTRY_TOKEN").ok();
-    let raw_user = std::env::var("SENTRY_USER").ok();
-    let raw_password = std::env::var("SENTRY_PASSWORD").ok();
-    let auth = match resolve_auth(
-        raw_token.as_deref(),
-        raw_user.as_deref(),
-        raw_password.as_deref(),
-    ) {
-        Ok(a) => a,
+    let token = match sentry_tools::validate_token(raw_token.as_deref()) {
+        Ok(t) => t,
         Err(e) => {
             eprintln!("ci-token: {e}");
             return ExitCode::from(1);
@@ -78,78 +68,18 @@ fn main() -> ExitCode {
     };
 
     let curl_bin = std::env::var("SENTRY_CURL_BIN").unwrap_or_else(|_| "curl".into());
-    let base = args.url.trim_end_matches('/');
-    let mut client = match &auth {
-        AuthConfig::Bearer(token) => {
-            match CurlClient::new(curl_bin, AuthHeader::Bearer(token.clone())) {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("ci-token: {e}");
-                    return ExitCode::from(1);
-                }
-            }
-        }
-        AuthConfig::Session {
-            username,
-            password,
-            extra_redact: _,
-        } => {
-            let csrf_token = match generate_event_id() {
-                Ok(tok) => tok,
-                Err(e) => {
-                    eprintln!("ci-token: {e}");
-                    return ExitCode::from(1);
-                }
-            };
-            let host = match extract_host_from_url(base) {
-                Ok(h) => h,
-                Err(e) => {
-                    eprintln!("ci-token: {e}");
-                    return ExitCode::from(1);
-                }
-            };
-            let client = match CurlClient::new(
-                curl_bin,
-                AuthHeader::Session {
-                    redact_secret: password.clone(),
-                },
-            ) {
-                Ok(c) => c
-                    .with_header(format!("X-CSRFToken: {csrf_token}"))
-                    .with_header(format!("Referer: {base}/")),
-                Err(e) => {
-                    eprintln!("ci-token: {e}");
-                    return ExitCode::from(1);
-                }
-            };
-            // `CSRF_COOKIE_NAME = "sc"` (`src/sentry/conf/server.py`).
-            if let Err(e) = client.seed_cookie(&host, true, "sc", &csrf_token) {
-                eprintln!("ci-token: {e}");
-                return ExitCode::from(1);
-            }
-            let mut client = client;
-            if login_session(
-                base,
-                &args.org,
-                username,
-                password,
-                &mut client,
-                &mut std::io::stderr(),
-            )
-            .is_err()
-            {
-                drop(client);
-                return ExitCode::from(1);
-            }
-            client
+    let mut client = match CurlClient::new(curl_bin, AuthHeader::Bearer(token.clone())) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("ci-token: {e}");
+            return ExitCode::from(1);
         }
     };
 
     let code = execute(
         &args,
         &out_path,
-        auth.is_bearer(),
-        auth.redact_secret(),
+        &token,
         &mut client,
         &mut std::io::stdout(),
         &mut std::io::stderr(),
