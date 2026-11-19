@@ -799,11 +799,12 @@ const KEY: (&str, &str) = ("PAGERDUTY_ROUTING_KEY", "routing-key-123");
 #[test]
 fn main_failure_pages_critical_and_still_pushes_ntfy() {
     let p = Poll::new();
+    let at = recent();
     let o = p.run(&[
         KEY,
         (
             "FAKE_FAILURE_JSON",
-            &runs(&[("ci", "https://x/runs/20", &recent())]),
+            &runs(&[("ci", "https://x/runs/20", &at)]),
         ),
     ]);
     assert_eq!(o.code, 0, "{o:?}");
@@ -811,16 +812,16 @@ fn main_failure_pages_critical_and_still_pushes_ntfy() {
     assert_eq!(p.pd_posts(), 1, "one PagerDuty event");
     assert_eq!(
         p.pd_bodies(),
-        vec![concat!(
+        vec![[
             r#"{"routing_key":"routing-key-123","event_action":"trigger","#,
-            r#""dedup_key":"notify-ci-issues/main-failed/https://x/runs/20","#,
+            &format!(r#""dedup_key":"notify-ci-issues/main-failed/ci/{}","#, &at[..10]),
             r#""payload":{"summary":"[ci] main broken: ci","source":"github-actions/notify-ci-issues","#,
             r#""severity":"critical","group":"ci","#,
             r#""custom_details":{"message":"Failed on main after landing. https://x/runs/20","url":"https://x/runs/20"}},"#,
             r#""links":[{"href":"https://x/runs/20","text":"Open in GitHub"}],"#,
-            r#""client":"notify-ci-issues","client_url":"https://x/runs/20"}"#
-        )
-        .to_string()]
+            r#""client":"notify-ci-issues","client_url":"https://x/runs/20"}"#,
+        ]
+        .concat()]
     );
     assert_eq!(o.stderr, "", "no warnings when both succeed");
 }
@@ -861,12 +862,13 @@ fn lower_priorities_are_warning_severity() {
     );
 
     let p = Poll::new();
+    let at = recent();
     p.run(&[
         KEY,
         ("MIRRORS", "Org/mirror"),
         (
             "FAKE_MIRROR_FAILURE_JSON",
-            &runs(&[("release", "https://m/runs/3", &recent())]),
+            &runs(&[("release", "https://m/runs/3", &at)]),
         ),
     ]);
     let b = p.pd_bodies();
@@ -878,8 +880,11 @@ fn lower_priorities_are_warning_severity() {
     );
     assert_has(
         &b[0],
-        r#""dedup_key":"notify-ci-issues/mirror-failed/https://m/runs/3""#,
-        "mirror keyed by run",
+        &format!(
+            r#""dedup_key":"notify-ci-issues/mirror-failed/Org/mirror/release/{}""#,
+            &at[..10]
+        ),
+        "mirror keyed by repo, workflow and day",
     );
 }
 
@@ -893,6 +898,43 @@ fn repeat_polls_reuse_the_dedup_key() {
     let first = p.pd_bodies();
     p.run(&[KEY, ("FAKE_FAILURE_JSON", &json)]);
     assert_eq!(first, p.pd_bodies(), "identical event, identical dedup_key");
+}
+
+/// Every push to a broken main reruns the workflow and fails again. Those
+/// runs must land on one incident, not one per run (2026-11-18: seven
+/// incidents for one delivery-stripe break). Another workflow still gets its
+/// own, and the UTC day in the key starts a fresh incident each day.
+#[test]
+fn main_failures_are_keyed_by_workflow_and_day_not_by_run() {
+    // One poll per run, as the cron sees them: each push's rerun fails in a
+    // later poll than the one before it.
+    let key = |name: &str, url: &str, at: &str| {
+        let p = Poll::new();
+        p.run(&[KEY, ("FAKE_FAILURE_JSON", &runs(&[(name, url, at)]))]);
+        let b = p.pd_bodies();
+        assert_eq!(b.len(), 1, "{b:?}");
+        let i = b[0].find(r#""dedup_key":""#).expect("dedup_key") + 13;
+        b[0][i..i + b[0][i..].find('"').unwrap()].to_string()
+    };
+    let now = recent();
+    let first = key("delivery-stripe", "https://x/runs/1", &now);
+    assert_eq!(
+        first,
+        format!(
+            "notify-ci-issues/main-failed/delivery-stripe/{}",
+            &now[..10]
+        )
+    );
+    assert_eq!(
+        first,
+        key("delivery-stripe", "https://x/runs/2", &now),
+        "two runs of one workflow, one incident"
+    );
+    assert_ne!(
+        first,
+        key("ci", "https://x/runs/3", &now),
+        "another workflow, another incident"
+    );
 }
 
 /// The group's newest run changes as runs queue up behind one approval; the
