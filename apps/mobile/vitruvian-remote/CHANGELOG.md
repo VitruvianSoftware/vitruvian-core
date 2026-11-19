@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.52](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.51...vitruvian-remote-v0.1.52) (2026-11-19)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** explain Play Protect verification blocks during updates ([#5155](https://github.com/VitruvianSoftware/vitruvian-core/issues/5155)) ([cdaf97d](https://github.com/VitruvianSoftware/vitruvian-core/commit/cdaf97d72ff84532212b7e38065b4df16083f975))
+
 ## [0.1.51](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.50...vitruvian-remote-v0.1.51) (2026-11-18)
 
 
