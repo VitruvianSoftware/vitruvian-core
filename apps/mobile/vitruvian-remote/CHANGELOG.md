@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.55](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.54...vitruvian-remote-v0.1.55) (2026-11-19)
+
+
+### Features
+
+* **vitruvian-remote:** pick the announcement voice in Phone Bridge ([#5195](https://github.com/VitruvianSoftware/vitruvian-core/issues/5195)) ([991b876](https://github.com/VitruvianSoftware/vitruvian-core/commit/991b8763ec11abfd948006b5e66350e4a4d5ef47))
+
 ## [0.1.54](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.53...vitruvian-remote-v0.1.54) (2026-11-19)
 
 
