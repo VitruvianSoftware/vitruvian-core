@@ -555,6 +555,26 @@ mod tests {
             raw.contains("uses: ./.github/actions/homelab-tunnel-setup"),
             "{ZITADEL_TUNNEL_ACTION} must delegate to ./.github/actions/homelab-tunnel-setup"
         );
+        assert!(
+            raw.contains("hostname: auth.ipv1337.dev"),
+            "{ZITADEL_TUNNEL_ACTION} must pin hostname: auth.ipv1337.dev"
+        );
+        assert!(
+            raw.contains("health-path: /debug/healthz"),
+            "{ZITADEL_TUNNEL_ACTION} must pin health-path: /debug/healthz"
+        );
+        assert!(
+            raw.contains("gateway-scheme: http"),
+            "{ZITADEL_TUNNEL_ACTION} must pin gateway-scheme: http"
+        );
+        assert!(
+            raw.contains("gateway-env-var: ZITADEL_GATEWAY"),
+            "{ZITADEL_TUNNEL_ACTION} must pin gateway-env-var: ZITADEL_GATEWAY"
+        );
+        assert!(
+            raw.contains("tls-cert-bundle: /etc/auth-internal-ck.pem"),
+            "{ZITADEL_TUNNEL_ACTION} must pin tls-cert-bundle: /etc/auth-internal-ck.pem"
+        );
     }
 
     #[test]

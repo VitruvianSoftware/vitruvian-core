@@ -551,6 +551,8 @@ mod tests {
             "import-replacement",
             "discard-replaced",
             "read-replacement",
+            "discard",
+            "import",
             "unknown-op",
         ] {
             let json = format!(
