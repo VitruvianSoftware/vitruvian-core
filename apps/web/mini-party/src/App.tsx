@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { GameState, Player, PLAYER_COLORS } from "./types";
 import { createInitialPlayers, MINI_GAMES } from "./constants";
@@ -49,21 +49,18 @@ import {
 } from "lucide-react";
 import { socketService } from "./services/socketService";
 import { REMOTE_PLAY } from "./features";
+import { roomFromSearch } from "./room";
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>("LOBBY");
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentGameIndex, setCurrentGameIndex] = useState(0);
   const [lastGameWinners, setLastGameWinners] = useState<number[]>([]);
-  const [roomId, setRoomId] = useState<string | null>(null);
+  // A share link's room, read now so the lobby opens on online play.
+  const [roomId, setRoomId] = useState<string | null>(() =>
+    roomFromSearch(window.location.search, REMOTE_PLAY),
+  );
   const [myPlayerId, setMyPlayerId] = useState<number | null>(null);
-
-  // Parse URL for room ID
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const room = params.get("room");
-    if (room && REMOTE_PLAY) setRoomId(room);
-  }, []);
 
   const startGame = (playerCount: number) => {
     setPlayers(createInitialPlayers(playerCount));
