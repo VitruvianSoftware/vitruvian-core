@@ -182,6 +182,58 @@ fn garbage_before_rev_deploys() {
     );
 }
 
+#[test]
+fn git_diff_failure_fails_open_as_degraded() {
+    let fx = Fx::new();
+    let base = fx.head();
+    let o = fx.expect(
+        "unresolvable AFTER_REV causes git diff failure",
+        &base,
+        "true",
+        &[
+            ("AFTER_REV", "no-such-commit"),
+            ("EXTRA_PATH_REGEX", "app/"),
+        ],
+    );
+    assert_has(
+        &o.stdout,
+        "git diff failed -- cannot determine changed files",
+        "reason",
+    );
+    assert_has(
+        &o.stdout,
+        "::warning title=deploy-gate-fallback::deploy gate degraded -- failing OPEN to deploy",
+        "degraded warning",
+    );
+}
+
+#[test]
+fn rename_out_of_watched_path_still_deploys() {
+    let fx = Fx::new();
+    let _ = fx.file("watched/service.ts");
+    let before = fx.head();
+    std::fs::create_dir_all(fx.repo.join("elsewhere")).unwrap();
+    git(
+        &fx.repo,
+        &["mv", "watched/service.ts", "elsewhere/service.ts"],
+    );
+    git(
+        &fx.repo,
+        &["commit", "-q", "-m", "move service out of watched/"],
+    );
+    let o = fx.expect(
+        "rename out of watched dir",
+        &before,
+        "true",
+        &[("EXTRA_PATH_REGEX", "watched/")],
+    );
+    assert_has(
+        &o.stdout,
+        "watched/service.ts",
+        "old path appears under --no-renames",
+    );
+}
+
 // --- no-op diff -----------------------------------------------------------
 
 #[test]

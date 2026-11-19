@@ -1026,14 +1026,8 @@ pub fn check_deploy_durable_base(ctx: &Context) {
             .unwrap_or("");
         let wf_rel = format!(".github/workflows/{}", basename);
 
-        // resolve_deploy_base presence
-        let has_resolver = content.lines().any(|l| {
-            let trimmed = l.trim_start();
-            trimmed.starts_with("run:")
-                && trimmed[4..]
-                    .trim_start()
-                    .starts_with("bazel run //tools/ci:resolve_deploy_base")
-        });
+        // resolve_deploy_base presence (either via Bazel or via build-ci-tool)
+        let has_resolver = uses_resolve_deploy_base(&content);
 
         // Parse concurrency groups (awk port).
         let mut groups: Vec<String> = Vec::new();
@@ -1197,6 +1191,49 @@ pub fn check_deploy_durable_base(ctx: &Context) {
     }
 }
 
+/// True when `content` resolves its durable base via `resolve_deploy_base`,
+/// either directly with `bazel run //tools/ci:resolve_deploy_base` or by
+/// building `resolve_deploy_base` via `./.github/actions/build-ci-tool` and
+/// wiring that step's `outputs.path`.
+fn uses_resolve_deploy_base(content: &str) -> bool {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.iter().any(|l| {
+        let trimmed = l.trim_start();
+        trimmed.starts_with("run:")
+            && trimmed[4..]
+                .trim_start()
+                .starts_with("bazel run //tools/ci:resolve_deploy_base")
+    }) {
+        return true;
+    }
+
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim().trim_start_matches("- ") != "uses: ./.github/actions/build-ci-tool" {
+            continue;
+        }
+        let tool = lines[i + 1..]
+            .iter()
+            .take(4)
+            .find_map(|n| n.trim().strip_prefix("tool: "))
+            .map(str::trim);
+        if tool != Some("resolve_deploy_base") {
+            continue;
+        }
+        if let Some(id) = lines[..i]
+            .iter()
+            .rev()
+            .take(4)
+            .find_map(|n| n.trim().strip_prefix("id: "))
+            .map(str::trim)
+        {
+            if content.contains(&format!("steps.{id}.outputs.path")) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 // ---------------------------------------------------------------------------
 // check_deleted_workflow_references  (group "delivery", lines 2214-2239)
 // ---------------------------------------------------------------------------
@@ -1297,7 +1334,99 @@ fn walk_md_files(dir: &str, out: &mut Vec<String>, root: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::matches_side_effect;
+    use super::{check_deploy_durable_base, matches_side_effect};
+    use crate::Context;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn tmp_root(tag: &str) -> PathBuf {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let base = std::env::var_os("TEST_TMPDIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let dir = base.join(format!(
+            "conformance-delivery-{tag}-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn durable_base_accepts_bazel_and_build_ci_tool_and_rejects_missing_resolver() {
+        let bazel_root = tmp_root("bazel");
+        fs::write(
+            bazel_root.join(".github/workflows/delivery-a.yaml"),
+            "\
+concurrency:
+  group: delivery-a
+jobs:
+  orchestrate:
+    steps:
+      - name: Resolve durable base
+        run: bazel run //tools/ci:resolve_deploy_base
+      - name: Orchestrate
+        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
+",
+        )
+        .unwrap();
+        let ctx = Context::for_root(&bazel_root.to_string_lossy());
+        check_deploy_durable_base(&ctx);
+        assert_eq!(ctx.ok_count.get(), 1);
+        assert_eq!(ctx.fail_count.get(), 0);
+        let _ = fs::remove_dir_all(&bazel_root);
+
+        let tool_root = tmp_root("build-ci-tool");
+        fs::write(
+            tool_root.join(".github/workflows/delivery-b.yaml"),
+            "\
+concurrency:
+  group: delivery-b
+jobs:
+  orchestrate:
+    steps:
+      - name: Build resolver
+        id: resolve-deploy-base-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: resolve_deploy_base
+      - name: Resolve durable base
+        env:
+          RESOLVE_DEPLOY_BASE_BIN: ${{ steps.resolve-deploy-base-bin.outputs.path }}
+        run: \"$RESOLVE_DEPLOY_BASE_BIN\"
+      - name: Orchestrate
+        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
+",
+        )
+        .unwrap();
+        let ctx = Context::for_root(&tool_root.to_string_lossy());
+        check_deploy_durable_base(&ctx);
+        assert_eq!(ctx.ok_count.get(), 1);
+        assert_eq!(ctx.fail_count.get(), 0);
+        let _ = fs::remove_dir_all(&tool_root);
+
+        let missing_root = tmp_root("missing");
+        fs::write(
+            missing_root.join(".github/workflows/delivery-c.yaml"),
+            "\
+concurrency:
+  group: delivery-c
+jobs:
+  orchestrate:
+    steps:
+      - name: Orchestrate
+        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
+",
+        )
+        .unwrap();
+        let ctx = Context::for_root(&missing_root.to_string_lossy());
+        check_deploy_durable_base(&ctx);
+        assert_eq!(ctx.fail_count.get(), 1);
+        let _ = fs::remove_dir_all(&missing_root);
+    }
 
     #[test]
     fn side_effect_matcher_distinguishes_up_verb_from_update() {
