@@ -142,6 +142,11 @@ type syncedProject struct {
 	// in internal/site_domain. Declared here, next to the repository, so it is
 	// created only once the repository exists.
 	PagesDomain string
+
+	// PagesHTTPS makes the Pages site redirect http:// to https://. GitHub
+	// refuses it until the domain's certificate exists, so a new PagesDomain
+	// mirror starts with it off and turns it on once https://<domain>/ answers.
+	PagesHTTPS bool
 }
 
 // adoptedRepo mirrors the live GitHub repository settings for a brownfield
@@ -524,6 +529,8 @@ var syncedProjects = []syncedProject{
 		CreateRepo:     true,
 		Description:    "Mini Party: rapid-fire party mini-games for up to 4 players",
 		PagesDomain:    site_domain.MiniGames + "." + site_domain.Apex,
+		// The certificate was issued on 2026-11-19.
+		PagesHTTPS: true,
 	},
 }
 
@@ -600,22 +607,21 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				return repoErr
 			}
 			if project.PagesDomain != "" {
-				// HttpsEnforced is left unset: GitHub refuses it until the
-				// domain's certificate exists, which takes minutes after the
-				// DNS record resolves.
+				// HttpsEnforced follows PagesHTTPS (see the field: it must stay
+				// off until the domain's certificate exists).
 				//
-				// The custom domain takes TWO applies. The provider's create
+				// The custom domain also takes TWO applies. The provider's create
 				// (terraform-provider-github resource_github_repository_pages.go)
 				// stores the empty cname from GitHub's enable-Pages response
 				// before it reads the requested one, so it never sends it: the
 				// first apply enables Pages with no domain. That apply records
 				// the empty cname in state, so the next repo-config apply sees
-				// the difference and sets the domain. mini-party's domain was
-				// set that way, by the apply after the one that created it.
+				// the difference and sets the domain.
 				if _, err := github.NewRepositoryPages(ctx, project.StandaloneRepo+"-pages", &github.RepositoryPagesArgs{
-					Repository: repo.Name,
-					BuildType:  pulumi.String("workflow"),
-					Cname:      pulumi.String(project.PagesDomain),
+					Repository:    repo.Name,
+					BuildType:     pulumi.String("workflow"),
+					Cname:         pulumi.String(project.PagesDomain),
+					HttpsEnforced: pulumi.Bool(project.PagesHTTPS),
 				}, pulumi.DependsOn([]pulumi.Resource{repo})); err != nil {
 					return err
 				}

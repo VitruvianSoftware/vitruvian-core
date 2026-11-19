@@ -226,6 +226,9 @@ func TestTheMiniPartyMirrorPublishesItsSiteAtItsDomain(t *testing.T) {
 			t.Errorf("pages %s is %q, want %q", field, v, want)
 		}
 	}
+	if v, ok := r.inputs["httpsEnforced"]; !ok || !v.IsBool() || !v.BoolValue() {
+		t.Errorf("pages httpsEnforced is %v, want true: the site must redirect http to https", v)
+	}
 	for name, s := range got {
 		if s.typeToken == "github:index/repositoryPages:RepositoryPages" && name != "mini-party-pages" {
 			t.Errorf("unexpected Pages site %q: only mini-party publishes one from this package", name)
