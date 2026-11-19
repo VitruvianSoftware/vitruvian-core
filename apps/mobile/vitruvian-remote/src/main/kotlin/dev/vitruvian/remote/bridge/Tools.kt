@@ -50,17 +50,34 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.telephony.SmsManager
 import android.util.Base64
+import com.google.mlkit.common.sdkinternal.MlKitContext
+import com.google.mlkit.genai.common.DownloadStatus
+import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.texttospeech.SpeechSynthesis
+import com.google.mlkit.genai.texttospeech.SpeechSynthesizer
+import com.google.mlkit.genai.texttospeech.SpeechSynthesizerOptions
+import com.google.mlkit.genai.texttospeech.SpeechSynthesizerRequest
+import com.google.mlkit.genai.texttospeech.SpeechSynthesizerResponse
+import com.google.mlkit.genai.texttospeech.VoiceInfo
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.ToolDescriptor
 import dev.vitruvian.remote.state.ToolTier
 import java.time.Instant
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -674,7 +691,7 @@ public object PhoneTools {
           inputSchema =
               """
               {"type":"object","properties":{
-                "text":{"type":"string","description":"The announcement text to speak via Android TextToSpeech when wav_base64 is absent"},
+                "text":{"type":"string","description":"The announcement text to speak via ML Kit GenAI TTS (with Android TextToSpeech fallback) when wav_base64 is absent"},
                 "wav_base64":{"type":"string","description":"Optional base64-encoded WAV audio clip synthesized on the Mac (Gemini TTS)"},
                 "pause_media":{"type":"boolean","description":"Whether to request transient audio focus so playing media pauses while speaking (default false)"},
                 "headphones_only":{"type":"boolean","description":"Whether to skip speaking when no wired or Bluetooth headphones are connected (default false)"}
@@ -705,10 +722,10 @@ public object PhoneTools {
             if (!wavOutcome.result.isError || !wavOutcome.allowTtsFallback || text.isBlank()) {
               wavOutcome.result
             } else {
-              speakTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
+              speakOnDeviceTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
             }
           } else {
-            speakTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
+            speakOnDeviceTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
           }
         }
       }
@@ -893,6 +910,231 @@ public object PhoneTools {
     }
   }
 
+  private val mlKitLock = Any()
+  private var mlKitSynthesizer: SpeechSynthesizer? = null
+  private val mlKitDownloadInFlight = AtomicBoolean(false)
+  private val mlKitDownloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+  /**
+   * Releases the cached ML Kit [SpeechSynthesizer] Binder connection. Safe to call repeatedly when
+   * `PhoneBridgeService` stops or is destroyed.
+   */
+  public fun shutdownMlKitTts() {
+    synchronized(mlKitLock) {
+      runCatching { mlKitSynthesizer?.close() }
+      mlKitSynthesizer = null
+    }
+  }
+
+  private fun getOrCreateMlKitSynthesizer(context: Context): SpeechSynthesizer =
+      synchronized(mlKitLock) {
+        mlKitSynthesizer
+            ?: run {
+              runCatching { MlKitContext.initializeIfNeeded(context.applicationContext) }
+              val options =
+                  SpeechSynthesizerOptions.builder(Locale.getDefault())
+                      .setVoiceFallbackEnabled(false)
+                      .build()
+              SpeechSynthesis.getClient(options).also { mlKitSynthesizer = it }
+            }
+      }
+
+  private fun startBackgroundVoiceDownload(synthesizer: SpeechSynthesizer, voice: VoiceInfo) {
+    if (!mlKitDownloadInFlight.compareAndSet(false, true)) return
+    mlKitDownloadScope.launch {
+      try {
+        synthesizer.download(voice).collect { status ->
+          when (status) {
+            is DownloadStatus.DownloadCompleted,
+            is DownloadStatus.DownloadFailed -> Unit
+            is DownloadStatus.DownloadStarted,
+            is DownloadStatus.DownloadProgress -> Unit
+          }
+        }
+      } catch (_: Throwable) {
+        // Best-effort prefetch; next speak call will fall back or retry if still downloadable.
+      } finally {
+        mlKitDownloadInFlight.set(false)
+      }
+    }
+  }
+
+  private fun mapFeatureStatus(status: Int): BridgePolicy.MlKitVoiceStatus =
+      when (status) {
+        FeatureStatus.AVAILABLE -> BridgePolicy.MlKitVoiceStatus.Available
+        FeatureStatus.DOWNLOADABLE -> BridgePolicy.MlKitVoiceStatus.Downloadable
+        FeatureStatus.DOWNLOADING -> BridgePolicy.MlKitVoiceStatus.Downloading
+        else -> BridgePolicy.MlKitVoiceStatus.Unavailable
+      }
+
+  /**
+   * Speaks on-device by preferring ML Kit GenAI TTS (backed by `com.google.android.tts`) and
+   * automatically falling back to Android's platform `TextToSpeech` whenever ML Kit is unavailable,
+   * downloading, or fails.
+   */
+  private fun speakOnDeviceTts(
+      context: Context,
+      audio: AudioManager?,
+      speechAttrs: AudioAttributes,
+      text: String,
+      pauseMedia: Boolean,
+      headphonesOnly: Boolean,
+  ): ToolResult {
+    val mlKitOutcome = speakMlKitTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
+    return if (!mlKitOutcome.result.isError || !mlKitOutcome.allowTtsFallback) {
+      mlKitOutcome.result
+    } else {
+      speakTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
+    }
+  }
+
+  private fun speakMlKitTts(
+      context: Context,
+      audio: AudioManager?,
+      speechAttrs: AudioAttributes,
+      text: String,
+      pauseMedia: Boolean,
+      headphonesOnly: Boolean,
+  ): WavPlayOutcome {
+    val timeoutSeconds =
+        BridgePolicy.speakTimeoutSeconds(wavDurationSeconds = null, textLength = text.length)
+    val synthesizer =
+        try {
+          getOrCreateMlKitSynthesizer(context)
+        } catch (t: Throwable) {
+          return WavPlayOutcome(
+              ToolResult("ML Kit TTS unavailable: ${t.message}", true),
+              allowTtsFallback = true,
+          )
+        }
+    return try {
+      val selectedVoice =
+          runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
+              val defaultLocale = Locale.getDefault()
+              val voices =
+                  synthesizer.getSupportedVoices(defaultLocale).ifEmpty {
+                    if (defaultLocale != Locale.US) synthesizer.getSupportedVoices(Locale.US)
+                    else emptyList()
+                  }
+              if (voices.isEmpty()) return@withTimeoutOrNull null
+              val candidates =
+                  voices.map { voice ->
+                    BridgePolicy.MlKitVoiceCandidate(
+                        name = voice.name,
+                        languageTag = voice.locale.toLanguageTag(),
+                        status = mapFeatureStatus(synthesizer.checkStatus(voice)),
+                    )
+                  }
+              when (val selection = BridgePolicy.selectMlKitVoice(candidates)) {
+                is BridgePolicy.MlKitVoiceSelection.Ready ->
+                    voices.firstOrNull { it.name == selection.name }
+                is BridgePolicy.MlKitVoiceSelection.NeedsDownload -> {
+                  voices
+                      .firstOrNull { it.name == selection.name }
+                      ?.let { startBackgroundVoiceDownload(synthesizer, it) }
+                  null
+                }
+                BridgePolicy.MlKitVoiceSelection.Unavailable -> null
+              }
+            }
+          }
+              ?: return WavPlayOutcome(
+                  ToolResult("ML Kit TTS voice not ready", true),
+                  allowTtsFallback = true,
+              )
+
+      val unplugged = AtomicBoolean(false)
+      val mlKitError = AtomicReference<String?>(null)
+      val completed = AtomicBoolean(false)
+      withHeadphoneGuard(
+          context,
+          audio,
+          headphonesOnly,
+          onUnplugged = {
+            unplugged.set(true)
+            runCatching { synthesizer.stop() }
+          }) {
+            if (headphonesOnly && !hasHeadphonesConnected(audio)) {
+              return@withHeadphoneGuard WavPlayOutcome(
+                  skippedResult("no headphones connected"),
+                  allowTtsFallback = false,
+              )
+            }
+            withTransientAudioFocus(audio, speechAttrs, pauseMedia) {
+              if (pauseMedia || headphonesOnly) {
+                runCatching { Thread.sleep(BridgePolicy.WAV_PREROLL_MS.toLong()) }
+              }
+              val request =
+                  SpeechSynthesizerRequest(
+                      SpeechSynthesizerRequest.Input.Text(text, selectedVoice),
+                      speechAttrs,
+                      TextToSpeech.QUEUE_FLUSH,
+                  )
+              val finished =
+                  runBlocking(Dispatchers.IO) {
+                    withTimeoutOrNull(timeoutSeconds * MS_PER_S) {
+                      synthesizer
+                          .synthesize(request)
+                          .takeWhile { response ->
+                            when (response) {
+                              is SpeechSynthesizerResponse.Error -> {
+                                mlKitError.set("ML Kit TTS failed (${response.errorCode})")
+                                false
+                              }
+                              is SpeechSynthesizerResponse.StatusUpdate -> {
+                                when (response.status) {
+                                  SpeechSynthesizerResponse.Status.DONE -> {
+                                    completed.set(true)
+                                    false
+                                  }
+                                  SpeechSynthesizerResponse.Status.STOP -> false
+                                  SpeechSynthesizerResponse.Status.START -> true
+                                }
+                              }
+                              is SpeechSynthesizerResponse.AudioAvailable -> !unplugged.get()
+                            }
+                          }
+                          .collect {}
+                      true
+                    }
+                  } != null
+              when {
+                unplugged.get() ->
+                    WavPlayOutcome(
+                        skippedResult("headphones unplugged"),
+                        allowTtsFallback = false,
+                    )
+                mlKitError.get() != null ->
+                    WavPlayOutcome(
+                        ToolResult(mlKitError.get()!!, true),
+                        allowTtsFallback = true,
+                    )
+                !finished || !completed.get() -> {
+                  runCatching { synthesizer.stop() }
+                  WavPlayOutcome(
+                      ToolResult("ML Kit TTS timed out after $timeoutSeconds s", true),
+                      allowTtsFallback = true,
+                  )
+                }
+                else ->
+                    WavPlayOutcome(
+                        ToolResult(
+                            JSONObject().put("spoken", true).put("engine", "mlkit_tts").toString()),
+                        allowTtsFallback = false,
+                    )
+              }
+            }
+          }
+    } catch (t: Throwable) {
+      shutdownMlKitTts()
+      WavPlayOutcome(
+          ToolResult("could not speak via ML Kit TTS: ${t.message}", true),
+          allowTtsFallback = true,
+      )
+    }
+  }
+
   private fun speakTts(
       context: Context,
       audio: AudioManager?,
@@ -1028,4 +1270,5 @@ public object PhoneTools {
   private const val MS_PER_S = 1000L
   private const val FIX_TIMEOUT_S = 10L
   private const val TTS_INIT_TIMEOUT_S = 10L
+  private const val MLKIT_LOOKUP_TIMEOUT_MS = 5_000L
 }

@@ -498,4 +498,64 @@ public class BridgePolicyTest {
     assertEquals(45L, BridgePolicy.speakTimeoutSeconds(null, textLength = 50))
     assertEquals(180L, BridgePolicy.speakTimeoutSeconds(null, textLength = 1500))
   }
+
+  @Test
+  public fun selectMlKitVoicePrefersReadyVoiceAndFallsBackCleanly() {
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Unavailable,
+        BridgePolicy.selectMlKitVoice(emptyList()),
+    )
+
+    val downloadableOnly =
+        listOf(
+            BridgePolicy.MlKitVoiceCandidate(
+                "star02", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+            BridgePolicy.MlKitVoiceCandidate(
+                "star05", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+        )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.NeedsDownload("star02"),
+        BridgePolicy.selectMlKitVoice(downloadableOnly),
+    )
+
+    val mixed =
+        listOf(
+            BridgePolicy.MlKitVoiceCandidate(
+                "star02", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+            BridgePolicy.MlKitVoiceCandidate(
+                "star05", "en-US", BridgePolicy.MlKitVoiceStatus.Available),
+        )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Ready("star05"),
+        BridgePolicy.selectMlKitVoice(mixed),
+    )
+
+    // Explicit preferred voice wins when downloadable or available (case-insensitive).
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.NeedsDownload("star02"),
+        BridgePolicy.selectMlKitVoice(mixed, preferredName = "STAR02"),
+    )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Ready("star05"),
+        BridgePolicy.selectMlKitVoice(mixed, preferredName = "star05"),
+    )
+    // Missing preferred voice falls back to the first already-available voice.
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Ready("star05"),
+        BridgePolicy.selectMlKitVoice(mixed, preferredName = "nonexistent"),
+    )
+
+    // When a voice is already downloading and none are ready, do not start a second download.
+    val downloading =
+        listOf(
+            BridgePolicy.MlKitVoiceCandidate(
+                "star02", "en-US", BridgePolicy.MlKitVoiceStatus.Downloading),
+            BridgePolicy.MlKitVoiceCandidate(
+                "star05", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+        )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Unavailable,
+        BridgePolicy.selectMlKitVoice(downloading),
+    )
+  }
 }

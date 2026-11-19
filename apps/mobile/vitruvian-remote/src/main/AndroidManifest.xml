@@ -121,6 +121,11 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <!--
+          Google Speech Recognition & Synthesis, which hosts the on-device
+          ML Kit GenAI Text-to-Speech engine and voice models.
+        -->
+        <package android:name="com.google.android.tts" />
     </queries>
 
     <application

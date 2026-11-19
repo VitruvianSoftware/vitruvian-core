@@ -519,6 +519,78 @@ public object BridgePolicy {
     return (base + SPEAK_TIMEOUT_MARGIN_S).coerceIn(MIN_SPEAK_TIMEOUT_S, MAX_SPEAK_TIMEOUT_S)
   }
 
+  /** Availability of one ML Kit GenAI TTS voice, mirrored from `FeatureStatus` for JVM tests. */
+  public enum class MlKitVoiceStatus {
+    Available,
+    Downloadable,
+    Downloading,
+    Unavailable,
+  }
+
+  /** One candidate voice returned by ML Kit `SpeechSynthesizer.getSupportedVoices`. */
+  public data class MlKitVoiceCandidate(
+      val name: String,
+      val languageTag: String,
+      val status: MlKitVoiceStatus,
+  )
+
+  /** Decision for whether `phone.speak` can use ML Kit GenAI TTS right now or should fall back. */
+  public sealed interface MlKitVoiceSelection {
+    /** Voice is already installed on device; synthesize immediately with ML Kit TTS. */
+    public data class Ready(val name: String) : MlKitVoiceSelection
+
+    /**
+     * Voice is supported but not downloaded yet; start a background download and fall back to
+     * Android `TextToSpeech` for the current announcement so playback does not stall.
+     */
+    public data class NeedsDownload(val name: String) : MlKitVoiceSelection
+
+    /**
+     * ML Kit TTS cannot speak right now (unsupported device, outdated `com.google.android.tts`, or
+     * a download is already in flight); fall back to Android `TextToSpeech`.
+     */
+    public data object Unavailable : MlKitVoiceSelection
+  }
+
+  /**
+   * Picks the ML Kit GenAI TTS voice to use for `phone.speak`.
+   *
+   * Prefers an explicit [preferredName] when set and usable; otherwise prefers any voice that is
+   * already [MlKitVoiceStatus.Available] (e.g. downloaded by Google AI Edge Gallery or a previous
+   * run) so playback starts immediately without triggering another download.
+   */
+  public fun selectMlKitVoice(
+      candidates: List<MlKitVoiceCandidate>,
+      preferredName: String? = null,
+  ): MlKitVoiceSelection {
+    if (candidates.isEmpty()) return MlKitVoiceSelection.Unavailable
+    val wanted = preferredName?.trim()?.takeIf { it.isNotEmpty() }
+    if (wanted != null) {
+      val match = candidates.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
+      when (match?.status) {
+        MlKitVoiceStatus.Available -> return MlKitVoiceSelection.Ready(match.name)
+        MlKitVoiceStatus.Downloadable -> return MlKitVoiceSelection.NeedsDownload(match.name)
+        MlKitVoiceStatus.Downloading -> return MlKitVoiceSelection.Unavailable
+        MlKitVoiceStatus.Unavailable,
+        null -> Unit
+      }
+    }
+    candidates
+        .firstOrNull { it.status == MlKitVoiceStatus.Available }
+        ?.let {
+          return MlKitVoiceSelection.Ready(it.name)
+        }
+    if (candidates.any { it.status == MlKitVoiceStatus.Downloading }) {
+      return MlKitVoiceSelection.Unavailable
+    }
+    candidates
+        .firstOrNull { it.status == MlKitVoiceStatus.Downloadable }
+        ?.let {
+          return MlKitVoiceSelection.NeedsDownload(it.name)
+        }
+    return MlKitVoiceSelection.Unavailable
+  }
+
   private fun asciiEquals(bytes: ByteArray, offset: Int, tag: String): Boolean {
     if (offset + 4 > bytes.size) return false
     for (k in 0 until 4) {
