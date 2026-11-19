@@ -696,7 +696,10 @@ public interface PhoneVoices {
   /** Plays a short sample in [name]. Null when it played, otherwise why it did not. */
   public suspend fun preview(name: String): String?
 
-  /** Tells the announcement path the choice is now [name] (empty = automatic). */
+  /**
+   * Tells the announcement path the choice is now [name] (empty = automatic). Call after saving it:
+   * the announcement path reloads the saved value, so overlapping calls settle on the newest.
+   */
   public suspend fun choiceChanged(name: String)
 }
 

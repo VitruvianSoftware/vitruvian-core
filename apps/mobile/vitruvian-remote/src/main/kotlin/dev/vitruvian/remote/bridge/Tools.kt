@@ -953,9 +953,13 @@ public object PhoneTools {
     }
   }
 
-  /** The picker chose [name] (empty = automatic): announcements use it from the next one on. */
-  public fun setPreferredMlKitVoice(name: String) {
-    mlKitPreferredVoice = name.trim()
+  /**
+   * The pick changed: reload it from prefs (already written by the picker) and drop the cached
+   * voice. Reading the saved value rather than taking it as an argument means two quick picks can
+   * finish in either order and still leave the newest one in memory.
+   */
+  public fun reloadPreferredMlKitVoice(context: Context) {
+    mlKitPreferredVoice = runCatching { readPhoneVoice(context) }.getOrDefault("")
     forgetMlKitVoice()
   }
 
@@ -1001,12 +1005,18 @@ public object PhoneTools {
    */
   public fun downloadMlKitVoice(name: String): Boolean {
     if (!BridgePolicy.pickerShouldStartDownload(name, mlKitDownloadsInFlight)) return false
+    // Registered before returning, so a list refresh right after Get already sees it downloading.
+    if (!mlKitDownloadsInFlight.add(name)) return false
     mlKitDownloadScope.launch {
-      runCatching {
+      try {
         val synthesizer = getOrCreateMlKitSynthesizer()
         supportedMlKitVoices(synthesizer)
             .firstOrNull { it.name == name }
-            ?.let { startBackgroundVoiceDownload(synthesizer, it) }
+            ?.let { runVoiceDownload(synthesizer, it) }
+      } catch (_: Throwable) {
+        // The list shows it downloadable again; Get can be tapped again.
+      } finally {
+        mlKitDownloadsInFlight.remove(name)
       }
     }
     return true
@@ -1091,14 +1101,19 @@ public object PhoneTools {
     if (!mlKitDownloadsInFlight.add(voice.name)) return
     mlKitDownloadScope.launch {
       try {
-        synthesizer.download(voice).collect { status ->
-          if (status is DownloadStatus.DownloadCompleted) forgetMlKitVoice()
-        }
+        runVoiceDownload(synthesizer, voice)
       } catch (_: Throwable) {
         // Best effort: the next lookup on Wi-Fi tries again.
       } finally {
         mlKitDownloadsInFlight.remove(voice.name)
       }
+    }
+  }
+
+  /** Downloads [voice] to the end; the caller owns the in-flight entry. */
+  private suspend fun runVoiceDownload(synthesizer: SpeechSynthesizer, voice: VoiceInfo) {
+    synthesizer.download(voice).collect { status ->
+      if (status is DownloadStatus.DownloadCompleted) forgetMlKitVoice()
     }
   }
 

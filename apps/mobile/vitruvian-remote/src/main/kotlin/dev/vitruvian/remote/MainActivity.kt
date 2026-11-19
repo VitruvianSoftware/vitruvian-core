@@ -343,7 +343,7 @@ public class MainActivity : ComponentActivity() {
         withContext(Dispatchers.IO) { PhoneTools.previewMlKitVoice(this@MainActivity, name) }
 
     override suspend fun choiceChanged(name: String) {
-      withContext(Dispatchers.IO) { PhoneTools.setPreferredMlKitVoice(name) }
+      withContext(Dispatchers.IO) { PhoneTools.reloadPreferredMlKitVoice(this@MainActivity) }
     }
   }
 
