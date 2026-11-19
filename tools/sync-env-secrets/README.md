@@ -94,8 +94,14 @@ and a far larger blast radius. Only the `agent-keys-*` subcommands repoint the
 store, and the script runs one subcommand per invocation, so `apply` cannot reach
 them.
 
-`agent-keys-push` refuses to archive a key that is not mode `600`, rather than
-silently backing up a world-readable private key.
+An App whose consumer also needs its OAuth client id and secret (Backstage does)
+keeps them beside its key as `<name>.creds.json`, written by
+`bazel run //tools/agent-app -- convert <code> <name>.pem <name>.creds.json`.
+GitHub issues that secret once; the archive is the whole store, so it is backed
+up with the key.
+
+`agent-keys-push` refuses to archive any file in the store that is not mode
+`600`, rather than silently backing up a world-readable key or secret.
 
 Overrides (env): `REPO` (default `VitruvianSoftware/vitruvian-core`), `BW_ITEM`
 (default `vitruvian-core/deploy-env-secrets`), `BW_PASSWORD` (non-interactive
