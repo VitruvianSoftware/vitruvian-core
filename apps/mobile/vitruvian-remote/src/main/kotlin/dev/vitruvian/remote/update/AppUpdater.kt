@@ -394,7 +394,9 @@ public class UpdateInstallReceiver : BroadcastReceiver() {
     when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)) {
       PackageInstaller.STATUS_PENDING_USER_ACTION -> {
         val confirm =
-            confirmation(intent) ?: return UpdateInstallHub.post(InstallEvent.Failed(GENERIC))
+            confirmation(intent)
+                ?: return UpdateInstallHub.post(
+                    InstallEvent.Failed(UpdateCopy.INSTALL_GENERIC_FAILURE))
         UpdateInstallHub.pendingConfirmation = confirm
         UpdateInstallHub.post(InstallEvent.NeedsConfirmation)
         // Allowed while the app is on screen, which it is when the person tapped Update. If
@@ -409,7 +411,18 @@ public class UpdateInstallReceiver : BroadcastReceiver() {
       }
       else -> {
         UpdateInstallHub.pendingConfirmation = null
-        UpdateInstallHub.post(InstallEvent.Failed(reason(status)))
+        val kind =
+            when (status) {
+              PackageInstaller.STATUS_FAILURE_ABORTED -> InstallFailureKind.Aborted
+              PackageInstaller.STATUS_FAILURE_STORAGE -> InstallFailureKind.Storage
+              PackageInstaller.STATUS_FAILURE_CONFLICT,
+              PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
+                  InstallFailureKind.ConflictOrIncompatible
+              PackageInstaller.STATUS_FAILURE_BLOCKED -> InstallFailureKind.Blocked
+              else -> InstallFailureKind.Other
+            }
+        val statusMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        UpdateInstallHub.post(UpdateCopy.installFailure(kind, statusMessage))
       }
     }
   }
@@ -422,20 +435,7 @@ public class UpdateInstallReceiver : BroadcastReceiver() {
         intent.getParcelableExtra(Intent.EXTRA_INTENT)
       }
 
-  private fun reason(status: Int): String =
-      when (status) {
-        PackageInstaller.STATUS_FAILURE_ABORTED -> "The update was cancelled. Nothing changed."
-        PackageInstaller.STATUS_FAILURE_STORAGE ->
-            "There isn't enough space on the phone for the update."
-        PackageInstaller.STATUS_FAILURE_CONFLICT,
-        PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-            "Android refused the update because it doesn't match the installed app. Nothing changed."
-        PackageInstaller.STATUS_FAILURE_BLOCKED -> "Android blocked the update."
-        else -> GENERIC
-      }
-
   public companion object {
     public const val ACTION: String = "dev.vitruvian.remote.update.INSTALL_STATUS"
-    private const val GENERIC = "The update didn't install. Nothing changed; try again later."
   }
 }

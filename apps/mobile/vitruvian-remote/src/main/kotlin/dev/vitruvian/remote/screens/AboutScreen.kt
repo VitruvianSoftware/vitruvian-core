@@ -259,6 +259,10 @@ private fun UpdatePlate(state: RemoteState) {
         is UpdateUi.Available ->
             VText(
                 text = UpdateCopy.WHERE_FROM, style = VitruvianType.listSub, color = colors.textDim)
+        is UpdateUi.Failed ->
+            ui.detail?.let { detail ->
+              VText(text = detail, style = VitruvianType.listSub, color = colors.textDim)
+            }
         else -> Unit
       }
       FlowRow(
