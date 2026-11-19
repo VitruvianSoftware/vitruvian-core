@@ -76,10 +76,11 @@ The domain's DNS record and the mirror's Pages setting are code in
 `internal/copybara_sync`); the rooms server's record is the `DNSEndpoint` in
 `gitops/argocd/platform/mini-party`.
 
-HTTPS works but is not forced (plain `http://` is not redirected). The Pages
-provider removes the custom domain on any update that leaves the domain
-unchanged, so `PagesHTTPS` cannot be turned on by itself; see the warning
-above `NewRepositoryPages` in `internal/copybara_sync/sync.go`.
+HTTPS is forced: `http://` redirects to `https://`. GitHub turned that on by
+itself when the domain was reattached on 2026-11-19, so the code's
+`PagesHTTPS` still reads false. Leave it: the Pages provider removes the custom
+domain on any update that leaves the domain unchanged; see the warning above
+`NewRepositoryPages` in `internal/copybara_sync/sync.go`.
 
 ## Checks
 

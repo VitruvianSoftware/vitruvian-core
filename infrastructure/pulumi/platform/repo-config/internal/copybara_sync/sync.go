@@ -535,8 +535,11 @@ var syncedProjects = []syncedProject{
 		// ignore case). Flip the case again whenever a Pages change must
 		// keep the domain.
 		PagesDomain: "Mini-games." + site_domain.Apex,
-		// Off: GitHub turns enforcement off when a domain is (re)attached,
-		// and changing this alone would remove the domain (see above).
+		// Left false although GitHub enforces HTTPS: it turned enforcement
+		// on by itself when the domain was reattached (2026-11-19; http://
+		// answers 301 to https://). State also holds false, so no update is
+		// planned, which is what keeps the domain safe (see above). Do not
+		// "fix" this to true on its own.
 		PagesHTTPS: false,
 	},
 }
