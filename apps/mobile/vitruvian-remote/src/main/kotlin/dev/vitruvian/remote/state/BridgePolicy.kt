@@ -591,6 +591,105 @@ public object BridgePolicy {
     return MlKitVoiceSelection.Unavailable
   }
 
+  /** How long a cached voice that was ready to speak is trusted before it is looked up again. */
+  public const val MLKIT_READY_CACHE_MS: Long = 30L * 60L * 1000L
+
+  /**
+   * How long a "no voice ready" answer is trusted. Shorter than [MLKIT_READY_CACHE_MS] so a voice
+   * that finishes downloading (or a Speech Services update) is picked up within minutes, while the
+   * announcements in between skip the lookup and go straight to the Android voice.
+   */
+  public const val MLKIT_NOT_READY_CACHE_MS: Long = 10L * 60L * 1000L
+
+  /** Whether a cached voice lookup [ageMs] old is still fresh enough to reuse. */
+  public fun mlKitVoiceCacheFresh(ageMs: Long, ready: Boolean): Boolean =
+      ageMs in 0 until (if (ready) MLKIT_READY_CACHE_MS else MLKIT_NOT_READY_CACHE_MS)
+
+  /**
+   * Whether to start downloading a voice pack now: only when one is needed, none is already in
+   * flight, and the phone is on an unmetered network (home Wi-Fi), so a voice download never spends
+   * mobile data.
+   */
+  public fun shouldDownloadMlKitVoice(
+      selection: MlKitVoiceSelection,
+      unmetered: Boolean,
+      downloadInFlight: Boolean,
+  ): Boolean = selection is MlKitVoiceSelection.NeedsDownload && unmetered && !downloadInFlight
+
+  /** How an ML Kit synthesis attempt ended. */
+  public enum class MlKitEnd {
+    /** The engine reported it finished the whole text. */
+    Done,
+    /** The engine stopped before the end (another app, the system, or our own stop). */
+    Stopped,
+    /** The engine reported an error. */
+    Error,
+    /** No audio started within [MLKIT_START_TIMEOUT_MS]. */
+    StartTimeout,
+    /** Audio started but did not finish within the time budget. */
+    Timeout,
+  }
+
+  /** What `phone.speak` does with an ML Kit attempt. */
+  public sealed interface MlKitOutcome {
+    /** The whole announcement was spoken. */
+    public data object Spoken : MlKitOutcome
+
+    /**
+     * Some of it was heard and then it ended early. Never retried with the Android voice: the
+     * listener would hear the start of the announcement twice.
+     */
+    public data class Partial(val reason: String) : MlKitOutcome
+
+    /** Headphones were unplugged mid-announcement; stop, as the WAV and Android paths do. */
+    public data object Unplugged : MlKitOutcome
+
+    /** Nothing was heard, so the Android voice can safely say it instead. */
+    public data class Fallback(val reason: String) : MlKitOutcome
+  }
+
+  /**
+   * Decides what to do after an ML Kit attempt. The rule that matters: once any audio has started
+   * ([started]), never fall back, so an announcement is never spoken twice. `Done` counts as spoken
+   * even without a start signal, for the same reason.
+   */
+  public fun classifyMlKitEnd(end: MlKitEnd, started: Boolean, unplugged: Boolean): MlKitOutcome {
+    if (unplugged) return MlKitOutcome.Unplugged
+    if (end == MlKitEnd.Done) return MlKitOutcome.Spoken
+    val reason =
+        when (end) {
+          MlKitEnd.Stopped -> "ML Kit TTS stopped"
+          MlKitEnd.Error -> "ML Kit TTS failed"
+          MlKitEnd.StartTimeout -> "ML Kit TTS did not start"
+          MlKitEnd.Timeout -> "ML Kit TTS timed out"
+          MlKitEnd.Done -> error("unreachable")
+        }
+    return if (started) MlKitOutcome.Partial("$reason partway through")
+    else MlKitOutcome.Fallback(reason)
+  }
+
+  /** How long ML Kit may take to start speaking before the Android voice takes over. */
+  public const val MLKIT_START_TIMEOUT_MS: Long = 10_000L
+
+  /** Seconds the Android voice needs to start up, on top of the speech itself. */
+  public const val ANDROID_TTS_STARTUP_S: Long = 5L
+
+  /**
+   * Seconds left for the Android voice after ML Kit gave up, out of the single [budgetSeconds] the
+   * whole `phone.speak` call has (the Mac waits a little longer than that, then reports failure).
+   * Null when too little is left to say [textLength] characters: better to report the failure on
+   * time than to start speaking after the Mac has already given up.
+   */
+  public fun fallbackTimeoutSeconds(
+      budgetSeconds: Long,
+      elapsedSeconds: Long,
+      textLength: Int
+  ): Long? {
+    val remaining = budgetSeconds - elapsedSeconds.coerceAtLeast(0L)
+    val needed = maxOf(1L, textLength.toLong() / 10L) + ANDROID_TTS_STARTUP_S
+    return remaining.takeIf { it >= needed }
+  }
+
   private fun asciiEquals(bytes: ByteArray, offset: Int, tag: String): Boolean {
     if (offset + 4 > bytes.size) return false
     for (k in 0 until 4) {

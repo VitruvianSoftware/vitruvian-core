@@ -666,7 +666,7 @@ act tier (pairing bearer token required from non-loopback peers), body up to 12 
 - Loopback requests without a bearer token must send `Content-Type: application/json` (`415` otherwise).
 - When no phone link is open, replies `200 {"ok": false, "spoken": false, "reason": "no phone connected"}`.
 - Otherwise dispatches `phone.speak` (`read` tier, 60–210 s timeout scaled to audio/text length) over the phone bridge and returns
-  `200 {"ok": true, "spoken": bool, "skipped"?: bool, "reason"?: string, "engine"?: "gemini"|"mlkit_tts"|"android_tts"}`.
+  `200 {"ok": true, "spoken": bool, "skipped"?: bool, "reason"?: string, "engine"?: "gemini"|"mlkit_tts"|"android_tts"}`. The phone also sends `"partial": true` when ML Kit stopped partway (it never retries with the Android voice once audio has started, so nothing is said twice); the Mac does not forward it.
 
 ---
 

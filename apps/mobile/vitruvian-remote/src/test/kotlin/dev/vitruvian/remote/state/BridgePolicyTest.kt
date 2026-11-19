@@ -558,4 +558,102 @@ public class BridgePolicyTest {
         BridgePolicy.selectMlKitVoice(downloading),
     )
   }
+
+  @Test
+  public fun mlKitNeverFallsBackOnceAudioHasStarted() {
+    val ends = BridgePolicy.MlKitEnd.values().filter { it != BridgePolicy.MlKitEnd.Done }
+    for (end in ends) {
+      val outcome = BridgePolicy.classifyMlKitEnd(end, started = true, unplugged = false)
+      assertTrue(
+          "$end after audio started must not fall back",
+          outcome is BridgePolicy.MlKitOutcome.Partial)
+    }
+  }
+
+  @Test
+  public fun mlKitFallsBackOnlyWhenNothingWasHeard() {
+    for (end in BridgePolicy.MlKitEnd.values().filter { it != BridgePolicy.MlKitEnd.Done }) {
+      assertTrue(
+          BridgePolicy.classifyMlKitEnd(end, started = false, unplugged = false)
+              is BridgePolicy.MlKitOutcome.Fallback)
+    }
+    assertEquals(
+        BridgePolicy.MlKitOutcome.Fallback("ML Kit TTS did not start"),
+        BridgePolicy.classifyMlKitEnd(BridgePolicy.MlKitEnd.StartTimeout, false, false))
+  }
+
+  @Test
+  public fun mlKitStopIsNotReportedAsTimeout() {
+    val outcome = BridgePolicy.classifyMlKitEnd(BridgePolicy.MlKitEnd.Stopped, true, false)
+    assertEquals(BridgePolicy.MlKitOutcome.Partial("ML Kit TTS stopped partway through"), outcome)
+  }
+
+  @Test
+  public fun mlKitDoneIsSpokenAndUnplugWins() {
+    // Done counts as spoken even without a start signal: falling back could repeat it.
+    assertEquals(
+        BridgePolicy.MlKitOutcome.Spoken,
+        BridgePolicy.classifyMlKitEnd(
+            BridgePolicy.MlKitEnd.Done, started = false, unplugged = false))
+    for (end in BridgePolicy.MlKitEnd.values()) {
+      assertEquals(
+          BridgePolicy.MlKitOutcome.Unplugged,
+          BridgePolicy.classifyMlKitEnd(end, started = true, unplugged = true))
+    }
+  }
+
+  @Test
+  public fun fallbackStaysInsideOneBudget() {
+    val text = 300 // about 30 s of speech
+    val budget = BridgePolicy.speakTimeoutSeconds(null, text)
+    // A quick ML Kit failure leaves the Android voice the rest of the same budget.
+    assertEquals(budget - 2, BridgePolicy.fallbackTimeoutSeconds(budget, 2, text))
+    // ML Kit used most of the budget: too little left to say it, so report failure on time.
+    assertNull(BridgePolicy.fallbackTimeoutSeconds(budget, budget - 10, text))
+    assertNull(BridgePolicy.fallbackTimeoutSeconds(budget, budget + 5, text))
+    // The fallback never gets more than what was left of the one budget.
+    for (elapsed in 0L..budget) {
+      val left = BridgePolicy.fallbackTimeoutSeconds(budget, elapsed, text) ?: continue
+      assertTrue(elapsed + left <= budget)
+    }
+  }
+
+  @Test
+  public fun phoneBudgetStaysUnderTheMacWait() {
+    // The Mac waits speech + 45 s, clamped to 60–210 s (speaker.rs phone_say_timeout); the phone's whole
+    // budget, fallback included, must end before that.
+    for (len in listOf(1, 50, 400, 1500, 5000)) {
+      val speech = maxOf(1L, len / 10L)
+      val macWait = (speech + 45L).coerceIn(60L, 210L)
+      assertTrue(BridgePolicy.speakTimeoutSeconds(null, len) < macWait)
+    }
+  }
+
+  @Test
+  public fun voiceDownloadsOnlyOnUnmeteredNetworks() {
+    val needs = BridgePolicy.MlKitVoiceSelection.NeedsDownload("star02")
+    assertTrue(
+        BridgePolicy.shouldDownloadMlKitVoice(needs, unmetered = true, downloadInFlight = false))
+    assertFalse(
+        BridgePolicy.shouldDownloadMlKitVoice(needs, unmetered = false, downloadInFlight = false))
+    assertFalse(
+        BridgePolicy.shouldDownloadMlKitVoice(needs, unmetered = true, downloadInFlight = true))
+    assertFalse(
+        BridgePolicy.shouldDownloadMlKitVoice(
+            BridgePolicy.MlKitVoiceSelection.Ready("star02"),
+            unmetered = true,
+            downloadInFlight = false))
+  }
+
+  @Test
+  public fun voiceCacheExpiresSoonerWhenNothingIsReady() {
+    assertTrue(BridgePolicy.mlKitVoiceCacheFresh(0, ready = true))
+    assertTrue(
+        BridgePolicy.mlKitVoiceCacheFresh(BridgePolicy.MLKIT_NOT_READY_CACHE_MS, ready = true))
+    assertFalse(
+        BridgePolicy.mlKitVoiceCacheFresh(BridgePolicy.MLKIT_NOT_READY_CACHE_MS, ready = false))
+    assertFalse(BridgePolicy.mlKitVoiceCacheFresh(BridgePolicy.MLKIT_READY_CACHE_MS, ready = true))
+    // A clock that went backwards never counts as fresh.
+    assertFalse(BridgePolicy.mlKitVoiceCacheFresh(-1, ready = true))
+  }
 }
