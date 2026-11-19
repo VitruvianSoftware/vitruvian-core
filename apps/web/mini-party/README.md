@@ -76,6 +76,11 @@ The domain's DNS record and the mirror's Pages setting are code in
 `internal/copybara_sync`); the rooms server's record is the `DNSEndpoint` in
 `gitops/argocd/platform/mini-party`.
 
+HTTPS works but is not forced (plain `http://` is not redirected). The Pages
+provider removes the custom domain on any update that leaves the domain
+unchanged, so `PagesHTTPS` cannot be turned on by itself; see the warning
+above `NewRepositoryPages` in `internal/copybara_sync/sync.go`.
+
 ## Checks
 
 ```sh
@@ -84,15 +89,3 @@ bazel build //apps/web/mini-party:build          # with online rooms
 bazel build //apps/web/mini-party:build_static   # the GitHub Pages build
 bazel build //apps/web/mini-party:server_bundle  # the rooms server, as the image runs it
 ```
-
-## Where it is published
-
-The mirror publishes itself with GitHub Pages: its
-`.github/workflows/pages.yml` builds the client and deploys it to
-mini-games.vitruviansoftware.dev. Pages serves files only, with no server, so
-that build sets `VITE_REMOTE_PLAY=off` and the site offers shared-screen play
-only. Online rooms need `server.ts` running somewhere, which is not set up yet.
-
-The domain's DNS record and the mirror's Pages setting are code in
-`infrastructure/pulumi/platform/repo-config` (`internal/site_domain` and
-`internal/copybara_sync`).
