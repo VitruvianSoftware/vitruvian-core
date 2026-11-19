@@ -181,6 +181,12 @@ public enum MessageActions {
             : String(localized: "Delete for Me…")
     }
 
+    /// Made once: making a detector loads its data files, and this runs for every message row each time one's body is
+    /// evaluated (`available`), which is every row that scrolls into view.
+    private nonisolated static let linkDetector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+
     /// The first link in a message, for Open Link (⌘⇧H): a link range's address, or else the first http, https or
     /// mailto address in its text.
     public static func firstLink(in rich: RichText) -> URL? {
@@ -191,7 +197,7 @@ public enum MessageActions {
                 found = (entity.offset, url)
             }
         }
-        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
+        if let detector = linkDetector {
             let range = NSRange(location: 0, length: text.length)
             for match in detector.matches(in: rich.text, options: [], range: range) {
                 guard let url = match.url, ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else {
