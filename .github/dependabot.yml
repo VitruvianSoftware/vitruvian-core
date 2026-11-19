@@ -41,26 +41,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
-  - package-ecosystem: "gomod"
-    directory: "/apps/cli/vitruvian-homelab"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "go"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      go-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
-      go-security-minor-patch:
-        applies-to: "security-updates"
-        update-types:
-          - "minor"
-          - "patch"
+  # vitruvian-homelab has no gomod entry: it is a Rust crate now
+  # (apps/cli/vitruvian-homelab/rs), with no go.mod, so a gomod entry here
+  # failed every run with "No go.mod files found". Its crates are re-locked
+  # with `bazel run //tools/crates:lock -- --dir apps/cli/vitruvian-homelab/rs`.
   # ─── Root & subtree workflows (issue #814) ───
   - package-ecosystem: "github-actions"
     directories:
