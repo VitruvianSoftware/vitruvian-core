@@ -529,8 +529,13 @@ var syncedProjects = []syncedProject{
 		CreateRepo:     true,
 		Description:    "Mini Party: rapid-fire party mini-games for up to 4 players",
 		PagesDomain:    site_domain.MiniGames + "." + site_domain.Apex,
-		// The certificate was issued on 2026-11-19.
-		PagesHTTPS: true,
+		// Step 1 of 2 (2026-11-19). Saved state says HTTPS is enforced (the
+		// create recorded github.io's default), but GitHub turned it off when
+		// the custom domain was added, and applies do not refresh. The
+		// provider only sends https_enforced when it differs from state, so
+		// this apply records false (what GitHub already has); the next sets
+		// true, which the provider then sends. The certificate exists.
+		PagesHTTPS: false,
 	},
 }
 
@@ -608,7 +613,10 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			}
 			if project.PagesDomain != "" {
 				// HttpsEnforced follows PagesHTTPS (see the field: it must stay
-				// off until the domain's certificate exists).
+				// off until the domain's certificate exists). The provider sends
+				// it only when it differs from Pulumi state, and applies do not
+				// refresh, so a drifted value needs a false-then-true pair of
+				// applies to correct.
 				//
 				// The custom domain also takes TWO applies. The provider's create
 				// (terraform-provider-github resource_github_repository_pages.go)
