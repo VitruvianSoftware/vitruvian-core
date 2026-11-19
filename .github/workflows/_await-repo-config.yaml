@@ -38,17 +38,24 @@ name: Await Repo Config Apply (reusable)
 # Guarded by //tools/conformance:check (copybara group).
 on:
     workflow_call:
+        outputs:
+            restarted:
+                description: "true when this run handed the export to a fresh run (step 3); the caller then skips its export job"
+                value: ${{ jobs.wait.outputs.restarted }}
 
 permissions:
     contents: read
-    actions: read # list Repo Config Apply runs
+    actions: write # list Repo Config Apply runs; start a fresh export run (step 3)
 
 jobs:
     wait:
         runs-on: ubuntu-26.04
         timeout-minutes: 50 # the apply's own limit is 45
+        outputs:
+            restarted: ${{ steps.restart.outputs.restarted }}
         steps:
             - name: Wait for any Repo Config Apply in flight
+              id: wait
               env:
                   GH_TOKEN: ${{ github.token }}
                   REPO: ${{ github.repository }}
@@ -93,6 +100,7 @@ jobs:
                           changed=true
                       fi
                   fi
+                  echo "changed=${changed}" >> "${GITHUB_OUTPUT}"
                   if [ "${changed}" = true ]; then
                       n=0
                       for _ in $(seq 1 24); do
@@ -126,3 +134,37 @@ jobs:
                       success | skipped | none) echo "repo-config apply for ${SHA}: ${c}" ;;
                       *) echo "::warning::repo-config apply for ${SHA} ended '${c}'; a replaced mirror key may not match" ;;
                   esac
+
+            # 3. A run cannot see a secret created after the run itself was:
+            #    it takes its secrets when it is created. mini-party's first
+            #    export (2026-11-19) and wand's (2026-11-18) both got an EMPTY
+            #    key, though their export jobs started 6 and 24 min after the
+            #    apply wrote it; wand's re-run, a new attempt, got it. So when
+            #    this push changed repo-config (a mirror key may be new or
+            #    replaced), start a fresh run of this export now that the apply
+            #    is done, and let the caller skip its export job here. Only on
+            #    push: the fresh run is a workflow_dispatch, so it cannot loop.
+            - name: Restart the export if this push changed repo-config
+              id: restart
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  REPO: ${{ github.repository }}
+                  EVENT: ${{ github.event_name }}
+                  CHANGED: ${{ steps.wait.outputs.changed }}
+                  # In a called workflow the github context is the caller's:
+                  # owner/repo/.github/workflows/<file>@<ref>.
+                  WORKFLOW_REF: ${{ github.workflow_ref }}
+              run: |
+                  set -euo pipefail
+                  if [ "${EVENT}" != push ] || [ "${CHANGED}" != true ]; then
+                      echo "restarted=false" >> "${GITHUB_OUTPUT}"
+                      exit 0
+                  fi
+                  file="${WORKFLOW_REF#*/.github/workflows/}"
+                  file="${file%@*}"
+                  # --force: an export after a copy.bara.sky change must not
+                  # no-op (see the callers' push default).
+                  gh workflow run "${file}" --repo "${REPO}" --ref main \
+                      -f copybara-options='--force --ignore-noop'
+                  echo "started a fresh ${file} run on main, created after the apply, so it can read a new or replaced mirror key"
+                  echo "restarted=true" >> "${GITHUB_OUTPUT}"

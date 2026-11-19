@@ -114,6 +114,9 @@ flowchart LR
    caller's `export` job, which maps `<COMP>_SYNC_SSH_KEY`, `needs` it. The apply can replace the
    mirror's deploy key and that secret (a mirror rename always does); an export already holding
    the key would push with the old one and be refused. That happened on 2026-11-13 (#4661).
+   If the push changed repo-config, the job then hands the export to a fresh run, created after
+   the apply, because a run cannot see a secret written after it was created (see "One PR is
+   enough" below).
    The wait sits in the caller, not in `_copybara-export.yaml`, because the caller is where the
    key is mapped. `//tools/conformance:check` fails if a key-reading job stops waiting, if a caller
    drops the `actions: read` the wait needs, or if the wait stops polling the apply.
@@ -399,19 +402,18 @@ repeat it.
 
 **Do it as two PRs, in this order.** The export workflow in the second PR needs the key from the
 first. If the export reaches `main` before the key exists, it has nothing to push with.
-**One PR is not enough for a brand-new mirror.** The first Wand export after #5084 (run
-44252366231) failed with `Load key "/root/.ssh/id_rsa": invalid format` and
-`Permission denied (publickey)`: its key was empty. What was observed:
-- the push created the export run at 06:34:42Z;
-- Repo Config Apply wrote `VITRUVIAN_WAND_SYNC_SSH_KEY` during its run, 06:35 to 06:40Z;
-- the export job started at 07:04Z, after `await-repo-config`, and still got an empty key;
-- re-running the failed job (attempt 2, 07:15 to 07:18Z) got the key and pushed the first export.
+**One PR is enough, because the first export restarts itself.** A run takes its secrets when it
+is created, so a mirror key the apply writes after the push is missing from that push's export
+run. That gave Wand's first export (run 44252366231, 2026-11-18) and Mini Party's (run
+44477286297, 2026-11-19) an empty key: `Load key "/root/.ssh/id_rsa": invalid format`, then
+`Permission denied (publickey)`. Their export jobs started 24 and 6 minutes after the key was
+written, so waiting longer does not help; Wand's re-run, a new attempt, got the key.
 
-The likely cause is that a run takes its secrets when it is created, so a secret made after the push
-is missing from that run. This is inferred from the timings, not confirmed. Either way: after a
-one-PR onboarding, re-run the failed export once the apply has finished
-(`bazel run //tools/agent-app -- run-rerun <run-id> --failed`), or use two PRs, which likely avoids
-the red run. The wait does protect an existing key from being replaced mid-export (#4661).
+So when a push changes `infrastructure/pulumi/platform/repo-config/`, `await-repo-config` waits for
+the apply, then starts a fresh run of the same export with `workflow_dispatch` on `main` (step 3 of
+`_await-repo-config.yaml`). That run is created after the key exists. The original run skips its
+`export` job. A dispatched run never restarts, so it cannot loop. The two-PR order below still
+works, and avoids the extra run.
 
 #### PR 1: the key
 
