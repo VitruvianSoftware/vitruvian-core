@@ -57,6 +57,7 @@ _BUILD_CI_TOOLS = [
     "backstage_boot_smoke",
     "changelog_summary",
     "chart_render",
+    "deploy_affected",
     "foundation_app_digest_guard",
     "gitops_validate",
     "gitops_values_render",
@@ -76,6 +77,8 @@ _BUILD_CI_TOOLS = [
     "release_hold",
     "release_pr_dequeue",
     "relevant_paths",
+    "resolve_deploy_base",
+    "resolve_unit_bases",
     "secret_scan",
 ]
 

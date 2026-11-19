@@ -88,6 +88,7 @@ fn concurrency_group_expr(phase: i64) -> &'static str {
     }
 }
 
+const BUILD_CI_TOOL_ACTION: &str = "./.github/actions/build-ci-tool";
 const SETUP_BAZEL_ACTION: &str = "./.github/actions/setup-bazel";
 const SELECT_XCODE_ACTION: &str = "./.github/actions/select-xcode";
 
@@ -1269,7 +1270,126 @@ fn unit_names<'u, I: IntoIterator<Item = &'u Unit>>(units: I) -> Vec<String> {
     units.into_iter().map(|u| u.name.clone()).collect()
 }
 
+fn is_path_only_group(units: &[Unit]) -> bool {
+    !units.is_empty()
+        && units
+            .iter()
+            .all(|u| u.graph_targets.is_empty() && u.build.is_empty() && !u.extra_paths.is_empty())
+}
+
+fn yaml_single_quoted(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+fn render_resolver_steps(b: &mut String, opts: &Opts, use_build_ci_tool: bool) {
+    b.push_str("      - name: Resolve the durable diff base (#1351)\n");
+    b.push_str("        id: durable-base\n");
+    b.push_str("        env:\n");
+    if use_build_ci_tool {
+        b.push_str(
+            "          RESOLVE_DEPLOY_BASE_BIN: ${{ steps.resolve-deploy-base-bin.outputs.path }}\n",
+        );
+    }
+    b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
+    w!(b, "          WORKFLOW_FILE: {}\n", opts.workflow_file);
+    render_legacy_workflow_env(b, &opts.workflow_file);
+    b.push_str("        # Reads THIS workflow's last successful push run and uses its head\n");
+    b.push_str("        # sha as the diff base, so a run evicted by this app's\n");
+    b.push_str("        # concurrency group above does not take its commit range to the\n");
+    b.push_str("        # grave (until the app has one, the shared delivery.yaml's, which\n");
+    b.push_str("        # delivered it before the per-app split). Always exits 0: an empty\n");
+    b.push_str("        # base_sha means \"could not determine\", and the step below falls\n");
+    b.push_str("        # back.\n");
+    if use_build_ci_tool {
+        b.push_str("        run: \"$RESOLVE_DEPLOY_BASE_BIN\"\n");
+    } else {
+        b.push_str("        run: bazel run //tools/ci:resolve_deploy_base\n");
+    }
+
+    b.push_str("      - name: Resolve per-unit durable bases (#1842)\n");
+    b.push_str("        id: unit-bases\n");
+    b.push_str("        env:\n");
+    if use_build_ci_tool {
+        b.push_str(
+            "          RESOLVE_UNIT_BASES_BIN: ${{ steps.resolve-unit-bases-bin.outputs.path }}\n",
+        );
+    }
+    b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
+    w!(b, "          WORKFLOW_FILE: {}\n", opts.workflow_file);
+    render_legacy_workflow_env(b, &opts.workflow_file);
+    b.push_str("        # Refines the single base above, which is a RUN-level verdict: a run\n");
+    b.push_str("        # whose delivery jobs were all skipped still concludes success and\n");
+    b.push_str("        # still becomes the base, so a wrongly-skipped unit's commits fall\n");
+    b.push_str("        # outside every future diff and its delivery is lost, not deferred.\n");
+    b.push_str("        # This resolves each unit's own laggiest last delivery instead.\n");
+    b.push_str("        # Always exits 0; an empty object means every unit keeps the single\n");
+    b.push_str("        # base, which is exactly the previous behaviour.\n");
+    if use_build_ci_tool {
+        b.push_str("        run: \"$RESOLVE_UNIT_BASES_BIN\"\n");
+    } else {
+        b.push_str("        run: bazel run //tools/ci:resolve_unit_bases\n");
+    }
+}
+
+fn render_manifest_and_upload_steps(
+    b: &mut String,
+    units: &[Unit],
+    opts: &Opts,
+    step_if: Option<&str>,
+) -> R {
+    b.push_str("      - name: Compute the delivery manifest\n");
+    b.push_str("        id: manifest\n");
+    if let Some(cond) = step_if {
+        w!(b, "        if: {}\n", cond);
+    }
+    b.push_str("        env:\n");
+    b.push_str("          # Durable base first, github.event.before only as the fallback\n");
+    b.push_str("          # (empty is falsy in a GitHub Actions expression). The engine\n");
+    b.push_str("          # itself fails open if BOTH are unusable.\n");
+    b.push_str(
+        "          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}\n",
+    );
+    b.push_str("          # Per-unit bases (#1842). Only ever OLDER than BEFORE_REV, so the\n");
+    b.push_str("          # worst case is a redundant deploy, never a lost one.\n");
+    b.push_str("          UNIT_BASES_JSON: ${{ steps.unit-bases.outputs.unit_bases }}\n");
+    b.push_str("          # A force-push makes any base untrustworthy; the orchestrator\n");
+    b.push_str("          # turns this into a whole-manifest fail-open with a loud reason.\n");
+    b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
+    b.push_str("          # The affected engine may build/query through the shared remote\n");
+    b.push_str("          # cache; absent (e.g. a fork) it degrades to a local build.\n");
+    b.push_str("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n");
+    b.push_str("          # The units THIS workflow delivers. The engine judges only these, so\n");
+    b.push_str("          # one app's workflow never pays for another app's target-determinator\n");
+    b.push_str("          # sweep. A name the engine cannot find fails the manifest open.\n");
+    w!(
+        b,
+        "          ORCHESTRATE_UNITS: {}\n",
+        unit_names(units).join(" ")
+    );
+    b.push_str(
+        "        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json\n",
+    );
+    b.push_str("      - name: Upload the delivery manifest\n");
+    if let Some(cond) = step_if {
+        w!(b, "        if: {}\n", cond);
+    }
+    w!(
+        b,
+        "        uses: {}\n",
+        opts.pin("actions/upload-artifact")?
+    );
+    b.push_str("        with:\n");
+    b.push_str("          name: delivery-manifest\n");
+    b.push_str("          path: delivery-manifest.json\n");
+    b.push_str("          # 30 days: long enough to A/B a delivery verdict against what the\n");
+    b.push_str("          # legacy workflows actually did, which is how each phase is\n");
+    b.push_str("          # signed off before the legacy path is deleted.\n");
+    b.push_str("          retention-days: 30\n");
+    Ok(())
+}
+
 fn render_orchestrate_job(b: &mut String, units: &[Unit], opts: &Opts) -> R {
+    let path_only = is_path_only_group(units);
     b.push_str("  orchestrate:\n");
     b.push_str("    # Kill switch (spec §6.1, rollback level 1): flip the\n");
     b.push_str("    # DELIVERY_ORCHESTRATOR_ENABLED repo variable to disable the whole\n");
@@ -1301,7 +1421,7 @@ fn render_orchestrate_job(b: &mut String, units: &[Unit], opts: &Opts) -> R {
         timeout = ORCHESTRATE_GRAPH_TIMEOUT;
     }
     w!(b, "    timeout-minutes: {}\n", timeout);
-    render_orchestrate_outputs(b, units);
+    render_orchestrate_outputs(b, units, path_only);
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
@@ -1313,78 +1433,77 @@ fn render_orchestrate_job(b: &mut String, units: &[Unit], opts: &Opts) -> R {
     b.push_str("          # perfectly healthy. That is exactly #1763: the gate was not\n");
     b.push_str("          # broken, it could not see.\n");
     b.push_str("          fetch-depth: 0\n");
-    w!(b, "      - uses: {}\n", SETUP_BAZEL_ACTION);
-    b.push_str("      - name: Resolve the durable diff base (#1351)\n");
-    b.push_str("        id: durable-base\n");
-    b.push_str("        env:\n");
-    b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
-    w!(b, "          WORKFLOW_FILE: {}\n", opts.workflow_file);
-    render_legacy_workflow_env(b, &opts.workflow_file);
-    b.push_str("        # Reads THIS workflow's last successful push run and uses its head\n");
-    b.push_str("        # sha as the diff base, so a run evicted by this app's\n");
-    b.push_str("        # concurrency group above does not take its commit range to the\n");
-    b.push_str("        # grave (until the app has one, the shared delivery.yaml's, which\n");
-    b.push_str("        # delivered it before the per-app split). Always exits 0: an empty\n");
-    b.push_str("        # base_sha means \"could not determine\", and the step below falls\n");
-    b.push_str("        # back.\n");
-    b.push_str("        run: bazel run //tools/ci:resolve_deploy_base\n");
-    b.push_str("      - name: Resolve per-unit durable bases (#1842)\n");
-    b.push_str("        id: unit-bases\n");
-    b.push_str("        env:\n");
-    b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
-    w!(b, "          WORKFLOW_FILE: {}\n", opts.workflow_file);
-    render_legacy_workflow_env(b, &opts.workflow_file);
-    b.push_str("        # Refines the single base above, which is a RUN-level verdict: a run\n");
-    b.push_str("        # whose delivery jobs were all skipped still concludes success and\n");
-    b.push_str("        # still becomes the base, so a wrongly-skipped unit's commits fall\n");
-    b.push_str("        # outside every future diff and its delivery is lost, not deferred.\n");
-    b.push_str("        # This resolves each unit's own laggiest last delivery instead.\n");
-    b.push_str("        # Always exits 0; an empty object means every unit keeps the single\n");
-    b.push_str("        # base, which is exactly the previous behaviour.\n");
-    b.push_str("        run: bazel run //tools/ci:resolve_unit_bases\n");
-    b.push_str("      - name: Compute the delivery manifest\n");
-    b.push_str("        id: manifest\n");
-    b.push_str("        env:\n");
-    b.push_str("          # Durable base first, github.event.before only as the fallback\n");
-    b.push_str("          # (empty is falsy in a GitHub Actions expression). The engine\n");
-    b.push_str("          # itself fails open if BOTH are unusable.\n");
-    b.push_str(
-        "          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}\n",
-    );
-    b.push_str("          # Per-unit bases (#1842). Only ever OLDER than BEFORE_REV, so the\n");
-    b.push_str("          # worst case is a redundant deploy, never a lost one.\n");
-    b.push_str("          UNIT_BASES_JSON: ${{ steps.unit-bases.outputs.unit_bases }}\n");
-    b.push_str("          # A force-push makes any base untrustworthy; the orchestrator\n");
-    b.push_str("          # turns this into a whole-manifest fail-open with a loud reason.\n");
-    b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
-    b.push_str("          # The affected engine may build/query through the shared remote\n");
-    b.push_str("          # cache; absent (e.g. a fork) it degrades to a local build.\n");
-    b.push_str("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n");
-    b.push_str("          # The units THIS workflow delivers. The engine judges only these, so\n");
-    b.push_str("          # one app's workflow never pays for another app's target-determinator\n");
-    b.push_str("          # sweep. A name the engine cannot find fails the manifest open.\n");
-    w!(
-        b,
-        "          ORCHESTRATE_UNITS: {}\n",
-        unit_names(units).join(" ")
-    );
-    b.push_str(
-        "        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json\n",
-    );
-    b.push_str("      - name: Upload the delivery manifest\n");
-    w!(
-        b,
-        "        uses: {}\n",
-        opts.pin("actions/upload-artifact")?
-    );
-    b.push_str("        with:\n");
-    b.push_str("          name: delivery-manifest\n");
-    b.push_str("          path: delivery-manifest.json\n");
-    b.push_str("          # 30 days: long enough to A/B a delivery verdict against what the\n");
-    b.push_str("          # legacy workflows actually did, which is how each phase is\n");
-    b.push_str("          # signed off before the legacy path is deleted.\n");
-    b.push_str("          retention-days: 30\n");
-    Ok(())
+
+    if !path_only {
+        w!(b, "      - uses: {}\n", SETUP_BAZEL_ACTION);
+        render_resolver_steps(b, opts, false);
+        return render_manifest_and_upload_steps(b, units, opts, None);
+    }
+
+    b.push_str("          # Path-only units diff tree paths with --no-renames, so historical\n");
+    b.push_str("          # blobs are never needed unless a unit falls through to Bazel.\n");
+    b.push_str("          filter: blob:none\n");
+    for (step_name, id, tool) in [
+        (
+            "Build resolve_deploy_base (no Bazel on fast path)",
+            "resolve-deploy-base-bin",
+            "resolve_deploy_base",
+        ),
+        (
+            "Build resolve_unit_bases (no Bazel on fast path)",
+            "resolve-unit-bases-bin",
+            "resolve_unit_bases",
+        ),
+        (
+            "Build deploy_affected (no Bazel on fast path)",
+            "deploy-affected-bin",
+            "deploy_affected",
+        ),
+    ] {
+        w!(b, "      - name: {}\n", step_name);
+        w!(b, "        id: {}\n", id);
+        w!(b, "        uses: {}\n", BUILD_CI_TOOL_ACTION);
+        b.push_str("        with:\n");
+        w!(b, "          tool: {}\n", tool);
+    }
+    render_resolver_steps(b, opts, true);
+
+    let mut fallback_clauses = Vec::with_capacity(units.len());
+    for u in units {
+        let var = output_var_name(&u.name);
+        let unit_expr_key = u.name.replace('\'', "''");
+        fallback_clauses.push(format!("steps.fast_{}.outputs.affected != 'false'", var));
+        w!(b, "      - name: Fast path check ({})\n", u.name);
+        w!(b, "        id: fast_{}\n", var);
+        b.push_str("        env:\n");
+        b.push_str(
+            "          DEPLOY_AFFECTED_BIN: ${{ steps.deploy-affected-bin.outputs.path }}\n",
+        );
+        w!(
+            b,
+            "          BEFORE_REV: ${{{{ fromJSON(steps.unit-bases.outputs.unit_bases || '{{}}')['{}'] || steps.durable-base.outputs.base_sha || github.event.before }}}}\n",
+            unit_expr_key
+        );
+        b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
+        w!(
+            b,
+            "          EXTRA_PATH_REGEX: {}\n",
+            yaml_single_quoted(&u.extra_paths.join("|"))
+        );
+        if !u.exclude_paths.is_empty() {
+            w!(
+                b,
+                "          EXCLUDE_PATH_REGEX: {}\n",
+                yaml_single_quoted(&u.exclude_paths.join("|"))
+            );
+        }
+        b.push_str("        run: \"$DEPLOY_AFFECTED_BIN\"\n");
+    }
+
+    let fallback_if = fallback_clauses.join(" || ");
+    w!(b, "      - if: {}\n", fallback_if);
+    w!(b, "        uses: {}\n", SETUP_BAZEL_ACTION);
+    render_manifest_and_upload_steps(b, units, opts, Some(&fallback_if))
 }
 
 fn render_legacy_workflow_env(b: &mut String, workflow_file: &str) {
@@ -1398,7 +1517,7 @@ fn render_legacy_workflow_env(b: &mut String, workflow_file: &str) {
     );
 }
 
-fn render_orchestrate_outputs(b: &mut String, units: &[Unit]) {
+fn render_orchestrate_outputs(b: &mut String, units: &[Unit], path_only: bool) {
     b.push_str("    outputs:\n");
     b.push_str("      # `manifest` is the whole delivery-manifest.json, compact, for a\n");
     b.push_str("      # consumer that needs more than a boolean (fromJSON in a future\n");
@@ -1407,12 +1526,22 @@ fn render_orchestrate_outputs(b: &mut String, units: &[Unit]) {
     b.push_str("      manifest: ${{ steps.manifest.outputs.manifest }}\n");
     for u in units {
         let name = output_var_name(&u.name);
-        w!(
-            b,
-            "      affected_{}: ${{{{ steps.manifest.outputs.affected_{} }}}}\n",
-            name,
-            name
-        );
+        if path_only {
+            w!(
+                b,
+                "      affected_{}: ${{{{ steps.manifest.outputs.affected_{} || steps.fast_{}.outputs.affected }}}}\n",
+                name,
+                name,
+                name
+            );
+        } else {
+            w!(
+                b,
+                "      affected_{}: ${{{{ steps.manifest.outputs.affected_{} }}}}\n",
+                name,
+                name
+            );
+        }
     }
 }
 
