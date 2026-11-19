@@ -169,6 +169,7 @@ struct TimelineItemView: View {
     @ObservedObject var ui: MessageUI
 
     var body: some View {
+        let _ = ScrollPerfCounters.rowBody()
         switch item {
         case let .dateSeparator(day):
             DaySeparator(day: day)

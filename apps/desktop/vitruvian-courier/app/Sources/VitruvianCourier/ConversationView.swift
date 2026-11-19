@@ -700,6 +700,7 @@ struct ConversationView: View {
                             .onGeometryChange(for: CGRect.self) {
                                 $0.frame(in: .named(Self.chatCoordinateSpace))
                             } action: { frame in
+                                ScrollPerfCounters.geometryCallback()
                                 scrollBox.itemFrames[item.id] = frame
                                 conversationLayoutProbe?("item/\(item.id)", frame)
                             }
