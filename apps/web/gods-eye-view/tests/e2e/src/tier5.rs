@@ -889,14 +889,14 @@ pub fn run(ctx: &mut TestContext) {
         if df.is_some() && dep.is_some() {
             let df = df.unwrap();
             let dep = dep.unwrap();
+            let has_explicit_numeric_user = df.contains("USER 1001:1001");
             let has_useradd_1001 = df.contains("-u 1001");
             let has_groupadd_1001 = df.contains("-g 1001");
             let has_user_stmt = df.contains("USER nodejs") || df.contains("USER 1001");
             let dep_has_uid = dep.contains("runAsUser: 1001");
             let dep_has_gid = dep.contains("runAsGroup: 1001");
             let dep_has_fs = dep.contains("fsGroup: 1001");
-            if has_useradd_1001
-                && has_groupadd_1001
+            if (has_explicit_numeric_user || (has_useradd_1001 && has_groupadd_1001))
                 && has_user_stmt
                 && dep_has_uid
                 && dep_has_gid
@@ -930,13 +930,19 @@ pub fn run(ctx: &mut TestContext) {
                 .collect();
             let has_multi_stage = stages.len() >= 2;
             let has_node_22 = stages.iter().any(|s| s.contains("node:22"));
-            let has_prod_install = df.contains("pnpm install --prod");
+            let has_prod_install = df.contains("pnpm install --prod")
+                || (df.contains("deploy")
+                    && df.contains("--prod")
+                    && df.contains("--frozen-lockfile"));
             let has_expose = df.contains("EXPOSE 8080");
             let has_healthcheck = df.contains("HEALTHCHECK");
-            let has_healthz_probe =
-                df.contains("curl -f http://localhost:8080/healthz")
-                    || df.contains("curl -sf http://localhost:8080/healthz")
-                    || df.contains("curl --fail http://localhost:8080/healthz");
+            let has_healthz_probe = df.contains("curl -f http://localhost:8080/healthz")
+                || df.contains("curl -sf http://localhost:8080/healthz")
+                || df.contains("curl --fail http://localhost:8080/healthz")
+                || (df.contains("node")
+                    && df.contains("fetch(")
+                    && (df.contains("http://127.0.0.1:8080/healthz")
+                        || df.contains("http://localhost:8080/healthz")));
             if has_multi_stage
                 && has_node_22
                 && has_prod_install

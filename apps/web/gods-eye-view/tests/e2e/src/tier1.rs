@@ -1297,15 +1297,22 @@ fn feature_12_actionlint(ctx: &mut TestContext) {
     // F059
     if ctx.file_exists(wf) {
         let content = ctx.read_file(wf).unwrap_or_default();
+        let df = ctx
+            .read_file(&format!("{}/Dockerfile", APP))
+            .unwrap_or_default();
         if content.contains("docker/setup-buildx-action")
-            && content.contains("docker/setup-qemu-action")
+            && (content.contains("docker/setup-qemu-action")
+                || df.contains("--platform=$BUILDPLATFORM"))
         {
             ctx.pass(
                 "F059",
-                "Workflow uses official setup-buildx-action and setup-qemu-action",
+                "Workflow uses official setup-buildx-action with cross-platform strategy",
             );
         } else {
-            ctx.fail("F059", "Missing setup-buildx-action or setup-qemu-action");
+            ctx.fail(
+                "F059",
+                "Missing setup-buildx-action or cross-platform strategy (setup-qemu-action / $BUILDPLATFORM)",
+            );
         }
     } else {
         ctx.skip("F059", "Workflow not yet created", "Pending Milestone M3");

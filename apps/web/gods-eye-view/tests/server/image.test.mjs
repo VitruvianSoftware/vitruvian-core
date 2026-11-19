@@ -56,7 +56,8 @@ function runtimeCopies(dockerfile) {
     if (/^FROM\s/i.test(line)) break;
     const match = /^COPY\s+(.+)$/i.exec(line);
     if (!match || /--from=/.test(match[1])) continue;
-    const parts = match[1].split(/\s+/);
+    const parts = match[1].split(/\s+/).filter((tok) => !tok.startsWith('--'));
+    if (parts.length < 2) continue;
     copies.push({ sources: parts.slice(0, -1), dest: parts.at(-1) });
   }
   return copies;
@@ -83,10 +84,11 @@ function layOutImage(root) {
   const dockerfile = fs.readFileSync(path.join(APP, 'Dockerfile'), 'utf8');
   for (const { sources, dest } of runtimeCopies(dockerfile)) {
     for (const source of sources) {
-      const from = path.join(APP, source);
+      const relSource = source.replace(/^apps\/web\/gods-eye-view\//, '');
+      const from = path.join(APP, relSource);
       const into = path.join(root, dest);
       const isFileIntoDir = !fs.statSync(from).isDirectory() && dest.endsWith('/');
-      copyTree(from, isFileIntoDir ? path.join(into, path.basename(source)) : into);
+      copyTree(from, isFileIntoDir ? path.join(into, path.basename(relSource)) : into);
     }
   }
   // The image installs package.json's dependencies; this package's own

@@ -69,6 +69,7 @@ _BUILD_CI_TOOLS = [
     "llvm_cache_stage",
     "migration_safety",
     "notify_ci_issues",
+    "pnpm_lock_gate",
     "prune_pr_caches",
     "pulumi_summary",
     "queue_fast_pass",
@@ -1553,6 +1554,51 @@ rust_test(
         "RDEPS_MAP_REF_BIN": "$(rootpath :rdeps_map_ref)",
     },
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+)
+
+# pnpm-lock-gate
+rust_library(
+    name = "pnpm_lock_gate_lib",
+    srcs = ["src/pnpm_lock_gate/lib.rs"],
+    crate_name = "pnpm_lock_gate",
+    crate_root = "src/pnpm_lock_gate/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_binary(
+    name = "pnpm_lock_gate",
+    srcs = ["src/pnpm_lock_gate/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pnpm_lock_gate_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_test(
+    name = "pnpm_lock_gate_test",
+    size = "medium",
+    srcs = ["src/pnpm_lock_gate/tests.rs"],
+    data = [
+        ":pnpm_lock_gate",
+        "//:pnpm-lock.yaml",
+        "//:workflow_files",
+    ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :pnpm_lock_gate)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        ":ci_testkit",
+        ":pnpm_lock_gate_lib",
+    ],
 )
 
 # resolve-deploy-base
