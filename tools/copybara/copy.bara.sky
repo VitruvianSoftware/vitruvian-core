@@ -748,6 +748,10 @@ COMPONENTS = [
             "apps/web/mini-party/OWNERS",
             "apps/web/mini-party/scripts/static_build_test.sh",
             "apps/web/mini-party/scripts/mirror_catalog_test.sh",
+            # The rooms-server image builds from the monorepo root (it installs
+            # from the monorepo lockfile), so it means nothing in the mirror.
+            "apps/web/mini-party/Dockerfile",
+            "apps/web/mini-party/Dockerfile.dockerignore",
         ],
         "export_only": True,
         "export_transformations": _mini_party_export_transforms(),

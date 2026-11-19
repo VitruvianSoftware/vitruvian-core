@@ -605,7 +605,7 @@ importers:
     devDependencies:
       '@backstage/cli':
         specifier: ^0.36.6
-        version: 0.36.6(fd78239638540aa8789fbbd16c61dbe3)
+        version: 0.36.6(959a364f13c87a404e4d1eab7bbd82e1)
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -623,16 +623,16 @@ importers:
         version: 5.3.3
       jest:
         specifier: 'catalog:'
-        version: 30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
+        version: 30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
       jest-cli:
         specifier: ^30.4.2
-        version: 30.4.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
+        version: 30.4.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
       jest-environment-node:
         specifier: ^30.5.2
         version: 30.5.2
       ts-jest:
         specifier: ^29.4.15
-        version: 29.4.15(@babel/core@7.29.13)(@jest/transform@30.5.2)(@jest/types@30.5.1)(babel-jest@30.5.2(@babel/core@7.29.13))(esbuild@0.28.2)(jest-util@30.5.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(typescript@5.8.3)
+        version: 29.4.15(@babel/core@7.29.13)(@jest/transform@30.5.2)(@jest/types@30.5.1)(babel-jest@30.5.2(@babel/core@7.29.13))(esbuild@0.28.2)(jest-util@30.5.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(typescript@5.8.3)
       typescript:
         specifier: ~5.8.0
         version: 5.8.3
@@ -641,7 +641,7 @@ importers:
     dependencies:
       '@backstage/backend-defaults':
         specifier: ^0.18.0
-        version: 0.18.0(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)
+        version: 0.18.0(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)
       '@backstage/backend-plugin-api':
         specifier: 1.10.1
         version: 1.10.1(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)
@@ -719,10 +719,10 @@ importers:
         version: 2.3.0(@types/express@4.17.25)(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)
       '@pagerduty/backstage-plugin-backend':
         specifier: 0.14.0
-        version: 0.14.0(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.14.0(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)
       '@sentry/node':
         specifier: ^11.12.0
-        version: 11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
+        version: 11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))
       '@vitruviansoftware/backstage-app':
         specifier: workspace:*
         version: link:../app
@@ -741,7 +741,7 @@ importers:
     devDependencies:
       '@backstage/cli':
         specifier: ^0.36.6
-        version: 0.36.6(5ee873998827e29da9de452807cf8704)
+        version: 0.36.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.24)(@types/node@26.6.6)(encoding@0.1.13)(esbuild@0.28.2)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -753,10 +753,10 @@ importers:
         version: 26.6.6
       jest:
         specifier: 'catalog:'
-        version: 30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
+        version: 30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
       jest-cli:
         specifier: ^30.4.2
-        version: 30.4.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
+        version: 30.4.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
       jest-environment-node:
         specifier: ^30.5.2
         version: 30.5.2
@@ -765,7 +765,7 @@ importers:
         version: 5.5.0
       ts-jest:
         specifier: ^29.4.15
-        version: 29.4.15(@babel/core@7.29.13)(@jest/transform@30.5.2)(@jest/types@30.5.1)(babel-jest@30.5.2(@babel/core@7.29.13))(esbuild@0.28.2)(jest-util@30.5.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(typescript@5.8.3)
+        version: 29.4.15(@babel/core@7.29.13)(@jest/transform@30.5.2)(@jest/types@30.5.1)(babel-jest@30.5.2(@babel/core@7.29.13))(esbuild@0.28.2)(jest-util@30.5.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(typescript@5.8.3)
       typescript:
         specifier: ~5.8.0
         version: 5.8.3
@@ -884,27 +884,9 @@ importers:
       express:
         specifier: ^5.3.0
         version: 5.3.0
-      lucide-react:
-        specifier: ^0.546.0
-        version: 0.546.0(react@19.2.8)
-      motion:
-        specifier: ^12.23.24
-        version: 12.43.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react:
-        specifier: ^19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: ^19.2.8
-        version: 19.2.8(react@19.2.8)
       socket.io:
         specifier: ^4.8.3
         version: 4.8.4
-      socket.io-client:
-        specifier: ^4.8.3
-        version: 4.8.4
-      tsx:
-        specifier: ^4.21.0
-        version: 4.23.15
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.5
@@ -924,9 +906,30 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.3.0
         version: 6.3.0(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      lucide-react:
+        specifier: ^0.546.0
+        version: 0.546.0(react@19.2.8)
+      motion:
+        specifier: ^12.23.24
+        version: 12.43.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+      socket.io-client:
+        specifier: ^4.8.3
+        version: 4.8.4
       tailwindcss:
         specifier: ^4.3.5
         version: 4.3.5
+      tsx:
+        specifier: ^4.21.0
+        version: 4.23.15
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -21371,7 +21374,7 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/backend-defaults@0.18.0(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)':
+  '@backstage/backend-defaults@0.18.0(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)':
     dependencies:
       '@aws-sdk/abort-controller': 3.374.0
       '@aws-sdk/client-codecommit': 3.1147.0
@@ -21384,7 +21387,7 @@ snapshots:
       '@backstage/backend-app-api': 1.7.4(better-sqlite3@13.2.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@26.6.6))(pg@8.23.1)
       '@backstage/backend-dev-utils': 0.1.7
       '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.2.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@26.6.6))(pg@8.23.1)
-      '@backstage/cli-node': 0.3.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
+      '@backstage/cli-node': 0.3.4(@swc/core@1.16.22(@swc/helpers@0.5.24))
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
@@ -21638,11 +21641,11 @@ snapshots:
       '@backstage/errors': 1.3.2
       cross-spawn: 7.0.6
 
-  '@backstage/cli-defaults@0.1.6(406e707b24b6c7544e27a3f8b3df6390)':
+  '@backstage/cli-defaults@0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.16.21(@swc/helpers@0.5.24))(@swc/helpers@0.5.24)(@types/node@26.6.6)(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))':
     dependencies:
       '@backstage/cli-module-actions': 0.1.3(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/cli-module-auth': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.24)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.24)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-config': 0.1.7(@swc/core@1.16.21(@swc/helpers@0.5.24))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))
       '@backstage/cli-module-github': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))
       '@backstage/cli-module-info': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
@@ -21650,7 +21653,7 @@ snapshots:
       '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.16.21(@swc/helpers@0.5.24))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(typescript@5.8.3)
       '@backstage/cli-module-migrate': 0.2.1(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/cli-module-new': 0.1.7(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)
-      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/react@18.3.31)(typanion@3.14.0)
+      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(typanion@3.14.0)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.24)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-module-translations': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
     transitivePeerDependencies:
@@ -21703,11 +21706,11 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli-defaults@0.1.6(acff3d59cb602c28f7732ce35ba07640)':
+  '@backstage/cli-defaults@0.1.6(edfe5abc0991a766773a56bef331e019)':
     dependencies:
       '@backstage/cli-module-actions': 0.1.3(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/cli-module-auth': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@swc/helpers@0.5.24)(@types/react@19.3.0)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.24)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-config': 0.1.7(@swc/core@1.16.21(@swc/helpers@0.5.24))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
       '@backstage/cli-module-github': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
       '@backstage/cli-module-info': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
@@ -21715,7 +21718,7 @@ snapshots:
       '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.16.21(@swc/helpers@0.5.24))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(typescript@5.8.3)
       '@backstage/cli-module-migrate': 0.2.1(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/cli-module-new': 0.1.7(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)
-      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/react@19.3.0)(typanion@3.14.0)
+      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/react@18.3.31)(typanion@3.14.0)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.24)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-module-translations': 0.1.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
     transitivePeerDependencies:
@@ -21798,7 +21801,7 @@ snapshots:
       - '@swc/core'
       - '@types/node'
 
-  '@backstage/cli-module-build@0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.24)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
+  '@backstage/cli-module-build@0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.24)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
@@ -21808,7 +21811,7 @@ snapshots:
       '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12(@swc/helpers@0.5.24))(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
-      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33)))(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33)))(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
       '@rollup/plugin-commonjs': 26.0.3(rollup@4.62.2)
       '@rollup/plugin-json': 6.1.0(rollup@4.62.2)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.62.2)
@@ -21847,7 +21850,7 @@ snapshots:
       rollup: 4.62.2
       rollup-plugin-dts: 6.5.1(rollup@4.62.2)(typescript@5.8.3)
       rollup-plugin-esbuild: 6.2.1(esbuild@0.28.2)(rollup@4.62.2)
-      rollup-plugin-postcss: 4.0.2(postcss@8.5.33)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
+      rollup-plugin-postcss: 4.0.2(postcss@8.5.33)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
       rollup-pluginutils: 2.8.2
       shell-quote: 1.12.0
       style-loader: 3.3.4(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
@@ -21900,17 +21903,17 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli-module-build@0.1.8(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@swc/helpers@0.5.24)(@types/react@19.3.0)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
+  '@backstage/cli-module-build@0.1.8(@swc/helpers@0.5.24)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/config': 1.3.10
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.2
-      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)
+      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12(@swc/helpers@0.5.24))(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
-      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33)))(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33)))(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
       '@rollup/plugin-commonjs': 26.0.3(rollup@4.62.2)
       '@rollup/plugin-json': 6.1.0(rollup@4.62.2)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.62.2)
@@ -21949,7 +21952,7 @@ snapshots:
       rollup: 4.62.2
       rollup-plugin-dts: 6.5.1(rollup@4.62.2)(typescript@5.8.3)
       rollup-plugin-esbuild: 6.2.1(esbuild@0.28.2)(rollup@4.62.2)
-      rollup-plugin-postcss: 4.0.2(postcss@8.5.33)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
+      rollup-plugin-postcss: 4.0.2(postcss@8.5.33)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))
       rollup-pluginutils: 2.8.2
       shell-quote: 1.12.0
       style-loader: 3.3.4(webpack@5.105.4(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
@@ -22181,16 +22184,16 @@ snapshots:
       - typanion
       - utf-8-validate
 
-  '@backstage/cli-module-package-manager-yarn@0.1.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/react@19.3.0)(typanion@3.14.0)':
+  '@backstage/cli-module-package-manager-yarn@0.1.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(typanion@3.14.0)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/release-manifests': 0.0.14
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/parsers': 3.1.0
-      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       cleye: 2.6.0
     transitivePeerDependencies:
       - '@swc/core'
@@ -22274,11 +22277,31 @@ snapshots:
       '@swc/core': 1.16.21(@swc/helpers@0.5.24)
       keytar: 7.9.0
 
-  '@backstage/cli@0.36.6(5ee873998827e29da9de452807cf8704)':
+  '@backstage/cli-node@0.3.4(@swc/core@1.16.22(@swc/helpers@0.5.24))':
     dependencies:
       '@backstage/cli-common': 0.3.1
-      '@backstage/cli-defaults': 0.1.6(acff3d59cb602c28f7732ce35ba07640)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@swc/helpers@0.5.24)(@types/react@19.3.0)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/errors': 1.3.2
+      '@backstage/types': 1.2.2
+      '@manypkg/get-packages': 1.1.3
+      '@yarnpkg/lockfile': 1.1.0
+      '@yarnpkg/parsers': 3.1.0
+      chalk: 4.1.2
+      cleye: 2.6.0
+      fs-extra: 11.4.1
+      pirates: 4.0.7
+      proper-lockfile: 4.1.2
+      semver: 7.8.5
+      yaml: 2.9.1
+      zod: 4.6.7
+    optionalDependencies:
+      '@swc/core': 1.16.22(@swc/helpers@0.5.24)
+      keytar: 7.9.0
+
+  '@backstage/cli@0.36.6(959a364f13c87a404e4d1eab7bbd82e1)':
+    dependencies:
+      '@backstage/cli-common': 0.3.1
+      '@backstage/cli-defaults': 0.1.6(edfe5abc0991a766773a56bef331e019)
+      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.24)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.24)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/eslint-plugin': 0.3.2
@@ -22358,11 +22381,11 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli@0.36.6(fd78239638540aa8789fbbd16c61dbe3)':
+  '@backstage/cli@0.36.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.24)(@types/node@26.6.6)(encoding@0.1.13)(esbuild@0.28.2)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))':
     dependencies:
       '@backstage/cli-common': 0.3.1
-      '@backstage/cli-defaults': 0.1.6(406e707b24b6c7544e27a3f8b3df6390)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.24)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-defaults': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.16.21(@swc/helpers@0.5.24))(@swc/helpers@0.5.24)(@types/node@26.6.6)(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))
+      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.24)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
       '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.24)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.21(@swc/helpers@0.5.24))
       '@backstage/eslint-plugin': 0.3.2
@@ -22875,23 +22898,6 @@ snapshots:
       react-router-dom: 6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@backstage/module-federation-common@0.1.5(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@material-ui/core@4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@material-ui/styles@4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-router@6.30.6(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@backstage/config': 1.3.10
-      '@backstage/errors': 1.3.2
-      '@backstage/types': 1.2.2
-      '@emotion/react': 11.14.0(@types/react@19.3.0)(react@19.2.8)
-      '@material-ui/core': 4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@material-ui/styles': 4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@module-federation/runtime': 2.8.2
-      '@mui/material': 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-router: 6.30.6(react@19.2.8)
-      react-router-dom: 6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.3.0
 
   '@backstage/plugin-api-docs@0.14.5(@codemirror/language@6.12.4)(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@noble/hashes@1.8.0)(@types/node@26.6.6)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -25245,22 +25251,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@emotion/babel-plugin': 11.13.5
-      '@emotion/cache': 11.14.0
-      '@emotion/serialize': 1.3.3
-      '@emotion/use-insertion-effect-with-fallbacks': 1.2.0(react@19.2.8)
-      '@emotion/utils': 1.4.2
-      '@emotion/weak-memoize': 0.4.0
-      hoist-non-react-statics: 3.3.2
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.3.0
-    transitivePeerDependencies:
-      - supports-color
-
   '@emotion/serialize@1.3.3':
     dependencies:
       '@emotion/hash': 0.9.2
@@ -25286,31 +25276,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@emotion/babel-plugin': 11.13.5
-      '@emotion/is-prop-valid': 1.4.0
-      '@emotion/react': 11.14.0(@types/react@19.3.0)(react@19.2.8)
-      '@emotion/serialize': 1.3.3
-      '@emotion/use-insertion-effect-with-fallbacks': 1.2.0(react@19.2.8)
-      '@emotion/utils': 1.4.2
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.3.0
-    transitivePeerDependencies:
-      - supports-color
-    optional: true
-
   '@emotion/unitless@0.10.0': {}
 
   '@emotion/use-insertion-effect-with-fallbacks@1.2.0(react@18.3.1)':
     dependencies:
       react: 18.3.1
-
-  '@emotion/use-insertion-effect-with-fallbacks@1.2.0(react@19.2.8)':
-    dependencies:
-      react: 19.2.8
 
   '@emotion/utils@1.4.2': {}
 
@@ -27045,25 +27015,6 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@material-ui/core@4.12.4(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@material-ui/styles': 4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@material-ui/system': 4.12.2(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@material-ui/types': 5.1.0(@types/react@19.3.0)
-      '@material-ui/utils': 4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/react-transition-group': 4.4.12(@types/react@19.3.0)
-      clsx: 1.2.1
-      hoist-non-react-statics: 3.3.2
-      popper.js: 1.16.1-lts
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-is: 17.0.2
-      react-transition-group: 4.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.3.0
-
   '@material-ui/icons@4.11.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.7
@@ -27135,29 +27086,6 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@material-ui/styles@4.11.5(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.7
-      '@emotion/hash': 0.8.0
-      '@material-ui/types': 5.1.0(@types/react@19.3.0)
-      '@material-ui/utils': 4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      clsx: 1.2.1
-      csstype: 2.6.21
-      hoist-non-react-statics: 3.3.2
-      jss: 10.10.0
-      jss-plugin-camel-case: 10.10.0
-      jss-plugin-default-unit: 10.10.0
-      jss-plugin-global: 10.10.0
-      jss-plugin-nested: 10.10.0
-      jss-plugin-props-sort: 10.10.0
-      jss-plugin-rule-value-function: 10.10.0
-      jss-plugin-vendor-prefixer: 10.10.0
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.3.0
-
   '@material-ui/system@4.12.2(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.10
@@ -27169,24 +27097,9 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@material-ui/system@4.12.2(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@material-ui/utils': 4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      csstype: 2.6.21
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-    optionalDependencies:
-      '@types/react': 19.3.0
-
   '@material-ui/types@5.1.0(@types/react@18.3.31)':
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@material-ui/types@5.1.0(@types/react@19.3.0)':
-    optionalDependencies:
-      '@types/react': 19.3.0
 
   '@material-ui/utils@4.11.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -27194,14 +27107,6 @@ snapshots:
       prop-types: 15.8.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      react-is: 17.0.2
-
-  '@material-ui/utils@4.11.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
       react-is: 17.0.2
 
   '@mdx-js/react@3.1.1(@types/react@19.2.18)(react@19.2.8)':
@@ -27473,27 +27378,6 @@ snapshots:
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
       '@types/react': 18.3.31
 
-  '@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@mui/core-downloads-tracker': 9.5.0
-      '@mui/system': 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8)
-      '@mui/types': 9.5.0(@types/react@19.3.0)
-      '@mui/utils': 9.5.0(@types/react@19.3.0)(react@19.2.8)
-      '@popperjs/core': 2.11.8
-      '@types/react-transition-group': 4.4.12(@types/react@19.3.0)
-      clsx: 2.1.1
-      csstype: 3.2.3
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-is: 19.3.1
-      react-transition-group: 4.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    optionalDependencies:
-      '@emotion/react': 11.14.0(@types/react@19.3.0)(react@19.2.8)
-      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8)
-      '@types/react': 19.3.0
-
   '@mui/private-theming@5.17.1(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.13
@@ -27511,15 +27395,6 @@ snapshots:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@mui/private-theming@9.5.0(@types/react@19.3.0)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@mui/utils': 9.5.0(@types/react@19.3.0)(react@19.2.8)
-      prop-types: 15.8.1
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.3.0
 
   '@mui/styled-engine@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -27545,19 +27420,6 @@ snapshots:
     optionalDependencies:
       '@emotion/react': 11.14.0(@types/react@18.3.31)(react@18.3.1)
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
-
-  '@mui/styled-engine@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@emotion/cache': 11.14.0
-      '@emotion/serialize': 1.3.3
-      '@emotion/sheet': 1.4.0
-      csstype: 3.2.3
-      prop-types: 15.8.1
-      react: 19.2.8
-    optionalDependencies:
-      '@emotion/react': 11.14.0(@types/react@19.3.0)(react@19.2.8)
-      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8)
 
   '@mui/system@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
@@ -27591,22 +27453,6 @@ snapshots:
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
       '@types/react': 18.3.31
 
-  '@mui/system@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@mui/private-theming': 9.5.0(@types/react@19.3.0)(react@19.2.8)
-      '@mui/styled-engine': 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8))(react@19.2.8)
-      '@mui/types': 9.5.0(@types/react@19.3.0)
-      '@mui/utils': 9.5.0(@types/react@19.3.0)(react@19.2.8)
-      clsx: 2.1.1
-      csstype: 3.2.3
-      prop-types: 15.8.1
-      react: 19.2.8
-    optionalDependencies:
-      '@emotion/react': 11.14.0(@types/react@19.3.0)(react@19.2.8)
-      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.2.8))(@types/react@19.3.0)(react@19.2.8)
-      '@types/react': 19.3.0
-
   '@mui/types@7.2.24(@types/react@18.3.31)':
     optionalDependencies:
       '@types/react': 18.3.31
@@ -27616,12 +27462,6 @@ snapshots:
       '@babel/runtime': 7.29.10
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@mui/types@9.5.0(@types/react@19.3.0)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-    optionalDependencies:
-      '@types/react': 19.3.0
 
   '@mui/utils@5.17.1(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
@@ -27646,18 +27486,6 @@ snapshots:
       react-is: 19.3.1
     optionalDependencies:
       '@types/react': 18.3.31
-
-  '@mui/utils@9.5.0(@types/react@19.3.0)(react@19.2.8)':
-    dependencies:
-      '@babel/runtime': 7.29.10
-      '@mui/types': 9.5.0(@types/react@19.3.0)
-      '@types/prop-types': 15.7.15
-      clsx: 2.1.1
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-is: 19.3.1
-    optionalDependencies:
-      '@types/react': 19.3.0
 
   '@mui/x-date-pickers@7.29.4(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/system@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(date-fns@2.30.0)(dayjs@1.11.23)(luxon@3.7.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -28504,9 +28332,9 @@ snapshots:
   '@oxc-resolver/binding-win32-x64-msvc@11.21.2':
     optional: true
 
-  '@pagerduty/backstage-plugin-backend@0.14.0(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@pagerduty/backstage-plugin-backend@0.14.0(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-defaults': 0.18.0(@swc/core@1.16.21(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)
+      '@backstage/backend-defaults': 0.18.0(@swc/core@1.16.22(@swc/helpers@0.5.24))(@types/node@26.6.6)(better-sqlite3@13.2.0)(encoding@0.1.13)
       '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.2.0)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.3(encoding@0.1.13)
       '@pagerduty/backstage-plugin-common': 0.5.0
@@ -29979,18 +29807,6 @@ snapshots:
       '@sentry/replay': 11.12.0
       '@sentry/replay-canvas': 11.12.0
 
-  '@sentry/bundler-plugins@11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))':
-    dependencies:
-      '@sentry/core': 11.12.0
-      dotenv: 17.4.2
-      glob: 14.0.4
-      magic-string: 1.4.5
-      oxc-parser: 0.152.0
-      sentry: 0.49.0
-    optionalDependencies:
-      rollup: 4.62.2
-      webpack: 5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33)
-
   '@sentry/bundler-plugins@11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))':
     dependencies:
       '@sentry/core': 11.12.0
@@ -30060,19 +29876,6 @@ snapshots:
       - vite
       - webpack
       - wrangler
-
-  '@sentry/node@11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@sentry/bundler-plugins': 11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.24))(esbuild@0.28.2)(postcss@8.5.33))
-      '@sentry/conventions': 0.32.0
-      '@sentry/core': 11.12.0
-      '@sentry/opentelemetry': 11.12.0(@opentelemetry/api@1.9.1)
-      '@sentry/server-runtime-injection': 11.12.0
-      '@sentry/server-utils': 11.12.0
-    transitivePeerDependencies:
-      - rollup
-      - webpack
 
   '@sentry/node@11.12.0(rollup@4.62.2)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))':
     dependencies:
@@ -31966,10 +31769,6 @@ snapshots:
     dependencies:
       '@types/react': 18.3.31
 
-  '@types/react-transition-group@4.4.12(@types/react@19.3.0)':
-    dependencies:
-      '@types/react': 19.3.0
-
   '@types/react@18.3.31':
     dependencies:
       '@types/prop-types': 15.7.15
@@ -32744,37 +32543,37 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))':
+  '@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/libzip': 3.2.2(@yarnpkg/fslib@3.1.5)
       '@yarnpkg/parsers': 3.1.0
-      '@yarnpkg/plugin-catalog': 1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-compat': 4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-constraints': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-dlx': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-catalog': 1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-compat': 4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-constraints': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-dlx': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       '@yarnpkg/plugin-exec': 3.1.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-file': 3.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       '@yarnpkg/plugin-github': 3.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       '@yarnpkg/plugin-http': 3.0.4(@yarnpkg/core@4.9.2(typanion@3.14.0))
-      '@yarnpkg/plugin-init': 4.1.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-interactive-tools': 4.1.1(@types/react@19.3.0)(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))
+      '@yarnpkg/plugin-init': 4.1.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-interactive-tools': 4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))
       '@yarnpkg/plugin-jsr': 1.1.2(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-link': 3.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))
-      '@yarnpkg/plugin-nm': 4.1.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-npm-cli': 4.5.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-pnpm': 2.3.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-typescript': 4.1.4(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)
-      '@yarnpkg/plugin-version': 4.3.0(@types/react@19.3.0)(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-workspace-tools': 4.1.8(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-nm': 4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-npm-cli': 4.5.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnpm': 2.3.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-typescript': 4.1.4(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)
+      '@yarnpkg/plugin-version': 4.3.0(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-workspace-tools': 4.1.8(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       '@yarnpkg/shell': 4.1.3(typanion@3.14.0)
       ci-info: 4.4.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -32828,13 +32627,13 @@ snapshots:
 
   '@yarnpkg/libui@3.1.0(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2)':
     dependencies:
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       react: 17.0.2
       tslib: 2.9.1
 
-  '@yarnpkg/libui@3.1.0(ink@3.2.0(@types/react@19.3.0)(react@17.0.2))(react@17.0.2)':
+  '@yarnpkg/libui@3.1.0(ink@3.2.0(react@17.0.2))(react@17.0.2)':
     dependencies:
-      ink: 3.2.0(@types/react@19.3.0)(react@19.2.8)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       tslib: 2.9.1
 
@@ -32866,11 +32665,11 @@ snapshots:
       '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       tslib: 2.9.1
 
-  '@yarnpkg/plugin-catalog@1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-catalog@1.0.3(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       tslib: 2.9.1
 
   '@yarnpkg/plugin-compat@4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
@@ -32879,11 +32678,11 @@ snapshots:
       '@yarnpkg/extensions': 2.0.7(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
 
-  '@yarnpkg/plugin-compat@4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-compat@4.0.14(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/extensions': 2.0.7(@yarnpkg/core@4.9.2(typanion@3.14.0))
-      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-patch': 4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
 
   '@yarnpkg/plugin-constraints@4.0.6(@yarnpkg/cli@4.18.1(@types/react@18.3.31)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
@@ -32897,9 +32696,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-constraints@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-constraints@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -32919,9 +32718,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-dlx@4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-dlx@4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -32945,9 +32744,9 @@ snapshots:
       tslib: 2.9.1
       typanion: 3.14.0
 
-  '@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/parsers': 3.1.0
@@ -33009,9 +32808,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-init@4.1.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-init@4.1.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -33028,7 +32827,7 @@ snapshots:
       algoliasearch: 4.27.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       diff: 5.2.2
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       ink-text-input: 4.0.3(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2)
       react: 17.0.2
       semver: 7.8.6
@@ -33039,17 +32838,17 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@yarnpkg/plugin-interactive-tools@4.1.1(@types/react@19.3.0)(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))':
+  '@yarnpkg/plugin-interactive-tools@4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
-      '@yarnpkg/libui': 3.1.0(ink@3.2.0(@types/react@19.3.0)(react@17.0.2))(react@17.0.2)
-      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/libui': 3.1.0(ink@3.2.0(react@17.0.2))(react@17.0.2)
+      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
       algoliasearch: 4.27.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       diff: 5.2.2
-      ink: 3.2.0(@types/react@19.3.0)(react@19.2.8)
-      ink-text-input: 4.0.3(ink@3.2.0(@types/react@19.3.0)(react@17.0.2))(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink-text-input: 4.0.3(ink@3.2.0(react@17.0.2))(react@17.0.2)
       react: 17.0.2
       semver: 7.8.6
       tslib: 2.9.1
@@ -33087,15 +32886,15 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-nm@4.1.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-nm@4.1.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/libzip': 3.2.2(@yarnpkg/fslib@3.1.5)
       '@yarnpkg/nm': 4.1.1(typanion@3.14.0)
       '@yarnpkg/parsers': 3.1.0
-      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       '@yarnpkg/pnp': 4.1.7
       '@zkochan/cmd-shim': 5.4.1
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -33117,13 +32916,13 @@ snapshots:
       tslib: 2.9.1
       typanion: 3.14.0
 
-  '@yarnpkg/plugin-npm-cli@4.5.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-npm-cli@4.5.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-npm': 3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       enquirer: 2.4.1
       micromatch: 4.0.8
@@ -33146,11 +32945,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-npm@3.7.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       enquirer: 2.4.1
       es-toolkit: 1.53.2
       micromatch: 4.0.8
@@ -33173,9 +32972,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-pack@4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -33196,9 +32995,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-patch@4.0.6(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/libzip': 3.2.2(@yarnpkg/fslib@3.1.5)
@@ -33220,12 +33019,12 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-pnp@4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-pnp@4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       '@yarnpkg/pnp': 4.1.7
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       micromatch: 4.0.8
@@ -33246,13 +33045,13 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-pnpm@2.3.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-pnpm@2.3.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
-      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-pnp': 4.2.1(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-stage': 4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       p-limit: 2.3.0
       tslib: 2.9.1
@@ -33269,9 +33068,9 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-stage@4.0.3(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-stage@4.0.3(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -33292,13 +33091,13 @@ snapshots:
     transitivePeerDependencies:
       - typanion
 
-  '@yarnpkg/plugin-typescript@4.1.4(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)':
+  '@yarnpkg/plugin-typescript@4.1.4(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-essentials@4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
-      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
+      '@yarnpkg/plugin-essentials': 4.6.2(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))
+      '@yarnpkg/plugin-pack': 4.0.5(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       algoliasearch: 4.27.0
       semver: 7.8.6
       tslib: 2.9.1
@@ -33325,17 +33124,17 @@ snapshots:
       - typanion
       - utf-8-validate
 
-  '@yarnpkg/plugin-version@4.3.0(@types/react@19.3.0)(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)':
+  '@yarnpkg/plugin-version@4.3.0(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))(typanion@3.14.0)':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
-      '@yarnpkg/libui': 3.1.0(ink@3.2.0(@types/react@19.3.0)(react@17.0.2))(react@17.0.2)
+      '@yarnpkg/libui': 3.1.0(ink@3.2.0(react@17.0.2))(react@17.0.2)
       '@yarnpkg/parsers': 3.1.0
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       es-toolkit: 1.53.2
-      ink: 3.2.0(@types/react@19.3.0)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       semver: 7.8.6
       tslib: 2.9.1
@@ -33358,9 +33157,9 @@ snapshots:
       tslib: 2.9.1
       typanion: 3.14.0
 
-  '@yarnpkg/plugin-workspace-tools@4.1.8(@yarnpkg/cli@4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
+  '@yarnpkg/plugin-workspace-tools@4.1.8(@yarnpkg/cli@4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0)))(@yarnpkg/core@4.9.2(typanion@3.14.0))(@yarnpkg/plugin-git@3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0))':
     dependencies:
-      '@yarnpkg/cli': 4.18.1(@types/react@19.3.0)(@yarnpkg/core@4.9.2(typanion@3.14.0))
+      '@yarnpkg/cli': 4.18.1(@yarnpkg/core@4.9.2(typanion@3.14.0))
       '@yarnpkg/core': 4.9.2(typanion@3.14.0)
       '@yarnpkg/fslib': 3.1.5
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
@@ -38226,14 +38025,14 @@ snapshots:
   ink-text-input@4.0.3(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2):
     dependencies:
       chalk: 4.1.2
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       react: 17.0.2
       type-fest: 0.15.1
 
-  ink-text-input@4.0.3(ink@3.2.0(@types/react@19.3.0)(react@17.0.2))(react@17.0.2):
+  ink-text-input@4.0.3(ink@3.2.0(react@17.0.2))(react@17.0.2):
     dependencies:
       chalk: 4.1.2
-      ink: 3.2.0(@types/react@19.3.0)(react@19.2.8)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       type-fest: 0.15.1
 
@@ -38269,7 +38068,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  ink@3.2.0(@types/react@19.3.0)(react@17.0.2):
+  ink@3.2.0(@types/react@18.3.31)(react@18.3.1):
     dependencies:
       ansi-escapes: 4.3.2
       auto-bind: 4.0.0
@@ -38282,9 +38081,9 @@ snapshots:
       is-ci: 2.0.0
       lodash: 4.18.1
       patch-console: 1.0.0
-      react: 17.0.2
+      react: 18.3.1
       react-devtools-core: 4.28.5
-      react-reconciler: 0.26.2(react@17.0.2)
+      react-reconciler: 0.26.2(react@18.3.1)
       scheduler: 0.20.2
       signal-exit: 3.0.7
       slice-ansi: 3.0.0
@@ -38296,39 +38095,7 @@ snapshots:
       ws: 7.5.14
       yoga-layout-prebuilt: 1.10.0
     optionalDependencies:
-      '@types/react': 19.3.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  ink@3.2.0(@types/react@19.3.0)(react@19.2.8):
-    dependencies:
-      ansi-escapes: 4.3.2
-      auto-bind: 4.0.0
-      chalk: 4.1.2
-      cli-boxes: 2.2.1
-      cli-cursor: 3.1.0
-      cli-truncate: 2.1.0
-      code-excerpt: 3.0.0
-      indent-string: 4.0.0
-      is-ci: 2.0.0
-      lodash: 4.18.1
-      patch-console: 1.0.0
-      react: 19.2.8
-      react-devtools-core: 4.28.5
-      react-reconciler: 0.26.2(react@19.2.8)
-      scheduler: 0.20.2
-      signal-exit: 3.0.7
-      slice-ansi: 3.0.0
-      stack-utils: 2.0.6
-      string-width: 4.2.3
-      type-fest: 0.12.0
-      widest-line: 3.1.0
-      wrap-ansi: 6.2.0
-      ws: 7.5.14
-      yoga-layout-prebuilt: 1.10.0
-    optionalDependencies:
-      '@types/react': 19.3.0
+      '@types/react': 18.3.31
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -43397,11 +43164,11 @@ snapshots:
       react: 17.0.2
       scheduler: 0.20.2
 
-  react-reconciler@0.26.2(react@19.2.8):
+  react-reconciler@0.26.2(react@18.3.1):
     dependencies:
       loose-envify: 1.4.0
       object-assign: 4.1.1
-      react: 19.2.8
+      react: 18.3.1
       scheduler: 0.20.2
 
   react-redux@7.2.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
@@ -43473,13 +43240,6 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-router: 6.30.6(react@18.3.1)
 
-  react-router-dom@6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      '@remix-run/router': 1.23.4
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-router: 6.30.6(react@19.2.8)
-
   react-router@6.30.6(react@18.3.1):
     dependencies:
       '@remix-run/router': 1.23.4
@@ -43489,6 +43249,7 @@ snapshots:
     dependencies:
       '@remix-run/router': 1.23.4
       react: 19.2.8
+    optional: true
 
   react-side-effect@2.1.2(react@18.3.1):
     dependencies:
@@ -43584,15 +43345,6 @@ snapshots:
       prop-types: 15.8.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-
-  react-transition-group@4.4.5(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
-    dependencies:
-      '@babel/runtime': 7.29.10
-      dom-helpers: 5.2.1
-      loose-envify: 1.4.0
-      prop-types: 15.8.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   react-universal-interface@0.6.2(react@18.3.1)(tslib@2.8.1):
     dependencies:

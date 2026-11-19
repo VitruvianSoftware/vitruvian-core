@@ -21,6 +21,7 @@
  */
 
 import { io, Socket } from "socket.io-client";
+import { ROOMS_URL } from "../features";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -28,7 +29,7 @@ class SocketService {
 
   connect() {
     if (!this.socket) {
-      this.socket = io();
+      this.socket = ROOMS_URL ? io(ROOMS_URL) : io();
     }
     return this.socket;
   }

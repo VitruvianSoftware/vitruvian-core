@@ -22,8 +22,8 @@
 #
 # This file only runs in the standalone mirror, VitruvianSoftware/mini-party:
 # the monorepo exports apps/web/mini-party/ there on every change, and that push
-# starts this workflow. GitHub Pages has no server, so the build turns off
-# online rooms (VITE_REMOTE_PLAY=off); shared-screen play is all there.
+# starts this workflow. GitHub Pages has no server, so online rooms go to the
+# rooms server on the homelab cluster (VITE_ROOMS_URL).
 name: Deploy to GitHub Pages
 
 on:
@@ -56,7 +56,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_REMOTE_PLAY: "off"
+          VITE_ROOMS_URL: https://mini-games-rooms.vitruviansoftware.dev
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
