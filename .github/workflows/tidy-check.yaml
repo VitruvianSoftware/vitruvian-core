@@ -52,7 +52,56 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Mirror ci.yaml: if the merge queue already ran tidy-check on this exact tree,
+  # the push to main skips re-running it. Any doubt (or a cache-key change) is
+  # a miss and runs tidy-check in full.
+  queued:
+    name: tidy-queue-already-passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      hit: ${{ steps.lookup.outputs.verdict == 'hit' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/build-ci-tool
+            tools/ci/src/queue_fast_pass
+            tools/shell-compat
+
+      - name: Build the merge-queue lookup
+        id: tool
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: queue_fast_pass
+
+      - name: Did the merge queue already pass this exact code?
+        id: lookup
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_PATH: .github/workflows/tidy-check.yaml
+          PUSH_BEFORE: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.tool.outputs.path }}
+        run: |
+          "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
+          {
+            echo "### Already passed in the merge queue?"
+            echo ""
+            echo "- verdict: $(sed -n 's/^verdict=//p' "$RUNNER_TEMP/queued.out")"
+            echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/queued.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   tidy-check:
+    needs: [queued]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:

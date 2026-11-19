@@ -50,6 +50,8 @@ on:
   pull_request:
     paths:
       - catalog/**
+      - packages/vitruvian-sdk/Package.swift
+      - packages/vitruvian-sdk/Sources/**
       - .github/workflows/catalog-check.yaml
 
 permissions:
@@ -63,45 +65,42 @@ jobs:
   downloads:
     # macOS: vitruvian-tool is a Swift command for macOS.
     runs-on: xcode-27
-    timeout-minutes: 30
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
+          sparse-checkout: |
+            catalog
+            packages/vitruvian-sdk
+            .github/actions/select-xcode
 
       - name: Select the pinned Xcode
         uses: ./.github/actions/select-xcode
 
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
       - name: Build vitruvian-tool
+        id: vitruvian-tool
         run: |
           set -euo pipefail
-          cache_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel build --config=macos-app "${cache_flags[@]}" //packages/vitruvian-sdk:vitruvian-tool
+          swift build --package-path packages/vitruvian-sdk --product vitruvian-tool
+          bin="$(swift build --package-path packages/vitruvian-sdk --show-bin-path)/vitruvian-tool"
+          test -x "$bin"
+          echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
       - name: Check each new or changed download
         env:
-          BASE_REF: ${{ github.base_ref }}
+          VITRUVIAN_TOOL_BIN: ${{ steps.vitruvian-tool.outputs.bin }}
         run: |
           set -euo pipefail
           base="$RUNNER_TEMP/tools.base.json"
-          if ! git show "origin/${BASE_REF}:catalog/tools.json" > "$base" 2>/dev/null; then
+          if ! git show "HEAD^1:catalog/tools.json" > "$base" 2>/dev/null; then
             echo '{"tools": []}' > "$base"
           fi
-          cache_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel run "${cache_flags[@]}" //catalog:check-downloads -- --base "$base" --head catalog/tools.json \
-            --validate "$(bazel cquery --config=macos-app --output=files //packages/vitruvian-sdk:vitruvian-tool 2>/dev/null)"
+          rustc --edition 2021 -O --crate-type lib --crate-name catalog catalog/src/lib.rs -o "$RUNNER_TEMP/libcatalog.rlib"
+          rustc --edition 2021 -O catalog/src/bin/check_downloads.rs -L "$RUNNER_TEMP" --extern catalog="$RUNNER_TEMP/libcatalog.rlib" -o "$RUNNER_TEMP/check-downloads"
+          "$RUNNER_TEMP/check-downloads" --base "$base" --head catalog/tools.json \
+            --validate "$VITRUVIAN_TOOL_BIN"
 
   # A push to a bump branch, before anything else runs on it: when the new
   # head is not catalog-bump's single trailer commit, auto-merge goes off at
