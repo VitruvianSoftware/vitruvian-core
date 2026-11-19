@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { GameState, Player, PLAYER_COLORS } from "./types";
 import { createInitialPlayers, MINI_GAMES } from "./constants";
 import Lobby from "./components/Lobby";
+import { Sticker } from "./art/Sticker";
 import Scoreboard from "./components/Scoreboard";
 import ReactionGame from "./games/ReactionGame";
 import MashGame from "./games/MashGame";
@@ -277,14 +278,19 @@ export default function App() {
             exit={{ opacity: 0, scale: 1.2 }}
             className="h-screen flex flex-col items-center justify-center bg-brand-bg relative overflow-hidden"
           >
-            <div className="absolute inset-0">
-              <img
-                src={`https://picsum.photos/seed/${MINI_GAMES[currentGameIndex].id}/1920/1080?grayscale&blur=2`}
-                alt="Game Preview"
-                className="w-full h-full object-cover opacity-20"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-br from-brand-bg via-brand-bg/60 to-brand-bg" />
+            {/* The round's sticker, tiled faintly behind it. */}
+            <div
+              className="absolute inset-[-10%] grid grid-cols-6 gap-[6vmin] p-[4vmin] opacity-[0.07] pointer-events-none rotate-[-8deg]"
+              aria-hidden
+            >
+              {Array.from({ length: 36 }).map((_, i) => (
+                <Sticker
+                  key={i}
+                  id={MINI_GAMES[currentGameIndex].id}
+                  diecut={false}
+                  className="w-full aspect-square"
+                />
+              ))}
             </div>
 
             <div className="relative z-10 text-center">
@@ -294,6 +300,20 @@ export default function App() {
                 className="bg-brand-accent/20 w-fit px-4 py-1 rounded-md text-[10px] font-black tracking-[0.3em] mb-4 mx-auto border border-brand-accent/30 text-brand-accent uppercase"
               >
                 Upcoming Challenge
+              </motion.div>
+
+              <motion.div
+                key={MINI_GAMES[currentGameIndex].id}
+                initial={{ scale: 0.2, rotate: -40, opacity: 0 }}
+                animate={{ scale: 1, rotate: -6, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 14 }}
+                className="mx-auto mb-2 w-[min(40vmin,15rem)] aspect-square"
+              >
+                <Sticker
+                  id={MINI_GAMES[currentGameIndex].id}
+                  title={MINI_GAMES[currentGameIndex].name}
+                  className="w-full h-full"
+                />
               </motion.div>
 
               <motion.h1

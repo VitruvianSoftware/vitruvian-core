@@ -22,11 +22,15 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { MotionConfig } from "motion/react";
 import App from "./App.tsx";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    {/* Honour the system's reduce-motion setting in every animation. */}
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </StrictMode>,
 );
