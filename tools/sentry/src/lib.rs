@@ -21,6 +21,7 @@
 //! Idempotent bootstrap for Sentry's PagerDuty integration via Sentry's
 //! `integration_pipeline` session API without registering a PagerDuty OAuth app.
 
+pub mod ci_integration;
 pub mod http;
 pub mod send_test_event;
 
@@ -68,7 +69,7 @@ pub struct Integration {
     pub name: String,
 }
 
-fn valid_url(url: &str) -> bool {
+pub(crate) fn valid_url(url: &str) -> bool {
     if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return false;
     }
@@ -81,11 +82,16 @@ fn valid_url(url: &str) -> bool {
     !host.is_empty()
 }
 
-fn valid_org(org: &str) -> bool {
-    !org.is_empty()
-        && org
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+/// A Sentry organization slug. First and last characters must be letters or
+/// digits, so "." and ".." (which curl normalises away, turning an
+/// org-scoped path into a global one) can never pass.
+pub(crate) fn valid_org(org: &str) -> bool {
+    let b = org.as_bytes();
+    !b.is_empty()
+        && b[0].is_ascii_alphanumeric()
+        && b[b.len() - 1].is_ascii_alphanumeric()
+        && b.iter()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))
 }
 
 pub fn parse_args(argv: &[String]) -> Result<Args, String> {
@@ -119,8 +125,15 @@ pub fn parse_args(argv: &[String]) -> Result<Args, String> {
             "--name" => name = Some(take_value()?),
             "--url" => url = take_value()?,
             "--org" => org = take_value()?,
-            other if other.starts_with('-') => return Err(format!("unknown argument: {other}")),
-            other => return Err(format!("unexpected positional argument: {other}")),
+            other if other.starts_with('-') => {
+                return Err("unknown argument (value not shown, in case it is a secret)".into())
+            }
+            other => {
+                return Err(
+                    "unexpected positional argument (value not shown, in case it is a secret)"
+                        .into(),
+                )
+            }
         }
     }
 
@@ -144,12 +157,12 @@ pub fn parse_args(argv: &[String]) -> Result<Args, String> {
     }
     if !valid_url(&url) {
         return Err(format!(
-            "--url '{url}' must be an https:// URL (the token must not travel in cleartext)"
+            "--url must be an https:// URL (the token must not travel in cleartext)"
         ));
     }
     if !valid_org(&org) {
         return Err(format!(
-            "--org '{org}' must contain only ASCII letters, digits, '.', '_', or '-'"
+            "--org must be a Sentry organization slug: ASCII letters, digits, '.', '_' or '-', starting and ending with a letter or digit"
         ));
     }
 
@@ -377,6 +390,19 @@ pub fn execute<C: HttpClient>(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn org_slug_rejects_dot_segments_and_edges() {
+        for bad in [
+            ".", "..", "", ".sentry", "sentry.", "-x", "x_", "a/b", "a b",
+        ] {
+            assert!(!valid_org(bad), "{bad:?} must be rejected");
+        }
+        for good in ["sentry", "my-org", "a.b_c-1", "x"] {
+            assert!(valid_org(good), "{good:?} must be accepted");
+        }
+    }
+
     use super::*;
     use std::collections::VecDeque;
 
