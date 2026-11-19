@@ -2,12 +2,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import CoreGraphics
+import Darwin
 import Foundation
 import ImageIO
 
 /// A picture made small enough to keep and draw.
 public struct Thumbnail: @unchecked Sendable {
     public let image: CGImage
+}
+
+/// The kept pictures, readable from any thread without waiting for the loader: a row scrolling back into view draws
+/// its picture in its first frame instead of a placeholder. It holds exactly what the loader's cache holds.
+private final class ThumbnailMirror: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pictures: [String: Thumbnail] = [:]
+
+    func picture(at path: String) -> Thumbnail? {
+        lock.lock()
+        defer { lock.unlock() }
+        return pictures[path]
+    }
+
+    func set(_ thumbnail: Thumbnail, at path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        pictures[path] = thumbnail
+    }
+
+    func remove(_ path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        pictures[path] = nil
+    }
 }
 
 /// Makes pictures small for the conversation, off the main actor, and keeps the latest ones in memory.
@@ -31,6 +57,7 @@ public actor ThumbnailLoader {
     private var usage: [String] = []
     private var totalBytes = 0
     private var loading: [String: Task<Thumbnail?, Never>] = [:]
+    private nonisolated let mirror = ThumbnailMirror()
 
     public init(maxPixelSize: Int = 640, maxCount: Int = 300, maxBytes: Int = 160 * 1024 * 1024) {
         self.maxPixelSize = maxPixelSize
@@ -40,6 +67,11 @@ public actor ThumbnailLoader {
 
     public var cachedCount: Int { entries.count }
     public var cachedPaths: [String] { usage }
+
+    /// The picture at `path` if it is already kept; never loads. For drawing a row's first frame.
+    public nonisolated func cachedThumbnail(atPath path: String) -> Thumbnail? {
+        mirror.picture(at: path)
+    }
 
     /// The picture's size in pixels, from its header alone.
     public func pixelSize(atPath path: String) -> CGSize? {
@@ -72,12 +104,14 @@ public actor ThumbnailLoader {
         let bytes = thumbnail.image.bytesPerRow * thumbnail.image.height
         if let old = entries[path] { totalBytes -= old.bytes }
         entries[path] = Entry(thumbnail: thumbnail, bytes: bytes)
+        mirror.set(thumbnail, at: path)
         totalBytes += bytes
         touch(path)
         // The newest stays even when it alone is over the limit.
         while usage.count > 1, entries.count > maxCount || totalBytes > maxBytes {
             let oldest = usage.removeFirst()
             if let gone = entries.removeValue(forKey: oldest) { totalBytes -= gone.bytes }
+            mirror.remove(oldest)
         }
     }
 
@@ -129,15 +163,158 @@ public actor ThumbnailLoader {
     private nonisolated static func decode(_ path: String, maxPixelSize: Int) -> Thumbnail? {
         let url = URL(fileURLWithPath: path) as CFURL
         guard let source = CGImageSourceCreateWithURL(url, nil), CGImageSourceGetCount(source) > 0,
-              let size = pixelSize(ofFileAt: path) else { return nil }
-        if Int(max(size.width, size.height)) <= maxPixelSize {
-            return CGImageSourceCreateImageAtIndex(source, 0, nil).map(Thumbnail.init)
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0 else { return nil }
+        let longest = max(width, height)
+        let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        if longest <= maxPixelSize && orientation == 1 {
+            // Decoded here, off the main thread, not on first draw.
+            let whole: [CFString: Any] = [kCGImageSourceShouldCacheImmediately: true]
+            return CGImageSourceCreateImageAtIndex(source, 0, whole as CFDictionary).map(Thumbnail.init)
         }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: min(maxPixelSize, longest),
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map(Thumbnail.init)
+    }
+}
+
+/// Reads a picture's real pixel size from its file header (no decoding), cached, for bridged images that arrive
+/// without width/height.
+public actor ImagePixelSizeReader {
+    public static let shared = ImagePixelSizeReader()
+
+    private struct FileStamp: Equatable, Sendable {
+        let dev: dev_t
+        let ino: ino_t
+        let size: off_t
+        let mtimeSec: Int
+        let mtimeNsec: Int
+    }
+
+    /// Sizes already read, for any thread: a row that scrolls back into view knows its picture's size from
+    /// memory without touching disk. Failed non-empty files are keyed by file stamp so a later file at the
+    /// same path is re-read, while missing or empty files are not cached at all.
+    private nonisolated static let known = KnownSizes()
+
+    private final class KnownSizes: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sizes: [String: CGSize] = [:]
+        private var failedStamps: [String: FileStamp] = [:]
+
+        func size(at path: String) -> CGSize? {
+            lock.lock()
+            defer { lock.unlock() }
+            return sizes[path]
+        }
+
+        func set(_ size: CGSize, at path: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            failedStamps.removeValue(forKey: path)
+            sizes[path] = size
+        }
+
+        func hasFailed(_ stamp: FileStamp, at path: String) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return failedStamps[path] == stamp
+        }
+
+        func recordFailure(_ stamp: FileStamp, at path: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            sizes.removeValue(forKey: path)
+            failedStamps[path] = stamp
+        }
+    }
+
+    private nonisolated static func fileStamp(at path: String) -> FileStamp? {
+        var st = stat()
+        guard stat(path, &st) == 0, st.st_size > 0 else { return nil }
+        return FileStamp(
+            dev: st.st_dev,
+            ino: st.st_ino,
+            size: st.st_size,
+            mtimeSec: st.st_mtimespec.tv_sec,
+            mtimeNsec: st.st_mtimespec.tv_nsec
+        )
+    }
+
+    /// The size of the first local picture among `paths` that is already cached in memory; never reads disk.
+    public nonisolated static func cachedSize(ofFirstReadable paths: [String?]) -> CGSize? {
+        for path in paths.compactMap({ $0 }) where isLocalMediaStorePath(path) {
+            if let remembered = known.size(at: path) {
+                return remembered
+            }
+        }
+        return nil
+    }
+
+    /// The size of the first readable local picture among `paths`, reading a header on this thread if need be.
+    public nonisolated static func sizeNow(ofFirstReadable paths: [String?]) -> CGSize? {
+        for path in paths.compactMap({ $0 }) where isLocalMediaStorePath(path) {
+            if let remembered = known.size(at: path) {
+                return remembered
+            }
+            guard let stamp = fileStamp(at: path) else { continue }
+            if known.hasFailed(stamp, at: path) { continue }
+            if let read = Self.read(path) {
+                known.set(read, at: path)
+                return read
+            }
+            known.recordFailure(stamp, at: path)
+        }
+        return nil
+    }
+
+    public func size(ofFirstReadable paths: [String?]) -> CGSize? {
+        Self.sizeNow(ofFirstReadable: paths)
+    }
+
+    /// Pre-warms cached pixel sizes off the main thread for local media events missing stored dimensions.
+    public func warm(events: [Event]) async {
+        let uncached = Self.uncachedPaths(in: events)
+        guard !uncached.isEmpty else { return }
+        await Task.detached(priority: .userInitiated) {
+            for path in uncached {
+                _ = Self.sizeNow(ofFirstReadable: [path])
+            }
+        }.value
+    }
+
+    private nonisolated static func uncachedPaths(in events: [Event]) -> [String] {
+        var seen = Set<String>()
+        var paths: [String] = []
+        for event in events {
+            let info = event.content["info"]
+            let width = info?["w"]?.integerValue ?? 0
+            let height = info?["h"]?.integerValue ?? 0
+            let needsHeader = width <= 0 || height <= 0 || Timeline.isEdit(event)
+            guard needsHeader else { continue }
+            for candidate in [event.mediaPath, event.thumbnailPath] {
+                guard let path = candidate, isLocalMediaStorePath(path), seen.insert(path).inserted else { continue }
+                guard known.size(at: path) == nil else { continue }
+                guard let stamp = fileStamp(at: path), !known.hasFailed(stamp, at: path) else { continue }
+                paths.append(path)
+            }
+        }
+        return paths
+    }
+
+    public nonisolated static func read(_ path: String) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              var h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+              w > 0, h > 0 else { return nil }
+        // EXIF orientations 5-8 are rotated a quarter turn.
+        if let o = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue, (5 ... 8).contains(o) { swap(&w, &h) }
+        return CGSize(width: w, height: h)
     }
 }

@@ -813,6 +813,11 @@ public struct EnhancedImageView: View {
         self.forceBlurHashPlaceholder = forceBlurHashPlaceholder
         self.forceErrorState = forceErrorState
         self.onOpenLightbox = onOpenLightbox
+        // A picture the loader already holds is drawn in the row's first frame, not after a placeholder.
+        if !forceBlurHashPlaceholder, !forceErrorState, preloadedImage == nil, !message.isGIF,
+           let path = Self.localPath(of: message) {
+            _loadedCGImage = State(initialValue: ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image)
+        }
     }
 
     private var decodedBlurHash: CGImage? {
@@ -820,7 +825,9 @@ public struct EnhancedImageView: View {
         return BlurHashDecoder.decode(hash, width: 32, height: 32)
     }
 
-    private var localPath: String? {
+    private var localPath: String? { Self.localPath(of: message) }
+
+    private static func localPath(of message: TimelineMessage) -> String? {
         if isLocalMediaStorePath(message.mediaPath) {
             return message.mediaPath
         }
@@ -886,7 +893,8 @@ public struct EnhancedImageView: View {
             failed = true
             return
         }
-        loadedCGImage = nil
+        // A picture the loader holds replaces the old one at once; resetting to nil first would flash the placeholder.
+        loadedCGImage = localPath.flatMap { ThumbnailLoader.shared.cachedThumbnail(atPath: $0) }?.image
         loadedAnimatedImage = nil
         failed = false
         guard let path = localPath else {
@@ -973,8 +981,9 @@ public struct EnhancedImageView: View {
         if let w = message.width, let h = message.height, w > 0, h > 0 {
             return Self.proportionalSize(width: w, height: h)
         }
-        if let diskSize {
-            return Self.proportionalSize(width: Int(diskSize.width), height: Int(diskSize.height))
+        // A picture's own size is reserved before it loads; one already warmed in memory is known in the row's first frame.
+        if let disk = diskSize ?? ImagePixelSizeReader.cachedSize(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
+            return Self.proportionalSize(width: Int(disk.width), height: Int(disk.height))
         }
         return Self.proportionalSize(width: nil, height: nil)
     }
@@ -991,35 +1000,6 @@ public struct EnhancedImageView: View {
         }
         let scale = min(1, longestSide / CGFloat(max(width, height)))
         return CGSize(width: max(80, CGFloat(width) * scale), height: max(60, CGFloat(height) * scale))
-    }
-}
-
-/// Reads a picture's real pixel size from its file header (no decoding), cached, for bridged images that arrive
-/// without width/height.
-actor ImagePixelSizeReader {
-    static let shared = ImagePixelSizeReader()
-    private var cache: [String: CGSize] = [:]
-
-    func size(ofFirstReadable paths: [String?]) -> CGSize? {
-        for path in paths.compactMap({ $0 }) where isLocalMediaStorePath(path) {
-            if let known = cache[path] { return known }
-            if let size = Self.read(path) {
-                cache[path] = size
-                return size
-            }
-        }
-        return nil
-    }
-
-    nonisolated static func read(_ path: String) -> CGSize? {
-        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              var w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
-              var h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
-              w > 0, h > 0 else { return nil }
-        // EXIF orientations 5-8 are rotated a quarter turn.
-        if let o = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue, (5 ... 8).contains(o) { swap(&w, &h) }
-        return CGSize(width: w, height: h)
     }
 }
 

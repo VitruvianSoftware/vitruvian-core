@@ -248,6 +248,7 @@ public final class ThreadModel: ObservableObject {
             loadFailed = true
             return
         }
+        await ImagePixelSizeReader.shared.warm(events: page.events)
         guard owner == generation, client === appModel.client, serial > appliedSerial else { return }
         appliedSerial = serial
         loadFailed = false
@@ -308,6 +309,9 @@ public final class ThreadModel: ObservableObject {
     private func fetchRoot(_ room: String, _ root: String, _ client: EngineClient, _ owner: Int) async {
         let page: EventsPage? = try? await client.call("room.events",
                                                        RoomEventsParams(roomID: room, around: root, limit: 1))
+        if let events = page?.events {
+            await ImagePixelSizeReader.shared.warm(events: events)
+        }
         guard owner == generation, client === appModel.client,
               let event = page?.events.first(where: { $0.eventID == root }) else { return }
         rootEvent = event
@@ -326,6 +330,9 @@ public final class ThreadModel: ObservableObject {
         Task { [weak self] in
             let page: EventsPage? = try? await client.call(
                 "room.events", RoomEventsParams(roomID: room, thread: root, before: cursor, limit: Self.pageSize))
+            if let page {
+                await ImagePixelSizeReader.shared.warm(events: page.events)
+            }
             guard let self, owner == self.generation else { return }
             self.isLoadingOlder = false
             guard client === self.appModel.client, epoch == self.pageEpoch else { return }

@@ -700,6 +700,7 @@ struct ConversationView: View {
                             .onGeometryChange(for: CGRect.self) {
                                 $0.frame(in: .named(Self.chatCoordinateSpace))
                             } action: { frame in
+                                ScrollPerfCounters.geometryCallback()
                                 scrollBox.itemFrames[item.id] = frame
                                 conversationLayoutProbe?("item/\(item.id)", frame)
                             }
@@ -1049,44 +1050,9 @@ struct ConversationView: View {
         }
     }
 
-    /// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
-    /// a dot once something new has come in.
-    @ViewBuilder
+    /// The way back to the newest message.
     private var jumpButton: some View {
-        if !conversation.isAtBottom || conversation.isAwayFromLatest {
-            Button {
-                conversation.jumpToBottom()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.down")
-                    if conversation.isAwayFromLatest {
-                        Text(String(localized: "Jump to latest"))
-                            .font(.callout.weight(.medium))
-                        if conversation.hasNewerWhileAway {
-                            let accentHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex
-                                ?? CourierThemePreset.classicTeal.defaultAccentHex
-                            Circle()
-                                .fill(Color(hex: accentHex) ?? Color.accentColor)
-                                .frame(width: 7, height: 7)
-                                .accessibilityLabel(String(localized: "New messages"))
-                        }
-                    } else if conversation.newMessageCount > 0 {
-                        Text(conversation.newMessageCount == 1 ? String(localized: "1 new message")
-                            : String(localized: "\(conversation.newMessageCount) new messages"))
-                            .font(.callout.weight(.medium))
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(.regularMaterial))
-                .overlay(Capsule().strokeBorder(.quaternary))
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-            }
-            .buttonStyle(.plain)
-            .padding(14)
-            .help(String(localized: "Jump to the newest message (⌘↓)"))
-            .accessibilityLabel(String(localized: "Jump to the newest message"))
-        }
+        JumpToLatestButton(conversation: conversation, bottom: conversation.bottom, appearance: resolvedAppearance)
     }
 
     private var actions: MessageActions {
@@ -1445,6 +1411,51 @@ private struct DelayedSpinner: View {
         .task {
             try? await Task.sleep(for: delay)
             if !Task.isCancelled { isShown = true }
+        }
+    }
+}
+
+/// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
+/// a dot once something new has come in. It watches `BottomState` itself, so the timeline does not have to.
+private struct JumpToLatestButton: View {
+    @ObservedObject var conversation: ConversationModel
+    @ObservedObject var bottom: BottomState
+    let appearance: AppearancePreferences?
+
+    var body: some View {
+        if !bottom.isAtBottom || conversation.isAwayFromLatest {
+            Button {
+                conversation.jumpToBottom()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.down")
+                    if conversation.isAwayFromLatest {
+                        Text(String(localized: "Jump to latest"))
+                            .font(.callout.weight(.medium))
+                        if conversation.hasNewerWhileAway {
+                            let accentHex = appearance?.effectiveTheme(for: conversation.roomID).accentColorHex
+                                ?? CourierThemePreset.classicTeal.defaultAccentHex
+                            Circle()
+                                .fill(Color(hex: accentHex) ?? Color.accentColor)
+                                .frame(width: 7, height: 7)
+                                .accessibilityLabel(String(localized: "New messages"))
+                        }
+                    } else if bottom.newMessageCount > 0 {
+                        Text(bottom.newMessageCount == 1 ? String(localized: "1 new message")
+                            : String(localized: "\(bottom.newMessageCount) new messages"))
+                            .font(.callout.weight(.medium))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(.regularMaterial))
+                .overlay(Capsule().strokeBorder(.quaternary))
+                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+            .help(String(localized: "Jump to the newest message (⌘↓)"))
+            .accessibilityLabel(String(localized: "Jump to the newest message"))
         }
     }
 }
