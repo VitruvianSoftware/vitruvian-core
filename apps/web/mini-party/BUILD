@@ -107,6 +107,7 @@ esbuild.esbuild(
         "server.ts",
         ":node_modules",
     ],
+    outs = ["dist-server/server.mjs"],
     args = [
         "server.ts",
         "--bundle",
@@ -116,7 +117,6 @@ esbuild.esbuild(
         "--outfile=dist-server/server.mjs",
     ],
     chdir = package_name(),
-    outs = ["dist-server/server.mjs"],
 )
 
 # Runs the game: the built client plus the multiplayer server, on $PORT (3000).
