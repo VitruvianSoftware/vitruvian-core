@@ -57,6 +57,11 @@ exports_files(
     visibility = ["//tools/maven:__pkg__"],
 )
 
+exports_files(
+    ["pnpm-lock.yaml"],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 # The module file, exported so oauth-user-inspector's dockerfile_test can
 # check the Dockerfile builds the server with this file's Rust toolchain.
 exports_files(

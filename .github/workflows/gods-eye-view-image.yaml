@@ -46,7 +46,19 @@ on:
       - '!apps/web/gods-eye-view/*.md'
       - '!apps/web/gods-eye-view/**/README.md'
       - '.github/workflows/gods-eye-view-image.yaml'
+      - 'tools/ci/src/pnpm_lock_gate/**'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD.bazel'
+      - '!tools/ci/src/pnpm_lock_gate/**/OWNERS'
+      - '!tools/ci/src/pnpm_lock_gate/**/*.md'
+      - 'tools/shell-compat/src/**'
+      - '!tools/shell-compat/src/**/BUILD'
+      - '!tools/shell-compat/src/**/BUILD.bazel'
+      - '!tools/shell-compat/src/**/OWNERS'
+      - '!tools/shell-compat/src/**/*.md'
+      - '.npmrc'
       - '.nvmrc'
+      - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   pull_request:
@@ -69,7 +81,19 @@ on:
       - '!apps/web/gods-eye-view/*.md'
       - '!apps/web/gods-eye-view/**/README.md'
       - '.github/workflows/gods-eye-view-image.yaml'
+      - 'tools/ci/src/pnpm_lock_gate/**'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD.bazel'
+      - '!tools/ci/src/pnpm_lock_gate/**/OWNERS'
+      - '!tools/ci/src/pnpm_lock_gate/**/*.md'
+      - 'tools/shell-compat/src/**'
+      - '!tools/shell-compat/src/**/BUILD'
+      - '!tools/shell-compat/src/**/BUILD.bazel'
+      - '!tools/shell-compat/src/**/OWNERS'
+      - '!tools/shell-compat/src/**/*.md'
+      - '.npmrc'
       - '.nvmrc'
+      - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
 
@@ -86,29 +110,85 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
+  # Fail-open lockfile closure gate: if only pnpm-lock.yaml (plus ignored docs/files)
+  # changed outside gods-eye-view's transitive closure, skip rebuilding and re-pushing.
+  gate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      skip: ${{ steps.gate.outputs.verdict == 'skip' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/build-ci-tool
+            .github/workflows
+            tools/ci/src/pnpm_lock_gate
+            tools/ci/src/resolve_deploy_base
+            tools/shell-compat
+
+      - name: Build //tools/ci:resolve_deploy_base (no Bazel on this job)
+        id: base-bin
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: resolve_deploy_base
+
+      - name: Resolve durable diff base on push
+        id: base
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_FILE: gods-eye-view-image.yaml
+          RESOLVE_BASE_BIN: ${{ steps.base-bin.outputs.path }}
+        run: |
+          if [ -n "${RESOLVE_BASE_BIN:-}" ]; then
+            "$RESOLVE_BASE_BIN"
+          fi
+
+      - name: Build //tools/ci:pnpm_lock_gate (no Bazel on this job)
+        id: gate-bin
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: pnpm_lock_gate
+
+      - name: Check whether image rebuild is required
+        id: gate
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ steps.base.outputs.base_sha || github.event.pull_request.base.sha || github.event.before }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PNPM_LOCK_GATE_BIN: ${{ steps.gate-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$PNPM_LOCK_GATE_BIN" \
+            --workflow .github/workflows/gods-eye-view-image.yaml \
+            --importers apps/web/gods-eye-view \
+            | tee "$RUNNER_TEMP/gate.out"
+          {
+            echo "### God's Eye View image lockfile gate"
+            echo ""
+            echo "- $(cat "$RUNNER_TEMP/gate.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   image:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build God's Eye View
-        run: pnpm --filter gods-eye-view build
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -125,7 +205,7 @@ jobs:
         id: publish
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/web/gods-eye-view
+          context: .
           file: apps/web/gods-eye-view/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
@@ -153,7 +233,7 @@ jobs:
       - name: Load image for verification
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/web/gods-eye-view
+          context: .
           file: apps/web/gods-eye-view/Dockerfile
           platforms: linux/amd64
           load: true
@@ -176,6 +256,37 @@ jobs:
             exit 1
           fi
           echo "revision label = ${got}"
+
+      - name: Verify UID 1001 boots and serves /healthz
+        run: |
+          set -euo pipefail
+          trap 'docker rm -f gev-smoke >/dev/null 2>&1 || true' EXIT
+          docker run -d --name gev-smoke \
+            --user 1001:1001 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:uid=1001,gid=1001 \
+            --tmpfs /app/.gev-cache:uid=1001,gid=1001 \
+            --publish 127.0.0.1:18080:8080 \
+            gods-eye-view:verify
+          ok=false
+          for _ in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:18080/healthz >/dev/null; then
+              ok=true
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' gev-smoke)" != "true" ]; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::error::gods-eye-view did not serve /healthz as UID 1001" >&2
+            docker logs gev-smoke >&2 || true
+            exit 1
+          fi
+          echo "/healthz responded 200 as UID 1001 on read-only rootfs"
 
       - name: Verify the pushed manifest
         if: ${{ github.event_name != 'pull_request' }}
