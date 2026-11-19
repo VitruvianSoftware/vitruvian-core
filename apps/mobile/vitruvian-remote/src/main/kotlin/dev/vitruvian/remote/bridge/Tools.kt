@@ -50,6 +50,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.telephony.SmsManager
 import android.util.Base64
+import android.util.Log
 import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.texttospeech.SpeechSynthesis
@@ -60,8 +61,10 @@ import com.google.mlkit.genai.texttospeech.SpeechSynthesizerResponse
 import com.google.mlkit.genai.texttospeech.VoiceInfo
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.Derive
+import dev.vitruvian.remote.state.PhoneVoiceOption
 import dev.vitruvian.remote.state.ToolDescriptor
 import dev.vitruvian.remote.state.ToolTier
+import dev.vitruvian.remote.state.readPhoneVoice
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -916,7 +919,16 @@ public object PhoneTools {
   // The last voice lookup, so most announcements skip the per-voice status checks. Guarded by
   // mlKitLock; null voice means "no voice ready" (cached for a shorter time, see BridgePolicy).
   private var mlKitVoiceCache: MlKitVoiceCacheEntry? = null
-  private val mlKitDownloadInFlight = AtomicBoolean(false)
+  // Voice names downloading now. One set for both callers, so the picker's Get is never dropped
+  // because an automatic download of another voice is running, and the same voice never starts
+  // twice.
+  private val mlKitDownloadsInFlight: MutableSet<String> =
+      java.util.concurrent.ConcurrentHashMap.newKeySet()
+  // Bumped whenever the cached voice is dropped; a lookup only writes the cache if no drop
+  // happened while it ran, so a Use mid-lookup is never overwritten by the old answer.
+  private val mlKitVoiceGeneration = dev.vitruvian.remote.state.GenerationGate()
+  // The picked voice, in memory: read once from prefs, then set by the picker. Null until loaded.
+  @Volatile private var mlKitPreferredVoice: String? = null
   private val mlKitDownloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
   private data class MlKitVoiceCacheEntry(val voice: VoiceInfo?, val atMs: Long)
@@ -933,8 +945,129 @@ public object PhoneTools {
     }
   }
 
-  private fun forgetMlKitVoice() {
-    synchronized(mlKitLock) { mlKitVoiceCache = null }
+  /** Drops the cached voice, so the next announcement looks again. */
+  public fun forgetMlKitVoice() {
+    synchronized(mlKitLock) {
+      mlKitVoiceGeneration.invalidate()
+      mlKitVoiceCache = null
+    }
+  }
+
+  /**
+   * The pick changed: reload it from prefs (already written by the picker) and drop the cached
+   * voice. Reading the saved value rather than taking it as an argument means two quick picks can
+   * finish in either order and still leave the newest one in memory.
+   */
+  public fun reloadPreferredMlKitVoice(context: Context) {
+    mlKitPreferredVoice = runCatching { readPhoneVoice(context) }.getOrDefault("")
+    forgetMlKitVoice()
+  }
+
+  private suspend fun supportedMlKitVoices(synthesizer: SpeechSynthesizer): List<VoiceInfo> {
+    val defaultLocale = Locale.getDefault()
+    return synthesizer.getSupportedVoices(defaultLocale).ifEmpty {
+      if (defaultLocale != Locale.US) synthesizer.getSupportedVoices(Locale.US) else emptyList()
+    }
+  }
+
+  /** Every on-device voice for the phone's language, for the voice picker. Empty if unsupported. */
+  public fun listMlKitVoices(): List<PhoneVoiceOption> =
+      runCatching {
+            val synthesizer = getOrCreateMlKitSynthesizer()
+            runBlocking(Dispatchers.IO) {
+              withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
+                supportedMlKitVoices(synthesizer).map { voice ->
+                  PhoneVoiceOption(
+                      name = voice.name,
+                      languageTag = voice.locale.toLanguageTag(),
+                      gender =
+                          when (voice.gender) {
+                            VoiceInfo.Gender.FEMALE -> "female"
+                            VoiceInfo.Gender.MALE -> "male"
+                            else -> ""
+                          },
+                      status =
+                          BridgePolicy.statusWithInFlight(
+                              mapFeatureStatus(synthesizer.checkStatus(voice)),
+                              voice.name,
+                              mlKitDownloadsInFlight),
+                  )
+                }
+              }
+            }
+          }
+          .getOrNull()
+          .orEmpty()
+
+  /**
+   * Downloads [name] because the user picked it: any network, since they asked for it. Runs off the
+   * caller's thread entirely. True unless that voice is already downloading.
+   */
+  public fun downloadMlKitVoice(name: String): Boolean {
+    if (!BridgePolicy.pickerShouldStartDownload(name, mlKitDownloadsInFlight)) return false
+    // Registered before returning, so a list refresh right after Get already sees it downloading.
+    if (!mlKitDownloadsInFlight.add(name)) return false
+    mlKitDownloadScope.launch {
+      try {
+        val synthesizer = getOrCreateMlKitSynthesizer()
+        supportedMlKitVoices(synthesizer)
+            .firstOrNull { it.name == name }
+            ?.let { runVoiceDownload(synthesizer, it) }
+      } catch (_: Throwable) {
+        // The list shows it downloadable again; Get can be tapped again.
+      } finally {
+        mlKitDownloadsInFlight.remove(name)
+      }
+    }
+    return true
+  }
+
+  /**
+   * Plays a short sample in [name] for the picker. Null when it played, otherwise why not. Holds
+   * the speak lock, so a sample and an announcement never talk over each other.
+   */
+  public fun previewMlKitVoice(context: Context, name: String): String? {
+    // The lookup runs before taking the speak lock, so only the sample itself (a couple of
+    // seconds, capped at PREVIEW_TIMEOUT_S) can make an announcement wait.
+    val synthesizer =
+        runCatching { getOrCreateMlKitSynthesizer() }
+            .getOrElse {
+              return "The sample did not play: ${it.message}"
+            }
+    val voice =
+        runCatching {
+              runBlocking(Dispatchers.IO) {
+                withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
+                  supportedMlKitVoices(synthesizer).firstOrNull { it.name == name }
+                }
+              }
+            }
+            .getOrNull() ?: return "That voice is not on this phone any more"
+    return synchronized(speakLock) {
+      try {
+        val attrs =
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        // The same playback path announcements use, so a sample sounds and behaves exactly like
+        // the real thing (start window, stop handling).
+        val outcome =
+            speakMlKitTts(
+                context,
+                context.getSystemService(AudioManager::class.java),
+                attrs,
+                PREVIEW_TEXT,
+                pauseMedia = true,
+                headphonesOnly = false,
+                timeoutSeconds = PREVIEW_TIMEOUT_S,
+                voiceOverride = voice,
+            )
+        if (outcome.result.isError) "The sample did not play: ${outcome.result.text}" else null
+      } catch (t: Throwable) {
+        "The sample did not play: ${t.message}"
+      }
+    }
   }
 
   // ML Kit initializes itself at app start through the MlKitInitProvider its AAR merges into our
@@ -949,23 +1082,38 @@ public object PhoneTools {
                 .also { mlKitSynthesizer = it }
       }
 
+  /**
+   * The voice picked in Phone Bridge settings; empty means automatic. Read from prefs once without
+   * building a [Persistence] (whose migrations must not race the activity's), then kept in memory.
+   */
+  private fun preferredVoice(context: Context): String =
+      mlKitPreferredVoice
+          ?: runCatching { readPhoneVoice(context) }
+              .getOrDefault("")
+              .also { mlKitPreferredVoice = it }
+
   /** Unmetered by the underlying network, so Tailscale's VPN does not hide home Wi-Fi. */
   private fun isUnmetered(context: Context): Boolean =
       context.getSystemService(ConnectivityManager::class.java)?.let { !it.isActiveNetworkMetered }
           ?: false
 
   private fun startBackgroundVoiceDownload(synthesizer: SpeechSynthesizer, voice: VoiceInfo) {
-    if (!mlKitDownloadInFlight.compareAndSet(false, true)) return
+    if (!mlKitDownloadsInFlight.add(voice.name)) return
     mlKitDownloadScope.launch {
       try {
-        synthesizer.download(voice).collect { status ->
-          if (status is DownloadStatus.DownloadCompleted) forgetMlKitVoice()
-        }
+        runVoiceDownload(synthesizer, voice)
       } catch (_: Throwable) {
         // Best effort: the next lookup on Wi-Fi tries again.
       } finally {
-        mlKitDownloadInFlight.set(false)
+        mlKitDownloadsInFlight.remove(voice.name)
       }
+    }
+  }
+
+  /** Downloads [voice] to the end; the caller owns the in-flight entry. */
+  private suspend fun runVoiceDownload(synthesizer: SpeechSynthesizer, voice: VoiceInfo) {
+    synthesizer.download(voice).collect { status ->
+      if (status is DownloadStatus.DownloadCompleted) forgetMlKitVoice()
     }
   }
 
@@ -980,6 +1128,7 @@ public object PhoneTools {
   /** A ready voice from the cache, or a fresh lookup; null when none is ready to speak now. */
   private fun readyMlKitVoice(context: Context, synthesizer: SpeechSynthesizer): VoiceInfo? {
     val now = System.currentTimeMillis()
+    val generation = mlKitVoiceGeneration.begin()
     synchronized(mlKitLock) {
       mlKitVoiceCache?.let { cached ->
         if (BridgePolicy.mlKitVoiceCacheFresh(now - cached.atMs, ready = cached.voice != null)) {
@@ -990,12 +1139,7 @@ public object PhoneTools {
     val voice =
         runBlocking(Dispatchers.IO) {
           withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
-            val defaultLocale = Locale.getDefault()
-            val voices =
-                synthesizer.getSupportedVoices(defaultLocale).ifEmpty {
-                  if (defaultLocale != Locale.US) synthesizer.getSupportedVoices(Locale.US)
-                  else emptyList()
-                }
+            val voices = supportedMlKitVoices(synthesizer)
             val candidates =
                 voices.map { voice ->
                   BridgePolicy.MlKitVoiceCandidate(
@@ -1004,9 +1148,9 @@ public object PhoneTools {
                       status = mapFeatureStatus(synthesizer.checkStatus(voice)),
                   )
                 }
-            val selection = BridgePolicy.selectMlKitVoice(candidates)
+            val selection = BridgePolicy.selectMlKitVoice(candidates, preferredVoice(context))
             if (BridgePolicy.shouldDownloadMlKitVoice(
-                selection, isUnmetered(context), mlKitDownloadInFlight.get())) {
+                selection, isUnmetered(context), mlKitDownloadsInFlight.isNotEmpty())) {
               val name = (selection as BridgePolicy.MlKitVoiceSelection.NeedsDownload).name
               voices
                   .firstOrNull { it.name == name }
@@ -1017,7 +1161,13 @@ public object PhoneTools {
             }
           }
         }
-    synchronized(mlKitLock) { mlKitVoiceCache = MlKitVoiceCacheEntry(voice, now) }
+    synchronized(mlKitLock) {
+      // A Use (or a finished download) during the lookup bumped the generation: this answer may
+      // be stale, so leave the cache empty and let the next announcement look again.
+      if (mlKitVoiceGeneration.stillCurrent(generation)) {
+        mlKitVoiceCache = MlKitVoiceCacheEntry(voice, now)
+      }
+    }
     return voice
   }
 
@@ -1058,12 +1208,15 @@ public object PhoneTools {
       pauseMedia: Boolean,
       headphonesOnly: Boolean,
       timeoutSeconds: Long,
+      voiceOverride: VoiceInfo? = null,
   ): WavPlayOutcome {
     fun fallback(reason: String) = WavPlayOutcome(ToolResult(reason, true), allowTtsFallback = true)
     return try {
       val synthesizer = getOrCreateMlKitSynthesizer()
       val voice =
-          readyMlKitVoice(context, synthesizer) ?: return fallback("ML Kit TTS voice not ready")
+          voiceOverride
+              ?: readyMlKitVoice(context, synthesizer)
+              ?: return fallback("ML Kit TTS voice not ready")
 
       val unplugged = AtomicBoolean(false)
       val started = AtomicBoolean(false)
@@ -1094,11 +1247,19 @@ public object PhoneTools {
                       TextToSpeech.QUEUE_FLUSH,
                   )
               runBlocking(Dispatchers.IO) {
+                val synthStartNs = System.nanoTime()
                 val startSignal = CompletableDeferred<Unit>()
                 val job = launch {
                   synthesizer
                       .synthesize(request)
                       .takeWhile { response ->
+                        if (response !is SpeechSynthesizerResponse.AudioAvailable ||
+                            !started.get()) {
+                          // Kinds only, never the announcement text.
+                          Log.d(
+                              TTS_LOG_TAG,
+                              "mlkit: ${response.javaClass.simpleName} ${(response as? SpeechSynthesizerResponse.StatusUpdate)?.status ?: ""}")
+                        }
                         when (response) {
                           is SpeechSynthesizerResponse.Error -> {
                             errorCode.set(response.errorCode)
@@ -1144,7 +1305,9 @@ public object PhoneTools {
                 val finished =
                     startedOrEnded &&
                         withTimeoutOrNull(
-                            timeoutSeconds * MS_PER_S - BridgePolicy.MLKIT_START_TIMEOUT_MS) {
+                            BridgePolicy.mlKitFinishWindowMs(
+                                timeoutSeconds,
+                                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - synthStartNs))) {
                               job.join()
                             } != null
                 if (!finished) {
@@ -1159,6 +1322,7 @@ public object PhoneTools {
               val outcome =
                   BridgePolicy.classifyMlKitEnd(
                       end.get() ?: BridgePolicy.MlKitEnd.Stopped, started.get(), unplugged.get())
+              Log.i(TTS_LOG_TAG, "mlkit: end=${end.get()} started=${started.get()} -> $outcome")
               when (outcome) {
                 BridgePolicy.MlKitOutcome.Spoken ->
                     WavPlayOutcome(
@@ -1332,4 +1496,7 @@ public object PhoneTools {
   private const val FIX_TIMEOUT_S = 10L
   private const val TTS_INIT_TIMEOUT_S = 10L
   private const val MLKIT_LOOKUP_TIMEOUT_MS = 5_000L
+  private const val PREVIEW_TIMEOUT_S = 15L
+  private const val TTS_LOG_TAG = "VitruvianTts"
+  private const val PREVIEW_TEXT = "This is how your announcements will sound."
 }

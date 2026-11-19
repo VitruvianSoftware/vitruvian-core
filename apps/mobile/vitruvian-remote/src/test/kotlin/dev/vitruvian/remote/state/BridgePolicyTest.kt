@@ -530,9 +530,9 @@ public class BridgePolicyTest {
         BridgePolicy.selectMlKitVoice(mixed),
     )
 
-    // Explicit preferred voice wins when downloadable or available (case-insensitive).
+    // A picked voice that is not downloaded yet never blocks: a ready voice speaks meanwhile.
     assertEquals(
-        BridgePolicy.MlKitVoiceSelection.NeedsDownload("star02"),
+        BridgePolicy.MlKitVoiceSelection.Ready("star05"),
         BridgePolicy.selectMlKitVoice(mixed, preferredName = "STAR02"),
     )
     assertEquals(
@@ -655,5 +655,151 @@ public class BridgePolicyTest {
     assertFalse(BridgePolicy.mlKitVoiceCacheFresh(BridgePolicy.MLKIT_READY_CACHE_MS, ready = true))
     // A clock that went backwards never counts as fresh.
     assertFalse(BridgePolicy.mlKitVoiceCacheFresh(-1, ready = true))
+  }
+
+  private fun voice(name: String, status: BridgePolicy.MlKitVoiceStatus, gender: String = "") =
+      PhoneVoiceOption(name, "en-US", gender, status)
+
+  @Test
+  public fun pickedVoiceSpeaksWhenReadyCaseInsensitive() {
+    val voices =
+        listOf(
+            BridgePolicy.MlKitVoiceCandidate(
+                "star02", "en-US", BridgePolicy.MlKitVoiceStatus.Available),
+            BridgePolicy.MlKitVoiceCandidate(
+                "star05", "en-US", BridgePolicy.MlKitVoiceStatus.Available),
+        )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Ready("star05"),
+        BridgePolicy.selectMlKitVoice(voices, preferredName = "STAR05"))
+    // Automatic (blank) takes the first ready voice.
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Ready("star02"),
+        BridgePolicy.selectMlKitVoice(voices, preferredName = "  "))
+  }
+
+  @Test
+  public fun pickerListsReadyVoicesFirst() {
+    val sorted =
+        BridgePolicy.sortVoicesForPicker(
+            listOf(
+                voice("zeta", BridgePolicy.MlKitVoiceStatus.Downloadable),
+                voice("Beta", BridgePolicy.MlKitVoiceStatus.Unavailable),
+                voice("alpha", BridgePolicy.MlKitVoiceStatus.Downloadable),
+                voice("omega", BridgePolicy.MlKitVoiceStatus.Available),
+                voice("mid", BridgePolicy.MlKitVoiceStatus.Downloading),
+            ))
+    assertEquals(listOf("omega", "mid", "alpha", "zeta", "Beta"), sorted.map { it.name })
+  }
+
+  @Test
+  public fun voiceInUseFollowsTheSavedPickOnlyWhenItCanSpeak() {
+    val voices =
+        listOf(
+            voice("star02", BridgePolicy.MlKitVoiceStatus.Available),
+            voice("star05", BridgePolicy.MlKitVoiceStatus.Downloading),
+        )
+    assertEquals("star02", BridgePolicy.voiceInUse(voices, saved = ""))
+    assertEquals("star02", BridgePolicy.voiceInUse(voices, saved = "star05"))
+    assertEquals("star02", BridgePolicy.voiceInUse(voices, saved = "gone"))
+    assertNull(
+        BridgePolicy.voiceInUse(listOf(voice("x", BridgePolicy.MlKitVoiceStatus.Downloadable)), ""))
+  }
+
+  @Test
+  public fun voiceSubtitleSaysGenderAndStatusAndLanguageOnlyWhenMixed() {
+    assertEquals(
+        "female · on this phone",
+        BridgePolicy.voiceSubtitle(voice("a", BridgePolicy.MlKitVoiceStatus.Available, "female")))
+    assertEquals(
+        "English (United States) · download to use",
+        BridgePolicy.voiceSubtitle(
+            voice("a", BridgePolicy.MlKitVoiceStatus.Downloadable),
+            showLanguage = true,
+            displayLocale = java.util.Locale.US,
+        ))
+    assertFalse(
+        BridgePolicy.voicesMixLanguages(
+            listOf(voice("a", BridgePolicy.MlKitVoiceStatus.Available))))
+    assertTrue(
+        BridgePolicy.voicesMixLanguages(
+            listOf(
+                voice("a", BridgePolicy.MlKitVoiceStatus.Available),
+                PhoneVoiceOption("b", "en-GB", "", BridgePolicy.MlKitVoiceStatus.Available))))
+  }
+
+  @Test
+  public fun voiceTitleIsReadable() {
+    // The ids this Pixel actually reported.
+    assertEquals("Star 02", BridgePolicy.voiceTitle("en-us-x-star02"))
+    assertEquals("Star 05", BridgePolicy.voiceTitle("en-us-x-star05-local"))
+    assertEquals("Orus", BridgePolicy.voiceTitle("Orus"))
+    assertEquals("weird-name", BridgePolicy.voiceTitle("weird-name"))
+  }
+
+  @Test
+  public fun pickedVoiceIsTheOneFetchedWhenNothingIsReady() {
+    val none =
+        listOf(
+            BridgePolicy.MlKitVoiceCandidate(
+                "star02", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+            BridgePolicy.MlKitVoiceCandidate(
+                "star05", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+        )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.NeedsDownload("star05"),
+        BridgePolicy.selectMlKitVoice(none, preferredName = "star05"))
+    // The pick is already downloading and nothing is ready: do not start another download.
+    val pickDownloading =
+        listOf(
+            BridgePolicy.MlKitVoiceCandidate(
+                "star02", "en-US", BridgePolicy.MlKitVoiceStatus.Downloadable),
+            BridgePolicy.MlKitVoiceCandidate(
+                "star05", "en-US", BridgePolicy.MlKitVoiceStatus.Downloading),
+        )
+    assertEquals(
+        BridgePolicy.MlKitVoiceSelection.Unavailable,
+        BridgePolicy.selectMlKitVoice(pickDownloading, preferredName = "star05"))
+  }
+
+  @Test
+  public fun getIsNeverDroppedForAnotherVoicesDownload() {
+    // An automatic download of star02 is running; Get on star05 still starts.
+    assertTrue(BridgePolicy.pickerShouldStartDownload("star05", setOf("star02")))
+    assertFalse(BridgePolicy.pickerShouldStartDownload("star05", setOf("star05")))
+    assertFalse(BridgePolicy.pickerShouldStartDownload(" ", emptySet()))
+    // While our download runs, the list says downloading even if the engine still says
+    // downloadable, so Get does not come back mid-download.
+    assertEquals(
+        BridgePolicy.MlKitVoiceStatus.Downloading,
+        BridgePolicy.statusWithInFlight(
+            BridgePolicy.MlKitVoiceStatus.Downloadable, "star05", setOf("star05")))
+    assertEquals(
+        BridgePolicy.MlKitVoiceStatus.Downloadable,
+        BridgePolicy.statusWithInFlight(
+            BridgePolicy.MlKitVoiceStatus.Downloadable, "star02", setOf("star05")))
+    assertEquals(
+        BridgePolicy.MlKitVoiceStatus.Available,
+        BridgePolicy.statusWithInFlight(
+            BridgePolicy.MlKitVoiceStatus.Available, "star05", setOf("star05")))
+  }
+
+  @Test
+  public fun aUseDuringALookupIsNotOverwrittenByTheOldAnswer() {
+    val gate = GenerationGate()
+    val lookup = gate.begin()
+    assertTrue(gate.stillCurrent(lookup))
+    gate.invalidate() // the user tapped Use while the lookup was running
+    assertFalse("stale lookup must not fill the cache", gate.stillCurrent(lookup))
+    assertTrue(gate.stillCurrent(gate.begin()))
+  }
+
+  @Test
+  public fun finishWindowCountsFromTheRealStart() {
+    // A 15 s sample budget that started after 0.7 s keeps 14.3 s, not 15 - 10 = 5 s (the bug
+    // seen on the phone cut a sample at 2 s with a 12 s budget).
+    assertEquals(14_300L, BridgePolicy.mlKitFinishWindowMs(15, 700))
+    assertEquals(0L, BridgePolicy.mlKitFinishWindowMs(15, 20_000))
+    assertEquals(15_000L, BridgePolicy.mlKitFinishWindowMs(15, -5))
   }
 }

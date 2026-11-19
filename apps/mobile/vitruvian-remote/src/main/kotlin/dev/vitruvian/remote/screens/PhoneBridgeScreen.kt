@@ -54,6 +54,7 @@ import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.state.AppInfo
+import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.RemoteState
@@ -76,6 +77,7 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
   LaunchedEffect(Unit) {
     state.refreshBridgePermissions()
     state.refreshNotificationPermission()
+    state.refreshPhoneVoices()
   }
 
   Box(modifier = Modifier.sectionPadding()) {
@@ -245,6 +247,11 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
           }
         }
 
+        if (state.phoneVoicesAvailable) {
+          Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+          AnnouncementVoicePicker(state)
+        }
+
         Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
         Label("Permissions")
         state.bridgePermissions.forEach { permission ->
@@ -323,5 +330,102 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
         )
       }
     }
+  }
+}
+
+/**
+ * The voice the phone speaks Vitruvian Speaker announcements with, when the Mac sends text rather
+ * than Gemini audio. Google's on-device voices only; the plain Android voice stays the fallback.
+ */
+@Composable
+private fun AnnouncementVoicePicker(state: RemoteState) {
+  val colors = Vitruvian
+  val inUse = state.phoneVoiceInUse
+  Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(Space.s3),
+  ) {
+    Label(text = "Announcement voice", modifier = Modifier.weight(1f))
+    VButton("Refresh", state::refreshPhoneVoices, enabled = !state.phoneVoicesLoading)
+  }
+  VText(
+      text =
+          "Google's on-device voices, free and offline. Used when the Mac sends text; if none is on " +
+              "this phone, the standard Android voice speaks instead.",
+      style = VitruvianType.listSub,
+      color = colors.textDim,
+  )
+  when {
+    state.phoneVoicesLoading && state.phoneVoiceOptions.isEmpty() ->
+        VText(text = "Looking for voices…", style = VitruvianType.listSub, color = colors.textDim)
+    state.phoneVoiceOptions.isEmpty() ->
+        VText(
+            text =
+                "No on-device voices on this phone. Update Speech Recognition & Synthesis from " +
+                    "Google Play to get them.",
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+    else -> {
+      ListItem(
+          title = "Automatic",
+          subtitle = "The first voice already on this phone",
+          status = if (state.phoneVoice.isEmpty()) StatusTone.Ok else null,
+          contentPadding = PaddingValues(vertical = Space.s3),
+      ) {
+        if (state.phoneVoice.isEmpty()) {
+          Tag(text = "selected", tone = TagTone.Ok)
+        } else {
+          VButton("Use", { state.selectPhoneVoice("") })
+        }
+      }
+      val showLanguage = BridgePolicy.voicesMixLanguages(state.phoneVoiceOptions)
+      state.phoneVoiceOptions.forEach { voice ->
+        val picked = state.phoneVoice == voice.name
+        val ready = voice.status == BridgePolicy.MlKitVoiceStatus.Available
+        ListItem(
+            title = BridgePolicy.voiceTitle(voice.name),
+            subtitle = BridgePolicy.voiceSubtitle(voice, showLanguage),
+            status =
+                when {
+                  voice.name == inUse && picked -> StatusTone.Ok
+                  picked -> StatusTone.Warn
+                  else -> null
+                },
+            contentPadding = PaddingValues(vertical = Space.s3),
+        ) {
+          Row(horizontalArrangement = Arrangement.spacedBy(Space.s2)) {
+            if (ready) {
+              VButton(
+                  label = if (state.phoneVoicePreviewing == voice.name) "Playing…" else "Play",
+                  onClick = { state.previewPhoneVoice(voice.name) },
+                  enabled = state.phoneVoicePreviewing == null,
+              )
+            }
+            when {
+              picked -> Tag(text = "selected", tone = if (ready) TagTone.Ok else TagTone.Warn)
+              voice.status == BridgePolicy.MlKitVoiceStatus.Unavailable -> Unit
+              else ->
+                  VButton(
+                      label = if (ready) "Use" else "Get",
+                      onClick = { state.selectPhoneVoice(voice.name) },
+                  )
+            }
+          }
+        }
+      }
+      if (state.phoneVoice.isNotEmpty() && inUse != null && inUse != state.phoneVoice) {
+        VText(
+            text =
+                "Until your pick is on this phone, announcements use ${BridgePolicy.voiceTitle(inUse)}.",
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+      }
+    }
+  }
+  state.phoneVoiceNote?.let {
+    VText(text = it, style = VitruvianType.listSub, color = colors.textDim)
   }
 }

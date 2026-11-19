@@ -47,6 +47,7 @@ private const val KEY_SELECTED_HOST_ID = "selectedHostId"
 private const val KEY_BRIDGE_ENABLED = "bridgeEnabled"
 private const val KEY_BRIDGE_TRUST_UNTIL = "bridgeTrustUntil"
 private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
+private const val KEY_PHONE_VOICE = "phoneVoice"
 private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpanded"
 private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
@@ -226,6 +227,14 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
   public var bridgeEnabled: Boolean
     get() = prefs.getBoolean(KEY_BRIDGE_ENABLED, false)
     set(value) = prefs.edit().putBoolean(KEY_BRIDGE_ENABLED, value).apply()
+
+  /**
+   * The on-device voice announcements use, by the engine's voice name. Empty means automatic: the
+   * first voice already on the phone.
+   */
+  public var phoneVoice: String
+    get() = prefs.getString(KEY_PHONE_VOICE, "").orEmpty()
+    set(value) = prefs.edit().putString(KEY_PHONE_VOICE, value.trim()).apply()
 
   /**
    * When the trust window shuts, in epoch millis. 0 means it was never opened.
@@ -424,6 +433,18 @@ public class Persistence public constructor(private val prefs: PrefsStore) {
         )
   }
 }
+
+/**
+ * The saved announcement voice, read straight from prefs without building a [Persistence]: the
+ * phone bridge service calls this off the main thread, and [Persistence]'s constructor runs
+ * migrations that must not race the activity's.
+ */
+public fun readPhoneVoice(context: Context): String =
+    context.applicationContext
+        .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_PHONE_VOICE, "")
+        .orEmpty()
+        .trim()
 
 /** Creates a [Persistence] backed by the app's Android [SharedPreferences]. */
 public fun Persistence(context: Context): Persistence =

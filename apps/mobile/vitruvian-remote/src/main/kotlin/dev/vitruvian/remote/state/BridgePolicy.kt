@@ -110,6 +110,34 @@ public data class BridgeAuditEntry(
     val approver: String,
 )
 
+/**
+ * Guards a cache against a slow fill landing after the cache was invalidated: take a [begin] token
+ * before the slow work, and only store the result if [stillCurrent] says no [invalidate] happened
+ * since. Thread-safe.
+ */
+public class GenerationGate {
+  private val generation = java.util.concurrent.atomic.AtomicLong(0)
+
+  public fun begin(): Long = generation.get()
+
+  public fun invalidate() {
+    generation.incrementAndGet()
+  }
+
+  public fun stillCurrent(token: Long): Boolean = generation.get() == token
+}
+
+/** One on-device announcement voice the phone offers, as the voice picker shows it. */
+public data class PhoneVoiceOption(
+    /** The engine's own id for the voice, stored as the choice. */
+    val name: String,
+    /** BCP 47 language tag, e.g. `en-US`. */
+    val languageTag: String,
+    /** `female`, `male`, or empty when the engine does not say. */
+    val gender: String,
+    val status: BridgePolicy.MlKitVoiceStatus,
+)
+
 /** The rules. */
 public object BridgePolicy {
   /** Default one-hour trust window duration. */
@@ -566,13 +594,18 @@ public object BridgePolicy {
     if (candidates.isEmpty()) return MlKitVoiceSelection.Unavailable
     val wanted = preferredName?.trim()?.takeIf { it.isNotEmpty() }
     if (wanted != null) {
+      // The picked voice when it is on the phone. Until its download finishes, the automatic
+      // choice below speaks instead: a picked voice never makes an announcement wait or fall back
+      // to the plain Android voice. The picker starts that download itself.
       val match = candidates.firstOrNull { it.name.equals(wanted, ignoreCase = true) }
-      when (match?.status) {
-        MlKitVoiceStatus.Available -> return MlKitVoiceSelection.Ready(match.name)
-        MlKitVoiceStatus.Downloadable -> return MlKitVoiceSelection.NeedsDownload(match.name)
-        MlKitVoiceStatus.Downloading -> return MlKitVoiceSelection.Unavailable
-        MlKitVoiceStatus.Unavailable,
-        null -> Unit
+      if (match?.status == MlKitVoiceStatus.Available) return MlKitVoiceSelection.Ready(match.name)
+      // Nothing is ready at all: the picked voice is the one worth fetching, not the first one.
+      if (match != null && candidates.none { it.status == MlKitVoiceStatus.Available }) {
+        when (match.status) {
+          MlKitVoiceStatus.Downloadable -> return MlKitVoiceSelection.NeedsDownload(match.name)
+          MlKitVoiceStatus.Downloading -> return MlKitVoiceSelection.Unavailable
+          else -> Unit
+        }
       }
     }
     candidates
@@ -591,6 +624,77 @@ public object BridgePolicy {
     return MlKitVoiceSelection.Unavailable
   }
 
+  /** The picker's one-line status for a voice. */
+  public fun voiceStatusLabel(status: MlKitVoiceStatus): String =
+      when (status) {
+        MlKitVoiceStatus.Available -> "on this phone"
+        MlKitVoiceStatus.Downloadable -> "download to use"
+        MlKitVoiceStatus.Downloading -> "downloading"
+        MlKitVoiceStatus.Unavailable -> "not available"
+      }
+
+  /**
+   * The picker's title for a voice: the engine id without its language prefix, readable, e.g.
+   * `en-us-x-star02` becomes "Star 02". Falls back to the raw id when it has no such shape.
+   */
+  public fun voiceTitle(name: String): String {
+    val core = name.substringAfterLast("-x-", name).substringBefore("-local")
+    val match = Regex("^([a-z]+)(\\d+)$").matchEntire(core) ?: return name
+    val (word, number) = match.destructured
+    return "${word.replaceFirstChar { it.uppercase() }} $number"
+  }
+
+  /**
+   * The picker's subtitle: gender when known and status, plus the language only when the list mixes
+   * languages ([showLanguage]), e.g. "female · on this phone".
+   */
+  public fun voiceSubtitle(
+      voice: PhoneVoiceOption,
+      showLanguage: Boolean = false,
+      displayLocale: java.util.Locale = java.util.Locale.getDefault(),
+  ): String =
+      listOf(
+              if (showLanguage)
+                  java.util.Locale.forLanguageTag(voice.languageTag)
+                      .getDisplayName(displayLocale)
+                      .ifBlank { voice.languageTag }
+              else "",
+              voice.gender,
+              voiceStatusLabel(voice.status),
+          )
+          .filter { it.isNotBlank() }
+          .joinToString(" · ")
+
+  /** Whether the voices span more than one language, so each row needs to say which. */
+  public fun voicesMixLanguages(voices: List<PhoneVoiceOption>): Boolean =
+      voices.map { it.languageTag.lowercase() }.distinct().size > 1
+
+  /**
+   * Voices in the order the picker lists them: ready ones first, then downloadable, then the rest,
+   * each group by name, so the voices you can hear right now are at the top.
+   */
+  public fun sortVoicesForPicker(voices: List<PhoneVoiceOption>): List<PhoneVoiceOption> =
+      voices.sortedWith(
+          compareBy<PhoneVoiceOption>({
+                when (it.status) {
+                  MlKitVoiceStatus.Available -> 0
+                  MlKitVoiceStatus.Downloading -> 1
+                  MlKitVoiceStatus.Downloadable -> 2
+                  MlKitVoiceStatus.Unavailable -> 3
+                }
+              })
+              .thenBy { it.name.lowercase() })
+
+  /**
+   * The voice the picker marks as in use: the saved choice when the phone still offers it,
+   * otherwise the one automatic mode would speak with ([selectMlKitVoice] with no preference). Null
+   * when none can speak now.
+   */
+  public fun voiceInUse(voices: List<PhoneVoiceOption>, saved: String): String? {
+    val candidates = voices.map { MlKitVoiceCandidate(it.name, it.languageTag, it.status) }
+    return (selectMlKitVoice(candidates, saved) as? MlKitVoiceSelection.Ready)?.name
+  }
+
   /** How long a cached voice that was ready to speak is trusted before it is looked up again. */
   public const val MLKIT_READY_CACHE_MS: Long = 30L * 60L * 1000L
 
@@ -600,6 +704,23 @@ public object BridgePolicy {
    * announcements in between skip the lookup and go straight to the Android voice.
    */
   public const val MLKIT_NOT_READY_CACHE_MS: Long = 10L * 60L * 1000L
+
+  /**
+   * The status the picker shows: [Downloading][MlKitVoiceStatus.Downloading] while this app has a
+   * download of [name] running, even if the engine has not caught up yet, so Get never reappears
+   * mid-download.
+   */
+  public fun statusWithInFlight(
+      status: MlKitVoiceStatus,
+      name: String,
+      inFlight: Set<String>,
+  ): MlKitVoiceStatus =
+      if (status == MlKitVoiceStatus.Downloadable && name in inFlight) MlKitVoiceStatus.Downloading
+      else status
+
+  /** The picker's Get starts a download unless that same voice is already downloading. */
+  public fun pickerShouldStartDownload(name: String, inFlight: Set<String>): Boolean =
+      name.isNotBlank() && name !in inFlight
 
   /** Whether a cached voice lookup [ageMs] old is still fresh enough to reuse. */
   public fun mlKitVoiceCacheFresh(ageMs: Long, ready: Boolean): Boolean =
@@ -670,6 +791,14 @@ public object BridgePolicy {
 
   /** How long ML Kit may take to start speaking before the Android voice takes over. */
   public const val MLKIT_START_TIMEOUT_MS: Long = 10_000L
+
+  /**
+   * Milliseconds left for ML Kit to finish once it has started: the whole [timeoutSeconds] minus
+   * the time already spent ([elapsedMs]), never negative. Measured from the real start, not by
+   * subtracting the full start window, which would leave a short sample almost no time.
+   */
+  public fun mlKitFinishWindowMs(timeoutSeconds: Long, elapsedMs: Long): Long =
+      (timeoutSeconds * 1000L - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(0L)
 
   /** Seconds the Android voice needs to start up, on top of the speech itself. */
   public const val ANDROID_TTS_STARTUP_S: Long = 5L

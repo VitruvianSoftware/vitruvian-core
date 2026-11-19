@@ -67,6 +67,8 @@ import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
+import dev.vitruvian.remote.state.PhoneVoiceOption
+import dev.vitruvian.remote.state.PhoneVoices
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TrustDuration
 import dev.vitruvian.remote.update.AppUpdater
@@ -74,6 +76,7 @@ import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /**
@@ -279,6 +282,7 @@ public class MainActivity : ComponentActivity() {
                     enableBluetooth = ::requestEnableBluetoothSystem,
                 ),
             updates = AppUpdater(this),
+            phoneVoices = DevicePhoneVoices(),
         )
     BridgeHub.addListener(bridgeListener)
     pushBridgeStatus()
@@ -322,6 +326,25 @@ public class MainActivity : ComponentActivity() {
             pending = BridgeHub.pending?.let { BridgePending(it.id, it.tool, it.question) },
             audit = BridgeHub.audit,
         ))
+  }
+
+  /**
+   * The picker's port onto [PhoneTools]' ML Kit voices. Every call runs on IO: the tool's calls
+   * block on the speech engine and take its lock, which an announcement may be holding.
+   */
+  private inner class DevicePhoneVoices : PhoneVoices {
+    override suspend fun list(): List<PhoneVoiceOption> =
+        withContext(Dispatchers.IO) { PhoneTools.listMlKitVoices() }
+
+    override suspend fun download(name: String): Boolean =
+        withContext(Dispatchers.IO) { PhoneTools.downloadMlKitVoice(name) }
+
+    override suspend fun preview(name: String): String? =
+        withContext(Dispatchers.IO) { PhoneTools.previewMlKitVoice(this@MainActivity, name) }
+
+    override suspend fun choiceChanged(name: String) {
+      withContext(Dispatchers.IO) { PhoneTools.reloadPreferredMlKitVoice(this@MainActivity) }
+    }
   }
 
   /**

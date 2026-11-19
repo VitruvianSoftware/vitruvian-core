@@ -148,6 +148,11 @@ public class RemoteState(
      */
     private val updates: AppUpdates? = null,
     /**
+     * The phone's on-device announcement voices -- a port for the same reason as [bridge]. Null in
+     * previews and tests, and the Phone Bridge page then draws no voice picker.
+     */
+    private val phoneVoices: PhoneVoices? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -947,6 +952,94 @@ public class RemoteState(
   /** The last [BridgePolicy.AUDIT_LIMIT] tool calls, newest first. */
   public var bridgeAudit: List<BridgeAuditEntry> by mutableStateOf(emptyList())
     private set
+
+  // --- announcement voice -----------------------------------------------
+
+  /** Whether this build can list on-device voices at all (false in previews and tests). */
+  public val phoneVoicesAvailable: Boolean
+    get() = phoneVoices != null
+
+  /** The on-device voices, in picker order. Empty until [refreshPhoneVoices] has run. */
+  public var phoneVoiceOptions: List<PhoneVoiceOption> by mutableStateOf(emptyList())
+    private set
+
+  /** The saved choice; empty means automatic. */
+  public var phoneVoice: String by mutableStateOf(persistence.phoneVoice)
+    private set
+
+  /** True while the voice list is loading. */
+  public var phoneVoicesLoading: Boolean by mutableStateOf(false)
+    private set
+
+  /** The voice whose sample is playing, if any. */
+  public var phoneVoicePreviewing: String? by mutableStateOf(null)
+    private set
+
+  /** One line under the picker: why a sample did not play, or that a download started. */
+  public var phoneVoiceNote: String? by mutableStateOf(null)
+    private set
+
+  /** The voice announcements use right now, for the picker's check mark. */
+  public val phoneVoiceInUse: String?
+    get() = BridgePolicy.voiceInUse(phoneVoiceOptions, phoneVoice)
+
+  private var phoneVoicesRefresh: kotlinx.coroutines.Job? = null
+  private var phoneVoicesRefreshToken = 0
+
+  /**
+   * Loads the voice list. Called when the Phone Bridge page shows, and after a pick. A new refresh
+   * cancels the one before it, so an older, slower answer can never overwrite a newer one.
+   */
+  public fun refreshPhoneVoices() {
+    val voices = phoneVoices ?: return
+    phoneVoicesRefresh?.cancel()
+    val token = ++phoneVoicesRefreshToken
+    phoneVoicesLoading = true
+    phoneVoicesRefresh =
+        scope.launch {
+          try {
+            phoneVoiceOptions = BridgePolicy.sortVoicesForPicker(voices.list())
+          } finally {
+            // Only the newest refresh clears the spinner; a cancelled one leaves it to that.
+            if (token == phoneVoicesRefreshToken) phoneVoicesLoading = false
+          }
+        }
+  }
+
+  /**
+   * Picks [name] for announcements, or automatic for an empty name. A voice that is not on the
+   * phone yet starts downloading now; until it finishes, announcements keep using one that is.
+   */
+  public fun selectPhoneVoice(name: String) {
+    val voices = phoneVoices ?: return
+    phoneVoice = name
+    persistence.phoneVoice = name
+    val option = phoneVoiceOptions.firstOrNull { it.name == name }
+    phoneVoiceNote = null
+    log("info", "voice · ${name.ifEmpty { "automatic" }}")
+    scope.launch {
+      voices.choiceChanged(name)
+      if (option?.status == BridgePolicy.MlKitVoiceStatus.Downloadable) {
+        val started = voices.download(name)
+        phoneVoiceNote =
+            if (started) "Downloading. Announcements switch to it when it finishes."
+            else "Already downloading. Announcements switch to it when it finishes."
+      }
+      // The list now reports the download (the tool tracks it), so this cannot undo the change.
+      refreshPhoneVoices()
+    }
+  }
+
+  /** Plays a sample of [name]. One at a time; a sample never plays over an announcement. */
+  public fun previewPhoneVoice(name: String) {
+    val voices = phoneVoices ?: return
+    if (phoneVoicePreviewing != null) return
+    phoneVoicePreviewing = name
+    scope.launch {
+      phoneVoiceNote = voices.preview(name)
+      phoneVoicePreviewing = null
+    }
+  }
 
   /** Every permission the bridge's tools need, with its state. Refreshed when the screen shows. */
   public var bridgePermissions: List<BridgePermissionState> by mutableStateOf(emptyList())
