@@ -41,70 +41,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Join the Headscale mesh (ephemeral, tag:ci)
-      uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+    - name: Set up the Zitadel tunnel via homelab-tunnel-setup
+      uses: ./.github/actions/homelab-tunnel-setup
       with:
-        # Self-hosted Headscale, not commercial Tailscale (which is now
-        # offline break-glass on the cluster hosts; see
-        # docs/admin/headscale-tailscale-failover.md). Headscale has no OAuth
-        # clients, so this is a pre-auth key. The key itself carries tag:ci and
-        # makes the node ephemeral, so no `tags:` here (that would add
-        # --advertise-tags, which a tagged key does not need).
-        # The action marks `authkey` deprecated in favour of OAuth; the warning
-        # it prints is expected here.
-        authkey: ${{ inputs.headscale-authkey }}
-        args: --login-server=https://headscale.ipv1337.dev
-        # Pinned, not "latest": a client newer than Headscale v0.26.1 knows is
-        # a risk. 1.104.x is what this action version defaults to and what
-        # James's Mac (1.104.5) already runs against this Headscale.
-        version: 1.104.4
-        hostname: ci-${{ github.run_id }}-${{ github.run_attempt }}
-        # v4 already passes `--accept-routes`; don't add it in args.
-
-    - name: Pick a reachable Envoy gateway node
-      shell: bash
-      run: |
-        set -euo pipefail
-        # The Envoy gateway's HTTP NodePort (pinned to 30265 in
-        # gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml) on the
-        # wired cluster nodes' Headscale addresses (headscale-node-agent). The
-        # gateway Service is externalTrafficPolicy: Cluster, so any node
-        # forwards to Envoy; trying all three means one node being down does
-        # not break CI. These are the `hosts` in
-        # gitops/argocd/platform/headscale/policy.hujson, which allows tag:ci
-        # to reach exactly these ports -- keep the two lists in step.
-        # Order: nuc9i9 first, the node the workflows used before.
-        candidates="100.64.0.8 100.64.0.6 100.64.0.7"
-        for attempt in $(seq 1 10); do
-          for ip in $candidates; do
-            if curl -fsS --max-time 5 -H 'Host: auth.ipv1337.dev' \
-                "http://${ip}:30265/debug/healthz" \
-                >/dev/null 2>&1; then
-              echo "Zitadel answers through ${ip}:30265 (attempt ${attempt})"
-              echo "ZITADEL_GATEWAY=${ip}:30265" >>"$GITHUB_ENV"
-              exit 0
-            fi
-          done
-          sleep 3
-        done
-        echo "::error::No cluster node answered Zitadel healthz on :30265" \
-          "over Headscale (${candidates})."
-        tailscale status || true
-        exit 1
-
-    - name: Prepare the internal TLS route to the Envoy gateway
-      shell: bash
-      run: |
-        set -euo pipefail
-        sudo apt-get update -qq && sudo apt-get install -y -qq socat
-        # Zitadel ties the JWT-profile audience to the connection scheme and
-        # only accepts the https issuer, so the provider must see HTTPS.
-        # Terminate TLS locally with a trusted self-signed cert for the host,
-        # forwarding the decrypted HTTP (Host preserved) to the internal
-        # Envoy gateway.
-        openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem \
-          -days 1 -subj "/CN=auth.ipv1337.dev" -addext "subjectAltName=DNS:auth.ipv1337.dev"
-        sudo cp /tmp/c.pem /usr/local/share/ca-certificates/auth-internal.crt
-        sudo update-ca-certificates >/dev/null
-        cat /tmp/c.pem /tmp/k.pem | sudo tee /etc/auth-internal-ck.pem >/dev/null
-        echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts >/dev/null
+        headscale-authkey: ${{ inputs.headscale-authkey }}
+        hostname: auth.ipv1337.dev
+        health-path: /debug/healthz
+        gateway-scheme: http
+        gateway-env-var: ZITADEL_GATEWAY
+        tls-cert-bundle: /etc/auth-internal-ck.pem

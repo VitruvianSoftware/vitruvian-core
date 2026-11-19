@@ -126,7 +126,7 @@ delivery](../../docs/concepts/sdlc.md):
 | Secret | What it is |
 |---|---|
 | `ZITADEL_MACHINE_KEY_JSON` | Zitadel machine-user JWT-profile key the Pulumi zitadel provider authenticates with (the `zitadel-infra` job). |
-| `HEADSCALE_CI_AUTHKEY` | Headscale pre-auth key (reusable, ephemeral, `tag:ci`) the Zitadel apply workflows join the mesh with, via `.github/actions/zitadel-tunnel-setup`. Also in the `-nonproduction` and `-production` environments. Expiry and rotation: [headscale README](../../gitops/argocd/platform/headscale/README.md#ci-pre-auth-key-headscale_ci_authkey). |
+| `HEADSCALE_CI_AUTHKEY` | Headscale pre-auth key (reusable, ephemeral, `tag:ci`) the Zitadel and Sentry apply workflows join the mesh with, via `.github/actions/homelab-tunnel-setup`. Also in the `-nonproduction`, `-production`, and `sentry-production` environments. Expiry and rotation: [headscale README](../../gitops/argocd/platform/headscale/README.md#ci-pre-auth-key-headscale_ci_authkey). |
 | `TS_OAUTH_CLIENT_ID` | Break-glass: the commercial Tailscale OAuth client the CI on-ramp used before Headscale. Nothing reads it today; it is kept on purpose so CI can switch back to commercial Tailscale (see `docs/admin/headscale-tailscale-failover.md`). Do not remove it. |
 | `TS_OAUTH_SECRET` | Break-glass, as above (paired with the id). |
 
@@ -215,6 +215,25 @@ only `main` may deploy to it, with no required reviewer.
 
 To set it: `set -- pagerduty-production PAGERDUTY_TOKEN` (also backs the store
 up to Bitwarden), then `apply -- pagerduty-production`.
+
+## `sentry-production`
+
+Secrets of the GitHub Environment that
+[`sentry-pagerduty-apply.yaml`](../../.github/workflows/sentry-pagerduty-apply.yaml)'s
+`apply` job binds. The environment is declared in
+[`repo-config`](../../infrastructure/pulumi/platform/repo-config/sentry_environments.go):
+only `main` may deploy to it, with no required reviewer.
+
+| Environment | Secret | What it is |
+|---|---|---|
+| `sentry-production` | `SENTRY_TOKEN` | Dedicated CI Sentry internal-integration token minted by `bazel run //tools/sentry:ci-token`, used by `vitruvian-sentry-pagerduty` to enumerate projects and reconcile PagerDuty workflow alert rules. |
+| `sentry-production` | `HEADSCALE_CI_AUTHKEY` | Headscale pre-auth key (reusable, ephemeral, `tag:ci`) used to join the mesh via `.github/actions/homelab-tunnel-setup` — the same value seeded in the `oauth-user-inspector-*` environments. |
+
+To set them: `set -- sentry-production SENTRY_TOKEN` (using the token from
+`bazel run //tools/sentry:ci-token`), copy `HEADSCALE_CI_AUTHKEY` from
+`secrets/oauth-user-inspector-development/HEADSCALE_CI_AUTHKEY` into
+`secrets/sentry-production/HEADSCALE_CI_AUTHKEY` (`bw-push` backs the store up
+to Bitwarden), then `apply -- sentry-production`.
 
 ## Subdirectories & Boundaries
 - [src](./src/README.md): Component package providing implementation for tools/sync-env-secrets/src.

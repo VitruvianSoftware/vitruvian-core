@@ -1,0 +1,196 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: sentry-pagerduty-apply
+
+# Reconciles infrastructure/pulumi/platform/sentry-pagerduty (stack production)
+# against self-hosted Sentry (https://sentry.lab.ipv1337.dev) over the Headscale
+# mesh -> Envoy Gateway https-sentry listener (:31103). Push to main and the
+# 6-hour schedule run `pulumi up` (so projects created outside git also receive
+# high-priority PagerDuty alert rules); manual workflow_dispatch defaults to
+# `preview`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/pulumi/platform/sentry-pagerduty/**"
+      - "infrastructure/pulumi/platform/sentry/**"
+      - ".github/workflows/sentry-pagerduty-apply.yaml"
+      - ".github/actions/homelab-tunnel-setup/**"
+      - ".github/actions/pulumi-summary/**"
+  schedule:
+    # Every 6 hours so Sentry projects created outside git get PagerDuty
+    # high-priority alert rules without waiting for a repository push.
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preview (safe, default) | up (reconciles live Sentry alert rules)"
+        required: true
+        default: preview
+        type: choice
+        options: [preview, up]
+
+permissions:
+  contents: read
+
+# Serialize applies of this stack; never cancel an in-flight pulumi up.
+concurrency:
+  group: sentry-pagerduty-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    # Main-only GitHub Environment (no required reviewer) holding SENTRY_TOKEN
+    # and HEADSCALE_CI_AUTHKEY.
+    environment: sentry-production
+    env:
+      GOWORK: off
+      # Authenticates Pulumi's github:// plugin downloads (rate limits).
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Check whether SENTRY_TOKEN is seeded before joining the mesh or running
+      # Pulumi; never print the token. An environment with no token yet exits 0
+      # with a notice so merging before the token is seeded leaves main green.
+      - name: Check SENTRY_TOKEN is present
+        id: key
+        env:
+          SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+          HEADSCALE_CI_AUTHKEY: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SENTRY_TOKEN:-}" ]; then
+            echo "::notice::No SENTRY_TOKEN in the sentry-production environment yet, so nothing was applied. See infrastructure/pulumi/platform/sentry-pagerduty/README.md."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${HEADSCALE_CI_AUTHKEY:-}" ]; then
+            echo "::error::SENTRY_TOKEN is set in sentry-production, but HEADSCALE_CI_AUTHKEY is missing; see tools/sync-env-secrets/README.md." >&2
+            exit 1
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up the Sentry homelab tunnel
+        if: steps.key.outputs.present == 'true'
+        uses: ./.github/actions/homelab-tunnel-setup
+        with:
+          headscale-authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
+          hostname: sentry.lab.ipv1337.dev
+          health-path: /_health/
+          gateway-scheme: https
+
+      - name: Set up Go
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: infrastructure/pulumi/platform/sentry-pagerduty/go.mod
+          cache-dependency-path: infrastructure/pulumi/platform/sentry-pagerduty/go.sum
+
+      - name: Install Pulumi
+        if: steps.key.outputs.present == 'true'
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
+
+      - name: Run Pulumi
+        id: pulumi
+        if: steps.key.outputs.present == 'true'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_ACTION: ${{ inputs.action }}
+        working-directory: infrastructure/pulumi/platform/sentry-pagerduty
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            action="${DISPATCH_ACTION:-preview}"
+          else
+            action="up"
+          fi
+          if [ "$action" != "preview" ] && [ "$action" != "up" ]; then
+            echo "::error::unexpected action '${action}' (want preview or up)" >&2
+            exit 1
+          fi
+
+          # The 409 retry helper, //tools/pulumi:retry-concurrent-update. This
+          # job sets up no Bazel and the helper is one std-only file, so the
+          # runner's rustc builds it from the checkout.
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          rustc --edition 2021 -O \
+            "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" \
+            -o "$retry"
+
+          # Forward 127.0.0.1:443 -> $HOMELAB_GATEWAY (NodePort :31103 on a
+          # cluster node's Headscale IP) preserving TLS/SNI so Envoy terminates
+          # HTTPS with the genuine sentry-tls certificate. Backgrounded in this
+          # step so socat lives for the whole Pulumi command.
+          : "${HOMELAB_GATEWAY:?homelab-tunnel-setup did not pick a gateway node}"
+          sudo socat TCP-LISTEN:443,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
+          socat_pid=$!
+          trap 'sudo kill "$socat_pid" 2>/dev/null || sudo pkill -f "TCP-LISTEN:443" 2>/dev/null || true' EXIT
+
+          healthy=false
+          for _ in $(seq 1 15); do
+            if curl -fsS --max-time 5 https://sentry.lab.ipv1337.dev/_health/ >/dev/null 2>&1 \
+               && curl -fsS --max-time 5 https://sentry.lab.ipv1337.dev/api/0/ >/dev/null 2>&1; then
+              healthy=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" != "true" ]; then
+            echo "::error::Sentry route https://sentry.lab.ipv1337.dev (/_health/ and /api/0/) is unreachable through ${HOMELAB_GATEWAY}" >&2
+            curl -sS -D - -o /dev/null --max-time 5 https://sentry.lab.ipv1337.dev/_health/ >&2 || true
+            exit 1
+          fi
+          echo "internal route to sentry.lab.ipv1337.dev is up"
+
+          out_file="${RUNNER_TEMP}/pulumi-out.txt"
+          : > "$out_file"
+          set +e
+          pulumi stack select -c production 2>&1 | tee -a "$out_file"
+          ec="${PIPESTATUS[0]}"
+          if [ "$ec" -eq 0 ]; then
+            if [ "$action" = "up" ]; then
+              "$retry" pulumi up --yes --diff --non-interactive 2>&1 | tee -a "$out_file"
+            else
+              "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"
+            fi
+            ec="${PIPESTATUS[0]}"
+          fi
+          set -e
+          echo "exit_code=${ec}" >> "$GITHUB_OUTPUT"
+          exit "${ec}"
+
+      - name: Pulumi digest → step summary
+        if: always() && steps.key.outputs.present == 'true'
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: sentry-pagerduty production
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code || '1' }}

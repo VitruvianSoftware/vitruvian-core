@@ -99,13 +99,12 @@ fn read_root_file(rel: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
 }
 
-const TUNNEL_ACTION: &str = ".github/actions/zitadel-tunnel-setup/action.yml";
+const TUNNEL_ACTION: &str = ".github/actions/homelab-tunnel-setup/action.yml";
+#[cfg(test)]
+const ZITADEL_TUNNEL_ACTION: &str = ".github/actions/zitadel-tunnel-setup/action.yml";
 
-/// The port the tunnel action probes and tunnels to, from its
-/// `"http://${ip}:PORT/..."` healthz URL.
-pub fn load_tunnel_port() -> String {
+fn load_tunnel_probe_port(marker: &str) -> String {
     let raw = read_root_file(TUNNEL_ACTION);
-    let marker = "http://${ip}:";
     let at = raw
         .find(marker)
         .unwrap_or_else(|| panic!("no {marker} probe in {TUNNEL_ACTION}"));
@@ -115,13 +114,25 @@ pub fn load_tunnel_port() -> String {
         .collect()
 }
 
-/// The Envoy gateway's pinned HTTP nodePort (the `http-80` port entry).
-pub fn load_envoy_http_nodeport() -> String {
+/// The HTTP port the tunnel action probes and tunnels to, from its
+/// `"http://${ip}:PORT..."` health probe.
+pub fn load_tunnel_http_port() -> String {
+    load_tunnel_probe_port("http://${ip}:")
+}
+
+/// The HTTPS port the tunnel action probes and tunnels to, from its
+/// `"https://${TARGET_HOSTNAME}:PORT..."` health probe.
+pub fn load_tunnel_https_port() -> String {
+    load_tunnel_probe_port("https://${TARGET_HOSTNAME}:")
+}
+
+fn load_envoy_nodeport(port_name: &str) -> String {
     let raw = read_root_file("gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml");
-    let mut lines = raw.lines().skip_while(|l| l.trim() != "- name: http-80");
+    let header = format!("- name: {port_name}");
+    let mut lines = raw.lines().skip_while(|l| l.trim() != header);
     lines
         .next()
-        .expect("no http-80 port entry in envoyproxy.yaml");
+        .unwrap_or_else(|| panic!("no {port_name} port entry in envoyproxy.yaml"));
     lines
         .take_while(|l| !l.trim_start().starts_with("- "))
         .find_map(|l| {
@@ -129,10 +140,20 @@ pub fn load_envoy_http_nodeport() -> String {
                 .strip_prefix("nodePort:")
                 .map(|v| v.trim().to_string())
         })
-        .expect("http-80 has no nodePort in envoyproxy.yaml")
+        .unwrap_or_else(|| panic!("{port_name} has no nodePort in envoyproxy.yaml"))
 }
 
-/// The candidate gateway IPs the Zitadel tunnel action tries, from its
+/// The Envoy gateway's pinned HTTP nodePort (the `http-80` port entry).
+pub fn load_envoy_http_nodeport() -> String {
+    load_envoy_nodeport("http-80")
+}
+
+/// The Envoy gateway's pinned HTTPS nodePort (the `https-443` port entry).
+pub fn load_envoy_https_nodeport() -> String {
+    load_envoy_nodeport("https-443")
+}
+
+/// The candidate gateway IPs the homelab tunnel action tries, from its
 /// `candidates="..."` line.
 pub fn load_tunnel_candidates() -> Vec<String> {
     let rel = TUNNEL_ACTION;
@@ -413,6 +434,17 @@ mod tests {
             "tag:ci needs a tagOwners entry"
         );
         let hosts = policy["hosts"].as_object().expect("hosts");
+        let http_port = load_envoy_http_nodeport();
+        let https_port = load_envoy_https_nodeport();
+        let allowed_ports = [http_port.as_str(), https_port.as_str()];
+        let mut expected_dst: Vec<String> = Vec::new();
+        for host in hosts.keys() {
+            for port in &allowed_ports {
+                expected_dst.push(format!("{host}:{port}"));
+            }
+        }
+        expected_dst.sort();
+
         let mut ci_rules = 0;
         for rule in policy["acls"].as_array().expect("acls") {
             let src: Vec<&str> = rule["src"]
@@ -431,6 +463,7 @@ mod tests {
                 Some("tcp"),
                 "the tag:ci rule must be TCP-only (no UDP or ICMP to the nodes)"
             );
+            let mut got_dst: Vec<String> = Vec::new();
             for d in rule["dst"]
                 .as_array()
                 .expect("dst")
@@ -438,15 +471,21 @@ mod tests {
                 .filter_map(Value::as_str)
             {
                 let (host, port) = d.rsplit_once(':').expect("dst host:port");
-                assert_eq!(
-                    port, "30265",
-                    "tag:ci may reach only the Envoy gateway NodePort, not {d}"
+                assert!(
+                    allowed_ports.contains(&port),
+                    "tag:ci may reach only the Envoy gateway NodePorts ({allowed_ports:?}), not {d}"
                 );
                 assert!(
                     hosts.contains_key(host),
                     "tag:ci dst {host} is not a named host"
                 );
+                got_dst.push(d.to_string());
             }
+            got_dst.sort();
+            assert_eq!(
+                got_dst, expected_dst,
+                "tag:ci dst must cover every policy host on both Envoy gateway NodePorts"
+            );
         }
         assert_eq!(ci_rules, 1, "expected exactly one tag:ci rule");
     }
@@ -466,18 +505,24 @@ mod tests {
         candidates.sort();
         assert_eq!(
             candidates, hosts,
-            "zitadel-tunnel-setup's candidate nodes must be exactly the policy's hosts, \
+            "homelab-tunnel-setup's candidate nodes must be exactly the policy's hosts, \
              or CI would try a node the ACL blocks (or the ACL would open one CI never uses)"
         );
     }
 
     #[test]
     fn test_gateway_port_agrees_across_policy_tunnel_and_envoy() {
-        let envoy = load_envoy_http_nodeport();
+        let http_envoy = load_envoy_http_nodeport();
+        let https_envoy = load_envoy_https_nodeport();
         assert_eq!(
-            load_tunnel_port(),
-            envoy,
-            "zitadel-tunnel-setup must probe the Envoy gateway's pinned HTTP nodePort"
+            load_tunnel_http_port(),
+            http_envoy,
+            "homelab-tunnel-setup must probe the Envoy gateway's pinned HTTP nodePort"
+        );
+        assert_eq!(
+            load_tunnel_https_port(),
+            https_envoy,
+            "homelab-tunnel-setup must probe the Envoy gateway's pinned HTTPS nodePort"
         );
         let policy = load_policy();
         for rule in policy["acls"].as_array().expect("acls") {
@@ -493,14 +538,23 @@ mod tests {
                     .iter()
                     .filter_map(Value::as_str)
                 {
-                    assert_eq!(
-                        d.rsplit_once(':').map(|(_, p)| p),
-                        Some(envoy.as_str()),
-                        "tag:ci dst {d} must use the Envoy gateway nodePort {envoy}"
+                    let port = d.rsplit_once(':').map(|(_, p)| p);
+                    assert!(
+                        port == Some(http_envoy.as_str()) || port == Some(https_envoy.as_str()),
+                        "tag:ci dst {d} must use an Envoy gateway nodePort ({http_envoy} or {https_envoy})"
                     );
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_zitadel_tunnel_delegates_to_homelab_tunnel() {
+        let raw = read_root_file(ZITADEL_TUNNEL_ACTION);
+        assert!(
+            raw.contains("uses: ./.github/actions/homelab-tunnel-setup"),
+            "{ZITADEL_TUNNEL_ACTION} must delegate to ./.github/actions/homelab-tunnel-setup"
+        );
     }
 
     #[test]
