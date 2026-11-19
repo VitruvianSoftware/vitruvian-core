@@ -118,8 +118,38 @@ fn socat_listeners(text: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// The listener's own socat address (the first whitespace-separated word,
+/// e.g. `TCP-LISTEN:443,bind=127.0.0.1,reuseaddr,fork`) must carry exactly one
+/// `bind=` option, and it must be loopback. A second `bind=0.0.0.0` beside it
+/// does not count as safe.
 fn has_loopback_bind(listener: &str) -> bool {
-    listener.split(',').any(|opt| opt == "bind=127.0.0.1") || listener.contains(",bind=127.0.0.1,")
+    let addr = listener.split_whitespace().next().unwrap_or("");
+    let binds: Vec<&str> = addr.split(',').filter(|o| o.starts_with("bind=")).collect();
+    binds == ["bind=127.0.0.1"]
+}
+
+#[test]
+fn loopback_bind_check_is_strict() {
+    assert!(has_loopback_bind(
+        "TCP-LISTEN:443,bind=127.0.0.1,reuseaddr,fork TCP:x:1"
+    ));
+    assert!(has_loopback_bind(
+        "OPENSSL-LISTEN:443,bind=127.0.0.1,reuseaddr,fork,cert=/c.pem,verify=0 \\"
+    ));
+    assert!(!has_loopback_bind("TCP-LISTEN:443,reuseaddr,fork TCP:x:1"));
+    assert!(!has_loopback_bind(
+        "TCP-LISTEN:443,bind=0.0.0.0,bind=127.0.0.1,fork TCP:x:1"
+    ));
+    assert!(!has_loopback_bind(
+        "TCP-LISTEN:443,bind=127.0.0.1,bind=0.0.0.0,fork TCP:x:1"
+    ));
+    assert!(!has_loopback_bind(
+        "TCP-LISTEN:443,bind=0.0.0.0,fork TCP:x:1"
+    ));
+    // bind on the connect side, not the listener, does not count.
+    assert!(!has_loopback_bind(
+        "TCP-LISTEN:443,fork TCP:x:1,bind=127.0.0.1"
+    ));
 }
 
 fn stack_select_violations(text: &str) -> Vec<(usize, String)> {
