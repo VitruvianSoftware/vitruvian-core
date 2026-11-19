@@ -316,6 +316,10 @@ struct CreateAppPayload<'a> {
     scopes: &'a [&'static str],
     #[serde(rename = "verifyInstall")]
     verify_install: bool,
+    // Sentry 26.10.1 rejects a missing value ("may not be null"). The CI app
+    // is never an alert-rule action target.
+    #[serde(rename = "isAlertable")]
+    is_alertable: bool,
     events: [&'a str; 0],
     author: &'a str,
     overview: &'a str,
@@ -336,6 +340,7 @@ pub fn build_create_app_body(name: &str, org: &str) -> String {
         is_internal: true,
         scopes: &REQUIRED_SCOPES,
         verify_install: false,
+        is_alertable: false,
         events: [],
         author: APP_AUTHOR,
         overview: APP_OVERVIEW,

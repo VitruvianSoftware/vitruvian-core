@@ -254,6 +254,10 @@ fn create_path_creates_app_with_eight_scopes_prints_ui_link_and_protects_token()
     assert_eq!(payload["name"], "vitruvian-ci");
     assert_eq!(payload["organization"], "sentry");
     assert_eq!(payload["isInternal"], true);
+    assert_eq!(
+        payload["isAlertable"], false,
+        "Sentry 26.10.1 refuses a null isAlertable"
+    );
     assert_eq!(payload["verifyInstall"], false);
     assert_eq!(payload["events"], serde_json::json!([]));
     assert_eq!(payload["author"], "Vitruvian Software");
