@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//apps/web/mini-party:esbuild/package_json.bzl", esbuild = "bin")
 load("@npm//apps/web/mini-party:tsx/package_json.bzl", tsx = "bin")
 load("@npm//apps/web/mini-party:typescript/package_json.bzl", typescript = "bin")
 load("@npm//apps/web/mini-party:vite/package_json.bzl", vite = "bin")
@@ -45,8 +46,9 @@ vite.vite(
     out_dirs = ["dist"],
 )
 
-# The same client for a static host (GitHub Pages): no server, so online rooms
-# are left out. The mirror's .github/workflows/pages.yml builds it the same way.
+# The same client for GitHub Pages, which has no server: online rooms go to the
+# homelab's rooms server instead. The mirror's .github/workflows/pages.yml
+# builds it the same way.
 vite.vite(
     name = "build_static",
     srcs = glob(["src/**"]) + [
@@ -60,7 +62,7 @@ vite.vite(
     chdir = package_name(),
     env = {
         "OUT_DIR": "dist-static",
-        "VITE_REMOTE_PLAY": "off",
+        "VITE_ROOMS_URL": "https://mini-games-rooms.vitruviansoftware.dev",
     },
     out_dirs = ["dist-static"],
 )
@@ -75,6 +77,7 @@ sh_test(
     data = [
         ":build",
         ":build_static",
+        ":server_bundle",
     ],
 )
 
@@ -93,6 +96,27 @@ sh_test(
         "//:pnpm-workspace.yaml",
         "//tools/copybara:copy.bara.sky",
     ],
+)
+
+# The rooms-only server as one ES module, exactly as the container image runs
+# it (the Dockerfile runs the same build:server script).
+esbuild.esbuild(
+    name = "server_bundle",
+    srcs = glob(["server/**"]) + [
+        "package.json",
+        "server.ts",
+        ":node_modules",
+    ],
+    outs = ["dist-server/server.mjs"],
+    args = [
+        "server.ts",
+        "--bundle",
+        "--platform=node",
+        "--format=esm",
+        "--packages=external",
+        "--outfile=dist-server/server.mjs",
+    ],
+    chdir = package_name(),
 )
 
 # Runs the game: the built client plus the multiplayer server, on $PORT (3000).

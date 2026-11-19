@@ -21,9 +21,36 @@
  */
 
 import type { Server as HttpServer } from "http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 
 export const MAX_PLAYERS = 4;
+
+// Limits for a server open to the internet. Defaults suit a party-game relay
+// on one small pod; each can be overridden when attaching.
+export interface Limits {
+  // Rooms that can exist at once. A join that would create another is refused.
+  maxRooms: number;
+  // Sockets connected at once. Past this, new connections are dropped.
+  maxConnections: number;
+  // Largest message a client may send, in bytes.
+  maxMessageBytes: number;
+  // Events one socket may send per second before the rest are dropped.
+  maxEventsPerSecond: number;
+}
+
+export const DEFAULT_LIMITS: Limits = {
+  maxRooms: 500,
+  maxConnections: 2000,
+  maxMessageBytes: 16 * 1024,
+  maxEventsPerSecond: 60,
+};
+
+export interface GameServerOptions {
+  // Web origins allowed to connect from another site, e.g. the GitHub Pages
+  // game at https://mini-games.vitruviansoftware.dev. Empty: same origin only.
+  allowedOrigins?: string[];
+  limits?: Partial<Limits>;
+}
 
 export interface RoomPlayer {
   id: number;
@@ -36,6 +63,10 @@ interface Room {
   players: RoomPlayer[];
 }
 
+const ROOM_ID = /^[A-Za-z0-9]{1,16}$/;
+const MAX_NAME = 24;
+const MAX_COLOR = 16;
+
 // The lowest seat number nobody in the room holds. Seats are reused after a
 // player leaves, so two players can never share an id.
 export function nextFreeSeat(players: RoomPlayer[]): number {
@@ -45,63 +76,153 @@ export function nextFreeSeat(players: RoomPlayer[]): number {
   return seat;
 }
 
+function isSameOrigin(origin: string, host: string | undefined): boolean {
+  try {
+    return host !== undefined && new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+// Parses a comma-separated origin list such as ALLOWED_ORIGINS.
+export function parseOrigins(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
 // Attaches the multiplayer relay to an HTTP server. Rooms live in memory: they
-// exist only while at least one player is connected to them.
-export function attachGameServer(httpServer: HttpServer) {
-  const io = new Server(httpServer);
+// exist only while at least one player is connected to them, and a restart
+// ends every game in progress.
+export function attachGameServer(
+  httpServer: HttpServer,
+  options: GameServerOptions = {},
+) {
+  const limits = { ...DEFAULT_LIMITS, ...options.limits };
+  const allowedOrigins = options.allowedOrigins ?? [];
+  const io = new Server(httpServer, {
+    maxHttpBufferSize: limits.maxMessageBytes,
+    cors:
+      allowedOrigins.length > 0
+        ? { origin: allowedOrigins, methods: ["GET", "POST"] }
+        : undefined,
+    // socket.io checks the Origin header on every request, websocket
+    // upgrades included, so a page on another site cannot connect.
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(
+        null,
+        !origin ||
+          isSameOrigin(origin, req.headers.host) ||
+          allowedOrigins.includes(origin),
+      );
+    },
+  });
   const rooms = new Map<string, Room>();
+  // The room each socket sits in; a socket is in at most one.
+  const roomOf = new Map<string, string>();
+
+  // True while this socket is within its events-per-second budget.
+  function rateLimiter() {
+    let windowStart = Date.now();
+    let count = 0;
+    return () => {
+      const now = Date.now();
+      if (now - windowStart >= 1000) {
+        windowStart = now;
+        count = 0;
+      }
+      count++;
+      return count <= limits.maxEventsPerSecond;
+    };
+  }
+
+  function broadcastRoom(roomId: string, room: Room) {
+    io.to(roomId).emit("room-update", {
+      players: room.players,
+      maxPlayers: MAX_PLAYERS,
+    });
+  }
+
+  function leave(socket: Socket) {
+    const roomId = roomOf.get(socket.id);
+    if (roomId === undefined) return;
+    roomOf.delete(socket.id);
+    socket.leave(roomId);
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.players = room.players.filter((p) => p.socketId !== socket.id);
+    if (room.players.length === 0) {
+      rooms.delete(roomId);
+    } else {
+      broadcastRoom(roomId, room);
+    }
+  }
 
   io.on("connection", (socket) => {
-    socket.on("join-room", ({ roomId, playerName, playerColor }) => {
-      if (typeof roomId !== "string" || roomId.length === 0) return;
-      const room = rooms.get(roomId) ?? { players: [] };
+    if (io.engine.clientsCount > limits.maxConnections) {
+      socket.emit("error", "Server is full");
+      socket.disconnect(true);
+      return;
+    }
+    const allowed = rateLimiter();
+    socket.use((_packet, next) => {
+      if (allowed()) next();
+    });
 
+    socket.on("join-room", (payload) => {
+      const { roomId, playerName, playerColor } = payload ?? {};
+      if (typeof roomId !== "string" || !ROOM_ID.test(roomId)) return;
+      if (roomOf.get(socket.id) === roomId) return;
+      leave(socket);
+
+      let room = rooms.get(roomId);
+      if (!room) {
+        if (rooms.size >= limits.maxRooms) {
+          socket.emit("error", "Too many rooms right now; try again soon");
+          return;
+        }
+        room = { players: [] };
+      }
       if (room.players.length >= MAX_PLAYERS) {
         socket.emit("error", "Room is full");
         return;
       }
 
       rooms.set(roomId, room);
+      roomOf.set(socket.id, roomId);
       socket.join(roomId);
       room.players.push({
         id: nextFreeSeat(room.players),
         socketId: socket.id,
-        name: String(playerName ?? ""),
-        color: String(playerColor ?? ""),
+        name: String(playerName ?? "").slice(0, MAX_NAME),
+        color: String(playerColor ?? "").slice(0, MAX_COLOR),
       });
       room.players.sort((a, b) => a.id - b.id);
-
-      io.to(roomId).emit("room-update", {
-        players: room.players,
-        maxPlayers: MAX_PLAYERS,
-      });
+      broadcastRoom(roomId, room);
     });
 
-    socket.on("start-game", ({ roomId, gameIndex }) => {
+    // Only a player in the room can start its games or send it events; the
+    // room comes from where the socket sits, not from what it claims.
+    socket.on("start-game", (payload) => {
+      const roomId = roomOf.get(socket.id);
+      const gameIndex = payload?.gameIndex;
+      if (roomId === undefined || !Number.isInteger(gameIndex)) return;
       io.to(roomId).emit("game-started", { gameIndex });
     });
 
-    socket.on("game-event", ({ roomId, event, data }) => {
-      socket
-        .to(roomId)
-        .emit("remote-event", { event, data, senderId: socket.id });
+    socket.on("game-event", (payload) => {
+      const roomId = roomOf.get(socket.id);
+      if (roomId === undefined || typeof payload?.event !== "string") return;
+      socket.to(roomId).emit("remote-event", {
+        event: payload.event,
+        data: payload.data,
+        senderId: socket.id,
+      });
     });
 
-    socket.on("disconnect", () => {
-      for (const [roomId, room] of rooms.entries()) {
-        const index = room.players.findIndex((p) => p.socketId === socket.id);
-        if (index === -1) continue;
-        room.players.splice(index, 1);
-        if (room.players.length === 0) {
-          rooms.delete(roomId);
-        } else {
-          io.to(roomId).emit("room-update", {
-            players: room.players,
-            maxPlayers: MAX_PLAYERS,
-          });
-        }
-      }
-    });
+    socket.on("disconnect", () => leave(socket));
   });
 
   return { io, rooms };

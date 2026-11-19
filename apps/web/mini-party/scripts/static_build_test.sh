@@ -19,23 +19,32 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# The GitHub Pages build must drop online rooms (there is no server there),
-# and the server build must keep them. "Remote Battle" is the lobby button
-# that opens online play.
+# The GitHub Pages build has no server of its own, so it must send online
+# rooms to the homelab's rooms server; the server build must keep talking to
+# the server it was loaded from. "Remote Battle" is the lobby button that
+# opens online play.
 set -euo pipefail
 server_dist="$1"
 static_dist="$2"
 
-if ! grep -q "Remote Battle" "$server_dist"/assets/*.js; then
-	echo "FAIL: the server build lost the Remote Battle button" >&2
+rooms="https://mini-games-rooms.vitruviansoftware.dev"
+
+for dist in "$server_dist" "$static_dist"; do
+	if ! grep -q "Remote Battle" "$dist"/assets/*.js; then
+		echo "FAIL: $dist lost the Remote Battle button" >&2
+		exit 1
+	fi
+done
+if ! grep -q "$rooms" "$static_dist"/assets/*.js; then
+	echo "FAIL: the GitHub Pages build does not point at $rooms" >&2
 	exit 1
 fi
-if grep -q "Remote Battle" "$static_dist"/assets/*.js; then
-	echo "FAIL: the static (GitHub Pages) build still offers Remote Battle" >&2
+if grep -q "$rooms" "$server_dist"/assets/*.js; then
+	echo "FAIL: the server build points at $rooms instead of its own server" >&2
 	exit 1
 fi
 if [ ! -f "$static_dist/index.html" ]; then
 	echo "FAIL: the static build has no index.html" >&2
 	exit 1
 fi
-echo "OK: static build has no online play; server build keeps it"
+echo "OK: the Pages build uses the homelab rooms server; the server build uses itself"

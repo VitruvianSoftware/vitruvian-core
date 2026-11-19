@@ -21,19 +21,29 @@
  */
 
 import express from "express";
+import { existsSync } from "fs";
 import path from "path";
 import { createServer } from "http";
 import { fileURLToPath } from "url";
-import { attachGameServer } from "./server/gameServer.ts";
+import { attachGameServer, parseOrigins } from "./server/gameServer.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
 
 async function startServer() {
   const app = express();
+  app.disable("x-powered-by");
   const httpServer = createServer(app);
-  attachGameServer(httpServer);
+  // ALLOWED_ORIGINS lets the GitHub Pages game connect from its own site.
+  attachGameServer(httpServer, {
+    allowedOrigins: parseOrigins(process.env.ALLOWED_ORIGINS),
+  });
 
+  app.get("/healthz", (_req, res) => {
+    res.type("text/plain").send("ok");
+  });
+
+  const distPath = path.join(here, "dist");
   if (process.env.NODE_ENV !== "production") {
     // Dev: Vite serves the client with hot reload from the same port.
     const { createServer: createViteServer } = await import("vite");
@@ -43,14 +53,15 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    // Production: serve the client that `vite build` wrote to dist/.
-    const distPath = path.join(here, "dist");
+  } else if (existsSync(distPath)) {
+    // Production with a built client: serve what `vite build` wrote to dist/.
     app.use(express.static(distPath));
     app.get("/{*splat}", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+  // Otherwise this is the rooms-only server (the container image): just the
+  // socket.io relay and /healthz.
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Mini Party running on http://localhost:${PORT}`);

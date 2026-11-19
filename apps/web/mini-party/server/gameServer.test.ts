@@ -24,20 +24,35 @@ import { createServer, type Server as HttpServer } from "http";
 import type { AddressInfo } from "net";
 import { io as connect, type Socket } from "socket.io-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { attachGameServer, nextFreeSeat, type RoomPlayer } from "./gameServer";
+import {
+  attachGameServer,
+  nextFreeSeat,
+  parseOrigins,
+  type GameServerOptions,
+  type RoomPlayer,
+} from "./gameServer";
 
 let httpServer: HttpServer;
 let url: string;
 let clients: Socket[] = [];
 
-beforeEach(async () => {
+// Starts a fresh server; the default one is replaced by tests that need
+// other options.
+async function start(options: GameServerOptions = {}) {
+  if (httpServer?.listening) {
+    clients.forEach((c) => c.disconnect());
+    clients = [];
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
   httpServer = createServer();
-  attachGameServer(httpServer);
+  attachGameServer(httpServer, options);
   await new Promise<void>((resolve) =>
     httpServer.listen(0, "127.0.0.1", resolve),
   );
   url = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
-});
+}
+
+beforeEach(() => start());
 
 afterEach(async () => {
   clients.forEach((c) => c.disconnect());
@@ -45,10 +60,33 @@ afterEach(async () => {
   await new Promise((resolve) => httpServer.close(resolve));
 });
 
-function client(): Socket {
-  const c = connect(url, { transports: ["websocket"], forceNew: true });
+function client(origin?: string): Socket {
+  const c = connect(url, {
+    transports: ["websocket"],
+    forceNew: true,
+    extraHeaders: origin ? { origin } : undefined,
+  });
   clients.push(c);
   return c;
+}
+
+// Resolves "connected" or "refused", whichever happens first.
+function outcome(socket: Socket): Promise<"connected" | "refused"> {
+  return new Promise((resolve) => {
+    socket.once("connect", () => resolve("connected"));
+    socket.once("connect_error", () => resolve("refused"));
+  });
+}
+
+// Waits briefly and reports whether `event` arrived on `socket`.
+function arrives(socket: Socket, event: string, ms = 200): Promise<boolean> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), ms);
+    socket.once(event, () => {
+      clearTimeout(t);
+      resolve(true);
+    });
+  });
 }
 
 function next<T>(socket: Socket, event: string): Promise<T> {
@@ -120,5 +158,96 @@ describe("game server", () => {
     });
     expect(await got).toMatchObject({ event: "press", data: { playerId: 0 } });
     expect(echoedToSender).toBe(false);
+  });
+});
+
+describe("parseOrigins", () => {
+  it("splits and trims a comma list, ignoring blanks", () => {
+    expect(parseOrigins(" https://a.dev, https://b.dev ,,")).toEqual([
+      "https://a.dev",
+      "https://b.dev",
+    ]);
+    expect(parseOrigins(undefined)).toEqual([]);
+  });
+});
+
+describe("a server open to the internet", () => {
+  it("refuses pages from other sites and admits the allowed one", async () => {
+    await start({
+      allowedOrigins: ["https://mini-games.vitruviansoftware.dev"],
+    });
+    expect(await outcome(client("https://evil.example"))).toBe("refused");
+    expect(
+      await outcome(client("https://mini-games.vitruviansoftware.dev")),
+    ).toBe("connected");
+    // Native clients send no Origin header and are let in.
+    expect(await outcome(client())).toBe("connected");
+  });
+
+  it("refuses other sites when no origin is allowed", async () => {
+    expect(await outcome(client("https://evil.example"))).toBe("refused");
+  });
+
+  it("caps how many rooms exist at once", async () => {
+    await start({ limits: { maxRooms: 1 } });
+    await join(client(), "A", "ONE");
+    const late = client();
+    const error = next<string>(late, "error");
+    late.emit("join-room", { roomId: "TWO", playerName: "B" });
+    expect(await error).toMatch(/Too many rooms/);
+  });
+
+  it("ignores room ids that are not short and alphanumeric", async () => {
+    const c = client();
+    c.emit("join-room", { roomId: "../../etc", playerName: "A" });
+    c.emit("join-room", { roomId: "X".repeat(17), playerName: "A" });
+    c.emit("join-room", { roomId: { $ne: 1 }, playerName: "A" });
+    expect(await arrives(c, "room-update")).toBe(false);
+  });
+
+  it("trims long names", async () => {
+    const players = await join(client(), "N".repeat(500));
+    expect(players[0].name).toHaveLength(24);
+  });
+
+  it("relays only within the room the sender sits in", async () => {
+    const a = client();
+    const b = client();
+    const outsider = client();
+    await join(a, "A", "ROOM");
+    await join(b, "B", "ROOM");
+    await join(outsider, "O", "OTHER");
+    // The outsider names ROOM, but sits in OTHER: nothing reaches ROOM.
+    const leaked = arrives(a, "remote-event");
+    outsider.emit("game-event", { roomId: "ROOM", event: "press", data: {} });
+    outsider.emit("start-game", { roomId: "ROOM", gameIndex: 3 });
+    expect(await leaked).toBe(false);
+  });
+
+  it("does not let a socket hold seats in two rooms", async () => {
+    const a = client();
+    const watcher = client();
+    await join(watcher, "W", "ROOM");
+    await join(a, "A", "ROOM");
+    const update = next<{ players: RoomPlayer[] }>(watcher, "room-update");
+    await join(a, "A", "OTHER");
+    expect((await update).players.map((p) => p.name)).toEqual(["W"]);
+  });
+
+  it("drops a flood of events past the per-second budget", async () => {
+    await start({ limits: { maxEventsPerSecond: 5 } });
+    const a = client();
+    const b = client();
+    await join(a, "A");
+    await join(b, "B");
+    let received = 0;
+    b.on("remote-event", () => received++);
+    // The join above already spent one of a's five.
+    for (let i = 0; i < 50; i++) {
+      a.emit("game-event", { event: "press", data: { i } });
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    expect(received).toBeGreaterThan(0);
+    expect(received).toBeLessThanOrEqual(5);
   });
 });

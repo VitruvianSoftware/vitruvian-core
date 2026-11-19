@@ -20,7 +20,13 @@
  * SOFTWARE.
  */
 
-// Online rooms need the Node server in server.ts. A static host such as
-// GitHub Pages has no server, so that build sets VITE_REMOTE_PLAY=off and the
-// game offers only shared-screen play.
+// Online rooms need the Node server in server.ts. By default the game talks to
+// the server it was loaded from. A static host such as GitHub Pages has no
+// server of its own, so that build sets VITE_ROOMS_URL to a separate rooms
+// server (the homelab's mini-games-rooms.vitruviansoftware.dev), or
+// VITE_REMOTE_PLAY=off to offer shared-screen play only.
 export const REMOTE_PLAY = import.meta.env.VITE_REMOTE_PLAY !== "off";
+
+// Where the rooms server is; undefined means the page's own origin.
+export const ROOMS_URL: string | undefined =
+  import.meta.env.VITE_ROOMS_URL || undefined;

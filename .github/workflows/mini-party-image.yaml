@@ -1,0 +1,204 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Builds the Mini Party rooms server image (apps/web/mini-party/Dockerfile) and
+# pushes it to GHCR on main. The homelab cluster runs it at
+# mini-games-rooms.vitruviansoftware.dev (gitops/argocd/platform/mini-party);
+# argocd-image-updater notices the new digest behind `latest` and opens a
+# bump PR (image-updates-mini-party-pr.yaml), so a rollout is a reviewed
+# change in git. Pull requests build and smoke-test the image without pushing.
+name: mini-party-image
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/mini-party/Dockerfile'
+      - 'apps/web/mini-party/Dockerfile.dockerignore'
+      - 'apps/web/mini-party/package.json'
+      - 'apps/web/mini-party/server.ts'
+      - 'apps/web/mini-party/server/**'
+      - '!apps/web/mini-party/server/**/*.test.ts'
+      - '!apps/web/mini-party/**/BUILD'
+      - '!apps/web/mini-party/**/BUILD.bazel'
+      - '!apps/web/mini-party/**/OWNERS'
+      - '!apps/web/mini-party/**/*.md'
+      - '!apps/web/mini-party/**/mkdocs.yml'
+      - '!apps/web/mini-party/**/deploy/**'
+      - '.github/workflows/mini-party-image.yaml'
+      - '.npmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+  pull_request:
+    paths:
+      - 'apps/web/mini-party/Dockerfile'
+      - 'apps/web/mini-party/Dockerfile.dockerignore'
+      - 'apps/web/mini-party/package.json'
+      - 'apps/web/mini-party/server.ts'
+      - 'apps/web/mini-party/server/**'
+      - '!apps/web/mini-party/server/**/*.test.ts'
+      - '!apps/web/mini-party/**/BUILD'
+      - '!apps/web/mini-party/**/BUILD.bazel'
+      - '!apps/web/mini-party/**/OWNERS'
+      - '!apps/web/mini-party/**/*.md'
+      - '!apps/web/mini-party/**/mkdocs.yml'
+      - '!apps/web/mini-party/**/deploy/**'
+      - '.github/workflows/mini-party-image.yaml'
+      - '.npmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/vitruviansoftware/mini-party
+  # The cluster has nodes of both architectures.
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  image:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container image
+        id: publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/web/mini-party/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=mini-party-image
+          cache-to: type=gha,mode=max,scope=mini-party-image
+
+      - name: Load image for verification
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/web/mini-party/Dockerfile
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            GIT_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: mini-party:verify
+          cache-from: type=gha,scope=mini-party-image
+
+      - name: Verify the revision label on the built image
+        run: |
+          set -euo pipefail
+          got="$(docker image inspect mini-party:verify \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          if [ "$got" != "${GITHUB_SHA}" ]; then
+            echo "::error::org.opencontainers.image.revision is '${got}', expected '${GITHUB_SHA}'"
+            exit 1
+          fi
+          echo "revision label = ${got}"
+
+      # Runs it the way the cluster does: UID 1001, read-only root filesystem,
+      # no capabilities. Checks /healthz, that a page from another site is
+      # refused, and that the game's own site is let in.
+      - name: Verify UID 1001 boots, serves /healthz and checks origins
+        run: |
+          set -euo pipefail
+          trap 'docker rm -f mp-smoke >/dev/null 2>&1 || true' EXIT
+          docker run -d --name mp-smoke \
+            --user 1001:1001 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:uid=1001,gid=1001 \
+            --env ALLOWED_ORIGINS=https://mini-games.vitruviansoftware.dev \
+            --publish 127.0.0.1:18080:8080 \
+            mini-party:verify
+          ok=false
+          for _ in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:18080/healthz >/dev/null; then
+              ok=true
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' mp-smoke)" != "true" ]; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::error::mini-party did not serve /healthz as UID 1001" >&2
+            docker logs mp-smoke >&2 || true
+            exit 1
+          fi
+          handshake='http://127.0.0.1:18080/socket.io/?EIO=4&transport=polling'
+          evil="$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://evil.example' "$handshake")"
+          game="$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://mini-games.vitruviansoftware.dev' "$handshake")"
+          echo "handshake from another site: $evil; from the game: $game"
+          if [ "$evil" != "403" ] || [ "$game" != "200" ]; then
+            echo "::error::origin check wrong: another site got $evil (want 403), the game got $game (want 200)" >&2
+            exit 1
+          fi
+
+      - name: Verify the pushed manifest has both architectures
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          ref="${IMAGE}@${DIGEST}"
+          img="$(docker buildx imagetools inspect "${ref}" --format '{{json .Image}}')"
+          for want in linux/amd64 linux/arm64; do
+            got="$(echo "$img" | jq -r --arg p "$want" \
+              '.[$p].config.Labels["org.opencontainers.image.revision"] // "ABSENT"')"
+            if [ "$got" != "${GITHUB_SHA}" ]; then
+              echo "::error::${want} revision label is '${got}', expected '${GITHUB_SHA}'"
+              exit 1
+            fi
+            echo "${want}: revision=${got}"
+          done
