@@ -329,12 +329,13 @@ fn sentry_apply_reconciles_sentry_before_sentry_pagerduty_and_never_retries_bare
     );
 }
 
-fn extract_sentry_reconcile_block(workflow_text: &str) -> String {
+fn extract_reconcile_block(workflow_text: &str, out_filename: &str) -> String {
+    let marker = format!("out_file=\"${{RUNNER_TEMP}}/{out_filename}\"");
     let lines: Vec<&str> = workflow_text.lines().collect();
     let start = lines
         .iter()
-        .position(|l| l.contains("out_file=\"${RUNNER_TEMP}/pulumi-sentry-out.txt\""))
-        .expect("missing pulumi-sentry-out.txt block in sentry-apply.yaml");
+        .position(|l| l.contains(&marker))
+        .unwrap_or_else(|| panic!("missing {marker} block in sentry-apply.yaml"));
     let end = start
         + lines[start..]
             .iter()
@@ -343,16 +344,29 @@ fn extract_sentry_reconcile_block(workflow_text: &str) -> String {
     lines[start..=end].join("\n")
 }
 
-fn run_sentry_reconcile_subcase(second_preview_destructive: bool) -> (i32, Vec<String>, String) {
+struct ReconcileCase {
+    tag: &'static str,
+    out_filename: &'static str,
+    action: &'static str,
+    select_exit_code: i32,
+    first_preview_destructive: bool,
+    up_409_count: u32,
+    second_preview_destructive: bool,
+}
+
+struct ReconcileOutcome {
+    rc: i32,
+    calls: Vec<String>,
+    out_file: String,
+    github_output: String,
+}
+
+fn run_reconcile_case(case: &ReconcileCase) -> ReconcileOutcome {
     let root = std::env::current_dir().unwrap();
     let wf = std::fs::read_to_string(root.join(".github/workflows/sentry-apply.yaml")).unwrap();
-    let block = extract_sentry_reconcile_block(&wf);
+    let block = extract_reconcile_block(&wf, case.out_filename);
 
-    let d = tmpdir(if second_preview_destructive {
-        "destructive-retry"
-    } else {
-        "safe-retry"
-    });
+    let d = tmpdir(case.tag);
     let runner_temp = d.join("runner_temp");
     let stubs = d.join("stubs");
     std::fs::create_dir_all(&runner_temp).unwrap();
@@ -368,13 +382,11 @@ fn run_sentry_reconcile_subcase(second_preview_destructive: bool) -> (i32, Vec<S
         runner_temp.join("refuse-destructive-plan"),
     )
     .unwrap();
-    if let Some(guarded_bin) = std::env::var_os("GUARDED_UP_BIN") {
-        let p = PathBuf::from(&guarded_bin);
-        let abs = if p.is_absolute() { p } else { root.join(p) };
-        if abs.is_file() {
-            std::fs::copy(abs, runner_temp.join("guarded-up")).unwrap();
-        }
-    }
+    std::fs::copy(
+        runfiles_bin("GUARDED_UP_BIN"),
+        runner_temp.join("guarded-up"),
+    )
+    .unwrap();
 
     write_exec(
         &stubs.join("sleep"),
@@ -388,8 +400,12 @@ sub="${1:-}"
 shift || true
 case "$sub" in
   stack)
-    if [ "${1:-}" = "select" ]; then
+    if [ "${1:-}" = "select" ] && [ "${2:-}" = "production" ]; then
       echo "select" >> "$CALL_LOG"
+      if [ "${SELECT_EXIT_CODE:-0}" -ne 0 ]; then
+        echo "error: no stack named 'production' found" >&2
+        exit "${SELECT_EXIT_CODE}"
+      fi
       exit 0
     fi
     exit 1
@@ -401,9 +417,15 @@ case "$sub" in
     echo "$p" > "$PREVIEW_COUNT"
     echo "preview:$p" >> "$CALL_LOG"
     if [ "$p" -eq 1 ]; then
-      cat <<'JSON'
+      if [ "${FIRST_PREVIEW_DESTRUCTIVE:-0}" = "1" ]; then
+        cat <<'JSON'
+{"steps":[{"op":"delete","urn":"urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-backstage","oldState":{"type":"sentry:index/sentryProject:SentryProject"}}],"changeSummary":{"delete":1}}
+JSON
+      else
+        cat <<'JSON'
 {"steps":[{"op":"same","urn":"urn:pulumi:production::sentry::pulumi:pulumi:Stack::sentry-production"}],"changeSummary":{"same":1}}
 JSON
+      fi
     elif [ "${SECOND_PREVIEW_DESTRUCTIVE:-0}" = "1" ]; then
       cat <<'JSON'
 {"steps":[{"op":"delete","urn":"urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-backstage","oldState":{"type":"sentry:index/sentryProject:SentryProject"}}],"changeSummary":{"delete":1}}
@@ -421,7 +443,7 @@ JSON
     u=$((u + 1))
     echo "$u" > "$UP_COUNT"
     echo "up:$u" >> "$CALL_LOG"
-    if [ "$u" -eq 1 ]; then
+    if [ "$u" -le "${UP_409_COUNT:-0}" ]; then
       echo "error: [409] Conflict: concurrent update in progress" >&2
       exit 23
     fi
@@ -445,11 +467,11 @@ esac
 
     let script = format!(
         "set -euo pipefail\n\
-         action=up\n\
+         action={}\n\
          retry=\"${{RUNNER_TEMP}}/retry-concurrent-update\"\n\
-         plan_guard=\"${{RUNNER_TEMP}}/refuse-destructive-plan\"\n\
          guarded_up=\"${{RUNNER_TEMP}}/guarded-up\"\n\
-         {block}\n"
+         {block}\n",
+        case.action
     );
 
     let o = Command::new("/bin/bash")
@@ -463,9 +485,23 @@ esac
         .env("SLEEP_LOG", &sleep_log)
         .env("PREVIEW_COUNT", &preview_count)
         .env("UP_COUNT", &up_count)
+        .env("SELECT_EXIT_CODE", case.select_exit_code.to_string())
+        .env(
+            "FIRST_PREVIEW_DESTRUCTIVE",
+            if case.first_preview_destructive {
+                "1"
+            } else {
+                "0"
+            },
+        )
+        .env("UP_409_COUNT", case.up_409_count.to_string())
         .env(
             "SECOND_PREVIEW_DESTRUCTIVE",
-            if second_preview_destructive { "1" } else { "0" },
+            if case.second_preview_destructive {
+                "1"
+            } else {
+                "0"
+            },
         )
         .env("PULUMI_CONFLICT_RETRY_DELAY", "1")
         .env("PULUMI_CONFLICT_MAX_DELAY", "1")
@@ -477,47 +513,246 @@ esac
         .lines()
         .map(str::to_string)
         .collect();
-    let out_file =
-        std::fs::read_to_string(runner_temp.join("pulumi-sentry-out.txt")).unwrap_or_default();
+    let out_file = std::fs::read_to_string(runner_temp.join(case.out_filename)).unwrap_or_default();
+    let github_output = std::fs::read_to_string(&gh_output).unwrap_or_default();
     let rc = o.status.code().unwrap_or(-1);
     assert!(
         !String::from_utf8_lossy(&o.stderr).contains("command not found"),
         "harness stderr: {}",
         String::from_utf8_lossy(&o.stderr)
     );
-    (rc, calls, out_file)
+    ReconcileOutcome {
+        rc,
+        calls,
+        out_file,
+        github_output,
+    }
+}
+
+#[test]
+fn sentry_apply_failing_stack_select_stops_before_preview_or_up_and_exits_nonzero() {
+    for (out_filename, stack_dir) in [
+        ("pulumi-sentry-out.txt", "platform/sentry"),
+        (
+            "pulumi-sentry-pagerduty-out.txt",
+            "platform/sentry-pagerduty",
+        ),
+    ] {
+        for action in ["up", "preview"] {
+            let res = run_reconcile_case(&ReconcileCase {
+                tag: "select-fail",
+                out_filename,
+                action,
+                select_exit_code: 255,
+                first_preview_destructive: false,
+                up_409_count: 0,
+                second_preview_destructive: false,
+            });
+            assert_eq!(
+                res.rc, 255,
+                "{stack_dir} ({action}) must exit 255 on select failure; calls={:?}, out={}",
+                res.calls, res.out_file
+            );
+            assert_eq!(
+                res.calls,
+                vec!["select"],
+                "{stack_dir} ({action}) must stop before preview or up when stack select fails"
+            );
+            assert_eq!(res.github_output.trim(), "exit_code=255");
+            assert!(
+                res.out_file.contains(&format!(
+                    "::error::Pulumi stack 'production' was not found for {stack_dir}; refusing to create an empty stack."
+                )),
+                "missing fail-closed message for {stack_dir} ({action}) in out_file:\n{}",
+                res.out_file
+            );
+        }
+    }
 }
 
 #[test]
 fn sentry_apply_up_409_retries_fresh_preview_and_plan_guard_before_second_up() {
-    let (rc, calls, out_file) = run_sentry_reconcile_subcase(false);
-    assert_eq!(rc, 0, "expected rc=0, calls={calls:?}, out={out_file}");
+    let ok = run_reconcile_case(&ReconcileCase {
+        tag: "sentry-safe-retry",
+        out_filename: "pulumi-sentry-out.txt",
+        action: "up",
+        select_exit_code: 0,
+        first_preview_destructive: false,
+        up_409_count: 1,
+        second_preview_destructive: false,
+    });
     assert_eq!(
-        calls,
+        ok.rc, 0,
+        "expected rc=0, calls={:?}, out={}",
+        ok.calls, ok.out_file
+    );
+    assert_eq!(
+        ok.calls,
         vec!["select", "preview:1", "up:1", "preview:2", "up:2"],
         "409 on up must trigger a fresh preview before the second up"
     );
     assert!(
-        out_file.contains("1 step(s) checked"),
-        "missing first guard check in out_file:\n{out_file}"
+        ok.out_file.contains("1 step(s) checked"),
+        "missing first guard check in out_file:\n{}",
+        ok.out_file
     );
     assert!(
-        out_file.contains("2 step(s) checked"),
-        "missing second guard check in out_file:\n{out_file}"
+        ok.out_file.contains("2 step(s) checked"),
+        "missing second guard check in out_file:\n{}",
+        ok.out_file
     );
 
-    let (rc_bad, calls_bad, out_bad) = run_sentry_reconcile_subcase(true);
+    let bad = run_reconcile_case(&ReconcileCase {
+        tag: "sentry-destructive-retry",
+        out_filename: "pulumi-sentry-out.txt",
+        action: "up",
+        select_exit_code: 0,
+        first_preview_destructive: false,
+        up_409_count: 1,
+        second_preview_destructive: true,
+    });
     assert_eq!(
-        rc_bad, 1,
-        "destructive second preview must fail closed; calls={calls_bad:?}, out={out_bad}"
+        bad.rc, 1,
+        "destructive second preview must fail closed; calls={:?}, out={}",
+        bad.calls, bad.out_file
     );
     assert_eq!(
-        calls_bad,
+        bad.calls,
         vec!["select", "preview:1", "up:1", "preview:2"],
         "up:2 must not run when the fresh preview becomes destructive"
     );
     assert!(
-        out_bad.contains("Refusing to apply sentry production"),
-        "expected plan-guard refusal in out_file:\n{out_bad}"
+        bad.out_file.contains("Refusing to apply sentry production"),
+        "expected plan-guard refusal in out_file:\n{}",
+        bad.out_file
+    );
+}
+
+#[test]
+fn sentry_pagerduty_apply_guarded_up_covers_destructive_clean_and_409_replan() {
+    // 1. Destructive plan -> no `up`.
+    let destructive = run_reconcile_case(&ReconcileCase {
+        tag: "pd-destructive",
+        out_filename: "pulumi-sentry-pagerduty-out.txt",
+        action: "up",
+        select_exit_code: 0,
+        first_preview_destructive: true,
+        up_409_count: 0,
+        second_preview_destructive: false,
+    });
+    assert_eq!(
+        destructive.rc, 1,
+        "destructive plan must fail closed; calls={:?}, out={}",
+        destructive.calls, destructive.out_file
+    );
+    assert_eq!(
+        destructive.calls,
+        vec!["select", "preview:1"],
+        "destructive plan must not invoke pulumi up"
+    );
+    assert_eq!(destructive.github_output.trim(), "exit_code=1");
+    assert!(
+        destructive
+            .out_file
+            .contains("Refusing to apply sentry-pagerduty production"),
+        "expected sentry-pagerduty plan-guard refusal in out_file:\n{}",
+        destructive.out_file
+    );
+
+    // 2. Clean plan -> exactly one `up`.
+    let clean = run_reconcile_case(&ReconcileCase {
+        tag: "pd-clean",
+        out_filename: "pulumi-sentry-pagerduty-out.txt",
+        action: "up",
+        select_exit_code: 0,
+        first_preview_destructive: false,
+        up_409_count: 0,
+        second_preview_destructive: false,
+    });
+    assert_eq!(
+        clean.rc, 0,
+        "clean plan must succeed; calls={:?}, out={}",
+        clean.calls, clean.out_file
+    );
+    assert_eq!(
+        clean.calls,
+        vec!["select", "preview:1", "up:1"],
+        "clean plan must run exactly one preview and one up"
+    );
+    assert_eq!(clean.github_output.trim(), "exit_code=0");
+    assert!(
+        clean
+            .out_file
+            .contains("plan-guard (sentry-pagerduty production): non-destructive (1 step(s) checked; 0 delete/replace)"),
+        "missing plan-guard confirmation in out_file:\n{}",
+        clean.out_file
+    );
+    assert!(
+        clean.out_file.contains("Updating (production):"),
+        "missing up output in out_file:\n{}",
+        clean.out_file
+    );
+
+    // 3. 409 on `up` -> full re-plan (preview, guard, up again) before next `up`.
+    let replan_ok = run_reconcile_case(&ReconcileCase {
+        tag: "pd-409-safe",
+        out_filename: "pulumi-sentry-pagerduty-out.txt",
+        action: "up",
+        select_exit_code: 0,
+        first_preview_destructive: false,
+        up_409_count: 1,
+        second_preview_destructive: false,
+    });
+    assert_eq!(
+        replan_ok.rc, 0,
+        "409 retry with safe re-plan must succeed; calls={:?}, out={}",
+        replan_ok.calls, replan_ok.out_file
+    );
+    assert_eq!(
+        replan_ok.calls,
+        vec!["select", "preview:1", "up:1", "preview:2", "up:2"],
+        "409 on sentry-pagerduty up must re-run preview+guard before second up"
+    );
+    assert!(
+        replan_ok.out_file.contains(
+            "plan-guard (sentry-pagerduty production): non-destructive (1 step(s) checked"
+        ),
+        "missing first guard check in out_file:\n{}",
+        replan_ok.out_file
+    );
+    assert!(
+        replan_ok.out_file.contains(
+            "plan-guard (sentry-pagerduty production): non-destructive (2 step(s) checked"
+        ),
+        "missing second guard check in out_file:\n{}",
+        replan_ok.out_file
+    );
+
+    // 4. 409 on `up` followed by destructive re-plan -> stops before second `up`.
+    let replan_bad = run_reconcile_case(&ReconcileCase {
+        tag: "pd-409-destructive",
+        out_filename: "pulumi-sentry-pagerduty-out.txt",
+        action: "up",
+        select_exit_code: 0,
+        first_preview_destructive: false,
+        up_409_count: 1,
+        second_preview_destructive: true,
+    });
+    assert_eq!(
+        replan_bad.rc, 1,
+        "409 followed by destructive re-plan must fail closed; calls={:?}, out={}",
+        replan_bad.calls, replan_bad.out_file
+    );
+    assert_eq!(
+        replan_bad.calls,
+        vec!["select", "preview:1", "up:1", "preview:2"],
+        "second up must not run when sentry-pagerduty re-plan becomes destructive"
+    );
+    assert!(
+        replan_bad
+            .out_file
+            .contains("Refusing to apply sentry-pagerduty production"),
+        "expected plan-guard refusal on destructive re-plan:\n{}",
+        replan_bad.out_file
     );
 }

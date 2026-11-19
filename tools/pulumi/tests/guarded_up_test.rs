@@ -125,6 +125,53 @@ fn conflict_409_followed_by_destructive_preview_stops_before_up() {
 }
 
 #[test]
+fn duplicate_key_in_preview_plan_stops_before_up() {
+    let d = tempdir("guarded-up-dup-key");
+    let stubs = d.join("stubs");
+    let calls = d.join("calls.log");
+    write_exec(
+        &stubs.join("pulumi"),
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+sub="${1:-}"
+case "$sub" in
+  preview)
+    echo "preview:1" >> "$CALL_LOG"
+    echo '{"steps":[{"op":"same","op":"delete","urn":"urn:pulumi:p::s::t::res"}],"changeSummary":{"same":1}}'
+    exit 0
+    ;;
+  up)
+    echo "up:1" >> "$CALL_LOG"
+    echo "Updating (production):"
+    exit 0
+    ;;
+  *)
+    exit 99
+    ;;
+esac
+"#,
+    );
+    let mut c = cmd(
+        &bin("GUARDED_UP_BIN"),
+        &format!("{}:/usr/bin:/bin", stubs.display()),
+    );
+    c.env("CALL_LOG", &calls).arg("sentry-pagerduty production");
+    let o = run(c);
+    let call_lines: Vec<String> = read(&calls).lines().map(str::to_string).collect();
+    assert_eq!(code(&o), 1, "stderr: {}", stderr(&o));
+    assert_eq!(
+        call_lines,
+        vec!["preview:1"],
+        "duplicate key in preview JSON must stop guarded-up before pulumi up"
+    );
+    assert!(
+        stderr(&o).contains("duplicate JSON object key"),
+        "expected duplicate-key error in stderr, got: {}",
+        stderr(&o)
+    );
+}
+
+#[test]
 fn bad_cli_usage_exits_2() {
     for args in [&[][..], &["a", "b"][..], &[""][..]] {
         let mut c = cmd(&bin("GUARDED_UP_BIN"), "/usr/bin:/bin");

@@ -118,7 +118,6 @@ fn fails_closed_on_missing_or_malformed_plan() {
         "{}",
         r#"{"steps": null}"#,
         "not-json",
-        r#"{"steps":[{"op":"delete","op":"same","urn":"urn:pulumi:p::s::t::n"}]}"#,
         r#"{"steps":[{"op":"\u+073ame","urn":"urn:pulumi:p::s::t::n"}]}"#,
         r#"{"steps":[{"op":"\u-073ame","urn":"urn:pulumi:p::s::t::n"}]}"#,
         r#"{"steps":[{"op":"\u07","urn":"urn:pulumi:p::s::t::n"}]}"#,
@@ -126,6 +125,30 @@ fn fails_closed_on_missing_or_malformed_plan() {
         let o = run_guard(&["sentry production"], Some(bad));
         assert_eq!(code(&o), 1, "expected fail-closed for {bad:?}");
         assert!(stderr(&o).contains("Refusing to apply sentry production"));
+    }
+}
+
+#[test]
+fn rejects_duplicate_json_keys_even_when_winning_duplicate_looks_safe() {
+    for dup in [
+        // Safe key first (would pass a first-key-wins parser if duplicate check is disabled).
+        r#"{"steps":[{"op":"same","op":"delete","urn":"urn:pulumi:p::s::t::n"}]}"#,
+        r#"{"steps":[{"op":"same","\u006fp":"delete","urn":"urn:pulumi:p::s::t::n"}]}"#,
+        r#"{"steps":[],"steps":[{"op":"delete","urn":"urn:pulumi:p::s::t::n"}]}"#,
+        r#"{"steps":[{"op":"same","urn":"urn:pulumi:p::s::t::n"}],"changeSummary":{"same":1},"changeSummary":{"delete":1}}"#,
+        // Destructive key first / safe key last (would pass a last-key-wins parser if disabled).
+        r#"{"steps":[{"op":"delete","op":"same","urn":"urn:pulumi:p::s::t::n"}]}"#,
+        r#"{"steps":[{"op":"delete","\u006fp":"same","urn":"urn:pulumi:p::s::t::n"}]}"#,
+        r#"{"steps":[{"op":"delete","urn":"urn:pulumi:p::s::t::n"}],"steps":[]}"#,
+        r#"{"steps":[{"op":"same","urn":"urn:pulumi:p::s::t::n"}],"changeSummary":{"delete":1,"delete":0}}"#,
+    ] {
+        let o = run_guard(&["sentry production"], Some(dup));
+        let err = stderr(&o);
+        assert_eq!(code(&o), 1, "expected duplicate-key refusal for {dup:?}");
+        assert!(
+            err.contains("duplicate JSON object key"),
+            "expected duplicate-key error message for {dup:?}, got: {err}"
+        );
     }
 }
 
