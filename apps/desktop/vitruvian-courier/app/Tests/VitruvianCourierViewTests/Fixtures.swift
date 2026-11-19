@@ -80,7 +80,13 @@ enum Fixture {
     }
 
     static func items(_ events: [Event], isDirect: Bool = false) -> [TimelineItem] {
-        Timeline.build(events: events, me: Timeline.meUserID, now: now, isDirect: isDirect)
+        for event in events {
+            let info = event.content["info"]
+            if (info?["w"]?.integerValue ?? 0) <= 0 || (info?["h"]?.integerValue ?? 0) <= 0 || Timeline.isEdit(event) {
+                _ = ImagePixelSizeReader.sizeNow(ofFirstReadable: [event.mediaPath, event.thumbnailPath])
+            }
+        }
+        return Timeline.build(events: events, me: Timeline.meUserID, now: now, isDirect: isDirect)
     }
 
     /// A chat in the inbox, its newest message `minutesAgo`.

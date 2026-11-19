@@ -156,12 +156,17 @@ typescript.tsc_test(
     ],
 )
 
-# Multiplayer room server: seating, the 4-player cap, seat reuse, relaying.
+# Multiplayer room server (seating, the 4-player cap, seat reuse, relaying,
+# the internet-facing limits) and the client's share-link parsing.
 vitest.vitest_test(
     name = "server_test",
     args = ["run"],
     chdir = package_name(),
-    data = glob(["server/**"]) + [
+    data = glob([
+        "server/**",
+        "src/room.ts",
+        "src/room.test.ts",
+    ]) + [
         "package.json",
         "vitest.config.ts",
         ":node_modules",

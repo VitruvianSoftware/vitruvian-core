@@ -59,6 +59,25 @@ public struct Unavailable: Equatable, Sendable {
     }
 }
 
+/// Single shared `NSDataDetector` for link detection across core models and views.
+/// Access is serialized with `NSLock` because `NSDataDetector` mutates internal scanner state during matching.
+public enum SharedLinkDetector {
+    private static let lock = NSLock()
+    private static let detector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+
+    public static func matches(
+        in text: String,
+        options: NSRegularExpression.MatchingOptions = [],
+        range: NSRange
+    ) -> [NSTextCheckingResult] {
+        lock.lock()
+        defer { lock.unlock() }
+        return detector?.matches(in: text, options: options, range: range) ?? []
+    }
+}
+
 public enum MessageActions {
     /// The menu's order (inventory 02 §3.4.2, the 4.4 subset): Edit, Reply (or Reply in Thread), Reply Privately,
     /// React, Bookmark, Mark as Unread, Mark as played, Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link,
@@ -191,15 +210,13 @@ public enum MessageActions {
                 found = (entity.offset, url)
             }
         }
-        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
-            let range = NSRange(location: 0, length: text.length)
-            for match in detector.matches(in: rich.text, options: [], range: range) {
-                guard let url = match.url, ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else {
-                    continue
-                }
-                if found.map({ match.range.location < $0.offset }) ?? true { found = (match.range.location, url) }
-                break
+        let range = NSRange(location: 0, length: text.length)
+        for match in SharedLinkDetector.matches(in: rich.text, options: [], range: range) {
+            guard let url = match.url, ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else {
+                continue
             }
+            if found.map({ match.range.location < $0.offset }) ?? true { found = (match.range.location, url) }
+            break
         }
         return found?.url
     }
