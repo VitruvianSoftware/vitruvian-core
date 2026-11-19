@@ -29,6 +29,13 @@ public enum SendLaterCondition: String, CaseIterable, Sendable {
     public var wire: ScheduleCondition { ScheduleCondition(rawValue: rawValue) }
 }
 
+/// Which view engine renders the conversation timeline (`courier.composer.timelineEngine` or `timelineEngine`;
+/// hidden, default `.table`).
+public enum TimelineEngine: String, CaseIterable, Codable, Sendable {
+    case swiftui
+    case table
+}
+
 /// Primary action button shown beside the send button in the composer (`setting:appearance Primary composer button`).
 public enum PrimaryComposerButton: String, CaseIterable, Codable, Sendable {
     case emojiPicker
@@ -393,6 +400,13 @@ public final class ComposerPreferences: ObservableObject {
             set(enableSpellcheck, "enableSpellcheck")
         }
     }
+    /// Hidden preference `timelineEngine = swiftui|table` (default `.table`).
+    @Published public var timelineEngine: TimelineEngine {
+        didSet {
+            guard canMutate({ timelineEngine = oldValue }) else { return }
+            set(timelineEngine.rawValue, "timelineEngine")
+        }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -475,6 +489,9 @@ public final class ComposerPreferences: ObservableObject {
         timeFormat = value("timeFormat", TimeFormatPreference.system)
         showMessageTimestamps = bool("showMessageTimestamps", true)
         enableSpellcheck = bool("enableSpellcheck", true)
+        let rawEngine = (defaults.string(forKey: Self.key("timelineEngine"))
+            ?? defaults.string(forKey: "timelineEngine"))?.lowercased()
+        timelineEngine = rawEngine.flatMap(TimelineEngine.init(rawValue:)) ?? .table
         isInitializing = false
     }
 
