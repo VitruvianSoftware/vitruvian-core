@@ -33,7 +33,7 @@ mindmap
       //tools/gcp-secrets:*
       //tools/sync-env-secrets:*
       //tools/saas-cli:*
-      //tools/sentry:ci-token
+      //tools/sentry:ci-integration
       //tools/sentry:pagerduty-install
       //tools/sentry:send-test-event
       //tools/pagerduty:read
@@ -185,7 +185,7 @@ break-glass — the cluster's source of truth is git, reconciled by ArgoCD.
 | `//tools/saas-cli:{neon,upstash,whoami}` | Pre-authenticated vendor CLIs for troubleshooting. **Read-mostly** — provisioning belongs to the Pulumi data stacks, not these CLIs |
 | `//tools/pagerduty:read -- <api-path>` | Read-only GET against the PagerDuty REST API (schedules, users, notification rules, incidents) with contact details masked; changes belong to the PagerDuty Pulumi stack |
 | `//tools/pagerduty:resolve-incident -- <id> --from <email>` | Resolve one PagerDuty incident (a test page, a known false alarm) with an exported write key; key on curl stdin only |
-| `//tools/sentry:ci-token` | Ensures a scoped Sentry internal integration exists for `sentry` and `sentry-pagerduty`, mints an API token (`--name`, `--out`, optional `--force`, `--revoke-others`), and writes it `0600` without printing it |
+| `//tools/sentry:ci-integration` | Ensures the scoped Sentry internal integration `vitruvian-ci` exists for `sentry` and `sentry-pagerduty` and prints its UI link (`--name`, `--url`, `--org`); `--check` verifies `SENTRY_CI_TOKEN` |
 | `//tools/sentry:pagerduty-install` | One-shot, idempotent bootstrap for self-hosted Sentry's PagerDuty integration via the `integration_pipeline` API (requires `SENTRY_TOKEN` user token `sntryu_...`) |
 | `//tools/sentry:send-test-event` | Sends one synthetic Sentry envelope event (`--dsn`, optional `--level`, `--message`) with a unique fingerprint to prove Sentry → PagerDuty alerting end to end; creates a real issue to resolve afterwards |
 

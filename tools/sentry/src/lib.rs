@@ -21,7 +21,7 @@
 //! Idempotent bootstrap for Sentry's PagerDuty integration via Sentry's
 //! `integration_pipeline` session API without registering a PagerDuty OAuth app.
 
-pub mod ci_token;
+pub mod ci_integration;
 pub mod http;
 pub mod send_test_event;
 

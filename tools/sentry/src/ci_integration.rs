@@ -18,23 +18,32 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Provision or reconcile a self-hosted Sentry internal integration and mint a
-//! scoped CI token for `infrastructure/pulumi/platform/sentry` and
-//! `infrastructure/pulumi/platform/sentry-pagerduty`.
+//! Provision or reconcile a self-hosted Sentry internal integration and verify
+//! a UI-created token for CI applies of `infrastructure/pulumi/platform/sentry`
+//! and `infrastructure/pulumi/platform/sentry-pagerduty`.
 //!
 //! Endpoint paths, payloads, and scope/auth semantics verified against
 //! `getsentry/sentry` @ tag `26.10.1`.
+//!
+//! Why token creation is manual in the Sentry UI:
+//! - `SentryAppsEndpoint.post` (`src/sentry/sentry_apps/api/endpoints/sentry_apps.py`)
+//!   sets `skip_default_auth_token=True`, so API-created internal apps have no
+//!   initial token.
+//! - `SentryInternalAppTokensEndpoint`
+//!   (`src/sentry/sentry_apps/api/endpoints/sentry_internal_app_tokens.py`)
+//!   enforces `authentication_classes = (SessionNoAuthTokenAuthentication,)`
+//!   (`src/sentry/api/authentication.py`), which rejects Bearer/token auth.
+//! - `SentryAppInstallationTokenCreator._create_api_token`
+//!   (`src/sentry/sentry_apps/installations.py`) creates an `ApiToken` with
+//!   default `token_type=AuthTokenType.__empty__` (`src/sentry/models/apitoken.py`),
+//!   yielding an unprefixed 64-character hex token when created in the UI.
 
 use crate::http::{redact, HttpClient, Response};
 use crate::{valid_org, valid_url, DEFAULT_ORG, DEFAULT_URL};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
-use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Scopes granted to the internal integration for CI applies of
 /// `infrastructure/pulumi/platform/sentry` (`sentry`) and
@@ -132,48 +141,48 @@ pub const REQUIRED_SCOPES: [&str; 8] = [
     "team:write",
 ];
 
+pub const DEFAULT_APP_NAME: &str = "vitruvian-ci";
 pub const APP_AUTHOR: &str = "Vitruvian Software";
 pub const APP_OVERVIEW: &str =
-    "CI applies infrastructure/pulumi/platform/sentry and infrastructure/pulumi/platform/sentry-pagerduty. Managed by //tools/sentry:ci-token.";
+    "CI applies infrastructure/pulumi/platform/sentry and infrastructure/pulumi/platform/sentry-pagerduty. Managed by //tools/sentry:ci-integration.";
 
 /// `SentryAppParser.validate_name` caps names at `64 - UUID_CHARS_IN_SLUG (6) - 1 = 57`
 /// (`src/sentry/sentry_apps/api/parsers/sentry_app.py`).
 pub const MAX_APP_NAME_LEN: usize = 57;
 
-static TMP_OUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 pub const USAGE: &str = "\
-usage: bazel run //tools/sentry:ci-token -- --name <name> --out <path> [--url <url>] [--org <org>] [--force] [--revoke-others]
+usage:
+  bazel run //tools/sentry:ci-integration -- [--name <name>] [--url <url>] [--org <org>]
+  bazel run //tools/sentry:ci-integration -- --check [--url <url>] [--org <org>]
 
-Ensure an internal Sentry integration exists with the exact CI scopes needed by
-infrastructure/pulumi/platform/sentry and infrastructure/pulumi/platform/sentry-pagerduty,
-mint an API token for it, and write the raw token to --out (mode 0600, parent dirs 0700).
+Reconcile the internal Sentry integration (default: vitruvian-ci) with the exact
+CI scopes needed by infrastructure/pulumi/platform/sentry and
+infrastructure/pulumi/platform/sentry-pagerduty, and print its slug and UI link
+for creating or rotating a token in the Sentry UI.
 
-Required:
-  --name <name>            Internal integration name (e.g. vitruvian-ci; max 57 chars)
-  --out <path>             Destination file for the minted token (refuses overwrite unless --force)
+With --check, test the UI-created token in SENTRY_CI_TOKEN against Sentry's
+organization projects read endpoint without mutating anything.
 
 Options:
+  --name <name>            Internal integration name (default: vitruvian-ci; max 57 chars)
+  --check                  Verify SENTRY_CI_TOKEN against GET /api/0/organizations/{org}/projects/
   --url <url>              Sentry base URL (default: https://sentry.lab.ipv1337.dev)
   --org <org>              Sentry organization slug (default: sentry)
-  --force                  Replace --out atomically if it already exists
-  --revoke-others          After writing the new token, delete all other tokens on the app
   -h, --help               Show this help message and exit
 
 Environment:
-  SENTRY_TOKEN             Sentry user auth token (prefix sntryu_) with org:write plus all
-                           granted scopes (alerts:read/write, org:read/write, project:read/write,
-                           team:read/write).
+  SENTRY_TOKEN             Reconcile mode: Sentry user auth token (prefix sntryu_) with
+                           org:write plus all granted scopes (alerts:read/write, org:read/write,
+                           project:read/write, team:read/write).
+  SENTRY_CI_TOKEN          --check mode: internal integration token created in the Sentry UI.
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CiTokenArgs {
+pub struct CiIntegrationArgs {
     pub name: String,
-    pub out: String,
+    pub check: bool,
     pub url: String,
     pub org: String,
-    pub force: bool,
-    pub revoke_others: bool,
     pub help: bool,
 }
 
@@ -185,19 +194,11 @@ pub struct SentryApp {
     pub scopes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MintedToken {
-    pub id: Option<String>,
-    pub token: String,
-}
-
-pub fn parse_args(argv: &[String]) -> Result<CiTokenArgs, String> {
-    let mut name: Option<String> = None;
-    let mut out: Option<String> = None;
+pub fn parse_args(argv: &[String]) -> Result<CiIntegrationArgs, String> {
+    let mut name = DEFAULT_APP_NAME.to_string();
+    let mut check = false;
     let mut url = DEFAULT_URL.to_string();
     let mut org = DEFAULT_ORG.to_string();
-    let mut force = false;
-    let mut revoke_others = false;
     let mut help = false;
 
     let mut it = argv.iter();
@@ -206,12 +207,8 @@ pub fn parse_args(argv: &[String]) -> Result<CiTokenArgs, String> {
             help = true;
             continue;
         }
-        if flag == "--force" {
-            force = true;
-            continue;
-        }
-        if flag == "--revoke-others" {
-            revoke_others = true;
+        if flag == "--check" {
+            check = true;
             continue;
         }
         let (key, inline) = match flag.split_once('=') {
@@ -228,30 +225,25 @@ pub fn parse_args(argv: &[String]) -> Result<CiTokenArgs, String> {
             }
         };
         match key.as_str() {
-            "--name" => name = Some(take_value()?),
-            "--out" => out = Some(take_value()?),
+            "--name" => name = take_value()?,
             "--url" => url = take_value()?,
             "--org" => org = take_value()?,
-            "--force" => return Err("--force does not take a value".into()),
-            "--revoke-others" => return Err("--revoke-others does not take a value".into()),
+            "--check" => return Err("--check does not take a value".into()),
             other if other.starts_with('-') => return Err(format!("unknown argument: {other}")),
             other => return Err(format!("unexpected positional argument: {other}")),
         }
     }
 
     if help {
-        return Ok(CiTokenArgs {
-            name: name.unwrap_or_default(),
-            out: out.unwrap_or_default(),
+        return Ok(CiIntegrationArgs {
+            name,
+            check,
             url,
             org,
-            force,
-            revoke_others,
             help: true,
         });
     }
 
-    let name = name.ok_or_else(|| "--name is required".to_string())?;
     if name.trim().is_empty() {
         return Err("--name cannot be empty".into());
     }
@@ -262,14 +254,6 @@ pub fn parse_args(argv: &[String]) -> Result<CiTokenArgs, String> {
         return Err(format!(
             "--name exceeds Sentry's {MAX_APP_NAME_LEN}-character limit"
         ));
-    }
-
-    let out = out.ok_or_else(|| "--out is required".to_string())?;
-    if out.trim().is_empty() || out.contains('\0') {
-        return Err("--out must be a non-empty valid file path".into());
-    }
-    if out.ends_with('/') {
-        return Err("--out must name a file, not a directory".into());
     }
 
     if !valid_url(&url) {
@@ -283,15 +267,32 @@ pub fn parse_args(argv: &[String]) -> Result<CiTokenArgs, String> {
         ));
     }
 
-    Ok(CiTokenArgs {
+    Ok(CiIntegrationArgs {
         name,
-        out,
+        check,
         url,
         org,
-        force,
-        revoke_others,
         help: false,
     })
+}
+
+/// Validates `SENTRY_CI_TOKEN` for `--check` mode without echoing its value.
+///
+/// Internal integration tokens minted by `SentryAppInstallationTokenCreator`
+/// (`src/sentry/sentry_apps/installations.py`) use `ApiToken` with default
+/// `token_type=AuthTokenType.__empty__` (`src/sentry/models/apitoken.py`),
+/// producing unprefixed 64-character hex tokens (unlike `sntryu_` user tokens).
+pub fn validate_ci_token(raw: Option<&str>) -> Result<String, String> {
+    let Some(token) = raw.filter(|s| !s.is_empty()) else {
+        return Err(
+            "SENTRY_CI_TOKEN is not set; export the UI-created internal integration token before running --check"
+                .into(),
+        );
+    };
+    if token.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err("SENTRY_CI_TOKEN contains invalid control or whitespace characters".into());
+    }
+    Ok(token.to_string())
 }
 
 pub fn valid_slug(slug: &str) -> bool {
@@ -301,11 +302,9 @@ pub fn valid_slug(slug: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
-pub fn valid_token_id(id: &str) -> bool {
-    !id.is_empty()
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+pub fn ui_settings_url(base: &str, org: &str, slug: &str) -> String {
+    let base = base.trim_end_matches('/');
+    format!("{base}/settings/{org}/developer-settings/{slug}/")
 }
 
 #[derive(Serialize)]
@@ -433,72 +432,27 @@ pub fn normalized_scopes(actual: &[String]) -> Vec<String> {
     set.into_iter().collect()
 }
 
-fn parse_id_field(val: Option<&Value>) -> Result<Option<String>, String> {
-    let Some(v) = val else {
-        return Ok(None);
-    };
-    let s = match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        _ => return Err("token 'id' must be a string or integer".into()),
-    };
-    if !valid_token_id(&s) {
-        return Err("token 'id' contains invalid characters".into());
-    }
-    Ok(Some(s))
-}
-
-/// Parses `POST /api/0/sentry-apps/{slug}/api-tokens/` response matching
-/// `SentryInternalAppTokensEndpoint.post`
-/// (`src/sentry/sentry_apps/api/endpoints/sentry_internal_app_tokens.py`)
-/// and `ApiTokenSerializer` (`src/sentry/api/serializers/models/apitoken.py`).
-pub fn parse_minted_token(body: &[u8]) -> Result<MintedToken, String> {
-    let val: Value =
-        serde_json::from_slice(body).map_err(|e| format!("response is not valid JSON: {e}"))?;
-    let obj = val
-        .as_object()
-        .ok_or_else(|| "minted token response must be a JSON object".to_string())?;
-    let id = parse_id_field(obj.get("id"))?;
-    let token = obj
-        .get("token")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "minted token response missing string 'token'".to_string())?;
-    if token.is_empty() || token.chars().any(|c| c.is_control() || c.is_whitespace()) {
-        return Err("minted token is empty or contains whitespace/control characters".into());
-    }
-    // `sentry_internal_app_tokens.py` replaces `"token"` with `MASKED_VALUE` (`"*" * 64`)
-    // when `!sentry_app.show_auth_info(request.access)`. Never write a masked placeholder.
-    if token.bytes().all(|b| b == b'*') {
-        return Err(
-            "Sentry returned a masked token placeholder ('*'); caller lacks scopes covered by the internal integration"
-                .into(),
-        );
-    }
-    Ok(MintedToken {
-        id,
-        token: token.to_string(),
-    })
-}
-
-/// Parses `GET /api/0/sentry-apps/{slug}/api-tokens/` response matching
-/// `SentryInternalAppTokensEndpoint.get`
-/// (`src/sentry/sentry_apps/api/endpoints/sentry_internal_app_tokens.py`).
-pub fn parse_token_ids(body: &[u8]) -> Result<Vec<String>, String> {
-    let val: Value =
-        serde_json::from_slice(body).map_err(|e| format!("response is not valid JSON: {e}"))?;
+/// Extract sorted token scopes if present in a JSON response object (`"scopes"`
+/// or `IndexEndpoint.get`'s `"auth": {"scopes": [...]}` in
+/// `src/sentry/api/endpoints/index.py`).
+pub fn extract_response_scopes(val: &Value) -> Option<Vec<String>> {
     let arr = val
-        .as_array()
-        .ok_or_else(|| "expected JSON array of api-tokens".to_string())?;
-    let mut ids = Vec::with_capacity(arr.len());
-    for (idx, item) in arr.iter().enumerate() {
-        let obj = item
-            .as_object()
-            .ok_or_else(|| format!("api_token[{idx}] must be a JSON object"))?;
-        let id = parse_id_field(obj.get("id"))?
-            .ok_or_else(|| format!("api_token[{idx}] missing 'id'"))?;
-        ids.push(id);
+        .as_object()
+        .and_then(|obj| {
+            obj.get("scopes")
+                .or_else(|| obj.get("auth").and_then(Value::as_object)?.get("scopes"))
+        })
+        .and_then(Value::as_array)?;
+    let mut set = BTreeSet::new();
+    for item in arr {
+        let s = item.as_str()?;
+        set.insert(s.to_string());
     }
-    Ok(ids)
+    if set.is_empty() {
+        None
+    } else {
+        Some(set.into_iter().collect())
+    }
 }
 
 /// Extract a concise error summary from a Sentry non-2xx JSON response without
@@ -528,202 +482,43 @@ pub fn extract_error_detail(body: &[u8]) -> String {
     }
 }
 
-fn redact_all(text: &str, secrets: &[&str]) -> String {
-    let mut out = text.to_string();
-    for secret in secrets {
-        out = redact(&out, secret);
-    }
-    out
-}
-
-fn check_http(
-    resp: &Response,
-    is_token_endpoint: bool,
-    secrets: &[&str],
-    err: &mut dyn Write,
-) -> bool {
+fn check_http(resp: &Response, secret: &str, err: &mut dyn Write) -> bool {
     if (200..300).contains(&resp.status) {
         return true;
     }
-    let detail = redact_all(&extract_error_detail(&resp.body), secrets);
-    if is_token_endpoint && resp.status == 403 {
-        let _ = writeln!(
-            err,
-            "ci-token: HTTP 403: {detail} (Sentry 26.10.1 /api-tokens/ uses SessionNoAuthTokenAuthentication, which rejects Bearer tokens; the mint step needs a session-based login that the lead has not yet approved)"
-        );
-    } else {
-        let _ = writeln!(err, "ci-token: HTTP {}: {detail}", resp.status);
-    }
+    let detail = redact(&extract_error_detail(&resp.body), secret);
+    let _ = writeln!(err, "ci-integration: HTTP {}: {detail}", resp.status);
     false
 }
 
-/// Verify `--out` can be written before making any network calls so an existing
-/// file does not trigger unwanted app creation or token minting.
-pub fn preflight_out_path(path: &Path, force: bool) -> Result<(), String> {
-    if path.is_dir() {
-        return Err(format!("--out '{}' is a directory", path.display()));
-    }
-    if !force && fs::symlink_metadata(path).is_ok() {
-        return Err(format!(
-            "refusing to overwrite existing file '{}' (pass --force to replace)",
-            path.display()
-        ));
-    }
-    Ok(())
-}
-
-fn ensure_parent_dirs_0700(parent: &Path) -> Result<(), String> {
-    if parent.as_os_str().is_empty() || parent.is_dir() {
-        return Ok(());
-    }
-    if fs::symlink_metadata(parent).is_ok() {
-        return Err(format!(
-            "parent path '{}' exists and is not a directory",
-            parent.display()
-        ));
-    }
-    let mut missing = Vec::new();
-    let mut cur = parent;
-    while !cur.as_os_str().is_empty() && fs::symlink_metadata(cur).is_err() {
-        missing.push(cur.to_path_buf());
-        match cur.parent() {
-            Some(p) => cur = p,
-            None => break,
-        }
-    }
-    if !cur.as_os_str().is_empty() && !cur.is_dir() {
-        return Err(format!(
-            "parent path '{}' exists and is not a directory",
-            cur.display()
-        ));
-    }
-    for dir in missing.into_iter().rev() {
-        DirBuilder::new()
-            .recursive(false)
-            .mode(0o700)
-            .create(&dir)
-            .map_err(|e| format!("failed to create directory '{}': {e}", dir.display()))?;
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).map_err(|e| {
-            format!(
-                "failed to set mode 0700 on directory '{}': {e}",
-                dir.display()
-            )
-        })?;
-    }
-    Ok(())
-}
-
-/// Write `secret` to `path` with mode `0600` (and `0700` for any newly created
-/// parent directories). Never creates a file with permissive permissions, even
-/// transiently or under a lax umask.
-pub fn write_secret_file(path: &Path, secret: &str, force: bool) -> Result<(), String> {
-    preflight_out_path(path, force)?;
-
-    let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    ensure_parent_dirs_0700(parent)?;
-
-    if !force {
-        let mut f = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| format!("failed to create '{}': {e}", path.display()))?;
-        if let Err(e) = f
-            .set_permissions(fs::Permissions::from_mode(0o600))
-            .and_then(|()| f.write_all(secret.as_bytes()))
-            .and_then(|()| f.sync_all())
-        {
-            drop(f);
-            let _ = fs::remove_file(path);
-            return Err(format!("failed to write '{}': {e}", path.display()));
-        }
-        return Ok(());
-    }
-
-    let tmp_dir = if parent.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        parent
-    };
-    let pid = std::process::id();
-    let (tmp_path, mut tmp_file) = loop {
-        let seq = TMP_OUT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let candidate = tmp_dir.join(format!(".ci-token-{pid}-{seq}.tmp"));
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&candidate)
-        {
-            Ok(f) => break (candidate, f),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => {
-                return Err(format!(
-                    "failed to create temporary file in '{}': {e}",
-                    tmp_dir.display()
-                ))
-            }
-        }
-    };
-
-    let write_res = tmp_file
-        .set_permissions(fs::Permissions::from_mode(0o600))
-        .and_then(|()| tmp_file.write_all(secret.as_bytes()))
-        .and_then(|()| tmp_file.sync_all());
-    drop(tmp_file);
-    if let Err(e) = write_res {
-        let _ = fs::remove_file(&tmp_path);
-        return Err(format!(
-            "failed to write temporary file '{}': {e}",
-            tmp_path.display()
-        ));
-    }
-
-    if let Err(e) = fs::rename(&tmp_path, path) {
-        let _ = fs::remove_file(&tmp_path);
-        return Err(format!(
-            "failed to replace '{}' atomically: {e}",
-            path.display()
-        ));
-    }
-    Ok(())
-}
-
-pub fn execute<C: HttpClient>(
-    args: &CiTokenArgs,
-    out_path: &Path,
+/// Reconcile the internal Sentry integration and print its slug and UI link.
+pub fn execute_reconcile<C: HttpClient>(
+    args: &CiIntegrationArgs,
     caller_token: &str,
     client: &mut C,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    if let Err(e) = preflight_out_path(out_path, args.force) {
-        let _ = writeln!(err, "ci-token: {e}");
-        return 1;
-    }
-
     let base = args.url.trim_end_matches('/');
     let org_apps_url = format!("{base}/api/0/organizations/{}/sentry-apps/", args.org);
     let apps_url = format!("{base}/api/0/sentry-apps/");
-    let caller_secrets = [caller_token];
 
     // 1. Find internal integration by name on `OrganizationSentryAppsEndpoint.get`
     // (`src/sentry/sentry_apps/api/endpoints/organization_sentry_apps.py`).
     let resp = match client.request("GET", &org_apps_url, None) {
         Ok(r) => r,
         Err(e) => {
-            let _ = writeln!(err, "ci-token: {}", redact_all(&e, &caller_secrets));
+            let _ = writeln!(err, "ci-integration: {}", redact(&e, caller_token));
             return 1;
         }
     };
-    if !check_http(&resp, false, &caller_secrets, err) {
+    if !check_http(&resp, caller_token, err) {
         return 1;
     }
     let existing = match parse_sentry_apps(&resp.body) {
         Ok(apps) => apps,
         Err(e) => {
-            let _ = writeln!(err, "ci-token: invalid sentry-apps response: {e}");
+            let _ = writeln!(err, "ci-integration: invalid sentry-apps response: {e}");
             return 1;
         }
     };
@@ -733,7 +528,7 @@ pub fn execute<C: HttpClient>(
         .filter(|app| app.is_internal && app.name == args.name)
         .collect();
 
-    let app = match matches.as_slice() {
+    let (state, app) = match matches.as_slice() {
         [] => {
             // 2a. Create internal integration via `SentryAppsEndpoint.post`
             // (`src/sentry/sentry_apps/api/endpoints/sentry_apps.py`).
@@ -741,24 +536,27 @@ pub fn execute<C: HttpClient>(
             let resp = match client.request("POST", &apps_url, Some(&create_body)) {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = writeln!(err, "ci-token: {}", redact_all(&e, &caller_secrets));
+                    let _ = writeln!(err, "ci-integration: {}", redact(&e, caller_token));
                     return 1;
                 }
             };
-            if !check_http(&resp, false, &caller_secrets, err) {
+            if !check_http(&resp, caller_token, err) {
                 return 1;
             }
             match parse_sentry_app(&resp.body) {
-                Ok(created) => created,
+                Ok(created) => ("created", created),
                 Err(e) => {
-                    let _ = writeln!(err, "ci-token: invalid created sentry-app response: {e}");
+                    let _ = writeln!(
+                        err,
+                        "ci-integration: invalid created sentry-app response: {e}"
+                    );
                     return 1;
                 }
             }
         }
         [found] => {
             if scopes_match(&found.scopes, &REQUIRED_SCOPES) {
-                (*found).clone()
+                ("unchanged", (*found).clone())
             } else {
                 // 2b. Reconcile scopes via `SentryAppDetailsEndpoint.put`
                 // (`src/sentry/sentry_apps/api/endpoints/sentry_app_details.py`).
@@ -767,17 +565,20 @@ pub fn execute<C: HttpClient>(
                 let resp = match client.request("PUT", &app_url, Some(&update_body)) {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = writeln!(err, "ci-token: {}", redact_all(&e, &caller_secrets));
+                        let _ = writeln!(err, "ci-integration: {}", redact(&e, caller_token));
                         return 1;
                     }
                 };
-                if !check_http(&resp, false, &caller_secrets, err) {
+                if !check_http(&resp, caller_token, err) {
                     return 1;
                 }
                 match parse_sentry_app(&resp.body) {
-                    Ok(updated) => updated,
+                    Ok(updated) => ("updated", updated),
                     Err(e) => {
-                        let _ = writeln!(err, "ci-token: invalid updated sentry-app response: {e}");
+                        let _ = writeln!(
+                            err,
+                            "ci-integration: invalid updated sentry-app response: {e}"
+                        );
                         return 1;
                     }
                 }
@@ -787,7 +588,7 @@ pub fn execute<C: HttpClient>(
             let slugs: Vec<&str> = many.iter().map(|a| a.slug.as_str()).collect();
             let _ = writeln!(
                 err,
-                "ci-token: found multiple internal integrations named '{}' ({}); cannot disambiguate",
+                "ci-integration: found multiple internal integrations named '{}' ({}); cannot disambiguate",
                 args.name,
                 slugs.join(", ")
             );
@@ -795,99 +596,67 @@ pub fn execute<C: HttpClient>(
         }
     };
 
-    // 3. Mint an internal integration API token via `SentryInternalAppTokensEndpoint.post`
-    // (`src/sentry/sentry_apps/api/endpoints/sentry_internal_app_tokens.py`).
-    let tokens_url = format!("{base}/api/0/sentry-apps/{}/api-tokens/", app.slug);
-    let resp = match client.request("POST", &tokens_url, Some("{}")) {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = writeln!(err, "ci-token: {}", redact_all(&e, &caller_secrets));
-            return 1;
-        }
-    };
-    if !check_http(&resp, true, &caller_secrets, err) {
-        return 1;
-    }
-    let minted = match parse_minted_token(&resp.body) {
-        Ok(t) => t,
-        Err(e) => {
-            let _ = writeln!(err, "ci-token: invalid api-tokens response: {e}");
-            return 1;
-        }
-    };
-    let all_secrets = [caller_token, minted.token.as_str()];
-
-    if args.revoke_others && minted.id.is_none() {
-        let _ = writeln!(
-            err,
-            "ci-token: minted token response missing 'id'; cannot safely --revoke-others"
-        );
-        return 1;
-    }
-
-    // 4. Persist the raw token safely before revoking any older tokens.
-    if let Err(e) = write_secret_file(out_path, &minted.token, args.force) {
-        let _ = writeln!(err, "ci-token: {}", redact_all(&e, &all_secrets));
-        return 1;
-    }
-
-    // 5. Optionally revoke all other tokens via `SentryInternalAppTokensEndpoint.get`
-    // and `SentryInternalAppTokenDetailsEndpoint.delete`
-    // (`src/sentry/sentry_apps/api/endpoints/sentry_internal_app_token_details.py`).
-    if args.revoke_others {
-        let keep_id = minted.id.as_deref().expect("checked above");
-        let resp = match client.request("GET", &tokens_url, None) {
-            Ok(r) => r,
-            Err(e) => {
-                let _ = writeln!(err, "ci-token: {}", redact_all(&e, &all_secrets));
-                return 1;
-            }
-        };
-        if !check_http(&resp, true, &all_secrets, err) {
-            return 1;
-        }
-        let ids = match parse_token_ids(&resp.body) {
-            Ok(list) => list,
-            Err(e) => {
-                let _ = writeln!(err, "ci-token: invalid api-tokens list response: {e}");
-                return 1;
-            }
-        };
-        for id in ids {
-            if id == keep_id {
-                continue;
-            }
-            let delete_url = format!("{base}/api/0/sentry-apps/{}/api-tokens/{id}/", app.slug);
-            let resp = match client.request("DELETE", &delete_url, None) {
-                Ok(r) => r,
-                Err(e) => {
-                    let _ = writeln!(err, "ci-token: {}", redact_all(&e, &all_secrets));
-                    return 1;
-                }
-            };
-            if !check_http(&resp, true, &all_secrets, err) {
-                return 1;
-            }
-        }
-    }
-
     let final_scopes = normalized_scopes(&app.scopes);
+    let ui_url = ui_settings_url(base, &args.org, &app.slug);
     let _ = writeln!(
         out,
-        "token written: {} app={} scopes={}",
-        out_path.display(),
+        "{state}: slug={} scopes={} ui={ui_url}",
         app.slug,
         final_scopes.join(",")
     );
     0
 }
 
+/// Verify `SENTRY_CI_TOKEN` against `OrganizationProjectsEndpoint.get`
+/// (`GET /api/0/organizations/{org}/projects/`,
+/// `src/sentry/core/endpoints/organization_projects.py`,
+/// `OrganizationProjectsPermission` requiring `org:read`/`org:write`/`org:admin`).
+pub fn execute_check<C: HttpClient>(
+    args: &CiIntegrationArgs,
+    ci_token: &str,
+    client: &mut C,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let base = args.url.trim_end_matches('/');
+    let projects_url = format!("{base}/api/0/organizations/{}/projects/", args.org);
+
+    let resp = match client.request("GET", &projects_url, None) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = writeln!(err, "ci-integration: {}", redact(&e, ci_token));
+            return 1;
+        }
+    };
+
+    if (200..300).contains(&resp.status) {
+        let parsed: Value = match serde_json::from_slice(&resp.body) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = writeln!(err, "ci-integration: invalid projects response: {e}");
+                return 1;
+            }
+        };
+        if let Some(scopes) = extract_response_scopes(&parsed) {
+            let _ = writeln!(out, "ok scopes={}", scopes.join(","));
+        } else {
+            let _ = writeln!(out, "ok");
+        }
+        return 0;
+    }
+
+    if resp.status == 401 || resp.status == 403 {
+        let _ = writeln!(out, "denied");
+    }
+    let detail = redact(&extract_error_detail(&resp.body), ci_token);
+    let _ = writeln!(err, "ci-integration: HTTP {}: {detail}", resp.status);
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::VecDeque;
-    use std::os::unix::fs::MetadataExt;
-    use std::path::PathBuf;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct RecordedCall {
@@ -935,85 +704,55 @@ mod tests {
         })
     }
 
-    fn tempdir(tag: &str) -> PathBuf {
-        let base = std::env::temp_dir();
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        let d = base.join(format!(
-            "ci-token-unit-{tag}-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::SeqCst)
-        ));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
-        d
-    }
-
-    fn default_args(out: &Path) -> CiTokenArgs {
-        CiTokenArgs {
-            name: "vitruvian-ci".into(),
-            out: out.to_string_lossy().into_owned(),
+    fn default_args() -> CiIntegrationArgs {
+        CiIntegrationArgs {
+            name: DEFAULT_APP_NAME.into(),
+            check: false,
             url: DEFAULT_URL.into(),
             org: DEFAULT_ORG.into(),
-            force: false,
-            revoke_others: false,
             help: false,
         }
     }
 
     #[test]
-    fn parse_args_validates_flags_defaults_and_limits() {
+    fn parse_args_validates_defaults_check_and_limits() {
         let help = parse_args(&["--help".into()]).unwrap();
         assert!(help.help);
 
-        let ok = parse_args(&[
-            "--name=vitruvian-ci".into(),
-            "--out".into(),
-            "/tmp/token".into(),
-            "--force".into(),
-            "--revoke-others".into(),
-        ])
-        .unwrap();
-        assert_eq!(ok.name, "vitruvian-ci");
-        assert_eq!(ok.out, "/tmp/token");
-        assert_eq!(ok.url, DEFAULT_URL);
-        assert_eq!(ok.org, DEFAULT_ORG);
-        assert!(ok.force);
-        assert!(ok.revoke_others);
+        let defaults = parse_args(&[]).unwrap();
+        assert_eq!(defaults.name, DEFAULT_APP_NAME);
+        assert!(!defaults.check);
+        assert_eq!(defaults.url, DEFAULT_URL);
+        assert_eq!(defaults.org, DEFAULT_ORG);
 
+        let check = parse_args(&["--check".into(), "--org=acme".into()]).unwrap();
+        assert!(check.check);
+        assert_eq!(check.org, "acme");
+
+        assert!(parse_args(&["--name".into(), "".into()]).is_err());
+        assert!(parse_args(&["--name".into(), "x".repeat(MAX_APP_NAME_LEN + 1)]).is_err());
+        assert!(parse_args(&["--check=1".into()]).is_err());
         assert!(parse_args(&["--out".into(), "/tmp/tok".into()]).is_err());
-        assert!(parse_args(&["--name".into(), "ci".into()]).is_err());
-        assert!(parse_args(&[
-            "--name".into(),
-            "x".repeat(MAX_APP_NAME_LEN + 1),
-            "--out".into(),
-            "/tmp/tok".into(),
-        ])
-        .is_err());
-        assert!(parse_args(&[
-            "--name".into(),
-            "ci".into(),
-            "--out".into(),
-            "/tmp/dir/".into(),
-        ])
-        .is_err());
-        assert!(parse_args(&[
-            "--name".into(),
-            "ci".into(),
-            "--out".into(),
-            "/tmp/tok".into(),
-            "--url".into(),
-            "http://sentry.example".into(),
-        ])
-        .is_err());
-        assert!(parse_args(&[
-            "--name".into(),
-            "ci".into(),
-            "--out".into(),
-            "/tmp/tok".into(),
-            "--org".into(),
-            "bad/org".into(),
-        ])
-        .is_err());
+        assert!(parse_args(&["--force".into()]).is_err());
+        assert!(parse_args(&["--revoke-others".into()]).is_err());
+        assert!(parse_args(&["--url".into(), "http://sentry.example".into()]).is_err());
+        assert!(parse_args(&["--org".into(), "bad/org".into()]).is_err());
+    }
+
+    #[test]
+    fn validate_ci_token_accepts_unprefixed_tokens_and_never_echoes_secret() {
+        let missing = validate_ci_token(None).unwrap_err();
+        assert!(missing.contains("SENTRY_CI_TOKEN"), "{missing}");
+
+        let empty = validate_ci_token(Some("")).unwrap_err();
+        assert!(empty.contains("SENTRY_CI_TOKEN"), "{empty}");
+
+        let bad = "deadbeef\nsecret_probe";
+        let bad_err = validate_ci_token(Some(bad)).unwrap_err();
+        assert!(!bad_err.contains("secret_probe"), "{bad_err}");
+
+        let hex64 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(validate_ci_token(Some(hex64)).unwrap(), hex64);
     }
 
     #[test]
@@ -1060,104 +799,57 @@ mod tests {
     }
 
     #[test]
-    fn parse_minted_token_rejects_masked_placeholder() {
-        let masked = "*".repeat(64);
-        let err = parse_minted_token(format!(r#"{{"id":"1","token":"{masked}"}}"#).as_bytes())
-            .unwrap_err();
-        assert!(err.contains("masked"), "{err}");
-
-        let ok = parse_minted_token(br#"{"id":42,"token":"sntrya_real_token_value"}"#).unwrap();
-        assert_eq!(ok.id.as_deref(), Some("42"));
-        assert_eq!(ok.token, "sntrya_real_token_value");
-    }
-
-    #[test]
-    fn execute_create_path_creates_0700_parent_0600_file_and_redacts_token() {
-        let dir = tempdir("create");
-        let out_path = dir.join("nested/secrets/ci_token");
-        let args = default_args(&out_path);
-        let minted = "sntrya_unit_created_secret_123";
+    fn execute_reconcile_create_path_prints_slug_and_ui_link() {
+        let args = default_args();
+        let caller = "sntryu_unit_create_secret";
         let mut client = FakeHttp::new(vec![
             resp(200, "[]"),
             resp(
                 201,
                 r#"{"name":"vitruvian-ci","slug":"vitruvian-ci-abc123","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read","project:write","team:read","team:write"]}"#,
             ),
-            resp(201, &format!(r#"{{"id":"9","token":"{minted}"}}"#)),
         ]);
         let mut out = Vec::new();
         let mut err = Vec::new();
 
-        let code = execute(
-            &args,
-            &out_path,
-            "sntryu_caller",
-            &mut client,
-            &mut out,
-            &mut err,
-        );
+        let code = execute_reconcile(&args, caller, &mut client, &mut out, &mut err);
         assert_eq!(code, 0, "err={}", String::from_utf8_lossy(&err));
+        assert!(err.is_empty());
         let stdout = String::from_utf8(out).unwrap();
         assert_eq!(
             stdout,
-            format!(
-                "token written: {} app=vitruvian-ci-abc123 scopes=alerts:read,alerts:write,org:read,org:write,project:read,project:write,team:read,team:write\n",
-                out_path.display()
-            )
+            "created: slug=vitruvian-ci-abc123 scopes=alerts:read,alerts:write,org:read,org:write,project:read,project:write,team:read,team:write ui=https://sentry.lab.ipv1337.dev/settings/sentry/developer-settings/vitruvian-ci-abc123/\n"
         );
-        assert!(!stdout.contains(minted));
-        assert!(err.is_empty());
-        assert_eq!(fs::read_to_string(&out_path).unwrap(), minted);
-        assert_eq!(fs::metadata(&out_path).unwrap().mode() & 0o777, 0o600);
-        assert_eq!(
-            fs::metadata(out_path.parent().unwrap()).unwrap().mode() & 0o777,
-            0o700
-        );
-        assert_eq!(client.calls.len(), 3);
-        assert_eq!(client.calls[0].method, "GET");
-        assert_eq!(client.calls[1].method, "POST");
-        assert_eq!(client.calls[2].method, "POST");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn execute_already_present_skips_create_and_put() {
-        let dir = tempdir("present");
-        let out_path = dir.join("token");
-        let args = default_args(&out_path);
-        let mut client = FakeHttp::new(vec![
-            resp(
-                200,
-                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-111111","status":"internal","scopes":["team:write","team:read","project:write","project:read","org:write","org:read","alerts:write","alerts:read"]}]"#,
-            ),
-            resp(201, r#"{"id":"7","token":"sntrya_existing_ok"}"#),
-        ]);
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-
-        let code = execute(
-            &args,
-            &out_path,
-            "sntryu_caller",
-            &mut client,
-            &mut out,
-            &mut err,
-        );
-        assert_eq!(code, 0);
+        assert!(!stdout.contains(caller));
         assert_eq!(client.calls.len(), 2);
         assert_eq!(client.calls[0].method, "GET");
         assert_eq!(client.calls[1].method, "POST");
-        assert_eq!(fs::read_to_string(&out_path).unwrap(), "sntrya_existing_ok");
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn execute_scope_update_puts_required_scopes_and_revoke_others_deletes_old_ids() {
-        let dir = tempdir("update-revoke");
-        let out_path = dir.join("token");
-        let mut args = default_args(&out_path);
-        args.revoke_others = true;
+    fn execute_reconcile_already_present_skips_create_and_put() {
+        let args = default_args();
+        let mut client = FakeHttp::new(vec![resp(
+            200,
+            r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-111111","status":"internal","scopes":["team:write","team:read","project:write","project:read","org:write","org:read","alerts:write","alerts:read"]}]"#,
+        )]);
+        let mut out = Vec::new();
+        let mut err = Vec::new();
 
+        let code = execute_reconcile(&args, "sntryu_caller", &mut client, &mut out, &mut err);
+        assert_eq!(code, 0);
+        assert!(err.is_empty());
+        assert_eq!(client.calls.len(), 1);
+        assert_eq!(client.calls[0].method, "GET");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "unchanged: slug=vitruvian-ci-111111 scopes=alerts:read,alerts:write,org:read,org:write,project:read,project:write,team:read,team:write ui=https://sentry.lab.ipv1337.dev/settings/sentry/developer-settings/vitruvian-ci-111111/\n"
+        );
+    }
+
+    #[test]
+    fn execute_reconcile_scope_update_puts_required_scopes() {
+        let args = default_args();
         let mut client = FakeHttp::new(vec![
             resp(
                 200,
@@ -1167,27 +859,14 @@ mod tests {
                 200,
                 r#"{"name":"vitruvian-ci","slug":"vitruvian-ci-222222","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read","project:write","team:read","team:write"]}"#,
             ),
-            resp(201, r#"{"id":"55","token":"sntrya_rotated_55"}"#),
-            resp(
-                200,
-                r#"[{"id":"11","token":null},{"id":"55","token":null},{"id":"99","token":null}]"#,
-            ),
-            resp(204, ""),
-            resp(204, ""),
         ]);
         let mut out = Vec::new();
         let mut err = Vec::new();
 
-        let code = execute(
-            &args,
-            &out_path,
-            "sntryu_caller",
-            &mut client,
-            &mut out,
-            &mut err,
-        );
+        let code = execute_reconcile(&args, "sntryu_caller", &mut client, &mut out, &mut err);
         assert_eq!(code, 0, "err={}", String::from_utf8_lossy(&err));
-        assert_eq!(client.calls.len(), 6);
+        assert!(err.is_empty());
+        assert_eq!(client.calls.len(), 2);
         assert_eq!(client.calls[1].method, "PUT");
         assert_eq!(
             client.calls[1].url,
@@ -1208,78 +887,64 @@ mod tests {
                 "team:write"
             ])
         );
-        assert_eq!(client.calls[3].method, "GET");
-        assert_eq!(client.calls[4].method, "DELETE");
         assert_eq!(
-            client.calls[4].url,
-            "https://sentry.lab.ipv1337.dev/api/0/sentry-apps/vitruvian-ci-222222/api-tokens/11/"
+            String::from_utf8(out).unwrap(),
+            "updated: slug=vitruvian-ci-222222 scopes=alerts:read,alerts:write,org:read,org:write,project:read,project:write,team:read,team:write ui=https://sentry.lab.ipv1337.dev/settings/sentry/developer-settings/vitruvian-ci-222222/\n"
         );
-        assert_eq!(client.calls[5].method, "DELETE");
-        assert_eq!(
-            client.calls[5].url,
-            "https://sentry.lab.ipv1337.dev/api/0/sentry-apps/vitruvian-ci-222222/api-tokens/99/"
-        );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn execute_refuses_existing_out_before_any_http_call() {
-        let dir = tempdir("no-overwrite");
-        let out_path = dir.join("existing");
-        fs::write(&out_path, "keep-me").unwrap();
-        let args = default_args(&out_path);
-        let mut client = FakeHttp::new(vec![]);
+    fn execute_check_prints_ok_or_denied_and_optional_scopes() {
+        let mut args = default_args();
+        args.check = true;
+        let secret = "deadbeef_ci_token_check_secret";
+
+        let mut ok_client = FakeHttp::new(vec![resp(200, r#"[{"id":"1","slug":"backstage"}]"#)]);
         let mut out = Vec::new();
         let mut err = Vec::new();
-
-        let code = execute(
-            &args,
-            &out_path,
-            "sntryu_caller",
-            &mut client,
-            &mut out,
-            &mut err,
+        assert_eq!(
+            execute_check(&args, secret, &mut ok_client, &mut out, &mut err),
+            0
         );
-        assert_eq!(code, 1);
-        assert!(client.calls.is_empty());
-        assert_eq!(fs::read_to_string(&out_path).unwrap(), "keep-me");
-        let _ = fs::remove_dir_all(&dir);
-    }
+        assert_eq!(String::from_utf8(out).unwrap(), "ok\n");
+        assert!(err.is_empty());
+        assert_eq!(
+            ok_client.calls[0].url,
+            "https://sentry.lab.ipv1337.dev/api/0/organizations/sentry/projects/"
+        );
 
-    #[test]
-    fn execute_mint_403_reports_unapproved_session_login_limitation() {
-        let dir = tempdir("mint-403");
-        let out_path = dir.join("token");
-        let args = default_args(&out_path);
-        let caller = "sntryu_caller_403_secret";
-        let mut client = FakeHttp::new(vec![
-            resp(
-                200,
-                r#"[{"name":"vitruvian-ci","slug":"vitruvian-ci-555555","status":"internal","scopes":["alerts:read","alerts:write","org:read","org:write","project:read","project:write","team:read","team:write"]}]"#,
-            ),
-            resp(
-                403,
-                r#"{"detail":"Authentication credentials were not provided."}"#,
-            ),
-        ]);
+        let mut scoped_client = FakeHttp::new(vec![resp(
+            200,
+            r#"{"auth":{"scopes":["project:read","org:read"]}}"#,
+        )]);
         let mut out = Vec::new();
         let mut err = Vec::new();
+        assert_eq!(
+            execute_check(&args, secret, &mut scoped_client, &mut out, &mut err),
+            0
+        );
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "ok scopes=org:read,project:read\n"
+        );
+        assert!(err.is_empty());
 
-        let code = execute(&args, &out_path, caller, &mut client, &mut out, &mut err);
-        assert_eq!(code, 1);
-        assert!(out.is_empty());
-        assert!(!out_path.exists());
-        let err_str = String::from_utf8(err).unwrap();
-        assert!(err_str.contains("403"), "{err_str}");
-        assert!(
-            err_str.contains("Authentication credentials were not provided."),
-            "{err_str}"
-        );
-        assert!(
-            err_str.contains("session-based login that the lead has not yet approved"),
-            "{err_str}"
-        );
-        assert!(!err_str.contains(caller));
-        let _ = fs::remove_dir_all(&dir);
+        for status in [401u16, 403u16] {
+            let mut denied_client = FakeHttp::new(vec![resp(
+                status,
+                &format!(r#"{{"detail":"You do not have permission ({secret})"}}"#),
+            )]);
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            assert_eq!(
+                execute_check(&args, secret, &mut denied_client, &mut out, &mut err),
+                1
+            );
+            assert_eq!(String::from_utf8(out).unwrap(), "denied\n");
+            let err_str = String::from_utf8(err).unwrap();
+            assert!(err_str.contains(&status.to_string()), "{err_str}");
+            assert!(!err_str.contains(secret), "{err_str}");
+            assert!(err_str.contains("<redacted>"), "{err_str}");
+        }
     }
 }

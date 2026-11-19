@@ -263,6 +263,7 @@ impl HttpClient for CurlClient {
             // Credentials reach curl only through the stdin config; keep them
             // out of the child's environment (readable via ps eww).
             .env_remove("SENTRY_TOKEN")
+            .env_remove("SENTRY_CI_TOKEN")
             .env_remove("SENTRY_DSN")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

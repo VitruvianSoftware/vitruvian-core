@@ -18,32 +18,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! CLI entrypoint for `//tools/sentry:ci-token`.
+//! CLI entrypoint for `//tools/sentry:ci-integration`.
 
-use sentry_tools::ci_token::{execute, parse_args, preflight_out_path, USAGE};
+use sentry_tools::ci_integration::{
+    execute_check, execute_reconcile, parse_args, validate_ci_token, USAGE,
+};
 use sentry_tools::http::{AuthHeader, CurlClient};
-use std::path::PathBuf;
 use std::process::ExitCode;
-
-fn resolve_out_path(raw: &str) -> PathBuf {
-    let p = PathBuf::from(raw);
-    if p.is_absolute() {
-        return p;
-    }
-    if let Ok(wd) = std::env::var("BUILD_WORKING_DIRECTORY") {
-        if !wd.is_empty() {
-            return PathBuf::from(wd).join(p);
-        }
-    }
-    p
-}
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let args = match parse_args(&argv) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("ci-token: {e}\n\n{USAGE}");
+            eprintln!("ci-integration: {e}\n\n{USAGE}");
             return ExitCode::from(2);
         }
     };
@@ -52,18 +40,23 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let out_path = resolve_out_path(&args.out);
-    if let Err(e) = preflight_out_path(&out_path, args.force) {
-        eprintln!("ci-token: {e}");
-        return ExitCode::from(1);
-    }
-
-    let raw_token = std::env::var("SENTRY_TOKEN").ok();
-    let token = match sentry_tools::validate_token(raw_token.as_deref()) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("ci-token: {e}");
-            return ExitCode::from(1);
+    let token = if args.check {
+        let raw_ci_token = std::env::var("SENTRY_CI_TOKEN").ok();
+        match validate_ci_token(raw_ci_token.as_deref()) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("ci-integration: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        let raw_token = std::env::var("SENTRY_TOKEN").ok();
+        match sentry_tools::validate_token(raw_token.as_deref()) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("ci-integration: {e}");
+                return ExitCode::from(1);
+            }
         }
     };
 
@@ -71,19 +64,28 @@ fn main() -> ExitCode {
     let mut client = match CurlClient::new(curl_bin, AuthHeader::Bearer(token.clone())) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("ci-token: {e}");
+            eprintln!("ci-integration: {e}");
             return ExitCode::from(1);
         }
     };
 
-    let code = execute(
-        &args,
-        &out_path,
-        &token,
-        &mut client,
-        &mut std::io::stdout(),
-        &mut std::io::stderr(),
-    );
+    let code = if args.check {
+        execute_check(
+            &args,
+            &token,
+            &mut client,
+            &mut std::io::stdout(),
+            &mut std::io::stderr(),
+        )
+    } else {
+        execute_reconcile(
+            &args,
+            &token,
+            &mut client,
+            &mut std::io::stdout(),
+            &mut std::io::stderr(),
+        )
+    };
     drop(client);
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
