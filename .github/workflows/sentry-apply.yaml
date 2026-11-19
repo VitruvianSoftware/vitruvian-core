@@ -43,6 +43,8 @@ on:
       - "tools/pulumi/src/retry_concurrent_update.rs"
       - "tools/pulumi/src/bin/refuse_destructive_plan.rs"
       - "tools/pulumi/src/refuse_destructive_plan.rs"
+      - "tools/pulumi/src/bin/guarded_up.rs"
+      - "tools/pulumi/src/guarded_up.rs"
   schedule:
     # Every 6 hours so Sentry projects created outside git get PagerDuty
     # high-priority alert rules without waiting for a repository push.
@@ -126,8 +128,10 @@ jobs:
         uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
 
       # Build the std-only Rust helpers once (no Bazel on this runner):
-      #   retry-concurrent-update  waits out Pulumi Cloud's 409 lock
-      #   refuse-destructive-plan  fails closed if preview --json plans delete/replace
+      #   retry-concurrent-update  waits out Pulumi Cloud's 409 lock (preview branch)
+      #   guarded-up               atomically runs `pulumi preview --json` ->
+      #                            refuse-destructive-plan -> `pulumi up`, retrying
+      #                            the whole unit on a 409 lock
       - name: Build Pulumi CI helpers
         if: steps.key.outputs.present == 'true'
         run: |
@@ -140,8 +144,8 @@ jobs:
             "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" \
             -o "${RUNNER_TEMP}/retry-concurrent-update"
           rustc --edition 2021 -O \
-            "$GITHUB_WORKSPACE/tools/pulumi/src/bin/refuse_destructive_plan.rs" \
-            -o "${RUNNER_TEMP}/refuse-destructive-plan"
+            "$GITHUB_WORKSPACE/tools/pulumi/src/bin/guarded_up.rs" \
+            -o "${RUNNER_TEMP}/guarded-up"
 
       - name: Reconcile platform/sentry (production)
         id: pulumi-sentry
@@ -165,14 +169,14 @@ jobs:
           fi
 
           retry="${RUNNER_TEMP}/retry-concurrent-update"
-          plan_guard="${RUNNER_TEMP}/refuse-destructive-plan"
+          guarded_up="${RUNNER_TEMP}/guarded-up"
 
           # Forward 127.0.0.1:443 -> $HOMELAB_GATEWAY (NodePort :31103 on a
           # cluster node's Headscale IP) preserving TLS/SNI so Envoy terminates
           # HTTPS with the genuine sentry-tls certificate. Backgrounded in this
           # step so socat lives for the whole Pulumi command.
           : "${HOMELAB_GATEWAY:?homelab-tunnel-setup did not pick a gateway node}"
-          sudo socat TCP-LISTEN:443,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
+          sudo socat TCP-LISTEN:443,bind=127.0.0.1,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
           socat_pid=$!
           trap 'sudo kill "$socat_pid" 2>/dev/null || sudo pkill -f "TCP-LISTEN:443" 2>/dev/null || true' EXIT
 
@@ -194,27 +198,17 @@ jobs:
 
           out_file="${RUNNER_TEMP}/pulumi-sentry-out.txt"
           : > "$out_file"
-          plan_json="${RUNNER_TEMP}/pulumi-sentry-plan.json"
-          plan_err="${RUNNER_TEMP}/pulumi-sentry-plan.err"
-          rm -f "$plan_json" "$plan_err"
           set +e
-          pulumi stack select -c production 2>&1 | tee -a "$out_file"
+          pulumi stack select production 2>&1 | tee -a "$out_file"
           ec="${PIPESTATUS[0]}"
-          if [ "$ec" -eq 0 ]; then
+          if [ "$ec" -ne 0 ]; then
+            echo "::error::Pulumi stack 'production' was not found for platform/sentry; refusing to create an empty stack." | tee -a "$out_file" >&2
+          else
             if [ "$action" = "up" ]; then
-              "$retry" pulumi preview --json --non-interactive >"$plan_json" 2>"$plan_err"
-              ec=$?
-              if [ "$ec" -ne 0 ]; then
-                tee -a "$out_file" <"$plan_err" >&2
-              else
-                "$plan_guard" "sentry production" "$plan_json" 2>&1 | tee -a "$out_file"
-                ec="${PIPESTATUS[0]}"
-              fi
-              rm -f "$plan_json" "$plan_err"
-              if [ "$ec" -eq 0 ]; then
-                "$retry" pulumi up --yes --diff --non-interactive 2>&1 | tee -a "$out_file"
-                ec="${PIPESTATUS[0]}"
-              fi
+              # guarded-up runs `pulumi preview --json` -> refuse-destructive-plan
+              # -> `pulumi up` as one atomic unit and retries the whole unit on 409.
+              "$guarded_up" "sentry production" 2>&1 | tee -a "$out_file"
+              ec="${PIPESTATUS[0]}"
             else
               "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"
               ec="${PIPESTATUS[0]}"
@@ -246,12 +240,12 @@ jobs:
           fi
 
           retry="${RUNNER_TEMP}/retry-concurrent-update"
-          plan_guard="${RUNNER_TEMP}/refuse-destructive-plan"
+          guarded_up="${RUNNER_TEMP}/guarded-up"
 
           # Backgrounded in this step because GitHub Actions reaps background
           # processes across step boundaries.
           : "${HOMELAB_GATEWAY:?homelab-tunnel-setup did not pick a gateway node}"
-          sudo socat TCP-LISTEN:443,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
+          sudo socat TCP-LISTEN:443,bind=127.0.0.1,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
           socat_pid=$!
           trap 'sudo kill "$socat_pid" 2>/dev/null || sudo pkill -f "TCP-LISTEN:443" 2>/dev/null || true' EXIT
 
@@ -273,27 +267,17 @@ jobs:
 
           out_file="${RUNNER_TEMP}/pulumi-sentry-pagerduty-out.txt"
           : > "$out_file"
-          plan_json="${RUNNER_TEMP}/pulumi-sentry-pagerduty-plan.json"
-          plan_err="${RUNNER_TEMP}/pulumi-sentry-pagerduty-plan.err"
-          rm -f "$plan_json" "$plan_err"
           set +e
-          pulumi stack select -c production 2>&1 | tee -a "$out_file"
+          pulumi stack select production 2>&1 | tee -a "$out_file"
           ec="${PIPESTATUS[0]}"
-          if [ "$ec" -eq 0 ]; then
+          if [ "$ec" -ne 0 ]; then
+            echo "::error::Pulumi stack 'production' was not found for platform/sentry-pagerduty; refusing to create an empty stack." | tee -a "$out_file" >&2
+          else
             if [ "$action" = "up" ]; then
-              "$retry" pulumi preview --json --non-interactive >"$plan_json" 2>"$plan_err"
-              ec=$?
-              if [ "$ec" -ne 0 ]; then
-                tee -a "$out_file" <"$plan_err" >&2
-              else
-                "$plan_guard" "sentry-pagerduty production" "$plan_json" 2>&1 | tee -a "$out_file"
-                ec="${PIPESTATUS[0]}"
-              fi
-              rm -f "$plan_json" "$plan_err"
-              if [ "$ec" -eq 0 ]; then
-                "$retry" pulumi up --yes --diff --non-interactive 2>&1 | tee -a "$out_file"
-                ec="${PIPESTATUS[0]}"
-              fi
+              # guarded-up runs `pulumi preview --json` -> refuse-destructive-plan
+              # -> `pulumi up` as one atomic unit and retries the whole unit on 409.
+              "$guarded_up" "sentry-pagerduty production" 2>&1 | tee -a "$out_file"
+              ec="${PIPESTATUS[0]}"
             else
               "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"
               ec="${PIPESTATUS[0]}"

@@ -49,22 +49,10 @@ var (
 		"sentry:team":              true,
 		"sentry:projects":          true,
 	}
-
-	// No key in platform/sentry may carry Pulumi `secure:` ciphertext; runtime
-	// auth comes exclusively from SENTRY_TOKEN / SENTRY_AUTH_TOKEN.
-	allowedSecureKeys = map[string]bool{}
 )
 
-func scanNodeForSecrets(node *yaml.Node, path string, topKey string) error {
+func scanNodeForSecrets(node *yaml.Node, path string) error {
 	if node == nil {
-		return nil
-	}
-	if node.Kind == yaml.DocumentNode {
-		for i, child := range node.Content {
-			if err := scanNodeForSecrets(child, fmt.Sprintf("%s[%d]", path, i), topKey); err != nil {
-				return err
-			}
-		}
 		return nil
 	}
 	if node.Kind == yaml.ScalarNode {
@@ -80,24 +68,20 @@ func scanNodeForSecrets(node *yaml.Node, path string, topKey string) error {
 			keyNode := node.Content[i]
 			valNode := node.Content[i+1]
 			key := strings.TrimSpace(keyNode.Value)
-			if key == "secure" && !allowedSecureKeys[topKey] {
-				return fmt.Errorf("secure: ciphertext is not allowed under non-allowlisted key %q (at %s)", topKey, path)
+			if key == "secure" {
+				return fmt.Errorf("secure: ciphertext is not allowed (at %s)", path)
 			}
-			if err := scanNodeForSecrets(keyNode, path+"."+key+"(key)", topKey); err != nil {
+			if err := scanNodeForSecrets(keyNode, path+"."+key+"(key)"); err != nil {
 				return err
 			}
-			nextTopKey := topKey
-			if path == "root.config" {
-				nextTopKey = key
-			}
-			if err := scanNodeForSecrets(valNode, path+"."+key, nextTopKey); err != nil {
+			if err := scanNodeForSecrets(valNode, path+"."+key); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	for i, child := range node.Content {
-		if err := scanNodeForSecrets(child, fmt.Sprintf("%s[%d]", path, i), topKey); err != nil {
+		if err := scanNodeForSecrets(child, fmt.Sprintf("%s[%d]", path, i)); err != nil {
 			return err
 		}
 	}
@@ -125,7 +109,7 @@ func checkStackConfigBytes(raw []byte) (*StackConfig, error) {
 		return nil, fmt.Errorf("missing config mapping in stack yaml")
 	}
 
-	if err := scanNodeForSecrets(&root, "root", ""); err != nil {
+	if err := scanNodeForSecrets(&root, "root"); err != nil {
 		return nil, err
 	}
 
@@ -321,15 +305,15 @@ func TestStackConfigGuardRejectsSecretsAndBadKeys(t *testing.T) {
 	}{
 		"secure under non-allowlisted sentry:token": {
 			yaml: baseYAML + "  sentry:token:\n    secure: v1:fake\n",
-			want: "secure:",
+			want: "secure: ciphertext is not allowed (at root[0].config.sentry:token)",
 		},
 		"secure under allowlisted sentry:baseUrl": {
 			yaml: strings.Replace(baseYAML, "sentry:baseUrl: https://sentry.lab.ipv1337.dev/api/", "sentry:baseUrl:\n    secure: v1:fake", 1),
-			want: "secure:",
+			want: "secure: ciphertext is not allowed (at root[0].config.sentry:baseUrl)",
 		},
 		"nested secure inside sentry:team": {
 			yaml: strings.Replace(baseYAML, "slug: vitruvian", "slug:\n      secure: v1:fake", 1),
-			want: "secure:",
+			want: "secure: ciphertext is not allowed (at root[0].config.sentry:team.slug)",
 		},
 		"sntrys_ token pattern": {
 			yaml: strings.Replace(baseYAML, "name: Backstage", "name: "+fakeModern, 1),

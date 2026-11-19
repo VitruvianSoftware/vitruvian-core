@@ -26,7 +26,7 @@ description: >-
   ONLY prepares the mesh join, the cert and the hosts entry, and picks a
   reachable gateway node into $ZITADEL_GATEWAY. It deliberately does NOT start
   the socat tunnel itself: socat's `&` background process does not survive
-  across a step boundary, so the actual `sudo socat OPENSSL-LISTEN:443,...
+  across a step boundary, so the actual `sudo socat OPENSSL-LISTEN:443,bind=127.0.0.1,...
   TCP:${ZITADEL_GATEWAY} &` + healthz-wait must stay inlined in the SAME step
   as whatever command (pulumi, etc.) needs the route -- see any caller.
 

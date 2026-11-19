@@ -26,7 +26,7 @@ description: >-
   self-signed TLS cert (for gateway-scheme=http), and picks a reachable gateway
   node into $HOMELAB_GATEWAY (and optional gateway-env-var). It deliberately
   does NOT start the socat relay itself: backgrounded processes do not survive
-  across a step boundary, so `sudo socat ... TCP:${HOMELAB_GATEWAY} &` + the
+  across a step boundary, so `sudo socat TCP-LISTEN:443,bind=127.0.0.1,... TCP:${HOMELAB_GATEWAY} &` + the
   health check must stay inlined in the SAME step as the command that uses it.
 
 inputs:

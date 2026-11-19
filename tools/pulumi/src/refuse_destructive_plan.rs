@@ -64,7 +64,6 @@ impl JsonValue {
     fn get(&self, key: &str) -> Option<&JsonValue> {
         self.as_obj()?
             .iter()
-            .rev()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v)
     }
@@ -143,6 +142,7 @@ impl<'a> JsonParser<'a> {
         self.pos += 1; // '{'
         self.skip_ws();
         let mut entries = Vec::new();
+        let mut seen = std::collections::HashSet::new();
         if self.peek() == Some(b'}') {
             self.pos += 1;
             return Ok(JsonValue::Obj(entries));
@@ -152,7 +152,11 @@ impl<'a> JsonParser<'a> {
             if self.peek() != Some(b'"') {
                 return Err(format!("expected object key string at offset {}", self.pos));
             }
+            let key_offset = self.pos;
             let key = self.parse_str()?;
+            if !seen.insert(key.clone()) {
+                return Err(format!("duplicate JSON object key at offset {key_offset}"));
+            }
             self.skip_ws();
             if self.peek() != Some(b':') {
                 return Err(format!("expected ':' after key at offset {}", self.pos));
@@ -272,13 +276,22 @@ impl<'a> JsonParser<'a> {
     }
 
     fn parse_hex4(&mut self) -> Result<u16, String> {
-        if self.pos + 4 > self.bytes.len() {
-            return Err("truncated \\uXXXX escape".to_string());
+        let start = self.pos;
+        let Some(slice) = self.bytes.get(start..start + 4) else {
+            return Err(format!("truncated \\uXXXX escape at offset {start}"));
+        };
+        let mut val: u16 = 0;
+        for &b in slice {
+            let digit = match b {
+                b'0'..=b'9' => (b - b'0') as u16,
+                b'a'..=b'f' => (b - b'a' + 10) as u16,
+                b'A'..=b'F' => (b - b'A' + 10) as u16,
+                _ => return Err(format!("invalid \\uXXXX hex escape at offset {start}")),
+            };
+            val = (val << 4) | digit;
         }
-        let hex = std::str::from_utf8(&self.bytes[self.pos..self.pos + 4])
-            .map_err(|_| "invalid UTF-8 in \\uXXXX escape".to_string())?;
         self.pos += 4;
-        u16::from_str_radix(hex, 16).map_err(|_| format!("invalid \\u{hex} escape"))
+        Ok(val)
     }
 
     fn parse_num(&mut self) -> Result<JsonValue, String> {
@@ -442,29 +455,10 @@ fn check_plan_json(raw: &str) -> Result<PlanVerdict, String> {
     })
 }
 
-/// Entry point: `refuse-destructive-plan <stack-label> <preview-json-path>`.
-pub fn run(args: &[String]) -> i32 {
-    if args.len() != 2 || args[0].trim().is_empty() || args[1].trim().is_empty() {
-        eprintln!("usage: refuse-destructive-plan <stack-label> <preview-json-path>");
-        return 2;
-    }
-    let label = &args[0];
-    let path = &args[1];
-
-    let raw = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!(
-                "::error::Refusing to apply {label}: could not read Pulumi preview JSON at {path}: {e}"
-            );
-            eprintln!(
-                "error: Refusing to apply {label}: could not read Pulumi preview JSON at {path}: {e}"
-            );
-            return 1;
-        }
-    };
-
-    let verdict = match check_plan_json(&raw) {
+/// Validate a `pulumi preview --json` payload and print the guard verdict.
+/// Returns 0 if non-destructive, 1 if destructive or unreadable/malformed.
+pub fn check_and_report(label: &str, raw: &str) -> i32 {
+    let verdict = match check_plan_json(raw) {
         Ok(v) => v,
         Err(e) => {
             eprintln!(
@@ -517,6 +511,31 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
     1
+}
+
+/// Entry point: `refuse-destructive-plan <stack-label> <preview-json-path>`.
+pub fn run(args: &[String]) -> i32 {
+    if args.len() != 2 || args[0].trim().is_empty() || args[1].trim().is_empty() {
+        eprintln!("usage: refuse-destructive-plan <stack-label> <preview-json-path>");
+        return 2;
+    }
+    let label = &args[0];
+    let path = &args[1];
+
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "::error::Refusing to apply {label}: could not read Pulumi preview JSON at {path}: {e}"
+            );
+            eprintln!(
+                "error: Refusing to apply {label}: could not read Pulumi preview JSON at {path}: {e}"
+            );
+            return 1;
+        }
+    };
+
+    check_and_report(label, &raw)
 }
 
 #[cfg(test)]
@@ -593,6 +612,36 @@ mod tests {
             "{bad",
         ] {
             assert!(check_plan_json(bad).is_err(), "expected error for {bad:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_duplicate_object_keys() {
+        for dup in [
+            r#"{"steps":[{"op":"delete","op":"same","urn":"urn:pulumi:p::s::t::n"}]}"#,
+            r#"{"steps":[{"op":"delete","\u006fp":"same","urn":"urn:pulumi:p::s::t::n"}]}"#,
+            r#"{"steps":[{"op":"delete","urn":"urn:pulumi:p::s::t::n"}],"steps":[]}"#,
+            r#"{"steps":[{"op":"same","urn":"urn:pulumi:p::s::t::n"}],"changeSummary":{"delete":1,"delete":0}}"#,
+        ] {
+            assert!(
+                check_plan_json(dup).is_err(),
+                "expected duplicate-key error for {dup:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_non_hex_or_short_unicode_escapes() {
+        for bad in [
+            r#"{"steps":[{"op":"\u+073ame","urn":"urn:pulumi:p::s::t::n"}]}"#,
+            r#"{"steps":[{"op":"\u-073ame","urn":"urn:pulumi:p::s::t::n"}]}"#,
+            r#"{"steps":[{"op":"\u07","urn":"urn:pulumi:p::s::t::n"}]}"#,
+            r#"{"steps":[{"op":"\u07"#,
+        ] {
+            assert!(
+                check_plan_json(bad).is_err(),
+                "expected unicode-escape error for {bad:?}"
+            );
         }
     }
 }

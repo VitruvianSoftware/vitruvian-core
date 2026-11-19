@@ -27,6 +27,7 @@
 
 pub mod argparse;
 pub mod create_app;
+pub mod guarded_up;
 pub mod http;
 pub use vitruvian_pycompat::json;
 pub mod pulumi_cmd;

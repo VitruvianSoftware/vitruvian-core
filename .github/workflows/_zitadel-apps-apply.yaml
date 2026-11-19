@@ -143,7 +143,7 @@ jobs:
           # externalTrafficPolicy: Cluster (see envoyproxy.yaml), any node
           # forwards to the Envoy endpoints.
           : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
-          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+          sudo socat OPENSSL-LISTEN:443,bind=127.0.0.1,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
             TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
           # confirm the internal path is up before applying (fail loudly otherwise)

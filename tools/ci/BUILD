@@ -277,6 +277,29 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# Structural and behavioral tests for homelab-tunnel workflows (sentry-apply
+# and Zitadel applies): loopback socat bindings, fail-closed stack select,
+# and atomic preview+guard+up retry on 409.
+rust_test(
+    name = "workflow_homelab_apply_test",
+    size = "small",
+    srcs = ["src/workflow_homelab_apply_test.rs"],
+    data = [
+        "//:composite_actions",
+        "//:workflow_files",
+        "//tools/pulumi:guarded-up",
+        "//tools/pulumi:refuse-destructive-plan",
+        "//tools/pulumi:retry-concurrent-update",
+    ],
+    edition = "2021",
+    env = {
+        "GUARDED_UP_BIN": "$(rootpath //tools/pulumi:guarded-up)",
+        "GUARD_BIN": "$(rootpath //tools/pulumi:refuse-destructive-plan)",
+        "RETRY_BIN": "$(rootpath //tools/pulumi:retry-concurrent-update)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+)
+
 # The Claude Code hooks in .claude/: each runs the REAL hook (bash) against
 # fakes, and checks .claude/settings.json wires it. jq is the hermetic one:
 # the hooks need it and the RBE image has none. Run by
