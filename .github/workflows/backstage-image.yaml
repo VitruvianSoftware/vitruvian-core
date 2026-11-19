@@ -43,11 +43,17 @@ on:
       - '!tools/ci/src/backstage_boot_smoke/**/BUILD.bazel'
       - '!tools/ci/src/backstage_boot_smoke/**/OWNERS'
       - '!tools/ci/src/backstage_boot_smoke/**/*.md'
+      - 'tools/ci/src/pnpm_lock_gate/**'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD.bazel'
+      - '!tools/ci/src/pnpm_lock_gate/**/OWNERS'
+      - '!tools/ci/src/pnpm_lock_gate/**/*.md'
       - 'tools/shell-compat/src/**'
       - '!tools/shell-compat/src/**/BUILD'
       - '!tools/shell-compat/src/**/BUILD.bazel'
       - '!tools/shell-compat/src/**/OWNERS'
       - '!tools/shell-compat/src/**/*.md'
+      - '.npmrc'
       - '.nvmrc'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -69,11 +75,17 @@ on:
       - '!tools/ci/src/backstage_boot_smoke/**/BUILD.bazel'
       - '!tools/ci/src/backstage_boot_smoke/**/OWNERS'
       - '!tools/ci/src/backstage_boot_smoke/**/*.md'
+      - 'tools/ci/src/pnpm_lock_gate/**'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD'
+      - '!tools/ci/src/pnpm_lock_gate/**/BUILD.bazel'
+      - '!tools/ci/src/pnpm_lock_gate/**/OWNERS'
+      - '!tools/ci/src/pnpm_lock_gate/**/*.md'
       - 'tools/shell-compat/src/**'
       - '!tools/shell-compat/src/**/BUILD'
       - '!tools/shell-compat/src/**/BUILD.bazel'
       - '!tools/shell-compat/src/**/OWNERS'
       - '!tools/shell-compat/src/**/*.md'
+      - '.npmrc'
       - '.nvmrc'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -92,10 +104,82 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
+  # Fail-open lockfile closure gate: if only pnpm-lock.yaml (plus ignored docs/files)
+  # changed outside Backstage's transitive closure, skip rebuilding and re-pushing.
+  gate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      skip: ${{ steps.gate.outputs.verdict == 'skip' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/build-ci-tool
+            .github/workflows
+            tools/ci/src/pnpm_lock_gate
+            tools/ci/src/resolve_deploy_base
+            tools/shell-compat
+
+      - name: Build //tools/ci:resolve_deploy_base (no Bazel on this job)
+        id: base-bin
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: resolve_deploy_base
+
+      - name: Resolve durable diff base on push
+        id: base
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_FILE: backstage-image.yaml
+          RESOLVE_BASE_BIN: ${{ steps.base-bin.outputs.path }}
+        run: |
+          if [ -n "${RESOLVE_BASE_BIN:-}" ]; then
+            "$RESOLVE_BASE_BIN"
+          fi
+
+      - name: Build //tools/ci:pnpm_lock_gate (no Bazel on this job)
+        id: gate-bin
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: pnpm_lock_gate
+
+      - name: Check whether image rebuild is required
+        id: gate
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ steps.base.outputs.base_sha || github.event.pull_request.base.sha || github.event.before }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PNPM_LOCK_GATE_BIN: ${{ steps.gate-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$PNPM_LOCK_GATE_BIN" \
+            --workflow .github/workflows/backstage-image.yaml \
+            --importers .,apps/web/backstage/packages/app,apps/web/backstage/packages/backend \
+            | tee "$RUNNER_TEMP/gate.out"
+          {
+            echo "### Backstage image lockfile gate"
+            echo ""
+            echo "- $(cat "$RUNNER_TEMP/gate.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Unit tests for the backstage packages. Backstage is gazelle-excluded, so it
   # gets no Bazel test lane — without this job the permission policy that
   # decides who can administer the portal would ship untested.
   verify:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -126,6 +210,8 @@ jobs:
         run: pnpm --filter @vitruviansoftware/backstage-app test
 
   image:
+    needs: [gate]
+    if: ${{ !cancelled() && needs.gate.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     # 30 was already marginal, and #1738 proved it: the multi-arch build hit
     # the ceiling and was CANCELLED mid-build, so no image was published. A

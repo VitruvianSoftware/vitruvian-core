@@ -380,8 +380,10 @@ fn check_action_required(repo: &[u8], cutoff: &[u8]) {
 }
 
 fn check_failures(repo: &[u8], mirrors: &[u8], cutoff: &[u8]) {
-    let recent_filter =
-        r#".workflow_runs[] | select(.updated_at >= $cutoff) | [.name, .html_url] | @tsv"#;
+    // The UTC day rides along so a failure is keyed by workflow and day, not
+    // by run: every push to a broken main reruns the workflow, and keying by
+    // run opened one incident per push (seven for one break on 2026-11-18).
+    let recent_filter = r#".workflow_runs[] | select(.updated_at >= $cutoff) | [.name, .html_url, .updated_at[0:10]] | @tsv"#;
 
     let mut repos: Vec<Vec<u8>> = vec![repo.to_vec()];
     for m in shell_compat::ifs_split(mirrors) {
@@ -431,12 +433,13 @@ fn check_failures(repo: &[u8], mirrors: &[u8], cutoff: &[u8]) {
             if line.is_empty() {
                 continue;
             }
-            let fields: Vec<&[u8]> = line.splitn(2, |&c| c == b'\t').collect();
-            if fields.len() < 2 {
+            let fields: Vec<&[u8]> = line.splitn(3, |&c| c == b'\t').collect();
+            if fields.len() < 3 {
                 continue;
             }
             let name = fields[0];
             let url = fields[1];
+            let day = fields[2];
             out(&cat(&[b"  -> failed on main: ", name, b" (", url, b")\n"]));
             if r.as_slice() == repo {
                 notify(
@@ -445,7 +448,7 @@ fn check_failures(repo: &[u8], mirrors: &[u8], cutoff: &[u8]) {
                     b"5",
                     b"[\"red_circle\",\"ci\"]",
                     url,
-                    pd_dedup_key("main-failed", url).as_bytes(),
+                    pd_dedup_key("main-failed", &cat(&[name, b"/", day])).as_bytes(),
                 );
             } else {
                 let short_name = match r.iter().position(|&c| c == b'/') {
@@ -463,7 +466,8 @@ fn check_failures(repo: &[u8], mirrors: &[u8], cutoff: &[u8]) {
                     b"4",
                     b"[\"red_circle\",\"ci\",\"mirror\"]",
                     url,
-                    pd_dedup_key("mirror-failed", url).as_bytes(),
+                    pd_dedup_key("mirror-failed", &cat(&[r, b"/", name, b"/", day]))
+                        .as_bytes(),
                 );
             }
         }

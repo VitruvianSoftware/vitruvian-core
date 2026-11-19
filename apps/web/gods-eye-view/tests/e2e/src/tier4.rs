@@ -190,7 +190,8 @@ fn line_matches_user_directive(line: &str) -> bool {
         return false;
     }
     let user = trimmed["USER ".len()..].trim();
-    matches!(user, "nodejs" | "1000" | "1001" | "node")
+    let uid = user.split(':').next().unwrap_or(user);
+    matches!(uid, "nodejs" | "1000" | "1001" | "node")
 }
 
 fn scenario_01_full_monorepo_build_lifecycle(ctx: &mut TestContext) {

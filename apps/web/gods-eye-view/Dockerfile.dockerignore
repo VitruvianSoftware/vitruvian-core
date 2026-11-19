@@ -1,0 +1,50 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Build-context filter for apps/web/gods-eye-view/Dockerfile when invoked with
+# the repository root as the Docker build context. Whitelists only the root
+# workspace manifests and apps/web/gods-eye-view/.
+
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
+!apps
+apps/*
+!apps/web
+apps/web/*
+!apps/web/gods-eye-view
+apps/web/gods-eye-view/**/node_modules
+apps/web/gods-eye-view/dist
+apps/web/gods-eye-view/.git
+apps/web/gods-eye-view/.cache
+apps/web/gods-eye-view/.gev-cache
+apps/web/gods-eye-view/bazel-*
+apps/web/gods-eye-view/.env*
+apps/web/gods-eye-view/*.pem
+apps/web/gods-eye-view/*.key
+apps/web/gods-eye-view/secrets*
+apps/web/gods-eye-view/tests
+apps/web/gods-eye-view/docs
+apps/web/gods-eye-view/upstream
+apps/web/gods-eye-view/pinokio
+apps/web/gods-eye-view/changelog.d
+apps/web/gods-eye-view/tools

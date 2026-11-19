@@ -10,10 +10,12 @@
 # change: added (only here), modified (both, but different), deleted (only upstream)
 # base	624c229bc2a86fc1e47ed34c95fc7cefa2ac1676	tree	0629f67b790b64e62a0e66aaf8f14d52c8e589bb
 # path	change	why
-.dockerignore	modified	Build context for the monorepo's Dockerfile. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
+.dockerignore	modified	Legacy local-context filter (superseded for repo-root builds by Dockerfile.dockerignore). Upstream ships its own for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
 Dockerfile	modified	The production image, published to GHCR and deployed by gitops/argocd. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
+Dockerfile.dockerignore	added	Repo-root Docker build context filter for the production Dockerfile, whitelisting workspace manifests and apps/web/gods-eye-view/.
 OWNERS	added	Monorepo code ownership.
+compose.yaml	modified	Points compose build at the monorepo root context with apps/web/gods-eye-view/Dockerfile.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
 scripts/build-military-names.py	deleted	Superseded by the native Rust port in `scripts/src/build_military_names.rs` (`//apps/web/gods-eye-view:build_military_names`).

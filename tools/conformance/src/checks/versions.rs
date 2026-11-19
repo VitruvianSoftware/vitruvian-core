@@ -219,9 +219,13 @@ fn df_node_majors(content: &str) -> Vec<String> {
             }
         }
 
-        // FROM node:<tag>
+        // FROM [--flag=...] node:<tag>
         if upper_first.eq_ignore_ascii_case("FROM") {
-            let img = trimmed.split_whitespace().nth(1).unwrap_or("");
+            let img = trimmed
+                .split_whitespace()
+                .skip(1)
+                .find(|tok| !tok.starts_with("--"))
+                .unwrap_or("");
             if let Some(tag) = img.strip_prefix("node:") {
                 if tag.starts_with('$') {
                     // Parameterized: ${NAME}... or $NAME...
@@ -275,6 +279,9 @@ pub fn check_node(ctx: &Context) {
 
     let dockerfiles = ctx.files.discover(&ctx.root, "Dockerfile*");
     for dockerfile in &dockerfiles {
+        if dockerfile.ends_with(".dockerignore") {
+            continue;
+        }
         let content = match fs::read_to_string(dockerfile) {
             Ok(c) => c,
             Err(_) => continue,
@@ -536,6 +543,9 @@ pub fn check_pnpm_pin(ctx: &Context) {
     let dockerfiles = ctx.files.discover(&ctx.root, "Dockerfile*");
 
     for dockerfile in &dockerfiles {
+        if dockerfile.ends_with(".dockerignore") {
+            continue;
+        }
         let content = match fs::read_to_string(dockerfile) {
             Ok(c) => c,
             Err(_) => continue,
@@ -1273,6 +1283,32 @@ rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n";
     fn df_node_majors_multi_stage_distinct() {
         let content = "FROM node:20-slim AS deps\nFROM node:22-slim AS build\n";
         assert_eq!(df_node_majors(content), vec!["20", "22"]);
+    }
+
+    #[test]
+    fn df_node_majors_skips_platform_flag() {
+        let content =
+            "FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build\nFROM node:22-bookworm-slim AS runtime\n";
+        assert_eq!(df_node_majors(content), vec!["22"]);
+    }
+
+    #[test]
+    fn dockerfile_dockerignore_is_ignored_by_node_and_pnpm_pin_checks() {
+        let dir = repo(&[
+            (".nvmrc", "22.21.1\n"),
+            ("package.json", "{\"packageManager\":\"pnpm@10.20.0\"}\n"),
+            (
+                "app/Dockerfile",
+                "FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build\n",
+            ),
+            ("app/Dockerfile.dockerignore", "*\n!pnpm-lock.yaml\npnpm\n"),
+        ]);
+        let ctx = Context::for_root(dir.to_str().unwrap());
+        check_node(&ctx);
+        check_pnpm_pin(&ctx);
+        let fail = ctx.fail_count.get();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(fail, 0, "expected 0 failures");
     }
 
     #[test]

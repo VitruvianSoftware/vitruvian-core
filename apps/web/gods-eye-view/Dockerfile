@@ -21,24 +21,59 @@
 # SOFTWARE.
 #
 # Multi-stage production container for God's Eye View (geospatial intelligence console).
-# Runs Node 22 slim with a non-root user (nodejs) on port 8080 with health probes.
+# Build context is the monorepo root (filtered via Dockerfile.dockerignore) so
+# production dependencies install strictly from pnpm-lock.yaml (--frozen-lockfile).
+# Runs Node 22 slim with a non-root UID 1001 on port 8080 and native health probe.
 
-# --- Build Stage: Compile web assets to dist/
-FROM node:22-bookworm-slim AS build
+# --- Build Stage: Compile web assets to dist/ on $BUILDPLATFORM ---------------
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build
 
-WORKDIR /app
+WORKDIR /workspace
 
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
-COPY package.json ./
-COPY . ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/web/gods-eye-view/package.json ./apps/web/gods-eye-view/
+RUN pnpm install --frozen-lockfile --filter=gods-eye-view
 
-# Build client bundle if dist/ is not pre-built in build context
-RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
-      pnpm install --no-frozen-lockfile && pnpm run build; \
-    fi
+COPY apps/web/gods-eye-view/ ./apps/web/gods-eye-view/
+RUN pnpm --filter=gods-eye-view build
 
-# --- Runtime Stage: Production server with minimal runtime dependencies
+# --- Production Dependencies Stage: Materialize target-arch prod deps ----------
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS prod-deps
+ARG TARGETARCH
+
+WORKDIR /workspace
+
+RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/web/gods-eye-view/package.json ./apps/web/gods-eye-view/
+
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) PNPM_CPU=x64; ELF_EM=3e00 ;; \
+      arm64) PNPM_CPU=arm64; ELF_EM=b700 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    pnpm deploy --legacy --prod --frozen-lockfile \
+      --os=linux --cpu="$PNPM_CPU" --libc=glibc \
+      --filter=gods-eye-view /prod; \
+    checked=0; \
+    for f in $(find /prod/node_modules -type f \( -name '*.node' -o -name '*.so' -o -name '*.so.*' -o -perm -111 \)); do \
+      magic="$(od -An -tx1 -N4 "$f" | tr -d ' \n')"; \
+      if [ "$magic" = "7f454c46" ]; then \
+        checked=$((checked + 1)); \
+        got="$(od -An -tx1 -j18 -N2 "$f" | tr -d ' \n')"; \
+        if [ "$got" != "$ELF_EM" ]; then \
+          echo "unexpected ELF e_machine=$got (expected $ELF_EM for TARGETARCH=$TARGETARCH) in $f" >&2; \
+          exit 1; \
+        fi; \
+      fi; \
+    done; \
+    echo "verified $checked native ELF module(s) in /prod/node_modules for TARGETARCH=$TARGETARCH (e_machine=$ELF_EM)"
+
+# --- Runtime Stage: Zero-RUN multi-arch runtime image ------------------------
 FROM node:22-bookworm-slim AS runtime
 
 WORKDIR /app
@@ -46,35 +81,25 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
-
-COPY package.json ./
-RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
-
-COPY --from=build /app/dist ./dist
-COPY server.mjs ./
+COPY --from=prod-deps --chown=1001:1001 /prod/node_modules ./node_modules
+COPY --from=build --chown=1001:1001 /workspace/apps/web/gods-eye-view/dist ./dist
+COPY --chown=1001:1001 apps/web/gods-eye-view/package.json apps/web/gods-eye-view/server.mjs ./
 # Upstream's route handlers, which server.mjs mounts, and the files they read
 # at run time: config/ and src/data/local_data/ (CCTV sources, regions).
 # Whole trees, so a file an upstream sync adds is already in the image.
-COPY server/ ./server/
-COPY src/ ./src/
-COPY config/ ./config/
-COPY build/ ./build/
-COPY scripts/ ./scripts/
+COPY --chown=1001:1001 apps/web/gods-eye-view/server/ ./server/
+COPY --chown=1001:1001 apps/web/gods-eye-view/src/ ./src/
+COPY --chown=1001:1001 apps/web/gods-eye-view/config/ ./config/
+COPY --chown=1001:1001 apps/web/gods-eye-view/build/ ./build/
+COPY --chown=1001:1001 apps/web/gods-eye-view/scripts/ ./scripts/
 
-RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs \
-    && chown -R nodejs:nodejs /app
-
-USER nodejs
+# 1001 matches gitops/argocd/platform/gods-eye-view/deployment.yaml (runAsUser: 1001).
+USER 1001:1001
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/healthz || exit 1
+    CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 CMD ["node", "server.mjs"]
 

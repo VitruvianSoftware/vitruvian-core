@@ -31,6 +31,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -44,6 +48,7 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VDialog
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
@@ -52,6 +57,7 @@ import dev.vitruvian.remote.state.AppInfo
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.TrustDuration
 import java.time.Instant
 
 /** How many audit rows the Phone Bridge page displays. */
@@ -65,6 +71,7 @@ private const val BRIDGE_AUDIT_SHOWN = 20
 @Composable
 public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
   val colors = Vitruvian
+  var confirmAlwaysTrust by remember { mutableStateOf(false) }
 
   LaunchedEffect(Unit) {
     state.refreshBridgePermissions()
@@ -170,23 +177,52 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
                 text = "Agents trusted · ${state.trustRemaining}",
                 modifier = Modifier.weight(1f),
                 style = VitruvianType.listSub,
+                color = if (state.trustAlways) colors.warn else colors.text,
             )
             VButton("End trust", state::endTrust)
           }
         } else {
-          VButton(
-              label = "Trust agents for 1 hour",
-              onClick = state::trustAgents,
-              modifier = Modifier.fillMaxWidth(),
-              enabled = state.bridgeAvailable,
-          )
-          VText(
-              text =
-                  "Off, screen control and opening apps are refused and texts and calls ask here " +
-                      "first.",
-              style = VitruvianType.listSub,
-              color = colors.textDim,
-          )
+          Label("Trust agents")
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Space.s2),
+        ) {
+          TrustDuration.entries.forEach { duration ->
+            val selectedAlways = duration == TrustDuration.Always && state.trustAlways
+            VButton(
+                label = duration.label,
+                onClick = {
+                  if (duration == TrustDuration.Always) {
+                    confirmAlwaysTrust = true
+                  } else {
+                    state.trustAgents(duration)
+                  }
+                },
+                modifier = Modifier.weight(1f),
+                variant = if (selectedAlways) ButtonVariant.Primary else ButtonVariant.Secondary,
+                enabled = state.bridgeAvailable && !selectedAlways,
+                contentPadding = PaddingValues(horizontal = Space.s3),
+            )
+          }
+        }
+        when {
+          state.trustAlways ->
+              VText(
+                  text =
+                      "Permanent trust stays on until you tap End trust. Screen control, apps, " +
+                          "texts and calls run without asking.",
+                  style = VitruvianType.listSub,
+                  color = colors.textDim,
+              )
+          !state.trustOpen ->
+              VText(
+                  text =
+                      "Off, screen control and opening apps are refused and texts and calls ask " +
+                          "here first.",
+                  style = VitruvianType.listSub,
+                  color = colors.textDim,
+              )
         }
 
         state.pendingApproval?.let { pending ->
@@ -257,6 +293,34 @@ public fun ColumnScope.PhoneBridgeScreen(state: RemoteState) {
             )
           }
         }
+      }
+    }
+  }
+
+  if (confirmAlwaysTrust) {
+    VDialog(
+        onDismissRequest = { confirmAlwaysTrust = false },
+        kicker = "Trust agents",
+        kickerColor = colors.warn,
+        title = "Trust agents always?",
+        body =
+            "AI agents on your paired Mac will be able to control the screen, open apps, " +
+                "send texts, place calls and reply to notifications without asking until you tap " +
+                "End trust.",
+    ) {
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(Space.s3, Alignment.End),
+      ) {
+        VButton("Cancel", { confirmAlwaysTrust = false })
+        VButton(
+            label = "Trust always",
+            onClick = {
+              confirmAlwaysTrust = false
+              state.trustAgents(TrustDuration.Always)
+            },
+            variant = ButtonVariant.Primary,
+        )
       }
     }
   }

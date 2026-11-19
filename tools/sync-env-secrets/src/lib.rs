@@ -555,19 +555,17 @@ impl Tool {
         if pems.is_empty() {
             return Err(die(&sh::cat(&[b"no .pem files in ", &self.store])));
         }
-        for f in &pems {
-            if !sh::exists(f) {
-                return Err(die(&sh::cat(&[b"no .pem files in ", &self.store])));
-            }
-            let mode = file_mode(f);
-            if mode != "600" {
-                return Err(die(&sh::cat(&[
-                    f,
-                    b" is mode ",
-                    mode.as_bytes(),
-                    b"; expected 600",
-                ])));
-            }
+        // The archive is the whole store (`tar -C <store> .`), so every file in
+        // it -- an App's key and, beside it, its <name>.creds.json (OAuth client
+        // id and secret, which GitHub issues once) -- reaches Bitwarden. Check
+        // every one is private, not only the keys.
+        if let Some((f, mode)) = first_not_private(&self.store) {
+            return Err(die(&sh::cat(&[
+                &f,
+                b" is mode ",
+                mode.as_bytes(),
+                b"; expected 600",
+            ])));
         }
         self.bw_push()
     }
@@ -719,6 +717,18 @@ fn glob(dir: &[u8], keep: impl Fn(&[u8]) -> bool) -> Vec<Vec<u8>> {
         .collect()
 }
 
+/// The first file in `store` (sorted, dotfiles excluded) that is not mode
+/// 600, with its mode. A file that vanished mid-scan reads as mode "".
+fn first_not_private(store: &[u8]) -> Option<(Vec<u8>, String)> {
+    glob(store, |_| true)
+        .into_iter()
+        .map(|f| {
+            let m = file_mode(&f);
+            (f, m)
+        })
+        .find(|(_, m)| m != "600")
+}
+
 /// A file's permission bits as `stat -c %a` prints them (octal, no padding).
 fn file_mode(f: &[u8]) -> String {
     use std::os::unix::fs::PermissionsExt;
@@ -773,6 +783,29 @@ mod tests {
     fn new_item_payload_escapes() {
         let v: serde_json::Value = serde_json::from_slice(&new_item_json("a\"b\\c")).unwrap();
         assert_eq!(v["name"], "a\"b\\c");
+    }
+
+    #[test]
+    fn push_checks_every_file_in_the_store_not_only_keys() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("agent-keys-test.{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let put = |name: &str, mode: u32| {
+            let p = dir.join(name);
+            std::fs::write(&p, b"x").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        put("app.pem", 0o600);
+        put("app.creds.json", 0o600);
+        let store = dir.as_os_str().as_encoded_bytes().to_vec();
+        assert_eq!(first_not_private(&store), None);
+
+        // A readable credentials file is caught even though it is not a .pem.
+        put("other.creds.json", 0o644);
+        let (f, mode) = first_not_private(&store).unwrap();
+        assert!(f.ends_with(b"other.creds.json"));
+        assert_eq!(mode, "644");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

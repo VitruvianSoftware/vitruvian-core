@@ -254,12 +254,13 @@ the pattern, or a `tier` outside the three, is a `400` on the LINK — before th
 so the phone gets an error it can render rather than a live link that half works.
 
 `GET /v1/phone` — read tier: `{"connected":true,"since":"…","device":{…},"tools":["sms.list",…],
-"trust_until":"…"|null}`. `trust_until` is whatever the phone last reported in `phone.status`:
-the agent parses each `phone.status` result's text content as JSON and keeps its `trust_until`
-field if it has one. A phone whose trust window changes without a status call may also send
-`"trust_until"` as a top-level field on `/v1/phone/result` (or on the link body), and that wins.
-Everything about it is the phone's claim, not the agent's: the agent enforces no tier, it only
-reports what it was told. `trust_until` is `null` while nothing is linked.
+"trust_until":"…"|"always"|null}`. `trust_until` is whatever the phone last reported in
+`phone.status` (`"always"` when permanent trust is active, an RFC3339 timestamp for timed presets,
+or `null` when closed): the agent parses each `phone.status` result's text content as JSON and
+keeps its `trust_until` field if it has one. A phone whose trust window changes without a status
+call may also send `"trust_until"` as a top-level field on `/v1/phone/result` (or on the link body),
+and that wins. Everything about it is the phone's claim, not the agent's: the agent enforces no tier,
+it only reports what it was told. `trust_until` is `null` while nothing is linked.
 
 ## MCP endpoint (agents on the Mac → agent)
 
