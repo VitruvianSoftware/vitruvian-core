@@ -128,12 +128,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # binfmt handlers for the arm64 half of PLATFORMS. Without this the arm64
-      # build fails on the first RUN rather than at configuration time, which
-      # reads like a Dockerfile bug.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
+      # Built on the host architecture via cross-compilation inside the builder
+      # stage and zero-RUN distroless runtime stages, so no QEMU binfmt setup is
+      # needed.
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -148,6 +145,7 @@ jobs:
           docker buildx build --load \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform linux/amd64 \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             --tag vitruvian-relay:verify \
             -f apps/suites/vitruvian-relay/relay/Dockerfile \
             --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
@@ -161,9 +159,8 @@ jobs:
       # the pod gets no emptyDir and this check gets no --tmpfs /tmp either.
       # If the relay ever needs /tmp, this run fails first; then add an emptyDir
       # at /tmp to the chart and a matching --tmpfs here.
-      # Require `--version` to exit 0: it proves the entrypoint is executable by
-      # that UID and that its shared libraries load from the distroless base on
-      # this architecture.
+      # Require `--version` to exit 0 and print the real binary banner (catching
+      # stub binaries too).
       #
       # It deliberately does NOT start the server: that needs real Zitadel ids,
       # a writable /data and a reachable IdP, and a start attempt failing on
@@ -171,7 +168,7 @@ jobs:
       - name: Verify UID 10001 can read and load the image
         run: |
           set -euo pipefail
-          docker run --rm \
+          out="$(docker run --rm \
             --user 10001:10001 \
             --read-only \
             --cap-drop ALL \
@@ -179,7 +176,15 @@ jobs:
             --tmpfs /data:uid=10001,gid=10001 \
             --entrypoint /app/vitruvian-relay \
             vitruvian-relay:verify \
-            --version
+            --version)"
+          echo "$out"
+          case "$out" in
+            "vitruvian-relay "*) ;;
+            *)
+              echo "::error::unexpected --version output: ${out}" >&2
+              exit 1
+              ;;
+          esac
 
       # ASSERTION 2 — the provenance label. Nothing injects this automatically:
       # the repo's other Dockerfile carries no LABEL at all and its buildx call
@@ -216,6 +221,8 @@ jobs:
           docker buildx build \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
+            --sbom=true \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             -f apps/suites/vitruvian-relay/relay/Dockerfile \
             --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
             apps/suites/vitruvian-relay
@@ -241,6 +248,8 @@ jobs:
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
             --sbom=true \
+            --cache-from "type=registry,ref=${IMAGE}:buildcache" \
+            --cache-to "type=registry,ref=${IMAGE}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \

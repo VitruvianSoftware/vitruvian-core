@@ -55,16 +55,61 @@ COPY mcp-auth/src /src
 # crate (../../../../packages/rust/vitruvian-mcp-auth) resolves unchanged. The
 # standalone repo's Cargo.toml says ../mcp-auth instead; the link makes that
 # resolve too.
-FROM rust:1.98.1-slim-bookworm AS build
+#
+# Built on $BUILDPLATFORM with cross-compilation instead of QEMU emulation,
+# and split into manifest+stub dependency prebuild -> real source compile so
+# source-only changes reuse the compiled third-party crate layer.
+FROM --platform=$BUILDPLATFORM rust:1.98.1-slim-bookworm AS build
+ARG TARGETARCH
+ARG BUILDARCH
+
+RUN set -eu; \
+    : > /tmp/cross.env; \
+    case "$TARGETARCH" in \
+      amd64) RUST_TARGET=x86_64-unknown-linux-gnu; APT_PKGS="gcc-x86-64-linux-gnu libc6-dev-amd64-cross"; TRIPLET=x86_64-linux-gnu; ENV_SLUG=x86_64_unknown_linux_gnu; LINKER_SLUG=X86_64_UNKNOWN_LINUX_GNU; ELF_EM=3e00 ;; \
+      arm64) RUST_TARGET=aarch64-unknown-linux-gnu; APT_PKGS="gcc-aarch64-linux-gnu libc6-dev-arm64-cross"; TRIPLET=aarch64-linux-gnu; ENV_SLUG=aarch64_unknown_linux_gnu; LINKER_SLUG=AARCH64_UNKNOWN_LINUX_GNU; ELF_EM=b700 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    echo "RUST_TARGET=$RUST_TARGET" >> /tmp/cross.env; \
+    echo "ELF_EM=$ELF_EM" >> /tmp/cross.env; \
+    if [ "$TARGETARCH" != "$BUILDARCH" ]; then \
+      rustup target add "$RUST_TARGET"; \
+      apt-get update && apt-get install -y --no-install-recommends $APT_PKGS && rm -rf /var/lib/apt/lists/*; \
+      echo "export CC_${ENV_SLUG}=${TRIPLET}-gcc" >> /tmp/cross.env; \
+      echo "export AR_${ENV_SLUG}=${TRIPLET}-ar" >> /tmp/cross.env; \
+      echo "export CARGO_TARGET_${LINKER_SLUG}_LINKER=${TRIPLET}-gcc" >> /tmp/cross.env; \
+    fi
+
 COPY --from=mcpauth /Cargo.toml /src/packages/rust/vitruvian-mcp-auth/Cargo.toml
-COPY --from=mcpauth /src /src/packages/rust/vitruvian-mcp-auth/src
-RUN mkdir -p /src/apps/mcp/vitruvian-slack-mcp && \
-    ln -s /src/packages/rust/vitruvian-mcp-auth /src/apps/mcp/vitruvian-slack-mcp/mcp-auth
+RUN mkdir -p /src/apps/mcp/vitruvian-slack-mcp /src/packages/rust/vitruvian-mcp-auth/src && \
+    ln -s /src/packages/rust/vitruvian-mcp-auth /src/apps/mcp/vitruvian-slack-mcp/mcp-auth && \
+    printf '// stub for dependency prebuild\n' > /src/packages/rust/vitruvian-mcp-auth/src/lib.rs
 WORKDIR /src/apps/mcp/vitruvian-slack-mcp/rs
 COPY rs/Cargo.toml rs/Cargo.lock ./
+RUN set -eu; \
+    . /tmp/cross.env; \
+    mkdir -p src && \
+    printf '// stub for dependency prebuild\n' > src/lib.rs && \
+    printf 'fn main() { std::process::exit(97); }\n' > src/main.rs && \
+    cargo build --release --locked --target "$RUST_TARGET" --bin vitruvian-slack-mcp
+
+COPY --from=mcpauth /src /src/packages/rust/vitruvian-mcp-auth/src
 COPY rs/src ./src
-RUN cargo build --release --locked --bin vitruvian-slack-mcp && \
-    install -m 0755 target/release/vitruvian-slack-mcp /vitruvian-slack-mcp
+RUN set -eu; \
+    . /tmp/cross.env; \
+    find /src/packages/rust/vitruvian-mcp-auth/src src -type f -name '*.rs' -exec touch {} + && \
+    rm -rf target/"$RUST_TARGET"/release/vitruvian-slack-mcp* \
+           target/"$RUST_TARGET"/release/deps/*vitruvian_slack_mcp* \
+           target/"$RUST_TARGET"/release/deps/*vitruvian_mcp_auth* \
+           target/"$RUST_TARGET"/release/.fingerprint/vitruvian-slack-mcp-* \
+           target/"$RUST_TARGET"/release/.fingerprint/vitruvian-mcp-auth-* && \
+    cargo build --release --locked --target "$RUST_TARGET" --bin vitruvian-slack-mcp && \
+    install -m 0755 target/"$RUST_TARGET"/release/vitruvian-slack-mcp /vitruvian-slack-mcp && \
+    got="$(od -An -tx1 -j18 -N2 /vitruvian-slack-mcp | tr -d ' \n')"; \
+    if [ "$got" != "$ELF_EM" ]; then \
+      echo "unexpected ELF e_machine=$got expected=$ELF_EM (TARGETARCH=$TARGETARCH)" >&2; \
+      exit 1; \
+    fi
 
 # --- Runtime stage --------------------------------------------------------------
 # cc-debian12 matches the build stage's bookworm glibc and ships
