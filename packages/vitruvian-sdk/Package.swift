@@ -31,9 +31,10 @@ let package = Package(
     ],
     targets: [
         // MUST MIRROR packages/vitruvian-sdk/BUILD, target for target. These
-        // sources have two build definitions and CI only runs the Bazel one;
-        // a target added to BUILD but not here (or the reverse) breaks
-        // `swift build` silently (see packages/peripherals/Package.swift).
+        // sources have two build definitions: main CI runs the Bazel one, while
+        // `.github/workflows/catalog-check.yaml` builds `vitruvian-tool` with
+        // `swift build`; a target added to BUILD but not here (or the reverse)
+        // breaks `catalog-check` (see packages/peripherals/Package.swift).
         //
         // The protocol, as Swift: Foundation only, Swift 6 mode. Vitruvian
         // Atrium links this module, so it may import nothing of the app.

@@ -38,6 +38,14 @@ filegroup(
     visibility = ["//apps/extensions/atrium/vitruvian-tv:__pkg__"],
 )
 
+# Compiled directly by bare rustc in catalog-check / catalog-bump workflows
+# (//tools/ci:workflow_rustc_test compiles those lines).
+filegroup(
+    name = "srcs",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 rust_library(
     name = "catalog_lib",
     srcs = glob(
