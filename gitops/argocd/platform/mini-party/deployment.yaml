@@ -48,6 +48,17 @@ spec:
         app.kubernetes.io/name: mini-party
     spec:
       automountServiceAccountToken: false
+      # Keep it on the always-on servers (fedora, nuc9i5, nuc9i9), never a
+      # laptop: it first landed on james-mbp16, and a laptop that sleeps or
+      # leaves the network takes online rooms down with it. Same rule as
+      # CoreDNS and the Actions runner listener.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
