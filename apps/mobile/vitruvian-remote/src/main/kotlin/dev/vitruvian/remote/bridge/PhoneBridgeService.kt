@@ -87,11 +87,14 @@ public class PhoneBridgeService : Service() {
    */
   private val kick = Channel<Unit>(Channel.CONFLATED)
 
+  private val hubListener: () -> Unit = { if (inForeground) updateNotification() }
+
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onCreate() {
     super.onCreate()
     BridgeHub.attach(this)
+    BridgeHub.addListener(hubListener)
     // Nothing downstream needs to know these exist -- the descriptor list, the
     // tier gate, the approval prompt and the audit trail all read from the
     // registry. The notification and screen tools are registered here even
@@ -150,6 +153,7 @@ public class PhoneBridgeService : Service() {
   }
 
   override fun onDestroy() {
+    BridgeHub.removeListener(hubListener)
     stop()
     super.onDestroy()
   }

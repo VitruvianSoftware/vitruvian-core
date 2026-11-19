@@ -57,9 +57,11 @@ public class BridgePolicyTest {
     assertEquals(BridgeDecision.Allow, BridgePolicy.decide(ToolTier.Act, openWindow, now))
     val shut = BridgePolicy.decide(ToolTier.Act, shutWindow, now)
     assertTrue(shut is BridgeDecision.Deny)
-    // The refusal has to name the button, not the rule: this text is returned
+    // The refusal has to name the control, not the rule: this text is returned
     // to the agent verbatim and is the only instruction anyone gets.
-    assertTrue((shut as BridgeDecision.Deny).reason.contains("Trust agents for 1 hour"))
+    val reason = (shut as BridgeDecision.Deny).reason
+    assertTrue(reason.contains("Settings → Phone bridge"))
+    assertTrue(reason.contains("Always"))
   }
 
   @Test
@@ -101,6 +103,26 @@ public class BridgePolicyTest {
     assertNull(BridgePolicy.trustUntilIso(shutWindow, now))
     assertNull(BridgePolicy.trustUntilIso(0L, now))
     assertEquals("2023-11-14T22:13:20Z", BridgePolicy.trustUntilIso(now, now - 1))
+  }
+
+  @Test
+  public fun trustPresetsAndAlwaysTrustBehaveWithoutOverflow() {
+    assertEquals(now + 3_600_000L, BridgePolicy.trustDeadline(TrustDuration.OneHour, now))
+    assertEquals(now + 28_800_000L, BridgePolicy.trustDeadline(TrustDuration.EightHours, now))
+    assertEquals(BridgePolicy.TRUST_FOREVER, BridgePolicy.trustDeadline(TrustDuration.Always, now))
+
+    assertTrue(BridgePolicy.isAlwaysTrusted(BridgePolicy.TRUST_FOREVER))
+    assertFalse(BridgePolicy.isAlwaysTrusted(openWindow))
+    assertFalse(BridgePolicy.isAlwaysTrusted(0L))
+
+    assertTrue(BridgePolicy.trustOpen(BridgePolicy.TRUST_FOREVER, now))
+    for (tier in ToolTier.entries) {
+      assertEquals(BridgeDecision.Allow, BridgePolicy.decide(tier, BridgePolicy.TRUST_FOREVER, now))
+    }
+    assertEquals("always", BridgePolicy.trustRemaining(BridgePolicy.TRUST_FOREVER, now))
+    assertEquals(
+        "8 h left", BridgePolicy.trustRemaining(now + BridgePolicy.TRUST_WINDOW_8H_MS, now))
+    assertEquals("always", BridgePolicy.trustUntilIso(BridgePolicy.TRUST_FOREVER, now))
   }
 
   // --- the audit summary ------------------------------------------------

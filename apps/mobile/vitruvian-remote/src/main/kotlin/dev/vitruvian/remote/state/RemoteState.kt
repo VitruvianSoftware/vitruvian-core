@@ -9419,6 +9419,9 @@ public class RemoteState(
   public val trustOpen: Boolean
     get() = BridgePolicy.trustOpen(trustUntil, bridgeNowMs)
 
+  public val trustAlways: Boolean
+    get() = BridgePolicy.isAlwaysTrusted(trustUntil)
+
   /**
    * The bridge told us something. Called on the main thread by the activity's adapter.
    *
@@ -9500,10 +9503,10 @@ public class RemoteState(
     pairFocusRequest++
   }
 
-  /** "Trust agents for 1 hour". */
-  public fun trustAgents() {
-    bridge?.trustForAnHour()
-    log("warn", "bridge · agents trusted for 1 hour")
+  /** Open the trust window for the chosen duration. */
+  public fun trustAgents(duration: TrustDuration = TrustDuration.OneHour) {
+    bridge?.trust(duration)
+    log("warn", "bridge · agents trusted ${duration.logPhrase}")
   }
 
   /** "End trust", for when an hour turns out to have been optimistic. */

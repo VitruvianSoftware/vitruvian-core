@@ -36,6 +36,7 @@ import dev.vitruvian.remote.R
 import dev.vitruvian.remote.state.BridgeAuditEntry
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.Persistence
+import dev.vitruvian.remote.state.TrustDuration
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
@@ -221,7 +222,10 @@ public object BridgeHub {
   public var linkStatus: String = "off"
     private set
 
-  /** When the trust window shuts, epoch millis. 0 = never opened. */
+  /**
+   * When the trust window shuts, epoch millis. 0 = never opened; [BridgePolicy.TRUST_FOREVER] =
+   * always.
+   */
   @Volatile
   public var trustUntil: Long = 0L
     private set
@@ -290,11 +294,11 @@ public object BridgeHub {
     notifyListeners()
   }
 
-  /** Opens the trust window for [millis] from now. Absolute, so re-opening does not stack. */
-  public fun trustFor(millis: Long) {
-    trustUntil = System.currentTimeMillis() + millis
+  /** Opens the trust window for [duration]. Absolute, so re-opening does not stack. */
+  public fun trust(duration: TrustDuration) {
+    trustUntil = BridgePolicy.trustDeadline(duration, System.currentTimeMillis())
     store?.bridgeTrustUntil = trustUntil
-    record("trust", "for ${millis / 60_000} min", "window opened", "person")
+    record("trust", duration.auditArgument, "window opened", "person")
     notifyListeners()
   }
 

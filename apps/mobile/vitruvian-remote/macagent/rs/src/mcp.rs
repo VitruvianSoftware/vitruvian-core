@@ -518,6 +518,55 @@ pub mod tests {
     }
 
     #[test]
+    fn test_trust_until_always_and_clear_from_phone() {
+        let (store, srv) = new_bridge_agent();
+        let tok = store.token().unwrap();
+        let mtok = store.ensure_mcp_token().unwrap();
+
+        let seq = std::sync::atomic::AtomicUsize::new(0);
+        let _p = link_phone(
+            &srv.url,
+            &tok,
+            r#"{"device":{"model":"Pixel Fold"},"tools":[{"name":"phone.status","description":"status","tier":"read"}]}"#,
+            Some(move |_c: PhoneCall| {
+                let n = seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if n == 0 {
+                    (
+                        r#"{"battery":81,"trust_until":"always"}"#.to_string(),
+                        false,
+                    )
+                } else {
+                    (r#"{"battery":80,"trust_until":null}"#.to_string(), false)
+                }
+            }),
+        );
+
+        let (_, out1) = rpc(
+            &srv.url,
+            &mtok,
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"phone.status"}}"#,
+        );
+        assert!(out1.unwrap().get("result").is_some());
+        let st1 = http_get(&format!("{}/v1/phone", srv.url))
+            .unwrap()
+            .json()
+            .unwrap();
+        assert_eq!(st1.get_str("trust_until"), "always");
+
+        let (_, out2) = rpc(
+            &srv.url,
+            &mtok,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"phone.status"}}"#,
+        );
+        assert!(out2.unwrap().get("result").is_some());
+        let st2 = http_get(&format!("{}/v1/phone", srv.url))
+            .unwrap()
+            .json()
+            .unwrap();
+        assert!(st2.get("trust_until").unwrap().is_null());
+    }
+
+    #[test]
     fn test_a_second_link_replaces_the_first() {
         let (store, srv) = new_bridge_agent();
         let tok = store.token().unwrap();
