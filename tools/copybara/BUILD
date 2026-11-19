@@ -52,9 +52,13 @@ test_suite(
     tests = [":check_version_maps_lib_test"],
 )
 
+# //apps/web/mini-party:mirror_catalog_test reads _MINI_PARTY_CATALOG_VERSIONS.
 # //tools/registry-trust reads COMPONENTS to learn which mirror publishes a
 # package; its test reads the real file so a layout change cannot hide one.
 exports_files(
     ["copy.bara.sky"],
-    visibility = ["//tools/registry-trust:__pkg__"],
+    visibility = [
+        "//apps/web/mini-party:__pkg__",
+        "//tools/registry-trust:__pkg__",
+    ],
 )

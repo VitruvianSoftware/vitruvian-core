@@ -43,6 +43,7 @@
 /apps/suites/vitruvian-wand/ @VitruvianSoftware/platform-team
 /apps/web/backstage/ @VitruvianSoftware/platform-team
 /apps/web/gods-eye-view/ @VitruvianSoftware/gods-eye-view-team @VitruvianSoftware/platform-team
+/apps/web/mini-party/ @VitruvianSoftware/platform-team
 /apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
 /apps/web/vitruviansoftware-dev/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/ext-marketplace/ @VitruvianSoftware/platform-team

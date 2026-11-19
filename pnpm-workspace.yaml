@@ -28,6 +28,7 @@ packages:
   - apps/desktop/vitruvian-code
   - apps/web/oauth-user-inspector
   - apps/web/gods-eye-view
+  - apps/web/mini-party
   - apps/web/backstage/packages/*
   - apps/suites/vitruvian-tabs/shared
   - apps/suites/vitruvian-tabs/api

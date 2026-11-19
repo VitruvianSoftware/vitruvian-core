@@ -81,6 +81,7 @@ updates:
       - "/apps/mcp/vitruvian-roborock-mcp/.github/workflows"
       - "/apps/mcp/vitruvian-slack-mcp/.github/workflows"
       - "/apps/web/gods-eye-view/.github/workflows"
+      - "/apps/web/mini-party/.github/workflows"
       - "/apps/web/vitruviansoftware-dev/.github/workflows"
       - "/packages/pulumi/library/.github/workflows"
       - "/packages/pulumi/examples/go-foundation/.github/workflows"

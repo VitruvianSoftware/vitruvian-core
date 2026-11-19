@@ -164,6 +164,24 @@ _LIBRARY_CATALOG_VERSIONS = {
     "@vitest/coverage-v8": "^4.1.5",
 }
 
+# pnpm catalog -> concrete version map for the mini-party export: the mirror
+# installs with plain npm, which cannot read `catalog:`. Each value must equal
+# the root pnpm-workspace.yaml catalog entry; //apps/web/mini-party:
+# mirror_catalog_test fails if they drift.
+_MINI_PARTY_CATALOG_VERSIONS = {
+    "vitest": "^5.1.0",
+}
+
+def _mini_party_export_transforms():
+    return [
+        core.replace(
+            before = '"' + _dep + '": "catalog:"',
+            after = '"' + _dep + '": "' + _MINI_PARTY_CATALOG_VERSIONS[_dep] + '"',
+            paths = glob(["package.json"]),
+        )
+        for _dep in _MINI_PARTY_CATALOG_VERSIONS
+    ]
+
 # Verified against the live mirror (2026-07-05): the standalone pulumi-library
 # builds ts with **npm** (package-lock.json), not pnpm, and commits **concrete**
 # cross-ref floors — NOT `workspace:*`. The monorepo replaced those floors with
@@ -711,6 +729,28 @@ COMPONENTS = [
             "apps/suites/vitruvian-wand/OWNERS",
         ],
         "export_only": True,
+    },
+    # mini-party: EXPORT-ONLY mirror of apps/web/mini-party (MIT), the party
+    # mini-games. The mirror is also the GitHub Pages publisher for
+    # mini-games.vitruviansoftware.dev: its own .github/workflows/pages.yml
+    # builds the static site on every export.
+    {
+        "name": "mini-party",
+        "repo": "mini-party",
+        "subtree": "apps/web/mini-party",
+        "standalone_rev_id": "MINI_PARTY_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        # The monorepo's catalog and owners files, and the check that needs
+        # Bazel's two builds side by side.
+        "origin_only_exclude": [
+            "apps/web/mini-party/catalog-info.yaml",
+            "apps/web/mini-party/OWNERS",
+            "apps/web/mini-party/scripts/static_build_test.sh",
+            "apps/web/mini-party/scripts/mirror_catalog_test.sh",
+        ],
+        "export_only": True,
+        "export_transformations": _mini_party_export_transforms(),
     },
 ]
 

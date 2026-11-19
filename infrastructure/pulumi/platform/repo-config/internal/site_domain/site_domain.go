@@ -71,6 +71,10 @@ const (
 	MirrorRepo = "site-vitruviansoftware-dev"
 
 	challengePrefix = "_github-pages-challenge-"
+
+	// MiniGames is the subdomain the Mini Party game is published at:
+	// mini-games.vitruviansoftware.dev.
+	MiniGames = "mini-games"
 )
 
 // Record is one DNS record this package owns.
@@ -145,6 +149,17 @@ func Records() []Record {
 			Content:  "vitruviansoftware.github.io",
 			TTL:      1,
 			Proxied:  true,
+		},
+		{
+			// Mini Party, served by GitHub Pages from the mini-party mirror
+			// (its Pages site is declared with the repository in
+			// internal/copybara_sync). DNS-only, like the apex, so GitHub can
+			// issue the certificate.
+			Resource: "mini-games-cname",
+			Type:     "CNAME",
+			Name:     MiniGames,
+			Content:  "vitruviansoftware.github.io",
+			TTL:      1,
 		},
 	}
 }

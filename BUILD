@@ -57,6 +57,13 @@ exports_files(
     visibility = ["//tools/maven:__pkg__"],
 )
 
+# The pnpm workspace file, exported so mini-party's mirror_catalog_test can
+# check the versions its mirror export writes in place of `catalog:`.
+exports_files(
+    ["pnpm-workspace.yaml"],
+    visibility = ["//apps/web/mini-party:__pkg__"],
+)
+
 exports_files(
     ["pnpm-lock.yaml"],
     visibility = ["//tools/ci:__pkg__"],

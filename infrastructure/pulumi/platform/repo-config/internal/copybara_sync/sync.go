@@ -60,6 +60,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/secrets"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/site_domain"
 )
 
 // monorepoRepoName is the GitHub repository name of the monorepo. The export
@@ -133,6 +134,14 @@ type syncedProject struct {
 	// created rather than adopted: pulumi.Import of a protection that does not
 	// exist fails the whole update.
 	UnprotectedMirror bool
+
+	// PagesDomain publishes a CreateRepo mirror with GitHub Pages at this
+	// custom domain. The mirror's own workflow builds and deploys the site
+	// (build type "workflow"), the same way site-vitruviansoftware-dev serves
+	// vitruviansoftware.dev. The domain's DNS record lives with the website's
+	// in internal/site_domain. Declared here, next to the repository, so it is
+	// created only once the repository exists.
+	PagesDomain string
 }
 
 // adoptedRepo mirrors the live GitHub repository settings for a brownfield
@@ -503,6 +512,19 @@ var syncedProjects = []syncedProject{
 		CreateRepo:     true,
 		Description:    "Vitruvian Wand: a Google Daydream controller as an air mouse for macOS, Linux, Android and Android TV",
 	},
+	{
+		// Mini Party (apps/web/mini-party), MIT: party mini-games for up to 4
+		// players. Export-only, and the GitHub Pages publisher for
+		// mini-games.vitruviansoftware.dev: the mirror's pages.yml builds the
+		// static site on every export. MINI_PARTY_SYNC_SSH_KEY, consumed by
+		// copybara-export-mini-party.yaml.
+		Name:           "mini-party",
+		StandaloneRepo: "mini-party",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Mini Party: rapid-fire party mini-games for up to 4 players",
+		PagesDomain:    site_domain.MiniGames + "." + site_domain.Apex,
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its
@@ -544,6 +566,9 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		if project.CreateRepo && project.Adopt != nil {
 			return fmt.Errorf("copybara_sync: project %q sets both CreateRepo and Adopt", project.Name)
 		}
+		if project.PagesDomain != "" && !project.CreateRepo {
+			return fmt.Errorf("copybara_sync: project %q sets PagesDomain without CreateRepo", project.Name)
+		}
 		prefix := secretPrefix(project.Name)
 
 		var repo *github.Repository
@@ -573,6 +598,18 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			}, repoOpts...)
 			if repoErr != nil {
 				return repoErr
+			}
+			if project.PagesDomain != "" {
+				// HttpsEnforced is left unset: GitHub refuses it until the
+				// domain's certificate exists, which takes minutes after the
+				// DNS record resolves.
+				if _, err := github.NewRepositoryPages(ctx, project.StandaloneRepo+"-pages", &github.RepositoryPagesArgs{
+					Repository: repo.Name,
+					BuildType:  pulumi.String("workflow"),
+					Cname:      pulumi.String(project.PagesDomain),
+				}, pulumi.DependsOn([]pulumi.Resource{repo})); err != nil {
+					return err
+				}
 			}
 		} else if project.Adopt != nil {
 			var adoptErr error

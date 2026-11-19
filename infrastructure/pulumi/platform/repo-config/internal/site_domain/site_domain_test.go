@@ -113,7 +113,7 @@ func TestOnlyTrueTurnsItOn(t *testing.T) {
 
 // Everything it declares is a live resource being adopted, and every one is
 // protected: a stray edit that would delete or replace one must fail the run.
-func TestDeclaresExactlyTheFourResourcesProtectedAndImportedWhereTheyExist(t *testing.T) {
+func TestDeclaresExactlyTheFiveResourcesProtectedAndImportedWhereTheyExist(t *testing.T) {
 	t.Setenv(Switch, "true")
 	t.Setenv("CLOUDFLARE_API_TOKEN", "test-not-a-real-token")
 	got := run(t)
@@ -123,9 +123,10 @@ func TestDeclaresExactlyTheFourResourcesProtectedAndImportedWhereTheyExist(t *te
 		"site-pages-challenge-txt": "cloudflare:index/record:Record",
 		"site-www-cname":           "cloudflare:index/record:Record",
 		"site-pages":               "github:index/repositoryPages:RepositoryPages",
+		"mini-games-cname":         "cloudflare:index/record:Record",
 	}
 	// www did not exist before this package, so it is created, not imported.
-	created := map[string]bool{"site-www-cname": true}
+	created := map[string]bool{"site-www-cname": true, "mini-games-cname": true}
 	// The mocks also see the default providers; only count real resources.
 	var real []seen
 	for _, s := range got {
@@ -178,13 +179,15 @@ func TestOnlyWwwIsProxied(t *testing.T) {
 // The zone also carries mail, identity and other tools' records. This package
 // may own the apex CNAME and this organisation's Pages challenge, nothing else.
 func TestOwnsOnlyTheSiteRecords(t *testing.T) {
-	apexCNAMEs, challenges, www := 0, 0, 0
+	apexCNAMEs, challenges, www, miniGames := 0, 0, 0, 0
 	for _, r := range Records() {
 		switch {
 		case r.Type == "CNAME" && r.Name == Apex:
 			apexCNAMEs++
 		case r.Type == "CNAME" && r.Name == "www":
 			www++
+		case r.Type == "CNAME" && r.Name == MiniGames && r.Content == "vitruviansoftware.github.io":
+			miniGames++
 		case r.Type == "TXT" && r.Name == challengePrefix+"vitruviansoftware":
 			challenges++
 		default:
@@ -192,12 +195,13 @@ func TestOwnsOnlyTheSiteRecords(t *testing.T) {
 				"MX, SPF, DKIM, Google verification and other tools' records "+
 				"must stay out of this package", r.Resource, r.Type, r.Name)
 		}
-		// Only www is created here; everything else is adopted and needs its id.
-		if r.ID == "" && r.Name != "www" {
+		// www and mini-games are created here; everything else is adopted and
+		// needs its id.
+		if r.ID == "" && r.Name != "www" && r.Name != MiniGames {
 			t.Errorf("record %q has no id to adopt", r.Resource)
 		}
 	}
-	if apexCNAMEs != 1 || challenges != 1 || www != 1 {
-		t.Errorf("want exactly one apex CNAME, one challenge TXT and one www CNAME, got %d, %d and %d", apexCNAMEs, challenges, www)
+	if apexCNAMEs != 1 || challenges != 1 || www != 1 || miniGames != 1 {
+		t.Errorf("want exactly one apex CNAME, one challenge TXT, one www CNAME and one mini-games CNAME to GitHub Pages, got %d, %d, %d and %d", apexCNAMEs, challenges, www, miniGames)
 	}
 }
