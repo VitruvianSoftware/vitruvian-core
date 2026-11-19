@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.53](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.52...vitruvian-remote-v0.1.53) (2026-11-19)
+
+
+### Features
+
+* **vitruvian-remote:** add 1h, 8h, and Always trust presets for Phone Bridge ([#5165](https://github.com/VitruvianSoftware/vitruvian-core/issues/5165)) ([fcbcf18](https://github.com/VitruvianSoftware/vitruvian-core/commit/fcbcf188ba6264d8243de32da21415efacc4a34a))
+
 ## [0.1.52](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.51...vitruvian-remote-v0.1.52) (2026-11-19)
 
 
