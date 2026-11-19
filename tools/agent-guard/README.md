@@ -443,7 +443,7 @@ another branch; until one lands, the refusal says so and points to James.
 | `gh-other` | other `gh` writes: `release create`, `secret set`, `label create`, ... | no target: tell James |
 | `gh-read` | `gh` reads of this repo: `pr view/list/checks/diff/status`, `run list/view/watch/download`, `workflow list/view`, `issue view/list`, `repo/release view`, `search`, `status`, `gh api` GETs and GraphQL queries (other repos are not governed) | `bazel run //tools/agent-app -- read <the same gh arguments>` |
 | `go` | `go test/vet/build/run/install/mod/get/fmt` | `bazel test`, `bazel build`, `//tools/gomod:tidy`, `//tools/format` |
-| `swift` | `swift build/test/run/package`, `swiftc` | `bazel test //apps/desktop/<app>:<Tests>` |
+| `swift` | `swift build/test/run/package`, `swiftc`, a `swift <script>.swift` inside a checkout (one outside every checkout is research and allowed) | `bazel test //apps/desktop/<app>:<Tests>` |
 | `xcode` | `xcodebuild`, `xcrun notarytool/stapler/altool` | the app's `bazel build`/`test` and packaging targets |
 | `node` | `npm`/`pnpm`/`yarn`/`bun` install, test, run, exec; `npx` | `bazel test` / `bazel run`; Bazel installs node_modules itself; edit `package.json`, then `bazel run //tools/pnpm:lock` to re-lock |
 | `cargo` | `cargo build/test/run/check/clippy/publish`; `cargo update/generate-lockfile/add/remove` (also with `+toolchain`, global flags or `rustup run <toolchain>`) | `bazel test` / `bazel build`; `bazel run //tools/crates:lock` (after editing `Cargo.toml` by hand for add/remove) |

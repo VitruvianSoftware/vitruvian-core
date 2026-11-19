@@ -57,7 +57,7 @@
     },
     "swift": {
       "mode": "enforce",
-      "covers": "swift build/test/run/package, swiftc"
+      "covers": "swift build/test/run/package, swiftc, swift scripts inside the repo (a script outside every checkout is research and allowed)"
     },
     "xcode": {
       "mode": "enforce",
