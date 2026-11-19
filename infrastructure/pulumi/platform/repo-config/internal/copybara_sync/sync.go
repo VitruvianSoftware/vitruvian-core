@@ -528,13 +528,15 @@ var syncedProjects = []syncedProject{
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Mini Party: rapid-fire party mini-games for up to 4 players",
-		PagesDomain:    site_domain.MiniGames + "." + site_domain.Apex,
-		// Step 1 of 2 (2026-11-19). Saved state says HTTPS is enforced (the
-		// create recorded github.io's default), but GitHub turned it off when
-		// the custom domain was added, and applies do not refresh. The
-		// provider only sends https_enforced when it differs from state, so
-		// this apply records false (what GitHub already has); the next sets
-		// true, which the provider then sends. The certificate exists.
+		// Capitalised on purpose: see the warning above NewRepositoryPages.
+		// On 2026-11-19 an update that changed only https_enforced removed
+		// the domain; this spelling differs from what state holds, so the
+		// provider sends it and GitHub restores the domain (DNS names
+		// ignore case). Flip the case again whenever a Pages change must
+		// keep the domain.
+		PagesDomain: "Mini-games." + site_domain.Apex,
+		// Off: GitHub turns enforcement off when a domain is (re)attached,
+		// and changing this alone would remove the domain (see above).
 		PagesHTTPS: false,
 	},
 }
@@ -612,19 +614,22 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				return repoErr
 			}
 			if project.PagesDomain != "" {
-				// HttpsEnforced follows PagesHTTPS (see the field: it must stay
-				// off until the domain's certificate exists). The provider sends
-				// it only when it differs from Pulumi state, and applies do not
-				// refresh, so a drifted value needs a false-then-true pair of
-				// applies to correct.
-				//
-				// The custom domain also takes TWO applies. The provider's create
+				// WARNING: an update that does not change the cname REMOVES the
+				// custom domain. The provider's update
 				// (terraform-provider-github resource_github_repository_pages.go)
-				// stores the empty cname from GitHub's enable-Pages response
-				// before it reads the requested one, so it never sends it: the
-				// first apply enables Pages with no domain. That apply records
-				// the empty cname in state, so the next repo-config apply sees
-				// the difference and sets the domain.
+				// sends cname only when it changed, and otherwise sends
+				// cname: null, which GitHub reads as "remove the domain". It
+				// also never re-reads GitHub after an update. That took
+				// mini-games.vitruviansoftware.dev offline on 2026-11-19 when
+				// only https_enforced changed. So never change PagesHTTPS or
+				// any other Pages argument on its own: change the
+				// PagesDomain's letter case in the same commit, so the update
+				// carries the domain.
+				//
+				// The custom domain also takes TWO applies when the site is
+				// first created: the provider's create stores GitHub's empty
+				// cname before it reads the requested one, so it never sends
+				// it. The next apply sees the difference and sets it.
 				if _, err := github.NewRepositoryPages(ctx, project.StandaloneRepo+"-pages", &github.RepositoryPagesArgs{
 					Repository:    repo.Name,
 					BuildType:     pulumi.String("workflow"),

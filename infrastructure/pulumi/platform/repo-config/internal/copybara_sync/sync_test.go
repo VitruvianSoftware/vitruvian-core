@@ -29,6 +29,8 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/site_domain"
 )
 
 type seen struct {
@@ -220,16 +222,19 @@ func TestTheMiniPartyMirrorPublishesItsSiteAtItsDomain(t *testing.T) {
 	for field, want := range map[string]string{
 		"repository": "mini-party",
 		"buildType":  "workflow",
-		"cname":      "mini-games.vitruviansoftware.dev",
+		"cname":      "Mini-games.vitruviansoftware.dev",
 	} {
 		if v := text(t, got, "mini-party-pages", field); v != want {
 			t.Errorf("pages %s is %q, want %q", field, v, want)
 		}
 	}
-	// Step 1 of 2: false resyncs state with GitHub (see sync.go); step 2
-	// flips this to true.
+	// Off: changing it alone would remove the domain (see sync.go).
 	if v, ok := r.inputs["httpsEnforced"]; !ok || !v.IsBool() || v.BoolValue() {
-		t.Errorf("pages httpsEnforced is %v, want false for the state resync", v)
+		t.Errorf("pages httpsEnforced is %v, want false", v)
+	}
+	// The Pages domain must be the DNS record's name, whatever its case.
+	if v := text(t, got, "mini-party-pages", "cname"); !strings.EqualFold(v, site_domain.MiniGames+"."+site_domain.Apex) {
+		t.Errorf("pages cname %q does not match the DNS record %s.%s", v, site_domain.MiniGames, site_domain.Apex)
 	}
 	for name, s := range got {
 		if s.typeToken == "github:index/repositoryPages:RepositoryPages" && name != "mini-party-pages" {
