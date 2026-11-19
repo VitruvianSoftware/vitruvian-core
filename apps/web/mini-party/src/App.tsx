@@ -48,6 +48,7 @@ import {
   Globe,
 } from "lucide-react";
 import { socketService } from "./services/socketService";
+import { REMOTE_PLAY } from "./features";
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>("LOBBY");
@@ -61,7 +62,7 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const room = params.get("room");
-    if (room) setRoomId(room);
+    if (room && REMOTE_PLAY) setRoomId(room);
   }, []);
 
   const startGame = (playerCount: number) => {

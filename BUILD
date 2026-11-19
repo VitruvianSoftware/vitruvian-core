@@ -57,6 +57,13 @@ exports_files(
     visibility = ["//tools/maven:__pkg__"],
 )
 
+# The pnpm workspace file, exported so mini-party's mirror_catalog_test can
+# check the versions its mirror export writes in place of `catalog:`.
+exports_files(
+    ["pnpm-workspace.yaml"],
+    visibility = ["//apps/web/mini-party:__pkg__"],
+)
+
 # The module file, exported so oauth-user-inspector's dockerfile_test can
 # check the Dockerfile builds the server with this file's Rust toolchain.
 exports_files(

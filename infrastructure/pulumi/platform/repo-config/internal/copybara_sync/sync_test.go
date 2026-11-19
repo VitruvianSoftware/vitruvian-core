@@ -174,6 +174,7 @@ func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
 		{"vitruvian-remote", "vitruvian-remote", "VITRUVIAN_REMOTE_SYNC_SSH_KEY"},
 		{"esp32-desk-companion", "vitruvian-deck", "ESP32_DESK_COMPANION_SYNC_SSH_KEY"},
 		{"vitruvian-wand", "vitruvian-wand", "VITRUVIAN_WAND_SYNC_SSH_KEY"},
+		{"mini-party", "mini-party", "MINI_PARTY_SYNC_SSH_KEY"},
 	} {
 		t.Run(mirror.repo, func(t *testing.T) {
 			if r := got[mirror.resource]; r.typeToken != "github:index/repository:Repository" {
@@ -204,6 +205,31 @@ func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
 				t.Error("a source mirror must hold no key to the tap")
 			}
 		})
+	}
+}
+
+// Mini Party's mirror is also its website: GitHub Pages serves what the
+// mirror's own workflow builds, at the custom domain whose DNS record
+// internal/site_domain declares. Only that mirror publishes a site.
+func TestTheMiniPartyMirrorPublishesItsSiteAtItsDomain(t *testing.T) {
+	got := run(t)
+	r, ok := got["mini-party-pages"]
+	if !ok || r.typeToken != "github:index/repositoryPages:RepositoryPages" {
+		t.Fatalf("mini-party-pages is %q, want github repository pages", r.typeToken)
+	}
+	for field, want := range map[string]string{
+		"repository": "mini-party",
+		"buildType":  "workflow",
+		"cname":      "mini-games.vitruviansoftware.dev",
+	} {
+		if v := text(t, got, "mini-party-pages", field); v != want {
+			t.Errorf("pages %s is %q, want %q", field, v, want)
+		}
+	}
+	for name, s := range got {
+		if s.typeToken == "github:index/repositoryPages:RepositoryPages" && name != "mini-party-pages" {
+			t.Errorf("unexpected Pages site %q: only mini-party publishes one from this package", name)
+		}
 	}
 }
 

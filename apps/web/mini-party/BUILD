@@ -23,6 +23,7 @@ load("@npm//apps/web/mini-party:tsx/package_json.bzl", tsx = "bin")
 load("@npm//apps/web/mini-party:typescript/package_json.bzl", typescript = "bin")
 load("@npm//apps/web/mini-party:vite/package_json.bzl", vite = "bin")
 load("@npm//apps/web/mini-party:vitest/package_json.bzl", vitest = "bin")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//apps/web/mini-party:__subpackages__"])
@@ -42,6 +43,56 @@ vite.vite(
     args = ["build"],
     chdir = package_name(),
     out_dirs = ["dist"],
+)
+
+# The same client for a static host (GitHub Pages): no server, so online rooms
+# are left out. The mirror's .github/workflows/pages.yml builds it the same way.
+vite.vite(
+    name = "build_static",
+    srcs = glob(["src/**"]) + [
+        "index.html",
+        "package.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        ":node_modules",
+    ],
+    args = ["build"],
+    chdir = package_name(),
+    env = {
+        "OUT_DIR": "dist-static",
+        "VITE_REMOTE_PLAY": "off",
+    },
+    out_dirs = ["dist-static"],
+)
+
+sh_test(
+    name = "static_build_test",
+    srcs = ["scripts/static_build_test.sh"],
+    args = [
+        "$(rootpath :build)",
+        "$(rootpath :build_static)",
+    ],
+    data = [
+        ":build",
+        ":build_static",
+    ],
+)
+
+# The mirror's package.json gets concrete versions in place of `catalog:`;
+# this keeps those in step with the root pnpm catalog.
+sh_test(
+    name = "mirror_catalog_test",
+    srcs = ["scripts/mirror_catalog_test.sh"],
+    args = [
+        "$(rootpath package.json)",
+        "$(rootpath //:pnpm-workspace.yaml)",
+        "$(rootpath //tools/copybara:copy.bara.sky)",
+    ],
+    data = [
+        "package.json",
+        "//:pnpm-workspace.yaml",
+        "//tools/copybara:copy.bara.sky",
+    ],
 )
 
 # Runs the game: the built client plus the multiplayer server, on $PORT (3000).
@@ -100,7 +151,10 @@ pipeline_unit(
     test_targets = [
         ":typecheck",
         ":server_test",
+        ":static_build_test",
+        ":mirror_catalog_test",
         ":build",
+        ":build_static",
     ],
     tier = "L1",
     timeout_minutes = 15,

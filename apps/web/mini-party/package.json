@@ -8,7 +8,7 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "start": "NODE_ENV=production tsx server.ts",
-    "test": "bazel test //apps/web/mini-party/...",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -31,6 +31,12 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
   links:
+    - url: https://mini-games.vitruviansoftware.dev/
+      title: Play
+      icon: web
+    - url: https://github.com/VitruvianSoftware/mini-party
+      title: Mirror repository
+      icon: github
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/web/mini-party
       title: Source Tree
       icon: github

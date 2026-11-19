@@ -23,6 +23,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Users, Play } from "lucide-react";
+import { REMOTE_PLAY } from "../features";
 
 interface LobbyProps {
   onStart: (playerCount: number) => void;
@@ -76,7 +77,7 @@ export default function Lobby({
       </motion.div>
 
       <div className="flex flex-col items-center gap-8 w-full max-w-2xl relative">
-        {!isJoining && (
+        {!isJoining && REMOTE_PLAY && (
           <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 w-full">
             <button
               onClick={() => setMode("LOCAL")}

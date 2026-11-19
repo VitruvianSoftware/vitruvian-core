@@ -967,7 +967,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/mini-party:typecheck //apps/web/mini-party:server_test //apps/web/mini-party:build || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/mini-party:typecheck //apps/web/mini-party:server_test //apps/web/mini-party:build; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/mini-party:typecheck //apps/web/mini-party:server_test //apps/web/mini-party:static_build_test //apps/web/mini-party:mirror_catalog_test //apps/web/mini-party:build //apps/web/mini-party:build_static || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/mini-party:typecheck //apps/web/mini-party:server_test //apps/web/mini-party:static_build_test //apps/web/mini-party:mirror_catalog_test //apps/web/mini-party:build //apps/web/mini-party:build_static; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()

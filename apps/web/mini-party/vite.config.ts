@@ -31,6 +31,9 @@ export default defineConfig({
   // when naming index.html, which fails the build.
   root: fileURLToPath(new URL(".", import.meta.url)),
   // Write next to the working directory, which is where Bazel collects dist/.
-  build: { outDir: `${process.cwd()}/dist`, emptyOutDir: true },
+  build: {
+    outDir: `${process.cwd()}/${process.env.OUT_DIR ?? "dist"}`,
+    emptyOutDir: true,
+  },
   plugins: [react(), tailwindcss()],
 });
