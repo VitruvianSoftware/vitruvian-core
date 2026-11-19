@@ -94,6 +94,17 @@ export default function Lobby({
           </div>
         )}
 
+        <p
+          id="mode-hint"
+          className="-mt-4 text-center text-sm font-bold text-white/60"
+        >
+          {mode === "LOCAL"
+            ? "Everyone plays on this screen. Each player gets a corner to tap."
+            : isJoining
+              ? "You've been invited to a room. Pick a name to join."
+              : "Everyone plays on their own phone or computer. Start a room, then share the link."}
+        </p>
+
         {mode === "LOCAL" ? (
           <div className="w-full bg-brand-card/50 backdrop-blur-xl border-2 border-white/10 rounded-[2.5rem] p-10">
             <label className="block text-center text-[10px] font-black uppercase tracking-[0.3em] text-brand-cyan mb-8">
