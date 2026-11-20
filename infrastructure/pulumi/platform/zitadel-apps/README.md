@@ -35,6 +35,32 @@ variable so it cleanly no-ops until the one-time bootstrap below is done.
 > See [APPLYING-FROM-CI.md](APPLYING-FROM-CI.md) for the chosen approach (tailnet
 > internal routing, option **a**) and the future alternatives (b, c).
 
+## Deletes and replaces need a reviewed approval
+
+Every apply runs through the plan guard (`//tools/pulumi:guarded-up`). If the
+plan deletes or replaces anything, the apply stops before changing a thing,
+unless a reviewed commit names that exact resource:
+
+```
+Allow-destroy: urn:pulumi:production::zitadel-apps::zitadel:index/applicationOidc:ApplicationOidc::oauth-user-inspector
+```
+
+This matters most here: on this provider a replace of an OIDC app **deletes the
+live client**, and hosted login breaks until it is recreated and its new
+credentials synced (2026-06-26).
+
+- **development** applies on a push to `main`, and reads approvals from the
+  commits in that push.
+- **nonproduction** and **production** apply on an `oauth-user-inspector`
+  release, and read approvals from every commit since that product's previous
+  release (`tools/pulumi/release_approvals.sh`). The URN names the stack, so a
+  change you mean to apply in all three environments needs three lines, one per
+  URN.
+- A manual dispatch never applies a delete or replace.
+- If the release range can't be read in full, nothing is approved and the
+  delete is refused; a safe plan still applies. To recover from a refused
+  release, merge a new commit with the `Allow-destroy` line and cut a release.
+
 ## One-time bootstrap (seed, then it's automated)
 
 1. **Machine user + key.** In the Zitadel console create a service (machine)
