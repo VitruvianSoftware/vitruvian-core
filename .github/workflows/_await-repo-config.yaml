@@ -127,6 +127,22 @@ jobs:
                       sleep 15
                   done
 
+                  # 2b. The list above can miss a run GitHub created seconds ago:
+                  #     on 2026-11-20 (vitruvian-party rename) it came back empty
+                  #     6 s after this push's apply started, so the export was
+                  #     restarted before the apply wrote the new key, and the
+                  #     fresh run was refused with the old one. So when this push
+                  #     changed repo-config, also wait on that apply run itself,
+                  #     by its own status, until it has completed.
+                  if [ "${changed}" = true ]; then
+                      while :; do
+                          st="$(api "${runs}?head_sha=${SHA}" --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+                          [ "${st}" = 0 ] && break
+                          echo "waiting for this push's ${APPLY_WORKFLOW} run to complete"
+                          sleep 15
+                      done
+                  fi
+
                   # Said, not enforced: if this push's apply failed, the key may
                   # or may not have moved, and the push step is the real test.
                   c="$(api "${runs}?head_sha=${SHA}" --jq '.workflow_runs[0].conclusion // "none"')"
