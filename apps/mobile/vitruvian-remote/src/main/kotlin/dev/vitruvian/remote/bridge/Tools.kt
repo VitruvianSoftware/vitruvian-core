@@ -934,6 +934,9 @@ public object PhoneTools {
   private val mlKitVoiceGeneration = dev.vitruvian.remote.state.GenerationGate()
   // The picked voice, in memory: read once from prefs, then set by the picker. Null until loaded.
   @Volatile private var mlKitPreferredVoice: String? = null
+  // Whether the shared client has ever listed voices. An empty list from a client that never did
+  // is a phone with no voices for its language, not a lost engine.
+  @Volatile private var mlKitClientHasListedVoices = false
   private val mlKitDownloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
   private data class MlKitVoiceCacheEntry(val voice: VoiceInfo?, val atMs: Long)
@@ -988,15 +991,25 @@ public object PhoneTools {
   public fun listMlKitVoices(): List<PhoneVoiceOption> {
     // An empty or failed answer can come from a client whose engine restarted, or one an
     // announcement just closed: try once more on a fresh client before showing "no voices".
-    val first = listMlKitVoicesOnce()
+    // The retry uses a private client: only announcements (under the speak lock) may close the
+    // shared one, so opening the picker can never cut an announcement off.
+    val first = listMlKitVoicesOnce(getOrCreateMlKitSynthesizer())
     if (first.isNotEmpty()) return first
-    discardMlKitClientIfStale()
-    return listMlKitVoicesOnce()
+    return withTemporaryMlKitClient { listMlKitVoicesOnce(it) }.orEmpty()
   }
 
-  private fun listMlKitVoicesOnce(): List<PhoneVoiceOption> =
+  /** Runs [block] on a new client of its own and closes it after; null if one cannot be made. */
+  private inline fun <R> withTemporaryMlKitClient(block: (SpeechSynthesizer) -> R): R? {
+    val client = runCatching { newMlKitClient() }.getOrNull() ?: return null
+    return try {
+      block(client)
+    } finally {
+      runCatching { client.close() }
+    }
+  }
+
+  private fun listMlKitVoicesOnce(synthesizer: SpeechSynthesizer): List<PhoneVoiceOption> =
       runCatching {
-            val synthesizer = getOrCreateMlKitSynthesizer()
             runBlocking(Dispatchers.IO) {
               withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
                 supportedMlKitVoices(synthesizer).map { voice ->
@@ -1034,18 +1047,21 @@ public object PhoneTools {
       try {
         // Twice at most: the second time on a fresh client, for when the first was closed under
         // us or lost its engine.
-        repeat(2) { attempt ->
-          val done =
-              runCatching {
-                    val synthesizer = getOrCreateMlKitSynthesizer()
-                    supportedMlKitVoices(synthesizer)
-                        .firstOrNull { it.name == name }
-                        ?.let { runVoiceDownload(synthesizer, it) }
-                    true
-                  }
-                  .getOrDefault(false)
-          if (done) return@launch
-          if (attempt == 0) discardMlKitClientIfStale()
+        suspend fun downloadOn(synthesizer: SpeechSynthesizer): Boolean =
+            runCatching {
+                  supportedMlKitVoices(synthesizer)
+                      .firstOrNull { it.name == name }
+                      ?.let { runVoiceDownload(synthesizer, it) }
+                  true
+                }
+                .getOrDefault(false)
+        if (downloadOn(getOrCreateMlKitSynthesizer())) return@launch
+        // Second try on a private client, never closing the shared one an announcement may use.
+        val client = runCatching { newMlKitClient() }.getOrNull() ?: return@launch
+        try {
+          downloadOn(client)
+        } finally {
+          runCatching { client.close() }
         }
         // The list shows it downloadable again; Get can be tapped again.
       } finally {
@@ -1105,14 +1121,19 @@ public object PhoneTools {
 
   // ML Kit initializes itself at app start through the MlKitInitProvider its AAR merges into our
   // manifest (checked in the built APK), so no internal init call is needed here.
+  private fun newMlKitClient(): SpeechSynthesizer =
+      SpeechSynthesis.getClient(
+          SpeechSynthesizerOptions.builder(Locale.getDefault())
+              .setVoiceFallbackEnabled(false)
+              .build())
+
   private fun getOrCreateMlKitSynthesizer(): SpeechSynthesizer =
       synchronized(mlKitLock) {
         mlKitSynthesizer
-            ?: SpeechSynthesis.getClient(
-                    SpeechSynthesizerOptions.builder(Locale.getDefault())
-                        .setVoiceFallbackEnabled(false)
-                        .build())
-                .also { mlKitSynthesizer = it }
+            ?: newMlKitClient().also {
+              mlKitSynthesizer = it
+              mlKitClientHasListedVoices = false
+            }
       }
 
   /**
@@ -1201,8 +1222,12 @@ public object PhoneTools {
                 })
           }
         }
+    if (voiceCount > 0) mlKitClientHasListedVoices = true
     if (BridgePolicy.lookupSuggestsStaleClient(
-        timedOut = lookup == null, voiceCount = voiceCount)) {
+        timedOut = lookup == null,
+        voiceCount = voiceCount,
+        clientListedVoicesBefore = mlKitClientHasListedVoices,
+    )) {
       // A bound engine always lists its voices; none (or no answer) means our client lost it.
       // Close it and leave the cache alone, so this does not stick for the "not ready" window.
       discardMlKitClientIfStale()
@@ -1244,8 +1269,9 @@ public object PhoneTools {
             textLength = text.length,
             elapsedSeconds = { TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNs) },
             describe = { outcome: WavPlayOutcome ->
-              BridgePolicy.MlKitAttempt(
-                  failedBeforeAudio = outcome.result.isError && outcome.allowTtsFallback,
+              BridgePolicy.mlKitAttemptOf(
+                  isError = outcome.result.isError,
+                  allowFallback = outcome.allowTtsFallback,
                   freshClientMayHelp = outcome.freshClientMayHelp,
               )
             },
@@ -1437,7 +1463,7 @@ public object PhoneTools {
           }
     } catch (t: Throwable) {
       shutdownMlKitTts()
-      if (started.get()) {
+      if (BridgePolicy.afterClientThrow(started.get()) == BridgePolicy.AfterThrow.ReportPartial) {
         // Some of it was heard: never retry or fall back, or the start would be said twice.
         WavPlayOutcome(
             ToolResult(

@@ -848,10 +848,39 @@ public object BridgePolicy {
 
   /**
    * Whether a voice lookup looks like it ran on a client that lost its engine: no answer in time,
-   * or an empty list (a bound engine always lists the voices it has).
+   * or an empty list from a client that listed voices before (a phone with no voices for its
+   * language lists none from the start, and that is not a lost engine).
    */
-  public fun lookupSuggestsStaleClient(timedOut: Boolean, voiceCount: Int): Boolean =
-      timedOut || voiceCount == 0
+  public fun lookupSuggestsStaleClient(
+      timedOut: Boolean,
+      voiceCount: Int,
+      clientListedVoicesBefore: Boolean,
+  ): Boolean = timedOut || (voiceCount == 0 && clientListedVoicesBefore)
+
+  /**
+   * The retry helper's view of one attempt's result: it "failed before audio" only when it is an
+   * error the Android voice may take over from (nothing was heard).
+   */
+  public fun mlKitAttemptOf(
+      isError: Boolean,
+      allowFallback: Boolean,
+      freshClientMayHelp: Boolean,
+  ): MlKitAttempt =
+      MlKitAttempt(
+          failedBeforeAudio = isError && allowFallback,
+          freshClientMayHelp = isError && allowFallback && freshClientMayHelp,
+      )
+
+  /** What to do when the ML Kit client throws mid-call. */
+  public enum class AfterThrow {
+    /** Some audio was heard: report it as cut short; no retry, no fallback. */
+    ReportPartial,
+    /** Nothing was heard: a new client may work, then the Android voice. */
+    RetryOrFallBack,
+  }
+
+  public fun afterClientThrow(started: Boolean): AfterThrow =
+      if (started) AfterThrow.ReportPartial else AfterThrow.RetryOrFallBack
 
   /** Seconds the Android voice needs to start up, on top of the speech itself. */
   public const val ANDROID_TTS_STARTUP_S: Long = 5L

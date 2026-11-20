@@ -871,8 +871,38 @@ public class BridgePolicyTest {
 
   @Test
   public fun anEmptyOrMissingVoiceListMeansTheClientLostItsEngine() {
-    assertTrue(BridgePolicy.lookupSuggestsStaleClient(timedOut = true, voiceCount = -1))
-    assertTrue(BridgePolicy.lookupSuggestsStaleClient(timedOut = false, voiceCount = 0))
-    assertFalse(BridgePolicy.lookupSuggestsStaleClient(timedOut = false, voiceCount = 3))
+    assertTrue(BridgePolicy.lookupSuggestsStaleClient(true, -1, clientListedVoicesBefore = false))
+    // Listed voices before, none now: the engine went away under the client.
+    assertTrue(BridgePolicy.lookupSuggestsStaleClient(false, 0, clientListedVoicesBefore = true))
+    // A phone with no voices for its language: empty from the start, not stale, so it is cached
+    // and announcements do not rebuild the client every time.
+    assertFalse(BridgePolicy.lookupSuggestsStaleClient(false, 0, clientListedVoicesBefore = false))
+    assertFalse(BridgePolicy.lookupSuggestsStaleClient(false, 3, clientListedVoicesBefore = true))
+  }
+
+  @Test
+  public fun aThrowAfterAudioStartedIsReportedNotRetried() {
+    assertEquals(
+        BridgePolicy.AfterThrow.ReportPartial, BridgePolicy.afterClientThrow(started = true))
+    assertEquals(
+        BridgePolicy.AfterThrow.RetryOrFallBack, BridgePolicy.afterClientThrow(started = false))
+  }
+
+  @Test
+  public fun attemptMappingOnlyRetriesFallbackableErrors() {
+    // A partial result is not an error: never "failed before audio", never retried.
+    val partial =
+        BridgePolicy.mlKitAttemptOf(
+            isError = false, allowFallback = false, freshClientMayHelp = true)
+    assertFalse(partial.failedBeforeAudio)
+    assertFalse(partial.freshClientMayHelp)
+    // An error the Android voice must not take over (e.g. headphones unplugged): no retry.
+    assertFalse(
+        BridgePolicy.mlKitAttemptOf(true, allowFallback = false, freshClientMayHelp = true)
+            .failedBeforeAudio)
+    assertEquals(
+        BridgePolicy.MlKitAttempt(failedBeforeAudio = true, freshClientMayHelp = true),
+        BridgePolicy.mlKitAttemptOf(
+            isError = true, allowFallback = true, freshClientMayHelp = true))
   }
 }
