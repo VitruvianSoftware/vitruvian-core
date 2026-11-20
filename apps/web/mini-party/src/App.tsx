@@ -40,6 +40,7 @@ import {
 import { socketService } from "./services/socketService";
 import { REMOTE_PLAY } from "./features";
 import { roomFromSearch } from "./room";
+import { analytics } from "./analytics";
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>("LOBBY");
@@ -72,10 +73,23 @@ export default function App() {
       ? onlyGame
       : nextGameIndex(Math.random, MINI_GAMES.length, playedRef.current);
 
+  // Picks the next game and reports it. Only the device that decides calls
+  // this (see analytics.ts), so each round is counted once.
+  const chooseNextGame = (mode: "local" | "online") => {
+    const next = pickNextGame();
+    analytics.gameStarted(
+      mode,
+      MINI_GAMES[next].id,
+      playedRef.current.length + 1,
+    );
+    return next;
+  };
+
   const startGame = (playerCount: number) => {
     setPlayers(createInitialPlayers(playerCount));
     playedRef.current = [];
-    beginRound(pickNextGame());
+    analytics.matchStarted("local", playerCount);
+    beginRound(chooseNextGame("local"));
   };
 
   const startRemoteGame = (playerName: string) => {
@@ -115,7 +129,8 @@ export default function App() {
   const startRemoteMatch = () => {
     playedRef.current = [];
     setPlayed([]);
-    socketService.startGame(pickNextGame());
+    analytics.matchStarted("online", players.length);
+    socketService.startGame(chooseNextGame("online"));
   };
 
   // "Enter Arena" on the title card.
@@ -140,6 +155,15 @@ export default function App() {
 
     setLastGameWinners(winners);
 
+    if (!roomId || myPlayerId === 0) {
+      analytics.gameFinished(
+        roomId ? "online" : "local",
+        MINI_GAMES[currentGameIndex]?.id ?? "unknown",
+        playedRef.current.length,
+        maxScore,
+      );
+    }
+
     setPlayers((prev) =>
       prev.map((p) => {
         const isWinner = winners.includes(p.id);
@@ -156,8 +180,9 @@ export default function App() {
   };
 
   const nextPhase = () => {
+    const mode = roomId ? "online" : "local";
     if (playedRef.current.length < ROUNDS_PER_MATCH) {
-      const next = pickNextGame();
+      const next = chooseNextGame(mode);
       if (roomId) {
         socketService.startGame(next);
       } else {
@@ -165,6 +190,7 @@ export default function App() {
       }
     } else {
       if (roomId) socketService.sendEvent("match-over", {});
+      analytics.matchFinished(mode, players.length, playedRef.current.length);
       setGameState("SCOREBOARD");
     }
   };
