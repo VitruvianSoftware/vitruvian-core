@@ -1,6 +1,6 @@
 # Vitruvian Orchestrator — OpenCode Live Panel
 
-OpenCode plugin for the `orchestrate` workflow. It registers the orchestration tools, wakes waiting helpers when they are mentioned on the board, renders a live **Orchestrator** sidebar in the OpenCode TUI, and ships the generic `orchestrate` lead skill (`skills/orchestrate/SKILL.md`) plus role-named generic agents (`agents/*.md` for `lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, and `release`) generated from `.agents/roster/generic/`. A repository maps roles to its own agents (such as `.opencode/agents/*.md`) with `.agents/team.json`.
+OpenCode plugin for the `orchestrate` workflow. It registers the orchestration tools, wakes waiting helpers when they are mentioned on the board, renders a live **Orchestrator** sidebar in the OpenCode TUI, and ships the generic `orchestrate` lead skill (`skills/orchestrate/SKILL.md`) plus role-named generic agents (`agents/*.md` for `lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, and `release`) generated from `.agents/roster/generic/`. Generic agents work natively out of the box without Antigravity (`engine: "native"` by default), and Gemini delegation via `agy-delegate` is opt-in through `engine` in `.agents/team.json` (where a repository can also map roles to its own agents such as `.opencode/agents/*.md`).
 
 ## What the sidebar shows
 
@@ -23,7 +23,7 @@ When no plan has been reported yet, the sidebar shows:
   - `post`: Posts a message to the board (`text`, optional `to`, `kind`, `replyTo`, and `channel`).
   - `board`: Reads numbered posts from the board (`to`, `from`, `kind`, `channel`, `search`, `limit`). When a helper omits `to` or passes `to: "me"`, it receives posts addressed to that helper or to everyone.
   - `channel`: Lists channels (`action: "list"`, open to all) or creates and archives channels (`action: "create"` or `"archive"`, lead-only, up to 20 channels).
-  - `team`: Reads the repository's optional `.agents/team.json` file (if present) and returns the resolved roles, agents, dispatch ids, models, and project notes.
+  - `team`: Reads the repository's optional `.agents/team.json` file (if present) and returns the resolved roles, agents, dispatch ids, `engine`, models, and project notes.
   - `step`: Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, plus optional `detail`).
   - `progress`: Called only by the lead to create or update the plan, advance phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
 - **How waking works**: Mentioning a waiting helper (`@name`) sends the post straight to the helper's own conversation once for that mention (`@lead` wakes the lead conversation). Only the lead's `@all` wakes everyone who is waiting; a helper's `@all` never wakes everyone. Each woken post is clearly labeled and shown to other agents as helper content, never as instructions from the user, the lead, or the system.

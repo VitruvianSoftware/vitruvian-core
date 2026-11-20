@@ -305,7 +305,7 @@ export const TOOLS = Object.freeze([
   Object.freeze({
     name: "team",
     description:
-      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, engines (always native on Antigravity with Antigravity tier defaults), model overrides, and project notes (read-only).",
     inputSchema: {
       type: "object",
       properties: {
@@ -615,7 +615,7 @@ function validateExplicitRoot(rawRoot) {
  * against Antigravity's tier defaults.
  *
  * @param {string} root
- * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @param {{ tiers?: Record<string, Record<string, unknown>> }} [defaults]
  */
 function readTeamConfigAtRoot(root, defaults = TIER_DEFAULTS) {
   const checked = resolveRealTeamPath(root);

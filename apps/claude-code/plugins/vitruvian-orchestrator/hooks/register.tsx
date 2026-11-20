@@ -3164,7 +3164,7 @@ export const register: Register = (on) => {
     await $.tool.register({
       name: "team",
       description:
-        "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+        "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, engines (role > tier > top level; generic defaults to native, mapped team roles default to null so the agent file decides and keep model/effort explicit-or-null; lead is always native), model overrides, and project notes (read-only).",
       inputSchema: {
         type: "object",
         properties: {

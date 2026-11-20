@@ -2,6 +2,7 @@
 name: developer
 description: Use this agent for feature development, refactoring, and bug fixes across application code in whatever languages the repository uses, plus shared packages in this repository.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 
