@@ -32,18 +32,3 @@ export function createInitialPlayers(count: number): Player[] {
   }));
 }
 
-export const MINI_GAMES = [
-  { id: "reaction", name: "ZAP!" },
-  { id: "mash", name: "BOOST!" },
-  { id: "pattern", name: "ECHO!" },
-  { id: "stop", name: "PINPOINT!" },
-  { id: "count", name: "GLANCE!" },
-  { id: "target", name: "SNIPE!" },
-  { id: "tug", name: "TUG!" },
-  { id: "balance", name: "STABLE!" },
-  { id: "match", name: "COLOR!" },
-  { id: "fuel", name: "PUMP!" },
-  { id: "scan", name: "SEARCH!" },
-  { id: "dodge", name: "AVOID!" },
-  { id: "smash", name: "SMASH!" },
-];

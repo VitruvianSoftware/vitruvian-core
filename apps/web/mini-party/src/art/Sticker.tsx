@@ -21,6 +21,7 @@
  */
 
 import { useId, type CSSProperties, type ReactNode } from "react";
+import { GAME_STICKERS } from "../games/catalog";
 
 // One sticker per mini-game: flat, chunky emblems in the brand palette with a
 // white die-cut border and a hard ink shadow. Drawn in a 120 x 120 box. The
@@ -300,7 +301,7 @@ const art: Record<string, ReactNode> = {
   ),
 };
 
-export const STICKER_IDS = Object.keys(art);
+export const STICKER_IDS = [...Object.keys(art), ...Object.keys(GAME_STICKERS)];
 
 interface StickerProps {
   id: string;
@@ -319,7 +320,7 @@ export function Sticker({
   style,
 }: StickerProps) {
   const filterId = `sticker-${useId().replace(/:/g, "")}`;
-  const shape = art[id];
+  const shape = art[id] ?? GAME_STICKERS[id];
   if (!shape) return null;
   return (
     <svg
