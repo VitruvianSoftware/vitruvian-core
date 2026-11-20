@@ -297,6 +297,20 @@ final class ContactPersonGroupingTests: XCTestCase {
         XCTAssertEqual(ContactPersonGrouping.sections([one, two]).named.count, 1)
     }
 
+    func testATrailingInitialIsTheSamePersonButAGenerationNumeralIsNot() {
+        let shared = "+1 213 555 0100"
+        for initial in ["Kanita V.", "Kanita V", "Kanita I"] {
+            let plain = candidate("Kanita", network: "whatsapp", userID: "@plain", identifiers: [shared])
+            let withInitial = candidate(initial, network: "signal", userID: "@initial", identifiers: [shared])
+            let sections = ContactPersonGrouping.sections([plain, withInitial])
+            XCTAssertEqual(sections.named.count, 1, "\"\(initial)\" is an initial: same person as Kanita")
+            XCTAssertEqual(sections.named.first?.endpoints.count, 2)
+        }
+        let pat = candidate("Pat", network: "whatsapp", userID: "@pat", identifiers: [shared])
+        let patII = candidate("Pat II", network: "signal", userID: "@patii", identifiers: [shared])
+        XCTAssertEqual(ContactPersonGrouping.sections([pat, patII]).named.count, 2, "Pat II is another person")
+    }
+
     func testANumberedNameDoesNotJoinThroughAThirdEntry() {
         let mom = candidate("Mom", network: "whatsapp", userID: "@mom", identifiers: ["+12135550111"])
         let mom2 = candidate("Mom 2", network: "signal", userID: "@mom2", identifiers: ["+12135550222"])

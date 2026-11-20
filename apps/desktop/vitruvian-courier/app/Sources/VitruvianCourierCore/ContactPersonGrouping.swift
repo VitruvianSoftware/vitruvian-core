@@ -281,9 +281,10 @@ public enum ContactPersonGrouping {
     }
 
     /// Words that tell two people of one name apart: a number ("Mom 2", "Pat 2nd") or an ordinal or generation word.
+    /// A single letter is not one: "Kanita V." is an initial, the same person as "Kanita".
     private static let distinguishingWords: Set<String> = [
         "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
-        "i", "ii", "iii", "iv", "v", "jr", "sr", "junior", "senior", "old", "new", "other",
+        "ii", "iii", "iv", "jr", "sr", "junior", "senior", "old", "new", "other",
     ]
 
     private static func isDistinguishing(_ word: String) -> Bool {
