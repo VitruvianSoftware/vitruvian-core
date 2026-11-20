@@ -8,9 +8,11 @@ public enum ComposerToolKind: String, CaseIterable, Equatable, Hashable, Sendabl
     case attachFile
     case photo
     case gif
+    case sticker
     case voiceNote
     case sendLater
     case poll
+    case location
     case ai
 
     public var id: String { rawValue }
@@ -87,6 +89,14 @@ extension ChatFeatures {
     public var supportsPollCreateForComposer: Bool {
         poll != nil
     }
+
+    public var supportsStickerSendForComposer: Bool {
+        source == .none ? true : sticker.supported
+    }
+
+    public var supportsLocationShareForComposer: Bool {
+        locationSupported
+    }
 }
 
 extension ComposerModel {
@@ -158,6 +168,9 @@ extension ComposerModel {
         if !editing, features.supportsGIFSendForComposer {
             items.append(ComposerToolItem(kind: .gif, isEnabled: canSendGIF && !locked))
         }
+        if !editing, features.supportsStickerSendForComposer {
+            items.append(ComposerToolItem(kind: .sticker, isEnabled: canSendSticker && !locked))
+        }
         if !editing, features.supportsVoiceSendForComposer {
             items.append(ComposerToolItem(kind: .voiceNote, isEnabled: hasRoom && !locked))
         }
@@ -168,6 +181,9 @@ extension ComposerModel {
         }
         if !editing, !inThread, offersPoll, features.supportsPollCreateForComposer {
             items.append(ComposerToolItem(kind: .poll, isEnabled: hasRoom && !locked))
+        }
+        if !editing, features.supportsLocationShareForComposer {
+            items.append(ComposerToolItem(kind: .location, isEnabled: hasRoom && !locked))
         }
         items.append(ComposerToolItem(kind: .ai, isEnabled: hasRoom && !locked))
 

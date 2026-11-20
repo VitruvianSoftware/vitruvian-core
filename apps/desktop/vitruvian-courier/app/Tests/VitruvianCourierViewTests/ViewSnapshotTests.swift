@@ -2764,7 +2764,8 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertTrue(collapsedIDs.contains("composer.toolbar.emoji"))
         XCTAssertTrue(collapsedIDs.contains("composer.send"))
 
-        // Expanded state: all 7 tools appear inline in order when the network supports them.
+        // Expanded state: all tools appear inline in order when the network supports them.
+        model.features.locationSupported = true
         model.isToolRowOpen = true
         var expandedIDs: Set<String> = []
         check(try Snapshot.render("composer-toolbar-expanded", width: 620, prepare: { host in

@@ -103,12 +103,56 @@ final class ComposerToolsTests: XCTestCase {
             [.attachFile, .voiceNote, .sendLater, .ai]
         )
 
-        // Unknown features (.noFeatures, source == .none) keeps media fallbacks, omits poll (poll == nil).
+        // Unknown features (.noFeatures, source == .none) keeps media fallbacks, omits poll and location.
         composer.features = .noFeatures
         XCTAssertEqual(
             composer.toolRowItems().map(\.kind),
-            [.attachFile, .photo, .gif, .voiceNote, .sendLater, .ai]
+            [.attachFile, .photo, .gif, .sticker, .voiceNote, .sendLater, .ai]
         )
+    }
+
+    func testStickerAndLocationToolsFollowNetworkSupport() {
+        // Sticker sits right after GIF; Location right after Poll (before AI).
+        var features = fullFeatures()
+        features.stickerFeatures = FileKindFeatures(supported: true, mimeTypes: ["image/webp"])
+        features.locationSupported = true
+        let (composer, _) = makeComposer(features: features)
+        composer.text = "Hello"
+        XCTAssertEqual(
+            composer.toolRowItems().map(\.kind),
+            [.attachFile, .photo, .gif, .sticker, .voiceNote, .sendLater, .poll, .location, .ai]
+        )
+        XCTAssertTrue(composer.toolRowItems().allSatisfy(\.isEnabled))
+
+        // Only Sticker supported: Location is hidden, not greyed.
+        features.locationSupported = false
+        composer.features = features
+        let stickerOnly = composer.toolRowItems().map(\.kind)
+        XCTAssertTrue(stickerOnly.contains(.sticker))
+        XCTAssertFalse(stickerOnly.contains(.location))
+
+        // Only Location supported: Sticker is hidden.
+        features.stickerFeatures = nil
+        features.locationSupported = true
+        composer.features = features
+        let locationOnly = composer.toolRowItems().map(\.kind)
+        XCTAssertFalse(locationOnly.contains(.sticker))
+        XCTAssertTrue(locationOnly.contains(.location))
+
+        // Both unsupported: neither appears.
+        features.locationSupported = false
+        composer.features = features
+        let neither = composer.toolRowItems().map(\.kind)
+        XCTAssertFalse(neither.contains(.sticker))
+        XCTAssertFalse(neither.contains(.location))
+
+        // Editing a message hides both.
+        features.stickerFeatures = FileKindFeatures(supported: true, mimeTypes: ["image/webp"])
+        features.locationSupported = true
+        composer.features = features
+        let msg = makeEditableMessage(id: "$mine", roomID: "!room", body: "Original", ts: 1000)
+        composer.startEditing(msg)
+        XCTAssertEqual(composer.toolRowItems().map(\.kind), [.ai])
     }
 
     func testSendLaterVisibilityAndDisabledReasons() {

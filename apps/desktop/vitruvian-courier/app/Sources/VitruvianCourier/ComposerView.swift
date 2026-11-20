@@ -649,6 +649,22 @@ struct ComposerView: View {
                     _ = composer.openGIFPicker()
                 }
             }
+        case .sticker:
+            ComposerToolbarIconButton(
+                symbolName: "face.dashed",
+                tooltip: String(localized: "Send Sticker (⌘⌥⇧S)"),
+                accessibilityTitle: String(localized: "Send Sticker"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                if let dispatcher = composer.hotkeyDispatcher {
+                    _ = dispatcher.perform("Message: Send Sticker")
+                } else {
+                    _ = composer.openStickerPicker()
+                }
+            }
         case .voiceNote:
             ComposerToolbarIconButton(
                 symbolName: "mic",
@@ -690,6 +706,20 @@ struct ComposerView: View {
             ) {
                 withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 menus.createPoll?()
+            }
+        case .location:
+            ComposerToolbarIconButton(
+                symbolName: "location",
+                tooltip: String(localized: "Share Location"),
+                accessibilityTitle: String(localized: "Share Location"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                if composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    composer.text = "/location "
+                }
             }
         case .ai:
             aiMenuButton(isEnabled: item.isEnabled, height: height)
