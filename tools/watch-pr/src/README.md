@@ -20,11 +20,6 @@ Component package providing implementation for `tools/watch-pr/src`.
 - `[post_merge.rs:decide]`
 - `[post_merge.rs:Report]`
 - `[post_merge.rs:read_report]`
-- `[pyjson.rs:Value]`
-- `[pyjson.rs:float_repr]`
-- `[pyjson.rs:str_repr]`
-- `[pyjson.rs:loads]`
-- `[pyprint.rs:NOT_PRINTABLE]`
 - `[queue.rs:QUERY]`
 - `[queue.rs:Verdict]`
 - `[queue.rs:Status]`
@@ -33,8 +28,8 @@ Component package providing implementation for `tools/watch-pr/src`.
 
 ## Invariants
 - [checks.rs:192]: `assert!(bad.stdout.starts_with("PARSE_ERROR: "));`
-- [pyjson.rs:317]: `assert!(!loads(falsy).unwrap().truthy(), "{falsy}");`
-- [pyjson.rs:320]: `assert!(loads(truthy).unwrap().truthy(), "{truthy}");`
+- [pyjson_test.rs:82]: `assert!(!loads(falsy).unwrap().truthy(), "{falsy}");`
+- [pyjson_test.rs:85]: `assert!(loads(truthy).unwrap().truthy(), "{truthy}");`
 
 ## Side Effects
 - [cli.rs:200]: `sh::run_quiet("git", &["fetch", "origin", "main", "-q"]);`

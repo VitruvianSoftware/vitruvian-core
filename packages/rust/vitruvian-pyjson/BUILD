@@ -12,6 +12,7 @@ rust_library(
     edition = "2021",
     visibility = ["//visibility:public"],
     deps = [
+        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
