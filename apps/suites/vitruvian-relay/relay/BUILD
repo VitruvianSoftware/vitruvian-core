@@ -92,11 +92,14 @@ rust_test(
 
 # The real relay against the real connector (tests/e2e.rs): the relay's App
 # on a loopback port, the connector's Link dialling it, an AI app over MCP.
+# VRELAY_SECRETS=file: the connector's device key and sign-in go in the test's
+# own folder, never into the login Keychain's real items.
 rust_test(
     name = "vitruvian_relay_e2e_test",
     size = "medium",
     srcs = ["tests/e2e.rs"],
     edition = "2021",
+    env = {"VRELAY_SECRETS": "file"},
     deps = [
         ":vitruvian_relay",
         "//apps/suites/vitruvian-relay/connector:vitruvian_relay_connector",

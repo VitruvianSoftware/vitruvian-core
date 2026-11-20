@@ -79,13 +79,14 @@ use vitruvian_relay_protocol::{
 };
 
 use crate::auth::{fresh_token_checked_from, RefreshError};
+use crate::awake::Awake;
 use crate::bridge::{Bridge, BridgeOutput, Log, CALL_ID_RESERVE};
 use crate::config::{client_config, Config};
 use crate::keys::sign_hello;
 use crate::prompt::{summarize, Waited};
 use crate::rules::{self, Decision, Rules};
 use crate::state::{
-    device_path, ensure_dir, load_device, parse_tokens, status_path, sync_dir, token_path,
+    device_path, ensure_dir, load_device, load_token_bytes, parse_tokens, status_path, sync_dir,
     write_private, Tokens,
 };
 
@@ -365,13 +366,17 @@ impl FileTokens {
 
 impl TokenSource for FileTokens {
     fn token(&self) -> std::result::Result<Option<String>, TokenError> {
-        let bytes = match std::fs::read(token_path(&self.cfg.dir)) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        let bytes = match load_token_bytes(&self.cfg.dir) {
+            Ok(Some(b)) => b,
+            Ok(None) => {
                 *self.parked.lock().unwrap() = None;
                 return Ok(None);
             }
-            Err(e) => return Err(TokenError::Unavailable(format!("read token.json: {e}"))),
+            Err(e) => {
+                return Err(TokenError::Unavailable(format!(
+                    "read the saved sign-in: {e}"
+                )))
+            }
         };
         if let Some((b, why)) = self.parked.lock().unwrap().as_ref() {
             if *b == bytes {
@@ -384,7 +389,7 @@ impl TokenSource for FileTokens {
         };
         // From the bytes just read, so the refresh can save over exactly
         // those and nothing newer.
-        let mut t = match parse_tokens(&self.cfg.dir, &bytes) {
+        let mut t = match parse_tokens(&bytes) {
             Ok(t) => t,
             Err(e) => return park(format!("{} ({e})", crate::auth::SIGN_IN_AGAIN)),
         };
@@ -398,9 +403,11 @@ impl TokenSource for FileTokens {
         }
     }
 
-    /// `token.json` is there (`vrelay logout` removes it).
+    /// The saved sign-in is there (`vrelay logout` removes it). One that
+    /// cannot be read right now (a locked Keychain) counts as there: the
+    /// link is not dropped for a read that may work again in a moment.
     fn signed_in(&self) -> bool {
-        token_path(&self.cfg.dir).exists()
+        !matches!(load_token_bytes(&self.cfg.dir), Ok(None))
     }
 }
 
@@ -444,6 +451,9 @@ pub struct Link<T, A, K> {
     pub tokens: Arc<K>,
     /// As loaded at start; `SIGHUP` reloads them.
     pub rules: Rules,
+    /// Holds the Mac awake while `rules.keep_awake` is on; a reload that
+    /// flips the setting starts or stops it. Started by the caller.
+    pub awake: Arc<Awake>,
     pub key: Arc<Ed25519KeyPair>,
     pub timing: Timing,
     pub clock: Clock,
@@ -948,6 +958,7 @@ struct Shared<T, A> {
     tools: Arc<T>,
     asker: Arc<A>,
     rules: Mutex<Rules>,
+    awake: Arc<Awake>,
     calls: Mutex<Calls>,
     dir: PathBuf,
     timing: Timing,
@@ -1741,6 +1752,9 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 // paused has nothing new to close or log.
                 let paused = r.rules.paused && !current.paused;
                 *self.rules_state.lock().unwrap() = rules_state(&r.rules, n, None);
+                if let Err(e) = self.awake.set(r.rules.keep_awake) {
+                    (self.log)(&e);
+                }
                 *self.rules.lock().unwrap() = r.rules;
                 if paused {
                     self.on_paused();
@@ -1775,6 +1789,8 @@ struct Status {
     refused: Option<String>,
     /// The rules in use (shared with the reloader).
     rules: Arc<Mutex<Value>>,
+    /// Whether the Mac is being held awake right now.
+    awake: Arc<Awake>,
     /// The reloader's nudge (`Shared::check_now`).
     check_now: Arc<tokio::sync::Notify>,
 }
@@ -1805,6 +1821,7 @@ impl Status {
             "pid": std::process::id(),
             "pid_start": own_start(),
             "rules": self.rules.lock().unwrap().clone(),
+            "keep_awake": self.awake.is_on(),
         });
         if let Some(o) = body.as_object_mut() {
             if let Some(r) = &self.reason {
@@ -2076,6 +2093,7 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             tools: self.tools.clone(),
             asker: self.asker.clone(),
             rules: Mutex::new(self.rules.clone()),
+            awake: self.awake.clone(),
             calls: Mutex::new(calls),
             dir: self.dir.clone(),
             timing: self.timing.clone(),
@@ -2123,6 +2141,7 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
             reason: None,
             refused: None,
             rules: shared.rules_state.clone(),
+            awake: shared.awake.clone(),
             check_now: shared.check_now.clone(),
         };
         let mut attempt: u32 = 0;

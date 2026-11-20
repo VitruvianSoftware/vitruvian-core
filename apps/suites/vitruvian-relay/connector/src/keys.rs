@@ -18,7 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! The device's Ed25519 key. The seed lives in `device.key` (mode 0600); the
+//! The device's Ed25519 key. The seed lives in the secret store (the
+//! Keychain, or `device.key` with mode 0600 under `VRELAY_SECRETS=file`); the
 //! relay holds the public half and checks the signature in each `hello`.
 
 use std::path::Path;
@@ -28,37 +29,36 @@ use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use vitruvian_relay_protocol::hello_message;
 
-use crate::state::{ensure_dir, key_path, write_private};
+use crate::secrets::{self, DEVICE_KEY};
+use crate::state::ensure_dir;
 use crate::Result;
 
 const SEED_LEN: usize = 32;
 
-/// Loads the key, or creates it on first use. A key file of the wrong size is
+/// Loads the key, or creates it on first use. A key of the wrong size is
 /// an error, never silently replaced (that would orphan the registered device).
 pub fn load_or_create(dir: &Path) -> Result<Ed25519KeyPair> {
     ensure_dir(dir)?;
-    let path = key_path(dir);
-    let seed = match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+    let store = secrets::for_dir(dir);
+    let seed = match store.get(DEVICE_KEY)? {
+        Some(bytes) => bytes,
+        None => {
             let mut seed = [0u8; SEED_LEN];
             SystemRandom::new()
                 .fill(&mut seed)
                 .map_err(|_| "the system random source failed".to_string())?;
-            write_private(&path, &seed)?;
+            store.set(DEVICE_KEY, &seed)?;
             seed.to_vec()
         }
-        Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
     if seed.len() != SEED_LEN {
         return Err(format!(
-            "{} is {} bytes, expected {SEED_LEN}; move it aside and sign in again to make a new device key",
-            path.display(),
+            "the saved device key is {} bytes, expected {SEED_LEN}; remove it (`vrelay logout`) and sign in again to make a new device key",
             seed.len()
         ));
     }
     Ed25519KeyPair::from_seed_unchecked(&seed)
-        .map_err(|e| format!("{} is not a usable key: {e}", path.display()))
+        .map_err(|e| format!("the saved device key is not usable: {e}"))
 }
 
 pub fn public_key_b64(key: &Ed25519KeyPair) -> String {
@@ -81,7 +81,7 @@ pub fn sign_hello(key: &Ed25519KeyPair, device_id: &str, ts: u64, token: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::test_dir;
+    use crate::state::{key_path, test_dir, write_private};
     use std::os::unix::fs::PermissionsExt;
 
     #[test]

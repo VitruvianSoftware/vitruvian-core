@@ -22,6 +22,7 @@
 //! a fake desktop-commander and a fake dialog.
 
 use super::*;
+use crate::awake::Awake;
 use crate::keys::{load_or_create, sha256_hex};
 use crate::state::{now_unix, save_device, save_tokens, test_dir, DeviceInfo, Tokens};
 use crate::status::{link_state, Link as LinkState};
@@ -582,6 +583,7 @@ struct Parts<A: Asker, K: TokenSource> {
     rng: Rng,
     timing: Timing,
     rules: Rules,
+    awake: Arc<Awake>,
     clock: Clock,
     hooks: Hooks,
 }
@@ -594,6 +596,8 @@ fn parts() -> Parts<FakeAsker, FakeTokens> {
         rng: Arc::new(Mutex::new(|cap: u64| cap)),
         timing: fast(),
         rules: toml::from_str(crate::rules::DEFAULT_RULES).unwrap(),
+        // Nothing to start: tests that look at it bring their own.
+        awake: Arc::new(Awake::new("/nonexistent/caffeinate")),
         clock: Arc::new(now_unix),
         hooks: Hooks::default(),
     }
@@ -620,6 +624,7 @@ fn start<A: Asker, K: TokenSource>(dir: &Path, url: &str, p: Parts<A, K>) -> Run
         asker: p.asker,
         tokens: p.tokens,
         rules: p.rules,
+        awake: p.awake,
         key: Arc::new(load_or_create(dir).unwrap()),
         timing: p.timing,
         clock: p.clock,
@@ -1146,6 +1151,7 @@ async fn waits_for_token_instead_of_exiting() {
         rng: p.rng,
         timing: p.timing,
         rules: p.rules,
+        awake: p.awake,
         clock: p.clock,
         hooks: p.hooks,
     };
@@ -1850,6 +1856,7 @@ async fn a_slow_token_fetch_keeps_status_fresh_and_stops_promptly() {
         rng: p.rng,
         timing: p.timing,
         rules: p.rules,
+        awake: p.awake,
         clock: Arc::new(move || {
             r.fetch_add(1, Ordering::SeqCst);
             now_unix()
@@ -3257,4 +3264,53 @@ async fn a_late_allow_after_a_cancel_on_the_new_link_never_runs() {
     until_logged(&dir, "cancelled at prompt").await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(tools.count(), 0);
+}
+
+/// Relay P2: `keep_awake` in the rules holds the Mac awake, `status.json` says
+/// whether it is, and a reload that flips the setting starts or stops it.
+#[tokio::test(flavor = "multi_thread")]
+async fn keep_awake_follows_the_rules_across_a_reload() {
+    use crate::awake::tests::{fake_caffeinate, start_awake};
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-awake");
+    let awake = Arc::new(Awake::new(fake_caffeinate(&dir.join("fake"))));
+    let mut p = parts();
+    p.rules = crate::rules::load(&dir).unwrap();
+    assert!(p.rules.keep_awake, "the default is on");
+    p.awake = awake.clone();
+    // As `vrelay run` does before it links.
+    let a = awake.clone();
+    tokio::task::spawn_blocking(move || start_awake(&a))
+        .await
+        .unwrap();
+    let run = start(&dir, &relay.url(), p);
+    let (_c, _) = relay.welcome().await;
+    until("status says awake", || {
+        status_json(&dir)["keep_awake"] == true
+    })
+    .await;
+    assert!(crate::status::render(&dir, now_unix()).contains("Keeping this Mac awake: yes"));
+    // The person turns it off and reloads.
+    let text = std::fs::read_to_string(crate::rules::rules_path(&dir)).unwrap();
+    std::fs::write(
+        crate::rules::rules_path(&dir),
+        text.replace("keep_awake = true", "keep_awake = false"),
+    )
+    .unwrap();
+    run.reload.send(()).await.unwrap();
+    until("status says not awake", || {
+        status_json(&dir)["keep_awake"] == false
+    })
+    .await;
+    assert!(!awake.is_on());
+    assert!(crate::status::render(&dir, now_unix()).contains("Keeping this Mac awake: no"));
+    // And on again.
+    std::fs::write(crate::rules::rules_path(&dir), text).unwrap();
+    run.reload.send(()).await.unwrap();
+    let a = awake.clone();
+    until("awake again", || a.is_on()).await;
+    until("status says awake again", || {
+        status_json(&dir)["keep_awake"] == true
+    })
+    .await;
 }

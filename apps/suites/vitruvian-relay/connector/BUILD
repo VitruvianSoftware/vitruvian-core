@@ -46,10 +46,17 @@ _CRATES = [
     "@vitruvian_relay_crates//:ureq",
 ]
 
+# The login Keychain (secrets.rs), on a Mac only; Linux CI keeps secrets in files.
+_MACOS_CRATES = select({
+    "@platforms//os:macos": ["@vitruvian_relay_crates//:security-framework"],
+    "//conditions:default": [],
+})
+
 rust_library(
     name = "vitruvian_relay_connector",
     srcs = [
         "src/auth.rs",
+        "src/awake.rs",
         "src/bridge.rs",
         "src/config.rs",
         "src/keys.rs",
@@ -59,13 +66,14 @@ rust_library(
         "src/proc.rs",
         "src/prompt.rs",
         "src/rules.rs",
+        "src/secrets.rs",
         "src/state.rs",
         "src/status.rs",
     ],
     crate_name = "vitruvian_relay_connector",
     crate_root = "src/lib.rs",
     edition = "2021",
-    deps = _CRATES,
+    deps = _CRATES + _MACOS_CRATES,
 )
 
 # Under `bazel run` the pinned desktop-commander comes from the runfiles
@@ -104,6 +112,29 @@ rust_test(
         "//apps/suites/vitruvian-relay/relay:deploy/chart/values.yaml",
         "//gitops/argocd/platform/relay:values.yaml",
     ],
+)
+
+# The Keychain store against the real login Keychain, by hand on a Mac
+# (`bazel test //apps/suites/vitruvian-relay/connector:keychain_test`): CI's
+# Linux runners have none, so it is `manual`. It runs outside the sandbox,
+# which cannot reach the Keychain, under its own service names. It needs the
+# real HOME and USER: without them the Keychain finds no default keychain and
+# waits on a "Keychain Not Found" dialog until the test times out.
+rust_test(
+    name = "keychain_test",
+    srcs = ["tests/keychain.rs"],
+    edition = "2021",
+    env_inherit = [
+        "HOME",
+        "USER",
+    ],
+    tags = [
+        "local",
+        "manual",
+        "no-sandbox",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":vitruvian_relay_connector"],
 )
 
 # The lock's pin and checksum are checked offline in the Rust tests. Building

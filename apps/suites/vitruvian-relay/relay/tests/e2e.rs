@@ -635,6 +635,8 @@ async fn start_connector(relay: &Relay, name: &str, url: &str, short_tokens: usi
         asker: asker.clone(),
         tokens: tokens.clone(),
         rules: vitruvian_relay_connector::rules::load(&dir).unwrap(),
+        // Not started: the test must not hold the machine awake.
+        awake: Arc::new(vitruvian_relay_connector::awake::Awake::system()),
         key: Arc::new(key),
         timing: link_timing(),
         clock: Arc::new(now_secs),
