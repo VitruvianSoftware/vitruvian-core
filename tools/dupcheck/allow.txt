@@ -19,17 +19,21 @@
 # SOFTWARE.
 
 # Deliberate copies ignored by `//tools/dupcheck -- --diff` (one glob per line).
+#
+# Paths matching these globs are ignored both as changed candidate files AND
+# when building the `packages/` reference index, so deliberate copies or
+# generated trees under `packages/` (such as examples or generated SDKs) do not
+# trigger false positives against live code or other generated files.
 
 # Antigravity plugins' identical JSON helper, kept in step by a test.
 apps/antigravity/plugins/*/hooks/src/json.rs
 
-# Orchestrator core's three plugin copies, generated from packages/orchestrator-core by tools/agent-roster because each plugin installs on its own.
+# Orchestrator plugin copies: three files (orchestrator-core.mjs, prices.mjs,
+# tier-defaults.mjs) in each of the three plugin copies (antigravity,
+# claude-code, opencode), all generated from packages/orchestrator-core by
+# tools/agent-roster because each plugin installs on its own.
 apps/*/plugins/vitruvian-orchestrator/**/orchestrator-core.mjs
-
-# Orchestrator prices copy in each plugin, generated from packages/orchestrator-core by tools/agent-roster because each plugin installs on its own.
 apps/*/plugins/vitruvian-orchestrator/**/prices.mjs
-
-# Orchestrator tier-defaults copy in each plugin, generated from packages/orchestrator-core by tools/agent-roster because each plugin installs on its own.
 apps/*/plugins/vitruvian-orchestrator/**/tier-defaults.mjs
 
 # oauth-user-inspector's design-system files, because that app also ships as its own repo.
@@ -40,3 +44,10 @@ packages/pulumi/examples/**
 
 # Live Pulumi foundation paired with the published reference copy in packages/pulumi/examples.
 infrastructure/pulumi/foundation/**
+
+# Generated Pulumi provider SDKs (from `pulumi package add`), which share
+# identical boilerplate (e.g., pulumiUtilities.go, provider.go) across providers.
+# Scoped strictly to generated SDK trees so hand-written stack and wrapper code
+# remains checked.
+infrastructure/pulumi/platform/*/sdks/**
+packages/pulumi/library/go/pkg/*/sdk/**

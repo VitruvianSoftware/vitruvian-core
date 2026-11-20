@@ -133,7 +133,14 @@ pub fn workspace_root() -> Result<PathBuf, String> {
         }
     }
     let out = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
+        .args([
+            "-c",
+            "color.ui=never",
+            "-c",
+            "core.quotepath=false",
+            "rev-parse",
+            "--show-toplevel",
+        ])
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("failed to locate workspace root via git: {e}"))?;
@@ -201,6 +208,35 @@ pub fn run(repo_root: &Path, args: &[String], out: &mut dyn Write, err: &mut dyn
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::RwLock;
+
+    static GIT_ENV_LOCK: RwLock<()> = RwLock::new(());
+
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set(vars: &[(&'static str, &'static str)]) -> Self {
+            let mut saved = Vec::with_capacity(vars.len());
+            for &(k, v) in vars {
+                saved.push((k, std::env::var(k).ok()));
+                std::env::set_var(k, v);
+            }
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, prev) in self.saved.iter().rev() {
+                match prev {
+                    Some(v) => std::env::set_var(k, v),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+    }
 
     struct TempRepo {
         path: PathBuf,
@@ -222,6 +258,9 @@ mod tests {
         fn git(&self, args: &[&str]) -> String {
             let out = Command::new("git")
                 .current_dir(&self.path)
+                .env_remove("GIT_CONFIG_COUNT")
+                .env_remove("GIT_CONFIG_KEY_0")
+                .env_remove("GIT_CONFIG_VALUE_0")
                 .args(args)
                 .stdin(Stdio::null())
                 .output()
@@ -237,6 +276,10 @@ mod tests {
         }
 
         fn write(&self, rel: &str, content: &str) {
+            self.write_bytes(rel, content.as_bytes());
+        }
+
+        fn write_bytes(&self, rel: &str, content: &[u8]) {
             let full = self.path.join(rel);
             if let Some(parent) = full.parent() {
                 std::fs::create_dir_all(parent).unwrap();
@@ -262,6 +305,11 @@ mod tests {
         }
 
         fn run_cli(&self, args: &[&str]) -> (i32, String, String) {
+            let _guard = GIT_ENV_LOCK.read().unwrap_or_else(|e| e.into_inner());
+            self.run_cli_unlocked(args)
+        }
+
+        fn run_cli_unlocked(&self, args: &[&str]) -> (i32, String, String) {
             let argv: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
             let mut out = Vec::new();
             let mut err = Vec::new();
@@ -403,6 +451,343 @@ pub fn unique_to_app2() {}
         assert!(
             stdout.contains("| **Total** | **2** | **7** | **2 (28%)** |"),
             "{stdout}"
+        );
+    }
+
+    #[test]
+    fn e2e_diff_ignores_working_tree_allow_txt() {
+        let repo = TempRepo::new("d1-allow-head-only");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(16));
+        let base = repo.commit_all("add package");
+
+        repo.write("apps/a/src/copy.rs", &helper_lines(14));
+        let head1 = repo.commit_all("add copy without allow.txt");
+
+        // Write allow.txt ONLY to the working tree (untracked/uncommitted).
+        repo.write("tools/dupcheck/allow.txt", "apps/a/**\n");
+
+        let range1 = format!("{base}...{head1}");
+        let (code1, stdout1, stderr1) = repo.run_cli(&["--diff", &range1, "--strict"]);
+        assert_eq!(code1, 1, "expected strict finding; stderr: {stderr1}");
+        assert!(stdout1.contains("apps/a/src/copy.rs:1-14"), "{stdout1}");
+
+        // Once committed at head2, allow.txt applies at head2 but still not at head1.
+        let head2 = repo.commit_all("commit allow.txt");
+        let range2 = format!("{base}...{head2}");
+        let (code2, stdout2, stderr2) = repo.run_cli(&["--diff", &range2, "--strict"]);
+        assert_eq!(code2, 0, "stderr: {stderr2}");
+        assert!(stdout2.is_empty(), "{stdout2}");
+
+        let (code1_again, stdout1_again, _) = repo.run_cli(&["--diff", &range1, "--strict"]);
+        assert_eq!(code1_again, 1);
+        assert!(stdout1_again.contains("apps/a/src/copy.rs:1-14"));
+    }
+
+    #[test]
+    fn allow_txt_matches_generated_pulumi_sdks_and_not_handwritten() {
+        let list =
+            glob::AllowList::from_patterns(glob::AllowList::parse(include_str!("../allow.txt")));
+
+        for allowed in [
+            "infrastructure/pulumi/platform/sentry-pagerduty/sdks/sentry/sentry/internal/pulumiUtilities.go",
+            "infrastructure/pulumi/platform/sentry-pagerduty/sdks/sentry/sentry/provider.go",
+            "infrastructure/pulumi/platform/stripe/sdks/stripe/stripe/internal/pulumiUtilities.go",
+            "packages/pulumi/library/go/pkg/neon/sdk/neon/internal/pulumiUtilities.go",
+            "packages/pulumi/library/go/pkg/upstash/sdk/upstash/team.go",
+            "apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/orchestrator-core.mjs",
+            "apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/prices.mjs",
+            "apps/opencode/plugins/vitruvian-orchestrator/lib/tier-defaults.mjs",
+        ] {
+            assert!(list.is_allowed(allowed), "expected allow.txt to match {allowed}");
+        }
+
+        for handwritten in [
+            "infrastructure/pulumi/platform/sentry-pagerduty/main.go",
+            "infrastructure/pulumi/platform/sentry-pagerduty/internal/alerts/alerts.go",
+            "infrastructure/pulumi/platform/stripe/main.go",
+            "packages/pulumi/library/go/pkg/neon/neon.go",
+            "packages/pulumi/library/go/pkg/upstash/upstash.go",
+            "packages/pulumi/library/go/pkg/app/app.go",
+        ] {
+            assert!(
+                !list.is_allowed(handwritten),
+                "expected allow.txt NOT to match handwritten {handwritten}"
+            );
+        }
+    }
+
+    #[test]
+    fn e2e_diff_succeeds_with_color_ui_always_env() {
+        let repo = TempRepo::new("d3-color-always");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(20));
+        repo.write(
+            "apps/demo/src/modfile.rs",
+            "    let init_a = 1;\n    let init_b = 2;\n    let init_c = 3;\n",
+        );
+        let base = repo.commit_all("base");
+
+        repo.write(
+            "apps/demo/src/modfile.rs",
+            &format!(
+                "    let init_a = 1;\n    let init_b = 2;\n    let init_c = 3;\n{}",
+                helper_lines(15)
+            ),
+        );
+        repo.write("apps/demo/src/newfile.rs", &helper_lines(15));
+        let head = repo.commit_all("add copies");
+
+        let range = format!("{base}...{head}");
+        let _lock = GIT_ENV_LOCK.write().unwrap_or_else(|e| e.into_inner());
+        let _env = EnvGuard::set(&[
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "color.ui"),
+            ("GIT_CONFIG_VALUE_0", "always"),
+        ]);
+
+        let (code, stdout, stderr) = repo.run_cli_unlocked(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 1, "stderr: {stderr}; stdout: {stdout}");
+        assert!(stdout.contains("apps/demo/src/modfile.rs:4-18"), "{stdout}");
+        assert!(stdout.contains("apps/demo/src/newfile.rs:1-15"), "{stdout}");
+        assert!(!stdout.contains('\x1b'), "ANSI escape leaked: {stdout:?}");
+    }
+
+    #[test]
+    fn e2e_diff_handles_spaced_tab_and_quoted_paths() {
+        let repo = TempRepo::new("d4-special-paths");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(20));
+        repo.write(
+            "apps/my app/src/mod copy.rs",
+            "    let old_1 = 10;\n    let old_2 = 20;\n    let old_3 = 30;\n",
+        );
+        let base = repo.commit_all("base");
+
+        repo.write("apps/my app/src/my copy.rs", &helper_lines(15));
+        repo.write("apps/demo/src/tab\tcopy.rs", &helper_lines(15));
+        repo.write("apps/demo/src/quote \"copy\".rs", &helper_lines(15));
+        repo.write(
+            "apps/my app/src/mod copy.rs",
+            &format!(
+                "    let old_1 = 10;\n    let old_2 = 20;\n    let old_3 = 30;\n{}",
+                helper_lines(15)
+            ),
+        );
+        let head = repo.commit_all("add special path copies");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 1, "stderr: {stderr}; stdout: {stdout}");
+        assert!(
+            stdout.contains("apps/my app/src/my copy.rs:1-15"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("apps/my app/src/mod copy.rs:4-18"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("apps/demo/src/tab\tcopy.rs:1-15"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("apps/demo/src/quote \"copy\".rs:1-15"),
+            "{stdout}"
+        );
+    }
+
+    fn prefixed_lines(prefix: &str, start: usize, end: usize) -> String {
+        (start..=end)
+            .map(|i| format!("    let {prefix}_{i} = compute_step({i}, {i} + 1);"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
+    }
+
+    #[test]
+    fn e2e_diff_requires_all_12_lines_added_and_edge_block() {
+        let repo = TempRepo::new("n1-n6-edge");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(25));
+        let all_25: Vec<String> = (1..=25)
+            .map(|i| format!("    let shared_value_{i} = compute_step({i}, {i} + 1);"))
+            .collect();
+
+        // File 1: 15-line old copy at base.
+        repo.write(
+            "apps/demo/src/one_line_edit.rs",
+            &(all_25[0..15].join("\n") + "\n"),
+        );
+        // File 2: 5-line partial old copy at base.
+        repo.write(
+            "apps/demo/src/eleven_added.rs",
+            &(all_25[0..5].join("\n") + "\n"),
+        );
+        // File 3: lines 1..=5 then lines 18..=20 at base.
+        repo.write(
+            "apps/demo/src/edge.rs",
+            &(all_25[0..5]
+                .iter()
+                .chain(all_25[17..20].iter())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n"),
+        );
+        let base = repo.commit_all("base");
+
+        // File 1: append 1 line next to 15-line old copy -> must NOT report.
+        repo.write(
+            "apps/demo/src/one_line_edit.rs",
+            &(all_25[0..16].join("\n") + "\n"),
+        );
+        // File 2: append 11 lines extending 5-line old copy -> must NOT report.
+        repo.write(
+            "apps/demo/src/eleven_added.rs",
+            &(all_25[0..16].join("\n") + "\n"),
+        );
+        // File 3: insert exactly 12 lines (6..=17) between old 1..=5 and old 18..=20 -> report ONLY 6-17.
+        repo.write("apps/demo/src/edge.rs", &(all_25[0..20].join("\n") + "\n"));
+        let head = repo.commit_all("edits");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 1, "stderr: {stderr}; stdout: {stdout}");
+        assert_eq!(
+            stdout.trim(),
+            "apps/demo/src/edge.rs:6-17 duplicates packages/mylib/src/helper.rs:6 (12 lines). Use packages/mylib instead."
+        );
+    }
+
+    #[test]
+    fn e2e_diff_names_all_matched_package_files_comma_separated() {
+        let repo = TempRepo::new("n2-all-pkg-files");
+        repo.write(
+            "packages/mylib/catalog-info.yaml",
+            "apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: mylib\n  annotations:\n    vitruvian.dev/bazel-target: //packages/mylib:mylib\nspec:\n  type: library\n",
+        );
+        let alpha = prefixed_lines("alpha", 1, 14);
+        let beta = prefixed_lines("beta", 1, 14);
+        let shared = prefixed_lines("shared", 1, 12);
+        repo.write("packages/mylib/src/alpha.rs", &alpha);
+        repo.write("packages/mylib/src/beta.rs", &beta);
+        repo.write("packages/mylib/src/dup_a.rs", &shared);
+        repo.write("packages/mylib/src/dup_b.rs", &shared);
+        let base = repo.commit_all("packages");
+
+        let combined = format!(
+            "{}{}",
+            prefixed_lines("alpha", 1, 12),
+            prefixed_lines("beta", 1, 12)
+        );
+        repo.write("apps/demo/src/combined.rs", &combined);
+        repo.write("apps/demo/src/both.rs", &shared);
+        let head = repo.commit_all("copies");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 1, "stderr: {stderr}; stdout: {stdout}");
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines,
+            vec![
+                "apps/demo/src/both.rs:1-12 duplicates packages/mylib/src/dup_a.rs:1, packages/mylib/src/dup_b.rs:1 (12 lines). Use //packages/mylib:mylib instead.",
+                "apps/demo/src/combined.rs:1-24 duplicates packages/mylib/src/alpha.rs:1, packages/mylib/src/beta.rs:1 (24 lines). Use //packages/mylib:mylib instead.",
+            ]
+        );
+    }
+
+    #[test]
+    fn e2e_diff_rename_pure_ignored_and_rename_with_added_copy_flagged() {
+        let repo = TempRepo::new("n6-rename");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(20));
+        repo.write("apps/demo/src/old_pure.rs", &helper_lines(15));
+        let unique_30 = prefixed_lines("unique_origin", 1, 30);
+        repo.write("apps/demo/src/old_edited.rs", &unique_30);
+        let base = repo.commit_all("base");
+
+        repo.git(&[
+            "mv",
+            "apps/demo/src/old_pure.rs",
+            "apps/demo/src/new_pure.rs",
+        ]);
+        repo.git(&[
+            "mv",
+            "apps/demo/src/old_edited.rs",
+            "apps/demo/src/new_edited.rs",
+        ]);
+        repo.write(
+            "apps/demo/src/new_edited.rs",
+            &format!("{unique_30}{}", helper_lines(12)),
+        );
+        let head = repo.commit_all("rename files");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 1, "stderr: {stderr}; stdout: {stdout}");
+        assert!(!stdout.contains("new_pure.rs"), "{stdout}");
+        assert_eq!(
+            stdout.trim(),
+            "apps/demo/src/new_edited.rs:31-42 duplicates packages/mylib/src/helper.rs:1 (12 lines). Use packages/mylib instead."
+        );
+    }
+
+    #[test]
+    fn e2e_diff_delete_file_ignored() {
+        let repo = TempRepo::new("n6-delete");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(16));
+        repo.write("apps/demo/src/doomed.rs", &helper_lines(15));
+        let base = repo.commit_all("base");
+
+        repo.git(&["rm", "-q", "apps/demo/src/doomed.rs"]);
+        let head = repo.commit_all("delete file");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 0, "stderr: {stderr}; stdout: {stdout}");
+        assert!(stdout.is_empty(), "{stdout}");
+    }
+
+    #[test]
+    fn e2e_diff_binary_file_ignored() {
+        let repo = TempRepo::new("n6-binary");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(16));
+        repo.write_bytes("apps/demo/src/modbin.rs", b"\x00\x01\x02initial\n");
+        let base = repo.commit_all("base");
+
+        let mut payload = b"\x00\x01\x02\x00\n".to_vec();
+        payload.extend_from_slice(helper_lines(15).as_bytes());
+        repo.write_bytes("apps/demo/src/newbin.rs", &payload);
+        repo.write_bytes("apps/demo/src/modbin.rs", &payload);
+        let head = repo.commit_all("add and modify binary files");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 0, "stderr: {stderr}; stdout: {stdout}");
+        assert!(stdout.is_empty(), "{stdout}");
+    }
+
+    #[test]
+    fn e2e_diff_crlf_matches_lf_package() {
+        let repo = TempRepo::new("n6-crlf");
+        repo.write("packages/mylib/src/helper.rs", &helper_lines(16));
+        let existing_crlf = "    let init_a = 1;\r\n    let init_b = 2;\r\n    let init_c = 3;\r\n";
+        repo.write("apps/demo/src/mod_crlf.rs", existing_crlf);
+        let base = repo.commit_all("base");
+
+        let new_crlf = helper_lines(15).replace('\n', "\r\n");
+        let mod_crlf = format!("{existing_crlf}{}", helper_lines(12).replace('\n', "\r\n"));
+        repo.write("apps/demo/src/new_crlf.rs", &new_crlf);
+        repo.write("apps/demo/src/mod_crlf.rs", &mod_crlf);
+        let head = repo.commit_all("add crlf copies");
+
+        let range = format!("{base}...{head}");
+        let (code, stdout, stderr) = repo.run_cli(&["--diff", &range, "--strict"]);
+        assert_eq!(code, 1, "stderr: {stderr}; stdout: {stdout}");
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines,
+            vec![
+                "apps/demo/src/mod_crlf.rs:4-15 duplicates packages/mylib/src/helper.rs:1 (12 lines). Use packages/mylib instead.",
+                "apps/demo/src/new_crlf.rs:1-15 duplicates packages/mylib/src/helper.rs:1 (15 lines). Use packages/mylib instead.",
+            ]
         );
     }
 }

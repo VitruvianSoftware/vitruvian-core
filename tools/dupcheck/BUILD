@@ -52,6 +52,7 @@ rust_binary(
 rust_test(
     name = "dupcheck_lib_test",
     size = "small",
+    compile_data = ["allow.txt"],
     crate = ":dupcheck_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

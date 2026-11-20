@@ -20,7 +20,7 @@
 
 //! Read-only git subprocess helpers backed by `std::process::Command`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -31,12 +31,42 @@ pub struct TreeEntry {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffKind {
+    Added,
+    Modified,
+    Renamed,
+    Deleted,
+    TypeChanged,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffEntry {
+    pub src_mode: String,
+    pub dst_mode: String,
+    pub src_oid: String,
+    pub dst_oid: String,
+    pub kind: DiffKind,
+    pub path: String,
+}
+
+pub fn is_regular_file_mode(mode: &str) -> bool {
+    mode == "100644" || mode == "100755"
+}
+
+fn git_cmd(repo_root: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.current_dir(repo_root)
+        .args(["-c", "color.ui=never", "-c", "core.quotepath=false"])
+        .stdin(Stdio::null());
+    cmd
+}
+
 pub fn verify_commit(repo_root: &Path, git_ref: &str) -> Result<(), String> {
     let target = format!("{git_ref}^{{commit}}");
-    let out = Command::new("git")
-        .current_dir(repo_root)
+    let out = git_cmd(repo_root)
         .args(["rev-parse", "--verify", "-q", &target])
-        .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("failed to run git rev-parse for {git_ref}: {e}"))?;
     if !out.status.success() {
@@ -55,14 +85,12 @@ pub fn ls_tree(
     git_ref: &str,
     path_prefix: Option<&str>,
 ) -> Result<Vec<TreeEntry>, String> {
-    let mut cmd = Command::new("git");
-    cmd.current_dir(repo_root)
-        .args(["ls-tree", "-r", "-z", git_ref]);
+    let mut cmd = git_cmd(repo_root);
+    cmd.args(["ls-tree", "-r", "-z", git_ref]);
     if let Some(prefix) = path_prefix {
         cmd.arg("--").arg(prefix);
     }
     let out = cmd
-        .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("failed to run git ls-tree: {e}"))?;
     if !out.status.success() {
@@ -103,8 +131,7 @@ pub fn cat_blobs(repo_root: &Path, specs: &[&str]) -> Result<Vec<Vec<u8>>, Strin
         return Ok(Vec::new());
     }
 
-    let mut child = Command::new("git")
-        .current_dir(repo_root)
+    let mut child = git_cmd(repo_root)
         .args(["cat-file", "--batch"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -210,10 +237,8 @@ pub fn show_file_opt(
     path: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     let spec = format!("{git_ref}:{path}");
-    let exists = Command::new("git")
-        .current_dir(repo_root)
+    let exists = git_cmd(repo_root)
         .args(["cat-file", "-e", &spec])
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -222,10 +247,8 @@ pub fn show_file_opt(
         return Ok(None);
     }
 
-    let out = Command::new("git")
-        .current_dir(repo_root)
+    let out = git_cmd(repo_root)
         .args(["cat-file", "-p", &spec])
-        .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("failed to run git cat-file -p {spec}: {e}"))?;
     if !out.status.success() {
@@ -235,59 +258,135 @@ pub fn show_file_opt(
     Ok(Some(out.stdout))
 }
 
-pub fn diff_added_lines(
-    repo_root: &Path,
-    base: &str,
-    head: &str,
-) -> Result<BTreeMap<String, BTreeSet<usize>>, String> {
+pub fn diff_raw(repo_root: &Path, base: &str, head: &str) -> Result<Vec<DiffEntry>, String> {
     let range = format!("{base}...{head}");
-    let out = Command::new("git")
-        .current_dir(repo_root)
+    let out = git_cmd(repo_root)
         .args([
             "-c",
-            "core.quotepath=false",
+            "diff.renames=true",
             "diff",
+            "--no-color",
             "--no-ext-diff",
-            "--src-prefix=a/",
-            "--dst-prefix=b/",
-            "--unified=0",
+            "--raw",
+            "--no-abbrev",
+            "-z",
             &range,
         ])
-        .stdin(Stdio::null())
         .output()
-        .map_err(|e| format!("failed to run git diff {range}: {e}"))?;
+        .map_err(|e| format!("failed to run git diff --raw {range}: {e}"))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(format!("git diff {range} failed: {}", stderr.trim()));
+        return Err(format!("git diff --raw {range} failed: {}", stderr.trim()));
     }
-    let text = String::from_utf8_lossy(&out.stdout);
-    Ok(parse_diff_added_lines(&text))
+    Ok(parse_diff_raw_z(&out.stdout))
 }
 
-pub fn parse_diff_added_lines(diff: &str) -> BTreeMap<String, BTreeSet<usize>> {
-    let mut added: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
-    let mut current_file: Option<String> = None;
+pub fn parse_diff_raw_z(raw: &[u8]) -> Vec<DiffEntry> {
+    let mut entries = Vec::new();
+    let mut fields = raw.split(|&b| b == 0);
+    while let Some(meta_bytes) = fields.next() {
+        if meta_bytes.is_empty() {
+            continue;
+        }
+        let meta = String::from_utf8_lossy(meta_bytes);
+        let meta = meta.strip_prefix(':').unwrap_or(&meta);
+        let mut parts = meta.split_whitespace();
+        let Some(src_mode) = parts.next() else {
+            continue;
+        };
+        let Some(dst_mode) = parts.next() else {
+            continue;
+        };
+        let Some(src_oid) = parts.next() else {
+            continue;
+        };
+        let Some(dst_oid) = parts.next() else {
+            continue;
+        };
+        let Some(status) = parts.next() else {
+            continue;
+        };
 
+        let kind = if status.starts_with('R') {
+            DiffKind::Renamed
+        } else if status.starts_with('C') || status.starts_with('A') {
+            DiffKind::Added
+        } else if status.starts_with('M') {
+            DiffKind::Modified
+        } else if status.starts_with('D') {
+            DiffKind::Deleted
+        } else if status.starts_with('T') {
+            DiffKind::TypeChanged
+        } else {
+            DiffKind::Other
+        };
+
+        let path_bytes = if status.starts_with('R') || status.starts_with('C') {
+            let _src_path = fields.next();
+            let Some(dst_path) = fields.next() else {
+                break;
+            };
+            dst_path
+        } else {
+            let Some(p) = fields.next() else {
+                break;
+            };
+            p
+        };
+
+        entries.push(DiffEntry {
+            src_mode: src_mode.to_string(),
+            dst_mode: dst_mode.to_string(),
+            src_oid: src_oid.to_string(),
+            dst_oid: dst_oid.to_string(),
+            kind,
+            path: String::from_utf8_lossy(path_bytes).into_owned(),
+        });
+    }
+    entries
+}
+
+pub fn diff_blob_added_lines(
+    repo_root: &Path,
+    src_oid: &str,
+    dst_oid: &str,
+) -> Result<BTreeSet<usize>, String> {
+    let out = git_cmd(repo_root)
+        .args([
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--unified=0",
+            src_oid,
+            dst_oid,
+        ])
+        .output()
+        .map_err(|e| format!("failed to run git diff {src_oid} {dst_oid}: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!(
+            "git diff {src_oid} {dst_oid} failed: {}",
+            stderr.trim()
+        ));
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(parse_hunk_added_lines(&text))
+}
+
+pub fn parse_hunk_added_lines(diff: &str) -> BTreeSet<usize> {
+    let mut added = BTreeSet::new();
     for raw in diff.lines() {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-        if let Some(path) = line.strip_prefix("+++ b/") {
-            current_file = Some(path.to_string());
-        } else if line == "+++ /dev/null" {
-            current_file = None;
-        } else if line.starts_with("@@ ") {
-            if let Some(ref file) = current_file {
-                if let Some((start, count)) = parse_hunk_plus_range(line) {
-                    if count > 0 {
-                        let set = added.entry(file.clone()).or_default();
-                        for ln in start..(start + count) {
-                            set.insert(ln);
-                        }
+        if line.starts_with("@@ ") {
+            if let Some((start, count)) = parse_hunk_plus_range(line) {
+                if count > 0 {
+                    for ln in start..(start + count) {
+                        added.insert(ln);
                     }
                 }
             }
         }
     }
-
     added
 }
 
@@ -309,11 +408,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_diff_hunks_and_skips_deletions() {
+    fn parses_hunk_added_lines_and_skips_deletions_and_binary() {
         let diff = "\
-diff --git a/apps/a.rs b/apps/a.rs
---- a/apps/a.rs
-+++ b/apps/a.rs
+diff --git a/1111111 b/2222222
+index 1111111..2222222 100644
+--- a/1111111
++++ b/2222222
 @@ -3,2 +5 @@
 -old1
 -old2
@@ -325,16 +425,47 @@ diff --git a/apps/a.rs b/apps/a.rs
 @@ -20,2 +25,0 @@
 -del1
 -del2
-diff --git a/apps/gone.rs b/apps/gone.rs
-deleted file mode 100644
---- a/apps/gone.rs
-+++ /dev/null
-@@ -1,4 +0,0 @@
--gone
 ";
-        let map = parse_diff_added_lines(diff);
-        assert_eq!(map.len(), 1);
-        let lines: Vec<usize> = map["apps/a.rs"].iter().copied().collect();
+        let lines: Vec<usize> = parse_hunk_added_lines(diff).into_iter().collect();
         assert_eq!(lines, vec![5, 12, 13, 14]);
+
+        let bin = "\
+diff --git a/1111111 b/2222222
+index 1111111..2222222 100644
+Binary files a/1111111 and b/2222222 differ
+";
+        assert!(parse_hunk_added_lines(bin).is_empty());
+    }
+
+    #[test]
+    fn parses_diff_raw_z_with_special_paths_and_renames() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(
+            b":000000 100644 0000000000000000000000000000000000000000 aaaa A\0apps/my space.rs\0",
+        );
+        raw.extend_from_slice(b":100644 100644 bbbb cccc M\0apps/with\ttab.rs\0");
+        raw.extend_from_slice(
+            b":100644 000000 dddd 0000000000000000000000000000000000000000 D\0apps/gone.rs\0",
+        );
+        raw.extend_from_slice(b":100644 100644 eeee eeee R100\0apps/old.rs\0apps/new.rs\0");
+        raw.extend_from_slice(
+            b":100644 100644 ffff 1234 R075\0apps/old \"q\".rs\0apps/new \"q\".rs\0",
+        );
+
+        let entries = parse_diff_raw_z(&raw);
+        assert_eq!(entries.len(), 5);
+        assert_eq!(entries[0].kind, DiffKind::Added);
+        assert_eq!(entries[0].path, "apps/my space.rs");
+        assert_eq!(entries[1].kind, DiffKind::Modified);
+        assert_eq!(entries[1].path, "apps/with\ttab.rs");
+        assert_eq!(entries[2].kind, DiffKind::Deleted);
+        assert_eq!(entries[2].path, "apps/gone.rs");
+        assert_eq!(entries[3].kind, DiffKind::Renamed);
+        assert_eq!(entries[3].path, "apps/new.rs");
+        assert_eq!(entries[3].src_oid, entries[3].dst_oid);
+        assert_eq!(entries[4].kind, DiffKind::Renamed);
+        assert_eq!(entries[4].path, "apps/new \"q\".rs");
+        assert_eq!(entries[4].src_oid, "ffff");
+        assert_eq!(entries[4].dst_oid, "1234");
     }
 }
