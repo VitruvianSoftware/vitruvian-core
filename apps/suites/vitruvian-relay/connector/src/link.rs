@@ -1509,11 +1509,17 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                     Phase::Prompting { stop, .. } => *stop,
                     _ => return,
                 };
-                // An Allow on a call the new link has not confirmed yet waits
-                // for the relay's `Start` (a moment, normally) or for the
-                // grace to end, which stops it: after a relay restart the AI
-                // was already told the call failed, and nothing may run for it.
-                if stop.is_none() && waited == Waited::Allow && entry.unconfirmed.is_some() {
+                // An Allow with no link, or on a call the new link has not
+                // confirmed yet, waits for the relay's `Start` (a moment,
+                // normally) or for the grace to end, which stops the call:
+                // after a relay restart the AI was already told the call
+                // failed, and nothing may run for it. Never with no link:
+                // there is nobody to report to, and no way to know.
+                let no_link = self.current.lock().unwrap().is_none();
+                if stop.is_none()
+                    && waited == Waited::Allow
+                    && (no_link || entry.unconfirmed.is_some())
+                {
                     None
                 } else {
                     let refusal = prompt_refusal(stop, waited, !deadline.passed((self.clock)()));
@@ -2668,10 +2674,14 @@ async fn session<T: Tools, A: Asker>(
                             status.last_pong = Some(clock());
                             status.refused = None;
                             status.set("connected", None);
-                            *shared.current.lock().unwrap() = Some((conn, out.clone()));
                             let epoch = shared.link_epoch.fetch_add(1, Ordering::SeqCst) + 1;
                             shared.expire_overdue();
+                            // Carried-over calls are marked before the link
+                            // counts as up: an Allow waits for no link, or
+                            // for the mark to clear, and must never see a
+                            // link that is up with the calls unmarked.
                             shared.await_confirmation(conn, epoch);
+                            *shared.current.lock().unwrap() = Some((conn, out.clone()));
                             shared.resend_unacked(&out);
                             log("connected to the relay");
                             // Rules reloaded after the hello was built: send

@@ -3461,6 +3461,55 @@ async fn a_start_after_a_reconnect_confirms_the_call() {
     assert_eq!(tools.count(), 1);
 }
 
+/// An Allow clicked while there is no link must not run the call: the relay
+/// may have restarted, and the AI was told the call failed. It waits until
+/// the link is back and the relay confirms the call with `start`; if the
+/// grace ends first the call is cancelled.
+#[tokio::test(flavor = "multi_thread")]
+async fn allow_while_the_link_is_down_waits_for_confirmation() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-allow-down");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.reconnect_grace = Duration::from_millis(1500);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "one"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    // The link goes down and the person clicks Allow: the connector dials
+    // again, but the relay does not welcome it yet.
+    drop(c);
+    asker.set(Waited::Allow);
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(tools.count(), 0, "it ran with no link");
+    // Welcomed, and the relay says it holds the call: now it runs, once.
+    let (mut c, _) = relay.welcome().await;
+    c.start("c1");
+    let r = c.result().await;
+    assert_eq!(r.call_id, "c1");
+    assert!(!r.is_error, "{}", text(&r));
+    assert_eq!(tools.count(), 1);
+    c.send(ToConnector::ResultAck {
+        call_id: "c1".into(),
+    });
+    // Another call; down again, Allow clicked meanwhile; the link comes
+    // back but the relay never confirms it: it never runs.
+    *asker.answer.lock().unwrap() = None;
+    c.call("c2", "start_process", json!({"command": "two"}));
+    until("the second dialog", || {
+        asker.opened.load(Ordering::SeqCst) == 2
+    })
+    .await;
+    drop(c);
+    asker.set(Waited::Allow);
+    let (_c, _) = relay.welcome().await;
+    until_logged(&dir, "cancelled at prompt").await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 1, "an unconfirmed call ran");
+}
+
 /// Relay P2: `keep_awake` in the rules holds the Mac awake, `status.json` says
 /// whether it is, and a reload that flips the setting starts or stops it.
 #[tokio::test(flavor = "multi_thread")]

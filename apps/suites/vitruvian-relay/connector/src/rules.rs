@@ -36,7 +36,17 @@ use crate::Result;
 
 /// The arguments that name a file or folder, in desktop-commander 0.3.1's
 /// tools (`paths` is a list of them).
-const PATH_ARGS: &[&str] = &["path", "file_path", "source", "destination", "outputPath"];
+const PATH_ARGS: &[&str] = &[
+    "path",
+    "file_path",
+    "source",
+    "destination",
+    "outputPath",
+    // Not in 0.3.1's schema at the top level (see `path_args`), but a name
+    // that would be a path if a later version has it there.
+    "sourcePdf",
+    "sourcePdfPath",
+];
 /// The file tools whose calls name a path (`PATH_ARGS`, or `paths`). While
 /// folders are limited, one of these called with no path at all is refused:
 /// desktop-commander would pick a folder of its own for it.
@@ -278,6 +288,18 @@ fn path_args(args: &Value) -> Vec<&str> {
         .collect();
     if let Some(list) = args.get("paths").and_then(Value::as_array) {
         out.extend(list.iter().filter_map(Value::as_str));
+    }
+    // `write_pdf` edits a PDF with a list of operations in `content`; an
+    // insert names another PDF to copy pages from (`sourcePdfPath`, nested
+    // in desktop-commander 0.3.1's schema), which it reads from anywhere.
+    if let Some(ops) = args.get("content").and_then(Value::as_array) {
+        for op in ops {
+            out.extend(
+                PATH_ARGS
+                    .iter()
+                    .filter_map(|k| op.get(*k).and_then(Value::as_str)),
+            );
+        }
     }
     out
 }
@@ -1262,6 +1284,58 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
 
     fn refused_outside(r: &Rules, tool: &str, args: Value) -> bool {
         r.decide(tool, &args) == Decision::Refuse(OUTSIDE_ALLOWED)
+    }
+
+    /// `write_pdf` can copy pages from a second PDF named inside its list of
+    /// operations (`sourcePdfPath`, desktop-commander 0.3.1): that file is
+    /// read from wherever it is, so it is checked like any path argument.
+    #[test]
+    fn write_pdf_source_outside_allowed_folders_is_refused() {
+        let root = test_dir("rules-pdf");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        let r = limited(&home, &["~"]);
+        for args in [
+            // As in the 0.3.1 schema: nested in an operation.
+            json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                   "content": [{"type": "insert", "pageIndex": 0,
+                                "sourcePdfPath": "/etc/secret.pdf"}]}),
+            json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                   "content": [{"type": "delete", "pageIndexes": [0]},
+                               {"type": "insert", "pageIndex": 1,
+                                "sourcePdfPath": "~/../other/s.pdf"}]}),
+            // Top level, whichever name.
+            json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                   "sourcePdf": "/etc/secret.pdf"}),
+            json!({"path": "~/work/a.pdf", "sourcePdfPath": "/etc/secret.pdf"}),
+        ] {
+            assert!(refused_outside(&r, "write_pdf", args.clone()), "{args}");
+        }
+        // Inside the folders it is as before: asks first.
+        assert_eq!(
+            r.decide(
+                "write_pdf",
+                &json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                        "content": [{"type": "insert", "pageIndex": 0,
+                                     "sourcePdfPath": "~/work/s.pdf"}]})
+            ),
+            Decision::AskFirst
+        );
+        // The vrelay folders guard covers the same argument, nested or not.
+        let guard_only = {
+            let mut g = defaults();
+            g.set_guard(r.guard.clone());
+            g
+        };
+        assert!(matches!(
+            guard_only.decide(
+                "write_pdf",
+                &json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                        "content": [{"type": "insert", "pageIndex": 0,
+                                     "sourcePdfPath": "~/Library/Application Support/vrelay/x.pdf"}]})
+            ),
+            Decision::Refuse(why) if why.contains("vrelay's own")
+        ));
     }
 
     /// Final review, Minor 5: a file tool with no path argument would use
