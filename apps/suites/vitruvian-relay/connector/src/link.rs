@@ -1114,6 +1114,17 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         }
     }
 
+    /// Tells the relay a call's approval dialog is open. Sent once, on the
+    /// link that is up now; with none up the relay hears nothing, and the
+    /// AI app's retry finds the call anyway.
+    fn send_pending(&self, call_id: &str) {
+        if let Some((_, out)) = self.current.lock().unwrap().as_ref() {
+            let _ = out.send(ToRelay::Pending {
+                call_id: call_id.to_string(),
+            });
+        }
+    }
+
     /// A new link was welcomed: the results the relay never acknowledged
     /// (the link dropped before it could, or before they were sent) go
     /// again. The relay takes a result only for a call it still holds, so a
@@ -1398,6 +1409,10 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             Waited::Dismissed
         } else {
             let summary = summarize(&tool, &args);
+            // The dialog is about to open: the relay can now tell the AI
+            // app the call is waiting for approval, instead of letting the
+            // app's own timeout cancel it.
+            self.send_pending(&call_id);
             let timeout = self
                 .timing
                 .max_prompt

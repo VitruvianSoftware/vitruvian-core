@@ -405,14 +405,18 @@ impl Mcp {
         assert_eq!(r.status, 202, "{}", r.body);
     }
 
+    /// The device's tools: what its connector listed, without the relay's
+    /// own `check_request` that every list ends with.
     async fn tool_names(&self) -> Vec<String> {
         let v = self.rpc("tools/list", json!({})).await;
-        v["result"]["tools"]
+        let mut names: Vec<String> = v["result"]["tools"]
             .as_array()
             .unwrap()
             .iter()
             .map(|t| t["name"].as_str().unwrap().to_string())
-            .collect()
+            .collect();
+        assert_eq!(names.pop().as_deref(), Some("check_request"), "{v}");
+        names
     }
 
     /// A tool's text and its error flag.
@@ -876,7 +880,12 @@ async fn registering_again_kicks_the_old_link_and_the_new_key_takes_over() {
 /// limit, while another call waits at its dialog, must not drop the link.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
-    let relay = start_relay().await;
+    // This is about the link, not the waiting reply: that comes much later.
+    let relay = start_relay_with(RelayTiming {
+        approval_reply: Duration::from_secs(120),
+        ..relay_timing()
+    })
+    .await;
     // 320 KiB/s: a 3 MiB result takes about 10 s, the silence limit is 6 s.
     let url = slow_uplink(relay.addr, 320 * 1024).await;
     let c = start_connector(&relay, "e-big", &url, 0).await;
@@ -910,6 +919,55 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
     *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
     let (text, is_error) = waiting.await.unwrap();
     assert_eq!((text.as_str(), is_error), ("ran make", false));
+}
+
+/// The real connector tells the real relay when its dialog opens, so the AI
+/// app is answered "waiting" before it would give up (the relay's reply time
+/// is 400 ms here, 10 s in production). Its retry joins the open dialog, and
+/// `check_request` brings back the result once the person allows it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_approval_is_fetched_with_check_request() {
+    let relay = start_relay_with(RelayTiming {
+        approval_reply: Duration::from_millis(400),
+        ..relay_timing()
+    })
+    .await;
+    let c = start_connector(&relay, "e-approval", &relay.url(), 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let args = json!({"command": "ls"});
+
+    let started = Instant::now();
+    let (text, is_error) = mcp.call("start_process", args.clone()).await;
+    assert!(!is_error, "{text}");
+    assert!(started.elapsed() >= Duration::from_millis(400));
+    let id = text
+        .split("request_id \"")
+        .nth(1)
+        .and_then(|t| t.split('"').next())
+        .unwrap_or_else(|| panic!("no request id in {text}"))
+        .to_string();
+    assert!(
+        text.starts_with("Waiting for you to allow this on"),
+        "{text}"
+    );
+    assert_eq!(c.asker.opened.load(Ordering::SeqCst), 1);
+
+    // The AI app's retry of the same call: the same id, and no second dialog.
+    let (again, _) = mcp.call("start_process", args).await;
+    assert!(again.contains(&id), "{again}");
+    assert_eq!(c.asker.opened.load(Ordering::SeqCst), 1, "a second dialog");
+
+    // Still unanswered: `check_request` says so, with the same id.
+    let (still, is_error) = mcp.call("check_request", json!({"request_id": id})).await;
+    assert!(!is_error && still.contains(&id), "{still}");
+
+    // The person allows it; the command runs once and the result comes back.
+    *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
+    let (text, is_error) = mcp.call("check_request", json!({"request_id": id})).await;
+    assert_eq!((text.as_str(), is_error), ("ran ls", false));
+    assert_eq!(c.tools.ran("start_process"), 1);
+    assert_eq!(c.asker.opened.load(Ordering::SeqCst), 1);
 }
 
 /// Most drops are network resets that recover in about a second. A command

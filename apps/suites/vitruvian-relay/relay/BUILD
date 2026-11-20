@@ -60,6 +60,7 @@ rust_library(
         "src/http_tests.rs",
         "src/lib.rs",
         "src/mcp.rs",
+        "src/parked.rs",
         "src/registry.rs",
     ],
     crate_name = "vitruvian_relay",

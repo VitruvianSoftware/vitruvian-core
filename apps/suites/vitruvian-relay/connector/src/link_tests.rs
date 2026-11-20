@@ -183,12 +183,35 @@ impl FakeConn {
             .expect("the link is up")
     }
 
-    /// The next frame that is not a ping or pong.
+    /// The next frame that is not a ping or pong, and not a dialog's
+    /// `Pending` (see [`FakeConn::recv_pending`] for those).
     async fn recv(&mut self) -> ToRelay {
+        loop {
+            match self.recv_any().await {
+                ToRelay::Ping { .. } | ToRelay::Pong { .. } | ToRelay::Pending { .. } => {}
+                f => return f,
+            }
+        }
+    }
+
+    /// The next frame that is not a ping or pong, `Pending` included.
+    async fn recv_any_but_pings(&mut self) -> ToRelay {
         loop {
             match self.recv_any().await {
                 ToRelay::Ping { .. } | ToRelay::Pong { .. } => {}
                 f => return f,
+            }
+        }
+    }
+
+    /// The call id of the next `Pending` frame; any other frame but a ping
+    /// or pong fails the test.
+    async fn recv_pending(&mut self) -> String {
+        loop {
+            match self.recv_any().await {
+                ToRelay::Ping { .. } | ToRelay::Pong { .. } => {}
+                ToRelay::Pending { call_id } => return call_id,
+                other => panic!("expected pending, got {other:?}"),
             }
         }
     }
@@ -206,7 +229,9 @@ impl FakeConn {
         loop {
             match tokio::time::timeout_at(end, self.from.recv()).await {
                 Err(_) => return,
-                Ok(Some(ToRelay::Ping { .. })) | Ok(Some(ToRelay::Pong { .. })) => {}
+                Ok(Some(ToRelay::Ping { .. }))
+                | Ok(Some(ToRelay::Pong { .. }))
+                | Ok(Some(ToRelay::Pending { .. })) => {}
                 Ok(other) => panic!("expected nothing, got {other:?}"),
             }
         }
@@ -746,6 +771,45 @@ async fn repeated_call_id_runs_once() {
     assert_eq!(tools.count(), 1);
 }
 
+/// The relay is told when a dialog actually opens (so it can answer the AI
+/// app "waiting" before the app gives up), and only then: a call that runs
+/// without asking, or one stopped before its dialog, announces nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn pending_sent_when_dialog_opens() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-pending");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+
+    // No dialog, no `Pending`: the first frame after the call is its result.
+    c.call("r1", "read_file", json!({"path": "/tmp/a"}));
+    match c.recv_any_but_pings().await {
+        ToRelay::Result(r) => assert_eq!(r.call_id, "r1"),
+        other => panic!("expected the result, got {other:?}"),
+    }
+
+    // Ask first: `Pending` for that call, once its dialog is open.
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    assert_eq!(c.recv_pending().await, "c1");
+    assert_eq!(
+        asker.opened.load(Ordering::SeqCst),
+        1,
+        "Pending is sent as the dialog opens, not for a call that never asks"
+    );
+    // Once, not on every ping or tick.
+    c.quiet_for(Duration::from_millis(300)).await;
+
+    // Allowing it finishes the call; the result is the next thing said.
+    asker.set(Waited::Allow);
+    match c.recv_any_but_pings().await {
+        ToRelay::Result(r) => assert_eq!(r.call_id, "c1"),
+        other => panic!("expected the result, got {other:?}"),
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn ask_first_denied_returns_error() {
     let mut relay = FakeRelay::start().await;
@@ -964,7 +1028,7 @@ async fn pongs_flow_while_prompt_open() {
             let left = window.saturating_sub(sent.elapsed());
             match tokio::time::timeout(left, c.from.recv()).await {
                 Ok(Some(ToRelay::Pong { n: got })) if got == n => break,
-                Ok(Some(ToRelay::Ping { .. })) => {}
+                Ok(Some(ToRelay::Ping { .. } | ToRelay::Pending { .. })) => {}
                 Ok(other) => panic!("ping {n}: got {other:?}"),
                 Err(_) => panic!("ping {n} was not answered within {window:?}"),
             }
@@ -2265,7 +2329,7 @@ async fn a_slow_send_during_a_dialog_keeps_the_link() {
         loop {
             match c.recv_any().await {
                 ToRelay::Pong { n: got } if got == n => break,
-                ToRelay::Ping { .. } | ToRelay::Pong { .. } => {}
+                ToRelay::Ping { .. } | ToRelay::Pong { .. } | ToRelay::Pending { .. } => {}
                 other => panic!("expected pong {n}, got {other:?}"),
             }
         }
@@ -2610,7 +2674,7 @@ async fn a_pause_refuses_a_call_waiting_at_its_dialog() {
     let r = loop {
         match c.recv().await {
             ToRelay::Result(r) => break r,
-            ToRelay::ToolsChanged { .. } => {}
+            ToRelay::ToolsChanged { .. } | ToRelay::Pending { .. } => {}
             other => panic!("{other:?}"),
         }
     };

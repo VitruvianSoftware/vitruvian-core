@@ -47,6 +47,12 @@ pub const ACK_SECS: u64 = 5;
 /// replying with a `check_request` handle (and how long each `check_request`
 /// waits).
 pub const APPROVAL_REPLY_SECS: u64 = 10;
+/// How long a call the AI app stopped waiting for (its HTTP request ended)
+/// can still be rejoined by an identical request, from when it was made.
+pub const REJOIN_WINDOW_SECS: u64 = 120;
+/// How long the relay keeps the result of a call whose answer the AI app did
+/// not take (a `check_request` can still fetch it), from when it finished.
+pub const PARKED_RESULT_SECS: u64 = 300;
 /// How long in-flight calls and open approval dialogs survive a dropped
 /// link while the connector reconnects.
 pub const RECONNECT_GRACE_SECS: u64 = 10;
@@ -419,6 +425,8 @@ mod tests {
         assert_eq!(PROTOCOL, 2);
         assert_eq!(ACK_SECS, 5);
         assert_eq!(APPROVAL_REPLY_SECS, 10);
+        assert_eq!(REJOIN_WINDOW_SECS, 120);
+        assert_eq!(PARKED_RESULT_SECS, 300);
         assert_eq!(RECONNECT_GRACE_SECS, 10);
         assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
         assert_eq!(PING_SECS, 20);

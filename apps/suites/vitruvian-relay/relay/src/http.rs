@@ -62,8 +62,8 @@ use vitruvian_mcp_auth::{
     extract_bearer, protected_resource_metadata, www_authenticate, AuthError, Caller, Verifier,
 };
 use vitruvian_relay_protocol::{
-    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, CALL_BUDGET_SECS,
-    MAX_FRAME_BYTES, PROTOCOL,
+    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, APPROVAL_REPLY_SECS,
+    CALL_BUDGET_SECS, MAX_FRAME_BYTES, PARKED_RESULT_SECS, PROTOCOL, REJOIN_WINDOW_SECS,
 };
 
 use crate::config::Settings;
@@ -109,6 +109,14 @@ pub struct Timing {
     /// How long a call whose connector's link dropped waits for it to
     /// reconnect with the result, before failing `Disconnected`.
     pub reconnect_grace: Duration,
+    /// How long a request waits on an approval dialog before it answers
+    /// "waiting" with a request id (and how long each `check_request`
+    /// waits). Under the ~15 s after which Claude gives up on a call.
+    pub approval_reply: Duration,
+    /// How long an identical request can still join a call.
+    pub rejoin_window: Duration,
+    /// How long the result of a call nobody took is kept.
+    pub parked_result: Duration,
     /// How far a `hello` timestamp may be from the relay's clock.
     pub max_clock_skew_secs: u64,
     /// How long a call frame is allowed to take to reach the device after
@@ -155,6 +163,9 @@ impl Default for Timing {
             call_budget: Duration::from_secs(CALL_BUDGET_SECS),
             ack_timeout: ACK_TIMEOUT,
             reconnect_grace: RECONNECT_GRACE,
+            approval_reply: Duration::from_secs(APPROVAL_REPLY_SECS),
+            rejoin_window: Duration::from_secs(REJOIN_WINDOW_SECS),
+            parked_result: Duration::from_secs(PARKED_RESULT_SECS),
             max_clock_skew_secs: 60,
             transit_margin: Duration::from_secs(IN_CALL_PING_SECS) * MAX_MISSED_PINGS,
             send_timeout: Duration::from_secs(30),
@@ -209,7 +220,11 @@ impl App {
     ) -> Arc<App> {
         let registry = Registry::with_timeouts(timing.ack_timeout, timing.reconnect_grace);
         Arc::new(App {
-            mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()),
+            mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()).with_parking(
+                timing.approval_reply,
+                timing.rejoin_window,
+                timing.parked_result,
+            ),
             settings,
             mcp_verifier: Arc::new(mcp),
             connector_verifier: Arc::new(connector),
@@ -1219,7 +1234,10 @@ async fn run_connection<S>(
                         }
                     }
                     Ok(ToRelay::Pong { .. }) => live.heard(),
-                    Ok(ToRelay::Hello(_) | ToRelay::Pending { .. }) => {}
+                    Ok(ToRelay::Pending { call_id }) => {
+                        app.registry.pending(conn, &call_id);
+                    }
+                    Ok(ToRelay::Hello(_)) => {}
                     // Size only: a bad frame may still hold call output.
                     Err(_) => app.log("bad_frame", json!({"device_id": device_id, "bytes": text.len()})),
                 },

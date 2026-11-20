@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, oneshot, watch, Notify};
 use vitruvian_relay_protocol::{
     Call, CallResult, ToConnector, ToolDef, ACK_SECS, RECONNECT_GRACE_SECS,
 };
@@ -129,6 +129,9 @@ struct Pending {
     /// Notified when the device acknowledges receipt of the call; `None`
     /// once it has (so a second `Ack` is told apart from the first).
     ack: Option<oneshot::Sender<()>>,
+    /// Set to `true` when the device says an approval dialog is open for
+    /// the call (`ToRelay::Pending`). `None` for a caller that does not care.
+    approval: Option<watch::Sender<bool>>,
     done: oneshot::Sender<Result<CallResult, CallError>>,
 }
 
@@ -221,20 +224,39 @@ impl State {
         self.owe(device_id, call_id, deadline);
     }
 
-    /// Sends a freshly connected device the `Cancel`s it is owed.
-    fn send_owed(&mut self, device_id: &str) {
+    /// Sends a freshly connected device the `Cancel`s it is owed, as many as
+    /// the connection's queue has room for. Returns the ones that did not
+    /// fit (still owed, in order) for the caller to send as room frees
+    /// ([`Registry::send_leftovers`]): up to [`MAX_OWED_CANCELS`] can be
+    /// owed, more than the queue holds.
+    fn send_owed(&mut self, device_id: &str) -> Vec<(String, Instant)> {
         let Some(list) = self.owed.remove(device_id) else {
-            return;
+            return Vec::new();
         };
         let now = Instant::now();
         let Some(c) = self.devices.get(device_id) else {
-            return;
+            return Vec::new();
         };
+        let mut left = Vec::new();
         for (call_id, deadline) in list {
-            if deadline > now {
-                let _ = c.tx.try_send(ToConnector::Cancel { call_id });
+            if deadline <= now {
+                continue;
+            }
+            // Once one does not fit, the rest wait behind it, in order.
+            if !left.is_empty() {
+                left.push((call_id, deadline));
+                continue;
+            }
+            match c.tx.try_send(ToConnector::Cancel {
+                call_id: call_id.clone(),
+            }) {
+                Ok(()) => {}
+                // A closed queue is a dead connection: the leftovers go
+                // through `cancel`, which owes them again.
+                Err(_) => left.push((call_id, deadline)),
             }
         }
+        left
     }
 
     /// A device connected: its calls held from an earlier connection move
@@ -280,8 +302,10 @@ impl Default for Registry {
     }
 }
 
-/// Forgets a call if its caller goes away (the HTTP request was dropped), and
-/// tells the device to stop it.
+/// Forgets a call if its caller goes away (the future running it is dropped:
+/// stopped by a cancel from the AI app), and tells the device to stop it. An
+/// AI app that merely gives up on its HTTP request does not drop the call:
+/// `mcp.rs` runs it on its own task and parks it (`parked.rs`).
 struct PendingGuard<'a> {
     registry: &'a Registry,
     device_id: String,
@@ -426,6 +450,20 @@ impl Registry {
         }
     }
 
+    /// The device says an approval dialog is open for a pending call on
+    /// `conn`: whoever watches the call is told ([`Registry::call_watching`]).
+    /// `false` for a call that is not pending on that connection.
+    pub fn pending(&self, conn: ConnectionId, call_id: &str) -> bool {
+        let st = self.state.lock().unwrap();
+        let Some(p) = st.pending.get(call_id).filter(|p| p.conn_id == conn) else {
+            return false;
+        };
+        if let Some(tx) = &p.approval {
+            tx.send_replace(true);
+        }
+        true
+    }
+
     /// The session calls this just before it writes a call to the socket,
     /// which can be long after the call was queued. `false` means do not
     /// send it.
@@ -536,6 +574,15 @@ impl Registry {
         }
     }
 
+    /// Sends the owed `Cancel`s that did not fit in a new connection's queue,
+    /// each as room frees (`cancel` waits for it, and closes a connection
+    /// that never makes any, owing the rest again).
+    fn send_leftovers(&self, device_id: &str, left: Vec<(String, Instant)>) {
+        for (call_id, deadline) in left {
+            self.cancel(device_id, call_id, deadline);
+        }
+    }
+
     /// Registers a live connection. A newer connection for the same device
     /// replaces the old one; the calls the old one carried (and any held
     /// from an earlier drop) move to the new one and wait there.
@@ -559,7 +606,9 @@ impl Registry {
             },
         );
         st.rebind(device_id, id);
-        st.send_owed(device_id);
+        let left = st.send_owed(device_id);
+        drop(st);
+        self.send_leftovers(device_id, left);
         id
     }
 
@@ -596,7 +645,9 @@ impl Registry {
             },
         );
         st.rebind(device_id, id);
-        st.send_owed(device_id);
+        let left = st.send_owed(device_id);
+        drop(st);
+        self.send_leftovers(device_id, left);
         Some((id, closer))
     }
 
@@ -654,7 +705,18 @@ impl Registry {
     /// its deadline, or the connection ending, whichever comes first. The
     /// deadline and a disconnect also cover a connection whose queue is full,
     /// so a stuck connection never leaves the caller hanging.
-    pub async fn call(&self, device_id: &str, mut call: Call) -> Result<CallResult, CallError> {
+    pub async fn call(&self, device_id: &str, call: Call) -> Result<CallResult, CallError> {
+        self.call_watching(device_id, call, None).await
+    }
+
+    /// [`Registry::call`], and `approval` is set to `true` when the device
+    /// reports an approval dialog open for the call ([`Registry::pending`]).
+    pub async fn call_watching(
+        &self,
+        device_id: &str,
+        mut call: Call,
+        approval: Option<watch::Sender<bool>>,
+    ) -> Result<CallResult, CallError> {
         let call_id = call.call_id.clone();
         let deadline = Duration::from_millis(call.deadline_ms);
         let started = Instant::now();
@@ -680,6 +742,7 @@ impl Registry {
                     deadline: started + deadline,
                     written: Some(written_tx),
                     ack: Some(ack_tx),
+                    approval,
                     done,
                 },
             );
@@ -1579,5 +1642,68 @@ mod tests {
         reg.connect("d1", vec![], tx);
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(rx_new.try_recv().is_err());
+    }
+
+    async fn until(f: impl Fn() -> bool) {
+        within(async {
+            while !f() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+    }
+
+    /// Task 3 review: up to 256 cancels can be owed to a device that is away,
+    /// but a connection's queue holds 64 (`CONNECTION_QUEUE`). The ones that
+    /// do not fit when it comes back must wait for room, not be dropped.
+    #[tokio::test]
+    async fn owed_cancels_beyond_the_queue_are_sent_as_room_frees() {
+        const OWED: usize = 200;
+        let reg = Registry::new();
+        let (tx, mut rx) = mpsc::channel(OWED);
+        let conn = reg.connect("d1", vec![], tx);
+        let ids: Vec<String> = (0..OWED).map(|i| format!("c{i}")).collect();
+        let handles: Vec<_> = ids
+            .iter()
+            .map(|id| spawn_call(&reg, id, BUDGET_MS))
+            .collect();
+        for _ in 0..OWED {
+            let c = expect_call(&mut rx).await;
+            reg.call_written(conn, &c.call_id);
+        }
+        // The link drops, and the callers go away while it is down: the
+        // device is owed a cancel for each.
+        reg.disconnect("d1", conn);
+        for h in &handles {
+            h.abort();
+        }
+        until(|| {
+            reg.state
+                .lock()
+                .unwrap()
+                .owed
+                .get("d1")
+                .map_or(0, |l| l.len())
+                == OWED
+        })
+        .await;
+        // It comes back on a connection whose queue holds 64. Nothing reads
+        // it yet, so most of the cancels cannot be sent now.
+        let (tx, mut rx) = mpsc::channel(64);
+        reg.connect("d1", vec![], tx);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let mut got = Vec::new();
+        while got.len() < OWED {
+            match within(rx.recv()).await {
+                Some(ToConnector::Cancel { call_id }) => got.push(call_id),
+                other => panic!("expected a cancel, got {other:?}"),
+            }
+        }
+        let (mut got, mut want) = (got, ids);
+        got.sort();
+        want.sort();
+        assert_eq!(got, want, "every owed cancel arrives, once");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(rx.try_recv().is_err());
     }
 }

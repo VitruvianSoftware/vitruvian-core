@@ -29,8 +29,13 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
 use vitruvian_mcp_auth::Caller;
-use vitruvian_relay_protocol::Call;
+use vitruvian_relay_protocol::{
+    Call, ToolDef, APPROVAL_REPLY_SECS, PARKED_RESULT_SECS, REJOIN_WINDOW_SECS,
+};
 
+use crate::parked::{
+    CallHandle, Fetch, Outcome, ParkedCalls, RejoinKey, RequestId, UNKNOWN_REQUEST,
+};
 use crate::registry::{CallError, Registry};
 use crate::{log_event, random_id, LogSink};
 
@@ -47,6 +52,39 @@ const INSTRUCTIONS: &str =
 /// with a new relay release.
 const DISCOVER_TTL_MS: u64 = 3_600_000;
 pub const SERVER_NAME: &str = "vitruvian-relay";
+
+/// The relay's own tool, added to every device's list: fetches the result of
+/// a request that was waiting for approval on the computer.
+pub const CHECK_REQUEST: &str = "check_request";
+
+fn check_request_def() -> ToolDef {
+    ToolDef {
+        name: CHECK_REQUEST.into(),
+        description: "Get the result of a request that was waiting for approval on the computer."
+            .into(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "description": "The request_id from the waiting reply.",
+                },
+            },
+            "required": ["request_id"],
+        }),
+    }
+}
+
+/// The reply that says a request is waiting for approval. `device` is the
+/// computer's id until devices have names.
+fn waiting_text(device: &str, id: &RequestId) -> String {
+    format!(
+        "Waiting for you to allow this on \"{device}\". Call {CHECK_REQUEST} with \
+         request_id \"{}\" to get the result. The request is cancelled if nobody \
+         answers within 60 seconds.",
+        id.as_str()
+    )
+}
 
 /// Longest tool name written to the log; a name is not content, but it comes
 /// from the caller, so it is capped.
@@ -151,6 +189,10 @@ pub struct Mcp {
     call_budget: Duration,
     log: LogSink,
     in_flight: Mutex<HashMap<Key, InFlight>>,
+    parked: ParkedCalls,
+    /// How long a request waits for an approval dialog before it answers
+    /// "waiting" (and how long each `check_request` waits).
+    approval_reply: Duration,
 }
 
 /// Removes a call's entry when its request ends, however it ends.
@@ -173,7 +215,7 @@ impl Drop for InFlightEntry<'_> {
 }
 
 /// The one log line per call. Written on drop, so a call whose HTTP request
-/// was dropped mid-way is logged too (outcome `cancelled`). Sizes and names
+/// was dropped mid-way is logged too (outcome `parked`: the call goes on). Sizes and names
 /// only: never arguments or output (spec §7.2).
 struct CallLog {
     log: LogSink,
@@ -221,7 +263,26 @@ impl Mcp {
             call_budget,
             log,
             in_flight: Mutex::new(HashMap::new()),
+            parked: ParkedCalls::new(
+                Duration::from_secs(REJOIN_WINDOW_SECS),
+                Duration::from_secs(PARKED_RESULT_SECS),
+            ),
+            approval_reply: Duration::from_secs(APPROVAL_REPLY_SECS),
         }
+    }
+
+    /// The parking timers, shortened for tests: how long a request waits
+    /// for an approval before it answers "waiting", how long an identical
+    /// request can still join a call, and how long a result is kept.
+    pub fn with_parking(
+        mut self,
+        approval_reply: Duration,
+        rejoin_window: Duration,
+        result_ttl: Duration,
+    ) -> Self {
+        self.approval_reply = approval_reply;
+        self.parked = ParkedCalls::new(rejoin_window, result_ttl);
+        self
     }
 
     /// Answers one JSON-RPC message for `device_id`. `None` for a notification
@@ -292,10 +353,11 @@ impl Mcp {
             "ping" => rpc_result(id, json!({})),
             "tools/list" => rpc_result(
                 id,
-                // The device's own tools: private to this person, and stale
-                // as soon as the device reconnects with a different list.
+                // The device's own tools, and the relay's: private to this
+                // person, and stale as soon as the device reconnects with a
+                // different list.
                 json!({
-                    "tools": self.registry.tools(device_id).unwrap_or_default(),
+                    "tools": self.tools(device_id),
                     "ttlMs": 0,
                     "cacheScope": "private",
                 }),
@@ -303,6 +365,25 @@ impl Mcp {
             "tools/call" => self.call(id, &params, device_id, caller, session).await,
             _ => rpc_error(id, -32601, &format!("Method not found: {method}")),
         })
+    }
+
+    /// The device's tools with the relay's `check_request` after them. A
+    /// device tool of the same name is dropped (and the drop logged): the
+    /// relay answers that name itself.
+    fn tools(&self, device_id: &str) -> Vec<ToolDef> {
+        let mut tools = self.registry.tools(device_id).unwrap_or_default();
+        let before = tools.len();
+        tools.retain(|t| t.name != CHECK_REQUEST);
+        if tools.len() != before {
+            log_event(
+                &self.log,
+                "tool_dropped",
+                json!({"device_id": device_id, "tool": CHECK_REQUEST,
+                       "reason": "the relay's own tool has that name"}),
+            );
+        }
+        tools.push(check_request_def());
+        tools
     }
 
     /// `notifications/cancelled`: stops that session's call with that id.
@@ -338,9 +419,28 @@ impl Mcp {
             Some(v @ Value::Object(_)) => v.clone(),
             Some(_) => return rpc_error(id, -32602, "Invalid params: arguments must be an object"),
         };
-        let call_id = random_id();
+        let mut log = CallLog {
+            log: self.log.clone(),
+            device_id: device_id.to_string(),
+            client_id: caller.client_id.clone(),
+            tool: tool.chars().take(MAX_LOGGED_TOOL_CHARS).collect(),
+            arg_bytes: arguments.to_string().len(),
+            result_bytes: 0,
+            started: Instant::now(),
+            // A request that ends without an answer left its call running:
+            // it is parked, for the retry to find.
+            outcome: "parked",
+        };
+        if tool == CHECK_REQUEST {
+            return self
+                .check_request(id, &arguments, device_id, caller, &mut log)
+                .await;
+        }
         let (cancel_tx, mut cancel_rx) = oneshot::channel();
         let key = session.map(|s| (s.to_string(), id.to_string()));
+        let rejoin_key = RejoinKey::new(&caller.subject, device_id, tool, &arguments);
+        let started = log.started;
+        let call_id = random_id();
         if let Some(key) = &key {
             let mut map = self.in_flight.lock().unwrap();
             if map.contains_key(key) {
@@ -359,40 +459,179 @@ impl Mcp {
             key,
             call_id: call_id.clone(),
         };
-        let mut log = CallLog {
-            log: self.log.clone(),
-            device_id: device_id.to_string(),
-            client_id: caller.client_id.clone(),
-            tool: tool.chars().take(MAX_LOGGED_TOOL_CHARS).collect(),
-            arg_bytes: arguments.to_string().len(),
-            result_bytes: 0,
-            started: Instant::now(),
-            outcome: "cancelled",
+        // One call per (person, device, tool, arguments) at a time: an
+        // identical request joins the call that is open (or finished and not
+        // yet handed over) instead of starting another. This holds for the
+        // sessionless revision too, which has no request id to check.
+        let joined = self
+            .parked
+            .join_or_park(rejoin_key, &caller.subject, device_id, || {
+                CallHandle::start(
+                    &self.registry,
+                    device_id,
+                    Call {
+                        call_id,
+                        tool: tool.to_string(),
+                        arguments,
+                        deadline_ms: self.call_budget.as_millis() as u64,
+                    },
+                )
+            });
+        let mut waiting = Waiting {
+            parked: &self.parked,
+            id: joined.request_id.clone(),
+            handle: joined.handle.clone(),
+            settled: false,
         };
-        let call = Call {
-            call_id,
-            tool: tool.to_string(),
-            arguments,
-            deadline_ms: self.call_budget.as_millis() as u64,
+        // The call has its own task: if this request is dropped (the AI app
+        // gave up), the call goes on, parked. Only a cancel stops it.
+        let reply_at = tokio::time::Instant::from_std(started + self.approval_reply);
+        enum Ended {
+            Cancelled,
+            Finished(Outcome),
+            // A dialog is open and the AI app's patience is running out.
+            Approval,
+        }
+        let ended = tokio::select! {
+            biased;
+            Ok(()) = &mut cancel_rx => Ended::Cancelled,
+            f = joined.handle.finished() => Ended::Finished(f.result.clone()),
+            () = async {
+                tokio::time::sleep_until(reply_at).await;
+                joined.handle.approval_open().await;
+            } => Ended::Approval,
         };
-        // If the cancel wins, the registry's future is dropped here, which
-        // sends `cancel` to the device. The same happens if this whole future
-        // is dropped because the HTTP request went away.
-        let outcome_ = tokio::select! {
-            r = self.registry.call(device_id, call) => Some(r),
-            Ok(()) = &mut cancel_rx => None,
+        match ended {
+            Ended::Cancelled => {
+                log.outcome = "cancelled";
+                waiting.cancel();
+                rpc_error(id, -32800, "Request cancelled")
+            }
+            Ended::Approval => {
+                // A request that joined another's call says so, whatever
+                // it was then told.
+                log.outcome = if joined.rejoined {
+                    "rejoined"
+                } else {
+                    "waiting_approval"
+                };
+                waiting.park();
+                rpc_result(
+                    id,
+                    text_result(&waiting_text(device_id, &joined.request_id), false),
+                )
+            }
+            Ended::Finished(outcome_) => {
+                waiting.deliver();
+                match outcome_ {
+                    Ok(r) => {
+                        log.result_bytes = r.content.to_string().len();
+                        log.outcome = if r.is_error { "tool_error" } else { "ok" };
+                        if joined.rejoined {
+                            log.outcome = "rejoined";
+                        }
+                        rpc_result(id, json!({"content": r.content, "isError": r.is_error}))
+                    }
+                    Err(e) => {
+                        log.outcome = if joined.rejoined {
+                            "rejoined"
+                        } else {
+                            outcome(e)
+                        };
+                        rpc_result(id, text_result(e.user_message(), true))
+                    }
+                }
+            }
+        }
+    }
+
+    /// The relay's own `check_request` tool: the result of a request that
+    /// was waiting for approval. Waits up to `approval_reply` for it.
+    async fn check_request(
+        &self,
+        id: Value,
+        arguments: &Value,
+        device_id: &str,
+        caller: &Caller,
+        log: &mut CallLog,
+    ) -> Value {
+        let Some(request_id) = arguments.get("request_id").and_then(Value::as_str) else {
+            return rpc_error(
+                id,
+                -32602,
+                "Invalid params: check_request needs a request_id",
+            );
         };
-        match outcome_ {
-            None => rpc_error(id, -32800, "Request cancelled"),
-            Some(Ok(r)) => {
+        // Whatever the text, the answer for an id that is not this person's
+        // is the one for an id that never was.
+        let request_id = RequestId::parse(request_id);
+        match self
+            .parked
+            .take(&caller.subject, &request_id, self.approval_reply)
+            .await
+        {
+            Fetch::Done(Ok(r)) => {
                 log.result_bytes = r.content.to_string().len();
                 log.outcome = if r.is_error { "tool_error" } else { "ok" };
                 rpc_result(id, json!({"content": r.content, "isError": r.is_error}))
             }
-            Some(Err(e)) => {
+            Fetch::Done(Err(e)) => {
                 log.outcome = outcome(e);
                 rpc_result(id, text_result(e.user_message(), true))
             }
+            Fetch::Waiting => {
+                log.outcome = "waiting_approval";
+                let device = self
+                    .parked
+                    .device_of(&request_id)
+                    .unwrap_or_else(|| device_id.to_string());
+                rpc_result(id, text_result(&waiting_text(&device, &request_id), false))
+            }
+            Fetch::Unknown => {
+                log.outcome = "unknown_request";
+                rpc_result(id, text_result(UNKNOWN_REQUEST, true))
+            }
+        }
+    }
+}
+
+/// One request's hold on a call. If the request ends without an answer (the
+/// AI app dropped it) the call is parked, for an identical request or
+/// `check_request` to pick up.
+struct Waiting<'a> {
+    parked: &'a ParkedCalls,
+    id: RequestId,
+    handle: CallHandle,
+    settled: bool,
+}
+
+impl Waiting<'_> {
+    /// The answer is going to the request.
+    fn deliver(&mut self) {
+        self.settled = true;
+        self.parked.mark_delivered(&self.id);
+        self.handle.detach();
+    }
+
+    /// The request answers "waiting" and lets go; the id is out, so the
+    /// call stays for `check_request`.
+    fn park(&mut self) {
+        self.settled = true;
+        self.parked.keep(&self.id);
+        self.handle.detach();
+    }
+
+    /// The AI app cancelled: the call stops (unless another request is on it).
+    fn cancel(&mut self) {
+        self.settled = true;
+        self.parked.cancel(&self.id, &self.handle);
+    }
+}
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.park();
         }
     }
 }
@@ -537,9 +776,13 @@ mod tests {
         assert_eq!(call.arguments, json!({}));
         let again = ask(&m, body.clone()).await;
         assert_eq!(again["error"]["code"], -32600);
-        // The same id in another session is fine (and goes to the device).
+        // The same id in another session is fine (and goes to the device: it
+        // asks for something else, since an identical call would join the
+        // one running).
         let other = {
-            let (m, body) = (m.clone(), body.clone());
+            let body = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                              "params": {"name": "t", "arguments": {"other": true}}});
+            let m = m.clone();
             tokio::spawn(async move { m.handle(&body, "d1", &caller(), Some("s2")).await.unwrap() })
         };
         let ToConnector::Call(call2) = rx.recv().await.unwrap() else {
