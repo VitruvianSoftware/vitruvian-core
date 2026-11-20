@@ -228,9 +228,10 @@ func TestTheMiniPartyMirrorPublishesItsSiteAtItsDomain(t *testing.T) {
 			t.Errorf("pages %s is %q, want %q", field, v, want)
 		}
 	}
-	// Off: changing it alone would remove the domain (see sync.go).
-	if v, ok := r.inputs["httpsEnforced"]; !ok || !v.IsBool() || v.BoolValue() {
-		t.Errorf("pages httpsEnforced is %v, want false", v)
+	// Not sent at all while PagesHTTPS is off: a false value still goes out
+	// with the create, which GitHub refuses before a certificate exists.
+	if v, ok := r.inputs["httpsEnforced"]; ok && !v.IsNull() {
+		t.Errorf("pages httpsEnforced is %v, want it unset", v)
 	}
 	// The Pages domain must be the DNS record's name, whatever its case.
 	if v := text(t, got, "mini-party-pages", "cname"); !strings.EqualFold(v, site_domain.MiniGames+"."+site_domain.Apex) {
