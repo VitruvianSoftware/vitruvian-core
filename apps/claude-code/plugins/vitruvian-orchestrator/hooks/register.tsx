@@ -3125,6 +3125,8 @@ async function inspectRepoPathClaude(
       // Accepted limitation: Claude Code's $.fs.stat exposes only kind, size,
       // mtimeMs, isLink, and realPath (no nlink or dev/ino), so hard-linked
       // target files cannot be detected or refused through the plugin API.
+      // Accepted because git cannot store hard links: a cloned repository cannot
+      // plant one, so exploiting this needs an attacker already on the machine.
       return {
         status: "file",
         path: cur,
