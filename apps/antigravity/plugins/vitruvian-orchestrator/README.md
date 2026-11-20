@@ -17,6 +17,7 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
   - `post`: Adds a message to the board with optional recipients, kind (`result`, `question`, `defect`, or `note`), `replyTo` post number, and `channel` (default `main`).
   - `board`: Reads numbered posts from the board, with optional filters for recipient, author, kind, channel, or search words. For a helper, calling `board` with no recipient (or `to: "me"`) returns posts addressed to that helper or to everyone.
   - `channel`: Lists channels (`action: "list"`, open to all) or creates and archives channels (`action: "create"` or `"archive"`, lead-only, up to 20 channels).
+  - `team`: Reads the repository's optional `.agents/team.json` file (if present) and returns the resolved roles, agents, models, and project notes.
   - `step`: Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, plus an optional `detail` such as `429 Resource Exhausted`).
   - `progress`: Called only by the lead to publish or update the task plan, change phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
 - **How waking works**: When a post mentions a waiting helper (`@name`), Antigravity delivers a wake straight to the helper's own conversation once for that mention (`@lead` wakes the lead conversation). Only the lead's `@all` wakes everyone who is waiting; `@all` from a helper never broadcasts wakes. Every forwarded post is clearly marked and shown to other agents as helper content, never as instructions from the user, the lead, or the system.
@@ -83,5 +84,5 @@ ln -s "$(pwd)/apps/antigravity/plugins/vitruvian-orchestrator" ~/.gemini/config/
 Adapted from [`savvy-fleet`](../savvy-fleet/README.md) (MIT, VitruvianSoftware) for the Antigravity sidecar layout and powered by [`packages/orchestrator-core`](../../../../packages/orchestrator-core/README.md).
 
 ## Subdirectories & Boundaries
-- [mcp](./mcp/README.md): MCP server exposing `progress`, `step`, `post`, `board`, and `channel`.
+- [mcp](./mcp/README.md): MCP server exposing `progress`, `step`, `post`, `board`, `channel`, and `team`.
 - [sidecars](./sidecars/README.md): Sidecar UI and background wake watcher for the Orchestrator panel.

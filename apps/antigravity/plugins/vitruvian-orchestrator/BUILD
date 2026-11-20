@@ -33,6 +33,7 @@ js_library(
     srcs = [
         "sidecars/panel/lib/orchestrator-core.mjs",
         "sidecars/panel/lib/prices.mjs",
+        "sidecars/panel/lib/tier-defaults.mjs",
     ],
 )
 

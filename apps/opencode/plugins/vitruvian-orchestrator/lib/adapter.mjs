@@ -18,23 +18,36 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
 import {
+  agentRoleMap,
   board,
   burnDown,
   channels,
   DEFAULT_QUIET_MS,
+  DEFAULT_ROLE_TIERS,
   DEFAULT_STALL_MS,
   delegateCost,
+  flowAgentRoleMap,
+  formatAgentRoleLabel,
   formatWake,
   initialFlow,
   isValidWorktree,
+  MAX_TEAM_FILE_BYTES,
+  MAX_TEAM_ROLES,
   members,
   mentionGraph,
   mentions,
   overview,
+  parseTeam,
   pendingWakes,
   reduce,
   remaining,
+  resolveTeam,
+  ROLES,
   runCost,
   sanitizeDisplayText,
   spend,
@@ -42,25 +55,36 @@ import {
   taskBoard,
   validateChannelAction,
   validatePostChannel,
+  validateTeamEvent,
 } from "./orchestrator-core.mjs";
+import { TIER_DEFAULTS } from "./tier-defaults.mjs";
 
 export {
+  agentRoleMap,
   board,
   burnDown,
   channels,
   DEFAULT_QUIET_MS,
+  DEFAULT_ROLE_TIERS,
   DEFAULT_STALL_MS,
   delegateCost,
+  flowAgentRoleMap,
+  formatAgentRoleLabel,
   formatWake,
   initialFlow,
   isValidWorktree,
+  MAX_TEAM_FILE_BYTES,
+  MAX_TEAM_ROLES,
   members,
   mentionGraph,
   mentions,
   overview,
+  parseTeam,
   pendingWakes,
   reduce,
   remaining,
+  resolveTeam,
+  ROLES,
   runCost,
   sanitizeDisplayText,
   spend,
@@ -68,6 +92,7 @@ export {
   taskBoard,
   validateChannelAction,
   validatePostChannel,
+  validateTeamEvent,
 };
 
 const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -903,12 +928,339 @@ function clipSingleLine(text, maxLen = 72) {
 }
 
 /**
+ * Resolves the git repository top-level directory for `cwd`, falling back to
+ * `cwd` when not inside a git worktree.
+ *
+ * @param {string} [cwd]
+ * @returns {string}
+ */
+export function resolveRepoRoot(cwd = process.cwd()) {
+  const safeCwd =
+    typeof cwd === "string" && cwd.trim() ? cwd.trim() : process.cwd();
+  try {
+    const res = spawnSync(
+      "git",
+      ["-C", safeCwd, "rev-parse", "--show-toplevel"],
+      { encoding: "utf8", timeout: 5000 },
+    );
+    if (
+      res.status === 0 &&
+      typeof res.stdout === "string" &&
+      res.stdout.trim()
+    ) {
+      return res.stdout.trim();
+    }
+  } catch {
+    // Fall back to cwd outside git repositories.
+  }
+  return safeCwd;
+}
+
+function isPathInsideRealRoot(realRoot, realTarget) {
+  const rel = path.relative(realRoot, realTarget);
+  return (
+    rel !== ".." &&
+    !rel.startsWith(`..${path.sep}`) &&
+    !rel.startsWith("../") &&
+    !rel.startsWith("..\\") &&
+    !path.isAbsolute(rel)
+  );
+}
+
+function resolveRealTeamPath(root) {
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(root);
+  } catch {
+    realRoot = path.resolve(root);
+  }
+  const agentsDir = path.join(root, ".agents");
+  const teamPath = path.join(agentsDir, "team.json");
+
+  let linkStat;
+  try {
+    linkStat = fs.lstatSync(teamPath);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      try {
+        const dirStat = fs.lstatSync(agentsDir);
+        if (dirStat.isSymbolicLink()) {
+          try {
+            fs.realpathSync(agentsDir);
+          } catch (dirErr) {
+            const msg =
+              dirErr instanceof Error ? dirErr.message : String(dirErr);
+            return {
+              status: "error",
+              error: `.agents/team.json is a dangling symlink: ${msg}`,
+            };
+          }
+        }
+      } catch {
+        // .agents directory does not exist; treat as absent.
+      }
+      return { status: "absent" };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      status: "error",
+      error: `failed to read .agents/team.json: ${msg}`,
+    };
+  }
+
+  let realTeamPath;
+  try {
+    realTeamPath = fs.realpathSync(teamPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (linkStat.isSymbolicLink()) {
+      return {
+        status: "error",
+        error: `.agents/team.json is a dangling symlink: ${msg}`,
+      };
+    }
+    return {
+      status: "error",
+      error: `failed to read .agents/team.json: ${msg}`,
+    };
+  }
+
+  if (!isPathInsideRealRoot(realRoot, realTeamPath)) {
+    return {
+      status: "error",
+      error: ".agents/team.json must be inside the repository",
+    };
+  }
+  return { status: "ok", realPath: realTeamPath };
+}
+
+function loadTeamConfigAtRoot(root, defaults = TIER_DEFAULTS) {
+  const checked = resolveRealTeamPath(root);
+  if (checked.status === "absent") {
+    const resolved = resolveTeam(null, "opencode", defaults);
+    return {
+      file: null,
+      errors: [],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+  if (checked.status === "error") {
+    const resolved = resolveTeam(null, "opencode", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [checked.error],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+
+  let fd;
+  try {
+    fd = fs.openSync(checked.realPath, "r");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const resolved = resolveTeam(null, "opencode", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [`failed to read .agents/team.json: ${msg}`],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) {
+      const resolved = resolveTeam(null, "opencode", defaults);
+      return {
+        file: ".agents/team.json",
+        errors: [".agents/team.json is not a regular file"],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      };
+    }
+    if (st.size > MAX_TEAM_FILE_BYTES) {
+      const resolved = resolveTeam(null, "opencode", defaults);
+      return {
+        file: ".agents/team.json",
+        errors: [
+          `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+        ],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      };
+    }
+    const chunks = [];
+    let totalBytes = 0;
+    const buf = Buffer.allocUnsafe(8192);
+    while (true) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      totalBytes += n;
+      if (totalBytes > MAX_TEAM_FILE_BYTES) {
+        const resolved = resolveTeam(null, "opencode", defaults);
+        return {
+          file: ".agents/team.json",
+          errors: [
+            `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+          ],
+          notes: resolved.notes,
+          roles: resolved.roles,
+        };
+      }
+      chunks.push(Buffer.from(buf.subarray(0, n)));
+    }
+    const text = Buffer.concat(chunks, totalBytes).toString("utf8");
+    const parsed = parseTeam(text);
+    const resolved = resolveTeam(parsed.team, "opencode", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: parsed.errors,
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const resolved = resolveTeam(null, "opencode", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [`failed to read .agents/team.json: ${msg}`],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // Ignore close error.
+    }
+  }
+}
+
+export const INVALID_ROOT_ERROR =
+  "root must be an absolute path to a directory";
+
+/**
+ * Reads `<root>/.agents/team.json` (capped at 64 KiB) from an explicit
+ * repository root directory without climbing git top-level, throwing
+ * `INVALID_ROOT_ERROR` unless `root` is an absolute path to an existing directory.
+ *
+ * @param {unknown} root
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ */
+export function loadTeamConfigForRoot(root, defaults = TIER_DEFAULTS) {
+  if (typeof root !== "string" || !path.isAbsolute(root)) {
+    throw new Error(INVALID_ROOT_ERROR);
+  }
+  let st;
+  try {
+    st = fs.statSync(root);
+  } catch {
+    throw new Error(INVALID_ROOT_ERROR);
+  }
+  if (!st.isDirectory()) {
+    throw new Error(INVALID_ROOT_ERROR);
+  }
+  return loadTeamConfigAtRoot(root, defaults);
+}
+
+/**
+ * Reads `<repo root>/.agents/team.json` (capped at 64 KiB), parses and
+ * validates it, and resolves roles against OpenCode's tier defaults.
+ *
+ * @param {string} [cwd]
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ */
+export function loadTeamConfig(cwd = process.cwd(), defaults = TIER_DEFAULTS) {
+  return loadTeamConfigAtRoot(resolveRepoRoot(cwd), defaults);
+}
+
+/**
+ * Loads `<repo root>/.agents/team.json` and returns the lowercase
+ * `agent -> role` display map for mapped agents. Never throws.
+ *
+ * @param {string} [cwd]
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @returns {Record<string, string>}
+ */
+export function loadAgentRoles(cwd = process.cwd(), defaults = TIER_DEFAULTS) {
+  try {
+    return agentRoleMap(loadTeamConfig(cwd, defaults));
+  } catch {
+    return Object.create(null);
+  }
+}
+
+/**
+ * Returns a zero-timer reader that checks `.agents/team.json` mtime/size on
+ * each call and reloads `agentRoleMap` whenever the file is created, modified,
+ * or removed.
+ *
+ * @param {string} [cwd]
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @returns {() => Record<string, string>}
+ */
+export function createAgentRolesReader(
+  cwd = process.cwd(),
+  defaults = TIER_DEFAULTS,
+) {
+  const root = resolveRepoRoot(cwd);
+  const teamPath = path.join(root, ".agents", "team.json");
+  let initialized = false;
+  let lastStamp = null;
+  /** @type {Record<string, string>} */
+  let cached = Object.create(null);
+
+  const readStamp = () => {
+    try {
+      const lst = fs.lstatSync(teamPath);
+      if (lst.isSymbolicLink()) {
+        try {
+          const tst = fs.statSync(teamPath);
+          return `link:${lst.mtimeMs}:${tst.ino}:${tst.mtimeMs}:${tst.size}`;
+        } catch {
+          return `dangling:${lst.mtimeMs}`;
+        }
+      }
+      return `file:${lst.ino}:${lst.mtimeMs}:${lst.size}`;
+    } catch {
+      return "absent";
+    }
+  };
+
+  return () => {
+    const stamp = readStamp();
+    if (initialized && stamp === lastStamp) {
+      return cached;
+    }
+    initialized = true;
+    lastStamp = stamp;
+    try {
+      cached = agentRoleMap(loadTeamConfigAtRoot(root, defaults));
+    } catch {
+      cached = Object.create(null);
+    }
+    return cached;
+  };
+}
+
+/**
  * Build structured view-model for all 5 required sections in panel-spec.md.
  *
  * @param {import('./orchestrator-core.mjs').Flow | null} flow
  * @param {number} [now]
+ * @param {{ agentRoles?: Record<string, string> }} [options]
  */
-export function formatSidebarData(flow, now = Date.now()) {
+export function formatSidebarData(flow, now = Date.now(), options = {}) {
+  const flowRoles = flowAgentRoleMap(flow);
+  const agentRoles =
+    flowRoles !== null
+      ? flowRoles
+      : options?.agentRoles && typeof options.agentRoles === "object"
+        ? options.agentRoles
+        : null;
   if (!flow) {
     return {
       empty: true,
@@ -1031,12 +1383,14 @@ export function formatSidebarData(flow, now = Date.now()) {
             : r.status === "running" && stallState === "quiet"
               ? "warning"
               : statusColorToken(r.status);
+    const cleanAgent = sanitizeShortField(r.agent, 128);
     return {
       id: r.id,
       taskId:
         r.taskN !== null && r.taskN !== undefined ? String(r.taskN) : undefined,
       role: r.role,
-      agent: sanitizeShortField(r.agent, 128),
+      agent: cleanAgent,
+      agentLabel: formatAgentRoleLabel(cleanAgent, agentRoles),
       model: modelLabel,
       fullModel: safeFullModel,
       delegate: r.delegate ? sanitizeShortField(r.delegate, 256) : null,
@@ -1156,11 +1510,15 @@ export function formatSidebarData(flow, now = Date.now()) {
     (totalPosts > 0 || postsDropped > 0 || hasNonMainChannel);
   const overviewData = showOverview
     ? {
-        members: ov.members.map((m) => ({
-          agent: sanitizeShortField(m.agent, 64),
-          state: m.state,
-          line: m.line,
-        })),
+        members: ov.members.map((m) => {
+          const cleanMemberAgent = sanitizeShortField(m.agent, 64);
+          return {
+            agent: cleanMemberAgent,
+            agentLabel: formatAgentRoleLabel(cleanMemberAgent, agentRoles),
+            state: m.state,
+            line: m.line,
+          };
+        }),
         openQuestions: ov.openQuestions.map((q) => ({
           seq: q.seq,
           from: sanitizeShortField(q.from, 64),
@@ -1176,12 +1534,16 @@ export function formatSidebarData(flow, now = Date.now()) {
               : "",
           text: clipSingleLine(d.text, 72),
         })),
-        stalls: ov.stalls.map((s) => ({
-          id: s.id,
-          agent: sanitizeShortField(s.agent, 64),
-          state: s.state,
-          idleText: formatDuration(s.idleMs),
-        })),
+        stalls: ov.stalls.map((s) => {
+          const cleanStallAgent = sanitizeShortField(s.agent, 64);
+          return {
+            id: s.id,
+            agent: cleanStallAgent,
+            agentLabel: formatAgentRoleLabel(cleanStallAgent, agentRoles),
+            state: s.state,
+            idleText: formatDuration(s.idleMs),
+          };
+        }),
       }
     : undefined;
 
@@ -1251,10 +1613,11 @@ export function formatSidebarData(flow, now = Date.now()) {
  *
  * @param {import('./orchestrator-core.mjs').Flow | null} flow
  * @param {number} [now]
+ * @param {{ agentRoles?: Record<string, string> }} [options]
  * @returns {string[]}
  */
-export function formatSidebarLines(flow, now = Date.now()) {
-  const data = formatSidebarData(flow, now);
+export function formatSidebarLines(flow, now = Date.now(), options = {}) {
+  const data = formatSidebarData(flow, now, options);
   if (data.empty) {
     return [data.emptyMessage];
   }
@@ -1323,7 +1686,7 @@ export function formatSidebarLines(flow, now = Date.now()) {
         .filter(Boolean)
         .join(" · ");
       lines.push(
-        `  ${a.agent}${taskRef} (${modelAndEffort}) · ${a.stepsText} · ${a.tokensText} · ${a.costText} · ${a.elapsedText} · ${a.status}`,
+        `  ${a.agentLabel || a.agent}${taskRef} (${modelAndEffort}) · ${a.stepsText} · ${a.tokensText} · ${a.costText} · ${a.elapsedText} · ${a.status}`,
       );
     }
   }
@@ -1351,7 +1714,7 @@ export function formatSidebarLines(flow, now = Date.now()) {
     if (data.overview.members.length > 0) {
       for (const m of data.overview.members) {
         lines.push(
-          `  ${m.agent} (${m.state})${m.line ? `: ${clipSingleLine(m.line, 72)}` : ""}`,
+          `  ${m.agentLabel || m.agent} (${m.state})${m.line ? `: ${clipSingleLine(m.line, 72)}` : ""}`,
         );
       }
     }
@@ -1370,7 +1733,9 @@ export function formatSidebarLines(flow, now = Date.now()) {
     if (data.overview.stalls.length > 0) {
       lines.push(`  Stalls (${data.overview.stalls.length}):`);
       for (const s of data.overview.stalls) {
-        lines.push(`    ${s.agent} (${s.state} · ${s.idleText})`);
+        lines.push(
+          `    ${s.agentLabel || s.agent} (${s.state} · ${s.idleText})`,
+        );
       }
     }
   }

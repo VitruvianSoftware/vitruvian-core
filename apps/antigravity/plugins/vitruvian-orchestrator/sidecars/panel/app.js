@@ -26,7 +26,7 @@ const $ = (id) => document.getElementById(id);
 const PHASES = ["plan", "design", "delegate", "review", "close"];
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const MASCOTS = {
+const MASCOTS = Object.assign(Object.create(null), {
   lead: "◈",
   beacon: "◈",
   wren: "🐦",
@@ -38,7 +38,57 @@ const MASCOTS = {
   compass: "🧭",
   pace: "⏱",
   quill: "✒",
-};
+});
+
+function getMascot(agent) {
+  return typeof agent === "string" &&
+    Object.prototype.hasOwnProperty.call(MASCOTS, agent)
+    ? MASCOTS[agent]
+    : "●";
+}
+
+function formatAgentLabel(agent, agentRoles) {
+  const clean = String(agent ?? "");
+  if (!clean || !agentRoles || typeof agentRoles !== "object") return clean;
+  const norm = clean.trim().toLowerCase();
+  const bare = norm.includes(":")
+    ? norm.slice(norm.lastIndexOf(":") + 1)
+    : norm;
+  const ownRole = (key) =>
+    Object.prototype.hasOwnProperty.call(agentRoles, key) &&
+    typeof agentRoles[key] === "string"
+      ? agentRoles[key]
+      : "";
+  const role = ownRole(norm) || ownRole(bare);
+  if (!role || role === bare || role === norm) return clean;
+  return `${clean} · ${role}`;
+}
+
+function resolveStateAgentRoles(state) {
+  if (Array.isArray(state?.flow?.team)) {
+    const map = Object.create(null);
+    for (const entry of state.flow.team) {
+      if (!entry || typeof entry !== "object") continue;
+      const agent =
+        typeof entry.agent === "string" ? entry.agent.trim().toLowerCase() : "";
+      const role =
+        typeof entry.role === "string" ? entry.role.trim().toLowerCase() : "";
+      if (
+        !agent ||
+        !role ||
+        agent === role ||
+        Object.prototype.hasOwnProperty.call(map, agent)
+      ) {
+        continue;
+      }
+      map[agent] = role;
+    }
+    return map;
+  }
+  return state?.agentRoles && typeof state.agentRoles === "object"
+    ? state.agentRoles
+    : Object.create(null);
+}
 
 async function callApi(path) {
   const fetcher = sidecar?.fetch
@@ -399,7 +449,7 @@ function renderTaskBoard(rows) {
   }
 }
 
-function renderAgents(runs, members) {
+function renderAgents(runs, members, agentRoles = Object.create(null)) {
   const container = $("agents-list");
   container.replaceChildren();
   $("agents-empty").hidden = runs.length > 0;
@@ -421,7 +471,7 @@ function renderAgents(runs, members) {
   }
 
   for (const run of runs) {
-    const mascot = MASCOTS[run.agent] || "●";
+    const mascot = getMascot(run.agent);
     const tone = statusTone(run.status);
     const member = memberById.get(run.id) || null;
     const baseModel = run.model || "inherit";
@@ -492,7 +542,11 @@ function renderAgents(runs, members) {
         "div",
         { class: "row-main" },
         el("span", { class: "agent-mascot", "aria-hidden": "true" }, mascot),
-        el("span", { class: "row-title" }, run.agent || "worker"),
+        el(
+          "span",
+          { class: "row-title" },
+          formatAgentLabel(run.agent || "worker", agentRoles),
+        ),
         run.title
           ? el("span", { class: "muted small" }, `· ${run.title}`)
           : null,
@@ -924,7 +978,14 @@ function renderBoard(state, forceScroll = false) {
   }
 }
 
-function renderMemberGroup(container, list, taskByN, postBySeq, now) {
+function renderMemberGroup(
+  container,
+  list,
+  taskByN,
+  postBySeq,
+  now,
+  agentRoles = Object.create(null),
+) {
   if (!container) return;
   container.replaceChildren();
   if (list.length === 0) {
@@ -933,7 +994,7 @@ function renderMemberGroup(container, list, taskByN, postBySeq, now) {
   }
 
   for (const member of list) {
-    const mascot = MASCOTS[member.agent] || "●";
+    const mascot = getMascot(member.agent);
     const task =
       typeof member.taskN === "number" ? taskByN.get(member.taskN) : null;
     const taskLabel =
@@ -980,7 +1041,11 @@ function renderMemberGroup(container, list, taskByN, postBySeq, now) {
               { class: "agent-mascot", "aria-hidden": "true" },
               mascot,
             ),
-            el("span", { class: "row-title" }, member.agent || "worker"),
+            el(
+              "span",
+              { class: "row-title" },
+              formatAgentLabel(member.agent || "worker", agentRoles),
+            ),
             taskLabel
               ? el("span", { class: "muted small" }, taskLabel + roundSuffix)
               : null,
@@ -1065,9 +1130,31 @@ function renderMembers(state) {
       : [];
   const postBySeq = new Map(allPosts.map((p) => [p.seq, p]));
 
-  renderMemberGroup($("members-active"), active, taskByN, postBySeq, now);
-  renderMemberGroup($("members-standing"), standingBy, taskByN, postBySeq, now);
-  renderMemberGroup($("members-retired"), retired, taskByN, postBySeq, now);
+  const agentRoles = resolveStateAgentRoles(state);
+  renderMemberGroup(
+    $("members-active"),
+    active,
+    taskByN,
+    postBySeq,
+    now,
+    agentRoles,
+  );
+  renderMemberGroup(
+    $("members-standing"),
+    standingBy,
+    taskByN,
+    postBySeq,
+    now,
+    agentRoles,
+  );
+  renderMemberGroup(
+    $("members-retired"),
+    retired,
+    taskByN,
+    postBySeq,
+    now,
+    agentRoles,
+  );
 }
 
 function getStatePosts(state) {
@@ -1572,6 +1659,7 @@ function renderOverview(state) {
     return;
   }
 
+  const agentRoles = resolveStateAgentRoles(state);
   const ov = state?.overview || {};
   const members = Array.isArray(ov.members) ? ov.members : [];
   const openQuestions = Array.isArray(ov.openQuestions) ? ov.openQuestions : [];
@@ -1588,7 +1676,7 @@ function renderOverview(state) {
   membersSec.hidden = members.length === 0;
   membersList.replaceChildren();
   for (const m of members) {
-    const mascot = MASCOTS[m.agent] || "●";
+    const mascot = getMascot(m.agent);
     membersList.append(
       el(
         "div",
@@ -1597,7 +1685,11 @@ function renderOverview(state) {
           "div",
           { class: "row-main" },
           el("span", { class: "agent-mascot", "aria-hidden": "true" }, mascot),
-          el("span", { class: "row-title" }, m.agent || "worker"),
+          el(
+            "span",
+            { class: "row-title" },
+            formatAgentLabel(m.agent || "worker", agentRoles),
+          ),
           m.line ? el("span", { class: "muted small" }, `· ${m.line}`) : null,
         ),
         el(
@@ -1677,7 +1769,7 @@ function renderOverview(state) {
   stallsSec.hidden = stallRows.length === 0;
   stallsList.replaceChildren();
   for (const s of stallRows) {
-    const mascot = MASCOTS[s.agent] || "●";
+    const mascot = getMascot(s.agent);
     const tone = s.state === "stalled" ? "status-red" : "status-amber";
     stallsList.append(
       el(
@@ -1687,7 +1779,11 @@ function renderOverview(state) {
           "div",
           { class: "row-main" },
           el("span", { class: "agent-mascot", "aria-hidden": "true" }, mascot),
-          el("span", { class: "row-title" }, s.agent || "worker"),
+          el(
+            "span",
+            { class: "row-title" },
+            formatAgentLabel(s.agent || "worker", agentRoles),
+          ),
           typeof s.taskN === "number"
             ? el(
                 "span",
@@ -1961,7 +2057,11 @@ function renderState(state) {
     `${state.remaining ?? 0} remaining${replanCount > 0 ? ` · ${replanCount} re-plan${replanCount === 1 ? "" : "s"}` : ""}`;
   renderBurnDownSvg(state.burnDown, state.totalTasks);
   renderTaskBoard(Array.isArray(state.taskBoard) ? state.taskBoard : []);
-  renderAgents(Array.isArray(state.runs) ? state.runs : [], state.members);
+  renderAgents(
+    Array.isArray(state.runs) ? state.runs : [],
+    state.members,
+    resolveStateAgentRoles(state),
+  );
   renderSpend(state.spend);
   renderBoard(state);
   renderMembers(state);
@@ -1972,8 +2072,22 @@ function renderState(state) {
 wireBoardAndTabControls();
 
 async function refresh() {
-  const cid = sidecar?.conversationId || "";
-  const query = cid ? `?cid=${encodeURIComponent(cid)}` : "";
+  const params = new URLSearchParams();
+  if (sidecar?.conversationId) {
+    params.set("cid", sidecar.conversationId);
+  }
+  if (typeof sidecar?.getWorkspaceUris === "function") {
+    try {
+      const uris = await sidecar.getWorkspaceUris();
+      if (Array.isArray(uris) && typeof uris[0] === "string" && uris[0]) {
+        params.set("workspaceUri", uris[0]);
+      }
+    } catch {
+      // Proceed without workspaceUri if host bridge call fails.
+    }
+  }
+  const qs = params.toString();
+  const query = qs ? `?${qs}` : "";
   try {
     const state = await callApi(`/api/state${query}`);
     renderState(state);

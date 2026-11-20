@@ -27,9 +27,14 @@
 // `/api/state` and the panel UI. Also runs standalone with `node main.mjs`
 // honoring `PORT` and `VITRUVIAN_ORCH_DIR`.
 
-import {
+import { spawnSync } from "node:child_process";
+import fs, {
   appendFileSync,
+  closeSync,
   existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -37,29 +42,44 @@ import {
 } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  agentRoleMap,
   board as boardView,
   burnDown,
   channels as channelsView,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
   DEFAULT_WAITING_STALL_MS,
+  flowAgentRoleMap,
   formatWake,
   initialFlow,
+  MAX_TEAM_FILE_BYTES,
   members as membersView,
   mentionGraph,
   overview as overviewView,
+  parseTeam,
   pendingWakes,
   reduce,
   remaining,
+  resolveTeam,
   runCost,
   spend,
   stalls,
   taskBoard,
+  validateTeamEvent,
 } from "./lib/orchestrator-core.mjs";
+import { TIER_DEFAULTS } from "./lib/tier-defaults.mjs";
 
 export { DEFAULT_QUIET_MS, DEFAULT_STALL_MS, DEFAULT_WAITING_STALL_MS, stalls };
 
@@ -527,19 +547,20 @@ export function extractKnownChildConversations(transcriptText = "") {
 
 const EVENT_ORDER = Object.freeze({
   plan: 0,
-  phase: 1,
-  "run.start": 2,
-  "run.progress": 3,
-  "member.pause": 3,
-  "run.end": 4,
-  channel: 5,
-  post: 6,
-  wake: 7,
-  "member.retire": 8,
-  "member.kill": 8,
-  "task.return": 9,
-  "task.accept": 10,
-  close: 11,
+  team: 1,
+  phase: 2,
+  "run.start": 3,
+  "run.progress": 4,
+  "member.pause": 4,
+  "run.end": 5,
+  channel: 6,
+  post: 7,
+  wake: 8,
+  "member.retire": 9,
+  "member.kill": 9,
+  "task.return": 10,
+  "task.accept": 11,
+  close: 12,
 });
 
 /**
@@ -590,8 +611,13 @@ export function foldFlowEvents(flowEvents = [], transcriptEvents = []) {
     .map((item) => item.ev);
 
   let flow = initialFlow();
+  let pendingTeamEvent = null;
   for (const rawEvent of combined) {
     let event = rawEvent;
+    if (!flow && event?.type === "team" && validateTeamEvent(event).ok) {
+      pendingTeamEvent = event;
+      continue;
+    }
     if (
       flow &&
       (event.type === "run.progress" || event.type === "member.pause") &&
@@ -666,6 +692,10 @@ export function foldFlowEvents(flowEvents = [], transcriptEvents = []) {
       }
     }
     flow = reduce(flow, event);
+    if (flow && pendingTeamEvent && event?.type === "plan") {
+      flow = reduce(flow, pendingTeamEvent);
+      pendingTeamEvent = null;
+    }
   }
   return flow;
 }
@@ -686,11 +716,341 @@ function sanitizeValidCid(raw) {
   return VALID_CONVERSATION_ID_RE.test(trimmed) ? trimmed : "";
 }
 
+function workspaceValueToPath(val) {
+  if (typeof val !== "string") return "";
+  const trimmed = val.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("file://")) {
+    try {
+      return fileURLToPath(trimmed);
+    } catch {
+      return "";
+    }
+  }
+  return trimmed;
+}
+
+function extractWorkspaceFromMeta(meta) {
+  if (!meta || typeof meta !== "object") return "";
+  const candidates = [
+    meta["antigravity.google/cwd"],
+    meta["antigravity.google/workspace_root"],
+    meta["antigravity.google/workspace_uri"],
+    Array.isArray(meta["antigravity.google/workspace_uris"])
+      ? meta["antigravity.google/workspace_uris"][0]
+      : "",
+    meta.cwd,
+    meta.workspace_root,
+    meta.workspaceRoot,
+    meta.workspaceUri,
+    meta.workspace_uri,
+    Array.isArray(meta.workspacePaths) ? meta.workspacePaths[0] : "",
+  ];
+  for (const cand of candidates) {
+    const p = workspaceValueToPath(cand);
+    if (p) return p;
+  }
+  return "";
+}
+
+function extractWorkspaceFromFlowEvents(flowEvents) {
+  if (!Array.isArray(flowEvents)) return "";
+  for (let i = flowEvents.length - 1; i >= 0; i -= 1) {
+    const ev = flowEvents[i];
+    if (!ev || typeof ev !== "object") continue;
+    const fromMeta = extractWorkspaceFromMeta(ev._meta);
+    if (fromMeta) return fromMeta;
+    const fromEv = extractWorkspaceFromMeta(ev);
+    if (fromEv) return fromEv;
+  }
+  return "";
+}
+
+function extractWorkspaceFromTranscript(transcriptText) {
+  if (!transcriptText || typeof transcriptText !== "string") return "";
+  const activeWsMatch = /Active Workspaces:\s*\r?\n\s*-\s*([^\r\n]+)/.exec(
+    transcriptText,
+  );
+  if (activeWsMatch?.[1]) {
+    const p = workspaceValueToPath(activeWsMatch[1]);
+    if (p) return p;
+  }
+  const cwdMatch = /Command Working Directory:\s*([^\r\n]+)/.exec(
+    transcriptText,
+  );
+  if (cwdMatch?.[1]) {
+    const p = workspaceValueToPath(cwdMatch[1]);
+    if (p) return p;
+  }
+  const lines = transcriptText.split("\n");
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed && typeof parsed === "object") {
+        const ws = extractWorkspaceFromMeta(parsed);
+        if (ws) return ws;
+        if (typeof parsed.content === "string") {
+          const innerActive =
+            /Active Workspaces:\s*\r?\n\s*-\s*([^\r\n]+)/.exec(parsed.content);
+          if (innerActive?.[1]) {
+            const p = workspaceValueToPath(innerActive[1]);
+            if (p) return p;
+          }
+          const innerCwd = /Command Working Directory:\s*([^\r\n]+)/.exec(
+            parsed.content,
+          );
+          if (innerCwd?.[1]) {
+            const p = workspaceValueToPath(innerCwd[1]);
+            if (p) return p;
+          }
+        }
+      }
+    } catch {
+      // Ignore malformed line.
+    }
+  }
+  return "";
+}
+
+function resolveRepoRoot(cwd = process.cwd()) {
+  const safeCwd =
+    typeof cwd === "string" && cwd.trim() ? cwd.trim() : process.cwd();
+  try {
+    const res = spawnSync(
+      "git",
+      ["-C", safeCwd, "rev-parse", "--show-toplevel"],
+      { encoding: "utf8", timeout: 5000 },
+    );
+    if (
+      res.status === 0 &&
+      typeof res.stdout === "string" &&
+      res.stdout.trim()
+    ) {
+      return res.stdout.trim();
+    }
+  } catch {
+    // Fall back to safeCwd.
+  }
+  return safeCwd;
+}
+
+function isPathInsideRealRoot(realRoot, realTarget) {
+  const rel = relative(realRoot, realTarget);
+  return (
+    rel !== ".." &&
+    !rel.startsWith(`..${sep}`) &&
+    !rel.startsWith("../") &&
+    !rel.startsWith("..\\") &&
+    !isAbsolute(rel)
+  );
+}
+
+function resolveRealTeamPath(root) {
+  let realRoot;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    realRoot = resolve(root);
+  }
+  const agentsDir = join(root, ".agents");
+  const teamPath = join(agentsDir, "team.json");
+
+  let linkStat;
+  try {
+    linkStat = lstatSync(teamPath);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      try {
+        const dirStat = lstatSync(agentsDir);
+        if (dirStat.isSymbolicLink()) {
+          try {
+            realpathSync(agentsDir);
+          } catch (dirErr) {
+            const msg =
+              dirErr instanceof Error ? dirErr.message : String(dirErr);
+            return {
+              status: "error",
+              error: `.agents/team.json is a dangling symlink: ${msg}`,
+            };
+          }
+        }
+      } catch {
+        // .agents directory does not exist; treat as absent.
+      }
+      return { status: "absent" };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      status: "error",
+      error: `failed to read .agents/team.json: ${msg}`,
+    };
+  }
+
+  let realTeamPath;
+  try {
+    realTeamPath = realpathSync(teamPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (linkStat.isSymbolicLink()) {
+      return {
+        status: "error",
+        error: `.agents/team.json is a dangling symlink: ${msg}`,
+      };
+    }
+    return {
+      status: "error",
+      error: `failed to read .agents/team.json: ${msg}`,
+    };
+  }
+
+  if (!isPathInsideRealRoot(realRoot, realTeamPath)) {
+    return {
+      status: "error",
+      error: ".agents/team.json must be inside the repository",
+    };
+  }
+  return { status: "ok", realPath: realTeamPath };
+}
+
+/**
+ * Reads `<repo root>/.agents/team.json` (capped at 64 KiB), parses and
+ * validates it, and resolves roles against Antigravity's tier defaults.
+ *
+ * @param {string} [cwd]
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ */
+export function readTeamConfig(cwd = process.cwd(), defaults = TIER_DEFAULTS) {
+  const root = resolveRepoRoot(cwd);
+  const checked = resolveRealTeamPath(root);
+  if (checked.status === "absent") {
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: null,
+      errors: [],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+  if (checked.status === "error") {
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [checked.error],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+
+  let fd;
+  try {
+    fd = openSync(checked.realPath, "r");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [`failed to read .agents/team.json: ${msg}`],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) {
+      const resolved = resolveTeam(null, "antigravity", defaults);
+      return {
+        file: ".agents/team.json",
+        errors: [".agents/team.json is not a regular file"],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      };
+    }
+    if (st.size > MAX_TEAM_FILE_BYTES) {
+      const resolved = resolveTeam(null, "antigravity", defaults);
+      return {
+        file: ".agents/team.json",
+        errors: [
+          `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+        ],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      };
+    }
+    const chunks = [];
+    let totalBytes = 0;
+    const buf = Buffer.allocUnsafe(8192);
+    while (true) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      totalBytes += n;
+      if (totalBytes > MAX_TEAM_FILE_BYTES) {
+        const resolved = resolveTeam(null, "antigravity", defaults);
+        return {
+          file: ".agents/team.json",
+          errors: [
+            `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+          ],
+          notes: resolved.notes,
+          roles: resolved.roles,
+        };
+      }
+      chunks.push(Buffer.from(buf.subarray(0, n)));
+    }
+    const text = Buffer.concat(chunks, totalBytes).toString("utf8");
+    const parsed = parseTeam(text);
+    const resolved = resolveTeam(parsed.team, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: parsed.errors,
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [`failed to read .agents/team.json: ${msg}`],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+      // Ignore close error.
+    }
+  }
+}
+
+/**
+ * Loads `<repo root>/.agents/team.json` (falling back to `cwd`) and returns
+ * a lowercase `agent -> role` map for mapped agents. Never throws.
+ *
+ * @param {string} [cwd]
+ * @returns {Record<string, string>}
+ */
+export function loadTeamAgentRoles(cwd = process.cwd()) {
+  try {
+    const res = readTeamConfig(cwd, TIER_DEFAULTS);
+    if (!res.file || res.errors.length > 0) {
+      return Object.create(null);
+    }
+    return agentRoleMap(res);
+  } catch {
+    return Object.create(null);
+  }
+}
+
 /**
  * Builds the `/api/state` payload from a folded `Flow | null`.
  *
  * @param {import("./lib/orchestrator-core.mjs").Flow | null} flow
- * @param {{ conversationId?: string, version?: string, now?: number, quietMs?: number, stallMs?: number }} [meta]
+ * @param {{ conversationId?: string, version?: string, now?: number, quietMs?: number, stallMs?: number, agentRoles?: Record<string, string> }} [meta]
  */
 export function buildPanelState(flow, meta = {}) {
   const now =
@@ -762,6 +1122,20 @@ export function buildPanelState(flow, meta = {}) {
       })
     : [];
 
+  const agentRoles = Object.create(null);
+  const flowRoles = flowAgentRoleMap(flow);
+  const rawAgentRoles =
+    flowRoles !== null
+      ? flowRoles
+      : meta.agentRoles && typeof meta.agentRoles === "object"
+        ? meta.agentRoles
+        : null;
+  if (rawAgentRoles) {
+    for (const [k, v] of Object.entries(rawAgentRoles)) {
+      if (typeof v === "string") agentRoles[k] = v;
+    }
+  }
+
   return {
     version,
     conversationId,
@@ -786,6 +1160,7 @@ export function buildPanelState(flow, meta = {}) {
     runs,
     stalls: stallRows,
     spend: spendSummary,
+    agentRoles,
     now,
   };
 }
@@ -1000,13 +1375,31 @@ export function readChildTranscriptActivityAt(
 export function loadLivePanelState(options = {}) {
   const flowsDir = resolveFlowsDir(options.flowsDir);
   const selected = selectFlowFile(flowsDir, options.cid);
+
+  const resolvePanelWorkspace = (flowEvents = [], transcriptText = "") =>
+    extractWorkspaceFromMeta(options.meta) ||
+    extractWorkspaceFromFlowEvents(flowEvents) ||
+    workspaceValueToPath(options.workspaceUri) ||
+    workspaceValueToPath(options.cwd) ||
+    extractWorkspaceFromTranscript(transcriptText) ||
+    workspaceValueToPath(process.env.ANTIGRAVITY_WORKSPACE_ROOT) ||
+    workspaceValueToPath(process.env.ANTIGRAVITY_CWD) ||
+    process.cwd();
+
   if (!selected) {
+    const agentRoles =
+      options.agentRoles !== undefined
+        ? options.agentRoles
+        : options.skipTeam
+          ? Object.create(null)
+          : loadTeamAgentRoles(resolvePanelWorkspace());
     return buildPanelState(null, {
       conversationId: String(options.cid ?? ""),
       version: VERSION,
       now: options.now,
       quietMs: options.quietMs,
       stallMs: options.stallMs,
+      agentRoles,
     });
   }
 
@@ -1033,6 +1426,17 @@ export function loadLivePanelState(options = {}) {
     : [];
 
   let flow = foldFlowEvents(flowEvents, transcriptEvents);
+  const flowRoles = flowAgentRoleMap(flow);
+  const agentRoles =
+    flowRoles !== null
+      ? flowRoles
+      : options.agentRoles !== undefined
+        ? options.agentRoles
+        : options.skipTeam
+          ? Object.create(null)
+          : loadTeamAgentRoles(
+              resolvePanelWorkspace(flowEvents, transcriptText),
+            );
   if (flow && Array.isArray(flow.runs)) {
     for (const run of flow.runs) {
       if (run.status !== "running" || run.role === "lead") continue;
@@ -1068,6 +1472,7 @@ export function loadLivePanelState(options = {}) {
     now: options.now,
     quietMs: options.quietMs,
     stallMs: options.stallMs,
+    agentRoles,
   });
 }
 
@@ -1145,6 +1550,7 @@ export async function checkAndWakeStalledRuns(options = {}) {
       now,
       quietMs: options.quietMs,
       stallMs: options.stallMs,
+      skipTeam: true,
     });
     if (!state.hasFlow || state.flow?.closedAt) {
       continue;
@@ -1264,6 +1670,7 @@ export async function checkAndWakeBoardMentions(options = {}) {
       now,
       quietMs: options.quietMs,
       stallMs: options.stallMs,
+      skipTeam: true,
     });
     if (!state.hasFlow || state.flow?.closedAt) {
       continue;
@@ -1426,9 +1833,14 @@ export function createStandaloneServer(options = {}) {
     }
     if (req.method === "GET" && url.pathname === "/api/state") {
       const cid = url.searchParams.get("cid") || "";
+      const workspaceUri = url.searchParams.get("workspaceUri") || "";
+      const cwd = url.searchParams.get("cwd") || options.cwd || "";
       const state = loadLivePanelState({
         flowsDir: options.flowsDir,
+        brainRoots: options.brainRoots,
         cid,
+        workspaceUri,
+        cwd,
       });
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(state));
@@ -1460,7 +1872,12 @@ async function startServer() {
       );
       app.api(
         "/api/state",
-        (data) => loadLivePanelState({ cid: data?.cid || "" }),
+        (data) =>
+          loadLivePanelState({
+            cid: data?.cid || "",
+            workspaceUri: data?.workspaceUri || "",
+            cwd: data?.cwd || "",
+          }),
         "GET",
       );
       setInterval(() => {

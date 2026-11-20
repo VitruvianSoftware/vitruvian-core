@@ -21,8 +21,9 @@
  */
 
 import assert from "node:assert/strict";
-import {
+import fs, {
   appendFileSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -32,7 +33,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -41,6 +42,7 @@ import {
   members,
   reduce,
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
+import { TIER_DEFAULTS } from "../sidecars/panel/lib/tier-defaults.mjs";
 import {
   extractConversationMeta,
   formatJsonRpcFrame,
@@ -52,6 +54,7 @@ import {
   queryBoard,
   readFlowFromJsonlFile,
   sanitizeConversationId,
+  TOOLS,
 } from "./server.mjs";
 
 test("mapProgressToEvents emits events in contract order: plan -> phase -> task.accept -> task.return -> close", () => {
@@ -187,7 +190,7 @@ test("handleJsonRpcMessage serves initialize, tools/list, and tools/call for pro
     });
     assert.deepEqual(
       listRes.result.tools.map((t) => t.name),
-      ["progress", "step", "post", "board", "channel"],
+      ["progress", "step", "post", "board", "channel", "team"],
     );
 
     const callProgress = handleJsonRpcMessage(
@@ -2460,6 +2463,707 @@ test("board refuses an unknown channel with the list of real ones, and still rea
       assert.equal(ok.error, undefined, channel);
       assert.ok(Array.isArray(JSON.parse(ok.result.content[0].text)));
     }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team tool reads optional .agents/team.json, handles absent/valid/invalid/oversize files", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-team-"));
+  try {
+    const nestedCwd = join(tempDir, "sub", "dir");
+    mkdirSync(nestedCwd, { recursive: true });
+    const callTeam = (cwd, teamDefaults) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "team", arguments: {} },
+        },
+        { cwd, teamDefaults },
+      );
+
+    // 1. Absent file -> file: null, errors: [], generic roles with TIER_DEFAULTS
+    const absentRes = callTeam(nestedCwd);
+    assert.equal(absentRes.error, undefined);
+    const absentPayload = JSON.parse(absentRes.result.content[0].text);
+    assert.equal(absentPayload.file, null);
+    assert.deepEqual(absentPayload.errors, []);
+    assert.equal(absentPayload.notes, "");
+    assert.equal(absentPayload.roles.length, 10);
+    assert.equal(
+      absentPayload.roles[0].model,
+      TIER_DEFAULTS.tiers.lead.antigravity,
+    );
+    assert.equal(absentPayload.roles[0].gemini, null);
+    assert.equal(absentPayload.roles[0].effort, null);
+    assert.equal(absentPayload.roles[1].role, "developer");
+    assert.equal(absentPayload.roles[1].agent, "developer");
+    assert.equal(absentPayload.roles[1].source, "generic");
+    assert.equal(
+      absentPayload.roles[1].model,
+      TIER_DEFAULTS.tiers.build.antigravity,
+    );
+    assert.equal(
+      absentPayload.roles[1].gemini,
+      TIER_DEFAULTS.tiers.build.gemini,
+    );
+    assert.equal(absentPayload.roles[1].effort, null);
+    const docsRole = absentPayload.roles.find((r) => r.role === "docs");
+    assert.equal(docsRole.model, TIER_DEFAULTS.tiers.light.antigravity);
+    assert.equal(docsRole.gemini, TIER_DEFAULTS.tiers.light.gemini);
+
+    // 2. Valid file (at tempDir/.agents/team.json when tempDir is a git repo)
+    const dotGit = join(tempDir, ".git");
+    mkdirSync(dotGit, { recursive: true });
+    // Create a minimal bare-minimum git repo or just test fallback in tempDir if git rev-parse requires real git init.
+    // Let's check with real git init or fallback: actually git init -q is allowed or not? Wait: let's test direct cwd first, and also check if git rev-parse finds the real worktree when cwd is inside repo, OR let's run without git init if agent-guard? No, spawnSync in a JS test is inside Bazel sandbox! Let's avoid spawning git init in tests if unnecessary, or let's check: git rev-parse works on a real repo. Instead, let's test cwd directly AND test a subdirectory inside a git repo if git is available, or create a repo? No, git rev-parse works cleanly in tempDir without git if cwd === repoRoot; to test git root discovery from a subdir, a dummy .git is NOT enough for `git rev-parse --show-toplevel`, it needs `git init`. In Bazel sandbox `git` may or may not be in PATH, wait: let's check! Actually if `git` fails, it falls back to `cwd`. So putting `.agents/team.json` directly under `repoDir` works even if `git` is absent in Bazel sandbox!
+    const agentsDir = join(nestedCwd, ".agents");
+    mkdirSync(agentsDir, { recursive: true });
+    const teamFile = join(agentsDir, "team.json");
+    writeFileSync(
+      teamFile,
+      JSON.stringify({
+        notes: "Run bazel test.",
+        tiers: {
+          build: { antigravity: "pro", gemini: "gemini-pro-orchestrator-neon" },
+        },
+        roles: {
+          developer: { agent: "wren", notes: "Owns apps/." },
+          release: "off",
+        },
+      }),
+      "utf8",
+    );
+
+    const validRes = callTeam(nestedCwd);
+    assert.equal(validRes.error, undefined);
+    const validPayload = JSON.parse(validRes.result.content[0].text);
+    assert.equal(validPayload.file, ".agents/team.json");
+    assert.deepEqual(validPayload.errors, []);
+    assert.equal(validPayload.notes, "Run bazel test.");
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "developer").agent,
+      "wren",
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "developer").source,
+      "team",
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "developer").model,
+      "pro",
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "release").agent,
+      null,
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "release").source,
+      "off",
+    );
+
+    // 3. Invalid file -> reports errors, returns fallback generic roles
+    writeFileSync(
+      teamFile,
+      JSON.stringify({
+        bogusKey: true,
+        roles: { lead: "off" },
+      }),
+      "utf8",
+    );
+    const invalidRes = callTeam(nestedCwd);
+    assert.equal(invalidRes.error, undefined);
+    const invalidPayload = JSON.parse(invalidRes.result.content[0].text);
+    assert.equal(invalidPayload.file, ".agents/team.json");
+    assert.ok(invalidPayload.errors.length >= 2);
+    assert.equal(
+      invalidPayload.roles.find((r) => r.role === "lead").agent,
+      "lead",
+    );
+    assert.equal(
+      invalidPayload.roles.find((r) => r.role === "lead").source,
+      "generic",
+    );
+
+    // 4. Oversize file (> 64 KiB) -> reports size error without parsing
+    writeFileSync(
+      teamFile,
+      JSON.stringify({ notes: "a".repeat(70_000) }),
+      "utf8",
+    );
+    const oversizeRes = callTeam(nestedCwd);
+    assert.equal(oversizeRes.error, undefined);
+    const oversizePayload = JSON.parse(oversizeRes.result.content[0].text);
+    assert.equal(oversizePayload.file, ".agents/team.json");
+    assert.match(oversizePayload.errors.join("\n"), /64 KiB|65536/);
+    assert.equal(
+      oversizePayload.roles.find((r) => r.role === "developer").source,
+      "generic",
+    );
+    assert.deepEqual(Object.keys(oversizePayload), [
+      "file",
+      "errors",
+      "notes",
+      "roles",
+    ]);
+    assert.deepEqual(Object.keys(oversizePayload.roles[0]), [
+      "role",
+      "agent",
+      "source",
+      "tier",
+      "gemini",
+      "model",
+      "effort",
+      "notes",
+    ]);
+
+    // 5. Unreadable file -> reports read error, returns fallback generic roles
+    if (typeof process.getuid !== "function" || process.getuid() !== 0) {
+      writeFileSync(teamFile, JSON.stringify({ notes: "secret" }), "utf8");
+      chmodSync(teamFile, 0o000);
+      try {
+        const unreadableRes = callTeam(nestedCwd);
+        assert.equal(unreadableRes.error, undefined);
+        const unreadablePayload = JSON.parse(
+          unreadableRes.result.content[0].text,
+        );
+        assert.equal(unreadablePayload.file, ".agents/team.json");
+        assert.match(
+          unreadablePayload.errors.join("\n"),
+          /failed to read \.agents\/team\.json/i,
+        );
+        assert.equal(
+          unreadablePayload.roles.find((r) => r.role === "developer").source,
+          "generic",
+        );
+      } finally {
+        chmodSync(teamFile, 0o600);
+      }
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team tool resolves Antigravity workspace root from _meta first, then conversation state, then process.cwd()", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-ws-root-"));
+  const flowsDir = join(tempDir, "flows");
+  const brainRoot = join(tempDir, "app-data");
+  const repoA = join(tempDir, "repo-a");
+  const repoB = join(tempDir, "repo-b");
+  const repoC = join(tempDir, "repo-c");
+  const prevCwd = process.cwd();
+  try {
+    mkdirSync(flowsDir, { recursive: true });
+    for (const [repo, agent, note] of [
+      [repoA, "alpha", "From repoA"],
+      [repoB, "beta", "From repoB"],
+      [repoC, "gamma", "From repoC"],
+    ]) {
+      mkdirSync(join(repo, ".agents"), { recursive: true });
+      writeFileSync(
+        join(repo, ".agents", "team.json"),
+        JSON.stringify({
+          notes: note,
+          roles: { developer: { agent } },
+        }),
+        "utf8",
+      );
+    }
+
+    const callTeam = (meta, opts = {}) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "team",
+            arguments: {},
+            ...(meta ? { _meta: meta } : {}),
+          },
+        },
+        { flowsDir, brainRoots: [brainRoot], ...opts },
+      );
+
+    // 1. _meta present: _meta workspace_root / cwd takes precedence over options.cwd and conversation state
+    const fromMetaWs = JSON.parse(
+      callTeam({ "antigravity.google/workspace_root": repoA }, { cwd: repoB })
+        .result.content[0].text,
+    );
+    assert.equal(fromMetaWs.notes, "From repoA");
+    assert.equal(
+      fromMetaWs.roles.find((r) => r.role === "developer")?.agent,
+      "alpha",
+    );
+
+    const fromMetaCwd = JSON.parse(
+      callTeam({ "antigravity.google/cwd": repoA }, { cwd: repoB }).result
+        .content[0].text,
+    );
+    assert.equal(fromMetaCwd.notes, "From repoA");
+
+    // 2. _meta has no cwd/workspace_root, but conversation transcript in brainRoots has Active Workspaces
+    const cidTranscript = "conv-ws-transcript";
+    const logDir = join(
+      brainRoot,
+      "brain",
+      cidTranscript,
+      ".system_generated",
+      "logs",
+    );
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(
+      join(logDir, "transcript.jsonl"),
+      JSON.stringify({
+        step_index: 1,
+        type: "USER_INPUT",
+        content: `Active Workspaces:\n- ${repoA}\n`,
+      }) + "\n",
+      "utf8",
+    );
+    const fromTranscript = JSON.parse(
+      callTeam({
+        "antigravity.google/root_conversation_id": cidTranscript,
+        "antigravity.google/artifacts_dir": join(
+          brainRoot,
+          "brain",
+          cidTranscript,
+        ),
+      }).result.content[0].text,
+    );
+    assert.equal(fromTranscript.notes, "From repoA");
+    assert.equal(
+      fromTranscript.roles.find((r) => r.role === "developer")?.agent,
+      "alpha",
+    );
+
+    // 3. _meta has no cwd/workspace_root, but earlier flow event in flowsDir recorded _meta workspace_root
+    const cidFlow = "conv-ws-flow";
+    handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "progress",
+          arguments: {
+            title: "Workspace test",
+            phase: "plan",
+            tasks: [{ title: "T1", specialist: "beta", tier: "build" }],
+          },
+          _meta: {
+            "antigravity.google/root_conversation_id": cidFlow,
+            "antigravity.google/conversation_id": cidFlow,
+            "antigravity.google/workspace_root": repoC,
+          },
+        },
+      },
+      { flowsDir, brainRoots: [brainRoot] },
+    );
+    const fromFlowMeta = JSON.parse(
+      callTeam({
+        "antigravity.google/root_conversation_id": cidFlow,
+      }).result.content[0].text,
+    );
+    assert.equal(fromFlowMeta.notes, "From repoC");
+    assert.equal(
+      fromFlowMeta.roles.find((r) => r.role === "developer")?.agent,
+      "gamma",
+    );
+
+    // 4. _meta absent and no conversation state -> falls back to process.cwd() last
+    process.chdir(repoB);
+    const fromFallback = JSON.parse(callTeam(undefined).result.content[0].text);
+    assert.equal(fromFallback.notes, "From repoB");
+    assert.equal(
+      fromFallback.roles.find((r) => r.role === "developer")?.agent,
+      "beta",
+    );
+  } finally {
+    process.chdir(prevCwd);
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team tool rejects .agents/team.json symlinks outside the repository and dangling symlinks", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-symlink-"));
+  const repoDir = join(tempDir, "repo");
+  const outsideDir = join(tempDir, "outside");
+  try {
+    mkdirSync(join(repoDir, ".agents"), { recursive: true });
+    mkdirSync(join(repoDir, "config"), { recursive: true });
+    mkdirSync(outsideDir, { recursive: true });
+
+    const outsideFile = join(outsideDir, "secret-team.json");
+    writeFileSync(
+      outsideFile,
+      JSON.stringify({ roles: { developer: { agent: "outsider" } } }),
+      "utf8",
+    );
+    const insideFile = join(repoDir, "config", "team.json");
+    writeFileSync(
+      insideFile,
+      JSON.stringify({ roles: { developer: { agent: "insider" } } }),
+      "utf8",
+    );
+
+    const teamLink = join(repoDir, ".agents", "team.json");
+    const callTeam = () =>
+      JSON.parse(
+        handleJsonRpcMessage(
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name: "team", arguments: {} },
+          },
+          { cwd: repoDir },
+        ).result.content[0].text,
+      );
+
+    // 1. Symlink pointing outside the repo must error with "must be inside the repository"
+    symlinkSync(outsideFile, teamLink);
+    const outsidePayload = callTeam();
+    assert.equal(outsidePayload.file, ".agents/team.json");
+    assert.match(
+      outsidePayload.errors.join("\n"),
+      /must be inside the repository/,
+    );
+    assert.equal(
+      outsidePayload.roles.find((r) => r.role === "developer")?.source,
+      "generic",
+    );
+
+    // 2. Dangling symlink must return an error, NOT file: null
+    rmSync(teamLink);
+    symlinkSync(join(tempDir, "does-not-exist.json"), teamLink);
+    const danglingPayload = callTeam();
+    assert.equal(danglingPayload.file, ".agents/team.json");
+    assert.ok(danglingPayload.errors.length > 0);
+    assert.equal(
+      danglingPayload.roles.find((r) => r.role === "developer")?.source,
+      "generic",
+    );
+
+    // 3. Symlink staying inside the repo is accepted
+    rmSync(teamLink);
+    symlinkSync(insideFile, teamLink);
+    const insidePayload = callTeam();
+    assert.equal(insidePayload.file, ".agents/team.json");
+    assert.deepEqual(insidePayload.errors, []);
+    assert.equal(
+      insidePayload.roles.find((r) => r.role === "developer")?.agent,
+      "insider",
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("sweep item 4: team tool handles agent name 'constructor' cleanly", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-ctor-"));
+  try {
+    mkdirSync(join(tempDir, ".agents"), { recursive: true });
+    writeFileSync(
+      join(tempDir, ".agents", "team.json"),
+      JSON.stringify({ roles: { developer: { agent: "constructor" } } }),
+      "utf8",
+    );
+    const res = handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "team", arguments: {} },
+      },
+      { cwd: tempDir },
+    );
+    assert.equal(res.error, undefined);
+    const payload = JSON.parse(res.result.content[0].text);
+    assert.deepEqual(payload.errors, []);
+    assert.equal(
+      payload.roles.find((r) => r.role === "developer")?.agent,
+      "constructor",
+    );
+    assert.equal(
+      payload.roles.find((r) => r.role === "developer")?.source,
+      "team",
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team tool rejects oversize .agents/team.json without calling fs.readSync", (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-oversize-"));
+  const readSpy = t.mock.method(fs, "readSync");
+  try {
+    const agentsDir = join(tempDir, ".agents");
+    mkdirSync(agentsDir, { recursive: true });
+    const teamFile = join(agentsDir, "team.json");
+    writeFileSync(
+      teamFile,
+      JSON.stringify({ roles: { developer: { agent: "wren" } } }),
+      "utf8",
+    );
+    const callTeam = () =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "team", arguments: {} },
+        },
+        { cwd: tempDir },
+      );
+
+    callTeam();
+    const readsBeforeOversize = readSpy.mock.callCount();
+    assert.ok(readsBeforeOversize > 0, "expected fs.readSync on valid file");
+
+    writeFileSync(
+      teamFile,
+      JSON.stringify({ notes: "a".repeat(70_000) }),
+      "utf8",
+    );
+    const oversizeRes = callTeam();
+    assert.equal(readSpy.mock.callCount(), readsBeforeOversize);
+    const payload = JSON.parse(oversizeRes.result.content[0].text);
+    assert.equal(payload.file, ".agents/team.json");
+    assert.match(payload.errors.join("\n"), /64 KiB|65536/);
+    assert.equal(
+      payload.roles.find((r) => r.role === "developer")?.source,
+      "generic",
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team tool reports invalid JSON prefix for malformed .agents/team.json", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-malformed-"));
+  try {
+    const agentsDir = join(tempDir, ".agents");
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, "team.json"), "{bad json", "utf8");
+    const res = handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "team", arguments: {} },
+      },
+      { cwd: tempDir },
+    );
+    assert.equal(res.error, undefined);
+    const payload = JSON.parse(res.result.content[0].text);
+    assert.equal(payload.file, ".agents/team.json");
+    assert.equal(payload.errors.length, 1);
+    assert.equal(payload.errors[0].startsWith("invalid JSON:"), true);
+    assert.equal(
+      payload.roles.find((r) => r.role === "developer")?.source,
+      "generic",
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team tool supports optional root input (valid, invalid, outside-repo symlink, 64 KiB cap, missing fallback) and records team event in flow state", () => {
+  const teamToolDef = TOOLS.find((t) => t.name === "team");
+  assert.ok(teamToolDef, "team tool must exist in TOOLS");
+  assert.equal(teamToolDef.inputSchema.properties?.root?.type, "string");
+  assert.equal(teamToolDef.inputSchema.additionalProperties, false);
+
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-team-root-"));
+  const flowsDir = join(tempDir, "flows");
+  const repoA = join(tempDir, "repo-a");
+  const repoB = join(tempDir, "repo-b");
+  const escapeRepo = join(tempDir, "escape-repo");
+  const outsideDir = join(tempDir, "outside");
+  const notADir = join(tempDir, "regular-file.txt");
+
+  try {
+    mkdirSync(flowsDir, { recursive: true });
+    mkdirSync(join(repoA, ".agents"), { recursive: true });
+    mkdirSync(join(repoB, ".agents"), { recursive: true });
+    mkdirSync(join(escapeRepo, ".agents"), { recursive: true });
+    mkdirSync(outsideDir, { recursive: true });
+    writeFileSync(notADir, "not a directory", "utf8");
+
+    writeFileSync(
+      join(repoA, ".agents", "team.json"),
+      JSON.stringify({
+        notes: "From repoA",
+        roles: { developer: { agent: "alpha" }, qa: { agent: "delta" } },
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(repoB, ".agents", "team.json"),
+      JSON.stringify({
+        notes: "From repoB",
+        roles: { developer: { agent: "beta" } },
+      }),
+      "utf8",
+    );
+    const outsideFile = join(outsideDir, "secret.json");
+    writeFileSync(
+      outsideFile,
+      JSON.stringify({ roles: { developer: { agent: "outsider" } } }),
+      "utf8",
+    );
+    symlinkSync(outsideFile, join(escapeRepo, ".agents", "team.json"));
+
+    const callTeam = (args, meta = undefined, opts = {}) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "team",
+            arguments: args,
+            ...(meta ? { _meta: meta } : {}),
+          },
+        },
+        { flowsDir, cwd: repoB, ...opts },
+      );
+
+    // 1. Valid explicit root overrides cwd and _meta workspace_root, and writes team event before plan.
+    const cid = "conv-root-explicit";
+    const validRes = callTeam(
+      { root: repoA },
+      {
+        "antigravity.google/root_conversation_id": cid,
+        "antigravity.google/conversation_id": cid,
+        "antigravity.google/workspace_root": repoB,
+      },
+      { now: () => 1_762_500_000_000 },
+    );
+    assert.equal(validRes.error, undefined);
+    const validPayload = JSON.parse(validRes.result.content[0].text);
+    assert.equal(validPayload.file, ".agents/team.json");
+    assert.equal(validPayload.notes, "From repoA");
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "developer")?.agent,
+      "alpha",
+    );
+
+    const jsonlLines = readFileSync(join(flowsDir, `${cid}.jsonl`), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    const teamEvent = jsonlLines.find((e) => e.type === "team");
+    assert.ok(teamEvent, "team tool must append a team event to flow JSONL");
+    assert.deepEqual(teamEvent.roles, [
+      { agent: "alpha", role: "developer" },
+      { agent: "delta", role: "qa" },
+    ]);
+
+    // Subsequent progress(plan) preserves the recorded team roles in folded flow state.
+    const planRes = handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "progress",
+          arguments: {
+            title: "Explicit Root Flow",
+            phase: "plan",
+            tasks: [{ title: "Build", specialist: "alpha", tier: "build" }],
+          },
+          _meta: {
+            "antigravity.google/root_conversation_id": cid,
+            "antigravity.google/conversation_id": cid,
+          },
+        },
+      },
+      { flowsDir, now: () => 1_762_500_001_000 },
+    );
+    assert.equal(planRes.error, undefined);
+    const folded = readFlowFromJsonlFile(join(flowsDir, `${cid}.jsonl`), {
+      conversationId: cid,
+    });
+    assert.deepEqual(folded.team, [
+      { agent: "alpha", role: "developer" },
+      { agent: "delta", role: "qa" },
+    ]);
+
+    // 2. Invalid root (relative, missing, file, empty, non-string) errors with exact message.
+    const badCid = "conv-root-bad";
+    for (const badRoot of [
+      "relative/path",
+      // Relative paths to directories that do exist must still be rejected.
+      ".",
+      relative(process.cwd(), tempDir) || ".",
+      join(tempDir, "does-not-exist"),
+      notADir,
+      "",
+      123,
+    ]) {
+      const errRes = callTeam(
+        { root: badRoot },
+        {
+          "antigravity.google/root_conversation_id": badCid,
+          "antigravity.google/conversation_id": badCid,
+        },
+      );
+      assert.ok(errRes.error, `expected error for root=${String(badRoot)}`);
+      assert.equal(errRes.error.code, -32602);
+      assert.equal(
+        errRes.error.message,
+        "root must be an absolute path to a directory",
+      );
+    }
+    assert.equal(
+      readFileSync(join(flowsDir, `${cid}.jsonl`), "utf8")
+        .trim()
+        .split("\n")
+        .filter((l) => JSON.parse(l).type === "team").length,
+      1,
+    );
+
+    // 3. Explicit root still enforces realpath containment.
+    const escapeRes = callTeam({ root: escapeRepo });
+    assert.equal(escapeRes.error, undefined);
+    const escapePayload = JSON.parse(escapeRes.result.content[0].text);
+    assert.equal(escapePayload.file, ".agents/team.json");
+    assert.match(
+      escapePayload.errors.join("\n"),
+      /must be inside the repository/,
+    );
+
+    // 4. Explicit root enforces 64 KiB cap.
+    const oversizeRepo = join(tempDir, "oversize-repo");
+    mkdirSync(join(oversizeRepo, ".agents"), { recursive: true });
+    writeFileSync(
+      join(oversizeRepo, ".agents", "team.json"),
+      JSON.stringify({ notes: "x".repeat(70_000) }),
+      "utf8",
+    );
+    const oversizeRes = callTeam({ root: oversizeRepo });
+    const oversizePayload = JSON.parse(oversizeRes.result.content[0].text);
+    assert.match(oversizePayload.errors.join("\n"), /64 KiB|65536/);
+
+    // 5. Missing root keeps existing _meta / cwd discovery.
+    const missingRootRes = callTeam(
+      {},
+      { "antigravity.google/workspace_root": repoB },
+    );
+    assert.equal(missingRootRes.error, undefined);
+    const missingRootPayload = JSON.parse(
+      missingRootRes.result.content[0].text,
+    );
+    assert.equal(missingRootPayload.notes, "From repoB");
+    assert.equal(
+      missingRootPayload.roles.find((r) => r.role === "developer")?.agent,
+      "beta",
+    );
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

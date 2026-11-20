@@ -53,21 +53,27 @@ import type {
   Tier,
 } from "../types";
 import {
+  agentRoleMap,
   board as boardView,
   burnDown,
   channels as channelsView,
   checkBoardChannel,
   delegateCost,
+  flowAgentRoleMap,
+  formatAgentRoleLabel,
   formatWake,
   initialFlow,
   isValidChannel,
   isValidWorktree,
+  MAX_TEAM_FILE_BYTES,
   members,
   mentionGraph,
   overview as overviewView,
+  parseTeam,
   pendingWakes,
   reduce,
   remaining,
+  resolveTeam,
   runCost,
   sanitizeDisplayText,
   spend,
@@ -75,7 +81,9 @@ import {
   taskBoard,
   validateChannelAction,
   validatePostChannel,
+  validateTeamEvent,
 } from "./lib/orchestrator-core.mjs";
+import { TIER_DEFAULTS } from "./lib/tier-defaults.mjs";
 
 const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -87,6 +95,7 @@ const STEP_TOOL = "mcp__vitruvian-orchestrator__step";
 const POST_TOOL = "mcp__vitruvian-orchestrator__post";
 const BOARD_TOOL = "mcp__vitruvian-orchestrator__board";
 const CHANNEL_TOOL = "mcp__vitruvian-orchestrator__channel";
+const TEAM_TOOL = "mcp__vitruvian-orchestrator__team";
 const POST_KINDS: readonly PostKind[] = [
   "note",
   "question",
@@ -310,6 +319,9 @@ const fitText = (s: string, size: number, maxW: number): string => {
   return out + "…";
 };
 
+const hasOwn = (obj: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
 const TIER_COLOR: Record<string, string> = {
   lead: "#BA7517",
   build: "#378ADD",
@@ -323,6 +335,7 @@ const TIER_COLOR: Record<string, string> = {
   medium: "#378ADD",
   other: "#888780",
 };
+Object.setPrototypeOf(TIER_COLOR, null);
 
 const PANE_CSS = `<style>
 .t{fill:#1f1f1f}.s{fill:#6b6b68}.m{fill:#9a9a96}.k{fill:#ecebe8}.ln{stroke:#e4e4e1}.tile{fill:#f4f3f0}
@@ -548,665 +561,102 @@ const glasses = (f: Fill, c = GOLD): void => {
   f(20, 10, 1, 3, c);
 };
 
-const COSTUMES: Record<string, (f: Fill, t: string) => void> = {
-  fable: (f, t) => {
-    chibi(f, {
-      hair: "#B9B3F0",
-      cut: "short",
-      bangs: "swept",
-      eye: t,
-      outfit: CLOTH,
-      trim: t,
-      legs: CLOTH,
-    });
-    f(13, 19, 4, 2, t);
-    f(6, 1, 18, 1, "#E6E8EE");
-    f(5, 2, 1, 15, "#E6E8EE");
-    f(24, 2, 1, 15, "#E6E8EE");
-    f(6, 17, 18, 1, "#C9CCD2");
-    f(6, 2, 18, 15, "rgba(169,214,245,.22)");
-    f(7, 3, 2, 1, "#fff");
-    f(7, 4, 1, 2, "#fff");
-    f(25, 4, 2, 1, STEEL);
-    f(27, 2, 1, 3, STEEL);
-    f(26, 0, 3, 2, t, "ant");
-    f(27, 9, 1, 3, GOLD, "star");
-    f(26, 10, 3, 1, GOLD, "star");
-  },
-  heavy: (f, t) => {
-    chibi(f, {
-      hair: "#5A3519",
-      cut: "short",
-      bangs: "swept",
-      eye: WOOD,
-      outfit: "#C8A46A",
-      trim: "#8A6A3A",
-      legs: "#5A4A2E",
-      armR: true,
-      clsR: "it",
-    });
-    stamp(
-      f,
-      6,
-      1,
-      [
-        "......bbbbbb......",
-        "....bbcbbcbbbb....",
-        "...bbbbbbbbbbbb...",
-        "..bcbbcbbcbbcbbb..",
-        ".bbbbbbbbbbbbbbbb.",
-        "dddddddddddddddddd",
-      ],
-      { b: WOOD, c: "#A0703F", d: "#5A3519" },
-    );
-    f(7, 7, 16, 1, t);
-    f(14, 18, 2, 4, "#8A6A3A");
-    stamp(
-      f,
-      22,
-      3,
-      [".kkk.", "k...k", "k...k", "k...k", ".kkk."],
-      { k: DARK },
-      "it",
-    );
-    f(23, 4, 3, 3, "rgba(169,214,245,.7)", "it");
-    f(24, 8, 1, 4, WOOD, "it");
-    f(23, 4, 1, 1, "#fff", "gl");
-  },
-  careful: (f, t) => {
-    chibi(f, {
-      hair: "#4A3A2A",
-      cut: "short",
-      bangs: "jag",
-      eye: WOOD,
-      outfit: "#6E7686",
-      trim: t,
-      legs: "#6E7686",
-      armR: true,
-      clsR: "it",
-    });
-    stamp(
-      f,
-      6,
-      1,
-      [
-        ".....yyyyyyyy.....",
-        "...yyyyyhhyyyyy...",
-        "..yyyyyyhhyyyyyy..",
-        "..yyyyyyhhyyyyyy..",
-        ".yyyyyyyhhyyyyyyy.",
-        "dddddddddddddddddd",
-      ],
-      { y: GOLD, h: "#FBE08A", d: "#C99A1E" },
-    );
-    f(13, 2, 4, 2, t);
-    f(12, 17, 1, 3, t);
-    f(17, 17, 1, 3, t);
-    stamp(
-      f,
-      21,
-      1,
-      [
-        "s.s..",
-        "sss..",
-        ".ss..",
-        "..ss.",
-        "..ss.",
-        "...ss",
-        "...ss",
-        "..ss.",
-        "..s..",
-        "..s..",
-        "..s..",
-      ],
-      { s: "#C9CCD2" },
-      "it",
-    );
-  },
-  lead: (f, t) => COSTUMES.careful?.(f, t),
-  medium: (f, t) => {
-    chibi(f, {
-      hair: WOOD,
-      cut: "short",
-      bangs: "hime",
-      eye: "#3B6FB0",
-      outfit: CLOTH,
-      trim: "#B9C0D0",
-      armR: true,
-      clsR: "pan",
-    });
-    stamp(
-      f,
-      7,
-      0,
-      [
-        "....wwwwwwww....",
-        "..wwwwwwwwwwww..",
-        ".wwwwwwwwwwwwww.",
-        ".wwwwwwwwwwwwww.",
-        "..wwwwwwwwwwww..",
-        "..gggggggggggg..",
-        "..wwwwwwwwwwww..",
-        "..tttttttttttt..",
-      ],
-      { w: "#E9ECF2", g: "#B9C0D0", t },
-    );
-    f(12, 17, 6, 1, t);
-    f(13, 19, 1, 1, "#B9C0D0");
-    f(16, 19, 1, 1, "#B9C0D0");
-    f(13, 21, 1, 1, "#B9C0D0");
-    f(16, 21, 1, 1, "#B9C0D0");
-    f(23, 10, 7, 2, "#4A4A48", "pan");
-    f(22, 11, 2, 1, "#4A4A48", "pan");
-    f(25, 9, 3, 1, "#F5B731", "egg");
-  },
-  core: (f, t) => COSTUMES.medium?.(f, t),
-  light: (f, t) => {
-    chibi(f, {
-      hair: t,
-      cut: "none",
-      bangs: "open",
-      eye: "#1F7A52",
-      outfit: CLOTH,
-      trim: t,
-      legs: t,
-      armR: true,
-    });
-    stamp(f, 7, 2, CAP, { h: t });
-    f(7, 8, 16, 2, t);
-    f(7, 10, 2, 6, t);
-    f(21, 10, 2, 6, t);
-    f(14, 2, 2, 8, WHITE);
-    f(9, 9, 12, 1, DARK);
-    f(14, 18, 2, 4, t);
-    f(23, 1, 1, 11, STEEL);
-    stamp(f, 24, 1, ["wkwk", "kwkw", "wkwk"], { w: WHITE, k: INK }, "flag");
-  },
-  fast: (f, t) => COSTUMES.light?.(f, t),
-  explore: (f) => {
-    chibi(f, {
-      hair: "#2E3247",
-      cut: "long",
-      bangs: "open",
-      eye: WOOD,
-      outfit: "#9A3530",
-      trim: GOLD,
-      legs: "#55514C",
-      armR: true,
-      clsR: "it",
-    });
-    stamp(
-      f,
-      5,
-      2,
-      [
-        ".kk..............kk.",
-        ".kkk....kkkk....kkk.",
-        "..kkkkkkkwwkkkkkkk..",
-        "..kkkkkkkkkkkkkkkk..",
-        ".gggggggggggggggggg.",
-        "..kkkkkkkkkkkkkkkk..",
-      ],
-      { k: "#55514C", w: WHITE, g: GOLD },
-    );
-    f(8, 9, 14, 1, INK);
-    f(16, 10, 5, 3, INK);
-    f(22, 2, 2, 9, "#C9CCD2", "it");
-    f(23, 1, 1, 1, "#C9CCD2", "it");
-    f(21, 11, 4, 1, GOLD, "it");
-  },
-  other: (f) => {
-    chibi(f, {
-      hair: "#6B6B68",
-      cut: "short",
-      bangs: "jag",
-      eye: "#55514C",
-      outfit: CLAY,
-      trim: "#B45F43",
-    });
-  },
-};
-
-type Mascot = {
-  color: string;
-  draw: (f: Fill, t: string) => void;
-  css?: string;
-};
-
-export const MASCOTS: Record<string, Mascot> = {
-  beacon: {
-    color: "#E0A106",
-    draw: (f, t) => {
+const COSTUMES: Record<string, (f: Fill, t: string) => void> = Object.assign(
+  Object.create(null),
+  {
+    fable: (f, t) => {
       chibi(f, {
-        hair: GOLD,
-        cut: "spiky",
-        bangs: "jag",
-        eye: "#D0453F",
-        outfit: NAVY,
-        trim: t,
-      });
-      f(10, 16, 10, 2, "#D0453F");
-      stamp(
-        f,
-        1,
-        15,
-        ["...rrrrr.", ".rrrrrrrr", "rrr.rrrrr", "r....rr.."],
-        { r: "#D0453F" },
-        "flag",
-      );
-      f(27, 0, 1, 5, t, "star");
-      f(25, 2, 5, 1, t, "star");
-      f(26, 1, 3, 3, GOLD, "star");
-    },
-    css: "& .flag{transform-origin:100% 50%;animation:wave .5s steps(1) infinite}& .star{animation:blink 1s steps(1) infinite}",
-  },
-  wren: {
-    color: "#A0703F",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: t,
-        cut: "bob",
-        bangs: "hime",
-        eye: "#3B9C5F",
-        outfit: "#EAD9B8",
-        trim: "#C8A46A",
-        armR: true,
-      });
-      f(13, 19, 4, 2, "#C8A46A");
-      stamp(
-        f,
-        21,
-        5,
-        [
-          "t..bbb..",
-          "tt.bkbo.",
-          ".bbbbb..",
-          ".bwwb...",
-          "..bwb...",
-          "..y.y...",
-        ],
-        {
-          b: "#8A5A34",
-          t: WOOD,
-          w: "#EAD9B8",
-          k: INK,
-          o: "#F2913D",
-          y: "#C99A1E",
-        },
-        "it",
-      );
-    },
-    css: "& .it{animation:hop .5s steps(1) infinite}",
-  },
-  atlas: {
-    color: "#378ADD",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#2B5FA8",
+        hair: "#B9B3F0",
         cut: "short",
         bangs: "swept",
-        eye: "#7FE3F5",
+        eye: t,
         outfit: CLOTH,
         trim: t,
-        legs: "#5A6274",
-        armR: true,
+        legs: CLOTH,
       });
-      f(8, 10, 14, 3, DARK);
-      f(9, 11, 12, 1, "#7FE3F5", "vis");
-      f(11, 19, 8, 1, t);
-      f(14, 18, 2, 3, t);
-      stamp(
-        f,
-        22,
-        3,
-        [
-          "..oooo..",
-          ".oggooo.",
-          "ogggoogo",
-          "oogooggo",
-          "ooooogoo",
-          ".ogoooo.",
-          "..oooo..",
-        ],
-        { o: "rgba(127,227,245,.75)", g: t },
-        "it",
-      );
-      f(21, 10, 10, 1, "rgba(127,227,245,.45)", "it");
+      f(13, 19, 4, 2, t);
+      f(6, 1, 18, 1, "#E6E8EE");
+      f(5, 2, 1, 15, "#E6E8EE");
+      f(24, 2, 1, 15, "#E6E8EE");
+      f(6, 17, 18, 1, "#C9CCD2");
+      f(6, 2, 18, 15, "rgba(169,214,245,.22)");
+      f(7, 3, 2, 1, "#fff");
+      f(7, 4, 1, 2, "#fff");
+      f(25, 4, 2, 1, STEEL);
+      f(27, 2, 1, 3, STEEL);
+      f(26, 0, 3, 2, t, "ant");
+      f(27, 9, 1, 3, GOLD, "star");
+      f(26, 10, 3, 1, GOLD, "star");
     },
-    css: "& .it{animation:hop 1s ease-in-out infinite}& .vis{animation:blink 1s steps(1) infinite}",
-  },
-  ridge: {
-    color: "#1D9E75",
-    draw: (f, t) => {
+    heavy: (f, t) => {
       chibi(f, {
-        hair: "#16614B",
-        cut: "none",
-        bangs: "open",
-        eye: "#F5C542",
-        outfit: "#16614B",
-        trim: t,
-        legs: "#16614B",
-        armR: true,
-      });
-      stamp(f, 7, 2, CAP, { h: "#16614B" });
-      f(7, 8, 16, 2, "#16614B");
-      f(7, 10, 2, 7, "#16614B");
-      f(21, 10, 2, 7, "#16614B");
-      f(9, 13, 12, 4, "#16614B");
-      f(11, 6, 8, 3, STEEL);
-      f(13, 7, 4, 1, "#C9CCD2");
-      stamp(f, 1, 8, ["..tt", ".ttt", "ttt.", "tt.."], { t }, "flag");
-      stamp(
-        f,
-        23,
-        6,
-        ["..s..", ".sss.", "ssdss", ".sss.", "..s.."],
-        { s: "#C9CCD2", d: DARK },
-        "ndl",
-      );
-    },
-    css: "& .ndl{transform-origin:50% 50%;animation:turn .5s steps(4) infinite}& .flag{transform-origin:100% 50%;animation:wave .5s steps(1) infinite}",
-  },
-  forge: {
-    color: "#D85A30",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#C4332B",
-        cut: "spiky",
-        bangs: "jag",
-        eye: "#F5B731",
-        outfit: "#5A3519",
-        trim: t,
-        armR: true,
-        clsR: "it",
-      });
-      f(7, 7, 16, 1, WHITE);
-      f(5, 7, 2, 1, WHITE);
-      f(4, 8, 2, 2, WHITE);
-      f(12, 18, 6, 4, WOOD);
-      f(23, 4, 1, 9, WOOD, "it");
-      f(21, 1, 6, 3, STEEL, "it");
-      f(21, 1, 6, 1, "#C9CCD2", "it");
-      f(28, 2, 1, 1, GOLD, "sp");
-      f(29, 5, 1, 1, t, "sp");
-      f(27, 5, 1, 1, GOLD, "sq");
-      f(29, 0, 1, 1, t, "sq");
-    },
-    css: "& .it{transform-origin:20% 100%;animation:strike .5s ease-in infinite}& .sp{animation:blink .5s steps(1) infinite}& .sq{animation:blink .5s steps(1) infinite -.25s}",
-  },
-  scout: {
-    color: "#3B9C5F",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: t,
-        cut: "pony",
-        bangs: "jag",
-        eye: GOLD,
+        hair: "#5A3519",
+        cut: "short",
+        bangs: "swept",
+        eye: WOOD,
         outfit: "#C8A46A",
         trim: "#8A6A3A",
         legs: "#5A4A2E",
         armR: true,
-      });
-      f(10, 16, 10, 2, "#2C7A49");
-      f(9, 18, 2, 3, "#2C7A49");
-      f(23, 1, 1, 11, STEEL);
-      stamp(
-        f,
-        24,
-        1,
-        ["ggggw", "gggwg", "wgwgg", "gwggg"],
-        { g: t, w: WHITE },
-        "flag",
-      );
-    },
-    css: "& .flag{transform-origin:0 50%;animation:wave .5s steps(1) infinite}",
-  },
-  aegis: {
-    color: "#5B6CC9",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#B4BAD0",
-        cut: "long",
-        bangs: "hime",
-        eye: t,
-        outfit: "#AEB4C4",
-        trim: GOLD,
-        legs: "#7C8498",
-      });
-      f(10, 6, 10, 1, GOLD);
-      f(14, 5, 2, 1, t);
-      f(13, 19, 4, 2, t);
-      stamp(
-        f,
-        19,
-        15,
-        [
-          "sssssss",
-          "sbbwbbs",
-          "sbbwbbs",
-          "swwwwws",
-          "sbbwbbs",
-          "sbbwbbs",
-          ".sbwbs.",
-          "..sss..",
-        ],
-        { s: GOLD, b: t, w: WHITE },
-      );
-      f(20, 16, 1, 2, "#fff", "gl");
-    },
-    css: "& .gl{animation:blink 1s steps(1) infinite}",
-  },
-  compass: {
-    color: "#D0453F",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#B8322C",
-        cut: "short",
-        bangs: "part",
-        eye: "#12A5A0",
-        outfit: "#D9C9A3",
-        trim: "#8A6A3A",
-        legs: "#6B5A3A",
-        armR: true,
-      });
-      f(14, 0, 1, 2, "#B8322C");
-      f(15, 0, 2, 1, "#B8322C");
-      f(17, 1, 1, 1, "#B8322C");
-      f(11, 16, 8, 2, t);
-      f(14, 18, 2, 2, t);
-      stamp(
-        f,
-        22,
-        4,
-        [
-          "..ggg..",
-          ".gwwwg.",
-          "gwwwwwg",
-          "gwwwwwg",
-          "gwwwwwg",
-          ".gwwwg.",
-          "..ggg..",
-        ],
-        { g: GOLD, w: WHITE },
-      );
-      f(25, 5, 1, 3, t, "ndl");
-      f(25, 8, 1, 2, DARK, "ndl");
-    },
-    css: "& .ndl{transform-origin:50% 60%;animation:swing 1s ease-in-out infinite}",
-  },
-  pace: {
-    color: "#12A5A0",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: t,
-        cut: "pony",
-        bangs: "swept",
-        eye: "#E0559A",
-        outfit: CLOTH,
-        trim: t,
-        legs: t,
-        armR: true,
-      });
-      f(7, 6, 16, 1, WHITE);
-      f(11, 19, 8, 1, t);
-      f(14, 20, 2, 2, t);
-      f(24, 3, 3, 1, DARK);
-      f(25, 4, 1, 1, DARK);
-      stamp(
-        f,
-        22,
-        5,
-        [
-          ".kkkkk.",
-          "kwwwwwk",
-          "kwwwwwk",
-          "kwwwwwk",
-          "kwwwwwk",
-          "kwwwwwk",
-          ".kkkkk.",
-        ],
-        { k: DARK, w: WHITE },
-      );
-      f(25, 6, 1, 3, t, "ndl");
-    },
-    css: "& .la{animation-duration:.25s}& .lb{animation-duration:.25s;animation-delay:-.125s}& .ndl{transform-origin:50% 100%;animation:turn 1s steps(4) infinite}",
-  },
-  quill: {
-    color: "#8A63D2",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: t,
-        cut: "long",
-        bangs: "part",
-        eye: "#5E3FA3",
-        outfit: "#3A3350",
-        trim: t,
-        armR: true,
         clsR: "it",
-      });
-      glasses(f);
-      f(14, 18, 2, 1, WHITE);
-      f(13, 19, 4, 1, WHITE);
-      stamp(
-        f,
-        22,
-        1,
-        [
-          ".....ww",
-          "....www",
-          "...wwwg",
-          "...wwg.",
-          "..wwg..",
-          "..wg...",
-          ".wg....",
-          ".g.....",
-          "k......",
-          "k......",
-          "k......",
-        ],
-        { w: "#E8D9A8", g: "#B9A66A", k: WOOD },
-        "it",
-      );
-    },
-    css: "& .it{animation:scan .5s steps(1) infinite}",
-  },
-  tower: {
-    color: "#D0453F",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#4A4E69",
-        cut: "short",
-        bangs: "swept",
-        eye: t,
-        outfit: NAVY,
-        trim: GOLD,
-        armR: true,
       });
       stamp(
         f,
         6,
         1,
         [
-          "....kkkkkkkkkk....",
-          "..kkkkkkkkkkkkkk..",
-          "..kkkkkkyykkkkkk..",
-          "..rrrrrrrrrrrrrr..",
-          ".kkkkkkkkkkkkkkkkkk",
+          "......bbbbbb......",
+          "....bbcbbcbbbb....",
+          "...bbbbbbbbbbbb...",
+          "..bcbbcbbcbbcbbb..",
+          ".bbbbbbbbbbbbbbbb.",
+          "dddddddddddddddddd",
         ],
-        { k: NAVY, y: GOLD, r: t },
+        { b: WOOD, c: "#A0703F", d: "#5A3519" },
       );
-      f(9, 19, 2, 6, NAVY);
-      f(19, 19, 2, 6, NAVY);
-      f(12, 19, 1, 3, GOLD);
-      f(17, 19, 1, 3, GOLD);
-      f(22, 9, 2, 3, DARK);
-      f(21, 5, 4, 4, t, "ant");
-      f(22, 4, 2, 1, t, "ant");
-      f(22, 6, 1, 1, "#fff", "ant");
-    },
-    css: "& .ant{animation:blink .5s steps(1) infinite}",
-  },
-  navigator: {
-    color: "#4A6FC0",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#5B8FE0",
-        cut: "twin",
-        bangs: "hime",
-        eye: "#2E4A8A",
-        outfit: CLOTH,
-        trim: t,
-        armR: true,
-        clsR: "pan",
-      });
-      f(10, 1, 10, 2, CLOTH);
-      f(9, 3, 12, 1, t);
-      f(14, 1, 2, 1, GOLD);
-      f(11, 17, 3, 2, t);
-      f(16, 17, 3, 2, t);
-      f(14, 19, 2, 2, "#D0453F");
+      f(7, 7, 16, 1, t);
+      f(14, 18, 2, 4, "#8A6A3A");
       stamp(
         f,
         22,
-        4,
-        [
-          "pppppppp",
-          "pbbpppgp",
-          "pbpprppp",
-          "pppprprp",
-          "pgpprrrp",
-          "ppgpppxp",
-          "pppppppp",
-          "pppppppp",
-        ],
-        { p: "#EAD9B8", b: "#7FB3E6", g: "#8FBF7A", r: "#D0453F", x: INK },
-        "pan",
+        3,
+        [".kkk.", "k...k", "k...k", "k...k", ".kkk."],
+        { k: DARK },
+        "it",
       );
+      f(23, 4, 3, 3, "rgba(169,214,245,.7)", "it");
+      f(24, 8, 1, 4, WOOD, "it");
+      f(23, 4, 1, 1, "#fff", "gl");
     },
-    css: "& .pan{transform-origin:0 100%;animation:tilt 1s ease-in-out infinite}",
-  },
-  turbine: {
-    color: "#2F7FD0",
-    draw: (f, t) => {
+    careful: (f, t) => {
       chibi(f, {
-        hair: t,
-        cut: "spiky",
+        hair: "#4A3A2A",
+        cut: "short",
         bangs: "jag",
-        eye: "#F2913D",
+        eye: WOOD,
         outfit: "#6E7686",
-        trim: DARK,
+        trim: t,
         legs: "#6E7686",
         armR: true,
         clsR: "it",
       });
-      f(7, 5, 16, 3, DARK);
-      f(9, 5, 5, 3, "#A9D6F5");
-      f(16, 5, 5, 3, "#A9D6F5");
-      f(9, 5, 1, 1, "#fff");
-      f(16, 5, 1, 1, "#fff");
+      stamp(
+        f,
+        6,
+        1,
+        [
+          ".....yyyyyyyy.....",
+          "...yyyyyhhyyyyy...",
+          "..yyyyyyhhyyyyyy..",
+          "..yyyyyyhhyyyyyy..",
+          ".yyyyyyyhhyyyyyyy.",
+          "dddddddddddddddddd",
+        ],
+        { y: GOLD, h: "#FBE08A", d: "#C99A1E" },
+      );
+      f(13, 2, 4, 2, t);
       f(12, 17, 1, 3, t);
       f(17, 17, 1, 3, t);
-      f(12, 19, 6, 3, t);
       stamp(
         f,
         21,
@@ -1228,274 +678,843 @@ export const MASCOTS: Record<string, Mascot> = {
         "it",
       );
     },
-    css: "& .it{transform-origin:50% 100%;animation:fence .5s ease-in-out infinite}",
-  },
-  jetstream: {
-    color: "#2BB3C0",
-    draw: (f, t) => {
+    lead: (f, t) => COSTUMES.careful?.(f, t),
+    medium: (f, t) => {
       chibi(f, {
-        hair: t,
+        hair: WOOD,
         cut: "short",
-        bangs: "swept",
-        eye: "#1B7F8A",
-        outfit: WOOD,
-        trim: "#EAD9B8",
-        legs: "#5A4A2E",
-      });
-      f(7, 5, 16, 3, WOOD);
-      f(9, 5, 5, 3, "#A9D6F5");
-      f(16, 5, 5, 3, "#A9D6F5");
-      f(9, 5, 1, 1, "#fff");
-      f(16, 5, 1, 1, "#fff");
-      f(10, 16, 10, 2, "#F2913D");
-      stamp(
-        f,
-        0,
-        14,
-        ["....wwww..", "..wwwwwwww", "wwww.wwwww", "ww....ww.."],
-        { w: "#F2913D" },
-        "flag",
-      );
-      f(13, 19, 4, 1, GOLD);
-    },
-    css: "& .flag{transform-origin:100% 50%;animation:wave .25s steps(1) infinite}",
-  },
-  avionics: {
-    color: "#7F77DD",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: t,
-        cut: "buns",
         bangs: "hime",
-        eye: "#5E3FA3",
+        eye: "#3B6FB0",
         outfit: CLOTH,
-        trim: "#C9CCD2",
+        trim: "#B9C0D0",
         armR: true,
-      });
-      glasses(f, "#C9CCD2");
-      f(14, 18, 2, 4, t);
-      f(22, 2, 8, 9, "rgba(127,227,245,.28)");
-      f(22, 2, 8, 1, "#7FE3F5");
-      f(22, 10, 8, 1, "#7FE3F5");
-      f(23, 7, 1, 3, t);
-      f(25, 6, 1, 4, t);
-      f(28, 8, 1, 2, t);
-      f(24, 5, 1, 5, "#3BD671", "b1");
-      f(26, 4, 1, 6, "#3BD671", "b2");
-      f(27, 6, 1, 4, "#3BD671", "b1");
-    },
-    css: "& .b1{transform-origin:50% 100%;animation:grow 1s steps(2) infinite}& .b2{transform-origin:50% 100%;animation:grow 1s steps(2) infinite -.5s}",
-  },
-  altimeter: {
-    color: "#2FA36B",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#1F7A52",
-        cut: "bob",
-        bangs: "part",
-        eye: t,
-        outfit: CLOTH,
-        trim: t,
-        legs: "#1F5A40",
-      });
-      f(16, 9, 5, 1, GOLD);
-      f(16, 13, 5, 1, GOLD);
-      f(16, 10, 1, 3, GOLD);
-      f(20, 10, 1, 3, GOLD);
-      f(21, 13, 1, 4, GOLD);
-      f(11, 17, 3, 3, "#1F5A40");
-      f(16, 17, 3, 3, "#1F5A40");
-      f(10, 19, 10, 5, DARK);
-      f(11, 20, 8, 3, "#14261C");
-      f(11, 22, 1, 1, t);
-      f(13, 20, 1, 1, t);
-      f(16, 20, 1, 1, t);
-      f(18, 22, 1, 1, t);
-      f(15, 20, 1, 3, "#FF6B5E", "ndl");
-    },
-    css: "& .ndl{transform-origin:50% 100%;animation:swing 1s ease-in-out infinite}",
-  },
-  radar: {
-    color: "#3BD671",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: "#2BA356",
-        cut: "short",
-        bangs: "jag",
-        eye: t,
-        outfit: "#3A3350",
-        trim: t,
+        clsR: "pan",
       });
       stamp(
         f,
-        6,
+        7,
         0,
-        [".h..", "hhh.", "hphh"],
-        { h: "#2BA356", p: "#F3A6C0" },
-        "el",
+        [
+          "....wwwwwwww....",
+          "..wwwwwwwwwwww..",
+          ".wwwwwwwwwwwwww.",
+          ".wwwwwwwwwwwwww.",
+          "..wwwwwwwwwwww..",
+          "..gggggggggggg..",
+          "..wwwwwwwwwwww..",
+          "..tttttttttttt..",
+        ],
+        { w: "#E9ECF2", g: "#B9C0D0", t },
       );
-      stamp(
-        f,
-        20,
-        0,
-        ["..h.", ".hhh", "hhph"],
-        { h: "#2BA356", p: "#F3A6C0" },
-        "er",
-      );
-      f(13, 19, 4, 2, t);
-      f(9, 13, 2, 1, WHITE);
-      f(19, 13, 2, 1, WHITE);
-      f(24, 6, 1, 1, t, "p1");
-      f(26, 5, 1, 3, t, "p2");
-      f(28, 4, 1, 5, t, "p3");
-      stamp(f, 21, 20, ["..hh", ".hh.", "hh.."], { h: "#2BA356" }, "tr");
+      f(12, 17, 6, 1, t);
+      f(13, 19, 1, 1, "#B9C0D0");
+      f(16, 19, 1, 1, "#B9C0D0");
+      f(13, 21, 1, 1, "#B9C0D0");
+      f(16, 21, 1, 1, "#B9C0D0");
+      f(23, 10, 7, 2, "#4A4A48", "pan");
+      f(22, 11, 2, 1, "#4A4A48", "pan");
+      f(25, 9, 3, 1, "#F5B731", "egg");
     },
-    css: "& .el{transform-origin:50% 100%;animation:twitch 1s steps(1) infinite}& .er{transform-origin:50% 100%;animation:twitch 1s steps(1) infinite -.5s}& .p1{animation:ping 1s steps(1) infinite}& .p2{animation:ping 1s steps(1) infinite -.66s}& .p3{animation:ping 1s steps(1) infinite -.33s}",
-  },
-  tarmac: {
-    color: "#F26B21",
-    draw: (f, t) => {
+    core: (f, t) => COSTUMES.medium?.(f, t),
+    light: (f, t) => {
       chibi(f, {
         hair: t,
-        cut: "short",
-        bangs: "jag",
-        eye: "#7A4A26",
-        outfit: "#E4F01F",
-        trim: "#C9CCD2",
-        legs: "#4A4E69",
-        armL: true,
+        cut: "none",
+        bangs: "open",
+        eye: "#1F7A52",
+        outfit: CLOTH,
+        trim: t,
+        legs: t,
         armR: true,
-        clsL: "wl",
-        clsR: "wr",
       });
-      f(8, 3, 14, 1, DARK);
-      f(6, 8, 2, 5, DARK);
-      f(22, 8, 2, 5, DARK);
-      f(11, 19, 8, 1, "#C9CCD2");
-      f(12, 17, 1, 6, t);
-      f(17, 17, 1, 6, t);
-      f(5, 10, 2, 2, DARK, "wl");
-      f(3, 2, 2, 8, "#FF4D2E", "wl");
-      f(4, 9, 2, 2, "#FF4D2E", "wl");
-      f(3, 1, 2, 1, GOLD, "wl");
-      f(23, 10, 2, 2, DARK, "wr");
-      f(25, 2, 2, 8, "#FF4D2E", "wr");
-      f(24, 9, 2, 2, "#FF4D2E", "wr");
-      f(25, 1, 2, 1, GOLD, "wr");
+      stamp(f, 7, 2, CAP, { h: t });
+      f(7, 8, 16, 2, t);
+      f(7, 10, 2, 6, t);
+      f(21, 10, 2, 6, t);
+      f(14, 2, 2, 8, WHITE);
+      f(9, 9, 12, 1, DARK);
+      f(14, 18, 2, 4, t);
+      f(23, 1, 1, 11, STEEL);
+      stamp(f, 24, 1, ["wkwk", "kwkw", "wkwk"], { w: WHITE, k: INK }, "flag");
     },
-    css: "& .wl{transform-origin:100% 100%;animation:fenceb .5s ease-in-out infinite}& .wr{transform-origin:0 100%;animation:fence .5s ease-in-out infinite}",
-  },
-  checkpoint: {
-    color: "#5578C8",
-    draw: (f, t) => {
+    fast: (f, t) => COSTUMES.light?.(f, t),
+    explore: (f) => {
       chibi(f, {
         hair: "#2E3247",
-        cut: "knot",
+        cut: "long",
         bangs: "open",
-        eye: "#6F8FB8",
-        outfit: t,
-        trim: "#2E3247",
-        legs: "#2E3247",
+        eye: WOOD,
+        outfit: "#9A3530",
+        trim: GOLD,
+        legs: "#55514C",
         armR: true,
         clsR: "it",
       });
-      f(9, 9, 5, 1, "#2E3247");
-      f(16, 9, 5, 1, "#2E3247");
-      f(13, 17, 1, 2, WHITE);
-      f(16, 17, 1, 2, WHITE);
-      f(14, 18, 2, 1, WHITE);
-      f(11, 23, 8, 1, "#2E3247");
-      f(22, 14, 2, 1, WOOD, "it");
-      f(21, 11, 4, 1, GOLD, "it");
-      f(22, 0, 2, 11, "#E6E8EE", "it");
-      f(23, 0, 1, 11, "#AEB4C4", "it");
-      f(22, 0, 1, 1, "#AEB4C4", "it");
-      f(22, 3, 1, 2, "#fff", "gl");
-    },
-    css: "& .it{animation:lift 1s steps(1) infinite}& .gl{animation:glint 1s steps(1) infinite}",
-  },
-  manifest: {
-    color: "#C27A1A",
-    draw: (f, t) => {
-      chibi(f, {
-        hair: t,
-        cut: "short",
-        bangs: "part",
-        eye: "#7A4A26",
-        outfit: NAVY,
-        trim: GOLD,
-        armR: true,
-      });
-      glasses(f, DARK);
-      f(13, 17, 4, 2, WHITE);
-      f(14, 18, 2, 4, "#D0453F");
       stamp(
         f,
-        21,
+        5,
         2,
         [
-          "..ssss..",
-          "bbbbbbbb",
-          "bwwwwwwb",
-          "bwwwwwwb",
-          "bwwwwwwb",
-          "bwwwwwwb",
-          "bwwwwwwb",
-          "bwwwwwwb",
-          "bbbbbbbb",
+          ".kk..............kk.",
+          ".kkk....kkkk....kkk.",
+          "..kkkkkkkwwkkkkkkk..",
+          "..kkkkkkkkkkkkkkkk..",
+          ".gggggggggggggggggg.",
+          "..kkkkkkkkkkkkkkkk..",
         ],
-        { s: STEEL, b: WOOD, w: WHITE },
+        { k: "#55514C", w: WHITE, g: GOLD },
       );
-      f(25, 4, 3, 1, "#9a9a96");
-      f(25, 6, 3, 1, "#9a9a96");
-      f(25, 8, 3, 1, "#9a9a96");
-      f(23, 4, 1, 1, "#3B9C5F", "c1");
-      f(23, 6, 1, 1, "#3B9C5F", "c2");
-      f(23, 8, 1, 1, "#3B9C5F", "c3");
+      f(8, 9, 14, 1, INK);
+      f(16, 10, 5, 3, INK);
+      f(22, 2, 2, 9, "#C9CCD2", "it");
+      f(23, 1, 1, 1, "#C9CCD2", "it");
+      f(21, 11, 4, 1, GOLD, "it");
     },
-    css: "& .c1{animation:tick 1s steps(1) infinite}& .c2{animation:tick 1s steps(1) infinite -.66s}& .c3{animation:tick 1s steps(1) infinite -.33s}",
-  },
-  logbook: {
-    color: "#B5527A",
-    draw: (f, t) => {
+    other: (f) => {
       chibi(f, {
-        hair: "#E08FB0",
-        cut: "long",
-        bangs: "hime",
-        eye: GOLD,
-        outfit: "#5A2A44",
-        trim: t,
-        legs: "#5A2A44",
+        hair: "#6B6B68",
+        cut: "short",
+        bangs: "jag",
+        eye: "#55514C",
+        outfit: CLAY,
+        trim: "#B45F43",
       });
-      stamp(
-        f,
-        3,
-        0,
-        [
-          "...........tt...........",
-          "..........tttt..........",
-          ".........tttttt.........",
-          "........tttttttt........",
-          ".......ggggggggggg......",
-          "......tttttttttttt......",
-          "..tttttttttttttttttttt..",
-          "tttttttttttttttttttttttt",
-        ],
-        { t, g: GOLD },
-      );
-      f(14, 19, 2, 2, GOLD);
-      f(21, 13, 9, 6, t, "it");
-      f(22, 13, 3, 5, WHITE, "it");
-      f(26, 13, 3, 5, WHITE, "it");
-      f(25, 13, 1, 6, "#8A3A5A", "it");
-      f(26, 13, 3, 5, "#EDEBE4", "pg");
-      f(22, 10, 1, 1, GOLD, "sp");
-      f(28, 11, 1, 1, GOLD, "sq");
-      f(25, 9, 1, 1, GOLD, "sp");
     },
-    css: "& .it{animation:hop 1s ease-in-out infinite}& .pg{transform-origin:0 50%;animation:page 1s steps(1) infinite}& .sp{animation:blink .5s steps(1) infinite}& .sq{animation:blink .5s steps(1) infinite -.25s}",
   },
+);
+
+type Mascot = {
+  color: string;
+  draw: (f: Fill, t: string) => void;
+  css?: string;
 };
+
+export const MASCOTS: Record<string, Mascot> = Object.assign(
+  Object.create(null),
+  {
+    beacon: {
+      color: "#E0A106",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: GOLD,
+          cut: "spiky",
+          bangs: "jag",
+          eye: "#D0453F",
+          outfit: NAVY,
+          trim: t,
+        });
+        f(10, 16, 10, 2, "#D0453F");
+        stamp(
+          f,
+          1,
+          15,
+          ["...rrrrr.", ".rrrrrrrr", "rrr.rrrrr", "r....rr.."],
+          { r: "#D0453F" },
+          "flag",
+        );
+        f(27, 0, 1, 5, t, "star");
+        f(25, 2, 5, 1, t, "star");
+        f(26, 1, 3, 3, GOLD, "star");
+      },
+      css: "& .flag{transform-origin:100% 50%;animation:wave .5s steps(1) infinite}& .star{animation:blink 1s steps(1) infinite}",
+    },
+    wren: {
+      color: "#A0703F",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "bob",
+          bangs: "hime",
+          eye: "#3B9C5F",
+          outfit: "#EAD9B8",
+          trim: "#C8A46A",
+          armR: true,
+        });
+        f(13, 19, 4, 2, "#C8A46A");
+        stamp(
+          f,
+          21,
+          5,
+          [
+            "t..bbb..",
+            "tt.bkbo.",
+            ".bbbbb..",
+            ".bwwb...",
+            "..bwb...",
+            "..y.y...",
+          ],
+          {
+            b: "#8A5A34",
+            t: WOOD,
+            w: "#EAD9B8",
+            k: INK,
+            o: "#F2913D",
+            y: "#C99A1E",
+          },
+          "it",
+        );
+      },
+      css: "& .it{animation:hop .5s steps(1) infinite}",
+    },
+    atlas: {
+      color: "#378ADD",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#2B5FA8",
+          cut: "short",
+          bangs: "swept",
+          eye: "#7FE3F5",
+          outfit: CLOTH,
+          trim: t,
+          legs: "#5A6274",
+          armR: true,
+        });
+        f(8, 10, 14, 3, DARK);
+        f(9, 11, 12, 1, "#7FE3F5", "vis");
+        f(11, 19, 8, 1, t);
+        f(14, 18, 2, 3, t);
+        stamp(
+          f,
+          22,
+          3,
+          [
+            "..oooo..",
+            ".oggooo.",
+            "ogggoogo",
+            "oogooggo",
+            "ooooogoo",
+            ".ogoooo.",
+            "..oooo..",
+          ],
+          { o: "rgba(127,227,245,.75)", g: t },
+          "it",
+        );
+        f(21, 10, 10, 1, "rgba(127,227,245,.45)", "it");
+      },
+      css: "& .it{animation:hop 1s ease-in-out infinite}& .vis{animation:blink 1s steps(1) infinite}",
+    },
+    ridge: {
+      color: "#1D9E75",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#16614B",
+          cut: "none",
+          bangs: "open",
+          eye: "#F5C542",
+          outfit: "#16614B",
+          trim: t,
+          legs: "#16614B",
+          armR: true,
+        });
+        stamp(f, 7, 2, CAP, { h: "#16614B" });
+        f(7, 8, 16, 2, "#16614B");
+        f(7, 10, 2, 7, "#16614B");
+        f(21, 10, 2, 7, "#16614B");
+        f(9, 13, 12, 4, "#16614B");
+        f(11, 6, 8, 3, STEEL);
+        f(13, 7, 4, 1, "#C9CCD2");
+        stamp(f, 1, 8, ["..tt", ".ttt", "ttt.", "tt.."], { t }, "flag");
+        stamp(
+          f,
+          23,
+          6,
+          ["..s..", ".sss.", "ssdss", ".sss.", "..s.."],
+          { s: "#C9CCD2", d: DARK },
+          "ndl",
+        );
+      },
+      css: "& .ndl{transform-origin:50% 50%;animation:turn .5s steps(4) infinite}& .flag{transform-origin:100% 50%;animation:wave .5s steps(1) infinite}",
+    },
+    forge: {
+      color: "#D85A30",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#C4332B",
+          cut: "spiky",
+          bangs: "jag",
+          eye: "#F5B731",
+          outfit: "#5A3519",
+          trim: t,
+          armR: true,
+          clsR: "it",
+        });
+        f(7, 7, 16, 1, WHITE);
+        f(5, 7, 2, 1, WHITE);
+        f(4, 8, 2, 2, WHITE);
+        f(12, 18, 6, 4, WOOD);
+        f(23, 4, 1, 9, WOOD, "it");
+        f(21, 1, 6, 3, STEEL, "it");
+        f(21, 1, 6, 1, "#C9CCD2", "it");
+        f(28, 2, 1, 1, GOLD, "sp");
+        f(29, 5, 1, 1, t, "sp");
+        f(27, 5, 1, 1, GOLD, "sq");
+        f(29, 0, 1, 1, t, "sq");
+      },
+      css: "& .it{transform-origin:20% 100%;animation:strike .5s ease-in infinite}& .sp{animation:blink .5s steps(1) infinite}& .sq{animation:blink .5s steps(1) infinite -.25s}",
+    },
+    scout: {
+      color: "#3B9C5F",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "pony",
+          bangs: "jag",
+          eye: GOLD,
+          outfit: "#C8A46A",
+          trim: "#8A6A3A",
+          legs: "#5A4A2E",
+          armR: true,
+        });
+        f(10, 16, 10, 2, "#2C7A49");
+        f(9, 18, 2, 3, "#2C7A49");
+        f(23, 1, 1, 11, STEEL);
+        stamp(
+          f,
+          24,
+          1,
+          ["ggggw", "gggwg", "wgwgg", "gwggg"],
+          { g: t, w: WHITE },
+          "flag",
+        );
+      },
+      css: "& .flag{transform-origin:0 50%;animation:wave .5s steps(1) infinite}",
+    },
+    aegis: {
+      color: "#5B6CC9",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#B4BAD0",
+          cut: "long",
+          bangs: "hime",
+          eye: t,
+          outfit: "#AEB4C4",
+          trim: GOLD,
+          legs: "#7C8498",
+        });
+        f(10, 6, 10, 1, GOLD);
+        f(14, 5, 2, 1, t);
+        f(13, 19, 4, 2, t);
+        stamp(
+          f,
+          19,
+          15,
+          [
+            "sssssss",
+            "sbbwbbs",
+            "sbbwbbs",
+            "swwwwws",
+            "sbbwbbs",
+            "sbbwbbs",
+            ".sbwbs.",
+            "..sss..",
+          ],
+          { s: GOLD, b: t, w: WHITE },
+        );
+        f(20, 16, 1, 2, "#fff", "gl");
+      },
+      css: "& .gl{animation:blink 1s steps(1) infinite}",
+    },
+    compass: {
+      color: "#D0453F",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#B8322C",
+          cut: "short",
+          bangs: "part",
+          eye: "#12A5A0",
+          outfit: "#D9C9A3",
+          trim: "#8A6A3A",
+          legs: "#6B5A3A",
+          armR: true,
+        });
+        f(14, 0, 1, 2, "#B8322C");
+        f(15, 0, 2, 1, "#B8322C");
+        f(17, 1, 1, 1, "#B8322C");
+        f(11, 16, 8, 2, t);
+        f(14, 18, 2, 2, t);
+        stamp(
+          f,
+          22,
+          4,
+          [
+            "..ggg..",
+            ".gwwwg.",
+            "gwwwwwg",
+            "gwwwwwg",
+            "gwwwwwg",
+            ".gwwwg.",
+            "..ggg..",
+          ],
+          { g: GOLD, w: WHITE },
+        );
+        f(25, 5, 1, 3, t, "ndl");
+        f(25, 8, 1, 2, DARK, "ndl");
+      },
+      css: "& .ndl{transform-origin:50% 60%;animation:swing 1s ease-in-out infinite}",
+    },
+    pace: {
+      color: "#12A5A0",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "pony",
+          bangs: "swept",
+          eye: "#E0559A",
+          outfit: CLOTH,
+          trim: t,
+          legs: t,
+          armR: true,
+        });
+        f(7, 6, 16, 1, WHITE);
+        f(11, 19, 8, 1, t);
+        f(14, 20, 2, 2, t);
+        f(24, 3, 3, 1, DARK);
+        f(25, 4, 1, 1, DARK);
+        stamp(
+          f,
+          22,
+          5,
+          [
+            ".kkkkk.",
+            "kwwwwwk",
+            "kwwwwwk",
+            "kwwwwwk",
+            "kwwwwwk",
+            "kwwwwwk",
+            ".kkkkk.",
+          ],
+          { k: DARK, w: WHITE },
+        );
+        f(25, 6, 1, 3, t, "ndl");
+      },
+      css: "& .la{animation-duration:.25s}& .lb{animation-duration:.25s;animation-delay:-.125s}& .ndl{transform-origin:50% 100%;animation:turn 1s steps(4) infinite}",
+    },
+    quill: {
+      color: "#8A63D2",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "long",
+          bangs: "part",
+          eye: "#5E3FA3",
+          outfit: "#3A3350",
+          trim: t,
+          armR: true,
+          clsR: "it",
+        });
+        glasses(f);
+        f(14, 18, 2, 1, WHITE);
+        f(13, 19, 4, 1, WHITE);
+        stamp(
+          f,
+          22,
+          1,
+          [
+            ".....ww",
+            "....www",
+            "...wwwg",
+            "...wwg.",
+            "..wwg..",
+            "..wg...",
+            ".wg....",
+            ".g.....",
+            "k......",
+            "k......",
+            "k......",
+          ],
+          { w: "#E8D9A8", g: "#B9A66A", k: WOOD },
+          "it",
+        );
+      },
+      css: "& .it{animation:scan .5s steps(1) infinite}",
+    },
+    tower: {
+      color: "#D0453F",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#4A4E69",
+          cut: "short",
+          bangs: "swept",
+          eye: t,
+          outfit: NAVY,
+          trim: GOLD,
+          armR: true,
+        });
+        stamp(
+          f,
+          6,
+          1,
+          [
+            "....kkkkkkkkkk....",
+            "..kkkkkkkkkkkkkk..",
+            "..kkkkkkyykkkkkk..",
+            "..rrrrrrrrrrrrrr..",
+            ".kkkkkkkkkkkkkkkkkk",
+          ],
+          { k: NAVY, y: GOLD, r: t },
+        );
+        f(9, 19, 2, 6, NAVY);
+        f(19, 19, 2, 6, NAVY);
+        f(12, 19, 1, 3, GOLD);
+        f(17, 19, 1, 3, GOLD);
+        f(22, 9, 2, 3, DARK);
+        f(21, 5, 4, 4, t, "ant");
+        f(22, 4, 2, 1, t, "ant");
+        f(22, 6, 1, 1, "#fff", "ant");
+      },
+      css: "& .ant{animation:blink .5s steps(1) infinite}",
+    },
+    navigator: {
+      color: "#4A6FC0",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#5B8FE0",
+          cut: "twin",
+          bangs: "hime",
+          eye: "#2E4A8A",
+          outfit: CLOTH,
+          trim: t,
+          armR: true,
+          clsR: "pan",
+        });
+        f(10, 1, 10, 2, CLOTH);
+        f(9, 3, 12, 1, t);
+        f(14, 1, 2, 1, GOLD);
+        f(11, 17, 3, 2, t);
+        f(16, 17, 3, 2, t);
+        f(14, 19, 2, 2, "#D0453F");
+        stamp(
+          f,
+          22,
+          4,
+          [
+            "pppppppp",
+            "pbbpppgp",
+            "pbpprppp",
+            "pppprprp",
+            "pgpprrrp",
+            "ppgpppxp",
+            "pppppppp",
+            "pppppppp",
+          ],
+          { p: "#EAD9B8", b: "#7FB3E6", g: "#8FBF7A", r: "#D0453F", x: INK },
+          "pan",
+        );
+      },
+      css: "& .pan{transform-origin:0 100%;animation:tilt 1s ease-in-out infinite}",
+    },
+    turbine: {
+      color: "#2F7FD0",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "spiky",
+          bangs: "jag",
+          eye: "#F2913D",
+          outfit: "#6E7686",
+          trim: DARK,
+          legs: "#6E7686",
+          armR: true,
+          clsR: "it",
+        });
+        f(7, 5, 16, 3, DARK);
+        f(9, 5, 5, 3, "#A9D6F5");
+        f(16, 5, 5, 3, "#A9D6F5");
+        f(9, 5, 1, 1, "#fff");
+        f(16, 5, 1, 1, "#fff");
+        f(12, 17, 1, 3, t);
+        f(17, 17, 1, 3, t);
+        f(12, 19, 6, 3, t);
+        stamp(
+          f,
+          21,
+          1,
+          [
+            "s.s..",
+            "sss..",
+            ".ss..",
+            "..ss.",
+            "..ss.",
+            "...ss",
+            "...ss",
+            "..ss.",
+            "..s..",
+            "..s..",
+            "..s..",
+          ],
+          { s: "#C9CCD2" },
+          "it",
+        );
+      },
+      css: "& .it{transform-origin:50% 100%;animation:fence .5s ease-in-out infinite}",
+    },
+    jetstream: {
+      color: "#2BB3C0",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "short",
+          bangs: "swept",
+          eye: "#1B7F8A",
+          outfit: WOOD,
+          trim: "#EAD9B8",
+          legs: "#5A4A2E",
+        });
+        f(7, 5, 16, 3, WOOD);
+        f(9, 5, 5, 3, "#A9D6F5");
+        f(16, 5, 5, 3, "#A9D6F5");
+        f(9, 5, 1, 1, "#fff");
+        f(16, 5, 1, 1, "#fff");
+        f(10, 16, 10, 2, "#F2913D");
+        stamp(
+          f,
+          0,
+          14,
+          ["....wwww..", "..wwwwwwww", "wwww.wwwww", "ww....ww.."],
+          { w: "#F2913D" },
+          "flag",
+        );
+        f(13, 19, 4, 1, GOLD);
+      },
+      css: "& .flag{transform-origin:100% 50%;animation:wave .25s steps(1) infinite}",
+    },
+    avionics: {
+      color: "#7F77DD",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "buns",
+          bangs: "hime",
+          eye: "#5E3FA3",
+          outfit: CLOTH,
+          trim: "#C9CCD2",
+          armR: true,
+        });
+        glasses(f, "#C9CCD2");
+        f(14, 18, 2, 4, t);
+        f(22, 2, 8, 9, "rgba(127,227,245,.28)");
+        f(22, 2, 8, 1, "#7FE3F5");
+        f(22, 10, 8, 1, "#7FE3F5");
+        f(23, 7, 1, 3, t);
+        f(25, 6, 1, 4, t);
+        f(28, 8, 1, 2, t);
+        f(24, 5, 1, 5, "#3BD671", "b1");
+        f(26, 4, 1, 6, "#3BD671", "b2");
+        f(27, 6, 1, 4, "#3BD671", "b1");
+      },
+      css: "& .b1{transform-origin:50% 100%;animation:grow 1s steps(2) infinite}& .b2{transform-origin:50% 100%;animation:grow 1s steps(2) infinite -.5s}",
+    },
+    altimeter: {
+      color: "#2FA36B",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#1F7A52",
+          cut: "bob",
+          bangs: "part",
+          eye: t,
+          outfit: CLOTH,
+          trim: t,
+          legs: "#1F5A40",
+        });
+        f(16, 9, 5, 1, GOLD);
+        f(16, 13, 5, 1, GOLD);
+        f(16, 10, 1, 3, GOLD);
+        f(20, 10, 1, 3, GOLD);
+        f(21, 13, 1, 4, GOLD);
+        f(11, 17, 3, 3, "#1F5A40");
+        f(16, 17, 3, 3, "#1F5A40");
+        f(10, 19, 10, 5, DARK);
+        f(11, 20, 8, 3, "#14261C");
+        f(11, 22, 1, 1, t);
+        f(13, 20, 1, 1, t);
+        f(16, 20, 1, 1, t);
+        f(18, 22, 1, 1, t);
+        f(15, 20, 1, 3, "#FF6B5E", "ndl");
+      },
+      css: "& .ndl{transform-origin:50% 100%;animation:swing 1s ease-in-out infinite}",
+    },
+    radar: {
+      color: "#3BD671",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#2BA356",
+          cut: "short",
+          bangs: "jag",
+          eye: t,
+          outfit: "#3A3350",
+          trim: t,
+        });
+        stamp(
+          f,
+          6,
+          0,
+          [".h..", "hhh.", "hphh"],
+          { h: "#2BA356", p: "#F3A6C0" },
+          "el",
+        );
+        stamp(
+          f,
+          20,
+          0,
+          ["..h.", ".hhh", "hhph"],
+          { h: "#2BA356", p: "#F3A6C0" },
+          "er",
+        );
+        f(13, 19, 4, 2, t);
+        f(9, 13, 2, 1, WHITE);
+        f(19, 13, 2, 1, WHITE);
+        f(24, 6, 1, 1, t, "p1");
+        f(26, 5, 1, 3, t, "p2");
+        f(28, 4, 1, 5, t, "p3");
+        stamp(f, 21, 20, ["..hh", ".hh.", "hh.."], { h: "#2BA356" }, "tr");
+      },
+      css: "& .el{transform-origin:50% 100%;animation:twitch 1s steps(1) infinite}& .er{transform-origin:50% 100%;animation:twitch 1s steps(1) infinite -.5s}& .p1{animation:ping 1s steps(1) infinite}& .p2{animation:ping 1s steps(1) infinite -.66s}& .p3{animation:ping 1s steps(1) infinite -.33s}",
+    },
+    tarmac: {
+      color: "#F26B21",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "short",
+          bangs: "jag",
+          eye: "#7A4A26",
+          outfit: "#E4F01F",
+          trim: "#C9CCD2",
+          legs: "#4A4E69",
+          armL: true,
+          armR: true,
+          clsL: "wl",
+          clsR: "wr",
+        });
+        f(8, 3, 14, 1, DARK);
+        f(6, 8, 2, 5, DARK);
+        f(22, 8, 2, 5, DARK);
+        f(11, 19, 8, 1, "#C9CCD2");
+        f(12, 17, 1, 6, t);
+        f(17, 17, 1, 6, t);
+        f(5, 10, 2, 2, DARK, "wl");
+        f(3, 2, 2, 8, "#FF4D2E", "wl");
+        f(4, 9, 2, 2, "#FF4D2E", "wl");
+        f(3, 1, 2, 1, GOLD, "wl");
+        f(23, 10, 2, 2, DARK, "wr");
+        f(25, 2, 2, 8, "#FF4D2E", "wr");
+        f(24, 9, 2, 2, "#FF4D2E", "wr");
+        f(25, 1, 2, 1, GOLD, "wr");
+      },
+      css: "& .wl{transform-origin:100% 100%;animation:fenceb .5s ease-in-out infinite}& .wr{transform-origin:0 100%;animation:fence .5s ease-in-out infinite}",
+    },
+    checkpoint: {
+      color: "#5578C8",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#2E3247",
+          cut: "knot",
+          bangs: "open",
+          eye: "#6F8FB8",
+          outfit: t,
+          trim: "#2E3247",
+          legs: "#2E3247",
+          armR: true,
+          clsR: "it",
+        });
+        f(9, 9, 5, 1, "#2E3247");
+        f(16, 9, 5, 1, "#2E3247");
+        f(13, 17, 1, 2, WHITE);
+        f(16, 17, 1, 2, WHITE);
+        f(14, 18, 2, 1, WHITE);
+        f(11, 23, 8, 1, "#2E3247");
+        f(22, 14, 2, 1, WOOD, "it");
+        f(21, 11, 4, 1, GOLD, "it");
+        f(22, 0, 2, 11, "#E6E8EE", "it");
+        f(23, 0, 1, 11, "#AEB4C4", "it");
+        f(22, 0, 1, 1, "#AEB4C4", "it");
+        f(22, 3, 1, 2, "#fff", "gl");
+      },
+      css: "& .it{animation:lift 1s steps(1) infinite}& .gl{animation:glint 1s steps(1) infinite}",
+    },
+    manifest: {
+      color: "#C27A1A",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: t,
+          cut: "short",
+          bangs: "part",
+          eye: "#7A4A26",
+          outfit: NAVY,
+          trim: GOLD,
+          armR: true,
+        });
+        glasses(f, DARK);
+        f(13, 17, 4, 2, WHITE);
+        f(14, 18, 2, 4, "#D0453F");
+        stamp(
+          f,
+          21,
+          2,
+          [
+            "..ssss..",
+            "bbbbbbbb",
+            "bwwwwwwb",
+            "bwwwwwwb",
+            "bwwwwwwb",
+            "bwwwwwwb",
+            "bwwwwwwb",
+            "bwwwwwwb",
+            "bbbbbbbb",
+          ],
+          { s: STEEL, b: WOOD, w: WHITE },
+        );
+        f(25, 4, 3, 1, "#9a9a96");
+        f(25, 6, 3, 1, "#9a9a96");
+        f(25, 8, 3, 1, "#9a9a96");
+        f(23, 4, 1, 1, "#3B9C5F", "c1");
+        f(23, 6, 1, 1, "#3B9C5F", "c2");
+        f(23, 8, 1, 1, "#3B9C5F", "c3");
+      },
+      css: "& .c1{animation:tick 1s steps(1) infinite}& .c2{animation:tick 1s steps(1) infinite -.66s}& .c3{animation:tick 1s steps(1) infinite -.33s}",
+    },
+    logbook: {
+      color: "#B5527A",
+      draw: (f, t) => {
+        chibi(f, {
+          hair: "#E08FB0",
+          cut: "long",
+          bangs: "hime",
+          eye: GOLD,
+          outfit: "#5A2A44",
+          trim: t,
+          legs: "#5A2A44",
+        });
+        stamp(
+          f,
+          3,
+          0,
+          [
+            "...........tt...........",
+            "..........tttt..........",
+            ".........tttttt.........",
+            "........tttttttt........",
+            ".......ggggggggggg......",
+            "......tttttttttttt......",
+            "..tttttttttttttttttttt..",
+            "tttttttttttttttttttttttt",
+          ],
+          { t, g: GOLD },
+        );
+        f(14, 19, 2, 2, GOLD);
+        f(21, 13, 9, 6, t, "it");
+        f(22, 13, 3, 5, WHITE, "it");
+        f(26, 13, 3, 5, WHITE, "it");
+        f(25, 13, 1, 6, "#8A3A5A", "it");
+        f(26, 13, 3, 5, "#EDEBE4", "pg");
+        f(22, 10, 1, 1, GOLD, "sp");
+        f(28, 11, 1, 1, GOLD, "sq");
+        f(25, 9, 1, 1, GOLD, "sp");
+      },
+      css: "& .it{animation:hop 1s ease-in-out infinite}& .pg{transform-origin:0 50%;animation:page 1s steps(1) infinite}& .sp{animation:blink .5s steps(1) infinite}& .sq{animation:blink .5s steps(1) infinite -.25s}",
+    },
+  },
+);
 
 const MASCOT_CSS = `<style>
 @keyframes hop{50%{transform:translateY(-2px)}}@keyframes sway{25%{transform:rotate(-6deg)}75%{transform:rotate(6deg)}}
@@ -1515,20 +1534,22 @@ ${Object.entries(MASCOTS)
 
 const mascotOf = (type: string): string | undefined => {
   const bare = type.replace(/^[^:]*:/, "").toLowerCase();
-  return bare in MASCOTS ? bare : undefined;
+  return hasOwn(MASCOTS, bare) ? bare : undefined;
 };
 
 const tierOf = (type: string): string => {
   const bare = type.replace(/^[^:]*:/, "").toLowerCase();
   const stripped = bare.replace(/^savvy-/, "");
-  return stripped in TIER_COLOR ? stripped : "other";
+  return hasOwn(TIER_COLOR, stripped) ? stripped : "other";
 };
 
 const costumeOf = (type: string): string =>
   mascotOf(type) ?? (type === "Explore" ? "explore" : tierOf(type));
 
 const colorOf = (costume: string): string =>
-  MASCOTS[costume]?.color ?? TIER_COLOR[costume] ?? "#888780";
+  (hasOwn(MASCOTS, costume) ? MASCOTS[costume]?.color : undefined) ??
+  (hasOwn(TIER_COLOR, costume) ? TIER_COLOR[costume] : undefined) ??
+  "#888780";
 
 const CRAB_SCALE = 1.1;
 
@@ -1550,8 +1571,8 @@ const crab = (
       );
   };
   const draw =
-    COSTUMES[costume] ??
-    MASCOTS[costume]?.draw ??
+    (hasOwn(COSTUMES, costume) ? COSTUMES[costume] : undefined) ??
+    (hasOwn(MASCOTS, costume) ? MASCOTS[costume]?.draw : undefined) ??
     COSTUMES.other ??
     (() => undefined);
   draw(f, colorOf(costume));
@@ -1950,6 +1971,7 @@ const boardSvg = (
 const overviewSvg = (
   W: number,
   ov: OverviewView,
+  agentRoles: Record<string, string> = Object.create(null),
 ): { source: string; height: number } => {
   const rowH = 20;
   const padY = 6;
@@ -1957,7 +1979,9 @@ const overviewSvg = (
   if (ov.members.length > 0) {
     lines.push({ text: `Members (${ov.members.length})`, heading: true });
     for (const m of ov.members) {
-      const safeAgent = sanitizeDisplayText(m.agent);
+      const safeAgent = sanitizeDisplayText(
+        formatAgentRoleLabel(m.agent, agentRoles),
+      );
       const safeLine = sanitizeDisplayText(m.line).replace(/\s+/g, " ").trim();
       lines.push({
         text: `  ${safeAgent} (${m.state})${safeLine ? `: ${safeLine}` : ""}`,
@@ -2001,7 +2025,9 @@ const overviewSvg = (
       color: RED,
     });
     for (const s of ov.stalls) {
-      const safeAgent = sanitizeDisplayText(s.agent);
+      const safeAgent = sanitizeDisplayText(
+        formatAgentRoleLabel(s.agent, agentRoles),
+      );
       lines.push({
         text: `  ${safeAgent} (${s.state}, idle ${fmtTime(s.idleMs)})`,
       });
@@ -2069,8 +2095,14 @@ const tokenizeCommandArgs = (raw: string): string[] => {
   return tokens;
 };
 
-const formatMemberCliLines = (row: MemberRow, width: number): string[] => {
-  const safeAgent = sanitizeDisplayText(row.agent);
+const formatMemberCliLines = (
+  row: MemberRow,
+  width: number,
+  agentRoles: Record<string, string> = Object.create(null),
+): string[] => {
+  const safeAgent = sanitizeDisplayText(
+    formatAgentRoleLabel(row.agent, agentRoles),
+  );
   const stateLabel =
     row.state === "paused"
       ? `paused: ${sanitizeDisplayText(row.reason ?? "error")}${row.detail ? ` (${sanitizeDisplayText(row.detail)})` : ""}`
@@ -2103,6 +2135,7 @@ const formatOrchestratorBoardCommand = (
   rawArgs: string,
   at: number,
   width: number,
+  agentRoles: Record<string, string> = Object.create(null),
 ): string => {
   const tokens = tokenizeCommandArgs(rawArgs);
   if (tokens[0] === "members") {
@@ -2126,7 +2159,7 @@ const formatOrchestratorBoardCommand = (
         lines.push(...wrapPlainText("none", width, "  ", "  "));
       } else {
         for (const r of rows) {
-          lines.push(...formatMemberCliLines(r, width));
+          lines.push(...formatMemberCliLines(r, width, agentRoles));
         }
       }
       sections.push(lines.join("\n"));
@@ -2144,7 +2177,9 @@ const formatOrchestratorBoardCommand = (
         ...wrapPlainText(`Members (${ov.members.length})`, width, "", "  "),
       ];
       for (const m of ov.members) {
-        const safeAgent = sanitizeDisplayText(m.agent);
+        const safeAgent = sanitizeDisplayText(
+          formatAgentRoleLabel(m.agent, agentRoles),
+        );
         const safeLine = sanitizeDisplayText(m.line);
         lines.push(
           ...wrapPlainText(
@@ -2210,7 +2245,7 @@ const formatOrchestratorBoardCommand = (
       for (const s of ov.stalls) {
         lines.push(
           ...wrapPlainText(
-            `${sanitizeDisplayText(s.agent)} (${s.state}, idle ${fmtTime(s.idleMs)})`,
+            `${sanitizeDisplayText(formatAgentRoleLabel(s.agent, agentRoles))} (${s.state}, idle ${fmtTime(s.idleMs)})`,
             width,
             "  ",
             "    ",
@@ -2369,8 +2404,14 @@ const agentRowSvg = (
   at: number,
   stall: StallState | null = null,
   member: MemberRow | null = null,
+  agentRoles: Record<string, string> = Object.create(null),
 ): string => {
   const safeAgent = sanitizeDisplayText(r.agent).replace(/\s+/g, " ").trim();
+  const displayAgent = sanitizeDisplayText(
+    formatAgentRoleLabel(safeAgent, agentRoles),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
   const safeTitle = sanitizeDisplayText(r.title || r.agent)
     .replace(/\s+/g, " ")
     .trim();
@@ -2426,8 +2467,8 @@ const agentRowSvg = (
     W,
     58,
     `${crab(0, 10, costume, false, r.status === "running")}
-<text class="t" x="42" y="16" font-family="${FONT}" font-size="12.5" font-weight="600">${xml(fitText(`${safeAgent}: ${safeTitle || safeAgent}`, 12.5, textW))}</text>
-<text x="42" y="31" font-family="${FONT}" font-size="11"><tspan fill="${mascotColor}">${xml(safeAgent)}</tspan><tspan class="s">  ${xml(fitText(meta, 11, textW - 40))}</tspan></text>
+<text class="t" x="42" y="16" font-family="${FONT}" font-size="12.5" font-weight="600">${xml(fitText(`${displayAgent}: ${safeTitle || displayAgent}`, 12.5, textW))}</text>
+<text x="42" y="31" font-family="${FONT}" font-size="11"><tspan fill="${mascotColor}">${xml(displayAgent)}</tspan><tspan class="s">  ${xml(fitText(meta, 11, textW - 40))}</tspan></text>
 <text class="s" x="42" y="45" font-family="${FONT}" font-size="10.5" font-variant-numeric="tabular-nums">${xml(fitText(stats, 10.5, textW))}</text>
 <rect class="k" x="42" y="50" width="${textW}" height="3.5" rx="1.75"/>
 <rect x="42" y="50" width="${fillW}" height="3.5" rx="1.75" fill="${color}"/>
@@ -2658,6 +2699,230 @@ async function stallTick($: EngineInterface): Promise<void> {
 }
 const spawnedToolUseIds = new Set<string>();
 const seenStepTurns = new Set<string>();
+const INVALID_ROOT_ERROR = "root must be an absolute path to a directory";
+
+let cachedAgentRoles: Record<string, string> | null = null;
+let pendingTeamEvent: FlowEvent | null = null;
+
+function isAbsolutePath(p: string): boolean {
+  return p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p);
+}
+
+const formatFsError = (err: unknown): string => {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message?: unknown }).message ?? "");
+  }
+  return String(err ?? "");
+};
+
+const isNotFoundError = (err: unknown): boolean => {
+  if (err && typeof err === "object" && "code" in err) {
+    const code = (err as { code?: unknown }).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return true;
+  }
+  const msg = formatFsError(err);
+  return /\bENOENT\b|\bENOTDIR\b|no such file or directory/i.test(msg);
+};
+
+function isPathInsideRoot(root: string, target: string): boolean {
+  const normRoot = root.replace(/\\/g, "/").replace(/\/+$/, "") || "/";
+  const normTarget = target.replace(/\\/g, "/").replace(/\/+$/, "") || "/";
+  const parts = normTarget.split("/");
+  if (parts.includes("..")) return false;
+  if (normRoot === "/") {
+    return normTarget.startsWith("/") && normTarget.length > 1;
+  }
+  return normTarget.startsWith(`${normRoot}/`);
+}
+
+async function readTeamTool($: EngineInterface, explicitRoot?: unknown) {
+  let repoRoot = "";
+  let realRoot = "";
+
+  if (explicitRoot !== undefined) {
+    if (typeof explicitRoot !== "string" || !isAbsolutePath(explicitRoot)) {
+      return { ok: false as const, error: INVALID_ROOT_ERROR };
+    }
+    const explicitStat = await $.fs
+      .stat(explicitRoot, { resolve: true })
+      .catch(() => undefined);
+    if (!explicitStat || explicitStat.kind !== "dir") {
+      return { ok: false as const, error: INVALID_ROOT_ERROR };
+    }
+    repoRoot = explicitRoot.replace(/\/+$/, "") || "/";
+    realRoot = (explicitStat.realPath || repoRoot).replace(/\/+$/, "") || "/";
+  } else {
+    let cwd = "";
+    try {
+      cwd = String((await $.session.cwd()) ?? "").trim();
+    } catch {
+      cwd = "";
+    }
+    if (!cwd) {
+      const resolved = resolveTeam(null, "claude-code", TIER_DEFAULTS);
+      return {
+        ok: true as const,
+        result: {
+          file: null,
+          errors: [] as string[],
+          notes: resolved.notes,
+          roles: resolved.roles,
+        },
+      };
+    }
+    repoRoot = cwd.replace(/\/+$/, "") || "/";
+    try {
+      const res = await $.process.run(
+        ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+        { timeoutMs: 5_000 },
+      );
+      if (
+        res.exitCode === 0 &&
+        typeof res.stdout === "string" &&
+        res.stdout.trim()
+      ) {
+        repoRoot = res.stdout.trim().replace(/\/+$/, "") || "/";
+      }
+    } catch {
+      // Fall back to cwd when git is unavailable or cwd is outside a git repo.
+    }
+    const rootStat = await $.fs
+      .stat(repoRoot, { resolve: true })
+      .catch(() => undefined);
+    realRoot = (rootStat?.realPath || repoRoot).replace(/\/+$/, "") || "/";
+  }
+
+  const TEAM_LINK_OR_PATH_ERROR =
+    ".agents/team.json must be inside the repository or readable";
+  const teamAbsent = () => {
+    const resolved = resolveTeam(null, "claude-code", TIER_DEFAULTS);
+    return {
+      ok: true as const,
+      result: {
+        file: null,
+        errors: [] as string[],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      },
+    };
+  };
+  const teamError = (message: string) => {
+    const resolved = resolveTeam(null, "claude-code", TIER_DEFAULTS);
+    return {
+      ok: true as const,
+      result: {
+        file: ".agents/team.json",
+        errors: [message],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      },
+    };
+  };
+
+  const agentsDir = `${repoRoot}/.agents`;
+  const teamPath = `${agentsDir}/team.json`;
+  const hasDanglingAgentsLink = async (): Promise<boolean> => {
+    const agentsLink = await $.fs.stat(agentsDir).catch(() => undefined);
+    if (!agentsLink?.isLink) return false;
+    try {
+      const resolvedAgents = await $.fs.stat(agentsDir, { resolve: true });
+      const resolvedPath =
+        typeof resolvedAgents?.realPath === "string"
+          ? resolvedAgents.realPath.trim()
+          : "";
+      return !resolvedPath;
+    } catch {
+      return true;
+    }
+  };
+
+  let linkStat;
+  try {
+    linkStat = await $.fs.stat(teamPath);
+  } catch (err) {
+    if (await hasDanglingAgentsLink()) {
+      return teamError(TEAM_LINK_OR_PATH_ERROR);
+    }
+    if (isNotFoundError(err)) {
+      return teamAbsent();
+    }
+    return teamError(`failed to read .agents/team.json: ${formatFsError(err)}`);
+  }
+
+  let st;
+  try {
+    st = await $.fs.stat(teamPath, { resolve: true });
+  } catch (err) {
+    if (linkStat?.isLink) {
+      return teamError(TEAM_LINK_OR_PATH_ERROR);
+    }
+    if (isNotFoundError(err)) {
+      if (await hasDanglingAgentsLink()) {
+        return teamError(TEAM_LINK_OR_PATH_ERROR);
+      }
+      return teamAbsent();
+    }
+    return teamError(`failed to read .agents/team.json: ${formatFsError(err)}`);
+  }
+
+  const realPath = typeof st?.realPath === "string" ? st.realPath.trim() : "";
+  if (!realPath) {
+    return teamError(TEAM_LINK_OR_PATH_ERROR);
+  }
+  if (!isPathInsideRoot(realRoot, realPath)) {
+    return teamError(".agents/team.json must be inside the repository");
+  }
+  if (st.kind !== "file") {
+    return teamError(".agents/team.json is not a regular file");
+  }
+  if (st.size > MAX_TEAM_FILE_BYTES) {
+    return teamError(
+      `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+    );
+  }
+
+  let text = "";
+  try {
+    text = String(await $.fs.read(realPath));
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      return teamAbsent();
+    }
+    return teamError(`failed to read .agents/team.json: ${formatFsError(err)}`);
+  }
+
+  if (new TextEncoder().encode(text).length > MAX_TEAM_FILE_BYTES) {
+    return teamError(
+      `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+    );
+  }
+
+  const parsed = parseTeam(text);
+  const resolved = resolveTeam(parsed.team, "claude-code", TIER_DEFAULTS);
+  return {
+    ok: true as const,
+    result: {
+      file: ".agents/team.json",
+      errors: parsed.errors,
+      notes: resolved.notes,
+      roles: resolved.roles,
+    },
+  };
+}
+
+async function getAgentRoles(
+  $: EngineInterface,
+): Promise<Record<string, string>> {
+  if (cachedAgentRoles !== null) return cachedAgentRoles;
+  try {
+    const res = await readTeamTool($);
+    cachedAgentRoles = res.ok ? agentRoleMap(res.result) : Object.create(null);
+  } catch {
+    cachedAgentRoles = Object.create(null);
+  }
+  return cachedAgentRoles;
+}
 
 export const register: Register = (on) => {
   on("session.start", async ($, e, next) => {
@@ -2667,6 +2932,8 @@ export const register: Register = (on) => {
     seenStepTurns.clear();
     noticedStalls.clear();
     wokenMentionsByFlow.clear();
+    cachedAgentRoles = null;
+    pendingTeamEvent = null;
     stallTimer?.cancel();
     stallTimer = null;
     stallTimerFlowAt = null;
@@ -2894,6 +3161,23 @@ export const register: Register = (on) => {
       },
     });
 
+    await $.tool.register({
+      name: "team",
+      description:
+        "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          root: {
+            type: "string",
+            description:
+              "Optional absolute path to the repository root directory containing .agents/team.json.",
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
     await $.command.register({
       name: "orchestrator-panel",
       description:
@@ -2971,7 +3255,41 @@ export const register: Register = (on) => {
           0,
         )
       : clockNow;
-    return { text: formatOrchestratorBoardCommand(f, rawArgs, at, width) };
+    const agentRoles = flowAgentRoleMap(f) ?? (await getAgentRoles($));
+    return {
+      text: formatOrchestratorBoardCommand(f, rawArgs, at, width, agentRoles),
+    };
+  });
+
+  on("tool.call", { tool: TEAM_TOOL }, async ($, e) => {
+    const input = e as unknown as { root?: unknown };
+    const hasRoot =
+      Object.prototype.hasOwnProperty.call(input, "root") &&
+      input.root !== undefined;
+    const loaded = await readTeamTool($, hasRoot ? input.root : undefined);
+    if (!loaded.ok) {
+      return { result: loaded.error, isError: true };
+    }
+    const res = loaded.result;
+    const roleMap = agentRoleMap(res);
+    cachedAgentRoles = roleMap;
+    const roles = Object.entries(roleMap).map(([agent, role]) => ({
+      agent,
+      role,
+    }));
+    const at = await $.clock.now();
+    const teamEv: FlowEvent = { type: "team", at, roles };
+    const check = validateTeamEvent(teamEv) as { ok: boolean };
+    if (check.ok) {
+      const prevFlow = await read($, flow);
+      if (prevFlow) {
+        await update($, flow, (prev) => (prev ? reduce(prev, teamEv) : prev));
+        pendingTeamEvent = null;
+      } else {
+        pendingTeamEvent = teamEv;
+      }
+    }
+    return { result: JSON.stringify(res) };
   });
 
   on("tool.call", { tool: TOOL }, async ($, e) => {
@@ -2982,6 +3300,9 @@ export const register: Register = (on) => {
     const validationError = validateProgressInput(input);
     if (validationError) {
       return { result: validationError, isError: true };
+    }
+    if (Array.isArray(input.tasks)) {
+      cachedAgentRoles = null;
     }
     const at = await $.clock.now();
     const prevFlow = await read($, flow);
@@ -2998,6 +3319,10 @@ export const register: Register = (on) => {
           tasks: cleanTasks(input.tasks),
         };
         f = reduce(f, planEv);
+        if (prev === null && f && pendingTeamEvent) {
+          f = reduce(f, pendingTeamEvent);
+          pendingTeamEvent = null;
+        }
       }
       if (
         typeof input.phase === "string" &&
@@ -3777,6 +4102,7 @@ export const register: Register = (on) => {
     const showOverview =
       hasOverviewItems &&
       (postCount > 0 || (f.postsDropped ?? 0) > 0 || hasNonMainChannel);
+    const agentRoles = flowAgentRoleMap(f) ?? (await getAgentRoles($));
     const renderAgentRow = (r: Run) => {
       const stall = stallById.get(r.id) ?? null;
       const member = memberById.get(r.id) ?? null;
@@ -3793,6 +4119,7 @@ export const register: Register = (on) => {
         r.role === "lead"
           ? "lead"
           : sanitizeDisplayText(r.agent).replace(/\s+/g, " ").trim();
+      const displayAgent = formatAgentRoleLabel(agentName, agentRoles);
       const safeBaseModel = sanitizeDisplayText(r.model)
         .replace(/\s+/g, " ")
         .trim();
@@ -3826,8 +4153,8 @@ export const register: Register = (on) => {
         <Box key={`run-${r.id}`} flexDirection="column" marginBottom={1}>
           {hasDesktopSvg && "Svg" in ui ? (
             <ui.Svg
-              source={agentRowSvg(W, r, at, stall, member)}
-              alt={`${agentName} (${modelLabel}): ${stallLabel(r, stall, member)}, ${costText}`}
+              source={agentRowSvg(W, r, at, stall, member, agentRoles)}
+              alt={`${displayAgent} (${modelLabel}): ${stallLabel(r, stall, member)}, ${costText}`}
               width={W}
               height={58}
             />
@@ -3844,7 +4171,7 @@ export const register: Register = (on) => {
                 <Text color={statusTermColor(r.status)}>
                   {STATUS_GLYPH[r.status] ?? "●"}
                 </Text>{" "}
-                <Text bold>{agentName}</Text>{" "}
+                <Text bold>{displayAgent}</Text>{" "}
                 <Text
                   color={
                     member?.state === "killed"
@@ -4018,7 +4345,7 @@ export const register: Register = (on) => {
                 <Text bold>Overview</Text>
                 {hasDesktopSvg && "Svg" in ui ? (
                   (() => {
-                    const ovPic = overviewSvg(W, ov);
+                    const ovPic = overviewSvg(W, ov, agentRoles);
                     return (
                       <ui.Svg
                         source={ovPic.source}
@@ -4037,7 +4364,7 @@ export const register: Register = (on) => {
                         </Text>
                         {ov.members.flatMap((m, idx) =>
                           wrapPlainText(
-                            `${sanitizeDisplayText(m.agent)} (${m.state})${m.line ? `: ${sanitizeDisplayText(m.line)}` : ""}`,
+                            `${sanitizeDisplayText(formatAgentRoleLabel(m.agent, agentRoles))} (${m.state})${m.line ? `: ${sanitizeDisplayText(m.line)}` : ""}`,
                             cols,
                             "  ",
                             "    ",
@@ -4098,7 +4425,7 @@ export const register: Register = (on) => {
                         </Text>
                         {ov.stalls.flatMap((s, idx) =>
                           wrapPlainText(
-                            `${sanitizeDisplayText(s.agent)} (${s.state}, idle ${fmtTime(s.idleMs)})`,
+                            `${sanitizeDisplayText(formatAgentRoleLabel(s.agent, agentRoles))} (${s.state}, idle ${fmtTime(s.idleMs)})`,
                             cols,
                             "  ",
                             "    ",

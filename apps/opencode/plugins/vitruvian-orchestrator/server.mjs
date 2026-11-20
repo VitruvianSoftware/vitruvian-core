@@ -23,17 +23,21 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  agentRoleMap,
   applyBoardCall,
   applyChannelCall,
   applyPostCall,
   applyProgressCall,
   applyStepCall,
   formatWake,
+  loadTeamConfig,
+  loadTeamConfigForRoot,
   mapOpenCodeTokens,
   mergeTokenSnapshots,
   parseModelAndEffort,
   pendingWakes,
   reduce,
+  validateTeamEvent,
 } from "./lib/adapter.mjs";
 import {
   checkBoardChannel,
@@ -299,6 +303,18 @@ const CHANNEL_INPUT_SCHEMA = {
     },
   },
   required: ["action"],
+  additionalProperties: false,
+};
+
+const TEAM_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    root: {
+      type: "string",
+      description:
+        "Optional absolute path to the repository root directory containing .agents/team.json.",
+    },
+  },
   additionalProperties: false,
 };
 
@@ -672,6 +688,9 @@ export default {
     /** @type {Set<string>} */
     const wokenMentions = new Set();
 
+    /** @type {Map<string, import('./lib/orchestrator-core.mjs').FlowEvent>} */
+    const pendingTeamByRoot = new Map();
+
     async function isKnownChildSession(sessionID) {
       if (!sessionID) return false;
       const cached = sessionMeta.get(sessionID);
@@ -826,7 +845,17 @@ export default {
               args || {},
               now,
             );
-            let nextFlow = ensureLeadRun(updatedFlow, rootID, caller.meta, now);
+            let nextFlow = updatedFlow;
+            if (!prevFlow && nextFlow) {
+              const pendingTeam =
+                pendingTeamByRoot.get(rootID) ?? pendingTeamByRoot.get("");
+              if (pendingTeam) {
+                pendingTeamByRoot.delete(rootID);
+                pendingTeamByRoot.delete("");
+                nextFlow = reduce(nextFlow, pendingTeam);
+              }
+            }
+            nextFlow = ensureLeadRun(nextFlow, rootID, caller.meta, now);
             if (args?.finished === true) {
               nextFlow = reduce(nextFlow, {
                 type: "run.end",
@@ -990,6 +1019,73 @@ export default {
               await deliverPendingWakes(rootID);
             }
             return { content: JSON.stringify(res.channels) };
+          },
+        });
+
+        registry.add({
+          name: "team",
+          description:
+            "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+          options: { codemode: false },
+          input: TEAM_INPUT_SCHEMA,
+          execute: async (args, toolCtx) => {
+            const hasRoot =
+              args &&
+              typeof args === "object" &&
+              Object.prototype.hasOwnProperty.call(args, "root") &&
+              args.root !== undefined;
+            const defaults = ctx?.teamDefaults;
+            let result;
+            if (hasRoot) {
+              result = loadTeamConfigForRoot(args.root, defaults);
+            } else {
+              const rawCwd =
+                toolCtx?.cwd ||
+                toolCtx?.directory ||
+                ctx?.directory ||
+                ctx?.worktree ||
+                process.cwd();
+              result = loadTeamConfig(String(rawCwd), defaults);
+            }
+
+            const roleMap = agentRoleMap(result);
+            const roles = Object.entries(roleMap).map(([agent, role]) => ({
+              agent,
+              role,
+            }));
+            const check = validateTeamEvent({ roles });
+            if (check.ok) {
+              const caller = await resolveToolCaller(toolCtx);
+              if (!caller.known || !caller.isHelper) {
+                const rawCtxID =
+                  typeof toolCtx?.sessionID === "string"
+                    ? toolCtx.sessionID.trim()
+                    : "";
+                const fallbackID =
+                  isValidSessionId(rawCtxID) && rawCtxID !== "default"
+                    ? rawCtxID
+                    : "";
+                const targetRootID = caller.rootID || fallbackID;
+                const teamEvent = {
+                  type: "team",
+                  at: Date.now(),
+                  roles: check.roles,
+                };
+                if (targetRootID && flowsByRoot.has(targetRootID)) {
+                  const currentFlow = flowsByRoot.get(targetRootID);
+                  const reducedFlow = reduce(currentFlow, teamEvent);
+                  if (reducedFlow && reducedFlow !== currentFlow) {
+                    persistFlow(targetRootID, reducedFlow);
+                  }
+                } else {
+                  pendingTeamByRoot.set(targetRootID || "", teamEvent);
+                }
+              }
+            }
+
+            return {
+              content: JSON.stringify(result),
+            };
           },
         });
       });

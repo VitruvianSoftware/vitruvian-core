@@ -76,6 +76,8 @@ Task-oriented recipes for day-to-day work.
 - [Speed up builds with caching](guides/build-cache.md) — local disk cache, shared
   cache, BuildBuddy.
 - [Remote build execution](guides/remote-build.md) — opt-in RBE via `--config=remote`.
+- [Configure your orchestrator team](guides/orchestrator-team-file.md) — map the ten
+  orchestrator roles to your own agents, models, and repo notes in `.agents/team.json`.
 - [Dependency versioning](dependency-versioning/index.md) — the One Version Rule and
   per-ecosystem (Go/JS/Python/JVM/…) how-tos.
 - [Flaky tests](engineering/flaky-tests.md) — quarantine and culprit-finding.

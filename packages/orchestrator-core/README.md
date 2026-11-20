@@ -17,6 +17,7 @@ Every event carries `at` (timestamp in milliseconds):
 - `{ type: "task.return", at, n }` — returns task `n` for another pass (`state: "returned"`, `round + 1`).
 - `{ type: "post", at, from, text, to?, kind?, replyTo?, channel?, runId? }` — strips ANSI escape sequences and C0/DEL control characters (preserving `\n` and `\t`), ignores empty text, appends a numbered post (`seq` = 1, 2, 3 …) on `channel` (default `"main"`) to `flow.posts`, unions explicit `to` with `@name` mentions parsed from `text`, and caps `text` at 4000 characters (`…[truncated]`).
 - `{ type: "channel", at, action: "create" | "archive", name }` — creates a named channel (`[a-z0-9][a-z0-9-]{0,31}`, capped at 20 channels including `"main"`) or archives a non-`"main"` channel so new posts to it are rejected while existing posts remain readable.
+- `{ type: "team", at, roles: [{ agent, role }] }` — records the resolved `agent -> role` mapping (at most 10 entries; agent must match `^[a-z0-9][a-z0-9-]{0,63}$`, role must be in `ROLES`) on `flow.team` so panels read role labels from flow state first.
 - `{ type: "wake", at, seq, target }` — records a delivered board wake (`"${seq}:${target}"` in `flow.woken`) so replaying a flow after restart does not re-send already-delivered wakes.
 - `{ type: "member.pause", at, id, reason: "quota" | "error", detail? }` — marks specialist run `id` paused (`reason`, optional `detail`); cleared by any later `run.progress` or `run.start` for `id`.
 - `{ type: "member.kill", at, id }` — marks specialist run `id` killed (ending it if still open).
@@ -44,6 +45,7 @@ After every event, waiting tasks whose `after` lists are all accepted become `"r
   - A defect stays open until a later `result` post by the same author closes it: `replyTo` equal to that defect's `seq` is checked first; as a fallback when `replyTo` is omitted, a later `result` post from the same author closes the defect when it mentions the defect's (non-lead) worker recipient and either the author has only one task or both posts resolve to the same unambiguous task (a defect addressed only to `@lead`, or one from an author with several tasks and no explicit task number, is closed only by `replyTo`).
   - `stalls` reuses `stalls()` and keeps `"quiet"` and `"stalled"` worker runs.
 - `pendingWakes(flow, alreadyWoken)` — returns `{ seq, target, runId?, from, excerpt }[]` for waiting members (and `@lead`) mentioned in posts, skipping `(seq:target)` keys in `flow.woken` and `alreadyWoken`, expanding `@all` to non-retired members, and never waking a post's own author.
+- `validateTeamEvent(event)` / `flowAgentRoleMap(flow)` — validates `team` event payloads (`roles` array of at most 10 `{ agent, role }` entries) and builds a null-prototype `agent -> role` lookup map from `flow.team` (or `null` when no `team` event has been recorded).
 
 ## How Plugins Use It
 

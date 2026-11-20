@@ -24,7 +24,9 @@ import path from "node:path";
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 
 import {
+  createAgentRolesReader,
   EMPTY_PANEL_MESSAGE,
+  flowAgentRoleMap,
   formatSidebarData,
   formatSidebarTitle,
 } from "./lib/adapter.mjs";
@@ -117,10 +119,13 @@ function OrchestratorSidebarContent(props: {
   const timer = setInterval(() => setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(timer));
 
+  const readAgentRoles = createAgentRolesReader(process.cwd());
+
   const view = createMemo(() => {
     const currentNow = now();
     const flow = readFlowForSession(props.sessionID);
-    return formatSidebarData(flow, currentNow);
+    const agentRoles = flowAgentRoleMap(flow) ?? readAgentRoles();
+    return formatSidebarData(flow, currentNow, { agentRoles });
   });
 
   const palette = createMemo(() => resolvePalette(props.themeSource));
@@ -220,7 +225,7 @@ function OrchestratorSidebarContent(props: {
           <For each={view().agents}>
             {(a) => (
               <text fg={colorForToken(palette(), a.color)}>
-                {a.agent}
+                {a.agentLabel || a.agent}
                 {a.taskId ? ` #${a.taskId}` : ""}{" "}
                 <span style={{ fg: palette().muted }}>
                   ({a.model} · {a.effort}
@@ -271,7 +276,7 @@ function OrchestratorSidebarContent(props: {
               <For each={view().overview!.members}>
                 {(m) => (
                   <text fg={palette().base}>
-                    {m.agent}{" "}
+                    {m.agentLabel || m.agent}{" "}
                     <span style={{ fg: palette().muted }}>({m.state})</span>
                     {m.line ? `: ${m.line}` : ""}
                   </text>
@@ -312,7 +317,7 @@ function OrchestratorSidebarContent(props: {
               <For each={view().overview!.stalls}>
                 {(s) => (
                   <text fg={palette().warning}>
-                    {s.agent} ({s.state} · {s.idleText})
+                    {s.agentLabel || s.agent} ({s.state} · {s.idleText})
                   </text>
                 )}
               </For>
