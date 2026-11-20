@@ -23,7 +23,11 @@ package filters
 import (
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/sentry/internal/config"
 )
@@ -44,5 +48,60 @@ func TestDesiredForProjects(t *testing.T) {
 func TestScriptDoesNotLeakToken(t *testing.T) {
 	if strings.Contains(script, "set -x") || strings.Contains(script, "echo \"$token") {
 		t.Error("script must never print the token")
+	}
+}
+
+type filtersMocks struct {
+	mu     *sync.Mutex
+	inputs *resource.PropertyMap
+	ignore *[]string
+}
+
+func (m filtersMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	if args.Name == "sentry-project-filters" {
+		m.mu.Lock()
+		*m.inputs = args.Inputs
+		if args.RegisterRPC != nil {
+			*m.ignore = args.RegisterRPC.GetIgnoreChanges()
+		}
+		m.mu.Unlock()
+	}
+	return args.Name + "_id", args.Inputs, nil
+}
+
+func (filtersMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
+}
+
+// Adding a Sentry project must be an UPDATE of the filters command, never a
+// replace: the Sentry apply's plan guard refuses any replace, and Triggers
+// forced one on every new project (mini-party, 2026-11-20). So the command
+// carries no triggers input, and ignores the triggers already in state so
+// dropping them is not a replace either.
+func TestNewProjectsUpdateTheFiltersCommandInsteadOfReplacingIt(t *testing.T) {
+	var inputs resource.PropertyMap
+	var ignore []string
+	m := filtersMocks{mu: &sync.Mutex{}, inputs: &inputs, ignore: &ignore}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := Reconcile(ctx, "https://sentry.example", "org", []config.ProjectConfig{
+			{Name: "Mini Party", Slug: "mini-party", Platform: "javascript-react", ResolveAge: 720},
+		})
+		return err
+	}, pulumi.WithMocks("sentry", "production", m))
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if inputs == nil {
+		t.Fatal("sentry-project-filters was not registered")
+	}
+	if v, ok := inputs["triggers"]; ok && !v.IsNull() {
+		t.Errorf("filters command has triggers %v: a change to them replaces the command", v)
+	}
+	if !slices.Contains(ignore, "triggers") {
+		t.Errorf("filters command ignoreChanges = %v, want it to include triggers", ignore)
+	}
+	env, ok := inputs["environment"]
+	if !ok || !env.IsObject() || !strings.Contains(env.ObjectValue()["SENTRY_FILTERS_MAP"].StringValue(), "mini-party") {
+		t.Errorf("the project map must be in environment, so a change to it runs Update: %v", env)
 	}
 }
