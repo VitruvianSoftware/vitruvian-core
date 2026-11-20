@@ -2,6 +2,7 @@
 name: security
 description: Use this agent for security audits, supply-chain and dependency CVE reviews, access control and network policies, and secret management in this repository, and for reviewing another specialist's change for security risks.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

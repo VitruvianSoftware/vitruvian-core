@@ -2492,6 +2492,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.deepEqual(absentPayload.errors, []);
     assert.equal(absentPayload.notes, "");
     assert.equal(absentPayload.roles.length, 10);
+    assert.equal(absentPayload.roles[0].engine, "native");
     assert.equal(
       absentPayload.roles[0].model,
       TIER_DEFAULTS.tiers.lead.antigravity,
@@ -2503,6 +2504,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.equal(absentPayload.roles[1].agent, "developer");
     assert.equal(absentPayload.roles[1].dispatch, "developer");
     assert.equal(absentPayload.roles[1].source, "generic");
+    assert.equal(absentPayload.roles[1].engine, "native");
     assert.equal(
       absentPayload.roles[1].model,
       TIER_DEFAULTS.tiers.build.antigravity,
@@ -2513,6 +2515,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     );
     assert.equal(absentPayload.roles[1].effort, null);
     const docsRole = absentPayload.roles.find((r) => r.role === "docs");
+    assert.equal(docsRole.engine, "native");
     assert.equal(docsRole.model, TIER_DEFAULTS.tiers.light.antigravity);
     assert.equal(docsRole.gemini, TIER_DEFAULTS.tiers.light.gemini);
 
@@ -2558,6 +2561,10 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       "team",
     );
     assert.equal(
+      validPayload.roles.find((r) => r.role === "developer").engine,
+      "native",
+    );
+    assert.equal(
       validPayload.roles.find((r) => r.role === "developer").model,
       "pro",
     );
@@ -2576,6 +2583,78 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.equal(
       validPayload.roles.find((r) => r.role === "release").source,
       "off",
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "release").engine,
+      null,
+    );
+
+    // 2b. Antigravity forces engine: "native" even when team.json sets engine: "gemini"
+    //     and preserves Antigravity tier defaults for both generic and mapped team roles
+    writeFileSync(
+      teamFile,
+      JSON.stringify({
+        engine: "gemini",
+        tiers: { build: { engine: "gemini" }, light: { engine: "gemini" } },
+        roles: {
+          developer: { agent: "wren", engine: "gemini" },
+          build: { agent: "forge" },
+          release: "off",
+        },
+      }),
+      "utf8",
+    );
+    const forcedNativePayload = JSON.parse(
+      callTeam(nestedCwd).result.content[0].text,
+    );
+    assert.deepEqual(forcedNativePayload.errors, []);
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").source,
+      "team",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").engine,
+      "native",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").model,
+      TIER_DEFAULTS.tiers.build.antigravity,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").effort,
+      null,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").source,
+      "team",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").engine,
+      "native",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").model,
+      TIER_DEFAULTS.tiers.build.antigravity,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").effort,
+      null,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "docs").source,
+      "generic",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "docs").engine,
+      "native",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "docs").model,
+      TIER_DEFAULTS.tiers.light.antigravity,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "release").engine,
+      null,
     );
 
     // 3. Invalid file -> reports errors, returns fallback generic roles
@@ -2628,6 +2707,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       "dispatch",
       "source",
       "tier",
+      "engine",
       "gemini",
       "model",
       "effort",
