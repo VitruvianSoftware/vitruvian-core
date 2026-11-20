@@ -23,14 +23,28 @@ Everything installs from the **main checkout**, wherever you run this from, so r
 
 After a refresh, running sessions still use the old code: run `/reload-plugins` in Claude Code, and restart Antigravity and OpenCode.
 
+## Keep it current without asking
+
+```sh
+bazel run //tools/agent-plugins:schedule -- install   # every 30 minutes and at login
+bazel run //tools/agent-plugins:schedule -- status    # is it loaded; last logged run
+bazel run //tools/agent-plugins:schedule -- remove
+```
+
+`install` adds a launchd job (`dev.vitruvian.agent-plugins-refresh`) that runs the main checkout's `refresh.sh --quiet`. Refresh fast-forwards the main checkout first, so the job always runs the newest refresh. A run that finds nothing to do logs nothing. A run that updates something, finds a copy stale or fails writes its report to `~/Library/Logs/vitruvian/agent-plugins-refresh.log`. `--every <minutes>` changes the interval (5 or more). The job uses a login shell, so it finds `claude`, `agy`, `git` and `python3` the way a terminal does.
+
+The schedule only keeps copies current. Open sessions still need `/reload-plugins` or a restart.
+
 ## Options
 
 - `--check`: change nothing; list what is stale and exit 1 if anything is.
 - `--no-pull`: don't fast-forward the main checkout.
+- `--quiet`: print nothing unless something changed, is stale or failed (used by the schedule).
 - `--plugin <name>`: the plugin folder name under `apps/<harness>/plugins/` (default `vitruvian-orchestrator`). A harness without that folder is skipped.
 
 ## Interface
 - `[refresh.sh:script entrypoint]`
+- `[schedule.sh:script entrypoint]`
 
 ## Invariants
 - None

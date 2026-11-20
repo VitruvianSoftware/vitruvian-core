@@ -38,6 +38,7 @@ set -euo pipefail
 PLUGIN="vitruvian-orchestrator"
 MODE="refresh"
 PULL=1
+QUIET=0
 
 usage() {
   sed -n '/^# Refresh this repo/,/^# checkout through/p' "$0" | sed 's/^# \{0,1\}//'
@@ -46,6 +47,8 @@ usage() {
 Options:
   --check          Report only. Changes nothing; exits 1 if any copy is stale.
   --no-pull        Do not fast-forward the main checkout to origin/main first.
+  --quiet          Print nothing unless something was updated, is stale or failed
+                   (for the scheduled run; see schedule.sh).
   --plugin <name>  Plugin folder name (default: vitruvian-orchestrator).
 USAGE
 }
@@ -54,6 +57,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --check) MODE="check" ;;
     --no-pull) PULL=0 ;;
+    --quiet) QUIET=1 ;;
     --plugin)
       [[ $# -ge 2 ]] || { echo "--plugin needs a name" >&2; exit 2; }
       PLUGIN="$2"
@@ -81,6 +85,26 @@ fi
 
 stale=0
 failed=0
+changed=0
+
+# --quiet: hold the report back and print it at the end only if anything changed,
+# is stale or failed, so a scheduled run that finds nothing to do logs nothing.
+# An unexpected error (set -e) also prints it, from the EXIT trap.
+REPORT=""
+flush_report() {
+  local rc="${1:-0}"
+  [[ -n "$REPORT" ]] || return 0
+  exec 1>&3
+  if [[ "$rc" -ne 0 || "$changed" -ne 0 || "$stale" -ne 0 || "$failed" -ne 0 ]]; then cat "$REPORT"; fi
+  rm -f "$REPORT"
+  REPORT=""
+}
+if [[ "$QUIET" -eq 1 ]]; then
+  REPORT="$(mktemp)"
+  trap 'flush_report $?' EXIT
+  exec 3>&1 >"$REPORT"
+  echo "$(date '+%Y-%m-%d %H:%M:%S %Z') agent-plugins refresh"
+fi
 ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 bad() { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 note() { printf '  · %s\n' "$*"; }
@@ -120,6 +144,7 @@ if git -C "$MAIN" rev-parse --git-dir >/dev/null 2>&1; then
       failed=1
     else
       git -C "$MAIN" merge --ff-only -q origin/main
+      changed=1
       ok "main checkout fast-forwarded $behind commit(s) to $(git -C "$MAIN" rev-parse --short HEAD)"
     fi
   else
@@ -153,6 +178,7 @@ if [[ -d "$src" ]]; then
       "$CLAUDE" plugin install "$PLUGIN@$MARKETPLACE" --scope user >/dev/null
       dest="$(claude_path)"
     fi
+    changed=1
     if same_tree "$src" "$dest"; then ok "reinstalled; copy matches ($dest)"; else bad "still differs after reinstall ($dest)"; failed=1; fi
   fi
 fi
@@ -175,6 +201,7 @@ if [[ -d "$src" ]]; then
     if [[ -n "$dest" ]]; then "$AGY" plugin uninstall "$PLUGIN" >/dev/null; fi
     "$AGY" plugin install "$src" >/dev/null
     dest="$(agy_path)"
+    changed=1
     if same_tree "$src" "$dest"; then ok "reinstalled; copy matches ($dest)"; else bad "still differs after reinstall (${dest:-not installed})"; failed=1; fi
   fi
 fi
@@ -195,10 +222,12 @@ if [[ -d "$src" ]]; then
     stale=1
   else
     OPENCODE_CONFIG_DIR="$OPENCODE_DIR" bash "$src/install.sh" >/dev/null
+    changed=1
     if opencode_ok "$src"; then ok "loaders rewritten"; else bad "loaders still wrong after install.sh"; failed=1; fi
   fi
 fi
 
+flush_report
 if [[ "$failed" -ne 0 ]]; then
   echo "Refresh failed for at least one harness (see ✗ above)." >&2
   exit 1
@@ -207,6 +236,6 @@ if [[ "$stale" -ne 0 ]]; then
   echo "Stale. Run: bazel run //tools/agent-plugins:refresh" >&2
   exit 1
 fi
-if [[ "$MODE" == "refresh" ]]; then
+if [[ "$MODE" == "refresh" && ( "$QUIET" -eq 0 || "$changed" -ne 0 ) ]]; then
   echo "Done. Running sessions keep the old code: run /reload-plugins in Claude Code, and restart Antigravity and OpenCode."
 fi

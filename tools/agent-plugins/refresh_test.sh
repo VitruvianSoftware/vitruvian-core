@@ -90,12 +90,23 @@ if run --check; then fail "a broken OpenCode loader was not reported"; else pass
 # Refresh mode rewrites the OpenCode loaders itself.
 if run; then pass "refresh repairs the OpenCode loaders"; else fail "refresh: $(cat "$T/out")"; fi
 
+# --quiet (the scheduled run): silent when nothing changed, the full report when it fixed something.
+if run --quiet && [[ ! -s "$T/out" ]]; then pass "--quiet prints nothing when all copies match"; else fail "--quiet with nothing to do printed: $(cat "$T/out")"; fi
+: >"$T/opencode/plugins/$P/tui.tsx"
+if run --quiet && grep -q "loaders rewritten" "$T/out" && grep -q "agent-plugins refresh" "$T/out"; then
+  pass "--quiet prints a dated report when it repaired something"
+else fail "--quiet after a repair: $(cat "$T/out")"; fi
+
 # A Claude Code copy that stays stale after update+reinstall is a failure, not a pass.
 echo "v3" >"$MAIN/apps/claude-code/plugins/$P/lib/core.mjs"
 if run; then fail "refresh claimed success with a stale copy"; else
   grep -q "uninstall demo@vitruvian-core --scope user --keep-data" "$T/claude.calls" &&
     grep -q "install demo@vitruvian-core --scope user" "$T/claude.calls" &&
     pass "refresh reinstalls Claude Code and reports when the copy still differs" || fail "calls: $(cat "$T/claude.calls" 2>/dev/null)"
+fi
+
+if run --quiet; then fail "--quiet claimed success with a stale copy"; else
+  grep -q "still differs" "$T/out" && pass "--quiet still reports a failure" || fail "--quiet hid a failure: $(cat "$T/out")"
 fi
 
 [[ "$fails" -eq 0 ]] || { echo "$fails failure(s)"; exit 1; }
