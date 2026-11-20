@@ -10,17 +10,38 @@ Subsystem blueprint grouping child modules under `gitops/argocd/platform/headsca
 
 [`policy.hujson`](./policy.hujson) is the mesh's ACL policy and its source of
 truth. Headscale keeps the live policy in its database
-(`HEADSCALE_POLICY_MODE=database`, so Headplane's ACL page still works), which
-means Argo CD does not apply this file. After a change merges, apply it from
-the main checkout:
+(`HEADSCALE_POLICY_MODE=database`, so Headplane's ACL page still works), and
+[`configmap-policy.yaml`](./configmap-policy.yaml) (`ConfigMap/headscale-policy`)
+embeds `policy.hujson` for Argo CD (`headscale-resources`). After editing
+`policy.hujson`, regenerate the ConfigMap (`policy_configmap_drift_test` fails in
+CI if they drift):
 
 ```sh
-bazel run //tools/gitops:headscale-policy-check   # validate with the live Headscale
-bazel run //tools/gitops:headscale-policy-set     # check, then replace the live policy
-bazel run //tools/gitops:headscale -- policy get  # confirm what is live
+bazel run //gitops/argocd/platform/headscale:policy-configmap
 ```
 
-An edit made in Headplane lasts only until the next `headscale-policy-set`.
+Merging to `main` makes the change live automatically within ~2 minutes: Argo CD
+syncs `ConfigMap/headscale-policy`, kubelet refreshes the directory-mounted
+volume in place, and the `policy-sync` sidecar on `deploy/headscale` checks the
+mounted file on startup and every 60 s (`headscale policy get`, then
+`policy check` and `policy set` over the shared `/var/run/headscale/headscale.sock`
+socket when it differs). Any edit made in Headplane is reverted on the next
+60 s reconciliation when it differs from git.
+
+Watch the sync logs and confirm the live policy:
+
+```sh
+bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync
+bazel run //tools/gitops:headscale -- policy get
+```
+
+Manual push is break-glass only (`headscale-policy-check` can still validate a
+local draft against live Headscale before merge):
+
+```sh
+bazel run //tools/gitops:headscale-policy-check   # validate a local change with live Headscale
+bazel run //tools/gitops:headscale-policy-set     # break-glass only: check, then replace live policy immediately
+```
 
 What it allows today: James's own devices reach everything (as the old
 allow-all did), and `tag:ci` reaches only TCP to the Envoy gateway NodePorts

@@ -14,6 +14,127 @@ pub use gitops_values_yaml as yaml;
 use serde_json::Value;
 
 pub const PKG_DIR: &str = "gitops/argocd/platform/headscale";
+pub const POLICY_FILENAME: &str = "policy.hujson";
+pub const POLICY_CONFIGMAP_FILENAME: &str = "configmap-policy.yaml";
+pub const POLICY_CONFIGMAP_NAME: &str = "headscale-policy";
+
+const CONFIGMAP_MIT_HEADER: &str = "\
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the \"Software\"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+";
+
+/// Render `configmap-policy.yaml` embedding `raw_policy` verbatim under `data["policy.hujson"]`.
+pub fn render_policy_configmap(raw_policy: &str) -> String {
+    let mut out = String::from(CONFIGMAP_MIT_HEADER);
+    out.push_str(concat!(
+        "#\n",
+        "# Generated from policy.hujson by:\n",
+        "#   bazel run //gitops/argocd/platform/headscale:policy-configmap\n",
+        "# Do not edit by hand; edit policy.hujson and re-run the generator.\n",
+        "apiVersion: v1\n",
+        "kind: ConfigMap\n",
+        "metadata:\n",
+        "  name: headscale-policy\n",
+        "  namespace: headscale\n",
+        "data:\n",
+    ));
+    if raw_policy.is_empty() {
+        out.push_str("  policy.hujson: \"\"\n");
+        return out;
+    }
+    let first_non_empty_indented = raw_policy
+        .split('\n')
+        .find(|l| !l.is_empty())
+        .is_some_and(|l| l.starts_with(' '));
+    let indent_hint = if first_non_empty_indented { "2" } else { "" };
+    let (chomp, body) = if let Some(stripped) = raw_policy.strip_suffix('\n') {
+        if stripped.ends_with('\n') {
+            ("+", stripped)
+        } else {
+            ("", stripped)
+        }
+    } else {
+        ("-", raw_policy)
+    };
+    out.push_str(&format!("  policy.hujson: |{chomp}{indent_hint}\n"));
+    for line in body.split('\n') {
+        if line.is_empty() {
+            out.push('\n');
+        } else {
+            out.push_str("    ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Verify that `committed_cm` embeds `raw_policy` byte-for-byte and matches the generator output.
+pub fn check_policy_configmap_drift(raw_policy: &str, committed_cm: &str) -> Result<(), String> {
+    let docs = yaml::parse_all(committed_cm)
+        .map_err(|e| format!("failed to parse {POLICY_CONFIGMAP_FILENAME}: {e}"))?;
+    if docs.len() != 1 {
+        return Err(format!(
+            "expected exactly 1 ConfigMap document in {POLICY_CONFIGMAP_FILENAME}, found {}",
+            docs.len()
+        ));
+    }
+    let cm = &docs[0];
+    if cm.get("kind").and_then(Value::as_str) != Some("ConfigMap") {
+        return Err(format!(
+            "{POLICY_CONFIGMAP_FILENAME} must have kind: ConfigMap"
+        ));
+    }
+    if cm.pointer("/metadata/name").and_then(Value::as_str) != Some(POLICY_CONFIGMAP_NAME) {
+        return Err(format!(
+            "{POLICY_CONFIGMAP_FILENAME} must have metadata.name: {POLICY_CONFIGMAP_NAME}"
+        ));
+    }
+    if cm.pointer("/metadata/namespace").and_then(Value::as_str) != Some("headscale") {
+        return Err(format!(
+            "{POLICY_CONFIGMAP_FILENAME} must have metadata.namespace: headscale"
+        ));
+    }
+    let embedded = cm
+        .pointer(&format!("/data/{POLICY_FILENAME}"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            format!("{POLICY_CONFIGMAP_FILENAME} is missing data['{POLICY_FILENAME}']")
+        })?;
+    if embedded.as_bytes() != raw_policy.as_bytes() {
+        return Err(format!(
+            "{POLICY_CONFIGMAP_FILENAME} data['{POLICY_FILENAME}'] has drifted from {POLICY_FILENAME} \
+             (expected {} bytes, found {} bytes); run `bazel run //gitops/argocd/platform/headscale:policy-configmap`",
+            raw_policy.len(),
+            embedded.len()
+        ));
+    }
+    let expected_cm = render_policy_configmap(raw_policy);
+    if committed_cm.as_bytes() != expected_cm.as_bytes() {
+        return Err(format!(
+            "{POLICY_CONFIGMAP_FILENAME} does not match generated output from {POLICY_FILENAME}; \
+             run `bazel run //gitops/argocd/platform/headscale:policy-configmap`"
+        ));
+    }
+    Ok(())
+}
 
 /// Load all non-null YAML documents from `filename` in `gitops/argocd/platform/headscale`.
 pub fn load_docs(filename: &str) -> Vec<Value> {
@@ -590,5 +711,507 @@ mod tests {
         let hp = yaml::parse_doc("headscale:\n  url: http://headscale:8080\n").unwrap();
         let hs = yaml::parse_doc("env:\n  HEADSCALE_POLICY_MODE: file\n").unwrap();
         assert!(check_policy_mode(&hp, &hs).is_err());
+    }
+
+    #[test]
+    fn test_policy_sync_sidecar_and_shared_volumes_configured() {
+        let hs = load_headscale_values();
+
+        assert_eq!(
+            hs.pointer("/automountServiceAccountToken")
+                .and_then(Value::as_bool),
+            Some(false),
+            "automountServiceAccountToken must be false: neither headscale nor policy-sync calls the Kubernetes API."
+        );
+        assert_eq!(
+            hs.pointer("/env/HEADSCALE_POLICY_MODE")
+                .and_then(Value::as_str),
+            Some("database")
+        );
+        assert_eq!(
+            hs.pointer("/env/HEADSCALE_UNIX_SOCKET_PERMISSION")
+                .and_then(Value::as_str),
+            Some("0770"),
+            "HEADSCALE_UNIX_SOCKET_PERMISSION must use 0770 (without 0o prefix) so Go base-8 ParseUint permits non-root gid 0 sidecar access."
+        );
+
+        assert_eq!(
+            hs.pointer("/persistence/socket/enabled")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            hs.pointer("/persistence/socket/type")
+                .and_then(Value::as_str),
+            Some("emptyDir")
+        );
+        assert_eq!(
+            hs.pointer("/persistence/socket/mountPath")
+                .and_then(Value::as_str),
+            Some("/var/run/headscale")
+        );
+
+        assert_eq!(
+            hs.pointer("/persistence/policy/enabled")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            hs.pointer("/persistence/policy/type")
+                .and_then(Value::as_str),
+            Some("configMap")
+        );
+        assert_eq!(
+            hs.pointer("/persistence/policy/name")
+                .and_then(Value::as_str),
+            Some(POLICY_CONFIGMAP_NAME)
+        );
+        assert_eq!(
+            hs.pointer("/persistence/policy/mountPath")
+                .and_then(Value::as_str),
+            Some("-"),
+            "persistence.policy must use mountPath \"-\" so only policy-sync mounts the ConfigMap."
+        );
+
+        assert_eq!(
+            hs.pointer("/persistence/cli-tmp/enabled")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            hs.pointer("/persistence/cli-tmp/type")
+                .and_then(Value::as_str),
+            Some("emptyDir")
+        );
+        assert_eq!(
+            hs.pointer("/persistence/cli-tmp/mountPath")
+                .and_then(Value::as_str),
+            Some("-")
+        );
+
+        let sidecar = hs
+            .pointer("/sidecars/policy-sync")
+            .expect("missing sidecars.policy-sync");
+        let main_tag = hs
+            .pointer("/image/tag")
+            .and_then(Value::as_str)
+            .expect("missing image.tag");
+        let sidecar_img = sidecar
+            .get("image")
+            .and_then(Value::as_str)
+            .expect("missing sidecar image");
+        let expected_prefix = format!("ghcr.io/juanfont/headscale:{main_tag}-debug@sha256:");
+        assert!(
+            sidecar_img.starts_with(&expected_prefix),
+            "policy-sync image {sidecar_img} must match {main_tag}-debug and pin by @sha256 digest"
+        );
+        assert_eq!(
+            sidecar
+                .pointer("/env/HEADSCALE_DISABLE_CHECK_UPDATES")
+                .and_then(Value::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            sidecar
+                .pointer("/env/HEADSCALE_CONFIG")
+                .and_then(Value::as_str),
+            Some("/tmp/headscale-cli.yaml")
+        );
+
+        let mounts = sidecar
+            .get("volumeMounts")
+            .and_then(Value::as_array)
+            .expect("missing policy-sync volumeMounts");
+        let find_mount = |name: &str| {
+            mounts
+                .iter()
+                .find(|m| m.get("name").and_then(Value::as_str) == Some(name))
+        };
+
+        let policy_mount = find_mount("policy").expect("policy-sync must mount policy ConfigMap");
+        assert_eq!(
+            policy_mount.get("mountPath").and_then(Value::as_str),
+            Some("/etc/headscale-policy")
+        );
+        assert_eq!(
+            policy_mount.get("readOnly").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(
+            policy_mount.get("subPath").is_none(),
+            "policy ConfigMap must be directory-mounted (no subPath) so kubelet updates it in place"
+        );
+
+        let socket_mount =
+            find_mount("socket").expect("policy-sync must share the headscale socket emptyDir");
+        assert_eq!(
+            socket_mount.get("mountPath").and_then(Value::as_str),
+            Some("/var/run/headscale")
+        );
+        assert!(socket_mount.get("subPath").is_none());
+
+        let tmp_mount = find_mount("cli-tmp").expect("policy-sync must mount cli-tmp at /tmp");
+        assert_eq!(
+            tmp_mount.get("mountPath").and_then(Value::as_str),
+            Some("/tmp")
+        );
+        assert!(
+            find_mount("config").is_none(),
+            "policy-sync must not mount the headscale config/database PVC"
+        );
+
+        let sc = sidecar
+            .get("securityContext")
+            .expect("missing policy-sync securityContext");
+        assert_eq!(sc.get("runAsNonRoot").and_then(Value::as_bool), Some(true));
+        assert_eq!(sc.get("runAsUser").and_then(Value::as_i64), Some(65532));
+        assert_eq!(sc.get("runAsGroup").and_then(Value::as_i64), Some(0));
+        assert_eq!(
+            sc.get("allowPrivilegeEscalation").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            sc.get("readOnlyRootFilesystem").and_then(Value::as_bool),
+            Some(true)
+        );
+        let dropped: Vec<&str> = sc
+            .pointer("/capabilities/drop")
+            .and_then(Value::as_array)
+            .expect("missing capabilities.drop")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(dropped.contains(&"ALL"));
+
+        for path in [
+            "/resources/requests/cpu",
+            "/resources/requests/memory",
+            "/resources/limits/memory",
+        ] {
+            assert!(
+                sidecar
+                    .pointer(path)
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty()),
+                "policy-sync must specify {path}"
+            );
+        }
+    }
+
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let n = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "headscale-policy-sync-{label}-{}-{n}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
+        }
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn policy_sync_script() -> String {
+        let hs = load_headscale_values();
+        let cmd = hs
+            .pointer("/sidecars/policy-sync/command")
+            .and_then(Value::as_array)
+            .expect("missing sidecars.policy-sync.command");
+        assert_eq!(cmd.len(), 3);
+        assert_eq!(cmd[0].as_str(), Some("/busybox/sh"));
+        assert_eq!(cmd[1].as_str(), Some("-c"));
+        cmd[2]
+            .as_str()
+            .expect("missing policy-sync script")
+            .to_string()
+    }
+
+    fn install_fake_headscale(dir: &std::path::Path) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let bin_dir = dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let fake = bin_dir.join("headscale");
+        let body = r#"#!/bin/sh
+set -u
+printf '%s\n' "$*" >>"$FAKE_CALLS"
+sub="$1 $2"
+case "$sub" in
+  "policy get")
+    case "$FAKE_GET_MODE" in
+      in_sync|diff)
+        cat "$FAKE_LIVE_FILE"
+        printf '\n'
+        exit 0
+        ;;
+      not_ready)
+        echo "Could not connect: dial unix /var/run/headscale/headscale.sock: connect: no such file or directory" >&2
+        exit 1
+        ;;
+      not_found)
+        echo "Failed loading ACL Policy: rpc error: code = Unknown desc = loading ACL from database: acl policy not found" >&2
+        exit 1
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
+    ;;
+  "policy check")
+    file="$4"
+    if [ -n "${FAKE_CHECK_FAIL_ONCE:-}" ] && [ -f "$FAKE_CHECK_FAIL_ONCE" ]; then
+      rm -f "$FAKE_CHECK_FAIL_ONCE"
+      if [ -n "${FAKE_SWAP_VALID_FROM:-}" ]; then
+        cp "$FAKE_SWAP_VALID_FROM" "$POLICY_FILE"
+      fi
+      echo "Error parsing the policy file: syntax error" >&2
+      exit 1
+    fi
+    if [ "${FAKE_CHECK_FAIL:-0}" = "1" ]; then
+      echo "Error parsing the policy file: syntax error" >&2
+      exit 1
+    fi
+    echo "Policy is valid"
+    exit 0
+    ;;
+  "policy set")
+    file="$4"
+    cp "$file" "$FAKE_APPLIED_FILE"
+    echo "Policy updated."
+    exit 0
+    ;;
+  *)
+    echo "unexpected args: $*" >&2
+    exit 2
+    ;;
+esac
+"#;
+        std::fs::write(&fake, body).unwrap();
+        let mut perms = std::fs::metadata(&fake).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake, perms).unwrap();
+        bin_dir
+    }
+
+    fn run_policy_sync(
+        tmp: &TempDir,
+        bin_dir: &std::path::Path,
+        policy_path: &std::path::Path,
+        extra_env: &[(&str, &str)],
+    ) -> (std::process::Output, std::path::PathBuf, std::path::PathBuf) {
+        let calls = tmp.path().join("calls.log");
+        let applied = tmp.path().join("applied.hujson");
+        let work_tmp = tmp.path().join("work-tmp");
+        std::fs::create_dir_all(&work_tmp).unwrap();
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        let path_env = format!("{}:{orig_path}", bin_dir.display());
+        let mut cmd = std::process::Command::new("/bin/sh");
+        cmd.arg("-c")
+            .arg(policy_sync_script())
+            .env("PATH", path_env)
+            .env("POLICY_FILE", policy_path)
+            .env("TMP_DIR", &work_tmp)
+            .env("HEADSCALE_CONFIG", work_tmp.join("headscale-cli.yaml"))
+            .env("FAKE_CALLS", &calls)
+            .env("FAKE_APPLIED_FILE", &applied);
+        for (k, v) in extra_env {
+            cmd.env(k, v);
+        }
+        let out = cmd.output().expect("run policy-sync script");
+        (out, calls, applied)
+    }
+
+    #[test]
+    fn test_policy_sync_script_in_sync_with_println_trailing_newline() {
+        let tmp = TempDir::new("in-sync");
+        let bin_dir = install_fake_headscale(tmp.path());
+        let real_policy =
+            std::fs::read_to_string(yaml::resolve_data_path(PKG_DIR, POLICY_FILENAME))
+                .expect("read policy.hujson");
+        let mounted = tmp.path().join("mounted.hujson");
+        let live = tmp.path().join("live.hujson");
+        std::fs::write(&mounted, &real_policy).unwrap();
+        std::fs::write(&live, &real_policy).unwrap();
+
+        let (out, calls, applied) = run_policy_sync(
+            &tmp,
+            &bin_dir,
+            &mounted,
+            &[
+                ("POLICY_SYNC_ONCE", "1"),
+                ("FAKE_GET_MODE", "in_sync"),
+                ("FAKE_LIVE_FILE", live.to_str().unwrap()),
+            ],
+        );
+        assert!(out.status.success(), "{out:?}");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("policy-sync: in sync"), "stdout: {stdout}");
+        let log = std::fs::read_to_string(&calls).unwrap();
+        assert_eq!(log.lines().collect::<Vec<_>>(), vec!["policy get"]);
+        assert!(!applied.exists());
+    }
+
+    #[test]
+    fn test_policy_sync_script_applies_on_diff_after_check() {
+        let tmp = TempDir::new("diff");
+        let bin_dir = install_fake_headscale(tmp.path());
+        let real_policy =
+            std::fs::read_to_string(yaml::resolve_data_path(PKG_DIR, POLICY_FILENAME))
+                .expect("read policy.hujson");
+        let mounted = tmp.path().join("mounted.hujson");
+        let live = tmp.path().join("live.hujson");
+        std::fs::write(&mounted, &real_policy).unwrap();
+        std::fs::write(&live, "{\"acls\": []}\n").unwrap();
+
+        let (out, calls, applied) = run_policy_sync(
+            &tmp,
+            &bin_dir,
+            &mounted,
+            &[
+                ("POLICY_SYNC_ONCE", "1"),
+                ("FAKE_GET_MODE", "diff"),
+                ("FAKE_LIVE_FILE", live.to_str().unwrap()),
+            ],
+        );
+        assert!(out.status.success(), "{out:?}");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("policy-sync: applied "), "stdout: {stdout}");
+        let recorded: Vec<String> = std::fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(recorded.len(), 3, "calls: {recorded:?}");
+        assert_eq!(recorded[0], "policy get");
+        assert!(recorded[1].starts_with("policy check -f "));
+        assert!(recorded[2].starts_with("policy set -f "));
+        assert_eq!(std::fs::read(&applied).unwrap(), real_policy.as_bytes());
+    }
+
+    #[test]
+    fn test_policy_sync_script_check_failure_keeps_live_policy_and_survives() {
+        let tmp = TempDir::new("check-fail");
+        let bin_dir = install_fake_headscale(tmp.path());
+        let mounted = tmp.path().join("mounted.hujson");
+        let valid = tmp.path().join("valid.hujson");
+        let live = tmp.path().join("live.hujson");
+        let fail_once = tmp.path().join("fail-once.flag");
+        std::fs::write(&mounted, "{\"acls\": [broken}\n").unwrap();
+        std::fs::write(
+            &valid,
+            "{\"acls\": [{\"action\":\"accept\",\"src\":[\"james@\"],\"dst\":[\"*:*\"]}]}\n",
+        )
+        .unwrap();
+        std::fs::write(&live, "{\"acls\": []}\n").unwrap();
+        std::fs::write(&fail_once, "1").unwrap();
+
+        let (out, calls, applied) = run_policy_sync(
+            &tmp,
+            &bin_dir,
+            &mounted,
+            &[
+                ("POLICY_SYNC_MAX_LOOPS", "2"),
+                ("POLICY_SYNC_INTERVAL", "0"),
+                ("FAKE_GET_MODE", "diff"),
+                ("FAKE_LIVE_FILE", live.to_str().unwrap()),
+                ("FAKE_CHECK_FAIL_ONCE", fail_once.to_str().unwrap()),
+                ("FAKE_SWAP_VALID_FROM", valid.to_str().unwrap()),
+            ],
+        );
+        assert!(out.status.success(), "{out:?}");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("policy-sync: check FAILED")
+                && stdout.contains("live policy unchanged"),
+            "stdout: {stdout}"
+        );
+        assert!(
+            stdout.contains("policy-sync: applied "),
+            "expected loop to survive failed check and apply on tick 2: {stdout}"
+        );
+        let recorded: Vec<String> = std::fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        // Tick 1: get, check (fails, no set); Tick 2: get, check, set
+        assert_eq!(recorded.len(), 5, "calls: {recorded:?}");
+        assert!(recorded[1].starts_with("policy check -f "));
+        assert!(recorded[2] == "policy get");
+        assert!(recorded[3].starts_with("policy check -f "));
+        assert!(recorded[4].starts_with("policy set -f "));
+        assert_eq!(
+            std::fs::read(&applied).unwrap(),
+            std::fs::read(&valid).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_policy_sync_script_skips_when_policy_get_fails() {
+        let tmp = TempDir::new("not-ready");
+        let bin_dir = install_fake_headscale(tmp.path());
+        let mounted = tmp.path().join("mounted.hujson");
+        std::fs::write(&mounted, "{}\n").unwrap();
+
+        let (out, calls, applied) = run_policy_sync(
+            &tmp,
+            &bin_dir,
+            &mounted,
+            &[("POLICY_SYNC_ONCE", "1"), ("FAKE_GET_MODE", "not_ready")],
+        );
+        assert!(out.status.success(), "{out:?}");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("policy-sync: headscale not ready")
+                && stdout.contains("live policy unchanged"),
+            "stdout: {stdout}"
+        );
+        let recorded: Vec<String> = std::fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(recorded, vec!["policy get"]);
+        assert!(!applied.exists());
+    }
+
+    #[test]
+    fn test_policy_sync_script_bootstraps_when_db_has_no_policy_yet() {
+        let tmp = TempDir::new("bootstrap");
+        let bin_dir = install_fake_headscale(tmp.path());
+        let mounted = tmp.path().join("mounted.hujson");
+        std::fs::write(&mounted, "{\"acls\": []}\n").unwrap();
+
+        let (out, calls, applied) = run_policy_sync(
+            &tmp,
+            &bin_dir,
+            &mounted,
+            &[("POLICY_SYNC_ONCE", "1"), ("FAKE_GET_MODE", "not_found")],
+        );
+        assert!(out.status.success(), "{out:?}");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("policy-sync: applied "), "stdout: {stdout}");
+        let recorded: Vec<String> = std::fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(recorded.len(), 3, "calls: {recorded:?}");
+        assert_eq!(recorded[0], "policy get");
+        assert!(recorded[1].starts_with("policy check -f "));
+        assert!(recorded[2].starts_with("policy set -f "));
+        assert_eq!(std::fs::read(&applied).unwrap(), b"{\"acls\": []}\n");
     }
 }

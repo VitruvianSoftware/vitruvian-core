@@ -10,6 +10,10 @@ Component package providing implementation for `gitops/argocd/platform/headscale
 - `[lib.rs:load_headscale_values]`
 - `[lib.rs:load_headplane_config]`
 - `[lib.rs:check_policy_mode]`
+- `[lib.rs:render_policy_configmap]`
+- `[lib.rs:check_policy_configmap_drift]`
+- `policy_configmap.rs`
+- `policy_configmap_drift_test.rs`
 
 ## Invariants
 - [lib.rs:22]: `.unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));`

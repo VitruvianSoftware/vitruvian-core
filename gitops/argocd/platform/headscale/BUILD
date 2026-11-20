@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 load("//tools/pytest:defs.bzl", "py_test")
 
@@ -33,6 +33,7 @@ gitops_manifest(
         "configmap-edge.yaml",
         "configmap-headplane.yaml",
         "configmap-key-exporter.yaml",
+        "configmap-policy.yaml",
         "daemonset-node-agent.yaml",
         "deployment-edge-tunnel.yaml",
         "deployment-headplane.yaml",
@@ -57,6 +58,7 @@ DATA_FILES = [
     "certificate.yaml",
     "configmap-edge.yaml",
     "configmap-headplane.yaml",
+    "configmap-policy.yaml",
     "daemonset-node-agent.yaml",
     "deployment-edge-tunnel.yaml",
     "deployment-subnet-router.yaml",
@@ -77,12 +79,32 @@ rust_library(
     ],
 )
 
+rust_binary(
+    name = "policy-configmap",
+    srcs = ["src/policy_configmap.rs"],
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [":headscale_values_lib"],
+)
+
 rust_test(
     name = "headscale_values_test",
     size = "small",
     crate = ":headscale_values_lib",
     data = DATA_FILES,
     edition = "2021",
+)
+
+rust_test(
+    name = "policy_configmap_drift_test",
+    size = "small",
+    srcs = ["src/policy_configmap_drift_test.rs"],
+    data = [
+        "configmap-policy.yaml",
+        "policy.hujson",
+    ],
+    edition = "2021",
+    deps = [":headscale_values_lib"],
 )
 
 # exporter.py, run straight out of configmap-key-exporter.yaml.

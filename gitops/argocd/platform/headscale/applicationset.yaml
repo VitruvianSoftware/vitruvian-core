@@ -47,6 +47,7 @@ spec:
           values: |
             image:
               tag: v0.26.1
+            automountServiceAccountToken: false
             initContainers:
               config:
                 image: alpine:3.21
@@ -96,16 +97,125 @@ spec:
               HEADSCALE_DNS_MAGIC_DNS: "true"
               HEADSCALE_DNS_BASE_DOMAIN: mesh.ipv1337.dev
               HEADSCALE_POLICY_MODE: database
+              # Headscale's default "0o770" fails Go's base-8 ParseUint in util.GetFileMode
+              # and falls back to 0700; "0770" parses cleanly so the non-root gid 0 sidecar
+              # can talk to /var/run/headscale/headscale.sock.
+              HEADSCALE_UNIX_SOCKET_PERMISSION: "0770"
               HEADSCALE_OIDC_CLIENT_SECRET:
                 valueFrom:
                   secretKeyRef:
                     name: headscale-oidc-secret
                     key: oidc-client-secret
+            sidecars:
+              policy-sync:
+                image: ghcr.io/juanfont/headscale:v0.26.1-debug@sha256:a78358e9b766aaeabd545e63769687a65685572cd063029198d7ffb420036436
+                imagePullPolicy: IfNotPresent
+                env:
+                  HEADSCALE_CONFIG: /tmp/headscale-cli.yaml
+                  HEADSCALE_DISABLE_CHECK_UPDATES: "true"
+                command:
+                  - /busybox/sh
+                  - -c
+                  - |
+                    set -u
+                    POLICY_FILE="${POLICY_FILE:-/etc/headscale-policy/policy.hujson}"
+                    TMP_DIR="${TMP_DIR:-/tmp}"
+                    CLI_CFG="${HEADSCALE_CONFIG:-$TMP_DIR/headscale-cli.yaml}"
+                    INTERVAL="${POLICY_SYNC_INTERVAL:-60}"
+                    printf 'unix_socket: /var/run/headscale/headscale.sock\ndisable_check_updates: true\n' >"$CLI_CFG"
+
+                    sync_once() {
+                      if [ ! -r "$POLICY_FILE" ]; then
+                        echo "policy-sync: policy file $POLICY_FILE not readable yet; skipping"
+                        return
+                      fi
+                      cp "$POLICY_FILE" "$TMP_DIR/policy.hujson" || {
+                        echo "policy-sync: failed to snapshot $POLICY_FILE; skipping"
+                        return
+                      }
+                      sha="$( (sha256sum "$TMP_DIR/policy.hujson" 2>/dev/null || shasum -a 256 "$TMP_DIR/policy.hujson") | cut -c1-12 )"
+                      want="$(cat "$TMP_DIR/policy.hujson")"
+                      # headscale policy get prints p.Data via fmt.Println (one extra \n);
+                      # $(...) strips trailing newlines on both sides so round-trip is stable.
+                      if live="$(headscale policy get 2>"$TMP_DIR/err")"; then
+                        if [ "$live" = "$want" ]; then
+                          echo "policy-sync: in sync ($sha)"
+                          return
+                        fi
+                      elif ! grep -q "acl policy not found" "$TMP_DIR/err" 2>/dev/null; then
+                        reason="$(tr '\n' ' ' <"$TMP_DIR/err" 2>/dev/null)"
+                        echo "policy-sync: headscale not ready ($reason); live policy unchanged"
+                        return
+                      fi
+                      if ! headscale policy check -f "$TMP_DIR/policy.hujson" >/dev/null 2>"$TMP_DIR/err"; then
+                        reason="$(tr '\n' ' ' <"$TMP_DIR/err" 2>/dev/null)"
+                        echo "policy-sync: check FAILED ($sha), live policy unchanged: $reason"
+                        return
+                      fi
+                      if headscale policy set -f "$TMP_DIR/policy.hujson" >/dev/null 2>"$TMP_DIR/err"; then
+                        echo "policy-sync: applied $sha"
+                      else
+                        reason="$(tr '\n' ' ' <"$TMP_DIR/err" 2>/dev/null)"
+                        echo "policy-sync: set FAILED ($sha), live policy unchanged: $reason"
+                      fi
+                    }
+
+                    loops=0
+                    while :; do
+                      sync_once
+                      loops=$((loops + 1))
+                      if [ "${POLICY_SYNC_ONCE:-}" = "1" ]; then
+                        break
+                      fi
+                      if [ -n "${POLICY_SYNC_MAX_LOOPS:-}" ] && [ "$loops" -ge "$POLICY_SYNC_MAX_LOOPS" ]; then
+                        break
+                      fi
+                      sleep "$INTERVAL"
+                    done
+                volumeMounts:
+                  - name: policy
+                    mountPath: /etc/headscale-policy
+                    readOnly: true
+                  - name: socket
+                    mountPath: /var/run/headscale
+                  - name: cli-tmp
+                    mountPath: /tmp
+                resources:
+                  requests:
+                    cpu: 5m
+                    memory: 16Mi
+                  limits:
+                    memory: 64Mi
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65532
+                  runAsGroup: 0
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
             persistence:
               config:
                 enabled: true
                 storageClass: local-path
                 size: 1Gi
+              socket:
+                enabled: true
+                type: emptyDir
+                mountPath: /var/run/headscale
+              policy:
+                enabled: true
+                type: configMap
+                name: headscale-policy
+                mountPath: "-"
+              cli-tmp:
+                enabled: true
+                type: emptyDir
+                medium: Memory
+                sizeLimit: 1Mi
+                mountPath: "-"
             ingress:
               main:
                 enabled: false

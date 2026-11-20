@@ -1,0 +1,108 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Generated from policy.hujson by:
+#   bazel run //gitops/argocd/platform/headscale:policy-configmap
+# Do not edit by hand; edit policy.hujson and re-run the generator.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headscale-policy
+  namespace: headscale
+data:
+  policy.hujson: |
+    // Copyright (c) 2026 VitruvianSoftware
+    //
+    // Permission is hereby granted, free of charge, to any person obtaining a copy
+    // of this software and associated documentation files (the "Software"), to deal
+    // in the Software without restriction, including without limitation the rights
+    // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    // copies of the Software, and to permit persons to whom the Software is
+    // furnished to do so, subject to the following conditions:
+    //
+    // The above copyright notice and this permission notice shall be included in
+    // all copies or substantial portions of the Software.
+    //
+    // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    // SOFTWARE.
+    //
+    // Headscale ACL policy: the source of truth for who may reach what on the
+    // mesh. Headscale keeps the live policy in its database (HEADSCALE_POLICY_MODE=
+    // database, so Headplane's ACL page keeps working). After editing this file,
+    // regenerate configmap-policy.yaml so CI's drift test passes:
+    //
+    //   bazel run //gitops/argocd/platform/headscale:policy-configmap
+    //
+    // Once merged to main, Argo CD updates the headscale-policy ConfigMap and the
+    // policy-sync sidecar checks and applies it within ~2 minutes (overwriting any
+    // edit made in Headplane). Break-glass manual check/apply:
+    //
+    //   bazel run //tools/gitops:headscale-policy-check
+    //   bazel run //tools/gitops:headscale-policy-set
+    //
+    // The file is .hujson on purpose: Argo CD's directory source reads
+    // *.yaml/*.yml/*.json, so it applies configmap-policy.yaml, not this file.
+    {
+      "tagOwners": {
+        // Ephemeral GitHub Actions runners (Zitadel and Sentry apply workflows). They
+        // join with the HEADSCALE_CI_AUTHKEY pre-auth key, which carries this tag.
+        "tag:ci": ["james@"]
+      },
+      "hosts": {
+        // The wired, bare-metal cluster nodes' headscale-node-agent addresses.
+        // Keep in step with .github/actions/homelab-tunnel-setup/action.yml.
+        "fedora": "100.64.0.7/32",
+        "nuc9i5": "100.64.0.6/32",
+        "nuc9i9": "100.64.0.8/32"
+      },
+      "acls": [
+        {
+          // Every device James owns may reach everything, as under the previous
+          // allow-all policy. "james@" owns every node today; the second entry is
+          // the same person's OIDC (Google) login, for devices registered through
+          // it. Tagged devices belong to no user, so this rule does not cover them.
+          // (Headscale v0.26.1 has no autogroup:member.)
+          "action": "accept",
+          "src": ["james@", "james.nguyen@gmail.com"],
+          "dst": ["*:*"]
+        },
+        {
+          // CI reaches the Envoy gateway's HTTP (:30265) and HTTPS (:31103)
+          // NodePorts on the cluster nodes over TCP, and nothing else (no UDP, no
+          // ICMP, no other port).
+          "action": "accept",
+          "src": ["tag:ci"],
+          "proto": "tcp",
+          "dst": [
+            "fedora:30265",
+            "nuc9i5:30265",
+            "nuc9i9:30265",
+            "fedora:31103",
+            "nuc9i5:31103",
+            "nuc9i9:31103"
+          ]
+        }
+      ]
+    }
