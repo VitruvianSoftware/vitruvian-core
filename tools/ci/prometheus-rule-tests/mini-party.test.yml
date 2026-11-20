@@ -1,0 +1,77 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Unit tests for the Mini Party rooms server alerts in
+# gitops/argocd/platform/prometheus/applicationset.yaml (group mini-party):
+# MiniPartyRoomsDown and MiniPartyRoomsSustained5xx.
+#
+# What is proven: MiniPartyRoomsDown pages (severity=page, routed to the apps
+# PagerDuty service) when the single replica is unavailable OR its metrics are
+# gone, and stays quiet while the pod is up; the 5xx ratio warns. Each firing
+# alert carries namespace=mini-party, so Backstage lists it on the app's page.
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ------------------------------------------------------- MiniPartyRoomsDown --
+  - interval: 1m
+    name: MiniPartyRoomsDown pages when the replica is unavailable for 5m
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{namespace="mini-party",deployment="mini-party"}'
+        values: '1x5 0x15'
+    promql_expr_test:
+      # Healthy, and inside the 5m "for" after it drops: not firing.
+      - expr: ALERTS{alertname="MiniPartyRoomsDown", alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertname="MiniPartyRoomsDown", alertstate="firing"}
+        eval_time: 8m
+        exp_samples: []
+      - expr: ALERTS{alertname="MiniPartyRoomsDown", alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="MiniPartyRoomsDown", alertstate="firing", namespace="mini-party", pagerduty_service="apps", severity="page"}'
+            value: 1
+
+  - interval: 1m
+    name: MiniPartyRoomsDown pages when the deployment's metrics disappear
+    input_series:
+      # Some other deployment is reporting; mini-party is absent entirely.
+      - series: 'kube_deployment_status_replicas_available{namespace="other",deployment="other"}'
+        values: '1x20'
+    promql_expr_test:
+      - expr: ALERTS{alertname="MiniPartyRoomsDown", alertstate="firing"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'ALERTS{alertname="MiniPartyRoomsDown", alertstate="firing", namespace="mini-party", pagerduty_service="apps", severity="page"}'
+            value: 1
+
+  - interval: 1m
+    name: MiniPartyRoomsDown stays quiet while the replica is up
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{namespace="mini-party",deployment="mini-party"}'
+        values: '1x20'
+    promql_expr_test:
+      - expr: ALERTS{alertname="MiniPartyRoomsDown"}
+        eval_time: 15m
+        exp_samples: []
+
+  # ----------------------------------------------- MiniPartyRoomsSustained5xx --
+  - interval: 1m
+    name: MiniPartyRoomsSustained5xx warns when most requests fail for 10m
+    input_series:
+      - series: 'envoy_cluster_upstream_rq_xx{envoy_response_code_class="5",envoy_cluster_name="httproute/mini-party/mini-party/rule/0"}'
+        values: '0+60x30'
+      - series: 'envoy_cluster_upstream_rq_xx{envoy_response_code_class="2",envoy_cluster_name="httproute/mini-party/mini-party/rule/0"}'
+        values: '0+6x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="MiniPartyRoomsSustained5xx", alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertname="MiniPartyRoomsSustained5xx", alertstate="firing"}
+        eval_time: 20m
+        exp_samples:
+          - labels: 'ALERTS{alertname="MiniPartyRoomsSustained5xx", alertstate="firing", namespace="mini-party", pagerduty_service="apps", severity="warning"}'
+            value: 1

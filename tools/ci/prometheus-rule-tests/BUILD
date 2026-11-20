@@ -31,6 +31,7 @@ exports_files([
     "oom.test.yml",
     "cnpg.test.yml",
     "headscale.test.yml",
+    "mini-party.test.yml",
     "public-urls.test.yml",
 ])
 

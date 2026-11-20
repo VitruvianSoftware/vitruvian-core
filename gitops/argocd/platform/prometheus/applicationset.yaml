@@ -1201,6 +1201,51 @@ spec:
                     annotations:
                       summary: "vitruvian-slack-mcp repeatedly refusing a validly-signed token (sustained 403)"
                       description: "Someone holding a validly-signed token audienced for the vitruvian-slack-mcp project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: vitruvian-slack-mcp: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
+                # Mini Party rooms server (namespace mini-party): the socket.io
+                # relay behind the game's online play, at
+                # mini-games-rooms.vitruviansoftware.dev. The game itself is on
+                # GitHub Pages, watched from outside by PublicUrlDown below.
+                #
+                # MiniPartyRoomsDown PAGES: no ready pod means online play is
+                # down for everyone. One replica by design (rooms are in
+                # memory), so a single missing pod is the whole service.
+                # MiniPartyRoomsSustained5xx mirrors the Slack server's ratio
+                # rule and only warns. Both name the namespace, because sum()
+                # and max() drop it and Backstage lists alerts by namespace.
+                - name: mini-party
+                  rules:
+                  - alert: MiniPartyRoomsDown
+                    expr: |
+                      max(kube_deployment_status_replicas_available{namespace="mini-party", deployment="mini-party"}) < 1
+                        or max(absent(kube_deployment_status_replicas_available{namespace="mini-party", deployment="mini-party"}))
+                    for: 5m
+                    labels:
+                      severity: page
+                      pagerduty_service: apps
+                      namespace: mini-party
+                    annotations:
+                      summary: "Mini Party rooms server has no ready pod"
+                      description: "The mini-party Deployment has had no available replica for 5m, so online rooms at mini-games-rooms.vitruviansoftware.dev are down (the GitHub Pages game still works for shared-screen play). Check the pod: bazel run //tools/gitops:describe -- -n mini-party deploy/mini-party, then its events and logs."
+                  - alert: MiniPartyRoomsSustained5xx
+                    expr: |
+                      sum(rate(envoy_cluster_upstream_rq_xx{
+                            envoy_response_code_class="5",
+                            envoy_cluster_name=~"httproute/mini-party/.*"
+                          }[5m]))
+                        /
+                      sum(rate(envoy_cluster_upstream_rq_xx{
+                            envoy_response_code_class=~"2|5",
+                            envoy_cluster_name=~"httproute/mini-party/.*"
+                          }[5m]))
+                        > 0.5
+                    for: 10m
+                    labels:
+                      severity: warning
+                      pagerduty_service: apps
+                      namespace: mini-party
+                    annotations:
+                      summary: "Mini Party rooms server failing {{ $value | humanizePercentage }} of requests"
+                      description: "Most requests to the rooms server returned 5xx for over 10m while it is up. Check its logs: bazel run //tools/gitops:logs -- -n mini-party deploy/mini-party."
                 # Public URLs (blackbox-http job): PublicUrlDown PAGES when a
                 # watched URL has failed every probe for 5m. The instance label
                 # is the URL; namespace comes from the target's labels.
