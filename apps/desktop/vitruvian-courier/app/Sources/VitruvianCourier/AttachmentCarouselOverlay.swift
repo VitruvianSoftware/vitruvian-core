@@ -96,7 +96,7 @@ public struct AttachmentCarouselOverlay: View {
                         caption: item.caption,
                         fileName: item.fileName
                     )
-                    let reactionChips = item.reactions.filter { !$0.key.isEmpty && $0.count > 0 }
+                    let reactionChips = PhotoViewerPresentation.visibleChips(item.reactions)
                     if captionText != nil || !reactionChips.isEmpty {
                         VStack(spacing: 6) {
                             if let captionText {
@@ -669,8 +669,8 @@ struct PhotoViewerReactionChips: View {
                 )
                 .help(chip.tooltipText(redacted: isRedacted))
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(chip.summary(redacted: isRedacted))
-                .accessibilityValue(String(chip.count))
+                .accessibilityLabel(PhotoViewerPresentation.chipAccessibility(for: chip, redacted: isRedacted).label)
+                .accessibilityValue(PhotoViewerPresentation.chipAccessibility(for: chip, redacted: isRedacted).value)
             }
         }
     }

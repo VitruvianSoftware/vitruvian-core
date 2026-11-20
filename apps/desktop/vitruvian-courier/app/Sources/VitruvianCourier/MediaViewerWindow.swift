@@ -46,7 +46,7 @@ public struct MediaWithSender: View {
     }
 
     private var reactionChips: [ReactionChip] {
-        reactions.filter { !$0.key.isEmpty && $0.count > 0 }
+        PhotoViewerPresentation.visibleChips(reactions)
     }
 
     public var body: some View {
@@ -693,33 +693,38 @@ struct MediaTileReactionChips: View {
     @Environment(\.redactNamesAndPictures) private var isRedacted
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollView(.horizontal, showsIndicators: false) { row }
+        }
+    }
+
+    private var row: some View {
             HStack(spacing: 4) {
-                ForEach(chips) { chip in
-                    HStack(spacing: 3) {
-                        ReactionKeyView(chip: chip, size: 11)
-                        Text(verbatim: "\(chip.count)")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(chip.mine ? Color.accentColor : .secondary)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule().fill(chip.mine ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07))
-                    )
-                    .overlay(
-                        Capsule().strokeBorder(
-                            chip.mine ? Color.accentColor.opacity(0.35) : Color.clear,
-                            lineWidth: 0.75
-                        )
-                    )
-                    .help(chip.tooltipText(redacted: isRedacted))
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(chip.summary(redacted: isRedacted))
-                    .accessibilityValue(String(chip.count))
+            ForEach(chips) { chip in
+                HStack(spacing: 3) {
+                    ReactionKeyView(chip: chip, size: 11)
+                    Text(verbatim: "\(chip.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(chip.mine ? Color.accentColor : .secondary)
                 }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule().fill(chip.mine ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07))
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        chip.mine ? Color.accentColor.opacity(0.35) : Color.clear,
+                        lineWidth: 0.75
+                    )
+                )
+                .help(chip.tooltipText(redacted: isRedacted))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(PhotoViewerPresentation.chipAccessibility(for: chip, redacted: isRedacted).label)
+                .accessibilityValue(PhotoViewerPresentation.chipAccessibility(for: chip, redacted: isRedacted).value)
+            }
             }
             .padding(.horizontal, 2)
-        }
     }
 }

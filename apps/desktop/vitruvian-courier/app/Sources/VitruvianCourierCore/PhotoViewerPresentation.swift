@@ -100,4 +100,17 @@ public enum PhotoViewerPresentation {
         guard !trimmedCaption.isEmpty, trimmedCaption != trimmedFileName else { return nil }
         return trimmedCaption
     }
+
+    /// What a screen reader (and a test) is told for one reaction chip: who reacted with what, and the count.
+    public static func chipAccessibility(
+        for chip: ReactionChip,
+        redacted: Bool = false
+    ) -> (label: String, value: String) {
+        (chip.summary(redacted: redacted), String(chip.count))
+    }
+
+    /// The chips worth drawing: a reaction with no emoji or no one behind it is dropped.
+    public static func visibleChips(_ chips: [ReactionChip]) -> [ReactionChip] {
+        chips.filter { !$0.key.isEmpty && $0.count > 0 }
+    }
 }
