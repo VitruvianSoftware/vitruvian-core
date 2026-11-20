@@ -6,3 +6,10 @@
 apps/web/backstage/packages/app/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //apps/web/backstage
 apps/web/backstage/packages/backend/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //apps/web/backstage
 apps/suites/vitruvian-tabs/shared/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //apps/suites/tabula
+apps/desktop/vitruvian-courier/libsignal/BUILD	rust_1_98_1_enabled	Rust 1.98.1 edition-2024 toolchain target_settings in MODULE.bazel (@rust_toolchains) and aliased by //apps/suites/vitruvian-wand:rust_1_98_1_enabled
+apps/desktop/vitruvian-courier/libsignal/BUILD	libclang	libclang build-script tool injected via MODULE.bazel crate.annotation into generated @libsignal_crates external crate repo (boring-sys)
+apps/desktop/vitruvian-courier/libsignal/BUILD	clang_headers	clang header build-script tool injected via MODULE.bazel crate.annotation into generated @libsignal_crates external crate repo (boring-sys)
+apps/desktop/vitruvian-courier/libsignal/BUILD	protoc	protoc build-script tool injected via MODULE.bazel crate.annotation into generated @libsignal_crates protobuf crate repos
+apps/desktop/vitruvian-courier/libsignal/BUILD	boringssl_prefix	BoringSSL build-script data injected via MODULE.bazel crate.annotation into generated @libsignal_crates external crate repo (boring-sys)
+apps/desktop/vitruvian-courier/libsignal/BUILD	cc_in_execroot	cc-rs execroot wrapper injected via MODULE.bazel crate.annotation into ring build scripts across external crate hubs (crates, libsignal_crates, gchat_crates, vitruvian_wand_crates, etc.)
+apps/desktop/vitruvian-courier/gchat/BUILD	protoc	protoc build-script tool injected via MODULE.bazel crate.annotation into generated @gchat_crates external crate repo (prost-build)

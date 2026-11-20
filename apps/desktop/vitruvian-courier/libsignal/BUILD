@@ -112,7 +112,10 @@ cc_library(
         "-lz",
     ],
     target_compatible_with = ["@platforms//os:macos"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//apps/desktop/vitruvian-courier:__subpackages__",
+        "@fi_mau_go_mautrix_signal//pkg/libsignalgo:__pkg__",
+    ],
     deps = [":signal_ffi_rust_1_98_1"],
 )
 
