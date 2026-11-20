@@ -156,7 +156,7 @@ impl SecretStore for KeychainSecrets {
             Ok(v) => Ok(Some(v)),
             Err(e) if e.code() == NOT_FOUND => Ok(None),
             Err(e) => Err(SecretError(format!(
-                "read {account} from the Keychain: {e}"
+                "read {account} from the Keychain: {e}; {KEYCHAIN_NEXT_STEP}"
             ))),
         }
     }
@@ -196,38 +196,68 @@ impl Migrated {
 }
 
 /// Moves a state folder's `token.json` and `device.key` into `store`, then
-/// deletes the files. In two steps, so a failure never leaves the secrets
-/// split between the two: first every file is saved in the store and read
-/// back, and only when all of them are there are the files deleted. If the
-/// store already holds a secret, it wins (the file is a stale copy, for
-/// example from a crash between the save and the delete) and the file is
-/// just removed. On an error the files are as they were (or, if only a
-/// delete failed, still there beside the same values). Nothing to move is
-/// not an error.
+/// deletes the files. In two steps: first every file is saved in the store
+/// and read back, and only when all of them are there are the files deleted.
+/// If the store already holds a secret, it wins (the file is a stale copy,
+/// for example from a crash between the save and the delete) and the file is
+/// just removed.
+///
+/// On an error the files stay the only copy: whatever this call had saved
+/// in the store is removed again (otherwise the run that carries on with the
+/// files would refresh the sign-in there, and the next start would find an
+/// older one in the store winning over it). A secret whose file was already
+/// deleted is complete in the store and stays. Nothing to move is not an
+/// error.
 pub fn migrate_files_to(store: &dyn SecretStore, dir: &Path) -> Result<Migrated, SecretError> {
-    let files = FileSecrets::new(dir);
+    migrate_between(&FileSecrets::new(dir), store)
+}
+
+fn migrate_between(
+    files: &dyn SecretStore,
+    store: &dyn SecretStore,
+) -> Result<Migrated, SecretError> {
     let mut moved = Migrated::default();
+    // Accounts whose file is to go, and those this call saved in the store.
     let mut to_delete = Vec::new();
-    for account in [TOKENS, DEVICE_KEY] {
-        let Some(bytes) = files.get(account)? else {
-            continue;
-        };
-        if store.get(account)?.is_none() {
-            store.set(account, &bytes)?;
-            if store.get(account)?.as_deref() != Some(bytes.as_slice()) {
-                return Err(SecretError(format!(
-                    "the saved {account} did not read back; its file is kept"
-                )));
+    let mut saved: Vec<&str> = Vec::new();
+    let mut copy = || -> Result<(), SecretError> {
+        for account in [TOKENS, DEVICE_KEY] {
+            let Some(bytes) = files.get(account)? else {
+                continue;
+            };
+            if store.get(account)?.is_none() {
+                saved.push(account);
+                store.set(account, &bytes)?;
+                if store.get(account)?.as_deref() != Some(bytes.as_slice()) {
+                    return Err(SecretError(format!(
+                        "the saved {account} did not read back; its file is kept"
+                    )));
+                }
+                match account {
+                    TOKENS => moved.tokens = true,
+                    _ => moved.device_key = true,
+                }
             }
-            match account {
-                TOKENS => moved.tokens = true,
-                _ => moved.device_key = true,
-            }
+            to_delete.push(account);
         }
-        to_delete.push(account);
+        Ok(())
+    };
+    let mut result = copy();
+    let mut deleted: Vec<&str> = Vec::new();
+    if result.is_ok() {
+        for account in &to_delete {
+            if let Err(e) = files.delete(account) {
+                result = Err(e);
+                break;
+            }
+            deleted.push(account);
+        }
     }
-    for account in to_delete {
-        files.delete(account)?;
+    if let Err(e) = result {
+        for account in saved.iter().filter(|a| !deleted.contains(a)) {
+            let _ = store.delete(account);
+        }
+        return Err(e);
     }
     Ok(moved)
 }
@@ -493,6 +523,85 @@ mod tests {
             std::fs::read(token_path(&dir)).unwrap(),
             br#"{"access_token":"a"}"#
         );
+    }
+
+    /// Review round 2: a move that saves the sign-in and then fails on the
+    /// device key must not leave the sign-in in the store, or the run that
+    /// carries on with the files would refresh it there and the next start
+    /// would find the store's older copy winning.
+    #[test]
+    fn failed_migration_rolls_back_what_it_saved() {
+        /// Takes the first secret saved, refuses the device key.
+        struct TakesTokensOnly(Mem);
+        impl SecretStore for TakesTokensOnly {
+            fn get(&self, a: &str) -> Result<Option<Vec<u8>>, SecretError> {
+                self.0.get(a)
+            }
+            fn set(&self, a: &str, v: &[u8]) -> Result<(), SecretError> {
+                if a == DEVICE_KEY {
+                    return Err(SecretError("access denied".into()));
+                }
+                self.0.set(a, v)
+            }
+            fn delete(&self, a: &str) -> Result<(), SecretError> {
+                self.0.delete(a)
+            }
+        }
+        let dir = test_dir("secrets-rollback");
+        let files = FileSecrets::new(&dir);
+        files.set(TOKENS, br#"{"access_token":"a"}"#).unwrap();
+        files.set(DEVICE_KEY, &[3; 32]).unwrap();
+        let store = TakesTokensOnly(Mem::default());
+        assert!(migrate_files_to(&store, &dir).is_err());
+        assert_eq!(
+            store.get(TOKENS).unwrap(),
+            None,
+            "the sign-in stayed behind"
+        );
+        assert_eq!(store.get(DEVICE_KEY).unwrap(), None);
+        // The files are untouched, and the one copy.
+        assert_eq!(
+            std::fs::read(token_path(&dir)).unwrap(),
+            br#"{"access_token":"a"}"#
+        );
+        assert_eq!(std::fs::read(key_path(&dir)).unwrap(), [3; 32]);
+        // A secret the store already held is not this call's to remove.
+        let held = TakesTokensOnly(Mem::default());
+        held.set(TOKENS, b"newer").unwrap();
+        assert!(migrate_files_to(&held, &dir).is_err());
+        assert_eq!(held.get(TOKENS).unwrap(), Some(b"newer".to_vec()));
+    }
+
+    /// A delete that fails after both are saved: what is left in a file is
+    /// taken out of the store again; what was already deleted stays there.
+    #[test]
+    fn a_failed_file_delete_rolls_back_the_secrets_still_in_files() {
+        /// Files that will not delete the device key.
+        struct KeepsKey(Mem);
+        impl SecretStore for KeepsKey {
+            fn get(&self, a: &str) -> Result<Option<Vec<u8>>, SecretError> {
+                self.0.get(a)
+            }
+            fn set(&self, a: &str, v: &[u8]) -> Result<(), SecretError> {
+                self.0.set(a, v)
+            }
+            fn delete(&self, a: &str) -> Result<(), SecretError> {
+                if a == DEVICE_KEY {
+                    return Err(SecretError("cannot remove".into()));
+                }
+                self.0.delete(a)
+            }
+        }
+        let files = KeepsKey(Mem::default());
+        files.set(TOKENS, b"{}").unwrap();
+        files.set(DEVICE_KEY, &[4; 32]).unwrap();
+        let store = Mem::default();
+        assert!(migrate_between(&files, &store).is_err());
+        // The sign-in moved for good; the key is still only in its file.
+        assert_eq!(store.get(TOKENS).unwrap(), Some(b"{}".to_vec()));
+        assert_eq!(files.get(TOKENS).unwrap(), None);
+        assert_eq!(store.get(DEVICE_KEY).unwrap(), None);
+        assert_eq!(files.get(DEVICE_KEY).unwrap(), Some(vec![4; 32]));
     }
 
     /// A move that fails half way leaves every file where it was, not the
