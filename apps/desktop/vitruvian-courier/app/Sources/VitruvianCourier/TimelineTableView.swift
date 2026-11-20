@@ -901,6 +901,19 @@ final class TimelineNSTableView: NSTableView {
 final class TimelineContainerView: NSView {
     let scrollView = NSScrollView()
     var onLayout: ((CGSize) -> Void)?
+    /// Told when the view enters a window (true) or leaves one (false); not for the first, windowless, state.
+    var onWindowPresence: ((Bool) -> Void)?
+    private var hadWindow = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            hadWindow = true
+            onWindowPresence?(true)
+        } else if hadWindow {
+            onWindowPresence?(false)
+        }
+    }
 
     override var isFlipped: Bool { true }
 
@@ -958,6 +971,10 @@ struct TimelineTableView: NSViewRepresentable {
         coordinator.setup()
         coordinator.applyUpdates(from: self, environment: context.environment)
         return coordinator.containerView
+    }
+
+    static func dismantleNSView(_ nsView: TimelineContainerView, coordinator: Coordinator) {
+        coordinator.shutDown()
     }
 
     func updateNSView(_ nsView: TimelineContainerView, context: Context) {
@@ -1055,6 +1072,39 @@ struct TimelineTableView: NSViewRepresentable {
             super.init()
         }
 
+        /// The table is out of its window for good: pending height pre-warms, lazy re-measures, the resize debounce and
+        /// the pin-to-bottom timers stop, and nothing measures a row again. (Without this they ran on the main run loop
+        /// after the view was gone, evaluating rows and costing whatever else was on screen.)
+        private(set) var isShutDown = false
+
+        func shutDown() {
+            guard !isShutDown else { return }
+            isShutDown = true
+            heightPassGeneration += 1
+            resizeDebounceWorkItem?.cancel()
+            resizeDebounceWorkItem = nil
+            leavingBottomTask?.cancel()
+            leavingBottomTask = nil
+            stopPinningToBottom()
+            pinToBottomUntil = nil
+            dismissSenderPopover()
+            if let userScrollMonitor {
+                NSEvent.removeMonitor(userScrollMonitor)
+                self.userScrollMonitor = nil
+            }
+        }
+
+        /// The table is in a window again (it was moved, not removed): measuring resumes.
+        func resume() {
+            guard isShutDown else { return }
+            isShutDown = false
+            installUserScrollMonitor()
+            guard hasPositionedInitially, !entries.isEmpty else { return }
+            tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0 ..< entries.count))
+            heightPassGeneration += 1
+            scheduleHeightPrewarm(generation: heightPassGeneration)
+        }
+
         deinit {
             resizeDebounceWorkItem?.cancel()
             leavingBottomTask?.cancel()
@@ -1125,6 +1175,21 @@ struct TimelineTableView: NSViewRepresentable {
                     self?.handleVoiceNoteTranscriptChange()
                 }
 
+            installUserScrollMonitor()
+
+            containerView.onLayout = { [weak self] size in
+                self?.handleContainerLayout(size: size)
+            }
+            containerView.onWindowPresence = { [weak self] present in
+                MainActor.assumeIsolated {
+                    if present { self?.resume() } else { self?.shutDown() }
+                }
+            }
+
+            updateScrollInsets(adjustScrollPosition: false)
+        }
+
+        private func installUserScrollMonitor() {
             userScrollMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: [.scrollWheel, .keyDown, .leftMouseDown, .leftMouseDragged]
             ) { [weak self] event in
@@ -1140,12 +1205,6 @@ struct TimelineTableView: NSViewRepresentable {
                 }
                 return event
             }
-
-            containerView.onLayout = { [weak self] size in
-                self?.handleContainerLayout(size: size)
-            }
-
-            updateScrollInsets(adjustScrollPosition: false)
         }
 
         func syncEnvironment(from view: TimelineTableView, environment: EnvironmentValues) {
@@ -1203,6 +1262,8 @@ struct TimelineTableView: NSViewRepresentable {
             if let cached = heightCache.height(for: entry.id, contentRevision: entry.contentRevision, width: width) {
                 return cached
             }
+            // Out of its window nothing is measured: a placeholder that is not remembered (`resume` re-measures).
+            if isShutDown { return 44 }
             let measured = measureEntryHeight(entry, width: width)
             heightCache.insert(measured, for: entry.id, contentRevision: entry.contentRevision, width: width)
             return measured
@@ -1276,6 +1337,7 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         private func measureEntryHeight(_ entry: TimelineRowEntry, width: CGFloat) -> CGFloat {
+            if isShutDown { return 44 }
             if entry.kind == .topControl {
                 let control = makeTopControlView(for: entry.topControl ?? .none)
                 topControlSizingHost.rootView = TimelineTopControlSizingView(control: control, width: width)
@@ -1346,7 +1408,7 @@ struct TimelineTableView: NSViewRepresentable {
             topExtensions[id] = needed == 0 ? nil : needed
             // Not inside the view update that reported it.
             DispatchQueue.main.async { [weak self] in
-                guard let self, let row = self.rowByID[id] else { return }
+                guard let self, !self.isShutDown, let row = self.rowByID[id] else { return }
                 self.reconfigureVisibleRow(at: row)
             }
         }
@@ -2025,7 +2087,7 @@ struct TimelineTableView: NSViewRepresentable {
                 lastBottomBarSignature = view.bottomBarSignature
                 if hasPositionedInitially, conversation.isAtBottom, !conversation.isAwayFromLatest {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                        guard let self, self.parent.conversation.isAtBottom,
+                        guard let self, !self.isShutDown, self.parent.conversation.isAtBottom,
                               !self.parent.conversation.isAwayFromLatest else { return }
                         self.scrollToBottom(animated: false)
                     }
@@ -2141,10 +2203,10 @@ struct TimelineTableView: NSViewRepresentable {
 
         private func scrollToMessage(_ request: ConversationModel.MessageScrollRequest) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                guard let self else { return }
+                guard let self, !self.isShutDown else { return }
                 self.scrollToRow(id: request.messageID, preferCenter: true)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    guard let self else { return }
+                    guard let self, !self.isShutDown else { return }
                     self.scrolledToMessageSerial = request.serial
                     self.readNewerIfAtBottom()
                 }
@@ -2261,7 +2323,7 @@ struct TimelineTableView: NSViewRepresentable {
         // MARK: - External Height Invalidations
 
         private func handleLearnedImageSize(forPath path: String?) {
-            guard let path, !path.isEmpty, hasPositionedInitially else { return }
+            guard let path, !path.isEmpty, hasPositionedInitially, !isShutDown else { return }
             var affected = IndexSet()
             let items = parent.conversation.items
             let offset = entries.first?.kind == .topControl ? 1 : 0

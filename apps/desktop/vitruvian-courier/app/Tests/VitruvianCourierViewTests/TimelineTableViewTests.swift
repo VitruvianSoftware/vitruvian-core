@@ -818,4 +818,45 @@ final class TimelineTableViewTests: XCTestCase {
         let value = await cancelledFirst.value
         XCTAssertTrue(value == nil || value == true, "a task cancelled before it starts may skip the work")
     }
+
+    // MARK: 11. A removed table stops its work
+
+    /// A table timeline taken out of its window must not go on measuring rows (evaluating their bodies) on the main
+    /// run loop afterwards: another timeline's counters, and its frames, would pay for it (CI saw a swiftui timeline's
+    /// "no rows re-evaluated" check fail after a table one had been torn down).
+    func testRemovedTableStopsEvaluatingRows() throws {
+        let events = (0 ..< 400).map { Fixture.text("$z\($0)", "Message row \($0) with some more words in it", mine: $0 % 2 == 0, ts: $0 + 1) }
+        var harness: TableHarness? = try mountTable(items: Fixture.items(events, isDirect: false))
+        harness?.pump(for: 0.05)
+        // Stop in the middle of its height pre-warm / resize work.
+        harness?.window.setContentSize(NSSize(width: 420, height: 320))
+        harness?.host.frame = NSRect(x: 0, y: 0, width: 420, height: 320)
+        harness?.host.layoutSubtreeIfNeeded()
+        harness?.tearDown()
+        harness = nil
+        ScrollPerfCounters.enabled = true
+        ScrollPerfCounters.reset()
+        defer { ScrollPerfCounters.enabled = false }
+        let deadline = Date().addingTimeInterval(1.0)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+        XCTAssertEqual(ScrollPerfCounters.rowBodies, 0, "a removed table timeline evaluated rows afterwards")
+    }
+
+    func testTableMovedBackIntoAWindowMeasuresAgain() throws {
+        let events = (0 ..< 40).map { Fixture.text("$y\($0)", "Message row \($0) with a few more words to make it wrap onto a second line in a narrow chat", mine: $0 % 2 == 0, ts: $0 + 1) }
+        let harness = try mountTable(items: Fixture.items(events, isDirect: false), size: NSSize(width: 300, height: 320))
+        defer { harness.tearDown() }
+        harness.pump(for: 0.3)
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$y3" })
+        let before = harness.tableView.rect(ofRow: row).height
+        XCTAssertGreaterThan(before, 44)
+        harness.window.contentView = nil
+        harness.pump(for: 0.1)
+        XCTAssertTrue(harness.coordinator.isShutDown)
+        harness.window.contentView = harness.host
+        harness.host.frame = NSRect(x: 0, y: 0, width: 300, height: 320)
+        harness.pump(for: 0.4)
+        XCTAssertFalse(harness.coordinator.isShutDown)
+        XCTAssertEqual(harness.tableView.rect(ofRow: row).height, before, "measured again, not left at the placeholder")
+    }
 }
