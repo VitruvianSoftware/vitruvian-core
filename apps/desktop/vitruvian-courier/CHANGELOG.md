@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.31...vitruvian-courier-v0.3.32) (2026-11-20)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** '+' opens an inline tool row, one home for tools, Tab moves focus ([#5261](https://github.com/VitruvianSoftware/vitruvian-core/issues/5261)) ([def4c62](https://github.com/VitruvianSoftware/vitruvian-core/commit/def4c62f2427deea6c1b45a1a9360ac21ed90695))
+* **vitruvian-courier:** search follows the open chat, New Chat lists each person once and opens in the chat pane ([#5265](https://github.com/VitruvianSoftware/vitruvian-core/issues/5265)) ([95d0102](https://github.com/VitruvianSoftware/vitruvian-core/commit/95d01029f3725281d548f7b8e56f29f4b5ccbaf4))
+
 ## [0.3.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.30...vitruvian-courier-v0.3.31) (2026-11-20)
 
 
