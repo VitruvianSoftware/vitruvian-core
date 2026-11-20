@@ -183,11 +183,19 @@ every checkout and worktree is guarded with nothing to install: `.claude/setting
 `.agents/hooks.json` run `tools/agent-guard/hook.sh`, which runs the guard **as it is on
 `origin/main`**. You may change the guard's source (`tools/agent-guard/src/`) and `policy.json` like
 any code (your edit takes effect once merged); you may not change those two hook files or `hook.sh`, which take effect
-before review: that is James's call. **A pull request that changes agent-guard's rules cannot
-merge until James approves it on GitHub:** anything under `tools/agent-guard/`, the hook wiring
-(`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`), or
-the ruleset that enforces this (`infrastructure/pulumi/platform/repo-config/guard_review.go`,
-its `main.go`, `Pulumi.yaml`, `Pulumi.dev.yaml`). Any later push makes his approval stale. Open the
+before review: that is James's call. **Some pull requests cannot merge until James approves them on GitHub.** That covers anything that
+changes agent-guard's rules, what CI runs with the repository's secrets, or the rule itself:
+`tools/agent-guard/**`; the hook wiring (`.claude/settings*.json`, `.claude/*.sh`,
+`.agents/hooks.json`); what a session runs at start (`tools/cloud-bootstrap/cloud-bootstrap.sh`,
+`tools/cloud-bootstrap/src/cloud_bootstrap/**`, `tools/cloud-bootstrap/profiles.tsv`,
+`tools/remote/src/**`); **every CI workflow and local action** (`.github/workflows/**`,
+`.github/actions/**`); the tailnet access policy (`gitops/argocd/platform/headscale/**`); and the
+ruleset that enforces this (`infrastructure/pulumi/platform/repo-config/guard_review.go`,
+`infrastructure/pulumi/platform/repo-config/main.go`,
+`infrastructure/pulumi/platform/repo-config/release_tags.go`,
+`infrastructure/pulumi/platform/repo-config/Pulumi*.yaml`). The list in `guard_review.go` is the
+source of truth, and `//tools/conformance` fails if this guide misses one. A scout or other agent
+approval does not count for these files. Any later push makes his approval stale. Open the
 PR, say why in its description, and wait; never approve it yourself as `ipv1337`. Other PRs are
 unaffected. See "Who may do what" in the agent-guard README. `bazel run //tools/agent-guard:install -- --check` shows
 whether the wiring works. Sessions started outside the repo are covered by a one-time per-user
