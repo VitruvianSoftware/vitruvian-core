@@ -2549,3 +2549,15 @@
 /* Formatted display titles for unnamed group chats using member first names. */
 "%@ & %@" = "%1$@ & %2$@";
 "%@, %@ & %@" = "%1$@, %2$@ & %3$@";
+
+/* Composer inline tool row and photo picker. */
+"More tools" = "More tools";
+"Close tools" = "Close tools";
+"Attach File" = "Attach File";
+"Attach File (⌘O)" = "Attach File (⌘O)";
+"Photo" = "Photo";
+"Choose photos to send" = "Choose photos to send";
+"Write a message first" = "Write a message first";
+"Send Later works with text messages only" = "Send Later works with text messages only";
+"AI & Dictation" = "AI & Dictation";
+"Share Location" = "Share Location";
