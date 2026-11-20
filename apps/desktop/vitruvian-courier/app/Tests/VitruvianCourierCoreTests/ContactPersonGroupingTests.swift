@@ -163,6 +163,33 @@ final class ContactPersonGroupingTests: XCTestCase {
         XCTAssertEqual(sections.named[0].endpoints.count, 2)
     }
 
+    // MARK: - QA edge cases (C4)
+
+    func testPersonOnFiveNetworksIsOneRowWithFiveEndpointsInAccountOrder() {
+        let nets = ["whatsapp", "signal", "telegram", "gchat", "imessage"]
+        let people = nets.map { candidate("Alice", network: $0, identifiers: ["+1 213 447 6502"]) }
+        let sections = ContactPersonGrouping.sections(people.reversed(), accountOrder: nets)
+        XCTAssertEqual(sections.named.count, 1)
+        XCTAssertEqual(sections.named[0].networks, nets)
+        XCTAssertEqual(sections.named[0].endpoints.map(\.network), nets)
+    }
+
+    func testEmailCaseAndMissingIdentifiersNeverMergeByAccident() {
+        let upper = candidate("Pat", network: "gchat", userID: "@p1", identifiers: ["PAT@Example.com"])
+        let lower = candidate("Pat Lee", network: "slack", userID: "@p2", identifiers: ["pat@example.com"])
+        let bare1 = candidate("Chris", network: "whatsapp", userID: "@c1")
+        let bare2 = candidate("Chris", network: "signal", userID: "@c2")
+        let sections = ContactPersonGrouping.sections([upper, lower, bare1, bare2])
+        XCTAssertEqual(sections.named.count, 3, "Pat merges on email; the two identifier-less Chris entries stay apart")
+    }
+
+    func testSameDigitsWithDifferentCountryCodesStayApart() {
+        let us = candidate("Sam", network: "whatsapp", userID: "@us", identifiers: ["(791) 112-3456"])
+        let uk = candidate("Sam", network: "signal", userID: "@uk", identifiers: ["+44 791 123 456"])
+        let sections = ContactPersonGrouping.sections([us, uk])
+        XCTAssertEqual(sections.named.count, 2)
+    }
+
     // MARK: - C5 UI helper logic (overflow edges & row affordances)
 
     func testHorizontalOverflowEdgesCompute() {
