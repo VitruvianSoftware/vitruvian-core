@@ -107,7 +107,7 @@ public struct AttachmentCarouselOverlay: View {
                                     .multilineTextAlignment(.center)
                             }
                             if !reactionChips.isEmpty {
-                                reactionBar(chips: reactionChips)
+                                PhotoViewerReactionChips(chips: reactionChips)
                             }
                         }
                         .padding(.horizontal, 24)
@@ -277,41 +277,6 @@ public struct AttachmentCarouselOverlay: View {
         .buttonStyle(.plain)
         .fixedSize(horizontal: true, vertical: false)
         .help(title)
-    }
-
-    /// The photo's reactions (emoji and count), read-only; reacting stays in the toolbar.
-    private func reactionBar(chips: [ReactionChip]) -> some View {
-        ViewThatFits(in: .horizontal) {
-            reactionChipRow(chips: chips)
-            ScrollView(.horizontal, showsIndicators: false) {
-                reactionChipRow(chips: chips)
-            }
-        }
-    }
-
-    private func reactionChipRow(chips: [ReactionChip]) -> some View {
-        HStack(spacing: 6) {
-            ForEach(chips) { chip in
-                HStack(spacing: 4) {
-                    ReactionKeyView(chip: chip, size: 13)
-                    Text(verbatim: "\(chip.count)")
-                        .font(.caption.monospacedDigit())
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(chip.mine ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.14)))
-                .overlay(
-                    Capsule().strokeBorder(
-                        chip.mine ? Color.accentColor.opacity(0.75) : Color.white.opacity(0.18),
-                        lineWidth: 1
-                    )
-                )
-                .help(chip.tooltipText(redacted: isRedacted))
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(chip.summary(redacted: isRedacted))
-            }
-        }
     }
 
     // MARK: - Center Stage
@@ -669,5 +634,44 @@ struct CarouselFilmstripTile: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The photo's reactions in the viewer (emoji and count), read-only; reacting stays in the toolbar.
+struct PhotoViewerReactionChips: View {
+    let chips: [ReactionChip]
+    @Environment(\.redactNamesAndPictures) private var isRedacted
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollView(.horizontal, showsIndicators: false) { row }
+        }
+    }
+
+    private var row: some View {
+        HStack(spacing: 6) {
+            ForEach(chips) { chip in
+                HStack(spacing: 4) {
+                    ReactionKeyView(chip: chip, size: 13)
+                    Text(verbatim: "\(chip.count)")
+                        .font(.caption.monospacedDigit())
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(chip.mine ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.14)))
+                .overlay(
+                    Capsule().strokeBorder(
+                        chip.mine ? Color.accentColor.opacity(0.75) : Color.white.opacity(0.18),
+                        lineWidth: 1
+                    )
+                )
+                .help(chip.tooltipText(redacted: isRedacted))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(chip.summary(redacted: isRedacted))
+                .accessibilityValue(String(chip.count))
+            }
+        }
     }
 }

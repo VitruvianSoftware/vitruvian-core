@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import Vision
 import VitruvianCourierCore
 import XCTest
 
@@ -45,6 +46,58 @@ final class Batch6PolishViewTests: XCTestCase {
             host.layoutSubtreeIfNeeded()
             if condition?() == true { break }
         }
+    }
+
+    /// `view` drawn on black at three times its size, as a bitmap: what is actually on screen.
+    private func drawn<V: View>(_ view: V, width: CGFloat, height: CGFloat) throws -> CGImage {
+        _ = NSApplication.shared
+        let scale: CGFloat = 3
+        let content = view
+            .frame(width: width, height: height, alignment: .topLeading)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: width * scale, height: height * scale, alignment: .topLeading)
+            .background(Color.black)
+            .environment(\.colorScheme, .dark)
+        let size = NSSize(width: width * scale, height: height * scale)
+        let host = NSHostingView(rootView: content)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: size)
+        defer { window.contentView = nil }
+        pump(host, for: 0.3)
+        window.displayIfNeeded()
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        return try XCTUnwrap(bitmap.cgImage)
+    }
+
+    /// The text Vision reads in `image`.
+    private func recognisedText(in image: CGImage) throws -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
+    }
+
+    /// How many pixels are plainly red (a ❤️) or plainly orange or yellow (a 🔥).
+    private func colouredPixels(in image: CGImage) -> (red: Int, flame: Int) {
+        let width = image.width, height = image.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var red = 0, flame = 0
+        for index in stride(from: 0, to: data.count, by: 4) {
+            let r = Int(data[index]), g = Int(data[index + 1]), b = Int(data[index + 2])
+            if r > 170, g < 90, b < 110 { red += 1 }
+            if r > 200, g > 110, g < 210, b < 80 { flame += 1 }
+        }
+        return (red, flame)
     }
 
     func testD1DateDividerAppearsAboveFirstMessageInTimelineTable() throws {
@@ -167,7 +220,7 @@ final class Batch6PolishViewTests: XCTestCase {
             reactions: [
                 ReactionChip(
                     key: "❤️",
-                    count: 2,
+                    count: 12,
                     mine: true,
                     reactors: [
                         Reactor(userID: Timeline.meUserID, name: "You", isMe: true),
@@ -175,7 +228,7 @@ final class Batch6PolishViewTests: XCTestCase {
                     ],
                     myEventID: "$myHeart"
                 ),
-                ReactionChip(key: "🔥", count: 1, mine: false),
+                ReactionChip(key: "🔥", count: 7, mine: false),
             ]
         )
 
@@ -202,6 +255,19 @@ final class Batch6PolishViewTests: XCTestCase {
             )
         }
         XCTAssertEqual(overlaySizes.count, 2)
+
+        // The chips are drawn: each reaction's emoji and its count, and nothing at all when there are none.
+        let chips = try XCTUnwrap(carouselModel.currentItem?.reactions)
+        XCTAssertEqual(chips.map(\.count), [12, 7])
+        let overlayChips = try drawn(PhotoViewerReactionChips(chips: chips), width: 200, height: 30)
+        let overlayText = try recognisedText(in: overlayChips)
+        XCTAssertTrue(overlayText.contains("12"), "the ❤️ count is not drawn: \(overlayText)")
+        XCTAssertTrue(overlayText.contains("7"), "the 🔥 count is not drawn: \(overlayText)")
+        let overlayColours = colouredPixels(in: overlayChips)
+        XCTAssertGreaterThan(overlayColours.red, 40, "the ❤️ is not drawn: \(overlayColours)")
+        XCTAssertGreaterThan(overlayColours.flame, 40, "the 🔥 is not drawn: \(overlayColours)")
+        let none = colouredPixels(in: try drawn(PhotoViewerReactionChips(chips: []), width: 200, height: 30))
+        XCTAssertEqual(none.red + none.flame, 0)
 
         let app = AppModel(supervisor: EngineSupervisor(
             enginePath: "/nonexistent/vitruvian-courier-engine",
@@ -241,6 +307,15 @@ final class Batch6PolishViewTests: XCTestCase {
             )
         }
         XCTAssertEqual(gridSizes.count, 2)
+
+        let tile = try drawn(
+            MediaTileReactionChips(chips: [ReactionChip(key: "❤️", count: 12, mine: true, myEventID: "$myHeart")]),
+            width: 200,
+            height: 30
+        )
+        let tileText = try recognisedText(in: tile)
+        XCTAssertTrue(tileText.contains("12"), "tile count not drawn: \(tileText)")
+        XCTAssertGreaterThan(colouredPixels(in: tile).red, 40, "tile ❤️ not drawn")
     }
 
     func testD3AboutSettingsPaneCopyVersionNoteActionsAndHotkeys() throws {

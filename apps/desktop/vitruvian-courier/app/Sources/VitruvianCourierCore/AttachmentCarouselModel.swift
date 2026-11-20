@@ -298,6 +298,42 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         return result
     }
 
+    /// This item with `reactions` as its reactions.
+    public func withReactions(_ reactions: [ReactionChip]) -> CarouselItem {
+        CarouselItem(
+            eventID: eventID,
+            roomID: roomID,
+            kind: kind,
+            mediaPath: mediaPath,
+            thumbnailPath: thumbnailPath,
+            fileName: fileName,
+            mimeType: mimeType,
+            width: width,
+            height: height,
+            blurhash: blurhash,
+            durationMS: durationMS,
+            isGIF: isGIF,
+            sender: sender,
+            senderName: senderName,
+            senderAvatarPath: senderAvatarPath,
+            mine: mine,
+            ts: ts,
+            caption: caption,
+            viewOnce: viewOnce,
+            reactions: reactions
+        )
+    }
+
+    /// `items` with each one's reactions taken from `timelineItems`. An item whose event the timeline doesn't have
+    /// (older media paged in from the engine) keeps the reactions it has.
+    public static func applyingReactions(from timelineItems: [TimelineItem], to items: [CarouselItem]) -> [CarouselItem] {
+        let byEvent = reactionsByEventID(from: timelineItems)
+        return items.map { item in
+            guard let reactions = byEvent[item.eventID], reactions != item.reactions else { return item }
+            return item.withReactions(reactions)
+        }
+    }
+
     /// Collects reactions keyed by event ID for single media messages and gallery tiles from `timelineItems`.
     public static func reactionsByEventID(from timelineItems: [TimelineItem]) -> [String: [ReactionChip]] {
         var result: [String: [ReactionChip]] = [:]
@@ -386,12 +422,14 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
             }
         }
 
-        return byID.values.sorted { lhs, rhs in
+        let sorted = byID.values.sorted { lhs, rhs in
             if lhs.ts != rhs.ts {
                 return lhs.ts < rhs.ts
             }
             return lhs.eventID < rhs.eventID
         }
+        // Media that came in as a search or paging hit carries no reactions of its own: take them from the timeline.
+        return applyingReactions(from: timelineItems, to: sorted)
     }
 }
 
@@ -431,6 +469,7 @@ public final class AttachmentCarouselModel: ObservableObject {
     private var pagedHits: [MediaHit] = []
     private var requestedEventID: String?
     private var userHasNavigated = false
+    private var timelineSubscriptions: [AnyCancellable] = []
 
     public var isPresented: Bool {
         !items.isEmpty && items.indices.contains(currentIndex)
@@ -460,6 +499,26 @@ public final class AttachmentCarouselModel: ObservableObject {
         self.appModel = appModel
         self.conversation = conversation
         onSelectedEventChanged = { [weak conversation] id in conversation?.activeLightboxMessageID = id }
+        // The chips follow the timeline while the viewer is open: my own reaction from the React button and ones that
+        // arrive from others. `@Published` hands over the new value before the property changes, so use that.
+        timelineSubscriptions = [
+            conversation.$items.dropFirst().sink { [weak self, weak conversation] chatItems in
+                guard let conversation else { return }
+                self?.syncReactions(from: chatItems + conversation.thread.items)
+            },
+            conversation.thread.$items.dropFirst().sink { [weak self, weak conversation] threadItems in
+                guard let conversation else { return }
+                self?.syncReactions(from: conversation.items + threadItems)
+            },
+        ]
+    }
+
+    private func syncReactions(from timelineItems: [TimelineItem]) {
+        guard !items.isEmpty else { return }
+        let updated = CarouselItem.applyingReactions(from: timelineItems, to: items)
+        if updated != items {
+            items = updated
+        }
     }
 
     /// Opens the carousel with `items`, selecting `selectedEventID`, then widens it to the chat's full list of

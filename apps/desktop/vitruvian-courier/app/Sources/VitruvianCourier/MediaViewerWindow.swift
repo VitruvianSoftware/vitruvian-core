@@ -137,35 +137,7 @@ public struct MediaWithSender: View {
             .padding(.horizontal, 2)
 
             if !reactionChips.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(reactionChips) { summary in
-                            HStack(spacing: 3) {
-                                ReactionKeyView(chip: summary, size: 11)
-                                Text(verbatim: "\(summary.count)")
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(summary.mine ? Color.accentColor : .secondary)
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(
-                                    summary.mine ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07)
-                                )
-                            )
-                            .overlay(
-                                Capsule().strokeBorder(
-                                    summary.mine ? Color.accentColor.opacity(0.35) : Color.clear,
-                                    lineWidth: 0.75
-                                )
-                            )
-                            .help(summary.tooltipText(redacted: isRedacted))
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(summary.summary(redacted: isRedacted))
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                }
+                MediaTileReactionChips(chips: reactionChips)
             }
         }
         .padding(6)
@@ -711,6 +683,43 @@ public struct MediaViewerWindow: View {
         .frame(minWidth: 640, idealWidth: 780, minHeight: 460, idealHeight: 560)
         .task(id: "\(viewerModel.roomID ?? "")-\(viewerModel.tab.rawValue)-\(viewerModel.sentBy.rawValue)") {
             await viewerModel.refresh()
+        }
+    }
+}
+
+/// A media tile's reactions (emoji and count) under its sender line.
+struct MediaTileReactionChips: View {
+    let chips: [ReactionChip]
+    @Environment(\.redactNamesAndPictures) private var isRedacted
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(chips) { chip in
+                    HStack(spacing: 3) {
+                        ReactionKeyView(chip: chip, size: 11)
+                        Text(verbatim: "\(chip.count)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(chip.mine ? Color.accentColor : .secondary)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(chip.mine ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07))
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(
+                            chip.mine ? Color.accentColor.opacity(0.35) : Color.clear,
+                            lineWidth: 0.75
+                        )
+                    )
+                    .help(chip.tooltipText(redacted: isRedacted))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(chip.summary(redacted: isRedacted))
+                    .accessibilityValue(String(chip.count))
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
 }

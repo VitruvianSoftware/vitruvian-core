@@ -252,4 +252,51 @@ final class PhotoViewerPresentationTests: XCTestCase {
         XCTAssertEqual(byEvent["$g1"]?.isEmpty, true)
         XCTAssertEqual(byEvent["$g2"]?.map(\.key), ["🔥"])
     }
+
+    func testMediaPagedInAsAHitTakesItsReactionsFromTheTimeline() throws {
+        let hit = MediaHit(
+            eventID: "$p1",
+            roomID: "!r",
+            sender: "@ann:courier.local",
+            senderName: "Ann Example",
+            mine: false,
+            ts: 1_760_600_000_000,
+            seq: 1,
+            kind: .image,
+            snippet: "p1.jpg",
+            mediaPath: "/tmp/p1.jpg"
+        )
+        let paged = try XCTUnwrap(CarouselItem(hit: hit))
+        XCTAssertTrue(paged.reactions.isEmpty, "a hit carries no reactions of its own")
+
+        func photo() -> Event {
+            Event(
+                eventID: "$p1", roomID: "!r", sender: "@ann:courier.local", senderName: "Ann Example", mine: false,
+                type: "m.room.message",
+                content: .object(["msgtype": .string("m.image"), "body": .string("p1.jpg"), "filename": .string("p1.jpg"),
+                                  "url": .string("mxc://server/p1")]),
+                ts: 1_760_600_000_000, seq: 1, status: .sent, mediaPath: "/tmp/p1.jpg"
+            )
+        }
+        let heartEvent = Event(
+            eventID: "$r1", roomID: "!r", sender: "@bob:courier.local", senderName: "Bob", mine: false,
+            type: "m.reaction",
+            content: .object(["m.relates_to": .object([
+                "rel_type": .string("m.annotation"), "event_id": .string("$p1"), "key": .string("❤️"),
+            ])]),
+            ts: 1_760_600_001_000, seq: 2, status: .sent
+        )
+        let withReaction = Timeline.build(events: [photo(), heartEvent], me: Timeline.meUserID)
+        let withoutReaction = Timeline.build(events: [photo()], me: Timeline.meUserID)
+
+        // Looked up by event ID when the timeline has the event; left alone when it doesn't.
+        let found = CarouselItem.applyingReactions(from: withReaction, to: [paged]).first?.reactions
+        XCTAssertEqual(found?.map(\.key), ["❤️"])
+        XCTAssertEqual(found?.map(\.count), [1])
+        XCTAssertTrue(CarouselItem.applyingReactions(from: [], to: [paged]).first?.reactions.isEmpty == true)
+
+        // A reaction taken back empties the chips.
+        let shown = paged.withReactions(found ?? [])
+        XCTAssertTrue(CarouselItem.applyingReactions(from: withoutReaction, to: [shown]).first?.reactions.isEmpty == true)
+    }
 }
