@@ -28,6 +28,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
+use crate::secrets::{self, SecretStore};
 use crate::Result;
 
 pub fn now_unix() -> u64 {
@@ -37,12 +38,15 @@ pub fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
+/// Where `token.json` is with `VRELAY_SECRETS=file` (and was before the
+/// Keychain); read the sign-in through [`load_token_bytes`].
 pub fn token_path(dir: &Path) -> PathBuf {
     dir.join("token.json")
 }
 pub fn device_path(dir: &Path) -> PathBuf {
     dir.join("device.json")
 }
+/// As [`token_path`]: the device key's file, read through `keys`.
 pub fn key_path(dir: &Path) -> PathBuf {
     dir.join("device.key")
 }
@@ -190,38 +194,44 @@ pub(crate) fn str_field(v: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// What the sign-in is called in messages: `token.json` once, now whichever
+/// store holds it.
+const SIGN_IN: &str = "the saved sign-in";
+
 pub fn save_tokens(dir: &Path, t: &Tokens) -> Result<()> {
     let body = json!({
         "access_token": t.access_token,
         "refresh_token": t.refresh_token,
         "expires_at_unix": t.expires_at_unix,
     });
-    write_private(&token_path(dir), body.to_string().as_bytes())
+    Ok(secrets::for_dir(dir).set(secrets::TOKENS, body.to_string().as_bytes())?)
+}
+
+/// The saved sign-in exactly as stored (the token JSON), `Ok(None)` when
+/// nobody is signed in.
+pub fn load_token_bytes(dir: &Path) -> Result<Option<Vec<u8>>> {
+    Ok(secrets::for_dir(dir).get(secrets::TOKENS)?)
 }
 
 /// `Ok(None)` when nobody is signed in.
 pub fn load_tokens(dir: &Path) -> Result<Option<Tokens>> {
-    let path = token_path(dir);
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("read {}: {e}", path.display())),
-    };
-    parse_tokens(dir, &bytes).map(Some)
+    match load_token_bytes(dir)? {
+        Some(bytes) => parse_tokens(&bytes).map(Some),
+        None => Ok(None),
+    }
 }
 
-/// `token.json`'s contents (`bytes`, already read) as tokens.
-pub fn parse_tokens(dir: &Path, bytes: &[u8]) -> Result<Tokens> {
-    let path = token_path(dir);
-    let v: Value = serde_json::from_slice(bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+/// The saved sign-in's contents (`bytes`, already read) as tokens.
+pub fn parse_tokens(bytes: &[u8]) -> Result<Tokens> {
+    let v: Value = serde_json::from_slice(bytes).map_err(|e| format!("{SIGN_IN}: {e}"))?;
     Ok(Tokens {
         access_token: str_field(&v, "access_token")
-            .ok_or_else(|| format!("{} has no access_token", path.display()))?,
+            .ok_or_else(|| format!("{SIGN_IN} has no access_token"))?,
         refresh_token: str_field(&v, "refresh_token"),
         expires_at_unix: v
             .get("expires_at_unix")
             .and_then(Value::as_u64)
-            .ok_or_else(|| format!("{} has no expiry", path.display()))?,
+            .ok_or_else(|| format!("{SIGN_IN} has no expiry"))?,
     })
 }
 
@@ -324,14 +334,14 @@ pub fn sign_in_lock(dir: &Path) -> Result<SignInLock> {
     }
 }
 
-/// Saves a refreshed token, but only if `token.json` still holds what the
+/// Saves a refreshed token, but only if the saved sign-in still holds what the
 /// refresh started from (`before`): if `vrelay logout` removed it, or a new
 /// `vrelay login` replaced it, while the refresh was out, the result is
 /// discarded (false) rather than undoing either. Under [`sign_in_lock`].
 pub fn save_tokens_if_unchanged(dir: &Path, before: &[u8], t: &Tokens) -> Result<bool> {
     let _lock = sign_in_lock(dir)?;
-    match std::fs::read(token_path(dir)) {
-        Ok(now) if now == before => {
+    match load_token_bytes(dir) {
+        Ok(Some(now)) if now == before => {
             save_tokens(dir, t)?;
             Ok(true)
         }
@@ -353,18 +363,29 @@ pub fn save_new_device(dir: &Path, d: &DeviceInfo) -> Result<()> {
     save_device(dir, d)
 }
 
-/// Signs out: removes the token and the device record. The device key stays,
-/// so signing in again re-registers the same key. Under [`sign_in_lock`],
-/// so a refresh finishing at the same moment cannot write the token back.
+/// Signs out: removes the token, the device key and the device record.
+/// Signing in again makes a new key and registers it (registering again
+/// keeps the device's id). Under [`sign_in_lock`], so a refresh finishing at
+/// the same moment cannot write the token back. Any `token.json` or
+/// `device.key` left from before the Keychain goes too.
 pub fn clear_sign_in(dir: &Path) -> Result<bool> {
     let _lock = sign_in_lock(dir)?;
+    let store = secrets::for_dir(dir);
+    let files = secrets::FileSecrets::new(dir);
     let mut removed = false;
-    for p in [token_path(dir), device_path(dir)] {
-        match std::fs::remove_file(&p) {
-            Ok(()) => removed = true,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("remove {}: {e}", p.display())),
+    for account in [secrets::TOKENS, secrets::DEVICE_KEY] {
+        if store.get(account)?.is_some() {
+            removed = true;
         }
+        store.delete(account)?;
+        // Leftover files (a no-op with the file store, which just did it).
+        files.delete(account)?;
+    }
+    let p = device_path(dir);
+    match std::fs::remove_file(&p) {
+        Ok(()) => removed = true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("remove {}: {e}", p.display())),
     }
     Ok(removed)
 }
@@ -563,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn sign_out_removes_token_and_device_only() {
+    fn sign_out_removes_token_key_and_device_record() {
         let dir = test_dir("signout");
         save_tokens(
             &dir,
@@ -586,7 +607,7 @@ mod tests {
         assert!(clear_sign_in(&dir).unwrap());
         assert!(load_tokens(&dir).unwrap().is_none());
         assert!(load_device(&dir).is_none());
-        assert!(key_path(&dir).exists());
+        assert!(!key_path(&dir).exists(), "the device key was kept");
         assert!(!clear_sign_in(&dir).unwrap());
     }
 }

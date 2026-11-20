@@ -25,6 +25,7 @@ pub mod config;
 pub mod devices;
 pub mod http;
 pub mod mcp;
+pub mod parked;
 pub mod registry;
 
 use std::sync::Arc;

@@ -59,3 +59,8 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 # own root-store crates (the `rustls-tls-*-roots` features would).
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["__rustls-tls", "connect", "handshake"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
+
+# The login Keychain holds the sign-in and the device key (secrets.rs). Only
+# on a Mac: elsewhere the secrets stay in files, so CI on Linux never builds it.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
