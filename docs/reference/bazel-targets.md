@@ -160,6 +160,8 @@ Additional tooling:
 | `//tools/gitops:seal-backstage-github-app` | Seal the vitruvian-backstage GitHub App's id, client id/secret and private key into `backstage/backstage-github-app` (`-- <key.pem> <creds.json> [--apply]`; the inputs come from `//tools/agent-app -- convert`) |
 | `//tools/gitops:alert-test` | Fire one test alert through Alertmanager, hold it (default 90s), then resolve it, to prove alerts reach ntfy and clear themselves (`--hold SECS`, `--fire-only`, `--resolve TEST_ID`) |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
+| `//tools/gitops:seal-backstage-mcp-token` | Generate (if absent in `tools/sync-env-secrets/secrets/agent-tokens/`) and seal the static read-only Backstage MCP token (`backstage/backstage-mcp-agent-token`) |
+| `//tools/gitops:backstage-mcp-probe` | Probe the live Backstage MCP endpoint: confirms 401 without token, authenticated tool list + catalog library read, and authorization refusal on writes |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |
 | `//tools/gitops:seal-zitadel-login-cookie-secret` | Generate and seal the Zitadel Login UI session-cookie signing secret (re-running signs everyone out) |
 | `//tools/gitops/appset-render:appset-render` | Offline local rendering of ArgoCD ApplicationSets for syntax and generator validation |
