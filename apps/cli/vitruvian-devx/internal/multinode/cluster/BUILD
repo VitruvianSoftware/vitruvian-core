@@ -7,6 +7,7 @@ go_library(
         "apply.go",
         "cluster.go",
         "lock.go",
+        "relocate_kubelet.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-devx/internal/multinode/cluster",
     visibility = ["//apps/cli/vitruvian-devx:__subpackages__"],
@@ -28,6 +29,7 @@ go_test(
         "cluster_reconcile_test.go",
         "lock_test.go",
         "reconcile_dispatch_test.go",
+        "relocate_kubelet_test.go",
     ],
     embed = [":cluster"],
     deps = [

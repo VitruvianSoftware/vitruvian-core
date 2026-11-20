@@ -200,6 +200,23 @@ Run this on a cluster that was created before a node-level requirement landed (f
 *   **Dry Run**: use `-n` or `--dry-run` to preview the exact per-node command without changing anything.
 *   **Scope**: it only installs packages inside existing VMs — it does **not** touch K3s, node membership, or VM lifecycle (use `init`/`join`/`apply` for those).
 
+### `devx cluster relocate-kubelet`
+
+A one-time fix for a **native** node that has a custom `dataDir` and was set up by an older devx. That setup moved the kubelet to `<dataDir>/kubelet`, and CSI drivers such as the NFS one only mount the standard `/var/lib/kubelet`, so every volume they provide was unusable on the node (pods failed with `lstat /home/k3s/kubelet/pods/.../mount: no such file or directory`).
+
+The fix keeps the files where they are. The kubelet goes back to the standard `/var/lib/kubelet`, which becomes a **bind mount** of `<dataDir>/kubelet` (a systemd mount unit ordered before k3s). Pod volumes and ephemeral storage stay on the big volume, and the node still reports that volume's size. New nodes are installed this way from the start and never need the command.
+
+```bash
+devx cluster relocate-kubelet --host nuc9i5            # dry run: read-only checks, prints every step and exact command
+devx cluster relocate-kubelet --host nuc9i5 --apply    # do it
+```
+
+With `--apply` it cordons and drains the node, stops k3s, removes the `root-dir` entry from `/etc/rancher/k3s/config.yaml` (and from the systemd `ExecStart` if it is there; other keys are untouched and backups are kept as `*.pre-relocate-kubelet`), sets up the bind mount, starts k3s, waits for Ready, uncordons, and prints a final check (`findmnt /var/lib/kubelet`, and that the node's `ephemeral-storage` is still the big volume's size).
+
+*   **Refuses** when the node has no `dataDir`, when its kubelet is not at `<dataDir>/kubelet`, when it is already switched (that case exits 0 with "Nothing to do"), or, for a control-plane node, when another control-plane node is not Ready (etcd quorum).
+*   **Safe to re-run**: if a run is interrupted it resumes from where the node is. If a step fails after k3s was stopped, the error says what state the node is in and how to recover; the node is left cordoned on purpose and the message says so.
+*   **One node at a time.** Draining evicts the node's pods, and `k3s-killall.sh` stops the containers that outlive the unit.
+
 ### `devx cluster apply`
 
 Reconciles the cluster state. It ensures all running nodes match the specifications in the `cluster.yaml` configuration.

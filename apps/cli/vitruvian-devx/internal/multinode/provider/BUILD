@@ -5,6 +5,9 @@ go_library(
     srcs = [
         "lima.go",
         "native.go",
+        "native_kubelet.go",
+        "native_kubelet_edit.go",
+        "native_kubelet_relocate.go",
         "provider.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-devx/internal/multinode/provider",
@@ -15,17 +18,23 @@ go_library(
         "//apps/cli/vitruvian-devx/internal/multinode/lima",
         "//apps/cli/vitruvian-devx/internal/multinode/remote",
         "//apps/cli/vitruvian-devx/internal/multinode/util",
+        "@in_gopkg_yaml_v3//:yaml_v3",
     ],
 )
 
 go_test(
     name = "provider_test",
     srcs = [
+        "native_kubelet_relocate_test.go",
+        "native_kubelet_test.go",
         "native_loud_test.go",
         "native_test.go",
         "provider_test.go",
         "spec_test.go",
     ],
     embed = [":provider"],
-    deps = ["//apps/cli/vitruvian-devx/internal/multinode/config"],
+    deps = [
+        "//apps/cli/vitruvian-devx/internal/multinode/config",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+    ],
 )

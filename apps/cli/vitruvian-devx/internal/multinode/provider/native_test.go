@@ -201,10 +201,14 @@ func TestNative_InstallServer_Recipe(t *testing.T) {
 
 func TestNative_InstallScript_DataDir(t *testing.T) {
 	// A node with dataDir relocates k3s's whole data tree (containerd + local-path
-	// storage via --data-dir) AND the kubelet root-dir (which is what the node reports
-	// as ephemeral-storage) onto that volume — for hosts whose default partitioning
+	// storage via --data-dir) onto that volume — for hosts whose default partitioning
 	// starves the k3s root, e.g. a repurposed Fedora Workstation with a tiny / and a
-	// large /home. Both server and agent recipes must carry the flags.
+	// large /home. The kubelet root-dir is deliberately NOT moved: CSI node plugins
+	// (csi-driver-nfs) only mount /var/lib/kubelet, and the kubelet hands them
+	// absolute paths under its root-dir, so a relocated root-dir breaks every NFS
+	// PVC on the node. /var/lib/kubelet is a bind mount of <dataDir>/kubelet instead
+	// (ensureKubeletBindMount). Both server and agent recipes must carry --data-dir
+	// and neither may carry a root-dir.
 	p := NewNativeProvider(config.NodeConfig{
 		Host: "nuc9i5", Kind: "native", Role: "agent", Pool: "nuc-worker-1",
 		DataDir: "/home/k3s",
@@ -212,10 +216,11 @@ func TestNative_InstallScript_DataDir(t *testing.T) {
 	o := JoinOpts{NodeIP: "100.97.82.16", ServerURL: "https://cp:6443", Token: "tok", Pool: "nuc-worker-1"}
 	for _, role := range []string{"agent", "server"} {
 		s := p.installScript(role, o)
-		for _, want := range []string{"--data-dir=/home/k3s", "--kubelet-arg=root-dir=/home/k3s/kubelet"} {
-			if !strings.Contains(s, want) {
-				t.Errorf("%s installScript with dataDir missing %q in:\n%s", role, want, s)
-			}
+		if !strings.Contains(s, "--data-dir=/home/k3s") {
+			t.Errorf("%s installScript with dataDir missing --data-dir=/home/k3s in:\n%s", role, s)
+		}
+		if strings.Contains(s, "root-dir") {
+			t.Errorf("%s installScript must not relocate the kubelet root-dir (it stays at /var/lib/kubelet, bind-mounted); got:\n%s", role, s)
 		}
 	}
 }
@@ -234,9 +239,9 @@ func TestNative_InstallScript_NoDataDir(t *testing.T) {
 	}
 }
 
-func TestNative_InstallAgent_KubeletSymlinkForDataDir(t *testing.T) {
-	// A dataDir node relocates the kubelet root, so /var/lib/kubelet must be symlinked
-	// to it or CSI hostPaths (pods/plugins_registry) fail to mount.
+func TestNative_InstallAgent_KubeletBindMountForDataDir(t *testing.T) {
+	// A dataDir node keeps its kubelet at /var/lib/kubelet, which is a bind mount of
+	// <dataDir>/kubelet (set up before k3s is installed). No symlink, no root-dir.
 	p := NewNativeProvider(config.NodeConfig{
 		Host: "nuc9i5", Kind: "native", Role: "agent", Pool: "nuc-worker-1", DataDir: "/home/k3s",
 	}, &config.Config{})
@@ -248,18 +253,22 @@ func TestNative_InstallAgent_KubeletSymlinkForDataDir(t *testing.T) {
 	if err := p.InstallAgent(context.Background(), JoinOpts{NodeIP: "1.2.3.4", ServerURL: "https://cp:6443", Token: "t", Pool: "nuc-worker-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(calls, "\n"); !strings.Contains(got, "ln -sfn /home/k3s/kubelet /var/lib/kubelet") {
-		t.Errorf("InstallAgent with dataDir must symlink /var/lib/kubelet -> /home/k3s/kubelet; got:\n%s", got)
+	got := strings.Join(calls, "\n")
+	if !strings.Contains(got, "systemctl enable --now var-lib-kubelet.mount") {
+		t.Errorf("InstallAgent with dataDir must bind-mount /var/lib/kubelet; got:\n%s", got)
+	}
+	if strings.Contains(got, "ln -sfn") {
+		t.Errorf("the kubelet symlink is gone; got:\n%s", got)
 	}
 }
 
-func TestNative_InstallAgent_NoKubeletSymlinkWithoutDataDir(t *testing.T) {
+func TestNative_InstallAgent_NoKubeletBindMountWithoutDataDir(t *testing.T) {
 	p, calls := nativeWithRunner(nil) // fedora node, no DataDir
 	if err := p.InstallAgent(context.Background(), JoinOpts{NodeIP: "1.2.3.4", ServerURL: "https://cp:6443", Token: "t", Pool: "linux"}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(strings.Join(*calls, "\n"), "ln -sfn") {
-		t.Errorf("no dataDir → no kubelet symlink; got:\n%s", strings.Join(*calls, "\n"))
+	if got := strings.Join(*calls, "\n"); strings.Contains(got, "ln -sfn") || strings.Contains(got, "var-lib-kubelet") {
+		t.Errorf("no dataDir → no kubelet bind mount; got:\n%s", got)
 	}
 }
 
