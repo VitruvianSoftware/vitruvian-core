@@ -68,6 +68,7 @@ spec:
     - ./apps/suites/vitruvian-tabs/catalog-info.yaml
     - ./apps/suites/vitruvian-wand/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
+    - ./packages/gocompat/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml
     - ./packages/pulumi/catalog-info.yaml
