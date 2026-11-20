@@ -64,6 +64,24 @@ public enum SubagentDetection {
     }
 }
 
+/// The quiet-session switch: an automation that starts a coding-agent session
+/// on its own (an orchestrator, a script, a scheduled job) sets
+/// `VITRUVIAN_SPEAKER_QUIET=1` in that session's environment, and the agent's
+/// end-of-turn hook stays silent instead of reading replies aloud.
+///
+/// It silences only the automatic read-aloud. An announcement the session
+/// makes on purpose (`speaker-broadcast "..."`) still plays, so automations
+/// that announce by design keep working.
+public enum QuietSession {
+    public static let environmentKey = "VITRUVIAN_SPEAKER_QUIET"
+
+    /// True for `1`, `true`, `yes` or `on` (any case, surrounding spaces ignored).
+    public static func isQuiet(environment: [String: String]) -> Bool {
+        guard let raw = environment[environmentKey] else { return false }
+        return ["1", "true", "yes", "on"].contains(raw.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+}
+
 /// Front-end for Vitruvian Speaker when invoked under the `speaker-broadcast` name.
 public enum BroadcastCommand {
     public static let commandName = "speaker-broadcast"

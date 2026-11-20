@@ -36,6 +36,13 @@ public enum ClaudeStopHook {
     /// Entrypoint value recorded for non-interactive `claude -p` / SDK runs.
     public static let sdkCliEntrypoint = "sdk-cli"
 
+    /// True for a session a program drives rather than a person: `claude -p`
+    /// (`sdk-cli`) and every other Agent SDK entrypoint, which all start with
+    /// `sdk-`. Interactive ones (`cli`, `claude-desktop`, `claude-vscode`) read aloud.
+    public static func isProgrammaticEntrypoint(_ entrypoint: String) -> Bool {
+        entrypoint.hasPrefix("sdk-")
+    }
+
     /// One transcript line, reduced to what the hook cares about.
     public struct Entry: Equatable {
         public var role: String
@@ -61,7 +68,7 @@ public enum ClaudeStopHook {
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   obj["isSidechain"] as? Bool != true else { continue }
             if let entrypoint = obj["entrypoint"] as? String,
-               entrypoint == sdkCliEntrypoint {
+               isProgrammaticEntrypoint(entrypoint) {
                 continue
             }
             if let topType = obj["type"] as? String,
