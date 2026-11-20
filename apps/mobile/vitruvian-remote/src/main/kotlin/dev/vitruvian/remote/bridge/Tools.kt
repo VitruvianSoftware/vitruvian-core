@@ -1305,6 +1305,8 @@ public object PhoneTools {
       voiceOverride: VoiceInfo? = null,
   ): WavPlayOutcome {
     fun fallback(reason: String) = WavPlayOutcome(ToolResult(reason, true), allowTtsFallback = true)
+    // The budget counts from here, so the voice lookup (and a stale-client probe) is inside it.
+    val callStartNs = System.nanoTime()
     // Outside the try, so a throw mid-sentence still knows audio was heard.
     val started = AtomicBoolean(false)
     return try {
@@ -1351,7 +1353,6 @@ public object PhoneTools {
                       TextToSpeech.QUEUE_FLUSH,
                   )
               runBlocking(Dispatchers.IO) {
-                val synthStartNs = System.nanoTime()
                 val startSignal = CompletableDeferred<Unit>()
                 val job = launch {
                   synthesizer
@@ -1411,7 +1412,7 @@ public object PhoneTools {
                         withTimeoutOrNull(
                             BridgePolicy.mlKitFinishWindowMs(
                                 timeoutSeconds,
-                                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - synthStartNs))) {
+                                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - callStartNs))) {
                               job.join()
                             } != null
                 if (!finished) {
