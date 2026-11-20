@@ -229,6 +229,23 @@ final class ContactPersonGroupingTests: XCTestCase {
         XCTAssertEqual(sections.named[0].endpoints.count, 2)
     }
 
+    // MARK: - QA: empty display names and shared numbers
+
+    func testEntryWithNoDisplayNameNeverGluesTwoDifferentlyNamedPeopleTogether() {
+        let mom = candidate("Mom", network: "whatsapp", userID: "@mom", identifiers: ["+12135559999"])
+        let dad = candidate("Dad", network: "signal", userID: "@dad", identifiers: ["+12135559999"])
+        let blank = candidate("", network: "telegram", userID: "@blank", identifiers: ["+12135559999"])
+
+        let both = ContactPersonGrouping.sections([mom, dad, blank])
+        XCTAssertEqual(both.named.map(\.displayName).sorted(), ["Dad", "Mom"])
+        XCTAssertEqual(both.other.count, 1, "the nameless entry stays its own row")
+        XCTAssertEqual(both.other[0].displayName, "@blank", "and shows its user id rather than an empty title")
+
+        let momOnly = ContactPersonGrouping.sections([mom, blank])
+        XCTAssertEqual(momOnly.named.count, 1, "with only one named holder, the nameless entry joins her")
+        XCTAssertEqual(momOnly.named[0].endpoints.count, 2)
+    }
+
     // MARK: - C5 UI helper logic (overflow edges & row affordances)
 
     func testHorizontalOverflowEdgesCompute() {
