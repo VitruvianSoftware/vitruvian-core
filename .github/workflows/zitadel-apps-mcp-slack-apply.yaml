@@ -124,6 +124,8 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
           ACTION: ${{ inputs.action }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
           GOWORK: off
         working-directory: infrastructure/pulumi/platform/zitadel-apps-mcp-slack
         run: |
@@ -133,6 +135,13 @@ jobs:
           # rustc builds it from the checkout (about a second), before the tunnel.
           retry="${RUNNER_TEMP}/retry-concurrent-update"
           rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
+          # guarded-up (//tools/pulumi:guarded-up) runs `pulumi preview --json`, the
+          # plan guard, then `pulumi up`, as one unit retried on the 409. The guard
+          # refuses a plan that deletes or replaces anything nobody approved: on
+          # the Zitadel provider a replace of an OIDC app DELETES the live client
+          # and breaks hosted login (2026-06-26).
+          guarded_up="${RUNNER_TEMP}/guarded-up"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/guarded_up.rs" -o "$guarded_up"
           # The terminator must live inside THIS step — a backgrounded process does
           # not survive across steps.
           #
@@ -161,17 +170,35 @@ jobs:
           curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
           echo "internal route to auth.ipv1337.dev is up"
 
-          pulumi stack select "$DEPLOY_ENV" --create
+          # plan-guard:begin
+          # No --create: the development stack exists, and a missing stack is a
+          # mistake to stop on, not one to paper over with an empty stack.
+          pulumi stack select "$DEPLOY_ENV"
           pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
 
           if [ "$ACTION" = "up" ]; then
-            # Both are Pulumi Cloud updates, so both wait out the account-wide
-            # concurrent-update 409; any other failure is immediate.
+            # refresh is a Pulumi Cloud update too, so it waits out the 409.
             "$retry" pulumi refresh --yes
-            "$retry" pulumi up --yes
+            # Which deletes and replaces may apply: only ones a reviewed commit named
+            # with an `Allow-destroy: <urn>` line. A push reads the pushed commits; a
+            # release reads the commits since the product's previous release
+            # (tools/pulumi/release_approvals.sh). A manual run approves nothing.
+            allow=()
+            case "${EVENT_NAME:-}" in
+              push)
+                allow=(--allow-destroy-from-event "${GITHUB_EVENT_PATH:?}")
+                ;;
+              release)
+                approvals="${RUNNER_TEMP}/release-approvals.json"
+                "$GITHUB_WORKSPACE/tools/pulumi/release_approvals.sh" "$approvals"
+                allow=(--allow-destroy-from-event "$approvals")
+                ;;
+            esac
+            "$guarded_up" "zitadel-apps-mcp-slack ${DEPLOY_ENV}" ${allow[@]+"${allow[@]}"}
           else
             pulumi preview --diff
           fi
+          # plan-guard:end
 
           # ---------------------------------------------------------------
           # REPORTING LIVES IN THIS STEP, DELIBERATELY, AND IS NOT GATED ON

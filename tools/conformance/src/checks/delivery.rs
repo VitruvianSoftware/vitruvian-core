@@ -53,7 +53,7 @@ const DELIVERY_LEGACY_FLOOR: &[&str] = &[
 ];
 
 /// Regex string for state-mutating invocations (used only in emit text).
-const DELIVERY_SIDE_EFFECT_RE: &str = r"pulumi up|bazel run .*:(deploy|up|apply)|helm push|gh release upload|docker push|oci_push|tools/charts/publish\.sh";
+const DELIVERY_SIDE_EFFECT_RE: &str = r"pulumi up|guarded[-_]up|bazel run .*:(deploy|up|apply)|helm push|gh release upload|docker push|oci_push|tools/charts/publish\.sh";
 
 /// Workflows Phase 3 deleted — references in living docs are failures.
 const DELIVERY_DELETED_WORKFLOWS: &[&str] = &[
@@ -76,6 +76,11 @@ const DELIVERY_DELETED_WORKFLOWS: &[&str] = &[
 /// Returns true when `line` matches the DELIVERY_SIDE_EFFECT_RE extended regex.
 fn matches_side_effect(line: &str) -> bool {
     if line.contains("pulumi up") {
+        return true;
+    }
+    // //tools/pulumi:guarded-up runs `pulumi up` behind the plan guard; a
+    // workflow that calls it applies a stack even with no `pulumi up` text.
+    if line.contains("guarded-up") || line.contains("guarded_up") {
         return true;
     }
     if line.contains("helm push") {
@@ -1457,5 +1462,18 @@ jobs:
         assert!(matches_side_effect(
             "bazel run //tools/model-prices:update && bazel run //apps/foo:up"
         ));
+    }
+
+    #[test]
+    fn side_effect_matcher_counts_guarded_up_as_an_apply() {
+        // The Sentry and Zitadel applies run `pulumi up` only through
+        // guarded-up, so their run blocks have no `pulumi up` text of their own.
+        assert!(matches_side_effect(
+            r#""$guarded_up" "zitadel-apps ${DEPLOY_ENV}" ${allow[@]+"${allow[@]}"}"#
+        ));
+        assert!(matches_side_effect(
+            r#"rustc --edition 2021 -O tools/pulumi/src/bin/guarded_up.rs -o "${RUNNER_TEMP}/guarded-up""#
+        ));
+        assert!(!matches_side_effect("pulumi preview --diff"));
     }
 }

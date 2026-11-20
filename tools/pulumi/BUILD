@@ -197,3 +197,10 @@ rust_binary(
         "create-app",
     ]
 ]
+
+# Reads a release's Allow-destroy approvals for the plan guard; the Zitadel
+# apply workflows run it from the checkout (no Bazel on those runners).
+exports_files(
+    ["release_approvals.sh"],
+    visibility = ["//tools/ci:__pkg__"],
+)
