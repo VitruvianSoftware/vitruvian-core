@@ -215,6 +215,7 @@ enum TimelineContentRevision {
         hasher.combine(actions.showMessageTimestamps)
         hasher.combine(actions.timeFormat.rawValue)
         hasher.combine(actions.loadExternalEmbedsAutomatically)
+        hasher.combine(actions.showLinkPreviews)
 
         switch item {
         case let .dateSeparator(day):
@@ -2588,6 +2589,7 @@ struct TimelineTableView: NSViewRepresentable {
             hasher.combine(view.preferences.showMessageTimestamps)
             hasher.combine(view.preferences.timeFormat.rawValue)
             hasher.combine(view.preferences.loadExternalEmbedsAutomatically)
+            hasher.combine(view.preferences.showLinkPreviews)
             hasher.combine(view.conversation.isDirectChat)
             hasher.combine(view.conversation.timerChoices.count)
             if let merged = view.conversation.mergedChat {

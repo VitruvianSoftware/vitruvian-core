@@ -538,6 +538,13 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["embeds", "link previews", "external"]
         ),
         SettingDefinition(
+            id: "appearance.showLinkPreviews",
+            pane: .appearance,
+            section: "Conversation",
+            title: "Show link previews",
+            keywords: ["link previews", "thumbnail", "picture", "title", "youtube", "privacy", "ip address", "links"]
+        ),
+        SettingDefinition(
             id: "appearance.quickReaction",
             pane: .appearance,
             section: "Conversation",
@@ -998,6 +1005,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "appearance.hideDeletedMessages",
         "appearance.showMembershipEvents",
         "appearance.loadExternalEmbeds",
+        "appearance.showLinkPreviews",
         "appearance.quickReaction",
         "appearance.enableSpellcheck",
         "appearance.showFormattingMenu",

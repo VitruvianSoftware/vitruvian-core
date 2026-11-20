@@ -366,8 +366,9 @@ public struct EmbedConsentCard: View {
     public var title: String?
     /// A picture the link's preview already saved on this Mac; drawn without any request.
     public var previewImagePath: String?
-    /// Whether the video's picture and title may be fetched from YouTube (that tells YouTube this Mac's address; the
-    /// message row allows it, and "Load external embeds automatically" only decides whether the player itself loads).
+    /// Whether the video's picture and title may be fetched from YouTube (that tells YouTube this Mac's address). The
+    /// message row passes "Show link previews"; "Load external embeds automatically" only decides whether the player
+    /// itself loads (`LinkPreviewPolicy`).
     /// Off (the default here), the card uses the picture and title the network's own preview saved on this Mac, else
     /// the tinted placeholder and the stand-in title, and asks for nothing.
     public var allowsRemoteThumbnail: Bool
@@ -442,7 +443,7 @@ public struct EmbedConsentCard: View {
 
     private var currentMetadata: YouTubeMetadata? {
         let source = metadataSource
-        guard !source.isEmpty else { return nil }
+        guard allowsRemoteThumbnail, !source.isEmpty else { return nil }
         if let loadedMetadata, loadedMetadata.source == source {
             return loadedMetadata.metadata
         }
@@ -498,7 +499,7 @@ public struct EmbedConsentCard: View {
             if let fetchPicture {
                 image = await fetchPicture(id)
             } else {
-                image = await EmbedThumbnail.fetch(videoID: id, session: session)
+                image = await EmbedThumbnail.fetch(videoID: id, showLinkPreviews: allowsRemoteThumbnail, session: session)
             }
         }
         guard !Task.isCancelled, let image else { return }
@@ -515,7 +516,7 @@ public struct EmbedConsentCard: View {
         if let fetchMetadata {
             metadata = await fetchMetadata(id)
         } else {
-            metadata = await EmbedThumbnail.fetchMetadata(videoID: id, session: session)
+            metadata = await EmbedThumbnail.fetchMetadata(videoID: id, showLinkPreviews: allowsRemoteThumbnail, session: session)
         }
         guard !Task.isCancelled, let metadata else { return }
         loadedMetadata = (source, metadata)

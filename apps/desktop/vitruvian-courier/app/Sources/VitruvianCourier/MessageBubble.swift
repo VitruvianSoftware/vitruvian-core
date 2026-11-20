@@ -77,6 +77,8 @@ struct MessageActions {
     var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
     /// Whether external media embeds load automatically without click-to-load consent.
     var loadExternalEmbedsAutomatically = false
+    /// Whether link cards may fetch their picture and title (`ComposerPreferences.showLinkPreviews`).
+    var showLinkPreviews = true
     /// Preferred time format (`ComposerPreferences.timeFormat`).
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
@@ -995,7 +997,7 @@ struct MessageRowView: View {
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
                             title: ExternalEmbedDescriptor.embedTitle(in: message),
                             previewImagePath: ExternalEmbedDescriptor.previewImagePath(in: message),
-                            allowsRemoteThumbnail: true,
+                            allowsRemoteThumbnail: actions.showLinkPreviews,
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )

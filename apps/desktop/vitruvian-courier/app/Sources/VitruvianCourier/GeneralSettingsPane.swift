@@ -1095,6 +1095,13 @@ struct AppearanceSettingsPane: View {
             )
             .settingAnchor("appearance.loadExternalEmbeds", highlighted: highlightedSettingID)
 
+            SettingsSwitchRow(
+                SettingsNavigationModel.title(for: "appearance.showLinkPreviews"),
+                isOn: $composerPreferences.showLinkPreviews
+            )
+            .help(LinkPreviewPolicy.settingExplanation)
+            .settingAnchor("appearance.showLinkPreviews", highlighted: highlightedSettingID)
+
             Picker(
                 SettingsNavigationModel.title(for: "appearance.quickReaction"),
                 selection: $composerPreferences.quickReaction

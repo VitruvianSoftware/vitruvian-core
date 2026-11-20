@@ -86,8 +86,9 @@ public enum EmbedThumbnail {
     /// The still picture of a YouTube video, kept in memory for next time. The only address ever asked for is the one
     /// `youTubeURL` builds, on i.ytimg.com, so an ID that is not exactly right asks for nothing. Nil on any failure or
     /// a non-picture; no cookies are sent.
-    public static func fetch(videoID: String, session: URLSession = .shared) async -> CGImage? {
-        guard let url = youTubeURL(videoID: videoID) else { return nil }
+    public static func fetch(videoID: String, showLinkPreviews: Bool, session: URLSession = .shared) async -> CGImage? {
+        guard let url = youTubeURL(videoID: videoID),
+              LinkPreviewPolicy.mayRequest(url, showLinkPreviews: showLinkPreviews) else { return nil }
         let key = videoID as NSString
         if let hit = cache.object(forKey: key) { return hit.image }
         var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
@@ -104,8 +105,9 @@ public enum EmbedThumbnail {
 
     /// The video title and channel from YouTube's oEmbed JSON endpoint, kept in memory for next time. Cookieless and
     /// strictly bounded to validated 11-character IDs.
-    public static func fetchMetadata(videoID: String, session: URLSession = .shared) async -> YouTubeMetadata? {
-        guard let url = youTubeOEmbedURL(videoID: videoID) else { return nil }
+    public static func fetchMetadata(videoID: String, showLinkPreviews: Bool, session: URLSession = .shared) async -> YouTubeMetadata? {
+        guard let url = youTubeOEmbedURL(videoID: videoID),
+              LinkPreviewPolicy.mayRequest(url, showLinkPreviews: showLinkPreviews) else { return nil }
         let key = videoID as NSString
         if let hit = metadataCache.object(forKey: key) { return hit.metadata }
         var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)

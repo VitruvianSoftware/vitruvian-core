@@ -506,6 +506,7 @@ enum MessageRowActions {
                 )
             },
             loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically,
+            showLinkPreviews: preferences.showLinkPreviews,
             timeFormat: preferences.timeFormat,
             showMessageTimestamps: preferences.showMessageTimestamps,
             composerPreferences: preferences,
