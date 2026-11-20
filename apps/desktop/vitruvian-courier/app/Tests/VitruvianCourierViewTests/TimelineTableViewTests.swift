@@ -632,4 +632,53 @@ final class TimelineTableViewTests: XCTestCase {
             previousMinY = rect.minY
         }
     }
+
+    // MARK: 8. Header inset, scroll-to-message, prepending older messages
+
+    func testHeaderInsetIsTheScrollViewsTopInset() throws {
+        let events = (1 ... 5).map { Fixture.text("$h\($0)", "Line \($0)", mine: false, ts: 20 - $0) }
+        let harness = try mountTable(items: Fixture.items(events, isDirect: false))
+        defer { harness.tearDown() }
+        let inset = 48 + ConversationView.timelineVerticalPadding
+        XCTAssertEqual(harness.scrollView.contentInsets.top, inset, "the chat header's height plus the timeline's padding is the top inset")
+        XCTAssertFalse(harness.scrollView.automaticallyAdjustsContentInsets)
+        harness.scrollToTop()
+        harness.pump(for: 0.1)
+        let firstRowTop = harness.host.convert(harness.tableView.rect(ofRow: 0), from: harness.tableView).minY
+        XCTAssertGreaterThanOrEqual(firstRowTop, inset - 0.5, "at the top the first row starts below the header")
+    }
+
+    func testScrollToMessageShowsItBelowTheHeader() throws {
+        let events = (1 ... 40).map { Fixture.text("$j\($0)", "Message \($0)", mine: $0 % 2 == 0, ts: 80 - $0) }
+        let harness = try mountTable(items: Fixture.items(events, isDirect: false))
+        defer { harness.tearDown() }
+        harness.pump(for: 0.3)
+        harness.conversation.scrollToMessageForTesting("$j5")
+        harness.pump(for: 0.9, until: nil)
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$j5" })
+        let rect = harness.tableView.rect(ofRow: row)
+        let clip = harness.scrollView.contentView.bounds
+        XCTAssertGreaterThanOrEqual(rect.minY - clip.minY, 48 - 1, "the message is not under the header")
+        XCTAssertLessThanOrEqual(rect.maxY, clip.maxY + 1, "the message is on screen")
+    }
+
+    func testPrependingOlderMessagesKeepsTheRowsOnScreenInPlace() throws {
+        let newer = (1 ... 30).map { Fixture.text("$n\($0)", "Newer \($0)", mine: $0 % 2 == 0, ts: 60 - $0) }
+        let harness = try mountTable(items: Fixture.items(newer, isDirect: false), hasOlder: true)
+        defer { harness.tearDown() }
+        harness.pump(for: 0.4)
+        for _ in 0 ..< 5 { harness.scrollBy(-120) }
+        harness.pump(for: 0.2)
+        let visible = harness.tableView.rows(in: harness.tableView.visibleRect)
+        let watchedID = harness.coordinator.entries[visible.location + visible.length / 2].id
+        func watchedMinY() throws -> CGFloat {
+            let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == watchedID })
+            return harness.host.convert(harness.tableView.rect(ofRow: row), from: harness.tableView).minY
+        }
+        let before = try watchedMinY()
+        let older = (1 ... 12).map { Fixture.text("$o\($0)", "Older \($0)", mine: false, ts: 200 - $0) }
+        harness.conversation.setSnapshotItemsForTesting(Fixture.items(older + newer, isDirect: false), hasOlder: true)
+        harness.pump(for: 0.3)
+        XCTAssertEqual(try watchedMinY(), before, accuracy: 1.0, "an older page joining the top does not move what is on screen")
+    }
 }
