@@ -5691,6 +5691,303 @@ test("team_setup rulings: shared-agent conflicts, ENOTDIR/EACCES errors, init wr
   expect(writes.length).toBe(writesBeforeSym);
 });
 
+test("team_setup rejects subagent callers (e.agentId set) without touching fs and permits lead calls", async ($, on) => {
+  const repoRoot = "/lead-only-repo";
+  const dirs = new Set<string>([repoRoot]);
+  const files = new Map<string, string>();
+  let fsCalls = 0;
+
+  on("fs.stat", async (_, e) => {
+    fsCalls += 1;
+    if (dirs.has(e.path)) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (files.has(e.path)) {
+      const content = files.get(e.path)!;
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(content).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+  on("fs.read", async (_, e) => {
+    fsCalls += 1;
+    if (files.has(e.path)) {
+      return { value: files.get(e.path)! };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+  on("fs.write", async (_, e) => {
+    fsCalls += 1;
+    const parts = e.path.split("/").filter(Boolean);
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      cur += `/${parts[i]}`;
+      dirs.add(cur);
+    }
+    files.set(e.path, e.text);
+    return { value: undefined };
+  });
+
+  for (const call of [
+    { action: "init", root: repoRoot },
+    { action: "sync", root: repoRoot, check: false },
+    { action: "sync", root: repoRoot, check: true },
+  ]) {
+    const subRes = (await $.tool.call({
+      tool: TEAM_SETUP_TOOL,
+      agentId: "wren-sub-1",
+      ...call,
+    } as never)) as { result?: string; isError?: boolean };
+    expect(subRes.isError).toBe(true);
+    expect(String(subRes.result ?? "")).toContain(
+      "team_setup is for the lead only",
+    );
+  }
+  expect(fsCalls).toBe(0);
+  expect(files.size).toBe(0);
+
+  const leadRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: repoRoot,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(leadRes.isError).toBeUndefined();
+  expect(files.has(`${repoRoot}/.agents/team.json`)).toBe(true);
+});
+
+test("team_setup TOCTOU pre-write recheck aborts sync and init if paths become symlinks or escape root before write", async ($, on) => {
+  const syncSymRaceRepo = "/sync-sym-race";
+  const syncOutsideRaceRepo = "/sync-outside-race";
+  const initRaceRepo = "/init-race";
+
+  const dirs = new Set<string>([
+    syncSymRaceRepo,
+    `${syncSymRaceRepo}/.agents`,
+    `${syncSymRaceRepo}/.claude`,
+    `${syncSymRaceRepo}/.claude/agents`,
+    syncOutsideRaceRepo,
+    `${syncOutsideRaceRepo}/.agents`,
+    `${syncOutsideRaceRepo}/.claude`,
+    `${syncOutsideRaceRepo}/.claude/agents`,
+    initRaceRepo,
+  ]);
+  const files = new Map<string, string>([
+    [
+      `${syncSymRaceRepo}/.agents/team.json`,
+      JSON.stringify({
+        roles: { developer: { agent: "dev-a", "claude-code": "opus" } },
+      }),
+    ],
+    [
+      `${syncSymRaceRepo}/.claude/agents/dev-a.md`,
+      "---\nname: dev-a\nmodel: sonnet\n---\nDev\n",
+    ],
+    [
+      `${syncOutsideRaceRepo}/.agents/team.json`,
+      JSON.stringify({
+        roles: { developer: { agent: "dev-b", "claude-code": "opus" } },
+      }),
+    ],
+    [
+      `${syncOutsideRaceRepo}/.claude/agents/dev-b.md`,
+      "---\nname: dev-b\nmodel: sonnet\n---\nDev\n",
+    ],
+  ]);
+  const symlinks = new Map<
+    string,
+    { kind: "dir" | "file"; realPath?: string }
+  >();
+  const realPathOverrides = new Map<string, string>();
+  const writes: string[] = [];
+  const removals: string[] = [];
+
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "rm" && argv[1] === "-f" && argv[2] === "--" && argv[3]) {
+      removals.push(argv[3]);
+      files.delete(argv[3]);
+      return {
+        value: {
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "unexpected",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+
+  on("fs.stat", async (_, e) => {
+    if (
+      e.path.endsWith("/agents/developer.md") &&
+      e.path.includes("vitruvian-orchestrator")
+    ) {
+      return {
+        value: {
+          kind: "file",
+          size: 64,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (symlinks.has(e.path)) {
+      const sym = symlinks.get(e.path)!;
+      return {
+        value: {
+          kind: sym.kind,
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+          ...(e.resolve && sym.realPath ? { realPath: sym.realPath } : {}),
+        },
+      };
+    }
+    if (realPathOverrides.has(e.path)) {
+      return {
+        value: {
+          kind: "file",
+          size: 40,
+          mtimeMs: 0,
+          isLink: false,
+          ...(e.resolve ? { realPath: realPathOverrides.get(e.path)! } : {}),
+        },
+      };
+    }
+    if (dirs.has(e.path)) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (files.has(e.path)) {
+      const text = files.get(e.path)!;
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(text).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+
+  on("fs.read", async (_, e) => {
+    if (
+      e.path.endsWith("/agents/developer.md") &&
+      e.path.includes("vitruvian-orchestrator")
+    ) {
+      return { value: "---\nname: developer\n---\nDeveloper\n" };
+    }
+    if (e.path === `${syncSymRaceRepo}/.claude/agents/dev-a.md`) {
+      const text = files.get(e.path)!;
+      symlinks.set(`${syncSymRaceRepo}/.claude/agents`, {
+        kind: "dir",
+        realPath: "/outside",
+      });
+      return { value: text };
+    }
+    if (e.path === `${syncOutsideRaceRepo}/.claude/agents/dev-b.md`) {
+      const text = files.get(e.path)!;
+      realPathOverrides.set(e.path, "/outside/dev-b.md");
+      return { value: text };
+    }
+    if (files.has(e.path)) {
+      return { value: files.get(e.path)! };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  on("fs.write", async (_, e) => {
+    writes.push(e.path);
+    const parts = e.path.split("/").filter(Boolean);
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      cur += `/${parts[i]}`;
+      dirs.add(cur);
+    }
+    files.set(e.path, e.text);
+    if (e.path === `${initRaceRepo}/.claude/agents/team-developer.md`) {
+      symlinks.set(`${initRaceRepo}/.agents`, {
+        kind: "dir",
+        realPath: "/outside",
+      });
+    }
+    return { value: undefined };
+  });
+
+  // 1. sync races: symlink parent swap and outside-root swap after read both abort with zero writes.
+  const symRaceRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: syncSymRaceRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(symRaceRes.isError).toBe(true);
+  expect(String(symRaceRes.result ?? "")).toContain("symlink");
+  expect(writes).toEqual([]);
+
+  const outRaceRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: syncOutsideRaceRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(outRaceRes.isError).toBe(true);
+  expect(String(outRaceRes.result ?? "")).toContain("outside root");
+  expect(writes).toEqual([]);
+
+  // 2. init race: .agents becomes a symlink after team-developer.md write; team.json is not written and team-developer.md rolls back.
+  const initRaceRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: initRaceRepo,
+    agents: ["developer"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(initRaceRes.isError).toBe(true);
+  expect(String(initRaceRes.result ?? "")).toContain("symlink");
+  expect(writes).toEqual([`${initRaceRepo}/.claude/agents/team-developer.md`]);
+  expect(removals).toEqual([
+    `${initRaceRepo}/.claude/agents/team-developer.md`,
+  ]);
+  expect(files.has(`${initRaceRepo}/.claude/agents/team-developer.md`)).toBe(
+    false,
+  );
+  expect(files.has(`${initRaceRepo}/.agents/team.json`)).toBe(false);
+});
+
 // Regression (2026-11-20): pressing the band's ✕ while helpers were still
 // working set the whole flow to null, so every later board read came back
 // `[]` and every post came back `{"seq":0}` with no error.

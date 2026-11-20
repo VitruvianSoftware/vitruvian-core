@@ -5289,7 +5289,10 @@ test("team.schema.json $defs.model and parseTeam agree on harness model charset 
   );
   const modelDef = schema.$defs.model;
   assert.equal(modelDef.maxLength, 128);
-  assert.equal(modelDef.pattern, "^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$");
+  assert.equal(
+    modelDef.pattern,
+    "^[A-Za-z0-9](?:[A-Za-z0-9._/:-]{0,126}[A-Za-z0-9])?$",
+  );
 
   const schemaAcceptsModel = (value) => {
     if (typeof value !== "string") return false;
@@ -5331,6 +5334,13 @@ test("team.schema.json $defs.model and parseTeam agree on harness model charset 
     { value: "model-low", valid: false },
     { value: "MODEL-LITE", valid: false },
     { value: "flash-lo", valid: false },
+    { value: "sonnet:", valid: false },
+    { value: "x.", valid: false },
+    { value: "y-", valid: false },
+    { value: "a/", valid: false },
+    { value: "a_", valid: false },
+    { value: "a".repeat(127) + ":", valid: false },
+    { value: "a", valid: true },
     { value: "a".repeat(128), valid: true },
     { value: "haiku", valid: true },
     { value: "pro", valid: true },
@@ -6136,6 +6146,9 @@ test("resolveTeam ignores invalid harness models and falls through to tier or de
     "model-low",
     "model-lite",
     "flash-lo",
+    "sonnet:",
+    "x.",
+    "y-",
   ];
 
   for (const bad of badModels) {
@@ -6806,6 +6819,9 @@ test("applyAgentModels edits only frontmatter model/effort lines per harness and
     "claude-haiku-lite",
     "gemini-flash-lo",
     "MODEL-LOW",
+    "sonnet:",
+    "x.",
+    "y-",
   ]) {
     assert.deepEqual(
       applyAgentModels(ccDoc, "claude-code", {
@@ -6828,6 +6844,219 @@ test("applyAgentModels edits only frontmatter model/effort lines per harness and
     applyAgentModels(ccDoc, "unknown-harness", { model: "opus" }),
     { text: ccDoc, changed: false, reason: "unknown-harness" },
   );
+});
+
+test("applyAgentModels preserves multi-line quoted scalars containing model: and rewrites only top-level keys", () => {
+  const doubleQuotedWithTopKey = [
+    "---",
+    "name: team-dev",
+    'description: "First line with \\"escaped quote\\"',
+    "model: fake-quoted",
+    "effort: fake-quoted",
+    'end line"',
+    "model: sonnet",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(doubleQuotedWithTopKey, "claude-code", {
+      model: "opus",
+      effort: "max",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-dev",
+        'description: "First line with \\"escaped quote\\"',
+        "model: fake-quoted",
+        "effort: fake-quoted",
+        'end line"',
+        "model: opus",
+        "effort: max",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+
+  const singleQuotedWithoutTopKey = [
+    "---",
+    "name: team-dev",
+    "description: 'It''s a multi-line note",
+    "model: fake-single",
+    "reasoningEffort: fake-single",
+    "still inside single quotes'",
+    "mode: subagent",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(singleQuotedWithoutTopKey, "opencode", {
+      model: "openai/gpt-5",
+      effort: "high",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-dev",
+        "description: 'It''s a multi-line note",
+        "model: fake-single",
+        "reasoningEffort: fake-single",
+        "still inside single quotes'",
+        "mode: subagent",
+        "model: openai/gpt-5",
+        "reasoningEffort: high",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+});
+
+test("applyAgentModels preserves block scalars containing model: and rewrites only top-level keys", () => {
+  const literalBlockWithTopKey = [
+    "---",
+    "name: team-dev",
+    "description: |",
+    "  Line one",
+    "  model: fake-block",
+    "    effort: fake-block",
+    "",
+    "  Last block line",
+    "model: sonnet",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(literalBlockWithTopKey, "claude-code", {
+      model: "opus",
+      effort: "high",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-dev",
+        "description: |",
+        "  Line one",
+        "  model: fake-block",
+        "    effort: fake-block",
+        "",
+        "  Last block line",
+        "model: opus",
+        "effort: high",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+
+  for (const header of [">", "|-", ">+2"]) {
+    const blockWithoutTopKey = [
+      "---",
+      "name: team-dev",
+      `description: ${header}`,
+      "  model: fake-folded",
+      "  effort: fake-folded",
+      "---",
+      "",
+      "Body.",
+      "",
+    ].join("\n");
+    assert.deepEqual(
+      applyAgentModels(blockWithoutTopKey, "claude-code", {
+        model: "haiku",
+        effort: "medium",
+      }),
+      {
+        text: [
+          "---",
+          "name: team-dev",
+          `description: ${header}`,
+          "  model: fake-folded",
+          "  effort: fake-folded",
+          "model: haiku",
+          "effort: medium",
+          "---",
+          "",
+          "Body.",
+          "",
+        ].join("\n"),
+        changed: true,
+        reason: null,
+      },
+    );
+  }
+});
+
+test("applyAgentModels treats duplicate model key as complex-frontmatter and skips file", () => {
+  for (const dupDoc of [
+    [
+      "---",
+      "name: team-dev",
+      "model: sonnet",
+      "model: haiku",
+      "---",
+      "Body.",
+    ].join("\n"),
+    [
+      "---",
+      "name: team-dev",
+      "effort: high",
+      "effort: medium",
+      "---",
+      "Body.",
+    ].join("\n"),
+    [
+      "---",
+      "description: x",
+      "reasoningEffort: high",
+      "reasoningEffort: max",
+      "---",
+      "Body.",
+    ].join("\n"),
+  ]) {
+    assert.deepEqual(
+      applyAgentModels(dupDoc, "claude-code", { model: "opus", effort: "max" }),
+      { text: dupDoc, changed: false, reason: "complex-frontmatter" },
+    );
+  }
+});
+
+test("applyAgentModels skips continuations and ambiguous frontmatter with complex-frontmatter", () => {
+  for (const complexDoc of [
+    "---\nname: x\ndescription: first line\n  model: fake\n---\nBody.\n",
+    "---\nname: x\ndescription: first line\ncol0 continuation\n---\nBody.\n",
+    '---\nname: x\ndescription: "unclosed quote\n---\nBody.\n',
+    "---\nname: x\nmodel: |\n  sonnet\n---\nBody.\n",
+    '---\nname: x\nmodel: "son\nnet"\n---\nBody.\n',
+    "---\nname: x\nmodel:\n  sonnet\n---\nBody.\n",
+    "---\nname: x\ndescription: |\n    four\n  two\n---\nBody.\n",
+    '---\n"model": sonnet\n---\nBody.\n',
+    "---\n{ model: sonnet }\n---\nBody.\n",
+  ]) {
+    assert.deepEqual(
+      applyAgentModels(complexDoc, "claude-code", { model: "opus" }),
+      { text: complexDoc, changed: false, reason: "complex-frontmatter" },
+    );
+  }
 });
 
 test("planTeamSync deduplicates matching shared-agent roles and flags differing ones as conflict", () => {

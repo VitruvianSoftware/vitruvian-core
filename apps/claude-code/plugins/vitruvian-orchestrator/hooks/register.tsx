@@ -3024,6 +3024,25 @@ async function resolveSetupRoot(
   return { ok: true, repoRoot, realRoot };
 }
 
+async function verifySetupRootUnchanged(
+  $: EngineInterface,
+  repoRoot: string,
+  realRoot: string,
+): Promise<string | null> {
+  const rootStat = await $.fs
+    .stat(repoRoot, { resolve: true })
+    .catch(() => undefined);
+  if (!rootStat || rootStat.kind !== "dir") {
+    return INVALID_ROOT_ERROR;
+  }
+  const currentRealRoot =
+    (rootStat.realPath || repoRoot).replace(/\/+$/, "") || "/";
+  if (currentRealRoot !== realRoot) {
+    return "repository root changed before write";
+  }
+  return null;
+}
+
 type InspectedRepoPath =
   | { status: "absent" }
   | { status: "file"; path: string; realPath: string; size: number }
@@ -3103,6 +3122,9 @@ async function inspectRepoPathClaude(
           error: `${relLabel} is not a regular file`,
         };
       }
+      // Accepted limitation: Claude Code's $.fs.stat exposes only kind, size,
+      // mtimeMs, isLink, and realPath (no nlink or dev/ino), so hard-linked
+      // target files cannot be detected or refused through the plugin API.
       return {
         status: "file",
         path: cur,
@@ -3173,6 +3195,7 @@ async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
 
     const plannedAgents: Array<{
       relPath: string;
+      segments: readonly string[];
       targetPath: string;
       text: string;
       role: string;
@@ -3234,6 +3257,7 @@ async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
       }
       plannedAgents.push({
         relPath,
+        segments,
         targetPath: `${base}/${relPath}`,
         text: starterAgentFile(templateText, role),
         role,
@@ -3243,15 +3267,53 @@ async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
 
     const teamText = renderStarterTeam(starterRoles);
     if (!check) {
-      // Per Claude Code's EngineInterface.fs declaration (claude-code/index.d.ts),
-      // $.fs only exposes read, write, list, exists, stat, and ancestors (no mkdir
-      // or unlink), and `write` "Writes `text` to a file, creating it and its
-      // directories as needed." (runtime: mkdir(dirname(path), { recursive: true })).
+      // $.fs has no mkdir or unlink. We rely on $.fs.write creating missing parent
+      // folders (e.g. a repo with no .claude/agents yet). No published doc states
+      // this; it was checked live by running init with starter agents in a repo
+      // without .claude/agents (step 3 UAT, 2026-11-20). If it ever stops holding,
+      // the write throws and the rollback below reports the failure.
       const createdPaths: string[] = [];
       try {
         for (const item of plannedAgents) {
+          // Best-effort TOCTOU mitigation: $.fs has no fd/O_NOFOLLOW/O_EXCL
+          // open-and-write API, so re-running symlink and inside-root checks
+          // before each write narrows the window; a concurrent swap between stat
+          // and $.fs.write remains a residual race.
+          const rootErr = await verifySetupRootUnchanged($, repoRoot, realRoot);
+          if (rootErr) {
+            throw new Error(rootErr);
+          }
+          const recheck = await inspectRepoPathClaude(
+            $,
+            repoRoot,
+            realRoot,
+            item.segments,
+          );
+          if (recheck.status !== "absent") {
+            throw new Error(
+              recheck.status === "file"
+                ? `${item.relPath} already exists`
+                : recheck.error || `${item.relPath} cannot be created`,
+            );
+          }
           await $.fs.write(item.targetPath, item.text);
           createdPaths.push(item.targetPath);
+        }
+        // Best-effort TOCTOU mitigation (same residual race as above).
+        const rootErr = await verifySetupRootUnchanged($, repoRoot, realRoot);
+        if (rootErr) {
+          throw new Error(rootErr);
+        }
+        const teamRecheck = await inspectRepoPathClaude($, repoRoot, realRoot, [
+          ".agents",
+          "team.json",
+        ]);
+        if (teamRecheck.status !== "absent") {
+          throw new Error(
+            teamRecheck.status === "file"
+              ? ".agents/team.json already exists"
+              : teamRecheck.error || ".agents/team.json cannot be created",
+          );
         }
         const teamPath = `${base}/.agents/team.json`;
         await $.fs.write(teamPath, teamText);
@@ -3361,6 +3423,7 @@ async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
   const plannedWrites: Array<{
     realPath: string;
     relPath: string;
+    segments: readonly string[];
     text: string;
   }> = [];
 
@@ -3456,6 +3519,7 @@ async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
       plannedWrites.push({
         realPath: inspected.realPath,
         relPath: target.path,
+        segments: target.segments,
         text: applied.text,
       });
       files.push({
@@ -3480,8 +3544,37 @@ async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
 
   if (!check) {
     for (const op of plannedWrites) {
+      // Best-effort TOCTOU mitigation: $.fs has no fd/O_NOFOLLOW/inode API, so
+      // re-running symlink and inside-root checks before each write narrows the
+      // window; a concurrent swap between stat and $.fs.write remains a
+      // residual race.
+      const rootErr = await verifySetupRootUnchanged($, repoRoot, realRoot);
+      if (rootErr) {
+        return {
+          ok: false as const,
+          error: `refused to write ${op.relPath}: ${rootErr}`,
+        };
+      }
+      const recheck = await inspectRepoPathClaude(
+        $,
+        repoRoot,
+        realRoot,
+        op.segments,
+      );
+      if (recheck.status !== "file" || recheck.realPath !== op.realPath) {
+        const detail =
+          recheck.status === "absent"
+            ? "file disappeared before write"
+            : recheck.status === "file"
+              ? "resolved path changed before write"
+              : recheck.error;
+        return {
+          ok: false as const,
+          error: `refused to write ${op.relPath}: ${detail}`,
+        };
+      }
       try {
-        await $.fs.write(op.realPath, op.text);
+        await $.fs.write(recheck.realPath, op.text);
       } catch (err) {
         return {
           ok: false as const,
@@ -3900,6 +3993,9 @@ export const register: Register = (on) => {
   });
 
   on("tool.call", { tool: TEAM_SETUP_TOOL }, async ($, e) => {
+    if (e.agentId) {
+      return { result: "team_setup is for the lead only", isError: true };
+    }
     const input = e as unknown as TeamSetupInput;
     const res = await runTeamSetupTool($, input);
     if (!res.ok) {

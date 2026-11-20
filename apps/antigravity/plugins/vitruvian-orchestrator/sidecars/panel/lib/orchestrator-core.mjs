@@ -398,7 +398,8 @@ export const VALID_CHANNEL_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const VALID_WAKE_RUN_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._:#-]{0,127}$/;
 const VALID_GEMINI_MODEL_RE = /^gemini-[a-z0-9.-]+$/;
 const VALID_WORKTREE_RE = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
-const VALID_TEAM_HARNESS_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$/;
+const VALID_TEAM_HARNESS_MODEL_RE =
+  /^[A-Za-z0-9](?:[A-Za-z0-9._/:-]{0,126}[A-Za-z0-9])?$/;
 const ANSI_ESCAPE_RE =
   /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[P^_][^\x07\x1b]*\x1b\\|[@-Z\\-_])/g;
 const CONTROL_AND_BIDI_RE =
@@ -3178,7 +3179,8 @@ function hasForbiddenModelSubstring(model) {
 
 /**
  * Validates a team-file harness model override (`claude-code`, `antigravity`,
- * or `opencode`): must match `^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$` and
+ * or `opencode`): must match
+ * `^[A-Za-z0-9](?:[A-Za-z0-9._/:-]{0,126}[A-Za-z0-9])?$` and
  * never contain `-low`, `-lite`, or `flash-lo` (case-insensitive).
  *
  * @param {unknown} model
@@ -4065,6 +4067,278 @@ export function starterAgentFile(text, role) {
   );
 }
 
+const FRONTMATTER_MANAGED_KEYS = new Set([
+  "model",
+  "effort",
+  "reasoningEffort",
+]);
+const FRONTMATTER_TOP_KEY_RE = /^([A-Za-z0-9_.-]+):(?:([ \t]+)(.*)|[ \t]*)$/;
+const FRONTMATTER_NESTED_KEY_RE = /^([A-Za-z0-9_.-]+):(?:([ \t]+)(.*)|[ \t]*)$/;
+const FRONTMATTER_NESTED_SEQ_RE = /^-(?:([ \t]+)(.*)|[ \t]*)$/;
+const FRONTMATTER_BLOCK_HEADER_RE =
+  /^[|>](?:([1-9])([-+])?|([-+])([1-9])?)?(?:[ \t]+#.*)?[ \t]*$/;
+const FRONTMATTER_TRAILING_OK_RE = /^[ \t]*(?:#.*)?$/;
+
+/**
+ * Scans a single- or double-quoted YAML scalar starting at `startIndex`
+ * (immediately after the opening quote).
+ *
+ * @param {string} str
+ * @param {'"' | "'"} quoteChar
+ * @param {number} startIndex
+ * @returns {{ closed: boolean, closeIndex: number, afterClose: string }}
+ */
+function scanQuotedScalar(str, quoteChar, startIndex) {
+  for (let i = startIndex; i < str.length; i += 1) {
+    const ch = str[i];
+    if (quoteChar === '"') {
+      if (ch === "\\") {
+        i += 1;
+        continue;
+      }
+      if (ch === '"') {
+        return {
+          closed: true,
+          closeIndex: i,
+          afterClose: str.slice(i + 1),
+        };
+      }
+    } else if (ch === "'") {
+      if (str[i + 1] === "'") {
+        i += 1;
+        continue;
+      }
+      return {
+        closed: true,
+        closeIndex: i,
+        afterClose: str.slice(i + 1),
+      };
+    }
+  }
+  return { closed: false, closeIndex: -1, afterClose: "" };
+}
+
+/**
+ * Returns `true` when `str` (starting with `[` or `{`) is a single balanced
+ * inline YAML flow collection with only whitespace/comment trailing.
+ *
+ * @param {string} str
+ * @returns {boolean}
+ */
+function isBalancedSingleLineFlow(str) {
+  /** @type {string[]} */
+  const stack = [];
+  for (let i = 0; i < str.length; i += 1) {
+    const ch = str[i];
+    if (ch === '"' || ch === "'") {
+      const q = scanQuotedScalar(str, ch, i + 1);
+      if (!q.closed) return false;
+      i = q.closeIndex;
+      continue;
+    }
+    if (ch === "[") {
+      stack.push("]");
+    } else if (ch === "{") {
+      stack.push("}");
+    } else if (ch === "]" || ch === "}") {
+      if (stack.length === 0 || stack.pop() !== ch) return false;
+      if (stack.length === 0) {
+        return FRONTMATTER_TRAILING_OK_RE.test(str.slice(i + 1));
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Validates a nested YAML value on a single line (no unclosed quotes, no
+ * nested block scalars, no unbalanced flow collections, no reserved tokens).
+ *
+ * @param {string} val
+ * @returns {boolean}
+ */
+function isSimpleNestedYamlValue(val) {
+  if (val === "" || val.startsWith("#")) return true;
+  if (val.startsWith("|") || val.startsWith(">")) return false;
+  if (val.startsWith('"') || val.startsWith("'")) {
+    const q = scanQuotedScalar(val, val[0], 1);
+    return q.closed && FRONTMATTER_TRAILING_OK_RE.test(q.afterClose);
+  }
+  if (val.startsWith("[") || val.startsWith("{")) {
+    return isBalancedSingleLineFlow(val);
+  }
+  if (/^[&*!%@`]/.test(val) || /^[-?:](?:[ \t]|$)/.test(val)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Scans YAML frontmatter lines to identify top-level keys unambiguously while
+ * tracking multi-line quoted scalars (`"` / `'`) and block scalars (`|` / `>`).
+ * Returns `complex-frontmatter` on duplicate keys, continuations, or ambiguous
+ * YAML structures rather than guessing.
+ *
+ * @param {Array<{ raw: string, eol: string }>} fmLines
+ * @returns {{ ok: true, keyLines: Map<string, number> } | { ok: false, reason: "complex-frontmatter" }}
+ */
+function scanFrontmatterTopLevelKeys(fmLines) {
+  /** @type {Map<string, number>} */
+  const keyLines = new Map();
+  /** @type {"root" | "block-scalar" | "double-quote" | "single-quote"} */
+  let mode = "root";
+  /** @type {number | null} */
+  let blockIndent = null;
+  let maxLeadingBlankSpaces = 0;
+  /** @type {string | null} */
+  let activeKey = null;
+  /** @type {"none" | "empty" | "scalar"} */
+  let activeKeyMode = "none";
+
+  for (let i = 0; i < fmLines.length; i += 1) {
+    const raw = fmLines[i].raw;
+
+    if (mode === "double-quote" || mode === "single-quote") {
+      const quoteChar = mode === "double-quote" ? '"' : "'";
+      const q = scanQuotedScalar(raw, quoteChar, 0);
+      if (q.closed) {
+        if (!FRONTMATTER_TRAILING_OK_RE.test(q.afterClose)) {
+          return { ok: false, reason: "complex-frontmatter" };
+        }
+        mode = "root";
+        activeKeyMode = "scalar";
+      }
+      continue;
+    }
+
+    if (mode === "block-scalar") {
+      if (/^[ ]*$/.test(raw)) {
+        if (blockIndent === null) {
+          maxLeadingBlankSpaces = Math.max(maxLeadingBlankSpaces, raw.length);
+        }
+        continue;
+      }
+      if (raw.startsWith("\t")) {
+        return { ok: false, reason: "complex-frontmatter" };
+      }
+      let indent = 0;
+      while (indent < raw.length && raw[indent] === " ") {
+        indent += 1;
+      }
+      if (indent === 0) {
+        mode = "root";
+        blockIndent = null;
+        maxLeadingBlankSpaces = 0;
+        activeKey = null;
+        activeKeyMode = "none";
+      } else if (blockIndent === null) {
+        if (maxLeadingBlankSpaces > indent) {
+          return { ok: false, reason: "complex-frontmatter" };
+        }
+        blockIndent = indent;
+        continue;
+      } else if (indent >= blockIndent) {
+        continue;
+      } else {
+        return { ok: false, reason: "complex-frontmatter" };
+      }
+    }
+
+    // mode === "root"
+    if (/^[ \t]*$/.test(raw) || /^[ \t]*#/.test(raw)) {
+      continue;
+    }
+    if (raw.startsWith("\t")) {
+      return { ok: false, reason: "complex-frontmatter" };
+    }
+    if (raw.startsWith(" ")) {
+      if (
+        activeKey === null ||
+        activeKeyMode !== "empty" ||
+        FRONTMATTER_MANAGED_KEYS.has(activeKey)
+      ) {
+        return { ok: false, reason: "complex-frontmatter" };
+      }
+      const trimmed = raw.trimStart();
+      const nestedKeyMatch = FRONTMATTER_NESTED_KEY_RE.exec(trimmed);
+      if (nestedKeyMatch) {
+        const nestedVal = (nestedKeyMatch[3] ?? "").trimStart();
+        if (!isSimpleNestedYamlValue(nestedVal)) {
+          return { ok: false, reason: "complex-frontmatter" };
+        }
+        continue;
+      }
+      const nestedSeqMatch = FRONTMATTER_NESTED_SEQ_RE.exec(trimmed);
+      if (nestedSeqMatch) {
+        const nestedVal = (nestedSeqMatch[2] ?? "").trimStart();
+        if (!isSimpleNestedYamlValue(nestedVal)) {
+          return { ok: false, reason: "complex-frontmatter" };
+        }
+        continue;
+      }
+      return { ok: false, reason: "complex-frontmatter" };
+    }
+
+    const topMatch = FRONTMATTER_TOP_KEY_RE.exec(raw);
+    if (!topMatch) {
+      return { ok: false, reason: "complex-frontmatter" };
+    }
+    const key = topMatch[1];
+    if (keyLines.has(key)) {
+      return { ok: false, reason: "complex-frontmatter" };
+    }
+    keyLines.set(key, i);
+    activeKey = key;
+
+    const val = (topMatch[3] ?? "").trimStart();
+    if (val === "" || val.startsWith("#")) {
+      activeKeyMode = "empty";
+    } else if (val.startsWith("|") || val.startsWith(">")) {
+      if (FRONTMATTER_MANAGED_KEYS.has(key)) {
+        return { ok: false, reason: "complex-frontmatter" };
+      }
+      const blockMatch = FRONTMATTER_BLOCK_HEADER_RE.exec(val);
+      if (!blockMatch) {
+        return { ok: false, reason: "complex-frontmatter" };
+      }
+      const explicitDigit = blockMatch[1] ?? blockMatch[4];
+      mode = "block-scalar";
+      blockIndent = explicitDigit ? Number(explicitDigit) : null;
+      maxLeadingBlankSpaces = 0;
+      activeKeyMode = "none";
+    } else if (val.startsWith('"') || val.startsWith("'")) {
+      const quoteChar = /** @type {'"' | "'"} */ (val[0]);
+      const q = scanQuotedScalar(val, quoteChar, 1);
+      if (q.closed) {
+        if (!FRONTMATTER_TRAILING_OK_RE.test(q.afterClose)) {
+          return { ok: false, reason: "complex-frontmatter" };
+        }
+        activeKeyMode = "scalar";
+      } else {
+        if (FRONTMATTER_MANAGED_KEYS.has(key)) {
+          return { ok: false, reason: "complex-frontmatter" };
+        }
+        mode = quoteChar === '"' ? "double-quote" : "single-quote";
+        activeKeyMode = "none";
+      }
+    } else if (val.startsWith("[") || val.startsWith("{")) {
+      if (FRONTMATTER_MANAGED_KEYS.has(key) || !isBalancedSingleLineFlow(val)) {
+        return { ok: false, reason: "complex-frontmatter" };
+      }
+      activeKeyMode = "scalar";
+    } else if (/^[&*!%@`]/.test(val) || /^[-?:](?:[ \t]|$)/.test(val)) {
+      return { ok: false, reason: "complex-frontmatter" };
+    } else {
+      activeKeyMode = "scalar";
+    }
+  }
+
+  if (mode === "double-quote" || mode === "single-quote") {
+    return { ok: false, reason: "complex-frontmatter" };
+  }
+  return { ok: true, keyLines };
+}
+
 /**
  * Applies explicit team-file `model` and `effort` settings to an agent
  * markdown file's YAML frontmatter for `harness`, keeping all other frontmatter
@@ -4130,12 +4404,16 @@ export function applyAgentModels(text, harness, models = {}) {
     return { text, changed: false, reason: null };
   }
 
+  const scanned = scanFrontmatterTopLevelKeys(fm.fmLines);
+  if (!scanned.ok) {
+    return { text, changed: false, reason: scanned.reason };
+  }
+
   const nextFmLines = fm.fmLines.map((entry) => ({ ...entry }));
   for (const [key, val] of updates) {
-    const keyRe = new RegExp(`^${key}:(?:[ \\t]|$)`);
-    const idx = nextFmLines.findIndex((entry) => keyRe.test(entry.raw));
+    const idx = scanned.keyLines.get(key);
     const lineText = `${key}: ${val}`;
-    if (idx !== -1) {
+    if (idx !== undefined) {
       nextFmLines[idx].raw = lineText;
     } else {
       nextFmLines.push({ raw: lineText, eol: fm.eol });

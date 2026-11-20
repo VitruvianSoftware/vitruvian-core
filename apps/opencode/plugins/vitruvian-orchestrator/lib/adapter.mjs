@@ -1205,6 +1205,7 @@ const DEFAULT_PLUGIN_AGENTS_DIR = path.resolve(
 
 function inspectRepoPath(root, realRoot, segments) {
   let cur = root;
+  const components = [];
   for (let i = 0; i < segments.length; i += 1) {
     cur = path.join(cur, segments[i]);
     const isLast = i === segments.length - 1;
@@ -1214,7 +1215,7 @@ function inspectRepoPath(root, realRoot, segments) {
     } catch (err) {
       const code = err && typeof err === "object" ? err.code : undefined;
       if (code === "ENOENT") {
-        return { status: "absent" };
+        return { status: "absent", existingComponents: components };
       }
       if (code === "ENOTDIR") {
         const parentLabel =
@@ -1252,6 +1253,15 @@ function inspectRepoPath(root, realRoot, segments) {
       };
     }
 
+    components.push({
+      path: cur,
+      segment: segments[i],
+      relPath: segments.slice(0, i + 1).join("/"),
+      dev: lst.dev,
+      ino: lst.ino,
+      realPath: realCur,
+    });
+
     if (!isLast) {
       if (!lst.isDirectory()) {
         return {
@@ -1268,7 +1278,22 @@ function inspectRepoPath(root, realRoot, segments) {
           error: `${segments.join("/")} is not a regular file`,
         };
       }
-      return { status: "file", path: cur, realPath: realCur, size: lst.size };
+      if (lst.nlink > 1) {
+        return {
+          status: "hardlink",
+          reason: "hardlink",
+          error: `${segments.join("/")} is a hardlink`,
+        };
+      }
+      return {
+        status: "file",
+        path: cur,
+        realPath: realCur,
+        size: lst.size,
+        dev: lst.dev,
+        ino: lst.ino,
+        components,
+      };
     }
   }
   return { status: "error", reason: "invalid-path", error: "empty path" };
@@ -1299,6 +1324,13 @@ function readBoundedFileNoFollow(filePath, maxBytes, label) {
         ok: false,
         reason: "not-a-file",
         error: `${label} is not a regular file`,
+      };
+    }
+    if (st.nlink > 1) {
+      return {
+        ok: false,
+        reason: "hardlink",
+        error: `${label} is a hardlink`,
       };
     }
     if (st.size > maxBytes) {
@@ -1344,42 +1376,246 @@ function readBoundedFileNoFollow(filePath, maxBytes, label) {
   }
 }
 
-function ensureDirInsideRoot(root, realRoot, dirSegments) {
+function verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap) {
+  try {
+    const curRootLst = fs.lstatSync(root);
+    if (curRootLst.dev !== rootSnap.dev || curRootLst.ino !== rootSnap.ino) {
+      return false;
+    }
+    const curRealRoot = fs.realpathSync(root);
+    if (curRealRoot !== realRoot) {
+      return false;
+    }
+    const curRealRootLst = fs.lstatSync(realRoot);
+    return (
+      curRealRootLst.isDirectory() &&
+      curRealRootLst.dev === realRootSnap.dev &&
+      curRealRootLst.ino === realRootSnap.ino
+    );
+  } catch {
+    return false;
+  }
+}
+
+function recordInitDirSnapshot(expectedDirs, segments, existingComponents) {
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const relDir = segments.slice(0, i + 1).join("/");
+    if (i < existingComponents.length) {
+      const comp = existingComponents[i];
+      const prev = expectedDirs.get(relDir);
+      if (prev === null) {
+        return {
+          ok: false,
+          error: `${relDir} changed before write (changed-during-sync)`,
+        };
+      }
+      if (
+        prev &&
+        (prev.dev !== comp.dev ||
+          prev.ino !== comp.ino ||
+          prev.realPath !== comp.realPath)
+      ) {
+        return {
+          ok: false,
+          error: `${relDir} changed before write (changed-during-sync)`,
+        };
+      }
+      if (!prev) {
+        expectedDirs.set(relDir, {
+          dev: comp.dev,
+          ino: comp.ino,
+          realPath: comp.realPath,
+        });
+      }
+    } else {
+      if (expectedDirs.has(relDir) && expectedDirs.get(relDir) !== null) {
+        return {
+          ok: false,
+          error: `${relDir} changed before write (changed-during-sync)`,
+        };
+      }
+      expectedDirs.set(relDir, null);
+    }
+  }
+  return { ok: true };
+}
+
+function ensureDirInsideRootChecked(
+  root,
+  realRoot,
+  rootSnap,
+  realRootSnap,
+  dirSegments,
+  expectedDirs,
+) {
+  if (!verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap)) {
+    throw new Error("root changed before write (changed-during-sync)");
+  }
   let cur = root;
   for (let i = 0; i < dirSegments.length; i += 1) {
     cur = path.join(cur, dirSegments[i]);
+    const relDir = dirSegments.slice(0, i + 1).join("/");
+    const expected = expectedDirs.get(relDir);
     let lst;
     try {
       lst = fs.lstatSync(cur);
     } catch (err) {
       const code = err && typeof err === "object" ? err.code : undefined;
       if (code === "ENOENT") {
+        if (expected !== null && expected !== undefined) {
+          throw new Error(
+            `${relDir} disappeared before write (changed-during-sync)`,
+          );
+        }
         fs.mkdirSync(cur);
         lst = fs.lstatSync(cur);
-      } else {
-        throw err;
+        if (lst.isSymbolicLink()) {
+          throw new Error(`${relDir} is a symlink (changed-during-sync)`);
+        }
+        if (!lst.isDirectory()) {
+          throw new Error(`${relDir} is not a directory (changed-during-sync)`);
+        }
+        const createdRealCur = fs.realpathSync(cur);
+        if (!isPathInsideRealRoot(realRoot, createdRealCur)) {
+          throw new Error(
+            `${relDir} resolves outside root (changed-during-sync)`,
+          );
+        }
+        expectedDirs.set(relDir, {
+          dev: lst.dev,
+          ino: lst.ino,
+          realPath: createdRealCur,
+        });
+        continue;
       }
+      throw err;
     }
     if (lst.isSymbolicLink()) {
-      throw new Error(`${dirSegments.slice(0, i + 1).join("/")} is a symlink`);
+      throw new Error(`${relDir} is a symlink (changed-during-sync)`);
     }
     if (!lst.isDirectory()) {
-      throw new Error(
-        `${dirSegments.slice(0, i + 1).join("/")} is not a directory`,
-      );
+      throw new Error(`${relDir} is not a directory (changed-during-sync)`);
     }
     const realCur = fs.realpathSync(cur);
     if (!isPathInsideRealRoot(realRoot, realCur)) {
-      throw new Error(
-        `${dirSegments.slice(0, i + 1).join("/")} resolves outside root`,
-      );
+      throw new Error(`${relDir} resolves outside root (changed-during-sync)`);
+    }
+    if (expected === null) {
+      throw new Error(`${relDir} appeared before write (changed-during-sync)`);
+    }
+    if (
+      expected &&
+      (lst.dev !== expected.dev ||
+        lst.ino !== expected.ino ||
+        realCur !== expected.realPath)
+    ) {
+      throw new Error(`${relDir} changed before write (changed-during-sync)`);
     }
   }
 }
 
-function writeNewFileNoFollow(root, realRoot, segments, text) {
-  ensureDirInsideRoot(root, realRoot, segments.slice(0, -1));
+function verifyCreatedFileUnchanged(
+  root,
+  realRoot,
+  rootSnap,
+  realRootSnap,
+  expectedDirs,
+  item,
+) {
+  if (!verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap)) {
+    return false;
+  }
+  let cur = root;
+  for (let i = 0; i < item.segments.length - 1; i += 1) {
+    cur = path.join(cur, item.segments[i]);
+    const relDir = item.segments.slice(0, i + 1).join("/");
+    const expected = expectedDirs.get(relDir);
+    if (!expected) {
+      return false;
+    }
+    try {
+      const lst = fs.lstatSync(cur);
+      if (
+        lst.isSymbolicLink() ||
+        !lst.isDirectory() ||
+        lst.dev !== expected.dev ||
+        lst.ino !== expected.ino
+      ) {
+        return false;
+      }
+      const realCur = fs.realpathSync(cur);
+      if (
+        realCur !== expected.realPath ||
+        !isPathInsideRealRoot(realRoot, realCur)
+      ) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const fileLst = fs.lstatSync(item.path);
+    if (
+      fileLst.isSymbolicLink() ||
+      !fileLst.isFile() ||
+      fileLst.dev !== item.dev ||
+      fileLst.ino !== item.ino
+    ) {
+      return false;
+    }
+    const realFile = fs.realpathSync(item.path);
+    return isPathInsideRealRoot(realRoot, realFile);
+  } catch {
+    return false;
+  }
+}
+
+function writeNewFileNoFollow(
+  root,
+  realRoot,
+  rootSnap,
+  realRootSnap,
+  segments,
+  text,
+  expectedDirs,
+  beforeWriteHook = null,
+) {
+  if (beforeWriteHook) {
+    beforeWriteHook({
+      action: "init",
+      path: segments.join("/"),
+      segments: [...segments],
+      root,
+      realRoot,
+    });
+  }
+  ensureDirInsideRootChecked(
+    root,
+    realRoot,
+    rootSnap,
+    realRootSnap,
+    segments.slice(0, -1),
+    expectedDirs,
+  );
   const targetPath = path.join(root, ...segments);
+  let preLst = null;
+  try {
+    preLst = fs.lstatSync(targetPath);
+  } catch (err) {
+    if (!err || typeof err !== "object" || err.code !== "ENOENT") {
+      throw err;
+    }
+  }
+  if (preLst !== null) {
+    const why =
+      preLst.nlink > 1
+        ? "is a hardlink"
+        : preLst.isSymbolicLink()
+          ? "is a symlink"
+          : "appeared before write";
+    throw new Error(`${segments.join("/")} ${why} (changed-during-sync)`);
+  }
   const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
   const fd = fs.openSync(
     targetPath,
@@ -1390,38 +1626,140 @@ function writeNewFileNoFollow(root, realRoot, segments, text) {
     0o644,
   );
   let completed = false;
+  let fdStat = null;
   try {
+    fdStat = fs.fstatSync(fd);
+    if (!fdStat.isFile() || fdStat.nlink !== 1) {
+      throw new Error(
+        `${segments.join("/")} changed before write (changed-during-sync)`,
+      );
+    }
     const buf = Buffer.from(text, "utf8");
     let written = 0;
     while (written < buf.length) {
       written += fs.writeSync(fd, buf, written, buf.length - written);
     }
     completed = true;
-    return targetPath;
+    return {
+      path: targetPath,
+      segments: [...segments],
+      dev: fdStat.dev,
+      ino: fdStat.ino,
+    };
   } finally {
     fs.closeSync(fd);
     if (!completed) {
-      try {
-        fs.unlinkSync(targetPath);
-      } catch {
-        // Best-effort cleanup of partial new file.
+      const canUnlink =
+        fdStat &&
+        verifyCreatedFileUnchanged(
+          root,
+          realRoot,
+          rootSnap,
+          realRootSnap,
+          expectedDirs,
+          {
+            path: targetPath,
+            segments: [...segments],
+            dev: fdStat.dev,
+            ino: fdStat.ino,
+          },
+        );
+      if (canUnlink) {
+        try {
+          fs.unlinkSync(targetPath);
+        } catch {
+          // Best-effort cleanup of partial new file.
+        }
       }
     }
   }
 }
 
-function overwriteFileNoFollow(filePath, text) {
+function verifySyncTargetUnchanged(root, realRoot, rootSnap, realRootSnap, op) {
+  if (!verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap)) {
+    return { ok: false, reason: "changed-during-sync" };
+  }
+  let cur = root;
+  for (let i = 0; i < op.segments.length; i += 1) {
+    cur = path.join(cur, op.segments[i]);
+    const isLast = i === op.segments.length - 1;
+    const expected = op.components[i];
+    if (!expected) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    let lst;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (lst.isSymbolicLink()) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (lst.dev !== expected.dev || lst.ino !== expected.ino) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    let realCur;
+    try {
+      realCur = fs.realpathSync(cur);
+    } catch {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (
+      realCur !== expected.realPath ||
+      !isPathInsideRealRoot(realRoot, realCur)
+    ) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (!isLast) {
+      if (!lst.isDirectory()) {
+        return { ok: false, reason: "changed-during-sync" };
+      }
+    } else {
+      if (!lst.isFile()) {
+        return { ok: false, reason: "changed-during-sync" };
+      }
+      if (lst.nlink > 1) {
+        return { ok: false, reason: "hardlink" };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+function overwriteFileNoFollow(filePath, text, expectedFileStat = null) {
   const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
-  const fd = fs.openSync(
-    filePath,
-    fs.constants.O_WRONLY | fs.constants.O_TRUNC | noFollow,
-  );
+  let fd;
   try {
+    fd = fs.openSync(filePath, fs.constants.O_WRONLY | noFollow);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    throw err;
+  }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (st.nlink > 1) {
+      return { ok: false, reason: "hardlink" };
+    }
+    if (
+      expectedFileStat &&
+      (st.dev !== expectedFileStat.dev || st.ino !== expectedFileStat.ino)
+    ) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    fs.ftruncateSync(fd, 0);
     const buf = Buffer.from(text, "utf8");
     let written = 0;
     while (written < buf.length) {
-      written += fs.writeSync(fd, buf, written, buf.length - written);
+      written += fs.writeSync(fd, buf, written, buf.length - written, written);
     }
+    return { ok: true };
   } finally {
     fs.closeSync(fd);
   }
@@ -1429,10 +1767,10 @@ function overwriteFileNoFollow(filePath, text) {
 
 /**
  * Executes `team_setup` (`init` or `sync`) for OpenCode, enforcing explicit
- * `root`, symlink refusal at every component, and realpath containment.
+ * `root`, symlink and hardlink refusal, realpath containment, and TOCTOU rechecks.
  *
  * @param {Record<string, any>} args
- * @param {{ cwd?: string, pluginAgentsDir?: string }} [options]
+ * @param {{ cwd?: string, pluginAgentsDir?: string, _beforeWrite?: (ctx: Record<string, any>) => void }} [options]
  */
 export function runTeamSetup(args = {}, options = {}) {
   const inp = args && typeof args === "object" ? args : {};
@@ -1444,6 +1782,8 @@ export function runTeamSetup(args = {}, options = {}) {
     return { ok: false, error: "check must be a boolean" };
   }
   const check = inp.check === true;
+  const beforeWriteHook =
+    typeof options._beforeWrite === "function" ? options._beforeWrite : null;
 
   const hasRoot =
     Object.prototype.hasOwnProperty.call(inp, "root") && inp.root !== undefined;
@@ -1464,8 +1804,12 @@ export function runTeamSetup(args = {}, options = {}) {
   }
   const root = rawRoot.replace(/\/+$/, "") || "/";
   let realRoot;
+  let rootSnap;
+  let realRootSnap;
   try {
+    rootSnap = fs.lstatSync(root);
     realRoot = fs.realpathSync(root);
+    realRootSnap = fs.lstatSync(realRoot);
   } catch {
     return { ok: false, error: INVALID_ROOT_ERROR };
   }
@@ -1477,6 +1821,7 @@ export function runTeamSetup(args = {}, options = {}) {
     }
     const starterRoles = starterCheck.roles;
 
+    const expectedDirs = new Map();
     const teamInspect = inspectRepoPath(root, realRoot, [
       ".agents",
       "team.json",
@@ -1489,6 +1834,14 @@ export function runTeamSetup(args = {}, options = {}) {
             ? ".agents/team.json already exists"
             : teamInspect.error || ".agents/team.json cannot be created",
       };
+    }
+    const teamSnap = recordInitDirSnapshot(
+      expectedDirs,
+      [".agents", "team.json"],
+      teamInspect.existingComponents,
+    );
+    if (!teamSnap.ok) {
+      return { ok: false, error: teamSnap.error };
     }
 
     const callingHarness = "opencode";
@@ -1511,6 +1864,14 @@ export function runTeamSetup(args = {}, options = {}) {
               ? `${relPath} already exists`
               : targetInspect.error || `${relPath} cannot be created`,
         };
+      }
+      const targetSnap = recordInitDirSnapshot(
+        expectedDirs,
+        segments,
+        targetInspect.existingComponents,
+      );
+      if (!targetSnap.ok) {
+        return { ok: false, error: targetSnap.error };
       }
       const templatePath = path.join(pluginAgentsDir, `${role}.md`);
       let templateText;
@@ -1547,32 +1908,58 @@ export function runTeamSetup(args = {}, options = {}) {
 
     const teamText = renderStarterTeam(starterRoles);
     if (!check) {
-      const createdPaths = [];
+      const createdFiles = [];
       try {
         for (const item of plannedAgents) {
-          createdPaths.push(
-            writeNewFileNoFollow(root, realRoot, item.segments, item.text),
+          createdFiles.push(
+            writeNewFileNoFollow(
+              root,
+              realRoot,
+              rootSnap,
+              realRootSnap,
+              item.segments,
+              item.text,
+              expectedDirs,
+              beforeWriteHook,
+            ),
           );
         }
-        createdPaths.push(
+        createdFiles.push(
           writeNewFileNoFollow(
             root,
             realRoot,
+            rootSnap,
+            realRootSnap,
             [".agents", "team.json"],
             teamText,
+            expectedDirs,
+            beforeWriteHook,
           ),
         );
       } catch (err) {
         const cleanupErrors = [];
-        for (let i = createdPaths.length - 1; i >= 0; i -= 1) {
-          const createdPath = createdPaths[i];
-          if (!createdPath) continue;
+        for (let i = createdFiles.length - 1; i >= 0; i -= 1) {
+          const created = createdFiles[i];
+          if (!created) continue;
+          if (
+            !verifyCreatedFileUnchanged(
+              root,
+              realRoot,
+              rootSnap,
+              realRootSnap,
+              expectedDirs,
+              created,
+            )
+          ) {
+            cleanupErrors.push(`${created.path}: path changed before rollback`);
+            continue;
+          }
           try {
-            fs.unlinkSync(createdPath);
+            fs.unlinkSync(created.path);
           } catch (rmErr) {
             const rmMsg =
               rmErr instanceof Error ? rmErr.message : String(rmErr);
-            cleanupErrors.push(`${createdPath}: ${rmMsg}`);
+            cleanupErrors.push(`${created.path}: ${rmMsg}`);
           }
         }
         const rollbackNote =
@@ -1722,9 +2109,15 @@ export function runTeamSetup(args = {}, options = {}) {
       continue;
     }
     if (applied.changed) {
+      const fileIndex = files.length;
       plannedWrites.push({
+        path: inspected.path,
         realPath: inspected.realPath,
         relPath: target.path,
+        segments: target.segments,
+        components: inspected.components,
+        fileStat: { dev: inspected.dev, ino: inspected.ino },
+        fileIndex,
         text: applied.text,
       });
       files.push({
@@ -1749,8 +2142,40 @@ export function runTeamSetup(args = {}, options = {}) {
 
   if (!check) {
     for (const op of plannedWrites) {
+      if (beforeWriteHook) {
+        beforeWriteHook({
+          action: "sync",
+          path: op.relPath,
+          segments: [...op.segments],
+          root,
+          realRoot,
+        });
+      }
+      const verified = verifySyncTargetUnchanged(
+        root,
+        realRoot,
+        rootSnap,
+        realRootSnap,
+        op,
+      );
+      if (!verified.ok) {
+        files[op.fileIndex] = {
+          ...files[op.fileIndex],
+          status: "skipped",
+          reason: verified.reason,
+        };
+        continue;
+      }
       try {
-        overwriteFileNoFollow(op.realPath, op.text);
+        const writeRes = overwriteFileNoFollow(op.path, op.text, op.fileStat);
+        if (!writeRes.ok) {
+          files[op.fileIndex] = {
+            ...files[op.fileIndex],
+            status: "skipped",
+            reason: writeRes.reason,
+          };
+          continue;
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return {
