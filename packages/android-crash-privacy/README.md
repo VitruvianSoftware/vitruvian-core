@@ -1,7 +1,48 @@
 # android-crash-privacy
 
-Shared privacy-hardened Sentry initialization and crash-report scrubbing for
-Android apps in this monorepo (`//packages/android-crash-privacy`).
+## What it gives you
+
+Shared privacy-hardened Sentry initialization, device-field allowlisting (`DeviceField`, `PrivateSentryDevice`), cache clearing (`clearSentryCache`, `disableCrashReporting`), and crash-message address scrubbing (`scrubCrashMessage`) for Android apps in this monorepo.
+
+## When to use it
+
+- Initializing Sentry in any Android or Wear OS app (`vitruvian-remote`, `vitruvian-watch`, `vitruvian-wand`) so auto-breadcrumbs, ANR/NDK/tombstone dumps, screenshots, tracing, profiling, replay, and IP/hostname leaks are suppressed by default.
+
+## When not to use it
+
+- macOS Swift apps or extensions; use [`//packages/swift/SentryLite`](../swift/SentryLite/README.md) instead.
+- Rust or Node.js services; use the standard Sentry crates/packages (`sentry` or `@sentry/node`) directly.
+
+## Example
+
+From `apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/common/WatchSentry.kt`:
+
+```kotlin
+import dev.vitruvian.crashprivacy.DeviceField
+import dev.vitruvian.crashprivacy.configurePrivateSentry
+import io.sentry.android.core.SentryAndroidOptions
+import java.util.EnumSet
+
+public val KEPT_DEVICE_FIELDS: Set<DeviceField> = EnumSet.of(DeviceField.APP_VERSION)
+
+public fun configureOptions(options: SentryAndroidOptions, appName: String, dsn: String) {
+  configurePrivateSentry(
+      options = options,
+      dsn = dsn,
+      keepDeviceFields = KEPT_DEVICE_FIELDS,
+      release = "$appName@1.0",
+      environment = "production",
+  )
+}
+```
+
+## Depend on it
+
+`//packages/android-crash-privacy:android-crash-privacy`
+
+## Constraints
+
+- Android/Kotlin library depending on `@maven//:io_sentry_sentry` and `@maven//:io_sentry_sentry_android_core` (unit-tested on JVM with `@androidsdk//:platforms/android-35/android.jar`).
 
 ## What is here
 

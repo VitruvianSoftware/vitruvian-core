@@ -27,9 +27,16 @@ metadata:
   name: pulumi-library-go
   title: Pulumi GCP Component Library (Go)
   description: Enterprise-grade Pulumi Go ComponentResources enforcing Google Cloud security best practices (bootstrap, project factory, IAM scopes, VPC networking, org policies, Cloud Run apps, BigQuery datasets, and WIF CI/CD)
+  tags:
+    - go
+    - pulumi
+    - gcp
+    - iac
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/library/go
     backstage.io/techdocs-ref: dir:./library/go
+    vitruvian.dev/bazel-target: //packages/pulumi/library/go/pkg/app, //packages/pulumi/library/go/pkg/bootstrap, //packages/pulumi/library/go/pkg/iam, //packages/pulumi/library/go/pkg/network, //packages/pulumi/library/go/pkg/project_factory
     vitruvian.dev/mirror: VitruvianSoftware/pulumi-library
     vitruvian.dev/release-model: goreleaser-pkg
     vitruvian.dev/environments: production
@@ -56,9 +63,16 @@ metadata:
   name: pulumi-library-ts
   title: Pulumi GCP Component Library (TypeScript)
   description: Reusable Pulumi TypeScript ComponentResources for Google Cloud Platform infrastructure (@vitruviansoftware/foundation-library) with opinionated secure defaults
+  tags:
+    - typescript
+    - pulumi
+    - gcp
+    - iac
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/library/ts
     backstage.io/techdocs-ref: dir:./library/ts
+    vitruvian.dev/bazel-target: //packages/pulumi/library/ts:pkg
     vitruvian.dev/mirror: VitruvianSoftware/pulumi-library
     vitruvian.dev/release-model: npm-pkg
     vitruvian.dev/environments: production
@@ -85,8 +99,14 @@ metadata:
   name: pulumi-example-foundation-go
   title: Pulumi Example Foundation (Go)
   description: End-to-end multi-stage enterprise Google Cloud foundation implemented in Go using Pulumi and the Vitruvian Pulumi Go Library (0-bootstrap, 1-org, 2-environments, 3-networks, 4-projects, 5-app-infra)
+  tags:
+    - go
+    - pulumi
+    - gcp
+    - foundation
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/examples/go-foundation
     backstage.io/techdocs-ref: dir:./examples/go-foundation
     vitruvian.dev/mirror: VitruvianSoftware/pulumi_go-example-foundation
     vitruvian.dev/release-model: monorepo-bazel
@@ -114,8 +134,14 @@ metadata:
   name: pulumi-example-foundation-ts
   title: Pulumi Example Foundation (TypeScript)
   description: End-to-end multi-stage enterprise Google Cloud foundation implemented in TypeScript using Pulumi and the Vitruvian Pulumi TypeScript Library
+  tags:
+    - typescript
+    - pulumi
+    - gcp
+    - foundation
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/examples/ts-foundation
     backstage.io/techdocs-ref: dir:./examples/ts-foundation
     vitruvian.dev/mirror: VitruvianSoftware/pulumi_ts-example-foundation
     vitruvian.dev/release-model: monorepo-bazel

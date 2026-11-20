@@ -1,24 +1,45 @@
 # vitruvian-pycompat
 
-Python's behaviour where Rust's differs, for the tools in this repo that were
-ported from Python and must print exactly what the Python printed:
+## What it gives you
 
-- `pystr`: what counts as whitespace or a decimal digit, how `repr()` quotes a
-  string, how floats print, how `round()` breaks ties.
-- `json`: `json.loads` and `json.dumps` with their defaults.
-- `argparse`: a parser of optionals only, with argparse's help, usage and
-  errors.
+A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's standard library differs—covering `pystr` (whitespace, decimal digits, `repr()`, float formatting, round-to-even), `json` (`json.loads` and `json.dumps` defaults), `argparse` (optionals parser with Python help/usage/errors), and `unicode_tables` (Unicode 15.0.0 character classes).
 
-Standard library only, so a tool can link it whatever crate hub it uses.
+## When to use it
 
-These modules started as byte-identical copies in several tools
-(agent-app, merge-queue-stats, sync-downloads, pulumi, design-system-android,
-lint-naming, release-scope, sdk-codegen, sync-site-tools). Before changing one,
-run the tests of every tool that depends on it:
+- Porting a Python CLI or monorepo script to Rust when output, exit codes, and edge-case parsing must stay byte-identical to the Python original under parity tests.
+- Building standard-library-only Rust tools that must compile with plain `rustc` outside Bazel.
 
+## When not to use it
+
+- General-purpose Rust CLIs or services with no Python parity requirement; use `clap` and `serde_json` from `@crates` instead.
+- Preserving JSON object key insertion order and duplicate-key overwrite semantics via `serde_json`; use [`//packages/rust/vitruvian-pyjson`](../vitruvian-pyjson/README.md) instead.
+
+## Example
+
+From `tools/merge-queue-stats/src/lib.rs`:
+
+```rust
+pub use vitruvian_pycompat::argparse;
+pub use vitruvian_pycompat::json;
+pub use vitruvian_pycompat::pystr;
+
+use argparse::{Kind, Opt, Parser};
+use json::Value;
+
+pub fn parser(prog: &str) -> Parser {
+    Parser::new(prog, &[
+        Opt { strings: vec!["--since"], dest: "since", kind: Kind::Value, help: None, required: true },
+        Opt { strings: vec!["--repo"], dest: "repo", kind: Kind::Value, help: None, required: false },
+    ])
+}
 ```
-bazel test $(bazel query 'rdeps(//..., //packages/rust/vitruvian-pycompat)' --output=label 2>/dev/null | grep _test)
-```
-- `unicode_tables`: Python 3.12's character classes on Unicode 15.0.0
-  (whitespace, decimal digits, digits, word characters, printable, case
-  ignorable), shared by every port that needs them.
+
+## Depend on it
+
+`//packages/rust/vitruvian-pycompat:vitruvian_pycompat`
+
+## Constraints
+
+- Standard library only (zero external crates), because tools using it also build with plain `rustc` outside Bazel via `rustc-build.sh` (verified by `//packages/rust/vitruvian-pycompat:rustc_build_test`).
+- Before changing behavior, run the tests of every dependent tool:
+  `bazel test $(bazel query 'rdeps(//..., //packages/rust/vitruvian-pycompat)' --output=label 2>/dev/null | grep _test)`

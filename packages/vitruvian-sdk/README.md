@@ -1,5 +1,53 @@
 # vitruvian-sdk
 
+## What it gives you
+
+The JSON-RPC extension protocol, schemas, conformance suite (`conformance`), CLI (`vitruvian-tool`), and multi-language tool kits (`VitruvianToolKit` / `VitruvianToolProtocol` in Swift, `go/toolkit` in Go, `vitruvian-tool-kit` in Rust and Python, and `@vitruviansoftware/tool-kit` in TypeScript) for building external tools and Dynamic Island panels for Vitruvian Atrium.
+
+## When to use it
+
+- Building a Vitruvian Atrium extension in Swift, Go, Rust, Python, or TypeScript (such as `apps/extensions/atrium/vitruvian-github` or `apps/extensions/atrium/vitruvian-tv`).
+- Validating an extension folder or running the protocol conformance harness against a built tool.
+
+## When not to use it
+
+- Building standalone macOS menu-bar apps or Antigravity/Claude Code/OpenCode plugins that do not run as Vitruvian Atrium child processes.
+
+## Example
+
+From `apps/extensions/atrium/vitruvian-github/Sources/github-tool/main.swift`:
+
+```swift
+import Foundation
+import GitHubToolCore
+import VitruvianToolKit
+import VitruvianToolProtocol
+
+final class KitHost: ToolHost {
+    var app: App?
+    var panels: [String: Panel] = [:]
+
+    func status(_ status: IslandStatus) {
+        try? app?.status(status.state, text: status.text, icon: status.icon, activity: status.activity)
+    }
+}
+```
+
+## Depend on it
+
+- Swift: `//packages/vitruvian-sdk:VitruvianToolKit`, `//packages/vitruvian-sdk:VitruvianToolProtocol`
+- Go: `//packages/vitruvian-sdk/go/toolkit:toolkit`
+- Rust: `//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit`
+- Python: `//packages/vitruvian-sdk:vitruvian_tool_kit`
+- TypeScript: `//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript`
+
+## Constraints
+
+- MIT licensed; Vitruvian Atrium (which links `VitruvianToolProtocol`) is GPL-3.0-or-later, so nothing from `apps/desktop/vitruvian-atrium` may ever be copied into this package.
+- `BUILD` and `Package.swift` must mirror each other target for target; Swift targets require `--config=macos-app` on macOS (`APPLE_TOOLCHAIN_ONLY`).
+- Go kit (`go/toolkit`) is pinned to Go 1.22 (`go_kit_vet_test`); Python kit must run on macOS `/usr/bin/python3` (Python 3.9+, `python_kit_apple_python_test`).
+- After editing `Sources/VitruvianToolProtocol`, re-pin Atrium (`bazel run //apps/desktop/vitruvian-atrium:pin_tool_protocol`).
+
 What you build a Vitruvian tool against.
 
 A tool is a separate program, in any language, that Vitruvian Atrium

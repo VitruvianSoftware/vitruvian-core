@@ -1,14 +1,54 @@
 # Vitruvian for Jetpack Compose
 
-The Kotlin half of the [Vitruvian](../design-system/README.md) design language.
+## What it gives you
+
+The Kotlin and Jetpack Compose half of the [Vitruvian](../design-system/README.md) design language: generated design tokens (`VitruvianTokens`), `VitruvianTheme`, composition locals, flat press indication, reduce-motion helpers, and Compose UI primitives (`Plate`, `Card`, `Button`, `Tag`, `Form`, `DataDisplay`, `Terminal`, `Overlay`, `Nav`, `Icons`) backed by vendored `JetBrains Mono` and `IBM Plex Sans` fonts.
+
+## When to use it
+
+- Building any Android or Wear OS UI in Jetpack Compose (`apps/mobile/vitruvian-remote` or future Android apps) that follows the Vitruvian design language.
+
+## When not to use it
+
+- Web/React UI; use [`//packages/design-system`](../design-system/README.md) instead.
+- Apps needing standard Material Design 3 components (this module intentionally avoids MaterialTheme and Material widgets).
+
+## Example
+
+From `apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt`:
+
+```kotlin
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
+import dev.vitruvian.design.VitruvianTheme
+
+@Composable
+public fun RemoteApp(state: RemoteState) {
+  val dark = Derive.isDarkTheme(state.themeMode, isSystemInDarkTheme())
+  VitruvianTheme(dark = dark) {
+    RemoteShell(state = state, layout = rememberDeviceLayout()) { screen ->
+      ScreenContent(state = state, screen = screen)
+    }
+  }
+}
+```
+
+## Depend on it
+
+- Library: `//packages/design-system-android:lib`
+- Compose compiler plugin (required for `@Composable` callers): `//packages/design-system-android:compose_compiler`
+
+## Constraints
+
+- **Tokens are generated (`VitruvianTokens.kt`), never hand-edited** — regenerate from `packages/design-system/src/tokens.json` with `//packages/design-system-android/tools:gen_tokens` (`tokens_are_current` enforces parity).
+- **No Material, no ripple, no rounded corners, no gradients, no elevation on board content** (only floating overlays carry elevation).
+- **No app dependencies** — apps depend on the design system, never the reverse.
+- **No Compose visual regression screenshots yet** — ships components and token/parity tests only.
 
 The web package next door is React + CSS and does not run on Android. What
 transfers is the language: `src/tokens.json` plus the rules in
 `foundations/mobile.html`. [`ANDROID.md`](../design-system/ANDROID.md) is the
 authoritative mapping between the two, and this module is its realisation.
-
-No app dependencies, on purpose — an app depends on the design system, never the
-other way round.
 
 ## Tokens are generated
 
