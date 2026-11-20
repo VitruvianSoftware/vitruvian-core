@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: completed
 ---
 
 # Orchestrator: set up and sync a repository's team (step 3 of 5)
