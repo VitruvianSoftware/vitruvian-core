@@ -89,5 +89,35 @@ func TestInsertEventsOneHundredEventsAcrossTwentyChats(t *testing.T) {
 			eventChanges++
 		}
 	}
-	require.Equal(t, totalEvents, eventChanges)
+	require.Equal(t, chats, eventChanges)
+}
+
+func TestInsertEventsBackfillBurstOverSubscriberBufferDoesNotForceResync(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const room = "!family:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: room, Network: "gmessages"}))
+
+	const burst = SubscriberBuffer + 30 // 286 events, like the Family chat burst
+	batch := make([]Event, 0, burst)
+	for i := range burst {
+		batch = append(batch, historyEvent(room, fmt.Sprintf("$b%d", i), int64(100+i), fmt.Sprintf("backfill %d", i)))
+	}
+
+	feed := s.Feed()
+	defer feed.Close()
+
+	n, err := s.InsertEvents(ctx, batch)
+	require.NoError(t, err)
+	require.Equal(t, burst, n)
+
+	eventChanges := 0
+	for len(feed.C) > 0 {
+		c := <-feed.C
+		require.NotEqual(t, ChangeResync, c.Kind, "backfill burst over SubscriberBuffer must not emit ChangeResync")
+		if c.Kind == "event" && c.RoomID == room {
+			eventChanges++
+		}
+	}
+	require.GreaterOrEqual(t, eventChanges, 1)
+	require.False(t, feed.TakeDropped(), "backfill burst over SubscriberBuffer must not overflow feed or force resync")
 }

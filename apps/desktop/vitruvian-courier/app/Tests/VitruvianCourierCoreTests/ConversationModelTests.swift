@@ -642,6 +642,78 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Older pages were read to the end of what this Mac held, and then older rows arrived by backfill (Family Google
+    /// Chat: stored 2026-10-11 to 11-20, only the newest page showed and scrolling up loaded nothing). The newest page
+    /// still reaches below what is held, so only a look below the oldest held message finds them.
+    func testRowsBackfilledAfterTheOlderPagesWereReadAreReachableByScrollingUp() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 60 && !h.conversation.hasOlder }
+
+        for i in -20 ... 0 {
+            h.script.add("!a", textEvent(id: "$\(i)", room: "!a", at: Int64(i), body: "Backfill \(i)"))
+        }
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$-20"])
+
+        try await waitUntil(timeout: 2) { h.conversation.hasOlder }
+        h.conversation.loadOlder()
+        try await waitUntil(timeout: 2) { h.messageIDs().count == 81 && !h.conversation.hasOlder }
+        XCTAssertEqual(h.messageIDs().first, "$-20")
+        XCTAssertEqual(h.messageIDs().last, "$60")
+        await stop(h)
+    }
+
+    /// A chat shorter than a page, read to its start through the network (`loadEarlier`), and then much older rows
+    /// arrive: the newest page now reaches below everything held, so its cursor is the way to them.
+    func testRowsBackfilledBelowAShortChatAreReachableByScrollingUp() async throws {
+        let h = try await start(["!b": history(25, room: "!b")])
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.conversation.isLoaded && !h.conversation.hasOlder }
+        h.script.add("!b", textEvent(id: "$0", room: "!b", at: 0, body: "Earlier 0"))
+        h.script.overrides["room.loadOlder"] = .result(["added": 1, "has_more": false, "loading": false])
+        h.conversation.loadEarlier()
+        try await waitUntil(timeout: 2) { !h.conversation.isLoadingEarlier && h.messageIDs().first == "$0" }
+        XCTAssertFalse(h.conversation.hasOlder)
+
+        h.script.overrides.removeValue(forKey: "room.loadOlder")
+        for i in -60 ... -1 {
+            h.script.add("!b", textEvent(id: "$\(i)", room: "!b", at: Int64(i), body: "Backfill \(i)"))
+        }
+        h.server.notify(["kind": "event", "room_id": "!b", "event_id": "$-60"])
+
+        try await waitUntil(timeout: 2) { h.conversation.hasOlder }
+        while h.conversation.hasOlder {
+            let before = h.messageIDs().count
+            h.conversation.loadOlder()
+            try await waitUntil(timeout: 2) {
+                !h.conversation.isLoadingOlder && (h.messageIDs().count > before || !h.conversation.hasOlder)
+            }
+        }
+        XCTAssertEqual(h.messageIDs().count, 86)
+        XCTAssertEqual(h.messageIDs().first, "$-60")
+        await stop(h)
+    }
+
+    func testLoadEarlierReadsLocallyStoredOlderRowsEvenWhenEngineReportsZeroAdded() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 60 && !h.conversation.hasOlder }
+
+        for i in -5 ... 0 {
+            h.script.add("!a", textEvent(id: "$\(i)", room: "!a", at: Int64(i), body: "Local backfill \(i)"))
+        }
+        h.script.overrides["room.loadOlder"] = .result(["added": 0, "has_more": false, "loading": false])
+        h.conversation.loadEarlier()
+        try await waitUntil(timeout: 2) { !h.conversation.isLoadingEarlier && h.messageIDs().count == 66 }
+        XCTAssertEqual(h.messageIDs().first, "$-5")
+        XCTAssertEqual(h.conversation.takeEarlierAnchor(), "$1")
+        await stop(h)
+    }
+
     /// A network that answers later (WhatsApp's phone): the load says `loading`, the engine stores the answer on its
     /// own and publishes an event change for the chat, and the older messages show at the top without another scroll,
     /// with the message the person was on kept as the anchor.
@@ -804,6 +876,24 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.messageIDs().count == 50 }
         XCTAssertEqual(h.messageIDs().first, "$71")
         XCTAssertTrue(h.conversation.hasOlder, "the older pages can be loaded again")
+        await stop(h)
+    }
+
+    func testResyncWhileScrolledUpKeepsLoadedOlderPages() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 100 }
+
+        h.conversation.scrolled(toBottom: false)
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.server.notify(["kind": "resync"])
+        try await waitUntil(timeout: 2) { h.messageIDs().last == "$121" }
+
+        XCTAssertEqual(h.messageIDs().count, 101, "resync while scrolled up must keep loaded older pages")
+        XCTAssertEqual(h.messageIDs().first, "$21")
+        XCTAssertTrue(h.conversation.hasOlder)
         await stop(h)
     }
 

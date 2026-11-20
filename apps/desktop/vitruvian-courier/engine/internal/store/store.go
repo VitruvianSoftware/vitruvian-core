@@ -644,8 +644,10 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 // many were new (an event already stored is skipped, so running the same batch again changes nothing). An event is
 // placed in the timeline by its own time (ts, seq), so events older than the chat's first land before it; the chat's
 // preview and last-message time move only for one newer than what the chat had, and the search index takes in every
-// event written. Nothing is published until the transaction has committed, and then one "event" change per new event
-// goes out, as InsertEvent's does.
+// event written. Nothing is published until the transaction has committed, and then one "event" change per room
+// that gained new events (carrying the oldest inserted event's ID and the room's latest seq) and at most one "room"
+// change per room that came back from archive go out, so a large backfill burst never overflows SubscriberBuffer and
+// forces a resync.
 func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
 	if len(events) == 0 {
 		return 0, nil
@@ -671,12 +673,53 @@ func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	type roomPub struct {
+		roomID   string
+		hasEvent bool
+		oldestTS int64
+		oldestID string
+		oldestSq int64
+		maxSeq   int64
+		cameBack bool
+	}
+	var roomOrder []string
+	byRoom := make(map[string]*roomPub)
 	n := 0
 	for _, l := range out {
+		if !l.inserted && !l.cameBack {
+			continue
+		}
+		rp := byRoom[l.e.RoomID]
+		if rp == nil {
+			rp = &roomPub{roomID: l.e.RoomID}
+			byRoom[l.e.RoomID] = rp
+			roomOrder = append(roomOrder, l.e.RoomID)
+		}
 		if l.inserted {
 			n++
+			ts := l.e.TS.UnixMilli()
+			if !rp.hasEvent || ts < rp.oldestTS || (ts == rp.oldestTS && l.seq < rp.oldestSq) {
+				rp.hasEvent = true
+				rp.oldestTS = ts
+				rp.oldestID = l.e.EventID
+				rp.oldestSq = l.seq
+			}
+			if l.seq > rp.maxSeq {
+				rp.maxSeq = l.seq
+			}
 		}
-		s.publishInserted(l.e, l.seq, l.inserted, l.cameBack)
+		if l.cameBack {
+			rp.cameBack = true
+		}
+	}
+	for _, roomID := range roomOrder {
+		rp := byRoom[roomID]
+		if rp.hasEvent {
+			s.publish(Change{Kind: "event", RoomID: rp.roomID, EventID: rp.oldestID, Seq: rp.maxSeq})
+		}
+		if rp.cameBack {
+			s.publish(Change{Kind: "room", RoomID: rp.roomID})
+		}
 	}
 	return n, nil
 }
