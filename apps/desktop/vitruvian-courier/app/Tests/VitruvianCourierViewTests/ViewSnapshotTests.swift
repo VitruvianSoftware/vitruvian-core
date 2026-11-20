@@ -2472,6 +2472,10 @@ final class ViewSnapshotTests: XCTestCase {
         defer { try? FileManager.default.removeItem(atPath: pdfPath) }
 
         InlinePDFDocumentCache.shared.resetForTests()
+        // A lookup never reads the file on the calling thread; it is read ahead (what `LocalFileFacts.warm` does).
+        XCTAssertNil(InlinePDFDocumentCache.shared.document(atPath: pdfPath), "a cold lookup does not parse on the caller")
+        XCTAssertEqual(InlinePDFDocumentCache.shared.parseCount, 0)
+        InlinePDFDocumentCache.shared.parse(path: pdfPath)
         let first = InlinePDFDocumentCache.shared.document(atPath: pdfPath)
         let second = InlinePDFDocumentCache.shared.document(atPath: pdfPath)
         XCTAssertNotNil(first)

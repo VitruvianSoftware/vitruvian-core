@@ -524,21 +524,30 @@ public struct FileAttachmentChip: View {
 
     private var url: URL? {
         guard isLocalMediaStorePath(message.mediaPath) else { return nil }
-        let candidate = URL(fileURLWithPath: message.mediaPath)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue
-        else {
-            return nil
-        }
-        return candidate
+        // From memory (`LocalFileFacts`), never the disk: the chip is laid out and measured on the main thread. A file
+        // that turns up later arrives with `didLearnSizeNotification`.
+        guard LocalFileFacts.exists(message.mediaPath) == true else { return nil }
+        return URL(fileURLWithPath: message.mediaPath)
     }
 
     private var category: Category {
         Category.classify(fileName: message.fileName, mimeType: message.mimeType)
     }
 
+    @State private var factTick = 0
+
+    /// Draws again when the file's presence is learned (`LocalFileFacts`).
     public var body: some View {
+        chipContent
+            .onReceive(NotificationCenter.default.publisher(for: ImagePixelSizeReader.didLearnSizeNotification)) { note in
+                if let path = note.userInfo?[ImagePixelSizeReader.pathUserInfoKey] as? String, path == message.mediaPath {
+                    factTick += 1
+                }
+            }
+            .id(factTick)
+    }
+
+    private var chipContent: some View {
         HStack(spacing: 10) {
             categoryBadge
             VStack(alignment: .leading, spacing: 2) {
@@ -942,7 +951,9 @@ public struct EnhancedImageView: View {
             if failedPath == message.mediaPath { failedPath = nil }
             return
         }
-        if message.isGIF, let nsImage = NSImage(contentsOfFile: path) {
+        if message.isGIF,
+           let nsImage = await Task.detached(priority: .utility, operation: { NSImage(contentsOfFile: path) }).value
+        {
             loadedMedia = LoadedMedia(path: path, cgImage: nil, animatedImage: nsImage)
             if failedPath == message.mediaPath { failedPath = nil }
             return

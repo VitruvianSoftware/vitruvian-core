@@ -370,6 +370,7 @@ struct MessageRowView: View {
     let showsSent: Bool
     let actions: MessageActions
     @ObservedObject var ui: MessageUI
+    @Environment(\.timelineTopExtension) private var timelineTopExtension
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.redactNamesAndPictures) private var redactEnv
@@ -523,6 +524,10 @@ struct MessageRowView: View {
         // (MessageActionBarPlacement), and who reacted, by the chip the pointer rests on (ReactionCardPlacement),
         // kept off the bar. Drawn by the row, outside its click gestures, so a click on the bar doesn't also select or
         // deselect the message; the card is only to read and takes no clicks.
+        // In the table timeline the bar can reach above the row. SwiftUI looks for clicks only inside the frames of a
+        // view and the ones around it, so the room above (the hosting view is that much taller, and starts that
+        // much higher) is inside this view's own frame, and so inside theirs.
+        .padding(.top, timelineTopExtension)
         .overlayPreferenceValue(RowAnchorsKey.self, alignment: .topLeading) { anchors in
             let card = openCardKey.flatMap { key in message.reactions.first { $0.key == key } }
             if (showsActionBar && anchors.bubble != nil) || (card != nil && anchors.openChip != nil) {
@@ -539,6 +544,7 @@ struct MessageRowView: View {
                             .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
                             .offset(x: bar.minX, y: bar.minY)
                             .opacity(barSize == .zero ? 0 : 1)
+                            .modifier(ActionBarFrameReport(offset: bar.origin))
                     }
                     if let card, let chip = anchors.openChip {
                         let spot = ReactionCardPlacement.origin(chip: proxy[chip], row: proxy.size, card: cardSize,
@@ -1729,6 +1735,54 @@ extension EnvironmentValues {
     }
 }
 
+/// Where the table timeline learns an action bar that overhangs its row is, in the row's own space
+/// (`TimelineRowSpace.name`): a click there is outside the row's view, so the table routes it by this frame. Nil (the
+/// default) outside the table.
+private struct ActionBarFrameProbeKey: EnvironmentKey {
+    static let defaultValue: ((CGRect?) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var actionBarFrameProbe: ((CGRect?) -> Void)? {
+        get { self[ActionBarFrameProbeKey.self] }
+        set { self[ActionBarFrameProbeKey.self] = newValue }
+    }
+}
+
+/// Room the table timeline gives a row above its top edge, for an action bar that overhangs it (0 elsewhere).
+private struct TimelineTopExtensionKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    var timelineTopExtension: CGFloat {
+        get { self[TimelineTopExtensionKey.self] }
+        set { self[TimelineTopExtensionKey.self] = newValue }
+    }
+}
+
+enum TimelineRowSpace {
+    static let name = "timeline.row.space"
+}
+
+private struct ActionBarFrameReport: ViewModifier {
+    /// The `.offset` the bar is drawn with, which a view's reported frame leaves out.
+    let offset: CGPoint
+    @Environment(\.actionBarFrameProbe) private var probe
+
+    func body(content: Content) -> some View {
+        if let probe {
+            content
+                .onGeometryChange(for: CGRect.self) {
+                    $0.frame(in: .named(TimelineRowSpace.name)).offsetBy(dx: offset.x, dy: offset.y)
+                } action: { probe($0) }
+                .onDisappear { probe(nil) }
+        } else {
+            content
+        }
+    }
+}
+
 private struct ClickTargetProbe: ViewModifier {
     let name: String
     @Environment(\.clickTargetProbe) private var probe
@@ -2048,6 +2102,8 @@ public struct GIFAttachmentView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var loadedNSImage: NSImage?
     @State private var asyncCGImage: CGImage?
+    /// Set once the header size is read, so the view draws again at it.
+    @State private var learnedSize: CGSize?
     @State private var loadFailed = false
 
     public init(
@@ -2093,9 +2149,12 @@ public struct GIFAttachmentView: View {
     private func frameSize(for nsImage: NSImage?) -> CGSize {
         let imageWidth = nsImage.flatMap { $0.size.width > 0 ? Int($0.size.width.rounded()) : nil }
         let imageHeight = nsImage.flatMap { $0.size.height > 0 ? Int($0.size.height.rounded()) : nil }
+        // A bridged GIF without a wire size: the header size read off the main thread (and announced to the timeline,
+        // which re-measures the row), before the picture has decoded.
+        let disk = ImagePixelSizeReader.cachedSize(ofFirstReadable: [message.mediaPath, message.thumbnailPath])
         return EnhancedImageView.proportionalSize(
-            width: gif.width ?? message.width ?? imageWidth,
-            height: gif.height ?? message.height ?? imageHeight,
+            width: gif.width ?? message.width ?? imageWidth ?? disk.map { Int($0.width) },
+            height: gif.height ?? message.height ?? imageHeight ?? disk.map { Int($0.height) },
             longestSide: EnhancedImageView.longestSide,
             fallback: CGSize(width: 260, height: 180)
         )
@@ -2180,6 +2239,12 @@ public struct GIFAttachmentView: View {
             guard let path = resolvedPath else {
                 if !message.mediaPath.isEmpty { loadFailed = true }
                 return
+            }
+            if (gif.width ?? message.width ?? 0) <= 0 || (gif.height ?? message.height ?? 0) <= 0 {
+                // Posts didLearnSizeNotification, so a table timeline re-measures this row; this view redraws at the size.
+                if let read = await ImagePixelSizeReader.shared.size(ofFirstReadable: [message.mediaPath, message.thumbnailPath]) {
+                    learnedSize = read
+                }
             }
             let decoded = await Task.detached(priority: .utility) { () -> NSImage? in
                 guard FileManager.default.fileExists(atPath: path) else { return nil }

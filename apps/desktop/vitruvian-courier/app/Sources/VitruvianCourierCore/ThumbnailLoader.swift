@@ -293,8 +293,11 @@ public actor ImagePixelSizeReader {
     /// Pre-warms cached pixel sizes off the main thread for local media events missing stored dimensions.
     public func warm(events: [Event]) async {
         let uncached = Self.uncachedPaths(in: events)
-        guard !uncached.isEmpty else { return }
+        let files = LocalFileFacts.paths(in: events)
+        guard !uncached.isEmpty || !files.isEmpty else { return }
         await Task.detached(priority: .userInitiated) {
+            // Whether each local file is there (and a PDF's pages), so rows size without touching the disk.
+            LocalFileFacts.warm(paths: files)
             for path in uncached {
                 _ = Self.sizeNow(ofFirstReadable: [path])
             }

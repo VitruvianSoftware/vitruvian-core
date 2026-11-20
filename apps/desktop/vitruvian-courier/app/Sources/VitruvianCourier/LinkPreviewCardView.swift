@@ -20,6 +20,8 @@ public struct LinkPreviewCardView: View {
     public var onOpenURL: (URL) -> Void
 
     @State private var loaded: LoadedThumbnail?
+    /// Counts the file facts learned for the picture, so its load starts when the file is known to be there.
+    @State private var factTick = 0
 
     public static let userVisibleStrings: [String] = [
         String(localized: "Link Preview"),
@@ -74,12 +76,11 @@ public struct LinkPreviewCardView: View {
         return desc
     }
 
+    /// The picture's path once it is known to be on disk. Asked of memory (`LocalFileFacts`), never of the disk, so
+    /// laying out or measuring the card does not wait on a file; the answer arrives with `didLearnSizeNotification`.
     private var localThumbnailPath: String? {
-        guard let path = preview.imagePath, isLocalMediaStorePath(path) else { return nil }
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), !isDir.boolValue else {
-            return nil
-        }
+        guard let path = preview.imagePath, isLocalMediaStorePath(path),
+              LocalFileFacts.exists(path) == true else { return nil }
         return path
     }
 
@@ -89,10 +90,9 @@ public struct LinkPreviewCardView: View {
         return ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image
     }
 
-    private var synchronousLocalThumbnail: NSImage? {
-        guard let path = localThumbnailPath else { return nil }
-        return NSImage(contentsOfFile: path)
-    }
+    /// The picture's height: it fills the card's width and is cropped to this, loaded yet or not, so the card is
+    /// the same height before and after the picture arrives.
+    private static let thumbnailHeight: CGFloat = 148
 
     public var body: some View {
         Button {
@@ -101,18 +101,19 @@ public struct LinkPreviewCardView: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                if let cgImage = currentCGImage {
-                    Image(decorative: cgImage, scale: 2)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: 320, minHeight: 120, maxHeight: 148)
-                        .clipped()
-                } else if let nsImage = synchronousLocalThumbnail {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: 320, minHeight: 120, maxHeight: 148)
-                        .clipped()
+                if localThumbnailPath != nil {
+                    if let cgImage = currentCGImage {
+                        Image(decorative: cgImage, scale: 2)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: 320)
+                            .frame(height: Self.thumbnailHeight)
+                            .clipped()
+                    } else {
+                        Color.clear
+                            .frame(maxWidth: 320)
+                            .frame(height: Self.thumbnailHeight)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -156,7 +157,12 @@ public struct LinkPreviewCardView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .task(id: preview.imagePath) {
+        .onReceive(NotificationCenter.default.publisher(for: ImagePixelSizeReader.didLearnSizeNotification)) { note in
+            if let path = note.userInfo?[ImagePixelSizeReader.pathUserInfoKey] as? String, path == preview.imagePath {
+                factTick += 1
+            }
+        }
+        .task(id: "\(preview.imagePath ?? "")#\(factTick)") {
             guard let path = localThumbnailPath else { return }
             if let cached = ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image {
                 loaded = LoadedThumbnail(path: path, image: cached)

@@ -316,6 +316,13 @@ enum TimelineContentRevision {
                 }
             }
             hasher.combine(message.linkPreviews)
+            // Whether the local files its cards draw are known to be there (`LocalFileFacts`): a card is another height
+            // once its file turns up (a link preview's picture, a PDF's pages, a file chip).
+            hasher.combine(LocalFileFacts.cachedExists(message.mediaPath) ?? false)
+            hasher.combine(InlinePDFDocumentCache.shared.hasDocument(atPath: message.mediaPath))
+            for preview in message.linkPreviews {
+                if let path = preview.imagePath { hasher.combine(LocalFileFacts.cachedExists(path) ?? false) }
+            }
             hasher.combine(ui.loadedEmbeds.contains(message.id))
             hasher.combine(message.poll)
             hasher.combine(message.thread)
@@ -494,6 +501,11 @@ struct TimelineHostedRow: View {
     let ui: MessageUI
     let env: TimelineRowEnvironment
     let onEmptyClick: () -> Void
+    /// Told where the selected message's action bar is (nil: none), in the row's space.
+    var onActionBar: ((CGRect?) -> Void)?
+    /// Room above the row for an action bar that overhangs it: the hosting view reaches that far above the row (the
+    /// cell positions it so), so SwiftUI can take clicks there; the row itself does not move.
+    var topExtension: CGFloat = 0
 
     var body: some View {
         TimelineItemView(
@@ -518,7 +530,10 @@ struct TimelineHostedRow: View {
             values.courierZoomMultiplier = env.zoomMultiplier
             values.reactionCardOverride = env.reactionCardOverride
             values.clickTargetProbe = env.clickTargetProbe
+            values.actionBarFrameProbe = onActionBar
+            values.timelineTopExtension = topExtension
         }
+        .coordinateSpace(.named(TimelineRowSpace.name))
     }
 }
 
@@ -635,17 +650,25 @@ final class TimelineCell: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
+    private var topExtension: CGFloat = 0
+
     func configure(with rootView: TimelineHostedRow, size: NSSize) {
+        topExtension = rootView.topExtension
         if frame.size != size {
             frame = NSRect(origin: frame.origin, size: size)
-            hostingView.frame = bounds
         }
+        hostingView.frame = hostingFrame
         hostingView.rootView = rootView
+    }
+
+    /// The cell's bounds, taller by `topExtension` above the row's top edge.
+    private var hostingFrame: NSRect {
+        NSRect(x: 0, y: isFlipped ? -topExtension : 0, width: bounds.width, height: bounds.height + topExtension)
     }
 
     override func layout() {
         super.layout()
-        hostingView.frame = bounds
+        hostingView.frame = hostingFrame
     }
 
     override func isAccessibilityElement() -> Bool { false }
@@ -690,6 +713,11 @@ final class TimelineTableRowView: NSTableRowView {
 
     private var rowTrackingArea: NSTrackingArea?
 
+    /// The selected message's action bar, in this row's coordinates, when it reaches outside the row (a wide
+    /// continuation bubble's bar sits over its top corner). SwiftUI reports it; a click there goes to the row's
+    /// hosting view, which a plain hit test would not do outside its bounds.
+    var overhangingBarFrame: CGRect?
+
     var isRaisedRow = false {
         didSet {
             if isRaisedRow != oldValue {
@@ -719,6 +747,7 @@ final class TimelineTableRowView: NSTableRowView {
         super.prepareForReuse()
         isRaisedRow = false
         isHoveredRow = false
+        overhangingBarFrame = nil
     }
 
     override func updateTrackingAreas() {
@@ -757,19 +786,10 @@ final class TimelineTableRowView: NSTableRowView {
         if let hit = super.hitTest(point) {
             return hit
         }
-        guard isRaisedRow else { return nil }
-        let overhang = frame.insetBy(dx: 0, dy: -TimelineTableMetrics.raisedOverhangPadding)
-        guard overhang.contains(point), let superview else { return nil }
+        guard isRaisedRow, let bar = overhangingBarFrame, let superview else { return nil }
         let local = convert(point, from: superview)
-        for subview in subviews {
-            if let cell = subview as? TimelineCell {
-                let hostPoint = cell.hostingView.convert(local, from: self)
-                if let hit = cell.hostingView.hitTest(hostPoint), hit !== cell.hostingView {
-                    return hit
-                }
-            }
-        }
-        return nil
+        guard bar.insetBy(dx: -2, dy: -2).contains(local) else { return nil }
+        return subviews.lazy.compactMap { $0 as? TimelineCell }.first?.hostingView
     }
 }
 
@@ -819,13 +839,52 @@ final class TimelineNSTableView: NSTableView {
         return super.hitTest(point)
     }
 
+    /// The hosting view a click is handed to instead of the table's own handling (see `mouseDown`), until its mouse up.
+    private var forwardedMouseTarget: NSView?
+
     override func mouseDown(with event: NSEvent) {
         let local = convert(event.locationInWindow, from: nil)
+        // A selected message's action bar overhanging its row: the click is the bar's (a row view's hit test finds the
+        // hosting view). It is handed to that view, whole, so the table's own tracking (which would wait here for
+        // the mouse up and take the click for the row above) never starts.
+        if forwardedMouseTarget != nil { return } // the hosting view passed it back: it is not the bar's
+        if let target = overhangingBarTarget(at: local) {
+            forwardedMouseTarget = target
+            target.mouseDown(with: event)
+            return
+        }
         if row(at: local) == -1 {
             onEmptySpaceClick?()
             return
         }
         super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if let target = forwardedMouseTarget {
+            target.mouseDragged(with: event)
+        } else {
+            super.mouseDragged(with: event)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let target = forwardedMouseTarget {
+            forwardedMouseTarget = nil
+            target.mouseUp(with: event)
+        } else {
+            super.mouseUp(with: event)
+        }
+    }
+
+    private func overhangingBarTarget(at local: NSPoint) -> NSView? {
+        for subview in subviews {
+            guard let rowView = subview as? TimelineTableRowView, rowView.isRaisedRow,
+                  rowView.overhangingBarFrame != nil,
+                  let hit = rowView.hitTest(local) else { continue }
+            return hit
+        }
+        return nil
     }
 }
 
@@ -910,6 +969,8 @@ struct TimelineTableView: NSViewRepresentable {
         private(set) var createdCellCount = 0
         private(set) var reusedCellCount = 0
         private var rowByID: [String: Int] = [:]
+        /// How far above its row each selected message's action bar reaches (`TimelineHostedRow.topExtension`).
+        private var topExtensions: [String: CGFloat] = [:]
         private var rowEnvironment: TimelineRowEnvironment!
         private var sizingActions: MessageActions!
         private var sizingHosts: [TimelineRowKind: NSHostingView<TimelineSizingView>] = [:]
@@ -970,12 +1031,14 @@ struct TimelineTableView: NSViewRepresentable {
             senderPopover.isShown
         }
 
+        #if DEBUG
         /// What the scroll-wheel monitor records for a person's scroll, for tests that scroll the clip view directly.
         func noteUserScrollForTesting() {
             lastUserScroll = Date()
             lastScrollGesture = Date()
             stopPinningToBottom()
         }
+        #endif
 
         init(_ parent: TimelineTableView) {
             self.parent = parent
@@ -1003,6 +1066,7 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         func setup() {
+            InlinePDFDocumentCache.installWarmer()
             containerView.scrollView.documentView = tableView
             column.resizingMask = .autoresizingMask
             column.isEditable = false
@@ -1163,7 +1227,7 @@ struct TimelineTableView: NSViewRepresentable {
             createdCellCount += 1
             let cell = TimelineCell(identifier: entry.kind.identifier, rootView: hosted)
             cell.frame = NSRect(origin: .zero, size: targetSize)
-            cell.hostingView.frame = cell.bounds
+            cell.configure(with: hosted, size: targetSize)
             return cell
         }
 
@@ -1250,8 +1314,30 @@ struct TimelineTableView: NSViewRepresentable {
                 env: env,
                 onEmptyClick: { [weak self] in
                     self?.parent.conversation.deselectMessage()
-                }
+                },
+                onActionBar: overrideActions != nil ? nil : { [weak self] rect in
+                    self?.actionBarChanged(rect, forRowID: entry.id)
+                },
+                topExtension: overrideActions != nil ? 0 : (topExtensions[entry.id] ?? 0)
             )
+        }
+
+        /// A selected message's action bar moved: its row view keeps the frame for hit testing.
+        private func actionBarChanged(_ rect: CGRect?, forRowID id: String) {
+            guard let row = rowByID[id],
+                  let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? TimelineTableRowView
+            else { return }
+            // Reported in the hosting view's space, which starts `topExtensions[id]` above the row.
+            let rowRect = rect?.offsetBy(dx: 0, dy: -(topExtensions[id] ?? 0))
+            rowView.overhangingBarFrame = rowRect
+            let needed = rowRect.map { max(0, ceil(-$0.minY)) } ?? 0
+            guard abs(needed - (topExtensions[id] ?? 0)) > 0.5 else { return }
+            topExtensions[id] = needed == 0 ? nil : needed
+            // Not inside the view update that reported it.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let row = self.rowByID[id] else { return }
+                self.reconfigureVisibleRow(at: row)
+            }
         }
 
         private func makeTopControlView(for state: TimelineTopControlState) -> TimelineTopControlView {
@@ -1348,6 +1434,9 @@ struct TimelineTableView: NSViewRepresentable {
                 restoreScrollAfterHeightChange(wasAtBottom: wasAtBottom, anchor: anchor)
             }
             isApplyingProgrammaticUpdate = false
+            // The new width moved the bottom (and every row): the bottom flag and the layout probes follow it.
+            evaluateScrollPosition()
+            reportVisibleProbes()
 
             // Remaining off-screen rows re-measure lazily in bounded batches.
             var remaining = IndexSet(integersIn: 0 ..< entries.count)
@@ -1831,8 +1920,9 @@ struct TimelineTableView: NSViewRepresentable {
             if let explicitAnchorID, let row = rowByID[explicitAnchorID] {
                 let rowRect = tableView.rect(ofRow: row)
                 let screenMinY = rowRect.minY - containerView.scrollView.contentView.bounds.origin.y
-                let minAllowed = containerView.scrollView.contentInsets.top
-                return (explicitAnchorID, max(screenMinY, minAllowed))
+                // Where it is, even above the top of the view (a late page arriving while scrolled down): clamping it
+                // to the top inset would move the viewport.
+                return (explicitAnchorID, screenMinY)
             }
 
             if let visible = visibleAnchor(preferMessage: false) {
@@ -1841,7 +1931,7 @@ struct TimelineTableView: NSViewRepresentable {
 
             let rowRect = tableView.rect(ofRow: oldMsgIdx)
             let screenMinY = rowRect.minY - containerView.scrollView.contentView.bounds.origin.y
-            return (oldFirstMsgID, max(screenMinY, containerView.scrollView.contentInsets.top))
+            return (oldFirstMsgID, screenMinY)
         }
 
         private func visibleAnchor(preferMessage: Bool) -> (id: String, screenMinY: CGFloat)? {
@@ -2168,6 +2258,7 @@ struct TimelineTableView: NSViewRepresentable {
             for (idx, item) in items.enumerated() {
                 guard case let .message(msg) = item else { continue }
                 let matches = msg.mediaPath == path
+                    || msg.linkPreviews.contains(where: { $0.imagePath == path })
                     || msg.thumbnailPath == path
                     || msg.galleryItems.contains(where: { $0.mediaPath == path || $0.thumbnailPath == path })
                 guard matches else { continue }
@@ -2343,21 +2434,31 @@ struct TimelineTableView: NSViewRepresentable {
         /// What each row's probe last reported. A probe that stores what it is told in observable state makes SwiftUI
         /// call `updateNSView` again, which reports again: only a rect that changed is passed on, so that ends.
         private var lastReportedProbeRects: [String: CGRect] = [:]
+        private var hadProbe = false
 
         private func reportVisibleProbes(using probe: ((String, CGRect) -> Void)?) {
             storedProbe = probe
+            // A probe that comes or goes starts over: the new one has heard nothing yet.
+            if (probe != nil) != hadProbe {
+                lastReportedProbeRects.removeAll()
+                hadProbe = probe != nil
+            }
             guard let probe, hasPositionedInitially, measuredWidth > 1 else { return }
             let visibleRange = tableView.rows(in: tableView.visibleRect)
             guard visibleRange.length > 0 else { return }
+            var visibleNames = Set<String>()
             for row in visibleRange.location ..< (visibleRange.location + visibleRange.length) {
                 guard row >= 0, row < entries.count, let item = entries[row].item else { continue }
                 let rowRect = tableView.rect(ofRow: row)
                 let rectInContainer = containerView.convert(rowRect, from: tableView)
                 let name = "item/\(item.id)"
+                visibleNames.insert(name)
                 if lastReportedProbeRects[name] == rectInContainer { continue }
                 lastReportedProbeRects[name] = rectInContainer
                 probe(name, rectInContainer)
             }
+            // Rows scrolled out are forgotten, so one that returns to the same place is reported again.
+            lastReportedProbeRects = lastReportedProbeRects.filter { visibleNames.contains($0.key) }
         }
 
         private func currentTopControl(conversation: ConversationModel) -> TimelineTopControlState {

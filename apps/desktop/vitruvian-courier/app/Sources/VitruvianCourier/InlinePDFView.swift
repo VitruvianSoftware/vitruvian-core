@@ -15,23 +15,61 @@ final class InlinePDFDocumentCache: @unchecked Sendable {
     func resetForTests() {
         lock.withLock {
             cache.removeAll()
+            inFlight.removeAll()
             parseCount = 0
         }
     }
 
+    private var inFlight = Set<String>()
+
+    /// The document, when it has been read; never reads the file on the calling thread (a row is laid out and measured
+    /// on the main one). One not read yet is read in the background, and `didLearnSizeNotification` (with the path)
+    /// says when it is in.
     func document(atPath path: String) -> PDFDocument? {
-        guard let url = InlinePDFView.localPDFURL(for: path) else { return nil }
-        return lock.withLock {
-            if let existing = cache[url.path] {
-                return existing
-            }
-            parseCount += 1
-            guard let doc = PDFDocument(url: url) else {
-                return nil
-            }
-            cache[url.path] = doc
-            return doc
+        if let cached = lock.withLock({ cache[path] }) { return cached }
+        guard LocalFileFacts.exists(path) == true else { return nil }
+        parseInBackground(path)
+        return nil
+    }
+
+    /// Reads the file now, on this thread (a background one): for `LocalFileFacts.warm` and the lookup above.
+    func parse(path: String) {
+        guard let url = InlinePDFView.localPDFURL(for: path) else { return }
+        let alreadyThere = lock.withLock { cache[url.path] != nil }
+        guard !alreadyThere, let doc = PDFDocument(url: url) else {
+            lock.withLock { _ = inFlight.remove(path) }
+            return
         }
+        lock.withLock {
+            parseCount += 1
+            cache[url.path] = doc
+            inFlight.remove(path)
+        }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: ImagePixelSizeReader.didLearnSizeNotification, object: nil,
+                userInfo: [ImagePixelSizeReader.pathUserInfoKey: path]
+            )
+        }
+    }
+
+    private func parseInBackground(_ path: String) {
+        let started = lock.withLock { inFlight.insert(path).inserted }
+        guard started else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in parse(path: path) }
+    }
+
+    /// Reads PDFs ahead of their rows, as `LocalFileFacts.warm` finds them, so a PDF card is its full height from
+    /// the first frame.
+    static func installWarmer() {
+        LocalFileFacts.setWarmer { path in
+            guard path.lowercased().hasSuffix(".pdf") else { return }
+            InlinePDFDocumentCache.shared.parse(path: path)
+        }
+    }
+
+    func hasDocument(atPath path: String) -> Bool {
+        lock.withLock { cache[path] != nil }
     }
 }
 
@@ -72,6 +110,7 @@ public struct InlinePDFView: View {
     }
 
     /// Returns a local file `URL` only when `path` is inside the local filesystem (never a remote URL) and exists on disk.
+    /// Asks the disk: not for a view's body (the main thread); the document cache asks memory instead.
     public static func localPDFURL(for path: String) -> URL? {
         guard isLocalMediaStorePath(path) else { return nil }
         let url = URL(fileURLWithPath: path)

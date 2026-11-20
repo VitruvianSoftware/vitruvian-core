@@ -681,4 +681,82 @@ final class TimelineTableViewTests: XCTestCase {
         harness.pump(for: 0.3)
         XCTAssertEqual(try watchedMinY(), before, accuracy: 1.0, "an older page joining the top does not move what is on screen")
     }
+
+    // MARK: 9. Sizing rows never waits on the disk
+
+    private func writePDF(to url: URL) throws {
+        var mediaBox = CGRect(x: 0, y: 0, width: 360, height: 240)
+        let consumer = try XCTUnwrap(CGDataConsumer(url: url as CFURL))
+        let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &mediaBox, nil))
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(red: 0.9, green: 0.95, blue: 1, alpha: 1))
+        context.fill(mediaBox)
+        context.endPDFPage()
+        context.closePDF()
+    }
+
+    private func fileRows(dir: URL, tag: String) throws -> (items: [TimelineItem], paths: [String]) {
+        let pdfURL = dir.appendingPathComponent("\(tag).pdf")
+        try writePDF(to: pdfURL)
+        let imageURL = dir.appendingPathComponent("\(tag).png")
+        try writePNG(to: imageURL, width: 640, height: 360)
+        var pdf = Fixture.event("$pdf-\(tag)", mine: false, ts: 10, content: [
+            "msgtype": .string("m.file"), "body": .string("\(tag).pdf"), "filename": .string("\(tag).pdf"),
+            "info": .object(["mimetype": .string("application/pdf"), "size": .int(1000)]),
+        ])
+        pdf.mediaPath = pdfURL.path
+        var link = Fixture.text("$link-\(tag)", "See https://example.com/\(tag)", mine: false, ts: 8)
+        link.linkPreviews = [LinkPreviewItem(matchedURL: "https://example.com/\(tag)", url: "https://example.com/\(tag)",
+                                             title: "A page", imagePath: imageURL.path)]
+        return (Fixture.items([pdf, link], isDirect: false), [pdfURL.path, imageURL.path])
+    }
+
+    func testLookupsNeverReadTheDiskOnTheCallingThread() throws {
+        let dir = try makeTempDir()
+        let rows = try fileRows(dir: dir, tag: "cold")
+        InlinePDFDocumentCache.shared.resetForTests()
+        let pdfPath = rows.paths[0]
+        XCTAssertNil(LocalFileFacts.exists(pdfPath), "an unknown file is answered from memory: not known yet")
+        XCTAssertNil(InlinePDFDocumentCache.shared.document(atPath: pdfPath), "a PDF not read yet is not parsed on the caller")
+        XCTAssertEqual(InlinePDFDocumentCache.shared.parseCount, 0)
+        let deadline = Date().addingTimeInterval(3)
+        while LocalFileFacts.exists(pdfPath) == nil, Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertEqual(LocalFileFacts.exists(pdfPath), true, "the background lookup found it")
+    }
+
+    func testWarmedFilesKeepRowHeightsFromTheFirstFrame() throws {
+        let dir = try makeTempDir()
+        let rows = try fileRows(dir: dir, tag: "warm")
+        InlinePDFDocumentCache.shared.resetForTests()
+        InlinePDFDocumentCache.installWarmer()
+        // What the model does as a page arrives (`ImagePixelSizeReader.warm`), here by hand.
+        LocalFileFacts.warm(paths: rows.paths)
+        let harness = try mountTable(items: rows.items)
+        defer { harness.tearDown() }
+        func heights() -> [CGFloat] {
+            ["$pdf-warm", "$link-warm"].map { id in
+                harness.tableView.rect(ofRow: harness.coordinator.entries.firstIndex { $0.id == id } ?? 0).height
+            }
+        }
+        let first = heights()
+        XCTAssertGreaterThan(first[0], 200, "the PDF card, not its file chip, from the first frame")
+        harness.pump(for: 0.8)
+        XCTAssertEqual(heights(), first, "nothing was learned late, so no row changed height")
+    }
+
+    func testRowsRemeasureWhenAFileIsLearnedLate() throws {
+        let dir = try makeTempDir()
+        let rows = try fileRows(dir: dir, tag: "late")
+        InlinePDFDocumentCache.shared.resetForTests()
+        InlinePDFDocumentCache.installWarmer()
+        let harness = try mountTable(items: rows.items)
+        defer { harness.tearDown() }
+        func pdfHeight() -> CGFloat {
+            harness.tableView.rect(ofRow: harness.coordinator.entries.firstIndex { $0.id == "$pdf-late" } ?? 0).height
+        }
+        harness.pump(for: 1.5, until: { pdfHeight() > 200 })
+        XCTAssertGreaterThan(pdfHeight(), 200, "once the lookup and the read finished off the main thread, the row grew to the card")
+    }
 }
