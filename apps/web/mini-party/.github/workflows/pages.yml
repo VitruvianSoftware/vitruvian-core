@@ -23,7 +23,8 @@
 # This file only runs in the standalone mirror, VitruvianSoftware/vitruvian-party:
 # the monorepo exports apps/web/mini-party/ there on every change, and that push
 # starts this workflow. GitHub Pages has no server, so online rooms go to the
-# rooms server on the homelab cluster (VITE_ROOMS_URL).
+# rooms server on the homelab cluster; .env.pages holds that and the other
+# public-site settings.
 name: Deploy to GitHub Pages
 
 on:
@@ -54,9 +55,9 @@ jobs:
         # resolves from package.json's ranges.
         run: npm install --no-audit --no-fund
       - name: Build
-        run: npm run build
-        env:
-          VITE_ROOMS_URL: https://mini-games-rooms.vitruviansoftware.dev
+        # --mode pages reads .env.pages: the rooms server, analytics and
+        # Sentry settings for this public site.
+        run: npm run build:pages
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist

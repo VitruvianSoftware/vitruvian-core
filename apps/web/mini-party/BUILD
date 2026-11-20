@@ -46,24 +46,26 @@ vite.vite(
     out_dirs = ["dist"],
 )
 
-# The same client for GitHub Pages, which has no server: online rooms go to the
-# homelab's rooms server instead. The mirror's .github/workflows/pages.yml
-# builds it the same way.
+# The same client for GitHub Pages, built with --mode pages so it reads
+# .env.pages (rooms server, analytics, Sentry), exactly as the mirror's
+# .github/workflows/pages.yml builds it.
 vite.vite(
     name = "build_static",
     srcs = glob(["src/**"]) + [
+        ".env.pages",
         "index.html",
         "package.json",
         "tsconfig.json",
         "vite.config.ts",
         ":node_modules",
     ],
-    args = ["build"],
+    args = [
+        "build",
+        "--mode",
+        "pages",
+    ],
     chdir = package_name(),
-    env = {
-        "OUT_DIR": "dist-static",
-        "VITE_ROOMS_URL": "https://mini-games-rooms.vitruviansoftware.dev",
-    },
+    env = {"OUT_DIR": "dist-static"},
     out_dirs = ["dist-static"],
 )
 

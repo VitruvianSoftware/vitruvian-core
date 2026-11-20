@@ -20,12 +20,23 @@
  * SOFTWARE.
  */
 
+import * as Sentry from "@sentry/node";
 import express from "express";
 import { existsSync } from "fs";
 import path from "path";
 import { createServer } from "http";
 import { fileURLToPath } from "url";
 import { attachGameServer, parseOrigins } from "./server/gameServer.ts";
+
+// Error reporting to the self-hosted Sentry when SENTRY_DSN is set (the
+// homelab deployment sets it; local runs do not). Uncaught errors are sent.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV ?? "development",
+    tracesSampleRate: 0,
+  });
+}
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);

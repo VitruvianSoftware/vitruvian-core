@@ -43,8 +43,28 @@ if grep -q "$rooms" "$server_dist"/assets/*.js; then
 	echo "FAIL: the server build points at $rooms instead of its own server" >&2
 	exit 1
 fi
+# Analytics and error reporting belong to the public site only: the Pages
+# build (.env.pages) must carry the Umami tracker and the Sentry DSN, and the
+# server build must carry neither.
+umami_id="b59edda9-e89f-414b-abf3-f0a9c8e80932"
+if ! grep -q "data-website-id=\"$umami_id\"" "$static_dist/index.html"; then
+	echo "FAIL: the GitHub Pages build has no Umami tracker for $umami_id" >&2
+	exit 1
+fi
+if grep -q "stats.vitruviansoftware.dev" "$server_dist/index.html"; then
+	echo "FAIL: the server build carries the Umami tracker" >&2
+	exit 1
+fi
+if ! grep -q "sentry-ingest.ipv1337.dev" "$static_dist"/assets/*.js; then
+	echo "FAIL: the GitHub Pages build has no Sentry DSN" >&2
+	exit 1
+fi
+if grep -q "sentry-ingest.ipv1337.dev" "$server_dist"/assets/*.js; then
+	echo "FAIL: the server build carries the Sentry DSN" >&2
+	exit 1
+fi
 if [ ! -f "$static_dist/index.html" ]; then
 	echo "FAIL: the static build has no index.html" >&2
 	exit 1
 fi
-echo "OK: the Pages build uses the homelab rooms server; the server build uses itself"
+echo "OK: the Pages build uses the homelab rooms server, Umami and Sentry; the server build uses itself and neither"
