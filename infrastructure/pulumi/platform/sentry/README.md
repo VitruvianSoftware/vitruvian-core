@@ -30,7 +30,25 @@ so newly added Sentry projects receive PagerDuty alert rules in the same run):
   `pulumi preview --json` and checks it with `//tools/pulumi:refuse-destructive-plan`.
   If the plan contains any `delete`, `replace`, `create-replacement`, or
   `delete-replaced` step, the job refuses to apply (deleting a Sentry project
-  destroys its data); a human must apply destructive changes deliberately.
+  destroys its data), unless the change was approved.
+  To delete or replace a resource on purpose, approve it in a **commit message**
+  in the PR, one line per resource, using the exact URN the refusal prints:
+
+  ```text
+  Allow-destroy: urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-old
+  ```
+
+  The push to `main` then applies that change and nothing else destructive.
+  Commit messages are used rather than the PR description because they land on
+  `main` unchanged (it squashes with the commit messages) and cannot be edited
+  after review. A replace needs only its one URN; a resource with children
+  needs a line for each. The 6-hourly schedule and manual runs never honour an
+  approval, so if the push run fails for another reason, re-run that same run.
+  If a later push cancelled the approving run while it waited in the queue,
+  merge a new commit with the line instead: re-running the cancelled run would
+  apply its older checkout. This relies on the repository squashing with
+  commit messages (`COMMIT_MESSAGES`); if that changes to the PR description,
+  a description line would start approving deletes.
 - **Route**: joins the Headscale mesh (`tag:ci`) via
   [`.github/actions/homelab-tunnel-setup`](../../../../.github/actions/homelab-tunnel-setup/action.yml)
   and forwards `sentry.lab.ipv1337.dev:443` through Envoy Gateway's

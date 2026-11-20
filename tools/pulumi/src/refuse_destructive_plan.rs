@@ -21,6 +21,13 @@
 //! Refuses a `pulumi preview --json` plan if any step (or `changeSummary`)
 //! deletes, replaces, or falls outside the non-destructive allowlist.
 //!
+//! A destructive step is let through only when its exact URN is approved by an
+//! `Allow-destroy: <urn>` line in a commit message of the push being applied
+//! (`--allow-destroy-from-event "$GITHUB_EVENT_PATH"`, read from the event's
+//! `commits[].message`). Commit messages are reviewed with the PR and cannot be
+//! edited after merge, unlike the PR description. Scheduled and manual runs pass
+//! no event, so they never honour an approval.
+//!
 //! Standard library only and free of `crate::` paths ON PURPOSE: CI workflows
 //! without Bazel build the binary straight from the checkout with
 //! `rustc --edition 2021 -O tools/pulumi/src/bin/refuse_destructive_plan.rs`,
@@ -366,6 +373,7 @@ struct PlanVerdict {
     total_steps: usize,
     destructive_steps: Vec<DestructiveStep>,
     destructive_summary: Vec<(String, String)>,
+    allowed_steps: Vec<DestructiveStep>,
 }
 
 impl PlanVerdict {
@@ -374,7 +382,7 @@ impl PlanVerdict {
     }
 }
 
-fn check_plan_json(raw: &str) -> Result<PlanVerdict, String> {
+fn check_plan_json(raw: &str, allow: &[String]) -> Result<PlanVerdict, String> {
     if raw.trim().is_empty() {
         return Err("Pulumi preview JSON is empty".to_string());
     }
@@ -388,6 +396,7 @@ fn check_plan_json(raw: &str) -> Result<PlanVerdict, String> {
         .ok_or_else(|| "Pulumi preview JSON is missing a \"steps\" array".to_string())?;
 
     let mut destructive_steps = Vec::new();
+    let mut allowed_steps = Vec::new();
     for (idx, step) in steps.iter().enumerate() {
         if step.as_obj().is_none() {
             return Err(format!("step[{idx}] in preview JSON is not an object"));
@@ -416,12 +425,17 @@ fn check_plan_json(raw: &str) -> Result<PlanVerdict, String> {
                 .or_else(|| rtype_from_urn(urn))
                 .unwrap_or("<unknown-type>");
             let name = name_from_urn(urn);
-            destructive_steps.push(DestructiveStep {
+            let step = DestructiveStep {
                 op: op.to_string(),
                 rtype: rtype.to_string(),
                 name: name.to_string(),
                 urn: urn.to_string(),
-            });
+            };
+            if allow.iter().any(|a| a == urn) {
+                allowed_steps.push(step);
+            } else {
+                destructive_steps.push(step);
+            }
         }
     }
 
@@ -442,7 +456,15 @@ fn check_plan_json(raw: &str) -> Result<PlanVerdict, String> {
                 };
                 let is_zero = raw_num.parse::<f64>().map(|v| v == 0.0).unwrap_or(false);
                 if !is_zero && !SAFE_OPS.contains(&op.as_str()) {
-                    destructive_summary.push((op.clone(), raw_num.to_string()));
+                    // A summary count is accounted for only when the approved
+                    // steps with that op explain all of it. A larger count means
+                    // a destructive change with no step to check, so it stays.
+                    let approved = allowed_steps.iter().filter(|s| &s.op == op).count();
+                    let explained = destructive_steps.iter().all(|s| &s.op != op)
+                        && raw_num.parse::<usize>().ok() == Some(approved);
+                    if !explained {
+                        destructive_summary.push((op.clone(), raw_num.to_string()));
+                    }
                 }
             }
         }
@@ -452,13 +474,114 @@ fn check_plan_json(raw: &str) -> Result<PlanVerdict, String> {
         total_steps: steps.len(),
         destructive_steps,
         destructive_summary,
+        allowed_steps,
     })
+}
+
+const ALLOW_KEY: &str = "allow-destroy:";
+const MAX_SHOWN_VALUE: usize = 200;
+
+/// Pulls `Allow-destroy: <urn>` lines out of commit-message text. Returns the
+/// approved URNs and the values of `Allow-destroy:` lines that are not a single
+/// Pulumi URN (they approve nothing; the caller warns about them).
+fn parse_allow_destroy_lines(text: &str) -> (Vec<String>, Vec<String>) {
+    let mut urns: Vec<String> = Vec::new();
+    let mut invalid = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(head) = line.get(..ALLOW_KEY.len()) else {
+            continue;
+        };
+        if !head.eq_ignore_ascii_case(ALLOW_KEY) {
+            continue;
+        }
+        let value = line[ALLOW_KEY.len()..].trim();
+        let is_urn = value.starts_with("urn:pulumi:")
+            && value.matches("::").count() >= 3
+            && !value.chars().any(char::is_whitespace);
+        if is_urn {
+            if !urns.iter().any(|u| u == value) {
+                urns.push(value.to_string());
+            }
+        } else {
+            invalid.push(value.chars().take(MAX_SHOWN_VALUE).collect());
+        }
+    }
+    (urns, invalid)
+}
+
+/// Reads the approved URNs from a GitHub push event payload
+/// (`$GITHUB_EVENT_PATH`): every `Allow-destroy:` line in `commits[].message`.
+/// Errors on anything that is not a push payload, so a wrong file can never
+/// approve anything.
+fn allow_list_from_event_json(raw: &str) -> Result<(Vec<String>, Vec<String>), String> {
+    let root = JsonParser::new(raw).parse_root()?;
+    let commits = root
+        .get("commits")
+        .and_then(JsonValue::as_arr)
+        .ok_or_else(|| "event payload has no \"commits\" array (not a push event)".to_string())?;
+    let mut text = String::new();
+    for (idx, c) in commits.iter().enumerate() {
+        let msg = c
+            .get("message")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| format!("commits[{idx}] in event payload has no string \"message\""))?;
+        text.push_str(msg);
+        text.push('\n');
+    }
+    Ok(parse_allow_destroy_lines(&text))
+}
+
+/// Loads the approvals named by `--allow-destroy-from-event <path>`, printing
+/// a warning for each malformed `Allow-destroy:` line. An event that cannot be
+/// read approves nothing (with a warning) rather than failing the run: no
+/// approvals is the safe default, and a safe plan must still apply.
+pub fn load_allow_list(label: &str, event_path: &str) -> Vec<String> {
+    let parsed = std::fs::read_to_string(event_path)
+        .map_err(|e| format!("could not read {event_path}: {e}"))
+        .and_then(|raw| allow_list_from_event_json(&raw));
+    let (urns, invalid) = match parsed {
+        Ok(v) => v,
+        Err(e) => {
+            println!(
+                "::warning::plan-guard ({label}): no Allow-destroy approvals were read ({e}); every delete or replace will be refused"
+            );
+            return Vec::new();
+        }
+    };
+    for v in &invalid {
+        println!(
+            "::warning::plan-guard ({label}): ignoring an Allow-destroy line that is not one Pulumi URN: {v:?}"
+        );
+    }
+    urns
+}
+
+/// Splits `[--allow-destroy-from-event <path>]` off the end of `args`.
+/// Returns the positional args and the optional path; Err on a malformed flag.
+pub fn split_allow_flag(args: &[String]) -> Result<(Vec<String>, Option<String>), ()> {
+    let mut positional = Vec::new();
+    let mut event = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--allow-destroy-from-event" {
+            match it.next() {
+                Some(p) if !p.trim().is_empty() && event.is_none() => event = Some(p.clone()),
+                _ => return Err(()),
+            }
+        } else if a.starts_with("--") {
+            return Err(());
+        } else {
+            positional.push(a.clone());
+        }
+    }
+    Ok((positional, event))
 }
 
 /// Validate a `pulumi preview --json` payload and print the guard verdict.
 /// Returns 0 if non-destructive, 1 if destructive or unreadable/malformed.
-pub fn check_and_report(label: &str, raw: &str) -> i32 {
-    let verdict = match check_plan_json(raw) {
+pub fn check_and_report(label: &str, raw: &str, allow: &[String]) -> i32 {
+    let verdict = match check_plan_json(raw, allow) {
         Ok(v) => v,
         Err(e) => {
             eprintln!(
@@ -471,11 +594,32 @@ pub fn check_and_report(label: &str, raw: &str) -> i32 {
         }
     };
 
+    for a in allow {
+        if !verdict.allowed_steps.iter().any(|s| &s.urn == a)
+            && !verdict.destructive_steps.iter().any(|s| &s.urn == a)
+        {
+            println!(
+                "::notice::plan-guard ({label}): Allow-destroy {a} matches nothing this plan deletes or replaces"
+            );
+        }
+    }
+
     if verdict.is_safe() {
-        println!(
-            "plan-guard ({label}): non-destructive ({} step(s) checked; 0 delete/replace) — safe to apply",
-            verdict.total_steps
-        );
+        if verdict.allowed_steps.is_empty() {
+            println!(
+                "plan-guard ({label}): non-destructive ({} step(s) checked; 0 delete/replace) — safe to apply",
+                verdict.total_steps
+            );
+        } else {
+            println!(
+                "::warning::plan-guard ({label}): applying {} destructive step(s) approved by Allow-destroy in the merged commits ({} step(s) checked)",
+                verdict.allowed_steps.len(),
+                verdict.total_steps
+            );
+            for s in &verdict.allowed_steps {
+                println!("  - approved {}: {} {} ({})", s.op, s.rtype, s.name, s.urn);
+            }
+        }
         return 0;
     }
 
@@ -497,13 +641,19 @@ pub fn check_and_report(label: &str, raw: &str) -> i32 {
     };
 
     eprintln!(
-        "::error::Refusing to apply {label}: Pulumi preview contains destructive changes ({detail}). Deleting or replacing a Sentry resource can destroy data; a human must review and apply this deliberately."
+        "::error::Refusing to apply {label}: Pulumi preview contains destructive changes ({detail}). Deleting or replacing a resource can destroy its data. If this is intended, add one `Allow-destroy: <urn>` line per resource to a commit message in the PR and merge it; scheduled runs never apply a delete. If an approved push's run was cancelled by a later push, merge a new commit carrying the line (re-running the old run would apply an older checkout)."
     );
     eprintln!(
         "error: Refusing to apply {label}: Pulumi preview contains destructive changes ({detail}); refusing to run pulumi up."
     );
     for s in &verdict.destructive_steps {
         eprintln!("  - {}: {} {} ({})", s.op, s.rtype, s.name, s.urn);
+    }
+    for s in &verdict.allowed_steps {
+        eprintln!(
+            "  - approved, but held back with the rest: {}: {} {} ({})",
+            s.op, s.rtype, s.name, s.urn
+        );
     }
     for (op, count) in &verdict.destructive_summary {
         if !verdict.destructive_steps.iter().any(|s| &s.op == op) {
@@ -513,14 +663,25 @@ pub fn check_and_report(label: &str, raw: &str) -> i32 {
     1
 }
 
-/// Entry point: `refuse-destructive-plan <stack-label> <preview-json-path>`.
+const USAGE: &str = "usage: refuse-destructive-plan <stack-label> <preview-json-path> [--allow-destroy-from-event <github-event.json>]";
+
+/// Entry point: `refuse-destructive-plan <stack-label> <preview-json-path>
+/// [--allow-destroy-from-event <github-event.json>]`.
 pub fn run(args: &[String]) -> i32 {
-    if args.len() != 2 || args[0].trim().is_empty() || args[1].trim().is_empty() {
-        eprintln!("usage: refuse-destructive-plan <stack-label> <preview-json-path>");
+    let Ok((pos, event)) = split_allow_flag(args) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    if pos.len() != 2 || pos[0].trim().is_empty() || pos[1].trim().is_empty() {
+        eprintln!("{USAGE}");
         return 2;
     }
-    let label = &args[0];
-    let path = &args[1];
+    let label = &pos[0];
+    let path = &pos[1];
+    let allow = event
+        .as_deref()
+        .map(|p| load_allow_list(label, p))
+        .unwrap_or_default();
 
     let raw = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -535,7 +696,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
-    check_and_report(label, &raw)
+    check_and_report(label, &raw, &allow)
 }
 
 #[cfg(test)]
@@ -554,7 +715,7 @@ mod tests {
           ],
           "changeSummary": {"create": 1, "update": 1, "same": 3}
         }"#;
-        let verdict = check_plan_json(json).expect("valid safe plan");
+        let verdict = check_plan_json(json, &[]).expect("valid safe plan");
         assert!(verdict.is_safe());
         assert_eq!(verdict.total_steps, 5);
     }
@@ -577,7 +738,7 @@ mod tests {
             let json = format!(
                 r#"{{"steps": [{{"op": "{op}", "urn": "urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-backstage", "oldState": {{"type": "sentry:index/sentryProject:SentryProject"}}}}]}}"#
             );
-            let verdict = check_plan_json(&json).expect("parses");
+            let verdict = check_plan_json(&json, &[]).expect("parses");
             assert!(!verdict.is_safe(), "op {op} must be rejected");
             assert_eq!(verdict.destructive_steps.len(), 1);
             assert_eq!(verdict.destructive_steps[0].op, op);
@@ -592,7 +753,7 @@ mod tests {
     #[test]
     fn rejects_destructive_change_summary_even_without_destructive_step() {
         let json = r#"{"steps": [{"op": "same", "urn": "urn:pulumi:p::s::t::n"}], "changeSummary": {"delete": 1, "same": 1}}"#;
-        let verdict = check_plan_json(json).expect("parses");
+        let verdict = check_plan_json(json, &[]).expect("parses");
         assert!(!verdict.is_safe());
         assert_eq!(
             verdict.destructive_summary,
@@ -611,7 +772,10 @@ mod tests {
             r#"{"steps": [{"urn": "x"}]}"#,
             "{bad",
         ] {
-            assert!(check_plan_json(bad).is_err(), "expected error for {bad:?}");
+            assert!(
+                check_plan_json(bad, &[]).is_err(),
+                "expected error for {bad:?}"
+            );
         }
     }
 
@@ -624,7 +788,7 @@ mod tests {
             r#"{"steps":[{"op":"same","urn":"urn:pulumi:p::s::t::n"}],"changeSummary":{"delete":1,"delete":0}}"#,
         ] {
             assert!(
-                check_plan_json(dup).is_err(),
+                check_plan_json(dup, &[]).is_err(),
                 "expected duplicate-key error for {dup:?}"
             );
         }
@@ -639,9 +803,143 @@ mod tests {
             r#"{"steps":[{"op":"\u07"#,
         ] {
             assert!(
-                check_plan_json(bad).is_err(),
+                check_plan_json(bad, &[]).is_err(),
                 "expected unicode-escape error for {bad:?}"
             );
+        }
+    }
+
+    const P: &str =
+        "urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-old";
+    const Q: &str =
+        "urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-keep";
+
+    fn delete_plan(urns: &[&str], summary_delete: usize) -> String {
+        let steps: Vec<String> = urns
+            .iter()
+            .map(|u| format!(r#"{{"op":"delete","urn":"{u}"}}"#))
+            .collect();
+        format!(
+            r#"{{"steps":[{}],"changeSummary":{{"delete":{summary_delete}}}}}"#,
+            steps.join(",")
+        )
+    }
+
+    #[test]
+    fn approved_delete_is_safe_and_reported_as_approved() {
+        let v = check_plan_json(&delete_plan(&[P], 1), &[P.to_string()]).unwrap();
+        assert!(v.is_safe(), "{v:?}");
+        assert_eq!(v.allowed_steps.len(), 1);
+        assert_eq!(v.allowed_steps[0].urn, P);
+    }
+
+    #[test]
+    fn approval_for_one_resource_does_not_cover_another() {
+        let v = check_plan_json(&delete_plan(&[P, Q], 2), &[P.to_string()]).unwrap();
+        assert!(!v.is_safe());
+        assert_eq!(v.destructive_steps.len(), 1);
+        assert_eq!(v.destructive_steps[0].urn, Q);
+        // The summary still counts Q's delete, so it is not explained away.
+        assert_eq!(v.destructive_summary, vec![("delete".into(), "2".into())]);
+    }
+
+    #[test]
+    fn approval_must_match_the_whole_urn() {
+        for near in [
+            &P[..P.len() - 1],
+            "project-old",
+            "urn:pulumi:staging::sentry::sentry:index/sentryProject:SentryProject::project-old",
+        ] {
+            let v = check_plan_json(&delete_plan(&[P], 1), &[near.to_string()]).unwrap();
+            assert!(!v.is_safe(), "{near} must not approve {P}");
+        }
+    }
+
+    #[test]
+    fn summary_count_beyond_approved_steps_is_refused() {
+        // changeSummary says two deletes but only one (approved) step is listed.
+        let v = check_plan_json(&delete_plan(&[P], 2), &[P.to_string()]).unwrap();
+        assert!(!v.is_safe());
+        assert!(v.destructive_steps.is_empty());
+        assert_eq!(v.destructive_summary, vec![("delete".into(), "2".into())]);
+    }
+
+    #[test]
+    fn approved_replace_covers_all_of_its_steps() {
+        let json = format!(
+            r#"{{"steps":[{{"op":"create-replacement","urn":"{P}"}},{{"op":"replace","urn":"{P}"}},{{"op":"delete-replaced","urn":"{P}"}}],"changeSummary":{{"replace":1,"same":3}}}}"#
+        );
+        let v = check_plan_json(&json, &[P.to_string()]).unwrap();
+        assert!(v.is_safe(), "{v:?}");
+        assert_eq!(v.allowed_steps.len(), 3);
+    }
+
+    #[test]
+    fn parses_allow_destroy_lines_and_flags_bad_values() {
+        let text = format!(
+            "fix(sentry): drop the old project\n\nbody text\nAllow-destroy: {P}\n  allow-DESTROY:   {Q}  \nAllow-destroy: {P}\nAllow-destroy: project-old\nAllow-destroy: {P} extra\nNot-Allow-destroy: {Q}\nsee Allow-destroy: {Q} inline\nAllow-destroy:\n"
+        );
+        let (urns, invalid) = parse_allow_destroy_lines(&text);
+        assert_eq!(urns, vec![P.to_string(), Q.to_string()]);
+        assert_eq!(
+            invalid,
+            vec![
+                "project-old".to_string(),
+                format!("{P} extra"),
+                String::new()
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_approvals_from_push_event_commits() {
+        let event = format!(
+            r#"{{"ref":"refs/heads/main","commits":[{{"message":"a\n\nAllow-destroy: {P}"}},{{"message":"b"}}],"head_commit":{{"message":"Allow-destroy: {Q}"}}}}"#
+        );
+        let (urns, invalid) = allow_list_from_event_json(&event).unwrap();
+        // head_commit is not read: only the commits of this push count.
+        assert_eq!(urns, vec![P.to_string()]);
+        assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn non_push_event_payloads_fail_closed() {
+        for bad in [
+            r#"{"schedule":"23 */6 * * *"}"#,
+            r#"{"commits":null}"#,
+            r#"{"commits":[{"id":"abc"}]}"#,
+            r#"{"commits":[{"message":1}]}"#,
+            r#"{"commits":[],"commits":[]}"#,
+            "not json",
+        ] {
+            assert!(allow_list_from_event_json(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn allow_flag_parsing() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            split_allow_flag(&a(&["l", "p"])).unwrap(),
+            (a(&["l", "p"]), None)
+        );
+        assert_eq!(
+            split_allow_flag(&a(&["l", "--allow-destroy-from-event", "e.json", "p"])).unwrap(),
+            (a(&["l", "p"]), Some("e.json".to_string()))
+        );
+        for bad in [
+            &["l", "--allow-destroy-from-event"][..],
+            &["l", "--allow-destroy-from-event", ""][..],
+            &[
+                "l",
+                "--allow-destroy-from-event",
+                "a",
+                "--allow-destroy-from-event",
+                "b",
+            ][..],
+            &["l", "--allow-destroy", "urn"][..],
+        ] {
+            assert!(split_allow_flag(&a(bad)).is_err(), "{bad:?}");
         }
     }
 }

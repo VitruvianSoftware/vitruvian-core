@@ -27,8 +27,10 @@ name: sentry-apply
 # so newly created Sentry projects receive PagerDuty high-priority alert rules
 # in the same run. Before either `pulumi up`, a non-destructive plan guard
 # runs `pulumi preview --json` and fails closed if any delete or replace step
-# is planned. Push to main and the 6-hour schedule run `up`; workflow_dispatch
-# defaults to `preview`.
+# is planned, unless a commit in the pushed range approves that exact resource
+# with an `Allow-destroy: <urn>` line (push runs only; see
+# tools/pulumi/src/refuse_destructive_plan.rs). Push to main and the 6-hour
+# schedule run `up`; workflow_dispatch defaults to `preview`.
 
 on:
   push:
@@ -207,7 +209,14 @@ jobs:
             if [ "$action" = "up" ]; then
               # guarded-up runs `pulumi preview --json` -> refuse-destructive-plan
               # -> `pulumi up` as one atomic unit and retries the whole unit on 409.
-              "$guarded_up" "sentry production" 2>&1 | tee -a "$out_file"
+              # Only a push to main carries approvals: `Allow-destroy: <urn>` lines in
+              # the merged commits let those exact resources be deleted or replaced.
+              # Scheduled and manual runs never apply a delete.
+              allow=()
+              if [ "${EVENT_NAME:-}" = "push" ]; then
+                allow=(--allow-destroy-from-event "${GITHUB_EVENT_PATH:?}")
+              fi
+              "$guarded_up" "sentry production" ${allow[@]+"${allow[@]}"} 2>&1 | tee -a "$out_file"
               ec="${PIPESTATUS[0]}"
             else
               "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"
@@ -276,7 +285,14 @@ jobs:
             if [ "$action" = "up" ]; then
               # guarded-up runs `pulumi preview --json` -> refuse-destructive-plan
               # -> `pulumi up` as one atomic unit and retries the whole unit on 409.
-              "$guarded_up" "sentry-pagerduty production" 2>&1 | tee -a "$out_file"
+              # Only a push to main carries approvals: `Allow-destroy: <urn>` lines in
+              # the merged commits let those exact resources be deleted or replaced.
+              # Scheduled and manual runs never apply a delete.
+              allow=()
+              if [ "${EVENT_NAME:-}" = "push" ]; then
+                allow=(--allow-destroy-from-event "${GITHUB_EVENT_PATH:?}")
+              fi
+              "$guarded_up" "sentry-pagerduty production" ${allow[@]+"${allow[@]}"} 2>&1 | tee -a "$out_file"
               ec="${PIPESTATUS[0]}"
             else
               "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"

@@ -188,3 +188,115 @@ fn bad_cli_usage_exits_2() {
         assert!(stderr(&o).contains("usage: refuse-destructive-plan"));
     }
 }
+
+const OLD: &str =
+    "urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-old";
+
+fn run_guard_with_event(plan: &str, event: &str) -> std::process::Output {
+    let d = tempdir("plan-guard-allow");
+    let plan_path = d.join("plan.json");
+    let event_path = d.join("event.json");
+    std::fs::write(&plan_path, plan).unwrap();
+    std::fs::write(&event_path, event).unwrap();
+    let mut c = cmd(&bin("REFUSE_DESTRUCTIVE_PLAN_BIN"), "/usr/bin:/bin");
+    c.arg("sentry production")
+        .arg(&plan_path)
+        .arg("--allow-destroy-from-event")
+        .arg(&event_path);
+    run(c)
+}
+
+fn delete_old_plan() -> String {
+    format!(r#"{{"steps":[{{"op":"delete","urn":"{OLD}"}}],"changeSummary":{{"delete":1}}}}"#)
+}
+
+#[test]
+fn delete_approved_in_a_pushed_commit_exits_0_with_a_warning() {
+    let event = format!(
+        r#"{{"commits":[{{"message":"chore(sentry): retire project-old\n\nAllow-destroy: {OLD}\n"}}]}}"#
+    );
+    let o = run_guard_with_event(&delete_old_plan(), &event);
+    assert_eq!(code(&o), 0, "stderr: {}", stderr(&o));
+    let out = stdout(&o);
+    assert!(
+        out.contains("::warning::plan-guard (sentry production): applying 1 destructive step(s) approved by Allow-destroy"),
+        "stdout: {out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "approved delete: sentry:index/sentryProject:SentryProject project-old ({OLD})"
+        )),
+        "stdout: {out}"
+    );
+}
+
+#[test]
+fn same_delete_without_approval_in_the_push_is_refused() {
+    let event = r#"{"commits":[{"message":"chore: unrelated"}]}"#;
+    let o = run_guard_with_event(&delete_old_plan(), event);
+    assert_eq!(code(&o), 1);
+    assert!(
+        stderr(&o).contains("Allow-destroy: <urn>"),
+        "stderr: {}",
+        stderr(&o)
+    );
+}
+
+#[test]
+fn unused_and_malformed_approvals_are_reported_but_approve_nothing() {
+    let safe =
+        r#"{"steps":[{"op":"same","urn":"urn:pulumi:p::s::t::n"}],"changeSummary":{"same":1}}"#;
+    let event = format!(
+        r#"{{"commits":[{{"message":"x\n\nAllow-destroy: {OLD}\nAllow-destroy: project-old"}}]}}"#
+    );
+    let o = run_guard_with_event(safe, &event);
+    assert_eq!(code(&o), 0, "stderr: {}", stderr(&o));
+    let out = stdout(&o);
+    assert!(
+        out.contains(&format!("Allow-destroy {OLD} matches nothing")),
+        "stdout: {out}"
+    );
+    assert!(
+        out.contains("ignoring an Allow-destroy line that is not one Pulumi URN: \"project-old\""),
+        "stdout: {out}"
+    );
+    assert!(out.contains("non-destructive"), "stdout: {out}");
+}
+
+#[test]
+fn an_unreadable_event_approves_nothing_but_does_not_block_a_safe_plan() {
+    let safe =
+        r#"{"steps":[{"op":"same","urn":"urn:pulumi:p::s::t::n"}],"changeSummary":{"same":1}}"#;
+    let approving =
+        format!(r#"{{"schedule":"x","head_commit":{{"message":"Allow-destroy: {OLD}"}}}}"#);
+    for event in [
+        r#"{"schedule":"23 */6 * * *"}"#,
+        "not json",
+        approving.as_str(),
+    ] {
+        let o = run_guard_with_event(&delete_old_plan(), event);
+        assert_eq!(code(&o), 1, "delete must be refused for event {event}");
+        assert!(
+            stdout(&o).contains("no Allow-destroy approvals were read"),
+            "stdout: {}",
+            stdout(&o)
+        );
+        let o = run_guard_with_event(safe, event);
+        assert_eq!(
+            code(&o),
+            0,
+            "safe plan must apply for event {event}: {}",
+            stderr(&o)
+        );
+    }
+}
+
+#[test]
+fn malformed_allow_flag_exits_2() {
+    let o = run_guard(
+        &["sentry production", "--allow-destroy-from-event"],
+        Some("{}"),
+    );
+    assert_eq!(code(&o), 2, "stderr: {}", stderr(&o));
+    assert!(stderr(&o).contains("usage: refuse-destructive-plan"));
+}
