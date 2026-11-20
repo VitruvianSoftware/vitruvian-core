@@ -324,6 +324,7 @@ impl Context {
             ("META", "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)"),
             ("TECHDOCS", "TechDocs documentation parity (catalog-info.yaml techdocs-ref → valid mkdocs.yml)"),
             ("OWNERS", "OWNERS governance (per-directory OWNERS → .github/CODEOWNERS)"),
+            ("PKGINDEX", "Packages index (packages/**/catalog-info.yaml → packages/README.md)"),
             ("ROOT", "Root directory taxonomy (strict 4-layer monorepo boundary)"),
             ("MERGEQ", "Merge-queue required checks (repo-config → workflow merge_group jobs)"),
             ("CONCUR", "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)"),
