@@ -8,16 +8,19 @@ import SwiftUI
 /// Media tile with sender attribution (`MediaWithSender.tsx`) rendered in the **Media** tab of `MediaViewerView`.
 public struct MediaWithSender: View {
     public let hit: MediaHit
+    public let reactions: [ReactionChip]
     public let isSelected: Bool
     public let now: () -> Date
     public let onOpen: () -> Void
     public let onToggleSelect: () -> Void
     public let onGoToMessage: () -> Void
 
+    @Environment(\.redactNamesAndPictures) private var isRedacted
     @State private var asyncThumbnail: CGImage?
 
     public init(
         hit: MediaHit,
+        reactions: [ReactionChip] = [],
         isSelected: Bool,
         now: @escaping () -> Date = { Date() },
         onOpen: @escaping () -> Void,
@@ -25,6 +28,7 @@ public struct MediaWithSender: View {
         onGoToMessage: @escaping () -> Void
     ) {
         self.hit = hit
+        self.reactions = reactions
         self.isSelected = isSelected
         self.now = now
         self.onOpen = onOpen
@@ -33,8 +37,16 @@ public struct MediaWithSender: View {
     }
 
     private var senderDisplayName: String {
-        if hit.mine { return String(localized: "You") }
-        return hit.senderName.isEmpty ? hit.sender : hit.senderName
+        PhotoViewerPresentation.displaySender(
+            sender: hit.sender,
+            senderName: hit.senderName,
+            mine: hit.mine,
+            redacted: isRedacted
+        )
+    }
+
+    private var reactionChips: [ReactionChip] {
+        reactions.filter { !$0.key.isEmpty && $0.count > 0 }
     }
 
     public var body: some View {
@@ -90,10 +102,13 @@ public struct MediaWithSender: View {
             }
 
             HStack(spacing: 6) {
+                let avatarIdentity = isRedacted
+                    ? AvatarColor.identity(id: senderDisplayName, fallbackName: senderDisplayName)
+                    : AvatarColor.identity(id: hit.sender, fallbackName: senderDisplayName)
                 AvatarView(
                     path: "",
                     initials: String(Self.initials(of: senderDisplayName).prefix(1)),
-                    identity: AvatarColor.identity(id: hit.sender, fallbackName: senderDisplayName)
+                    identity: avatarIdentity
                 )
                 .frame(width: 22, height: 22)
 
@@ -101,10 +116,12 @@ public struct MediaWithSender: View {
                     Text(verbatim: senderDisplayName)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
-                    Text(verbatim: hit.fileName)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if let dateText = PhotoViewerPresentation.formattedDate(forMillis: hit.ts) {
+                        Text(verbatim: dateText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer(minLength: 4)
@@ -118,6 +135,38 @@ public struct MediaWithSender: View {
                 .help(String(localized: "Go to Message"))
             }
             .padding(.horizontal, 2)
+
+            if !reactionChips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(reactionChips) { summary in
+                            HStack(spacing: 3) {
+                                ReactionKeyView(chip: summary, size: 11)
+                                Text(verbatim: "\(summary.count)")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(summary.mine ? Color.accentColor : .secondary)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(
+                                    summary.mine ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.07)
+                                )
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    summary.mine ? Color.accentColor.opacity(0.35) : Color.clear,
+                                    lineWidth: 0.75
+                                )
+                            )
+                            .help(summary.tooltipText(redacted: isRedacted))
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(summary.summary(redacted: isRedacted))
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
         }
         .padding(6)
         .background(
@@ -158,6 +207,7 @@ public struct MediaViewerView: View {
     @ObservedObject public var model: MediaViewerModel
     public var chatTitle: String
     public var now: () -> Date
+    public var reactionsForEvent: (String) -> [ReactionChip]
     public var onOpenLightbox: (MediaHit) -> Void
     public var onGoToMessage: (MediaHit) -> Void
     public var onDownloadSelected: () -> Void
@@ -167,6 +217,7 @@ public struct MediaViewerView: View {
         model: MediaViewerModel,
         chatTitle: String = "",
         now: @escaping () -> Date = { Date() },
+        reactionsForEvent: @escaping (String) -> [ReactionChip] = { _ in [] },
         onOpenLightbox: @escaping (MediaHit) -> Void = { _ in },
         onGoToMessage: @escaping (MediaHit) -> Void = { _ in },
         onDownloadSelected: @escaping () -> Void = {},
@@ -175,6 +226,7 @@ public struct MediaViewerView: View {
         self.model = model
         self.chatTitle = chatTitle
         self.now = now
+        self.reactionsForEvent = reactionsForEvent
         self.onOpenLightbox = onOpenLightbox
         self.onGoToMessage = onGoToMessage
         self.onDownloadSelected = onDownloadSelected
@@ -309,6 +361,7 @@ public struct MediaViewerView: View {
                 ForEach(model.items) { hit in
                     MediaWithSender(
                         hit: hit,
+                        reactions: reactionsForEvent(hit.eventID),
                         isSelected: model.selectedEventIDs.contains(hit.eventID),
                         now: now,
                         onOpen: { onOpenLightbox(hit) },
@@ -625,9 +678,11 @@ public struct MediaViewerWindow: View {
     }
 
     public var body: some View {
+        let reactionsByEvent = CarouselItem.reactionsByEventID(from: conversation.items + conversation.thread.items)
         MediaViewerView(
             model: viewerModel,
             chatTitle: resolvedChatTitle,
+            reactionsForEvent: { reactionsByEvent[$0] ?? [] },
             onOpenLightbox: { hit in
                 conversation.carousel.openForRoom(
                     selectedEventID: hit.eventID,

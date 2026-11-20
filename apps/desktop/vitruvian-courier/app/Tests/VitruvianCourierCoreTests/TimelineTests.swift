@@ -308,6 +308,66 @@ final class TimelineTests: XCTestCase {
         }
     }
 
+    func testDateDividerAboveFirstMessageAndWhenOlderPagesPrepend() {
+        let day13 = "day-\(at(13, 0, 0))"
+        let day14 = "day-\(at(14, 0, 0))"
+
+        // 1. A chat with a single loaded message has a date divider directly above it.
+        let single = build([message("$1", ts: at(14, 10, 0))])
+        XCTAssertEqual(single.map(\.id), [day14, "$1"])
+
+        // 2. Leading reactions/redactions for unseen events do not emit an empty divider or displace the first day divider.
+        let withLeadingMeta = build([
+            reaction("$r0", to: "$unloaded", key: "👍", ts: at(13, 9, 0)),
+            redaction("$del0", of: "$unloaded", ts: at(13, 9, 30)),
+            message("$1", ts: at(14, 10, 0)),
+        ])
+        XCTAssertEqual(withLeadingMeta.map(\.id), [day14, "$1"])
+
+        // 3. Prepending an older page on the same day keeps exactly one divider above the first message.
+        let newer = [message("$3", ts: at(14, 12, 0), seq: 3)]
+        let olderSameDay = [
+            message("$1", ts: at(14, 9, 0), seq: 1),
+            message("$2", ts: at(14, 9, 5), seq: 2),
+        ]
+        let mergedSameDay = build(olderSameDay + newer)
+        XCTAssertEqual(mergedSameDay.map(\.id), [day14, "$1", "$2", "$3"])
+        XCTAssertEqual(mergedSameDay.filter { $0.id == day14 }.count, 1)
+
+        // 4. Prepending an older page from an earlier day emits the earlier day divider above it and keeps the day boundary divider.
+        let olderPrevDay = [message("$0", ts: at(13, 22, 0), seq: 0)]
+        let mergedAcrossDays = build(olderPrevDay + olderSameDay + newer)
+        XCTAssertEqual(mergedAcrossDays.map(\.id), [day13, "$0", day14, "$1", "$2", "$3"])
+
+        // 5. Consecutive membership events spanning midnight get their own day dividers when updates are shown.
+        let joinDay13 = Event(
+            eventID: "$m1", roomID: "!room", sender: "@ann:example.test", senderName: "Ann",
+            mine: false, type: "m.room.member", content: json(#"{"membership":"join"}"#),
+            ts: at(13, 23, 55), seq: 1, status: .sent
+        )
+        let joinDay14 = Event(
+            eventID: "$m2", roomID: "!room", sender: "@bob:example.test", senderName: "Bob",
+            mine: false, type: "m.room.member", content: json(#"{"membership":"join"}"#),
+            ts: at(14, 0, 5), seq: 2, status: .sent
+        )
+        let memberItems = Timeline.build(
+            events: [joinDay13, joinDay14], me: me, now: now, showChatUpdates: true, calendar: utc
+        )
+        XCTAssertEqual(memberItems.count, 4)
+        XCTAssertEqual(memberItems[0].id, day13)
+        XCTAssertEqual(memberItems[2].id, day14)
+        if case let .membershipRun(_, events13, _) = memberItems[1] {
+            XCTAssertEqual(events13.map(\.eventID), ["$m1"])
+        } else {
+            XCTFail("Expected membership run after day13 divider, got \(memberItems)")
+        }
+        if case let .membershipRun(_, events14, _) = memberItems[3] {
+            XCTAssertEqual(events14.map(\.eventID), ["$m2"])
+        } else {
+            XCTFail("Expected membership run after day14 divider, got \(memberItems)")
+        }
+    }
+
     func testMessagesWithTheSameTimeKeepTheEnginesArrivalOrder() {
         let events = [
             message("$b", ts: at(14, 10, 0), seq: 2),

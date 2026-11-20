@@ -57,6 +57,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
     public let ts: Int64
     public let caption: String
     public let viewOnce: Bool
+    public let reactions: [ReactionChip]
 
     public init(
         eventID: String,
@@ -77,7 +78,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         mine: Bool = false,
         ts: Int64 = 0,
         caption: String = "",
-        viewOnce: Bool = false
+        viewOnce: Bool = false,
+        reactions: [ReactionChip] = []
     ) {
         self.eventID = eventID
         self.roomID = roomID
@@ -98,6 +100,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         self.ts = ts
         self.caption = caption
         self.viewOnce = viewOnce
+        self.reactions = reactions
     }
 
     /// Creates a `CarouselItem` from a `TimelineMessage` if it is a non-view-once image, video or sticker.
@@ -131,7 +134,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
             mine: message.mine,
             ts: message.ts,
             caption: captionText,
-            viewOnce: false
+            viewOnce: false,
+            reactions: message.reactions
         )
     }
 
@@ -279,7 +283,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                                 mine: msg.mine,
                                 ts: msg.ts,
                                 caption: galleryItem.caption != galleryItem.fileName ? galleryItem.caption : "",
-                                viewOnce: false
+                                viewOnce: false,
+                                reactions: galleryItem.reactions
                             )
                         )
                     }
@@ -288,6 +293,22 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                 }
             default:
                 break
+            }
+        }
+        return result
+    }
+
+    /// Collects reactions keyed by event ID for single media messages and gallery tiles from `timelineItems`.
+    public static func reactionsByEventID(from timelineItems: [TimelineItem]) -> [String: [ReactionChip]] {
+        var result: [String: [ReactionChip]] = [:]
+        for timelineItem in timelineItems {
+            guard case let .message(msg) = timelineItem else { continue }
+            if !msg.galleryItems.isEmpty {
+                for galleryItem in msg.galleryItems {
+                    result[galleryItem.id] = galleryItem.reactions
+                }
+            } else {
+                result[msg.id] = msg.reactions
             }
         }
         return result
@@ -346,7 +367,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                 mine: existing.mine || incoming.mine,
                 ts: existing.ts > 0 ? existing.ts : incoming.ts,
                 caption: !existing.caption.isEmpty ? existing.caption : incoming.caption,
-                viewOnce: false
+                viewOnce: false,
+                reactions: !existing.reactions.isEmpty ? existing.reactions : incoming.reactions
             )
         }
 
