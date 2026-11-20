@@ -1285,20 +1285,107 @@ pub fn check_owners(ctx: &Context) {
 }
 
 fn find_owners_bin(start_pwd: &str) -> Option<String> {
-    if let Ok(val) = std::env::var("CONFORMANCE_OWNERS_BIN") {
+    find_tool_bin(start_pwd, "CONFORMANCE_OWNERS_BIN", &[OWNERS_BIN_REL])
+}
+
+const PACKAGES_INDEX_RUNFILES_REL: &str = "tools/packages-index/packages-index_/packages-index";
+const PACKAGES_INDEX_BIN_REL: &str = "tools/packages-index/packages-index";
+
+pub fn check_packages_index(ctx: &Context) {
+    let bin = find_packages_index_bin(&ctx.start_pwd);
+    check_packages_index_with_bin(ctx, bin.as_deref());
+}
+
+pub(crate) fn check_packages_index_with_bin(ctx: &Context, bin: Option<&str>) {
+    let Some(bin) = bin else {
+        ctx.emit_fail(
+            "PKGINDEX",
+            "packages/README.md",
+            "not checked",
+            "generated",
+            "the //tools/packages-index generator was not found, so packages/README.md could not be checked",
+            "run this check as 'bazel run //tools/conformance:check' (the generator ships in its runfiles)",
+        );
+        return;
+    };
+
+    match Command::new(bin)
+        .arg("--root")
+        .arg(&ctx.root)
+        .arg("--check")
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            ctx.emit_ok(
+                "PKGINDEX",
+                "packages/README.md",
+                "generated",
+                "up to date",
+                "packages/README.md matches packages/**/catalog-info.yaml",
+            );
+        }
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let combined = format!("{}{}", stderr, stdout);
+            let summary = combined
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let note = if summary.is_empty() {
+                "packages/README.md does not match packages/**/catalog-info.yaml".to_string()
+            } else {
+                summary
+            };
+            ctx.emit_fail(
+                "PKGINDEX",
+                "packages/README.md",
+                "drifted",
+                "generated",
+                &note,
+                "packages/README.md is generated from packages/**/catalog-info.yaml: run 'bazel run //tools/packages-index -- --write'",
+            );
+        }
+        Err(err) => {
+            ctx.emit_fail(
+                "PKGINDEX",
+                "packages/README.md",
+                "not checked",
+                "generated",
+                &format!("failed to run //tools/packages-index ({bin}): {err}"),
+                "run this check as 'bazel run //tools/conformance:check' (the generator ships in its runfiles)",
+            );
+        }
+    }
+}
+
+fn find_packages_index_bin(start_pwd: &str) -> Option<String> {
+    find_tool_bin(
+        start_pwd,
+        "CONFORMANCE_PACKAGES_INDEX_BIN",
+        &[PACKAGES_INDEX_RUNFILES_REL, PACKAGES_INDEX_BIN_REL],
+    )
+}
+
+fn find_tool_bin(start_pwd: &str, env_var: &str, rel_paths: &[&str]) -> Option<String> {
+    if let Ok(val) = std::env::var(env_var) {
         if !val.is_empty() {
             return Some(val);
         }
     }
     let mut candidates: Vec<String> = Vec::new();
-    if let Ok(d) = std::env::var("RUNFILES_DIR") {
-        candidates.push(format!("{}/_main/{}", d, OWNERS_BIN_REL));
+    for rel in rel_paths {
+        if let Ok(d) = std::env::var("RUNFILES_DIR") {
+            candidates.push(format!("{d}/_main/{rel}"));
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            let exe_str = exe.to_string_lossy();
+            candidates.push(format!("{exe_str}.runfiles/_main/{rel}"));
+        }
+        candidates.push(format!("{start_pwd}/{rel}"));
     }
-    if let Ok(exe) = std::env::current_exe() {
-        let exe_str = exe.to_string_lossy();
-        candidates.push(format!("{}.runfiles/_main/{}", exe_str, OWNERS_BIN_REL));
-    }
-    candidates.push(format!("{}/{}", start_pwd, OWNERS_BIN_REL));
 
     for c in &candidates {
         if is_executable(c) {
@@ -1732,5 +1819,83 @@ fn walk_yaml_for_lab_hosts(dir: &str, root: &str, published: &mut Vec<(String, S
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        let id = TEST_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "conformance-pkgindex-{label}-{}-{id}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_exec_script(dir: &Path, name: &str, body: &str) -> String {
+        let path = dir.join(name);
+        fs::write(&path, body).unwrap();
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms).unwrap();
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn packages_index_passes_when_checker_succeeds() {
+        let dir = temp_dir("ok");
+        let script = write_exec_script(&dir, "check.sh", "#!/bin/sh\nexit 0\n");
+        let ctx = Context::for_root(dir.to_str().unwrap());
+
+        check_packages_index_with_bin(&ctx, Some(&script));
+
+        assert!(!ctx.overall_fail.get());
+        assert_eq!(ctx.ok_count.get(), 1);
+        assert_eq!(ctx.fail_count.get(), 0);
+        let rows = ctx.rows.get("PKGINDEX");
+        assert!(rows.contains("packages/README.md"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn packages_index_fails_with_remediation_on_drift() {
+        let dir = temp_dir("drift");
+        let script = write_exec_script(
+            &dir,
+            "check.sh",
+            "#!/bin/sh\necho 'packages-index: drift detected in packages/README.md' >&2\nexit 1\n",
+        );
+        let ctx = Context::for_root(dir.to_str().unwrap());
+
+        check_packages_index_with_bin(&ctx, Some(&script));
+
+        assert!(ctx.overall_fail.get());
+        assert_eq!(ctx.fail_count.get(), 1);
+        let rows = ctx.rows.get("PKGINDEX");
+        assert!(rows.contains("drift detected in packages/README.md"));
+        assert!(rows.contains("bazel run //tools/packages-index -- --write"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn packages_index_fails_when_binary_missing() {
+        let dir = temp_dir("missing");
+        let ctx = Context::for_root(dir.to_str().unwrap());
+
+        check_packages_index_with_bin(&ctx, None);
+
+        assert!(ctx.overall_fail.get());
+        assert_eq!(ctx.fail_count.get(), 1);
+        assert!(ctx.rows.get("PKGINDEX").contains("not checked"));
+        let _ = fs::remove_dir_all(&dir);
     }
 }

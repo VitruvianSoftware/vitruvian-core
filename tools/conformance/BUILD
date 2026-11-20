@@ -55,6 +55,7 @@ rust_binary(
         "version-pins.tsv",
         "//tools/copybara:check-version-maps",
         "//tools/owners",
+        "//tools/packages-index",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
