@@ -21,8 +21,13 @@
 # umami-admin-bootstrap — one-shot, idempotent PostSync job that:
 #   1. rotates Umami's seeded default login (admin/umami, inserted by the first
 #      prisma migration) to the sealed ADMIN_PASSWORD (umami-secrets), and
-#   2. makes sure the vitruviansoftware.dev website entry exists, printing its
-#      website ID (the `data-website-id` the site's tracker snippet needs).
+#   2. makes sure every website in SITES exists, printing each website ID
+#      (the `data-website-id` its tracker snippet needs).
+#
+# SITES is "domain" or "domain=id", one per line. With an id, the website is
+# created with that id, so the site can commit its tracker snippet in the
+# same change (Umami accepts a caller-chosen id). Without one Umami picks it;
+# read it from the log. Add a site here, never in the dashboard.
 # Safe to re-run on every sync: if the sealed password already works it skips
 # the rotation, and it only creates the website when none has that domain. It
 # fails (and Argo shows the hook failed) only when NEITHER password logs in,
@@ -58,8 +63,13 @@ spec:
           env:
             - name: UMAMI_URL
               value: http://umami.umami.svc.cluster.local
-            - name: SITE_DOMAIN
-              value: vitruviansoftware.dev
+            - name: SITES
+              # vitruviansoftware.dev predates SITES; its id is in the site's
+              # _config.yml. mini-games.vitruviansoftware.dev is Mini Party
+              # (apps/web/mini-party/index.html).
+              value: |
+                vitruviansoftware.dev
+                mini-games.vitruviansoftware.dev=b59edda9-e89f-414b-abf3-f0a9c8e80932
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -70,7 +80,8 @@ spec:
             - |
               const base = process.env.UMAMI_URL;
               const target = process.env.ADMIN_PASSWORD;
-              const domain = process.env.SITE_DOMAIN;
+              const sites = process.env.SITES.split('\n').map(l => l.trim()).filter(Boolean)
+                .map(l => { const [domain, id] = l.split('='); return { domain, id }; });
               const sleep = ms => new Promise(r => setTimeout(r, ms));
               async function call(method, path, body, token) {
                 const headers = { 'Content-Type': 'application/json' };
@@ -103,29 +114,32 @@ spec:
                   if (!token) throw new Error('sealed password does not log in after rotation');
                   console.log('rotated default admin password to the sealed ADMIN_PASSWORD');
                 }
-                const list = await call('GET', `/api/websites?search=${encodeURIComponent(domain)}&pageSize=100`, null, token);
-                if (list.status !== 200) throw new Error(`listing websites failed: HTTP ${list.status}`);
-                const rows = Array.isArray(list.json) ? list.json : (list.json?.data ?? []);
-                let site = rows.find(w => w.domain === domain);
-                if (site) {
-                  console.log('website already exists');
-                } else {
-                  const c = await call('POST', '/api/websites', { name: domain, domain }, token);
-                  if (c.status !== 200 || !c.json?.id) throw new Error(`creating website failed: HTTP ${c.status}`);
-                  site = c.json;
-                  console.log('created website');
+                for (const { domain, id } of sites) {
+                  const list = await call('GET', `/api/websites?search=${encodeURIComponent(domain)}&pageSize=100`, null, token);
+                  if (list.status !== 200) throw new Error(`listing websites failed: HTTP ${list.status}`);
+                  const rows = Array.isArray(list.json) ? list.json : (list.json?.data ?? []);
+                  let site = rows.find(w => w.domain === domain);
+                  if (site) {
+                    if (id && site.id !== id) throw new Error(`${domain} exists with id ${site.id}, not ${id}`);
+                    console.log(`${domain}: website already exists`);
+                  } else {
+                    const c = await call('POST', '/api/websites', id ? { id, name: domain, domain } : { name: domain, domain }, token);
+                    if (c.status !== 200 || !c.json?.id) throw new Error(`creating website failed: HTTP ${c.status}`);
+                    site = c.json;
+                    console.log(`${domain}: created website`);
+                  }
+                  const rec = await call('POST', `/api/websites/${site.id}/recorder`, {
+                    replayEnabled: true,
+                    heatmapEnabled: true,
+                    sampleRate: 1,
+                    heatmapSampleRate: 1,
+                    maskLevel: 'moderate',
+                    maxDuration: 300000,
+                    blockSelector: '',
+                  }, token);
+                  if (rec.status === 200) console.log(`${domain}: enabled replays and heatmaps at 100% sample rate`);
+                  console.log(`WEBSITE_ID ${domain} ${site.id}`);
                 }
-                const rec = await call('POST', `/api/websites/${site.id}/recorder`, {
-                  replayEnabled: true,
-                  heatmapEnabled: true,
-                  sampleRate: 1,
-                  heatmapSampleRate: 1,
-                  maskLevel: 'moderate',
-                  maxDuration: 300000,
-                  blockSelector: '',
-                }, token);
-                if (rec.status === 200) console.log('enabled replays and heatmaps at 100% sample rate');
-                console.log(`WEBSITE_ID ${domain} ${site.id}`);
               })().catch(e => { console.error(e.message); process.exit(1); });
           resources:
             requests:

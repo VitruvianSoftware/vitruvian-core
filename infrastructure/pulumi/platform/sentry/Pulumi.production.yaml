@@ -37,6 +37,14 @@ config:
       slug: oauth-user-inspector
       platform: rust
       resolveAge: 720
+    - name: Mini Party
+      slug: mini-party
+      platform: javascript-react
+      resolveAge: 720
+    - name: Mini Party Rooms
+      slug: mini-party-rooms
+      platform: node
+      resolveAge: 720
     - name: VitruvianSoftware.dev
       slug: vitruviansoftware-dev
       platform: javascript
