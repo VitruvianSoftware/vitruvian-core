@@ -176,7 +176,7 @@ func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
 		{"vitruvian-remote", "vitruvian-remote", "VITRUVIAN_REMOTE_SYNC_SSH_KEY"},
 		{"esp32-desk-companion", "vitruvian-deck", "ESP32_DESK_COMPANION_SYNC_SSH_KEY"},
 		{"vitruvian-wand", "vitruvian-wand", "VITRUVIAN_WAND_SYNC_SSH_KEY"},
-		{"mini-party", "mini-party", "MINI_PARTY_SYNC_SSH_KEY"},
+		{"mini-party", "vitruvian-party", "MINI_PARTY_SYNC_SSH_KEY"},
 	} {
 		t.Run(mirror.repo, func(t *testing.T) {
 			if r := got[mirror.resource]; r.typeToken != "github:index/repository:Repository" {
@@ -220,7 +220,7 @@ func TestTheMiniPartyMirrorPublishesItsSiteAtItsDomain(t *testing.T) {
 		t.Fatalf("mini-party-pages is %q, want github repository pages", r.typeToken)
 	}
 	for field, want := range map[string]string{
-		"repository": "mini-party",
+		"repository": "vitruvian-party",
 		"buildType":  "workflow",
 		"cname":      "Mini-games.vitruviansoftware.dev",
 	} {
@@ -289,8 +289,8 @@ func TestARenamedMirrorIsRenamedInPlaceNeverReplaced(t *testing.T) {
 			}
 		})
 	}
-	if renamed != 6 {
-		t.Errorf("%d mirrors are marked renamed, want 6 (courier, home-speaker, vitruvian, esp32-desk-companion, mcp-roborock, vitruvian-tool-github)", renamed)
+	if renamed != 7 {
+		t.Errorf("%d mirrors are marked renamed, want 7 (courier, home-speaker, vitruvian, esp32-desk-companion, mcp-roborock, vitruvian-tool-github, mini-party)", renamed)
 	}
 }
 

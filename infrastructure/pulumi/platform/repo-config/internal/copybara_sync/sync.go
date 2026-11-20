@@ -523,8 +523,13 @@ var syncedProjects = []syncedProject{
 		// mini-games.vitruviansoftware.dev: the mirror's pages.yml builds the
 		// static site on every export. MINI_PARTY_SYNC_SSH_KEY, consumed by
 		// copybara-export-mini-party.yaml.
+		// Renamed in place from VitruvianSoftware/mini-party to
+		// VitruvianSoftware/vitruvian-party. The Pulumi resource, secret names
+		// and the export workflow keep "mini-party" (LegacyRepo), so nothing
+		// is deleted; the Pages site is replaced (see NewRepositoryPages).
 		Name:           "mini-party",
-		StandaloneRepo: "mini-party",
+		StandaloneRepo: "vitruvian-party",
+		LegacyRepo:     "mini-party",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Mini Party: rapid-fire party mini-games for up to 4 players",
@@ -633,12 +638,18 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				// first created: the provider's create stores GitHub's empty
 				// cname before it reads the requested one, so it never sends
 				// it. The next apply sees the difference and sets it.
-				if _, err := github.NewRepositoryPages(ctx, project.StandaloneRepo+"-pages", &github.RepositoryPagesArgs{
+				// Named by component, so a repository rename keeps the same
+				// resource. `repository` forces a replace in the provider, and
+				// GitHub allows one Pages site per repository, so the old site
+				// must go before the new one is created (DeleteBeforeReplace):
+				// a rename takes the site down until the follow-up apply that
+				// sets the domain the create drops.
+				if _, err := github.NewRepositoryPages(ctx, project.Name+"-pages", &github.RepositoryPagesArgs{
 					Repository:    repo.Name,
 					BuildType:     pulumi.String("workflow"),
 					Cname:         pulumi.String(project.PagesDomain),
 					HttpsEnforced: pulumi.Bool(project.PagesHTTPS),
-				}, pulumi.DependsOn([]pulumi.Resource{repo})); err != nil {
+				}, pulumi.DependsOn([]pulumi.Resource{repo}), pulumi.DeleteBeforeReplace(true)); err != nil {
 					return err
 				}
 			}

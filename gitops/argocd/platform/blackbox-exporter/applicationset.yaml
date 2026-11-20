@@ -1,0 +1,100 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# blackbox-exporter -- probes public URLs from inside the cluster, so
+# Prometheus can page when a site stops answering. Nothing else here watches
+# a public URL: uptime-kuma is configured by hand, and the self-hosted Sentry
+# runs no uptime checker. Mini Party was down for an hour on 2026-11-19 and
+# nothing paged.
+#
+# Prometheus scrapes it through the 'blackbox-http' job in the prometheus
+# appset's extraScrapeConfigs (the target list lives there), and the
+# PublicUrlDown rule pages on a failing probe. To watch another URL, add it to
+# that job; nothing changes here.
+#
+# Chart prometheus-blackbox-exporter 11.21.3 (prometheus-community), app
+# v0.29.1, namespace monitoring beside Prometheus. fullnameOverride pins the
+# Service name the scrape job points at.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: blackbox-exporter
+  namespace: argocd
+  labels:
+    environment: monitoring
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: blackbox-exporter
+      labels:
+        app: blackbox-exporter
+      annotations:
+        # Alongside Prometheus (wave 0), which scrapes it.
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://prometheus-community.github.io/helm-charts
+        chart: prometheus-blackbox-exporter
+        targetRevision: "11.21.3"
+        helm:
+          version: v3
+          values: |
+            fullnameOverride: blackbox-exporter
+            config:
+              modules:
+                # A public page or health endpoint answers 2xx over IPv4,
+                # after redirects (GitHub Pages sends http to https).
+                http_2xx:
+                  prober: http
+                  timeout: 10s
+                  http:
+                    preferred_ip_protocol: ip4
+                    follow_redirects: true
+                    valid_status_codes: []
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+            # Keep it on the always-on servers, like the rooms server it
+            # watches: a laptop node that sleeps would make every probe fail.
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node-role.kubernetes.io/control-plane
+                          operator: Exists
+      destination:
+        server: '{{.server}}'
+        namespace: monitoring
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

@@ -1204,7 +1204,7 @@ spec:
                 # Mini Party rooms server (namespace mini-party): the socket.io
                 # relay behind the game's online play, at
                 # mini-games-rooms.vitruviansoftware.dev. The game itself is on
-                # GitHub Pages, watched by a Sentry uptime monitor instead.
+                # GitHub Pages, watched from outside by PublicUrlDown below.
                 #
                 # MiniPartyRoomsDown PAGES: no ready pod means online play is
                 # down for everyone. One replica by design (rooms are in
@@ -1246,6 +1246,20 @@ spec:
                     annotations:
                       summary: "Mini Party rooms server failing {{ $value | humanizePercentage }} of requests"
                       description: "Most requests to the rooms server returned 5xx for over 10m while it is up. Check its logs: bazel run //tools/gitops:logs -- -n mini-party deploy/mini-party."
+                # Public URLs (blackbox-http job): PublicUrlDown PAGES when a
+                # watched URL has failed every probe for 5m. The instance label
+                # is the URL; namespace comes from the target's labels.
+                - name: public-urls
+                  rules:
+                  - alert: PublicUrlDown
+                    expr: probe_success{job="blackbox-http"} == 0
+                    for: 5m
+                    labels:
+                      severity: page
+                      pagerduty_service: apps
+                    annotations:
+                      summary: "{{ $labels.instance }} is not answering"
+                      description: "Every probe of {{ $labels.instance }} from the cluster has failed for 5m (non-2xx, timeout, TLS or DNS failure). Open it in a browser first; for a GitHub Pages site check the repo's Pages settings still have the custom domain."
                 # -- 12. GitOps delivery (ArgoCD) -----------------------------
                 # The gap these close: on 2026-08-18 a bad key in a chart values
                 # file made ArgoCD unable to render the backstage Application at
@@ -1306,6 +1320,28 @@ spec:
                       description: "{{ $labels.name }} (ns {{ $labels.dest_namespace }}) has reported Degraded for >15m -- its workload is failing its health check, not merely mid-rollout."
             extraScrapeConfigs: |2
 
+              - job_name: 'blackbox-http'
+                # Public URLs probed by the blackbox exporter
+                # (gitops/argocd/platform/blackbox-exporter). Prometheus asks the
+                # exporter to fetch each target and records probe_success; the
+                # PublicUrlDown rule pages on it. Add a URL here to watch it;
+                # its labels name the app so Backstage lists the alert.
+                metrics_path: /probe
+                params:
+                  module: [http_2xx]
+                static_configs:
+                  - targets:
+                      - https://mini-games.vitruviansoftware.dev/
+                      - https://mini-games-rooms.vitruviansoftware.dev/healthz
+                    labels:
+                      namespace: mini-party
+                relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - source_labels: [__param_target]
+                  target_label: instance
+                - target_label: __address__
+                  replacement: blackbox-exporter.monitoring.svc:9115
               - job_name: 'node-exporter'
                 kubernetes_sd_configs:
                   - role: endpoints

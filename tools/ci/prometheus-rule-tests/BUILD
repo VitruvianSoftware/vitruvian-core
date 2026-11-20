@@ -32,6 +32,7 @@ exports_files([
     "cnpg.test.yml",
     "headscale.test.yml",
     "mini-party.test.yml",
+    "public-urls.test.yml",
 ])
 
 rust_library(
