@@ -31,7 +31,7 @@
 use std::io::Write;
 use std::process::Stdio;
 
-pub mod goexec;
+pub use vitruvian_gocompat::goexec;
 mod unicode_tables;
 
 pub const EXPORT_LABEL: &[u8] = b"MONOREPO_REV_ID";
