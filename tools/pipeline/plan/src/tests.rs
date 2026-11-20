@@ -1163,3 +1163,128 @@ fn mac_runner_names() {
     assert!(is_mac_runner("xcode-27") && is_mac_runner("macos-15"));
     assert!(!is_mac_runner("ubuntu-26.04") && !is_mac_runner("vitruvian-queue"));
 }
+
+// The root npm files sit in the root package, which no file under a
+// subdirectory resolves to, so a change to one of them used to select no
+// units at all.
+const NPM_MODULE: &str = r#"
+npm.npm_translate_lock(
+    name = "npm",
+    npmrc = "//:.npmrc",
+    pnpm_lock = "//:pnpm-lock.yaml",
+)
+use_repo(npm, "npm")
+
+npm.npm_translate_lock(
+    name = "dc_npm",
+    npmrc = "//:.npmrc",
+    pnpm_lock = "//relay/dc:pnpm-lock.yaml",
+    run_lifecycle_hooks = False,
+)
+
+npm.npm_translate_lock(
+    name = "own_npm",
+    npmrc = "//other:.npmrc",
+    pnpm_lock = "//other:pnpm-lock.yaml",
+)
+"#;
+
+fn npm_repo(tag: &str) -> PathBuf {
+    let d = tmp(tag);
+    write(&d, "BUILD", "");
+    write(&d, "MODULE.bazel", NPM_MODULE);
+    write(
+        &d,
+        "apps/web/BUILD",
+        r#"pipeline_unit(name = "web", tier = "L1", persona = "frontend", runner = "ubuntu-26.04", test_targets = [":unit_tests"])"#,
+    );
+    write(
+        &d,
+        "apps/go/BUILD",
+        r#"pipeline_unit(name = "go", tier = "L1", persona = "backend", runner = "ubuntu-26.04", test_targets = [":go_test"])"#,
+    );
+    write(
+        &d,
+        "relay/dc/BUILD",
+        r#"pipeline_unit(name = "dc", tier = "L1", persona = "backend", runner = "ubuntu-26.04", test_targets = [":dc_test"])"#,
+    );
+    write(&d, "other/BUILD", "");
+    d
+}
+
+#[test]
+fn root_npm_files_resolve_to_the_packages_that_hold_npm_stores() {
+    let d = npm_repo("npm-resolve");
+    let root = d.to_str().unwrap();
+    for f in ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"] {
+        assert_eq!(resolve_packages(root, &v(&[f])), v(&["//:all"]), "{f}");
+    }
+    // .npmrc is read by every lock translated with it, and each lock's
+    // store lives in that lock's own package. A lock with its own .npmrc
+    // is not one of them.
+    assert_eq!(
+        resolve_packages(root, &v(&[".npmrc"])),
+        v(&["//:all", "//relay/dc:all"])
+    );
+    // A root file that is not an npm input still selects nothing.
+    assert_eq!(
+        resolve_packages(root, &v(&["eslint.config.mjs"])),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn root_npm_files_run_the_npm_units_and_only_those() {
+    let d = npm_repo("npm-plan");
+    let root = d.to_str().unwrap();
+    let runner = Mock::new(&[
+        ("//:all", &["//apps/web:unit_tests"]),
+        ("//relay/dc:all", &["//relay/dc:dc_test"]),
+    ]);
+    let e = Engine::new(root, &runner);
+    let names = |f: &str| -> Vec<String> {
+        let p = e.compute_plan(v(&[f]), "main", "HEAD").unwrap();
+        assert!(!p.is_global_impact, "{f} must not sweep everything");
+        let mut n: Vec<String> = p.matrix.iter().map(|m| m.name.clone()).collect();
+        n.sort();
+        n
+    };
+    for f in ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"] {
+        assert_eq!(names(f), v(&["web"]), "{f}");
+    }
+    assert_eq!(names(".npmrc"), v(&["dc", "web"]));
+}
+
+#[test]
+fn dependency_map_knows_the_root_package() {
+    let d = npm_repo("npm-map");
+    let root = d.to_str().unwrap();
+    // `bazel query --output=package` prints the root package as an empty
+    // line, which non_empty_lines drops; without it the map would not know
+    // "//:all" and every root npm change would fall back to the live query.
+    let pkgs = map_packages(root, "\napps/web\napps/go\n");
+    assert_eq!(pkgs, v(&["", "apps/web", "apps/go"]));
+    let edges = parse_graph_edges(
+        r#"digraph mygraph {
+  "//apps/web:unit_tests"
+  "//apps/web:unit_tests" -> "//apps/web:node_modules/react"
+  "//apps/web:node_modules/react" -> "//:.aspect_rules_js/node_modules/react@19"
+  "//:.aspect_rules_js/node_modules/react@19"
+  "//apps/go:go_test"
+}"#,
+    )
+    .unwrap();
+    let m = compute_rdeps_map(
+        "abc",
+        &v(&["//apps/web:unit_tests", "//apps/go:go_test"]),
+        &edges,
+        &pkgs,
+    );
+    assert_eq!(
+        m.lookup(&v(&["//:all"])),
+        Some(v(&["//apps/web:unit_tests"]))
+    );
+    // A repository without a root BUILD file has no root package.
+    let bare = tmp("npm-map-bare");
+    assert_eq!(map_packages(bare.to_str().unwrap(), "\na\n"), v(&["a"]));
+}
