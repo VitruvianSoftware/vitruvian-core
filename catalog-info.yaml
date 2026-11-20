@@ -74,6 +74,7 @@ spec:
     - ./packages/android-crash-privacy/catalog-info.yaml
     - ./packages/design-system/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
+    - ./packages/gocompat/catalog-info.yaml
     - ./packages/orchestrator-core/catalog-info.yaml
     - ./packages/peripherals/catalog-info.yaml
     - ./packages/pulumi/catalog-info.yaml
