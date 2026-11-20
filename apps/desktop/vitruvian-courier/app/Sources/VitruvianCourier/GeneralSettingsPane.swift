@@ -1091,15 +1091,16 @@ struct AppearanceSettingsPane: View {
 
             SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.loadExternalEmbeds"),
-                isOn: $composerPreferences.loadExternalEmbedsAutomatically
+                isOn: $composerPreferences.loadExternalEmbedsAutomatically,
+                footnote: LinkPreviewPolicy.playerSettingExplanation
             )
             .settingAnchor("appearance.loadExternalEmbeds", highlighted: highlightedSettingID)
 
             SettingsSwitchRow(
                 SettingsNavigationModel.title(for: "appearance.showLinkPreviews"),
-                isOn: $composerPreferences.showLinkPreviews
+                isOn: $composerPreferences.showLinkPreviews,
+                footnote: LinkPreviewPolicy.settingExplanation
             )
-            .help(LinkPreviewPolicy.settingExplanation)
             .settingAnchor("appearance.showLinkPreviews", highlighted: highlightedSettingID)
 
             Picker(

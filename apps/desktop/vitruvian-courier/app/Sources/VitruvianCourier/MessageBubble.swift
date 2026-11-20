@@ -83,6 +83,9 @@ struct MessageActions {
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
     var showMessageTimestamps = true
+    /// Shows a message's menu from a button (the hover pill's and the action bar's More); a test replaces it to see what
+    /// was shown without opening a real menu.
+    var presentMenu: @MainActor (NSMenu, NSView?) -> Void = { MessageContextMenuBuilder.popUp($0, relativeTo: $1) }
     /// Shared composer preferences instance to avoid per-row `UserDefaults` allocation in `FileAttachmentChip`.
     var composerPreferences: ComposerPreferences? = nil
     /// Optional appearance preferences for theme bubble colours, font scaling, and name/avatar redaction.
@@ -367,7 +370,6 @@ struct MessageRowView: View {
     @Environment(\.themeAccentColor) private var envThemeAccent
     @Environment(\.reactionCardOverride) private var cardOverride
     @Environment(\.timelineCovered) private var timelineCovered
-    @Environment(\.timelineSelectionMode) private var isSelectionMode
     /// Where the pointer is, for the action bar: it goes when the pointer leaves the message.
     @State private var pointer = ActionBarPointer()
     @State private var settling: Task<Void, Never>?
@@ -507,7 +509,7 @@ struct MessageRowView: View {
             }
         }
         // A message edited again has a new version to read.
-        .onChange(of: message.editCount) { _, _ in
+        .onChange(of: message.changedEditCount) { _, _ in
             ui.forget(message.id)
             if ui.historyOpen.contains(message.id) { ui.loadHistory(message.id) }
         }
@@ -539,13 +541,9 @@ struct MessageRowView: View {
                     if let bar {
                         Group {
                             if showingSelectedBar {
-                                MessageActionBar(message: message, actions: actions) { anchor in
-                                    openContextMenu(from: anchor)
-                                }
+                                MessageActionBar(message: message, actions: actions) { isNativeMenuOpen = $0 }
                             } else {
-                                MessageHoverPill(message: message, actions: actions) { anchor in
-                                    openContextMenu(from: anchor)
-                                }
+                                MessageHoverPill(message: message, actions: actions) { isNativeMenuOpen = $0 }
                             }
                         }
                         .fixedSize()
@@ -587,7 +585,7 @@ struct MessageRowView: View {
                 isFadingOutHoverPill = false
                 hoverPillVisible = false
             case .hidden:
-                if oldMode == .hoverPill && !isSelectionMode && !timelineCovered {
+                if oldMode == .hoverPill && !timelineCovered {
                     isFadingOutHoverPill = true
                     withAnimation(.easeOut(duration: ActionBarVisibility.hoverFadeDuration)) {
                         hoverPillVisible = false
@@ -679,22 +677,12 @@ struct MessageRowView: View {
             menuOpen: showsMenu || isNativeMenuOpen,
             pickingReaction: actions.isPickingReaction(message.id),
             pointer: pointer,
-            timelineCovered: timelineCovered,
-            isSelectionMode: isSelectionMode
+            timelineCovered: timelineCovered
         )
     }
 
     private var showsActionBar: Bool {
         actionBarMode != .hidden
-    }
-
-    private func openContextMenu(from anchor: NSView?) {
-        guard let menu = MessageContextMenuBuilder.buildNSMenu(for: message, actions: actions) else { return }
-        isNativeMenuOpen = true
-        DispatchQueue.main.async {
-            defer { isNativeMenuOpen = false }
-            MessageContextMenuBuilder.popUp(menu, relativeTo: anchor)
-        }
     }
 
     /// The pointer entered or left the row or the bar: entering shows the bar again at once; leaving hides it once
@@ -1465,11 +1453,12 @@ private struct QuoteView: View {
     }
 }
 
-/// The compact hover pill on an unselected message: React, Reply, and More (…).
+/// The compact hover pill on an unselected message: React, Reply, and More (…). More opens the message's right-click
+/// menu (`MessageContextMenuBuilder.present`); `menuOpen` tells the row when that menu opens and closes.
 struct MessageHoverPill: View {
     let message: TimelineMessage
     let actions: MessageActions
-    let showMenu: (NSView?) -> Void
+    let menuOpen: (Bool) -> Void
     @State private var moreAnchor: NSView?
 
     var body: some View {
@@ -1485,7 +1474,7 @@ struct MessageHoverPill: View {
                 Image(systemName: "arrowshape.turn.up.left")
             }
             ActionBarButton(String(localized: "More")) {
-                showMenu(moreAnchor)
+                MessageContextMenuBuilder.present(for: message, actions: actions, anchor: moreAnchor, isOpen: menuOpen)
             } label: {
                 Image(systemName: "ellipsis")
             }
@@ -1502,7 +1491,7 @@ struct MessageHoverPill: View {
 private struct MessageActionBar: View {
     let message: TimelineMessage
     let actions: MessageActions
-    let showMenu: (NSView?) -> Void
+    let menuOpen: (Bool) -> Void
     @State private var moreAnchor: NSView?
 
     var body: some View {
@@ -1526,7 +1515,7 @@ private struct MessageActionBar: View {
                 Image(systemName: "arrowshape.turn.up.left")
             }
             ActionBarButton(String(localized: "More")) {
-                showMenu(moreAnchor)
+                MessageContextMenuBuilder.present(for: message, actions: actions, anchor: moreAnchor, isOpen: menuOpen)
             } label: {
                 Image(systemName: "ellipsis")
             }
@@ -1977,19 +1966,10 @@ private struct TimelineCoveredKey: EnvironmentKey {
     static let defaultValue = false
 }
 
-private struct TimelineSelectionModeKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
 extension EnvironmentValues {
     var timelineCovered: Bool {
         get { self[TimelineCoveredKey.self] }
         set { self[TimelineCoveredKey.self] = newValue }
-    }
-
-    var timelineSelectionMode: Bool {
-        get { self[TimelineSelectionModeKey.self] }
-        set { self[TimelineSelectionModeKey.self] = newValue }
     }
 }
 

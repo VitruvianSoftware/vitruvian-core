@@ -555,8 +555,11 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// The text and its formatting, as drawn: the newest live edit's when it was edited. Empty for a deleted message.
     public internal(set) var rich: RichText
     public let isEdited: Bool
-    /// The live edits loaded: not refused, not deleted.
+    /// The live edits loaded: not refused, not deleted, silent ones (a link preview added, same words) included. A
+    /// network's edit limit counts every one of these (the engine's `edit_max_count` counts each `m.replace`).
     public let editCount: Int
+    /// The live edits that changed what the message says or looks like: what "Edited" and Edit History are about.
+    public let changedEditCount: Int
     /// "Edit not sent", with Retry and Discard: my newest edit of it was refused (and none went through since). The
     /// message reads as before it.
     public let editFailed: StatusLine?
@@ -651,6 +654,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         rich: RichText,
         isEdited: Bool,
         editCount: Int,
+        changedEditCount: Int? = nil,
         editFailed: StatusLine?,
         failedEditID: String?,
         fileName: String,
@@ -699,6 +703,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.rich = rich
         self.isEdited = isEdited
         self.editCount = editCount
+        self.changedEditCount = changedEditCount ?? editCount
         self.editFailed = editFailed
         self.failedEditID = failedEditID
         self.fileName = fileName
@@ -1207,9 +1212,10 @@ public enum Timeline {
 
         // Edits by the message's own sender. The newest live one (not refused, not deleted) is what it says (and
         // updates link previews silently when the body and formatting did not change); my newest edit, if refused, is
-        // "Edit not sent". Only edits that actually changed visible text, formatting or media count toward Edited and
-        // Edit History.
+        // "Edit not sent". Every live edit counts toward the network's edit limit (`editCount`); only edits that
+        // actually changed visible text, formatting or media count toward Edited and Edit History (`changedEditCount`).
         var latestEdit: [String: Event] = [:]
+        var liveEdits: [String: Int] = [:]
         var realEdits: [String: Int] = [:]
         var prevShownByTarget: [String: Shown] = [:]
         var newestOwnEdit: [String: Event] = [:]
@@ -1218,6 +1224,7 @@ public enum Timeline {
                   base.type == "m.room.message" else { continue }
             if event.status != .failed {
                 latestEdit[target] = event
+                liveEdits[target, default: 0] += 1
                 let previous = prevShownByTarget[target] ?? describe(base, edit: nil, mine: isMine(base))
                 let next = describe(base, edit: event, mine: isMine(base))
                 if editChangedVisibleContent(base: base, previous: previous, next: next) {
@@ -1304,7 +1311,8 @@ public enum Timeline {
                 kind: isDeleted ? .deleted : shown.kind, body: isDeleted ? "" : shown.body,
                 rich: isDeleted ? RichText(text: "") : shown.rich,
                 isEdited: !isDeleted && realEdits[base.eventID, default: 0] > 0,
-                editCount: isDeleted ? 0 : realEdits[base.eventID, default: 0],
+                editCount: isDeleted ? 0 : liveEdits[base.eventID, default: 0],
+                changedEditCount: isDeleted ? 0 : realEdits[base.eventID, default: 0],
                 editFailed: refused.map { StatusLine.of(status: .failed, reason: $0.statusReason) },
                 failedEditID: refused?.eventID,
                 fileName: isDeleted ? "" : shown.fileName, mimeType: isDeleted ? "" : shown.mimeType,

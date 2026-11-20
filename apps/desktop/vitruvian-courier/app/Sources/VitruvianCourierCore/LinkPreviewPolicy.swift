@@ -18,6 +18,11 @@ public enum LinkPreviewPolicy {
         String(localized: "Fetches the picture and title for links you receive. The site sees your Mac's address.")
     }
 
+    /// The line under "Load external embeds automatically".
+    public static var playerSettingExplanation: String {
+        String(localized: "Plays videos inside the chat. The site sees your Mac's address.")
+    }
+
     /// Whether Courier may make a request to `url` for a link card.
     public static func mayRequest(_ url: URL, showLinkPreviews: Bool) -> Bool {
         guard showLinkPreviews, let scheme = url.scheme?.lowercased() else { return false }

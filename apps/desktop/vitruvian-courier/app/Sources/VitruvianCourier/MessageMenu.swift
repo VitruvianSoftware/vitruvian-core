@@ -218,6 +218,18 @@ enum MessageContextMenuBuilder {
         return menu
     }
 
+    /// The More button's action: the same menu a right-click on the message builds, shown below `anchor`. `isOpen`
+    /// says true as it opens and false once it has closed (the row keeps its hover pill while it is open).
+    static func present(for message: TimelineMessage, actions: MessageActions, anchor: NSView?,
+                        isOpen: @escaping (Bool) -> Void) {
+        guard let menu = buildNSMenu(for: message, actions: actions) else { return }
+        isOpen(true)
+        DispatchQueue.main.async {
+            defer { isOpen(false) }
+            actions.presentMenu(menu, anchor)
+        }
+    }
+
     static func popUp(_ menu: NSMenu, relativeTo anchor: NSView?) {
         if let anchor, anchor.window != nil {
             let point = NSPoint(x: 0, y: anchor.isFlipped ? anchor.bounds.height + 4 : -4)

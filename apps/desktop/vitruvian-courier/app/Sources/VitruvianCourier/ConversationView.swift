@@ -213,7 +213,6 @@ struct ConversationView: View {
         .environment(\.appearancePreferences, resolvedAppearance)
         .environment(\.themeRoomID, conversation.roomID)
         .environment(\.timelineCovered, windowCoversTimeline || coveredBySheet)
-        .environment(\.timelineSelectionMode, inbox.isSelecting)
         .environment(
             \.themeAccentHex,
             resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex

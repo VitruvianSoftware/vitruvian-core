@@ -13,7 +13,7 @@ public enum ActionBarMode: Equatable, Sendable {
 /// When a message's hover pill or selected action bar is on screen.
 ///
 /// A hovered unselected message shows the compact pill (React, Reply, More) with a 120 ms fade; a selected message
-/// shows the full bar. Neither shows while selection mode is active, or while anything covers the timeline (⌘K search,
+/// shows the full bar. Neither shows while anything covers the timeline (⌘K search,
 /// command bar, sheet, alert). Covering only pauses it: the pointer's place is kept, so when the cover closes with
 /// the pointer still over the message, the bar/pill returns without re-entry. Both stay open while the message's
 /// menu or reaction picker is open.
@@ -27,10 +27,9 @@ public enum ActionBarVisibility {
         menuOpen: Bool,
         pickingReaction: Bool,
         pointer: ActionBarPointer,
-        timelineCovered: Bool,
-        isSelectionMode: Bool = false
+        timelineCovered: Bool
     ) -> ActionBarMode {
-        guard canAct, !timelineCovered, !isSelectionMode else { return .hidden }
+        guard canAct, !timelineCovered else { return .hidden }
         if menuOpen || pickingReaction {
             return isSelected ? .selectedBar : .hoverPill
         }
@@ -49,8 +48,7 @@ public enum ActionBarVisibility {
         menuOpen: Bool,
         pickingReaction: Bool,
         pointer: ActionBarPointer,
-        timelineCovered: Bool,
-        isSelectionMode: Bool = false
+        timelineCovered: Bool
     ) -> Bool {
         mode(
             canAct: canAct,
@@ -58,8 +56,7 @@ public enum ActionBarVisibility {
             menuOpen: menuOpen,
             pickingReaction: pickingReaction,
             pointer: pointer,
-            timelineCovered: timelineCovered,
-            isSelectionMode: isSelectionMode
+            timelineCovered: timelineCovered
         ) != .hidden
     }
 }

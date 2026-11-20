@@ -130,7 +130,10 @@ final class EmbedThumbnailTests: XCTestCase {
         preferences.showLinkPreviews = false
         XCTAssertEqual(defaults.object(forKey: "courier.preferences.showLinkPreviews") as? Bool, false)
         XCTAssertFalse(ComposerPreferences(defaults: defaults).showLinkPreviews, "remembered")
-        XCTAssertFalse(LinkPreviewPolicy.settingExplanation.isEmpty)
+        XCTAssertEqual(LinkPreviewPolicy.settingExplanation,
+                       "Fetches the picture and title for links you receive. The site sees your Mac's address.")
+        XCTAssertEqual(LinkPreviewPolicy.playerSettingExplanation,
+                       "Plays videos inside the chat. The site sees your Mac's address.")
     }
 }
 

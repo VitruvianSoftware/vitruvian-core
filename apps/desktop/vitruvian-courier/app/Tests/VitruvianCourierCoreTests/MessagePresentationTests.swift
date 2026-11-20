@@ -582,19 +582,4 @@ final class MessagePresentationTests: XCTestCase {
             .hidden
         )
     }
-
-    func testHoverPillAndActionBarAreHiddenInSelectionMode() {
-        var pointer = ActionBarPointer()
-        pointer.rowHover(true)
-        XCTAssertEqual(
-            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
-                                     pointer: pointer, timelineCovered: false, isSelectionMode: true),
-            .hidden
-        )
-        XCTAssertEqual(
-            ActionBarVisibility.mode(canAct: true, isSelected: true, menuOpen: true, pickingReaction: true,
-                                     pointer: pointer, timelineCovered: false, isSelectionMode: true),
-            .hidden
-        )
-    }
 }

@@ -37,6 +37,30 @@ final class MessageActionsModelTests: XCTestCase {
         return (h, actions, pasteboard, toasts)
     }
 
+    func testEditHistoryLeavesOutSilentVersions() async throws {
+        let (h, actions, _, _) = try await start()
+        // As sent, a real edit, a silent one (same words, a link preview added), and another real edit.
+        h.script.overrides["message.history"] = .result(["versions": [
+            ["body": "Lunch at noon?", "formatted_body": "", "ts": 1],
+            ["body": "Lunch at 1?", "formatted_body": "", "ts": 2],
+            ["body": "Lunch at 1?", "formatted_body": "", "ts": 3],
+            ["body": "Lunch at 2?", "formatted_body": "", "ts": 4],
+        ]])
+        let versions = await actions.history(of: "$2")
+        XCTAssertEqual(versions.map(\.body), ["Lunch at noon?", "Lunch at 1?", "Lunch at 2?"])
+        XCTAssertEqual(versions.map(\.ts), [1, 2, 4], "the silent version at 3 is gone")
+    }
+
+    func testVisibleVersionsKeepsFormattingOnlyChangesAndTheFirstVersion() {
+        let plain = Version(body: "hello", ts: 1)
+        let bold = Version(body: "hello", formattedBody: "<b>hello</b>", ts: 2)
+        let boldAgain = Version(body: "hello", formattedBody: "<b>hello</b>", ts: 3)
+        XCTAssertEqual(EditHistory.visibleVersions([plain, bold, boldAgain]), [plain, bold],
+                       "a formatting change is a version; a repeat of it is not")
+        XCTAssertEqual(EditHistory.visibleVersions([plain]), [plain])
+        XCTAssertEqual(EditHistory.visibleVersions([]), [])
+    }
+
     @MainActor final class Toasts {
         var all: [String] = []
     }

@@ -124,7 +124,8 @@ final class TimelineEditAndSeenTests: XCTestCase {
         ]
         let shown = messages([base, previewEdit])[0]
         XCTAssertFalse(shown.isEdited, "an identical-body edit adding a link preview must not label the message Edited")
-        XCTAssertEqual(shown.editCount, 0)
+        XCTAssertEqual(shown.changedEditCount, 0)
+        XCTAssertEqual(shown.editCount, 1, "the network still counts it as an edit (for its edit limit)")
         XCTAssertEqual(shown.linkPreviews.first?.title, "Added Preview Title", "silent preview edit still updates linkPreviews")
 
         let whatsApp = ChatFeatures(reply: true, edit: true, unsend: true, source: .stored)
@@ -153,6 +154,7 @@ final class TimelineEditAndSeenTests: XCTestCase {
         let shown = messages([base, formatEdit])[0]
         XCTAssertTrue(shown.isEdited, "an edit that changes formatting must still be marked Edited")
         XCTAssertEqual(shown.editCount, 1)
+        XCTAssertEqual(shown.changedEditCount, 1)
         let whatsApp = ChatFeatures(reply: true, edit: true, unsend: true, source: .stored)
         let actions = MessageActions.available(for: shown, in: whatsApp, network: "whatsapp", now: Date(timeIntervalSince1970: 1))
         XCTAssertTrue(actions.actions.contains(.showHistory))
@@ -174,7 +176,8 @@ final class TimelineEditAndSeenTests: XCTestCase {
         silentPreviewEdit.linkPreviews = [LinkPreviewItem(matchedURL: link, url: link, title: "Updated Title")]
         let shown = messages([base, realEdit, silentPreviewEdit])[0]
         XCTAssertTrue(shown.isEdited)
-        XCTAssertEqual(shown.editCount, 1)
+        XCTAssertEqual(shown.changedEditCount, 1)
+        XCTAssertEqual(shown.editCount, 2, "both edits count toward the network's limit")
         XCTAssertEqual(shown.body, link)
         XCTAssertEqual(shown.linkPreviews.first?.title, "Updated Title")
     }

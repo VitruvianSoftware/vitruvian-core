@@ -62,7 +62,6 @@ struct TimelineRowEnvironment: Equatable {
     let redactNamesAndPictures: Bool
     let liquidGlass: Bool
     let timelineCovered: Bool
-    let timelineSelectionMode: Bool
     let messagePointSize: CGFloat
     let zoomMultiplier: CGFloat
     let colorScheme: ColorScheme
@@ -76,7 +75,6 @@ struct TimelineRowEnvironment: Equatable {
             && lhs.redactNamesAndPictures == rhs.redactNamesAndPictures
             && lhs.liquidGlass == rhs.liquidGlass
             && lhs.timelineCovered == rhs.timelineCovered
-            && lhs.timelineSelectionMode == rhs.timelineSelectionMode
             && lhs.messagePointSize == rhs.messagePointSize
             && lhs.zoomMultiplier == rhs.zoomMultiplier
             && lhs.colorScheme == rhs.colorScheme
@@ -100,7 +98,6 @@ struct TimelineRowEnvironment: Equatable {
         hasher.combine(themeRoomID)
         hasher.combine(themeAccentHex)
         hasher.combine(timelineCovered)
-        hasher.combine(timelineSelectionMode)
         hasher.combine(colorScheme == .dark)
         hasher.combine(reactionCardOverride?.messageID)
         hasher.combine(reactionCardOverride?.reactionKey)
@@ -240,6 +237,7 @@ enum TimelineContentRevision {
             hasher.combine(message.rich)
             hasher.combine(message.isEdited)
             hasher.combine(message.editCount)
+            hasher.combine(message.changedEditCount)
             hasher.combine(message.failedEditID)
             hasher.combine(message.editFailed != nil)
             if message.startsGroup {
@@ -539,7 +537,6 @@ struct TimelineHostedRow: View {
             values.redactNamesAndPictures = env.redactNamesAndPictures
             values.liquidGlass = env.liquidGlass
             values.timelineCovered = env.timelineCovered
-            values.timelineSelectionMode = env.timelineSelectionMode
             values.courierMessagePointSize = env.messagePointSize
             values.courierZoomMultiplier = env.zoomMultiplier
             values.reactionCardOverride = env.reactionCardOverride
@@ -1242,7 +1239,6 @@ struct TimelineTableView: NSViewRepresentable {
                 redactNamesAndPictures: view.redact,
                 liquidGlass: view.drawsLiquidGlass,
                 timelineCovered: view.timelineCovered,
-                timelineSelectionMode: environment.timelineSelectionMode,
                 messagePointSize: environment.courierMessagePointSize,
                 zoomMultiplier: environment.courierZoomMultiplier,
                 colorScheme: environment.colorScheme,
@@ -1396,7 +1392,6 @@ struct TimelineTableView: NSViewRepresentable {
                     redactNamesAndPictures: env.redactNamesAndPictures,
                     liquidGlass: env.liquidGlass,
                     timelineCovered: env.timelineCovered,
-                    timelineSelectionMode: env.timelineSelectionMode,
                     messagePointSize: env.messagePointSize,
                     zoomMultiplier: env.zoomMultiplier,
                     colorScheme: env.colorScheme,

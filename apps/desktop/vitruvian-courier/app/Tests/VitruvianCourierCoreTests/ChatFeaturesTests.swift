@@ -107,6 +107,31 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertTrue(counted.actions.contains(.showHistory), "an edited message has a history")
     }
 
+    /// The engine's `edit_max_count` counts every m.replace, so silent edits (same words, a link preview added) use up
+    /// the limit even though they do not make the message say "Edited" a second time.
+    func testTheEditLimitCountsSilentEditsToo() {
+        func edit(_ index: Int, body: String) -> Event {
+            Event(eventID: "$e\(index)", roomID: "!room", sender: me, senderName: "me", mine: true,
+                  type: "m.room.message",
+                  content: json(#"{"msgtype":"m.text","body":"* \#(body)","m.new_content":{"msgtype":"m.text","body":"\#(body)"},"m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}"#),
+                  ts: sentAt + Int64(index), seq: Int64(index + 1), status: .sent)
+        }
+        // Two edits that change the words, then eight silent ones with the same words: ten in all.
+        let edits = [edit(1, body: "v1"), edit(2, body: "v2")] + (3 ... 10).map { edit($0, body: "v2") }
+        let edited = message(more: edits)
+        XCTAssertEqual(edited.changedEditCount, 2, "only two changed what it says")
+        XCTAssertEqual(edited.editCount, 10, "but the network counted ten")
+        XCTAssertTrue(edited.isEdited)
+        let atLimit = available(edited, signal, network: "signal")
+        XCTAssertFalse(atLimit.actions.contains(.edit), "Edit is not offered at the limit")
+        XCTAssertEqual(reason(.edit, in: atLimit), "Signal only lets you edit a message 10 times",
+                       "Edit is greyed with the edit-count reason")
+
+        // One short of the limit, still offered.
+        let nine = message(more: Array(edits.prefix(9)))
+        XCTAssertTrue(available(nine, signal, network: "signal").actions.contains(.edit))
+    }
+
     func testGoogleMessagesOffersDeleteFromPhoneNotUnsend() {
         let result = available(message(), googleMessagesRCS, network: "gmessages")
         XCTAssertTrue(result.actions.contains(.deleteForMe))

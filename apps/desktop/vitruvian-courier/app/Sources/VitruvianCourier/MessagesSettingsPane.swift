@@ -56,13 +56,14 @@ struct MessagesSettingsPane: View {
                 )
                 SettingsSwitchRow(
                     String(localized: "Load external embeds automatically"),
-                    isOn: $preferences.loadExternalEmbedsAutomatically
+                    isOn: $preferences.loadExternalEmbedsAutomatically,
+                    footnote: LinkPreviewPolicy.playerSettingExplanation
                 )
                 SettingsSwitchRow(
                     String(localized: "Show link previews"),
-                    isOn: $preferences.showLinkPreviews
+                    isOn: $preferences.showLinkPreviews,
+                    footnote: LinkPreviewPolicy.settingExplanation
                 )
-                .help(LinkPreviewPolicy.settingExplanation)
                 SettingsSwitchRow(
                     String(localized: "Automatically play the next voice note"),
                     isOn: $preferences.autoPlayNextVoiceNote

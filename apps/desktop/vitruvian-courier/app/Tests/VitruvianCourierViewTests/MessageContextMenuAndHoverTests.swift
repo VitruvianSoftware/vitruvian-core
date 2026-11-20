@@ -307,9 +307,21 @@ final class MessageContextMenuAndHoverTests: XCTestCase {
         XCTAssertEqual(chosen, [.action(.copy)])
     }
 
-    /// B4: Hover pill exposes React, Reply, and More (…), More opens the same menu as right-click, and selection mode
-    /// hides floating action controls.
-    func testHoverPillRendersReactReplyMoreAndMoreOpensSameMenuAsRightClick() throws {
+    /// A real click (mouse down and up) in the middle of a probed button, as the person would make it.
+    private func click(_ frames: [String: CGRect], _ name: String, in host: NSView, window: NSWindow) throws {
+        let frame = try XCTUnwrap(frames[name], "no \(name) button was drawn: \(frames.keys.sorted())")
+        let location = NSPoint(x: frame.midX, y: host.bounds.height - frame.midY)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(
+                with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+            NSApp.sendEvent(event)
+        }
+    }
+
+    /// B4: the hover pill shows React, Reply and More, and pressing the real More button shows the same menu a
+    /// right-click builds, through the same path the row uses. Pressing Reply shows no menu.
+    func testHoverPillMoreShowsTheRightClickMenuAndReplyDoesNot() throws {
         _ = NSApplication.shared
         let defaults = try makeDefaults()
         let dir = try makeTempDir()
@@ -323,6 +335,7 @@ final class MessageContextMenuAndHoverTests: XCTestCase {
             row: Fixture.row("!hover", "Hover", network: "gchat", direct: false, ts: 2, preview: "Hello"),
             features: ChatFeatures(reply: true, edit: true, unsend: true, source: .network)
         )
+        m.conversation.composer.open("!hover")
 
         var actions = MessageRowActions.make(
             conversation: m.conversation,
@@ -334,81 +347,74 @@ final class MessageContextMenuAndHoverTests: XCTestCase {
             deselect: {},
             select: { _ in }
         )
+        var presented: [(menu: NSMenu, anchor: NSView?)] = []
+        var openStates: [Bool] = []
+        actions.presentMenu = { menu, anchor in presented.append((menu, anchor)) }
 
-        var probedNames: Set<String> = []
-        var moreInvoked = false
-        var menuFromMore: NSMenu?
-        let pill = MessageHoverPill(message: msg, actions: actions) { _ in
-            moreInvoked = true
-            menuFromMore = MessageContextMenuBuilder.buildNSMenu(for: msg, actions: actions)
-        }
-        .environment(\.clickTargetProbe) { name, _ in
-            probedNames.insert(name)
-        }
-
+        var frames: [String: CGRect] = [:]
+        let pill = MessageHoverPill(message: msg, actions: actions) { openStates.append($0) }
+            .environment(\.clickTargetProbe) { name, frame in frames[name] = frame }
         let host = NSHostingView(rootView: pill)
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 60), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
         window.contentView = host
         host.frame = NSRect(x: 0, y: 0, width: 200, height: 60)
-        pump(host, for: 0.15)
-        XCTAssertEqual(probedNames, ["bar/Add Reaction…", "bar/Reply", "bar/More"])
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        pump(host, for: 0.3) { frames.count == 3 }
+        XCTAssertEqual(Set(frames.keys), ["bar/Add Reaction…", "bar/Reply", "bar/More"])
 
-        // Clicking More invokes showMenu and builds the exact same NSMenu as right-click.
-        let rightClickMenu = try XCTUnwrap(MessageContextMenuBuilder.buildNSMenu(for: msg, actions: actions))
-        func collectButtons(in view: NSView) -> [NSButton] {
-            var out: [NSButton] = []
-            if let b = view as? NSButton { out.append(b) }
-            for child in view.subviews { out.append(contentsOf: collectButtons(in: child)) }
-            return out
-        }
-        if let moreButton = collectButtons(in: host).last {
-            moreButton.performClick(nil)
-        }
-        if !moreInvoked {
-            menuFromMore = MessageContextMenuBuilder.buildNSMenu(for: msg, actions: actions)
-        }
-        let pillMenu = try XCTUnwrap(menuFromMore)
-        XCTAssertEqual(
-            pillMenu.items.map(\.title),
-            rightClickMenu.items.map(\.title),
-            "More in the hover pill must open the exact same menu as right-click"
-        )
-        XCTAssertFalse(pillMenu.allowsContextMenuPlugIns)
-        window.contentView = nil
+        // Reply replies; it does not open a menu.
+        try click(frames, "bar/Reply", in: host, window: window)
+        pump(host, for: 0.3) { m.conversation.composer.replyTarget?.eventID == "$hover1" }
+        XCTAssertEqual(m.conversation.composer.replyTarget?.eventID, "$hover1")
+        XCTAssertTrue(presented.isEmpty, "Reply must not show the menu")
 
-        // Selection mode hides floating action bars even when selected/hovered.
-        actions.now = { Fixture.now }
+        // More shows exactly the right-click menu, once, below its own button, and says when it opens and closes.
+        try click(frames, "bar/More", in: host, window: window)
+        pump(host, for: 1) { !presented.isEmpty && openStates.count == 2 }
+        XCTAssertEqual(presented.count, 1, "More shows the menu once")
+        XCTAssertEqual(openStates, [true, false], "the row is told when the menu opens and closes")
+        let rightClick = try XCTUnwrap(MessageContextMenuBuilder.buildNSMenu(for: msg, actions: actions))
+        let shown = try XCTUnwrap(presented.first).menu
+        XCTAssertEqual(shown.items.map(\.title), rightClick.items.map(\.title),
+                       "More shows the same menu as right-click")
+        XCTAssertEqual(shown.items.map(\.isEnabled), rightClick.items.map(\.isEnabled))
+        XCTAssertFalse(shown.allowsContextMenuPlugIns, "no Ask Siri in the More menu either")
+        XCTAssertTrue(shown.items.contains { $0.title == "Reply…" }, "it is the message's menu, not an empty one")
+        XCTAssertNotNil(presented.first?.anchor, "it opens below the More button")
+
+        // The pill and the hover rules: shown on hover, gone when the pointer leaves.
         var pointer = ActionBarPointer()
         pointer.rowHover(true)
         XCTAssertEqual(
-            ActionBarVisibility.mode(
-                canAct: true,
-                isSelected: false,
-                menuOpen: false,
-                pickingReaction: false,
-                pointer: pointer,
-                timelineCovered: false,
-                isSelectionMode: false
-            ),
+            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
+                                     pointer: pointer, timelineCovered: false),
             .hoverPill
         )
-        XCTAssertEqual(
-            ActionBarVisibility.mode(
-                canAct: true,
-                isSelected: false,
-                menuOpen: false,
-                pickingReaction: false,
-                pointer: pointer,
-                timelineCovered: false,
-                isSelectionMode: true
-            ),
-            .hidden
-        )
+    }
+
+    /// A greyed item says why on hover: the reason is its tooltip.
+    func testAGreyedMenuItemCarriesItsReasonAsATooltip() throws {
+        let defaults = try makeDefaults()
+        let hotkeys = HotkeyRegistry(defaults: defaults, isAppLocked: { false })
+        let noEdit = ChatFeatures(reply: true, edit: false, unsend: true, source: .network)
+        let mine = try XCTUnwrap(Fixture.messages([Fixture.text("$g", "hello", mine: true, ts: 1)]).first)
+        let available = VitruvianCourierCore.MessageActions.available(for: mine, in: noEdit, network: "whatsapp",
+                                                                      now: Fixture.now)
+        let reason = try XCTUnwrap(available.unavailable.first { $0.action == .edit }?.reason)
+        XCTAssertFalse(reason.isEmpty)
+        let sections = MessageMenu.sections(for: mine, available: available, features: noEdit, disappearsIn: nil,
+                                            time: { _ in "9:00" })
+        let menu = try XCTUnwrap(MessageContextMenuBuilder.buildNSMenu(
+            sections: sections, hotkeys: hotkeys, isLocked: false) { _ in })
+        let edit = try XCTUnwrap(menu.items.first { $0.title == "Edit…" })
+        XCTAssertFalse(edit.isEnabled, "Edit is greyed")
+        XCTAssertNil(edit.action, "a greyed item does nothing")
+        XCTAssertEqual(edit.toolTip, reason, "and says why")
+        let reply = try XCTUnwrap(menu.items.first { $0.title == "Reply…" })
+        XCTAssertTrue(reply.isEnabled)
     }
 
     /// B3 (QA): a right-click menu acts on the CLICKED message, never on the selected one. Message `$a` is selected,
