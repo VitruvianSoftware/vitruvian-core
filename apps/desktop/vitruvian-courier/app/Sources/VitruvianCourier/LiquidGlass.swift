@@ -45,6 +45,8 @@ enum CourierSurface {
     case composerField(singleLineHeight: CGFloat)
     /// With glass, a round button beside the message box (its plus). Nothing without glass.
     case composerButton
+    /// With glass, the expanded inline composer tool row pill beside the `+` button.
+    case composerToolRow
     /// A pane beside the chat: the thread, Chat Info, the calendar. Content, not a control: never glass.
     case sidePane
     /// A panel floating over the window: search (translucent without glass) and the command bar (opaque without
@@ -82,6 +84,8 @@ private struct CourierSurfaceBackground: ViewModifier {
             content.glassEffect(.regular, in: ComposerFieldShape(singleLineHeight: singleLineHeight))
         case .composerButton:
             content.glassEffect(.regular.interactive(), in: Circle())
+        case .composerToolRow:
+            content.glassEffect(.regular, in: Capsule())
         case .sidePane:
             content.background(Color(nsColor: .textBackgroundColor))
         // Glass is not drawn on glass: what a panel holds is plain.
@@ -109,7 +113,7 @@ private struct CourierSurfaceBackground: ViewModifier {
     @ViewBuilder
     private func plain(_ content: Content) -> some View {
         switch surface {
-        case .composerField, .composerButton:
+        case .composerField, .composerButton, .composerToolRow:
             content
         case .sidebarStrip, .composerBar:
             content.background(.bar)
@@ -206,7 +210,7 @@ extension View {
         modifier(CourierEmptyChatToolbar(isConnected: isConnected))
     }
 
-    /// The send button: the prominent glass style tinted with the accent colour, with glass; plain without.
+    /// The send button: plain style so it draws its own filled circle (neutral grey when empty, accent when sendable).
     func courierSendButtonStyle() -> some View {
         modifier(CourierSendButtonStyle())
     }
@@ -311,18 +315,16 @@ private struct CourierEmptyChatToolbar: ViewModifier {
 }
 
 private struct CourierSendButtonStyle: ViewModifier {
-    @Environment(\.liquidGlass) private var liquidGlass
-    @Environment(\.themeAccentColor) private var themeAccent
-
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *), liquidGlass {
-            content
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.circle)
-                .tint(themeAccent)
-        } else {
-            content.buttonStyle(.plain)
-        }
+        content.buttonStyle(CourierSendCircleButtonStyle())
+    }
+}
+
+/// Draws the label as is, so a disabled Send keeps its visible grey circle (the system's plain style would fade it
+/// away) while VoiceOver still reports it unavailable.
+private struct CourierSendCircleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 
