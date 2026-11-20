@@ -212,6 +212,7 @@ enum TimelineContentRevision {
         hasher.combine(actions.showMessageTimestamps)
         hasher.combine(actions.timeFormat.rawValue)
         hasher.combine(actions.loadExternalEmbedsAutomatically)
+        hasher.combine(actions.showLinkPreviews)
 
         switch item {
         case let .dateSeparator(day):
@@ -236,6 +237,7 @@ enum TimelineContentRevision {
             hasher.combine(message.rich)
             hasher.combine(message.isEdited)
             hasher.combine(message.editCount)
+            hasher.combine(message.changedEditCount)
             hasher.combine(message.failedEditID)
             hasher.combine(message.editFailed != nil)
             if message.startsGroup {
@@ -642,11 +644,22 @@ private struct SenderHoverPopoverContent: View {
     }
 }
 
+final class TimelineHostingView: NSHostingView<TimelineHostedRow> {
+    override func menu(for event: NSEvent) -> NSMenu? {
+        if let childMenu = super.menu(for: event) {
+            childMenu.allowsContextMenuPlugIns = false
+            return childMenu
+        }
+        guard case let .message(message) = rootView.item else { return nil }
+        return MessageContextMenuBuilder.buildNSMenu(for: message, actions: rootView.actions)
+    }
+}
+
 final class TimelineCell: NSTableCellView {
-    let hostingView: NSHostingView<TimelineHostedRow>
+    let hostingView: TimelineHostingView
 
     init(identifier: NSUserInterfaceItemIdentifier, rootView: TimelineHostedRow) {
-        self.hostingView = NSHostingView(rootView: rootView)
+        self.hostingView = TimelineHostingView(rootView: rootView)
         super.init(frame: .zero)
         self.identifier = identifier
         clipsToBounds = false
@@ -726,7 +739,13 @@ final class TimelineTableRowView: NSTableRowView {
     /// The selected message's action bar, in this row's coordinates, when it reaches outside the row (a wide
     /// continuation bubble's bar sits over its top corner). SwiftUI reports it; a click there goes to the row's
     /// hosting view, which a plain hit test would not do outside its bounds.
-    var overhangingBarFrame: CGRect?
+    var overhangingBarFrame: CGRect? {
+        didSet {
+            if (overhangingBarFrame != nil) != (oldValue != nil) {
+                updateZPosition()
+            }
+        }
+    }
 
     var isRaisedRow = false {
         didSet {
@@ -786,7 +805,7 @@ final class TimelineTableRowView: NSTableRowView {
     }
 
     private func updateZPosition() {
-        layer?.zPosition = isRaisedRow ? 10 : (isHoveredRow ? 5 : 0)
+        layer?.zPosition = isRaisedRow ? 10 : ((isHoveredRow || overhangingBarFrame != nil) ? 5 : 0)
     }
 
     override func drawSelection(in _: NSRect) {}
@@ -796,7 +815,9 @@ final class TimelineTableRowView: NSTableRowView {
         if let hit = super.hitTest(point) {
             return hit
         }
-        guard isRaisedRow, let bar = overhangingBarFrame, let superview else { return nil }
+        guard isRaisedRow || isHoveredRow || overhangingBarFrame != nil,
+              let bar = overhangingBarFrame,
+              let superview else { return nil }
         let local = convert(point, from: superview)
         guard bar.insetBy(dx: -2, dy: -2).contains(local) else { return nil }
         return subviews.lazy.compactMap { $0 as? TimelineCell }.first?.hostingView
@@ -838,9 +859,10 @@ final class TimelineNSTableView: NSTableView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Raised rows (with an action bar overhanging above their top edge) get first crack at overhanging clicks.
+        // Raised or hovered rows (with an action bar or hover pill overhanging above their top edge) get first crack at overhanging clicks.
         for subview in subviews {
-            guard let rowView = subview as? TimelineTableRowView, rowView.isRaisedRow else { continue }
+            guard let rowView = subview as? TimelineTableRowView,
+                  rowView.isRaisedRow || rowView.isHoveredRow || rowView.overhangingBarFrame != nil else { continue }
             let overhang = rowView.frame.insetBy(dx: 0, dy: -TimelineTableMetrics.raisedOverhangPadding)
             if overhang.contains(point), let hit = rowView.hitTest(point) {
                 return hit
@@ -889,7 +911,8 @@ final class TimelineNSTableView: NSTableView {
 
     private func overhangingBarTarget(at local: NSPoint) -> NSView? {
         for subview in subviews {
-            guard let rowView = subview as? TimelineTableRowView, rowView.isRaisedRow,
+            guard let rowView = subview as? TimelineTableRowView,
+                  rowView.isRaisedRow || rowView.isHoveredRow || rowView.overhangingBarFrame != nil,
                   rowView.overhangingBarFrame != nil,
                   let hit = rowView.hitTest(local) else { continue }
             return hit
@@ -2561,6 +2584,7 @@ struct TimelineTableView: NSViewRepresentable {
             hasher.combine(view.preferences.showMessageTimestamps)
             hasher.combine(view.preferences.timeFormat.rawValue)
             hasher.combine(view.preferences.loadExternalEmbedsAutomatically)
+            hasher.combine(view.preferences.showLinkPreviews)
             hasher.combine(view.conversation.isDirectChat)
             hasher.combine(view.conversation.timerChoices.count)
             if let merged = view.conversation.mergedChat {

@@ -300,7 +300,7 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         return nil
     }
 
-    /// Finds the first embeddable media link in a timeline message's link previews or rich text entities.
+    /// Finds the first embeddable media link in a timeline message's link previews, rich text entities, or plain text.
     public static func first(in message: TimelineMessage) -> ExternalEmbedDescriptor? {
         for preview in message.linkPreviews {
             if let url = preview.url, let matched = match(urlString: url) {
@@ -313,6 +313,15 @@ public struct ExternalEmbedDescriptor: Equatable, Sendable {
         for entity in message.rich.entities where entity.kind == .link {
             if let url = entity.url, let matched = match(urlString: url) {
                 return matched
+            }
+        }
+        let nsText = message.rich.text as NSString
+        if nsText.length > 0 {
+            let range = NSRange(location: 0, length: nsText.length)
+            for matchResult in SharedLinkDetector.matches(in: message.rich.text, options: [], range: range) {
+                if let url = matchResult.url, let matched = match(urlString: url.absoluteString) {
+                    return matched
+                }
             }
         }
         return nil
@@ -357,19 +366,30 @@ public struct EmbedConsentCard: View {
     public var title: String?
     /// A picture the link's preview already saved on this Mac; drawn without any request.
     public var previewImagePath: String?
-    /// Whether the video's picture may be fetched from its site (that tells the site this Mac's address). Off by
-    /// default and only on with "Load external embeds automatically"; off, the card uses the picture the network's
-    /// own preview saved on this Mac, else the tinted placeholder, and asks for nothing.
+    /// Whether the video's picture and title may be fetched from YouTube (that tells YouTube this Mac's address). The
+    /// message row passes "Show link previews"; "Load external embeds automatically" only decides whether the player
+    /// itself loads (`LinkPreviewPolicy`).
+    /// Off (the default here), the card uses the picture and title the network's own preview saved on this Mac, else
+    /// the tinted placeholder and the stand-in title, and asks for nothing.
     public var allowsRemoteThumbnail: Bool
     /// Where a fetched picture comes from (the shared session unless a test supplies its own).
     public var session: URLSession
     /// Gets a video's picture; the default asks YouTube through `session`. A test supplies its own.
     public var fetchPicture: (@Sendable (String) async -> CGImage?)?
+    /// Gets a video's title and channel; the default asks YouTube oEmbed through `session`. A test supplies its own.
+    public var fetchMetadata: (@Sendable (String) async -> YouTubeMetadata?)?
     public var onBubble: Bool
     /// The last picture loaded, tagged with the source it was loaded for. It is drawn only while that source is
     /// still the card's current one, so a late answer for an earlier video can never show.
     @State private var loaded: (source: String, image: CGImage)?
-    private var thumbnail: CGImage? { Self.visibleThumbnail(loaded, currentSource: thumbnailSource) }
+    @State private var loadedMetadata: (source: String, metadata: YouTubeMetadata)?
+    private var thumbnail: CGImage? {
+        if let hit = Self.visibleThumbnail(loaded, currentSource: thumbnailSource) { return hit }
+        if allowsRemoteThumbnail, previewImagePath == nil, let id = descriptor.youTubeVideoID {
+            return EmbedThumbnail.cachedThumbnail(videoID: id)
+        }
+        return nil
+    }
 
     /// The picture to draw: only one loaded for the card's current source.
     static func visibleThumbnail(_ loaded: (source: String, image: CGImage)?, currentSource: String) -> CGImage? {
@@ -395,6 +415,7 @@ public struct EmbedConsentCard: View {
         allowsRemoteThumbnail: Bool = false,
         session: URLSession = .shared,
         fetchPicture: (@Sendable (String) async -> CGImage?)? = nil,
+        fetchMetadata: (@Sendable (String) async -> YouTubeMetadata?)? = nil,
         onBubble: Bool = false,
         onLoadEmbed: @escaping () -> Void,
         onOpenURL: @escaping (URL) -> Void = { url in
@@ -409,14 +430,40 @@ public struct EmbedConsentCard: View {
         self.allowsRemoteThumbnail = allowsRemoteThumbnail
         self.session = session
         self.fetchPicture = fetchPicture
+        self.fetchMetadata = fetchMetadata
         self.onBubble = onBubble
         self.onLoadEmbed = onLoadEmbed
         self.onOpenURL = onOpenURL
     }
 
+    private var trimmedBridgeTitle: String? {
+        guard let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return nil }
+        return title
+    }
+
+    private var currentMetadata: YouTubeMetadata? {
+        let source = metadataSource
+        guard allowsRemoteThumbnail, !source.isEmpty else { return nil }
+        if let loadedMetadata, loadedMetadata.source == source {
+            return loadedMetadata.metadata
+        }
+        if let id = descriptor.youTubeVideoID {
+            return EmbedThumbnail.cachedMetadata(videoID: id)
+        }
+        return nil
+    }
+
     private var displayTitle: String {
-        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+        if let bridgeTitle = trimmedBridgeTitle { return bridgeTitle }
+        if let oembedTitle = currentMetadata?.title { return oembedTitle }
         return descriptor.fallbackTitle
+    }
+
+    private var displaySubtitle: String {
+        if let channel = currentMetadata?.authorName, !channel.isEmpty {
+            return "\(channel) · \(descriptor.siteName)"
+        }
+        return displayTitle == descriptor.fallbackTitle ? descriptor.host : descriptor.siteName
     }
 
     /// What picture the card would draw, so the load restarts when it changes (empty: none).
@@ -426,6 +473,16 @@ public struct EmbedConsentCard: View {
             return "youtube:\(id)"
         }
         return ""
+    }
+
+    /// What metadata the card needs to fetch via YouTube oEmbed when the bridge gave no title (empty: none).
+    private var metadataSource: String {
+        guard trimmedBridgeTitle == nil,
+              allowsRemoteThumbnail,
+              let id = descriptor.youTubeVideoID,
+              EmbedThumbnail.youTubeOEmbedURL(videoID: id) != nil
+        else { return "" }
+        return "youtube-oembed:\(id)"
     }
 
     /// Reads a saved preview picture (through the shared small-picture cache) or, when allowed, fetches the video's.
@@ -442,11 +499,27 @@ public struct EmbedConsentCard: View {
             if let fetchPicture {
                 image = await fetchPicture(id)
             } else {
-                image = await EmbedThumbnail.fetch(videoID: id, session: session)
+                image = await EmbedThumbnail.fetch(videoID: id, showLinkPreviews: allowsRemoteThumbnail, session: session)
             }
         }
         guard !Task.isCancelled, let image else { return }
         loaded = (source, image)
+    }
+
+    /// Fetches the video's title and channel (YouTube oEmbed) when the network's preview gave no title. Like the
+    /// picture, an answer for an earlier video is tagged with its own source, so it is never drawn on another card.
+    @MainActor
+    private func loadMetadata() async {
+        let source = metadataSource
+        guard !source.isEmpty, let id = descriptor.youTubeVideoID else { return }
+        let metadata: YouTubeMetadata?
+        if let fetchMetadata {
+            metadata = await fetchMetadata(id)
+        } else {
+            metadata = await EmbedThumbnail.fetchMetadata(videoID: id, showLinkPreviews: allowsRemoteThumbnail, session: session)
+        }
+        guard !Task.isCancelled, let metadata else { return }
+        loadedMetadata = (source, metadata)
     }
 
     /// The widest the card is, and so the widest a bubble holding it is.
@@ -521,8 +594,8 @@ public struct EmbedConsentCard: View {
                             .foregroundStyle(onBubble ? Color.white : Color.primary)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        // The site's name under a real title; under the stand-in title (which names it), the address.
-                        Text(displayTitle == descriptor.fallbackTitle ? descriptor.host : descriptor.siteName)
+                        // The site's name (with channel when oEmbed provided it) under a real title; under the stand-in title, the address.
+                        Text(displaySubtitle)
                             .font(.caption)
                             .foregroundStyle(onBubble ? Color.white.opacity(0.78) : Color.secondary)
                             .lineLimit(1)
@@ -542,6 +615,7 @@ public struct EmbedConsentCard: View {
             }
             .buttonStyle(.plain)
             .task(id: thumbnailSource) { await loadThumbnail() }
+            .task(id: metadataSource) { await loadMetadata() }
             .help(tooltip)
             .contextMenu {
                 Button(String(localized: "Open in Browser")) { onOpenURL(descriptor.originalURL) }

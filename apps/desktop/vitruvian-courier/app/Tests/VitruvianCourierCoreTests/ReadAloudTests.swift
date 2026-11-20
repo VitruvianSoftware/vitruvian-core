@@ -164,9 +164,17 @@ final class ReadAloudTests: XCTestCase {
         let features = ChatFeatures(source: .stored)
         let available = MessageActions.available(for: msg, in: features, network: "whatsapp", now: now)
         func titles(canReadAloud: Bool, isReadingAloud: Bool = false) -> [MessageMenuItem] {
-            MessageMenu.sections(for: msg, available: available, features: features, disappearsIn: nil,
-                                 time: { _ in "14:02" }, canReadAloud: canReadAloud, isReadingAloud: isReadingAloud)
-                .flatMap { $0 }.filter { $0.command == .readAloud }
+            let sections = MessageMenu.sections(
+                for: msg,
+                available: available,
+                features: features,
+                disappearsIn: nil,
+                time: { _ in "14:02" },
+                canReadAloud: canReadAloud,
+                isReadingAloud: isReadingAloud
+            )
+            let more = sections.flatMap { $0 }.first { $0.command == .more }
+            return (more?.children ?? []).filter { $0.command == .readAloud }
         }
         XCTAssertTrue(titles(canReadAloud: false).isEmpty)
         let idle = titles(canReadAloud: true)

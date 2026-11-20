@@ -83,16 +83,21 @@ final class MessagePresentationTests: XCTestCase {
 
     // MARK: The message menu
 
+    private func moreItem(in sections: [[MessageMenuItem]]) -> MessageMenuItem? {
+        sections.flatMap { $0 }.first { $0.command == .more }
+    }
+
     func testTheMenuIsInItsOrderWithGreyedLinesAndInfo() {
         let mine = message(mine: true, edited: true, minutesAgo: 30)
         let available = MessageActions.available(for: mine, in: whatsApp, network: "whatsapp", now: now)
         let sections = MessageMenu.sections(for: mine, available: available, features: whatsApp,
                                             disappearsIn: "Disappears in 1 hour", time: { _ in "14:02" })
         XCTAssertEqual(sections.map { $0.map(\.title) }, [
-            ["Reply…", "React…", "Edit…"], ["Copy", "Copy with Timestamp", "Forward…"],
-            ["Bookmark", "Mark as Unread", "Edit History"], ["Unsend", "Delete for Me…"],
-            ["Sent at 14:02", "Disappears in 1 hour"],
+            ["Reply…", "React…", "Edit…"], ["Copy", "Forward…"],
+            ["Bookmark", "Mark as Unread", "More"], ["Unsend", "Delete for Me…"],
+            ["Sent 14:02", "Disappears in 1 hour"],
         ])
+        XCTAssertEqual(moreItem(in: sections)?.children.map(\.title), ["Copy with Timestamp", "Edit History"])
         let edit = sections[0][2]
         XCTAssertFalse(edit.isEnabled, "30 minutes is past WhatsApp's 15")
         XCTAssertEqual(edit.help, "WhatsApp only lets you edit for 15 minutes")
@@ -116,19 +121,22 @@ final class MessagePresentationTests: XCTestCase {
         let root = message(mine: false, body: "see https://example.test",
                            thread: ThreadSummary(replies: 2, lastTS: 0, lastSenders: ["Bo"]), bookmarked: true)
         let available = MessageActions.available(for: root, in: slack, network: "slack", now: now)
-        let titles = MessageMenu.sections(for: root, available: available, features: slack, disappearsIn: nil,
-                                          time: { _ in "9:00" }).map { $0.map(\.title) }
+        let sections = MessageMenu.sections(for: root, available: available, features: slack, disappearsIn: nil,
+                                            time: { _ in "9:00" })
+        let titles = sections.map { $0.map(\.title) }
         XCTAssertEqual(titles, [
             ["Reply in Thread…", "Show Replies", "React…"],
-            ["Copy", "Copy with Timestamp", "Insert as Draft", "Open Link", "Forward…"],
-            ["Remove Bookmark", "Mark as Unread"], ["Delete for Me…"], ["Received at 9:00"],
+            ["Copy", "Forward…"],
+            ["Remove Bookmark", "Mark as Unread", "More"], ["Delete for Me…"], ["Received 9:00"],
         ])
+        XCTAssertEqual(moreItem(in: sections)?.children.map(\.title),
+                       ["Copy with Timestamp", "Insert as Draft", "Open Link"])
         let gm = ChatFeatures(reply: true, deleteReachesPhone: true, source: .stored)
         XCTAssertEqual(MessageMenu.title(of: .deleteForMe, features: gm), "Delete from This Mac and Your Phone…")
     }
 
-    /// Everything the menu can hold at once, drawn in five sections: Reply first, then what takes the message
-    /// elsewhere, what is done with it, what removes or reports it, and the greyed lines last.
+    /// Everything the menu can hold at once, drawn in five sections: Reply first, then Copy/Forward, Bookmark/Unread/More,
+    /// Unsend/Delete, and the greyed lines last.
     func testTheFullMenuIsFiveSectionsWithReplyFirstAndInfoLast() {
         let root = message(mine: true, body: "bonjour", thread: ThreadSummary(replies: 1, lastTS: 0, lastSenders: ["Bo"]),
                            edited: true)
@@ -139,10 +147,14 @@ final class MessagePresentationTests: XCTestCase {
             translationLanguages: ["English", "Spanish"], canReadAloud: true)
         XCTAssertEqual(sections.map { $0.map(\.title) }, [
             ["Reply…", "Show Replies", "React…", "Edit…"],
-            ["Copy", "Copy with Timestamp", "Forward…"],
-            ["Bookmark", "Mark as Unread", "Read Aloud", "Translate", "Translate Into…", "Edit History"],
-            ["Unsend", "Delete for Me…", "Report a Problem…", "Copy Message Details"],
-            ["Sent at 14:02", "Disappears in 1 hour"],
+            ["Copy", "Forward…"],
+            ["Bookmark", "Mark as Unread", "More"],
+            ["Unsend", "Delete for Me…"],
+            ["Sent 14:02", "Disappears in 1 hour"],
+        ])
+        XCTAssertEqual(moreItem(in: sections)?.children.map(\.title), [
+            "Copy with Timestamp", "Read Aloud", "Translate", "Translate Into…", "Edit History",
+            "Report a Problem…", "Copy Message Details",
         ])
         XCTAssertLessThanOrEqual(sections.count, 5)
         XCTAssertEqual(sections.first?.first?.command, .action(.reply), "Reply is the first line")
@@ -155,20 +167,26 @@ final class MessagePresentationTests: XCTestCase {
         let available = MessageActions.available(for: theirs, in: whatsApp, network: "whatsapp", now: now)
         let plain = MessageMenu.sections(for: theirs, available: available, features: whatsApp, disappearsIn: nil,
                                          time: { _ in "14:02" })
-        let titles = plain.flatMap { $0.map(\.title) }
+        let topTitles = plain.flatMap { $0.map(\.title) }
+        let moreTitles = moreItem(in: plain)?.children.map(\.title) ?? []
+        let allTitles = topTitles + moreTitles
         for absent in ["Edit…", "Unsend", "Show Replies", "Read Aloud", "Translate", "Report a Problem…",
                        "Copy Message Details", "Transcribe", "Edit History", "Open Link"]
         {
-            XCTAssertFalse(titles.contains(absent), "\(absent) is not offered here: \(titles)")
+            XCTAssertFalse(allTitles.contains(absent), "\(absent) is not offered here: \(allTitles)")
         }
+        XCTAssertEqual(moreTitles, ["Copy with Timestamp", "Insert as Draft"])
         XCTAssertTrue(plain.allSatisfy { !$0.isEmpty }, "no empty section, so no double divider")
 
-        // Reading aloud and diagnostics each add their line only when asked for.
+        // Reading aloud and diagnostics each add their line inside More only when asked for.
         let more = MessageMenu.sections(for: theirs, available: available, features: whatsApp, disappearsIn: nil,
                                         time: { _ in "14:02" }, includeDiagnostics: true, canReadAloud: true)
-        XCTAssertEqual(more.map { $0.map(\.title) }.dropLast().last, ["Delete for Me…", "Report a Problem…", "Copy Message Details"],
-                       "someone else's message has nothing to unsend, so Delete for Me… leads the last action section")
-        XCTAssertTrue(more.flatMap { $0 }.contains { $0.command == .readAloud })
+        XCTAssertEqual(more.map { $0.map(\.title) }.dropLast().last, ["Delete for Me…"],
+                       "someone else's message has nothing to unsend, so Delete for Me… is alone in the removing section")
+        let moreChildren = moreItem(in: more)?.children ?? []
+        XCTAssertTrue(moreChildren.contains { $0.command == .readAloud })
+        XCTAssertTrue(moreChildren.contains { $0.command == .reportProblem })
+        XCTAssertTrue(moreChildren.contains { $0.command == .copyMessageDetails })
     }
 
     /// Reply and Copy keep their shortcuts: Reply is ⌘R and its registry key, Copy is ⌘C. The rest keep theirs.
@@ -176,9 +194,11 @@ final class MessagePresentationTests: XCTestCase {
         let root = message(mine: true, body: "see https://example.test",
                            thread: ThreadSummary(replies: 1, lastTS: 0, lastSenders: ["Bo"]), minutesAgo: 1)
         let available = MessageActions.available(for: root, in: whatsApp, network: "whatsapp", now: now)
-        let items = MessageMenu.sections(for: root, available: available, features: whatsApp, disappearsIn: nil,
-                                         time: { _ in "14:02" }).flatMap { $0 }
-        func key(_ title: String) -> MenuKey? { items.first { $0.title == title }?.key }
+        let sections = MessageMenu.sections(for: root, available: available, features: whatsApp, disappearsIn: nil,
+                                            time: { _ in "14:02" })
+        let topItems = sections.flatMap { $0 }
+        let allItems = topItems + (moreItem(in: sections)?.children ?? [])
+        func key(_ title: String) -> MenuKey? { allItems.first { $0.title == title }?.key }
         XCTAssertEqual(key("Reply…"), .commandR)
         XCTAssertEqual(MenuKey.commandR.hotkeyID, "Message: Quote & Reply")
         XCTAssertEqual(key("Copy"), .commandC)
@@ -193,7 +213,30 @@ final class MessagePresentationTests: XCTestCase {
         let available = MessageActions.available(for: failed, in: whatsApp, network: "whatsapp", now: now)
         let sections = MessageMenu.sections(for: failed, available: available, features: whatsApp, disappearsIn: nil,
                                             time: { _ in "now" })
-        XCTAssertEqual(sections.map { $0.map(\.title) }, [["Copy", "Copy with Timestamp"]])
+        XCTAssertEqual(sections.map { $0.map(\.title) }, [["Copy"], ["More"]])
+        XCTAssertEqual(moreItem(in: sections)?.children.map(\.title), ["Copy with Timestamp"])
+    }
+
+    func testTimestampLineOmitsDuplicateAt() {
+        let mine = message(mine: true)
+        let theirs = message(mine: false)
+        let formatted = "Nov 19, 2026 at 11:47 PM"
+        let mineSections = MessageMenu.sections(
+            for: mine,
+            available: MessageActions.available(for: mine, in: whatsApp, network: "whatsapp", now: now),
+            features: whatsApp,
+            disappearsIn: nil,
+            time: { _ in formatted }
+        )
+        let theirSections = MessageMenu.sections(
+            for: theirs,
+            available: MessageActions.available(for: theirs, in: whatsApp, network: "whatsapp", now: now),
+            features: whatsApp,
+            disappearsIn: nil,
+            time: { _ in formatted }
+        )
+        XCTAssertEqual(mineSections.last?.first?.title, "Sent Nov 19, 2026 at 11:47 PM")
+        XCTAssertEqual(theirSections.last?.first?.title, "Received Nov 19, 2026 at 11:47 PM")
     }
 
     // MARK: The formatting bar
@@ -501,5 +544,42 @@ final class MessagePresentationTests: XCTestCase {
             )
         )
         XCTAssertEqual(rows[1].body, "Trail summit celebration")
+    }
+
+    func testHoveringUnselectedMessageShowsHoverPillAndHidesWhenPointerLeaves() {
+        XCTAssertEqual(ActionBarVisibility.hoverFadeDuration, 0.12, accuracy: 0.001)
+        var pointer = ActionBarPointer()
+        XCTAssertEqual(
+            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
+                                     pointer: pointer, timelineCovered: false),
+            .hidden
+        )
+        pointer.rowHover(true)
+        XCTAssertEqual(
+            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
+                                     pointer: pointer, timelineCovered: false),
+            .hoverPill
+        )
+        pointer.rowHover(false)
+        XCTAssertEqual(
+            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
+                                     pointer: pointer, timelineCovered: false),
+            .hoverPill,
+            "stays up while pointer crosses from row onto hover pill"
+        )
+        pointer.barHover(true)
+        pointer.settle()
+        XCTAssertEqual(
+            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
+                                     pointer: pointer, timelineCovered: false),
+            .hoverPill
+        )
+        pointer.barHover(false)
+        pointer.settle()
+        XCTAssertEqual(
+            ActionBarVisibility.mode(canAct: true, isSelected: false, menuOpen: false, pickingReaction: false,
+                                     pointer: pointer, timelineCovered: false),
+            .hidden
+        )
     }
 }

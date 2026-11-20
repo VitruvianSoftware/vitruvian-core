@@ -60,6 +60,16 @@ final class SettingsSearchModelTests: XCTestCase {
         XCTAssertTrue(model.suggestions.contains { $0.id == "accounts.subAccounts" && $0.pane == .accounts })
     }
 
+    func testShowLinkPreviewsIsFindableInSettingsSearch() {
+        XCTAssertEqual(SettingsNavigationModel.title(for: "appearance.showLinkPreviews"), "Show link previews")
+        let model = SettingsNavigationModel()
+        for query in ["link previews", "show link previews", "thumbnail", "youtube"] {
+            model.searchQuery = query
+            XCTAssertTrue(model.suggestions.contains { $0.id == "appearance.showLinkPreviews" && $0.pane == .appearance },
+                          "\(query) finds Show link previews")
+        }
+    }
+
     func testEveryVisibleSettingInCatalogIsFindableAndEveryPaneIsCovered() {
         let model = SettingsNavigationModel()
         let catalog = SettingsNavigationModel.allSettings
