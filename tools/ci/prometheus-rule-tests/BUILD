@@ -21,7 +21,9 @@
 # SOFTWARE.
 
 # gazelle:ignore
+# gazelle:exclude src
 
+load("@aspect_rules_py//py:defs.bzl", "py_binary")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 exports_files([
@@ -34,6 +36,24 @@ exports_files([
     "mini-party.test.yml",
     "public-urls.test.yml",
 ])
+
+py_binary(
+    name = "pyyaml_python",
+    srcs = ["src/pyyaml_exec.py"],
+    main = "src/pyyaml_exec.py",
+    deps = ["@pip//pyyaml"],
+)
+
+RULE_TEST_DATA = [
+    ":pyyaml_python",
+    "//gitops/argocd/platform/prometheus:applicationset.yaml",
+    "@multitool//tools/promtool",
+] + glob(["*.test.yml"])
+
+RULE_TEST_ENV = {
+    "PROMTOOL": "$(rootpath @multitool//tools/promtool)",
+    "PYYAML_PYTHON": "$(rootpath :pyyaml_python)",
+}
 
 rust_library(
     name = "prometheus_rule_tests_lib",
@@ -48,8 +68,9 @@ rust_library(
 rust_binary(
     name = "run",
     srcs = ["src/main.rs"],
-    data = glob(["*.test.yml"]),
+    data = RULE_TEST_DATA,
     edition = "2021",
+    env = RULE_TEST_ENV,
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [
@@ -62,7 +83,9 @@ rust_test(
     name = "prometheus_rule_tests_lib_test",
     size = "small",
     crate = ":prometheus_rule_tests_lib",
+    data = RULE_TEST_DATA,
     edition = "2021",
+    env = RULE_TEST_ENV,
     rustc_flags = ["-Copt-level=3"],
 )
 

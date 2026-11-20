@@ -11,6 +11,11 @@ gitops_manifest(
     manifests = ["applicationset.yaml"],
 )
 
+exports_files(
+    ["applicationset.yaml"],
+    visibility = ["//tools/ci/prometheus-rule-tests:__pkg__"],
+)
+
 rust_library(
     name = "prometheus_values_lib",
     srcs = [

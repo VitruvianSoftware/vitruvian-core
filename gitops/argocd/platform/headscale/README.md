@@ -10,17 +10,81 @@ Subsystem blueprint grouping child modules under `gitops/argocd/platform/headsca
 
 [`policy.hujson`](./policy.hujson) is the mesh's ACL policy and its source of
 truth. Headscale keeps the live policy in its database
-(`HEADSCALE_POLICY_MODE=database`, so Headplane's ACL page still works), which
-means Argo CD does not apply this file. After a change merges, apply it from
-the main checkout:
+(`HEADSCALE_POLICY_MODE=database`, so Headplane's ACL page still works), and
+[`configmap-policy.yaml`](./configmap-policy.yaml) (`ConfigMap/headscale-policy`)
+embeds `policy.hujson` for Argo CD (`headscale-resources`). After editing
+`policy.hujson`, regenerate the ConfigMap (`policy_configmap_drift_test` fails in
+CI if they drift):
 
 ```sh
-bazel run //tools/gitops:headscale-policy-check   # validate with the live Headscale
-bazel run //tools/gitops:headscale-policy-set     # check, then replace the live policy
-bazel run //tools/gitops:headscale -- policy get  # confirm what is live
+bazel run //gitops/argocd/platform/headscale:policy-configmap
 ```
 
-An edit made in Headplane lasts only until the next `headscale-policy-set`.
+Merging to `main` makes the change live automatically within ~2 minutes: Argo CD
+syncs `ConfigMap/headscale-policy`, kubelet refreshes the directory-mounted
+volume in place, and the `policy-sync` sidecar on `deploy/headscale` checks the
+mounted file on startup and every 60 s (`headscale policy get`, then
+`policy check` and `policy set` over the shared `/var/run/headscale/headscale.sock`
+socket when it differs). Any edit made in Headplane is reverted on the next
+60 s reconciliation when it differs from git.
+
+Watch the sync logs and confirm the live policy:
+
+```sh
+bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync
+bazel run //tools/gitops:headscale -- policy get
+```
+
+Manual push is break-glass only (`headscale-policy-check` can still validate a
+local draft against live Headscale before merge). Because `policy-sync`
+reconciles every 60 s from `ConfigMap/headscale-policy`, pause it before any
+emergency override so your change is not overwritten while the PR is in flight:
+
+```sh
+bazel run //tools/gitops:headscale-policy-check        # validate a local change with live Headscale
+bazel run //tools/gitops:headscale-policy-sync-pause   # 1. create unmanaged ConfigMap/headscale-policy-sync-pause
+bazel run //tools/gitops:headscale-policy-set          # 2. break-glass: check, then replace live policy immediately
+# 3. merge the fix to policy.hujson (and regenerated configmap-policy.yaml), then resume:
+bazel run //tools/gitops:headscale-policy-sync-resume  # 4. delete ConfigMap/headscale-policy-sync-pause
+```
+
+Verify the rendered Helm `Deployment` (sidecar, securityContext, non-root socket
+group `65533`, optional ConfigMaps, directory mounts, `policy-metrics` port `9102`)
+locally with:
+
+```sh
+bazel run //gitops/argocd/platform/headscale:render-check
+```
+
+`render-check` pulls the Helm chart over the network (`helm pull`) and is
+therefore non-hermetic, so it runs as a `bazel run` gate rather than a `bazel test`.
+
+`policy-sync` also exposes Prometheus metrics via BusyBox `/busybox/httpd`
+serving its own `/metrics` `emptyDir` (`sizeLimit: 64Ki`) on named port
+`policy-metrics` (`9102`), atomically rewritten on each loop pass and scraped by
+Prometheus's `kubernetes-service-endpoints` job through
+[`service-policy-sync.yaml`](./service-policy-sync.yaml) (`Service/headscale-policy-sync`).
+If `/busybox/httpd` is missing or not executable, `policy-sync` exits non-zero
+immediately so the container restarts and `HeadscalePolicySyncStale` fires via
+its absence branch:
+
+- `headscale_policy_sync_up`: `1` when the last unpaused reconciliation ended in
+  sync, applied a policy, or skipped by design because `/etc/headscale-policy/policy.hujson`
+  was absent (`! -e`); `0` when Headscale was not ready, `policy.hujson` existed
+  but was unreadable (`! -r`) or failed to snapshot, `policy check` failed, or `policy set` failed.
+- `headscale_policy_sync_last_success_timestamp_seconds`: Unix epoch timestamp of
+  the last reconciliation ending with `up=1`.
+- `headscale_policy_sync_paused`: `1` while `/etc/headscale-policy-pause/paused`
+  is present, `0` otherwise.
+
+Missing ConfigMap and pause behaviour: if `ConfigMap/headscale-policy` is missing
+(`/etc/headscale-policy/policy.hujson` does not exist), `policy-sync` reads it
+as absent, reports healthy (`up=1` and fresh `last_success_timestamp_seconds`),
+and applies nothing until Argo CD recreates it. Pausing via
+`ConfigMap/headscale-policy-sync-pause` silences `HeadscalePolicySyncStale`
+(so long as metrics continue to be scraped), but the 12-hour
+`HeadscalePolicySyncPausedTooLong` warning still fires. Policy contents are
+never included in metrics.
 
 What it allows today: James's own devices reach everything (as the old
 allow-all did), and `tag:ci` reaches only TCP to the Envoy gateway NodePorts
@@ -45,6 +109,8 @@ through Alertmanager to ntfy and PagerDuty:
 | `HeadscaleCredentialExpiringSoon` | 30 to 3 days left (stands down when the page takes over) | warning |
 | `HeadscaleCredentialExpiringImminently` | under 3 days left | page |
 | `HeadscaleKeyExporterDown` | for 30 min: a failed read, no successful read in an hour, a record it could not read, or no exporter at all | warning |
+| `HeadscalePolicySyncStale` | for 5 min: last `policy-sync` `up=1` reconciliation older than 15 min while `headscale_policy_sync_paused == 0`, or policy-sync metrics absent altogether | warning |
+| `HeadscalePolicySyncPausedTooLong` | for 12 h: `headscale_policy_sync_paused == 1` (pause silences `HeadscalePolicySyncStale`, not this warning) | warning |
 
 Expired credentials and spent single-use keys are left out, so a dead key
 does not alert, and an alert resolves at the moment its key expires. That is

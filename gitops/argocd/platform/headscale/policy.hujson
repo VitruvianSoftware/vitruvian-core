@@ -19,16 +19,21 @@
 // SOFTWARE.
 //
 // Headscale ACL policy: the source of truth for who may reach what on the
-// mesh. Headscale stores its policy in its database (HEADSCALE_POLICY_MODE=
-// database, so Headplane's ACL page keeps working), so this file does not
-// apply itself. Apply it after it merges:
+// mesh. Headscale keeps the live policy in its database (HEADSCALE_POLICY_MODE=
+// database, so Headplane's ACL page keeps working). After editing this file,
+// regenerate configmap-policy.yaml so CI's drift test passes:
 //
-//   bazel run //tools/gitops:headscale-policy-check   # validate against live Headscale
-//   bazel run //tools/gitops:headscale-policy-set     # check, then replace the live policy
+//   bazel run //gitops/argocd/platform/headscale:policy-configmap
 //
-// An edit made in Headplane is overwritten by the next policy-set. Make the
-// change here instead. The file is .hujson on purpose: Argo CD's directory
-// source reads *.yaml/*.yml/*.json, so it never tries to apply this.
+// Once merged to main, Argo CD updates the headscale-policy ConfigMap and the
+// policy-sync sidecar checks and applies it within ~2 minutes (overwriting any
+// edit made in Headplane). Break-glass manual check/apply:
+//
+//   bazel run //tools/gitops:headscale-policy-check
+//   bazel run //tools/gitops:headscale-policy-set
+//
+// The file is .hujson on purpose: Argo CD's directory source reads
+// *.yaml/*.yml/*.json, so it applies configmap-policy.yaml, not this file.
 {
   "tagOwners": {
     // Ephemeral GitHub Actions runners (Zitadel and Sentry apply workflows). They

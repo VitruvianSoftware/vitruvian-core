@@ -108,6 +108,11 @@ var guardReviewPaths = []string{
 	// what the required checks and the release jobs actually do.
 	".github/workflows/**",
 	".github/actions/**",
+	// The mesh access policy and what applies it: policy.hujson (who may reach
+	// what on the tailnet), the ConfigMap generated from it, and the headscale
+	// app whose policy-sync sidecar applies a merged change within minutes
+	// with no further step. James asked for this gate (2026-11-19).
+	"gitops/argocd/platform/headscale/**",
 	// This requirement itself: the ruleset and team (this file), where it is
 	// wired in and the other ruleset's bypass list (main.go), the release-tag
 	// ruleset (release_tags.go), and the stack it is applied to.

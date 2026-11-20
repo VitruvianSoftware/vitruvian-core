@@ -236,6 +236,10 @@ A pull request that changes any of these waits until `ipv1337`, through the
 - the CI definitions: `.github/workflows/**` and `.github/actions/**` (they
   run in GitHub Actions with the repository's secrets and tokens, and decide
   what the required checks and the release jobs do)
+- `gitops/argocd/platform/headscale/**` (the mesh access policy
+  `policy.hujson`, the ConfigMap generated from it, and the headscale app,
+  whose policy-sync sidecar applies a merged policy within minutes with no
+  further step)
 - the requirement itself: `infrastructure/pulumi/platform/repo-config/guard_review.go`
   (the rule and the team), `infrastructure/pulumi/platform/repo-config/main.go`
   (where it is wired in, and the merge-queue ruleset's bypass list),
@@ -245,7 +249,7 @@ A pull request that changes any of these waits until `ipv1337`, through the
 
 GitHub allows at most 15 file patterns in one required-reviewers rule and
 rejects more only when the ruleset is applied, after merge (#4259 hit this).
-The list is at 14; a test in `guard_review_test.go` fails above 15. To add a
+The list is at 15, the maximum; a test in `guard_review_test.go` fails above 15. To add a
 path when it is full, fold patterns into a broader glob that matches the same
 files, as the two above do.
 
