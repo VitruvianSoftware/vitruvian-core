@@ -518,10 +518,17 @@ describe("skills discovery and frontmatter parsing", () => {
         mcpServers: [],
       });
 
-      await new Promise((r) => setTimeout(r, 30));
-      const cmdUpdate = updates.find(
-        (u) => u.update.sessionUpdate === "available_commands_update",
-      );
+      // Poll instead of a fixed wait: the update arrives after session/new
+      // replies, and how long that takes depends on the machine's load.
+      const deadline = Date.now() + 5000;
+      const findCmdUpdate = () =>
+        updates.find(
+          (u) => u.update.sessionUpdate === "available_commands_update",
+        );
+      while (!findCmdUpdate() && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      const cmdUpdate = findCmdUpdate();
       expect(cmdUpdate).toEqual({
         sessionId: sid,
         update: {

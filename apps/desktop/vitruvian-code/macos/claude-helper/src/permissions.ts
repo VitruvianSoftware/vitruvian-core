@@ -73,8 +73,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Filters SDK permission suggestions before applying `allow_always`.
- * Drops `setMode` updates so mode changes come only from the app
- * (T3 `ClaudeAdapterV2.ts:3808-3819` drops `setMode` under a managed ceiling).
+ * Drops `setMode` updates so mode changes come only from the app.
+ * This is stricter than T3 Code on purpose: `ClaudeAdapterV2.ts:3808-3819`
+ * drops `setMode` only under a managed permission ceiling, but here the app's
+ * chosen mode is always the ceiling, so an "always allow" may never move it.
  */
 export function filterAllowAlwaysSuggestions(
   suggestions?: readonly PermissionUpdate[],

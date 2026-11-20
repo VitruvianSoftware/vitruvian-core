@@ -1014,7 +1014,11 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
         sessionId: sid,
         prompt: [{ type: "text", text: "4" }],
       });
-      await new Promise((r) => setTimeout(r, 10));
+      // Cancel once the fourth prompt has reached the SDK, not after a fixed wait.
+      const cancelDeadline = Date.now() + 5000;
+      while (step < 4 && Date.now() < cancelDeadline) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
       await harness.client.notify("session/cancel", { sessionId: sid });
       expect((await cancelPromptPromise).stopReason).toBe("cancelled");
 
@@ -1665,6 +1669,96 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
         sessionUpdate: "current_mode_update",
         currentModeId: "default",
       });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("switching to bypassPermissions mid-turn waits for the next prompt and reopens with the current secrets", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440030";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      defaultMode: "default",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const idx = queryHandles.length;
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onPromptMessage: (_msg, h) => {
+            // The first query's turn is finished by hand below; the reopened
+            // query finishes each turn at once.
+            if (idx === 1) {
+              h.emit(makeSuccessResult(sid));
+            }
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo/mid-turn",
+        mcpServers: [],
+      });
+      // Secrets sent after the session opened.
+      await harness.client.request("_vitruvian/secrets", {
+        env: { LATE_API_KEY: "late-value" },
+      });
+
+      const running = harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "long turn" }],
+      });
+      const deadline = Date.now() + 5000;
+      while (
+        queryHandles[0].pushedUserMessages.length < 1 &&
+        Date.now() < deadline
+      ) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+
+      const setModeRes = await harness.client.request("session/set_mode", {
+        sessionId: sid,
+        modeId: "bypassPermissions",
+      });
+      expect(setModeRes).toEqual({});
+      // The running turn keeps its query: nothing is reopened or closed yet.
+      expect(queryHandles).toHaveLength(1);
+      expect(queryHandles[0].closeCalls).toBe(0);
+      expect(harness.receivedUpdates).toContainEqual({
+        sessionId: sid,
+        update: {
+          sessionUpdate: "current_mode_update",
+          currentModeId: "bypassPermissions",
+        },
+      });
+
+      queryHandles[0].emit(makeSuccessResult(sid));
+      expect((await running).stopReason).toBe("end_turn");
+      expect(queryHandles).toHaveLength(1);
+
+      const next = await harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "next turn" }],
+      });
+      expect(next.stopReason).toBe("end_turn");
+      expect(queryHandles).toHaveLength(2);
+      expect(queryHandles[0].closeCalls).toBe(1);
+      expect(queryHandles[1].options?.resume).toBe(sid);
+      expect(queryHandles[1].options?.permissionMode).toBe("bypassPermissions");
+      expect(queryHandles[1].options?.allowDangerouslySkipPermissions).toBe(
+        true,
+      );
+      expect(queryHandles[1].options?.env?.LATE_API_KEY).toBe("late-value");
+      expect(queryHandles[1].pushedUserMessages).toHaveLength(1);
     } finally {
       await harness.close();
     }

@@ -153,12 +153,14 @@ interface SessionRecord {
   readonly id: string;
   readonly cwd: string;
   readonly additionalDirectories?: readonly string[];
-  readonly mcpServers?: Record<string, McpServerConfig>;
+  mcpServers?: Record<string, McpServerConfig>;
+  /** The ACP server list as the app sent it, so a reopen can re-apply the current secrets. */
+  readonly acpMcpServers?: readonly McpServer[];
   readonly canUseTool: CanUseTool;
   readonly client: AgentContext;
   query: SdkQuery;
   inputQueue: AsyncPushQueue<SDKUserMessage>;
-  readonly env: Record<string, string | undefined>;
+  env: Record<string, string | undefined>;
   readonly mappingState: MappingState;
   currentMode: ClaudeModeId;
   openedWithDangerousSkip: boolean;
@@ -166,6 +168,13 @@ interface SessionRecord {
   currentModel: string | undefined;
   modelExplicitlySet: boolean;
   activeTurn: ActiveTurn | null;
+  /**
+   * A mode that needs the query reopened (bypassPermissions), asked for while a
+   * turn was running. Applied when the next prompt starts, as T3 Code applies a
+   * new query policy at the start of a turn (ClaudeAdapterV2.ts ~11204-11260),
+   * so a running turn and its waiting approvals are never cut off.
+   */
+  pendingReopenMode: ClaudeModeId | null;
   closed: boolean;
   dead: boolean;
 }
@@ -723,6 +732,12 @@ export class ClaudeHelperAgent {
       );
     }
 
+    if (session.pendingReopenMode !== null) {
+      const mode = session.pendingReopenMode;
+      session.pendingReopenMode = null;
+      this.reopenSessionQuery(session, mode);
+    }
+
     resetTurnMappingState(session.mappingState);
     const abortController = new AbortController();
     let currentTurn: ActiveTurn | null = null;
@@ -961,14 +976,26 @@ export class ClaudeHelperAgent {
     mode: ClaudeModeId,
   ): Promise<void> {
     if (requiresDangerousSkipFlag(mode) && !session.openedWithDangerousSkip) {
-      this.reopenSessionQuery(session, mode);
+      if (session.activeTurn) {
+        // Never cut a running turn off: reopen when the next prompt starts.
+        session.pendingReopenMode = mode;
+      } else {
+        this.reopenSessionQuery(session, mode);
+      }
     } else {
+      session.pendingReopenMode = null;
       await session.query.setPermissionMode(mode);
     }
     session.currentMode = mode;
   }
 
   private reopenSessionQuery(session: SessionRecord, mode: ClaudeModeId): void {
+    // Secrets the app sent after the session opened apply to the new process.
+    session.env = buildSdkEnv(this.baseEnv, this.secrets.env);
+    session.mcpServers = convertMcpServers(
+      session.acpMcpServers,
+      this.secrets.mcpServers,
+    );
     const newInputQueue = new AsyncPushQueue<SDKUserMessage>();
     const queryOptions = this.buildQueryOptions({
       sessionId: session.id,
@@ -1085,6 +1112,7 @@ export class ClaudeHelperAgent {
         ? { additionalDirectories: [...input.additionalDirectories] }
         : {}),
       ...(mcpServers ? { mcpServers } : {}),
+      ...(input.mcpServers ? { acpMcpServers: input.mcpServers } : {}),
       canUseTool,
       client: input.client,
       query: sdkQuery,
@@ -1097,6 +1125,7 @@ export class ClaudeHelperAgent {
       currentModel: undefined,
       modelExplicitlySet: false,
       activeTurn: null,
+      pendingReopenMode: null,
       closed: false,
       dead: false,
     };
