@@ -24,6 +24,7 @@ Claude Code plugin for coordinating specialist helpers across a planned engineer
   - `board` (`mcp__vitruvian-orchestrator__board`): Reads numbered posts from the board (`to`, `from`, `kind`, `channel`, `search`, `limit`). When a helper omits `to` or passes `to: "me"`, it reads posts addressed to that helper or to everyone.
   - `channel` (`mcp__vitruvian-orchestrator__channel`): Lists channels (`action: "list"`, open to everyone) or creates and archives channels (`action: "create"` or `"archive"`, lead-only, up to 20 channels).
   - `team` (`mcp__vitruvian-orchestrator__team`): Reads the repository's optional `.agents/team.json` file (if present) and returns the resolved roles, agents, dispatch ids, `engine`, models, and project notes.
+  - `team_setup` (`mcp__vitruvian-orchestrator__team_setup`) and `team-setup` skill (`skills/team-setup/SKILL.md`): Creates a starter `.agents/team.json` (and optional `team-<role>` starter agents) with `init`, or syncs explicit model and effort settings into the repository's agent files with `sync`.
   - `step` (`mcp__vitruvian-orchestrator__step`): Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, with optional `detail`).
   - `progress` (`mcp__vitruvian-orchestrator__progress`): Called only by the lead to plan or re-plan tasks, advance phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
   - `/orchestrator-panel`: Slash command that opens or closes the live `Orchestrator` pane.
