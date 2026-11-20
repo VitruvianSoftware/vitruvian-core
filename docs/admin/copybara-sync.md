@@ -410,7 +410,9 @@ run. That gave Wand's first export (run 44252366231, 2026-11-18) and Mini Party'
 written, so waiting longer does not help; Wand's re-run, a new attempt, got the key.
 
 So when a push changes `infrastructure/pulumi/platform/repo-config/`, `await-repo-config` waits for
-the apply, then starts a fresh run of the same export with `workflow_dispatch` on `main` (step 3 of
+the apply (by polling that push's own apply run until it completes: GitHub's run list can miss a run
+created seconds earlier, which restarted the vitruvian-party rename's export too soon on 2026-11-20),
+then starts a fresh run of the same export with `workflow_dispatch` on `main` (step 3 of
 `_await-repo-config.yaml`). That run is created after the key exists. The original run skips its
 `export` job. A dispatched run never restarts, so it cannot loop. The two-PR order below still
 works, and avoids the extra run.
