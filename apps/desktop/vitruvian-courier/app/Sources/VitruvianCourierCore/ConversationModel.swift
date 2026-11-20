@@ -990,6 +990,11 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// Sets `olderFailed` in view tests without an engine.
+    public func setOlderFailedForTesting(_ failed: Bool) {
+        olderFailed = failed
+    }
+
     /// Sets the anchor `takeEarlierAnchor` gives, as `readEarlier` does just before older messages join the top, for view
     /// tests without an engine.
     public func setEarlierAnchorForTesting(_ messageID: String?) {

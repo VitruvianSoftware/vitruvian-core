@@ -59,6 +59,7 @@ struct ConversationView: View {
     /// The thread's and Chat Info's widths, for their headers in the toolbar.
     @State private var sidePaneWidths: [SidePane: CGFloat] = [:]
     @State private var measuredHeaderOverlayHeight: CGFloat = 0
+    @State private var measuredBottomBarHeight: CGFloat = 0
     @State private var windowToolbarOverlap: CGFloat = 0
 
     var body: some View {
@@ -483,6 +484,11 @@ struct ConversationView: View {
                     redactNames: redact
                 )
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if abs(measuredBottomBarHeight - height) > 0.25 {
+                    measuredBottomBarHeight = height
+                }
+            }
         }
         .overlay {
             if isDropTargeted {
@@ -658,12 +664,46 @@ struct ConversationView: View {
     private var timeline: some View {
         if conversation.isLoaded {
             // Made only once there is something in it, so that it starts at the newest message.
-            messages
-                .id(conversation.roomID)
-                .overlay { placeholder }
+            Group {
+                switch preferences.timelineEngine {
+                case .table:
+                    tableMessages
+                case .swiftui:
+                    messages
+                }
+            }
+            .id(conversation.roomID)
+            .overlay { placeholder }
         } else {
             Color.clear
                 .overlay { placeholder }
+        }
+    }
+
+    private var tableMessages: some View {
+        let bottomInset = drawsLiquidGlass ? measuredBottomBarHeight : 0
+        let resolvedThemeHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+        return TimelineTableView(
+            conversation: conversation,
+            messageActions: messageActions,
+            preferences: preferences,
+            ui: ui,
+            appModel: appModel,
+            actions: actions,
+            effectiveHeaderInset: effectiveHeaderInset,
+            bottomSafeAreaInset: bottomInset,
+            bottomBarSignature: bottomBarSignature,
+            resolvedAppearance: resolvedAppearance,
+            redact: redact,
+            themeAccentHex: resolvedThemeHex,
+            drawsLiquidGlass: drawsLiquidGlass,
+            timelineCovered: windowCoversTimeline || coveredBySheet
+        )
+        .modifier(ConversationBottomScrollEdge())
+        .modifier(IgnoreBottomContainerSafeAreaWhenGlass(enabled: drawsLiquidGlass))
+        .overlay(alignment: .bottomTrailing) {
+            jumpButton
+                .padding(.bottom, bottomInset)
         }
     }
 
@@ -1532,6 +1572,18 @@ private struct IgnoreTopContainerSafeAreaWhenGlass: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content.ignoresSafeArea(.container, edges: .top)
+        } else {
+            content
+        }
+    }
+}
+
+private struct IgnoreBottomContainerSafeAreaWhenGlass: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.ignoresSafeArea(.container, edges: .bottom)
         } else {
             content
         }

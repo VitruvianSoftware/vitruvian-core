@@ -8,30 +8,134 @@ import SwiftUI
 
 final class InlinePDFDocumentCache: @unchecked Sendable {
     static let shared = InlinePDFDocumentCache()
-    private let lock = NSLock()
+
+    /// How many parsed documents are kept; the least recently used one goes first.
+    static let maxDocuments = 24
+
+    private let cond = NSCondition()
     private var cache: [String: PDFDocument] = [:]
+    /// Paths by recency of use, oldest first.
+    private var order: [String] = []
+    private var inFlight = Set<String>()
+    /// Files that are not (readable) PDFs, so they are not parsed again.
+    private var failed = Set<String>()
     private(set) var parseCount = 0
 
     func resetForTests() {
-        lock.withLock {
-            cache.removeAll()
-            parseCount = 0
+        cond.lock()
+        cache.removeAll()
+        order.removeAll()
+        inFlight.removeAll()
+        failed.removeAll()
+        parseCount = 0
+        cond.unlock()
+    }
+
+    var cachedCountForTesting: Int {
+        cond.lock()
+        defer { cond.unlock() }
+        return cache.count
+    }
+
+    func hasDocument(atPath path: String) -> Bool {
+        cond.lock()
+        defer { cond.unlock() }
+        return cache[path] != nil
+    }
+
+    /// Whether the file is known not to be a readable PDF.
+    func hasFailed(atPath path: String) -> Bool {
+        cond.lock()
+        defer { cond.unlock() }
+        return failed.contains(path)
+    }
+
+    /// The document, when it has been read; never reads the file on the calling thread (a row is laid out and measured
+    /// on the main one). One not read yet is read in the background, and `didLearnSizeNotification` (with the path)
+    /// says when it is in.
+    func document(atPath path: String) -> PDFDocument? {
+        cond.lock()
+        if let cached = cache[path] {
+            touch(path)
+            cond.unlock()
+            return cached
+        }
+        let skip = failed.contains(path)
+        cond.unlock()
+        guard !skip, LocalFileFacts.exists(path) == true else { return nil }
+        parseInBackground(path)
+        return nil
+    }
+
+    /// Reads the file now, on this thread (a background one): for `LocalFileFacts.warm` and the lookup above. A path
+    /// being read by another thread is waited for, not read twice.
+    func parse(path: String) {
+        cond.lock()
+        if cache[path] != nil || failed.contains(path) {
+            cond.unlock()
+            return
+        }
+        if inFlight.contains(path) {
+            while inFlight.contains(path) { cond.wait() }
+            cond.unlock()
+            return
+        }
+        inFlight.insert(path)
+        cond.unlock()
+
+        var document: PDFDocument?
+        if let url = InlinePDFView.localPDFURL(for: path) { document = PDFDocument(url: url) }
+
+        cond.lock()
+        if let document, document.pageCount > 0 {
+            parseCount += 1
+            cache[path] = document
+            touch(path)
+            while order.count > Self.maxDocuments {
+                cache.removeValue(forKey: order.removeFirst())
+            }
+        } else {
+            failed.insert(path)
+        }
+        inFlight.remove(path)
+        cond.broadcast()
+        cond.unlock()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: ImagePixelSizeReader.didLearnSizeNotification, object: nil,
+                userInfo: [ImagePixelSizeReader.pathUserInfoKey: path]
+            )
         }
     }
 
-    func document(atPath path: String) -> PDFDocument? {
-        guard let url = InlinePDFView.localPDFURL(for: path) else { return nil }
-        return lock.withLock {
-            if let existing = cache[url.path] {
-                return existing
-            }
-            parseCount += 1
-            guard let doc = PDFDocument(url: url) else {
-                return nil
-            }
-            cache[url.path] = doc
-            return doc
+    private func touch(_ path: String) {
+        if let index = order.firstIndex(of: path) { order.remove(at: index) }
+        order.append(path)
+    }
+
+    private func parseInBackground(_ path: String) {
+        cond.lock()
+        let busy = inFlight.contains(path)
+        cond.unlock()
+        guard !busy else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in parse(path: path) }
+    }
+
+    /// Reads PDFs ahead of their rows, as `LocalFileFacts.warm` finds them, so a PDF card shows its page from the
+    /// first frame. A file is a PDF by its first bytes (a media-store file has no extension).
+    static func installWarmer() {
+        LocalFileFacts.setWarmer { path in
+            guard Self.looksLikePDF(path) else { return }
+            InlinePDFDocumentCache.shared.parse(path: path)
         }
+    }
+
+    /// Reads five bytes; for background threads.
+    static func looksLikePDF(_ path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() }
+        let head = (try? handle.read(upToCount: 5)) ?? Data()
+        return head == Data("%PDF-".utf8)
     }
 }
 
@@ -72,6 +176,7 @@ public struct InlinePDFView: View {
     }
 
     /// Returns a local file `URL` only when `path` is inside the local filesystem (never a remote URL) and exists on disk.
+    /// Asks the disk: not for a view's body (the main thread); the document cache asks memory instead.
     public static func localPDFURL(for path: String) -> URL? {
         guard isLocalMediaStorePath(path) else { return nil }
         let url = URL(fileURLWithPath: path)
@@ -92,14 +197,22 @@ public struct InlinePDFView: View {
         return (fileName as NSString).pathExtension.lowercased() == "pdf"
     }
 
-    /// Whether `message` is a local, non-view-once PDF that can be rendered inline.
+    /// Whether `message` is a local, non-view-once PDF that can be rendered inline: its file is there (or not known
+    /// yet; it is looked up in the background) and is not known to be unreadable. Its pages may still be coming.
     public static func canDisplay(_ message: TimelineMessage) -> Bool {
         guard !message.viewOnce,
               isPDF(fileName: message.fileName, mimeType: message.mimeType)
         else {
             return false
         }
-        return InlinePDFDocumentCache.shared.document(atPath: message.mediaPath) != nil
+        return mayBecomeCard(message)
+    }
+
+    static func mayBecomeCard(_ message: TimelineMessage) -> Bool {
+        guard !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return false }
+        if InlinePDFDocumentCache.shared.hasDocument(atPath: message.mediaPath) { return true }
+        if InlinePDFDocumentCache.shared.hasFailed(atPath: message.mediaPath) { return false }
+        return LocalFileFacts.exists(message.mediaPath) != false
     }
 
     private var document: PDFDocument? {
@@ -111,26 +224,50 @@ public struct InlinePDFView: View {
         message.fileName.isEmpty ? String(localized: "PDF Document") : message.fileName
     }
 
+    @State private var factTick = 0
+    @Environment(\.timelineContentRevision) private var contentRevision
+
+    /// Draws again when the file turns up or its pages are read (`didLearnSizeNotification`, with the path).
     public var body: some View {
+        card
+            .onReceive(NotificationCenter.default.publisher(for: ImagePixelSizeReader.didLearnSizeNotification)) { note in
+                if let path = note.userInfo?[ImagePixelSizeReader.pathUserInfoKey] as? String, path == message.mediaPath {
+                    factTick += 1
+                }
+            }
+            .id(factTick)
+    }
+
+    /// The card with its page; the same card without the page while the file is being read (one height both ways, so
+    /// no row moves when the pages arrive); the file chip when there is nothing to show.
+    @ViewBuilder
+    private var card: some View {
+        let _ = contentRevision
         if let document, document.pageCount > 0 {
             let pageCount = document.pageCount
             let clampedIndex = min(max(0, currentPageIndex), pageCount - 1)
-            let pageNumber = clampedIndex + 1
-
-            VStack(alignment: .leading, spacing: 8) {
-                headerBar(pageNumber: pageNumber, pageCount: pageCount)
-                pagePreview(document: document, pageIndex: clampedIndex)
-                footerControls(clampedIndex: clampedIndex, pageNumber: pageNumber, pageCount: pageCount)
-            }
-            .padding(10)
-            .frame(width: Self.previewWidth)
-            .background(RoundedRectangle(cornerRadius: 10).fill(.background.opacity(0.82)))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(String(localized: "\(displayName), Page \(pageNumber) of \(pageCount)"))
+            cardBody(document: document, pageNumber: clampedIndex + 1, pageCount: pageCount, clampedIndex: clampedIndex)
+        } else if Self.mayBecomeCard(message) {
+            cardBody(document: nil, pageNumber: 1, pageCount: 0, clampedIndex: 0)
         } else {
             FileAttachmentChip(message: message, preferences: preferences, onDownload: onDownload)
         }
+    }
+
+    private func cardBody(document: PDFDocument?, pageNumber: Int, pageCount: Int, clampedIndex: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            headerBar(pageNumber: pageNumber, pageCount: pageCount)
+            pagePreview(document: document, pageIndex: clampedIndex)
+            footerControls(clampedIndex: clampedIndex, pageNumber: pageNumber, pageCount: pageCount)
+        }
+        .padding(10)
+        .frame(width: Self.previewWidth)
+        .background(RoundedRectangle(cornerRadius: 10).fill(.background.opacity(0.82)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(pageCount > 0
+            ? String(localized: "\(displayName), Page \(pageNumber) of \(pageCount)")
+            : displayName)
     }
 
     @ViewBuilder
@@ -185,8 +322,8 @@ public struct InlinePDFView: View {
     }
 
     @ViewBuilder
-    private func pagePreview(document: PDFDocument, pageIndex: Int) -> some View {
-        if let page = document.page(at: pageIndex) {
+    private func pagePreview(document: PDFDocument?, pageIndex: Int) -> some View {
+        if let page = document?.page(at: pageIndex) {
             let thumb = page.thumbnail(
                 of: NSSize(width: Self.previewWidth * 2, height: Self.previewHeight * 2),
                 for: .mediaBox
@@ -206,13 +343,19 @@ public struct InlinePDFView: View {
             .onTapGesture {
                 ReceivedFile.open(message)
             }
+        } else {
+            // Not read yet: the page's place, as tall as the page.
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white)
+                .frame(width: Self.previewWidth - 20, height: Self.previewHeight)
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
         }
     }
 
     @ViewBuilder
     private func footerControls(clampedIndex: Int, pageNumber: Int, pageCount: Int) -> some View {
         HStack(spacing: 8) {
-            Text(String(localized: "Page \(pageNumber) of \(pageCount)"))
+            Text(pageCount > 0 ? String(localized: "Page \(pageNumber) of \(pageCount)") : String(localized: "Page \(pageNumber)"))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
             Spacer(minLength: 4)
@@ -236,7 +379,7 @@ public struct InlinePDFView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.mini)
-            .disabled(clampedIndex + 1 >= pageCount)
+            .disabled(pageCount == 0 || clampedIndex + 1 >= pageCount)
             .help(String(localized: "Next Page"))
             .accessibilityLabel(String(localized: "Next Page"))
         }
@@ -247,7 +390,34 @@ public struct InlinePDFView: View {
         if let size = message.byteSize, size > 0 {
             parts.append(FileSize.text(size))
         }
-        parts.append(String(localized: "Page \(pageNumber) of \(pageCount)"))
+        if pageCount > 0 { parts.append(String(localized: "Page \(pageNumber) of \(pageCount)")) }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// A file message's content: the PDF card when it is one, else the file chip. Draws again when the file is learned
+/// (the SwiftUI timeline and thread pane have no table to re-measure them), as `InlinePDFView` itself does.
+struct FileMessageContent: View {
+    let message: TimelineMessage
+    let preferences: ComposerPreferences?
+    @State private var factTick = 0
+    @Environment(\.timelineContentRevision) private var contentRevision
+
+    var body: some View {
+        let _ = contentRevision
+        Group {
+            if InlinePDFView.canDisplay(message) {
+                InlinePDFView(message: message)
+                    .id(message.id)
+            } else {
+                FileAttachmentChip(message: message, preferences: preferences)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ImagePixelSizeReader.didLearnSizeNotification)) { note in
+            if let path = note.userInfo?[ImagePixelSizeReader.pathUserInfoKey] as? String, path == message.mediaPath {
+                factTick += 1
+            }
+        }
+        .id(factTick)
     }
 }

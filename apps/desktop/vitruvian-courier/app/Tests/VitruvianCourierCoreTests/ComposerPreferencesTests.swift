@@ -35,6 +35,7 @@ final class ComposerPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.enableEmojiAutocomplete)
         XCTAssertFalse(preferences.disableEmoticonReplacement)
         XCTAssertFalse(preferences.autoSendGIFs)
+        XCTAssertEqual(preferences.timelineEngine, .table)
         XCTAssertTrue(store.defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("courier.") }.isEmpty,
                       "reading the defaults writes nothing")
 
@@ -202,5 +203,25 @@ final class ComposerPreferencesTests: XCTestCase {
         preferences.secondaryComposerButton = .none
         XCTAssertEqual(preferences.availablePrimaryComposerButtons, [.emojiPicker, .sendLater, .none])
         XCTAssertEqual(preferences.availableSecondaryComposerButtons, [.emojiPicker, .sendLater, .none])
+    }
+
+    func testTimelineEngineHiddenPreferencePersistsAndReadsLegacyKey() {
+        let preferences = ComposerPreferences(defaults: store.defaults)
+        XCTAssertEqual(preferences.timelineEngine, .table)
+
+        preferences.timelineEngine = .swiftui
+        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.timelineEngine"), "swiftui")
+        XCTAssertEqual(ComposerPreferences(defaults: store.defaults).timelineEngine, .swiftui)
+
+        let unprefixed = TestDefaults()
+        defer { unprefixed.remove() }
+        unprefixed.defaults.set("swiftui", forKey: "timelineEngine")
+        XCTAssertEqual(ComposerPreferences(defaults: unprefixed.defaults).timelineEngine, .swiftui)
+
+        unprefixed.defaults.set("TABLE", forKey: "timelineEngine")
+        XCTAssertEqual(ComposerPreferences(defaults: unprefixed.defaults).timelineEngine, .table)
+
+        unprefixed.defaults.set("unknown", forKey: "timelineEngine")
+        XCTAssertEqual(ComposerPreferences(defaults: unprefixed.defaults).timelineEngine, .table)
     }
 }
