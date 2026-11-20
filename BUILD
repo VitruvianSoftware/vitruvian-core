@@ -88,6 +88,7 @@ exports_files(
     [
         ".agents/roster/agents.tsv",
         ".agents/roster/generic/roles.tsv",
+        ".agents/roster/generic/tiers.tsv",
         ".agents/roster/tiers.tsv",
         ".agents/roster/team-notes.md",
         ".agents/roster/skills/orchestrate/antigravity.md",
@@ -158,6 +159,7 @@ filegroup(
     name = "roster_generic_sources",
     srcs = [
         ".agents/roster/generic/roles.tsv",
+        ".agents/roster/generic/tiers.tsv",
         ".agents/roster/team-notes.md",
     ] + glob([".agents/roster/generic/prompts/*.md"]),
     visibility = ["//tools/agent-roster:__pkg__"],

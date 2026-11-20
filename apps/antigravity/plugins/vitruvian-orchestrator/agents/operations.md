@@ -2,6 +2,7 @@
 name: operations
 description: Use this agent for cluster and service operations in this repository - diagnosing crashing or flapping workloads, GitOps sync failures, secret rotations, deployments, and the observability stack that watches them.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

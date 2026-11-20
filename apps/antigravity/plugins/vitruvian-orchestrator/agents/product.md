@@ -2,6 +2,7 @@
 name: product
 description: Use this agent for user acceptance testing (UAT) of a finished change, and for clarifying scope, requirements, prioritization, and resolving cross-component dependencies across services and applications in this repository.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

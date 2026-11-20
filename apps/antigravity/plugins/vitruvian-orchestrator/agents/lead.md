@@ -43,15 +43,15 @@ Before starting, read the repository's own instructions (`AGENTS.md`, `CLAUDE.md
 | Role | Tier | Claude Code | Antigravity | OpenCode |
 |---|---|---|---|---|
 | lead | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| developer | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
-| infrastructure | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
-| build | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
-| operations | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
-| qa | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| security | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| product | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| docs | light | haiku (medium) → gemini-4-hydrogen-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high |
-| release | light | haiku (medium) → gemini-4-hydrogen-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high |
+| developer | build | sonnet (high) (gemini: haiku (medium) → gemini-pro-orchestrator-neon) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon) |
+| infrastructure | build | sonnet (high) (gemini: haiku (medium) → gemini-pro-orchestrator-neon) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon) |
+| build | build | sonnet (high) (gemini: haiku (medium) → gemini-pro-orchestrator-neon) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon) |
+| operations | build | sonnet (high) (gemini: haiku (medium) → gemini-pro-orchestrator-neon) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon) |
+| qa | deep | sonnet (high) (gemini: haiku (medium) → gemini-4-carbon-high) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high) |
+| security | deep | sonnet (high) (gemini: haiku (medium) → gemini-4-carbon-high) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high) |
+| product | deep | sonnet (high) (gemini: haiku (medium) → gemini-4-carbon-high) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high) |
+| docs | light | sonnet (medium) (gemini: haiku (medium) → gemini-4-hydrogen-high) | flash | session model (medium) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high) |
+| release | light | sonnet (medium) (gemini: haiku (medium) → gemini-4-hydrogen-high) | flash | session model (medium) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high) |
 
 - The fallback policy does not relax the hard rule: when a model is unavailable, fall back to another model at standard effort or higher.
 - **Models come from the agent files and the `team` tool.** Each agent file carries its tier's model. To give one task a different Gemini model, put `Gemini model: <id>` in its brief. Antigravity silently drops an agent whose `model` is anything but `inherit`, `flash` or `pro`, or whose `description` is longer than about 320 characters, so keep generated Antigravity agent files within those limits.

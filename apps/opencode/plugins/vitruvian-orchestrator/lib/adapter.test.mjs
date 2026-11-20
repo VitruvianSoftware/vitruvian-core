@@ -3398,6 +3398,7 @@ describe("team tool and panel labels", () => {
       assert.equal(absentPayload.file, null);
       assert.deepEqual(absentPayload.errors, []);
       assert.equal(absentPayload.roles.length, 10);
+      assert.equal(absentPayload.roles[0].engine, "native");
       assert.equal(
         absentPayload.roles[0].model,
         TIER_DEFAULTS.tiers.lead.opencode,
@@ -3411,17 +3412,23 @@ describe("team tool and panel labels", () => {
       assert.equal(absentPayload.roles[1].agent, "developer");
       assert.equal(absentPayload.roles[1].dispatch, "developer");
       assert.equal(absentPayload.roles[1].source, "generic");
+      assert.equal(absentPayload.roles[1].engine, "native");
       assert.equal(
         absentPayload.roles[1].model,
-        TIER_DEFAULTS.tiers.build.opencode,
+        TIER_DEFAULTS.tiers.build.native.opencode,
       );
+      assert.equal(absentPayload.roles[1].model, null);
       assert.equal(
         absentPayload.roles[1].effort,
-        TIER_DEFAULTS.tiers.build.effort,
+        TIER_DEFAULTS.tiers.build.native.effort,
       );
       assert.equal(
         absentPayload.roles[1].gemini,
         TIER_DEFAULTS.tiers.build.gemini,
+      );
+      assert.equal(
+        absentPayload.roles.find((r) => r.role === "docs").effort,
+        TIER_DEFAULTS.tiers.light.native.effort,
       );
 
       // 2. Valid file
@@ -3457,6 +3464,10 @@ describe("team tool and panel labels", () => {
         "wren",
       );
       assert.equal(
+        validPayload.roles.find((r) => r.role === "developer").engine,
+        null,
+      );
+      assert.equal(
         validPayload.roles.find((r) => r.role === "developer").model,
         "anthropic/claude-haiku-5-5",
       );
@@ -3475,6 +3486,95 @@ describe("team tool and panel labels", () => {
       assert.equal(
         validPayload.roles.find((r) => r.role === "release").source,
         "off",
+      );
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "release").engine,
+        null,
+      );
+
+      // 2b. Engine precedence selects driver vs native defaults on OpenCode;
+      //     mapped team rows keep explicit-or-null model/effort
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          engine: "gemini",
+          tiers: { light: { engine: "native" } },
+          roles: {
+            lead: { agent: "beacon", engine: "gemini" },
+            build: { agent: "forge" },
+            qa: { engine: "native" },
+            security: { opencode: "openai/gpt-5" },
+            release: "off",
+          },
+        }),
+        "utf8",
+      );
+      const enginePayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.deepEqual(enginePayload.errors, []);
+      const byRole = (role) => enginePayload.roles.find((r) => r.role === role);
+      assert.equal(byRole("lead").source, "team");
+      assert.equal(byRole("lead").engine, "native");
+      assert.equal(byRole("lead").model, TIER_DEFAULTS.tiers.lead.opencode);
+      assert.equal(byRole("developer").source, "generic");
+      assert.equal(byRole("developer").engine, "gemini");
+      assert.equal(
+        byRole("developer").model,
+        TIER_DEFAULTS.tiers.build.opencode,
+      );
+      assert.equal(
+        byRole("developer").effort,
+        TIER_DEFAULTS.tiers.build.effort,
+      );
+      assert.equal(byRole("build").source, "team");
+      assert.equal(byRole("build").engine, "gemini");
+      assert.equal(byRole("build").model, null);
+      assert.equal(byRole("build").effort, null);
+      assert.equal(byRole("qa").engine, "native");
+      assert.equal(byRole("qa").model, null);
+      assert.equal(byRole("qa").effort, TIER_DEFAULTS.tiers.deep.native.effort);
+      assert.equal(byRole("security").engine, "gemini");
+      assert.equal(byRole("security").model, "openai/gpt-5");
+      assert.equal(byRole("docs").engine, "native");
+      assert.equal(byRole("docs").model, null);
+      assert.equal(
+        byRole("docs").effort,
+        TIER_DEFAULTS.tiers.light.native.effort,
+      );
+      assert.equal(byRole("release").engine, null);
+
+      // 2c. Mapped team role with no engine anywhere gets engine: null and explicit-or-null model/effort
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          roles: {
+            developer: { agent: "wren" },
+            qa: { agent: "scout", engine: "native" },
+          },
+        }),
+        "utf8",
+      );
+      const teamNullPayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.deepEqual(teamNullPayload.errors, []);
+      const byRoleNull = (role) =>
+        teamNullPayload.roles.find((r) => r.role === role);
+      assert.equal(byRoleNull("developer").source, "team");
+      assert.equal(byRoleNull("developer").engine, null);
+      assert.equal(byRoleNull("developer").model, null);
+      assert.equal(byRoleNull("developer").effort, null);
+      assert.equal(byRoleNull("qa").source, "team");
+      assert.equal(byRoleNull("qa").engine, "native");
+      assert.equal(byRoleNull("qa").model, null);
+      assert.equal(byRoleNull("qa").effort, null);
+      assert.equal(byRoleNull("infrastructure").source, "generic");
+      assert.equal(byRoleNull("infrastructure").engine, "native");
+      assert.equal(byRoleNull("infrastructure").model, null);
+      assert.equal(
+        byRoleNull("infrastructure").effort,
+        TIER_DEFAULTS.tiers.build.native.effort,
       );
 
       // 3. Invalid file -> reports errors and falls back to generic defaults
@@ -3523,6 +3623,7 @@ describe("team tool and panel labels", () => {
         "dispatch",
         "source",
         "tier",
+        "engine",
         "gemini",
         "model",
         "effort",

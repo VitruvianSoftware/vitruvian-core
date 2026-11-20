@@ -2,6 +2,7 @@
 name: build
 description: Use this agent for the build system and toolchains in this repository - dependency graphs and lockfiles, compiler and SDK toolchains, build file generation, build caching, and CI build configuration.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.3...vitruvian-speaker-v1.46.0) (2026-11-20)
+
+
+### Features
+
+* **vitruvian-speaker:** quiet sessions for automation-started agent sessions ([#5242](https://github.com/VitruvianSoftware/vitruvian-core/issues/5242)) ([eb86c61](https://github.com/VitruvianSoftware/vitruvian-core/commit/eb86c6179ce91640d371aceaadc8b52267373979))
+
 ## [1.45.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.45.2...vitruvian-speaker-v1.45.3) (2026-11-18)
 
 

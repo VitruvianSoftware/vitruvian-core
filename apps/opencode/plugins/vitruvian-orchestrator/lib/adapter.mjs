@@ -1148,7 +1148,7 @@ export const INVALID_ROOT_ERROR =
  * `INVALID_ROOT_ERROR` unless `root` is an absolute path to an existing directory.
  *
  * @param {unknown} root
- * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @param {{ tiers?: Record<string, Record<string, unknown>> }} [defaults]
  */
 export function loadTeamConfigForRoot(root, defaults = TIER_DEFAULTS) {
   if (typeof root !== "string" || !path.isAbsolute(root)) {
@@ -1171,7 +1171,7 @@ export function loadTeamConfigForRoot(root, defaults = TIER_DEFAULTS) {
  * validates it, and resolves roles against OpenCode's tier defaults.
  *
  * @param {string} [cwd]
- * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @param {{ tiers?: Record<string, Record<string, unknown>> }} [defaults]
  */
 export function loadTeamConfig(cwd = process.cwd(), defaults = TIER_DEFAULTS) {
   return loadTeamConfigAtRoot(resolveRepoRoot(cwd), defaults);

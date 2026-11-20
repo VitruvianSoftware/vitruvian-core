@@ -461,6 +461,15 @@ private func makeSampleConfig(
             }
         }
 
+        // A quiet session (VITRUVIAN_SPEAKER_QUIET) silences only the hooks'
+        // automatic read-aloud: an announcement it makes on purpose still goes out.
+        if case .now(let out) = BroadcastCommand.action(
+            for: ["Automation announcing on purpose"], engine: engine, parts: parts,
+            environment: [QuietSession.environmentKey: "1"], announcerOverride: announcer
+        ), out.stderr == [SubagentDetection.suppressedMessage] {
+            Issue.record("a quiet session's explicit speaker-broadcast must not be suppressed")
+        }
+
         let fakeAppData = root.appendingPathComponent("antigravity-app-data")
         let subagentConv = "sub-conv-123"
         let subagentMarker = fakeAppData
