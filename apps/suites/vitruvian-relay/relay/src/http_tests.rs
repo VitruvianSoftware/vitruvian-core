@@ -2322,7 +2322,7 @@ async fn silent_drop_mid_call_fails_within_seconds() {
     assert_eq!(r.json()["result"]["isError"], true);
     assert_eq!(
         r.json()["result"]["content"][0]["text"],
-        "Your computer disconnected; try again."
+        "Your computer disconnected. The command may already have run; check before trying again."
     );
     // Generous for a loaded runner; the idle path would need 60 s.
     assert!(
@@ -3268,7 +3268,10 @@ async fn a_reregistered_device_never_gets_the_calls_still_queued_for_its_old_con
     // The device is registered again: the relay fails the call.
     assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
     let r = within(pending).await.unwrap();
-    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert_eq!(
+        error_text(&r),
+        "Your computer disconnected. The command may already have run; check before trying again."
+    );
 
     // The old connection gets to send again. It must close without handing
     // over the call the relay has already failed.
@@ -3375,7 +3378,10 @@ async fn a_call_frame_that_cannot_be_written_within_its_margin_drops_the_link() 
     let started = Instant::now();
     let args = json!({"data": "x".repeat(16 * 1024)});
     let r = within(h.rpc(&device, ALICE, Some(&s), call_body(json!(1), "t", args))).await;
-    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert_eq!(
+        error_text(&r),
+        "Your computer disconnected. The command may already have run; check before trying again."
+    );
     assert!(started.elapsed() >= Duration::from_millis(400));
     // (The session logs its reason once its socket is closed.)
     drop(ws);
@@ -3662,7 +3668,10 @@ async fn a_call_held_across_a_drop_fails_when_the_device_stays_away() {
     let dropped = Instant::now();
     drop(fake);
     let r = within(pending).await.unwrap();
-    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert_eq!(
+        error_text(&r),
+        "Your computer disconnected. The command may already have run; check before trying again."
+    );
     assert!(dropped.elapsed() >= Duration::from_millis(300));
 }
 

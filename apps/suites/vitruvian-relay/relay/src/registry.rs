@@ -59,7 +59,7 @@ impl CallError {
     pub fn user_message(&self) -> &'static str {
         match self {
             CallError::Offline => "Your computer is offline.",
-            CallError::Disconnected => "Your computer disconnected; try again.",
+            CallError::Disconnected => "Your computer disconnected. The command may already have run; check before trying again.",
             CallError::NotReceived => "Your computer didn't answer in time; try again.",
             CallError::Deadline => "The command took too long.",
             CallError::Duplicate => "That command is already running.",
@@ -263,10 +263,28 @@ impl State {
     /// to the new one, and wait on for the result or their own deadline.
     /// The grace period only decides how long a call waits for a device
     /// that has not come back.
+    ///
+    /// The device is told, with a fresh `Start`, which of those calls the
+    /// relay still holds: every one it had acknowledged. A dialog or a
+    /// command the device carries over without such a `Start` is one the
+    /// relay does not hold (it restarted, or its `Cancel` was lost): the
+    /// device dismisses it. For a call the device has already started, or
+    /// has at its dialog, the `Start` only confirms it; for one that was
+    /// acknowledged but still waits to start, it is the start the drop lost.
     fn rebind(&mut self, device_id: &str, conn: ConnectionId) {
-        for p in self.pending.values_mut() {
-            if p.device_id == device_id {
-                p.conn_id = conn;
+        let tx = self.devices.get(device_id).map(|c| c.tx.clone());
+        for (call_id, p) in self.pending.iter_mut() {
+            if p.device_id != device_id {
+                continue;
+            }
+            p.conn_id = conn;
+            // Written to the socket and acknowledged by the device.
+            if p.written.is_none() && p.ack.is_none() {
+                if let Some(tx) = &tx {
+                    let _ = tx.try_send(ToConnector::Start {
+                        call_id: call_id.clone(),
+                    });
+                }
             }
         }
     }
@@ -1101,7 +1119,7 @@ mod tests {
         );
         assert_eq!(
             CallError::Disconnected.user_message(),
-            "Your computer disconnected; try again."
+            "Your computer disconnected. The command may already have run; check before trying again."
         );
         assert_eq!(
             CallError::NotReceived.user_message(),
@@ -1457,6 +1475,38 @@ mod tests {
         assert!(reg.complete("d1", new, result("c1", "survived")));
     }
 
+    /// Final review, Important 2: the device must be able to tell which of
+    /// the calls it carried over the relay still holds.
+    #[tokio::test]
+    async fn reconnect_resends_start_for_held_calls() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (old, mut rx_old, _h1) = running_call(&reg, "c1", BUDGET_MS).await;
+        // A second call written but never acknowledged: no `Start` for it.
+        let _h2 = spawn_call(&reg, "c2", BUDGET_MS);
+        let c2 = expect_call(&mut rx_old).await;
+        reg.call_written(old, &c2.call_id);
+        // A drop and a reconnect.
+        reg.disconnect("d1", old);
+        let (tx, mut rx_new) = mpsc::channel(8);
+        let _new = reg.connect("d1", vec![], tx);
+        assert_eq!(
+            within(rx_new.recv()).await,
+            Some(ToConnector::Start {
+                call_id: "c1".into()
+            })
+        );
+        assert!(rx_new.try_recv().is_err(), "a start for the unacked call");
+        // Replacing a link the relay had not noticed die does the same.
+        let (tx, mut rx_newer) = mpsc::channel(8);
+        let _newer = reg.connect("d1", vec![], tx);
+        assert_eq!(
+            within(rx_newer.recv()).await,
+            Some(ToConnector::Start {
+                call_id: "c1".into()
+            })
+        );
+    }
+
     #[tokio::test]
     async fn a_replaced_connection_holds_its_calls_for_the_new_one() {
         let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
@@ -1527,6 +1577,13 @@ mod tests {
         reg.disconnect("d1", old);
         let (tx, mut rx_new) = mpsc::channel(8);
         reg.connect("d1", vec![], tx);
+        // The device is told the call is still held, then that it is not.
+        assert_eq!(
+            within(rx_new.recv()).await,
+            Some(ToConnector::Start {
+                call_id: "c1".into()
+            })
+        );
         h.abort();
         assert_eq!(
             within(rx_new.recv()).await,
@@ -1560,7 +1617,14 @@ mod tests {
             "the call failed although the device had reconnected"
         );
         assert!(reg.in_flight("d1"));
-        // Nothing was cancelled either.
+        // Nothing was cancelled either: the device was only told, again, to
+        // start the call.
+        assert_eq!(
+            rx_new.try_recv(),
+            Ok(ToConnector::Start {
+                call_id: "c1".into()
+            })
+        );
         assert!(rx_new.try_recv().is_err());
         assert!(reg.complete("d1", new, result("c1", "late but real")));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "late but real")));

@@ -37,6 +37,22 @@ use crate::Result;
 /// The arguments that name a file or folder, in desktop-commander 0.3.1's
 /// tools (`paths` is a list of them).
 const PATH_ARGS: &[&str] = &["path", "file_path", "source", "destination", "outputPath"];
+/// The file tools whose calls name a path (`PATH_ARGS`, or `paths`). While
+/// folders are limited, one of these called with no path at all is refused:
+/// desktop-commander would pick a folder of its own for it.
+const FILE_TOOLS: &[&str] = &[
+    "read_file",
+    "read_multiple_files",
+    "write_file",
+    "edit_block",
+    "move_file",
+    "create_directory",
+    "list_directory",
+    "get_file_info",
+    "start_search",
+    "write_pdf",
+];
+
 /// The tools that read what is under their `path`, however deep: one rooted
 /// at or above a guarded folder would reach it.
 const SEARCH_TOOLS: &[&str] = &["start_search"];
@@ -577,7 +593,11 @@ impl Rules {
         // too: its root must be inside them. Terminal commands are not
         // path-checked: a command line can name a path in too many ways.
         if let Some(limit) = &self.limit {
-            if paths.iter().any(|p| !limit.under(p)) {
+            // No path at all is not "nothing to check": the tool would
+            // fall back to a folder of its own. Fail closed.
+            if paths.iter().any(|p| !limit.under(p))
+                || (paths.is_empty() && FILE_TOOLS.contains(&tool))
+            {
                 return Decision::Refuse(OUTSIDE_ALLOWED);
             }
         }
@@ -1242,6 +1262,37 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
 
     fn refused_outside(r: &Rules, tool: &str, args: Value) -> bool {
         r.decide(tool, &args) == Decision::Refuse(OUTSIDE_ALLOWED)
+    }
+
+    /// Final review, Minor 5: a file tool with no path argument would use
+    /// desktop-commander's own default folder: refused, whatever the tool.
+    #[test]
+    fn file_tool_without_a_path_is_refused() {
+        let root = test_dir("rules-nopath");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        let r = limited(&home, &["~"]);
+        for tool in FILE_TOOLS {
+            assert!(refused_outside(&r, tool, json!({})), "{tool}");
+        }
+        // Content, but no path; a path that is not a string; no paths.
+        assert!(refused_outside(&r, "write_file", json!({"content": "x"})));
+        assert!(refused_outside(&r, "read_file", json!({"path": 5})));
+        assert!(refused_outside(
+            &r,
+            "read_multiple_files",
+            json!({"paths": []})
+        ));
+        // A tool that takes no path is not affected, and a path inside is
+        // fine.
+        assert_eq!(
+            r.decide("start_process", &json!({"command": "ls"})),
+            Decision::AskFirst
+        );
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/work/a"})),
+            Decision::Run
+        );
     }
 
     /// Relay P2: the file tools stay inside the folders the person chose

@@ -86,6 +86,16 @@ fn waiting_text(device: &str, id: &RequestId) -> String {
     )
 }
 
+/// The reply to a `check_request` for a call that has not reported a dialog:
+/// the computer is still on it, and nobody is being asked.
+fn still_working_text(device: &str, id: &RequestId) -> String {
+    format!(
+        "Still working on this on \"{device}\". Call {CHECK_REQUEST} with \
+         request_id \"{}\" again to get the result.",
+        id.as_str()
+    )
+}
+
 /// Longest tool name written to the log; a name is not content, but it comes
 /// from the caller, so it is capped.
 const MAX_LOGGED_TOOL_CHARS: usize = 128;
@@ -632,11 +642,16 @@ impl Mcp {
                 }
             }
             Fetch::Waiting => {
-                log.outcome = "waiting_approval";
-                rpc_result(
-                    id,
-                    text_result(&waiting_text(&owned.device_id, &request_id), false),
-                )
+                // Only a call whose device reported a dialog is "waiting for
+                // you": one that never did is still being worked on.
+                let text = if owned.handle().approval_reported() {
+                    log.outcome = "waiting_approval";
+                    waiting_text(&owned.device_id, &request_id)
+                } else {
+                    log.outcome = "still_working";
+                    still_working_text(&owned.device_id, &request_id)
+                };
+                rpc_result(id, text_result(&text, false))
             }
             // Expired while it was waited for.
             Fetch::Unknown => {
@@ -874,5 +889,68 @@ mod tests {
         assert_eq!(other.await.unwrap()["result"]["isError"], false);
         // Finished calls leave nothing behind.
         assert!(m.in_flight.lock().unwrap().is_empty());
+    }
+
+    /// Final review, Minor 4: `check_request` says "waiting for you" only
+    /// for a call whose device reported a dialog.
+    #[tokio::test]
+    async fn check_request_says_still_working_for_a_call_with_no_dialog() {
+        let reg = Registry::new();
+        let log: LogSink = Arc::new(|_| {});
+        let m = Mcp::new(reg.clone(), Duration::from_secs(60), log).with_parking(
+            Duration::from_millis(50),
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+        );
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        // Two calls the relay holds for alice, as parked ones are.
+        let mut ids = Vec::new();
+        let mut call_ids = Vec::new();
+        for (n, tool) in ["a", "b"].into_iter().enumerate() {
+            let args = json!({"n": n});
+            let handle = CallHandle::start(
+                &reg,
+                "d1",
+                Call {
+                    call_id: format!("c{n}"),
+                    tool: tool.into(),
+                    arguments: args.clone(),
+                    deadline_ms: 60_000,
+                },
+            );
+            let ToConnector::Call(c) = rx.recv().await.unwrap() else {
+                panic!()
+            };
+            call_ids.push(c.call_id);
+            ids.push(m.parked.park(
+                RejoinKey::new("alice", "d1", tool, &args),
+                "alice",
+                "d1",
+                handle,
+            ));
+        }
+        // The second one's device reports a dialog.
+        assert!(reg.pending(conn, &call_ids[1]));
+        let check = |id: &RequestId| {
+            json!({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                   "params": {"name": CHECK_REQUEST, "arguments": {"request_id": id.as_str()}}})
+        };
+        let r = ask(&m, check(&ids[0])).await;
+        assert_eq!(r["result"]["isError"], false);
+        assert_eq!(
+            r["result"]["content"][0]["text"],
+            format!(
+                "Still working on this on \"d1\". Call check_request with request_id \"{}\" \
+                 again to get the result.",
+                ids[0].as_str()
+            )
+        );
+        let r = ask(&m, check(&ids[1])).await;
+        let text = r["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.starts_with("Waiting for you to allow this on \"d1\"."),
+            "{text}"
+        );
     }
 }

@@ -254,10 +254,26 @@ fn migrate_between(
         }
     }
     if let Err(e) = result {
-        for account in saved.iter().filter(|a| !deleted.contains(a)) {
-            let _ = store.delete(account);
+        // A copy left in the store would win over the files at the next
+        // start (a refreshed sign-in saved in the files meanwhile would be
+        // lost to it): when one cannot be taken out, say which and what to do.
+        let stuck: Vec<String> = saved
+            .iter()
+            .filter(|a| !deleted.contains(a))
+            .filter_map(|account| {
+                store.delete(account).err().map(|d| {
+                    format!(
+                        "the {account} copy it had just saved in the Keychain could not be \
+                         removed again ({d}); delete the {account} item for {SERVICE} in \
+                         Keychain Access, then {KEYCHAIN_NEXT_STEP}"
+                    )
+                })
+            })
+            .collect();
+        if stuck.is_empty() {
+            return Err(e);
         }
-        return Err(e);
+        return Err(SecretError(format!("{e}; also {}", stuck.join("; "))));
     }
     Ok(moved)
 }
@@ -602,6 +618,60 @@ mod tests {
         assert_eq!(files.get(TOKENS).unwrap(), None);
         assert_eq!(store.get(DEVICE_KEY).unwrap(), None);
         assert_eq!(files.get(DEVICE_KEY).unwrap(), Some(vec![4; 32]));
+    }
+
+    /// Final review, Minor 6: a rollback that cannot remove what it saved is
+    /// not silent: the error names the secret and says what to do.
+    #[test]
+    fn a_rollback_that_cannot_remove_its_copy_says_so() {
+        /// Files that will not delete the device key.
+        struct KeepsKey(Mem);
+        impl SecretStore for KeepsKey {
+            fn get(&self, a: &str) -> Result<Option<Vec<u8>>, SecretError> {
+                self.0.get(a)
+            }
+            fn set(&self, a: &str, v: &[u8]) -> Result<(), SecretError> {
+                self.0.set(a, v)
+            }
+            fn delete(&self, a: &str) -> Result<(), SecretError> {
+                if a == DEVICE_KEY {
+                    return Err(SecretError("cannot remove".into()));
+                }
+                self.0.delete(a)
+            }
+        }
+        /// A store that will not give the device key back.
+        struct KeepsCopy(Mem);
+        impl SecretStore for KeepsCopy {
+            fn get(&self, a: &str) -> Result<Option<Vec<u8>>, SecretError> {
+                self.0.get(a)
+            }
+            fn set(&self, a: &str, v: &[u8]) -> Result<(), SecretError> {
+                self.0.set(a, v)
+            }
+            fn delete(&self, a: &str) -> Result<(), SecretError> {
+                if a == DEVICE_KEY {
+                    return Err(SecretError("denied".into()));
+                }
+                self.0.delete(a)
+            }
+        }
+        let files = KeepsKey(Mem::default());
+        files.set(DEVICE_KEY, &[4; 32]).unwrap();
+        let store = KeepsCopy(Mem::default());
+        let e = migrate_between(&files, &store).unwrap_err().0;
+        assert!(e.contains("cannot remove"), "{e}");
+        assert!(
+            e.contains("device_key copy it had just saved in the Keychain could not be removed"),
+            "{e}"
+        );
+        assert!(e.contains("denied"), "{e}");
+        assert!(e.contains(KEYCHAIN_NEXT_STEP), "{e}");
+        // A rollback that works adds nothing to the error.
+        let files = KeepsKey(Mem::default());
+        files.set(DEVICE_KEY, &[4; 32]).unwrap();
+        let e = migrate_between(&files, &Mem::default()).unwrap_err().0;
+        assert_eq!(e, "cannot remove");
     }
 
     /// A move that fails half way leaves every file where it was, not the

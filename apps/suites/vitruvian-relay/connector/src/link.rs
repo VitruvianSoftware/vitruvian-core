@@ -47,6 +47,15 @@
 //!   A finished result is kept until the relay acknowledges it
 //!   (`result_ack`), and is sent again after every `welcome` until then, as
 //!   long as the call's deadline has not passed.
+//! - **A call the relay no longer holds runs after a reconnect.** After
+//!   every `welcome` the relay says again (`start`) which of the calls this
+//!   link carried over it still holds; any not confirmed within
+//!   `reconnect_grace` is treated as cancelled, and an Allow clicked
+//!   meanwhile waits for that answer instead of running the call.
+//! - **A deadline stops while the Mac sleeps.** On macOS `Instant` does not
+//!   count sleep, so every call also carries a deadline in unix seconds from
+//!   the injected clock ([`Deadline`]); it is checked wherever a call could
+//!   start, and a `welcome` closes the dialogs it has passed.
 //! - **A tool outside `no_prompt` runs without Allow.** `Rules::decide`
 //!   picks; only `Run` skips the dialog.
 //! - **A flood of calls.** At most 16 calls in flight and one dialog on
@@ -683,12 +692,54 @@ impl Phase {
     }
 }
 
+/// When a call's wait ends. Two clocks, because on macOS `Instant` does not
+/// count the time the Mac sleeps: a dialog left open under a closed lid would
+/// still have most of its time "left" an hour later, long after the relay
+/// gave the call up. `at` times the waits that run while the Mac is awake
+/// (a timer, a dialog's limit); `unix` is read from the injected wall clock
+/// and is what says "too late" after a sleep. A call is past its deadline
+/// when either has passed.
+#[derive(Clone, Copy, Debug)]
+struct Deadline {
+    at: Instant,
+    /// Unix seconds. Rounded up, plus a second, so the wall clock (whole
+    /// seconds) never ends a call before `at` has.
+    unix: u64,
+}
+
+impl Deadline {
+    fn new(received: Instant, now_unix: u64, budget: Duration) -> Deadline {
+        Deadline {
+            at: received.checked_add(budget).unwrap_or(received),
+            unix: now_unix
+                .saturating_add(budget.as_secs())
+                .saturating_add(u64::from(budget.subsec_nanos() > 0))
+                .saturating_add(1),
+        }
+    }
+
+    /// Past the deadline by either clock.
+    fn passed(&self, now_unix: u64) -> bool {
+        Instant::now() >= self.at || now_unix >= self.unix
+    }
+
+    /// Past the deadline by the wall clock alone: what a sleeping Mac sees.
+    fn slept_through(&self, now_unix: u64) -> bool {
+        now_unix >= self.unix
+    }
+}
+
 struct Entry {
     at: Instant,
     /// The call's deadline (clamped to the call budget).
-    deadline: Instant,
+    deadline: Deadline,
     /// The connection it came on.
     conn: u64,
+    /// Set when a link is welcomed again while the call is open: the call
+    /// must be confirmed by a `Start` from the relay before the next link
+    /// event (value: the `link_epoch` of that welcome), or it is treated as
+    /// cancelled. See [`Shared::await_confirmation`].
+    unconfirmed: Option<u64>,
     phase: Phase,
 }
 
@@ -785,10 +836,10 @@ impl Calls {
 
     /// The results the relay has not acknowledged, for calls it may still
     /// be waiting on (their deadline has not passed).
-    fn unacked(&self, now: Instant) -> Vec<CallResult> {
+    fn unacked(&self, now_unix: u64) -> Vec<CallResult> {
         self.live
             .values()
-            .filter(|e| now < e.deadline)
+            .filter(|e| !e.deadline.passed(now_unix))
             .filter_map(|e| match &e.phase {
                 Phase::Done {
                     result,
@@ -815,10 +866,10 @@ impl Calls {
     /// and so pinging every 2 s: not once it was cancelled (it keeps running
     /// here, but the relay forgot it), stopped at its dialog, answered, or
     /// past its deadline.
-    fn relay_waiting_on(&self, conn: u64, now: Instant) -> bool {
+    fn relay_waiting_on(&self, conn: u64, now_unix: u64) -> bool {
         self.live.values().any(|e| {
             e.conn == conn
-                && now < e.deadline
+                && !e.deadline.passed(now_unix)
                 && matches!(
                     e.phase,
                     Phase::AwaitingStart { stop: None, .. }
@@ -1141,7 +1192,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
     /// again. The relay takes a result only for a call it still holds, so a
     /// repeat is harmless.
     fn resend_unacked(&self, out: &Out) {
-        let results = self.calls.lock().unwrap().unacked(Instant::now());
+        let results = self.calls.lock().unwrap().unacked((self.clock)());
         for r in results {
             let _ = out.send(ToRelay::Result(r));
         }
@@ -1154,6 +1205,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
 
     /// Drops expired ids and results, and keeps `seen_calls.jsonl` tidy.
     async fn prune_now(self: &Arc<Self>) {
+        self.expire_overdue();
         let shrank = {
             let mut calls = self.calls.lock().unwrap();
             calls.prune(Instant::now(), (self.clock)(), self.timing.dedupe_window)
@@ -1180,7 +1232,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         let received = Instant::now();
         // Never more than the call budget, and never an overflow.
         let budget = Duration::from_millis(deadline_ms).min(self.timing.max_call);
-        let deadline = received.checked_add(budget).unwrap_or(received);
+        let deadline = Deadline::new(received, (self.clock)(), budget);
         let refuse = |id: &str, text: &str, reason: &str| {
             self.log_call(id, &tool, &arguments, "refused", json!({"reason": reason}));
             let _ = out.send(ToRelay::Result(error_result(id, text)));
@@ -1232,6 +1284,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                     at: received,
                     deadline,
                     conn,
+                    unconfirmed: None,
                     phase: Phase::Running {
                         cancelled: false,
                         started: false,
@@ -1280,6 +1333,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 at: received,
                 deadline,
                 conn,
+                unconfirmed: None,
                 phase,
             },
         );
@@ -1302,7 +1356,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         tokio::spawn(async move {
             let expired = tokio::select! {
                 _ = start_rx => false,
-                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => true,
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline.at)) => true,
             };
             let dismiss = Arc::new(AtomicBool::new(false));
             let outcome = {
@@ -1316,7 +1370,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                     _ => return,
                 };
                 let stop = stop
-                    .or_else(|| (expired || Instant::now() >= deadline).then_some(Stop::Expired))
+                    .or_else(|| (expired || deadline.passed((me.clock)())).then_some(Stop::Expired))
                     .or_else(|| paused.then_some(Stop::Paused));
                 match stop {
                     None => {
@@ -1405,7 +1459,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         call_id: String,
         tool: String,
         args: Value,
-        deadline: Instant,
+        deadline: Deadline,
         dismiss: Arc<AtomicBool>,
     ) {
         // Stopped before its dialog opened (a cancel, a drop): never show it.
@@ -1427,7 +1481,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             let timeout = self
                 .timing
                 .max_prompt
-                .min(deadline.saturating_duration_since(Instant::now()));
+                .min(deadline.at.saturating_duration_since(Instant::now()));
             let asker = self.asker.clone();
             let t = tool.clone();
             let mut dialog =
@@ -1436,7 +1490,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             // relay has given up on it.
             tokio::select! {
                 w = &mut dialog => w.unwrap_or(Waited::Deny),
-                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline.at)) => {
                     self.stop_one(&call_id, Stop::Expired);
                     dialog.await.unwrap_or(Waited::Deny)
                 }
@@ -1444,31 +1498,46 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         };
         // The answer is checked, and the call moved on, under the lock that a
         // cancel, a drop or the deadline takes: a late Allow finds it stopped.
-        let refusal = {
-            let mut calls = self.calls.lock().unwrap();
-            let Some(entry) = calls.live.get_mut(&call_id) else {
-                return;
-            };
-            let stop = match &entry.phase {
-                Phase::Prompting { stop, .. } => *stop,
-                _ => return,
-            };
-            let refusal = prompt_refusal(stop, waited, Instant::now() < deadline);
-            match refusal {
-                None => {
-                    entry.phase = Phase::Running {
-                        cancelled: false,
-                        started: false,
+        let refusal = loop {
+            // `None`: an Allow that must wait to be confirmed (below).
+            let decided = {
+                let mut calls = self.calls.lock().unwrap();
+                let Some(entry) = calls.live.get_mut(&call_id) else {
+                    return;
+                };
+                let stop = match &entry.phase {
+                    Phase::Prompting { stop, .. } => *stop,
+                    _ => return,
+                };
+                // An Allow on a call the new link has not confirmed yet waits
+                // for the relay's `Start` (a moment, normally) or for the
+                // grace to end, which stops it: after a relay restart the AI
+                // was already told the call failed, and nothing may run for it.
+                if stop.is_none() && waited == Waited::Allow && entry.unconfirmed.is_some() {
+                    None
+                } else {
+                    let refusal = prompt_refusal(stop, waited, !deadline.passed((self.clock)()));
+                    match refusal {
+                        None => {
+                            entry.phase = Phase::Running {
+                                cancelled: false,
+                                started: false,
+                            }
+                        }
+                        Some((_, text, send)) => calls.finish(
+                            &call_id,
+                            error_result(&call_id, text),
+                            self.timing.results_cap_bytes,
+                            send,
+                        ),
                     }
+                    Some(refusal)
                 }
-                Some((_, text, send)) => calls.finish(
-                    &call_id,
-                    error_result(&call_id, text),
-                    self.timing.results_cap_bytes,
-                    send,
-                ),
+            };
+            match decided {
+                Some(refusal) => break refusal,
+                None => tokio::time::sleep(Duration::from_millis(10)).await,
             }
-            refusal
         };
         match refusal {
             None => {
@@ -1498,7 +1567,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         call_id: &str,
         tool: &str,
         args: &Value,
-        deadline: Instant,
+        deadline: Deadline,
         last: bool,
     ) -> bool {
         let mut calls = self.calls.lock().unwrap();
@@ -1508,7 +1577,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 cancelled: true, ..
             }) => ("cancelled before running", CANCELLED_EARLY, false),
             Some(Phase::Running { .. }) if paused => ("paused before running", PAUSED, true),
-            Some(Phase::Running { started, .. }) if Instant::now() < deadline => {
+            Some(Phase::Running { started, .. }) if !deadline.passed((self.clock)()) => {
                 *started |= last;
                 return true;
             }
@@ -1562,7 +1631,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         call_id: String,
         tool: String,
         args: Value,
-        deadline: Instant,
+        deadline: Deadline,
         approval: &'static str,
     ) {
         let cap = self.timing.results_cap_bytes;
@@ -1611,7 +1680,7 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         let (id, t, a) = (call_id.clone(), tool.clone(), args.clone());
         let wanted: StillWanted = Arc::new(move || me.may_start(&id, &t, &a, deadline, true));
         let started = Instant::now();
-        let Some(output) = self.tools.call(&tool, args, deadline, wanted).await else {
+        let Some(output) = self.tools.call(&tool, args, deadline.at, wanted).await else {
             return;
         };
         let r = CallResult {
@@ -1654,17 +1723,24 @@ impl<T: Tools, A: Asker> Shared<T, A> {
 
     /// `start`: the relay is still waiting for the call. From any link, not
     /// only the one the call came on: it may have been held across a drop.
+    ///
+    /// The relay sends it again after every reconnect for each call it still
+    /// holds, so one for a call already started, at its dialog or running is
+    /// not an error: it confirms the call (see
+    /// [`Shared::await_confirmation`]) and changes nothing else. A call past
+    /// its deadline by the wall clock is not started whatever arrives.
     fn on_start(&self, call_id: &str) {
+        let now_unix = (self.clock)();
         let mut calls = self.calls.lock().unwrap();
-        if let Some(Entry {
-            phase: Phase::AwaitingStart { tx, stop, .. },
-            ..
-        }) = calls.live.get_mut(call_id)
-        {
-            if stop.is_none() {
-                if let Some(tx) = tx.take() {
-                    let _ = tx.send(());
-                }
+        let Some(e) = calls.live.get_mut(call_id) else {
+            return;
+        };
+        e.unconfirmed = None;
+        if e.deadline.slept_through(now_unix) {
+            e.phase.stop(Stop::Expired);
+        } else if let Phase::AwaitingStart { tx, stop: None, .. } = &mut e.phase {
+            if let Some(tx) = tx.take() {
+                let _ = tx.send(());
             }
         }
     }
@@ -1733,6 +1809,76 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 me.stop_prompts(Stop::LinkDropped);
             }
         });
+    }
+
+    /// A link was welcomed again. The calls it carries over from an earlier
+    /// link are not known to the relay to be wanted any more: its `Cancel`
+    /// may have been lost (it restarted, or its grace ended first). The relay
+    /// sends `Start` again for every call it still holds, so each one gets
+    /// `reconnect_grace` to be confirmed by it; any that is not is treated
+    /// as cancelled, as if its `Cancel` had come (the dialog closes; a
+    /// command already running keeps running, but its result is dropped).
+    fn await_confirmation(self: &Arc<Self>, conn: u64, epoch: u64) {
+        let marked = {
+            let mut calls = self.calls.lock().unwrap();
+            let mut n = 0;
+            for e in calls.live.values_mut().filter(|e| e.conn != conn) {
+                let open = matches!(
+                    e.phase,
+                    Phase::AwaitingStart { stop: None, .. }
+                        | Phase::Prompting { stop: None, .. }
+                        | Phase::Running {
+                            cancelled: false,
+                            ..
+                        }
+                );
+                if open {
+                    e.unconfirmed = Some(epoch);
+                    n += 1;
+                }
+            }
+            n
+        };
+        if marked == 0 {
+            return;
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(me.timing.reconnect_grace).await;
+            // A newer welcome or drop since: its own timer decides.
+            if me.link_epoch.load(Ordering::SeqCst) != epoch {
+                return;
+            }
+            let ids: Vec<String> = me
+                .calls
+                .lock()
+                .unwrap()
+                .live
+                .iter()
+                .filter(|(_, e)| e.unconfirmed == Some(epoch))
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in ids {
+                me.on_cancel(&id);
+                if let Some(e) = me.calls.lock().unwrap().live.get_mut(&id) {
+                    e.unconfirmed = None;
+                }
+            }
+        });
+    }
+
+    /// Closes every dialog, and ends every wait for `start`, whose call is
+    /// past its deadline by the wall clock. Timers do not run while a Mac
+    /// sleeps, so after a sleep this is what notices that the relay gave
+    /// those calls up long ago.
+    fn expire_overdue(&self) {
+        let now_unix = (self.clock)();
+        let mut calls = self.calls.lock().unwrap();
+        for e in calls.live.values_mut() {
+            if e.deadline.slept_through(now_unix) {
+                e.phase.stop(Stop::Expired);
+            }
+        }
     }
 
     /// `SIGHUP`: re-read the rules. A file that does not load keeps the
@@ -2467,7 +2613,7 @@ async fn session<T: Tools, A: Asker>(
             _ = in_call.tick() => {
                 silence.saw(&read);
                 if silence.silent_for() >= silent_limit
-                    && shared.calls.lock().unwrap().relay_waiting_on(conn, Instant::now())
+                    && shared.calls.lock().unwrap().relay_waiting_on(conn, clock())
                 {
                     break format!("nothing from the relay for {silent_limit:?} during a call");
                 }
@@ -2523,7 +2669,9 @@ async fn session<T: Tools, A: Asker>(
                             status.refused = None;
                             status.set("connected", None);
                             *shared.current.lock().unwrap() = Some((conn, out.clone()));
-                            shared.link_epoch.fetch_add(1, Ordering::SeqCst);
+                            let epoch = shared.link_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+                            shared.expire_overdue();
+                            shared.await_confirmation(conn, epoch);
                             shared.resend_unacked(&out);
                             log("connected to the relay");
                             // Rules reloaded after the hello was built: send

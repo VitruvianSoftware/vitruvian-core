@@ -213,6 +213,12 @@ impl CallHandle {
         }
     }
 
+    /// Whether the device has reported an approval dialog open for the
+    /// call. A call that never has is not waiting for the person.
+    pub fn approval_reported(&self) -> bool {
+        *self.inner.approval.borrow()
+    }
+
     /// The call's end, if it has ended.
     pub fn peek(&self) -> Option<Arc<Finished>> {
         self.inner.done.borrow().clone()

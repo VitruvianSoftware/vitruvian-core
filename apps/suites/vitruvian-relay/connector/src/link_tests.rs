@@ -3075,6 +3075,8 @@ async fn dialog_survives_a_short_drop() {
     // The link is back within the grace period.
     tokio::time::sleep(Duration::from_millis(100)).await;
     let (mut c, _) = relay.welcome().await;
+    // The relay still holds the call and says so.
+    c.start("c1");
     assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0);
     // The answer given now is used, and its result goes out on the new link.
     asker.set(Waited::Allow);
@@ -3264,6 +3266,199 @@ async fn a_late_allow_after_a_cancel_on_the_new_link_never_runs() {
     until_logged(&dir, "cancelled at prompt").await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(tools.count(), 0);
+}
+
+/// Final review, Important 1. On macOS `Instant` stops while the Mac sleeps,
+/// so a deadline kept only in `Instant`s would still have most of its time
+/// left an hour after the lid closed. Here only the injected clock moves:
+/// no real time passes, the call's `Instant` deadline is far off, and the
+/// call must still be treated as past its deadline once the link is back.
+#[tokio::test(flavor = "multi_thread")]
+async fn deadline_counts_time_the_mac_slept() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-slept");
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    p.asker = FakeAsker::answering(None);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    // The lid closes: the link dies and an hour goes by on the wall clock.
+    drop(c);
+    clock.advance(3600);
+    let (mut c, _) = relay.welcome().await;
+    // The reconnect closes the dialog: the relay gave the call up long ago.
+    until("the dismiss", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    until_logged(&dir, "timed out").await;
+    // A late Allow, and a Start, change nothing.
+    asker.set(Waited::Allow);
+    c.start("c1");
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+}
+
+/// The same sleep with the link never noticing it: an Allow clicked after
+/// the wall clock passed the deadline runs nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_allow_after_the_mac_slept_past_the_deadline_never_runs() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-slept-allow");
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    p.asker = FakeAsker::answering(None);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    clock.advance(3600);
+    asker.set(Waited::Allow);
+    until_logged(&dir, "timed out").await;
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+}
+
+/// A call sent but not started before the sleep, with `start` arriving after:
+/// it must not run either.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_after_the_mac_slept_past_the_deadline_never_runs() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-slept-start");
+    let clock = Arc::new(TestClock::default());
+    let mut p = parts();
+    p.clock = clock.clock();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call_without_start("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    clock.advance(3600);
+    c.start("c1");
+    until_logged(&dir, "timed out").await;
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+}
+
+/// Final review, Important 2. After a reconnect the relay says again which
+/// calls it still holds (`start`); one it does not is dismissed, even when the
+/// person clicks Allow in the meantime.
+#[tokio::test(flavor = "multi_thread")]
+async fn unconfirmed_call_after_reconnect_is_dismissed() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-unconfirmed");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.reconnect_grace = Duration::from_millis(400);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    drop(c);
+    // Back inside the grace, but this relay never heard of the call (it
+    // restarted, or its cancel was lost): it sends no `start` for it.
+    let (mut c, _) = relay.welcome().await;
+    until("the dismiss", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    until_logged(&dir, "cancelled at prompt").await;
+    // A late Allow changes nothing.
+    asker.set(Waited::Allow);
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+}
+
+/// The Allow comes right after the reconnect, before the grace is up: it
+/// waits for the relay's `start`, and the call is cancelled instead.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_allow_on_an_unconfirmed_call_never_runs() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-unconfirmed-allow");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.reconnect_grace = Duration::from_millis(400);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    drop(c);
+    let (mut c, _) = relay.welcome().await;
+    asker.set(Waited::Allow);
+    until_logged(&dir, "cancelled at prompt").await;
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+}
+
+/// A call waiting for `start` that the new link never confirms is ended too.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unconfirmed_call_waiting_for_start_is_cancelled_after_a_reconnect() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-unconfirmed-await");
+    let mut p = parts();
+    p.timing.reconnect_grace = Duration::from_millis(300);
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call_without_start("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    drop(c);
+    let (mut c, _) = relay.welcome().await;
+    until_logged(&dir, "cancelled before running").await;
+    c.start("c1");
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+}
+
+/// A `start` after the reconnect confirms the call: the dialog stays, and an
+/// Allow given afterwards is used. A second `start` is harmless.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_after_a_reconnect_confirms_the_call() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-confirmed");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.reconnect_grace = Duration::from_millis(300);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    drop(c);
+    let (mut c, _) = relay.welcome().await;
+    c.start("c1");
+    c.start("c1");
+    // Well past the grace: the call was confirmed, so the dialog stays.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0);
+    asker.set(Waited::Allow);
+    let r = c.result().await;
+    assert_eq!(r.call_id, "c1");
+    assert!(!r.is_error, "{}", text(&r));
+    assert_eq!(tools.count(), 1);
 }
 
 /// Relay P2: `keep_awake` in the rules holds the Mac awake, `status.json` says
