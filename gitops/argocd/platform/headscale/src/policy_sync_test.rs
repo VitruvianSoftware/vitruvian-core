@@ -235,6 +235,14 @@ impl CaseEnv {
         perms.set_mode(0o755);
         fs::set_permissions(&fake_bin, perms).expect("chmod fake headscale");
 
+        let fake_httpd = bin_dir.join("httpd");
+        fs::write(&fake_httpd, "#!/bin/sh\nexit 0\n").expect("write fake httpd");
+        let mut hperms = fs::metadata(&fake_httpd)
+            .expect("stat fake httpd")
+            .permissions();
+        hperms.set_mode(0o755);
+        fs::set_permissions(&fake_httpd, hperms).expect("chmod fake httpd");
+
         let policy_file = root.join("policy.hujson");
         let pause_file = root.join("paused");
         Self {
@@ -306,6 +314,7 @@ impl CaseEnv {
             .env("PAUSE_FILE", &self.pause_file)
             .env("TMP_DIR", &self.tmp_dir)
             .env("METRICS_DIR", &metrics_dir)
+            .env("HTTPD_BIN", self.bin_dir.join("httpd"))
             .env("HEADSCALE_CONFIG", &cli_cfg)
             .env("POLICY_SYNC_INTERVAL", "0")
             .env("STATE_DIR", &self.state_dir);
@@ -510,6 +519,59 @@ fn part_a_values_structure_and_configmap_binding() {
     assert!(
         !pause_mount_obj.contains_key("subPath") && !pause_mount_obj.contains_key("subPathExpr"),
         "pause mount must not use subPath/subPathExpr so kubelet refreshes ConfigMap updates: {pause_mount:?}"
+    );
+
+    // 3b. Dedicated /metrics emptyDir (separate from /tmp) with small sizeLimit.
+    let script = extract_sidecar_script();
+    assert!(
+        script.contains("METRICS_DIR=\"${METRICS_DIR:-/metrics}\""),
+        "sidecar script must default METRICS_DIR to /metrics"
+    );
+    assert_eq!(
+        hs.pointer("/persistence/metrics/type")
+            .and_then(|v| v.as_str()),
+        Some("emptyDir")
+    );
+    assert_eq!(
+        hs.pointer("/persistence/metrics/medium")
+            .and_then(|v| v.as_str()),
+        Some("Memory")
+    );
+    assert_eq!(
+        hs.pointer("/persistence/metrics/sizeLimit")
+            .and_then(|v| v.as_str()),
+        Some("64Ki")
+    );
+    assert_eq!(
+        hs.pointer("/persistence/metrics/mountPath")
+            .and_then(|v| v.as_str()),
+        Some("-")
+    );
+    let metrics_mount = find_mount("metrics").expect("sidecar must mount volume 'metrics'");
+    let metrics_mount_obj = metrics_mount
+        .as_object()
+        .expect("metrics volumeMount must be a mapping");
+    assert_eq!(
+        metrics_mount_obj.get("mountPath").and_then(|v| v.as_str()),
+        Some("/metrics")
+    );
+    assert_ne!(
+        metrics_mount_obj.get("mountPath").and_then(|v| v.as_str()),
+        Some("/tmp")
+    );
+    assert_ne!(
+        metrics_mount_obj.get("readOnly").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert!(
+        !metrics_mount_obj.contains_key("subPath")
+            && !metrics_mount_obj.contains_key("subPathExpr"),
+        "metrics mount must not use subPath: {metrics_mount:?}"
+    );
+    let cli_tmp_mount = find_mount("cli-tmp").expect("sidecar must mount volume 'cli-tmp'");
+    assert_eq!(
+        cli_tmp_mount.get("mountPath").and_then(|v| v.as_str()),
+        Some("/tmp")
     );
 
     // 4. automountServiceAccountToken is false.
@@ -939,7 +1001,8 @@ fn case_k_metrics_preserve_last_success_on_later_failure_and_survive_httpd_failu
         "unexpected httpd args: {recorded_httpd}"
     );
 
-    // 3. Absent httpd binary: loop still runs and emits metrics cleanly.
+    // 3. Absent httpd binary: fail loudly (exit 1) before entering the sync loop.
+    env.clear_calls();
     let missing_httpd = env.root.join("nonexistent-httpd");
     let no_httpd = env.run_with_extra_env(
         &env.policy_file,
@@ -948,8 +1011,20 @@ fn case_k_metrics_preserve_last_success_on_later_failure_and_survive_httpd_failu
             ("HTTPD_BIN", missing_httpd.to_str().unwrap()),
         ],
     );
-    assert_eq!(no_httpd.exit_code, Some(0), "stderr: {}", no_httpd.stderr);
-    assert_eq!(no_httpd.metrics.up, 1);
-    assert!(no_httpd.metrics.last_success > 0);
-    assert_eq!(no_httpd.metrics.paused, 0);
+    assert_eq!(
+        no_httpd.exit_code,
+        Some(1),
+        "missing httpd must fail loudly with exit 1: stderr={}",
+        no_httpd.stderr
+    );
+    assert!(
+        no_httpd.stderr.contains("nonexistent-httpd"),
+        "stderr must name the missing httpd binary: {}",
+        no_httpd.stderr
+    );
+    assert!(
+        no_httpd.calls.is_empty(),
+        "must exit before running reconciliation loop, got {:?}",
+        no_httpd.calls
+    );
 }

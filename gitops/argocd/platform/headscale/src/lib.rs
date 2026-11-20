@@ -582,7 +582,7 @@ pub fn check_rendered_headscale_deployment(rendered_yaml: &str) -> Result<(), St
     }
     check_directory_mount(main, "headscale", "socket", "/var/run/headscale", None)?;
     check_directory_mount(main, "headscale", "config", "/etc/headscale", None)?;
-    for forbidden in ["policy", "pause", "cli-tmp"] {
+    for forbidden in ["policy", "pause", "cli-tmp", "metrics"] {
         if find_mount(main, forbidden).is_some() {
             return Err(format!(
                 "rendered main container must not mount '{forbidden}'"
@@ -688,6 +688,7 @@ pub fn check_rendered_headscale_deployment(rendered_yaml: &str) -> Result<(), St
         Some(true),
     )?;
     check_directory_mount(sidecar, "policy-sync", "cli-tmp", "/tmp", None)?;
+    check_directory_mount(sidecar, "policy-sync", "metrics", "/metrics", None)?;
     if find_mount(sidecar, "config").is_some() {
         return Err("rendered policy-sync must not mount 'config' PVC".to_string());
     }
@@ -717,6 +718,28 @@ pub fn check_rendered_headscale_deployment(rendered_yaml: &str) -> Result<(), St
     if tmp_vol.pointer("/emptyDir/medium").and_then(Value::as_str) != Some("Memory") {
         return Err(format!(
             "rendered 'cli-tmp' volume must use Memory medium, got {tmp_vol:?}"
+        ));
+    }
+    let metrics_vol = volumes
+        .iter()
+        .find(|v| v.get("name").and_then(Value::as_str) == Some("metrics"))
+        .ok_or_else(|| "rendered pod is missing 'metrics' volume".to_string())?;
+    if metrics_vol
+        .pointer("/emptyDir/medium")
+        .and_then(Value::as_str)
+        != Some("Memory")
+    {
+        return Err(format!(
+            "rendered 'metrics' volume must use Memory medium, got {metrics_vol:?}"
+        ));
+    }
+    if metrics_vol
+        .pointer("/emptyDir/sizeLimit")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err(format!(
+            "rendered 'metrics' volume must set emptyDir.sizeLimit, got {metrics_vol:?}"
         ));
     }
 
@@ -1228,6 +1251,31 @@ mod tests {
                 .and_then(Value::as_str),
             Some("-")
         );
+        assert_eq!(
+            hs.pointer("/persistence/metrics/enabled")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            hs.pointer("/persistence/metrics/type")
+                .and_then(Value::as_str),
+            Some("emptyDir")
+        );
+        assert_eq!(
+            hs.pointer("/persistence/metrics/medium")
+                .and_then(Value::as_str),
+            Some("Memory")
+        );
+        assert_eq!(
+            hs.pointer("/persistence/metrics/sizeLimit")
+                .and_then(Value::as_str),
+            Some("64Ki")
+        );
+        assert_eq!(
+            hs.pointer("/persistence/metrics/mountPath")
+                .and_then(Value::as_str),
+            Some("-")
+        );
 
         let sidecar = hs
             .pointer("/sidecars/policy-sync")
@@ -1309,6 +1357,13 @@ mod tests {
             tmp_mount.get("mountPath").and_then(Value::as_str),
             Some("/tmp")
         );
+        let metrics_mount =
+            find_mount("metrics").expect("policy-sync must mount metrics at /metrics");
+        assert_eq!(
+            metrics_mount.get("mountPath").and_then(Value::as_str),
+            Some("/metrics")
+        );
+        assert!(metrics_mount.get("subPath").is_none());
         assert!(
             find_mount("config").is_none(),
             "policy-sync must not mount the headscale config/database PVC"
@@ -1459,6 +1514,11 @@ esac
         let mut perms = std::fs::metadata(&fake).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&fake, perms).unwrap();
+        let fake_httpd = bin_dir.join("httpd");
+        std::fs::write(&fake_httpd, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut hperms = std::fs::metadata(&fake_httpd).unwrap().permissions();
+        hperms.set_mode(0o755);
+        std::fs::set_permissions(&fake_httpd, hperms).unwrap();
         bin_dir
     }
 
@@ -1471,7 +1531,9 @@ esac
         let calls = tmp.path().join("calls.log");
         let applied = tmp.path().join("applied.hujson");
         let work_tmp = tmp.path().join("work-tmp");
+        let metrics_dir = tmp.path().join("metrics");
         std::fs::create_dir_all(&work_tmp).unwrap();
+        std::fs::create_dir_all(&metrics_dir).unwrap();
         let orig_path = std::env::var("PATH").unwrap_or_default();
         let path_env = format!("{}:{orig_path}", bin_dir.display());
         let mut cmd = std::process::Command::new("/bin/sh");
@@ -1481,6 +1543,8 @@ esac
             .env("POLICY_FILE", policy_path)
             .env("PAUSE_FILE", tmp.path().join("no-pause-marker"))
             .env("TMP_DIR", &work_tmp)
+            .env("METRICS_DIR", &metrics_dir)
+            .env("HTTPD_BIN", bin_dir.join("httpd"))
             .env("HEADSCALE_CONFIG", work_tmp.join("headscale-cli.yaml"))
             .env("FAKE_CALLS", &calls)
             .env("FAKE_APPLIED_FILE", &applied);
@@ -1910,6 +1974,8 @@ esac
             "              mountPath: /var/run/headscale\n",
             "            - name: cli-tmp\n",
             "              mountPath: /tmp\n",
+            "            - name: metrics\n",
+            "              mountPath: /metrics\n",
             "      volumes:\n",
             "        - name: socket\n",
             "          emptyDir: {}\n",
@@ -1924,6 +1990,10 @@ esac
             "        - name: cli-tmp\n",
             "          emptyDir:\n",
             "            medium: Memory\n",
+            "        - name: metrics\n",
+            "          emptyDir:\n",
+            "            medium: Memory\n",
+            "            sizeLimit: 64Ki\n",
         );
         check_rendered_headscale_deployment(valid_yaml).unwrap();
 
@@ -1966,6 +2036,17 @@ esac
                 "",
                 "socket",
             ),
+            (
+                "            - name: metrics\n              mountPath: /metrics\n",
+                "",
+                "metrics",
+            ),
+            (
+                "              mountPath: /metrics\n",
+                "              mountPath: /tmp\n",
+                "/metrics",
+            ),
+            ("            sizeLimit: 64Ki\n", "", "sizeLimit"),
         ] {
             let mutated = valid_yaml.replacen(needle, replacement, 1);
             let err = check_rendered_headscale_deployment(&mutated).unwrap_err();

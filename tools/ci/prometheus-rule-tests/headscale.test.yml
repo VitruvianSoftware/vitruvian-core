@@ -266,3 +266,70 @@ tests:
       - eval_time: 59m
         alertname: HeadscalePolicySyncStale
         exp_alerts: []
+
+  - interval: 1m
+    name: Missing policy-sync series fires HeadscalePolicySyncStale after 5m for
+    input_series:
+      # Unrelated series so the test has input while all headscale_policy_sync_* series are absent.
+      - series: 'up{job="kubernetes-service-endpoints"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+            exp_annotations:
+              summary: "Headscale ACL policy-sync metrics are absent"
+              description: "Prometheus has no headscale_policy_sync metrics, so the policy-sync sidecar on deploy/headscale is down, crash-looping, or not being scraped via Service/headscale-policy-sync. Check sidecar logs with: bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync."
+
+  # ------------------------------------------------ policy-sync pause cap ----
+  - interval: 1m
+    name: Paused policy-sync under 12h stays silent
+    input_series:
+      - series: 'headscale_policy_sync_up{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '0x720'
+      - series: 'headscale_policy_sync_last_success_timestamp_seconds{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '0x720'
+      - series: 'headscale_policy_sync_paused{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '1x720'
+    alert_rule_test:
+      - eval_time: 11h59m
+        alertname: HeadscalePolicySyncPausedTooLong
+        exp_alerts: []
+      - eval_time: 11h59m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts: []
+
+  - interval: 1m
+    name: Paused policy-sync for 12h+ fires HeadscalePolicySyncPausedTooLong while stale stays silent
+    input_series:
+      - series: 'headscale_policy_sync_up{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '0x750'
+      - series: 'headscale_policy_sync_last_success_timestamp_seconds{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '0x750'
+      - series: 'headscale_policy_sync_paused{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '1x750'
+    alert_rule_test:
+      - eval_time: 11h59m
+        alertname: HeadscalePolicySyncPausedTooLong
+        exp_alerts: []
+      - eval_time: 12h1m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts: []
+      - eval_time: 12h1m
+        alertname: HeadscalePolicySyncPausedTooLong
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              job: kubernetes-service-endpoints
+              namespace: headscale
+              service: headscale-policy-sync
+            exp_annotations:
+              summary: "Headscale ACL policy-sync has been paused for over 12h"
+              description: "The policy-sync sidecar on deploy/headscale has seen ConfigMap/headscale-policy-sync-pause for >12h, so HeadscalePolicySyncStale is suppressed and gitops/argocd/platform/headscale/policy.hujson is not being reconciled. Land the break-glass policy change in git and resume reconciliation with: bazel run //tools/gitops:headscale-policy-sync-resume."

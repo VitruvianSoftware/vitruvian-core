@@ -97,6 +97,11 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		".github/workflows/README.md",
 		".github/actions/mint-sync-app-token/action.yaml",
 		".github/actions/some/nested/script.sh",
+		// Headscale mesh ACL policy and the app/sidecar that reconciles it.
+		"gitops/argocd/platform/headscale/policy.hujson",
+		"gitops/argocd/platform/headscale/configmap-policy.yaml",
+		"gitops/argocd/platform/headscale/applicationset.yaml",
+		"gitops/argocd/platform/headscale/service-policy-sync.yaml",
 	}
 	for _, p := range protected {
 		if !guardCovers(p) {

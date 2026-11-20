@@ -132,7 +132,7 @@ spec:
                     TMP_DIR="${TMP_DIR:-/tmp}"
                     CLI_CFG="${HEADSCALE_CONFIG:-$TMP_DIR/headscale-cli.yaml}"
                     INTERVAL="${POLICY_SYNC_INTERVAL:-60}"
-                    METRICS_DIR="${METRICS_DIR:-$TMP_DIR/metrics}"
+                    METRICS_DIR="${METRICS_DIR:-/metrics}"
                     METRICS_PORT="${METRICS_PORT:-9102}"
                     HTTPD_BIN="${HTTPD_BIN:-/busybox/httpd}"
                     printf 'unix_socket: /var/run/headscale/headscale.sock\ndisable_check_updates: true\n' >"$CLI_CFG"
@@ -161,12 +161,13 @@ spec:
                       write_metrics 0
                     fi
 
-                    httpd_pid=""
-                    if [ -x "$HTTPD_BIN" ]; then
-                      "$HTTPD_BIN" -f -p "$METRICS_PORT" -h "$METRICS_DIR" </dev/null >/dev/null 2>&1 &
-                      httpd_pid=$!
-                      trap '[ -n "$httpd_pid" ] && kill "$httpd_pid" 2>/dev/null || true' EXIT
+                    if [ ! -x "$HTTPD_BIN" ]; then
+                      echo "policy-sync: $HTTPD_BIN missing or not executable" >&2
+                      exit 1
                     fi
+                    "$HTTPD_BIN" -f -p "$METRICS_PORT" -h "$METRICS_DIR" </dev/null >/dev/null 2>&1 &
+                    httpd_pid=$!
+                    trap '[ -n "$httpd_pid" ] && kill "$httpd_pid" 2>/dev/null || true' EXIT
 
                     sync_once() {
                       if [ -e "$PAUSE_FILE" ]; then
@@ -254,6 +255,8 @@ spec:
                     mountPath: /var/run/headscale
                   - name: cli-tmp
                     mountPath: /tmp
+                  - name: metrics
+                    mountPath: /metrics
                 resources:
                   requests:
                     cpu: 5m
@@ -300,6 +303,12 @@ spec:
                 type: emptyDir
                 medium: Memory
                 sizeLimit: 1Mi
+                mountPath: "-"
+              metrics:
+                enabled: true
+                type: emptyDir
+                medium: Memory
+                sizeLimit: 64Ki
                 mountPath: "-"
             ingress:
               main:

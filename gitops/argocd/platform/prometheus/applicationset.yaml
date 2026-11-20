@@ -877,16 +877,30 @@ spec:
                   - alert: HeadscalePolicySyncStale
                     # Fires when the policy-sync sidecar on deploy/headscale has
                     # not recorded an up=1 reconciliation (in sync, applied, or
-                    # absent policy file) in >15m while not paused via
-                    # ConfigMap/headscale-policy-sync-pause.
-                    expr: time() - headscale_policy_sync_last_success_timestamp_seconds > 900 and headscale_policy_sync_paused == 0
+                    # absent policy file) in >15m while not paused, or when its
+                    # metrics are absent altogether (missing sidecar / scrape).
+                    expr: (time() - headscale_policy_sync_last_success_timestamp_seconds > 900 and headscale_policy_sync_paused == 0) or absent(headscale_policy_sync_up) or absent(headscale_policy_sync_last_success_timestamp_seconds)
                     for: 5m
                     labels:
                       severity: warning
                       pagerduty_service: cluster
                     annotations:
-                      summary: "Headscale ACL policy-sync has not succeeded in {{ $value | humanizeDuration }}"
-                      description: "The policy-sync sidecar on deploy/headscale has not completed a clean ACL reconciliation for {{ $value | humanizeDuration }} (>15m) and is not paused, so live Headscale ACLs may have drifted from gitops/argocd/platform/headscale/policy.hujson (or a bad policy failed headscale policy check/set). Check sidecar logs with: bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync."
+                      summary: "{{ if gt $value 1.0 }}Headscale ACL policy-sync has not succeeded in {{ $value | humanizeDuration }}{{ else }}Headscale ACL policy-sync metrics are absent{{ end }}"
+                      description: "{{ if gt $value 1.0 }}The policy-sync sidecar on deploy/headscale has not completed a clean ACL reconciliation for {{ $value | humanizeDuration }} (>15m) and is not paused, so live Headscale ACLs may have drifted from gitops/argocd/platform/headscale/policy.hujson (or a bad policy failed headscale policy check/set). Check sidecar logs with: bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync.{{ else }}Prometheus has no headscale_policy_sync metrics, so the policy-sync sidecar on deploy/headscale is down, crash-looping, or not being scraped via Service/headscale-policy-sync. Check sidecar logs with: bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync.{{ end }}"
+
+                  - alert: HeadscalePolicySyncPausedTooLong
+                    # Break-glass pause via ConfigMap/headscale-policy-sync-pause
+                    # silences HeadscalePolicySyncStale while a fix PR is in
+                    # flight, so a forgotten pause would otherwise leave ACL
+                    # drift unguarded indefinitely.
+                    expr: headscale_policy_sync_paused == 1
+                    for: 12h
+                    labels:
+                      severity: warning
+                      pagerduty_service: cluster
+                    annotations:
+                      summary: "Headscale ACL policy-sync has been paused for over 12h"
+                      description: "The policy-sync sidecar on deploy/headscale has seen ConfigMap/headscale-policy-sync-pause for >12h, so HeadscalePolicySyncStale is suppressed and gitops/argocd/platform/headscale/policy.hujson is not being reconciled. Land the break-glass policy change in git and resume reconciliation with: bazel run //tools/gitops:headscale-policy-sync-resume."
 
                 # ── 10. Monitoring self ──────────────────────────────────────
                 - name: monitoring-self
