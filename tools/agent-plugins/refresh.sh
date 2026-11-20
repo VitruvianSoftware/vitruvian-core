@@ -121,15 +121,16 @@ same_tree() {
   [[ -d "$1" && -d "$2" ]] && diff -rq -x node_modules -x .DS_Store "$1" "$2" >/dev/null 2>&1
 }
 
-json_field() { # file-or-dash, python expression over `d`
+json_field() { # file-or-dash, python expression over `d`, then values the expression reads as a[0], a[1], ...
+  # Pass any data (plugin names, keys) as trailing arguments, never inside the expression.
   python3 -I -c 'import json,sys
 src=sys.argv[1]
 d=json.load(sys.stdin if src=="-" else open(src))
 try:
-    v=eval(sys.argv[2],{"d":d})
+    v=eval(sys.argv[2],{"d":d,"a":sys.argv[3:]})
 except Exception:
     v=None
-print(v or "")' "$1" "$2"
+print(v or "")' "$@"
 }
 
 echo "Main checkout: $MAIN"
@@ -163,7 +164,7 @@ fi
 claude_path() {
   [[ -f "$CLAUDE_PLUGINS_FILE" ]] || return 0
   json_field "$CLAUDE_PLUGINS_FILE" \
-    "next((e['installPath'] for e in d.get('plugins',d).get('$PLUGIN@$MARKETPLACE',[]) if e.get('scope')=='user'), '')"
+    "next((e['installPath'] for e in d.get('plugins',d).get(a[0],[]) if e.get('scope')=='user'), '')" "$PLUGIN@$MARKETPLACE"
 }
 src="$MAIN/apps/claude-code/plugins/$PLUGIN"
 if [[ -d "$src" ]]; then
@@ -175,8 +176,8 @@ if [[ -d "$src" ]]; then
     bad "installed copy ${dest:-(not installed)} differs from the main checkout"
     stale=1
   else
-    "$CLAUDE" plugin marketplace update "$MARKETPLACE" >/dev/null
-    if [[ -n "$dest" ]]; then "$CLAUDE" plugin update "$PLUGIN@$MARKETPLACE" >/dev/null || true; fi
+    "$CLAUDE" plugin marketplace update "$MARKETPLACE" </dev/null >/dev/null
+    if [[ -n "$dest" ]]; then "$CLAUDE" plugin update "$PLUGIN@$MARKETPLACE" </dev/null >/dev/null || true; fi
     dest="$(claude_path)"
     if ! same_tree "$src" "$dest"; then
       if [[ -n "$dest" ]]; then
@@ -193,7 +194,7 @@ fi
 # 3. Antigravity: a copy under ~/.gemini/config/plugins.
 agy_path() {
   "$AGY" plugin list --json 2>/dev/null | json_field - \
-    "next((p['path'] for p in (d if isinstance(d,list) else d.get('plugins',[])) if p.get('name')=='$PLUGIN'), '')"
+    "next((p['path'] for p in (d if isinstance(d,list) else d.get('plugins',[])) if p.get('name')==a[0]), '')" "$PLUGIN"
 }
 src="$MAIN/apps/antigravity/plugins/$PLUGIN"
 if [[ -d "$src" ]]; then
@@ -246,21 +247,26 @@ KNOWN_MARKETPLACES_FILE="${AGENT_PLUGINS_KNOWN_MARKETPLACES_FILE:-$(dirname "$CL
 remote_plugins() { # prints "plugin@marketplace<TAB>version<TAB>marketplace-dir" for each remote user-scope plugin
   [[ -f "$CLAUDE_PLUGINS_FILE" && -f "$KNOWN_MARKETPLACES_FILE" ]] || return 0
   python3 -I - "$CLAUDE_PLUGINS_FILE" "$KNOWN_MARKETPLACES_FILE" "$MARKETPLACE" <<'PY'
-import json, sys
+import json, re, sys
+SAFE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._-]*")
 installed = json.load(open(sys.argv[1]))
 known = json.load(open(sys.argv[2]))
 own = sys.argv[3]
 plugins = installed.get("plugins", installed)
 for key in sorted(plugins):
     name, _, mkt = key.rpartition("@")
-    if not name or mkt == own:
+    if not SAFE.fullmatch(key) or mkt == own:  # odd names (quotes, tabs, newlines) are skipped
         continue
     src = (known.get(mkt) or {}).get("source") or {}
     if src.get("source") not in ("github", "git", "url"):
         continue
     for e in plugins[key]:
         if e.get("scope") == "user":
-            print(f"{key}\t{e.get('version') or ''}\t{(known.get(mkt) or {}).get('installLocation') or ''}")
+            ver = str(e.get("version") or "")
+            loc = str((known.get(mkt) or {}).get("installLocation") or "")
+            if any(c in ver + loc for c in "\t\n\r"):
+                continue
+            print(f"{key}\t{ver}\t{loc}")
 PY
 }
 marketplace_version() { # $1=plugin name $2=marketplace dir; prints the catalog's version, or nothing
@@ -275,8 +281,9 @@ for p in m.get("plugins", []):
     v = p.get("version")
     src = p.get("source")
     if not v and isinstance(src, str):
-        f = os.path.normpath(os.path.join(root, src, ".claude-plugin", "plugin.json"))
-        if f.startswith(os.path.realpath(root)) and os.path.isfile(f):
+        base = os.path.realpath(root)
+        f = os.path.realpath(os.path.join(root, src, ".claude-plugin", "plugin.json"))
+        if f.startswith(base + os.sep) and os.path.isfile(f):
             v = json.load(open(f)).get("version")
     print(v or "")
     break
@@ -284,16 +291,16 @@ PY
 }
 installed_version() { # $1=plugin@marketplace
   json_field "$CLAUDE_PLUGINS_FILE" \
-    "next((e.get('version') for e in d.get('plugins',d).get('$1',[]) if e.get('scope')=='user'), '')"
+    "next((e.get('version') for e in d.get('plugins',d).get(a[0],[]) if e.get('scope')=='user'), '')" "$1"
 }
 if [[ "$THIRD_PARTY" -eq 1 ]]; then
   rows="$(remote_plugins)"
   if [[ -n "$rows" ]]; then
     echo "Third-party Claude Code plugins"
     if [[ "$MODE" == "refresh" ]]; then
-      for mkt in $(printf '%s\n' "$rows" | cut -f1 | sed 's/.*@//' | sort -u); do
-        "$CLAUDE" plugin marketplace update "$mkt" >/dev/null 2>&1 || { bad "could not update marketplace $mkt"; failed=1; }
-      done
+      while IFS= read -r mkt; do
+        "$CLAUDE" plugin marketplace update "$mkt" </dev/null >/dev/null 2>&1 || { bad "could not update marketplace $mkt"; failed=1; }
+      done < <(printf '%s\n' "$rows" | cut -f1 | sed 's/.*@//' | sort -u)
     fi
     while IFS=$'\t' read -r key before dir; do
       name="${key%@*}"
@@ -309,7 +316,7 @@ if [[ "$THIRD_PARTY" -eq 1 ]]; then
         fi
         continue
       fi
-      if ! "$CLAUDE" plugin update "$key" --scope user >/dev/null 2>&1; then
+      if ! "$CLAUDE" plugin update "$key" --scope user </dev/null >/dev/null 2>&1; then
         bad "$key: update failed (it may need a command confirmed by hand: claude plugin update $key)"
         failed=1
         continue

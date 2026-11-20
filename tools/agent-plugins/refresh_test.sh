@@ -159,5 +159,24 @@ if run --quiet; then fail "a failed third-party update was reported as success";
 fi
 rm -f "$T/fail-update"
 
+# A plugin key crafted to break out of a Python expression must never run code.
+write_installed 2.0.0
+python3 -I - "$T/installed.json" "$T" <<'PY'
+import json, sys
+p, t = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+d["plugins"]["x')or open('" + t + "/pwned','w')or('@remote"] = [{"scope": "user", "version": "1.0.0"}]
+json.dump(d, open(p, "w"))
+PY
+run --quiet || true
+run --check || true
+[[ ! -e "$T/pwned" ]] && pass "a malicious plugin key runs no code" || fail "a malicious plugin key ran code"
+grep -q "pwned" "$T/claude.calls" && fail "a malicious plugin key reached claude: $(grep pwned "$T/claude.calls")" || pass "a malicious plugin key is skipped"
+# The json_field helper itself takes data as arguments, never inside the expression.
+JF="$(sed -n '/^json_field() {/,/^}/p' "$REFRESH")"
+eval "$JF"
+out="$(echo '{"k":{"a'"'"'b":1}}' | json_field - "d['k'].get(a[0])" "a'b")"
+[[ "$out" == "1" ]] && pass "json_field reads values from arguments" || fail "json_field with an argument gave '$out'"
+
 [[ "$fails" -eq 0 ]] || { echo "$fails failure(s)"; exit 1; }
 echo "all passed"
