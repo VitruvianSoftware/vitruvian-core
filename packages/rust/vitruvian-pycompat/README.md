@@ -2,7 +2,7 @@
 
 ## What it gives you
 
-A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's standard library differs—covering `pystr` (whitespace, decimal digits, `repr()`, float formatting, round-to-even), `json` (`json.loads` and `json.dumps` defaults), `argparse` (optionals parser with Python help/usage/errors), and `unicode_tables` (Unicode 15.0.0 character classes).
+A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's standard library differs—covering `pystr` (whitespace, decimal digits, `repr()`, float formatting, round-to-even), `pyerr` (Python-style exception values and tracebacks), `json` (`json.loads` and `json.dumps` defaults), `argparse` (optionals parser with Python help/usage/errors), and `unicode_tables` (Unicode 15.0.0 character classes).
 
 ## When to use it
 

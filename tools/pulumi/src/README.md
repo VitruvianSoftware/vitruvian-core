@@ -28,8 +28,6 @@ Component package providing implementation for `tools/pulumi/src`.
 - [pulumi_cmd.rs:338]: `assert!(has_flag(&args, &["--stack", "-s"]));`
 - [pulumi_cmd.rs:339]: `assert!(!has_flag(&args, &["--non-interactive"]));`
 - [pulumi_cmd.rs:345]: `assert!(has_flag(&args, &["--stack", "-s"]));`
-- [pystr.rs:203]: `assert!(is_space('\u{1c}'));`
-- [pystr.rs:204]: `assert!(!is_space('\u{200b}'));`
 
 ## Side Effects
 - [create_app.rs:316]: `let mut child = match c.spawn() {`

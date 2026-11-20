@@ -34,7 +34,7 @@ pub mod github;
 pub mod http;
 pub mod json;
 pub mod pyerr;
-pub mod pystr;
+pub use vitruvian_pycompat::pystr;
 
 #[cfg(test)]
 mod drift_test;

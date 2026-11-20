@@ -26,7 +26,7 @@ pub use vitruvian_pycompat::argparse;
 pub mod difflib;
 pub mod fetch;
 pub use vitruvian_pycompat::json;
-pub mod pyerr;
+pub use vitruvian_pycompat::pyerr;
 pub mod pyre;
 pub use vitruvian_pycompat::pystr;
 pub mod sync;
