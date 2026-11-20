@@ -66,6 +66,7 @@ public struct GalleryItem: Equatable, Identifiable, Sendable {
     public let isTranscoded: Bool
     public let caption: String
     public let mediaRemoved: Bool
+    public let reactions: [ReactionChip]
 
     public var showsMediaRemovedPlaceholder: Bool {
         kind.isMedia && mediaRemoved && mediaPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -87,7 +88,8 @@ public struct GalleryItem: Equatable, Identifiable, Sendable {
         isAnimated: Bool = false,
         isTranscoded: Bool = false,
         caption: String = "",
-        mediaRemoved: Bool = false
+        mediaRemoved: Bool = false,
+        reactions: [ReactionChip] = []
     ) {
         self.id = id
         self.kind = kind
@@ -105,6 +107,7 @@ public struct GalleryItem: Equatable, Identifiable, Sendable {
         self.isTranscoded = isTranscoded
         self.caption = caption
         self.mediaRemoved = mediaRemoved
+        self.reactions = reactions
     }
 }
 
@@ -915,6 +918,13 @@ public enum Timeline {
             if event.type == "m.room.member", event.status != .failed, !redacted.contains(event.eventID) {
                 flushGallery()
                 if showChatUpdates {
+                    if let first = pendingMembers.first {
+                        let firstDay = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(first.ts) / 1000))
+                        let eventDay = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(event.ts) / 1000))
+                        if eventDay != firstDay {
+                            flushMembers()
+                        }
+                    }
                     pendingMembers.append(event)
                 }
                 continue
@@ -1063,7 +1073,8 @@ public enum Timeline {
             isAnimated: message.isAnimated,
             isTranscoded: message.isTranscoded,
             caption: message.body,
-            mediaRemoved: message.mediaRemoved
+            mediaRemoved: message.mediaRemoved,
+            reactions: message.reactions
         )
     }
 
