@@ -180,6 +180,8 @@ type RelocationPlan struct {
 	UnitDiff   string
 
 	unitActive    bool // k3s was running when the plan was made
+	ownCordon     bool // this command cordoned (or had cordoned) the node, so it uncordons it
+	preCordoned   bool // the node was cordoned by someone else; it is left that way
 	configPlanned bool
 	unitPlanned   bool
 	mountPlanned  bool
@@ -310,26 +312,42 @@ func (p *NativeProvider) PlanKubeletRelocation(ctx context.Context, o RelocateOp
 		}
 	}
 
+	// /var/lib/kubelet is classified on EVERY run, before anything is touched. The
+	// bind-mount step is the last of the destructive ones, so a directory it would
+	// refuse must be refused here, not after the node was drained and stopped.
+	// Allowed: a symlink to the backing directory (the normal starting point), an
+	// empty directory or a missing path (an interrupted run), or the expected bind
+	// mount. Refused: a populated real directory, some other mount, a symlink
+	// elsewhere.
+	switch st.mount {
+	case mountBind, mountEmptyDir, mountAbsent:
+	case mountSymlink:
+		if st.symlinkTo == "" || !samePath(st.symlinkTo, want) {
+			return nil, fmt.Errorf("[%s] %w: %s is a symlink to %q, not to %q", host, ErrKubeletNotAtDataDir, kubeletStdPath, st.symlinkTo, want)
+		}
+	case mountPopulated:
+		return nil, fmt.Errorf("[%s] %w: %s is a real directory with files in it; the bind mount would hide them. Move them away or into %s, then re-run", host, ErrKubeletNotAtDataDir, kubeletStdPath, want)
+	case mountOther:
+		return nil, fmt.Errorf("[%s] %w: %s is a mount, but not a bind mount of %s", host, ErrKubeletNotAtDataDir, kubeletStdPath, want)
+	default:
+		return nil, fmt.Errorf("[%s] %w: cannot classify %s (got %q)", host, ErrKubeletNotAtDataDir, kubeletStdPath, st.mount)
+	}
+
 	// Which state is the node in? finishOnly: the bind mount is in place and
 	// root-dir is gone, so only start / Ready / checks / uncordon may remain.
 	finishOnly := false
-	situation := "kubelet at " + want + " (root-dir kubelet-arg)"
+	situation := "kubelet at " + want + " (root-dir kubelet-arg), " + kubeletStdPath + " is " + describeMount(st.mount)
 	if len(found) == 0 {
 		switch st.mount {
 		case mountBind:
 			finishOnly = true
 			situation = kubeletStdPath + " is already the bind mount of " + want // finishing an earlier run
 		case mountSymlink:
-			if st.symlinkTo == "" || !samePath(st.symlinkTo, want) {
-				return nil, fmt.Errorf("[%s] %w: no root-dir argument remains and %s is a symlink to %q, not %q", host, ErrKubeletNotAtDataDir, kubeletStdPath, st.symlinkTo, want)
-			}
 			situation = "root-dir already removed; " + kubeletStdPath + " still symlinked to " + want + " (an earlier run was interrupted; resuming)"
 		case mountEmptyDir:
 			situation = "root-dir already removed; " + kubeletStdPath + " is an empty directory, not yet mounted (an earlier run was interrupted; resuming)"
-		case mountOther:
-			return nil, fmt.Errorf("[%s] %w: %s is a mount, but not a bind mount of %s", host, ErrKubeletNotAtDataDir, kubeletStdPath, want)
-		default:
-			return nil, fmt.Errorf("[%s] %w: no root-dir argument in %s or %s, and %s is %s (not a mount of or symlink to %s)", host, ErrKubeletNotAtDataDir, k3sConfigPath, unit, kubeletStdPath, st.mount, want)
+		default: // mountAbsent
+			situation = "root-dir already removed; " + kubeletStdPath + " does not exist yet (an earlier run was interrupted; resuming)"
 		}
 	}
 
@@ -337,9 +355,18 @@ func (p *NativeProvider) PlanKubeletRelocation(ctx context.Context, o RelocateOp
 	if err != nil {
 		return nil, fmt.Errorf("[%s] %w", host, err)
 	}
+	// Who cordoned the node? Only a cordon this command made (it marks the node with
+	// an annotation) is undone by this command; a node someone else cordoned stays
+	// cordoned.
+	preCordoned := node.cordoned && !node.ours
+	ownCordon := !preCordoned && (!finishOnly || node.cordoned)
 	if finishOnly {
-		if st.unitActive && node.exists && node.ready && !node.cordoned {
-			return nil, fmt.Errorf("[%s] %w: bind mount of %s in place, %s running, node Ready and schedulable", host, ErrKubeletAlreadyRelocated, want, unit)
+		if st.unitActive && node.exists && node.ready && (!node.cordoned || preCordoned) {
+			msg := "bind mount of " + want + " in place, " + unit + " running, node Ready and schedulable"
+			if preCordoned {
+				msg = "bind mount of " + want + " in place, " + unit + " running, node Ready; it is cordoned, but not by this command, so it is left that way"
+			}
+			return nil, fmt.Errorf("[%s] %w: %s", host, ErrKubeletAlreadyRelocated, msg)
 		}
 		situation += fmt.Sprintf("; %s is %s, node is %s", unit, map[bool]string{true: "running", false: "not running"}[st.unitActive], nodeWords(node))
 	} else {
@@ -352,11 +379,16 @@ func (p *NativeProvider) PlanKubeletRelocation(ctx context.Context, o RelocateOp
 			}
 		}
 	}
+	// The NFS check will create objects in the cluster; refuse now, before the node
+	// is touched, if it would be unsafe.
+	if err := p.checkNFSGuards(ctx, o); err != nil {
+		return nil, fmt.Errorf("[%s] %w", host, err)
+	}
 
 	plan := &RelocationPlan{
 		Host: host, Role: p.spec.Role, Unit: unit, DataDir: p.spec.DataDir, Backing: want,
 		Found: found, ControlHost: o.ControlHost, Situation: situation,
-		unitActive: st.unitActive, mountPlanned: !finishOnly,
+		unitActive: st.unitActive, mountPlanned: !finishOnly, ownCordon: ownCordon, preCordoned: preCordoned,
 		startPlanned: !finishOnly || !st.unitActive,
 	}
 	ctl := func(id, desc, cmd string) RelocationStep {
@@ -367,7 +399,9 @@ func (p *NativeProvider) PlanKubeletRelocation(ctx context.Context, o RelocateOp
 	}
 
 	if !finishOnly {
-		plan.Steps = append(plan.Steps, ctl(stepCordon, "cordon "+host+" so nothing new is scheduled on it", "k3s kubectl cordon "+host))
+		if ownCordon {
+			plan.Steps = append(plan.Steps, ctl(stepCordon, "cordon "+host+" so nothing new is scheduled on it (and mark it, so only this command's cordon is undone)", cordonCmd(host)))
+		}
 		if st.unitActive {
 			plan.Steps = append(plan.Steps, ctl(stepDrain,
 				fmt.Sprintf("drain %s (ignore DaemonSets, delete emptyDir data, respect PodDisruptionBudgets, %s timeout)", host, o.DrainTimeout),
@@ -473,17 +507,33 @@ func (p *NativeProvider) PlanKubeletRelocation(ctx context.Context, o RelocateOp
 		RelocationStep{
 			ID: stepNFSCheck, OnControl: true,
 			Desc: fmt.Sprintf("prove it: a pod pinned to %s mounts a throwaway %q PVC in namespace %s, writes and reads a file; the pod and PVC are deleted after (the node stays cordoned until this passes)", host, checkStorageClass, checkNamespace),
-			Cmds: append(append(append([]string{}, cleanup...), apply, wait, logs), "(after: the same delete commands again)"),
+			Cmds: append(append(append([]string{scCmd() + "   (refuse unless subDir has ${pv.metadata.name} or onDelete is retain)", nsCmd() + "   (refuse if the namespace exists without our label)"}, cleanup...), apply, wait, logs), "(after, and also if interrupted: the same delete commands again)"),
 			Run:  func(c context.Context) error { return p.runNFSCheck(c, o) },
 		},
-		ctl(stepUncordon, "uncordon "+host, "k3s kubectl uncordon "+host),
 	)
+	if ownCordon {
+		plan.Steps = append(plan.Steps, ctl(stepUncordon, "uncordon "+host+" (and remove the mark)", uncordonCmd(host)))
+	}
 	plan.verifyMount = "findmnt " + kubeletStdPath + " && { [ " + kubeletStdPath + " -ef " + want + " ] && echo 'bind mount OK: " + kubeletStdPath + " is " + want + "' || echo 'WARNING: " + kubeletStdPath + " is not " + want + "'; }"
 	plan.verifyCapacity = "k3s kubectl get node " + host + " -o jsonpath='{.status.capacity.ephemeral-storage}'"
 	plan.verifyDisk = "df -B1 --output=size " + want + " | tail -n 1"
 
 	p.describeImpact(ctx, o, plan, st.unitActive && !finishOnly)
 	return plan, nil
+}
+
+func describeMount(state string) string {
+	switch state {
+	case mountSymlink:
+		return "a symlink to the backing directory"
+	case mountEmptyDir:
+		return "an empty directory"
+	case mountAbsent:
+		return "missing"
+	case mountBind:
+		return "already the bind mount"
+	}
+	return state
 }
 
 func nodeWords(n kubeNodeInfo) string {
@@ -569,6 +619,12 @@ func (pl *RelocationPlan) Print(w io.Writer) {
 	fmt.Fprintf(w, "  kubelet after: %s, a bind mount of %s (the files stay on the same volume)\n", kubeletStdPath, pl.Backing)
 	fmt.Fprintf(w, "  kubectl runs:  on %s\n", pl.ControlHost)
 	fmt.Fprintf(w, "  Each command runs as root over ssh (sudo sh -c '<command>').\n")
+	if pl.preCordoned {
+		fmt.Fprintf(w, "  NOTE: %s is already cordoned and this command did not do it; it is left cordoned at the end.\n", pl.Host)
+	}
+	if pl.Role == "server" && pl.unitActive {
+		fmt.Fprintf(w, "  %s\n", etcdCheckNote)
+	}
 	if len(pl.Evict) > 0 || len(pl.Stay) > 0 {
 		fmt.Fprintf(w, "\nThe drain would evict %d pod(s): %s\n", len(pl.Evict), strings.Join(pl.Evict, ", "))
 		if len(pl.Stay) > 0 {
@@ -688,7 +744,11 @@ func (p *NativeProvider) executeRelocation(ctx context.Context, plan *Relocation
 		done[s.ID] = true
 	}
 	p.finalCheck(ctx, plan, o)
-	fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s), served an NFS volume, and is schedulable again.\n", plan.Host, kubeletStdPath, plan.Backing)
+	if plan.ownCordon {
+		fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s), served an NFS volume, and is schedulable again.\n", plan.Host, kubeletStdPath, plan.Backing)
+	} else {
+		fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s) and served an NFS volume. It was already cordoned before this run, by something else, so it is still cordoned: uncordon it yourself when that reason is gone.\n", plan.Host, kubeletStdPath, plan.Backing)
+	}
 	return nil
 }
 
@@ -707,13 +767,18 @@ func indexOf(steps []RelocationStep, id string) int {
 func describeFailure(e *RelocationError, plan *RelocationPlan, failed string, o RelocateOptions, done map[string]bool, beforeStop bool) {
 	host := plan.Host
 	if beforeStop {
-		uctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_, uerr := o.Control(uctx, "k3s kubectl uncordon "+host)
 		e.State = append(e.State, plan.Unit+" was never stopped and nothing on the node was changed")
-		if uerr != nil {
+		var uerr error
+		if plan.ownCordon {
+			uctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_, uerr = o.Control(uctx, uncordonCmd(host))
+		}
+		if !plan.ownCordon {
+			e.State = append(e.State, "kubernetes: the node was cordoned before this run, by something else; left cordoned")
+		} else if uerr != nil {
 			e.State = append(e.State, "kubernetes: the node may still be CORDONED (automatic uncordon failed: "+uerr.Error()+")")
-			e.Recovery = append(e.Recovery, "on "+plan.ControlHost+": k3s kubectl uncordon "+host)
+			e.Recovery = append(e.Recovery, "on "+plan.ControlHost+": "+uncordonCmd(host))
 		} else {
 			e.State = append(e.State, "kubernetes: uncordoned again (it may be partly drained; its pods are being rescheduled)")
 		}
@@ -756,6 +821,8 @@ func describeFailure(e *RelocationError, plan *RelocationPlan, failed string, o 
 	}
 	if done[stepUncordon] {
 		e.State = append(e.State, "kubernetes: uncordoned")
+	} else if !plan.ownCordon {
+		e.State = append(e.State, "kubernetes: cordoned before this run, by something else; this command leaves it that way")
 	} else {
 		e.State = append(e.State, "kubernetes: CORDONED (left that way on purpose: it is not known to be healthy)")
 	}
@@ -765,16 +832,16 @@ func describeFailure(e *RelocationError, plan *RelocationPlan, failed string, o 
 		e.Recovery = append(e.Recovery,
 			"or put the node back as it was, on "+plan.Host+": restore the backups ("+k3sConfigPath+backupSuffix+" and /etc/systemd/system/"+plan.Unit+backupSuffix+", where they exist); "+
 				"if the bind mount was made, undo it with systemctl disable --now "+kubeletMountUnitName+" && rm "+kubeletMountUnitPath+" && rmdir "+kubeletStdPath+" && ln -s "+plan.Backing+" "+kubeletStdPath+"; "+
-				"then systemctl daemon-reload && systemctl start "+plan.Unit+", and on "+plan.ControlHost+": k3s kubectl uncordon "+host)
+				"then systemctl daemon-reload && systemctl start "+plan.Unit+", and on "+plan.ControlHost+": "+uncordonCmd(host))
 		return
 	}
 	e.Recovery = append(e.Recovery,
 		"on "+plan.Host+": journalctl -u "+plan.Unit+" -n 100 and findmnt "+kubeletStdPath+" to see why the node is not healthy")
 	e.Recovery = append(e.Recovery,
 		"re-run "+o.Command+" --apply: with the bind mount in place and k3s running it only waits for Ready, repeats the NFS check and uncordons")
-	if !done[stepUncordon] {
+	if !done[stepUncordon] && plan.ownCordon {
 		e.Recovery = append(e.Recovery,
-			"or, once "+host+" is Ready and you accept the risk, on "+plan.ControlHost+": k3s kubectl uncordon "+host)
+			"or, once "+host+" is Ready and you accept the risk, on "+plan.ControlHost+": "+uncordonCmd(host))
 	}
 }
 

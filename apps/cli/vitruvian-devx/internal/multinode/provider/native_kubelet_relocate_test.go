@@ -46,12 +46,20 @@ type reply struct {
 
 // fakeHost records every command and answers by ordered substring match.
 type fakeHost struct {
-	replies []reply
-	calls   []string
+	replies  []reply
+	calls    []string
+	ctxAware bool             // fail commands run on a cancelled context, like ssh would
+	hook     func(cmd string) // called for every command before it is answered
 }
 
 func (f *fakeHost) run(ctx context.Context, cmd string) (string, error) {
 	f.calls = append(f.calls, cmd)
+	if f.hook != nil {
+		f.hook(cmd)
+	}
+	if f.ctxAware && ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	for i := range f.replies {
 		r := &f.replies[i]
 		if !strings.Contains(cmd, r.match) || r.uses < 0 {
@@ -115,7 +123,10 @@ func nuc9i5Host() *fakeHost {
 func controlHost() *fakeHost {
 	members := "nuc9 True\nnuc10 True\nnuc9i5 True\n"
 	return &fakeHost{replies: []reply{
-		{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True <none>"},
+		{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True <none> <none>"},
+		// the real class: a folder per volume, reclaimPolicy Delete
+		{match: "get storageclass nfs", out: "${pvc.metadata.namespace}/${pvc.metadata.name}/${pv.metadata.name}|"},
+		{match: "get namespace devx-kubelet-check", out: ""},
 		{match: "get nodes -l node-role.kubernetes.io/control-plane", out: members},
 		{match: "get nodes -l node-role.kubernetes.io/etcd", out: members},
 		{match: "/readyz/etcd", out: "ok"},
@@ -224,6 +235,7 @@ func TestRelocate_DryRunPlan(t *testing.T) {
 		"Change to /etc/rancher/k3s/config.yaml:",
 		"- kubelet-arg:",
 		"- root-dir=/home/k3s/kubelet",
+		"does not prove every member is in sync",
 		"Dry run: only read-only checks were made. Nothing was changed.",
 		"--apply",
 	} {
@@ -248,6 +260,7 @@ func TestRelocate_DryRunPlan(t *testing.T) {
 		}
 		shellSafe(t, s.Cmd)
 		for _, c := range s.Cmds {
+			c, _, _ = strings.Cut(c, "   (") // display-only note after the command
 			if !strings.HasPrefix(c, "(") {
 				shellSafe(t, c)
 			}
@@ -369,7 +382,7 @@ func TestRelocate_ResumesFromEmptyDirAfterAFailedMountStep(t *testing.T) {
 		reply{match: "echo populated-dir", out: "empty-dir"},
 		reply{match: "readlink /var/lib/kubelet", out: ""},
 		reply{match: "systemctl is-active k3s.service", out: "inactive"}, // the earlier run stopped it
-		reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 False true"},
+		reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 False true cordoned"},
 	)
 	var out bytes.Buffer
 	opts := relocateOpts(ctl, true, &out)
@@ -402,7 +415,7 @@ func downAndCordoned() (node, ctl *fakeHost) {
 		reply{match: "readlink /var/lib/kubelet", out: ""},
 		reply{match: "systemctl is-active k3s.service", out: "inactive"},
 	)
-	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 False true"})
+	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 False true cordoned"})
 	return node, ctl
 }
 
@@ -452,7 +465,7 @@ func TestRelocate_FinishesWhenRunningButStillCordoned(t *testing.T) {
 		reply{match: "grep -rls", out: ""},
 		reply{match: "echo populated-dir", out: "bind"},
 	)
-	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true"})
+	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true cordoned"})
 	plan := planFor(t, "server", node, ctl)
 	if got := stepIDs(plan); got != "ready,propagation,csipod,csinode,nfscheck,uncordon" {
 		t.Errorf("a running, Ready but cordoned node needs the checks and the uncordon only; got %s", got)
@@ -499,6 +512,58 @@ func TestRelocate_Refusals(t *testing.T) {
 				node.prepend(cleanConfig, noHits, reply{match: "echo populated-dir", out: "other-mount"})
 			},
 			want: ErrKubeletNotAtDataDir, mention: "not a bind mount of /home/k3s/kubelet",
+		},
+		{
+			// Live fact for nuc9i5: /var/lib/kubelet is a symlink to /home/k3s/kubelet. A
+			// populated REAL directory with root-dir still set must be refused at plan
+			// time, before any cordon, drain, stop or edit.
+			name: "populated real directory while root-dir is still set",
+			mutate: func(node, _ *fakeHost) {
+				node.prepend(reply{match: "echo populated-dir", out: "populated-dir"}, reply{match: "readlink /var/lib/kubelet", out: ""})
+			},
+			want: ErrKubeletNotAtDataDir, mention: "real directory",
+		},
+		{
+			name: "some other mount while root-dir is still set",
+			mutate: func(node, _ *fakeHost) {
+				node.prepend(reply{match: "echo populated-dir", out: "other-mount"})
+			},
+			want: ErrKubeletNotAtDataDir, mention: "not a bind mount",
+		},
+		{
+			name: "symlink elsewhere while root-dir is still set",
+			mutate: func(node, _ *fakeHost) {
+				node.prepend(reply{match: "readlink /var/lib/kubelet", out: "/mnt/other"})
+			},
+			want: ErrKubeletNotAtDataDir, mention: "/mnt/other",
+		},
+		{
+			name: "NFS class would delete a shared folder (no ${pv.metadata.name} in subDir, onDelete not retain)",
+			mutate: func(_, ctl *fakeHost) {
+				ctl.prepend(reply{match: "get storageclass nfs", out: "shared/data|delete"})
+			},
+			want: ErrNFSCheckUnsafe, mention: "shared with real data",
+		},
+		{
+			name: "NFS class has no subDir at all",
+			mutate: func(_, ctl *fakeHost) {
+				ctl.prepend(reply{match: "get storageclass nfs", out: "|"})
+			},
+			want: ErrNFSCheckUnsafe,
+		},
+		{
+			name: "NFS class cannot be read",
+			mutate: func(_, ctl *fakeHost) {
+				ctl.prepend(reply{match: "get storageclass nfs", err: errors.New(`storageclasses.storage.k8s.io "nfs" not found`)})
+			},
+			want: ErrNFSCheckUnsafe, mention: "cannot read storage class",
+		},
+		{
+			name: "a devx-kubelet-check namespace that is not ours",
+			mutate: func(_, ctl *fakeHost) {
+				ctl.prepend(reply{match: "get namespace devx-kubelet-check", out: "devx-kubelet-check <none>"})
+			},
+			want: ErrNFSCheckUnsafe, mention: "not created by this command",
 		},
 		{
 			name: "kubelet is not at dataDir/kubelet (a populated default directory)",
@@ -667,6 +732,9 @@ func TestRelocate_ApplyRunsEveryStepInOrderAndChecks(t *testing.T) {
 		t.Errorf("control order wrong: cordon=%d drain=%d apply=%d logs=%d uncordon=%d\n%s", cordon, drain, apply, logs, uncordon, strings.Join(ctl.calls, "\n"))
 	}
 	// The etcd check runs at plan time and again before the stop.
+	if !ctl.ran("kubectl annotate node nuc9i5 devx-kubelet-relocate=cordoned --overwrite") || !ctl.ran("kubectl annotate node nuc9i5 devx-kubelet-relocate-") {
+		t.Error("the cordon must be marked, and the mark removed with the uncordon")
+	}
 	if n := ctl.count("/readyz/etcd"); n != 2 {
 		t.Errorf("etcd health should be checked twice (plan, then right before the stop); got %d", n)
 	}
@@ -999,5 +1067,227 @@ func TestLineDiff(t *testing.T) {
 	}
 	if got := lineDiff(a, a); got != "" {
 		t.Errorf("no change must be an empty diff; got %q", got)
+	}
+}
+
+// States /var/lib/kubelet may be in at plan time while root-dir is still set.
+func TestRelocate_AcceptsTheExpectedStartingStates(t *testing.T) {
+	for name, mount := range map[string]string{"symlink to the backing dir": "symlink", "empty directory": "empty-dir", "missing": "absent", "already the bind mount": "bind"} {
+		t.Run(name, func(t *testing.T) {
+			node := nuc9i5Host()
+			node.prepend(reply{match: "echo populated-dir", out: mount})
+			plan := planFor(t, "server", node, controlHost())
+			if got := stepIDs(plan); got != fullPlan {
+				t.Errorf("steps = %s", got)
+			}
+		})
+	}
+}
+
+func TestRelocate_MissingKubeletDirWithRootDirGoneResumes(t *testing.T) {
+	node := nuc9i5Host()
+	node.prepend(
+		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
+		reply{match: "grep -rls", out: ""},
+		reply{match: "echo populated-dir", out: "absent"},
+		reply{match: "readlink /var/lib/kubelet", out: ""},
+	)
+	plan := planFor(t, "server", node, controlHost())
+	if !strings.Contains(plan.Situation, "does not exist yet") {
+		t.Errorf("situation = %q", plan.Situation)
+	}
+}
+
+// A refused plan runs nothing but reads, with the real-looking nuc9i5 state plus a
+// populated directory: the point of refusing up front.
+func TestRelocate_PopulatedDirIsRefusedBeforeAnythingChanges(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	node.prepend(reply{match: "echo populated-dir", out: "populated-dir"}, reply{match: "readlink /var/lib/kubelet", out: ""})
+	var out bytes.Buffer
+	err := relocateProvider("server", node).RelocateKubelet(context.Background(), relocateOpts(ctl, true, &out))
+	if !errors.Is(err, ErrKubeletNotAtDataDir) {
+		t.Fatalf("err = %v", err)
+	}
+	assertReadOnly(t, "node", node.calls)
+	assertReadOnly(t, "control", ctl.calls)
+	for _, c := range append(append([]string{}, node.calls...), ctl.calls...) {
+		for _, bad := range []string{"cordon", "drain", "etcd-snapshot", "systemctl stop", "killall", "base64 -d"} {
+			if strings.Contains(c, bad) {
+				t.Errorf("a refusal must not run %q: %s", bad, c)
+			}
+		}
+	}
+}
+
+func TestRelocate_NFSClassWithOnDeleteRetainPasses(t *testing.T) {
+	ctl := controlHost()
+	ctl.prepend(reply{match: "get storageclass nfs", out: "shared/data|retain"})
+	planFor(t, "server", nuc9i5Host(), ctl)
+	ctl = controlHost()
+	ctl.prepend(reply{match: "get storageclass nfs", out: "shared/data|Retain"})
+	planFor(t, "server", nuc9i5Host(), ctl)
+}
+
+// The guard is repeated when the check runs: a class changed after the plan was made
+// stops the check, keeps the node cordoned, and creates nothing.
+func TestRelocate_NFSGuardIsRecheckedBeforeTheCheckCreatesAnything(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	ctl.prepend(
+		reply{match: "get storageclass nfs", out: "${pv.metadata.name}|", uses: 1},
+		reply{match: "get storageclass nfs", out: "shared/data|delete"},
+	)
+	rerr, msg := applyErr(t, node, ctl, time.Second)
+	if !errors.Is(rerr, ErrNFSCheckUnsafe) {
+		t.Errorf("want ErrNFSCheckUnsafe, got %v", rerr.Err)
+	}
+	if ctl.ran("kubectl apply -f -") || ctl.ran("delete namespace") {
+		t.Error("nothing may be created or deleted when the guard refuses")
+	}
+	if ctl.ran("kubectl uncordon") || !strings.Contains(msg, "CORDONED") {
+		t.Errorf("the node stays cordoned:\n%s", msg)
+	}
+}
+
+func TestRelocate_ALeftoverNamespaceOfOursIsCleanedUp(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	ctl.prepend(reply{match: "get namespace devx-kubelet-check", out: "devx-kubelet-check true"})
+	var out bytes.Buffer
+	opts := relocateOpts(ctl, true, &out)
+	opts.ReadyTimeout = time.Second
+	if err := relocateProvider("server", node).RelocateKubelet(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if n := ctl.count("delete namespace devx-kubelet-check"); n != 2 {
+		t.Errorf("our own leftover is removed first and the namespace again after; got %d deletes", n)
+	}
+	if !strings.Contains(decodeApplied(t, ctl), "devx-kubelet-check: \"true\"") {
+		t.Error("the namespace must carry the label that marks it as ours")
+	}
+}
+
+// The deferred cleanup runs even when the run is cancelled (Ctrl-C / SIGTERM cancel
+// the context) and even when the first cleanup attempt fails.
+func TestRelocate_CleanupRunsAfterCancellation(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	ctx, cancel := context.WithCancel(context.Background())
+	ctl.ctxAware = true
+	ctl.hook = func(cmd string) {
+		if strings.Contains(cmd, "kubectl wait") {
+			cancel() // the operator hits Ctrl-C while the check pod runs
+		}
+	}
+	var out bytes.Buffer
+	opts := relocateOpts(ctl, true, &out)
+	opts.ReadyTimeout = time.Second
+	err := relocateProvider("server", node).RelocateKubelet(ctx, opts)
+	if err == nil {
+		t.Fatal("expected the cancelled run to fail")
+	}
+	if n := ctl.count("delete namespace devx-kubelet-check"); n != 2 {
+		t.Errorf("cleanup must still run on a fresh context after the cancel; got %d namespace deletes\n%s", n, strings.Join(ctl.calls, "\n"))
+	}
+	if strings.Contains(out.String(), "could not delete") {
+		t.Errorf("the cleanup should have worked:\n%s", out.String())
+	}
+}
+
+func TestRelocate_CleanupFailureSaysExactlyWhatToRemove(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	ctl.prepend(reply{match: "delete namespace", err: errors.New("the server is down")})
+	var out bytes.Buffer
+	opts := relocateOpts(ctl, true, &out)
+	opts.ReadyTimeout = time.Second
+	if err := relocateProvider("server", node).RelocateKubelet(context.Background(), opts); err == nil {
+		t.Fatal("a failed pre-cleanup fails the check")
+	}
+	// The deferred cleanup was registered before the first cleanup attempt, so it ran
+	// (and failed too) and the exact commands were printed.
+	if n := ctl.count("delete namespace devx-kubelet-check"); n != 2 {
+		t.Errorf("both the first attempt and the deferred cleanup must run; got %d", n)
+	}
+	for _, want := range []string{"Remove them by hand on nuc9", "k3s kubectl delete namespace devx-kubelet-check", "k3s kubectl delete pvc kubelet-check-pvc"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// --- who cordoned the node ---
+
+func TestRelocate_NodeCordonedByAnotherReasonIsLeftCordoned(t *testing.T) {
+	// Full move, but the node was cordoned by someone else before we started.
+	node, ctl := nuc9i5Host(), controlHost()
+	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true <none>"})
+	plan := planFor(t, "server", nuc9i5Host(), func() *fakeHost {
+		c := controlHost()
+		c.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true <none>"})
+		return c
+	}())
+	for _, s := range plan.Steps {
+		if s.ID == stepCordon || s.ID == stepUncordon {
+			t.Errorf("a cordon this command did not make is neither redone nor undone, but the plan has %s", s.ID)
+		}
+	}
+	var out bytes.Buffer
+	opts := relocateOpts(ctl, true, &out)
+	opts.ReadyTimeout = time.Second
+	if err := relocateProvider("server", node).RelocateKubelet(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.ran("kubectl cordon") || ctl.ran("kubectl uncordon") || ctl.ran("kubectl annotate") {
+		t.Errorf("must not touch the cordon:\n%s", strings.Join(ctl.calls, "\n"))
+	}
+	if !strings.Contains(out.String(), "already cordoned") || !strings.Contains(out.String(), "still cordoned") {
+		t.Errorf("must say it left the node cordoned:\n%s", out.String())
+	}
+}
+
+func TestRelocate_FinishingARunLeavesAForeignCordonAlone(t *testing.T) {
+	node, ctl := downAndCordoned()
+	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 False true <none>"}) // cordoned, no mark: not ours
+	var out bytes.Buffer
+	opts := relocateOpts(ctl, true, &out)
+	opts.ReadyTimeout = time.Second
+	if err := relocateProvider("server", node).RelocateKubelet(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if !node.ran("systemctl start k3s.service") {
+		t.Error("it still finishes the start")
+	}
+	if ctl.ran("kubectl uncordon") {
+		t.Error("a cordon this command did not make must not be undone")
+	}
+	if !strings.Contains(out.String(), "still cordoned") {
+		t.Errorf("must say so:\n%s", out.String())
+	}
+}
+
+func TestRelocate_RunningNodeCordonedByAnotherReasonCountsAsDone(t *testing.T) {
+	node := nuc9i5Host()
+	node.prepend(
+		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
+		reply{match: "grep -rls", out: ""},
+		reply{match: "echo populated-dir", out: "bind"},
+	)
+	ctl := controlHost()
+	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true <none>"})
+	_, err := relocateProvider("server", node).PlanKubeletRelocation(context.Background(), relocateOpts(ctl, false, &bytes.Buffer{}))
+	if !errors.Is(err, ErrKubeletAlreadyRelocated) || !strings.Contains(err.Error(), "left that way") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestRelocate_FailureBeforeStopDoesNotUncordonAForeignCordon(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	ctl.prepend(
+		reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true <none>"},
+		reply{match: "drain nuc9i5", err: errors.New("Cannot evict pod")},
+	)
+	_, msg := applyErr(t, node, ctl, 0)
+	if ctl.ran("kubectl uncordon") {
+		t.Error("must not uncordon a node someone else cordoned")
+	}
+	if !strings.Contains(msg, "cordoned before this run, by something else") {
+		t.Errorf("must say so:\n%s", msg)
 	}
 }

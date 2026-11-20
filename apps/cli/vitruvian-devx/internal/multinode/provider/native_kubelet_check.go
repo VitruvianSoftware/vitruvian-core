@@ -45,6 +45,9 @@ const (
 	checkStorageClass = "nfs"
 	checkImage        = "docker.io/library/busybox:1.37"
 	checkToken        = "devx-kubelet-check-ok"
+	// The namespace carries this label, set by this command. A namespace of that name
+	// without it is somebody else's and is never touched.
+	checkNamespaceLabel = "devx-kubelet-check"
 	// The csi-driver-nfs node plugin (a DaemonSet, label app=csi-nfs-node) and the
 	// driver name it registers in each node's CSINode.
 	csiNFSNodeSelector = "app=csi-nfs-node"
@@ -56,10 +59,28 @@ const readyColumns = `READY:.status.conditions[?(@.type=="Ready")].status`
 // kubeNodeInfo is what the API says about one node.
 type kubeNodeInfo struct {
 	exists, ready, cordoned bool
+	// ours: the node carries this command's cordon mark, so the cordon is ours.
+	ours bool
+}
+
+// The mark this command puts on a node it cordons (annotation devx-kubelet-relocate
+// = cordoned) and removes when it uncordons. Only a cordon with the mark is undone
+// by a later run; a node somebody else cordoned is left alone.
+const (
+	cordonMarkKey   = "devx-kubelet-relocate"
+	cordonMarkValue = "cordoned"
+)
+
+func cordonCmd(host string) string {
+	return "k3s kubectl cordon " + host + " && k3s kubectl annotate node " + host + " " + cordonMarkKey + "=" + cordonMarkValue + " --overwrite"
+}
+
+func uncordonCmd(host string) string {
+	return "k3s kubectl uncordon " + host + " && k3s kubectl annotate node " + host + " " + cordonMarkKey + "-"
 }
 
 func nodeStateCmd(host string) string {
-	return "k3s kubectl get node " + host + " --no-headers -o 'custom-columns=NAME:.metadata.name," + readyColumns + ",CORDONED:.spec.unschedulable'"
+	return "k3s kubectl get node " + host + " --no-headers -o 'custom-columns=NAME:.metadata.name," + readyColumns + ",CORDONED:.spec.unschedulable,OURS:.metadata.annotations." + cordonMarkKey + "'"
 }
 
 func membersCmd(label string) string {
@@ -80,7 +101,7 @@ func (p *NativeProvider) kubeNode(ctx context.Context, o RelocateOptions) (kubeN
 	if len(f) < 2 {
 		return kubeNodeInfo{}, nil
 	}
-	return kubeNodeInfo{exists: true, ready: f[1] == "True", cordoned: len(f) >= 3 && f[2] == "true"}, nil
+	return kubeNodeInfo{exists: true, ready: f[1] == "True", cordoned: len(f) >= 3 && f[2] == "true", ours: len(f) >= 4 && f[3] == cordonMarkValue}, nil
 }
 
 // controlPlaneMembers lists the cluster's control-plane and etcd nodes from their
@@ -135,12 +156,21 @@ func (p *NativeProvider) checkQuorum(ctx context.Context, o RelocateOptions) err
 	if total > 1 && len(others) < total/2+1 {
 		return fmt.Errorf("%w: the cluster has %d control-plane nodes and stopping %s would leave %d, short of a majority", ErrQuorumRisk, total, p.spec.Host, len(others))
 	}
+	// This asks one other server whether its etcd answers: it proves a quorum is
+	// reachable, not that every member is in sync (see etcdCheckNote).
 	out, err := o.Control(ctx, etcdReadyCmd)
 	if err != nil || strings.TrimSpace(out) != "ok" {
 		return fmt.Errorf("%w: %s says etcd is not healthy (%q, err=%v)", ErrEtcdUnhealthy, o.ControlHost, strings.TrimSpace(out), err)
 	}
 	return nil
 }
+
+// etcdCheckNote is printed with the plan: what the etcd check does and does not prove.
+const etcdCheckNote = "etcd check: asks " + "one other server whether its etcd is ready (kubectl get --raw /readyz/etcd), and requires every other control-plane node to be Ready. " +
+	"That shows a quorum is reachable; it does not prove every member is in sync."
+
+// ErrNFSCheckUnsafe: the NFS check would not be safe to run, so the command refuses.
+var ErrNFSCheckUnsafe = errors.New("the NFS check is not safe to run")
 
 // ErrEtcdUnhealthy: etcd did not report healthy, so a control-plane node must not
 // be stopped.
@@ -149,13 +179,21 @@ var ErrEtcdUnhealthy = errors.New("etcd is not healthy")
 // --- the NFS check ---
 
 func checkManifest(host string) string {
-	return "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + checkNamespace + "\n---\n" +
+	return "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + checkNamespace + "\n  labels:\n    " + checkNamespaceLabel + ": \"true\"\n---\n" +
 		"apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: " + checkPVC + "\n  namespace: " + checkNamespace + "\n" +
 		"spec:\n  accessModes: [ReadWriteMany]\n  storageClassName: " + checkStorageClass + "\n  resources:\n    requests:\n      storage: 10Mi\n---\n" +
 		"apiVersion: v1\nkind: Pod\nmetadata:\n  name: " + checkPod + "\n  namespace: " + checkNamespace + "\n" +
 		"spec:\n  nodeName: " + host + "\n  restartPolicy: Never\n  tolerations:\n  - operator: Exists\n  containers:\n  - name: check\n    image: " + checkImage + "\n" +
 		"    command: [\"sh\", \"-c\", \"echo " + checkToken + " > /data/probe && cat /data/probe\"]\n" +
 		"    volumeMounts:\n    - name: data\n      mountPath: /data\n  volumes:\n  - name: data\n    persistentVolumeClaim:\n      claimName: " + checkPVC + "\n"
+}
+
+func scCmd() string {
+	return "k3s kubectl get storageclass " + checkStorageClass + " -o jsonpath='{.parameters.subDir}|{.parameters.onDelete}'"
+}
+
+func nsCmd() string {
+	return "k3s kubectl get namespace " + checkNamespace + " --ignore-not-found --no-headers -o 'custom-columns=NAME:.metadata.name,OURS:.metadata.labels." + checkNamespaceLabel + "'"
 }
 
 func (p *NativeProvider) nfsCheckCmds() (cleanup []string, apply, wait, logs string) {
@@ -171,10 +209,39 @@ func (p *NativeProvider) nfsCheckCmds() (cleanup []string, apply, wait, logs str
 	return
 }
 
+// checkNFSGuards refuses the NFS check unless it is safe, before anything is
+// created. (1) The `nfs` StorageClass must give each volume its own folder (its
+// subDir contains ${pv.metadata.name}) or keep the data on delete (onDelete is
+// retain): otherwise deleting the throwaway PVC could delete a folder real data
+// shares. (2) A namespace called devx-kubelet-check must be one this command made
+// (it carries the label), or not exist: a foreign one is never deleted.
+func (p *NativeProvider) checkNFSGuards(ctx context.Context, o RelocateOptions) error {
+	out, err := o.Control(ctx, scCmd())
+	if err != nil {
+		return fmt.Errorf("%w: cannot read storage class %q: %v", ErrNFSCheckUnsafe, checkStorageClass, err)
+	}
+	subDir, onDelete, _ := strings.Cut(strings.TrimSpace(out), "|")
+	if !strings.Contains(subDir, "${pv.metadata.name}") && strings.ToLower(strings.TrimSpace(onDelete)) != "retain" {
+		return fmt.Errorf("%w: storage class %q has subDir %q and onDelete %q: deleting the check PVC could delete a folder shared with real data. "+
+			"The class needs a subDir containing ${pv.metadata.name} (a folder per volume) or onDelete: retain", ErrNFSCheckUnsafe, checkStorageClass, subDir, strings.TrimSpace(onDelete))
+	}
+	out, err = o.Control(ctx, nsCmd())
+	if err != nil {
+		return fmt.Errorf("%w: cannot look up namespace %s: %v", ErrNFSCheckUnsafe, checkNamespace, err)
+	}
+	if f := strings.Fields(out); len(f) > 0 && (len(f) < 2 || f[1] != "true") {
+		return fmt.Errorf("%w: namespace %s exists but was not created by this command (it lacks the %s=true label); not touching it. Delete or rename it, then re-run", ErrNFSCheckUnsafe, checkNamespace, checkNamespaceLabel)
+	}
+	return nil
+}
+
 // runNFSCheck runs a short pod pinned to this node that mounts a throwaway NFS
 // PVC, writes a file and reads it back, then deletes the pod and PVC. The pod
 // names the node directly, so it runs even though the node is still cordoned.
 func (p *NativeProvider) runNFSCheck(ctx context.Context, o RelocateOptions) error {
+	if err := p.checkNFSGuards(ctx, o); err != nil {
+		return err
+	}
 	cleanup, apply, wait, logs := p.nfsCheckCmds()
 	clean := func(c context.Context) error {
 		var first error
@@ -185,17 +252,24 @@ func (p *NativeProvider) runNFSCheck(ctx context.Context, o RelocateOptions) err
 		}
 		return first
 	}
-	// Remove leftovers from an interrupted earlier run, and always clean up after.
-	if err := clean(ctx); err != nil {
-		return fmt.Errorf("removing an earlier check from namespace %s: %w", checkNamespace, err)
-	}
+	// Registered before anything is created or removed, and run on a fresh context:
+	// if the run is interrupted (Ctrl-C or SIGTERM cancels ctx) the objects are still
+	// removed, and if that fails the exact commands are printed.
 	defer func() {
 		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		if err := clean(cctx); err != nil {
-			fmt.Fprintf(o.Out, "  WARNING: could not delete the check objects in namespace %s: %v\n", checkNamespace, err)
+			fmt.Fprintf(o.Out, "  WARNING: could not delete the check objects: %v\n  Remove them by hand on %s:\n", err, o.ControlHost)
+			for _, c := range cleanup {
+				fmt.Fprintf(o.Out, "    %s\n", c)
+			}
 		}
 	}()
+	// Remove leftovers of an interrupted earlier run (checkNFSGuards already made
+	// sure the namespace is ours).
+	if err := clean(ctx); err != nil {
+		return fmt.Errorf("removing an earlier check from namespace %s: %w", checkNamespace, err)
+	}
 	if _, err := o.Control(ctx, apply); err != nil {
 		return fmt.Errorf("creating the check pod and PVC: %w", err)
 	}

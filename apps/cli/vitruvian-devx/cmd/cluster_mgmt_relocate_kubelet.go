@@ -68,9 +68,14 @@ failed a check stays cordoned on purpose, and the message says so.
 It is safe to re-run: if an earlier run stopped half way (after the config edit,
 inside the mount step, or after the mount with k3s down), running it again picks up
 where the node is. It refuses when the node has no dataDir, when its kubelet is not
-at <dataDir>/kubelet, and when it is already switched and healthy. For a
+at <dataDir>/kubelet, when /var/lib/kubelet is a populated directory or any other
+unexpected thing, when the nfs storage class could let the check delete a shared
+folder, and when it is already switched and healthy. All of that is checked before
+anything is changed. The command only uncordons a node it cordoned itself. For a
 control-plane node it also refuses unless every other control-plane node (found by
-label, not from the config) is Ready, a majority would remain, and etcd is healthy.
+label, not from the config) is Ready, a majority would remain, and another
+server's etcd answers ready (this shows a quorum is reachable, not that every
+member is in sync).
 Run it on one node at a time. New nodes need none of this: devx now installs them
 with the bind mount from the start.`,
 		Args: cobra.NoArgs,
