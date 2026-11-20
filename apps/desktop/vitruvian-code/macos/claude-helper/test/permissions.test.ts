@@ -552,6 +552,122 @@ describe("permissions and AskUserQuestion", () => {
     }
   });
 
+  test("allow_always drops setMode suggestions while preserving addRules", async () => {
+    const setModeSuggestion: PermissionUpdate = {
+      type: "setMode",
+      mode: "acceptEdits",
+      destination: "session",
+    };
+    const addRulesSuggestion: PermissionUpdate = {
+      type: "addRules",
+      rules: [{ toolName: "Bash", ruleContent: "git status" }],
+      behavior: "allow",
+      destination: "session",
+    };
+
+    expect(
+      buildPermissionOptions([setModeSuggestion]).map((o) => o.optionId),
+    ).toEqual(["allow_once", "reject_once"]);
+    expect(
+      mapPermissionResponse(
+        { outcome: { outcome: "selected", optionId: "allow_always" } },
+        { command: "git status" },
+        { suggestions: [setModeSuggestion], toolUseID: "tu_only_setmode" },
+      ),
+    ).toEqual({
+      behavior: "allow",
+      updatedInput: { command: "git status" },
+      toolUseID: "tu_only_setmode",
+    });
+
+    const sid = "550e8400-e29b-41d4-a716-446655440019";
+    const observedRequests: RequestPermissionRequest[] = [];
+    const observedResults: PermissionResult[] = [];
+
+    const queryFn: QueryFn = ({ prompt, options }) =>
+      createFakeQueryWithCanUseTool({
+        options,
+        promptInput: prompt,
+        onPromptMessage: async (canUseTool, emit) => {
+          const ac = new AbortController();
+          observedResults.push(
+            await canUseTool(
+              "Bash",
+              { command: "git status" },
+              {
+                signal: ac.signal,
+                toolUseID: "toolu_drop_setmode",
+                suggestions: [setModeSuggestion, addRulesSuggestion],
+              },
+            ),
+          );
+          emit(makeSuccessResult(sid));
+        },
+      }).sdkQuery;
+
+    const harness = createHarness(
+      {
+        claudePath: "/usr/local/bin/claude",
+        generateSessionIdFn: () => sid,
+        queryFn,
+      },
+      {
+        onPermission: (params) => {
+          observedRequests.push(params);
+          return { outcome: { outcome: "selected", optionId: "allow_always" } };
+        },
+      },
+    );
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+      });
+      await harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "check git status" }],
+      });
+
+      expect(observedRequests).toHaveLength(1);
+      expect(observedRequests[0].options.map((o) => o.optionId)).toEqual([
+        "allow_once",
+        "allow_always",
+        "reject_once",
+      ]);
+      expect(observedResults).toEqual([
+        {
+          behavior: "allow",
+          updatedInput: { command: "git status" },
+          updatedPermissions: [addRulesSuggestion],
+          toolUseID: "toolu_drop_setmode",
+        },
+      ]);
+      const result = observedResults[0];
+      expect(result.behavior).toBe("allow");
+      if (result.behavior === "allow") {
+        expect(
+          result.updatedPermissions?.some((u) => u.type === "setMode") ?? false,
+        ).toBe(false);
+      }
+
+      for (const msg of harness.wireMessages) {
+        const ok = validateWireMessage(msg);
+        if (!ok) {
+          throw new Error(
+            `Wire message failed schema.json: ${ajv.errorsText(validateWireMessage.errors)}`,
+          );
+        }
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
   test("session/cancel resolves pending permission and elicitation as cancelled and stops prompt cancelled", async () => {
     const sid = "550e8400-e29b-41d4-a716-446655440011";
     const observedResults: PermissionResult[] = [];

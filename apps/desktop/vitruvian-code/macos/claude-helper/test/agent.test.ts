@@ -90,6 +90,25 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Timed out after ${ms}ms waiting for ${label}`));
+    }, ms);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  });
+}
+
 class AsyncQueue<T> {
   private readonly items: T[] = [];
   private readonly waiters: Array<(res: IteratorResult<T>) => void> = [];
@@ -151,7 +170,7 @@ function createFakeQuery(config: {
     userMsg: SDKUserMessage,
     handle: FakeQueryHandle,
   ) => void | Promise<void>;
-  readonly onInterrupt?: (handle: FakeQueryHandle) => void;
+  readonly onInterrupt?: (handle: FakeQueryHandle) => void | Promise<void>;
 }): { readonly sdkQuery: SdkQuery; readonly handle: FakeQueryHandle } {
   const outputQueue = new AsyncQueue<SDKMessage>();
   const pushedUserMessages: SDKUserMessage[] = [];
@@ -196,7 +215,7 @@ function createFakeQuery(config: {
     },
     interrupt: async () => {
       handle.interruptCalls += 1;
-      config.onInterrupt?.(handle);
+      await config.onInterrupt?.(handle);
       return undefined;
     },
     setPermissionMode: async (mode: PermissionMode) => {
@@ -1109,7 +1128,234 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
         "current_mode_update",
         "config_option_update",
         "config_option_update",
+        "current_mode_update",
+        "config_option_update",
       ]);
+      expect(harness.receivedUpdates[0].update).toEqual({
+        sessionUpdate: "current_mode_update",
+        currentModeId: "acceptEdits",
+      });
+      expect(harness.receivedUpdates[1].update).toMatchObject({
+        sessionUpdate: "config_option_update",
+        configOptions: expect.arrayContaining([
+          expect.objectContaining({ id: "mode", currentValue: "acceptEdits" }),
+        ]),
+      });
+      expect(harness.receivedUpdates[3].update).toEqual({
+        sessionUpdate: "current_mode_update",
+        currentModeId: "plan",
+      });
+      expect(harness.receivedUpdates[4].update).toMatchObject({
+        sessionUpdate: "config_option_update",
+        configOptions: expect.arrayContaining([
+          expect.objectContaining({ id: "mode", currentValue: "plan" }),
+        ]),
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/set_mode and session/set_config_option(mode) each emit current_mode_update then config_option_update", async () => {
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      defaultMode: "default",
+      queryFn: ({ prompt, options }) =>
+        createFakeQuery({
+          options,
+          promptInput: prompt,
+        }).sdkQuery,
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      const created = await harness.client.request("session/new", {
+        cwd: "/repo/mode-updates",
+        mcpServers: [],
+      });
+
+      const beforeSetMode = harness.receivedUpdates.length;
+      await harness.client.request("session/set_mode", {
+        sessionId: created.sessionId,
+        modeId: "acceptEdits",
+      });
+      const afterSetMode = harness.receivedUpdates.slice(beforeSetMode);
+      expect(afterSetMode).toHaveLength(2);
+      expect(afterSetMode[0].update).toEqual({
+        sessionUpdate: "current_mode_update",
+        currentModeId: "acceptEdits",
+      });
+      expect(afterSetMode[1].update).toMatchObject({
+        sessionUpdate: "config_option_update",
+        configOptions: expect.arrayContaining([
+          expect.objectContaining({ id: "mode", currentValue: "acceptEdits" }),
+        ]),
+      });
+
+      const beforeSetConfig = harness.receivedUpdates.length;
+      await harness.client.request("session/set_config_option", {
+        sessionId: created.sessionId,
+        configId: "mode",
+        value: "plan",
+      });
+      const afterSetConfig = harness.receivedUpdates.slice(beforeSetConfig);
+      expect(afterSetConfig).toHaveLength(2);
+      expect(afterSetConfig[0].update).toEqual({
+        sessionUpdate: "current_mode_update",
+        currentModeId: "plan",
+      });
+      expect(afterSetConfig[1].update).toMatchObject({
+        sessionUpdate: "config_option_update",
+        configOptions: expect.arrayContaining([
+          expect.objectContaining({ id: "mode", currentValue: "plan" }),
+        ]),
+      });
+
+      for (const wireMsg of harness.receivedRawMessages) {
+        const valid = validateWireMessage(wireMsg);
+        if (!valid) {
+          throw new Error(
+            `Wire message failed schema.json: ${ajv.errorsText(validateWireMessage.errors)}\n${JSON.stringify(wireMsg)}`,
+          );
+        }
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("_vitruvian/secrets merges env and per-server mcpServers env/headers across calls", async () => {
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      baseEnv: { PATH: "/usr/bin" },
+      queryFn: ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+
+      expect(
+        await harness.client.request("_vitruvian/secrets", {
+          env: { A: "1" },
+          mcpServers: {
+            S: {
+              env: { X: "1" },
+              headers: { H: "1" },
+            },
+          },
+        }),
+      ).toEqual({});
+
+      expect(
+        await harness.client.request("_vitruvian/secrets", {
+          env: { B: "2", A: "3" },
+          mcpServers: {
+            S: {
+              env: { Y: "2" },
+            },
+          },
+        }),
+      ).toEqual({});
+
+      await harness.client.request("session/new", {
+        cwd: "/repo/secrets-stdio",
+        mcpServers: [
+          {
+            name: "S",
+            command: "/usr/local/bin/s-mcp",
+            args: [],
+            env: [],
+          },
+        ],
+      });
+      expect(queryHandles[0].options?.env?.A).toBe("3");
+      expect(queryHandles[0].options?.env?.B).toBe("2");
+      expect(queryHandles[0].options?.mcpServers?.S).toEqual({
+        type: "stdio",
+        command: "/usr/local/bin/s-mcp",
+        args: [],
+        env: { X: "1", Y: "2" },
+      });
+
+      await harness.client.request("session/new", {
+        cwd: "/repo/secrets-http",
+        mcpServers: [
+          {
+            type: "http",
+            name: "S",
+            url: "https://s.example.com/mcp",
+            headers: [],
+          },
+        ],
+      });
+      expect(queryHandles[1].options?.env?.A).toBe("3");
+      expect(queryHandles[1].options?.env?.B).toBe("2");
+      expect(queryHandles[1].options?.mcpServers?.S).toEqual({
+        type: "http",
+        url: "https://s.example.com/mcp",
+        headers: { H: "1" },
+      });
+
+      expect(
+        await harness.client.request("_vitruvian/secrets", {
+          mcpServers: {
+            S: { headers: { H2: "2" } },
+            T: { env: { Z: "9" } },
+          },
+        }),
+      ).toEqual({});
+
+      await harness.client.request("session/new", {
+        cwd: "/repo/secrets-multi",
+        mcpServers: [
+          {
+            type: "http",
+            name: "S",
+            url: "https://s.example.com/mcp",
+            headers: [],
+          },
+          {
+            name: "T",
+            command: "/usr/local/bin/t-mcp",
+            args: [],
+            env: [],
+          },
+        ],
+      });
+      expect(queryHandles[2].options?.env?.A).toBe("3");
+      expect(queryHandles[2].options?.env?.B).toBe("2");
+      expect(queryHandles[2].options?.mcpServers).toEqual({
+        S: {
+          type: "http",
+          url: "https://s.example.com/mcp",
+          headers: { H: "1", H2: "2" },
+        },
+        T: {
+          type: "stdio",
+          command: "/usr/local/bin/t-mcp",
+          args: [],
+          env: { Z: "9" },
+        },
+      });
+
+      const wireOut = harness.receivedRawLines.join("\n");
+      for (const secretKey of ["X", "Y", "H", "H2", "Z"]) {
+        expect(wireOut).not.toContain(`"${secretKey}"`);
+      }
     } finally {
       await harness.close();
     }
@@ -1312,6 +1558,378 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
           prompt: [{ type: "text", text: "hi" }],
         }),
       ).rejects.toBeInstanceOf(RequestError);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/set_mode live switch from default to bypassPermissions reopens query and switching back does not reopen", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440010";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      defaultMode: "default",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const idx = queryHandles.length;
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onPromptMessage: (_msg, h) => {
+            if (idx === 1) {
+              h.emit(makeSuccessResult(sid));
+            }
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo/live-mode",
+        mcpServers: [
+          {
+            name: "docs",
+            command: "/usr/local/bin/docs-mcp",
+            args: ["--stdio"],
+            env: [],
+          },
+        ],
+        additionalDirectories: ["/repo/shared"],
+      });
+
+      expect(queryHandles).toHaveLength(1);
+      expect(queryHandles[0].options?.sessionId).toBe(sid);
+      expect(queryHandles[0].options?.resume).toBeUndefined();
+      expect(queryHandles[0].options?.permissionMode).toBe("default");
+      expect(
+        queryHandles[0].options?.allowDangerouslySkipPermissions,
+      ).toBeUndefined();
+
+      const setModeRes = await harness.client.request("session/set_mode", {
+        sessionId: sid,
+        modeId: "bypassPermissions",
+      });
+      expect(setModeRes).toEqual({});
+      expect(queryHandles).toHaveLength(2);
+      expect(queryHandles[0].closeCalls).toBe(1);
+      expect(queryHandles[1].options?.resume).toBe(sid);
+      expect(queryHandles[1].options?.sessionId).toBeUndefined();
+      expect(queryHandles[1].options?.permissionMode).toBe("bypassPermissions");
+      expect(queryHandles[1].options?.allowDangerouslySkipPermissions).toBe(
+        true,
+      );
+      expect(queryHandles[1].options?.cwd).toBe("/repo/live-mode");
+      expect(queryHandles[1].options?.additionalDirectories).toEqual([
+        "/repo/shared",
+      ]);
+      expect(queryHandles[1].options?.mcpServers).toEqual({
+        docs: {
+          type: "stdio",
+          command: "/usr/local/bin/docs-mcp",
+          args: ["--stdio"],
+        },
+      });
+      expect(harness.receivedUpdates).toContainEqual({
+        sessionId: sid,
+        update: {
+          sessionUpdate: "current_mode_update",
+          currentModeId: "bypassPermissions",
+        },
+      });
+
+      const promptRes = await harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "after live switch" }],
+      });
+      expect(promptRes.stopReason).toBe("end_turn");
+      expect(queryHandles[0].pushedUserMessages).toHaveLength(0);
+      expect(queryHandles[1].pushedUserMessages).toHaveLength(1);
+
+      await harness.client.request("session/set_mode", {
+        sessionId: sid,
+        modeId: "default",
+      });
+      expect(queryHandles).toHaveLength(2);
+      expect(queryHandles[1].setPermissionModeCalls).toEqual(["default"]);
+      const modeUpdates = harness.receivedUpdates.filter(
+        (u) => u.update.sessionUpdate === "current_mode_update",
+      );
+      expect(modeUpdates.at(-1)?.update).toEqual({
+        sessionUpdate: "current_mode_update",
+        currentModeId: "default",
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/set_config_option live switch from default to bypassPermissions reopens query and switching back does not reopen", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440011";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      defaultMode: "default",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const idx = queryHandles.length;
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onPromptMessage: (_msg, h) => {
+            if (idx === 1) {
+              h.emit(makeSuccessResult(sid));
+            }
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo/live-config",
+        mcpServers: [],
+      });
+
+      const bypassRes = await harness.client.request(
+        "session/set_config_option",
+        {
+          sessionId: sid,
+          configId: "mode",
+          value: "bypassPermissions",
+        },
+      );
+      expect(bypassRes.configOptions).toMatchObject([
+        { id: "mode", currentValue: "bypassPermissions" },
+      ]);
+      expect(queryHandles).toHaveLength(2);
+      expect(queryHandles[0].closeCalls).toBe(1);
+      expect(queryHandles[1].options?.resume).toBe(sid);
+      expect(queryHandles[1].options?.allowDangerouslySkipPermissions).toBe(
+        true,
+      );
+
+      const promptRes = await harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "after config switch" }],
+      });
+      expect(promptRes.stopReason).toBe("end_turn");
+      expect(queryHandles[0].pushedUserMessages).toHaveLength(0);
+      expect(queryHandles[1].pushedUserMessages).toHaveLength(1);
+
+      const backRes = await harness.client.request(
+        "session/set_config_option",
+        {
+          sessionId: sid,
+          configId: "mode",
+          value: "default",
+        },
+      );
+      expect(backRes.configOptions).toMatchObject([
+        { id: "mode", currentValue: "default" },
+      ]);
+      expect(queryHandles).toHaveLength(2);
+      expect(queryHandles[1].setPermissionModeCalls).toEqual(["default"]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("marks session dead when SDK query ends while idle, rejects prompt with resume hint, and recovers via session/resume", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440012";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const idx = queryHandles.length;
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onPromptMessage: (_msg, h) => {
+            if (idx === 1) {
+              h.emit(makeSuccessResult(sid));
+            }
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+      });
+
+      queryHandles[0].finishOutput();
+      await new Promise((r) => setTimeout(r, 15));
+
+      let promptErr: unknown;
+      try {
+        await withTimeout(
+          harness.client.request("session/prompt", {
+            sessionId: sid,
+            prompt: [{ type: "text", text: "to dead session" }],
+          }),
+          1500,
+          "dead session prompt rejection",
+        );
+      } catch (err) {
+        promptErr = err;
+      }
+      expect(promptErr).toBeInstanceOf(RequestError);
+      expect((promptErr as RequestError).message).toMatch(/ended/i);
+      expect((promptErr as RequestError).message).toMatch(/session\/resume/);
+      expect(queryHandles[0].pushedUserMessages).toHaveLength(0);
+
+      await harness.client.request("session/resume", {
+        sessionId: sid,
+        cwd: "/repo",
+        mcpServers: [],
+      });
+      expect(queryHandles).toHaveLength(2);
+      expect(queryHandles[1].options?.resume).toBe(sid);
+
+      const resumedPromptRes = await withTimeout(
+        harness.client.request("session/prompt", {
+          sessionId: sid,
+          prompt: [{ type: "text", text: "after resume" }],
+        }),
+        1500,
+        "prompt after resume",
+      );
+      expect(resumedPromptRes.stopReason).toBe("end_turn");
+      expect(queryHandles[1].pushedUserMessages).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/cancel resolves in-flight prompt as cancelled when interrupt rejects and no result arrives", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440013";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onInterrupt: async () => {
+            throw new Error("interrupt failed");
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+      });
+
+      const promptPromise = harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "hang forever" }],
+      });
+
+      const deadline = Date.now() + 1000;
+      while (
+        queryHandles[0].pushedUserMessages.length < 1 &&
+        Date.now() < deadline
+      ) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(queryHandles[0].pushedUserMessages).toHaveLength(1);
+
+      await harness.client.notify("session/cancel", { sessionId: sid });
+      const res = await withTimeout(
+        promptPromise,
+        1500,
+        "cancel with rejecting interrupt",
+      );
+      expect(res.stopReason).toBe("cancelled");
+      expect(queryHandles[0].interruptCalls).toBe(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/cancel resolves in-flight prompt as cancelled when interrupt resolves and no result arrives", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440014";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onInterrupt: () => {
+            // Resolves without emitting any SDK result.
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+      });
+
+      const promptPromise = harness.client.request("session/prompt", {
+        sessionId: sid,
+        prompt: [{ type: "text", text: "silent interrupt" }],
+      });
+
+      const deadline = Date.now() + 1000;
+      while (
+        queryHandles[0].pushedUserMessages.length < 1 &&
+        Date.now() < deadline
+      ) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(queryHandles[0].pushedUserMessages).toHaveLength(1);
+
+      await harness.client.notify("session/cancel", { sessionId: sid });
+      const res = await withTimeout(
+        promptPromise,
+        1500,
+        "cancel with silent interrupt",
+      );
+      expect(res.stopReason).toBe("cancelled");
+      expect(queryHandles[0].interruptCalls).toBe(1);
     } finally {
       await harness.close();
     }

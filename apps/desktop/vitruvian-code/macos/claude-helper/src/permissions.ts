@@ -71,7 +71,21 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Builds ACP permission options; `allow_always` is only included with SDK suggestions. */
+/**
+ * Filters SDK permission suggestions before applying `allow_always`.
+ * Drops `setMode` updates so mode changes come only from the app
+ * (T3 `ClaudeAdapterV2.ts:3808-3819` drops `setMode` under a managed ceiling).
+ */
+export function filterAllowAlwaysSuggestions(
+  suggestions?: readonly PermissionUpdate[],
+): PermissionUpdate[] {
+  if (!Array.isArray(suggestions)) {
+    return [];
+  }
+  return suggestions.filter((suggestion) => suggestion.type !== "setMode");
+}
+
+/** Builds ACP permission options; `allow_always` is only included with non-`setMode` SDK suggestions. */
 export function buildPermissionOptions(
   suggestions?: readonly PermissionUpdate[],
 ): PermissionOption[] {
@@ -82,7 +96,7 @@ export function buildPermissionOptions(
       kind: "allow_once",
     },
   ];
-  if (Array.isArray(suggestions) && suggestions.length > 0) {
+  if (filterAllowAlwaysSuggestions(suggestions).length > 0) {
     options.push({
       optionId: ALLOW_ALWAYS_OPTION_ID,
       name: "Always allow",
@@ -161,13 +175,14 @@ export function mapPermissionResponse(
   }
 
   if (optionId === ALLOW_ALWAYS_OPTION_ID) {
-    const hasSuggestions =
-      Array.isArray(options.suggestions) && options.suggestions.length > 0;
+    const filteredSuggestions = filterAllowAlwaysSuggestions(
+      options.suggestions,
+    );
     return {
       behavior: "allow",
       updatedInput: toolInput,
-      ...(hasSuggestions
-        ? { updatedPermissions: [...options.suggestions!] }
+      ...(filteredSuggestions.length > 0
+        ? { updatedPermissions: filteredSuggestions }
         : {}),
       ...toolUseIdField,
     };

@@ -64,6 +64,12 @@ exports_files(
     visibility = ["//apps/web/mini-party:__pkg__"],
 )
 
+js_library(
+    name = "pnpm_workspace_yaml",
+    srcs = ["pnpm-workspace.yaml"],
+    visibility = ["//apps/desktop/vitruvian-code/macos/claude-helper:__pkg__"],
+)
+
 exports_files(
     ["pnpm-lock.yaml"],
     visibility = ["//tools/ci:__pkg__"],

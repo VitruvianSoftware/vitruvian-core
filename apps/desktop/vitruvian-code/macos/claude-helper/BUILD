@@ -75,6 +75,7 @@ jest_test(
         ":node_modules/ts-jest",
         ":node_modules/typescript",
         ":protocol_files",
+        "//:pnpm_workspace_yaml",
     ],
     node_modules = ":node_modules",
     # Node 22.12+ require(esm) makes jest's generated config throw

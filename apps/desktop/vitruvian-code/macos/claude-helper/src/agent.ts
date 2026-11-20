@@ -71,6 +71,7 @@ import {
   CLAUDE_MODES,
   DEFAULT_CLAUDE_MODE,
   isClaudeModeId,
+  requiresDangerousSkipFlag,
   sdkPermissionOptionsForMode,
   type ClaudeModeId,
 } from "./modes.js";
@@ -152,17 +153,21 @@ interface SessionRecord {
   readonly id: string;
   readonly cwd: string;
   readonly additionalDirectories?: readonly string[];
+  readonly mcpServers?: Record<string, McpServerConfig>;
+  readonly canUseTool: CanUseTool;
   readonly client: AgentContext;
-  readonly query: SdkQuery;
-  readonly inputQueue: AsyncPushQueue<SDKUserMessage>;
+  query: SdkQuery;
+  inputQueue: AsyncPushQueue<SDKUserMessage>;
   readonly env: Record<string, string | undefined>;
   readonly mappingState: MappingState;
   currentMode: ClaudeModeId;
+  openedWithDangerousSkip: boolean;
   models: ModelInfo[];
   currentModel: string | undefined;
   modelExplicitlySet: boolean;
   activeTurn: ActiveTurn | null;
   closed: boolean;
+  dead: boolean;
 }
 
 /** Single-consumer async push queue backing streaming input to one long-lived SDK query. */
@@ -279,6 +284,53 @@ export function parseSecretsParams(raw: unknown): SecretsPayload {
     }
   }
   return { env, mcpServers };
+}
+
+export function mergeSecrets(
+  existing: SecretsPayload,
+  incoming: SecretsPayload,
+): SecretsPayload {
+  const env =
+    existing.env !== undefined || incoming.env !== undefined
+      ? { ...(existing.env ?? {}), ...(incoming.env ?? {}) }
+      : undefined;
+
+  let mcpServers: Record<string, McpServerSecrets> | undefined;
+  if (existing.mcpServers !== undefined || incoming.mcpServers !== undefined) {
+    mcpServers = {};
+    if (existing.mcpServers !== undefined) {
+      for (const [serverName, entry] of Object.entries(existing.mcpServers)) {
+        mcpServers[serverName] = {
+          ...(entry.env !== undefined ? { env: { ...entry.env } } : {}),
+          ...(entry.headers !== undefined
+            ? { headers: { ...entry.headers } }
+            : {}),
+        };
+      }
+    }
+    if (incoming.mcpServers !== undefined) {
+      for (const [serverName, entry] of Object.entries(incoming.mcpServers)) {
+        const prev = mcpServers[serverName];
+        const mergedEnv =
+          prev?.env !== undefined || entry.env !== undefined
+            ? { ...(prev?.env ?? {}), ...(entry.env ?? {}) }
+            : undefined;
+        const mergedHeaders =
+          prev?.headers !== undefined || entry.headers !== undefined
+            ? { ...(prev?.headers ?? {}), ...(entry.headers ?? {}) }
+            : undefined;
+        mcpServers[serverName] = {
+          ...(mergedEnv !== undefined ? { env: mergedEnv } : {}),
+          ...(mergedHeaders !== undefined ? { headers: mergedHeaders } : {}),
+        };
+      }
+    }
+  }
+
+  return {
+    ...(env !== undefined ? { env } : {}),
+    ...(mcpServers !== undefined ? { mcpServers } : {}),
+  };
 }
 
 function parseSessionIdParams(raw: unknown, method: string): string {
@@ -614,7 +666,7 @@ export class ClaudeHelperAgent {
   }
 
   async setSecrets(params: SecretsPayload): Promise<Record<string, never>> {
-    this.secrets = params;
+    this.secrets = mergeSecrets(this.secrets, params);
     return {};
   }
 
@@ -673,37 +725,76 @@ export class ClaudeHelperAgent {
 
     resetTurnMappingState(session.mappingState);
     const abortController = new AbortController();
+    let currentTurn: ActiveTurn | null = null;
 
     return await new Promise<PromptResponse>((resolve, reject) => {
-      session.activeTurn = {
+      currentTurn = {
         cancelled: false,
         abortController,
         announcedUsageLimitResets: new Set<string>(),
         resolve,
         reject,
       };
+      session.activeTurn = currentTurn;
       try {
         const sdkMessage = convertPromptBlocksToSdkUserMessage(params.prompt);
         session.inputQueue.push(sdkMessage);
       } catch (error) {
-        session.activeTurn = null;
+        if (session.activeTurn === currentTurn) {
+          session.activeTurn = null;
+        }
         reject(toRpcError(error));
       }
     }).finally(() => {
-      session.activeTurn = null;
+      if (session.activeTurn === currentTurn) {
+        session.activeTurn = null;
+      }
     });
   }
 
   async cancel(params: CancelNotification): Promise<void> {
     const session = this.sessions.get(params.sessionId);
-    if (!session) {
+    if (!session || session.closed) {
       return;
     }
-    if (session.activeTurn) {
-      session.activeTurn.cancelled = true;
-      session.activeTurn.abortController.abort();
+    const turn = session.activeTurn;
+    if (turn) {
+      turn.cancelled = true;
+      turn.abortController.abort();
     }
-    await session.query.interrupt().catch(() => undefined);
+    if (!session.dead) {
+      try {
+        await session.query.interrupt();
+      } catch {
+        // Ignore interrupt errors; still settle the active turn as cancelled below.
+      }
+    }
+    if (turn && session.activeTurn === turn) {
+      session.activeTurn = null;
+      turn.resolve({ stopReason: "cancelled" });
+    }
+  }
+
+  private async notifyModeChange(
+    session: SessionRecord,
+    client: AgentContext,
+  ): Promise<SessionConfigOption[]> {
+    await client.notify("session/update", {
+      sessionId: session.id,
+      update: {
+        sessionUpdate: "current_mode_update",
+        currentModeId: session.currentMode,
+      },
+    });
+    const configOptions = buildConfigOptions(session);
+    await client.notify("session/update", {
+      sessionId: session.id,
+      update: {
+        sessionUpdate: "config_option_update",
+        configOptions,
+      },
+    });
+    return configOptions;
   }
 
   async setMode(
@@ -717,15 +808,8 @@ export class ClaudeHelperAgent {
         `Unsupported modeId: ${params.modeId}`,
       );
     }
-    await session.query.setPermissionMode(params.modeId);
-    session.currentMode = params.modeId;
-    await client.notify("session/update", {
-      sessionId: session.id,
-      update: {
-        sessionUpdate: "current_mode_update",
-        currentModeId: params.modeId,
-      },
-    });
+    await this.applyPermissionMode(session, params.modeId);
+    await this.notifyModeChange(session, client);
     return {};
   }
 
@@ -741,8 +825,9 @@ export class ClaudeHelperAgent {
           `Unsupported mode value: ${String(params.value)}`,
         );
       }
-      await session.query.setPermissionMode(params.value);
-      session.currentMode = params.value;
+      await this.applyPermissionMode(session, params.value);
+      const configOptions = await this.notifyModeChange(session, client);
+      return { configOptions };
     } else if (params.configId === "model") {
       if (
         typeof params.value !== "string" ||
@@ -813,6 +898,13 @@ export class ClaudeHelperAgent {
     if (!session) {
       throw RequestError.sessionNotFound(sessionId);
     }
+    if (session.dead) {
+      throw new RequestError(
+        -32603,
+        "Session ended; use session/resume to continue.",
+        { sessionId: session.id, reason: "session_ended" },
+      );
+    }
     return session;
   }
 
@@ -834,6 +926,94 @@ export class ClaudeHelperAgent {
     }
   }
 
+  private buildQueryOptions(input: {
+    readonly sessionId: string;
+    readonly resume: boolean;
+    readonly cwd: string;
+    readonly mode: ClaudeModeId;
+    readonly canUseTool: CanUseTool;
+    readonly env: Record<string, string | undefined>;
+    readonly additionalDirectories?: readonly string[];
+    readonly mcpServers?: Record<string, McpServerConfig>;
+    readonly model?: string;
+  }): SdkQueryOptions {
+    return {
+      cwd: input.cwd,
+      pathToClaudeCodeExecutable: this.claudePath,
+      includePartialMessages: true,
+      settingSources: ["user", "project", "local"],
+      canUseTool: input.canUseTool,
+      ...sdkPermissionOptionsForMode(input.mode),
+      ...(input.resume
+        ? { resume: input.sessionId }
+        : { sessionId: input.sessionId }),
+      ...(input.additionalDirectories && input.additionalDirectories.length > 0
+        ? { additionalDirectories: [...input.additionalDirectories] }
+        : {}),
+      ...(input.mcpServers ? { mcpServers: input.mcpServers } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      env: input.env,
+    };
+  }
+
+  private async applyPermissionMode(
+    session: SessionRecord,
+    mode: ClaudeModeId,
+  ): Promise<void> {
+    if (requiresDangerousSkipFlag(mode) && !session.openedWithDangerousSkip) {
+      this.reopenSessionQuery(session, mode);
+    } else {
+      await session.query.setPermissionMode(mode);
+    }
+    session.currentMode = mode;
+  }
+
+  private reopenSessionQuery(session: SessionRecord, mode: ClaudeModeId): void {
+    const newInputQueue = new AsyncPushQueue<SDKUserMessage>();
+    const queryOptions = this.buildQueryOptions({
+      sessionId: session.id,
+      resume: true,
+      cwd: session.cwd,
+      mode,
+      canUseTool: session.canUseTool,
+      env: session.env,
+      additionalDirectories: session.additionalDirectories,
+      mcpServers: session.mcpServers,
+      model: session.modelExplicitlySet ? session.currentModel : undefined,
+    });
+    const newQuery = this.queryFn({
+      prompt: newInputQueue,
+      options: queryOptions,
+    });
+
+    const oldQuery = session.query;
+    const oldInputQueue = session.inputQueue;
+
+    // Swap before closing the old query so the old pumpQueryOutput exits
+    // without marking the session dead or touching the new query.
+    session.query = newQuery;
+    session.inputQueue = newInputQueue;
+    session.openedWithDangerousSkip = requiresDangerousSkipFlag(mode);
+    session.dead = false;
+
+    if (session.activeTurn) {
+      const turn = session.activeTurn;
+      session.activeTurn = null;
+      turn.cancelled = true;
+      turn.abortController.abort();
+      turn.resolve({ stopReason: "cancelled" });
+    }
+
+    oldInputQueue.close();
+    try {
+      oldQuery.close();
+    } catch {
+      // Ignore old query teardown errors when reopening.
+    }
+
+    void this.pumpQueryOutput(session, newQuery);
+  }
+
   private async openSession(input: {
     readonly sessionId: string;
     readonly resume: boolean;
@@ -843,11 +1023,18 @@ export class ClaudeHelperAgent {
     readonly meta?: Record<string, unknown> | null;
     readonly client: AgentContext;
   }): Promise<SessionRecord> {
-    if (this.sessions.has(input.sessionId)) {
-      throw RequestError.invalidParams(
-        { sessionId: input.sessionId },
-        `Session already open: ${input.sessionId}`,
-      );
+    const existing = this.sessions.get(input.sessionId);
+    if (existing) {
+      if (input.resume && existing.dead) {
+        existing.closed = true;
+        existing.inputQueue.close();
+        this.sessions.delete(input.sessionId);
+      } else {
+        throw RequestError.invalidParams(
+          { sessionId: input.sessionId },
+          `Session already open: ${input.sessionId}`,
+        );
+      }
     }
 
     const initialMode = extractRequestedMode(input.meta, this.defaultMode);
@@ -875,22 +1062,16 @@ export class ClaudeHelperAgent {
       });
     };
 
-    const queryOptions: SdkQueryOptions = {
+    const queryOptions = this.buildQueryOptions({
+      sessionId: input.sessionId,
+      resume: input.resume,
       cwd: input.cwd,
-      pathToClaudeCodeExecutable: this.claudePath,
-      includePartialMessages: true,
-      settingSources: ["user", "project", "local"],
+      mode: initialMode,
       canUseTool,
-      ...sdkPermissionOptionsForMode(initialMode),
-      ...(input.resume
-        ? { resume: input.sessionId }
-        : { sessionId: input.sessionId }),
-      ...(input.additionalDirectories && input.additionalDirectories.length > 0
-        ? { additionalDirectories: [...input.additionalDirectories] }
-        : {}),
-      ...(mcpServers ? { mcpServers } : {}),
       env,
-    };
+      additionalDirectories: input.additionalDirectories,
+      mcpServers,
+    });
 
     const sdkQuery = this.queryFn({
       prompt: inputQueue,
@@ -903,22 +1084,26 @@ export class ClaudeHelperAgent {
       ...(input.additionalDirectories && input.additionalDirectories.length > 0
         ? { additionalDirectories: [...input.additionalDirectories] }
         : {}),
+      ...(mcpServers ? { mcpServers } : {}),
+      canUseTool,
       client: input.client,
       query: sdkQuery,
       inputQueue,
       env,
       mappingState: createMappingState(),
       currentMode: initialMode,
+      openedWithDangerousSkip: requiresDangerousSkipFlag(initialMode),
       models: [],
       currentModel: undefined,
       modelExplicitlySet: false,
       activeTurn: null,
       closed: false,
+      dead: false,
     };
     sessionRef = session;
 
     this.sessions.set(session.id, session);
-    void this.pumpQueryOutput(session);
+    void this.pumpQueryOutput(session, sdkQuery);
     await this.loadInitialSupportedModels(session);
 
     return session;
@@ -927,11 +1112,12 @@ export class ClaudeHelperAgent {
   private async loadInitialSupportedModels(
     session: SessionRecord,
   ): Promise<void> {
-    if (typeof session.query.supportedModels !== "function") {
+    const targetQuery = session.query;
+    if (typeof targetQuery.supportedModels !== "function") {
       return;
     }
 
-    const modelsPromise = session.query
+    const modelsPromise = targetQuery
       .supportedModels()
       .then((models) => ({ settled: true as const, models }))
       .catch(() => ({ settled: true as const, models: [] as ModelInfo[] }));
@@ -953,7 +1139,12 @@ export class ClaudeHelperAgent {
     }
 
     if (raceResult.settled) {
-      if (!session.closed && raceResult.models.length > 0) {
+      if (
+        !session.closed &&
+        !session.dead &&
+        session.query === targetQuery &&
+        raceResult.models.length > 0
+      ) {
         session.models = raceResult.models;
         session.currentModel ??= raceResult.models[0].value;
       }
@@ -962,7 +1153,12 @@ export class ClaudeHelperAgent {
 
     // Wait in the background; once models arrive on an open session, emit config_option_update.
     void modelsPromise.then(async ({ models }) => {
-      if (session.closed || models.length === 0) {
+      if (
+        session.closed ||
+        session.dead ||
+        session.query !== targetQuery ||
+        models.length === 0
+      ) {
         return;
       }
       session.models = models;
@@ -981,11 +1177,16 @@ export class ClaudeHelperAgent {
     });
   }
 
-  private async pumpQueryOutput(session: SessionRecord): Promise<void> {
+  private async pumpQueryOutput(
+    session: SessionRecord,
+    sdkQuery: SdkQuery,
+  ): Promise<void> {
+    let threw = false;
+    let exitError: unknown = undefined;
     try {
-      for await (const sdkMessage of session.query) {
-        if (session.closed) {
-          break;
+      for await (const sdkMessage of sdkQuery) {
+        if (session.closed || session.query !== sdkQuery) {
+          return;
         }
 
         let diskCommands = undefined;
@@ -1012,14 +1213,14 @@ export class ClaudeHelperAgent {
         );
 
         for (const notification of notifications) {
-          if (session.closed) {
-            break;
+          if (session.closed || session.query !== sdkQuery) {
+            return;
           }
           await session.client.notify("session/update", notification);
         }
 
         const usageLimit = this.extractUsageLimitFn(session.id, sdkMessage);
-        if (usageLimit && !session.closed) {
+        if (usageLimit && !session.closed && session.query === sdkQuery) {
           const resetKey = usageLimit.resetsAt ?? "__null__";
           const announced = session.activeTurn?.announcedUsageLimitResets;
           let shouldNotify = true;
@@ -1041,7 +1242,12 @@ export class ClaudeHelperAgent {
           }
         }
 
-        if (sdkMessage.type === "result" && session.activeTurn) {
+        if (
+          sdkMessage.type === "result" &&
+          session.activeTurn &&
+          !session.closed &&
+          session.query === sdkQuery
+        ) {
           const turn = session.activeTurn;
           session.activeTurn = null;
           const outcome = classifySdkResult(
@@ -1056,29 +1262,31 @@ export class ClaudeHelperAgent {
           }
         }
       }
-
-      if (session.activeTurn) {
-        const turn = session.activeTurn;
-        session.activeTurn = null;
-        if (turn.cancelled) {
-          turn.resolve({ stopReason: "cancelled" });
-        } else {
-          turn.reject(
-            new RequestError(
-              -32603,
-              "Claude SDK query ended before producing a result",
-            ),
-          );
-        }
-      }
     } catch (error) {
-      if (session.activeTurn) {
-        const turn = session.activeTurn;
-        session.activeTurn = null;
-        if (turn.cancelled) {
-          turn.resolve({ stopReason: "cancelled" });
-        } else {
-          turn.reject(toRpcError(error));
+      threw = true;
+      exitError = error;
+    } finally {
+      if (!session.closed && session.query === sdkQuery) {
+        session.dead = true;
+        session.inputQueue.close();
+        if (session.activeTurn) {
+          const turn = session.activeTurn;
+          session.activeTurn = null;
+          if (turn.cancelled) {
+            turn.resolve({ stopReason: "cancelled" });
+          } else {
+            turn.abortController.abort();
+            if (threw) {
+              turn.reject(toRpcError(exitError));
+            } else {
+              turn.reject(
+                new RequestError(
+                  -32603,
+                  "Claude SDK query ended before producing a result",
+                ),
+              );
+            }
+          }
         }
       }
     }
