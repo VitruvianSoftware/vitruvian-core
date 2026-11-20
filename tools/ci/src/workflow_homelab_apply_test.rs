@@ -935,6 +935,8 @@ enum Compare {
     Fails,
     /// total_commits is larger than what the pages return.
     Truncated,
+    /// The range spans two pages; only the second holds the approval.
+    TwoPages,
 }
 
 struct ZitadelCase {
@@ -1040,7 +1042,7 @@ fn run_zitadel_case(case: &ZitadelCase) -> ZitadelOutcome {
     .unwrap();
     let approving = format!("fix(zitadel-apps): rotate the OIDC app\n\nAllow-destroy: {urn}\n");
     let (total, msgs): (usize, Vec<String>) = match case.compare {
-        Compare::Approves => (2, vec!["chore: unrelated".into(), approving]),
+        Compare::Approves | Compare::TwoPages => (2, vec!["chore: unrelated".into(), approving]),
         Compare::NoApproval | Compare::Fails => (2, vec!["chore: one".into(), "chore: two".into()]),
         Compare::Truncated => (150, vec!["chore: one".into(), approving]),
     };
@@ -1048,17 +1050,24 @@ fn run_zitadel_case(case: &ZitadelCase) -> ZitadelOutcome {
         .iter()
         .map(|m| format!(r#"{{"commit":{{"message":{}}}}}"#, serde_json_string(m)))
         .collect();
+    let (page1, page2): (Vec<String>, Vec<String>) = match case.compare {
+        Compare::TwoPages => (vec![commits[0].clone()], vec![commits[1].clone()]),
+        _ => (commits, Vec::new()),
+    };
     std::fs::write(
         d.join("compare-1.json"),
         format!(
             r#"{{"total_commits":{total},"commits":[{}]}}"#,
-            commits.join(",")
+            page1.join(",")
         ),
     )
     .unwrap();
     std::fs::write(
         d.join("compare-2.json"),
-        format!(r#"{{"total_commits":{total},"commits":[]}}"#),
+        format!(
+            r#"{{"total_commits":{total},"commits":[{}]}}"#,
+            page2.join(",")
+        ),
     )
     .unwrap();
 
@@ -1270,6 +1279,34 @@ fn zitadel_release_reads_approvals_from_the_commits_since_the_previous_release()
         "must compare against the previous release of the same product: {:?}",
         ok.calls
     );
+
+    // The approval sits on page 2: the helper must keep paging until it has
+    // total_commits, and stop there.
+    let paged = reusable(
+        "zrel-paged",
+        "production",
+        "release",
+        release_event(),
+        true,
+        Compare::TwoPages,
+    );
+    assert_eq!(paged.rc, 0, "{}", paged.stderr);
+    assert!(
+        applied(&paged),
+        "approval on page 2 was missed: {:?}",
+        paged.calls
+    );
+    let pages: Vec<&String> = paged
+        .calls
+        .iter()
+        .filter(|c| c.contains("/compare/"))
+        .collect();
+    assert_eq!(
+        pages.len(),
+        2,
+        "expected exactly two compare pages: {pages:?}"
+    );
+    assert!(pages[1].contains("page=2"), "{pages:?}");
 
     for (tag, compare) in [
         ("zrel-none", Compare::NoApproval),
