@@ -55,16 +55,22 @@ mount unit, ordered before k3s), so pod volumes and ephemeral storage stay on th
 big volume and the node still reports that volume's size.
 
 By default it is a dry run: it makes read-only checks over ssh and prints each
-step with the exact command it would run. Pass --apply to do it: cordon and drain
-the node, stop k3s, remove the root-dir argument from /etc/rancher/k3s/config.yaml
-(and the systemd ExecStart if it is there), set up the bind mount, start k3s, wait
-for Ready, uncordon, then print a final check. If a step fails it says what state
-the node is in and how to recover; it never leaves the node cordoned without
-telling you.
+step with the exact command it would run, the pods the drain would evict, and a
+diff of the config change. Pass --apply to do it: cordon and drain the node, take
+an etcd snapshot (control-plane nodes), re-check quorum and etcd health, stop k3s,
+remove the root-dir argument from /etc/rancher/k3s/config.yaml (and the systemd
+ExecStart if it is there), set up the bind mount, start k3s, wait for Ready, check
+that the mount is shared and the NFS CSI node plugin is up, run a short pod pinned
+to the node that mounts a throwaway NFS volume, and only then uncordon. If a step
+fails it says what state the node is in and how to recover; a node that is down or
+failed a check stays cordoned on purpose, and the message says so.
 
-It refuses when the node has no dataDir, when its kubelet is not at
-<dataDir>/kubelet, or when it is already switched. For a control-plane node it
-also refuses unless the other control-plane nodes are Ready (etcd quorum).
+It is safe to re-run: if an earlier run stopped half way (after the config edit,
+inside the mount step, or after the mount with k3s down), running it again picks up
+where the node is. It refuses when the node has no dataDir, when its kubelet is not
+at <dataDir>/kubelet, and when it is already switched and healthy. For a
+control-plane node it also refuses unless every other control-plane node (found by
+label, not from the config) is Ready, a majority would remain, and etcd is healthy.
 Run it on one node at a time. New nodes need none of this: devx now installs them
 with the bind mount from the start.`,
 		Args: cobra.NoArgs,

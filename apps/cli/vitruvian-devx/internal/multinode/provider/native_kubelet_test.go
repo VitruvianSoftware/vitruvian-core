@@ -23,6 +23,10 @@ package provider
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -106,7 +110,7 @@ func TestEnsureKubeletBindMount_Agent(t *testing.T) {
 		t.Fatalf("mount unit not written; wrote %v", files)
 	}
 	for _, want := range []string{
-		"[Unit]\n", "Before=k3s.service k3s-agent.service\n",
+		"[Unit]\n", "Before=k3s.service k3s-agent.service\n", "RequiresMountsFor=/home/k3s/kubelet\n",
 		"[Mount]\n", "What=/home/k3s/kubelet\n", "Where=/var/lib/kubelet\n", "Type=none\n", "Options=bind\n",
 		"[Install]\n", "WantedBy=local-fs.target\n",
 	} {
@@ -275,6 +279,49 @@ func TestRemoveRootDirFromConfig_FlowAndDashForms(t *testing.T) {
 	}
 }
 
+func TestRemoveRootDirFromConfig_KeepsTheHeaderCommentWhenTheFirstKeyEmpties(t *testing.T) {
+	// The header comment sits on kubelet-arg, the key that disappears. It must stay.
+	src := "# managed by devx - do not edit by hand\n# second header line\nkubelet-arg:\n  - root-dir=/home/k3s/kubelet\ndata-dir: /home/k3s # the big volume\nnode-label:\n  - pool=nuc\n"
+	out, changed, err := removeRootDirFromConfig(src)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	want := "# managed by devx - do not edit by hand\n# second header line\ndata-dir: /home/k3s # the big volume\nnode-label:\n  - pool=nuc\n"
+	if out != want {
+		t.Errorf("only the root-dir lines may go.\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestRemoveRootDirFromConfig_ByteForByteOtherwise(t *testing.T) {
+	src := "data-dir: /home/k3s   # keep my spacing\n\nkubelet-arg:\n    - max-pods=150\n    - 'root-dir=/home/k3s/kubelet'   # drop me\n    - eviction-hard=nodefs.available<5%\ntoken: \"abc\"\n"
+	out, changed, err := removeRootDirFromConfig(src)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	want := "data-dir: /home/k3s   # keep my spacing\n\nkubelet-arg:\n    - max-pods=150\n    - eviction-hard=nodefs.available<5%\ntoken: \"abc\"\n"
+	if out != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestRemoveRootDirFromConfig_MixedFlowListIsRewrittenInPlace(t *testing.T) {
+	src := "data-dir: /home/k3s\nkubelet-arg: [max-pods=150, root-dir=/home/k3s/kubelet]\n"
+	out, changed, err := removeRootDirFromConfig(src)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if out != "data-dir: /home/k3s\nkubelet-arg: [max-pods=150]\n" {
+		t.Errorf("out = %q", out)
+	}
+}
+
+func TestRemoveRootDirFromConfig_RefusesShapesItCannotEditSafely(t *testing.T) {
+	src := "kubelet-arg: [\n  max-pods=150,\n  root-dir=/home/k3s/kubelet\n]\n"
+	if _, _, err := removeRootDirFromConfig(src); !errors.Is(err, errUnsafeEdit) {
+		t.Errorf("a multi-line flow list must be refused, got %v", err)
+	}
+}
+
 func TestRemoveRootDirFromConfig_NoRootDirIsVerbatim(t *testing.T) {
 	src := "data-dir: /home/k3s\nkubelet-arg:\n    - max-pods=150\n"
 	out, changed, err := removeRootDirFromConfig(src)
@@ -371,4 +418,144 @@ func TestRemoveRootDirFromUnit_NoRootDirIsVerbatim(t *testing.T) {
 	if vals := rootDirValuesInUnit(pair); len(vals) != 1 || vals[0] != "/x/kubelet" {
 		t.Errorf("pair values = %v", vals)
 	}
+}
+
+// --- the bind-mount command, run for real ---
+
+// runBindMount runs the real shell command against a temp tree, with stub
+// systemctl and mountpoint on PATH. mounted makes the stub mountpoint say yes.
+func runBindMount(t *testing.T, root string, mounted bool) (stdout string, err error) {
+	t.Helper()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stub("systemctl", `echo "$@" >> "$STUB_LOG"`+"\n")
+	stub("mountpoint", `[ -e "$STUB_MOUNTED" ]`+"\n")
+	mountedFlag := filepath.Join(root, "is-mounted")
+	if mounted {
+		if err := os.WriteFile(mountedFlag, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bp := bindPaths{std: filepath.Join(root, "var/lib/kubelet"), systemd: filepath.Join(root, "etc/systemd/system"), mountUnit: "var-lib-kubelet.mount"}
+	cmd := exec.Command("sh", "-c", bindMountCmdAt(bp, filepath.Join(root, "data"), "k3s.service"))
+	cmd.Env = []string{"PATH=" + bin + ":/usr/bin:/bin", "STUB_LOG=" + filepath.Join(root, "systemctl.log"), "STUB_MOUNTED=" + mountedFlag}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func TestBindMountCmd_RunsForReal(t *testing.T) {
+	if _, err := exec.LookPath("base64"); err != nil {
+		t.Skip("no base64 on this host")
+	}
+	read := func(path string) string {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	setup := func(t *testing.T) (root string, bp bindPaths) {
+		root, err := os.MkdirTemp("", "bindmount")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(root) })
+		bp = bindPaths{std: filepath.Join(root, "var/lib/kubelet"), systemd: filepath.Join(root, "etc/systemd/system"), mountUnit: "var-lib-kubelet.mount"}
+		if err := os.MkdirAll(filepath.Dir(bp.std), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	t.Run("replaces the old symlink and writes the units", func(t *testing.T) {
+		root, bp := setup(t)
+		backing := filepath.Join(root, "data/kubelet")
+		if err := os.MkdirAll(backing, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(backing, "keep-me"), []byte("pod data"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(backing, bp.std); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := runBindMount(t, root, false); err != nil {
+			t.Fatalf("command failed: %v\n%s", err, out)
+		}
+		fi, err := os.Lstat(bp.std)
+		if err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+			t.Errorf("%s must now be a real directory (the mount point): %v %v", bp.std, fi, err)
+		}
+		if got := read(filepath.Join(backing, "keep-me")); got != "pod data" {
+			t.Errorf("the data behind the old symlink must be untouched, got %q", got)
+		}
+		if got, want := read(filepath.Join(bp.systemd, "var-lib-kubelet.mount")), kubeletMountUnitAt(bp, filepath.Join(root, "data")); got != want {
+			t.Errorf("mount unit:\n%s\nwant:\n%s", got, want)
+		}
+		if got := read(filepath.Join(bp.systemd, "k3s.service.d", kubeletDropInName)); got != kubeletMountDropIn {
+			t.Errorf("drop-in = %q", got)
+		}
+		if got := read(filepath.Join(root, "systemctl.log")); got != "daemon-reload\nenable --now var-lib-kubelet.mount\n" {
+			t.Errorf("systemctl calls = %q", got)
+		}
+	})
+
+	t.Run("accepts an empty directory and is idempotent", func(t *testing.T) {
+		root, bp := setup(t)
+		if err := os.MkdirAll(bp.std, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 2; i++ {
+			if out, err := runBindMount(t, root, false); err != nil {
+				t.Fatalf("run %d failed: %v\n%s", i+1, err, out)
+			}
+		}
+		if got := read(filepath.Join(root, "systemctl.log")); got != strings.Repeat("daemon-reload\nenable --now var-lib-kubelet.mount\n", 2) {
+			t.Errorf("systemctl calls = %q", got)
+		}
+	})
+
+	t.Run("refuses to mount over a non-empty directory", func(t *testing.T) {
+		root, bp := setup(t)
+		if err := os.MkdirAll(bp.std, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		precious := filepath.Join(bp.std, "precious")
+		if err := os.WriteFile(precious, []byte("data"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := runBindMount(t, root, false)
+		if err == nil || !strings.Contains(out, "refusing to mount over it") {
+			t.Fatalf("must refuse; err=%v out=%q", err, out)
+		}
+		if got := read(precious); got != "data" {
+			t.Error("the directory's data must be untouched")
+		}
+		if _, err := os.Stat(filepath.Join(bp.systemd, "var-lib-kubelet.mount")); err == nil {
+			t.Error("no unit may be written when refusing")
+		}
+		if _, err := os.Stat(filepath.Join(root, "systemctl.log")); err == nil {
+			t.Error("systemctl must not be called when refusing")
+		}
+	})
+
+	t.Run("a populated directory that is already the mount is fine", func(t *testing.T) {
+		root, bp := setup(t)
+		if err := os.MkdirAll(bp.std, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(bp.std, "pods"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := runBindMount(t, root, true); err != nil {
+			t.Fatalf("an existing mount must pass: %v\n%s", err, out)
+		}
+	})
 }

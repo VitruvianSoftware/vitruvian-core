@@ -38,6 +38,15 @@ import (
 // every such volume unusable on that node. Instead /var/lib/kubelet is a bind
 // mount of <dataDir>/kubelet: the kubelet sees the standard path, the bytes live
 // on the big volume, and the node still reports that volume's size.
+//
+// Why installScript passes only --data-dir and no root-dir: k3s (checked at
+// v1.35.3+k3s1) sets the kubelet's root-dir only when running rootless
+// (pkg/agent/config/config.go: `if envInfo.Rootless { ...AgentConfig.RootDir =
+// <dataDir>/agent/kubelet }`) and passes it to the kubelet only when non-empty
+// (pkg/daemons/agent/agent_linux.go: `if cfg.RootDir != "" { argsMap["root-dir"] =
+// cfg.RootDir }`). So with --data-dir alone the kubelet keeps its own default,
+// /var/lib/kubelet. relocate-kubelet's final NFS check is the live backstop for
+// this assumption.
 const (
 	kubeletStdPath       = "/var/lib/kubelet"
 	kubeletMountUnitName = "var-lib-kubelet.mount" // systemd name for kubeletStdPath
@@ -58,16 +67,30 @@ func k3sUnitFor(role string) string {
 	return "k3s-agent.service"
 }
 
+// bindPaths are the host paths the bind-mount command works on. Production uses
+// stdBindPaths; a test points them at a temp directory to run the real shell.
+type bindPaths struct {
+	std       string // the mount point, /var/lib/kubelet
+	systemd   string // where unit files go, /etc/systemd/system
+	mountUnit string // the mount unit's name, var-lib-kubelet.mount
+}
+
+var stdBindPaths = bindPaths{std: kubeletStdPath, systemd: "/etc/systemd/system", mountUnit: kubeletMountUnitName}
+
 // kubeletMountUnit renders the systemd mount unit that bind-mounts the backing
 // directory at /var/lib/kubelet. It is ordered before both k3s units so the
-// kubelet never starts against the bare mount point.
-func kubeletMountUnit(dataDir string) string {
+// kubelet never starts against the bare mount point, and it requires the volume
+// that holds the backing directory (/home, say) to be mounted first.
+func kubeletMountUnit(dataDir string) string { return kubeletMountUnitAt(stdBindPaths, dataDir) }
+
+func kubeletMountUnitAt(bp bindPaths, dataDir string) string {
 	return "[Unit]\n" +
-		"Description=devx: bind " + kubeletBackingDir(dataDir) + " at " + kubeletStdPath + "\n" +
+		"Description=devx: bind " + kubeletBackingDir(dataDir) + " at " + bp.std + "\n" +
+		"RequiresMountsFor=" + kubeletBackingDir(dataDir) + "\n" +
 		"Before=k3s.service k3s-agent.service\n\n" +
 		"[Mount]\n" +
 		"What=" + kubeletBackingDir(dataDir) + "\n" +
-		"Where=" + kubeletStdPath + "\n" +
+		"Where=" + bp.std + "\n" +
 		"Type=none\n" +
 		"Options=bind\n\n" +
 		"[Install]\n" +
@@ -83,22 +106,28 @@ const kubeletMountDropIn = "[Unit]\nRequiresMountsFor=" + kubeletStdPath + "\n"
 // `sudo sh -c %q` wrapping used by remote.Runner.RunSudo unchanged; file contents
 // travel base64-encoded.
 func kubeletBindMountCmd(dataDir, unit string) string {
+	return bindMountCmdAt(stdBindPaths, dataDir, unit)
+}
+
+func bindMountCmdAt(bp bindPaths, dataDir, unit string) string {
 	root := kubeletBackingDir(dataDir)
-	dropDir := "/etc/systemd/system/" + unit + ".d"
+	dropDir := bp.systemd + "/" + unit + ".d"
 	dropIn := dropDir + "/" + kubeletDropInName
+	unitPath := bp.systemd + "/" + bp.mountUnit
 	return strings.Join([]string{
 		"mkdir -p " + root,
 		// An older devx pointed /var/lib/kubelet at the backing dir with a symlink.
-		"if [ -L " + kubeletStdPath + " ]; then rm -f " + kubeletStdPath + "; fi",
-		"mkdir -p " + kubeletStdPath,
+		"if [ -L " + bp.std + " ]; then rm -f " + bp.std + "; fi",
+		"mkdir -p " + bp.std,
 		// Never mount over real data: a non-empty directory that is not already a mount.
-		"if ! mountpoint -q " + kubeletStdPath + " && find " + kubeletStdPath + " -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then " +
-			"echo '" + kubeletStdPath + " is a non-empty directory and not a mount; refusing to mount over it' >&2; exit 1; fi",
-		"echo " + util.Base64Encode(kubeletMountUnit(dataDir)) + " | base64 -d > " + kubeletMountUnitPath,
+		"if ! mountpoint -q " + bp.std + " && find " + bp.std + " -mindepth 1 -maxdepth 1 | grep -q .; then " +
+			"echo '" + bp.std + " is a non-empty directory and not a mount; refusing to mount over it' >&2; exit 1; fi",
+		"mkdir -p " + bp.systemd,
+		"echo " + util.Base64Encode(kubeletMountUnitAt(bp, dataDir)) + " | base64 -d > " + unitPath,
 		"mkdir -p " + dropDir,
 		"echo " + util.Base64Encode(kubeletMountDropIn) + " | base64 -d > " + dropIn,
 		"systemctl daemon-reload",
-		"systemctl enable --now " + kubeletMountUnitName,
+		"systemctl enable --now " + bp.mountUnit,
 	}, " && ")
 }
 

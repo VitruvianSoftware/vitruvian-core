@@ -6,6 +6,7 @@ go_library(
         "lima.go",
         "native.go",
         "native_kubelet.go",
+        "native_kubelet_check.go",
         "native_kubelet_edit.go",
         "native_kubelet_relocate.go",
         "provider.go",

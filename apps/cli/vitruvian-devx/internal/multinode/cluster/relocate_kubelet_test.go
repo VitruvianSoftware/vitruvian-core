@@ -43,30 +43,23 @@ func relocateCfg() *config.Config {
 
 func TestPickControlNode_PrefersInitServerThatIsNotTheTarget(t *testing.T) {
 	cfg := relocateCfg()
-	ctl, others := pickControlNode(cfg, "nuc9i5")
-	if ctl.Host != "nuc9" {
+	if ctl := pickControlNode(cfg, "nuc9i5"); ctl.Host != "nuc9" {
 		t.Errorf("control = %s, want the init server nuc9", ctl.Host)
 	}
-	if strings.Join(others, ",") != "nuc9,nuc10" {
-		t.Errorf("other servers = %v", others)
-	}
 	// Targeting the init server itself must not run kubectl on it.
-	ctl, others = pickControlNode(cfg, "nuc9")
-	if ctl.Host != "nuc10" || strings.Join(others, ",") != "nuc10,nuc9i5" {
-		t.Errorf("target nuc9: control=%s others=%v", ctl.Host, others)
+	if ctl := pickControlNode(cfg, "nuc9"); ctl.Host != "nuc10" {
+		t.Errorf("target nuc9: control=%s", ctl.Host)
 	}
-	// An agent target: kubectl on the init server, and no server is "other than" it.
-	ctl, _ = pickControlNode(cfg, "nuc-w")
-	if ctl.Host != "nuc9" {
+	// An agent target: kubectl on the init server.
+	if ctl := pickControlNode(cfg, "nuc-w"); ctl.Host != "nuc9" {
 		t.Errorf("agent target: control=%s", ctl.Host)
 	}
 }
 
 func TestPickControlNode_SingleServerClusterUsesTheTarget(t *testing.T) {
 	cfg := &config.Config{Nodes: []config.NodeConfig{{Host: "only", Role: "server", Kind: "native", DataDir: "/d"}}}
-	ctl, others := pickControlNode(cfg, "only")
-	if ctl.Host != "only" || len(others) != 0 {
-		t.Errorf("control=%s others=%v", ctl.Host, others)
+	if ctl := pickControlNode(cfg, "only"); ctl.Host != "only" {
+		t.Errorf("control=%s", ctl.Host)
 	}
 }
 

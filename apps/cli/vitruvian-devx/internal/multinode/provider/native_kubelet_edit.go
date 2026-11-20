@@ -21,9 +21,10 @@
 package provider
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"path"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -82,11 +83,19 @@ func rootDirValuesInConfig(src string) ([]string, error) {
 	return vals, nil
 }
 
+// errUnsafeEdit means the config has a shape the line-based edit will not touch
+// (a multi-line flow list, for instance). The caller refuses and the operator edits
+// the file by hand.
+var errUnsafeEdit = errors.New("cannot edit this k3s config safely")
+
 // removeRootDirFromConfig removes the root-dir entry from the kubelet-arg list of a
-// k3s config.yaml, leaving every other key and every other kubelet-arg entry
-// alone. A kubelet-arg list that becomes empty is removed entirely (an empty list
-// is noise, and k3s treats it the same as absent). Reports whether anything
-// changed; when nothing did, the input is returned verbatim.
+// k3s config.yaml, leaving every other byte alone: it deletes only the line(s) that
+// hold the entry (and the key line when that empties the list), so comments, the
+// header, ordering and quoting all survive. A single-line flow list that keeps
+// other entries is rewritten in place. The result is checked: it must decode to
+// exactly the original with the root-dir entry removed, or the edit is refused.
+// Reports whether anything changed; when nothing did, the input is returned
+// verbatim.
 func removeRootDirFromConfig(src string) (string, bool, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
@@ -95,55 +104,169 @@ func removeRootDirFromConfig(src string) (string, bool, error) {
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return src, false, nil
 	}
+	lines := strings.Split(src, "\n")
+	drop := map[int]bool{}      // 0-based line indexes to delete
+	replace := map[int]string{} // 0-based line index -> new text
 	root := doc.Content[0]
-	changed := false
-	kept := make([]*yaml.Node, 0, len(root.Content))
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		k, v := root.Content[i], root.Content[i+1]
 		if !kubeletArgKeys[k.Value] {
-			kept = append(kept, k, v)
 			continue
 		}
 		switch v.Kind {
 		case yaml.ScalarNode:
 			if _, ok := isRootDirArg(v.Value); ok {
-				changed = true
-				continue // the whole key held only root-dir
+				if v.Line != k.Line {
+					return "", false, fmt.Errorf("%w: %s value is on a different line from its key", errUnsafeEdit, k.Value)
+				}
+				drop[k.Line-1] = true
 			}
 		case yaml.SequenceNode:
-			items := make([]*yaml.Node, 0, len(v.Content))
+			var keep []string
+			var rootItems []*yaml.Node
 			for _, item := range v.Content {
 				if _, ok := isRootDirArg(item.Value); ok {
-					changed = true
-					continue
+					rootItems = append(rootItems, item)
+				} else {
+					keep = append(keep, item.Value)
 				}
-				items = append(items, item)
 			}
-			if len(items) != len(v.Content) {
-				if len(items) == 0 {
-					continue // emptied: drop the key
+			if len(rootItems) == 0 {
+				continue
+			}
+			if v.Style&yaml.FlowStyle != 0 {
+				idx := strings.Index(lines[k.Line-1], "[")
+				for _, item := range v.Content {
+					if item.Line != k.Line {
+						return "", false, fmt.Errorf("%w: %s is a multi-line flow list", errUnsafeEdit, k.Value)
+					}
 				}
-				v.Content = items
+				if idx < 0 {
+					return "", false, fmt.Errorf("%w: cannot find the start of the %s list", errUnsafeEdit, k.Value)
+				}
+				if len(keep) == 0 {
+					drop[k.Line-1] = true
+				} else {
+					quoted := make([]string, len(keep))
+					for n, kv := range keep {
+						b, _ := yaml.Marshal(kv)
+						quoted[n] = strings.TrimSpace(string(b))
+					}
+					replace[k.Line-1] = lines[k.Line-1][:idx] + "[" + strings.Join(quoted, ", ") + "]"
+				}
+				continue
+			}
+			for _, item := range rootItems {
+				drop[item.Line-1] = true
+			}
+			if len(keep) == 0 {
+				drop[k.Line-1] = true
 			}
 		}
-		kept = append(kept, k, v)
 	}
-	if !changed {
+	if len(drop) == 0 && len(replace) == 0 {
 		return src, false, nil
 	}
-	root.Content = kept
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(&doc); err != nil {
-		return "", false, fmt.Errorf("rendering k3s config.yaml: %w", err)
+	out := make([]string, 0, len(lines))
+	for n, l := range lines {
+		if drop[n] {
+			continue
+		}
+		if r, ok := replace[n]; ok {
+			l = r
+		}
+		out = append(out, l)
 	}
-	_ = enc.Close()
-	out := buf.String()
-	if len(kept) == 0 {
-		out = "" // nothing left; an empty config.yaml is valid
+	res := strings.Join(out, "\n")
+	if err := verifyRootDirRemoval(src, res); err != nil {
+		return "", false, err
 	}
-	return out, true, nil
+	return res, true, nil
+}
+
+// verifyRootDirRemoval checks that after decodes to exactly before minus its
+// root-dir kubelet-arg entries.
+func verifyRootDirRemoval(before, after string) error {
+	var b, a map[string]any
+	if err := yaml.Unmarshal([]byte(before), &b); err != nil {
+		return fmt.Errorf("parsing k3s config.yaml: %w", err)
+	}
+	if err := yaml.Unmarshal([]byte(after), &a); err != nil {
+		return fmt.Errorf("%w: the edited file does not parse: %v", errUnsafeEdit, err)
+	}
+	for key := range kubeletArgKeys {
+		switch v := b[key].(type) {
+		case string:
+			if _, ok := isRootDirArg(v); ok {
+				delete(b, key)
+			}
+		case []any:
+			var keep []any
+			for _, item := range v {
+				if str, ok := item.(string); ok {
+					if _, isRoot := isRootDirArg(str); isRoot {
+						continue
+					}
+				}
+				keep = append(keep, item)
+			}
+			if len(keep) == 0 {
+				delete(b, key)
+			} else {
+				b[key] = keep
+			}
+		}
+	}
+	if len(b) == 0 && len(a) == 0 {
+		return nil
+	}
+	if !reflect.DeepEqual(b, a) {
+		return fmt.Errorf("%w: the edit would change more than the root-dir entry", errUnsafeEdit)
+	}
+	return nil
+}
+
+// lineDiff renders the lines that differ between a and b as "- old" / "+ new"
+// lines, in order, found with a longest-common-subsequence match.
+func lineDiff(a, b string) string {
+	x, y := strings.Split(strings.TrimRight(a, "\n"), "\n"), strings.Split(strings.TrimRight(b, "\n"), "\n")
+	lcs := make([][]int, len(x)+1)
+	for i := range lcs {
+		lcs[i] = make([]int, len(y)+1)
+	}
+	for i := len(x) - 1; i >= 0; i-- {
+		for j := len(y) - 1; j >= 0; j-- {
+			if x[i] == y[j] {
+				lcs[i][j] = lcs[i+1][j+1] + 1
+			} else if lcs[i+1][j] >= lcs[i][j+1] {
+				lcs[i][j] = lcs[i+1][j]
+			} else {
+				lcs[i][j] = lcs[i][j+1]
+			}
+		}
+	}
+	var out []string
+	i, j := 0, 0
+	for i < len(x) && j < len(y) {
+		switch {
+		case x[i] == y[j]:
+			i++
+			j++
+		case lcs[i+1][j] >= lcs[i][j+1]:
+			out = append(out, "- "+x[i])
+			i++
+		default:
+			out = append(out, "+ "+y[j])
+			j++
+		}
+	}
+	for ; i < len(x); i++ {
+		out = append(out, "- "+x[i])
+	}
+	for ; j < len(y); j++ {
+		out = append(out, "+ "+y[j])
+	}
+	return strings.Join(out, "\n")
 }
 
 var (

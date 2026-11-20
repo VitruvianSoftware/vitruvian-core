@@ -42,25 +42,21 @@ type RelocateKubeletOptions struct {
 // pickControlNode chooses the node whose kubectl drives the switch: the init
 // server if it is not the target, else any other server, else the target itself
 // (a single-server cluster, whose API is briefly unavailable while it restarts).
-// It also returns the other control-plane hosts, which must stay Ready.
-func pickControlNode(cfg *config.Config, target string) (control config.NodeConfig, others []string) {
+// Which nodes make up the control plane is not taken from here: the command asks
+// the cluster, by role label, right before it stops the node.
+func pickControlNode(cfg *config.Config, target string) config.NodeConfig {
 	servers := cfg.ServerNodes()
 	for _, s := range servers {
 		if s.Host != target {
-			others = append(others, s.Host)
-		}
-	}
-	for _, s := range servers {
-		if s.Host != target {
-			return s, others
+			return s
 		}
 	}
 	for _, n := range cfg.Nodes {
 		if n.Host == target {
-			return n, others
+			return n
 		}
 	}
-	return config.NodeConfig{}, others
+	return config.NodeConfig{}
 }
 
 // RelocateKubelet switches an existing native node with a custom dataDir from a
@@ -82,7 +78,7 @@ func RelocateKubelet(ctx context.Context, cfg *config.Config, hostName string, o
 	if target.GetKind() != "native" {
 		return fmt.Errorf("[%s] %w (kind is %q); Lima nodes keep their kubelet inside the VM", hostName, provider.ErrNotNative, target.GetKind())
 	}
-	control, others := pickControlNode(cfg, hostName)
+	control := pickControlNode(cfg, hostName)
 	if control.Host == "" {
 		return fmt.Errorf("[%s] no control-plane node in the config to run kubectl on", hostName)
 	}
@@ -99,7 +95,6 @@ func RelocateKubelet(ctx context.Context, cfg *config.Config, hostName string, o
 		Apply:        opts.Apply,
 		Control:      provider.ControlRunner(control),
 		ControlHost:  control.Host,
-		OtherServers: others,
 		DrainTimeout: opts.DrainTimeout,
 		ReadyTimeout: opts.ReadyTimeout,
 		Out:          opts.Out,
