@@ -762,23 +762,31 @@ fn stdout_columns() -> Option<i64> {
     None
 }
 
-/// `shutil.get_terminal_size().columns - 2`, argparse's width.
-pub fn help_width() -> i64 {
-    let env_int = |name: &str| {
-        std::env::var(name)
-            .ok()
-            .and_then(|v| py_int(&v))
-            .unwrap_or(0)
-    };
-    let mut columns = env_int("COLUMNS");
-    let lines = env_int("LINES");
-    if columns <= 0 || lines <= 0 {
-        let size = stdout_columns().unwrap_or(80);
-        if columns <= 0 {
-            columns = if size == 0 { 80 } else { size };
-        }
+/// Pure `shutil.get_terminal_size().columns - 2` rule given an optional
+/// `COLUMNS` env string and an optional detected terminal width.
+fn help_width_from(columns_env: Option<&str>, terminal_columns: Option<i64>) -> i64 {
+    let mut columns = columns_env.and_then(py_int).unwrap_or(0);
+    if columns <= 0 {
+        let size = terminal_columns.unwrap_or(80);
+        columns = if size == 0 { 80 } else { size };
     }
     columns - 2
+}
+
+/// `shutil.get_terminal_size().columns - 2`, argparse's width.
+pub fn help_width() -> i64 {
+    let columns_env = std::env::var("COLUMNS").ok();
+    let columns = columns_env.as_deref().and_then(py_int).unwrap_or(0);
+    let lines = std::env::var("LINES")
+        .ok()
+        .and_then(|v| py_int(&v))
+        .unwrap_or(0);
+    let terminal = if columns <= 0 || lines <= 0 {
+        stdout_columns()
+    } else {
+        None
+    };
+    help_width_from(columns_env.as_deref(), terminal)
 }
 
 fn is_letter(c: char) -> bool {
@@ -1044,5 +1052,36 @@ mod tests {
         assert!(p.format_help_with_width(18).starts_with(
             "usage: tool.py\n       [-h]\n       [--delete-old ID]\n       [--flag]\n"
         ));
+    }
+
+    #[test]
+    fn help_width_matches_python_columns_edge_cases() {
+        assert_eq!(help_width_from(Some("+80"), Some(80)), 78);
+        assert_eq!(help_width_from(Some("+80"), Some(120)), 78);
+        assert_eq!(help_width_from(Some("1_0"), Some(80)), 8);
+        assert_eq!(help_width_from(Some("1_0"), Some(120)), 8);
+        assert_eq!(help_width_from(Some("2"), Some(80)), 0);
+        assert_eq!(help_width_from(Some("2"), Some(120)), 0);
+        assert_eq!(help_width_from(Some("1"), Some(80)), -1);
+        assert_eq!(help_width_from(Some("1"), Some(120)), -1);
+        assert_eq!(help_width_from(Some("0"), Some(80)), 78);
+        assert_eq!(help_width_from(Some("0"), Some(120)), 118);
+        assert_eq!(help_width_from(Some("0"), None), 78);
+        assert_eq!(help_width_from(Some("0"), Some(0)), 78);
+        assert_eq!(help_width_from(Some("abc"), Some(80)), 78);
+        assert_eq!(help_width_from(Some("abc"), Some(120)), 118);
+        assert_eq!(help_width_from(Some("abc"), None), 78);
+        assert_eq!(help_width_from(None, Some(80)), 78);
+        assert_eq!(help_width_from(None, Some(100)), 98);
+        assert_eq!(help_width_from(Some("-5"), Some(80)), 78);
+    }
+
+    #[test]
+    fn narrow_and_negative_widths_do_not_panic() {
+        let p = parser();
+        for w in [78, 8, 0, -1] {
+            assert!(p.format_help_with_width(w).contains("usage: tool.py"));
+            assert!(p.format_usage_with_width(w).contains("usage: tool.py"));
+        }
     }
 }
