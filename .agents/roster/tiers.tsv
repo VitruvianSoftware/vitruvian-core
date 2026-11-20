@@ -4,9 +4,11 @@
 # - lead:  the lead and beacon. Claude Opus in Claude Code and OpenCode; Antigravity has
 #          no Opus, so there it is Antigravity's `pro` model.
 # - build: specialists that write and test changes (apps, infrastructure, build, cluster).
-#          Antigravity's Orchestrator (Carbon): Carbon plans, Gemini 4 Hydrogen edits and
-#          tests, and hard parts go back to Carbon. Each call has a fixed planning cost
-#          (~12k output tokens for a one-word answer), so short tasks belong elsewhere.
+#          Antigravity's Orchestrator (Neon): Gemini 4 Neon plans and reviews, Gemini 4
+#          Hydrogen edits and tests, and hard parts go back to Neon. Google puts Neon
+#          between Carbon and Hydrogen, at about 32% less per task than Carbon.
+#          Each call has a fixed planning cost (~12k output tokens for a one-word
+#          answer), so short tasks belong elsewhere.
 # - deep:  specialists whose work is judgement (QA, security review, acceptance). Gemini 4 Carbon.
 # - light: specialists whose work is lighter (docs, release tracking). Gemini 4 Hydrogen.
 #
@@ -31,7 +33,7 @@ lead	opencode	anthropic/claude-opus-5-5	high
 build	claude-code	haiku	medium
 build	antigravity	pro	-
 build	opencode	anthropic/claude-haiku-5-5	medium
-build	gemini	gemini-pro-orchestrator	-
+build	gemini	gemini-pro-orchestrator-neon	-
 deep	claude-code	haiku	medium
 deep	antigravity	pro	-
 deep	opencode	anthropic/claude-haiku-5-5	medium

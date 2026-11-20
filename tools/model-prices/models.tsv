@@ -13,9 +13,14 @@
 #   `haiku-5-5` (`anthropic/claude-opus-5` and `anthropic/claude-haiku-4.5`).
 # - `gemini-4-(carbon|argon)` maps to `google/gemini-4-carbon` (`google/gemini-4-argon`
 #   is listed separately on OpenRouter at identical rates).
-# - `gemini-pro-orchestrator` is Antigravity's Orchestrator: Carbon plans, Hydrogen
-#   edits and tests. It has no OpenRouter listing, so it is priced at Carbon's rates,
-#   an upper bound (the Hydrogen share costs less).
+# - `gemini-4-neon|gemini-pro-orchestrator-neon` covers Gemini 4 Neon and the
+#   Orchestrator (Neon), where Neon plans and Hydrogen edits. The orchestrator is
+#   priced at Neon's rates, an upper bound (the Hydrogen share costs less). OpenRouter
+#   lists `google/gemini-4-neon` at 3/15 (checked 2026-11-19).
+#   It must sit above the generic orchestrator row, which would otherwise match it.
+# - `gemini-pro-orchestrator` (Carbon, and `-argon`) is Antigravity's Orchestrator:
+#   Carbon or Argon plans, Hydrogen edits and tests. It has no OpenRouter listing, so it
+#   is priced at Carbon's rates (Argon's are identical), an upper bound.
 #
 # Columns (TAB-separated):
 # match	openrouter_id	fallback_input	fallback_output	fallback_cache_read	fallback_cache_write
@@ -26,6 +31,7 @@ opus	anthropic/claude-opus-5	5	25	0.5	6.25
 sonnet	anthropic/claude-sonnet-5.5	2	10	0.2	2.5
 haiku-5-5	anthropic/claude-haiku-5.5	0.1	0.5	0.01	0.125
 haiku	anthropic/claude-haiku-4.5	1	5	0.1	1.25
+gemini-4-neon|gemini-pro-orchestrator-neon	google/gemini-4-neon	3	15	0.3	0
 gemini-pro-orchestrator	-	2	10	0.2	0
 gemini-4-hydrogen	google/gemini-4-hydrogen	1.5	7.5	0.075	0
 gemini-4-(carbon|argon)	google/gemini-4-carbon	2	10	0.2	0
