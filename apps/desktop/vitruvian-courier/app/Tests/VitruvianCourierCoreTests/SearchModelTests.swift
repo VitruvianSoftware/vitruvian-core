@@ -249,6 +249,20 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.search.sections.map(\.kind), [.chats, .inGroups, .messages])
     }
 
+    func testScopingToSingleChatClearsNetworkFilter() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1, name: "Eddie")])
+        try await h.showHome()
+        h.search.filters.networks = ["signal"]
+        XCTAssertFalse(h.search.isScoped)
+        XCTAssertFalse(h.search.isScopedToSingleChat)
+
+        h.search.show(in: "!a")
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        XCTAssertTrue(h.search.isScoped)
+        XCTAssertTrue(h.search.isScopedToSingleChat)
+        XCTAssertTrue(h.search.filters.networks.isEmpty, "hidden Accounts filter must not stick inside a chat")
+    }
+
     // MARK: - Keys
 
     func testSelectionMovesAcrossSectionsAndTabJumps() async throws {
@@ -279,7 +293,8 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.search.selection, "chat:!c1")
     }
 
-    func testEscapeCascade() async throws {
+    /// C1: inside a chat, Escape closes the panel in one press, whatever is typed or filtered.
+    func testEscapeClosesInChatSearchAtOnce() async throws {
         let h = try await start(rooms: [room("!a", ts: 1)])
         h.search.show(in: "!a")
         try await waitUntil { h.search.scope != nil }
@@ -288,23 +303,56 @@ final class SearchModelTests: XCTestCase {
         h.search.filters.partial = true
         try await waitUntil { h.search.phase == .results }
 
+        XCTAssertTrue(h.search.escape(), "one Escape closes it")
+        XCTAssertEqual(h.search.phase, .closed)
+        XCTAssertNil(h.search.scope)
+        XCTAssertNil(h.search.scopeRoomID)
+        XCTAssertEqual(h.search.text, "")
+        XCTAssertEqual(h.search.sections, [])
+    }
+
+    /// Searching every chat keeps its step-by-step Escape: filters, then text, then the panel.
+    func testEscapeCascadeWhenSearchingEveryChat() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        try await h.showHome()
+        try await h.type("pic")
+        h.search.filters.sender = "me"
+        try await waitUntil { h.search.phase == .results }
+
         XCTAssertFalse(h.search.escape())
         XCTAssertTrue(h.search.filters.isEmpty, "first the filters")
-        XCTAssertTrue(h.search.filters.partial, "Show partial matches isn't a filter")
         XCTAssertEqual(h.search.text, "pic")
-        XCTAssertNotNil(h.search.scope)
 
         XCTAssertFalse(h.search.escape())
         XCTAssertEqual(h.search.text, "", "then the text")
-        XCTAssertNotNil(h.search.scope)
-
-        XCTAssertFalse(h.search.escape())
-        XCTAssertNil(h.search.scope, "then the chat searched in")
-        XCTAssertNotEqual(h.search.phase, .closed)
 
         XCTAssertTrue(h.search.escape(), "then the panel closes")
         XCTAssertEqual(h.search.phase, .closed)
         XCTAssertEqual(h.search.sections, [])
+    }
+
+    func testSwitchingChatsClosesInChatSearch() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1, name: "Eddie"), room("!b", ts: 2, name: "Family")])
+        h.app.selectedRoomID = "!a"
+        h.search.show(in: "!a")
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        XCTAssertEqual(h.search.phase, .home)
+
+        h.app.selectedRoomID = "!b"
+        XCTAssertEqual(h.search.phase, .closed, "switching chats closes in-chat search")
+        XCTAssertNil(h.search.scope)
+        XCTAssertNil(h.search.scopeRoomID)
+
+        h.search.show(in: "!b")
+        try await waitUntil { h.search.scope?.roomID == "!b" }
+        h.app.selectedRoomID = nil
+        XCTAssertEqual(h.search.phase, .closed, "closing the open chat closes in-chat search")
+
+        // Global search (unscoped) stays open when switching chats.
+        try await h.showHome()
+        XCTAssertNotEqual(h.search.phase, .closed)
+        h.app.selectedRoomID = "!a"
+        XCTAssertNotEqual(h.search.phase, .closed)
     }
 
     func testActivatingAMessageJumpsAndRemembersTheSearch() async throws {

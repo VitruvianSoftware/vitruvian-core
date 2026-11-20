@@ -170,10 +170,17 @@ public final class SearchModel: ObservableObject {
     }
     /// A change searches at once.
     @Published public var filters = SearchFilterSet() {
-        didSet { if filters != oldValue { queryChanged(debounced: false) } }
+        didSet { if !suppressQueryChange, filters != oldValue { queryChanged(debounced: false) } }
     }
     /// ⌘F: the chat searched in. nil searches every chat.
     @Published public private(set) var scope: InboxRow?
+    /// True while the panel is scoped to a chat (⌘F).
+    public var isScoped: Bool { scopeRoomID != nil }
+    /// True while the panel is scoped to a single non-merged chat (one room, one network).
+    public var isScopedToSingleChat: Bool {
+        guard let id = scopeRoomID else { return false }
+        return appModel.mergedChats[id] == nil && scopeRoomIDs(for: id).count <= 1
+    }
     @Published public private(set) var phase: Phase = .closed
     /// In display order; a section with nothing in it is left out.
     @Published public private(set) var sections: [SearchSection] = []
@@ -202,7 +209,7 @@ public final class SearchModel: ObservableObject {
     private let open: @MainActor (SearchTarget) -> Void
     private let now: @Sendable () -> Date
     /// The chat searched in, at once; `scope` is its row, once read.
-    private var scopeRoomID: String?
+    @Published public private(set) var scopeRoomID: String?
     private var generation = 0
     /// The debounce and the request of the newest change.
     private var running: Task<Void, Never>?
@@ -220,6 +227,7 @@ public final class SearchModel: ObservableObject {
     private var cursors: [SearchSection.Kind: String] = [:]
     private var showingMore: Set<SearchSection.Kind> = []
     private var openedChats: AnyCancellable?
+    private var chatSwitchObserver: AnyCancellable?
     private weak var observedLifecycle: SystemLifecycleModel?
     private var lockObserver: AnyCancellable?
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -231,6 +239,8 @@ public final class SearchModel: ObservableObject {
     private var pendingOpen: Int?
     /// The next text change searches at once, without the pause (a recent search chosen).
     private var searchingNow = false
+    /// Prevents a duplicate search when `show(in:)` clears an inapplicable filter.
+    private var suppressQueryChange = false
     /// The answer shown ran at least one section (one of them isn't null). An answer that ran none found nothing
     /// because nothing was looked for, and doesn't say "Nothing matches these filters" (Ruling 34).
     private var engineRan = false
@@ -259,6 +269,13 @@ public final class SearchModel: ObservableObject {
                     recents.addChat(roomID)
                 }
             }
+        chatSwitchObserver = appModel.$selectedRoomID
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self, self.phase != .closed, self.scopeRoomID != nil else { return }
+                self.close()
+            }
     }
 
     public func dismissAllPresentations() {
@@ -283,6 +300,11 @@ public final class SearchModel: ObservableObject {
         if phase == .closed { phase = .home }
         scopeRoomID = roomID
         scope = nil
+        if roomID != nil, !filters.networks.isEmpty {
+            suppressQueryChange = true
+            filters.networks = []
+            suppressQueryChange = false
+        }
         if let roomID { readScope(roomID) }
         queryChanged(debounced: false)
     }
@@ -323,19 +345,18 @@ public final class SearchModel: ObservableObject {
         pendingOpen = nil
     }
 
-    /// Esc: clears the filters, then the text, then the chat searched in, then closes. True once closed.
+    /// Esc: inside a chat (⌘F) it closes the panel at once. Searching every chat clears the filters, then the text,
+    /// then closes. True once closed.
     public func escape() -> Bool {
-        if !filters.isEmpty {
-            clearFilters()
-            return false
-        }
-        if !text.isEmpty {
-            text = ""
-            return false
-        }
-        if scopeRoomID != nil {
-            removeScope()
-            return false
+        if scopeRoomID == nil {
+            if !filters.isEmpty {
+                clearFilters()
+                return false
+            }
+            if !text.isEmpty {
+                text = ""
+                return false
+            }
         }
         close()
         return true

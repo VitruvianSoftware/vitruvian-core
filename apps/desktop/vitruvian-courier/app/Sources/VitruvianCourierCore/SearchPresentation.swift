@@ -79,7 +79,17 @@ public enum SearchResultLocation {
     ///   - chatTitle: the chat's title, as the inbox row shows it. Left out of a one-to-one chat's line.
     ///   - networkName: the network's name for people ("Google Chat"). Left out when empty.
     ///   - isDirect: a one-to-one chat.
-    public static func subtitle(sender: String, chatTitle: String, networkName: String, isDirect: Bool) -> String {
+    ///   - scopedToSingleChat: true when search is scoped to one chat; omits the redundant chat and network names.
+    public static func subtitle(
+        sender: String,
+        chatTitle: String,
+        networkName: String,
+        isDirect: Bool,
+        scopedToSingleChat: Bool = false
+    ) -> String {
+        if scopedToSingleChat {
+            return sender
+        }
         let title = chatTitle.isEmpty ? String(localized: "Unnamed chat") : chatTitle
         switch (isDirect, networkName.isEmpty) {
         case (true, true):
@@ -94,6 +104,70 @@ public enum SearchResultLocation {
             return String(localized: "\(sender) in \(title) · \(networkName)",
                           comment: "Search result in a group: who sent it, the chat's title, then the network.")
         }
+    }
+}
+
+/// The display name for the in-chat search scope chip and empty-state prompt, matching the chat header.
+@MainActor
+public enum SearchScopePresentation {
+    /// Resolves the scope chat's display name: prefers `openChatDisplayTitle` when searching the open chat,
+    /// then `inbox.chatTitle(forRoomID:fetchedRow:)` (formatted with confirmed group members & stripped tags),
+    /// then `"Unnamed chat"` once `scopeRow` is loaded with an empty name. Returns `nil` when unscoped or while
+    /// an unknown room's row is still loading.
+    public static func displayName(
+        scopeRoomID: String?,
+        scopeRow: InboxRow?,
+        inbox: InboxModel,
+        openChatRoomID: String? = nil,
+        openChatDisplayTitle: String? = nil
+    ) -> String? {
+        guard let roomID = scopeRoomID ?? scopeRow?.id, !roomID.isEmpty else { return nil }
+        if let openChatRoomID, openChatRoomID == roomID,
+           let headerTitle = openChatDisplayTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !headerTitle.isEmpty {
+            return headerTitle
+        }
+        if let title = inbox.chatTitle(forRoomID: roomID, fetchedRow: scopeRow) {
+            return title
+        }
+        if let scopeRow {
+            let formatted = inbox.displayTitle(for: scopeRow).trimmingCharacters(in: .whitespacesAndNewlines)
+            return formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
+        }
+        return nil
+    }
+}
+
+/// Which optional controls the search panel and filter bar display for the current scope.
+public struct SearchPanelControls: Equatable, Sendable {
+    public let showsAccountsFilter: Bool
+    public let showsChatTypeFilter: Bool
+    public let showsCommandsChip: Bool
+
+    public init(showsAccountsFilter: Bool, showsChatTypeFilter: Bool, showsCommandsChip: Bool) {
+        self.showsAccountsFilter = showsAccountsFilter
+        self.showsChatTypeFilter = showsChatTypeFilter
+        self.showsCommandsChip = showsCommandsChip
+    }
+
+    public static func resolve(
+        isScopedToChat: Bool,
+        hasAccounts: Bool,
+        filters: SearchFilterSet,
+        hasCommandBarAction: Bool
+    ) -> SearchPanelControls {
+        if isScopedToChat {
+            return SearchPanelControls(
+                showsAccountsFilter: false,
+                showsChatTypeFilter: filters.chatType != nil,
+                showsCommandsChip: false
+            )
+        }
+        return SearchPanelControls(
+            showsAccountsFilter: hasAccounts || !filters.networks.isEmpty,
+            showsChatTypeFilter: true,
+            showsCommandsChip: hasCommandBarAction
+        )
     }
 }
 

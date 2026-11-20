@@ -144,6 +144,8 @@ public final class InboxModel: ObservableObject {
     static let batchSize = 500
     /// Maximum number of recently viewed chat room IDs retained for the Dock menu.
     public static let maxRecentlyViewed = 20
+    /// Synthetic selection tag for the inline "New Chat" placeholder row at the top of the inbox list.
+    public static let newChatRowID = "__vitruvian_courier_new_chat__"
 
     /// The chats shown, in the engine's order for `query`.
     @Published public private(set) var rows: [InboxRow] = [] {
@@ -523,6 +525,9 @@ public final class InboxModel: ObservableObject {
     /// Another chat opened: the row looked up for the last is let go, and one the list doesn't have is looked up,
     /// once, by id (as SearchModel reads the chat it searches in).
     private func selectionChanged(to roomID: String?) {
+        if startNewChatDraft != nil {
+            cancelStartNewChat()
+        }
         if let roomID {
             recordRecentlyViewed(roomID)
         }
@@ -549,6 +554,9 @@ public final class InboxModel: ObservableObject {
 
     public func select(_ roomID: String?) {
         guard !isLocked else { return }
+        if startNewChatDraft != nil {
+            cancelStartNewChat()
+        }
         var resolved = roomID
         if let roomID, !query.space.hasPrefix("account:") {
             if let merged = mergedChats[roomID] {
@@ -981,11 +989,18 @@ public final class InboxModel: ObservableObject {
         cursor = nil
     }
 
-    /// Escape: it ends selecting first. False when there was nothing to end, so the key can do something else.
+    /// Escape: ends selecting first, then cancels an inline New Chat. False when there was nothing to end, so the
+    /// key can do something else.
     public func escape() -> Bool {
-        guard isSelecting else { return false }
-        endSelecting()
-        return true
+        if isSelecting {
+            endSelecting()
+            return true
+        }
+        if startNewChatDraft != nil {
+            cancelStartNewChat()
+            return true
+        }
+        return false
     }
 
     // MARK: - Reading and muting
@@ -1741,18 +1756,31 @@ public final class InboxModel: ObservableObject {
 
     // MARK: - Start New Chat, New Group, Blasts, and Merged Chats (Task 11)
 
-    /// Opens the Start New Chat sheet (`⌘N` when `multiSelect == false`, `⌘⇧N` when `multiSelect == true`).
+    /// Opens Start New Chat inline in the chat pane (`⌘N` when `multiSelect == false`, `⌘⇧N` when `multiSelect == true`).
     public func openStartNewChat(multiSelect: Bool = false) {
         guard !isLocked else { return }
+        if isSelecting {
+            endSelecting()
+        }
         let draft = StartNewChatDraft(
             accounts: accounts,
             candidates: [],
             startsInMultiSelect: multiSelect,
-            isSearching: true
+            isSearching: true,
+            mergedChats: mergedChats
         )
         startNewChatDraft = draft
         Task { [weak self] in
             await self?.refreshStartNewChatCandidates()
+        }
+    }
+
+    /// Cancels New Chat and returns the chat pane to the previously open chat (if any).
+    public func cancelStartNewChat() {
+        startNewChatSearchTask?.cancel()
+        startNewChatSearchTask = nil
+        if startNewChatDraft != nil {
+            startNewChatDraft = nil
         }
     }
 
@@ -2210,6 +2238,10 @@ public struct StartNewChatDraft: Equatable, Sendable {
     /// Whether the engine failed to answer the current query's contact search. Not the same as an empty answer: the
     /// sheet offers a retry instead of saying nothing matched.
     public var searchFailed: Bool
+    /// Merged chat definitions known when grouping multi-network contacts into one person row.
+    public var mergedChats: [String: MergedChat]
+    /// Explicit linked-contact identifiers keyed by `ContactCandidate.id`.
+    public var linkedContactIDs: [String: String]
 
     public init(
         accounts: [Account] = [],
@@ -2226,7 +2258,9 @@ public struct StartNewChatDraft: Equatable, Sendable {
         errorMessage: String? = nil,
         isSubmitting: Bool = false,
         isSearching: Bool = false,
-        searchFailed: Bool = false
+        searchFailed: Bool = false,
+        mergedChats: [String: MergedChat] = [:],
+        linkedContactIDs: [String: String] = [:]
     ) {
         self.accounts = accounts
         self.candidates = candidates
@@ -2243,6 +2277,8 @@ public struct StartNewChatDraft: Equatable, Sendable {
         self.isSubmitting = isSubmitting
         self.isSearching = isSearching
         self.searchFailed = searchFailed
+        self.mergedChats = mergedChats
+        self.linkedContactIDs = linkedContactIDs
         if selectedRecipients.count >= 2 {
             recomputeMode()
         }

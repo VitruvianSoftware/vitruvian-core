@@ -1154,7 +1154,12 @@ public final class HotkeyDispatcher: ObservableObject {
         inbox.$startNewChatDraft
             .dropFirst()
             .sink { [weak self] draft in
-                if draft != nil { self?.closeImageViewer() }
+                if draft != nil {
+                    self?.closeImageViewer()
+                    if self?.search.phase != .closed {
+                        self?.search.close()
+                    }
+                }
             }
             .store(in: &overlayDismissals)
         search.$phase
