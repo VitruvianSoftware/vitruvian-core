@@ -361,6 +361,7 @@ public final class ComposerModel: ObservableObject {
     @Published public var isEmojiPickerPresented: Bool = false
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
+    @Published public var isToolRowOpen: Bool = false
     @Published public var gifSearchQuery: String = ""
     /// A GIF staged in the composer when `preferences.autoSendGIFs == false`.
     @Published public var pendingGIF: StickerItemWire?
@@ -555,6 +556,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Dismisses every active popover, picker, dialog, and recording state owned by this composer.
     public func dismissAllPresentations() {
+        isToolRowOpen = false
         isEmojiPickerPresented = false
         isStickerPickerPresented = false
         isGIFPickerPresented = false
@@ -751,6 +753,10 @@ public final class ComposerModel: ObservableObject {
             isGIFPickerPresented = false
             return true
         }
+        if isToolRowOpen {
+            isToolRowOpen = false
+            return true
+        }
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
             return true
@@ -812,6 +818,7 @@ public final class ComposerModel: ObservableObject {
         isStickerPickerPresented = false
         isGIFPickerPresented = false
         isEmojiPickerPresented = false
+        isToolRowOpen = false
         dismissEmojiAutocomplete()
         stopTyping() // leaving the chat
         if isEditing { leaveEditing() }
@@ -1551,6 +1558,7 @@ public final class ComposerModel: ObservableObject {
         isStickerPickerPresented = false
         isGIFPickerPresented = false
         isEmojiPickerPresented = false
+        isToolRowOpen = false
         dismissEmojiAutocomplete()
         stash = currentContents
         stashedMode = mode
@@ -1735,6 +1743,7 @@ public final class ComposerModel: ObservableObject {
                 ? ""
                 : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
             _ = talkToType.cancel()
+            isToolRowOpen = false
             stopTyping()
             setContents("", [])
             notices = []
@@ -1743,6 +1752,7 @@ public final class ComposerModel: ObservableObject {
         }
         if attachments.isEmpty, pendingGIF == nil, trimmedText == "/voice", roomID != nil {
             _ = talkToType.cancel()
+            isToolRowOpen = false
             stopTyping()
             setContents("", [])
             notices = []
@@ -1756,6 +1766,7 @@ public final class ComposerModel: ObservableObject {
             let reply = replyTarget
             let rawText = trimmedText
             _ = talkToType.cancel()
+            isToolRowOpen = false
             stopTyping()
             setContents("", [])
             replyTarget = nil
@@ -1802,6 +1813,7 @@ public final class ComposerModel: ObservableObject {
         let hold = holdMillis
         let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         _ = talkToType.cancel()
+        isToolRowOpen = false
         stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
@@ -1825,6 +1837,7 @@ public final class ComposerModel: ObservableObject {
     /// Starts recording a voice note in the open chat (`⌘⇧A`, the microphone button, or `/voice`).
     public func startVoiceRecording() async {
         guard !isLocked, roomID != nil else { return }
+        isToolRowOpen = false
         if talkToType.cancel() {
             await talkToType.waitForIdle()
         }
@@ -1838,6 +1851,7 @@ public final class ComposerModel: ObservableObject {
         let reply = replyTarget
         replyTarget = nil
         notices = []
+        isToolRowOpen = false
         _ = talkToType.cancel()
         stopTyping()
         onSubmit()
@@ -1935,6 +1949,7 @@ public final class ComposerModel: ObservableObject {
     @discardableResult
     public func openStickerPicker() -> Bool {
         guard !isLocked, canSendSticker else { return false }
+        isToolRowOpen = false
         isGIFPickerPresented = false
         isEmojiPickerPresented = false
         dismissEmojiAutocomplete()
@@ -1946,6 +1961,7 @@ public final class ComposerModel: ObservableObject {
     @discardableResult
     public func openGIFPicker(query: String? = nil) -> Bool {
         guard !isLocked, canSendGIF else { return false }
+        isToolRowOpen = false
         isStickerPickerPresented = false
         isEmojiPickerPresented = false
         dismissEmojiAutocomplete()
@@ -2027,6 +2043,7 @@ public final class ComposerModel: ObservableObject {
         let hold = holdMillis
         replyTarget = nil
         notices = []
+        isToolRowOpen = false
         stopTyping()
         onSubmit()
 
@@ -2259,6 +2276,7 @@ public final class ComposerModel: ObservableObject {
         let hold = holdMillis
         replyTarget = nil
         notices = []
+        isToolRowOpen = false
         stopTyping()
         onSubmit()
 
@@ -2344,6 +2362,7 @@ public final class ComposerModel: ObservableObject {
             return nil
         }
         notices = []
+        isToolRowOpen = false
         _ = talkToType.cancel()
         stopTyping()
         leaveEditing()
@@ -2639,6 +2658,7 @@ public final class ComposerModel: ObservableObject {
         let typed = text
         let reply = replyTarget
         let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
+        isToolRowOpen = false
         isScheduling = true
         defer { isScheduling = false }
         try await sender.schedule(roomID: room, rich: rich, replyTo: reply?.eventID, threadRoot: threadRoot,
@@ -2648,6 +2668,7 @@ public final class ComposerModel: ObservableObject {
             setContents("", [])
             if replyTarget == reply { replyTarget = nil }
             notices = []
+            isToolRowOpen = false
         } else if room != roomID, drafts[room]?.text == typed {
             drafts[room]?.text = ""
             drafts[room]?.entities = []

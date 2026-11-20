@@ -6,7 +6,7 @@ import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Picks files for the composer. ⌘O and the plus menu both come here.
+/// Picks files or photos for the composer. ⌘O and the inline `+` tool row both come here.
 @MainActor
 enum AttachmentPicker {
     static func run(into composer: ComposerModel) {
@@ -15,6 +15,18 @@ enum AttachmentPicker {
             panel.canChooseFiles = true
             panel.canChooseDirectories = false
             panel.message = String(localized: "Choose files to send")
+            panel.prompt = String(localized: "Attach")
+        }) else { return }
+        composer.attach(urls)
+    }
+
+    static func runPhotos(into composer: ComposerModel) {
+        guard let urls = AppLockGate.shared.runOpenPanel(action: .send, lifecycle: composer.lifecycle, configure: { panel in
+            panel.allowsMultipleSelection = true
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowedContentTypes = [.image]
+            panel.message = String(localized: "Choose photos to send")
             panel.prompt = String(localized: "Attach")
         }) else { return }
         composer.attach(urls)
@@ -104,9 +116,36 @@ struct ComposerView: View {
 
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @Environment(\.themeAccentColor) private var themeAccent
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isPlusHovering = false
+    @State private var isAIHovering = false
     /// "It's late — send this later?" is dismissed for the rest of the session, in every chat.
     @ObservedObject private var nudgeSession = SendLaterNudgeSession.shared
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private var toolRowAnimation: Animation {
+        .easeOut(duration: ComposerToolRowMotion.duration)
+    }
+
+    private var toolRowTransition: AnyTransition {
+        ComposerToolRowMotion.usesSlideAndRotation(reduceMotion: reduceMotionEnabled)
+            ? .move(edge: .leading).combined(with: .opacity)
+            : .opacity
+    }
+
+    private var effectiveNetwork: String {
+        (activeReplyNetwork?.isEmpty == false ? activeReplyNetwork : nil) ?? composer.network
+    }
+
+    private var toolRowItems: [ComposerToolItem] {
+        composer.toolRowItems(
+            offersSendLater: menus.sendLater != nil || composer.hotkeyDispatcher != nil,
+            offersPoll: menus.createPoll != nil
+        )
+    }
 
     /// Late at night, with a message that can be scheduled in the box, and Send Later on offer.
     private var showsSendLaterNudge: Bool {
@@ -152,18 +191,33 @@ struct ComposerView: View {
         CourierGlassGroup(spacing: 8) {
             HStack(alignment: .bottom, spacing: 8) {
                 ComposerIdleOnly(voiceRecorder: composer.voiceRecorder) {
-                    plusMenu(floating: true)
-                        .courierSurface(.composerButton)
+                    HStack(alignment: .bottom, spacing: 0) {
+                        plusToggleButton(floating: true)
+                            .courierSurface(.composerButton)
+                            .zIndex(1)
+                        HStack(spacing: 0) {
+                            if composer.isToolRowOpen {
+                                inlineToolRow(floating: true)
+                                    .padding(.horizontal, 6)
+                                    .frame(height: Self.floatingSingleLineHeight)
+                                    .courierSurface(.composerToolRow)
+                                    .padding(.leading, 8)
+                                    .transition(toolRowTransition)
+                            }
+                        }
+                        .clipped()
+                    }
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     extras
                     inputRow(floating: true)
                 }
-                .padding(.leading, isEditingMessage ? 12 : 8)
+                .padding(.leading, isEditingMessage ? 12 : 10)
                 .padding(.trailing, Self.floatingFieldPadding + 1)
                 .padding(.vertical, Self.floatingFieldPadding)
                 .courierSurface(.composerField(singleLineHeight: Self.floatingSingleLineHeight))
             }
+            .animation(toolRowAnimation, value: composer.isToolRowOpen)
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
@@ -222,9 +276,8 @@ struct ComposerView: View {
         }
     }
 
-    /// The text and its buttons, or while a voice note is recorded, its bar. Directly left of the text field sit
-    /// Attach, GIF (when the network supports GIFs), and Voice note; without glass the "+" sits beside them, and with
-    /// glass the "+" floats beside the box (`floating`).
+    /// The text and its buttons, or while a voice note is recorded, its bar. Without glass, "+" and its inline
+    /// tool row sit beside the field; with glass, "+" and the expanded tool row float beside the box (`floating`).
     private func inputRow(floating: Bool) -> some View {
         ComposerInputOrVoiceRow(
             composer: composer,
@@ -232,9 +285,19 @@ struct ComposerView: View {
             voiceRecorder: composer.voiceRecorder
         ) {
             HStack(alignment: .bottom, spacing: 6) {
-                HStack(alignment: .bottom, spacing: 2) {
-                    if !floating { plusMenu(floating: false) }
-                    leadingComposerButtons
+                if !floating {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        plusToggleButton(floating: false)
+                            .zIndex(1)
+                        HStack(spacing: 0) {
+                            if composer.isToolRowOpen {
+                                inlineToolRow(floating: false)
+                                    .padding(.leading, 4)
+                                    .transition(toolRowTransition)
+                            }
+                        }
+                        .clipped()
+                    }
                 }
                 textView(floating: floating)
 
@@ -248,30 +311,54 @@ struct ComposerView: View {
 
                 sendButton(floating: floating)
             }
+            .animation(toolRowAnimation, value: composer.isToolRowOpen)
         }
     }
 
-    /// The text: in its own rounded box without glass; with glass the glass shape around it is the box.
+    @ViewBuilder
+    private var networkFieldBadge: some View {
+        if !effectiveNetwork.isEmpty {
+            let displayName = NetworkNames.displayName(of: effectiveNetwork) ?? effectiveNetwork
+            NetworkBadge(
+                network: effectiveNetwork,
+                name: displayName,
+                size: 16,
+                showsTooltip: true,
+                ringed: false
+            )
+            .accessibilityIdentifier("composer.field.networkBadge")
+        }
+    }
+
+    /// The text with the network badge at its leading edge: in its own rounded box without glass; with glass the
+    /// glass shape around it is the box.
     @ViewBuilder
     private func textView(floating: Bool) -> some View {
-        let text = ComposerTextView(
-            composer: composer,
-            ui: ui,
-            height: $textHeight,
-            placeholder: placeholder,
-            focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
-            isSpellcheckEnabled: preferences.enableSpellcheck,
-            onEscape: { escapeFirst() || composer.escape() || escapeLast() },
-            onUpArrow: upArrow,
-            onPasteFiles: { urls in
-                composer.attach(urls)
-                return true
-            })
-            .frame(height: textHeight)
+        let field = HStack(alignment: .top, spacing: 0) {
+            if !effectiveNetwork.isEmpty {
+                networkFieldBadge
+                    .padding(.leading, floating ? 2 : 8)
+                    .frame(height: ComposerTextView.minimumHeight)
+            }
+            ComposerTextView(
+                composer: composer,
+                ui: ui,
+                height: $textHeight,
+                placeholder: placeholder,
+                focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+                isSpellcheckEnabled: preferences.enableSpellcheck,
+                onEscape: { escapeFirst() || composer.escape() || escapeLast() },
+                onUpArrow: upArrow,
+                onPasteFiles: { urls in
+                    composer.attach(urls)
+                    return true
+                })
+                .frame(height: textHeight)
+        }
         if floating {
-            text
+            field
         } else {
-            text
+            field
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
         }
@@ -440,144 +527,198 @@ struct ComposerView: View {
         preferences.showFormattingMenu && ui.selection.length > 0 && ui.selection.location != NSNotFound
     }
 
-    static let plusMenuMediaTitles = [
-        String(localized: "Add Emoji…"),
-        String(localized: "Add GIF…"),
-        String(localized: "Add Sticker…"),
-    ]
-
     private var isEditingMessage: Bool {
         if case .editing = composer.mode { return true }
         return false
     }
 
-    private var showsAttachButton: Bool {
-        !isEditingMessage && (composer.features.fileFeatures?.supported != false)
-    }
-
-    private var showsGIFButton: Bool {
-        !isEditingMessage && (composer.features.source == .none || composer.features.gif.supported)
-    }
-
-    private var showsVoiceNoteButton: Bool {
-        !isEditingMessage && (composer.features.voiceFeatures?.supported != false)
-    }
-
-    /// Three always-visible media/input actions directly left of the text box: Attach, GIF (when supported), Voice note.
-    @ViewBuilder
-    private var leadingComposerButtons: some View {
-        if showsAttachButton || showsGIFButton || showsVoiceNoteButton {
-            let locked = composer.isLocked || composer.hotkeyDispatcher?.lifecycle.isLocked == true
-            HStack(alignment: .bottom, spacing: 2) {
-                if showsAttachButton {
-                    ComposerLeadingButton(
-                        symbolName: "paperclip",
-                        tooltip: String(localized: "Add Attachment (⌘O)"),
-                        accessibilityTitle: String(localized: "Add Attachment"),
-                        accessibilityID: "composer.leading.attach",
-                        isDisabled: composer.roomID == nil || locked
-                    ) {
-                        AttachmentPicker.run(into: composer)
-                    }
-                }
-                if showsGIFButton {
-                    ComposerLeadingButton(
-                        symbolName: "photo.on.rectangle",
-                        tooltip: String(localized: "Send GIF (⌘⇧G)"),
-                        accessibilityTitle: String(localized: "Send GIF"),
-                        accessibilityID: "composer.leading.gif",
-                        isDisabled: !composer.canSendGIF || locked
-                    ) {
-                        if let dispatcher = composer.hotkeyDispatcher {
-                            _ = dispatcher.perform("Message: Send GIF")
-                        } else {
-                            _ = composer.openGIFPicker()
-                        }
-                    }
-                    .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-                        GIFPickerPopover(composer: composer)
-                    }
-                }
-                if showsVoiceNoteButton {
-                    ComposerLeadingButton(
-                        symbolName: "mic",
-                        tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
-                        accessibilityTitle: String(localized: "Record voice note"),
-                        accessibilityID: "composer.leading.voiceNote",
-                        isDisabled: composer.roomID == nil || locked
-                    ) {
-                        composer.preferences = preferences
-                        Task { await composer.startVoiceRecording() }
-                    }
+    /// Toggles the inline tool row beside the text field; rotates 45° into ✕ (or cross-fades under Reduce Motion).
+    private func plusToggleButton(floating: Bool) -> some View {
+        let usesMotion = ComposerToolRowMotion.usesSlideAndRotation(reduceMotion: reduceMotionEnabled)
+        return Button {
+            withAnimation(toolRowAnimation) {
+                composer.isToolRowOpen.toggle()
+            }
+        } label: {
+            Group {
+                if usesMotion {
+                    Image(systemName: "plus")
+                        .rotationEffect(
+                            .degrees(
+                                ComposerToolRowMotion.plusRotationDegrees(
+                                    isOpen: composer.isToolRowOpen,
+                                    reduceMotion: reduceMotionEnabled
+                                )
+                            )
+                        )
+                } else {
+                    Image(systemName: composer.isToolRowOpen ? "xmark" : "plus")
+                        .id(composer.isToolRowOpen)
+                        .transition(.opacity)
                 }
             }
+            .font(floating ? .title3.weight(.medium) : .system(size: 15))
+            .foregroundStyle(floating ? .primary : .secondary)
+            .frame(
+                width: floating ? Self.floatingSingleLineHeight : 28,
+                height: floating ? Self.floatingSingleLineHeight : 28
+            )
+            .background {
+                if !floating {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isPlusHovering ? Color.primary.opacity(0.08) : .clear)
+                }
+            }
+            .contentShape(floating ? AnyShape(Circle()) : AnyShape(Rectangle()))
+            .frame(
+                width: floating ? Self.floatingSingleLineHeight : 28,
+                height: floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
+            )
+            .onHover { isPlusHovering = $0 }
+        }
+        .buttonStyle(.plain)
+        .help(composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"))
+        .accessibilityLabel(composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"))
+        .accessibilityIdentifier("composer.plus")
+        .background(
+            Color.clear
+                .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+                    GIFPickerPopover(composer: composer)
+                }
+        )
+        .overlay(
+            Color.clear
+                .allowsHitTesting(false)
+                .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+                    StickerPickerPopover(composer: composer)
+                }
+        )
+    }
+
+    /// The single inline home for composer tools: Attach file, Photo, GIF, Voice note, Send Later, Poll, AI.
+    private func inlineToolRow(floating: Bool) -> some View {
+        let height = floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
+        return HStack(alignment: .center, spacing: 2) {
+            ForEach(toolRowItems) { item in
+                toolRowButton(for: item, height: height)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private func toolRowButton(for item: ComposerToolItem, height: CGFloat) -> some View {
+        switch item.kind {
+        case .attachFile:
+            ComposerToolbarIconButton(
+                symbolName: "paperclip",
+                tooltip: String(localized: "Attach File (⌘O)"),
+                accessibilityTitle: String(localized: "Attach File"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                AttachmentPicker.run(into: composer)
+            }
+        case .photo:
+            ComposerToolbarIconButton(
+                symbolName: "photo",
+                tooltip: String(localized: "Photo"),
+                accessibilityTitle: String(localized: "Photo"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                AttachmentPicker.runPhotos(into: composer)
+            }
+        case .gif:
+            ComposerToolbarIconButton(
+                symbolName: "play.rectangle",
+                tooltip: String(localized: "Send GIF (⌘⇧G)"),
+                accessibilityTitle: String(localized: "Send GIF"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                if let dispatcher = composer.hotkeyDispatcher {
+                    _ = dispatcher.perform("Message: Send GIF")
+                } else {
+                    _ = composer.openGIFPicker()
+                }
+            }
+        case .voiceNote:
+            ComposerToolbarIconButton(
+                symbolName: "mic",
+                tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
+                accessibilityTitle: String(localized: "Record voice note"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                composer.preferences = preferences
+                Task { await composer.startVoiceRecording() }
+            }
+        case .sendLater:
+            ComposerToolbarIconButton(
+                symbolName: "clock.arrow.circlepath",
+                tooltip: item.disabledReason ?? String(localized: "Send Later (⌘⇧L)"),
+                accessibilityTitle: String(localized: "Send Later"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                disabledHint: item.disabledReason,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                if let sendLater = menus.sendLater {
+                    sendLater()
+                } else {
+                    _ = composer.hotkeyDispatcher?.perform("Message: Send Later")
+                }
+            }
+        case .poll:
+            ComposerToolbarIconButton(
+                symbolName: "chart.bar",
+                tooltip: String(localized: "Create Poll"),
+                accessibilityTitle: String(localized: "Create Poll"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled && menus.createPoll != nil,
+                height: height
+            ) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
+                menus.createPoll?()
+            }
+        case .ai:
+            aiMenuButton(isEnabled: item.isEnabled, height: height)
         }
     }
 
-    /// The plus menu: Emoji, Sticker (⌘⌥⇧S), Send Later…, Create Poll…, Share Location…, Talk to Type, and AI drafting.
-    /// With glass (`floating`) a plain plus, as tall as the box at one line, for the round glass button around it.
-    private func plusMenu(floating: Bool) -> some View {
-        Menu {
-            Button(String(localized: "Add Emoji…")) {
-                composer.openEmojiAutocomplete()
-                if composer.emojiQuery == nil {
-                    NSApp.orderFrontCharacterPalette(nil)
-                }
-            }
-            .disabled(composer.roomID == nil)
-            Button(composer.addStickerMenuTitle) {
-                if let dispatcher = composer.hotkeyDispatcher {
-                    _ = dispatcher.perform("Message: Send Sticker")
-                } else {
-                    _ = composer.openStickerPicker()
-                }
-            }
-            .registryShortcut("Message: Send Sticker", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
-            .disabled(!composer.canSendSticker || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
-            .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
-            if composer.features.locationSupported {
-                Button(String(localized: "Share Location…")) {
-                    if composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        composer.text = "/location "
-                    }
-                }
-                .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
-            }
-            Divider()
-            if preferences.showsSendLaterInPlusMenu {
-                if let sendLater = menus.sendLater {
-                    sendLaterItem(sendLater)
-                } else if case .thread = composer.mode {
-                    EmptyView()
-                } else {
-                    sendLaterItem {
-                        _ = composer.hotkeyDispatcher?.perform("Message: Send Later")
-                    }
-                }
-            }
-            if let createPoll = menus.createPoll {
-                Button(String(localized: "Create Poll…"), action: createPoll)
-                    .disabled(menus.pollsUnavailable != nil || composer.roomID == nil)
-                    .help(menus.pollsUnavailable ?? "")
-            }
-            Divider()
+    private func aiMenuButton(isEnabled: Bool, height: CGFloat) -> some View {
+        let locked = composer.isLocked || composer.hotkeyDispatcher?.lifecycle.isLocked == true
+        return Menu {
             Button(String(localized: "Talk to Type")) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 composer.triggerTalkToType()
             }
             .registryShortcut("Message: Talk to Type", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
-            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
+            .disabled(composer.roomID == nil || locked)
             Button(String(localized: "Draft a reply")) {
+                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 if composer.aiProvider.isAvailable {
                     composer.draftWithAI(tone: nil)
                 } else {
                     composer.onOpenAISettings()
                 }
             }
-            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true || !composer.aiProvider.isAvailable)
+            .disabled(composer.roomID == nil || locked || !composer.aiProvider.isAvailable)
             .help(composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
             Menu(String(localized: "Rewrite…")) {
                 ForEach(AIRewriteTone.allCases, id: \.self) { tone in
                     Button(tone.label) {
+                        withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                         if composer.aiProvider.isAvailable {
                             composer.draftWithAI(tone: tone)
                         } else {
@@ -586,37 +727,31 @@ struct ComposerView: View {
                     }
                 }
             }
-            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true || !composer.aiProvider.isAvailable)
+            .disabled(composer.roomID == nil || locked || !composer.aiProvider.isAvailable)
             .help(composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
         } label: {
-            if floating {
-                Image(systemName: "plus")
-                    .font(.title3.weight(.medium))
-                    .frame(width: Self.floatingSingleLineHeight, height: Self.floatingSingleLineHeight)
-                    .contentShape(Circle())
-            } else {
-                Image(systemName: "plus")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(isPlusHovering ? Color.primary.opacity(0.08) : .clear)
-                    )
-                    .contentShape(Rectangle())
-                    .frame(width: 28, height: ComposerTextView.minimumHeight)
-                    .onHover { isPlusHovering = $0 }
-            }
+            Image(systemName: "sparkles")
+                .symbolVariant(.none)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .opacity(isEnabled ? 1 : 0.42)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isAIHovering && isEnabled ? Color.primary.opacity(0.08) : .clear)
+                )
+                .contentShape(Rectangle())
+                .frame(width: 28, height: height)
+                .onHover { isAIHovering = $0 }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(String(localized: "Stickers, polls, Send Later, and more"))
-        .accessibilityLabel(String(localized: "More"))
-        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
-            StickerPickerPopover(composer: composer)
-        }
+        .disabled(!isEnabled)
+        .help(String(localized: "AI & Dictation"))
+        .accessibilityLabel(String(localized: "AI & Dictation"))
+        .accessibilityIdentifier(ComposerToolKind.ai.accessibilityIdentifier)
     }
 
     /// Send Later…, or without a plan that has it, greyed with "Available with a plan".
@@ -633,27 +768,28 @@ struct ComposerView: View {
         }
     }
 
-    /// Send, with a menu (a right click) of Send Later… and Send and Archive (⌘↩). With glass (`floating`) a round
-    /// button in the prominent glass, tinted with the accent colour.
+    /// Always-visible circular send button: neutral grey + white arrow when disabled, accent + white arrow when sendable.
+    /// Right-click opens Send Later… and Send and Archive (⌘↩).
     @ViewBuilder
-    private func sendButton(floating: Bool) -> some View {
-        let button = Button {
+    private func sendButton(floating _: Bool) -> some View {
+        let appearance = composer.sendButtonAppearance
+        let fillColor: Color = appearance == .activeAccent ? themeAccent : Color(nsColor: .systemGray)
+        Button {
+            guard composer.canSend else { return }
             composer.submit()
         } label: {
-            if floating {
+            ZStack {
+                Circle()
+                    .fill(fillColor)
+                    .frame(width: 28, height: 28)
                 Image(systemName: "arrow.up")
                     .font(.system(size: 13, weight: .bold))
-                    .frame(width: 18, height: 18)
-            } else {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(composer.canSend ? themeAccent : Color.secondary.opacity(0.5))
-                    .frame(width: 28, height: ComposerTextView.minimumHeight)
-                    .contentShape(Rectangle())
+                    .foregroundStyle(.white)
             }
+            .frame(width: 28, height: ComposerTextView.minimumHeight)
+            .contentShape(Circle())
         }
         .courierSendButtonStyle()
-        .disabled(!composer.canSend)
         .contextMenu {
             if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
             Button(String(localized: "Send and Archive")) { composer.submit(archive: true) }
@@ -661,8 +797,8 @@ struct ComposerView: View {
         }
         .help(String(localized: "Send (Return). Right-click for Send Later and Send and Archive."))
         .accessibilityLabel(String(localized: "Send"))
-        // With glass, level with the text's one line, so it stays at the box's bottom as the box grows.
-        if floating { button.frame(height: ComposerTextView.minimumHeight) } else { button }
+        .accessibilityHint(composer.canSend ? "" : String(localized: "Write a message first"))
+        .accessibilityIdentifier("composer.send")
     }
 
     @ViewBuilder
@@ -690,33 +826,33 @@ struct ComposerView: View {
     }
 
     private var emojiToolbarButton: some View {
-        Button {
+        ComposerToolbarIconButton(
+            symbolName: "face.smiling",
+            tooltip: String(localized: "Emoji & Symbols (⌃⌘Space)"),
+            accessibilityTitle: String(localized: "Emoji and symbols"),
+            accessibilityID: "composer.toolbar.emoji",
+            isEnabled: true,
+            height: ComposerTextView.minimumHeight
+        ) {
             composer.openEmojiAutocomplete()
             NSApp.orderFrontCharacterPalette(nil)
-        } label: {
-            Image(systemName: "face.smiling")
-                .font(.title3)
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
-        .accessibilityLabel(String(localized: "Emoji and symbols"))
     }
 
     private var sendLaterToolbarButton: some View {
-        Button {
+        let reason = composer.sendLaterDisabledReason
+        let canUse = composer.canSchedule && menus.sendLater != nil
+        return ComposerToolbarIconButton(
+            symbolName: "clock.arrow.circlepath",
+            tooltip: reason ?? String(localized: "Send Later (⌘⇧L)"),
+            accessibilityTitle: String(localized: "Send Later"),
+            accessibilityID: "composer.toolbar.sendLater",
+            isEnabled: canUse,
+            disabledHint: reason,
+            height: ComposerTextView.minimumHeight
+        ) {
             menus.sendLater?()
-        } label: {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.title3)
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(!composer.canSchedule || menus.sendLater == nil)
-        .help(String(localized: "Send Later (⌘⇧L)"))
-        .accessibilityLabel(String(localized: "Send Later"))
     }
 
     // MARK: Pickers
@@ -798,35 +934,44 @@ struct ComposerView: View {
     }
 }
 
-/// A 15pt SF Symbol icon button inside a 28pt hit area, with secondary colour and subtle hover highlight.
-private struct ComposerLeadingButton: View {
+/// A 15pt outline SF Symbol icon button inside a 28pt hit area, with secondary colour and subtle hover highlight.
+/// When `disabledHint` is non-nil while disabled, `.disabled` is omitted so macOS still displays the `.help` tooltip.
+private struct ComposerToolbarIconButton: View {
     let symbolName: String
     let tooltip: String
     let accessibilityTitle: String
     let accessibilityID: String
-    var isDisabled: Bool = false
+    var isEnabled: Bool = true
+    var disabledHint: String? = nil
+    var height: CGFloat = ComposerTextView.minimumHeight
     let action: () -> Void
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
+        let shouldSystemDisable = !isEnabled && disabledHint == nil
+        Button {
+            guard isEnabled else { return }
+            action()
+        } label: {
             Image(systemName: symbolName)
+                .symbolVariant(.none)
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
-                .opacity(isDisabled ? 0.45 : 1)
+                .opacity(isEnabled ? 1 : 0.42)
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isHovering && !isDisabled ? Color.primary.opacity(0.08) : .clear)
+                        .fill(isHovering && isEnabled ? Color.primary.opacity(0.08) : .clear)
                 )
                 .contentShape(Rectangle())
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .frame(width: 28, height: height)
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
+        .disabled(shouldSystemDisable)
         .onHover { isHovering = $0 }
         .help(tooltip)
         .accessibilityLabel(accessibilityTitle)
+        .accessibilityHint(disabledHint ?? "")
         .accessibilityIdentifier(accessibilityID)
     }
 }
@@ -1236,8 +1381,76 @@ struct ComposerTextView: NSViewRepresentable {
             return nil
         }
 
+        private func currentKeyModifiers() -> KeyModifiers {
+            guard let event = NSApp.currentEvent, event.type == .keyDown else { return [] }
+            let flags = event.modifierFlags
+            var modifiers: KeyModifiers = []
+            if flags.contains(.shift) { modifiers.insert(.shift) }
+            if flags.contains(.option) { modifiers.insert(.option) }
+            if flags.contains(.control) { modifiers.insert(.control) }
+            if flags.contains(.command) { modifiers.insert(.command) }
+            return modifiers
+        }
+
+        private func moveFocus(from textView: NSTextView, forward: Bool) {
+            guard let window = textView.window else { return }
+            let before = window.firstResponder
+            if forward {
+                window.selectNextKeyView(textView)
+            } else {
+                window.selectPreviousKeyView(textView)
+            }
+            if window.firstResponder === before, let scroll = textView.enclosingScrollView {
+                if forward {
+                    window.selectNextKeyView(scroll)
+                } else {
+                    window.selectPreviousKeyView(scroll)
+                }
+            }
+            if window.firstResponder === before {
+                window.recalculateKeyViewLoop()
+                if forward {
+                    window.selectNextKeyView(textView)
+                } else {
+                    window.selectPreviousKeyView(textView)
+                }
+            }
+        }
+
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             guard composer.hotkeyDispatcher?.lifecycle.isLocked != true else { return true }
+            if selector == #selector(NSResponder.insertTab(_:))
+                || selector == #selector(NSResponder.insertBacktab(_:))
+                || selector == #selector(NSResponder.insertTabIgnoringFieldEditor(_:)) {
+                guard !textView.hasMarkedText() else { return false }
+                let hasEmojiPicker = composer.emojiQuery != nil && !composer.emojiCandidates.isEmpty
+                let activePicker = openPicker
+                let action = ComposerModel.action(
+                    forTab: currentKeyModifiers(),
+                    isBacktab: selector == #selector(NSResponder.insertBacktab(_:)),
+                    ignoresFieldEditor: selector == #selector(NSResponder.insertTabIgnoringFieldEditor(_:)),
+                    hasOpenAutocomplete: hasEmojiPicker || activePicker != nil
+                )
+                switch action {
+                case .acceptAutocomplete:
+                    if hasEmojiPicker {
+                        let idx = min(max(composer.selectedEmojiIndex, 0), composer.emojiCandidates.count - 1)
+                        composer.pickEmoji(composer.emojiCandidates[idx])
+                    } else if let activePicker {
+                        activePicker.choose(min(parent.ui.pickerIndex, activePicker.count - 1))
+                    }
+                    return true
+                case .insertLiteralTab:
+                    textView.insertText("\t", replacementRange: textView.selectedRange())
+                    return true
+                case .focusNext:
+                    moveFocus(from: textView, forward: true)
+                    return true
+                case .focusPrevious:
+                    moveFocus(from: textView, forward: false)
+                    return true
+                }
+            }
             if composer.emojiQuery != nil {
                 switch selector {
                 case #selector(NSResponder.moveUp(_:)):
@@ -1248,7 +1461,7 @@ struct ComposerTextView: NSViewRepresentable {
                     guard !composer.emojiCandidates.isEmpty else { break }
                     composer.moveEmojiSelection(1)
                     return true
-                case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+                case #selector(NSResponder.insertNewline(_:)):
                     guard !composer.emojiCandidates.isEmpty else { break }
                     let idx = min(max(composer.selectedEmojiIndex, 0), composer.emojiCandidates.count - 1)
                     composer.pickEmoji(composer.emojiCandidates[idx])
@@ -1269,7 +1482,7 @@ struct ComposerTextView: NSViewRepresentable {
                 case #selector(NSResponder.moveDown(_:)):
                     ui.pickerIndex = (ui.pickerIndex + 1) % picker.count
                     return true
-                case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+                case #selector(NSResponder.insertNewline(_:)):
                     picker.choose(min(ui.pickerIndex, picker.count - 1))
                     return true
                 case #selector(NSResponder.cancelOperation(_:)):
@@ -1287,12 +1500,7 @@ struct ComposerTextView: NSViewRepresentable {
                 guard !textView.hasMarkedText() else { return false }
                 // The key's modifiers decide: Return sends, with Shift, Option or Control it adds a line. The
                 // system maps some of those to the other two commands itself, which are always a line.
-                let flags = NSApp.currentEvent?.modifierFlags ?? []
-                var modifiers: KeyModifiers = []
-                if flags.contains(.shift) { modifiers.insert(.shift) }
-                if flags.contains(.option) { modifiers.insert(.option) }
-                if flags.contains(.control) { modifiers.insert(.control) }
-                if flags.contains(.command) { modifiers.insert(.command) }
+                var modifiers = currentKeyModifiers()
                 if selector != #selector(NSResponder.insertNewline(_:)) { modifiers.insert(.option) }
                 if composer.handleReturn(modifiers: modifiers) == .newline,
                    composer.beginNewline(at: textView.selectedRange()) {
