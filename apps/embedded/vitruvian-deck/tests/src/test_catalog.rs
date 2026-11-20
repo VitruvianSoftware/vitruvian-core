@@ -256,11 +256,13 @@ pub fn run_suite() -> usize {
     assert!(owners_raw.contains("@VitruvianSoftware/platform-team"));
     checks += 1;
 
-    // Root catalog & CODEOWNERS when accessible
+    // Root catalog & CODEOWNERS when accessible. Backstage discovers every
+    // catalog-info.yaml in the repo itself (catalog.providers.github), so the
+    // root file only has to declare the monorepo System, not list this app.
     let root = repo_root();
     let root_catalog = root.join("catalog-info.yaml");
     if let Ok(root_raw) = fs::read_to_string(&root_catalog) {
-        assert!(root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml"));
+        assert!(root_raw.contains("name: vitruvian-core"));
         checks += 1;
     }
 
@@ -340,8 +342,9 @@ mod tests {
     fn test_root_catalog_wiring() {
         let root_catalog = repo_root().join("catalog-info.yaml");
         if let Ok(root_raw) = fs::read_to_string(&root_catalog) {
-            assert!(root_raw.contains("name: vitruvian-core-apps"));
-            assert!(root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml"));
+            // The monorepo System; the app's own file is found by discovery,
+            // with or without a hand-kept Location list in this file.
+            assert!(root_raw.contains("name: vitruvian-core"));
         }
     }
 
