@@ -131,67 +131,70 @@ final class ScrollAndPhotoSizingQATests: XCTestCase {
     }
 
     func testBottomFlipUpdatesJumpStateWithoutEvaluatingTimelineRows() throws {
-        let store = makeDefaults()
-        let app = AppModel(supervisor: EngineSupervisor(
-            enginePath: "/nonexistent/vitruvian-courier-engine",
-            dataDir: directory.appendingPathComponent("data"),
-            environment: [:], launcher: FoundationProcessLauncher()))
-        let composerPrefs = ComposerPreferences(defaults: store)
-        let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: store))
-        let conversation = ConversationModel(appModel: app, preferences: composerPrefs)
-        final class NoPasteboard: TextPasteboard { func setString(_: String) {} }
-        let messageActions = MessageActionsModel(
-            conversation: conversation, appModel: app, preferences: composerPrefs, pasteboard: NoPasteboard())
+        for engine in [TimelineEngine.table, .swiftui] {
+            let store = makeDefaults()
+            let app = AppModel(supervisor: EngineSupervisor(
+                enginePath: "/nonexistent/vitruvian-courier-engine",
+                dataDir: directory.appendingPathComponent("data-\(engine.rawValue)"),
+                environment: [:], launcher: FoundationProcessLauncher()))
+            let composerPrefs = ComposerPreferences(defaults: store)
+            composerPrefs.timelineEngine = engine
+            let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: store))
+            let conversation = ConversationModel(appModel: app, preferences: composerPrefs)
+            final class NoPasteboard: TextPasteboard { func setString(_: String) {} }
+            let messageActions = MessageActionsModel(
+                conversation: conversation, appModel: app, preferences: composerPrefs, pasteboard: NoPasteboard())
 
-        let events = (0 ..< 25).map { i in
-            Fixture.text("$m\(i)", "Message row \(i) https://example.com/\(i)", mine: i % 2 == 0, ts: i + 1)
-        }
-        conversation.setSnapshotStateForTesting(
-            roomID: "!qa", items: Fixture.items(events, isDirect: true),
-            row: Fixture.row("!qa", "QA Chat", network: "signal", direct: true, ts: 25, preview: "hi"))
+            let events = (0 ..< 25).map { i in
+                Fixture.text("$m\(i)", "Message row \(i) https://example.com/\(i)", mine: i % 2 == 0, ts: i + 1)
+            }
+            conversation.setSnapshotStateForTesting(
+                roomID: "!qa-\(engine.rawValue)", items: Fixture.items(events, isDirect: true),
+                row: Fixture.row("!qa-\(engine.rawValue)", "QA Chat", network: "signal", direct: true, ts: 25, preview: "hi"))
 
-        let view = ConversationView(
-            conversation: conversation, composer: conversation.composer, inbox: inbox, messageActions: messageActions,
-            scheduled: ScheduledModel(appModel: app), preferences: composerPrefs, thread: conversation.thread,
-            focus: MessageFocus(), appModel: app)
-            .environment(\.liquidGlass, false)
+            let view = ConversationView(
+                conversation: conversation, composer: conversation.composer, inbox: inbox, messageActions: messageActions,
+                scheduled: ScheduledModel(appModel: app), preferences: composerPrefs, thread: conversation.thread,
+                focus: MessageFocus(), appModel: app)
+                .environment(\.liquidGlass, false)
 
-        let host = NSHostingView(rootView: view)
-        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 800, height: 600),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = host
-        window.orderFrontRegardless()
-        defer {
-            window.orderOut(nil)
-            window.contentView = nil
-        }
+            let host = NSHostingView(rootView: view)
+            let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 800, height: 600),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            window.orderFrontRegardless()
+            defer {
+                window.orderOut(nil)
+                window.contentView = nil
+            }
 
-        let warmup = Date().addingTimeInterval(0.15)
-        while Date() < warmup {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            let warmup = Date().addingTimeInterval(0.15)
+            while Date() < warmup {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+                host.layoutSubtreeIfNeeded()
+            }
+
+            var conversationChanges = 0
+            let sub = conversation.objectWillChange.sink { conversationChanges += 1 }
+            defer { sub.cancel() }
+
+            ScrollPerfCounters.enabled = true
+            ScrollPerfCounters.reset()
+            defer { ScrollPerfCounters.enabled = false }
+
+            conversation.scrolled(toBottom: false)
+            RunLoop.main.run(mode: .default, before: Date())
             host.layoutSubtreeIfNeeded()
+            XCTAssertFalse(conversation.isAtBottom, "engine=\(engine.rawValue)")
+
+            conversation.scrolled(toBottom: true)
+            RunLoop.main.run(mode: .default, before: Date())
+            host.layoutSubtreeIfNeeded()
+            XCTAssertTrue(conversation.isAtBottom, "engine=\(engine.rawValue)")
+
+            XCTAssertEqual(conversationChanges, 0, "flipping at-bottom must not emit ConversationModel.objectWillChange (\(engine.rawValue))")
+            XCTAssertEqual(ScrollPerfCounters.rowBodies, 0, "flipping at-bottom must not re-evaluate visible timeline rows (\(engine.rawValue))")
         }
-
-        var conversationChanges = 0
-        let sub = conversation.objectWillChange.sink { conversationChanges += 1 }
-        defer { sub.cancel() }
-
-        ScrollPerfCounters.enabled = true
-        ScrollPerfCounters.reset()
-        defer { ScrollPerfCounters.enabled = false }
-
-        conversation.scrolled(toBottom: false)
-        RunLoop.main.run(mode: .default, before: Date())
-        host.layoutSubtreeIfNeeded()
-        XCTAssertFalse(conversation.isAtBottom)
-
-        conversation.scrolled(toBottom: true)
-        RunLoop.main.run(mode: .default, before: Date())
-        host.layoutSubtreeIfNeeded()
-        XCTAssertTrue(conversation.isAtBottom)
-
-        XCTAssertEqual(conversationChanges, 0, "flipping at-bottom must not emit ConversationModel.objectWillChange")
-        XCTAssertEqual(ScrollPerfCounters.rowBodies, 0, "flipping at-bottom must not re-evaluate visible timeline rows")
     }
 
     func testSizeIsLearnedWhenTheFileAppearsAfterAFailedRead() throws {

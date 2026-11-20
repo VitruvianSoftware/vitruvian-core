@@ -823,6 +823,7 @@ final class TimelineNSTableView: NSTableView {
         let local = convert(event.locationInWindow, from: nil)
         if row(at: local) == -1 {
             onEmptySpaceClick?()
+            return
         }
         super.mouseDown(with: event)
     }
@@ -964,6 +965,17 @@ struct TimelineTableView: NSViewRepresentable {
         private var senderPopoverController: NSHostingController<SenderHoverPopoverContent>?
         private var presentedSenderCardMessageID: String?
         private var suppressPopoverCloseCallback = false
+
+        var isSenderPopoverShownForTesting: Bool {
+            senderPopover.isShown
+        }
+
+        /// What the scroll-wheel monitor records for a person's scroll, for tests that scroll the clip view directly.
+        func noteUserScrollForTesting() {
+            lastUserScroll = Date()
+            lastScrollGesture = Date()
+            stopPinningToBottom()
+        }
 
         init(_ parent: TimelineTableView) {
             self.parent = parent
@@ -1211,14 +1223,31 @@ struct TimelineTableView: NSViewRepresentable {
             item: TimelineItem,
             actions overrideActions: MessageActions? = nil
         ) -> TimelineHostedRow {
-            TimelineHostedRow(
+            var env = rowEnvironment!
+            if overrideActions != nil {
+                // Off-screen sizing never emits click target probes.
+                env = TimelineRowEnvironment(
+                    appearance: env.appearance,
+                    themeRoomID: env.themeRoomID,
+                    themeAccentHex: env.themeAccentHex,
+                    redactNamesAndPictures: env.redactNamesAndPictures,
+                    liquidGlass: env.liquidGlass,
+                    timelineCovered: env.timelineCovered,
+                    messagePointSize: env.messagePointSize,
+                    zoomMultiplier: env.zoomMultiplier,
+                    colorScheme: env.colorScheme,
+                    reactionCardOverride: env.reactionCardOverride,
+                    clickTargetProbe: nil
+                )
+            }
+            return TimelineHostedRow(
                 item: item,
                 isSelected: entry.isSelected,
                 isHighlighted: entry.isHighlighted,
                 showsSent: entry.showsSent,
                 actions: overrideActions ?? parent.actions,
                 ui: parent.ui,
-                env: rowEnvironment,
+                env: env,
                 onEmptyClick: { [weak self] in
                     self?.parent.conversation.deselectMessage()
                 }
@@ -1725,6 +1754,10 @@ struct TimelineTableView: NSViewRepresentable {
                     updatedRows.append(row)
                 }
             }
+
+            // Before the first load the table has no rows to update (asking it for one raises): the new entries are all
+            // `performInitialLayoutIfReady` needs.
+            guard hasPositionedInitially, tableView.numberOfRows == entries.count else { return }
 
             if !heightChanged.isEmpty {
                 let wasAtBottom = isScrolledToBottom()
@@ -2307,6 +2340,10 @@ struct TimelineTableView: NSViewRepresentable {
             reportVisibleProbes(using: storedProbe)
         }
 
+        /// What each row's probe last reported. A probe that stores what it is told in observable state makes SwiftUI
+        /// call `updateNSView` again, which reports again: only a rect that changed is passed on, so that ends.
+        private var lastReportedProbeRects: [String: CGRect] = [:]
+
         private func reportVisibleProbes(using probe: ((String, CGRect) -> Void)?) {
             storedProbe = probe
             guard let probe, hasPositionedInitially, measuredWidth > 1 else { return }
@@ -2316,7 +2353,10 @@ struct TimelineTableView: NSViewRepresentable {
                 guard row >= 0, row < entries.count, let item = entries[row].item else { continue }
                 let rowRect = tableView.rect(ofRow: row)
                 let rectInContainer = containerView.convert(rowRect, from: tableView)
-                probe("item/\(item.id)", rectInContainer)
+                let name = "item/\(item.id)"
+                if lastReportedProbeRects[name] == rectInContainer { continue }
+                lastReportedProbeRects[name] = rectInContainer
+                probe(name, rectInContainer)
             }
         }
 

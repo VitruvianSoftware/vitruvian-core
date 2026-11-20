@@ -24,25 +24,72 @@ final class MessageSelectionClickTests: XCTestCase {
     /// Two messages in a scrolling timeline, as the chat's, taller than they are so there is empty space below them.
     private struct Harness: View {
         @ObservedObject var box: Box
+        let engine: TimelineEngine
+        let conversation: ConversationModel
+        let messageActions: MessageActionsModel
+        let preferences: ComposerPreferences
+        let appModel: AppModel
         let items: [TimelineItem]
-        let ui = MessageUI()
+        @StateObject private var ui = MessageUI()
 
         var body: some View {
-            let actions = VitruvianCourier.MessageActions(select: { box.selected = $0 }, deselect: { box.selected = nil },
-                                                 now: { Fixture.now })
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(items) { item in
-                        TimelineItemView(item: item, isSelected: box.selected == item.id, showsSent: false,
-                                         actions: actions, ui: ui)
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
-                                box.frames[item.id] = $0
+            let actions = VitruvianCourier.MessageActions(
+                select: { id in
+                    conversation.selectedMessageID = id
+                    box.selected = id
+                },
+                deselect: {
+                    conversation.deselectMessage()
+                    box.selected = nil
+                },
+                now: { Fixture.now }
+            )
+            Group {
+                switch engine {
+                case .table:
+                    TimelineTableView(
+                        conversation: conversation,
+                        messageActions: messageActions,
+                        preferences: preferences,
+                        ui: ui,
+                        appModel: appModel,
+                        actions: actions,
+                        effectiveHeaderInset: 0,
+                        bottomSafeAreaInset: 0,
+                        bottomBarSignature: [],
+                        resolvedAppearance: nil,
+                        redact: false,
+                        themeAccentHex: CourierThemePreset.classicTeal.defaultAccentHex,
+                        drawsLiquidGlass: false,
+                        timelineCovered: false
+                    )
+                    .environment(\.conversationLayoutProbe) { name, frame in
+                        if name.hasPrefix("item/") {
+                            box.frames[String(name.dropFirst(5))] = frame
+                        }
+                    }
+                case .swiftui:
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(items) { item in
+                                TimelineItemView(item: item, isSelected: box.selected == item.id, showsSent: false,
+                                                 actions: actions, ui: ui)
+                                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                                        box.frames[item.id] = $0
+                                    }
                             }
+                        }
+                        .padding(.horizontal, 14)
+                    }
+                    .deselectsOnEmptyClick {
+                        conversation.deselectMessage()
+                        box.selected = nil
                     }
                 }
-                .padding(.horizontal, 14)
             }
-            .deselectsOnEmptyClick { box.selected = nil }
+            .onReceive(conversation.$selectedMessageID) { id in
+                if box.selected != id { box.selected = id }
+            }
             .environment(\.clickTargetProbe) { name, frame in box.frames[name] = frame }
             .frame(width: 600, height: 300)
         }
@@ -50,11 +97,30 @@ final class MessageSelectionClickTests: XCTestCase {
 
     private var window: NSWindow!
     private var host: NSView!
+    private var suites: [String] = []
     private let box = Box()
     private var lastClickTimestamp: TimeInterval = 0
 
-    override func setUp() async throws {
-        _ = NSApplication.shared
+    private func mountHarness(engine: TimelineEngine) throws {
+        window?.orderOut(nil)
+        window?.contentView = nil
+        box.selected = nil
+        box.frames = [:]
+
+        let suiteName = "courier.click.\(UUID().uuidString)"
+        suites.append(suiteName)
+        let store = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
+        let app = AppModel(supervisor: EngineSupervisor(
+            enginePath: "/nonexistent/vitruvian-courier-engine",
+            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-click-tests"),
+            environment: [:], launcher: FoundationProcessLauncher()))
+        let preferences = ComposerPreferences(defaults: store)
+        preferences.timelineEngine = engine
+        let conversation = ConversationModel(appModel: app, preferences: preferences)
+        final class NoPasteboard: TextPasteboard { func setString(_: String) {} }
+        let messageActions = MessageActionsModel(
+            conversation: conversation, appModel: app, preferences: preferences, pasteboard: NoPasteboard())
+
         let items = Fixture.items([
             Fixture.text("$a", "Are we still on for the hike on Saturday?", mine: false, ts: 9),
             Fixture.text("$b", "Yes, see you at eight.", mine: true, ts: 2),
@@ -64,7 +130,22 @@ final class MessageSelectionClickTests: XCTestCase {
                 ]),
             ], sender: "@bo:courier.local", name: "Bo Example"),
         ])
-        let host = NSHostingView(rootView: Harness(box: box, items: items))
+        conversation.setSnapshotStateForTesting(
+            roomID: "!clicks",
+            items: items,
+            row: Fixture.row("!clicks", "Clicks", network: "slack", direct: false, ts: 9, preview: "hi"),
+            features: Fixture.features
+        )
+
+        let host = NSHostingView(rootView: Harness(
+            box: box,
+            engine: engine,
+            conversation: conversation,
+            messageActions: messageActions,
+            preferences: preferences,
+            appModel: app,
+            items: items
+        ))
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.borderless],
                           backing: .buffered, defer: false)
         window.contentView = host
@@ -73,13 +154,20 @@ final class MessageSelectionClickTests: XCTestCase {
         window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
         window.orderFrontRegardless()
         self.host = host
-        settle()
+        settle(until: { [box] in box.frames["$a"] != nil && box.frames["$b"] != nil })
+    }
+
+    override func setUp() async throws {
+        _ = NSApplication.shared
+        try mountHarness(engine: .table)
     }
 
     override func tearDown() async throws {
-        window.orderOut(nil)
-        window.contentView = nil
+        window?.orderOut(nil)
+        window?.contentView = nil
         window = nil
+        for name in suites { ScratchDefaults.suite(named: name)?.removePersistentDomain(forName: name) }
+        suites = []
     }
 
     private func settle(until condition: (() -> Bool)? = nil) {
@@ -182,5 +270,18 @@ final class MessageSelectionClickTests: XCTestCase {
         XCTAssertEqual(box.selected, "$a")
         try click(try point(ofButton: "bar/React with ❤️"))
         XCTAssertEqual(box.selected, "$a")
+    }
+
+    func testSwiftUIFallbackEngineSelectionClicksStillWork() throws {
+        try mountHarness(engine: .swiftui)
+        try click(try point(in: "$a"))
+        try XCTSkipIf(box.selected == nil, "the window got no clicks (no window server for it here)")
+        XCTAssertEqual(box.selected, "$a")
+        try click(try point(in: "$b"))
+        XCTAssertEqual(box.selected, "$b")
+        let below = try XCTUnwrap(box.frames["$b"]).maxY + 40
+        XCTAssertLessThan(below, host.bounds.height)
+        try click(CGPoint(x: 300, y: below))
+        XCTAssertNil(box.selected)
     }
 }

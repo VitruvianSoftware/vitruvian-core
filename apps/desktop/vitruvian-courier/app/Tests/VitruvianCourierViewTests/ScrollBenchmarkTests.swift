@@ -168,6 +168,16 @@ final class ScrollBenchmarkTests: XCTestCase {
     // MARK: The benchmark
 
     func testTimelineScrollBenchmark() throws {
+        try runBenchmark(engine: .table)
+    }
+
+    func testTimelineScrollBenchmarkSwiftUI() throws {
+        let envEngine = ProcessInfo.processInfo.environment["COURIER_TIMELINE_ENGINE"]
+        try XCTSkipIf(envEngine == "table", "COURIER_TIMELINE_ENGINE=table requested only the table benchmark")
+        try runBenchmark(engine: .swiftui)
+    }
+
+    private func runBenchmark(engine: TimelineEngine) throws {
         let environment = ProcessInfo.processInfo.environment
         try XCTSkipUnless(environment["COURIER_SCROLL_BENCH"] == "1", "set COURIER_SCROLL_BENCH=1 to run")
         let renders = environment["COURIER_SCROLL_BENCH_RENDER"] == "1"
@@ -200,6 +210,7 @@ final class ScrollBenchmarkTests: XCTestCase {
         let store = defaults()
         let app = offlineApp()
         let composerPreferences = ComposerPreferences(defaults: store)
+        composerPreferences.timelineEngine = engine
         let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: store))
         let conversation = ConversationModel(appModel: app, preferences: composerPreferences)
         final class NoPasteboard: TextPasteboard {
@@ -264,8 +275,8 @@ final class ScrollBenchmarkTests: XCTestCase {
             if let doc = scrollView.documentView {
                 let clip = scrollView.contentView
                 let sign: CGFloat = doc.isFlipped ? 1 : -1
-                let minY = doc.bounds.minY
-                let maxY = max(minY, doc.bounds.maxY - clip.bounds.height)
+                let minY = doc.bounds.minY - scrollView.contentInsets.top
+                let maxY = max(minY, doc.bounds.maxY + scrollView.contentInsets.bottom - clip.bounds.height)
                 let target = min(maxY, max(minY, clip.bounds.origin.y + sign * delta))
                 clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
                 scrollView.reflectScrolledClipView(clip)
@@ -318,7 +329,7 @@ final class ScrollBenchmarkTests: XCTestCase {
         let toggleMedian = toggleTimes.sorted()[toggles / 2]
 
         let jpegMB = jpegBytes.map { String(format: "%.1f", Double($0) / 1_048_576) }.joined(separator: "/")
-        let line = "COURIER_SCROLL_BENCH_RESULT {\"mode\":\"\(renders ? "render" : "layout")\",\"messages\":\(events.count),"
+        let line = "COURIER_SCROLL_BENCH_RESULT {\"engine\":\"\(engine.rawValue)\",\"mode\":\"\(renders ? "render" : "layout")\",\"messages\":\(events.count),"
             + "\"photos\":\(photoCount),\"jpeg_mb\":\"\(jpegMB)\","
             + "\"up\":\(up.json),\"down\":\(down.json),\"idle\":\(idle.json),"
             + "\"conversation_change\":{\"median_ms\":\(String(format: "%.2f", toggleMedian)),"

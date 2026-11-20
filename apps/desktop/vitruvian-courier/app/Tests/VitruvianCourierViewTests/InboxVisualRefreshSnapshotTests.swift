@@ -313,10 +313,16 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
         )
         XCTAssertEqual(tallAnchor.y, 0, "tall items fall back to top alignment rather than extending under the header")
 
+        try verifyConversationScrollTargets(engine: .table)
+        try verifyConversationScrollTargets(engine: .swiftui)
+    }
+
+    private func verifyConversationScrollTargets(engine: TimelineEngine) throws {
         let store = defaults()
         let app = offlineApp()
         let inboxPreferences = InboxPreferences(defaults: store)
         let composerPreferences = ComposerPreferences(defaults: store)
+        composerPreferences.timelineEngine = engine
         let inbox = InboxModel(appModel: app, preferences: inboxPreferences)
         let conversation = ConversationModel(appModel: app, preferences: composerPreferences)
         final class NoPasteboard: TextPasteboard {
@@ -417,8 +423,8 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
             if let docView = scrollView.documentView {
                 let docBounds = docView.bounds
                 let topPoint = docView.isFlipped
-                    ? NSPoint(x: 0, y: docBounds.minY)
-                    : NSPoint(x: 0, y: max(docBounds.minY, docBounds.maxY - scrollView.contentView.bounds.height))
+                    ? NSPoint(x: 0, y: docBounds.minY - scrollView.contentInsets.top)
+                    : NSPoint(x: 0, y: max(docBounds.minY, docBounds.maxY + scrollView.contentInsets.bottom - scrollView.contentView.bounds.height))
                 scrollView.contentView.scroll(to: topPoint)
                 scrollView.reflectScrolledClipView(scrollView.contentView)
             }
@@ -427,6 +433,7 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
         }
         conversation.setSnapshotItemsForTesting(Fixture.items(baseEvents, isDirect: false), hasOlder: true)
         pump(for: 0.15)
+        let prePrependM1 = try XCTUnwrap(frames["item/$m1"], "pre-prepend $m1 must be laid out")
         let olderEvents: [Event] = (1 ... 5).map { idx in
             Fixture.text(
                 "$old\(idx)",
@@ -447,11 +454,20 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
             baseHeader.maxY - 0.5,
             "restoreAnchor target ($m1) must land below the header (\(baseHeader.maxY)), got \(restoredAnchorFrame)"
         )
-        XCTAssertLessThanOrEqual(
-            restoredAnchorFrame.minY,
-            baseHeader.maxY + ConversationView.timelineVerticalPadding + 16,
-            "restoreAnchor target ($m1) must land near the top below the header, got \(restoredAnchorFrame)"
-        )
+        if composerPreferences.timelineEngine == .table {
+            XCTAssertEqual(
+                restoredAnchorFrame.minY,
+                prePrependM1.minY,
+                accuracy: 1.0,
+                "prepend on table engine must keep $m1 at the same vertical offset (\(prePrependM1.minY)), got \(restoredAnchorFrame)"
+            )
+        } else {
+            XCTAssertLessThanOrEqual(
+                restoredAnchorFrame.minY,
+                baseHeader.maxY + ConversationView.timelineVerticalPadding + 16,
+                "restoreAnchor target ($m1) must land near the top below the header, got \(restoredAnchorFrame)"
+            )
+        }
 
         // 1b. Older messages that join without a scroll of the person's asking (a page the network answered later, read
         // by `readEarlier`): the model names the message that was first, and the view keeps the person on it. Here
@@ -460,14 +476,15 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
             if let docView = scrollView.documentView {
                 let docBounds = docView.bounds
                 let topPoint = docView.isFlipped
-                    ? NSPoint(x: 0, y: docBounds.minY)
-                    : NSPoint(x: 0, y: max(docBounds.minY, docBounds.maxY - scrollView.contentView.bounds.height))
+                    ? NSPoint(x: 0, y: docBounds.minY - scrollView.contentInsets.top)
+                    : NSPoint(x: 0, y: max(docBounds.minY, docBounds.maxY + scrollView.contentInsets.bottom - scrollView.contentView.bounds.height))
                 scrollView.contentView.scroll(to: topPoint)
                 scrollView.reflectScrolledClipView(scrollView.contentView)
             }
             pump(for: 0.12)
             if frames["item/$old1"] != nil { break }
         }
+        let prePrependOld1 = try XCTUnwrap(frames["item/$old1"], "pre-prepend $old1 must be laid out")
         let evenOlderEvents: [Event] = (1 ... 5).map { idx in
             Fixture.text(
                 "$older\(idx)",
@@ -489,10 +506,19 @@ final class InboxVisualRefreshSnapshotTests: XCTestCase {
             arrivedAnchorFrame.minY, baseHeader.maxY - 0.5,
             "the earlier-history anchor ($old1) must land below the header (\(baseHeader.maxY)), got \(arrivedAnchorFrame)"
         )
-        XCTAssertLessThanOrEqual(
-            arrivedAnchorFrame.minY, baseHeader.maxY + ConversationView.timelineVerticalPadding + 16,
-            "the earlier-history anchor ($old1) must stay near the top below the header, got \(arrivedAnchorFrame)"
-        )
+        if composerPreferences.timelineEngine == .table {
+            XCTAssertEqual(
+                arrivedAnchorFrame.minY,
+                prePrependOld1.minY,
+                accuracy: 1.0,
+                "earlier-history prepend on table engine must keep $old1 at the same vertical offset (\(prePrependOld1.minY)), got \(arrivedAnchorFrame)"
+            )
+        } else {
+            XCTAssertLessThanOrEqual(
+                arrivedAnchorFrame.minY, baseHeader.maxY + ConversationView.timelineVerticalPadding + 16,
+                "the earlier-history anchor ($old1) must stay near the top below the header, got \(arrivedAnchorFrame)"
+            )
+        }
 
         // 2. Jump-to-message (scrollToMessageRequest).
         conversation.scrollToMessageForTesting("$m2")
