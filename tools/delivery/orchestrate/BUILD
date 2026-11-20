@@ -37,6 +37,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//packages/gocompat:vitruvian_gocompat",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
