@@ -31,7 +31,7 @@ struct RichTextView: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                 blockView(block, reservesMeta: index == blocks.count - 1)
             }
-            if let trailingMeta, let last = blocks.last, last.kind != .paragraph, last.kind != .quote {
+            if let trailingMeta, let last = blocks.last, last.kind == .code {
                 Text(verbatim: trailingMeta).font(.caption2).hidden()
             }
         }
@@ -65,11 +65,12 @@ struct RichTextView: View {
         case .bulletList, .orderedList:
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(block.lines.enumerated()), id: \.offset) { index, line in
+                    let isLastLine = reservesMeta && index == block.lines.count - 1
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(verbatim: block.kind == .bulletList ? "•" : "\(index + 1).")
                             .monospacedDigit()
                             .frame(minWidth: 12, alignment: .trailing)
-                        Text(attributed(line))
+                        (Text(attributed(line)) + metaGap(isLastLine))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

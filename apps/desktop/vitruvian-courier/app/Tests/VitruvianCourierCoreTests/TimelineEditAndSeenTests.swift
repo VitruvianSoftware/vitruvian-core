@@ -111,6 +111,74 @@ final class TimelineEditAndSeenTests: XCTestCase {
         XCTAssertEqual(message.body, "Hello")
     }
 
+    func testIdenticalBodyLinkPreviewEditUpdatesPreviewSilentlyWithoutEditedOrHistory() {
+        let link = "https://example.test/post"
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"https://example.test/post"}"#)
+        var previewEdit = event("$2", ts: 2, content: """
+        {"msgtype":"m.text","body":"* https://example.test/post",
+         "m.new_content":{"msgtype":"m.text","body":"https://example.test/post"},
+         "m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}
+        """)
+        previewEdit.linkPreviews = [
+            LinkPreviewItem(matchedURL: link, url: link, title: "Added Preview Title", siteName: "Example"),
+        ]
+        let shown = messages([base, previewEdit])[0]
+        XCTAssertFalse(shown.isEdited, "an identical-body edit adding a link preview must not label the message Edited")
+        XCTAssertEqual(shown.editCount, 0)
+        XCTAssertEqual(shown.linkPreviews.first?.title, "Added Preview Title", "silent preview edit still updates linkPreviews")
+
+        let whatsApp = ChatFeatures(reply: true, edit: true, unsend: true, source: .stored)
+        let actions = MessageActions.available(for: shown, in: whatsApp, network: "whatsapp", now: Date(timeIntervalSince1970: 1))
+        XCTAssertFalse(actions.actions.contains(.showHistory), "Edit History must not be offered for preview-only edits")
+
+        // Also check m.new_content["com.beeper.linkpreviews"] JSON fallback.
+        let jsonPreviewEdit = event("$3", ts: 3, content: """
+        {"msgtype":"m.text","body":"* https://example.test/post",
+         "m.new_content":{"msgtype":"m.text","body":"https://example.test/post",
+          "com.beeper.linkpreviews":[{"matched_url":"https://example.test/post","og:title":"JSON Preview"}]},
+         "m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}
+        """)
+        let jsonShown = messages([base, jsonPreviewEdit])[0]
+        XCTAssertFalse(jsonShown.isEdited)
+        XCTAssertEqual(jsonShown.linkPreviews.first?.title, "JSON Preview")
+    }
+
+    func testFormattingOnlyEditCountsAsEdited() {
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"hello"}"#)
+        let formatEdit = event("$2", ts: 2, content: """
+        {"msgtype":"m.text","body":"* hello",
+         "m.new_content":{"msgtype":"m.text","body":"hello","format":"org.matrix.custom.html","formatted_body":"<b>hello</b>"},
+         "m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}
+        """)
+        let shown = messages([base, formatEdit])[0]
+        XCTAssertTrue(shown.isEdited, "an edit that changes formatting must still be marked Edited")
+        XCTAssertEqual(shown.editCount, 1)
+        let whatsApp = ChatFeatures(reply: true, edit: true, unsend: true, source: .stored)
+        let actions = MessageActions.available(for: shown, in: whatsApp, network: "whatsapp", now: Date(timeIntervalSince1970: 1))
+        XCTAssertTrue(actions.actions.contains(.showHistory))
+    }
+
+    func testRealEditFollowedBySilentLinkPreviewEditRemainsEdited() {
+        let link = "https://example.test/updated"
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"https://example.test/old"}"#)
+        let realEdit = event("$2", ts: 2, content: """
+        {"msgtype":"m.text","body":"* https://example.test/updated",
+         "m.new_content":{"msgtype":"m.text","body":"https://example.test/updated"},
+         "m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}
+        """)
+        var silentPreviewEdit = event("$3", ts: 3, content: """
+        {"msgtype":"m.text","body":"* https://example.test/updated",
+         "m.new_content":{"msgtype":"m.text","body":"https://example.test/updated"},
+         "m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}
+        """)
+        silentPreviewEdit.linkPreviews = [LinkPreviewItem(matchedURL: link, url: link, title: "Updated Title")]
+        let shown = messages([base, realEdit, silentPreviewEdit])[0]
+        XCTAssertTrue(shown.isEdited)
+        XCTAssertEqual(shown.editCount, 1)
+        XCTAssertEqual(shown.body, link)
+        XCTAssertEqual(shown.linkPreviews.first?.title, "Updated Title")
+    }
+
     // MARK: - Seen
 
     private func date(_ day: Int, _ hour: Int, _ minute: Int) -> Date {

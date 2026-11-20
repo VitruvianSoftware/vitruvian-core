@@ -1205,17 +1205,25 @@ public enum Timeline {
                     && (TimerChange.of(event.content) != nil || CallNote.of(event.content) != nil))
         }?.eventID
 
-        // Edits by the message's own sender. The newest live one (not refused, not deleted) is what it says; my
-        // newest edit, if refused, is "Edit not sent".
+        // Edits by the message's own sender. The newest live one (not refused, not deleted) is what it says (and
+        // updates link previews silently when the body and formatting did not change); my newest edit, if refused, is
+        // "Edit not sent". Only edits that actually changed visible text, formatting or media count toward Edited and
+        // Edit History.
         var latestEdit: [String: Event] = [:]
-        var liveEdits: [String: Int] = [:]
+        var realEdits: [String: Int] = [:]
+        var prevShownByTarget: [String: Shown] = [:]
         var newestOwnEdit: [String: Event] = [:]
         for event in ordered where event.type == "m.room.message" && isEdit(event) && !redacted.contains(event.eventID) {
             guard let target = relation(of: event).eventID, let base = baseByID[target], base.sender == event.sender,
                   base.type == "m.room.message" else { continue }
             if event.status != .failed {
                 latestEdit[target] = event
-                liveEdits[target, default: 0] += 1
+                let previous = prevShownByTarget[target] ?? describe(base, edit: nil, mine: isMine(base))
+                let next = describe(base, edit: event, mine: isMine(base))
+                if editChangedVisibleContent(base: base, previous: previous, next: next) {
+                    realEdits[target, default: 0] += 1
+                    prevShownByTarget[target] = next
+                }
             }
             if isMine(base) { newestOwnEdit[target] = event }
         }
@@ -1295,8 +1303,8 @@ public enum Timeline {
                 senderAvatarPath: base.senderAvatarPath, mine: isMine(base), ts: base.ts,
                 kind: isDeleted ? .deleted : shown.kind, body: isDeleted ? "" : shown.body,
                 rich: isDeleted ? RichText(text: "") : shown.rich,
-                isEdited: !isDeleted && latestEdit[base.eventID] != nil,
-                editCount: isDeleted ? 0 : liveEdits[base.eventID, default: 0],
+                isEdited: !isDeleted && realEdits[base.eventID, default: 0] > 0,
+                editCount: isDeleted ? 0 : realEdits[base.eventID, default: 0],
                 editFailed: refused.map { StatusLine.of(status: .failed, reason: $0.statusReason) },
                 failedEditID: refused?.eventID,
                 fileName: isDeleted ? "" : shown.fileName, mimeType: isDeleted ? "" : shown.mimeType,
@@ -1311,7 +1319,7 @@ public enum Timeline {
                 isAnimated: !isDeleted && shown.isAnimated,
                 viewOnce: viewOnce,
                 geoURI: isDeleted ? nil : shown.geoURI,
-                linkPreviews: isDeleted ? [] : (base.linkPreviews ?? []),
+                linkPreviews: isDeleted ? [] : resolvedLinkPreviews(base: base, edit: latestEdit[base.eventID]),
                 played: played,
                 galleryItems: [],
                 isTranscoded: !isDeleted && shown.isTranscoded,
@@ -1558,6 +1566,56 @@ public enum Timeline {
             body = withoutReplyFallback(original)
         }
         return Shown(kind: kind, body: body, rich: rich(body, html: formatted))
+    }
+
+    private static func editChangedVisibleContent(base: Event, previous: Shown, next: Shown) -> Bool {
+        let prevMedia = previous.mediaPath ?? base.mediaPath
+        let nextMedia = next.mediaPath ?? base.mediaPath
+        return previous.kind != next.kind
+            || previous.body != next.body
+            || previous.rich != next.rich
+            || previous.fileName != next.fileName
+            || prevMedia != nextMedia
+            || previous.mimeType != next.mimeType
+            || previous.geoURI != next.geoURI
+    }
+
+    private static func resolvedLinkPreviews(base: Event, edit: Event?) -> [LinkPreviewItem] {
+        if let edit {
+            if let editPreviews = edit.linkPreviews, !editPreviews.isEmpty {
+                return editPreviews
+            }
+            let rawPreviews = edit.content["m.new_content"]?["com.beeper.linkpreviews"]?.arrayValue
+                ?? edit.content["com.beeper.linkpreviews"]?.arrayValue
+            if let rawPreviews {
+                let parsed = rawPreviews.compactMap(linkPreviewItem(from:))
+                if !parsed.isEmpty {
+                    return parsed
+                }
+            }
+        }
+        return base.linkPreviews ?? []
+    }
+
+    private static func linkPreviewItem(from value: JSONValue) -> LinkPreviewItem? {
+        guard case .object = value else { return nil }
+        let matched = value["matched_url"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rawURL = value["og:url"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = (rawURL?.isEmpty == false) ? rawURL : (matched.isEmpty ? nil : matched)
+        guard !matched.isEmpty || url != nil else { return nil }
+        let rawImage = value["og:image"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let imagePath = rawImage.flatMap { isLocalMediaStorePath($0) ? $0 : nil }
+        return LinkPreviewItem(
+            matchedURL: matched.isEmpty ? (url ?? "") : matched,
+            url: url,
+            title: value["og:title"]?.stringValue,
+            siteName: value["og:site_name"]?.stringValue,
+            description: value["og:description"]?.stringValue,
+            imagePath: imagePath,
+            imageWidth: value["og:image:width"]?.integerValue.map(Int.init),
+            imageHeight: value["og:image:height"]?.integerValue.map(Int.init),
+            blurhash: value["matrix:image:blurhash"]?.stringValue
+        )
     }
 
     /// The message msgtypes that carry a file.

@@ -10,13 +10,17 @@ final class EmbedThumbnailTests: XCTestCase {
     func testAValidVideoIDMakesYouTubesPictureAddress() {
         XCTAssertEqual(EmbedThumbnail.youTubeURL(videoID: "dQw4w9WgXcQ")?.absoluteString,
                        "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+        XCTAssertEqual(EmbedThumbnail.youTubeOEmbedURL(videoID: "dQw4w9WgXcQ")?.absoluteString,
+                       "https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ&format=json")
         XCTAssertNotNil(EmbedThumbnail.youTubeURL(videoID: "a-_B1234567"))
+        XCTAssertNotNil(EmbedThumbnail.youTubeOEmbedURL(videoID: "a-_B1234567"))
     }
 
     func testAnIDThatIsNotExactlyElevenSafeCharactersIsRefused() {
         for bad in ["", "short", "dQw4w9WgXcQx", "dQw4w9WgXc!", "dQw4w9Wg/cQ", "dQw4w9Wg?cQ", "dQw4w9WgXc ", "dQw4w9WgXcé",
                     "../../etc/p", "dQw4w9WgXc\n"] {
             XCTAssertNil(EmbedThumbnail.youTubeURL(videoID: bad), "\(bad.debugDescription) must be refused")
+            XCTAssertNil(EmbedThumbnail.youTubeOEmbedURL(videoID: bad), "\(bad.debugDescription) must be refused for oEmbed")
         }
     }
 
@@ -39,8 +43,37 @@ final class EmbedThumbnailTests: XCTestCase {
         let image = await EmbedThumbnail.fetch(videoID: "dQw4w9WgXcQ", session: session)
         XCTAssertNotNil(image)
         XCTAssertEqual(CountingURLProtocol.requests, ["https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"])
+        XCTAssertNotNil(EmbedThumbnail.cachedThumbnail(videoID: "dQw4w9WgXcQ"))
         _ = await EmbedThumbnail.fetch(videoID: "dQw4w9WgXcQ", session: session)
         XCTAssertEqual(CountingURLProtocol.requests.count, 1, "the second time comes from memory")
+    }
+
+    func testFetchMetadataParsesTitleAndChannelAndCaches() async {
+        let json = Data(#"{"title":"  Build With Bazel  ","author_name":"  Courier Channel  "}"#.utf8)
+        CountingURLProtocol.reset(body: json)
+        let session = CountingURLProtocol.session()
+        EmbedThumbnail.clearCache()
+
+        let badIDMeta = await EmbedThumbnail.fetchMetadata(videoID: "bad-id", session: session)
+        XCTAssertNil(badIDMeta)
+        XCTAssertEqual(CountingURLProtocol.requests, [], "no oEmbed request for a bad ID")
+
+        let meta = await EmbedThumbnail.fetchMetadata(videoID: "dQw4w9WgXcQ", session: session)
+        XCTAssertEqual(meta, YouTubeMetadata(title: "Build With Bazel", authorName: "Courier Channel"))
+        XCTAssertEqual(
+            CountingURLProtocol.requests,
+            ["https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ&format=json"]
+        )
+        XCTAssertEqual(EmbedThumbnail.cachedMetadata(videoID: "dQw4w9WgXcQ"), meta)
+
+        _ = await EmbedThumbnail.fetchMetadata(videoID: "dQw4w9WgXcQ", session: session)
+        XCTAssertEqual(CountingURLProtocol.requests.count, 1, "the second oEmbed lookup comes from memory")
+
+        EmbedThumbnail.clearCache()
+        XCTAssertNil(EmbedThumbnail.cachedMetadata(videoID: "dQw4w9WgXcQ"))
+        CountingURLProtocol.reset(body: Data(#"{"title":"   ","author_name":"Ch"}"#.utf8))
+        let emptyTitleMeta = await EmbedThumbnail.fetchMetadata(videoID: "dQw4w9WgXcQ", session: session)
+        XCTAssertNil(emptyTitleMeta, "empty title is rejected")
     }
 }
 
