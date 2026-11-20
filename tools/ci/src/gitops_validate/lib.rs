@@ -155,6 +155,32 @@ fn missing_values_refs(
     missing
 }
 
+/// `(file, value)` for each Barman `destinationPath:` in `files` that names a
+/// prefix under the bucket and ends in `/` (`s3://bucket/cnpg/`). Backups and
+/// WAL archiving work with that form, but retention does not:
+/// barman-cloud-backup-delete lists the catalogue under a prefix MinIO rejects
+/// (`XMinioInvalidObjectName`), so old backups are never pruned. A bare bucket
+/// root (`s3://bucket/`) is fine and stays allowed.
+fn trailing_slash_destinations(files: &[(String, String)]) -> Vec<(String, String)> {
+    let mut bad = Vec::new();
+    for (file, text) in files {
+        for line in text.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("destinationPath:") else {
+                continue;
+            };
+            let value = rest.trim().trim_matches(|c| c == '"' || c == '\'');
+            let Some((_, after_scheme)) = value.split_once("://") else {
+                continue;
+            };
+            let prefix = after_scheme.split_once('/').map_or("", |(_, p)| p);
+            if !prefix.is_empty() && prefix.ends_with('/') {
+                bad.push((file.clone(), value.to_string()));
+            }
+        }
+    }
+    bad
+}
+
 fn find_yaml_files(dir: &[u8], exclude_values: bool) -> Vec<Vec<u8>> {
     let mut cmd = Command::new("find");
     cmd.arg(os(dir)).arg("-name").arg("*.yaml");
@@ -273,6 +299,23 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             ]));
         }
         err(b"gitops-validate: Argo CD cannot render these apps and stops deploying them.\n");
+        return 1;
+    }
+
+    // --- 0b. Barman destinationPath prefixes must not end in `/` ---
+    out(b"gitops-validate: checking Barman destinationPath prefixes ...\n");
+    let bad = trailing_slash_destinations(&sources);
+    if !bad.is_empty() {
+        for (file, value) in &bad {
+            err(&cat(&[
+                b"gitops-validate: ",
+                file.as_bytes(),
+                b": destinationPath ",
+                value.as_bytes(),
+                b" ends in '/' after a bucket prefix; drop the trailing slash\n",
+            ]));
+        }
+        err(b"gitops-validate: Barman retention cannot list such a prefix on MinIO, so backups are never pruned.\n");
         return 1;
     }
 
@@ -580,6 +623,26 @@ mod tests {
             vec![(
                 "gitops/argocd/applications/mcp-slack.yaml".to_string(),
                 "gitops/argocd/platform/vitruvian-slack-mcp/values.yaml".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn trailing_slash_destinations_flags_only_prefixed_paths() {
+        // The 2026-11-12 sentry-db case: retention failed every 5 minutes.
+        let files = vec![(
+            "gitops/argocd/platform/sentry/infra/cnpg-objectstore.yaml".to_string(),
+            "    destinationPath: s3://sentry-db-backups/cnpg/\n\
+             \x20             destinationPath: s3://grafana-db-backups/\n\
+             \x20   destinationPath: \"s3://umami-db-backups/cnpg\"\n\
+             \x20   destinationPath: s3://buzz-db-backups\n"
+                .to_string(),
+        )];
+        assert_eq!(
+            trailing_slash_destinations(&files),
+            vec![(
+                "gitops/argocd/platform/sentry/infra/cnpg-objectstore.yaml".to_string(),
+                "s3://sentry-db-backups/cnpg/".to_string()
             )]
         );
     }
