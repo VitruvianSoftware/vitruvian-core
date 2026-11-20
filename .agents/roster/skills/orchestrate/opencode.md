@@ -120,7 +120,7 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 4. Tiers and models (token rules)
 
-- Only the lead thinks on Claude (you). Every specialist's work runs on Gemini: tier `build` on Antigravity's Orchestrator (Carbon plans, Gemini 4 Hydrogen edits and tests; for the specialists that write code), tier `deep` on Gemini 4 Carbon (QA, security review, acceptance), tier `light` on Gemini 4 Hydrogen (docs, release tracking). The roster table shows each specialist's model as `driver → Gemini model`: the Haiku driver is the cheap Claude wrapper, the Gemini model does the work.
+- Only the lead thinks on Claude (you). Every specialist's work runs on Gemini: tier `build` on Antigravity's Orchestrator (Neon) (Gemini 4 Neon plans and reviews, Gemini 4 Hydrogen edits and tests; for the specialists that write code), tier `deep` on Gemini 4 Carbon (QA, security review, acceptance), tier `light` on Gemini 4 Hydrogen (docs, release tracking). The roster table shows each specialist's model as `driver → Gemini model`: the Haiku driver is the cheap Claude wrapper, the Gemini model does the work.
 - The tier comes with the specialist. Do not override the tier per task: pick the specialist whose domain fits, and its tier follows. When a task sets a Gemini `model` override (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`), put `Gemini model: <id>` in its brief so the driver hands off to `<id>` instead of its default.
 - **Never use low effort**, in any form, ever. Never use `flash-lo`, `flash_lite`, a `-lite` or a `-low` model. If only those are offered, stop immediately and say so.
 - Keep your own context lean:

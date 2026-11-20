@@ -44,11 +44,11 @@ Approved by James on 2026-09-29. It applies to every delegation you make.
 |---|---|---|---|---|
 | beacon | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
 | aegis | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| wren | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
-| atlas | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
-| forge | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
+| wren | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
+| atlas | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
+| forge | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
 | compass | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
-| ridge | build | haiku (medium) → gemini-pro-orchestrator | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator |
+| ridge | build | haiku (medium) → gemini-pro-orchestrator-neon | pro | anthropic/claude-haiku-5-5 (medium) → gemini-pro-orchestrator-neon |
 | scout | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
 | quill | light | haiku (medium) → gemini-4-hydrogen-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high |
 | pace | light | haiku (medium) → gemini-4-hydrogen-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-4-hydrogen-high |

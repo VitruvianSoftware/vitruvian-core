@@ -1220,6 +1220,26 @@ test("prices.mjs lists opus-5-5 before opus and haiku-5-5 before haiku", () => {
   assert.ok(matches.includes("gemini-3\\.8-flash"));
 });
 
+test("each Gemini orchestrator id is priced by its own planner's row", () => {
+  // PRICES is first-match-wins and the generic "gemini-pro-orchestrator" row also matches
+  // "gemini-pro-orchestrator-neon", so the Neon row must come first.
+  const firstMatch = (model) =>
+    PRICES.find((p) => new RegExp(p.match, "i").test(model))?.match;
+  const neon = "gemini-4-neon|gemini-pro-orchestrator-neon";
+  assert.equal(firstMatch("gemini-pro-orchestrator-neon"), neon);
+  assert.equal(firstMatch("gemini-4-neon-high"), neon);
+  assert.equal(
+    firstMatch("gemini-pro-orchestrator"),
+    "gemini-pro-orchestrator",
+  );
+  assert.equal(
+    firstMatch("gemini-pro-orchestrator-argon"),
+    "gemini-pro-orchestrator",
+  );
+  assert.equal(firstMatch("gemini-4-carbon-high"), "gemini-4-(carbon|argon)");
+  assert.equal(firstMatch("gemini-4-hydrogen-high"), "gemini-4-hydrogen");
+});
+
 test("Haiku 5.5 matches haiku-5-5 entry while older Haiku falls through to haiku entry", () => {
   let flow = reduce(null, { type: "plan", at: 0, title: "Haiku", tasks: [] });
   flow = reduce(flow, {
