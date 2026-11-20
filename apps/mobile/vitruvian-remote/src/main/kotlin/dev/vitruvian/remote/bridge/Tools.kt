@@ -807,6 +807,11 @@ public object PhoneTools {
   private data class WavPlayOutcome(
       val result: ToolResult,
       val allowTtsFallback: Boolean,
+      /**
+       * ML Kit failed before any audio in a way a new client can cure: the engine reported an error
+       * or the client threw. The old client is already closed when this is set.
+       */
+      val freshClientMayHelp: Boolean = false,
   )
 
   private fun playWavBase64(
@@ -1187,8 +1192,31 @@ public object PhoneTools {
     val budgetSeconds =
         BridgePolicy.speakTimeoutSeconds(wavDurationSeconds = null, textLength = text.length)
     val startNs = System.nanoTime()
-    val mlKitOutcome =
+    var mlKitOutcome =
         speakMlKitTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly, budgetSeconds)
+    // When Google's speech app updates or restarts, the client we hold keeps pointing at the old
+    // engine ("not bound to TTS engine") and fails at once, every time. One retry on a new
+    // client, inside the same budget, reconnects instead of falling back for good.
+    val afterFirstSeconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNs)
+    if (BridgePolicy.retryMlKitWithFreshClient(
+        failedBeforeAudio = mlKitOutcome.result.isError && mlKitOutcome.allowTtsFallback,
+        freshClientMayHelp = mlKitOutcome.freshClientMayHelp,
+        retriesSoFar = 0,
+        remainingSeconds = budgetSeconds - afterFirstSeconds,
+        textLength = text.length,
+    )) {
+      Log.i(TTS_LOG_TAG, "mlkit: retrying on a new client after: ${mlKitOutcome.result.text}")
+      mlKitOutcome =
+          speakMlKitTts(
+              context,
+              audio,
+              speechAttrs,
+              text,
+              pauseMedia,
+              headphonesOnly,
+              budgetSeconds - afterFirstSeconds,
+          )
+    }
     if (!mlKitOutcome.result.isError || !mlKitOutcome.allowTtsFallback) {
       return mlKitOutcome.result
     }
@@ -1345,15 +1373,26 @@ public object PhoneTools {
                         allowTtsFallback = false,
                     )
                 is BridgePolicy.MlKitOutcome.Fallback -> {
-                  if (end.get() == BridgePolicy.MlKitEnd.Error) forgetMlKitVoice()
-                  fallback(withCode(outcome.reason, errorCode.get()))
+                  val engineError = end.get() == BridgePolicy.MlKitEnd.Error
+                  // An engine error can mean our client lost its engine (the speech app updated
+                  // or restarted). Close it, so the next attempt builds a new, bound one.
+                  if (engineError) shutdownMlKitTts()
+                  WavPlayOutcome(
+                      ToolResult(withCode(outcome.reason, errorCode.get()), true),
+                      allowTtsFallback = true,
+                      freshClientMayHelp = engineError,
+                  )
                 }
               }
             }
           }
     } catch (t: Throwable) {
       shutdownMlKitTts()
-      fallback("could not speak via ML Kit TTS: ${t.message}")
+      WavPlayOutcome(
+          ToolResult("could not speak via ML Kit TTS: ${t.message}", true),
+          allowTtsFallback = true,
+          freshClientMayHelp = true,
+      )
     }
   }
 

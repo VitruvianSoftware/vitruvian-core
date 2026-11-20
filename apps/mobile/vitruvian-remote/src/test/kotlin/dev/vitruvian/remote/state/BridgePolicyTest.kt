@@ -802,4 +802,20 @@ public class BridgePolicyTest {
     assertEquals(0L, BridgePolicy.mlKitFinishWindowMs(15, 20_000))
     assertEquals(15_000L, BridgePolicy.mlKitFinishWindowMs(15, -5))
   }
+
+  @Test
+  public fun retriesOnceOnAFreshClientAfterAnEngineError() {
+    // Seen on a Pixel after Google's speech app updated: every call failed at once with
+    // "not bound to TTS engine" until the client was rebuilt.
+    val budget = BridgePolicy.speakTimeoutSeconds(null, 100)
+    assertTrue(BridgePolicy.retryMlKitWithFreshClient(true, true, 0, budget - 1, 100))
+    // Only once.
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, true, 1, budget - 1, 100))
+    // Not when a new client cannot help (no voice ready, slow start).
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, false, 0, budget - 1, 100))
+    // Never once audio was heard, or the announcement would repeat.
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(false, true, 0, budget - 1, 100))
+    // Not when the budget left could not cover a retry and the Android voice after it.
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, true, 0, 20, 100))
+  }
 }

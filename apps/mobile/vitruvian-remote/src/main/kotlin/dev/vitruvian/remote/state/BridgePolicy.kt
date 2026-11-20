@@ -800,6 +800,25 @@ public object BridgePolicy {
   public fun mlKitFinishWindowMs(timeoutSeconds: Long, elapsedMs: Long): Long =
       (timeoutSeconds * 1000L - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(0L)
 
+  /**
+   * Whether to try ML Kit once more on a new client before falling back to the Android voice: only
+   * when nothing was heard ([failedBeforeAudio]), the failure is one a new client can cure
+   * ([freshClientMayHelp]: an engine error or a thrown client, not "no voice ready" or a slow
+   * start), it is the first retry, and enough of the budget is left to still say [textLength]
+   * characters with ML Kit and, failing that, the Android voice.
+   */
+  public fun retryMlKitWithFreshClient(
+      failedBeforeAudio: Boolean,
+      freshClientMayHelp: Boolean,
+      retriesSoFar: Int,
+      remainingSeconds: Long,
+      textLength: Int,
+  ): Boolean {
+    if (!failedBeforeAudio || !freshClientMayHelp || retriesSoFar >= 1) return false
+    val speech = maxOf(1L, textLength.toLong() / 10L)
+    return remainingSeconds >= 2 * speech + ANDROID_TTS_STARTUP_S + MLKIT_START_TIMEOUT_MS / 1000L
+  }
+
   /** Seconds the Android voice needs to start up, on top of the speech itself. */
   public const val ANDROID_TTS_STARTUP_S: Long = 5L
 
