@@ -22,6 +22,7 @@
 
   bazel run //tools/agent-plugins:refresh             # update main, reinstall, verify
   bazel run //tools/agent-plugins:refresh -- --check  # report only; exit 1 if stale
+  bazel run //tools/agent-plugins:schedule -- install # run refresh every 30 min (launchd)
 
 See README.md.
 """
@@ -41,5 +42,20 @@ sh_test(
     srcs = ["refresh_test.sh"],
     data = ["refresh.sh"],
     # Needs python3 for JSON; the remote image is not guaranteed to have it.
+    tags = ["no-remote-exec"],
+)
+
+sh_binary(
+    name = "schedule",
+    srcs = ["schedule.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "schedule_test",
+    size = "small",
+    srcs = ["schedule_test.sh"],
+    data = ["schedule.sh"],
+    # Uses `id -u` and a fake launchctl only; plutil is checked when present.
     tags = ["no-remote-exec"],
 )
