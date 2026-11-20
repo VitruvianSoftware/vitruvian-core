@@ -62,14 +62,14 @@ use vitruvian_mcp_auth::{
     extract_bearer, protected_resource_metadata, www_authenticate, AuthError, Caller, Verifier,
 };
 use vitruvian_relay_protocol::{
-    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, ACK_SECS,
-    CALL_BUDGET_SECS, MAX_FRAME_BYTES, PROTOCOL,
+    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, CALL_BUDGET_SECS,
+    MAX_FRAME_BYTES, PROTOCOL,
 };
 
 use crate::config::Settings;
 use crate::devices::{DeviceRecord, DeviceStore};
 use crate::mcp::{era, needs_session, Era, Mcp};
-use crate::registry::{ConnectionId, Registry};
+use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
 use crate::{hex, log_event, random_id, uuid_v4, LogSink};
 
 pub type Body = Full<Bytes>;
@@ -106,6 +106,9 @@ pub struct Timing {
     pub call_budget: Duration,
     /// How long the relay waits for the connector's `Ack` after writing a `Call`.
     pub ack_timeout: Duration,
+    /// How long a call whose connector's link dropped waits for it to
+    /// reconnect with the result, before failing `Disconnected`.
+    pub reconnect_grace: Duration,
     /// How far a `hello` timestamp may be from the relay's clock.
     pub max_clock_skew_secs: u64,
     /// How long a call frame is allowed to take to reach the device after
@@ -150,7 +153,8 @@ impl Default for Timing {
             in_call_ping: Duration::from_secs(IN_CALL_PING_SECS),
             max_missed_pings: MAX_MISSED_PINGS,
             call_budget: Duration::from_secs(CALL_BUDGET_SECS),
-            ack_timeout: Duration::from_secs(ACK_SECS),
+            ack_timeout: ACK_TIMEOUT,
+            reconnect_grace: RECONNECT_GRACE,
             max_clock_skew_secs: 60,
             transit_margin: Duration::from_secs(IN_CALL_PING_SECS) * MAX_MISSED_PINGS,
             send_timeout: Duration::from_secs(30),
@@ -203,7 +207,7 @@ impl App {
         timing: Timing,
         log: LogSink,
     ) -> Arc<App> {
-        let registry = Registry::with_ack_timeout(timing.ack_timeout);
+        let registry = Registry::with_timeouts(timing.ack_timeout, timing.reconnect_grace);
         Arc::new(App {
             mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()),
             settings,
@@ -1184,7 +1188,20 @@ async fn run_connection<S>(
                 None => break "connector went away".into(),
                 Some(Err(e)) => break format!("read error: {e}"),
                 Some(Ok(Message::Text(text))) => match decode_to_relay(&text) {
-                    Ok(ToRelay::Result(r)) => app.registry.complete(conn, r),
+                    Ok(ToRelay::Result(r)) => {
+                        let call_id = r.call_id.clone();
+                        if app.registry.complete(&device_id, conn, r) {
+                            if let Err(e) = send_frame(
+                                &mut sink,
+                                &ToConnector::ResultAck { call_id },
+                                send_timeout,
+                            )
+                            .await
+                            {
+                                break e;
+                            }
+                        }
+                    }
                     Ok(ToRelay::Ack { call_id }) => {
                         if app.registry.ack(conn, &call_id) {
                             if let Err(e) =

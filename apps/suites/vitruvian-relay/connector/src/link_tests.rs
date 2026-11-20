@@ -511,6 +511,8 @@ fn fast() -> Timing {
         results_cap_bytes: 16 * 1024 * 1024,
         log_max_bytes: 10 * 1024 * 1024,
         log_wait: WAIT,
+        // As in production; a test about the grace shortens it.
+        reconnect_grace: Duration::from_secs(vitruvian_relay_protocol::RECONNECT_GRACE_SECS),
     }
 }
 
@@ -978,21 +980,33 @@ async fn pongs_flow_while_prompt_open() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn link_drop_dismisses_open_prompts() {
+    // Not at once: the dialog stays for the grace period (see
+    // `dialog_survives_a_short_drop`). A link that stays away longer closes it.
     let mut relay = FakeRelay::start().await;
     let dir = registered("l-drop");
     let mut p = parts();
     p.asker = FakeAsker::answering(None);
+    p.timing.reconnect_grace = Duration::from_millis(400);
     let tools = p.tools.clone();
     let asker = p.asker.clone();
     let _run = start(&dir, &relay.url(), p);
     let (c, _) = relay.welcome().await;
     c.call("c1", "start_process", json!({"command": "touch /tmp/x"}));
     until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    let dropped = Instant::now();
     drop(c);
+    // The connector dials again at once, but nobody welcomes it.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(
+        asker.dismissed.load(Ordering::SeqCst),
+        0,
+        "the dialog closed inside the grace period"
+    );
     until("the dismiss", || {
         asker.dismissed.load(Ordering::SeqCst) == 1
     })
     .await;
+    assert!(dropped.elapsed() >= Duration::from_millis(400));
     asker.set(Waited::Allow);
     until_logged(&dir, "link dropped at prompt").await;
     // It reconnects; the dropped call is not run, here or later.
@@ -1291,6 +1305,7 @@ fn production_limits_are_pinned() {
     assert_eq!(t.results_cap_bytes, 16 * 1024 * 1024);
     assert_eq!(t.log_max_bytes, 10 * 1024 * 1024);
     assert_eq!(t.log_wait, Duration::from_secs(10));
+    assert_eq!(t.reconnect_grace, Duration::from_secs(10));
 }
 
 #[test]
@@ -1453,6 +1468,8 @@ async fn a_silent_relay_during_a_call_drops_the_link() {
     let mut p = parts();
     p.asker = FakeAsker::answering(None);
     p.timing.in_call_every = Duration::from_millis(100);
+    // The dialog outlives the drop by this long (the link never comes back).
+    p.timing.reconnect_grace = Duration::from_millis(200);
     let tools = p.tools.clone();
     let asker = p.asker.clone();
     let _run = start(&dir, &relay.url(), p);
@@ -2867,4 +2884,284 @@ async fn cancel_before_start_never_runs() {
     c.quiet_for(Duration::from_millis(200)).await;
     assert!(tools.calls.lock().unwrap().is_empty());
     assert_eq!(asker.opened.load(Ordering::SeqCst), 0);
+}
+
+// -------------------------------------------- results survive a dropped link
+
+/// Waits until the connector has read everything sent so far: it answers a
+/// ping only after the frames before it.
+async fn synced(c: &mut FakeConn, n: u64) {
+    c.send(ToConnector::Ping { n });
+    loop {
+        if c.recv_any().await == (ToRelay::Pong { n }) {
+            return;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unacked_result_is_resent_after_welcome() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-resend");
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    let first = c.result().await;
+    // The link drops before the relay's `result_ack` could come.
+    drop(c);
+    let (mut c, _) = relay.welcome().await;
+    let again = c.result().await;
+    assert_eq!(again, first);
+    // Still unacknowledged: it goes again after the next welcome too.
+    drop(c);
+    let (mut c, _) = relay.welcome().await;
+    assert_eq!(c.result().await, first);
+    // The call ran once, however many times its result was sent.
+    assert_eq!(tools.count(), 1);
+    c.quiet_for(Duration::from_millis(200)).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn acked_result_is_not_resent() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-acked");
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(c.result().await.call_id, "c1");
+    c.send(ToConnector::ResultAck {
+        call_id: "c1".into(),
+    });
+    synced(&mut c, 5).await;
+    drop(c);
+    let (mut c, _) = relay.welcome().await;
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_command_running_when_the_link_drops_keeps_running_and_its_result_follows() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-running-drop");
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "read_file", json!({"path": "/a", "sleep_ms": 400}));
+    until("the command to start", || tools.count() == 1).await;
+    drop(c);
+    // It finishes with no link up; the connector dials at once, but this
+    // welcome comes only after.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let (mut c, _) = relay.welcome().await;
+    let r = c.result().await;
+    assert_eq!(r.call_id, "c1");
+    assert!(!r.is_error, "{}", text(&r));
+    assert!(text(&r).contains("ran with"));
+    assert_eq!(tools.count(), 1);
+    let line = until_logged(&dir, "ran").await;
+    assert_eq!(line["result_dropped"], false);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_result_past_its_calls_deadline_is_not_resent() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-resend-late");
+    let p = parts();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.send(ToConnector::Call(Call {
+        call_id: "c1".into(),
+        tool: "read_file".into(),
+        arguments: json!({"path": "/a"}),
+        deadline_ms: 300,
+    }));
+    assert_eq!(c.result().await.call_id, "c1");
+    drop(c);
+    // The relay has given up on the call by now: nobody wants the result.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let (mut c, _) = relay.welcome().await;
+    c.quiet_for(Duration::from_millis(300)).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn dialog_survives_a_short_drop() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-dialog-survives");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    drop(c);
+    // The link is back within the grace period.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let (mut c, _) = relay.welcome().await;
+    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0);
+    // The answer given now is used, and its result goes out on the new link.
+    asker.set(Waited::Allow);
+    let r = c.result().await;
+    assert_eq!(r.call_id, "c1");
+    assert!(!r.is_error, "{}", text(&r));
+    assert_eq!(tools.count(), 1);
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 1);
+    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dialog_left_open_by_a_drop_closes_after_a_second_drop_does_not_extend_it() {
+    // Dropped, back, dropped again: the first drop's timer must not close the
+    // dialog while the second drop's grace is still running, and the second
+    // must close it when it ends.
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-dialog-twice");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    p.timing.reconnect_grace = Duration::from_millis(600);
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    drop(c);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (c, _) = relay.welcome().await;
+    // The first timer would fire about now; the link is up, so it must not.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(asker.dismissed.load(Ordering::SeqCst), 0);
+    drop(c);
+    until("the dismiss", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    until_logged(&dir, "link dropped at prompt").await;
+}
+
+/// Review focus 1: a call the relay has stopped waiting for never runs,
+/// whatever the link does. Here the link drops before `start`, the call's
+/// deadline passes while it is away, and the link returns carrying `start`.
+#[tokio::test(flavor = "multi_thread")]
+async fn call_past_its_deadline_never_runs_after_reconnect() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-late-start");
+    let p = parts();
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.hold_start.lock().unwrap().insert("c1".into());
+    c.send(ToConnector::Call(Call {
+        call_id: "c1".into(),
+        tool: "start_process".into(),
+        arguments: json!({"command": "ls"}),
+        deadline_ms: 300,
+    }));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    drop(c);
+    // Past the deadline, well inside the grace period.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let (mut c, _) = relay.welcome().await;
+    c.start("c1");
+    until_logged(&dir, "timed out").await;
+    c.quiet_for(Duration::from_millis(300)).await;
+    assert_eq!(tools.count(), 0, "it ran");
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 0, "its dialog opened");
+    // A repeat of the id is told why, and still does not run.
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    assert_eq!(text(&c.result().await), TIMED_OUT);
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repeat_call_while_awaiting_start_runs_once() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-repeat-awaiting");
+    let p = parts();
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call_without_start("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    // The same id again before `start`: acknowledged, and nothing more.
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0);
+    c.start("c1");
+    assert_eq!(c.result().await.call_id, "c1");
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_waiting_for_start_when_the_link_stays_away_is_cancelled() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-await-away");
+    let mut p = parts();
+    p.timing.reconnect_grace = Duration::from_millis(200);
+    let tools = p.tools.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    c.call_without_start("c1", "read_file", json!({"path": "/a"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    drop(c);
+    until_logged(&dir, "cancelled before running").await;
+    let (mut c, _) = relay.welcome().await;
+    c.start("c1");
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn eviction_takes_an_acknowledged_result_before_an_older_unacknowledged_one() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-evict-acked");
+    let mut p = parts();
+    p.timing.results_cap_bytes = 150; // about two small results
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+    for id in ["c1", "c2"] {
+        c.call(id, "read_file", json!({"path": "/a"}));
+        assert!(!c.result().await.is_error);
+    }
+    // The relay has c2; c1 is older but may still have to be sent again.
+    c.send(ToConnector::ResultAck {
+        call_id: "c2".into(),
+    });
+    synced(&mut c, 9).await;
+    c.call("c3", "read_file", json!({"path": "/a"}));
+    assert!(!c.result().await.is_error);
+    c.call("c1", "read_file", json!({"path": "/a"}));
+    let r = c.result().await;
+    assert_eq!(r.call_id, "c1");
+    assert!(text(&r).contains("ran with"), "{}", text(&r));
+    c.call("c2", "read_file", json!({"path": "/a"}));
+    assert_eq!(text(&c.result().await), EVICTED);
 }

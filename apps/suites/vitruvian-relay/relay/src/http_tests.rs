@@ -88,6 +88,16 @@ async fn within<T>(f: impl std::future::Future<Output = T>) -> T {
         .expect("timed out")
 }
 
+/// Waits until `f` holds.
+async fn until(f: impl Fn() -> bool) {
+    within(async {
+        while !f() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+}
+
 fn b64url(bytes: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
@@ -526,6 +536,8 @@ struct FakeDevice {
     answer_pings: Arc<AtomicBool>,
     auto_ack: Arc<AtomicBool>,
     starts: Arc<Mutex<Vec<String>>>,
+    /// Ids the relay sent a `ResultAck` for (kept out of `frames`).
+    result_acks: Arc<Mutex<Vec<String>>>,
     /// Pings received from the relay.
     pings: Arc<AtomicU32>,
     closed: Arc<tokio::sync::Notify>,
@@ -542,6 +554,8 @@ impl FakeDevice {
         let answer_pings = Arc::new(AtomicBool::new(true));
         let auto_ack = Arc::new(AtomicBool::new(true));
         let starts = Arc::new(Mutex::new(Vec::new()));
+        let result_acks = Arc::new(Mutex::new(Vec::new()));
+        let result_acks2 = result_acks.clone();
         let pings = Arc::new(AtomicU32::new(0));
         let pings2 = pings.clone();
         let closed = Arc::new(tokio::sync::Notify::new());
@@ -585,6 +599,9 @@ impl FakeDevice {
                                     let _ = frames_tx.send(ToConnector::Start { call_id });
                                 }
                             }
+                            ToConnector::ResultAck { call_id } => {
+                                result_acks2.lock().unwrap().push(call_id);
+                            }
                             other => { let _ = frames_tx.send(other); }
                         },
                         Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
@@ -602,10 +619,16 @@ impl FakeDevice {
             answer_pings,
             auto_ack,
             starts,
+            result_acks,
             pings,
             closed,
             is_closed,
         }
+    }
+
+    /// Ids the relay has acknowledged results for, in order.
+    fn result_acks(&self) -> Vec<String> {
+        self.result_acks.lock().unwrap().clone()
     }
 
     fn no_ack(&self) {
@@ -1583,6 +1606,8 @@ async fn silent_drop_mid_call_fails_within_seconds() {
     let h = Arc::new(
         harness_with(Timing {
             in_call_ping: Duration::from_millis(200),
+            // The call is held this long after the link is found dead.
+            reconnect_grace: Duration::from_millis(200),
             ..Timing::default()
         })
         .await,
@@ -1726,6 +1751,11 @@ fn production_timing_matches_the_spec() {
         t.ack_timeout,
         Duration::from_secs(vitruvian_relay_protocol::ACK_SECS)
     );
+    assert_eq!(
+        t.reconnect_grace,
+        Duration::from_secs(vitruvian_relay_protocol::RECONNECT_GRACE_SECS)
+    );
+    assert_eq!(t.reconnect_grace, Duration::from_secs(10));
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
     assert_eq!(t.transit_margin, Duration::from_secs(6));
@@ -2673,6 +2703,92 @@ async fn ack_triggers_start_and_delivers_result() {
     let r = within(pending).await.unwrap();
     assert_eq!(r.json()["result"]["isError"], false);
     assert_eq!(r.json()["result"]["content"][0]["text"], "ok");
+}
+
+#[tokio::test]
+async fn an_accepted_result_is_acknowledged_once() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "ok");
+    within(pending).await.unwrap();
+    until(|| fake.result_acks() == [call.call_id.clone()]).await;
+    // The connector sends it again (it never saw the ack, say): the relay has
+    // no call waiting for it, so it is not accepted and not acknowledged.
+    fake.reply(&call.call_id, "ok");
+    // A frame behind it that does get an answer, so the first is known read.
+    fake.send(ToRelay::Ping { n: 7 });
+    assert_eq!(fake.next().await, ToConnector::Pong { n: 7 });
+    assert_eq!(fake.result_acks(), [call.call_id]);
+}
+
+#[tokio::test]
+async fn a_result_over_a_new_connection_reaches_a_call_held_across_a_drop() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    // The link drops with the call running on the device.
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    let fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    fake2.reply(&call.call_id, "survived");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "survived");
+    until(|| fake2.result_acks() == [call.call_id.clone()]).await;
+}
+
+#[tokio::test]
+async fn a_call_held_across_a_drop_fails_when_the_device_stays_away() {
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(300),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    fake.next_call().await;
+    let dropped = Instant::now();
+    drop(fake);
+    let r = within(pending).await.unwrap();
+    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert!(dropped.elapsed() >= Duration::from_millis(300));
 }
 
 #[tokio::test]

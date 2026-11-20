@@ -210,6 +210,10 @@ fn relay_timing() -> RelayTiming {
 }
 
 async fn start_relay() -> Relay {
+    start_relay_with(relay_timing()).await
+}
+
+async fn start_relay_with(timing: RelayTiming) -> Relay {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
     let data_dir = temp_dir("relay-data");
@@ -246,7 +250,7 @@ async fn start_relay() -> Relay {
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
         store,
-        relay_timing(),
+        timing,
         sink,
     );
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -442,11 +446,14 @@ fn tool(name: &str) -> ToolDef {
 }
 
 /// `read_file` (runs without asking) answers `read <path>`, or `big_bytes`
-/// of text for `/big`; `start_process` (asks first) answers `ran <command>`.
+/// of text for `/big`, or, for `/gated`, `read /gated` once the test has
+/// called `gate.notify_one()`; `start_process` (asks first) answers
+/// `ran <command>`.
 #[derive(Default)]
 struct E2eTools {
     ran: Mutex<Vec<(String, Value)>>,
     big_bytes: AtomicUsize,
+    gate: tokio::sync::Notify,
 }
 
 impl E2eTools {
@@ -472,24 +479,28 @@ impl Tools for E2eTools {
         _deadline: Instant,
         wanted: StillWanted,
     ) -> impl std::future::Future<Output = Option<BridgeOutput>> + Send {
-        if !wanted() {
-            return std::future::ready(None);
+        let tool = tool.to_string();
+        async move {
+            if !wanted() {
+                return None;
+            }
+            self.ran.lock().unwrap().push((tool.clone(), args.clone()));
+            let path = args["path"].as_str();
+            let text = match (tool.as_str(), path, args["command"].as_str()) {
+                ("read_file", Some("/big"), _) => "b".repeat(self.big_bytes.load(Ordering::SeqCst)),
+                ("read_file", Some(p), _) => format!("read {p}"),
+                ("start_process", _, Some(c)) => format!("ran {c}"),
+                _ => "?".into(),
+            };
+            if path == Some("/gated") {
+                self.gate.notified().await;
+            }
+            Some(BridgeOutput {
+                content: json!([{"type": "text", "text": text}]),
+                is_error: false,
+                truncated: false,
+            })
         }
-        self.ran
-            .lock()
-            .unwrap()
-            .push((tool.to_string(), args.clone()));
-        let text = match (tool, args["path"].as_str(), args["command"].as_str()) {
-            ("read_file", Some("/big"), _) => "b".repeat(self.big_bytes.load(Ordering::SeqCst)),
-            ("read_file", Some(p), _) => format!("read {p}"),
-            ("start_process", _, Some(c)) => format!("ran {c}"),
-            _ => "?".into(),
-        };
-        std::future::ready(Some(BridgeOutput {
-            content: json!([{"type": "text", "text": text}]),
-            is_error: false,
-            truncated: false,
-        }))
     }
 }
 
@@ -701,6 +712,50 @@ async fn slow_uplink(to: SocketAddr, bytes_per_sec: usize) -> String {
     format!("http://{addr}")
 }
 
+/// A loopback proxy in front of the relay that can be cut: every open
+/// connection through it dies, and new ones are refused until it is reopened.
+/// A network reset between the two.
+struct CutProxy {
+    url: String,
+    down: Arc<AtomicBool>,
+    open: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
+}
+
+impl CutProxy {
+    async fn start(to: SocketAddr) -> CutProxy {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let down = Arc::new(AtomicBool::new(false));
+        let open: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> = Arc::default();
+        let (d, o) = (down.clone(), open.clone());
+        tokio::spawn(async move {
+            while let Ok((mut from, _)) = listener.accept().await {
+                if d.load(Ordering::SeqCst) {
+                    continue; // dropped: refused
+                }
+                let Ok(mut up) = TcpStream::connect(to).await else {
+                    continue;
+                };
+                o.lock().unwrap().push(tokio::spawn(async move {
+                    let _ = tokio::io::copy_bidirectional(&mut from, &mut up).await;
+                }));
+            }
+        });
+        CutProxy { url, down, open }
+    }
+
+    fn cut(&self) {
+        self.down.store(true, Ordering::SeqCst);
+        for h in self.open.lock().unwrap().drain(..) {
+            h.abort();
+        }
+    }
+
+    fn reopen(&self) {
+        self.down.store(false, Ordering::SeqCst);
+    }
+}
+
 // ------------------------------------------------------------------- tests
 
 #[tokio::test(flavor = "multi_thread")]
@@ -855,4 +910,64 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
     *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
     let (text, is_error) = waiting.await.unwrap();
     assert_eq!((text.as_str(), is_error), ("ran make", false));
+}
+
+/// Most drops are network resets that recover in about a second. A command
+/// that was running through one must still answer the AI, and not run twice.
+#[tokio::test(flavor = "multi_thread")]
+async fn result_after_a_one_second_drop_reaches_the_ai() {
+    let relay = start_relay().await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector(&relay, "e-drop", &proxy.url, 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let call = tokio::spawn(async move { m.call("read_file", json!({"path": "/gated"})).await });
+    until("the command to start", || c.tools.ran("read_file") == 1).await;
+    // The link is reset mid-call and stays down for about a second.
+    let dropped = Instant::now();
+    proxy.cut();
+    until("the connector to see the drop", || c.logged("link down")).await;
+    // The command finishes while there is no link to send its result on.
+    c.tools.gate.notify_one();
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    proxy.reopen();
+    let (text, is_error) = tokio::time::timeout(WAIT, call).await.unwrap().unwrap();
+    assert_eq!((text.as_str(), is_error), ("read /gated", false));
+    assert!(dropped.elapsed() < Duration::from_secs(10));
+    // Never run twice.
+    assert_eq!(c.tools.ran("read_file"), 1);
+    // And the link works again.
+    let (text, _) = mcp.call("read_file", json!({"path": "/after"})).await;
+    assert_eq!(text, "read /after");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn drop_longer_than_grace_fails_disconnected() {
+    let grace = Duration::from_millis(600);
+    let relay = start_relay_with(RelayTiming {
+        reconnect_grace: grace,
+        ..relay_timing()
+    })
+    .await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector(&relay, "e-gone", &proxy.url, 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let call = tokio::spawn(async move { m.call("read_file", json!({"path": "/gated"})).await });
+    until("the command to start", || c.tools.ran("read_file") == 1).await;
+    let dropped = Instant::now();
+    proxy.cut();
+    // The link does not come back.
+    let (text, is_error) = tokio::time::timeout(WAIT, call).await.unwrap().unwrap();
+    assert_eq!(
+        (text.as_str(), is_error),
+        ("Your computer disconnected; try again.", true)
+    );
+    assert!(
+        dropped.elapsed() >= grace,
+        "failed after {:?}, inside the {grace:?} grace",
+        dropped.elapsed()
+    );
 }

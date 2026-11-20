@@ -546,6 +546,7 @@ mod tests {
             panic!()
         };
         reg.complete(
+            "d1",
             conn,
             CallResult {
                 call_id: call.call_id,
@@ -555,6 +556,7 @@ mod tests {
             },
         );
         reg.complete(
+            "d1",
             conn,
             CallResult {
                 call_id: call2.call_id,

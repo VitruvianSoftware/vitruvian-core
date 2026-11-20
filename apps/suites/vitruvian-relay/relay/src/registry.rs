@@ -26,7 +26,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, oneshot, Notify};
-use vitruvian_relay_protocol::{Call, CallResult, ToConnector, ToolDef};
+use vitruvian_relay_protocol::{
+    Call, CallResult, ToConnector, ToolDef, ACK_SECS, RECONNECT_GRACE_SECS,
+};
+
+/// How long the relay waits for the device's `Ack` after writing a `Call`.
+pub const ACK_TIMEOUT: Duration = Duration::from_secs(ACK_SECS);
+
+/// How long a call whose device link dropped waits for the device to come
+/// back with its result, before it fails `Disconnected`.
+pub const RECONNECT_GRACE: Duration = Duration::from_secs(RECONNECT_GRACE_SECS);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConnectionId(u64);
@@ -104,6 +113,11 @@ impl Closer {
 pub const CANCEL_WAIT: Duration = Duration::from_secs(2);
 
 struct Pending {
+    /// The device the call was sent to: its result is accepted from that
+    /// device's current connection, which after a dropped link is not the
+    /// one the call went out on.
+    device_id: String,
+    /// The connection the call was sent on.
     conn_id: ConnectionId,
     /// Tells this entry apart from a later call that reused the same id after
     /// this one was forgotten, so a stale guard or deadline never removes it.
@@ -112,10 +126,9 @@ struct Pending {
     deadline: Instant,
     /// Notified when the session finishes writing `Call` to the socket.
     written: Option<oneshot::Sender<()>>,
-    /// Notified when the device acknowledges receipt of the call.
+    /// Notified when the device acknowledges receipt of the call; `None`
+    /// once it has (so a second `Ack` is told apart from the first).
     ack: Option<oneshot::Sender<()>>,
-    /// Whether `ack` has been received for this call.
-    acked: bool,
     done: oneshot::Sender<Result<CallResult, CallError>>,
 }
 
@@ -128,14 +141,26 @@ struct State {
 }
 
 impl State {
-    /// Ends a connection (if it is the current one) and fails what it had in
-    /// flight. Dropping its `tx` closes the session's receiving side.
-    fn drop_connection(&mut self, device_id: &str, only: Option<ConnectionId>) {
+    /// Ends a connection (if it is the current one). Dropping its `tx`
+    /// closes the session's receiving side.
+    ///
+    /// A call the device may have received is kept, to be answered over its
+    /// next connection: `hold` says so, and the connection's id is returned
+    /// for the caller to start the grace timer ([`Registry::hold`]). Without
+    /// `hold`, or for a call that never reached the socket (there is nothing
+    /// to wait for), the call fails `Disconnected` now.
+    fn drop_connection(
+        &mut self,
+        device_id: &str,
+        only: Option<ConnectionId>,
+        hold: bool,
+    ) -> Option<ConnectionId> {
         match self.devices.get(device_id) {
             Some(c) if only.is_none_or(|id| id == c.id) => {}
-            _ => return,
+            _ => return None,
         }
         let conn = self.devices.remove(device_id).unwrap();
+        let mut held = false;
         let ids: Vec<String> = self
             .pending
             .iter()
@@ -143,10 +168,13 @@ impl State {
             .map(|(k, _)| k.clone())
             .collect();
         for id in ids {
-            if let Some(p) = self.pending.remove(&id) {
+            if hold && self.pending.get(&id).is_some_and(|p| p.written.is_none()) {
+                held = true;
+            } else if let Some(p) = self.pending.remove(&id) {
                 let _ = p.done.send(Err(CallError::Disconnected));
             }
         }
+        held.then_some(conn.id)
     }
 
     /// Removes the entry only if it is still the one with this token.
@@ -166,6 +194,7 @@ pub struct Registry {
     state: Arc<Mutex<State>>,
     cancel_wait: Duration,
     ack_timeout: Duration,
+    reconnect_grace: Duration,
 }
 
 impl Default for Registry {
@@ -173,7 +202,8 @@ impl Default for Registry {
         Registry {
             state: Arc::default(),
             cancel_wait: CANCEL_WAIT,
-            ack_timeout: Duration::from_secs(vitruvian_relay_protocol::ACK_SECS),
+            ack_timeout: ACK_TIMEOUT,
+            reconnect_grace: RECONNECT_GRACE,
         }
     }
 }
@@ -226,21 +256,71 @@ impl Registry {
         }
     }
 
-    /// A registry whose calls wait `d` for the device's `Ack`.
-    pub fn with_ack_timeout(d: Duration) -> Self {
+    /// A registry whose calls wait `ack_timeout` for the device's `Ack`, and
+    /// hold a call `reconnect_grace` after its link drops.
+    pub fn with_timeouts(ack_timeout: Duration, reconnect_grace: Duration) -> Self {
         Registry {
-            ack_timeout: d,
+            ack_timeout,
+            reconnect_grace,
             ..Self::default()
         }
+    }
+
+    /// A registry whose calls wait `d` for the device's `Ack`.
+    #[cfg(test)]
+    pub(crate) fn with_ack_timeout(d: Duration) -> Self {
+        Self::with_timeouts(d, RECONNECT_GRACE)
+    }
+
+    /// A registry that holds a call `d` after its link drops (tests).
+    #[cfg(test)]
+    pub(crate) fn with_reconnect_grace(d: Duration) -> Self {
+        Self::with_timeouts(ACK_TIMEOUT, d)
     }
 
     /// This registry (the same state), but its `Cancel`s wait `d` for room.
     #[cfg(test)]
     pub(crate) fn cancel_waiting(&self, d: Duration) -> Self {
         Registry {
-            state: self.state.clone(),
             cancel_wait: d,
-            ack_timeout: self.ack_timeout,
+            ..self.clone()
+        }
+    }
+
+    /// Starts the grace period for the calls `drop_connection` kept: those
+    /// still waiting for the device when it ends fail `Disconnected`.
+    fn hold(&self, held: Option<ConnectionId>) {
+        let Some(id) = held else { return };
+        if self.reconnect_grace.is_zero() {
+            return self.expire(id);
+        }
+        match tokio::runtime::Handle::try_current() {
+            Ok(h) => {
+                let (reg, grace) = (self.clone(), self.reconnect_grace);
+                h.spawn(async move {
+                    tokio::time::sleep(grace).await;
+                    reg.expire(id);
+                });
+            }
+            // No runtime to wait in (shutting down): nothing can answer.
+            Err(_) => self.expire(id),
+        }
+    }
+
+    /// Fails what is still pending on connection `id`, which has been gone
+    /// for the whole grace period.
+    fn expire(&self, id: ConnectionId) {
+        let mut st = self.state.lock().unwrap();
+        let ids: Vec<String> = st
+            .pending
+            .iter()
+            .filter(|(_, p)| p.conn_id == id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for call_id in ids {
+            if let Some(p) = st.pending.remove(&call_id) {
+                let _ = p.done.send(Err(CallError::Disconnected));
+            }
         }
     }
 
@@ -263,14 +343,13 @@ impl Registry {
         let Some(p) = st.pending.get_mut(call_id).filter(|p| p.conn_id == conn) else {
             return false;
         };
-        if p.acked {
-            return false;
+        match p.ack.take() {
+            Some(tx) => {
+                let _ = tx.send(());
+                true
+            }
+            None => false,
         }
-        p.acked = true;
-        if let Some(tx) = p.ack.take() {
-            let _ = tx.send(());
-        }
-        true
     }
 
     /// The session calls this just before it writes a call to the socket,
@@ -319,14 +398,14 @@ impl Registry {
             .map(|c| c.closer.clone())
     }
 
-    /// Ends connection `id` now: its pending calls fail and its session
-    /// stops without sending what is still queued.
+    /// Ends connection `id` now: its pending calls fail (nothing is held)
+    /// and its session stops without sending what is still queued.
     fn close_now(&self, device_id: &str, id: ConnectionId) {
         let mut st = self.state.lock().unwrap();
         if let Some(c) = st.devices.get(device_id).filter(|c| c.id == id) {
             c.closer.close();
         }
-        st.drop_connection(device_id, Some(id));
+        st.drop_connection(device_id, Some(id), false);
     }
 
     /// Tells the device to stop a call the relay has given up on. That must
@@ -341,6 +420,17 @@ impl Registry {
         tx: &mpsc::Sender<ToConnector>,
         call_id: String,
     ) {
+        // The call may have outlived its connection (held while the device
+        // reconnected): the device now listens on its current one.
+        let (id, tx) = self
+            .state
+            .lock()
+            .unwrap()
+            .devices
+            .get(device_id)
+            .map(|c| (c.id, c.tx.clone()))
+            .unwrap_or((id, tx.clone()));
+        let tx = &tx;
         let frame = ToConnector::Cancel { call_id };
         let frame = match tx.try_send(frame) {
             Ok(()) => return,
@@ -379,7 +469,7 @@ impl Registry {
         tx: mpsc::Sender<ToConnector>,
     ) -> ConnectionId {
         let mut st = self.state.lock().unwrap();
-        st.drop_connection(device_id, None);
+        let held = st.drop_connection(device_id, None, true);
         st.next_conn += 1;
         let id = ConnectionId(st.next_conn);
         st.devices.insert(
@@ -391,6 +481,8 @@ impl Registry {
                 closer: Arc::default(),
             },
         );
+        drop(st);
+        self.hold(held);
         id
     }
 
@@ -413,7 +505,7 @@ impl Registry {
         if !still_valid() {
             return None;
         }
-        st.drop_connection(device_id, None);
+        let held = st.drop_connection(device_id, None, true);
         st.next_conn += 1;
         let id = ConnectionId(st.next_conn);
         let closer = Arc::<Closer>::default();
@@ -426,21 +518,30 @@ impl Registry {
                 closer: closer.clone(),
             },
         );
+        drop(st);
+        self.hold(held);
         Some((id, closer))
     }
 
     /// Ends the connection `id`, if it is still the device's current one (a
-    /// stale session ending late must not remove its replacement).
+    /// stale session ending late must not remove its replacement). Its
+    /// pending calls wait for the device to reconnect (`RECONNECT_GRACE`).
     pub fn disconnect(&self, device_id: &str, id: ConnectionId) {
+        let held = self
+            .state
+            .lock()
+            .unwrap()
+            .drop_connection(device_id, Some(id), true);
+        self.hold(held);
+    }
+
+    /// Closes the device's live connection, failing its pending calls now
+    /// (the device was registered again: nothing is held for it).
+    pub fn kick(&self, device_id: &str) {
         self.state
             .lock()
             .unwrap()
-            .drop_connection(device_id, Some(id));
-    }
-
-    /// Closes the device's live connection, failing its pending calls.
-    pub fn kick(&self, device_id: &str) {
-        self.state.lock().unwrap().drop_connection(device_id, None);
+            .drop_connection(device_id, None, false);
     }
 
     /// The device's new tool list, from connection `conn`: only if that is
@@ -496,12 +597,12 @@ impl Registry {
             st.pending.insert(
                 call_id.clone(),
                 Pending {
+                    device_id: device_id.to_string(),
                     conn_id,
                     token,
                     deadline: started + deadline,
                     written: Some(written_tx),
                     ack: Some(ack_tx),
-                    acked: false,
                     done,
                 },
             );
@@ -562,7 +663,7 @@ impl Registry {
                     if st
                         .pending
                         .get(&call_id)
-                        .is_some_and(|p| p.token == token && !p.acked)
+                        .is_some_and(|p| p.token == token && p.ack.is_some())
                     {
                         st.pending.remove(&call_id);
                         true
@@ -607,19 +708,32 @@ impl Registry {
     }
 
     /// Hands a device's result to the caller waiting for it. `conn` is the
-    /// connection the result arrived on: a result from any other connection
-    /// (an old one that outlived a reconnect) is dropped, as is one nobody is
-    /// waiting for (late, repeated, or cancelled).
-    pub fn complete(&self, conn: ConnectionId, result: CallResult) {
+    /// connection the result arrived on: it must be the device's current one
+    /// (an old one that outlived a reconnect is dropped). The call itself
+    /// may have gone out on an earlier connection of the same device, one
+    /// that dropped and came back within the grace period.
+    ///
+    /// `true` if the result was accepted, so the session sends `ResultAck`.
+    /// A result nobody is waiting for (late, repeated, cancelled, or for
+    /// another device's call) is dropped and not accepted.
+    pub fn complete(&self, device_id: &str, conn: ConnectionId, result: CallResult) -> bool {
         let mut st = self.state.lock().unwrap();
+        if st.devices.get(device_id).is_none_or(|c| c.id != conn) {
+            return false;
+        }
         if st
             .pending
             .get(&result.call_id)
-            .is_some_and(|p| p.conn_id == conn)
+            .is_none_or(|p| p.device_id != device_id)
         {
-            if let Some(p) = st.pending.remove(&result.call_id) {
+            return false;
+        }
+        match st.pending.remove(&result.call_id) {
+            Some(p) => {
                 let _ = p.done.send(Ok(result));
+                true
             }
+            None => false,
         }
     }
 }
@@ -691,7 +805,7 @@ mod tests {
         let conn = reg.connect("d1", vec![], tx);
         let h = spawn_call(&reg, "c1", BUDGET_MS);
         assert_eq!(expect_call(&mut rx).await.call_id, "c1");
-        reg.complete(conn, result("c1", "hi"));
+        reg.complete("d1", conn, result("c1", "hi"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "hi")));
     }
 
@@ -704,8 +818,8 @@ mod tests {
         let h2 = spawn_call(&reg, "c2", BUDGET_MS);
         expect_call(&mut rx).await;
         expect_call(&mut rx).await;
-        reg.complete(conn, result("c2", "second"));
-        reg.complete(conn, result("c1", "first"));
+        reg.complete("d1", conn, result("c2", "second"));
+        reg.complete("d1", conn, result("c1", "first"));
         assert_eq!(within(h1).await.unwrap(), Ok(result("c1", "first")));
         assert_eq!(within(h2).await.unwrap(), Ok(result("c2", "second")));
     }
@@ -752,7 +866,7 @@ mod tests {
             })
         );
         // A late result for the cancelled call is ignored, not a panic.
-        reg.complete(conn, result("c1", "late"));
+        reg.complete("d1", conn, result("c1", "late"));
         assert!(!reg.in_flight("d1"));
     }
 
@@ -779,10 +893,10 @@ mod tests {
         let h = spawn_call(&reg, "c2", BUDGET_MS);
         expect_call(&mut rx2).await;
         // A result for c2 reported by the old connection is ignored...
-        reg.complete(old, result("c2", "from the old connection"));
+        reg.complete("d1", old, result("c2", "from the old connection"));
         assert!(reg.in_flight("d1"));
         // ...and the new connection's own result is accepted.
-        reg.complete(new, result("c2", "ok"));
+        reg.complete("d1", new, result("c2", "ok"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c2", "ok")));
     }
 
@@ -906,7 +1020,7 @@ mod tests {
         // The first call is still pending and no extra frame went out.
         assert!(reg.in_flight("d1"));
         assert!(rx.try_recv().is_err());
-        reg.complete(conn, result("c1", "one"));
+        reg.complete("d1", conn, result("c1", "one"));
         assert_eq!(within(first).await.unwrap(), Ok(result("c1", "one")));
     }
 
@@ -922,7 +1036,7 @@ mod tests {
         let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
         assert!(reg.in_flight("d1"));
-        reg.complete(conn, result("c1", "x"));
+        reg.complete("d1", conn, result("c1", "x"));
         within(h).await.unwrap().unwrap();
         assert!(!reg.in_flight("d1"));
 
@@ -1040,7 +1154,7 @@ mod tests {
             "{}",
             c.deadline_ms
         );
-        reg.complete(conn, result("c1", "ok"));
+        reg.complete("d1", conn, result("c1", "ok"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "ok")));
     }
 
@@ -1077,7 +1191,7 @@ mod tests {
         let mut c_new = expect_call(&mut rx2).await;
         assert!(!reg.release(conn, &mut c, Duration::ZERO));
         assert!(reg.release(new, &mut c_new, Duration::ZERO));
-        reg.complete(new, result("c3", "ok"));
+        reg.complete("d1", new, result("c3", "ok"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c3", "ok")));
     }
 
@@ -1118,7 +1232,7 @@ mod tests {
         // The id is free again.
         let h = spawn_call(&reg, "c1", BUDGET_MS);
         expect_call(&mut rx).await;
-        reg.complete(conn, result("c1", "again"));
+        reg.complete("d1", conn, result("c1", "again"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "again")));
     }
 
@@ -1152,7 +1266,144 @@ mod tests {
         assert!(reg.ack(conn, "c1"));
         assert!(!reg.ack(conn, "c1"));
         tokio::time::sleep(Duration::from_millis(200)).await;
-        reg.complete(conn, result("c1", "ok"));
+        reg.complete("d1", conn, result("c1", "ok"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "ok")));
+    }
+    /// Connects `d1`, sends one call to it and marks it written and acked,
+    /// as a device that has the call and is running it.
+    async fn running_call(
+        reg: &Registry,
+        id: &str,
+        deadline_ms: u64,
+    ) -> (
+        ConnectionId,
+        mpsc::Receiver<ToConnector>,
+        tokio::task::JoinHandle<Result<CallResult, CallError>>,
+    ) {
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(reg, id, deadline_ms);
+        let c = expect_call(&mut rx).await;
+        reg.call_written(conn, &c.call_id);
+        assert!(reg.ack(conn, &c.call_id));
+        (conn, rx, h)
+    }
+
+    #[tokio::test]
+    async fn a_dropped_connection_holds_its_calls_for_the_grace_period() {
+        let reg = Registry::with_reconnect_grace(Duration::from_millis(300));
+        let (old, _rx_old, mut h) = running_call(&reg, "c1", BUDGET_MS).await;
+        reg.disconnect("d1", old);
+        // Not failed yet: the device may be back within the grace.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut h)
+                .await
+                .is_err(),
+            "the call failed before the grace was over"
+        );
+        // Past it, it fails.
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
+        assert!(!reg.in_flight("d1"));
+    }
+
+    #[tokio::test]
+    async fn a_held_call_gets_its_result_from_the_new_connection() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (old, _rx_old, h) = running_call(&reg, "c1", BUDGET_MS).await;
+        reg.disconnect("d1", old);
+        let (tx, _rx_new) = mpsc::channel(8);
+        let new = reg.connect("d1", vec![], tx);
+        assert!(reg.complete("d1", new, result("c1", "survived")));
+        assert_eq!(within(h).await.unwrap(), Ok(result("c1", "survived")));
+        // It was accepted once: a repeat is not.
+        assert!(!reg.complete("d1", new, result("c1", "survived")));
+    }
+
+    #[tokio::test]
+    async fn a_replaced_connection_holds_its_calls_for_the_new_one() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (_old, _rx_old, h) = running_call(&reg, "c1", BUDGET_MS).await;
+        // The device dials again before the relay noticed the old link die.
+        let (tx, _rx_new) = mpsc::channel(8);
+        let new = reg.connect("d1", vec![], tx);
+        assert!(reg.complete("d1", new, result("c1", "ok")));
+        assert_eq!(within(h).await.unwrap(), Ok(result("c1", "ok")));
+    }
+
+    #[tokio::test]
+    async fn a_result_is_accepted_only_from_the_devices_own_current_connection() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (old, _rx_old, mut h) = running_call(&reg, "c1", BUDGET_MS).await;
+        let (tx, _rx_other) = mpsc::channel(8);
+        let other = reg.connect("d2", vec![], tx);
+        // Another device cannot answer this device's call.
+        assert!(!reg.complete("d2", other, result("c1", "not yours")));
+        // Nor can the device's own dropped connection.
+        reg.disconnect("d1", old);
+        assert!(!reg.complete("d1", old, result("c1", "from the dead")));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut h)
+                .await
+                .is_err(),
+            "a refused result must leave the call waiting"
+        );
+        let (tx, _rx_new) = mpsc::channel(8);
+        let new = reg.connect("d1", vec![], tx);
+        assert!(reg.complete("d1", new, result("c1", "mine")));
+        assert_eq!(within(h).await.unwrap(), Ok(result("c1", "mine")));
+    }
+
+    #[tokio::test]
+    async fn a_call_that_never_reached_the_socket_fails_at_once_when_the_link_drops() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
+        expect_call(&mut rx).await;
+        // Never `call_written`: the device cannot have it.
+        reg.disconnect("d1", conn);
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
+    }
+
+    #[tokio::test]
+    async fn kick_does_not_hold_calls() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (_conn, _rx, h) = running_call(&reg, "c1", BUDGET_MS).await;
+        reg.kick("d1");
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
+    }
+
+    #[tokio::test]
+    async fn a_held_calls_deadline_still_applies() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (old, _rx_old, h) = running_call(&reg, "c1", 100).await;
+        reg.disconnect("d1", old);
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Deadline));
+        assert!(!reg.in_flight("d1"));
+    }
+
+    #[tokio::test]
+    async fn giving_up_on_a_held_call_cancels_it_on_the_new_connection() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (old, _rx_old, h) = running_call(&reg, "c1", BUDGET_MS).await;
+        reg.disconnect("d1", old);
+        let (tx, mut rx_new) = mpsc::channel(8);
+        reg.connect("d1", vec![], tx);
+        h.abort();
+        assert_eq!(
+            within(rx_new.recv()).await,
+            Some(ToConnector::Cancel {
+                call_id: "c1".into()
+            })
+        );
+    }
+
+    #[test]
+    fn production_defaults_are_the_protocol_values() {
+        assert_eq!(ACK_TIMEOUT, Duration::from_secs(5));
+        assert_eq!(RECONNECT_GRACE, Duration::from_secs(10));
+        let reg = Registry::new();
+        assert_eq!(reg.ack_timeout, ACK_TIMEOUT);
+        assert_eq!(reg.reconnect_grace, RECONNECT_GRACE);
     }
 }
