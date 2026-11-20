@@ -1890,6 +1890,130 @@ async fn delivered_call_is_never_reused() {
     assert_eq!(text_of(&within(fourth).await.unwrap()), "10:15");
 }
 
+/// The server's end of a connection, whose writes fail once `dead` is set
+/// while reads carry on: a socket the AI app has left that the relay has
+/// not yet noticed is gone.
+struct DeadAfter {
+    inner: tokio::io::DuplexStream,
+    dead: Arc<AtomicBool>,
+}
+
+impl tokio::io::AsyncRead for DeadAfter {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for DeadAfter {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        if self.dead.load(Ordering::SeqCst) {
+            return std::task::Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.dead.load(Ordering::SeqCst) {
+            return std::task::Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// A command must never run twice. The result is counted as handed to the AI
+/// app only once the response carrying it has been written out: here the
+/// relay produces the response and hands its body to hyper, whose write then
+/// fails because the app's socket is dead. The app's retry must get the
+/// stored result, not start the command again.
+#[tokio::test]
+async fn result_lost_on_a_dead_socket_stays_rejoinable() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let args = json!({"command": "rm important"});
+    // The first request, on a connection the test can kill.
+    let (client, server) = tokio::io::duplex(256 * 1024);
+    let dead = Arc::new(AtomicBool::new(false));
+    tokio::spawn(serve_stream(
+        h.app.clone(),
+        DeadAfter {
+            inner: server,
+            dead: dead.clone(),
+        },
+    ));
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(client))
+        .await
+        .unwrap();
+    let conn = tokio::spawn(conn);
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(format!("/mcp/d/{device}"))
+        .header(header::HOST, "relay.example.test");
+    for (k, v) in h.mcp_headers(ALICE, Some(&s)) {
+        req = req.header(k, v);
+    }
+    let body = call_body(json!(1), "start_process", args.clone()).to_string();
+    let first = tokio::spawn(async move {
+        sender
+            .send_request(req.body(Full::new(Bytes::from(body))).unwrap())
+            .await
+            .map(|_| ())
+    });
+    let call = fake.next_call().await;
+    // The socket dies with the call running; then the command finishes.
+    dead.store(true, Ordering::SeqCst);
+    fake.reply(&call.call_id, "removed important");
+    until(|| h.logs().contains("\"outcome\":\"ok\"")).await;
+    // The relay's answer never got out.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!first.is_finished() || first.await.unwrap().is_err());
+    conn.abort();
+    // The retry gets the stored result; the command is not started again.
+    let retry = within(h.rpc(
+        &device,
+        ALICE,
+        Some(&s),
+        call_body(json!(2), "start_process", args.clone()),
+    ))
+    .await;
+    assert_eq!(text_of(&retry), "removed important");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), fake.frames.recv())
+            .await
+            .is_err(),
+        "a second call reached the device"
+    );
+    // That answer was written out, so it is handed over for good: the same
+    // call again is a new call.
+    let third = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(3), "start_process", args),
+    );
+    let call3 = fake.next_call().await;
+    assert_ne!(call.call_id, call3.call_id);
+    fake.reply(&call3.call_id, "removed again");
+    assert_eq!(text_of(&within(third).await.unwrap()), "removed again");
+}
+
 #[tokio::test]
 async fn other_persons_request_id_is_unknown() {
     let h = Arc::new(harness_with(approval_timing()).await);

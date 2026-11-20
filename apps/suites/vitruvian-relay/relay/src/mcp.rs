@@ -34,7 +34,7 @@ use vitruvian_relay_protocol::{
 };
 
 use crate::parked::{
-    CallHandle, Fetch, Outcome, ParkedCalls, RejoinKey, RequestId, UNKNOWN_REQUEST,
+    CallHandle, Delivery, Fetch, Outcome, Owned, ParkedCalls, RejoinKey, RequestId, UNKNOWN_REQUEST,
 };
 use crate::registry::{CallError, Registry};
 use crate::{log_event, random_id, LogSink};
@@ -175,6 +175,13 @@ pub fn needs_session(method: Option<&str>) -> bool {
     !matches!(method, Some("initialize") | Some("server/discover"))
 }
 
+/// A reply, and the delivery to commit once it has been written out (a
+/// result for the AI app; see [`Delivery`]).
+pub struct Answer {
+    pub value: Value,
+    pub delivery: Option<Delivery>,
+}
+
 /// A call in flight, found by (session id, JSON-RPC id): one chat can never
 /// cancel another's call, even when both use the same JSON-RPC id.
 struct InFlight {
@@ -215,8 +222,8 @@ impl Drop for InFlightEntry<'_> {
 }
 
 /// The one log line per call. Written on drop, so a call whose HTTP request
-/// was dropped mid-way is logged too (outcome `parked`: the call goes on). Sizes and names
-/// only: never arguments or output (spec §7.2).
+/// was dropped mid-way is logged too (outcome `parked`: the call goes on).
+/// Sizes and names only: never arguments or output (spec §7.2).
 struct CallLog {
     log: LogSink,
     device_id: String,
@@ -285,15 +292,47 @@ impl Mcp {
         self
     }
 
-    /// Answers one JSON-RPC message for `device_id`. `None` for a notification
-    /// (the HTTP layer answers 202 with no body). Batches are not supported:
-    /// current MCP revisions removed them.
+    /// Answers one JSON-RPC message for `device_id`, counting a result as
+    /// handed over at once. For callers with no response to write.
     pub async fn handle(
         &self,
         req: &Value,
         device_id: &str,
         caller: &Caller,
         session: Option<&str>,
+    ) -> Option<Value> {
+        let answer = self.handle_tracked(req, device_id, caller, session).await?;
+        if let Some(d) = answer.delivery {
+            d.commit();
+        }
+        Some(answer.value)
+    }
+
+    /// Answers one JSON-RPC message for `device_id`. `None` for a notification
+    /// (the HTTP layer answers 202 with no body). Batches are not supported:
+    /// current MCP revisions removed them. A result carries a [`Delivery`]
+    /// for the caller to commit once the response is written out.
+    pub async fn handle_tracked(
+        &self,
+        req: &Value,
+        device_id: &str,
+        caller: &Caller,
+        session: Option<&str>,
+    ) -> Option<Answer> {
+        let mut delivery = None;
+        let value = self
+            .answer(req, device_id, caller, session, &mut delivery)
+            .await?;
+        Some(Answer { value, delivery })
+    }
+
+    async fn answer(
+        &self,
+        req: &Value,
+        device_id: &str,
+        caller: &Caller,
+        session: Option<&str>,
+        delivery: &mut Option<Delivery>,
     ) -> Option<Value> {
         if !req.is_object() {
             return Some(rpc_error(
@@ -362,7 +401,10 @@ impl Mcp {
                     "cacheScope": "private",
                 }),
             ),
-            "tools/call" => self.call(id, &params, device_id, caller, session).await,
+            "tools/call" => {
+                self.call(id, &params, device_id, caller, session, delivery)
+                    .await
+            }
             _ => rpc_error(id, -32601, &format!("Method not found: {method}")),
         })
     }
@@ -406,6 +448,7 @@ impl Mcp {
         device_id: &str,
         caller: &Caller,
         session: Option<&str>,
+        delivery: &mut Option<Delivery>,
     ) -> Value {
         let Some(tool) = params
             .get("name")
@@ -433,7 +476,7 @@ impl Mcp {
         };
         if tool == CHECK_REQUEST {
             return self
-                .check_request(id, &arguments, device_id, caller, &mut log)
+                .check_request(id, &arguments, caller, &mut log, delivery)
                 .await;
         }
         let (cancel_tx, mut cancel_rx) = oneshot::channel();
@@ -522,7 +565,7 @@ impl Mcp {
                 )
             }
             Ended::Finished(outcome_) => {
-                waiting.deliver();
+                *delivery = Some(waiting.deliver());
                 match outcome_ {
                     Ok(r) => {
                         log.result_bytes = r.content.to_string().len();
@@ -551,9 +594,9 @@ impl Mcp {
         &self,
         id: Value,
         arguments: &Value,
-        device_id: &str,
         caller: &Caller,
         log: &mut CallLog,
+        delivery: &mut Option<Delivery>,
     ) -> Value {
         let Some(request_id) = arguments.get("request_id").and_then(Value::as_str) else {
             return rpc_error(
@@ -562,36 +605,52 @@ impl Mcp {
                 "Invalid params: check_request needs a request_id",
             );
         };
-        // Whatever the text, the answer for an id that is not this person's
-        // is the one for an id that never was.
         let request_id = RequestId::parse(request_id);
+        // An id that is not this person's gets the answer for an id that
+        // never was.
+        let Some(owned) = self.owned_request(&caller.subject, &request_id) else {
+            log.outcome = "unknown_request";
+            return rpc_result(id, text_result(UNKNOWN_REQUEST, true));
+        };
         match self
             .parked
             .take(&caller.subject, &request_id, self.approval_reply)
             .await
         {
-            Fetch::Done(Ok(r)) => {
-                log.result_bytes = r.content.to_string().len();
-                log.outcome = if r.is_error { "tool_error" } else { "ok" };
-                rpc_result(id, json!({"content": r.content, "isError": r.is_error}))
-            }
-            Fetch::Done(Err(e)) => {
-                log.outcome = outcome(e);
-                rpc_result(id, text_result(e.user_message(), true))
+            Fetch::Done(done) => {
+                *delivery = Some(self.parked.delivery(&request_id));
+                match done {
+                    Ok(r) => {
+                        log.result_bytes = r.content.to_string().len();
+                        log.outcome = if r.is_error { "tool_error" } else { "ok" };
+                        rpc_result(id, json!({"content": r.content, "isError": r.is_error}))
+                    }
+                    Err(e) => {
+                        log.outcome = outcome(e);
+                        rpc_result(id, text_result(e.user_message(), true))
+                    }
+                }
             }
             Fetch::Waiting => {
                 log.outcome = "waiting_approval";
-                let device = self
-                    .parked
-                    .device_of(&request_id)
-                    .unwrap_or_else(|| device_id.to_string());
-                rpc_result(id, text_result(&waiting_text(&device, &request_id), false))
+                rpc_result(
+                    id,
+                    text_result(&waiting_text(&owned.device_id, &request_id), false),
+                )
             }
+            // Expired while it was waited for.
             Fetch::Unknown => {
                 log.outcome = "unknown_request";
                 rpc_result(id, text_result(UNKNOWN_REQUEST, true))
             }
         }
+    }
+
+    /// The single check that a request id is `subject`'s. Everything that
+    /// names a request by id (`check_request`, the device in its waiting
+    /// text) goes through it, so none can answer for someone else's.
+    fn owned_request(&self, subject: &str, request_id: &RequestId) -> Option<Owned> {
+        self.parked.owned(subject, request_id)
     }
 }
 
@@ -606,11 +665,14 @@ struct Waiting<'a> {
 }
 
 impl Waiting<'_> {
-    /// The answer is going to the request.
-    fn deliver(&mut self) {
+    /// The answer is going to the request. It counts as handed over when
+    /// the returned [`Delivery`] is committed (the response written out),
+    /// not before: a response that never gets out leaves the result for the
+    /// retry.
+    fn deliver(&mut self) -> Delivery {
         self.settled = true;
-        self.parked.mark_delivered(&self.id);
         self.handle.detach();
+        self.parked.delivery(&self.id)
     }
 
     /// The request answers "waiting" and lets go; the id is out, so the
