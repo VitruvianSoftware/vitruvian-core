@@ -91,6 +91,13 @@ func Reconcile(ctx *pulumi.Context, baseURL, org string, projects []config.Proje
 	if err != nil {
 		return nil, fmt.Errorf("marshaling project filters: %w", err)
 	}
+	// No Triggers: a change to them REPLACES the command, and the Sentry
+	// apply's plan guard refuses any replace, so every new project tripped it
+	// (mini-party, 2026-11-20). The same values sit in Environment, and a
+	// change there runs Update, the same idempotent script, as an update.
+	// IgnoreChanges on "triggers" keeps the value already in state, so
+	// dropping them is not itself a replace.
+	opts = append(opts, pulumi.IgnoreChanges([]string{"triggers"}))
 	cmd, err := local.NewCommand(ctx, "sentry-project-filters", &local.CommandArgs{
 		Create:      pulumi.String(script),
 		Update:      pulumi.String(script),
@@ -99,7 +106,6 @@ func Reconcile(ctx *pulumi.Context, baseURL, org string, projects []config.Proje
 			"SENTRY_FILTERS_BASE_URL": pulumi.String(base),
 			"SENTRY_FILTERS_MAP":      pulumi.String(string(body)),
 		},
-		Triggers: pulumi.Array{pulumi.String(base), pulumi.String(string(body))},
 	}, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("reconciling Sentry inbound filters: %w", err)
