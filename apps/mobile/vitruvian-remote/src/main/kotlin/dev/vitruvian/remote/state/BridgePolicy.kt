@@ -819,6 +819,40 @@ public object BridgePolicy {
     return remainingSeconds >= 2 * speech + ANDROID_TTS_STARTUP_S + MLKIT_START_TIMEOUT_MS / 1000L
   }
 
+  /** What [speakWithFreshClientRetry] needs to know about one ML Kit attempt. */
+  public data class MlKitAttempt(val failedBeforeAudio: Boolean, val freshClientMayHelp: Boolean)
+
+  /**
+   * Runs one ML Kit [attempt] with the whole budget, then at most one more on a fresh client when
+   * [retryMlKitWithFreshClient] allows it, with whatever budget is left. Returns the last attempt's
+   * result. The caller falls back to the Android voice from there.
+   */
+  public fun <T> speakWithFreshClientRetry(
+      budgetSeconds: Long,
+      textLength: Int,
+      elapsedSeconds: () -> Long,
+      describe: (T) -> MlKitAttempt,
+      onRetry: (T) -> Unit = {},
+      attempt: (remainingSeconds: Long) -> T,
+  ): T {
+    val first = attempt(budgetSeconds)
+    val described = describe(first)
+    val remaining = budgetSeconds - elapsedSeconds()
+    if (!retryMlKitWithFreshClient(
+        described.failedBeforeAudio, described.freshClientMayHelp, 0, remaining, textLength)) {
+      return first
+    }
+    onRetry(first)
+    return attempt(remaining)
+  }
+
+  /**
+   * Whether a voice lookup looks like it ran on a client that lost its engine: no answer in time,
+   * or an empty list (a bound engine always lists the voices it has).
+   */
+  public fun lookupSuggestsStaleClient(timedOut: Boolean, voiceCount: Int): Boolean =
+      timedOut || voiceCount == 0
+
   /** Seconds the Android voice needs to start up, on top of the speech itself. */
   public const val ANDROID_TTS_STARTUP_S: Long = 5L
 

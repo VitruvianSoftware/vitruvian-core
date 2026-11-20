@@ -818,4 +818,61 @@ public class BridgePolicyTest {
     // Not when the budget left could not cover a retry and the Android voice after it.
     assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, true, 0, 20, 100))
   }
+
+  private data class FakeAttempt(val failedBeforeAudio: Boolean, val freshHelps: Boolean)
+
+  private fun runRetry(
+      results: List<FakeAttempt>,
+      elapsed: Long,
+      budget: Long = 60,
+      textLength: Int = 100,
+  ): Pair<List<Long>, FakeAttempt> {
+    val budgets = mutableListOf<Long>()
+    val out =
+        BridgePolicy.speakWithFreshClientRetry(
+            budgetSeconds = budget,
+            textLength = textLength,
+            elapsedSeconds = { elapsed },
+            describe = { a: FakeAttempt ->
+              BridgePolicy.MlKitAttempt(a.failedBeforeAudio, a.freshHelps)
+            },
+        ) { remaining ->
+          budgets += remaining
+          results[budgets.size - 1]
+        }
+    return budgets to out
+  }
+
+  @Test
+  public fun aDeadClientIsRetriedOnceWithTheBudgetLeft() {
+    val dead = FakeAttempt(failedBeforeAudio = true, freshHelps = true)
+    val spoke = FakeAttempt(failedBeforeAudio = false, freshHelps = false)
+    val (budgets, out) = runRetry(listOf(dead, spoke), elapsed = 2)
+    assertEquals(listOf(60L, 58L), budgets)
+    assertEquals(spoke, out)
+  }
+
+  @Test
+  public fun noRetryWhenAudioWasHeardOrAFreshClientCannotHelp() {
+    // Something was heard (mid-sentence failure): a retry would repeat the start.
+    val heard = FakeAttempt(failedBeforeAudio = false, freshHelps = true)
+    assertEquals(listOf(60L), runRetry(listOf(heard), elapsed = 2).first)
+    // No voice ready: a new client would not change that.
+    val notReady = FakeAttempt(failedBeforeAudio = true, freshHelps = false)
+    assertEquals(listOf(60L), runRetry(listOf(notReady), elapsed = 2).first)
+    // Twice dead: still only one retry.
+    val dead = FakeAttempt(failedBeforeAudio = true, freshHelps = true)
+    val (budgets, out) = runRetry(listOf(dead, dead, dead), elapsed = 2)
+    assertEquals(2, budgets.size)
+    assertEquals(dead, out)
+    // Too little budget left for a retry plus the Android voice.
+    assertEquals(listOf(60L), runRetry(listOf(dead), elapsed = 40).first)
+  }
+
+  @Test
+  public fun anEmptyOrMissingVoiceListMeansTheClientLostItsEngine() {
+    assertTrue(BridgePolicy.lookupSuggestsStaleClient(timedOut = true, voiceCount = -1))
+    assertTrue(BridgePolicy.lookupSuggestsStaleClient(timedOut = false, voiceCount = 0))
+    assertFalse(BridgePolicy.lookupSuggestsStaleClient(timedOut = false, voiceCount = 3))
+  }
 }

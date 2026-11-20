@@ -950,6 +950,15 @@ public object PhoneTools {
     }
   }
 
+  /**
+   * Closes the cached client so the next call builds a new one. Used after an answer that a dead
+   * engine binding would produce (an error, an empty list). Callers that still hold the old client
+   * see their call fail and retry once on the new one.
+   */
+  private fun discardMlKitClientIfStale() {
+    shutdownMlKitTts()
+  }
+
   /** Drops the cached voice, so the next announcement looks again. */
   public fun forgetMlKitVoice() {
     synchronized(mlKitLock) {
@@ -976,7 +985,16 @@ public object PhoneTools {
   }
 
   /** Every on-device voice for the phone's language, for the voice picker. Empty if unsupported. */
-  public fun listMlKitVoices(): List<PhoneVoiceOption> =
+  public fun listMlKitVoices(): List<PhoneVoiceOption> {
+    // An empty or failed answer can come from a client whose engine restarted, or one an
+    // announcement just closed: try once more on a fresh client before showing "no voices".
+    val first = listMlKitVoicesOnce()
+    if (first.isNotEmpty()) return first
+    discardMlKitClientIfStale()
+    return listMlKitVoicesOnce()
+  }
+
+  private fun listMlKitVoicesOnce(): List<PhoneVoiceOption> =
       runCatching {
             val synthesizer = getOrCreateMlKitSynthesizer()
             runBlocking(Dispatchers.IO) {
@@ -1014,11 +1032,21 @@ public object PhoneTools {
     if (!mlKitDownloadsInFlight.add(name)) return false
     mlKitDownloadScope.launch {
       try {
-        val synthesizer = getOrCreateMlKitSynthesizer()
-        supportedMlKitVoices(synthesizer)
-            .firstOrNull { it.name == name }
-            ?.let { runVoiceDownload(synthesizer, it) }
-      } catch (_: Throwable) {
+        // Twice at most: the second time on a fresh client, for when the first was closed under
+        // us or lost its engine.
+        repeat(2) { attempt ->
+          val done =
+              runCatching {
+                    val synthesizer = getOrCreateMlKitSynthesizer()
+                    supportedMlKitVoices(synthesizer)
+                        .firstOrNull { it.name == name }
+                        ?.let { runVoiceDownload(synthesizer, it) }
+                    true
+                  }
+                  .getOrDefault(false)
+          if (done) return@launch
+          if (attempt == 0) discardMlKitClientIfStale()
+        }
         // The list shows it downloadable again; Get can be tapped again.
       } finally {
         mlKitDownloadsInFlight.remove(name)
@@ -1131,20 +1159,25 @@ public object PhoneTools {
       }
 
   /** A ready voice from the cache, or a fresh lookup; null when none is ready to speak now. */
-  private fun readyMlKitVoice(context: Context, synthesizer: SpeechSynthesizer): VoiceInfo? {
+  /** A voice lookup's answer; [staleClient] means the client looked dead (closed, not cached). */
+  private data class VoiceLookup(val voice: VoiceInfo?, val staleClient: Boolean = false)
+
+  private fun readyMlKitVoice(context: Context, synthesizer: SpeechSynthesizer): VoiceLookup {
     val now = System.currentTimeMillis()
     val generation = mlKitVoiceGeneration.begin()
     synchronized(mlKitLock) {
       mlKitVoiceCache?.let { cached ->
         if (BridgePolicy.mlKitVoiceCacheFresh(now - cached.atMs, ready = cached.voice != null)) {
-          return cached.voice
+          return VoiceLookup(cached.voice)
         }
       }
     }
-    val voice =
+    var voiceCount = -1
+    val lookup =
         runBlocking(Dispatchers.IO) {
           withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) {
             val voices = supportedMlKitVoices(synthesizer)
+            voiceCount = voices.size
             val candidates =
                 voices.map { voice ->
                   BridgePolicy.MlKitVoiceCandidate(
@@ -1161,11 +1194,21 @@ public object PhoneTools {
                   .firstOrNull { it.name == name }
                   ?.let { startBackgroundVoiceDownload(synthesizer, it) }
             }
-            (selection as? BridgePolicy.MlKitVoiceSelection.Ready)?.let { ready ->
-              voices.firstOrNull { it.name == ready.name }
-            }
+            // Wrapped, so "no ready voice" (null inside) differs from "timed out" (null outside).
+            VoiceLookup(
+                (selection as? BridgePolicy.MlKitVoiceSelection.Ready)?.let { ready ->
+                  voices.firstOrNull { it.name == ready.name }
+                })
           }
         }
+    if (BridgePolicy.lookupSuggestsStaleClient(
+        timedOut = lookup == null, voiceCount = voiceCount)) {
+      // A bound engine always lists its voices; none (or no answer) means our client lost it.
+      // Close it and leave the cache alone, so this does not stick for the "not ready" window.
+      discardMlKitClientIfStale()
+      return VoiceLookup(null, staleClient = true)
+    }
+    val voice = lookup?.voice
     synchronized(mlKitLock) {
       // A Use (or a finished download) during the lookup bumped the generation: this answer may
       // be stale, so leave the cache empty and let the next announcement look again.
@@ -1173,7 +1216,7 @@ public object PhoneTools {
         mlKitVoiceCache = MlKitVoiceCacheEntry(voice, now)
       }
     }
-    return voice
+    return VoiceLookup(voice)
   }
 
   /**
@@ -1192,31 +1235,27 @@ public object PhoneTools {
     val budgetSeconds =
         BridgePolicy.speakTimeoutSeconds(wavDurationSeconds = null, textLength = text.length)
     val startNs = System.nanoTime()
-    var mlKitOutcome =
-        speakMlKitTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly, budgetSeconds)
     // When Google's speech app updates or restarts, the client we hold keeps pointing at the old
     // engine ("not bound to TTS engine") and fails at once, every time. One retry on a new
     // client, inside the same budget, reconnects instead of falling back for good.
-    val afterFirstSeconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNs)
-    if (BridgePolicy.retryMlKitWithFreshClient(
-        failedBeforeAudio = mlKitOutcome.result.isError && mlKitOutcome.allowTtsFallback,
-        freshClientMayHelp = mlKitOutcome.freshClientMayHelp,
-        retriesSoFar = 0,
-        remainingSeconds = budgetSeconds - afterFirstSeconds,
-        textLength = text.length,
-    )) {
-      Log.i(TTS_LOG_TAG, "mlkit: retrying on a new client after: ${mlKitOutcome.result.text}")
-      mlKitOutcome =
+    val mlKitOutcome =
+        BridgePolicy.speakWithFreshClientRetry(
+            budgetSeconds = budgetSeconds,
+            textLength = text.length,
+            elapsedSeconds = { TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNs) },
+            describe = { outcome: WavPlayOutcome ->
+              BridgePolicy.MlKitAttempt(
+                  failedBeforeAudio = outcome.result.isError && outcome.allowTtsFallback,
+                  freshClientMayHelp = outcome.freshClientMayHelp,
+              )
+            },
+            onRetry = { outcome ->
+              Log.i(TTS_LOG_TAG, "mlkit: retrying on a new client after: ${outcome.result.text}")
+            },
+        ) { remainingSeconds ->
           speakMlKitTts(
-              context,
-              audio,
-              speechAttrs,
-              text,
-              pauseMedia,
-              headphonesOnly,
-              budgetSeconds - afterFirstSeconds,
-          )
-    }
+              context, audio, speechAttrs, text, pauseMedia, headphonesOnly, remainingSeconds)
+        }
     if (!mlKitOutcome.result.isError || !mlKitOutcome.allowTtsFallback) {
       return mlKitOutcome.result
     }
@@ -1239,15 +1278,25 @@ public object PhoneTools {
       voiceOverride: VoiceInfo? = null,
   ): WavPlayOutcome {
     fun fallback(reason: String) = WavPlayOutcome(ToolResult(reason, true), allowTtsFallback = true)
+    // Outside the try, so a throw mid-sentence still knows audio was heard.
+    val started = AtomicBoolean(false)
     return try {
       val synthesizer = getOrCreateMlKitSynthesizer()
       val voice =
           voiceOverride
-              ?: readyMlKitVoice(context, synthesizer)
-              ?: return fallback("ML Kit TTS voice not ready")
+              ?: readyMlKitVoice(context, synthesizer).let { lookup ->
+                lookup.voice
+                    ?: return WavPlayOutcome(
+                        ToolResult(
+                            if (lookup.staleClient) "ML Kit TTS lost its engine"
+                            else "ML Kit TTS voice not ready",
+                            true),
+                        allowTtsFallback = true,
+                        freshClientMayHelp = lookup.staleClient,
+                    )
+              }
 
       val unplugged = AtomicBoolean(false)
-      val started = AtomicBoolean(false)
       val end = AtomicReference<BridgePolicy.MlKitEnd?>(null)
       val errorCode = AtomicReference<Int?>(null)
       withHeadphoneGuard(
@@ -1388,11 +1437,25 @@ public object PhoneTools {
           }
     } catch (t: Throwable) {
       shutdownMlKitTts()
-      WavPlayOutcome(
-          ToolResult("could not speak via ML Kit TTS: ${t.message}", true),
-          allowTtsFallback = true,
-          freshClientMayHelp = true,
-      )
+      if (started.get()) {
+        // Some of it was heard: never retry or fall back, or the start would be said twice.
+        WavPlayOutcome(
+            ToolResult(
+                JSONObject()
+                    .put("spoken", true)
+                    .put("partial", true)
+                    .put("engine", "mlkit_tts")
+                    .put("reason", "ML Kit TTS stopped partway through: ${t.message}")
+                    .toString()),
+            allowTtsFallback = false,
+        )
+      } else {
+        WavPlayOutcome(
+            ToolResult("could not speak via ML Kit TTS: ${t.message}", true),
+            allowTtsFallback = true,
+            freshClientMayHelp = true,
+        )
+      }
     }
   }
 
