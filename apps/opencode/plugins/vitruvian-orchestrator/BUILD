@@ -30,6 +30,7 @@ js_library(
         "lib/adapter.mjs",
         "lib/orchestrator-core.mjs",
         "lib/prices.mjs",
+        "lib/tier-defaults.mjs",
         "server.mjs",
     ],
 )

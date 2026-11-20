@@ -1,0 +1,35 @@
+{
+  "$schema": "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+  "roles": {
+    "lead": {
+      "agent": "beacon"
+    },
+    "developer": {
+      "agent": "wren"
+    },
+    "infrastructure": {
+      "agent": "atlas"
+    },
+    "build": {
+      "agent": "forge"
+    },
+    "operations": {
+      "agent": "ridge"
+    },
+    "qa": {
+      "agent": "scout"
+    },
+    "security": {
+      "agent": "aegis"
+    },
+    "product": {
+      "agent": "compass"
+    },
+    "docs": {
+      "agent": "quill"
+    },
+    "release": {
+      "agent": "pace"
+    }
+  }
+}

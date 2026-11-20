@@ -101,6 +101,11 @@ export type ChannelInfo = {
   archived: boolean;
 };
 
+export type TeamRoleEntry = {
+  agent: string;
+  role: string;
+};
+
 export type OverviewMember = {
   agent: string;
   state: MemberState;
@@ -218,6 +223,7 @@ export type Flow = {
   woken?: string[];
   hasMemberEvents?: boolean;
   channels?: ChannelInfo[];
+  team?: TeamRoleEntry[];
 };
 
 export type PlanTaskInput = {
@@ -303,6 +309,7 @@ export type FlowEvent = {
   detail?: string;
   seq?: number;
   target?: string;
+  roles?: TeamRoleEntry[];
 };
 
 export type StallState = "active" | "quiet" | "waiting" | "stalled";

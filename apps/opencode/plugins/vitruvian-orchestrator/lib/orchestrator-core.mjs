@@ -270,6 +270,7 @@ import { PRICES } from "./prices.mjs";
  * @property {string[]} woken
  * @property {boolean} [hasMemberEvents]
  * @property {ChannelEntry[]} [channels]
+ * @property {Array<{ agent: string, role: string }>} [team]
  */
 
 /**
@@ -362,6 +363,7 @@ import { PRICES } from "./prices.mjs";
  * @property {string} [worktree]
  * @property {"create" | "archive"} [action]
  * @property {string} [name]
+ * @property {Array<{ agent: string, role: string }>} [roles]
  */
 
 export const VALID_PHASES = new Set([
@@ -402,18 +404,26 @@ const CONTROL_AND_BIDI_RE =
   /(?:[\x00-\x08\x0b-\x1f\x7f-\x9f\u00ad\u061c\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]|\u200d)/g;
 
 /**
- * Cuts untrusted text to `MAX_RAW_POST_INPUT` (8000 chars) before any regex,
- * then linearly strips ANSI escape sequences, C0/DEL/C1 controls (preserving
- * `\n` and `\t`), zero-width/invisible characters, and Unicode bidi overrides.
+ * Linearly strips ANSI escape sequences, C0/DEL/C1 controls (preserving `\n` and
+ * `\t`), zero-width/invisible characters, and Unicode bidi overrides.
+ *
+ * @param {string} raw
+ * @returns {string}
+ */
+function stripUnsafeDisplayChars(raw) {
+  return raw.replace(ANSI_ESCAPE_RE, "").replace(CONTROL_AND_BIDI_RE, "");
+}
+
+/**
+ * Strips ANSI escape sequences, C0/DEL/C1 controls (preserving `\n` and `\t`),
+ * zero-width/invisible characters, and Unicode bidi overrides, then cuts
+ * untrusted text to `MAX_RAW_POST_INPUT` (8000 chars).
  *
  * @param {string} raw
  * @returns {string}
  */
 function sanitizePostText(raw) {
-  return raw
-    .slice(0, MAX_RAW_POST_INPUT)
-    .replace(ANSI_ESCAPE_RE, "")
-    .replace(CONTROL_AND_BIDI_RE, "");
+  return stripUnsafeDisplayChars(raw).slice(0, MAX_RAW_POST_INPUT);
 }
 
 /**
@@ -935,6 +945,24 @@ function finalizeFlow(nextFlow, at) {
             .map((c) => ({
               name: c.name.trim(),
               archived: Boolean(c.archived),
+            })),
+        }
+      : {}),
+    ...(Array.isArray(nextFlow.team)
+      ? {
+          team: nextFlow.team
+            .filter(
+              (entry) =>
+                isPlainObject(entry) &&
+                typeof entry.agent === "string" &&
+                VALID_HANDLE_RE.test(entry.agent) &&
+                typeof entry.role === "string" &&
+                TEAM_ROLE_SET.has(entry.role),
+            )
+            .slice(0, MAX_TEAM_ROLES)
+            .map((entry) => ({
+              agent: entry.agent,
+              role: entry.role,
             })),
         }
       : {}),
@@ -1703,6 +1731,17 @@ export function reduce(flow, event) {
         return finalizeFlow({ ...flow, channels: nextChannels }, event.at);
       }
       return flow;
+    }
+
+    case "team": {
+      if (!flow) {
+        return flow;
+      }
+      const check = validateTeamEvent(event);
+      if (!check.ok) {
+        return flow;
+      }
+      return finalizeFlow({ ...flow, team: check.roles }, event.at);
     }
 
     default:
@@ -2903,4 +2942,682 @@ export function overview(flow, nowOrOptions = undefined) {
     openDefects,
     stalls: stallRows,
   };
+}
+
+/**
+ * Fixed list of orchestrator team roles in canonical display order.
+ *
+ * @type {readonly string[]}
+ */
+export const ROLES = Object.freeze([
+  "lead",
+  "developer",
+  "infrastructure",
+  "build",
+  "operations",
+  "qa",
+  "security",
+  "product",
+  "docs",
+  "release",
+]);
+
+/**
+ * Built-in default tier for each orchestrator role.
+ *
+ * @type {Readonly<Record<string, "lead" | "build" | "deep" | "light">>}
+ */
+export const DEFAULT_ROLE_TIERS = Object.freeze(
+  Object.assign(Object.create(null), {
+    lead: "lead",
+    developer: "build",
+    infrastructure: "build",
+    build: "build",
+    operations: "build",
+    qa: "deep",
+    security: "deep",
+    product: "deep",
+    docs: "light",
+    release: "light",
+  }),
+);
+
+/**
+ * Valid tier names in `.agents/team.json`.
+ *
+ * @type {readonly ("lead" | "build" | "deep" | "light")[]}
+ */
+export const TEAM_TIERS = Object.freeze(["lead", "build", "deep", "light"]);
+
+/**
+ * Valid reasoning effort levels in `.agents/team.json`.
+ *
+ * @type {readonly ("medium" | "high" | "xhigh" | "max")[]}
+ */
+export const TEAM_EFFORTS = Object.freeze(["medium", "high", "xhigh", "max"]);
+
+/**
+ * Maximum length of sanitized `notes` (top-level and per-role) in `.agents/team.json`.
+ */
+export const MAX_TEAM_NOTES = 2000;
+
+/**
+ * Maximum file size in bytes (64 KiB) allowed when reading `.agents/team.json`.
+ */
+export const MAX_TEAM_FILE_BYTES = 64 * 1024;
+
+/**
+ * Maximum number of agent-role entries allowed in a `team` flow event.
+ */
+export const MAX_TEAM_ROLES = 10;
+
+const TEAM_HARNESSES = new Set(["claude-code", "antigravity", "opencode"]);
+const TEAM_TOP_KEYS = new Set(["$schema", "notes", "tiers", "roles"]);
+const TEAM_TIER_SET = new Set(TEAM_TIERS);
+const TEAM_ROLE_SET = new Set(ROLES);
+const TEAM_EFFORT_SET = new Set(TEAM_EFFORTS);
+const TEAM_TIER_VALUE_KEYS = new Set([
+  "gemini",
+  "claude-code",
+  "antigravity",
+  "opencode",
+  "effort",
+]);
+const TEAM_ROLE_VALUE_KEYS = new Set([
+  "agent",
+  "tier",
+  "gemini",
+  "claude-code",
+  "antigravity",
+  "opencode",
+  "effort",
+  "notes",
+]);
+
+/**
+ * Checks whether `value` is a non-null, non-array object.
+ *
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Returns `true` when `obj` has `key` as an own property (or `Map.has`).
+ *
+ * @param {unknown} obj
+ * @param {string} key
+ * @returns {boolean}
+ */
+function hasOwn(obj, key) {
+  if (!obj || typeof obj !== "object") return false;
+  if (obj instanceof Map) return obj.has(key);
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+/**
+ * Reads an own string property (or `Map` entry) from `obj`.
+ *
+ * @param {unknown} obj
+ * @param {string} key
+ * @returns {string | null}
+ */
+function ownString(obj, key) {
+  if (!hasOwn(obj, key)) return null;
+  const val =
+    obj instanceof Map
+      ? obj.get(key)
+      : /** @type {Record<string, unknown>} */ (obj)[key];
+  return typeof val === "string" ? val : null;
+}
+
+/**
+ * Reads an own plain-object property from `obj`.
+ *
+ * @param {unknown} obj
+ * @param {string} key
+ * @returns {Record<string, unknown> | null}
+ */
+function ownPlainObject(obj, key) {
+  if (!hasOwn(obj, key)) return null;
+  const val =
+    obj instanceof Map
+      ? obj.get(key)
+      : /** @type {Record<string, unknown>} */ (obj)[key];
+  return isPlainObject(val) ? val : null;
+}
+
+/**
+ * Returns `true` when `model` contains forbidden low-capability substrings
+ * (`-low`, `-lite`, or `flash-lo`, case-insensitive).
+ *
+ * @param {string} model
+ * @returns {boolean}
+ */
+function hasForbiddenModelSubstring(model) {
+  const lower = model.toLowerCase();
+  return (
+    lower.includes("-low") ||
+    lower.includes("-lite") ||
+    lower.includes("flash-lo")
+  );
+}
+
+/**
+ * Validates and normalizes `notes` (top-level or per-role), stripping ANSI,
+ * control, zero-width, and bidi characters first, then enforcing the
+ * 2000-character cap without silent pre-truncation.
+ *
+ * @param {unknown} raw
+ * @param {string} fieldPath
+ * @param {string[]} errors
+ * @returns {string | undefined}
+ */
+function validateTeamNotes(raw, fieldPath, errors) {
+  if (typeof raw !== "string") {
+    errors.push(`${fieldPath} must be a string`);
+    return undefined;
+  }
+  const clean = stripUnsafeDisplayChars(raw);
+  if (clean.length > MAX_TEAM_NOTES) {
+    errors.push(
+      `${fieldPath} exceeds ${MAX_TEAM_NOTES} characters after sanitization (${clean.length})`,
+    );
+    return undefined;
+  }
+  return clean;
+}
+
+/**
+ * Validates optional `gemini`, `claude-code`, `antigravity`, `opencode`, and
+ * `effort` fields on a tier or role entry, pushing all errors into `errors`.
+ *
+ * @param {Record<string, unknown>} obj
+ * @param {string} prefix
+ * @param {string[]} errors
+ * @returns {Record<string, string>}
+ */
+function validateTeamOverrides(obj, prefix, errors) {
+  /** @type {Record<string, string>} */
+  const out = {};
+
+  if (
+    Object.prototype.hasOwnProperty.call(obj, "gemini") &&
+    obj.gemini !== undefined
+  ) {
+    if (typeof obj.gemini !== "string" || !isValidGeminiModel(obj.gemini)) {
+      errors.push(
+        `${prefix}.gemini: invalid Gemini model "${sanitizeShortText(obj.gemini, 80)}"`,
+      );
+    } else {
+      out.gemini = obj.gemini;
+    }
+  }
+
+  for (const harness of TEAM_HARNESSES) {
+    if (
+      !Object.prototype.hasOwnProperty.call(obj, harness) ||
+      obj[harness] === undefined
+    ) {
+      continue;
+    }
+    const rawModel = obj[harness];
+    if (
+      typeof rawModel !== "string" ||
+      rawModel.trim().length === 0 ||
+      hasForbiddenModelSubstring(rawModel)
+    ) {
+      errors.push(
+        `${prefix}.${harness}: invalid model "${sanitizeShortText(rawModel, 80)}"`,
+      );
+    } else {
+      out[harness] = rawModel;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(obj, "effort") &&
+    obj.effort !== undefined
+  ) {
+    if (typeof obj.effort !== "string" || !TEAM_EFFORT_SET.has(obj.effort)) {
+      errors.push(
+        `${prefix}.effort: invalid effort "${sanitizeShortText(obj.effort, 40)}" (expected medium, high, xhigh, or max)`,
+      );
+    } else {
+      out.effort = obj.effort;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Parses and validates `.agents/team.json` text per the orchestrator team file
+ * specification. Pure and never throws: absent input (`null`/`undefined`)
+ * returns `{ team: null, errors: [] }`, and invalid input returns
+ * `{ team: null, errors }` with all validation errors collected.
+ *
+ * @param {string | null | undefined} text
+ * @returns {{ team: Record<string, unknown> | null, errors: string[] }}
+ */
+export function parseTeam(text) {
+  if (text === null || text === undefined) {
+    return { team: null, errors: [] };
+  }
+  if (typeof text !== "string") {
+    return { team: null, errors: ["team file must be a JSON string"] };
+  }
+
+  /** @type {unknown} */
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { team: null, errors: [`invalid JSON: ${msg}`] };
+  }
+
+  if (!isPlainObject(parsed)) {
+    return { team: null, errors: ["team file must be a JSON object"] };
+  }
+
+  /** @type {string[]} */
+  const errors = [];
+  /** @type {Record<string, unknown>} */
+  const team = {};
+
+  for (const key of Object.keys(parsed)) {
+    if (!TEAM_TOP_KEYS.has(key)) {
+      errors.push(`unknown top-level key "${sanitizeShortText(key, 64)}"`);
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, "$schema") &&
+    parsed.$schema !== undefined
+  ) {
+    if (typeof parsed.$schema !== "string") {
+      errors.push("$schema must be a string");
+    } else {
+      team.$schema = parsed.$schema;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, "notes") &&
+    parsed.notes !== undefined
+  ) {
+    const cleanNotes = validateTeamNotes(parsed.notes, "notes", errors);
+    if (cleanNotes !== undefined) {
+      team.notes = cleanNotes;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, "tiers") &&
+    parsed.tiers !== undefined
+  ) {
+    if (!isPlainObject(parsed.tiers)) {
+      errors.push("tiers must be an object");
+    } else {
+      /** @type {Record<string, Record<string, string>>} */
+      const tiersOut = Object.create(null);
+      for (const [tierKey, tierVal] of Object.entries(parsed.tiers)) {
+        if (!TEAM_TIER_SET.has(tierKey)) {
+          errors.push(`unknown tier "${sanitizeShortText(tierKey, 64)}"`);
+          continue;
+        }
+        if (!isPlainObject(tierVal)) {
+          errors.push(`tiers.${tierKey} must be an object`);
+          continue;
+        }
+        for (const k of Object.keys(tierVal)) {
+          if (!TEAM_TIER_VALUE_KEYS.has(k)) {
+            errors.push(
+              `tiers.${tierKey}: unknown key "${sanitizeShortText(k, 64)}"`,
+            );
+          }
+        }
+        tiersOut[tierKey] = validateTeamOverrides(
+          tierVal,
+          `tiers.${tierKey}`,
+          errors,
+        );
+      }
+      team.tiers = tiersOut;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, "roles") &&
+    parsed.roles !== undefined
+  ) {
+    if (!isPlainObject(parsed.roles)) {
+      errors.push("roles must be an object");
+    } else {
+      /** @type {Record<string, "off" | Record<string, string>>} */
+      const rolesOut = Object.create(null);
+      for (const [roleKey, roleVal] of Object.entries(parsed.roles)) {
+        if (!TEAM_ROLE_SET.has(roleKey)) {
+          errors.push(`unknown role "${sanitizeShortText(roleKey, 64)}"`);
+          continue;
+        }
+        if (roleVal === "off") {
+          if (roleKey === "lead") {
+            errors.push('roles.lead cannot be "off"');
+          } else {
+            rolesOut[roleKey] = "off";
+          }
+          continue;
+        }
+        if (!isPlainObject(roleVal)) {
+          errors.push(`roles.${roleKey} must be "off" or an object`);
+          continue;
+        }
+        for (const k of Object.keys(roleVal)) {
+          if (!TEAM_ROLE_VALUE_KEYS.has(k)) {
+            errors.push(
+              `roles.${roleKey}: unknown key "${sanitizeShortText(k, 64)}"`,
+            );
+          }
+        }
+
+        /** @type {Record<string, string>} */
+        const entryOut = {};
+        if (
+          Object.prototype.hasOwnProperty.call(roleVal, "agent") &&
+          roleVal.agent !== undefined
+        ) {
+          if (
+            typeof roleVal.agent !== "string" ||
+            !VALID_HANDLE_RE.test(roleVal.agent)
+          ) {
+            errors.push(
+              `roles.${roleKey}.agent: invalid agent name "${sanitizeShortText(roleVal.agent, 80)}"`,
+            );
+          } else {
+            entryOut.agent = roleVal.agent;
+          }
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(roleVal, "tier") &&
+          roleVal.tier !== undefined
+        ) {
+          if (
+            typeof roleVal.tier !== "string" ||
+            !TEAM_TIER_SET.has(roleVal.tier)
+          ) {
+            errors.push(
+              `roles.${roleKey}.tier: invalid tier "${sanitizeShortText(roleVal.tier, 64)}"`,
+            );
+          } else {
+            entryOut.tier = roleVal.tier;
+          }
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(roleVal, "notes") &&
+          roleVal.notes !== undefined
+        ) {
+          const cleanRoleNotes = validateTeamNotes(
+            roleVal.notes,
+            `roles.${roleKey}.notes`,
+            errors,
+          );
+          if (cleanRoleNotes !== undefined) {
+            entryOut.notes = cleanRoleNotes;
+          }
+        }
+
+        const overrides = validateTeamOverrides(
+          roleVal,
+          `roles.${roleKey}`,
+          errors,
+        );
+        rolesOut[roleKey] = { ...entryOut, ...overrides };
+      }
+      team.roles = rolesOut;
+    }
+  }
+
+  if (errors.length > 0) {
+    return { team: null, errors };
+  }
+  return { team, errors: [] };
+}
+
+/**
+ * Resolves a parsed team configuration (or `null` when absent) against the
+ * calling `harness` and its built-in tier `defaults`.
+ * Precedence for `gemini`, `model`, and `effort` is:
+ * role override -> team `tiers[tier]` -> `defaults.tiers[tier]`.
+ * `gemini` is always `null` for the `lead` tier. Pure and never throws.
+ *
+ * @param {Record<string, unknown> | null | undefined} team
+ * @param {Harness | string} harness
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> } | null | undefined} [defaults]
+ * @returns {{
+ *   notes: string,
+ *   roles: Array<{
+ *     role: string,
+ *     agent: string | null,
+ *     source: "team" | "generic" | "off",
+ *     tier: "lead" | "build" | "deep" | "light",
+ *     gemini: string | null,
+ *     model: string | null,
+ *     effort: string | null,
+ *     notes: string,
+ *   }>
+ * }}
+ */
+export function resolveTeam(team, harness, defaults = undefined) {
+  const safeHarness =
+    typeof harness === "string" && TEAM_HARNESSES.has(harness) ? harness : null;
+  const safeTeam = isPlainObject(team) ? team : null;
+  const rawTopNotes = ownString(safeTeam, "notes");
+  const topNotes = rawTopNotes
+    ? stripUnsafeDisplayChars(rawTopNotes).slice(0, MAX_TEAM_NOTES)
+    : "";
+  const teamTiers = ownPlainObject(safeTeam, "tiers") ?? Object.create(null);
+  const teamRoles = ownPlainObject(safeTeam, "roles") ?? Object.create(null);
+  const defaultTiers = ownPlainObject(defaults, "tiers") ?? Object.create(null);
+
+  const roles = ROLES.map((role) => {
+    const defaultTier = /** @type {"lead" | "build" | "deep" | "light"} */ (
+      ownString(DEFAULT_ROLE_TIERS, role) ?? "build"
+    );
+    const rawRole = hasOwn(teamRoles, role) ? teamRoles[role] : undefined;
+
+    if (rawRole === "off" && role !== "lead") {
+      return {
+        role,
+        agent: null,
+        source: /** @type {"off"} */ ("off"),
+        tier: defaultTier,
+        gemini: null,
+        model: null,
+        effort: null,
+        notes: "",
+      };
+    }
+
+    const roleObj = isPlainObject(rawRole) ? rawRole : null;
+    const roleAgent = ownString(roleObj, "agent");
+    const hasMappedAgent = roleAgent !== null && roleAgent.length > 0;
+    const agent = hasMappedAgent ? roleAgent : role;
+    const source = /** @type {"team" | "generic"} */ (
+      hasMappedAgent ? "team" : "generic"
+    );
+    const roleTier = ownString(roleObj, "tier");
+    const tier =
+      roleTier !== null && TEAM_TIER_SET.has(roleTier)
+        ? /** @type {"lead" | "build" | "deep" | "light"} */ (roleTier)
+        : defaultTier;
+
+    const teamTier = ownPlainObject(teamTiers, tier);
+    const defTier = ownPlainObject(defaultTiers, tier);
+
+    const rawGemini =
+      tier === "lead"
+        ? null
+        : (ownString(roleObj, "gemini") ??
+          ownString(teamTier, "gemini") ??
+          ownString(defTier, "gemini") ??
+          null);
+
+    const rawModel = safeHarness
+      ? (ownString(roleObj, safeHarness) ??
+        ownString(teamTier, safeHarness) ??
+        ownString(defTier, safeHarness) ??
+        null)
+      : null;
+
+    const rawEffort =
+      ownString(roleObj, "effort") ??
+      ownString(teamTier, "effort") ??
+      ownString(defTier, "effort") ??
+      null;
+
+    const rawRoleNotes = ownString(roleObj, "notes");
+    const notes = rawRoleNotes
+      ? stripUnsafeDisplayChars(rawRoleNotes).slice(0, MAX_TEAM_NOTES)
+      : "";
+
+    return {
+      role,
+      agent,
+      source,
+      tier,
+      gemini: rawGemini,
+      model: rawModel,
+      effort: rawEffort,
+      notes,
+    };
+  });
+
+  return {
+    notes: topNotes,
+    roles,
+  };
+}
+
+/**
+ * Builds a lowercase `agent -> role` null-prototype lookup map from a resolved
+ * team for mapped agents (`source === "team"` whose agent name differs from `role`).
+ *
+ * @param {{ roles?: Array<{ role?: string, agent?: string | null, source?: string }> } | null | undefined} resolved
+ * @returns {Record<string, string>}
+ */
+export function agentRoleMap(resolved) {
+  /** @type {Record<string, string>} */
+  const map = Object.create(null);
+  if (!resolved || !Array.isArray(resolved.roles)) {
+    return map;
+  }
+  for (const row of resolved.roles) {
+    if (!row || row.source !== "team") continue;
+    const agent =
+      typeof row.agent === "string" ? row.agent.trim().toLowerCase() : "";
+    const role =
+      typeof row.role === "string" ? row.role.trim().toLowerCase() : "";
+    if (!agent || !role || agent === role || hasOwn(map, agent)) continue;
+    map[agent] = role;
+  }
+  return map;
+}
+
+/**
+ * Validates a `team` flow event payload carrying `{ roles: [{ agent, role }] }`.
+ *
+ * @param {unknown} event
+ * @returns {{ ok: true, roles: Array<{ agent: string, role: string }> } | { ok: false, error: string }}
+ */
+export function validateTeamEvent(event) {
+  if (!isPlainObject(event) || !Array.isArray(event.roles)) {
+    return { ok: false, error: "team event roles must be an array" };
+  }
+  if (event.roles.length > MAX_TEAM_ROLES) {
+    return {
+      ok: false,
+      error: `team event has too many roles (${event.roles.length}; max ${MAX_TEAM_ROLES})`,
+    };
+  }
+  /** @type {Array<{ agent: string, role: string }>} */
+  const roles = [];
+  for (let i = 0; i < event.roles.length; i += 1) {
+    const entry = event.roles[i];
+    if (!isPlainObject(entry)) {
+      return { ok: false, error: `team event roles[${i}] must be an object` };
+    }
+    const agent = typeof entry.agent === "string" ? entry.agent : "";
+    if (!VALID_HANDLE_RE.test(agent)) {
+      return {
+        ok: false,
+        error: `team event roles[${i}] has invalid agent: ${JSON.stringify(entry.agent)}`,
+      };
+    }
+    const role = typeof entry.role === "string" ? entry.role : "";
+    if (!TEAM_ROLE_SET.has(role)) {
+      return {
+        ok: false,
+        error: `team event roles[${i}] has invalid role: ${JSON.stringify(entry.role)}`,
+      };
+    }
+    roles.push({ agent, role });
+  }
+  return { ok: true, roles };
+}
+
+/**
+ * Builds an agent -> role lookup map from a flow's recorded `team` event, or
+ * returns `null` when the flow has not recorded a `team` event.
+ *
+ * @param {Flow | null | undefined} flow
+ * @returns {Record<string, string> | null}
+ */
+export function flowAgentRoleMap(flow) {
+  if (!flow || !Array.isArray(flow.team)) {
+    return null;
+  }
+  /** @type {Record<string, string>} */
+  const map = Object.create(null);
+  for (const row of flow.team) {
+    if (!row) continue;
+    const agent =
+      typeof row.agent === "string" ? row.agent.trim().toLowerCase() : "";
+    const role =
+      typeof row.role === "string" ? row.role.trim().toLowerCase() : "";
+    if (!agent || !role || agent === role || hasOwn(map, agent)) continue;
+    map[agent] = role;
+  }
+  return map;
+}
+
+/**
+ * Formats an agent name for panel display as `"name · role"` when `agent` is
+ * a mapped role's agent in `roleByAgent`; returns `agent` unchanged otherwise.
+ *
+ * @param {unknown} agent
+ * @param {Record<string, string> | Map<string, string> | null | undefined} roleByAgent
+ * @returns {string}
+ */
+export function formatAgentRoleLabel(agent, roleByAgent) {
+  const clean = typeof agent === "string" ? sanitizeDisplayText(agent) : "";
+  if (
+    !clean ||
+    (!isPlainObject(roleByAgent) && !(roleByAgent instanceof Map))
+  ) {
+    return clean;
+  }
+  const norm = clean.trim().toLowerCase();
+  const bare = norm.includes(":")
+    ? norm.slice(norm.lastIndexOf(":") + 1)
+    : norm;
+  const role =
+    ownString(roleByAgent, norm) || ownString(roleByAgent, bare) || "";
+  if (!role || role === bare || role === norm) return clean;
+  return `${clean} · ${role}`;
 }

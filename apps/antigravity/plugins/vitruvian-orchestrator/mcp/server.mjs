@@ -34,13 +34,19 @@
 //   - _meta["antigravity.google/agent_name"]: subagent type name (e.g. "wren")
 //   - _meta["antigravity.google/artifacts_dir"]: conversation brain directory
 
-import {
+import { spawnSync } from "node:child_process";
+import fs, {
   appendFileSync,
+  closeSync,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  statSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import {
@@ -50,22 +56,29 @@ import {
   join,
   relative,
   resolve,
+  sep,
 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  agentRoleMap,
   board as boardView,
   channels as channelsView,
   checkBoardChannel,
   initialFlow,
   isValidWorktree,
+  MAX_TEAM_FILE_BYTES,
+  parseTeam,
   reduce,
   remaining,
+  resolveTeam,
   VALID_PHASES,
   VALID_TIERS,
   validateChannelAction,
   validatePostChannel,
+  validateTeamEvent,
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
+import { TIER_DEFAULTS } from "../sidecars/panel/lib/tier-defaults.mjs";
 
 export const SERVER_INFO = Object.freeze({
   name: "vitruvian-orchestrator",
@@ -289,7 +302,435 @@ export const TOOLS = Object.freeze([
       required: ["action"],
     },
   }),
+  Object.freeze({
+    name: "team",
+    description:
+      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        root: {
+          type: "string",
+          description:
+            "Optional absolute path to the repository root directory containing .agents/team.json.",
+        },
+      },
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: true,
+    },
+  }),
 ]);
+
+function workspaceValueToPath(val) {
+  if (typeof val !== "string") return "";
+  const trimmed = val.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("file://")) {
+    try {
+      return fileURLToPath(trimmed);
+    } catch {
+      return "";
+    }
+  }
+  return trimmed;
+}
+
+function extractWorkspaceFromMeta(meta) {
+  if (!meta || typeof meta !== "object") return "";
+  const candidates = [
+    meta["antigravity.google/cwd"],
+    meta["antigravity.google/workspace_root"],
+    meta["antigravity.google/workspace_uri"],
+    Array.isArray(meta["antigravity.google/workspace_uris"])
+      ? meta["antigravity.google/workspace_uris"][0]
+      : "",
+    meta.cwd,
+    meta.workspace_root,
+    meta.workspaceRoot,
+    meta.workspaceUri,
+    meta.workspace_uri,
+    Array.isArray(meta.workspacePaths) ? meta.workspacePaths[0] : "",
+  ];
+  for (const cand of candidates) {
+    const p = workspaceValueToPath(cand);
+    if (p) return p;
+  }
+  return "";
+}
+
+function extractWorkspaceFromTranscript(transcriptText) {
+  if (!transcriptText || typeof transcriptText !== "string") return "";
+  const activeWsMatch = /Active Workspaces:\s*\r?\n\s*-\s*([^\r\n]+)/.exec(
+    transcriptText,
+  );
+  if (activeWsMatch?.[1]) {
+    const p = workspaceValueToPath(activeWsMatch[1]);
+    if (p) return p;
+  }
+  const cwdMatch = /Command Working Directory:\s*([^\r\n]+)/.exec(
+    transcriptText,
+  );
+  if (cwdMatch?.[1]) {
+    const p = workspaceValueToPath(cwdMatch[1]);
+    if (p) return p;
+  }
+  const lines = transcriptText.split("\n");
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed && typeof parsed === "object") {
+        const ws = extractWorkspaceFromMeta(parsed);
+        if (ws) return ws;
+        if (typeof parsed.content === "string") {
+          const innerActive =
+            /Active Workspaces:\s*\r?\n\s*-\s*([^\r\n]+)/.exec(parsed.content);
+          if (innerActive?.[1]) {
+            const p = workspaceValueToPath(innerActive[1]);
+            if (p) return p;
+          }
+          const innerCwd = /Command Working Directory:\s*([^\r\n]+)/.exec(
+            parsed.content,
+          );
+          if (innerCwd?.[1]) {
+            const p = workspaceValueToPath(innerCwd[1]);
+            if (p) return p;
+          }
+        }
+      }
+    } catch {
+      // Ignore malformed line.
+    }
+  }
+  return "";
+}
+
+function extractWorkspaceFromFlowFile(filePath) {
+  if (!filePath || !existsSync(filePath)) return "";
+  try {
+    const lines = readFileSync(filePath, "utf8").split("\n");
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const ev = JSON.parse(line);
+        if (!ev || typeof ev !== "object") continue;
+        const fromMeta = extractWorkspaceFromMeta(ev._meta);
+        if (fromMeta) return fromMeta;
+        const fromEv = extractWorkspaceFromMeta(ev);
+        if (fromEv) return fromEv;
+      } catch {
+        // Ignore malformed event line.
+      }
+    }
+  } catch {
+    // Ignore unreadable flow file.
+  }
+  return "";
+}
+
+/**
+ * Resolves the active workspace path using `_meta` first, explicit overrides,
+ * the conversation's persisted flow/transcript state, environment hints, and
+ * `process.cwd()` last.
+ *
+ * @param {Record<string, any>} [meta]
+ * @param {{ cwd?: string, workspaceUri?: string, flowsDir?: string, brainRoots?: string[] }} [options]
+ * @returns {string}
+ */
+export function resolveWorkspaceRoot(meta = {}, options = {}) {
+  const fromMeta = extractWorkspaceFromMeta(meta);
+  if (fromMeta) return fromMeta;
+
+  const fromOptCwd = workspaceValueToPath(options.cwd);
+  if (fromOptCwd) return fromOptCwd;
+
+  const fromOptUri = workspaceValueToPath(options.workspaceUri);
+  if (fromOptUri) return fromOptUri;
+
+  const { rootConversationId, callerConversationId, parentConversationId } =
+    extractConversationMeta(meta, options.brainRoots);
+  if (rootConversationId && rootConversationId !== "default") {
+    const flowsDir = options.flowsDir || defaultFlowsDir();
+    const fromFlow = extractWorkspaceFromFlowFile(
+      join(flowsDir, `${rootConversationId}.jsonl`),
+    );
+    if (fromFlow) return fromFlow;
+  }
+
+  const roots = resolveServerBrainRoots({
+    brainRoots: options.brainRoots,
+    meta,
+  });
+  for (const cid of [
+    callerConversationId,
+    rootConversationId,
+    parentConversationId,
+  ]) {
+    if (!cid || cid === "default") continue;
+    const transcript = readServerTranscript(cid, roots);
+    const fromTranscript = extractWorkspaceFromTranscript(transcript);
+    if (fromTranscript) return fromTranscript;
+  }
+
+  const fromEnv =
+    workspaceValueToPath(process.env.ANTIGRAVITY_WORKSPACE_ROOT) ||
+    workspaceValueToPath(process.env.ANTIGRAVITY_CWD);
+  if (fromEnv) return fromEnv;
+
+  return process.cwd();
+}
+
+function isPathInsideRealRoot(realRoot, realTarget) {
+  const rel = relative(realRoot, realTarget);
+  return (
+    rel !== ".." &&
+    !rel.startsWith(`..${sep}`) &&
+    !rel.startsWith("../") &&
+    !rel.startsWith("..\\") &&
+    !isAbsolute(rel)
+  );
+}
+
+function resolveRealTeamPath(root) {
+  let realRoot;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    realRoot = resolve(root);
+  }
+  const agentsDir = join(root, ".agents");
+  const teamPath = join(agentsDir, "team.json");
+
+  let linkStat;
+  try {
+    linkStat = lstatSync(teamPath);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      try {
+        const dirStat = lstatSync(agentsDir);
+        if (dirStat.isSymbolicLink()) {
+          try {
+            realpathSync(agentsDir);
+          } catch (dirErr) {
+            const msg =
+              dirErr instanceof Error ? dirErr.message : String(dirErr);
+            return {
+              status: "error",
+              error: `.agents/team.json is a dangling symlink: ${msg}`,
+            };
+          }
+        }
+      } catch {
+        // .agents directory does not exist; treat as absent.
+      }
+      return { status: "absent" };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      status: "error",
+      error: `failed to read .agents/team.json: ${msg}`,
+    };
+  }
+
+  let realTeamPath;
+  try {
+    realTeamPath = realpathSync(teamPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (linkStat.isSymbolicLink()) {
+      return {
+        status: "error",
+        error: `.agents/team.json is a dangling symlink: ${msg}`,
+      };
+    }
+    return {
+      status: "error",
+      error: `failed to read .agents/team.json: ${msg}`,
+    };
+  }
+
+  if (!isPathInsideRealRoot(realRoot, realTeamPath)) {
+    return {
+      status: "error",
+      error: ".agents/team.json must be inside the repository",
+    };
+  }
+  return { status: "ok", realPath: realTeamPath };
+}
+
+/**
+ * Resolves the git repository top-level directory for `cwd`, falling back to
+ * `cwd` when `cwd` is not inside a git worktree.
+ *
+ * @param {string} [cwd]
+ * @returns {string}
+ */
+export function resolveRepoRoot(cwd = process.cwd()) {
+  const safeCwd =
+    typeof cwd === "string" && cwd.trim() ? cwd.trim() : process.cwd();
+  try {
+    const res = spawnSync(
+      "git",
+      ["-C", safeCwd, "rev-parse", "--show-toplevel"],
+      { encoding: "utf8", timeout: 5000 },
+    );
+    if (
+      res.status === 0 &&
+      typeof res.stdout === "string" &&
+      res.stdout.trim()
+    ) {
+      return res.stdout.trim();
+    }
+  } catch {
+    // Fall back to cwd outside git repositories.
+  }
+  return safeCwd;
+}
+
+export const INVALID_ROOT_ERROR =
+  "root must be an absolute path to a directory";
+
+function validateExplicitRoot(rawRoot) {
+  if (typeof rawRoot !== "string" || !isAbsolute(rawRoot)) {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  try {
+    if (!statSync(rawRoot).isDirectory()) {
+      return { ok: false, error: INVALID_ROOT_ERROR };
+    }
+  } catch {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  return { ok: true, root: rawRoot };
+}
+
+/**
+ * Reads `<root>/.agents/team.json` (capped at 64 KiB) directly from `root`
+ * without climbing git top-level, parses and validates it, and resolves roles
+ * against Antigravity's tier defaults.
+ *
+ * @param {string} root
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ */
+function readTeamConfigAtRoot(root, defaults = TIER_DEFAULTS) {
+  const checked = resolveRealTeamPath(root);
+  if (checked.status === "absent") {
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: null,
+      errors: [],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+  if (checked.status === "error") {
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [checked.error],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+
+  let fd;
+  try {
+    fd = openSync(checked.realPath, "r");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [`failed to read .agents/team.json: ${msg}`],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  }
+
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) {
+      const resolved = resolveTeam(null, "antigravity", defaults);
+      return {
+        file: ".agents/team.json",
+        errors: [".agents/team.json is not a regular file"],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      };
+    }
+    if (st.size > MAX_TEAM_FILE_BYTES) {
+      const resolved = resolveTeam(null, "antigravity", defaults);
+      return {
+        file: ".agents/team.json",
+        errors: [
+          `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+        ],
+        notes: resolved.notes,
+        roles: resolved.roles,
+      };
+    }
+    const chunks = [];
+    let totalBytes = 0;
+    const buf = Buffer.allocUnsafe(8192);
+    while (true) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      totalBytes += n;
+      if (totalBytes > MAX_TEAM_FILE_BYTES) {
+        const resolved = resolveTeam(null, "antigravity", defaults);
+        return {
+          file: ".agents/team.json",
+          errors: [
+            `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+          ],
+          notes: resolved.notes,
+          roles: resolved.roles,
+        };
+      }
+      chunks.push(Buffer.from(buf.subarray(0, n)));
+    }
+    const text = Buffer.concat(chunks, totalBytes).toString("utf8");
+    const parsed = parseTeam(text);
+    const resolved = resolveTeam(parsed.team, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: parsed.errors,
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const resolved = resolveTeam(null, "antigravity", defaults);
+    return {
+      file: ".agents/team.json",
+      errors: [`failed to read .agents/team.json: ${msg}`],
+      notes: resolved.notes,
+      roles: resolved.roles,
+    };
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+      // Ignore close error.
+    }
+  }
+}
+
+/**
+ * Reads `<repo root>/.agents/team.json` (capped at 64 KiB), parses and
+ * validates it, and resolves roles against Antigravity's tier defaults.
+ *
+ * @param {string} [cwd]
+ * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ */
+export function readTeamConfig(cwd = process.cwd(), defaults = TIER_DEFAULTS) {
+  return readTeamConfigAtRoot(resolveRepoRoot(cwd), defaults);
+}
 
 export function defaultFlowsDir() {
   if (process.env.VITRUVIAN_ORCH_DIR) {
@@ -1341,19 +1782,20 @@ function extractTranscriptRunEventsForServer(transcriptText = "", baseAt = 0) {
 
 const SERVER_EVENT_ORDER = Object.freeze({
   plan: 0,
-  phase: 1,
-  "run.start": 2,
-  "run.progress": 3,
-  "member.pause": 3,
-  "run.end": 4,
-  channel: 5,
-  post: 6,
-  wake: 7,
-  "member.retire": 8,
-  "member.kill": 8,
-  "task.return": 9,
-  "task.accept": 10,
-  close: 11,
+  team: 1,
+  phase: 2,
+  "run.start": 3,
+  "run.progress": 4,
+  "member.pause": 4,
+  "run.end": 5,
+  channel: 6,
+  post: 7,
+  wake: 8,
+  "member.retire": 9,
+  "member.kill": 9,
+  "task.return": 10,
+  "task.accept": 11,
+  close: 12,
 });
 
 function foldServerFlowEvents(flowEvents = [], transcriptEvents = []) {
@@ -1395,8 +1837,13 @@ function foldServerFlowEvents(flowEvents = [], transcriptEvents = []) {
       : flowEvents;
 
   let flow = initialFlow();
+  let pendingTeamEvent = null;
   for (const rawEvent of combined) {
     let event = rawEvent;
+    if (!flow && event?.type === "team" && validateTeamEvent(event).ok) {
+      pendingTeamEvent = event;
+      continue;
+    }
     if (
       flow &&
       (event.type === "run.progress" || event.type === "member.pause") &&
@@ -1472,6 +1919,10 @@ function foldServerFlowEvents(flowEvents = [], transcriptEvents = []) {
     }
     try {
       flow = reduce(flow, event);
+      if (flow && pendingTeamEvent && event?.type === "plan") {
+        flow = reduce(flow, pendingTeamEvent);
+        pendingTeamEvent = null;
+      }
     } catch {
       // Ignore malformed event.
     }
@@ -2171,6 +2622,72 @@ export function handleJsonRpcMessage(message, options = {}) {
           content: [
             { type: "text", text: JSON.stringify(channelsView(nextFlow)) },
           ],
+        },
+      };
+    }
+
+    if (toolName === "team") {
+      const hasRoot =
+        toolArgs &&
+        typeof toolArgs === "object" &&
+        Object.prototype.hasOwnProperty.call(toolArgs, "root") &&
+        toolArgs.root !== undefined;
+      const defaults = options.teamDefaults ?? TIER_DEFAULTS;
+      let teamResult;
+      if (hasRoot) {
+        const rootCheck = validateExplicitRoot(toolArgs.root);
+        if (!rootCheck.ok) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: -32602,
+              message: rootCheck.error,
+            },
+          };
+        }
+        teamResult = readTeamConfigAtRoot(rootCheck.root, defaults);
+      } else {
+        const workspaceRoot = resolveWorkspaceRoot(meta, options);
+        teamResult = readTeamConfig(workspaceRoot, defaults);
+      }
+
+      const roleMap = agentRoleMap(teamResult);
+      const roles = Object.entries(roleMap).map(([agent, role]) => ({
+        agent,
+        role,
+      }));
+      const teamCheck = validateTeamEvent({ roles });
+      const { rootConversationId, parentConversationId, rawMeta } =
+        extractConversationMeta(meta, options.brainRoots);
+      if (
+        teamCheck.ok &&
+        flowsDir &&
+        rootConversationId &&
+        rootConversationId !== "default" &&
+        !parentConversationId
+      ) {
+        const metaFields = {
+          rootConversationId,
+          ...(rawMeta && Object.keys(rawMeta).length > 0
+            ? { _meta: rawMeta }
+            : {}),
+        };
+        appendFlowEvents(flowsDir, rootConversationId, [
+          {
+            type: "team",
+            at,
+            ...metaFields,
+            roles: teamCheck.roles,
+          },
+        ]);
+      }
+
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [{ type: "text", text: JSON.stringify(teamResult) }],
         },
       };
     }

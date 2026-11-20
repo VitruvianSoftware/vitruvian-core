@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+  "title": "Vitruvian Orchestrator Team Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "notes": {
+      "$ref": "#/$defs/notes"
+    },
+    "tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyNames": {
+        "$ref": "#/$defs/tier"
+      },
+      "properties": {
+        "lead": { "$ref": "#/$defs/tierConfig" },
+        "build": { "$ref": "#/$defs/tierConfig" },
+        "deep": { "$ref": "#/$defs/tierConfig" },
+        "light": { "$ref": "#/$defs/tierConfig" }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyNames": {
+        "$ref": "#/$defs/role"
+      },
+      "properties": {
+        "lead": { "$ref": "#/$defs/roleConfig" },
+        "developer": { "$ref": "#/$defs/roleEntry" },
+        "infrastructure": { "$ref": "#/$defs/roleEntry" },
+        "build": { "$ref": "#/$defs/roleEntry" },
+        "operations": { "$ref": "#/$defs/roleEntry" },
+        "qa": { "$ref": "#/$defs/roleEntry" },
+        "security": { "$ref": "#/$defs/roleEntry" },
+        "product": { "$ref": "#/$defs/roleEntry" },
+        "docs": { "$ref": "#/$defs/roleEntry" },
+        "release": { "$ref": "#/$defs/roleEntry" }
+      }
+    }
+  },
+  "$defs": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "lead",
+        "developer",
+        "infrastructure",
+        "build",
+        "operations",
+        "qa",
+        "security",
+        "product",
+        "docs",
+        "release"
+      ]
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["lead", "build", "deep", "light"]
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["medium", "high", "xhigh", "max"]
+    },
+    "agent": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "not": {
+        "pattern": "-[lL][oO][wW]|-[lL][iI][tT][eE]|[fF][lL][aA][sS][hH]-[lL][oO]"
+      }
+    },
+    "geminiModel": {
+      "type": "string",
+      "pattern": "^gemini-[a-z0-9.-]+$",
+      "not": {
+        "pattern": "-low|-lite|flash-lo"
+      }
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "tierConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gemini": { "$ref": "#/$defs/geminiModel" },
+        "claude-code": { "$ref": "#/$defs/model" },
+        "antigravity": { "$ref": "#/$defs/model" },
+        "opencode": { "$ref": "#/$defs/model" },
+        "effort": { "$ref": "#/$defs/effort" }
+      }
+    },
+    "roleConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": { "$ref": "#/$defs/agent" },
+        "tier": { "$ref": "#/$defs/tier" },
+        "gemini": { "$ref": "#/$defs/geminiModel" },
+        "claude-code": { "$ref": "#/$defs/model" },
+        "antigravity": { "$ref": "#/$defs/model" },
+        "opencode": { "$ref": "#/$defs/model" },
+        "effort": { "$ref": "#/$defs/effort" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "roleEntry": {
+      "oneOf": [{ "const": "off" }, { "$ref": "#/$defs/roleConfig" }]
+    }
+  }
+}

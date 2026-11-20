@@ -22,11 +22,12 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
+import fs, {
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -41,14 +42,17 @@ import {
   buildPanelState,
   checkAndWakeBoardMentions,
   checkAndWakeStalledRuns,
+  createStandaloneServer,
   DEFAULT_STALL_MS,
   extractTranscriptRunEvents,
   foldFlowEvents,
   formatElapsed,
   loadLivePanelState,
+  loadTeamAgentRoles,
   parseFlowJsonl,
   readChildTranscriptActivityAt,
   readChildTranscriptState,
+  readTeamConfig,
   readTranscriptForConversation,
   selectFlowFile,
 } from "./main.mjs";
@@ -1170,7 +1174,25 @@ function createPanelDomHarness(opts = {}) {
   }
 
   let nextState = { hasFlow: false, flow: null };
+  const fetchCalls = [];
   const windowListeners = new Map();
+  const baseFetch = async (url) => {
+    fetchCalls.push(String(url));
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => nextState,
+    };
+  };
+  const sidecarObj = {
+    conversationId: "test-conv",
+    fetch: baseFetch,
+    ...(opts.sidecar || {}),
+  };
+  if (opts.sidecar && !opts.sidecar.fetch) {
+    sidecarObj.fetch = baseFetch;
+  }
   const context = {
     URLSearchParams,
     encodeURIComponent,
@@ -1189,21 +1211,8 @@ function createPanelDomHarness(opts = {}) {
       createElementNS: (_ns, tag) => new FakeElement(tag),
     },
     window: {
-      sidecar: {
-        conversationId: "test-conv",
-        fetch: async () => ({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: async () => nextState,
-        }),
-      },
-      fetch: async () => ({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: async () => nextState,
-      }),
+      sidecar: sidecarObj,
+      fetch: baseFetch,
       addEventListener: (type, fn) => {
         if (!windowListeners.has(type)) windowListeners.set(type, []);
         windowListeners.get(type).push(fn);
@@ -1212,13 +1221,15 @@ function createPanelDomHarness(opts = {}) {
   };
 
   vm.runInNewContext(
-    `${appJs}\n;globalThis.__renderState = renderState;`,
+    `${appJs}\n;globalThis.__renderState = renderState;\n;globalThis.__refresh = refresh;`,
     context,
   );
   return {
     html,
     byId,
+    fetchCalls,
     renderState: context.__renderState,
+    refresh: context.__refresh,
   };
 }
 
@@ -3264,4 +3275,599 @@ test("Members tab labels a helper's second round on the same task", () => {
   ].join("\n");
   assert.equal((text.match(/round 2/g) || []).length, 1);
   assert.doesNotMatch(text, /round 1/);
+});
+
+test("Panel labels display 'name · role' for mapped team agents across Agents, Members, and Overview without changing raw agent names", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_450_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Team Panel Labels",
+      tasks: [
+        { title: "Implement", specialist: "wren", tier: "build", after: [] },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "run-wren",
+      harness: "antigravity",
+      agent: "wren",
+      model: "pro",
+      title: "Implement",
+      role: "worker",
+    },
+    {
+      type: "run.start",
+      at: t0 + 1100,
+      id: "run-extra",
+      harness: "antigravity",
+      agent: "helper",
+      model: "flash",
+      title: "Extra",
+      role: "worker",
+    },
+    {
+      type: "post",
+      at: t0 + 1200,
+      from: "wren",
+      runId: "run-wren",
+      text: "Working on team labels @lead",
+      kind: "note",
+    },
+  ]);
+
+  const state = buildPanelState(flow, {
+    conversationId: "labels-cid",
+    now: t0 + DEFAULT_STALL_MS + 5000,
+    agentRoles: { wren: "developer" },
+  });
+  assert.equal(state.runs[0].agent, "wren");
+  assert.equal(state.members.active[0].agent, "wren");
+
+  renderState(state);
+  const agentsText = byId.get("agents-list").textContent;
+  assert.match(agentsText, /wren · developer/);
+  assert.match(agentsText, /\bhelper\b/);
+  assert.doesNotMatch(agentsText, /helper ·/);
+
+  byId.get("tab-btn-members").dispatch("click");
+  assert.match(byId.get("members-active").textContent, /wren · developer/);
+
+  byId.get("tab-btn-overview").dispatch("click");
+  assert.match(byId.get("overview-members").textContent, /wren · developer/);
+  assert.match(byId.get("overview-stalls").textContent, /wren · developer/);
+});
+
+test("app.js formatAgentLabel ignores Object.prototype keys like 'constructor'", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_450_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Prototype Safety",
+      tasks: [
+        { title: "Build", specialist: "constructor", tier: "build", after: [] },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "run-ctor",
+      harness: "antigravity",
+      agent: "constructor",
+      model: "pro",
+      title: "Build",
+      role: "worker",
+    },
+  ]);
+
+  // Empty agentRoles must NOT leak Object.prototype.constructor.
+  const emptyRolesState = buildPanelState(flow, {
+    conversationId: "proto-empty",
+    now: t0 + 2000,
+    agentRoles: {},
+  });
+  renderState(emptyRolesState);
+  const emptyAgentsText = byId.get("agents-list").textContent;
+  assert.match(emptyAgentsText, /\bconstructor\b/);
+  assert.doesNotMatch(emptyAgentsText, /constructor ·/);
+
+  // Explicit { constructor: "lead" } mapping MUST display "constructor · lead".
+  const mappedRolesState = buildPanelState(flow, {
+    conversationId: "proto-mapped",
+    now: t0 + 2000,
+    agentRoles: Object.assign(Object.create(null), { constructor: "lead" }),
+  });
+  renderState(mappedRolesState);
+  assert.match(byId.get("agents-list").textContent, /constructor · lead/);
+});
+
+test("Antigravity panel resolves workspace root from sidecar workspaceUri, flow _meta, and transcript before process.cwd()", async () => {
+  // Part A: app.js refresh() queries sidecar.getWorkspaceUris() when available and omits gracefully when absent.
+  const withUris = createPanelDomHarness({
+    sidecar: {
+      conversationId: "cid-1",
+      getWorkspaceUris: async () => ["file:///tmp/ws-from-sidecar"],
+    },
+  });
+  await withUris.refresh();
+  assert.ok(
+    withUris.fetchCalls.some((u) =>
+      u.includes("workspaceUri=file%3A%2F%2F%2Ftmp%2Fws-from-sidecar"),
+    ),
+    `expected workspaceUri in fetchCalls, got ${JSON.stringify(withUris.fetchCalls)}`,
+  );
+
+  const withoutUris = createPanelDomHarness({
+    sidecar: { conversationId: "cid-2" },
+  });
+  await withoutUris.refresh();
+  assert.ok(withoutUris.fetchCalls.some((u) => u === "/api/state?cid=cid-2"));
+
+  // Part B: loadLivePanelState & createStandaloneServer resolve workspace from flow _meta, workspaceUri, and transcript.
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-panel-ws-"));
+  try {
+    const flowsDir = join(tmpDir, "flows");
+    const repoMeta = join(tmpDir, "repo-meta");
+    const repoWsUri = join(tmpDir, "repo-ws-uri");
+    const repoTranscript = join(tmpDir, "repo-transcript");
+    mkdirSync(flowsDir, { recursive: true });
+    for (const [repo, agent] of [
+      [repoMeta, "wrenmeta"],
+      [repoWsUri, "wrenuri"],
+      [repoTranscript, "wrentranscript"],
+    ]) {
+      mkdirSync(join(repo, ".agents"), { recursive: true });
+      writeFileSync(
+        join(repo, ".agents", "team.json"),
+        JSON.stringify({ roles: { developer: { agent } } }),
+        "utf8",
+      );
+    }
+
+    const t0 = 1_762_450_000_000;
+    writeFileSync(
+      join(flowsDir, "cid-meta.jsonl"),
+      JSON.stringify({
+        type: "plan",
+        at: t0,
+        title: "Meta Workspace Flow",
+        _meta: { "antigravity.google/workspace_root": repoMeta },
+        tasks: [
+          { title: "T", specialist: "wrenmeta", tier: "build", after: [] },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+    const metaState = loadLivePanelState({
+      flowsDir,
+      cid: "cid-meta",
+      now: t0 + 1000,
+    });
+    assert.equal(metaState.agentRoles.wrenmeta, "developer");
+
+    writeFileSync(
+      join(flowsDir, "cid-nometa.jsonl"),
+      JSON.stringify({
+        type: "plan",
+        at: t0,
+        title: "No Meta Workspace Flow",
+        tasks: [
+          { title: "T", specialist: "wrenuri", tier: "build", after: [] },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+    const uriState = loadLivePanelState({
+      flowsDir,
+      cid: "cid-nometa",
+      workspaceUri: pathToFileURL(repoWsUri).href,
+      transcriptText: "",
+      now: t0 + 1000,
+    });
+    assert.equal(uriState.agentRoles.wrenuri, "developer");
+
+    const transcriptState = loadLivePanelState({
+      flowsDir,
+      cid: "cid-nometa",
+      transcriptText: JSON.stringify({
+        step_index: 1,
+        type: "USER_INPUT",
+        content: `Active Workspaces:\n- ${repoTranscript}\n`,
+      }),
+      now: t0 + 1000,
+    });
+    assert.equal(transcriptState.agentRoles.wrentranscript, "developer");
+
+    // Standalone HTTP server honors ?workspaceUri=...
+    const server = createStandaloneServer({ flowsDir });
+    await new Promise((resolveListen) =>
+      server.listen(0, "127.0.0.1", resolveListen),
+    );
+    try {
+      const { port } = server.address();
+      const resp = await fetch(
+        `http://127.0.0.1:${port}/api/state?cid=cid-nometa&workspaceUri=${encodeURIComponent(pathToFileURL(repoWsUri).href)}`,
+      );
+      assert.equal(resp.status, 200);
+      const body = await resp.json();
+      assert.equal(body.agentRoles.wrenuri, "developer");
+    } finally {
+      await new Promise((resolveClose) => server.close(resolveClose));
+    }
+
+    // Fallback to process.cwd() when _meta, workspaceUri, and transcript are all absent.
+    const prevCwd = process.cwd();
+    process.chdir(repoWsUri);
+    try {
+      const cwdFallbackState = loadLivePanelState({
+        flowsDir,
+        cid: "cid-nometa",
+        transcriptText: "",
+        now: t0 + 1000,
+      });
+      assert.equal(cwdFallbackState.agentRoles.wrenuri, "developer");
+    } finally {
+      process.chdir(prevCwd);
+    }
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("panel readTeamConfig and loadTeamAgentRoles reject symlinks outside repo and dangling symlinks", () => {
+  assert.equal(
+    typeof readTeamConfig,
+    "function",
+    "main.mjs must export readTeamConfig",
+  );
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-panel-symlink-"));
+  const repoDir = join(tmpDir, "repo");
+  const outsideDir = join(tmpDir, "outside");
+  try {
+    mkdirSync(join(repoDir, ".agents"), { recursive: true });
+    mkdirSync(join(repoDir, "config"), { recursive: true });
+    mkdirSync(outsideDir, { recursive: true });
+    const outsideFile = join(outsideDir, "secret-team.json");
+    writeFileSync(
+      outsideFile,
+      JSON.stringify({ roles: { developer: { agent: "outsider" } } }),
+      "utf8",
+    );
+    const insideFile = join(repoDir, "config", "team.json");
+    writeFileSync(
+      insideFile,
+      JSON.stringify({ roles: { developer: { agent: "insider" } } }),
+      "utf8",
+    );
+
+    const teamLink = join(repoDir, ".agents", "team.json");
+
+    // 1. Symlink pointing outside repository
+    symlinkSync(outsideFile, teamLink);
+    const outsideConfig = readTeamConfig(repoDir);
+    assert.equal(outsideConfig.file, ".agents/team.json");
+    assert.match(
+      outsideConfig.errors.join("\n"),
+      /must be inside the repository/,
+    );
+    assert.deepEqual({ ...loadTeamAgentRoles(repoDir) }, {});
+
+    // 2. Dangling symlink
+    rmSync(teamLink);
+    symlinkSync(join(tmpDir, "does-not-exist.json"), teamLink);
+    const danglingConfig = readTeamConfig(repoDir);
+    assert.equal(danglingConfig.file, ".agents/team.json");
+    assert.ok(danglingConfig.errors.length > 0);
+    assert.deepEqual({ ...loadTeamAgentRoles(repoDir) }, {});
+
+    // 3. Symlink inside repository
+    rmSync(teamLink);
+    symlinkSync(insideFile, teamLink);
+    const insideConfig = readTeamConfig(repoDir);
+    assert.equal(insideConfig.file, ".agents/team.json");
+    assert.deepEqual(insideConfig.errors, []);
+    assert.deepEqual(
+      { ...loadTeamAgentRoles(repoDir) },
+      { insider: "developer" },
+    );
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("sweep item 4: app.js MASCOTS and agentRoles ignore prototype keys for agent 'constructor' and '__proto__' across Agents, Members, and Overview", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const t0 = 1_762_450_000_000;
+  const flow = foldFlowEvents([
+    {
+      type: "plan",
+      at: t0,
+      title: "Sweep Prototype Safety",
+      tasks: [
+        {
+          title: "Build ctor",
+          specialist: "constructor",
+          tier: "build",
+          after: [],
+        },
+        {
+          title: "Build proto",
+          specialist: "__proto__",
+          tier: "build",
+          after: [],
+        },
+      ],
+    },
+    {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "run-ctor",
+      harness: "antigravity",
+      agent: "constructor",
+      model: "pro",
+      title: "Build ctor",
+      role: "worker",
+    },
+    {
+      type: "run.start",
+      at: t0 + 1100,
+      id: "run-proto",
+      harness: "antigravity",
+      agent: "__proto__",
+      model: "pro",
+      title: "Build proto",
+      role: "worker",
+    },
+    {
+      type: "post",
+      at: t0 + 1200,
+      from: "constructor",
+      runId: "run-ctor",
+      text: "Status check @lead",
+      kind: "question",
+    },
+  ]);
+
+  const stateFromPlain = buildPanelState(flow, {
+    conversationId: "sweep-1",
+    now: t0 + DEFAULT_STALL_MS + 5000,
+    agentRoles: {},
+  });
+  assert.equal(Object.getPrototypeOf(stateFromPlain.agentRoles), null);
+
+  renderState({ ...stateFromPlain, agentRoles: {} });
+  const collectTexts = () => {
+    const agents = byId.get("agents-list").textContent;
+    byId.get("tab-btn-members").dispatch("click");
+    const members = byId.get("members-active").textContent;
+    byId.get("tab-btn-overview").dispatch("click");
+    const ovMembers = byId.get("overview-members").textContent;
+    const ovStalls = byId.get("overview-stalls").textContent;
+    return [agents, members, ovMembers, ovStalls];
+  };
+
+  for (const text of collectTexts()) {
+    assert.doesNotMatch(
+      text,
+      /function Object|\[native code\]|\[object Object\]/,
+    );
+    assert.doesNotMatch(text, /constructor ·|__proto__ ·/);
+    assert.match(text, /●/);
+    assert.match(text, /\bconstructor\b/);
+    assert.match(text, /__proto__/);
+  }
+
+  const mappedRoles = Object.assign(Object.create(null), {
+    constructor: "lead",
+    ["__proto__"]: "developer",
+  });
+  const mappedState = buildPanelState(flow, {
+    conversationId: "sweep-2",
+    now: t0 + DEFAULT_STALL_MS + 5000,
+    agentRoles: mappedRoles,
+  });
+  assert.equal(Object.getPrototypeOf(mappedState.agentRoles), null);
+  renderState(mappedState);
+  for (const text of collectTexts()) {
+    assert.doesNotMatch(
+      text,
+      /function Object|\[native code\]|\[object Object\]/,
+    );
+    assert.match(text, /constructor · lead/);
+    assert.match(text, /__proto__ · developer/);
+  }
+});
+
+test("panel readTeamConfig rejects oversize .agents/team.json without calling fs.readSync", (t) => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-panel-oversize-"));
+  const readSpy = t.mock.method(fs, "readSync");
+  try {
+    const agentsDir = join(tmpDir, ".agents");
+    mkdirSync(agentsDir, { recursive: true });
+    const teamFile = join(agentsDir, "team.json");
+    writeFileSync(
+      teamFile,
+      JSON.stringify({ roles: { developer: { agent: "wren" } } }),
+      "utf8",
+    );
+
+    readTeamConfig(tmpDir);
+    const readsBeforeOversize = readSpy.mock.callCount();
+    assert.ok(readsBeforeOversize > 0, "expected fs.readSync on valid file");
+
+    writeFileSync(
+      teamFile,
+      JSON.stringify({ notes: "a".repeat(70_000) }),
+      "utf8",
+    );
+    const oversizeRes = readTeamConfig(tmpDir);
+    assert.equal(readSpy.mock.callCount(), readsBeforeOversize);
+    assert.equal(oversizeRes.file, ".agents/team.json");
+    assert.match(oversizeRes.errors.join("\n"), /64 KiB|65536/);
+    assert.equal(
+      oversizeRes.roles.find((r) => r.role === "developer")?.source,
+      "generic",
+    );
+    assert.deepEqual({ ...loadTeamAgentRoles(tmpDir) }, {});
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("panel readTeamConfig reports invalid JSON prefix for malformed .agents/team.json", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-panel-malformed-"));
+  try {
+    const agentsDir = join(tmpDir, ".agents");
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, "team.json"), "{bad json", "utf8");
+    const res = readTeamConfig(tmpDir);
+    assert.equal(res.file, ".agents/team.json");
+    assert.equal(res.errors.length, 1);
+    assert.equal(res.errors[0].startsWith("invalid JSON:"), true);
+    assert.equal(
+      res.roles.find((r) => r.role === "developer")?.source,
+      "generic",
+    );
+    assert.deepEqual({ ...loadTeamAgentRoles(tmpDir) }, {});
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("panel labels take 'name · role' from flow team event first (even when team file is absent or different) and fall back to file read when flow has no team event", () => {
+  const { byId, renderState } = createPanelDomHarness();
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-panel-flow-team-"));
+  const flowsDir = join(tmpDir, "flows");
+  const emptyRepo = join(tmpDir, "empty-repo");
+  const diffRepo = join(tmpDir, "diff-repo");
+
+  try {
+    mkdirSync(flowsDir, { recursive: true });
+    mkdirSync(emptyRepo, { recursive: true });
+    mkdirSync(join(diffRepo, ".agents"), { recursive: true });
+    writeFileSync(
+      join(diffRepo, ".agents", "team.json"),
+      JSON.stringify({ roles: { security: { agent: "wren" } } }),
+      "utf8",
+    );
+
+    const t0 = 1_762_510_000_000;
+    const postPlanEvents = [
+      {
+        type: "plan",
+        at: t0 + 100,
+        title: "Flow Team Precedence",
+        tasks: [{ title: "Impl", specialist: "wren", tier: "build" }],
+      },
+      {
+        type: "run.start",
+        at: t0 + 1000,
+        id: "run-wren",
+        harness: "antigravity",
+        agent: "wren",
+        model: "pro",
+        title: "Impl",
+        role: "worker",
+      },
+      {
+        type: "post",
+        at: t0 + 1200,
+        from: "wren",
+        runId: "run-wren",
+        text: "Status update @lead",
+        kind: "note",
+      },
+    ];
+
+    // 1. Flow has team event written BEFORE plan -> wins even when team file is absent or maps wren differently.
+    const teamBeforePlanPath = join(flowsDir, "cid-flow-team.jsonl");
+    writeFileSync(
+      teamBeforePlanPath,
+      [
+        {
+          type: "team",
+          at: t0,
+          roles: [{ agent: "wren", role: "developer" }],
+        },
+        ...postPlanEvents,
+      ]
+        .map((e) => JSON.stringify(e))
+        .join("\n") + "\n",
+      "utf8",
+    );
+
+    for (const cwdRepo of [emptyRepo, diffRepo]) {
+      const state = loadLivePanelState({
+        flowsDir,
+        cid: "cid-flow-team",
+        cwd: cwdRepo,
+        transcriptText: "",
+        now: t0 + DEFAULT_STALL_MS + 5000,
+      });
+      assert.equal(state.agentRoles.wren, "developer");
+      assert.deepEqual(state.flow.team, [{ agent: "wren", role: "developer" }]);
+
+      renderState(state);
+      assert.match(byId.get("agents-list").textContent, /wren · developer/);
+      assert.doesNotMatch(
+        byId.get("agents-list").textContent,
+        /wren · security/,
+      );
+      byId.get("tab-btn-members").dispatch("click");
+      assert.match(byId.get("members-active").textContent, /wren · developer/);
+      byId.get("tab-btn-overview").dispatch("click");
+      assert.match(
+        byId.get("overview-members").textContent,
+        /wren · developer/,
+      );
+      assert.match(byId.get("overview-stalls").textContent, /wren · developer/);
+    }
+
+    // 2. Direct buildPanelState & app.js renderState also prefer flow.team over conflicting meta.agentRoles / state.agentRoles.
+    const flowWithTeam = foldFlowEvents([
+      postPlanEvents[0],
+      {
+        type: "team",
+        at: t0 + 200,
+        roles: [{ agent: "wren", role: "developer" }],
+      },
+      ...postPlanEvents.slice(1),
+    ]);
+    const built = buildPanelState(flowWithTeam, {
+      conversationId: "cid-built",
+      now: t0 + 2000,
+      agentRoles: { wren: "security" },
+    });
+    assert.equal(built.agentRoles.wren, "developer");
+    renderState({
+      ...built,
+      agentRoles: { wren: "security" },
+    });
+    assert.match(byId.get("agents-list").textContent, /wren · developer/);
+    assert.doesNotMatch(byId.get("agents-list").textContent, /wren · security/);
+
+    // 3. Flow without team event falls back to file read (diffRepo -> wren · security).
+    writeFileSync(
+      join(flowsDir, "cid-no-team.jsonl"),
+      postPlanEvents.map((e) => JSON.stringify(e)).join("\n") + "\n",
+      "utf8",
+    );
+    const fallbackState = loadLivePanelState({
+      flowsDir,
+      cid: "cid-no-team",
+      cwd: diffRepo,
+      transcriptText: "",
+      now: t0 + 2000,
+    });
+    assert.equal(fallbackState.agentRoles.wren, "security");
+    renderState(fallbackState);
+    assert.match(byId.get("agents-list").textContent, /wren · security/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

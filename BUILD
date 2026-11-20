@@ -91,12 +91,64 @@ exports_files(
         ".agents/roster/skills/orchestrate/antigravity.md",
         ".agents/roster/skills/orchestrate/claude-code.md",
         ".agents/roster/skills/orchestrate/opencode.md",
+        ".agents/team.json",
     ],
     visibility = [
         "//apps/antigravity/plugins/vitruvian-orchestrator:__pkg__",
         "//apps/claude-code/plugins/vitruvian-orchestrator:__pkg__",
         "//tools/agent-roster:__pkg__",
     ],
+)
+
+# Generated agent files verified by //tools/agent-roster:agent_roster_lib_test
+# against .agents/team.json. .claude and .opencode are in .bazelignore, so
+# explicit filenames are listed here (same pattern as .claude/settings.json).
+filegroup(
+    name = "roster_generated_agents",
+    srcs = [
+        ".agents/agents/{}.md".format(a)
+        for a in [
+            "aegis",
+            "atlas",
+            "beacon",
+            "compass",
+            "forge",
+            "pace",
+            "quill",
+            "ridge",
+            "scout",
+            "wren",
+        ]
+    ] + [
+        ".claude/agents/{}.md".format(a)
+        for a in [
+            "aegis",
+            "atlas",
+            "beacon",
+            "compass",
+            "forge",
+            "pace",
+            "quill",
+            "ridge",
+            "scout",
+            "wren",
+        ]
+    ] + [
+        ".opencode/agents/{}.md".format(a)
+        for a in [
+            "aegis",
+            "atlas",
+            "beacon",
+            "compass",
+            "forge",
+            "pace",
+            "quill",
+            "ridge",
+            "scout",
+            "wren",
+        ]
+    ],
+    visibility = ["//tools/agent-roster:__pkg__"],
 )
 
 # //tools/ci's hook tests read settings.json too, to check each hook is wired.

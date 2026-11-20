@@ -30,6 +30,7 @@ load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 package(default_visibility = ["//:__subpackages__"])
 
 exports_files([
+    "schema/team.schema.json",
     "src/core.mjs",
     "src/prices.mjs",
 ])
@@ -40,12 +41,16 @@ js_library(
         "src/core.mjs",
         "src/prices.mjs",
     ],
+    data = [
+        "schema/team.schema.json",
+    ],
 )
 
 js_test(
     name = "core_test",
     size = "small",
     data = [
+        "schema/team.schema.json",
         ":lib",
         "//apps/claude-code/plugins/vitruvian-orchestrator:README.md",
     ],

@@ -30,8 +30,13 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 
 ### Plan
 
-1. Read only what you need to understand the request in context (`AGENTS.md`, relevant files, recent git history).
-2. Break the work into discrete tasks. Give each task:
+1. Call the `team` tool with `root` set to the absolute path of the repository you are working in (if unavailable, continue with the roster table) to resolve this repository's `.agents/team.json` role-to-agent mapping, model overrides, and project notes:
+   - Route work by role: dispatch each role's resolved `agent`, and skip any role with `source: "off"`.
+   - When a role's resolved `gemini` differs from that agent's built-in default, put `Gemini model: <id>` in its brief.
+   - When top-level `notes` or the role's `notes` is non-empty, prepend them to the brief under `Project notes`.
+   - If `errors` is non-empty, tell the user once and continue with defaults.
+2. Read only what you need to understand the request in context (`AGENTS.md`, relevant files, recent git history).
+3. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
    - **Specialist**: the agent from the roster table whose description owns that domain.
    - **Tier**: the specialist's tier from the roster table (`lead`, `build`, `deep` or `light`; legacy `core` and `fast` remain accepted by the `progress` tool, and unknown values are rejected; see section 4).
@@ -45,11 +50,11 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
      - **Constraints**: rules from `AGENTS.md`, boundaries, and what not to touch.
      - **Definition of done**: the exact condition that marks the task complete.
      - **Exact verification**: the exact command (`bazel test ...`, `bazel build ...`, `aspect lint ...`) the specialist must run and pass.
-3. Staff every change with the full team (section 3a): an implementer, `scout` for QA, `aegis` for security review when the change touches a security-sensitive area (section 3a), `compass` for UAT, `quill` when docs are affected, and any other specialist whose domain the change touches.
+4. Staff every change with the full team (section 3a): an implementer, `scout` for QA, `aegis` for security review when the change touches a security-sensitive area (section 3a), `compass` for UAT, `quill` when docs are affected, and any other specialist whose domain the change touches.
    - Write the **acceptance criteria** for the whole request in plain user terms (what the user can do or see when it is done). `compass` tests against them.
-4. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
-5. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
-6. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
+5. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
+6. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
+7. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
 
 ### 3a. The team for a change
 

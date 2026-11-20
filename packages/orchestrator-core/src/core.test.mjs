@@ -21,23 +21,35 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import * as coreModule from "./core.mjs";
 import {
   DEFAULT_QUIET_MS,
+  DEFAULT_ROLE_TIERS,
   DEFAULT_STALL_MS,
   DEFAULT_WAITING_STALL_MS,
+  MAX_TEAM_NOTES,
+  ROLES,
+  TEAM_EFFORTS,
+  TEAM_TIERS,
   VALID_PHASES,
   VALID_TIERS,
+  agentRoleMap,
   board,
   burnDown,
+  formatAgentRoleLabel,
   initialFlow,
   members,
   mentions,
+  parseTeam,
   pendingWakes,
   reduce,
   remaining,
+  resolveTeam,
   runCost,
   spend,
   stalls,
@@ -4435,5 +4447,1009 @@ test("checkBoardChannel() refuses unknown channels and lists the real ones; main
   assert.ok(
     evil && !/[\u001b‮​]/.test(evil),
     "name is cleaned before it is echoed",
+  );
+});
+
+test("parseTeam(null/undefined) and resolveTeam(null) return generic defaults in ROLES order", () => {
+  assert.deepEqual(ROLES, [
+    "lead",
+    "developer",
+    "infrastructure",
+    "build",
+    "operations",
+    "qa",
+    "security",
+    "product",
+    "docs",
+    "release",
+  ]);
+  assert.equal(Object.getPrototypeOf(DEFAULT_ROLE_TIERS), null);
+  assert.deepEqual(
+    { ...DEFAULT_ROLE_TIERS },
+    {
+      lead: "lead",
+      developer: "build",
+      infrastructure: "build",
+      build: "build",
+      operations: "build",
+      qa: "deep",
+      security: "deep",
+      product: "deep",
+      docs: "light",
+      release: "light",
+    },
+  );
+
+  assert.deepEqual(parseTeam(null), { team: null, errors: [] });
+  assert.deepEqual(parseTeam(undefined), { team: null, errors: [] });
+
+  const defaults = {
+    tiers: {
+      lead: {
+        "claude-code": "opus",
+        effort: "high",
+        gemini: "gemini-should-stay-null",
+      },
+      build: {
+        gemini: "gemini-pro-orchestrator-neon",
+        "claude-code": "haiku",
+        effort: "medium",
+      },
+      deep: {
+        gemini: "gemini-4-carbon-high",
+        "claude-code": "haiku",
+        effort: "medium",
+      },
+      light: {
+        gemini: "gemini-4-hydrogen-high",
+        "claude-code": "haiku",
+        effort: "medium",
+      },
+    },
+  };
+  const resolved = resolveTeam(null, "claude-code", defaults);
+  assert.equal(resolved.notes, "");
+  assert.deepEqual(
+    resolved.roles.map((r) => r.role),
+    ROLES,
+  );
+  for (const row of resolved.roles) {
+    assert.equal(row.agent, row.role);
+    assert.equal(row.source, "generic");
+    assert.equal(row.tier, DEFAULT_ROLE_TIERS[row.role]);
+    assert.equal(row.notes, "");
+    if (row.tier === "lead") {
+      assert.equal(row.gemini, null);
+      assert.equal(row.model, "opus");
+      assert.equal(row.effort, "high");
+    } else {
+      assert.equal(row.model, "haiku");
+      assert.equal(row.effort, "medium");
+    }
+  }
+});
+
+test("parseTeam and resolveTeam handle the full spec example and resolution precedence", () => {
+  const fullExample = JSON.stringify({
+    $schema: "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+    notes: "Repo-wide notes for every specialist (build/test commands, rules).",
+    tiers: {
+      build: {
+        gemini: "gemini-pro-orchestrator-neon",
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+      },
+    },
+    roles: {
+      developer: {
+        agent: "wren",
+        tier: "build",
+        gemini: "gemini-4-argon-high",
+        notes: "Owns apps/.",
+      },
+      release: "off",
+    },
+  });
+
+  const parsed = parseTeam(fullExample);
+  assert.deepEqual(parsed.errors, []);
+  assert.ok(parsed.team);
+
+  const defaults = {
+    tiers: {
+      lead: {
+        "claude-code": "opus",
+        antigravity: "pro",
+        opencode: "anthropic/claude-opus-5-5",
+        effort: "high",
+      },
+      build: {
+        gemini: "gemini-default-build",
+        "claude-code": "sonnet",
+        antigravity: "flash",
+        opencode: "anthropic/claude-sonnet-5-5",
+        effort: "high",
+      },
+      deep: {
+        gemini: "gemini-4-carbon-high",
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+      },
+      light: {
+        gemini: "gemini-4-hydrogen-high",
+        "claude-code": "haiku",
+        antigravity: "flash",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+      },
+    },
+  };
+
+  const cc = resolveTeam(parsed.team, "claude-code", defaults);
+  assert.equal(
+    cc.notes,
+    "Repo-wide notes for every specialist (build/test commands, rules).",
+  );
+  assert.deepEqual(
+    cc.roles.map((r) => r.role),
+    ROLES,
+  );
+  const devCc = cc.roles.find((r) => r.role === "developer");
+  assert.deepEqual(devCc, {
+    role: "developer",
+    agent: "wren",
+    source: "team",
+    tier: "build",
+    gemini: "gemini-4-argon-high",
+    model: "haiku",
+    effort: "medium",
+    notes: "Owns apps/.",
+  });
+  const infraCc = cc.roles.find((r) => r.role === "infrastructure");
+  assert.deepEqual(infraCc, {
+    role: "infrastructure",
+    agent: "infrastructure",
+    source: "generic",
+    tier: "build",
+    gemini: "gemini-pro-orchestrator-neon",
+    model: "haiku",
+    effort: "medium",
+    notes: "",
+  });
+  const relCc = cc.roles.find((r) => r.role === "release");
+  assert.deepEqual(relCc, {
+    role: "release",
+    agent: null,
+    source: "off",
+    tier: "light",
+    gemini: null,
+    model: null,
+    effort: null,
+    notes: "",
+  });
+
+  const agy = resolveTeam(parsed.team, "antigravity", defaults);
+  assert.equal(agy.roles.find((r) => r.role === "developer")?.model, "pro");
+  assert.equal(agy.roles.find((r) => r.role === "lead")?.gemini, null);
+
+  const oc = resolveTeam(parsed.team, "opencode", defaults);
+  assert.equal(
+    oc.roles.find((r) => r.role === "developer")?.model,
+    "anthropic/claude-haiku-5-5",
+  );
+
+  // Explicit precedence test: role override > team tier > defaults, and lead tier always has gemini: null.
+  const precedenceParsed = parseTeam(
+    JSON.stringify({
+      tiers: {
+        lead: {
+          gemini: "gemini-4-carbon-high",
+          "claude-code": "sonnet",
+          effort: "xhigh",
+        },
+        deep: {
+          gemini: "gemini-4-carbon-high",
+          "claude-code": "sonnet",
+          effort: "high",
+        },
+      },
+      roles: {
+        lead: {
+          agent: "beacon",
+          gemini: "gemini-4-argon-high",
+          "claude-code": "opus",
+          effort: "max",
+        },
+        qa: {
+          agent: "scout",
+          tier: "deep",
+          gemini: "gemini-4-argon-high",
+          "claude-code": "opus",
+          effort: "xhigh",
+        },
+        security: { tier: "lead" },
+      },
+    }),
+  );
+  assert.deepEqual(precedenceParsed.errors, []);
+  const prec = resolveTeam(precedenceParsed.team, "claude-code", defaults);
+  assert.deepEqual(
+    prec.roles.find((r) => r.role === "lead"),
+    {
+      role: "lead",
+      agent: "beacon",
+      source: "team",
+      tier: "lead",
+      gemini: null,
+      model: "opus",
+      effort: "max",
+      notes: "",
+    },
+  );
+  assert.deepEqual(
+    prec.roles.find((r) => r.role === "qa"),
+    {
+      role: "qa",
+      agent: "scout",
+      source: "team",
+      tier: "deep",
+      gemini: "gemini-4-argon-high",
+      model: "opus",
+      effort: "xhigh",
+      notes: "",
+    },
+  );
+  // Role moved to tier: "lead" also gets gemini: null even when tiers.lead specified gemini.
+  assert.deepEqual(
+    prec.roles.find((r) => r.role === "security"),
+    {
+      role: "security",
+      agent: "security",
+      source: "generic",
+      tier: "lead",
+      gemini: null,
+      model: "sonnet",
+      effort: "xhigh",
+      notes: "",
+    },
+  );
+});
+
+test("parseTeam enforces every rejection rule and never throws", () => {
+  const reject = (input, pattern) => {
+    const res = parseTeam(input);
+    assert.equal(res.team, null);
+    assert.ok(res.errors.length > 0, `expected errors for ${String(input)}`);
+    if (pattern) {
+      assert.match(res.errors.join("\n"), pattern);
+    }
+    return res;
+  };
+
+  // Non-JSON / non-object / wrong types
+  reject("", /invalid JSON/i);
+  reject("{not-json", /invalid JSON/i);
+  reject("[]", /JSON object/i);
+  reject("null", /JSON object/i);
+  reject("42", /JSON object/i);
+  reject(123, /JSON string/i);
+
+  // Unknown top-level / tier / role / inner keys
+  reject(JSON.stringify({ extra: true }), /unknown top-level key "extra"/);
+  reject(JSON.stringify({ tiers: { core: {} } }), /unknown tier "core"/);
+  reject(
+    JSON.stringify({ tiers: { build: { extra: "x" } } }),
+    /tiers\.build: unknown key "extra"/,
+  );
+  reject(
+    JSON.stringify({ roles: { wizard: { agent: "gandalf" } } }),
+    /unknown role "wizard"/,
+  );
+  reject(
+    JSON.stringify({ roles: { developer: { extra: 1 } } }),
+    /roles\.developer: unknown key "extra"/,
+  );
+  reject(
+    JSON.stringify({ roles: { developer: "on" } }),
+    /must be "off" or an object/,
+  );
+
+  // Bad agent name
+  for (const badAgent of [
+    "Wren",
+    "-bad",
+    "has space",
+    "under_score",
+    "",
+    "a".repeat(65),
+  ]) {
+    reject(
+      JSON.stringify({ roles: { developer: { agent: badAgent } } }),
+      /invalid agent name/i,
+    );
+  }
+
+  // Bad tier inside role
+  reject(
+    JSON.stringify({ roles: { developer: { tier: "core" } } }),
+    /invalid tier/i,
+  );
+
+  // Low/lite/flash-lo models on gemini and harness models
+  for (const badGemini of [
+    "gpt-4o",
+    "gemini-4-low",
+    "gemini-4-lite",
+    "gemini-flash-lo",
+  ]) {
+    reject(
+      JSON.stringify({ tiers: { build: { gemini: badGemini } } }),
+      /invalid Gemini model/i,
+    );
+    reject(
+      JSON.stringify({ roles: { developer: { gemini: badGemini } } }),
+      /invalid Gemini model/i,
+    );
+  }
+  for (const harness of ["claude-code", "antigravity", "opencode"]) {
+    for (const badModel of [
+      "",
+      "model-low",
+      "model-lite",
+      "flash-lo",
+      "MODEL-LOW",
+    ]) {
+      reject(
+        JSON.stringify({ tiers: { build: { [harness]: badModel } } }),
+        /invalid model/i,
+      );
+      reject(
+        JSON.stringify({ roles: { developer: { [harness]: badModel } } }),
+        /invalid model/i,
+      );
+    }
+  }
+
+  // Effort low / unknown effort
+  for (const badEffort of ["low", "turbo", "-"]) {
+    reject(
+      JSON.stringify({ tiers: { build: { effort: badEffort } } }),
+      /invalid effort/i,
+    );
+    reject(
+      JSON.stringify({ roles: { developer: { effort: badEffort } } }),
+      /invalid effort/i,
+    );
+  }
+
+  // Notes over 2000 chars (after sanitizeDisplayText)
+  reject(
+    JSON.stringify({ notes: "x".repeat(MAX_TEAM_NOTES + 1) }),
+    /exceeds 2000 characters/i,
+  );
+  reject(
+    JSON.stringify({
+      roles: { developer: { notes: "y".repeat(MAX_TEAM_NOTES + 1) } },
+    }),
+    /exceeds 2000 characters/i,
+  );
+
+  // Notes with ANSI escapes whose sanitized length <= 2000 are accepted and stripped
+  const ansiPadded = `\x1b[31m${"a".repeat(MAX_TEAM_NOTES)}\x1b[0m`;
+  const cleanNotesRes = parseTeam(
+    JSON.stringify({
+      notes: ansiPadded,
+      roles: { developer: { notes: ansiPadded } },
+    }),
+  );
+  assert.deepEqual(cleanNotesRes.errors, []);
+  assert.equal(cleanNotesRes.team.notes.length, MAX_TEAM_NOTES);
+  assert.equal(cleanNotesRes.team.roles.developer.notes.length, MAX_TEAM_NOTES);
+
+  // lead cannot be "off"
+  reject(
+    JSON.stringify({ roles: { lead: "off" } }),
+    /roles\.lead cannot be "off"/,
+  );
+
+  // Wrong types for tiers / roles / nested objects / scalar fields
+  for (const bad of [[], null, 123, "bad", true]) {
+    reject(JSON.stringify({ tiers: bad }), /tiers must be an object/i);
+    reject(JSON.stringify({ roles: bad }), /roles must be an object/i);
+  }
+  for (const badTierVal of [[], null, "off", 42, false]) {
+    reject(
+      JSON.stringify({ tiers: { build: badTierVal } }),
+      /tiers\.build must be an object/i,
+    );
+  }
+  for (const badRoleVal of [[], null, 42, true]) {
+    reject(
+      JSON.stringify({ roles: { developer: badRoleVal } }),
+      /roles\.developer must be "off" or an object/i,
+    );
+  }
+  reject(JSON.stringify({ notes: 42 }), /notes must be a string/i);
+  reject(
+    JSON.stringify({ roles: { developer: { notes: [] } } }),
+    /roles\.developer\.notes must be a string/i,
+  );
+  reject(
+    JSON.stringify({ roles: { developer: { agent: 123 } } }),
+    /invalid agent name/i,
+  );
+
+  // Case-variant low/lite/flash-lo rejections across gemini and harnesses
+  for (const badGemCase of [
+    "GEMINI-4-LOW",
+    "gemini-4-LOW",
+    "gemini-4-LITE",
+    "gemini-FLASH-LO",
+  ]) {
+    reject(
+      JSON.stringify({ tiers: { build: { gemini: badGemCase } } }),
+      /invalid Gemini model/i,
+    );
+  }
+  for (const harness of ["claude-code", "antigravity", "opencode"]) {
+    for (const badCase of ["MODEL-LITE", "FLASH-LO", "custom-Flash-Lo-v2"]) {
+      reject(
+        JSON.stringify({ roles: { developer: { [harness]: badCase } } }),
+        /invalid model/i,
+      );
+    }
+  }
+
+  // Never throws on huge or deeply nested JSON inputs
+  const hugeRes = parseTeam(JSON.stringify({ notes: "z".repeat(5_000_000) }));
+  assert.equal(hugeRes.team, null);
+  assert.ok(hugeRes.errors.length > 0);
+  const deepJson = `${'{"a":'.repeat(20_000)}1${"}".repeat(20_000)}`;
+  const deepRes = parseTeam(deepJson);
+  assert.equal(deepRes.team, null);
+  assert.ok(deepRes.errors.length > 0);
+});
+
+test("resolveTeam handles unknown harness by setting model to null while preserving ROLES order and tier fields", () => {
+  const { team, errors } = parseTeam(
+    JSON.stringify({
+      notes: "Custom harness check.",
+      roles: {
+        developer: {
+          agent: "wren",
+          gemini: "gemini-4-argon-high",
+          "claude-code": "opus",
+          effort: "max",
+        },
+        release: "off",
+      },
+    }),
+  );
+  assert.deepEqual(errors, []);
+  const resolved = resolveTeam(team, "unknown-harness", {
+    tiers: {
+      lead: { "claude-code": "opus", effort: "high" },
+      build: {
+        gemini: "gemini-4-carbon-high",
+        "claude-code": "sonnet",
+        effort: "high",
+      },
+    },
+  });
+  assert.equal(resolved.notes, "Custom harness check.");
+  assert.deepEqual(
+    resolved.roles.map((r) => r.role),
+    [...ROLES],
+  );
+  assert.deepEqual(
+    resolved.roles.find((r) => r.role === "lead"),
+    {
+      role: "lead",
+      agent: "lead",
+      source: "generic",
+      tier: "lead",
+      gemini: null,
+      model: null,
+      effort: "high",
+      notes: "",
+    },
+  );
+  assert.deepEqual(
+    resolved.roles.find((r) => r.role === "developer"),
+    {
+      role: "developer",
+      agent: "wren",
+      source: "team",
+      tier: "build",
+      gemini: "gemini-4-argon-high",
+      model: null,
+      effort: "max",
+      notes: "",
+    },
+  );
+  assert.equal(resolved.roles.find((r) => r.role === "release")?.model, null);
+});
+
+test("agentRoleMap and formatAgentRoleLabel format mapped agents only", () => {
+  const { team } = parseTeam(
+    JSON.stringify({
+      roles: {
+        lead: { agent: "beacon" },
+        developer: { agent: "wren" },
+        release: "off",
+      },
+    }),
+  );
+  const resolved = resolveTeam(team, "antigravity", { tiers: {} });
+  const roleMap = agentRoleMap(resolved);
+  assert.equal(Object.getPrototypeOf(roleMap), null);
+  assert.deepEqual({ ...roleMap }, { beacon: "lead", wren: "developer" });
+  assert.equal(formatAgentRoleLabel("wren", roleMap), "wren · developer");
+  assert.equal(
+    formatAgentRoleLabel("vitruvian-orchestrator:wren", roleMap),
+    "vitruvian-orchestrator:wren · developer",
+  );
+  assert.equal(formatAgentRoleLabel("qa", roleMap), "qa");
+  assert.equal(formatAgentRoleLabel("unknown", roleMap), "unknown");
+});
+
+test("team.schema.json role and tier enums match ROLES and DEFAULT_ROLE_TIERS", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const schema = JSON.parse(
+    readFileSync(join(here, "..", "schema", "team.schema.json"), "utf8"),
+  );
+  assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
+  assert.equal(
+    schema.$id,
+    "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+  );
+  assert.deepEqual(schema.$defs.role.enum, [...ROLES]);
+  assert.deepEqual(Object.keys(schema.properties.roles.properties), [...ROLES]);
+
+  const tierKeys = [...new Set(Object.values(DEFAULT_ROLE_TIERS))];
+  assert.deepEqual(tierKeys, [...TEAM_TIERS]);
+  assert.deepEqual(schema.$defs.tier.enum, tierKeys);
+  assert.deepEqual(Object.keys(schema.properties.tiers.properties), tierKeys);
+  assert.deepEqual(schema.$defs.effort.enum, [...TEAM_EFFORTS]);
+  assert.deepEqual(schema.properties.roles.properties.lead, {
+    $ref: "#/$defs/roleConfig",
+  });
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.tiers.additionalProperties, false);
+  assert.equal(schema.properties.roles.additionalProperties, false);
+  assert.equal(schema.$defs.tierConfig.additionalProperties, false);
+  assert.equal(schema.$defs.roleConfig.additionalProperties, false);
+});
+
+test("parseTeam strips zero-width, ANSI, and bidi chars before checking the 2000-char notes cap", () => {
+  // Scout repro: 6500 zero-width chars + 2500 'a' must be rejected, never silently truncated to 1500.
+  const zwBypass = "\u200b".repeat(6500) + "a".repeat(2500);
+  const topRepro = parseTeam(JSON.stringify({ notes: zwBypass }));
+  assert.equal(topRepro.team, null);
+  assert.match(topRepro.errors.join("\n"), /exceeds 2000 characters/i);
+  assert.match(topRepro.errors.join("\n"), /\(2500\)/);
+
+  const roleRepro = parseTeam(
+    JSON.stringify({ roles: { developer: { notes: zwBypass } } }),
+  );
+  assert.equal(roleRepro.team, null);
+  assert.match(roleRepro.errors.join("\n"), /exceeds 2000 characters/i);
+  assert.match(roleRepro.errors.join("\n"), /\(2500\)/);
+
+  // ANSI escape repro: 1300 * 5 = 6500 raw junk chars + 2500 'a' must also be rejected.
+  const ansiBypass = "\x1b[31m".repeat(1300) + "a".repeat(2500);
+  const ansiRepro = parseTeam(JSON.stringify({ notes: ansiBypass }));
+  assert.equal(ansiRepro.team, null);
+  assert.match(ansiRepro.errors.join("\n"), /exceeds 2000 characters/i);
+
+  // Exactly 2000 visible chars after stripping >8000 raw junk chars is accepted and never truncated.
+  const exactValid = "\u200b".repeat(6500) + "a".repeat(2000);
+  const okRes = parseTeam(
+    JSON.stringify({
+      notes: exactValid,
+      roles: { developer: { notes: exactValid } },
+    }),
+  );
+  assert.deepEqual(okRes.errors, []);
+  assert.equal(okRes.team.notes.length, MAX_TEAM_NOTES);
+  assert.equal(okRes.team.roles.developer.notes.length, MAX_TEAM_NOTES);
+
+  // Direct resolveTeam calls also strip first and never exceed MAX_TEAM_NOTES.
+  const directResolved = resolveTeam(
+    {
+      notes: zwBypass,
+      roles: { developer: { notes: "\u200b".repeat(6500) + "b".repeat(2500) } },
+    },
+    "claude-code",
+    { tiers: {} },
+  );
+  assert.equal(directResolved.notes.length, MAX_TEAM_NOTES);
+  assert.equal(directResolved.notes, "a".repeat(MAX_TEAM_NOTES));
+  assert.equal(
+    directResolved.roles.find((r) => r.role === "developer")?.notes,
+    "b".repeat(MAX_TEAM_NOTES),
+  );
+});
+
+test("agentRoleMap and formatAgentRoleLabel handle prototype keys like 'constructor' and '__proto__'", () => {
+  const { team, errors } = parseTeam(
+    JSON.stringify({
+      roles: {
+        lead: { agent: "constructor" },
+      },
+    }),
+  );
+  assert.deepEqual(errors, []);
+  const resolved = resolveTeam(team, "antigravity", { tiers: {} });
+  const ctorMap = agentRoleMap(resolved);
+  assert.equal(Object.getPrototypeOf(ctorMap), null);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(ctorMap, "constructor"),
+    true,
+  );
+  assert.equal(ctorMap.constructor, "lead");
+  assert.equal(
+    formatAgentRoleLabel("constructor", ctorMap),
+    "constructor · lead",
+  );
+  assert.equal(formatAgentRoleLabel("toString", ctorMap), "toString");
+  assert.equal(formatAgentRoleLabel("constructor", {}), "constructor");
+
+  const protoResolved = {
+    roles: [
+      { role: "developer", agent: "__proto__", source: "team" },
+      { role: "lead", agent: "constructor", source: "team" },
+    ],
+  };
+  const protoMap = agentRoleMap(protoResolved);
+  assert.equal(Object.getPrototypeOf(protoMap), null);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(protoMap, "__proto__"),
+    true,
+  );
+  assert.equal(protoMap["__proto__"], "developer");
+  assert.equal(protoMap.constructor, "lead");
+  assert.equal(
+    formatAgentRoleLabel("__proto__", protoMap),
+    "__proto__ · developer",
+  );
+  assert.equal(
+    formatAgentRoleLabel("vitruvian-orchestrator:__proto__", protoMap),
+    "vitruvian-orchestrator:__proto__ · developer",
+  );
+  assert.equal(formatAgentRoleLabel("__proto__", {}), "__proto__");
+  assert.equal({}.polluted, undefined);
+
+  // Also verify JSON-deserialized plain objects (with own "__proto__" key) work safely.
+  const jsonRoundTripped = JSON.parse(JSON.stringify(protoMap));
+  assert.equal(
+    formatAgentRoleLabel("__proto__", jsonRoundTripped),
+    "__proto__ · developer",
+  );
+  assert.equal(
+    formatAgentRoleLabel("constructor", jsonRoundTripped),
+    "constructor · lead",
+  );
+});
+
+test("team.schema.json $defs.model and parseTeam agree on whitespace-only and invalid models", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const schema = JSON.parse(
+    readFileSync(join(here, "..", "schema", "team.schema.json"), "utf8"),
+  );
+  const modelDef = schema.$defs.model;
+  assert.equal(typeof modelDef.pattern, "string");
+  assert.ok(modelDef.pattern.length > 0);
+
+  const schemaAcceptsModel = (value) => {
+    if (typeof value !== "string") return false;
+    if (
+      typeof modelDef.minLength === "number" &&
+      value.length < modelDef.minLength
+    ) {
+      return false;
+    }
+    if (
+      typeof modelDef.pattern === "string" &&
+      !new RegExp(modelDef.pattern).test(value)
+    ) {
+      return false;
+    }
+    if (modelDef.not?.pattern && new RegExp(modelDef.not.pattern).test(value)) {
+      return false;
+    }
+    return true;
+  };
+
+  const cases = [
+    { value: "", valid: false },
+    { value: " ", valid: false },
+    { value: "   ", valid: false },
+    { value: "\t\n\r", valid: false },
+    { value: "model-low", valid: false },
+    { value: "MODEL-LITE", valid: false },
+    { value: "flash-lo", valid: false },
+    { value: "haiku", valid: true },
+    { value: "pro", valid: true },
+    { value: "anthropic/claude-haiku-5-5", valid: true },
+  ];
+
+  for (const { value, valid } of cases) {
+    assert.equal(
+      schemaAcceptsModel(value),
+      valid,
+      `schema $defs.model mismatch for ${JSON.stringify(value)}`,
+    );
+    for (const harness of ["claude-code", "antigravity", "opencode"]) {
+      const tierRes = parseTeam(
+        JSON.stringify({ tiers: { build: { [harness]: value } } }),
+      );
+      const roleRes = parseTeam(
+        JSON.stringify({ roles: { developer: { [harness]: value } } }),
+      );
+      assert.equal(
+        tierRes.errors.length === 0,
+        valid,
+        `parseTeam tiers.build.${harness} mismatch for ${JSON.stringify(value)}`,
+      );
+      assert.equal(
+        roleRes.errors.length === 0,
+        valid,
+        `parseTeam roles.developer.${harness} mismatch for ${JSON.stringify(value)}`,
+      );
+    }
+  }
+});
+
+test("sweep item 4: DEFAULT_ROLE_TIERS, parseTeam roles/tiers, and resolveTeam handle constructor and __proto__ safely", () => {
+  assert.equal(Object.getPrototypeOf(DEFAULT_ROLE_TIERS), null);
+  assert.equal(DEFAULT_ROLE_TIERS.constructor, undefined);
+  assert.equal(DEFAULT_ROLE_TIERS.__proto__, undefined);
+
+  const valid = parseTeam(
+    JSON.stringify({
+      tiers: { build: { effort: "high" } },
+      roles: { developer: { agent: "constructor" } },
+    }),
+  );
+  assert.deepEqual(valid.errors, []);
+  assert.ok(valid.team);
+  assert.equal(Object.getPrototypeOf(valid.team.tiers), null);
+  assert.equal(Object.getPrototypeOf(valid.team.roles), null);
+  assert.equal(valid.team.tiers.constructor, undefined);
+  assert.equal(valid.team.tiers.__proto__, undefined);
+  assert.equal(valid.team.roles.constructor, undefined);
+  assert.equal(valid.team.roles.__proto__, undefined);
+  assert.equal(valid.team.roles.developer.agent, "constructor");
+
+  const protoInput =
+    '{"roles":{"constructor":{"agent":"wren"},"__proto__":{"agent":"wren"}},"tiers":{"constructor":{},"__proto__":{}}}';
+  const rejected = parseTeam(protoInput);
+  assert.equal(rejected.team, null);
+  assert.ok(rejected.errors.length >= 4);
+  assert.equal({}.polluted, undefined);
+
+  const resolvedCtor = resolveTeam(valid.team, "claude-code", { tiers: {} });
+  assert.deepEqual(
+    resolvedCtor.roles.find((r) => r.role === "developer"),
+    {
+      role: "developer",
+      agent: "constructor",
+      source: "team",
+      tier: "build",
+      gemini: null,
+      model: null,
+      effort: "high",
+      notes: "",
+    },
+  );
+
+  const resolvedProto = resolveTeam(
+    JSON.parse(
+      '{"roles":{"constructor":{"agent":"x"},"__proto__":{"agent":"y"}}}',
+    ),
+    "claude-code",
+    undefined,
+  );
+  assert.equal(
+    resolvedProto.roles.every((r) => r.source === "generic"),
+    true,
+  );
+});
+
+test("team reduce event validates entries, updates flow.team immutably, preserves across re-plan, and builds flowAgentRoleMap", () => {
+  assert.equal(typeof coreModule.validateTeamEvent, "function");
+  assert.equal(typeof coreModule.flowAgentRoleMap, "function");
+
+  let flow = deepFreeze(
+    reduce(null, {
+      type: "plan",
+      at: 1000,
+      title: "Team Event Flow",
+      tasks: [{ title: "Build", specialist: "wren", tier: "build", after: [] }],
+    }),
+  );
+  assert.equal("team" in flow, false);
+  assert.equal(coreModule.flowAgentRoleMap(flow), null);
+  assert.equal(coreModule.flowAgentRoleMap(null), null);
+
+  const teamEv = deepFreeze({
+    type: "team",
+    at: 1100,
+    roles: [
+      { agent: "beacon", role: "lead" },
+      { agent: "wren", role: "developer" },
+      { agent: "constructor", role: "qa" },
+    ],
+  });
+  assert.deepEqual(coreModule.validateTeamEvent(teamEv), {
+    ok: true,
+    roles: [
+      { agent: "beacon", role: "lead" },
+      { agent: "wren", role: "developer" },
+      { agent: "constructor", role: "qa" },
+    ],
+  });
+
+  const withTeam = deepFreeze(reduce(flow, teamEv));
+  assert.notEqual(withTeam, flow);
+  assert.deepEqual(withTeam.team, [
+    { agent: "beacon", role: "lead" },
+    { agent: "wren", role: "developer" },
+    { agent: "constructor", role: "qa" },
+  ]);
+
+  const roleMap = coreModule.flowAgentRoleMap(withTeam);
+  assert.equal(Object.getPrototypeOf(roleMap), null);
+  assert.deepEqual(
+    { ...roleMap },
+    { beacon: "lead", wren: "developer", constructor: "qa" },
+  );
+  assert.equal(formatAgentRoleLabel("wren", roleMap), "wren · developer");
+  assert.equal(
+    formatAgentRoleLabel("constructor", roleMap),
+    "constructor · qa",
+  );
+
+  // Re-plan preserves flow.team.
+  const replanned = reduce(withTeam, {
+    type: "plan",
+    at: 1200,
+    title: "Team Event Flow v2",
+    tasks: [
+      { title: "Build", specialist: "wren", tier: "build", after: [] },
+      { title: "Test", specialist: "constructor", tier: "deep", after: [1] },
+    ],
+  });
+  assert.deepEqual(replanned.team, withTeam.team);
+
+  // Empty roles array is valid and yields an explicit empty null-prototype map (not null).
+  const emptyEv = { type: "team", at: 1300, roles: [] };
+  assert.deepEqual(coreModule.validateTeamEvent(emptyEv), {
+    ok: true,
+    roles: [],
+  });
+  const withEmptyTeam = reduce(withTeam, emptyEv);
+  assert.deepEqual(withEmptyTeam.team, []);
+  const emptyMap = coreModule.flowAgentRoleMap(withEmptyTeam);
+  assert.notEqual(emptyMap, null);
+  assert.equal(Object.getPrototypeOf(emptyMap), null);
+  assert.deepEqual({ ...emptyMap }, {});
+});
+
+test("team reduce event rejects >10 entries (11), bad agent names, bad role names, and malformed payloads", () => {
+  assert.equal(typeof coreModule.validateTeamEvent, "function");
+
+  const baseFlow = deepFreeze(
+    reduce(null, {
+      type: "plan",
+      at: 1000,
+      title: "Team Validation Flow",
+      tasks: [],
+    }),
+  );
+
+  // 11 entries (> 10 max)
+  const elevenRoles = Array.from({ length: 11 }, (_, i) => ({
+    agent: `agent-${i}`,
+    role: "developer",
+  }));
+  const tooManyRes = coreModule.validateTeamEvent({
+    type: "team",
+    at: 1100,
+    roles: elevenRoles,
+  });
+  assert.equal(tooManyRes.ok, false);
+  assert.match(tooManyRes.error, /too many|11|10/i);
+  assert.equal(
+    reduce(baseFlow, { type: "team", at: 1100, roles: elevenRoles }),
+    baseFlow,
+  );
+
+  // Bad agent names
+  for (const badAgent of [
+    "Wren",
+    "-bad",
+    "has space",
+    "under_score",
+    "",
+    "a".repeat(65),
+    123,
+  ]) {
+    const res = coreModule.validateTeamEvent({
+      type: "team",
+      at: 1100,
+      roles: [{ agent: badAgent, role: "developer" }],
+    });
+    assert.equal(
+      res.ok,
+      false,
+      `expected agent ${JSON.stringify(badAgent)} to fail`,
+    );
+    assert.match(res.error, /invalid agent/i);
+    assert.equal(
+      reduce(baseFlow, {
+        type: "team",
+        at: 1100,
+        roles: [{ agent: badAgent, role: "developer" }],
+      }),
+      baseFlow,
+    );
+  }
+
+  // Bad role names
+  for (const badRole of [
+    "wizard",
+    "",
+    "LEAD",
+    "constructor",
+    "__proto__",
+    42,
+  ]) {
+    const res = coreModule.validateTeamEvent({
+      type: "team",
+      at: 1100,
+      roles: [{ agent: "wren", role: badRole }],
+    });
+    assert.equal(
+      res.ok,
+      false,
+      `expected role ${JSON.stringify(badRole)} to fail`,
+    );
+    assert.match(res.error, /invalid role/i);
+    assert.equal(
+      reduce(baseFlow, {
+        type: "team",
+        at: 1100,
+        roles: [{ agent: "wren", role: badRole }],
+      }),
+      baseFlow,
+    );
+  }
+
+  // Non-array roles and non-object entries
+  for (const badPayload of [
+    { type: "team", at: 1100, roles: null },
+    { type: "team", at: 1100, roles: {} },
+    { type: "team", at: 1100, roles: [null] },
+  ]) {
+    const res = coreModule.validateTeamEvent(badPayload);
+    assert.equal(res.ok, false);
+    assert.ok(typeof res.error === "string" && res.error.length > 0);
+    assert.equal(reduce(baseFlow, badPayload), baseFlow);
+  }
+
+  // Null flow ignores team event
+  assert.equal(
+    reduce(null, {
+      type: "team",
+      at: 1100,
+      roles: [{ agent: "wren", role: "developer" }],
+    }),
+    null,
   );
 });

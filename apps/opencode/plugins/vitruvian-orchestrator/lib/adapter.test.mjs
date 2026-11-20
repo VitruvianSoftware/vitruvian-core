@@ -28,6 +28,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import serverPlugin from "../server.mjs";
 
+import * as adapterModule from "./adapter.mjs";
 import {
   applyBoardCall,
   applyChannelCall,
@@ -35,6 +36,7 @@ import {
   applyProgressCall,
   applyStepCall,
   channels,
+  createAgentRolesReader,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
   EMPTY_PANEL_MESSAGE,
@@ -42,6 +44,7 @@ import {
   formatSidebarLines,
   formatSidebarTitle,
   formatUsd,
+  loadAgentRoles,
   mapOpenCodeTokens,
   mapProgressInputToEvents,
   mergeTokenSnapshots,
@@ -53,6 +56,7 @@ import {
 } from "./adapter.mjs";
 import { formatWake } from "./orchestrator-core.mjs";
 import { PRICES } from "./prices.mjs";
+import { TIER_DEFAULTS } from "./tier-defaults.mjs";
 
 function priceByMatch(match) {
   const row = PRICES.find((entry) => entry.match === match);
@@ -3360,5 +3364,820 @@ describe("board channel check", () => {
       else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("team tool and panel labels", () => {
+  it("team tool handles absent, valid, invalid, and oversize .agents/team.json", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-team-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const repoDir = path.join(tmpDir, "repo");
+    fs.mkdirSync(repoDir, { recursive: true });
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: repoDir,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const teamTool = tools.get("team");
+      assert.ok(teamTool, "serverPlugin must register team tool");
+
+      // 1. Absent file -> file: null, errors: [], generic roles with TIER_DEFAULTS
+      const absentPayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(absentPayload.file, null);
+      assert.deepEqual(absentPayload.errors, []);
+      assert.equal(absentPayload.roles.length, 10);
+      assert.equal(
+        absentPayload.roles[0].model,
+        TIER_DEFAULTS.tiers.lead.opencode,
+      );
+      assert.equal(
+        absentPayload.roles[0].effort,
+        TIER_DEFAULTS.tiers.lead.effort,
+      );
+      assert.equal(absentPayload.roles[0].gemini, null);
+      assert.equal(absentPayload.roles[1].agent, "developer");
+      assert.equal(absentPayload.roles[1].source, "generic");
+      assert.equal(
+        absentPayload.roles[1].model,
+        TIER_DEFAULTS.tiers.build.opencode,
+      );
+      assert.equal(
+        absentPayload.roles[1].effort,
+        TIER_DEFAULTS.tiers.build.effort,
+      );
+      assert.equal(
+        absentPayload.roles[1].gemini,
+        TIER_DEFAULTS.tiers.build.gemini,
+      );
+
+      // 2. Valid file
+      const agentsDir = path.join(repoDir, ".agents");
+      fs.mkdirSync(agentsDir, { recursive: true });
+      const teamPath = path.join(agentsDir, "team.json");
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          notes: "Run bazel test.",
+          tiers: {
+            build: { opencode: "anthropic/claude-haiku-5-5", effort: "medium" },
+          },
+          roles: {
+            developer: { agent: "wren", notes: "Owns apps/." },
+            release: "off",
+          },
+        }),
+        "utf8",
+      );
+      const validPayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(validPayload.file, ".agents/team.json");
+      assert.deepEqual(validPayload.errors, []);
+      assert.equal(validPayload.notes, "Run bazel test.");
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "developer").agent,
+        "wren",
+      );
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "developer").model,
+        "anthropic/claude-haiku-5-5",
+      );
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "release").agent,
+        null,
+      );
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "release").source,
+        "off",
+      );
+
+      // 3. Invalid file -> reports errors and falls back to generic defaults
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          unknownKey: true,
+          roles: { lead: "off" },
+        }),
+        "utf8",
+      );
+      const invalidPayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(invalidPayload.file, ".agents/team.json");
+      assert.ok(invalidPayload.errors.length >= 2);
+      assert.equal(
+        invalidPayload.roles.find((r) => r.role === "lead").source,
+        "generic",
+      );
+
+      // 4. Oversize file (> 64 KiB)
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({ notes: "a".repeat(70_000) }),
+        "utf8",
+      );
+      const oversizePayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(oversizePayload.file, ".agents/team.json");
+      assert.match(oversizePayload.errors.join("\n"), /64 KiB|65536/);
+      assert.equal(
+        oversizePayload.roles.find((r) => r.role === "developer").source,
+        "generic",
+      );
+      assert.deepEqual(Object.keys(oversizePayload), [
+        "file",
+        "errors",
+        "notes",
+        "roles",
+      ]);
+      assert.deepEqual(Object.keys(oversizePayload.roles[0]), [
+        "role",
+        "agent",
+        "source",
+        "tier",
+        "gemini",
+        "model",
+        "effort",
+        "notes",
+      ]);
+
+      // 5. Unreadable file -> reports read error and falls back to generic defaults
+      if (typeof process.getuid !== "function" || process.getuid() !== 0) {
+        fs.writeFileSync(teamPath, JSON.stringify({ notes: "secret" }), "utf8");
+        fs.chmodSync(teamPath, 0o000);
+        try {
+          const unreadablePayload = JSON.parse(
+            (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+          );
+          assert.equal(unreadablePayload.file, ".agents/team.json");
+          assert.match(
+            unreadablePayload.errors.join("\n"),
+            /failed to read \.agents\/team\.json/i,
+          );
+          assert.equal(
+            unreadablePayload.roles.find((r) => r.role === "developer").source,
+            "generic",
+          );
+        } finally {
+          fs.chmodSync(teamPath, 0o600);
+        }
+      }
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sidebar formats 'name · role' display labels for mapped agents while preserving raw agent names", () => {
+    const t0 = 1_762_450_000_000;
+    let flow = reduce(null, {
+      type: "plan",
+      at: t0,
+      title: "Team Label Flow",
+      tasks: [{ title: "Build", specialist: "wren", tier: "build" }],
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "ses_wren",
+      harness: "opencode",
+      agent: "wren",
+      model: "anthropic/claude-haiku-5-5",
+      title: "Build",
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: t0 + 1100,
+      id: "ses_other",
+      harness: "opencode",
+      agent: "helper",
+      model: "anthropic/claude-haiku-5-5",
+      title: "Extra",
+    });
+    flow = reduce(flow, {
+      type: "post",
+      at: t0 + 1200,
+      from: "wren",
+      to: ["lead"],
+      kind: "note",
+      text: "Check status",
+    });
+
+    const stalledNow = t0 + DEFAULT_STALL_MS + 5000;
+    const data = formatSidebarData(flow, stalledNow, {
+      agentRoles: { wren: "developer" },
+    });
+    const wrenRun = data.agents.find((a) => a.agent === "wren");
+    assert.equal(wrenRun?.agent, "wren");
+    assert.equal(wrenRun?.agentLabel, "wren · developer");
+    const otherRun = data.agents.find((a) => a.agent === "helper");
+    assert.equal(otherRun?.agentLabel, "helper");
+    assert.equal(
+      data.overview?.members.find((m) => m.agent === "wren")?.agentLabel,
+      "wren · developer",
+    );
+    assert.equal(
+      data.overview?.stalls.find((s) => s.agent === "wren")?.agentLabel,
+      "wren · developer",
+    );
+
+    const lines = formatSidebarLines(flow, stalledNow, {
+      agentRoles: { wren: "developer" },
+    }).join("\n");
+    assert.match(lines, /wren · developer #1/);
+    assert.match(lines, /wren · developer \(working\)/);
+    assert.match(lines, /wren · developer \(stalled/);
+    assert.doesNotMatch(lines, /helper ·/);
+
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const tuiSrc = fs.readFileSync(path.join(here, "..", "tui.tsx"), "utf8");
+    assert.match(tuiSrc, /agentLabel/);
+  });
+
+  it("team tool rejects .agents/team.json symlinks outside repository and dangling symlinks", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-symlink-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const repoDir = path.join(tmpDir, "repo");
+    const outsideDir = path.join(tmpDir, "outside");
+    fs.mkdirSync(path.join(repoDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(repoDir, "config"), { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+    const outsideFile = path.join(outsideDir, "secret-team.json");
+    fs.writeFileSync(
+      outsideFile,
+      JSON.stringify({ roles: { developer: { agent: "outsider" } } }),
+      "utf8",
+    );
+    const insideFile = path.join(repoDir, "config", "team.json");
+    fs.writeFileSync(
+      insideFile,
+      JSON.stringify({ roles: { developer: { agent: "insider" } } }),
+      "utf8",
+    );
+
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: repoDir,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const teamTool = tools.get("team");
+      const teamLink = path.join(repoDir, ".agents", "team.json");
+
+      // 1. Symlink pointing outside repository
+      fs.symlinkSync(outsideFile, teamLink);
+      const outsidePayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(outsidePayload.file, ".agents/team.json");
+      assert.match(
+        outsidePayload.errors.join("\n"),
+        /must be inside the repository/,
+      );
+      assert.equal(
+        outsidePayload.roles.find((r) => r.role === "developer")?.source,
+        "generic",
+      );
+
+      // 2. Dangling symlink
+      fs.rmSync(teamLink);
+      fs.symlinkSync(path.join(tmpDir, "missing.json"), teamLink);
+      const danglingPayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(danglingPayload.file, ".agents/team.json");
+      assert.ok(danglingPayload.errors.length > 0);
+      assert.equal(
+        danglingPayload.roles.find((r) => r.role === "developer")?.source,
+        "generic",
+      );
+
+      // 3. Symlink inside repository
+      fs.rmSync(teamLink);
+      fs.symlinkSync(insideFile, teamLink);
+      const insidePayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(insidePayload.file, ".agents/team.json");
+      assert.deepEqual(insidePayload.errors, []);
+      assert.equal(
+        insidePayload.roles.find((r) => r.role === "developer")?.agent,
+        "insider",
+      );
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("createAgentRolesReader reloads team roles when file mtime/content changes and tui.tsx uses it on refresh", () => {
+    assert.equal(
+      typeof createAgentRolesReader,
+      "function",
+      "adapter.mjs must export createAgentRolesReader",
+    );
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-tui-roles-"),
+    );
+    try {
+      const repoDir = path.join(tmpDir, "repo");
+      const agentsDir = path.join(repoDir, ".agents");
+      fs.mkdirSync(agentsDir, { recursive: true });
+      const teamPath = path.join(agentsDir, "team.json");
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({ roles: { developer: { agent: "wren" } } }),
+        "utf8",
+      );
+
+      const readRoles = createAgentRolesReader(repoDir);
+      const first = readRoles();
+      assert.equal(first.wren, "developer");
+      assert.strictEqual(
+        readRoles(),
+        first,
+        "unchanged file should return cached roles map",
+      );
+
+      // Modify content and advance mtime
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          roles: { developer: { agent: "fox" }, qa: { agent: "scout" } },
+        }),
+        "utf8",
+      );
+      const nextTimeSec = Math.floor(Date.now() / 1000) + 5;
+      fs.utimesSync(teamPath, nextTimeSec, nextTimeSec);
+
+      const updated = readRoles();
+      assert.equal(updated.fox, "developer");
+      assert.equal(updated.scout, "qa");
+      assert.equal(updated.wren, undefined);
+
+      // Removing team file clears mapped roles on next refresh
+      fs.rmSync(teamPath);
+      const afterDelete = readRoles();
+      assert.deepEqual({ ...afterDelete }, {});
+
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const tuiSrc = fs.readFileSync(path.join(here, "..", "tui.tsx"), "utf8");
+      assert.match(tuiSrc, /createAgentRolesReader/);
+      assert.doesNotMatch(
+        tuiSrc,
+        /const agentRoles = loadAgentRoles\(process\.cwd\(\)\);/,
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sweep item 4: loadAgentRoles, createAgentRolesReader, and sidebar formatting handle agent names 'constructor' and '__proto__' safely", () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-proto-"),
+    );
+    try {
+      const repoDir = path.join(tmpDir, "repo");
+      const agentsDir = path.join(repoDir, ".agents");
+      fs.mkdirSync(agentsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(agentsDir, "team.json"),
+        JSON.stringify({ roles: { developer: { agent: "constructor" } } }),
+        "utf8",
+      );
+
+      const loaded = loadAgentRoles(repoDir);
+      assert.equal(Object.getPrototypeOf(loaded), null);
+      assert.equal(loaded.constructor, "developer");
+      assert.equal(loaded.__proto__, undefined);
+
+      const readRoles = createAgentRolesReader(repoDir);
+      const fromReader = readRoles();
+      assert.equal(Object.getPrototypeOf(fromReader), null);
+      assert.equal(fromReader.constructor, "developer");
+      assert.equal(fromReader.__proto__, undefined);
+
+      const t0 = 1_762_450_000_000;
+      let flow = reduce(null, {
+        type: "plan",
+        at: t0,
+        title: "Proto Safety",
+        tasks: [
+          { title: "Build", specialist: "constructor", tier: "build" },
+          { title: "Verify", specialist: "__proto__", tier: "deep" },
+        ],
+      });
+      flow = reduce(flow, {
+        type: "run.start",
+        at: t0 + 1000,
+        id: "ses_ctor",
+        harness: "opencode",
+        agent: "constructor",
+        model: "anthropic/claude-haiku-5-5",
+        title: "Build",
+      });
+      flow = reduce(flow, {
+        type: "run.start",
+        at: t0 + 1100,
+        id: "ses_proto",
+        harness: "opencode",
+        agent: "__proto__",
+        model: "anthropic/claude-haiku-5-5",
+        title: "Verify",
+      });
+      flow = reduce(flow, {
+        type: "post",
+        at: t0 + 1200,
+        from: "constructor",
+        to: ["lead"],
+        kind: "note",
+        text: "Check status",
+      });
+
+      const stalledNow = t0 + DEFAULT_STALL_MS + 5000;
+      const plainData = formatSidebarData(flow, stalledNow, { agentRoles: {} });
+      assert.equal(
+        plainData.agents.find((a) => a.agent === "constructor")?.agentLabel,
+        "constructor",
+      );
+      assert.equal(
+        plainData.agents.find((a) => a.agent === "__proto__")?.agentLabel,
+        "__proto__",
+      );
+
+      const nullProtoRoles = Object.assign(Object.create(null), {
+        constructor: "developer",
+        ["__proto__"]: "qa",
+      });
+      const mappedData = formatSidebarData(flow, stalledNow, {
+        agentRoles: nullProtoRoles,
+      });
+      assert.equal(
+        mappedData.agents.find((a) => a.agent === "constructor")?.agentLabel,
+        "constructor · developer",
+      );
+      assert.equal(
+        mappedData.agents.find((a) => a.agent === "__proto__")?.agentLabel,
+        "__proto__ · qa",
+      );
+      assert.equal(
+        mappedData.overview?.members.find((m) => m.agent === "constructor")
+          ?.agentLabel,
+        "constructor · developer",
+      );
+      assert.equal(
+        mappedData.overview?.stalls.find((s) => s.agent === "__proto__")
+          ?.agentLabel,
+        "__proto__ · qa",
+      );
+
+      const lines = formatSidebarLines(flow, stalledNow, {
+        agentRoles: nullProtoRoles,
+      }).join("\n");
+      assert.match(lines, /constructor · developer/);
+      assert.match(lines, /__proto__ · qa/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("team tool rejects oversize .agents/team.json without calling fs.readSync", async (t) => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-oversize-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const repoDir = path.join(tmpDir, "repo");
+    const agentsDir = path.join(repoDir, ".agents");
+    fs.mkdirSync(agentsDir, { recursive: true });
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+    const readSpy = t.mock.method(fs, "readSync");
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: repoDir,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const teamTool = tools.get("team");
+      const teamPath = path.join(agentsDir, "team.json");
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({ roles: { developer: { agent: "wren" } } }),
+        "utf8",
+      );
+      await teamTool.execute({}, { sessionID: "ses_root" });
+      const readsBeforeOversize = readSpy.mock.callCount();
+      assert.ok(readsBeforeOversize > 0, "expected fs.readSync on valid file");
+
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({ notes: "a".repeat(70_000) }),
+        "utf8",
+      );
+      const oversizePayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(readSpy.mock.callCount(), readsBeforeOversize);
+      assert.equal(oversizePayload.file, ".agents/team.json");
+      assert.match(oversizePayload.errors.join("\n"), /64 KiB|65536/);
+      assert.equal(
+        oversizePayload.roles.find((r) => r.role === "developer")?.source,
+        "generic",
+      );
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("team tool reports invalid JSON prefix for malformed .agents/team.json", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-malformed-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const repoDir = path.join(tmpDir, "repo");
+    const agentsDir = path.join(repoDir, ".agents");
+    fs.mkdirSync(agentsDir, { recursive: true });
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: repoDir,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      fs.writeFileSync(path.join(agentsDir, "team.json"), "{bad json", "utf8");
+      const payload = JSON.parse(
+        (await tools.get("team").execute({}, { sessionID: "ses_root" }))
+          .content,
+      );
+      assert.equal(payload.file, ".agents/team.json");
+      assert.equal(payload.errors.length, 1);
+      assert.equal(payload.errors[0].startsWith("invalid JSON:"), true);
+      assert.equal(
+        payload.roles.find((r) => r.role === "developer")?.source,
+        "generic",
+      );
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("team tool supports optional root input (valid, invalid, outside-repo symlink, missing fallback) and records team event in flow state", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-team-root-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const repoA = path.join(tmpDir, "repo-a");
+    const repoB = path.join(tmpDir, "repo-b");
+    const escapeRepo = path.join(tmpDir, "escape-repo");
+    const outsideDir = path.join(tmpDir, "outside");
+    const notADir = path.join(tmpDir, "file.txt");
+
+    fs.mkdirSync(path.join(repoA, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(repoB, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(escapeRepo, ".agents"), { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(notADir, "hello", "utf8");
+    fs.writeFileSync(
+      path.join(repoA, ".agents", "team.json"),
+      JSON.stringify({
+        notes: "From repoA",
+        roles: { developer: { agent: "alpha" } },
+      }),
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(repoB, ".agents", "team.json"),
+      JSON.stringify({
+        notes: "From repoB",
+        roles: { developer: { agent: "beta" } },
+      }),
+      "utf8",
+    );
+    const outsideFile = path.join(outsideDir, "secret.json");
+    fs.writeFileSync(
+      outsideFile,
+      JSON.stringify({ roles: { developer: { agent: "outsider" } } }),
+      "utf8",
+    );
+    fs.symlinkSync(outsideFile, path.join(escapeRepo, ".agents", "team.json"));
+
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: repoB,
+        session: {
+          get: async ({ sessionID }) =>
+            sessionID === "ses_root"
+              ? {
+                  id: "ses_root",
+                  title: "Lead",
+                  agent: "beacon",
+                  model: "anthropic/claude-opus-5-5",
+                }
+              : null,
+          prompt: async () => {},
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const teamTool = tools.get("team");
+      assert.ok(teamTool, "team tool must be registered");
+      assert.equal(teamTool.input?.properties?.root?.type, "string");
+      assert.equal(teamTool.input?.additionalProperties, false);
+
+      // 1. Invalid root errors with exact message.
+      for (const badRoot of [
+        "rel/path",
+        // Relative paths to directories that do exist must still be rejected.
+        ".",
+        path.relative(process.cwd(), tmpDir) || ".",
+        path.join(tmpDir, "missing"),
+        notADir,
+        "",
+        123,
+      ]) {
+        await assert.rejects(
+          () => teamTool.execute({ root: badRoot }, { sessionID: "ses_root" }),
+          { message: "root must be an absolute path to a directory" },
+        );
+      }
+
+      // 2. Explicit root enforces realpath inside root.
+      const escapePayload = JSON.parse(
+        (
+          await teamTool.execute(
+            { root: escapeRepo },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      assert.equal(escapePayload.file, ".agents/team.json");
+      assert.match(
+        escapePayload.errors.join("\n"),
+        /must be inside the repository/,
+      );
+
+      // 3. Explicit valid root BEFORE progress records team event on subsequent plan.
+      const fromA = JSON.parse(
+        (await teamTool.execute({ root: repoA }, { sessionID: "ses_root" }))
+          .content,
+      );
+      assert.equal(fromA.notes, "From repoA");
+      assert.equal(
+        fromA.roles.find((r) => r.role === "developer")?.agent,
+        "alpha",
+      );
+
+      await tools.get("progress").execute(
+        {
+          title: "OpenCode Root Flow",
+          phase: "plan",
+          tasks: [{ title: "Build", specialist: "alpha", tier: "build" }],
+        },
+        { sessionID: "ses_root" },
+      );
+
+      const statePath = path.join(stateDir, "state.json");
+      const flowAfterPlan = JSON.parse(fs.readFileSync(statePath, "utf8")).flows
+        .ses_root;
+      assert.deepEqual(flowAfterPlan.team, [
+        { agent: "alpha", role: "developer" },
+      ]);
+
+      // 4. Missing root keeps existing ctx.directory discovery and updates flow.team when flow exists.
+      const fromB = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.equal(fromB.notes, "From repoB");
+      assert.equal(
+        fromB.roles.find((r) => r.role === "developer")?.agent,
+        "beta",
+      );
+      const flowAfterSecond = JSON.parse(fs.readFileSync(statePath, "utf8"))
+        .flows.ses_root;
+      assert.deepEqual(flowAfterSecond.team, [
+        { agent: "beta", role: "developer" },
+      ]);
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sidebar and tui.tsx prefer flow team event over file read and fall back to file read when flow has no team event", () => {
+    const t0 = 1_762_520_000_000;
+    let flow = reduce(null, {
+      type: "plan",
+      at: t0,
+      title: "OpenCode Precedence Flow",
+      tasks: [{ title: "Build", specialist: "wren", tier: "build" }],
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: t0 + 1000,
+      id: "ses_wren",
+      harness: "opencode",
+      agent: "wren",
+      model: "anthropic/claude-haiku-5-5",
+      title: "Build",
+    });
+    flow = reduce(flow, {
+      type: "post",
+      at: t0 + 1200,
+      from: "wren",
+      to: ["lead"],
+      kind: "note",
+      text: "Working",
+    });
+
+    const stalledNow = t0 + DEFAULT_STALL_MS + 5000;
+    const flowWithTeam = reduce(flow, {
+      type: "team",
+      at: t0 + 1300,
+      roles: [{ agent: "wren", role: "developer" }],
+    });
+
+    // 1. Flow with team event prefers flow.team even when options.agentRoles disagrees or is absent.
+    const dataPrefersFlow = formatSidebarData(flowWithTeam, stalledNow, {
+      agentRoles: { wren: "security" },
+    });
+    assert.equal(dataPrefersFlow.agents[0]?.agentLabel, "wren · developer");
+    assert.equal(
+      dataPrefersFlow.overview?.members[0]?.agentLabel,
+      "wren · developer",
+    );
+    assert.equal(
+      dataPrefersFlow.overview?.stalls[0]?.agentLabel,
+      "wren · developer",
+    );
+
+    const linesNoOpt = formatSidebarLines(flowWithTeam, stalledNow).join("\n");
+    assert.match(linesNoOpt, /wren · developer/);
+    assert.doesNotMatch(linesNoOpt, /wren · security/);
+
+    // 2. Flow without team event falls back to options.agentRoles (file read).
+    const dataFallback = formatSidebarData(flow, stalledNow, {
+      agentRoles: { wren: "security" },
+    });
+    assert.equal(dataFallback.agents[0]?.agentLabel, "wren · security");
+
+    // 3. tui.tsx consults flowAgentRoleMap(flow) before readAgentRoles().
+    assert.equal(typeof adapterModule.flowAgentRoleMap, "function");
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const tuiSrc = fs.readFileSync(path.join(here, "..", "tui.tsx"), "utf8");
+    assert.match(
+      tuiSrc,
+      /flowAgentRoleMap\(flow\)\s*\?\?\s*readAgentRoles\(\)/,
+    );
   });
 });

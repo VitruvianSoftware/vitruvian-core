@@ -87,7 +87,12 @@ function parseRosterAgents() {
     const cols = trimmed.split("\t");
     if (cols[0] === "name") continue;
     if (cols[0])
-      agents.push({ name: cols[0], tier: cols[1], description: cols[2] });
+      agents.push({
+        name: cols[0],
+        tier: cols[1],
+        role: cols[2],
+        description: cols[3],
+      });
   }
   return agents;
 }

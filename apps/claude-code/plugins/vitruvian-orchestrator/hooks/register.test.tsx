@@ -24,6 +24,7 @@ import { expect, mock, test } from "claude-code/testing";
 
 import type { Flow } from "../types";
 import { PRICES } from "./lib/prices.mjs";
+import { TIER_DEFAULTS } from "./lib/tier-defaults.mjs";
 
 const PLUGIN = "vitruvian-orchestrator";
 const PANE_ID = "vitruvian-orchestrator";
@@ -3496,4 +3497,1102 @@ test("board tool refuses an unknown channel, and /orchestrator-board members lab
   expect(wrenLines.length).toBe(2);
   expect(wrenLines.filter((l) => l.includes("round 2")).length).toBe(1);
   expect(out).not.toContain("round 1");
+});
+
+const TEAM_TOOL = "mcp__vitruvian-orchestrator__team";
+
+test("team tool handles absent, valid, invalid, and oversize .agents/team.json and panel shows 'name · role' labels", async ($, on) => {
+  mock.clock(on, { now: 50_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+
+  let f: Flow | null = null;
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => ({
+    agentId: "wren-1",
+    model: "claude-haiku-5-5",
+  }));
+
+  const repoRoot = "/repo";
+  const subDir = `${repoRoot}/apps/demo`;
+  const teamPath = `${repoRoot}/.agents/team.json`;
+  const insideTarget = `${repoRoot}/config/team.json`;
+  let fileState:
+    | { mode: "absent" }
+    | { mode: "present"; content: string }
+    | { mode: "oversize" }
+    | { mode: "unreadable" }
+    | { mode: "dir" }
+    | { mode: "symlink-outside" }
+    | { mode: "dangling-link" }
+    | { mode: "dangling-link-throws" }
+    | { mode: "dangling-link-eloop" }
+    | { mode: "dangling-agents-dir" }
+    | { mode: "no-realpath" }
+    | { mode: "symlink-inside"; content: string } = { mode: "absent" };
+  let readCalls = 0;
+
+  on("session.cwd", async () => ({ value: subDir }));
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "git" && argv.includes("--show-toplevel")) {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `${repoRoot}\n`,
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "unexpected command",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on("fs.stat", async (_, e) => {
+    if (e.path === repoRoot) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: repoRoot,
+        },
+      };
+    }
+    if (
+      e.path === `${repoRoot}/.agents` &&
+      fileState.mode === "dangling-agents-dir"
+    ) {
+      if (e.resolve) {
+        return {
+          deny: `ENOENT: no such file or directory, stat '${e.path}'`,
+        };
+      }
+      return {
+        value: {
+          kind: "other",
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+        },
+      };
+    }
+    if (
+      e.path !== teamPath ||
+      fileState.mode === "absent" ||
+      fileState.mode === "dangling-agents-dir"
+    ) {
+      return {
+        deny: `ENOENT: no such file or directory, stat '${e.path}'`,
+      };
+    }
+    if (fileState.mode === "oversize") {
+      return {
+        value: {
+          kind: "file",
+          size: 65 * 1024,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: teamPath,
+        },
+      };
+    }
+    if (fileState.mode === "dir") {
+      return {
+        value: {
+          kind: "dir",
+          size: 64,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: teamPath,
+        },
+      };
+    }
+    if (fileState.mode === "unreadable") {
+      return {
+        value: {
+          kind: "file",
+          size: 32,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: teamPath,
+        },
+      };
+    }
+    if (fileState.mode === "symlink-outside") {
+      return {
+        value: {
+          kind: "file",
+          size: 64,
+          mtimeMs: 0,
+          isLink: true,
+          realPath: "/outside/team.json",
+        },
+      };
+    }
+    if (fileState.mode === "dangling-link") {
+      return {
+        value: {
+          kind: "other",
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+        },
+      };
+    }
+    if (fileState.mode === "dangling-link-throws") {
+      if (e.resolve) {
+        return {
+          deny: `ENOENT: no such file or directory, realpath '${e.path}'`,
+        };
+      }
+      return {
+        value: {
+          kind: "other",
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+        },
+      };
+    }
+    if (fileState.mode === "dangling-link-eloop") {
+      if (e.resolve) {
+        return {
+          deny: `ELOOP: too many symbolic links encountered, stat '${e.path}'`,
+        };
+      }
+      return {
+        value: {
+          kind: "other",
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+        },
+      };
+    }
+    if (fileState.mode === "no-realpath") {
+      return {
+        value: {
+          kind: "file",
+          size: 32,
+          mtimeMs: 0,
+          isLink: false,
+        },
+      };
+    }
+    if (fileState.mode === "symlink-inside") {
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(fileState.content).length,
+          mtimeMs: 0,
+          isLink: true,
+          realPath: insideTarget,
+        },
+      };
+    }
+    return {
+      value: {
+        kind: "file",
+        size: new TextEncoder().encode(fileState.content).length,
+        mtimeMs: 0,
+        isLink: false,
+        realPath: teamPath,
+      },
+    };
+  });
+  on("fs.read", async (_, e) => {
+    readCalls += 1;
+    if (fileState.mode === "unreadable") {
+      return {
+        deny: `EACCES: permission denied, open '${e.path}'`,
+      };
+    }
+    if (
+      fileState.mode === "symlink-inside" &&
+      (e.path === teamPath || e.path === insideTarget)
+    ) {
+      return { value: fileState.content };
+    }
+    if (e.path !== teamPath || fileState.mode !== "present") {
+      return {
+        deny: `ENOENT: no such file or directory, open '${e.path}'`,
+      };
+    }
+    return { value: fileState.content };
+  });
+
+  // 1. Absent file -> file: null, errors: []
+  const absentRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(absentRes.isError).toBeUndefined();
+  const absentJson = JSON.parse(String(absentRes.result ?? ""));
+  expect(absentJson.file).toBeNull();
+  expect(absentJson.errors).toEqual([]);
+  expect(absentJson.roles).toHaveLength(10);
+  expect(absentJson.roles[0]).toMatchObject({
+    role: "lead",
+    agent: "lead",
+    source: "generic",
+    tier: "lead",
+    gemini: null,
+    model: TIER_DEFAULTS.tiers.lead["claude-code"],
+    effort: TIER_DEFAULTS.tiers.lead.effort,
+  });
+  expect(absentJson.roles[0].model).toBeTruthy();
+  expect(absentJson.roles[1]).toMatchObject({
+    role: "developer",
+    agent: "developer",
+    source: "generic",
+    tier: "build",
+    gemini: TIER_DEFAULTS.tiers.build.gemini,
+    model: TIER_DEFAULTS.tiers.build["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.effort,
+  });
+
+  // 2. Valid file -> mapped roles, notes, and "off"
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      notes: "Run bazel test.",
+      tiers: { build: { "claude-code": "haiku", effort: "medium" } },
+      roles: {
+        developer: { agent: "wren", notes: "Owns apps/." },
+        release: "off",
+      },
+    }),
+  };
+  const validRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(validRes.isError).toBeUndefined();
+  const validJson = JSON.parse(String(validRes.result ?? ""));
+  expect(validJson.file).toBe(".agents/team.json");
+  expect(validJson.errors).toEqual([]);
+  expect(validJson.notes).toBe("Run bazel test.");
+  expect(validJson.roles[1]).toMatchObject({
+    role: "developer",
+    agent: "wren",
+    source: "team",
+    tier: "build",
+    model: "haiku",
+    effort: "medium",
+    notes: "Owns apps/.",
+  });
+  expect(validJson.roles[9]).toMatchObject({
+    role: "release",
+    agent: null,
+    source: "off",
+  });
+
+  // 3. Panel labels show "wren · developer" in terminal, desktop SVG, and /orchestrator-board
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Team Panel Label Flow",
+    phase: "delegate",
+    tasks: [
+      { title: "Build team", specialist: "wren", tier: "build", after: [] },
+    ],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build team",
+    prompt: "Go",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "wren-1",
+    to: ["lead"],
+    kind: "question",
+    text: "Check label?",
+  } as never);
+  expect(f?.runs[0]?.agent).toBe("wren");
+
+  const termUi = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  const termText = (await termUi.findAll({ type: "Text" }))
+    .map((n) => String(n.text ?? ""))
+    .join("\n");
+  expect(termText).toContain("wren · developer");
+  await termUi.unmount();
+
+  const deskUi = await $.ui.mount({ ...PANE_MOUNT, surface: "desktop" });
+  const svgSources = (await deskUi.findAll({ type: "Svg" }))
+    .map((s) => JSON.stringify(s.props ?? {}))
+    .join("\n");
+  expect(svgSources).toContain("wren · developer");
+  await deskUi.unmount();
+
+  const boardMembersOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "members",
+        columns: 120,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(boardMembersOut).toContain("wren · developer");
+
+  const boardOverviewOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "overview",
+        columns: 120,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(boardOverviewOut).toContain("wren · developer");
+
+  // 4. Invalid file -> reports errors and falls back to generic defaults
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      bogus: true,
+      roles: { lead: "off" },
+    }),
+  };
+  const invalidRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(invalidRes.isError).toBeUndefined();
+  const invalidJson = JSON.parse(String(invalidRes.result ?? ""));
+  expect(invalidJson.file).toBe(".agents/team.json");
+  expect(invalidJson.errors.length).toBeGreaterThanOrEqual(2);
+  expect(invalidJson.roles[0]).toMatchObject({
+    role: "lead",
+    agent: "lead",
+    source: "generic",
+  });
+
+  // 4b. Malformed JSON -> error starts with "invalid JSON:" and falls back to generic defaults
+  fileState = {
+    mode: "present",
+    content: "{bad json",
+  };
+  const malformedRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(malformedRes.isError).toBeUndefined();
+  const malformedJson = JSON.parse(String(malformedRes.result ?? ""));
+  expect(malformedJson.file).toBe(".agents/team.json");
+  expect(malformedJson.errors).toHaveLength(1);
+  expect(malformedJson.errors[0].startsWith("invalid JSON:")).toBe(true);
+  expect(malformedJson.roles[1]).toMatchObject({
+    role: "developer",
+    agent: "developer",
+    source: "generic",
+  });
+
+  // 5. Oversize file (> 64 KiB) -> error without calling fs.read
+  const readsBeforeOversize = readCalls;
+  fileState = { mode: "oversize" };
+  const oversizeRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(oversizeRes.isError).toBeUndefined();
+  expect(readCalls).toBe(readsBeforeOversize);
+  const oversizeJson = JSON.parse(String(oversizeRes.result ?? ""));
+  expect(oversizeJson.file).toBe(".agents/team.json");
+  expect(oversizeJson.errors.join("\n")).toMatch(/64 KiB|65536/);
+  expect(oversizeJson.roles[1].source).toBe("generic");
+  expect(Object.keys(oversizeJson)).toEqual([
+    "file",
+    "errors",
+    "notes",
+    "roles",
+  ]);
+  expect(Object.keys(oversizeJson.roles[0])).toEqual([
+    "role",
+    "agent",
+    "source",
+    "tier",
+    "gemini",
+    "model",
+    "effort",
+    "notes",
+  ]);
+
+  // 6. Unreadable file and non-regular file -> reports errors and returns generic fallback
+  fileState = { mode: "unreadable" };
+  const unreadableRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  const unreadableJson = JSON.parse(String(unreadableRes.result ?? ""));
+  expect(unreadableJson.file).toBe(".agents/team.json");
+  expect(unreadableJson.errors.join("\n")).toMatch(
+    /failed to read \.agents\/team\.json.*EACCES/,
+  );
+  expect(unreadableJson.roles[1].source).toBe("generic");
+
+  fileState = { mode: "dir" };
+  const dirRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  const dirJson = JSON.parse(String(dirRes.result ?? ""));
+  expect(dirJson.file).toBe(".agents/team.json");
+  expect(dirJson.errors).toEqual([".agents/team.json is not a regular file"]);
+  expect(dirJson.roles[1].source).toBe("generic");
+
+  // 7. Symlink outside repo -> error without calling fs.read
+  const readsBeforeOutside = readCalls;
+  fileState = { mode: "symlink-outside" };
+  const outsideRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(readCalls).toBe(readsBeforeOutside);
+  const outsideJson = JSON.parse(String(outsideRes.result ?? ""));
+  expect(outsideJson.file).toBe(".agents/team.json");
+  expect(outsideJson.errors.join("\n")).toContain(
+    "must be inside the repository",
+  );
+  expect(outsideJson.roles[1].source).toBe("generic");
+
+  // 8. Dangling symlink and missing realPath -> "must be inside the repository or readable" without calling fs.read
+  for (const mode of [
+    "dangling-link",
+    "dangling-link-throws",
+    "dangling-link-eloop",
+    "dangling-agents-dir",
+    "no-realpath",
+  ] as const) {
+    const readsBeforeLinkCheck = readCalls;
+    fileState = { mode };
+    const linkRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+      result?: string;
+      isError?: boolean;
+    };
+    expect({ mode, readCalls }).toEqual({
+      mode,
+      readCalls: readsBeforeLinkCheck,
+    });
+    const linkJson = JSON.parse(String(linkRes.result ?? ""));
+    expect({ mode, file: linkJson.file }).toEqual({
+      mode,
+      file: ".agents/team.json",
+    });
+    expect(linkJson.errors.join("\n")).toContain(
+      "must be inside the repository or readable",
+    );
+    expect(linkJson.roles[1].source).toBe("generic");
+  }
+
+  // 9. Symlink staying inside repo -> allowed and resolved
+  fileState = {
+    mode: "symlink-inside",
+    content: JSON.stringify({
+      roles: { developer: { agent: "insider" } },
+    }),
+  };
+  const insideRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  const insideJson = JSON.parse(String(insideRes.result ?? ""));
+  expect(insideJson.file).toBe(".agents/team.json");
+  expect(insideJson.errors).toEqual([]);
+  expect(insideJson.roles[1].agent).toBe("insider");
+});
+
+test("sweep item 4: MASCOTS, COSTUMES, TIER_COLOR, and agentRoles handle agent names 'constructor' and '__proto__' safely", async ($, on) => {
+  const clock = mock.clock(on, { now: 60_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.toast", () => ({ value: undefined }));
+
+  const repoRoot = "/repo";
+  const teamPath = `${repoRoot}/.agents/team.json`;
+  let teamContent: string | null = null;
+
+  on("session.cwd", async () => ({ value: repoRoot }));
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "git" && argv.includes("--show-toplevel")) {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `${repoRoot}\n`,
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on("fs.stat", async (_, e) => {
+    if (e.path === repoRoot) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: repoRoot,
+        },
+      };
+    }
+    if (e.path === teamPath && teamContent !== null) {
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(teamContent).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: teamPath,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+  on("fs.read", async (_, e) => {
+    if (e.path === teamPath && teamContent !== null) {
+      return { value: teamContent };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  let spawnSeq = 0;
+  on("agent.spawn", async () => {
+    spawnSeq += 1;
+    return {
+      agentId: `proto-run-${spawnSeq}`,
+      model: "claude-haiku-5-5",
+    };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Prototype Key Safety",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Task ctor",
+        specialist: "constructor",
+        tier: "build",
+        after: [],
+      },
+      {
+        title: "Task proto",
+        specialist: "__proto__",
+        tier: "build",
+        after: [],
+      },
+    ],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "constructor",
+    description: "Task ctor",
+    prompt: "Go",
+  } as never);
+  await $.agent.spawn({
+    subagentType: "__proto__",
+    description: "Task proto",
+    prompt: "Go",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "proto-run-1",
+    to: ["lead"],
+    kind: "question",
+    text: "Check proto keys?",
+  } as never);
+  await clock.advance(20 * 60_000);
+
+  const inspectViews = async () => {
+    const termUi = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+    const termText = (await termUi.findAll({ type: "Text" }))
+      .map((n) => String(n.text ?? ""))
+      .join("\n");
+    await termUi.unmount();
+
+    const deskUi = await $.ui.mount({ ...PANE_MOUNT, surface: "desktop" });
+    const svgSources = (await deskUi.findAll({ type: "Svg" }))
+      .map((s) => JSON.stringify(s.props ?? {}))
+      .join("\n");
+    await deskUi.unmount();
+
+    const membersOut = String(
+      (
+        (await $.command.run({
+          command: "orchestrator-board",
+          args: "members",
+          columns: 120,
+        } as never)) as { text?: string }
+      ).text ?? "",
+    );
+    const overviewOut = String(
+      (
+        (await $.command.run({
+          command: "orchestrator-board",
+          args: "overview",
+          columns: 120,
+        } as never)) as { text?: string }
+      ).text ?? "",
+    );
+    return { termText, svgSources, membersOut, overviewOut };
+  };
+
+  // Case A: absent team.json -> no prototype leak from MASCOTS / COSTUMES / TIER_COLOR
+  const absentViews = await inspectViews();
+  expect(absentViews.svgSources).toContain("<svg");
+  expect(absentViews.svgSources).not.toMatch(
+    /function Object|\[native code\]|\[object Object\]/,
+  );
+  for (const out of [
+    absentViews.termText,
+    absentViews.svgSources,
+    absentViews.membersOut,
+    absentViews.overviewOut,
+  ]) {
+    expect(out).toContain("constructor");
+    expect(out).toContain("__proto__");
+    expect(out).not.toContain("constructor · developer");
+    expect(out).not.toContain("constructor · lead");
+    expect(out).not.toContain("__proto__ · developer");
+    expect(out).not.toContain("__proto__ · lead");
+  }
+  expect(absentViews.membersOut).toContain("constructor · working");
+  expect(absentViews.membersOut).toContain("__proto__ · working");
+  expect(absentViews.overviewOut).not.toContain("constructor ·");
+  expect(absentViews.overviewOut).not.toContain("__proto__ ·");
+
+  // Case B: team.json maps developer -> "constructor"
+  teamContent = JSON.stringify({
+    roles: { developer: { agent: "constructor" } },
+  });
+  await $.tool.call({ tool: TEAM_TOOL } as never);
+  const mappedViews = await inspectViews();
+  expect(mappedViews.svgSources).toContain("<svg");
+  expect(mappedViews.svgSources).not.toMatch(
+    /function Object|\[native code\]|\[object Object\]/,
+  );
+  for (const out of [
+    mappedViews.termText,
+    mappedViews.svgSources,
+    mappedViews.membersOut,
+    mappedViews.overviewOut,
+  ]) {
+    expect(out).toContain("constructor · developer");
+  }
+});
+
+test("team tool optional root input (valid, invalid, outside-repo symlink, missing fallback) and panel prefers flow team event over file read", async ($, on) => {
+  mock.clock(on, { now: 70_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+
+  let f: Flow | null = null;
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => ({
+    agentId: "wren-root-1",
+    model: "claude-haiku-5-5",
+  }));
+
+  const cwdRepo = "/cwd-repo";
+  const otherRepo = "/other-repo";
+  const thirdRepo = "/third-repo";
+  const escapeRepo = "/escape-repo";
+  const notADir = "/not-a-dir";
+  let cwdTeamPresent = true;
+
+  on("session.cwd", async () => ({ value: `${cwdRepo}/apps/demo` }));
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "git" && argv.includes("--show-toplevel")) {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `${cwdRepo}\n`,
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "unexpected",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+
+  // "." and "rel/dir" exist as directories in this fake filesystem, so only the
+  // absolute-path rule can reject them.
+  const dirs = new Set([
+    cwdRepo,
+    otherRepo,
+    thirdRepo,
+    escapeRepo,
+    ".",
+    "rel/dir",
+  ]);
+  const teamFiles: Record<string, string> = {
+    [`${otherRepo}/.agents/team.json`]: JSON.stringify({
+      notes: "From otherRepo",
+      roles: { developer: { agent: "wren" } },
+    }),
+    [`${thirdRepo}/.agents/team.json`]: JSON.stringify({
+      notes: "From thirdRepo",
+      roles: { qa: { agent: "wren" } },
+    }),
+  };
+
+  on("fs.stat", async (_, e) => {
+    // The engine may resolve a relative path against its own cwd first, so
+    // also treat any ".../rel/dir" as an existing directory.
+    if (dirs.has(e.path) || e.path.endsWith("/rel/dir")) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (e.path === notADir) {
+      return {
+        value: {
+          kind: "file",
+          size: 16,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: notADir,
+        },
+      };
+    }
+    if (e.path === `${cwdRepo}/.agents/team.json` && cwdTeamPresent) {
+      const content = JSON.stringify({
+        notes: "From cwdRepo",
+        roles: { security: { agent: "wren" } },
+      });
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(content).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (e.path === `${escapeRepo}/.agents/team.json`) {
+      return {
+        value: {
+          kind: "file",
+          size: 32,
+          mtimeMs: 0,
+          isLink: true,
+          realPath: "/outside/team.json",
+        },
+      };
+    }
+    if (teamFiles[e.path]) {
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(teamFiles[e.path]).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+
+  on("fs.read", async (_, e) => {
+    if (e.path === `${cwdRepo}/.agents/team.json` && cwdTeamPresent) {
+      return {
+        value: JSON.stringify({
+          notes: "From cwdRepo",
+          roles: { security: { agent: "wren" } },
+        }),
+      };
+    }
+    if (teamFiles[e.path]) {
+      return { value: teamFiles[e.path] };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  // 1. Missing root uses existing cwd/git discovery.
+  const missingRootRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(missingRootRes.isError).toBeUndefined();
+  const missingRootJson = JSON.parse(String(missingRootRes.result ?? ""));
+  expect(missingRootJson.notes).toBe("From cwdRepo");
+  expect(
+    missingRootJson.roles.find((r: { role: string }) => r.role === "security")
+      ?.agent,
+  ).toBe("wren");
+
+  // 2. Invalid root errors with exact message.
+  for (const badRoot of [
+    "relative/path",
+    ".",
+    "rel/dir",
+    notADir,
+    "/missing",
+    "",
+  ]) {
+    const errRes = (await $.tool.call({
+      tool: TEAM_TOOL,
+      root: badRoot,
+    } as never)) as {
+      result?: string;
+      isError?: boolean;
+    };
+    expect(errRes.isError).toBe(true);
+    expect(errRes.result).toBe("root must be an absolute path to a directory");
+  }
+
+  // 3. Explicit root enforces realpath inside root.
+  const escapeRes = (await $.tool.call({
+    tool: TEAM_TOOL,
+    root: escapeRepo,
+  } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  const escapeJson = JSON.parse(String(escapeRes.result ?? ""));
+  expect(escapeJson.file).toBe(".agents/team.json");
+  expect(escapeJson.errors.join("\n")).toContain(
+    "must be inside the repository",
+  );
+
+  // 4. Explicit valid root BEFORE progress(plan) records team in flow once planned, and panel prefers flow.team even if cwd team file differs or is absent.
+  const otherRes = (await $.tool.call({
+    tool: TEAM_TOOL,
+    root: otherRepo,
+  } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(otherRes.isError).toBeUndefined();
+  const otherJson = JSON.parse(String(otherRes.result ?? ""));
+  expect(otherJson.notes).toBe("From otherRepo");
+  expect(
+    otherJson.roles.find((r: { role: string }) => r.role === "developer")
+      ?.agent,
+  ).toBe("wren");
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Explicit Root Flow",
+    phase: "delegate",
+    tasks: [
+      { title: "Build root", specialist: "wren", tier: "build", after: [] },
+    ],
+  } as never);
+  expect(f?.team).toEqual([{ agent: "wren", role: "developer" }]);
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build root",
+    prompt: "Go",
+  } as never);
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "wren-root-1",
+    to: ["lead"],
+    kind: "question",
+    text: "Check label precedence?",
+  } as never);
+
+  // Even when cwd team file maps wren -> security, or is absent, panel uses flow.team (developer).
+  for (const present of [true, false]) {
+    cwdTeamPresent = present;
+    const termUi = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+    const termText = (await termUi.findAll({ type: "Text" }))
+      .map((n) => String(n.text ?? ""))
+      .join("\n");
+    expect(termText).toContain("wren · developer");
+    expect(termText).not.toContain("wren · security");
+    await termUi.unmount();
+
+    const deskUi = await $.ui.mount({ ...PANE_MOUNT, surface: "desktop" });
+    const svgSources = (await deskUi.findAll({ type: "Svg" }))
+      .map((s) => JSON.stringify(s.props ?? {}))
+      .join("\n");
+    expect(svgSources).toContain("wren · developer");
+    expect(svgSources).not.toContain("wren · security");
+    await deskUi.unmount();
+
+    const boardMembersOut = String(
+      (
+        (await $.command.run({
+          command: "orchestrator-board",
+          args: "members",
+          columns: 120,
+        } as never)) as { text?: string }
+      ).text ?? "",
+    );
+    expect(boardMembersOut).toContain("wren · developer");
+    expect(boardMembersOut).not.toContain("wren · security");
+  }
+
+  // 5. Calling team again while flow exists updates flow.team immediately.
+  await $.tool.call({
+    tool: TEAM_TOOL,
+    root: thirdRepo,
+  } as never);
+  expect(f?.team).toEqual([{ agent: "wren", role: "qa" }]);
+  const boardUpdated = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "members",
+        columns: 120,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(boardUpdated).toContain("wren · qa");
+});
+
+test("panel falls back to file read when flow has no team event", async ($, on) => {
+  mock.clock(on, { now: 75_000_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+
+  let f: Flow | null = null;
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => ({
+    agentId: "wren-fallback-1",
+    model: "claude-haiku-5-5",
+  }));
+
+  const cwdRepo = "/fallback-repo";
+  const teamPath = `${cwdRepo}/.agents/team.json`;
+  const teamContent = JSON.stringify({
+    roles: { security: { agent: "wren" } },
+  });
+
+  on("session.cwd", async () => ({ value: cwdRepo }));
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "git" && argv.includes("--show-toplevel")) {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `${cwdRepo}\n`,
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on("fs.stat", async (_, e) => {
+    if (e.path === cwdRepo) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: cwdRepo,
+        },
+      };
+    }
+    if (e.path === teamPath) {
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(teamContent).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: teamPath,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+  on("fs.read", async (_, e) => {
+    if (e.path === teamPath) {
+      return { value: teamContent };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  // Never call TEAM_TOOL: flow.team is undefined, so panel must fall back to file read.
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Fallback File Flow",
+    phase: "delegate",
+    tasks: [{ title: "Audit", specialist: "wren", tier: "deep", after: [] }],
+  } as never);
+  expect(f?.team).toBeUndefined();
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Audit",
+    prompt: "Go",
+  } as never);
+
+  const termUi = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  const termText = (await termUi.findAll({ type: "Text" }))
+    .map((n) => String(n.text ?? ""))
+    .join("\n");
+  expect(termText).toContain("wren · security");
+  await termUi.unmount();
+
+  const boardOut = String(
+    (
+      (await $.command.run({
+        command: "orchestrator-board",
+        args: "members",
+        columns: 120,
+      } as never)) as { text?: string }
+    ).text ?? "",
+  );
+  expect(boardOut).toContain("wren · security");
 });

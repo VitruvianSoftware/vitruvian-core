@@ -74,9 +74,13 @@ rust_test(
     size = "small",
     crate = ":agent_roster_lib",
     data = [
+        "//:.agents/roster/agents.tsv",
         "//:.agents/roster/skills/orchestrate/antigravity.md",
         "//:.agents/roster/skills/orchestrate/claude-code.md",
         "//:.agents/roster/skills/orchestrate/opencode.md",
+        "//:.agents/roster/tiers.tsv",
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
