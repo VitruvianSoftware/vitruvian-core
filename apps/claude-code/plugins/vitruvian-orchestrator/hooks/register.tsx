@@ -128,9 +128,29 @@ const panel = atom(
   {
     isCompact: false,
     autoOpenedFor: "",
+    bandHidden: false,
   },
 );
 const now = atom({ plugin: "vitruvian-orchestrator", key: "now" } as const, 0);
+
+const NO_FLOW_POST =
+  "no orchestrator flow is running, so this post was not saved. The lead starts one with the progress tool (title and tasks).";
+const NO_FLOW_BOARD =
+  "no orchestrator flow is running, so there is no board to read. The lead starts one with the progress tool (title and tasks).";
+
+/**
+ * The band's ✕. A closed flow is cleared. An open flow is only hidden until
+ * the lead's next progress call: clearing it would delete the board while
+ * helpers are still posting to it and reading from it.
+ */
+async function dismissBand($: EngineInterface): Promise<void> {
+  const current = await read($, flow);
+  if (current === null || current.closedAt !== null) {
+    await update($, flow, () => null);
+    return;
+  }
+  await update($, panel, (prev) => ({ ...prev, bandHidden: true }));
+}
 
 type ProgressInput = {
   title?: string;
@@ -3164,7 +3184,7 @@ export const register: Register = (on) => {
     await $.tool.register({
       name: "team",
       description:
-        "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+        "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, engines (role > tier > top level; generic defaults to native, mapped team roles default to null so the agent file decides and keep model/effort explicit-or-null; lead is always native), model overrides, and project notes (read-only).",
       inputSchema: {
         type: "object",
         properties: {
@@ -3355,6 +3375,10 @@ export const register: Register = (on) => {
     });
 
     await update($, now, () => at);
+    // A band the person dismissed comes back on the lead's next update.
+    if ((await read($, panel)).bandHidden) {
+      await update($, panel, (prev) => ({ ...prev, bandHidden: false }));
+    }
     if (nextFlow && nextFlow.closedAt === null) {
       ensureStallTimer($, nextFlow.startedAt);
     }
@@ -3460,7 +3484,10 @@ export const register: Register = (on) => {
     if (!chCheck.ok) {
       return { result: chCheck.error ?? "invalid channel", isError: true };
     }
-    if (!current || text.trim().length === 0) {
+    if (!current) {
+      return { result: NO_FLOW_POST, isError: true };
+    }
+    if (text.trim().length === 0) {
       return { result: JSON.stringify({ seq: 0 }) };
     }
     const at = await $.clock.now();
@@ -3523,7 +3550,7 @@ export const register: Register = (on) => {
     const input = e as unknown as BoardInput;
     const current = await read($, flow);
     if (!current) {
-      return { result: "[]" };
+      return { result: NO_FLOW_BOARD, isError: true };
     }
     const channelError = checkBoardChannel(current, input.channel);
     if (channelError) {
@@ -4509,6 +4536,11 @@ export const register: Register = (on) => {
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const f = await read($, flow);
     if (f === null || e.props.hasSurvey) return next(e);
+    // Dismissing an open flow only hides the band: helpers still read and
+    // write its board.
+    if (f.closedAt === null && (await read($, panel)).bandHidden) {
+      return next(e);
+    }
 
     const ui = $.ui.resolve(e);
     const { Box, Text, Button } = ui;
@@ -4535,7 +4567,7 @@ export const register: Register = (on) => {
         label="✕"
         plain
         role="dismiss"
-        onPress={() => update($, flow, () => null)}
+        onPress={() => dismissBand($)}
       />
     );
 

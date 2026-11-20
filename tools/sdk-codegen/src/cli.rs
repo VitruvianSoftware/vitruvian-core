@@ -30,7 +30,7 @@
 //! the traceback's last line, which names the exception, under a header
 //! that says Python's stack frames are not reproduced, and exits 1.
 
-use crate::argparse::{self, Parsed};
+use crate::argparse::{Kind, Opt, Parser};
 use crate::difflib;
 use crate::emitters;
 use crate::fsio;
@@ -41,6 +41,39 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 const PACKAGE: &str = "packages/vitruvian-sdk";
+const DESCRIPTION: &str = "Writes each kit's generated types from the protocol's schemas.";
+const PACKAGE_HELP: &str = "the SDK's folder; found from the repository when left out";
+
+pub fn parser(prog: String) -> Parser {
+    Parser {
+        prog,
+        description: Some(DESCRIPTION.into()),
+        opts: vec![
+            Opt::help(),
+            Opt {
+                strings: vec!["--check"],
+                dest: "check",
+                kind: Kind::Flag,
+                help: None,
+                required: false,
+            },
+            Opt {
+                strings: vec!["--out"],
+                dest: "out",
+                kind: Kind::Value,
+                help: None,
+                required: false,
+            },
+            Opt {
+                strings: vec!["--package"],
+                dest: "package",
+                kind: Kind::Value,
+                help: Some(PACKAGE_HELP.into()),
+                required: false,
+            },
+        ],
+    }
+}
 
 /// Whether an emitter may write `path`: inside a folder named `generated`,
 /// or a Go file named `*_gen.go`.
@@ -202,44 +235,6 @@ fn here(argv0: &str) -> String {
     fsio::dirname(&exe)
 }
 
-#[repr(C)]
-struct Winsize {
-    ws_row: u16,
-    ws_col: u16,
-    ws_xpixel: u16,
-    ws_ypixel: u16,
-}
-
-extern "C" {
-    fn ioctl(fd: i32, request: std::os::raw::c_ulong, ...) -> i32;
-}
-
-#[cfg(target_os = "macos")]
-const TIOCGWINSZ: std::os::raw::c_ulong = 0x40087468;
-#[cfg(not(target_os = "macos"))]
-const TIOCGWINSZ: std::os::raw::c_ulong = 0x5413;
-
-/// The columns of the terminal stdout is, as `os.get_terminal_size` reads them.
-fn terminal_columns() -> Option<usize> {
-    let mut size = Winsize {
-        ws_row: 0,
-        ws_col: 0,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-    // SAFETY: TIOCGWINSZ writes one winsize into the struct it is given.
-    let rc = unsafe { ioctl(1, TIOCGWINSZ, &mut size as *mut Winsize) };
-    if rc != 0 {
-        return None;
-    }
-    let _ = (size.ws_row, size.ws_xpixel, size.ws_ypixel);
-    Some(if size.ws_col == 0 {
-        80
-    } else {
-        size.ws_col as usize
-    })
-}
-
 /// How an exception nothing caught is printed.
 pub fn traceback(e: &PyErr) -> String {
     let own = format!(
@@ -260,35 +255,36 @@ pub fn traceback(e: &PyErr) -> String {
 pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let argv0 = argv.first().cloned().unwrap_or_default();
     let prog = argv0.rsplit('/').next().unwrap_or("").to_string();
-    let columns = std::env::var("COLUMNS").ok();
-    let width = argparse::width_from(columns.as_deref(), terminal_columns());
-    let options = match argparse::parse(&prog, &argv[argv.len().min(1)..], width) {
-        Parsed::Help(text) => {
-            let _ = out.write_all(text.as_bytes());
-            return 0;
+    let p = parser(prog);
+    let values = match p.parse(&argv[argv.len().min(1)..], &|_, _| Ok(())) {
+        Ok(v) => v,
+        Err(exit) => {
+            if !exit.stdout.is_empty() {
+                let _ = out.write_all(exit.stdout.as_bytes());
+            }
+            if !exit.stderr.is_empty() {
+                let _ = err.write_all(exit.stderr.as_bytes());
+            }
+            return exit.code;
         }
-        Parsed::Error(text) => {
-            let _ = err.write_all(text.as_bytes());
-            return 2;
-        }
-        Parsed::Run(options) => options,
     };
     let root = std::env::var("BUILD_WORKSPACE_DIRECTORY")
         .ok()
         .filter(|r| !r.is_empty());
-    let package = match options.package.filter(|p| !p.is_empty()) {
-        Some(p) => p,
+    let package = match values.value("package").filter(|p| !p.is_empty()) {
+        Some(p) => p.to_string(),
         None => {
             let base = root.unwrap_or_else(|| fsio::dirname(&fsio::dirname(&here(&argv0))));
             fsio::join(&base, PACKAGE)
         }
     };
-    let result = if options.check {
+    let result = if values.flag("check") {
         check(&package, out, err)
     } else {
-        let folder = options
-            .out
+        let folder = values
+            .value("out")
             .filter(|o| !o.is_empty())
+            .map(str::to_string)
             .unwrap_or_else(|| package.clone());
         write(&package, &folder, out)
     };
@@ -349,5 +345,81 @@ mod tests {
     fn a_crash_prints_the_traceback_line() {
         let e = PyErr::new("KeyError", "'$defs'");
         assert!(traceback(&e).ends_with("\nKeyError: '$defs'\n"));
+    }
+
+    fn parse_cli(args: &[&str]) -> Result<crate::argparse::Values, crate::argparse::Exit> {
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        parser("sdk_codegen.py".into()).parse_with_width(&args, 78, &|_, _| Ok(()))
+    }
+
+    fn parse_err(args: &[&str]) -> String {
+        match parse_cli(args) {
+            Err(e) if e.code == 2 => e.stderr.lines().nth(1).unwrap().to_string(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn reads_options() {
+        let v = parse_cli(&[]).unwrap();
+        assert!(!v.flag("check"));
+        assert_eq!(v.value("out"), None);
+        assert_eq!(v.value("package"), None);
+
+        let v = parse_cli(&["--ch", "--out=x", "--p", "y", "--out", "-1"]).unwrap();
+        assert!(v.flag("check"));
+        assert_eq!(v.value("out"), Some("-1"));
+        assert_eq!(v.value("package"), Some("y"));
+
+        assert_eq!(parse_cli(&["-hx"]).unwrap_err().code, 0);
+        assert_eq!(parse_cli(&["--he"]).unwrap_err().code, 0);
+    }
+
+    #[test]
+    fn errors_are_pythons() {
+        assert_eq!(
+            parse_err(&["--out"]),
+            "sdk_codegen.py: error: argument --out: expected one argument"
+        );
+        assert_eq!(
+            parse_err(&["--", "x", "y"]),
+            "sdk_codegen.py: error: unrecognized arguments: -- x y"
+        );
+        assert_eq!(
+            parse_err(&["--=x"]),
+            "sdk_codegen.py: error: ambiguous option: --=x could match --help, --check, --out, --package"
+        );
+        assert_eq!(
+            parse_err(&["--check=1", "a", "-x"]),
+            "sdk_codegen.py: error: argument --check: ignored explicit argument '1'"
+        );
+        assert_eq!(
+            parse_err(&["a", "-x"]),
+            "sdk_codegen.py: error: unrecognized arguments: a -x"
+        );
+        assert_eq!(
+            parse_err(&["--out", "--check"]),
+            "sdk_codegen.py: error: argument --out: expected one argument"
+        );
+        assert_eq!(
+            parse_err(&["-h-x"]),
+            "sdk_codegen.py: error: argument -h/--help: ignored explicit argument '-x'"
+        );
+    }
+
+    #[test]
+    fn help_wraps_as_python_does() {
+        let help = |w: i64| parser("sdk_codegen.py".into()).format_help_with_width(w);
+        assert_eq!(
+            help(78),
+            "usage: sdk_codegen.py [-h] [--check] [--out OUT] [--package PACKAGE]\n\nWrites each kit's generated types from the protocol's schemas.\n\noptions:\n  -h, --help         show this help message and exit\n  --check\n  --out OUT\n  --package PACKAGE  the SDK's folder; found from the repository when left out\n"
+        );
+        assert_eq!(
+            help(38),
+            "usage: sdk_codegen.py [-h] [--check]\n                      [--out OUT]\n                      [--package PACKAGE]\n\nWrites each kit's generated types from\nthe protocol's schemas.\n\noptions:\n  -h, --help      show this help\n                  message and exit\n  --check\n  --out OUT\n  --package PACKAGE\n                  the SDK's folder;\n                  found from the\n                  repository when left\n                  out\n"
+        );
+        assert!(help(18).starts_with(
+            "usage: sdk_codegen.py\n       [-h]\n       [--check]\n       [--out OUT]\n       [--package PACKAGE]\n\nWrites each kit's\ngenerated types\n"
+        ));
     }
 }

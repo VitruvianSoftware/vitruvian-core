@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-11-19T21:33:02Z"
+generated: "2026-11-20T19:30:51Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -43,11 +43,11 @@ tools:
     name: "Vitruvian Speaker"
     publisher: "VitruvianSoftware"
     summary: "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
-    version: "1.45.3"
+    version: "1.46.0"
     source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker"
-    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.45.3/VitruvianSpeaker-1.45.3-tool.zip"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.46.0/VitruvianSpeaker-1.46.0-tool.zip"
     size: "4.7 MB"
-    sha256: "a4bba8423df903ac5b4981e61ead58f9bcc345ca97c3aea08568f06b19d36949"
+    sha256: "109d9f4ade80cb2fcf1348e2a1c75908641b86d3831c5da0740671822b5f2008"
     uses:
       - "Show messages and play the alert sound"
       - "Read the clipboard"
@@ -56,11 +56,11 @@ tools:
     name: "Vitruvian Remote"
     publisher: "VitruvianSoftware"
     summary: "Pairs your Android phone with this Mac's Vitruvian Remote helper over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
-    version: "0.1.55"
+    version: "0.1.56"
     source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote"
-    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.55/VitruvianRemote-0.1.55-tool.zip"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.56/VitruvianRemote-0.1.56-tool.zip"
     size: "2.4 MB"
-    sha256: "6e1a80ac5820a9c6fab46ba0767855bebfdbd354f0be65a5c40928bac46eff5b"
+    sha256: "451b7f826dc3faa254feb90b31bf9b8d7242a3582689376799070357d5ed423c"
     uses:
       - "Show messages and play the alert sound"
       - "Write to the clipboard"

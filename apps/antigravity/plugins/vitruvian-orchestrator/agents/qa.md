@@ -2,6 +2,7 @@
 name: qa
 description: Use this agent for QA - reviewing an implementer's change and pushing back on defects - and for authoring and running tests, diagnosing test failures and flakiness, closing coverage gaps, and monitoring CI checks on pull requests in this repository.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

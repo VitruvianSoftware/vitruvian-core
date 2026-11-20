@@ -15,24 +15,32 @@ Shared privacy-hardened Sentry initialization, device-field allowlisting (`Devic
 
 ## Example
 
-From `apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/common/WatchSentry.kt`:
+From `apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/common/WatchSentry.kt:24-64`:
 
 ```kotlin
 import dev.vitruvian.crashprivacy.DeviceField
 import dev.vitruvian.crashprivacy.configurePrivateSentry
+// …
 import io.sentry.android.core.SentryAndroidOptions
 import java.util.EnumSet
 
-public val KEPT_DEVICE_FIELDS: Set<DeviceField> = EnumSet.of(DeviceField.APP_VERSION)
-
-public fun configureOptions(options: SentryAndroidOptions, appName: String, dsn: String) {
-  configurePrivateSentry(
-      options = options,
-      dsn = dsn,
-      keepDeviceFields = KEPT_DEVICE_FIELDS,
-      release = "$appName@1.0",
-      environment = "production",
-  )
+public object WatchSentry {
+  // …
+  public val KEPT_DEVICE_FIELDS: Set<DeviceField> = EnumSet.of(DeviceField.APP_VERSION)
+  // …
+  public fun configureOptions(
+      options: SentryAndroidOptions,
+      appName: String = "vitruvian-watch",
+      dsn: String = DEFAULT_DSN,
+  ) {
+    configurePrivateSentry(
+        options = options,
+        dsn = dsn,
+        keepDeviceFields = KEPT_DEVICE_FIELDS,
+        release = "$appName@1.0",
+        environment = "production",
+    )
+  }
 }
 ```
 
@@ -58,4 +66,4 @@ public fun configureOptions(options: SentryAndroidOptions, appName: String, dsn:
 ## Per-app field sets
 
 - **Vitruvian Remote** (`apps/mobile/vitruvian-remote`): keeps `MODEL`, `SCREEN`, `MEMORY`, `OS_VERSION`, and `APP_VERSION` (`vitruvian-remote@<version>`), matching its Privacy notice.
-- **Vitruvian Watch** (`apps/mobile/vitruvian-watch`) and **Vitruvian Wand** (`apps/suites/vitruvian-wand/android`): keep `APP_VERSION` only (`<app>@1.0` / `vitruvian-wand@0.1.0`), stripping all Android device and OS contexts and tags so events carry no more than plain Java `io.sentry:sentry:7.14.0` sent on `main`.
+- **Vitruvian Watch** (`apps/mobile/vitruvian-watch`) and **Vitruvian Wand** (`apps/suites/vitruvian-wand/android`): keep `APP_VERSION` only (`<app>@1.0` / `vitruvian-wand@0.1.0`), stripping all Android device and OS contexts and tags (`MODULE.bazel` currently pins `io.sentry:sentry:8.64.0`; `CrashPrivacyTest.kt:299-301` documents parity against the historical `io.sentry:sentry:7.14.0` baseline).

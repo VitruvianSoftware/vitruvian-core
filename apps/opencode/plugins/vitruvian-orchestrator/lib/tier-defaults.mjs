@@ -35,6 +35,11 @@ export const TIER_DEFAULTS = Object.freeze({
       antigravity: "pro",
       opencode: "anthropic/claude-haiku-5-5",
       effort: "medium",
+      native: Object.freeze({
+        "claude-code": "sonnet",
+        opencode: null,
+        effort: "high",
+      }),
     }),
     deep: Object.freeze({
       gemini: "gemini-4-carbon-high",
@@ -42,6 +47,11 @@ export const TIER_DEFAULTS = Object.freeze({
       antigravity: "pro",
       opencode: "anthropic/claude-haiku-5-5",
       effort: "medium",
+      native: Object.freeze({
+        "claude-code": "sonnet",
+        opencode: null,
+        effort: "high",
+      }),
     }),
     light: Object.freeze({
       gemini: "gemini-4-hydrogen-high",
@@ -49,6 +59,11 @@ export const TIER_DEFAULTS = Object.freeze({
       antigravity: "flash",
       opencode: "anthropic/claude-haiku-5-5",
       effort: "medium",
+      native: Object.freeze({
+        "claude-code": "sonnet",
+        opencode: null,
+        effort: "medium",
+      }),
     }),
   }),
 });

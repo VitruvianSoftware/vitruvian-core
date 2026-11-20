@@ -2,6 +2,7 @@
 name: docs
 description: Use this agent for writing and updating technical documentation, onboarding guides, contribution guides, agent instructions, and engineering runbooks in this repository.
 model: flash
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

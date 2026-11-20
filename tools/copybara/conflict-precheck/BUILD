@@ -12,6 +12,7 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    deps = ["//packages/gocompat:vitruvian_gocompat"],
 )
 
 # `bazel run //tools/copybara/conflict-precheck` — what the export workflow runs.

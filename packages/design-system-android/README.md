@@ -15,20 +15,27 @@ The Kotlin and Jetpack Compose half of the [Vitruvian](../design-system/README.m
 
 ## Example
 
-From `apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt`:
+From `apps/mobile/vitruvian-remote/src/main/kotlin/dev/vitruvian/remote/RemoteApp.kt:25-85`:
 
 ```kotlin
 import androidx.compose.foundation.isSystemInDarkTheme
+// …
 import androidx.compose.runtime.Composable
+// …
 import dev.vitruvian.design.VitruvianTheme
-
+// …
 @Composable
 public fun RemoteApp(state: RemoteState) {
+  // …
   val dark = Derive.isDarkTheme(state.themeMode, isSystemInDarkTheme())
   VitruvianTheme(dark = dark) {
-    RemoteShell(state = state, layout = rememberDeviceLayout()) { screen ->
+    SystemBarsFollowTheme(dark = dark)
+    val layout = rememberDeviceLayout()
+    RemoteShell(state = state, layout = layout) { screen ->
+      // …
       ScreenContent(state = state, screen = screen)
     }
+    // …
   }
 }
 ```
@@ -46,9 +53,8 @@ public fun RemoteApp(state: RemoteState) {
 - **No Compose visual regression screenshots yet** — ships components and token/parity tests only.
 
 The web package next door is React + CSS and does not run on Android. What
-transfers is the language: `src/tokens.json` plus the rules in
-`foundations/mobile.html`. [`ANDROID.md`](../design-system/ANDROID.md) is the
-authoritative mapping between the two, and this module is its realisation.
+transfers is the language: `src/tokens.json` and [`ANDROID.md`](../design-system/ANDROID.md),
+which is the authoritative mapping between the two, and this module is its realisation.
 
 ## Tokens are generated
 

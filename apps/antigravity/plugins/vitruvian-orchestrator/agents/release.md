@@ -2,6 +2,7 @@
 name: release
 description: Use this agent for release readiness, sequencing cross-component dependencies, monitoring merge queue and rollout progression, and flagging release slip risks in this repository.
 model: flash
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

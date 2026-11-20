@@ -81,7 +81,7 @@ mindmap
 | Target | Gate |
 |---|---|
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
-| `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
+| `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, `packages/README.md` index freshness, visibility firewall, nightly-sweep pairing |
 | `//tools/conformance:workflow-labels` | Every Bazel label a workflow or composite action runs resolves (runs in tidy-check) |
 | `//tools/secret-scan` | `secret-scan`: CI's gitleaks version and `.gitleaks.toml` over this branch's commits (`--staged`, `--range a..b`, `--unpushed`). Names file and line, never the secret |
 | `//tools/ci:actionlint` | `actionlint`: the pinned actionlint with shellcheck over `.github/workflows`, then the commit-SHA pin check |
@@ -89,7 +89,9 @@ mindmap
 | `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
 
 | `//tools/lint-naming` | Monorepo naming convention audit (`--check`, `--root <path>`). Validates file casing, test suffixes, and rule boundaries across all languages |
+| `//tools/dupcheck` | Detects added code duplicating `packages/` (`--diff <base>...<head> [--strict] [--allow <glob>]`) and reproduces the duplicated helper-family table (`--families [--ref <commit>]`) |
 | `//tools/owners` | Validates and compiles per-subtree `OWNERS` files into `.github/CODEOWNERS` (`--check`, `--validate-only`, `--coverage-check`) |
+| `//tools/packages-index` | Generates (`--write`) and drift-checks (`--check`, also enforced by `//tools/conformance:check`) the `packages/README.md` package index from `packages/**/catalog-info.yaml` |
 | `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
 | `//tools/npm-publish-audit:check` | Verifies against the npm registry that packages claimed published by CI actually exist |
 | `//tools/registry-trust:inventory` | Lists every package we publish, its registry, mirror, workflow and environment, read from release-please |

@@ -1,5 +1,6 @@
 {
   "$schema": "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+  "engine": "gemini",
   "notes": "Read AGENTS.md first and follow it. In vitruvian-core every git write, build, test, lint and GitHub operation goes through the repository's Bazel targets (see the table in AGENTS.md), never the raw tool. Act under your own GitHub App identity (`bazel run //tools/agent-app -- env <your-agent-name>`), never as the repository owner. Never run `speaker-broadcast` or any other notification or announcement command from a delegated run.",
   "roles": {
     "lead": {

@@ -16,17 +16,19 @@ Vitruvian — the Vitruvian Software design language. A CSS token layer (`tokens
 
 ## Example
 
-From `apps/suites/vitruvian-tabs/web/app/analytics/page.tsx`:
+From `apps/suites/vitruvian-tabs/web/app/analytics/page.tsx:27-38`:
 
 ```tsx
-"use client";
-
-import { useEffect } from "react";
-import Link from "next/link";
 import { Button, Card } from "@vitruviansoftware/design-system";
 import { useWorkspaceStore } from "@/lib/store";
+import { Section, Task } from "@/types";
 
-function MetricCard({ title, value }: { title: string; value: number | string }) {
+interface MetricCardProps {
+  title: string;
+  value: number | string;
+}
+
+function MetricCard({ title, value }: MetricCardProps) {
   return <Card kicker={title} title={value} surface="fill" elevation="sm" />;
 }
 ```
@@ -89,17 +91,17 @@ Themes are driven by `data-theme` on `<html>` (`dark` is the default board,
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
 | `src/tokens.ts`         | `VitruvianTokens` / `tokens` — typed programmatic access to colors, fonts, spacing, and motion      |
 | `src/Plate.tsx`         | `Plate`, `Rule`, `VMark`, `BrandMark`, `BrandLogo`, `BrandMedallion`, `RegistrationMarks`, `Glass`  |
-| `src/Card.tsx`          | `Card` (`plate` / `fill` / `glass` surfaces, `live` indicator, `marks`, `dashed`)                   |
-| `src/Button.tsx`        | `Button` (`primary` / `secondary` / `ghost` / `danger`, `sm` / `md` / `touch`)                      |
+| `src/Card.tsx`          | `Card` (`plate` / `fill` / `glass` surfaces; `kicker`, `title`, `meta`, `elevation` props)          |
+| `src/Button.tsx`        | `Button` (`primary` / `secondary` / `ghost` / `danger`, `sm` / `md`)                                |
 | `src/Tag.tsx`           | `Tag`, `Label`, `Kbd`                                                                               |
 | `src/Form.tsx`          | `Field`, `Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `Switch`, `Segmented`, `Slider`, `CopyButton` |
 | `src/DataDisplay.tsx`   | `Status`, `Metric`, `Meter`, `SegBar`, `Spark`, `BarChart`, `LogStream`, `Table`                    |
 | `src/Terminal.tsx`      | `Terminal`, `Code`, `BlinkingCursor`                                                                |
 | `src/Layout.tsx`        | `ListItem`, `AutoGrid`, `KeyValue`, `Accordion`                                                     |
 | `src/Nav.tsx`           | `Crumbs`, `Tabs`, `TopBar`, `HostChip`, `TabBar`, `Rail`, `Section`, `SectionHeader`, `MobileShell`, `Pagination`, `Avatar` |
-| `src/Overlay.tsx`       | `Dialog`, `BottomSheet`, `Menu`, `MenuItem`, `MenuDivider`, `Tooltip`, `Popover`, `Toast`, `Drawer`, `CommandPalette` |
-| `src/States.tsx`        | `Banner`, `EmptyState`, `Skeleton`, `Spinner`                                                       |
-| `src/Icons.tsx`         | `VIcon`, `VitruvianIcons` (28 technical 1.5px stroke icons on a 24×24 grid)                         |
+| `src/Overlay.tsx`       | `Dialog`, `Banner`, `BottomSheet`, `Menu`, `MenuItem`, `MenuDivider`, `Tooltip`, `Popover`, `Toast`, `Drawer`, `CommandPalette` |
+| `src/States.tsx`        | `EmptyState`, `Skeleton`, `Spinner`                                                                 |
+| `src/Icons.tsx`         | `VIcon`, `VitruvianIcons` (34 technical 1.5px stroke icons on a 24×24 grid)                         |
 | `src/Illustrations.tsx` | `VitruvianPlate` (8 codex plates), `PlateFigure`, `VitruvianStockImages`, `DuotoneImage`            |
 
 ## Layout

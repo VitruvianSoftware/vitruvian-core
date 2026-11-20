@@ -778,10 +778,14 @@ public enum VitruvianSpeakerCommandLine {
         standsAside: Bool,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
         speechLockURL: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
         launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: @escaping ClaudeStopHook.Broadcaster
     ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput(stdout: ["{}"]) }
+        // A session an automation started quietly reads nothing aloud. The hook
+        // runs as the agent's child, so it sees the session's environment.
+        guard !QuietSession.isQuiet(environment: environment) else { return CLIOutput(stdout: ["{}"]) }
         // Each hook starts its own `--announce`, for its agent and session.
         let detached = launchDetached
         switch agent {

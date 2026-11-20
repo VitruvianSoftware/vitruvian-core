@@ -74,6 +74,12 @@ stack's README explains why).
 
 ## Applying
 
+Applying runs through the plan guard (`//tools/pulumi:guarded-up`): a plan
+that deletes or replaces anything is refused. This stack applies only from a
+manual dispatch, which never carries an `Allow-destroy` approval, so a delete
+or replace here can't be applied from CI. Add a push trigger to the workflow
+first if one is ever needed.
+
 CI only, never from a workstation: the public edge blocks Zitadel's management
 API. Dispatch `.github/workflows/zitadel-apps-relay-apply.yaml` from `main`,
 `preview` first, then `up`. The job prints the client ids and checks every client

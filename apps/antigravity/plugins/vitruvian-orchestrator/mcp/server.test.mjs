@@ -1355,13 +1355,11 @@ test("round 2 item 1: missing caller identity is rejected for progress and treat
       {},
       1150,
     );
-    assert.deepEqual(JSON.parse(emptyPostRpc.result.content[0].text), {
-      seq: 1,
-    });
-    const defaultEvent = JSON.parse(
-      readFileSync(join(tempDir, "default.jsonl"), "utf8").trim(),
-    );
-    assert.equal(defaultEvent.from, "helper");
+    // No flow exists for this caller, so the post is refused rather than
+    // handed a number the board would never show.
+    assert.equal(emptyPostRpc.result, undefined);
+    assert.match(emptyPostRpc.error.message, /not saved/);
+    assert.deepEqual(readdirSync(tempDir), []);
 
     // 3. Missing conversation_id with only root_conversation_id -> progress rejected ("caller unknown"), post is "helper"
     const rootOnlyProgress = call(
@@ -2492,6 +2490,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.deepEqual(absentPayload.errors, []);
     assert.equal(absentPayload.notes, "");
     assert.equal(absentPayload.roles.length, 10);
+    assert.equal(absentPayload.roles[0].engine, "native");
     assert.equal(
       absentPayload.roles[0].model,
       TIER_DEFAULTS.tiers.lead.antigravity,
@@ -2503,6 +2502,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.equal(absentPayload.roles[1].agent, "developer");
     assert.equal(absentPayload.roles[1].dispatch, "developer");
     assert.equal(absentPayload.roles[1].source, "generic");
+    assert.equal(absentPayload.roles[1].engine, "native");
     assert.equal(
       absentPayload.roles[1].model,
       TIER_DEFAULTS.tiers.build.antigravity,
@@ -2513,6 +2513,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     );
     assert.equal(absentPayload.roles[1].effort, null);
     const docsRole = absentPayload.roles.find((r) => r.role === "docs");
+    assert.equal(docsRole.engine, "native");
     assert.equal(docsRole.model, TIER_DEFAULTS.tiers.light.antigravity);
     assert.equal(docsRole.gemini, TIER_DEFAULTS.tiers.light.gemini);
 
@@ -2558,6 +2559,10 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       "team",
     );
     assert.equal(
+      validPayload.roles.find((r) => r.role === "developer").engine,
+      "native",
+    );
+    assert.equal(
       validPayload.roles.find((r) => r.role === "developer").model,
       "pro",
     );
@@ -2576,6 +2581,78 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.equal(
       validPayload.roles.find((r) => r.role === "release").source,
       "off",
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "release").engine,
+      null,
+    );
+
+    // 2b. Antigravity forces engine: "native" even when team.json sets engine: "gemini"
+    //     and preserves Antigravity tier defaults for both generic and mapped team roles
+    writeFileSync(
+      teamFile,
+      JSON.stringify({
+        engine: "gemini",
+        tiers: { build: { engine: "gemini" }, light: { engine: "gemini" } },
+        roles: {
+          developer: { agent: "wren", engine: "gemini" },
+          build: { agent: "forge" },
+          release: "off",
+        },
+      }),
+      "utf8",
+    );
+    const forcedNativePayload = JSON.parse(
+      callTeam(nestedCwd).result.content[0].text,
+    );
+    assert.deepEqual(forcedNativePayload.errors, []);
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").source,
+      "team",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").engine,
+      "native",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").model,
+      TIER_DEFAULTS.tiers.build.antigravity,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "developer").effort,
+      null,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").source,
+      "team",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").engine,
+      "native",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").model,
+      TIER_DEFAULTS.tiers.build.antigravity,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "build").effort,
+      null,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "docs").source,
+      "generic",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "docs").engine,
+      "native",
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "docs").model,
+      TIER_DEFAULTS.tiers.light.antigravity,
+    );
+    assert.equal(
+      forcedNativePayload.roles.find((r) => r.role === "release").engine,
+      null,
     );
 
     // 3. Invalid file -> reports errors, returns fallback generic roles
@@ -2628,6 +2705,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       "dispatch",
       "source",
       "tier",
+      "engine",
       "gemini",
       "model",
       "effort",
@@ -3178,6 +3256,82 @@ test("team tool supports optional root input (valid, invalid, outside-repo symli
     assert.equal(
       missingRootPayload.roles.find((r) => r.role === "developer")?.agent,
       "beta",
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// Regression (2026-11-20): a helper that posted before the lead had a flow got
+// seq 1, 2, ... back (counted from raw file lines) while the board stayed [].
+test("post and board report an error when there is no flow, instead of a made-up seq and []", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-noflow-"));
+  try {
+    const meta = {
+      "antigravity.google/root_conversation_id": "conv-noflow",
+      "antigravity.google/conversation_id": "worker-scout",
+      "antigravity.google/parent_conversation_id": "conv-noflow",
+      "antigravity.google/agent_name": "scout",
+    };
+    const call = (name, args, at) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: at,
+          method: "tools/call",
+          params: { name, arguments: args, _meta: meta },
+        },
+        { flowsDir: tempDir, now: () => at },
+      );
+
+    for (const at of [1000, 2000]) {
+      const posted = call(
+        "post",
+        { text: "@wren defects", kind: "defect" },
+        at,
+      );
+      assert.equal(posted.result, undefined);
+      assert.match(posted.error.message, /not saved/);
+    }
+    const read = call("board", { to: "wren" }, 3000);
+    assert.equal(read.result, undefined);
+    assert.match(read.error.message, /no orchestrator flow/);
+    assert.deepEqual(readdirSync(tempDir), []);
+
+    // Once the lead plans, the same post lands as seq 1 and reads back.
+    handleJsonRpcMessage(
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: {
+          name: "progress",
+          arguments: {
+            title: "Flow",
+            tasks: [
+              { title: "Build", specialist: "wren", tier: "build", after: [] },
+            ],
+          },
+          _meta: {
+            "antigravity.google/root_conversation_id": "conv-noflow",
+            "antigravity.google/conversation_id": "conv-noflow",
+          },
+        },
+      },
+      { flowsDir: tempDir, now: () => 4000 },
+    );
+    const posted = call(
+      "post",
+      { text: "@wren defects", kind: "defect" },
+      5000,
+    );
+    assert.deepEqual(JSON.parse(posted.result.content[0].text), { seq: 1 });
+    const rows = JSON.parse(
+      call("board", { to: "wren" }, 6000).result.content[0].text,
+    );
+    assert.deepEqual(
+      rows.map((r) => r.seq),
+      [1],
     );
   } finally {
     rmSync(tempDir, { recursive: true, force: true });

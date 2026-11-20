@@ -3749,6 +3749,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     dispatch: "vitruvian-orchestrator:lead",
     source: "generic",
     tier: "lead",
+    engine: "native",
     gemini: null,
     model: TIER_DEFAULTS.tiers.lead["claude-code"],
     effort: TIER_DEFAULTS.tiers.lead.effort,
@@ -3760,12 +3761,13 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     dispatch: "vitruvian-orchestrator:developer",
     source: "generic",
     tier: "build",
+    engine: "native",
     gemini: TIER_DEFAULTS.tiers.build.gemini,
-    model: TIER_DEFAULTS.tiers.build["claude-code"],
-    effort: TIER_DEFAULTS.tiers.build.effort,
+    model: TIER_DEFAULTS.tiers.build.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.native.effort,
   });
 
-  // 2. Valid file -> mapped roles, notes, and "off"
+  // 2. Valid file -> mapped roles, notes, engines, and "off"
   fileState = {
     mode: "present",
     content: JSON.stringify({
@@ -3792,6 +3794,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     dispatch: "wren",
     source: "team",
     tier: "build",
+    engine: null,
     model: "haiku",
     effort: "medium",
     notes: "Owns apps/.",
@@ -3801,13 +3804,133 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     agent: "infrastructure",
     dispatch: "vitruvian-orchestrator:infrastructure",
     source: "generic",
+    engine: "native",
   });
   expect(validJson.roles[9]).toMatchObject({
     role: "release",
     agent: null,
     dispatch: null,
     source: "off",
+    engine: null,
   });
+
+  // 2b. Engine precedence (role > tier > top-level): generic uses driver/native defaults,
+  //     mapped team rows keep explicit-or-null model/effort, lead stays "native"
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      engine: "gemini",
+      tiers: { light: { engine: "native" } },
+      roles: {
+        lead: { agent: "beacon", engine: "gemini" },
+        developer: { agent: "wren" },
+        qa: { engine: "native" },
+        security: { "claude-code": "opus" },
+        release: "off",
+      },
+    }),
+  };
+  const engineRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(engineRes.isError).toBeUndefined();
+  const engineJson = JSON.parse(String(engineRes.result ?? ""));
+  const byRole = (role: string) =>
+    engineJson.roles.find((r: { role: string }) => r.role === role);
+  expect(byRole("lead")).toMatchObject({
+    source: "team",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.lead["claude-code"],
+    effort: TIER_DEFAULTS.tiers.lead.effort,
+  });
+  expect(byRole("developer")).toMatchObject({
+    source: "team",
+    engine: "gemini",
+    model: null,
+    effort: null,
+  });
+  expect(byRole("infrastructure")).toMatchObject({
+    source: "generic",
+    engine: "gemini",
+    model: TIER_DEFAULTS.tiers.build["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.effort,
+  });
+  expect(byRole("qa")).toMatchObject({
+    source: "generic",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.deep.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.deep.native.effort,
+  });
+  expect(byRole("security")).toMatchObject({
+    source: "generic",
+    engine: "gemini",
+    model: "opus",
+    effort: TIER_DEFAULTS.tiers.deep.effort,
+  });
+  expect(byRole("docs")).toMatchObject({
+    source: "generic",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.light.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.light.native.effort,
+  });
+  expect(byRole("release")).toMatchObject({
+    source: "off",
+    engine: null,
+    model: null,
+    effort: null,
+  });
+
+  // 2c. Mapped team role with no engine anywhere gets engine: null and explicit-or-null model/effort
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      roles: {
+        developer: { agent: "wren" },
+        qa: { agent: "scout", engine: "native" },
+      },
+    }),
+  };
+  const teamNullRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(teamNullRes.isError).toBeUndefined();
+  const teamNullJson = JSON.parse(String(teamNullRes.result ?? ""));
+  const byRoleNull = (role: string) =>
+    teamNullJson.roles.find((r: { role: string }) => r.role === role);
+  expect(byRoleNull("developer")).toMatchObject({
+    source: "team",
+    engine: null,
+    model: null,
+    effort: null,
+  });
+  expect(byRoleNull("qa")).toMatchObject({
+    source: "team",
+    engine: "native",
+    model: null,
+    effort: null,
+  });
+  expect(byRoleNull("infrastructure")).toMatchObject({
+    source: "generic",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.build.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.native.effort,
+  });
+
+  // Restore mapped developer for panel label tests below
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      notes: "Run bazel test.",
+      tiers: { build: { "claude-code": "haiku", effort: "medium" } },
+      roles: {
+        developer: { agent: "wren", notes: "Owns apps/." },
+        release: "off",
+      },
+    }),
+  };
+  await $.tool.call({ tool: TEAM_TOOL } as never);
 
   // 3. Panel labels show "wren · developer" in terminal, desktop SVG, and /orchestrator-board
   await $.tool.call({
@@ -3935,6 +4058,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     "dispatch",
     "source",
     "tier",
+    "engine",
     "gemini",
     "model",
     "effort",
@@ -4371,9 +4495,14 @@ test("team tool optional root input (valid, invalid, outside-repo symlink, missi
   const missingRootJson = JSON.parse(String(missingRootRes.result ?? ""));
   expect(missingRootJson.notes).toBe("From cwdRepo");
   expect(
-    missingRootJson.roles.find((r: { role: string }) => r.role === "security")
-      ?.agent,
-  ).toBe("wren");
+    missingRootJson.roles.find((r: { role: string }) => r.role === "security"),
+  ).toMatchObject({
+    agent: "wren",
+    source: "team",
+    engine: null,
+    model: null,
+    effort: null,
+  });
 
   // 2. Invalid root errors with exact message.
   for (const badRoot of [
@@ -4606,4 +4735,107 @@ test("panel falls back to file read when flow has no team event", async ($, on) 
     ).text ?? "",
   );
   expect(boardOut).toContain("wren · security");
+});
+
+// Regression (2026-11-20): pressing the band's ✕ while helpers were still
+// working set the whole flow to null, so every later board read came back
+// `[]` and every post came back `{"seq":0}` with no error.
+test("dismissing the band of an open flow hides it but keeps the board", async ($, on) => {
+  mock.clock(on, { now: 50_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>empty-band</Text>;
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Open flow",
+    phase: "delegate",
+    tasks: [
+      { title: "Build it", specialist: "wren", tier: "build", after: [] },
+    ],
+  } as never);
+  const posted = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "@scout defect list goes here",
+    kind: "defect",
+  } as never)) as { result?: string };
+  expect(JSON.parse(String(posted.result))).toEqual({ seq: 1 });
+
+  const band = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(await band.find({ type: "Text", text: /Open flow/ })).toBeDefined();
+  await band.press({ key: "orchestrator-dismiss" });
+  await band.unmount();
+
+  // The band is gone...
+  const hidden = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(
+    await hidden.find({ type: "Text", text: /Open flow/ }),
+  ).toBeUndefined();
+  await hidden.unmount();
+
+  // ...but the board still has the post, and new posts still land.
+  const read = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+    kind: "defect",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(read.isError).toBeUndefined();
+  expect(
+    JSON.parse(String(read.result)).map((p: { seq: number }) => p.seq),
+  ).toEqual([1]);
+  const second = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "a second post",
+  } as never)) as { result?: string };
+  expect(JSON.parse(String(second.result))).toEqual({ seq: 2 });
+
+  // The lead's next progress call brings the band back.
+  await $.tool.call({ tool: PROGRESS_TOOL, phase: "review" } as never);
+  const back = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(await back.find({ type: "Text", text: /Open flow/ })).toBeDefined();
+  await back.unmount();
+});
+
+test("dismissing the band of a closed flow clears it", async ($, on) => {
+  mock.clock(on, { now: 60_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>empty-band</Text>;
+  });
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Done flow",
+    tasks: [
+      { title: "Only task", specialist: "wren", tier: "build", after: [] },
+    ],
+    accept: 1,
+    finished: true,
+  } as never);
+  const band = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  await band.press({ key: "orchestrator-dismiss" });
+  await band.unmount();
+  const after = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect((await after.find({ type: "Text", text: /empty-band/ }))?.text).toBe(
+    "empty-band",
+  );
+  await after.unmount();
+});
+
+test("post and board report an error when there is no flow, instead of seq 0 and []", async ($, on) => {
+  mock.clock(on, { now: 70_000 });
+  const post = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-x",
+    text: "@wren defects",
+    kind: "defect",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(post.isError).toBe(true);
+  expect(String(post.result)).toMatch(/not saved/);
+  const read = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(read.isError).toBe(true);
+  expect(String(read.result)).toMatch(/no orchestrator flow/i);
 });

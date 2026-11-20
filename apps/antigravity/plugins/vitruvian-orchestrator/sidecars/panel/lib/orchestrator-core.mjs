@@ -398,6 +398,7 @@ export const VALID_CHANNEL_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const VALID_WAKE_RUN_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._:#-]{0,127}$/;
 const VALID_GEMINI_MODEL_RE = /^gemini-[a-z0-9.-]+$/;
 const VALID_WORKTREE_RE = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
+const VALID_TEAM_HARNESS_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$/;
 const ANSI_ESCAPE_RE =
   /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[P^_][^\x07\x1b]*\x1b\\|[@-Z\\-_])/g;
 const CONTROL_AND_BIDI_RE =
@@ -2997,6 +2998,13 @@ export const TEAM_TIERS = Object.freeze(["lead", "build", "deep", "light"]);
 export const TEAM_EFFORTS = Object.freeze(["medium", "high", "xhigh", "max"]);
 
 /**
+ * Valid execution engines in `.agents/team.json`.
+ *
+ * @type {readonly ("native" | "gemini")[]}
+ */
+export const TEAM_ENGINES = Object.freeze(["native", "gemini"]);
+
+/**
  * Maximum length of sanitized `notes` (top-level and per-role) in `.agents/team.json`.
  */
 export const MAX_TEAM_NOTES = 2000;
@@ -3012,11 +3020,13 @@ export const MAX_TEAM_FILE_BYTES = 64 * 1024;
 export const MAX_TEAM_ROLES = 10;
 
 const TEAM_HARNESSES = new Set(["claude-code", "antigravity", "opencode"]);
-const TEAM_TOP_KEYS = new Set(["$schema", "notes", "tiers", "roles"]);
+const TEAM_TOP_KEYS = new Set(["$schema", "engine", "notes", "tiers", "roles"]);
 const TEAM_TIER_SET = new Set(TEAM_TIERS);
 const TEAM_ROLE_SET = new Set(ROLES);
 const TEAM_EFFORT_SET = new Set(TEAM_EFFORTS);
+const TEAM_ENGINE_SET = new Set(TEAM_ENGINES);
 const TEAM_TIER_VALUE_KEYS = new Set([
+  "engine",
   "gemini",
   "claude-code",
   "antigravity",
@@ -3026,6 +3036,7 @@ const TEAM_TIER_VALUE_KEYS = new Set([
 const TEAM_ROLE_VALUE_KEYS = new Set([
   "agent",
   "tier",
+  "engine",
   "gemini",
   "claude-code",
   "antigravity",
@@ -3090,6 +3101,20 @@ function ownPlainObject(obj, key) {
 }
 
 /**
+ * Reads an own valid `"native" | "gemini"` engine property from `obj`,
+ * returning `null` when absent, non-string, or unknown.
+ *
+ * @param {unknown} obj
+ * @returns {"native" | "gemini" | null}
+ */
+function ownEngine(obj) {
+  const val = ownString(obj, "engine");
+  return val !== null && TEAM_ENGINE_SET.has(val)
+    ? /** @type {"native" | "gemini"} */ (val)
+    : null;
+}
+
+/**
  * Returns `true` when `model` contains forbidden low-capability substrings
  * (`-low`, `-lite`, or `flash-lo`, case-insensitive).
  *
@@ -3103,6 +3128,33 @@ function hasForbiddenModelSubstring(model) {
     lower.includes("-lite") ||
     lower.includes("flash-lo")
   );
+}
+
+/**
+ * Validates a team-file harness model override (`claude-code`, `antigravity`,
+ * or `opencode`): must match `^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$` and
+ * never contain `-low`, `-lite`, or `flash-lo` (case-insensitive).
+ *
+ * @param {unknown} model
+ * @returns {boolean}
+ */
+function isValidTeamHarnessModel(model) {
+  if (typeof model !== "string") return false;
+  if (!VALID_TEAM_HARNESS_MODEL_RE.test(model)) return false;
+  return !hasForbiddenModelSubstring(model);
+}
+
+/**
+ * Reads an own valid harness model property from `obj`, returning `null`
+ * when absent, non-string, or invalid.
+ *
+ * @param {unknown} obj
+ * @param {string} harness
+ * @returns {string | null}
+ */
+function ownHarnessModel(obj, harness) {
+  const val = ownString(obj, harness);
+  return val !== null && isValidTeamHarnessModel(val) ? val : null;
 }
 
 /**
@@ -3144,6 +3196,19 @@ function validateTeamOverrides(obj, prefix, errors) {
   const out = {};
 
   if (
+    Object.prototype.hasOwnProperty.call(obj, "engine") &&
+    obj.engine !== undefined
+  ) {
+    if (typeof obj.engine !== "string" || !TEAM_ENGINE_SET.has(obj.engine)) {
+      errors.push(
+        `${prefix}.engine: invalid engine "${sanitizeShortText(obj.engine, 40)}" (expected native or gemini)`,
+      );
+    } else {
+      out.engine = obj.engine;
+    }
+  }
+
+  if (
     Object.prototype.hasOwnProperty.call(obj, "gemini") &&
     obj.gemini !== undefined
   ) {
@@ -3164,11 +3229,7 @@ function validateTeamOverrides(obj, prefix, errors) {
       continue;
     }
     const rawModel = obj[harness];
-    if (
-      typeof rawModel !== "string" ||
-      rawModel.trim().length === 0 ||
-      hasForbiddenModelSubstring(rawModel)
-    ) {
+    if (!isValidTeamHarnessModel(rawModel)) {
       errors.push(
         `${prefix}.${harness}: invalid model "${sanitizeShortText(rawModel, 80)}"`,
       );
@@ -3242,6 +3303,22 @@ export function parseTeam(text) {
       errors.push("$schema must be a string");
     } else {
       team.$schema = parsed.$schema;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, "engine") &&
+    parsed.engine !== undefined
+  ) {
+    if (
+      typeof parsed.engine !== "string" ||
+      !TEAM_ENGINE_SET.has(parsed.engine)
+    ) {
+      errors.push(
+        `engine: invalid engine "${sanitizeShortText(parsed.engine, 40)}" (expected native or gemini)`,
+      );
+    } else {
+      team.engine = parsed.engine;
     }
   }
 
@@ -3392,13 +3469,24 @@ export function parseTeam(text) {
 /**
  * Resolves a parsed team configuration (or `null` when absent) against the
  * calling `harness` and its built-in tier `defaults`.
- * Precedence for `gemini`, `model`, and `effort` is:
- * role override -> team `tiers[tier]` -> `defaults.tiers[tier]`.
+ * Precedence for `engine` is:
+ * role -> team `tiers[tier]` -> top-level `engine`. Always `"native"` for
+ * `antigravity` and lead rows (`role === "lead" || tier === "lead"`); `null`
+ * for `"off"` rows. For non-Antigravity non-lead rows: `source === "generic"`
+ * defaults to `"native"` when absent or invalid; `source === "team"` resolves
+ * to `null` ("the agent's own file decides") when absent or invalid, and
+ * returns an explicit valid engine as-is.
+ * For non-Antigravity non-lead `source === "team"` rows, `model` and `effort`
+ * come only from an explicit team-file override (role -> team `tiers[tier]`),
+ * otherwise `null` (so the agent file's frontmatter wins). For `generic`,
+ * lead, and `antigravity` rows, precedence for `gemini`, `model`, and `effort`
+ * is role override -> team `tiers[tier]` -> `defaults.tiers[tier]` (using
+ * `defaults.tiers[tier].native` when `engine === "native"`).
  * `gemini` is always `null` for the `lead` tier. Pure and never throws.
  *
  * @param {Record<string, unknown> | null | undefined} team
  * @param {Harness | string} harness
- * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> } | null | undefined} [defaults]
+ * @param {{ tiers?: Record<string, Record<string, unknown>> } | null | undefined} [defaults]
  * @returns {{
  *   notes: string,
  *   roles: Array<{
@@ -3407,6 +3495,7 @@ export function parseTeam(text) {
  *     dispatch: string | null,
  *     source: "team" | "generic" | "off",
  *     tier: "lead" | "build" | "deep" | "light",
+ *     engine: "native" | "gemini" | null,
  *     gemini: string | null,
  *     model: string | null,
  *     effort: string | null,
@@ -3418,6 +3507,7 @@ export function resolveTeam(team, harness, defaults = undefined) {
   const safeHarness =
     typeof harness === "string" && TEAM_HARNESSES.has(harness) ? harness : null;
   const safeTeam = isPlainObject(team) ? team : null;
+  const topEngine = ownEngine(safeTeam);
   const rawTopNotes = ownString(safeTeam, "notes");
   const topNotes = rawTopNotes
     ? stripUnsafeDisplayChars(rawTopNotes).slice(0, MAX_TEAM_NOTES)
@@ -3439,6 +3529,7 @@ export function resolveTeam(team, harness, defaults = undefined) {
         dispatch: null,
         source: /** @type {"off"} */ ("off"),
         tier: defaultTier,
+        engine: null,
         gemini: null,
         model: null,
         effort: null,
@@ -3467,6 +3558,21 @@ export function resolveTeam(team, harness, defaults = undefined) {
     const teamTier = ownPlainObject(teamTiers, tier);
     const defTier = ownPlainObject(defaultTiers, tier);
 
+    const isLead = role === "lead" || tier === "lead";
+    const explicitEngine =
+      ownEngine(roleObj) ?? ownEngine(teamTier) ?? topEngine;
+    const isTeamNonAntigravity =
+      source === "team" && !isLead && safeHarness !== "antigravity";
+
+    const engine =
+      isLead || safeHarness === "antigravity"
+        ? /** @type {"native"} */ ("native")
+        : source === "team"
+          ? explicitEngine
+          : (explicitEngine ?? /** @type {"native"} */ ("native"));
+
+    const defNative = ownPlainObject(defTier, "native");
+
     const rawGemini =
       tier === "lead"
         ? null
@@ -3475,18 +3581,37 @@ export function resolveTeam(team, harness, defaults = undefined) {
           ownString(defTier, "gemini") ??
           null);
 
+    const defaultModel =
+      !safeHarness || isTeamNonAntigravity
+        ? null
+        : engine === "native" && defNative !== null
+          ? safeHarness === "antigravity"
+            ? (ownString(defNative, safeHarness) ??
+              ownString(defTier, safeHarness) ??
+              null)
+            : (ownString(defNative, safeHarness) ?? null)
+          : (ownString(defTier, safeHarness) ?? null);
+
     const rawModel = safeHarness
-      ? (ownString(roleObj, safeHarness) ??
-        ownString(teamTier, safeHarness) ??
-        ownString(defTier, safeHarness) ??
-        null)
+      ? (ownHarnessModel(roleObj, safeHarness) ??
+        ownHarnessModel(teamTier, safeHarness) ??
+        defaultModel)
       : null;
+
+    const defaultEffort = isTeamNonAntigravity
+      ? null
+      : engine === "native" && defNative !== null
+        ? hasOwn(defNative, "effort")
+          ? ownString(defNative, "effort")
+          : safeHarness === "antigravity"
+            ? (ownString(defTier, "effort") ?? null)
+            : null
+        : (ownString(defTier, "effort") ?? null);
 
     const rawEffort =
       ownString(roleObj, "effort") ??
       ownString(teamTier, "effort") ??
-      ownString(defTier, "effort") ??
-      null;
+      defaultEffort;
 
     const rawRoleNotes = ownString(roleObj, "notes");
     const notes = rawRoleNotes
@@ -3499,6 +3624,7 @@ export function resolveTeam(team, harness, defaults = undefined) {
       dispatch,
       source,
       tier,
+      engine,
       gemini: rawGemini,
       model: rawModel,
       effort: rawEffort,

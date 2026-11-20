@@ -25,7 +25,7 @@
 //! Where the script died with an uncaught exception, this prints a traceback
 //! ending in the same exception class.
 
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod create_app;
 pub mod guarded_up;
 pub mod http;
@@ -601,13 +601,12 @@ pub fn read_line(r: &mut dyn BufRead) -> std::io::Result<Option<Vec<u8>>> {
 // --------------------------------------------------------------------------
 
 pub fn parser(prog: String) -> Parser {
-    let opt = |strings, dest, kind, help: &str, metavar| Opt {
+    let opt = |strings, dest, kind, help: &str| Opt {
         strings,
         dest,
         kind,
         help: Some(help.to_string()),
         required: false,
-        metavar,
     };
     Parser {
         prog,
@@ -619,21 +618,18 @@ pub fn parser(prog: String) -> Parser {
                 "cleanup",
                 Kind::Flag,
                 "delete old CI tokens instead of rotating",
-                None,
             ),
             opt(
                 vec!["--delete-old"],
                 "delete_old",
-                Kind::Value,
+                Kind::ValueMetavar("ID"),
                 "also delete this token id (with --cleanup)",
-                Some("ID"),
             ),
             opt(
                 vec!["--yes"],
                 "yes",
                 Kind::Flag,
                 "don't ask before deleting",
-                None,
             ),
         ],
     }

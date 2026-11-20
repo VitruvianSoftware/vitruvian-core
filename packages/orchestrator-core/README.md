@@ -14,15 +14,19 @@ A pure, dependency-free JavaScript state machine (`reduce`, `initialFlow`) and d
 
 ## Example
 
-From `apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/main.mjs`:
+From `apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/main.mjs:613-701`:
 
 ```js
-import { reduce } from "./lib/orchestrator-core.mjs";
-
-export function foldFlowEvents(flowEvents = [], transcriptEvents = []) {
-  let flow = null;
-  for (const event of mergedEvents) {
+  let flow = initialFlow();
+  let pendingTeamEvent = null;
+  for (const rawEvent of combined) {
+    let event = rawEvent;
+    // …
     flow = reduce(flow, event);
+    if (flow && pendingTeamEvent && event?.type === "plan") {
+      flow = reduce(flow, pendingTeamEvent);
+      pendingTeamEvent = null;
+    }
   }
   return flow;
 }

@@ -24,7 +24,7 @@
 //! jsonschema, whose behaviour it carries; the parity test holds the two
 //! programs to each other.
 
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod cli;
 pub mod difflib;
 pub mod emitters;

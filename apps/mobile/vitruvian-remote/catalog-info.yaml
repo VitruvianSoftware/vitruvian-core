@@ -47,6 +47,5 @@ spec:
   type: application
   lifecycle: experimental
   owner: platform-team
-  system: vitruvian-remote
   dependsOn:
     - component:design-system-android

@@ -15,14 +15,14 @@ A lightweight, Foundation-only Swift Sentry client (`SentryLite.start`, `SentryL
 
 ## Example
 
-From `apps/desktop/vitruvian-code/macos/Sources/VitruvianCode/App.swift`:
+From `apps/desktop/vitruvian-code/macos/Sources/VitruvianCode/App.swift:21-59`:
 
 ```swift
 #if canImport(SentryLite)
 import SentryLite
 #endif
-
-// In VitruvianCodeApp.init():
+// …
+    init() {
 #if canImport(SentryLite)
         SentryLite.start(
             dsn: "https://259b457f48de7e350f152674cb029dda@sentry-ingest.ipv1337.dev/8",
@@ -30,6 +30,7 @@ import SentryLite
             tags: ["app": "vitruvian-code", "platform": "macos"]
         )
 #endif
+    }
 ```
 
 ## Depend on it

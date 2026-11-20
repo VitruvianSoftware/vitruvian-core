@@ -289,15 +289,20 @@ rust_test(
         "//:workflow_files",
         "//tools/pulumi:guarded-up",
         "//tools/pulumi:refuse-destructive-plan",
+        "//tools/pulumi:release_approvals.sh",
         "//tools/pulumi:retry-concurrent-update",
+        # release_approvals.sh needs jq, and the RBE image has none.
+        "@jq_toolchains//:resolved_toolchain",
     ],
     edition = "2021",
     env = {
         "GUARDED_UP_BIN": "$(rootpath //tools/pulumi:guarded-up)",
         "GUARD_BIN": "$(rootpath //tools/pulumi:refuse-destructive-plan)",
+        "JQ_BIN": "$(JQ_BIN)",
         "RETRY_BIN": "$(rootpath //tools/pulumi:retry-concurrent-update)",
     },
     rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # The Claude Code hooks in .claude/: each runs the REAL hook (bash) against

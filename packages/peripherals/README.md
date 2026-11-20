@@ -14,7 +14,7 @@ A zero-dependency Swift IOKit HID library (`CompXProtocol`, `CompXHID`, `StatusS
 
 ## Example
 
-From `tools/pipeline-status/src/mouse_daemon.rs`:
+From `tools/pipeline-status/src/mouse_daemon.rs:145-159`:
 
 ```rust
 pub fn apply_signal(gravastar_bin: &str, signal: &LedSignal) -> i32 {

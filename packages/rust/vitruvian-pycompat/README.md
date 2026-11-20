@@ -11,17 +11,18 @@ A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's
 
 ## When not to use it
 
-- General-purpose Rust CLIs or services with no Python parity requirement; use `clap` and `serde_json` from `@crates` instead.
+- General-purpose Rust CLIs or services with no Python parity requirement; use a general-purpose CLI crate (none is in the repo yet; follow AGENTS.md's "Reuse before writing") and `serde_json` from `@crates` instead.
 - Preserving JSON object key insertion order and duplicate-key overwrite semantics via `serde_json`; use [`//packages/rust/vitruvian-pyjson`](../vitruvian-pyjson/README.md) instead.
 
 ## Example
 
-From `tools/merge-queue-stats/src/lib.rs` (shortened to one option):
+From `tools/merge-queue-stats/src/lib.rs:25-398`:
 
 ```rust
 pub use vitruvian_pycompat::argparse;
+// …
 use argparse::{Kind, Opt, Parser};
-
+// …
 fn parser(prog: String) -> Parser {
     Parser {
         prog,
@@ -35,12 +36,19 @@ fn parser(prog: String) -> Parser {
                 help: Some("UTC date or datetime, e.g. 2026-10-05".into()),
                 required: true,
             },
+            // …
         ],
     }
 }
-
-// Later, in the same file:
-// let values = match p.parse(&argv[1.min(argv.len())..], &convert) { Ok(v) => v, ... };
+// …
+    let values = match p.parse(&argv[1.min(argv.len())..], &convert) {
+        Ok(v) => v,
+        Err(exit) => {
+            print!("{}", exit.stdout);
+            eprint!("{}", exit.stderr);
+            return exit.code;
+        }
+    };
 ```
 
 ## Depend on it

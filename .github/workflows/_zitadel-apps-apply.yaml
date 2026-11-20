@@ -123,15 +123,22 @@ jobs:
           # Zitadel provider authenticates with it.
           ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
           ZITADEL_APPS_APP_STACK: ${{ steps.appstack.outputs.app-stack }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
           GOWORK: off
         working-directory: infrastructure/pulumi/platform/zitadel-apps
         run: |
           set -euo pipefail
-          # The 409 retry helper, //tools/pulumi:retry-concurrent-update. This job
-          # sets up no Bazel and the helper is one std-only file, so the runner's
-          # rustc builds it from the checkout (about a second), before the tunnel.
-          retry="${RUNNER_TEMP}/retry-concurrent-update"
-          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
+          # guarded-up (//tools/pulumi:guarded-up) runs `pulumi preview --json`, the
+          # plan guard, then `pulumi up`, as one unit retried on Pulumi Cloud's
+          # account-wide 409 (it replaces the bare retry helper here). This job sets
+          # up no Bazel and the helper is std-only, so the runner's rustc builds it
+          # from the checkout (about a second), before the tunnel. The guard
+          # refuses a plan that deletes or replaces anything nobody approved: on
+          # the Zitadel provider a replace of an OIDC app DELETES the live client
+          # and breaks hosted login (2026-06-26).
+          guarded_up="${RUNNER_TEMP}/guarded-up"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/guarded_up.rs" -o "$guarded_up"
           # TLS terminator must live for this step (backgrounded processes don't
           # survive across steps): homelab-tunnel-setup maps auth.ipv1337.dev to
           # 127.0.0.1 in /etc/hosts, and socat bound to 127.0.0.1:443 forwards
@@ -155,8 +162,25 @@ jobs:
           done
           curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
 
+          # plan-guard:begin
+          # --create stays: the first promotion to an environment makes its stack.
+          # A new stack is empty, so its plan can only create, never delete.
           pulumi stack select "$DEPLOY_ENV" --create
           pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
-          # Waits out Pulumi Cloud's account-wide concurrent-update 409 (another
-          # app's apply holding the account); any other failure is immediate.
-          "$retry" pulumi up --yes
+          # Which deletes and replaces may apply: only ones a reviewed commit named
+          # with an `Allow-destroy: <urn>` line. A push reads the pushed commits; a
+          # release reads the commits since the product's previous release
+          # (tools/pulumi/release_approvals.sh). A manual run approves nothing.
+          allow=()
+          case "${EVENT_NAME:-}" in
+            push)
+              allow=(--allow-destroy-from-event "${GITHUB_EVENT_PATH:?}")
+              ;;
+            release)
+              approvals="${RUNNER_TEMP}/release-approvals.json"
+              "$GITHUB_WORKSPACE/tools/pulumi/release_approvals.sh" "$approvals"
+              allow=(--allow-destroy-from-event "$approvals")
+              ;;
+          esac
+          "$guarded_up" "zitadel-apps ${DEPLOY_ENV}" ${allow[@]+"${allow[@]}"}
+          # plan-guard:end

@@ -305,7 +305,7 @@ export const TOOLS = Object.freeze([
   Object.freeze({
     name: "team",
     description:
-      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, engines (always native on Antigravity with Antigravity tier defaults), model overrides, and project notes (read-only).",
     inputSchema: {
       type: "object",
       properties: {
@@ -615,7 +615,7 @@ function validateExplicitRoot(rawRoot) {
  * against Antigravity's tier defaults.
  *
  * @param {string} root
- * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @param {{ tiers?: Record<string, Record<string, unknown>> }} [defaults]
  */
 function readTeamConfigAtRoot(root, defaults = TIER_DEFAULTS) {
   const checked = resolveRealTeamPath(root);
@@ -1268,6 +1268,11 @@ export function mapStepToEvent(
         : `step updated: ${validWorktree ? `worktree ${validWorktree}` : `delegate ${String(inp.delegate ?? "").trim() || "usage"}`}${note ? ` (${note})` : ""}`,
   };
 }
+
+const NO_FLOW_POST =
+  "no orchestrator flow is running, so this post was not saved. The lead starts one with the progress tool (title and tasks).";
+const NO_FLOW_BOARD =
+  "no orchestrator flow is running, so there is no board to read. The lead starts one with the progress tool (title and tasks).";
 
 /**
  * Maps `post` tool arguments and `_meta` to a `post` event.
@@ -2332,6 +2337,14 @@ export function handleJsonRpcMessage(message, options = {}) {
             },
           };
         }
+        const rawText = typeof toolArgs.text === "string" ? toolArgs.text : "";
+        if (rawText.trim().length > 0) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32602, message: NO_FLOW_POST },
+          };
+        }
         return {
           jsonrpc: "2.0",
           id,
@@ -2379,29 +2392,29 @@ export function handleJsonRpcMessage(message, options = {}) {
           },
         };
       }
+      // With no flow the reducer drops the post, so saving it would hand back
+      // a number for a post the board never shows.
+      if (!currentFlow) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: NO_FLOW_POST },
+        };
+      }
+      const prevSeq =
+        currentFlow.posts?.[currentFlow.posts.length - 1]?.seq ?? 0;
       appendFlowEvents(flowsDir, mapped.rootConversationId, [mapped.event]);
       const nextFlow = readFlowFromJsonlFile(filePath, loaderOpts);
-      let seq = nextFlow?.posts?.[nextFlow.posts.length - 1]?.seq ?? 0;
-      if (!seq && existsSync(filePath)) {
-        try {
-          seq = readFileSync(filePath, "utf8")
-            .split("\n")
-            .filter((line) => {
-              if (!line.trim()) return false;
-              try {
-                const parsed = JSON.parse(line);
-                return (
-                  parsed?.type === "post" &&
-                  typeof parsed.text === "string" &&
-                  parsed.text.trim().length > 0
-                );
-              } catch {
-                return false;
-              }
-            }).length;
-        } catch {
-          seq = 1;
-        }
+      const seq = nextFlow?.posts?.[nextFlow.posts.length - 1]?.seq ?? 0;
+      if (seq <= prevSeq) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: "the board did not accept this post, so it was not saved",
+          },
+        };
       }
       return {
         jsonrpc: "2.0",
@@ -2419,9 +2432,7 @@ export function handleJsonRpcMessage(message, options = {}) {
         return {
           jsonrpc: "2.0",
           id,
-          result: {
-            content: [{ type: "text", text: "[]" }],
-          },
+          error: { code: -32602, message: NO_FLOW_BOARD },
         };
       }
       const loaderOpts = {
@@ -2437,6 +2448,13 @@ export function handleJsonRpcMessage(message, options = {}) {
           : existsSync(filePath)
             ? readFlowFromJsonlFile(filePath, loaderOpts)
             : null;
+      if (!currentFlow) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: NO_FLOW_BOARD },
+        };
+      }
       const channelError = checkBoardChannel(currentFlow, toolArgs.channel);
       if (channelError) {
         return {
