@@ -40,6 +40,10 @@ oidc:
 # never used. Add a new always-on node's pool here for the relay to use it.
 # Tradeoff: if all three are down, the pod waits (Pending) rather than moving
 # to a laptop.
+# nuc9i5 (pool nuc-worker-1) is left out for now: its kubelet lives under
+# /home/k3s/kubelet, and the NFS CSI driver only mounts /var/lib/kubelet, so the
+# relay's NFS volume cannot mount there ("applyFSGroup failed ... no such file
+# or directory", 2026-11-20). Put it back once the driver handles that node.
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
@@ -50,4 +54,4 @@ affinity:
               values: [wired]
             - key: pool
               operator: In
-              values: [linux, nuc-worker-1, nuc-worker-2]
+              values: [linux, nuc-worker-2]
