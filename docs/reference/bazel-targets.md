@@ -89,6 +89,7 @@ mindmap
 | `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
 
 | `//tools/lint-naming` | Monorepo naming convention audit (`--check`, `--root <path>`). Validates file casing, test suffixes, and rule boundaries across all languages |
+| `//tools/dupcheck` | Detects added code duplicating `packages/` (`--diff <base>...<head> [--strict] [--allow <glob>]`) and reproduces the duplicated helper-family table (`--families [--ref <commit>]`) |
 | `//tools/owners` | Validates and compiles per-subtree `OWNERS` files into `.github/CODEOWNERS` (`--check`, `--validate-only`, `--coverage-check`) |
 | `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
 | `//tools/npm-publish-audit:check` | Verifies against the npm registry that packages claimed published by CI actually exist |

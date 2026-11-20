@@ -29,7 +29,7 @@
 //! The crate also carries `ops`: the tools/gitops shell scripts in Rust
 //! (this package's one rust_library), run by src/bin/gitops_cli.rs.
 
-pub mod argparse;
+pub use vitruvian_pycompat::argparse;
 pub mod json;
 pub mod ops;
 pub mod pystr;

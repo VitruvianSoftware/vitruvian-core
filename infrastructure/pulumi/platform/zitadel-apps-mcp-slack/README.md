@@ -111,6 +111,12 @@ hand-create one in the Zitadel console with the intention of adopting it.
 
 ## Applying
 
+Applying runs through the plan guard (`//tools/pulumi:guarded-up`): a plan
+that deletes or replaces anything is refused. This stack applies only from a
+manual dispatch, which never carries an `Allow-destroy` approval, so a delete
+or replace here can't be applied from CI. Add a push trigger to the workflow
+first if one is ever needed.
+
 The Zitadel management API is **not reachable over the public Cloudflare edge** —
 its bot protection returns `403 error code: 1010` to non-browser clients. Applies
 route over tailnet to the internal Envoy gateway LB. The prerequisites and the CI

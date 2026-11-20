@@ -1,8 +1,46 @@
 # orchestrator-core
 
-`packages/orchestrator-core` is the pure, dependency-free JavaScript state machine shared by the `vitruvian-orchestrator` live panel in Claude Code, Antigravity, and OpenCode.
+## What it gives you
 
-It contains no I/O, timers, or globals. Time (`at`, in milliseconds) is always passed in as part of an event, and `reduce(flow, event)` always returns a new state object without mutating its inputs.
+A pure, dependency-free JavaScript state machine (`reduce`, `initialFlow`) and derived views (`remaining`, `burnDown`, `taskBoard`, `spend`, `runCost`, `delegateCost`, `stalls`, `members`, `board`, `channels`, `overview`, `pendingWakes`, `mentions`) shared by the `vitruvian-orchestrator` live panels in Claude Code, Antigravity, and OpenCode.
+
+## When to use it
+
+- Folding orchestration flow events (`plan`, `phase`, `run.start`, `run.progress`, `run.end`, `task.accept`, `task.return`, `post`, `channel`, `team`, `wake`, `member.*`, `close`) into panel state, burn-down charts, stall status, or cost estimates.
+
+## When not to use it
+
+- Performing disk I/O, timers, or host-specific wake delivery; keep side effects in each harness plugin's adapter (`apps/antigravity/plugins/vitruvian-orchestrator`, `apps/claude-code/plugins/vitruvian-orchestrator`, `apps/opencode/plugins/vitruvian-orchestrator`).
+
+## Example
+
+From `apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/main.mjs:613-701`:
+
+```js
+  let flow = initialFlow();
+  let pendingTeamEvent = null;
+  for (const rawEvent of combined) {
+    let event = rawEvent;
+    // …
+    flow = reduce(flow, event);
+    if (flow && pendingTeamEvent && event?.type === "plan") {
+      flow = reduce(flow, pendingTeamEvent);
+      pendingTeamEvent = null;
+    }
+  }
+  return flow;
+}
+```
+
+## Depend on it
+
+- Bazel: `//packages/orchestrator-core:lib`
+- Plugin copies: vendored into each harness plugin by `bazel run //tools/agent-roster` (checked by `bazel run //tools/agent-roster -- --check`)
+
+## Constraints
+
+- Zero external dependencies, no I/O, no timers, and no globals—time (`at`, in milliseconds) must always be passed in on each event.
+- Any change to `src/core.mjs` or `src/prices.mjs` requires re-syncing the vendored plugin copies with `bazel run //tools/agent-roster`.
 
 ## Events
 

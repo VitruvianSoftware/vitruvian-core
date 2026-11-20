@@ -34,7 +34,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::process::Stdio;
 
-pub mod goexec;
+pub use vitruvian_gocompat::goexec;
 pub mod gostr;
 mod unicode_tables;
 

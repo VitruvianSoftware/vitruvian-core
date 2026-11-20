@@ -1,9 +1,48 @@
 # @vitruviansoftware/design-system
 
-Vitruvian — the Vitruvian Software design language. A CSS token layer with
-self-hosted variable fonts, a React component library built on top of it,
-codex-inspired technical vector illustrations, and the Storybook that documents
-all of them.
+## What it gives you
+
+Vitruvian — the Vitruvian Software design language. A CSS token layer (`tokens.css`, `tokens.json`, `VitruvianTokens`) with self-hosted `IBM Plex Sans` and `JetBrains Mono` variable fonts, a React component library (`Card`, `Button`, `Tag`, `Form`, `DataDisplay`, `Nav`, `Overlay`, `States`), codex-inspired technical vector illustrations and icons, and the Storybook that documents all of them.
+
+## When to use it
+
+- Building any React or web frontend in the monorepo (`apps/web/*`, `apps/suites/vitruvian-tabs/web`, `apps/suites/vitruvian-tabs/extension`, or sidecar UIs) that shares the Vitruvian visual language.
+- Reading `src/tokens.json` as the single source of truth for native design-token generation.
+
+## When not to use it
+
+- Android Jetpack Compose UI; use [`//packages/design-system-android`](../design-system-android/README.md) instead (which generates its Kotlin tokens from `src/tokens.json`).
+- Standalone-exported apps whose Docker/mirror build cannot resolve monorepo workspace packages (for example `oauth-user-inspector`, which vendors its copy).
+
+## Example
+
+From `apps/suites/vitruvian-tabs/web/app/analytics/page.tsx:27-38`:
+
+```tsx
+import { Button, Card } from "@vitruviansoftware/design-system";
+import { useWorkspaceStore } from "@/lib/store";
+import { Section, Task } from "@/types";
+
+interface MetricCardProps {
+  title: string;
+  value: number | string;
+}
+
+function MetricCard({ title, value }: MetricCardProps) {
+  return <Card kicker={title} title={value} surface="fill" elevation="sm" />;
+}
+```
+
+## Depend on it
+
+- Bazel: `//packages/design-system:pkg` (or `src/tokens.json`, `src/Icons.tsx`, `src/Illustrations.tsx` for exported token/icon assets)
+- Workspace npm dependency in `package.json`: `"@vitruviansoftware/design-system": "workspace:*"`
+
+## Constraints
+
+- **`.storybook/main.ts` names its framework and addons by absolute path.** The repo sets `hoist=false` in `.npmrc` (`rules_js` requires pnpm's on-disk layout to match Bazel), so Storybook config resolves plugins via `require.resolve(...)`.
+- **`BUILD` is hand-authored (`# gazelle:ignore`)** so the co-located `ts_project` (`rootDir ./src`, `outDir ./dist`) and Storybook targets stay intact.
+- Stories (`src/**/*.stories.tsx`) are dev-only and excluded from `:lib` and `dist/`.
 
 Unlike the per-app packages under `apps/suites/vitruvian-tabs/`, `apps/cli/vitruvian-devx/` and friends, this one is
 platform-level: every app is meant to depend on it, so it lives in `packages/`
@@ -52,17 +91,17 @@ Themes are driven by `data-theme` on `<html>` (`dark` is the default board,
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
 | `src/tokens.ts`         | `VitruvianTokens` / `tokens` — typed programmatic access to colors, fonts, spacing, and motion      |
 | `src/Plate.tsx`         | `Plate`, `Rule`, `VMark`, `BrandMark`, `BrandLogo`, `BrandMedallion`, `RegistrationMarks`, `Glass`  |
-| `src/Card.tsx`          | `Card` (`plate` / `fill` / `glass` surfaces, `live` indicator, `marks`, `dashed`)                   |
-| `src/Button.tsx`        | `Button` (`primary` / `secondary` / `ghost` / `danger`, `sm` / `md` / `touch`)                      |
+| `src/Card.tsx`          | `Card` (`plate` / `fill` / `glass` surfaces; `kicker`, `title`, `meta`, `elevation` props)          |
+| `src/Button.tsx`        | `Button` (`primary` / `secondary` / `ghost` / `danger`, `sm` / `md`)                                |
 | `src/Tag.tsx`           | `Tag`, `Label`, `Kbd`                                                                               |
 | `src/Form.tsx`          | `Field`, `Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `Switch`, `Segmented`, `Slider`, `CopyButton` |
 | `src/DataDisplay.tsx`   | `Status`, `Metric`, `Meter`, `SegBar`, `Spark`, `BarChart`, `LogStream`, `Table`                    |
 | `src/Terminal.tsx`      | `Terminal`, `Code`, `BlinkingCursor`                                                                |
 | `src/Layout.tsx`        | `ListItem`, `AutoGrid`, `KeyValue`, `Accordion`                                                     |
 | `src/Nav.tsx`           | `Crumbs`, `Tabs`, `TopBar`, `HostChip`, `TabBar`, `Rail`, `Section`, `SectionHeader`, `MobileShell`, `Pagination`, `Avatar` |
-| `src/Overlay.tsx`       | `Dialog`, `BottomSheet`, `Menu`, `MenuItem`, `MenuDivider`, `Tooltip`, `Popover`, `Toast`, `Drawer`, `CommandPalette` |
-| `src/States.tsx`        | `Banner`, `EmptyState`, `Skeleton`, `Spinner`                                                       |
-| `src/Icons.tsx`         | `VIcon`, `VitruvianIcons` (28 technical 1.5px stroke icons on a 24×24 grid)                         |
+| `src/Overlay.tsx`       | `Dialog`, `Banner`, `BottomSheet`, `Menu`, `MenuItem`, `MenuDivider`, `Tooltip`, `Popover`, `Toast`, `Drawer`, `CommandPalette` |
+| `src/States.tsx`        | `EmptyState`, `Skeleton`, `Spinner`                                                                 |
+| `src/Icons.tsx`         | `VIcon`, `VitruvianIcons` (34 technical 1.5px stroke icons on a 24×24 grid)                         |
 | `src/Illustrations.tsx` | `VitruvianPlate` (8 codex plates), `PlateFigure`, `VitruvianStockImages`, `DuotoneImage`            |
 
 ## Layout
