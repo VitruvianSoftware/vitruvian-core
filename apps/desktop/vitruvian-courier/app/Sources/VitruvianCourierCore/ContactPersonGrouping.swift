@@ -39,8 +39,10 @@ public struct ContactPersonGroup: Equatable, Hashable, Identifiable, Sendable {
 
 /// Groups New Chat candidates into one person row per person.
 ///
-/// Merge rule: two candidates are grouped only when they share a linked contact identifier, a merged chat,
-/// or an equal normalized phone number or normalized email address. Display names are never used to merge.
+/// Merge rule: two candidates are grouped only when they are in the same merged chat, or share a normalized phone
+/// number or email address. A number or address held by two or more differently named people (a family landline, a
+/// shared inbox) links nobody. Display names alone never merge. Two endpoints with different user IDs are never
+/// collapsed into one, even on the same account.
 public enum ContactPersonGrouping {
     public struct GroupedSections: Equatable, Sendable {
         public var named: [ContactPersonGroup]
@@ -57,16 +59,12 @@ public enum ContactPersonGrouping {
     /// Splits grouped contacts into named people (A–Z) followed by number/handle-only entries (A–Z).
     public static func sections(
         _ candidates: [ContactCandidate],
-        linkedContactIDs: [String: String] = [:],
         mergedChats: [String: MergedChat] = [:],
-        matchedContacts: [MatchedContact] = [],
         accountOrder: [String] = []
     ) -> GroupedSections {
         let groups = buildGroups(
             candidates,
-            linkedContactIDs: linkedContactIDs,
             mergedChats: mergedChats,
-            matchedContacts: matchedContacts,
             accountOrder: accountOrder
         ).map(\.group)
         let named = groups.filter(\.isNamed).sorted(by: alphabetical)
@@ -77,16 +75,12 @@ public enum ContactPersonGrouping {
     /// Groups candidates into person rows while preserving the earliest candidate order (for Recent or typed search).
     public static func groupedPreservingOrder(
         _ candidates: [ContactCandidate],
-        linkedContactIDs: [String: String] = [:],
         mergedChats: [String: MergedChat] = [:],
-        matchedContacts: [MatchedContact] = [],
         accountOrder: [String] = []
     ) -> [ContactPersonGroup] {
         buildGroups(
             candidates,
-            linkedContactIDs: linkedContactIDs,
             mergedChats: mergedChats,
-            matchedContacts: matchedContacts,
             accountOrder: accountOrder
         )
         .sorted { lhs, rhs in
@@ -123,9 +117,7 @@ public enum ContactPersonGrouping {
 
     private static func buildGroups(
         _ candidates: [ContactCandidate],
-        linkedContactIDs: [String: String],
         mergedChats: [String: MergedChat],
-        matchedContacts: [MatchedContact],
         accountOrder: [String]
     ) -> [RankedGroup] {
         guard !candidates.isEmpty else { return [] }
@@ -134,23 +126,6 @@ public enum ContactPersonGrouping {
         for (mergeID, merged) in mergedChats {
             for roomID in merged.roomIDs {
                 roomToMergeID[roomID] = mergeID
-            }
-        }
-
-        var matchedPhoneToContactID: [String: [String]] = [:]
-        var matchedEmailToContactID: [String: [String]] = [:]
-        for contact in matchedContacts {
-            let cid = contact.contactIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !cid.isEmpty else { continue }
-            for rawPhone in contact.phones {
-                if let phoneKey = ContactListOrdering.phoneKey(rawPhone) {
-                    matchedPhoneToContactID[phoneKey, default: []].append(cid)
-                }
-            }
-            for rawEmail in contact.emails {
-                if let emailKey = ContactListOrdering.emailKey(rawEmail) {
-                    matchedEmailToContactID[emailKey, default: []].append(cid)
-                }
             }
         }
 
@@ -178,30 +153,39 @@ public enum ContactPersonGrouping {
             }
         }
 
-        var firstIndexByKey: [String: Int] = [:]
+        // A phone number or email address links candidates only when everyone who carries it could be one person.
+        var holdersByKey: [String: [Int]] = [:]
+        var keysByIndex: [[String]] = Array(repeating: [], count: candidates.count)
         for index in candidates.indices {
             let candidate = candidates[index]
             var keys: [String] = []
-            if let linked = linkedContactIDs[candidate.id]?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !linked.isEmpty {
-                keys.append("linked:\(linked)")
-            }
-            if let roomID = candidate.roomID, !roomID.isEmpty, let mergeID = roomToMergeID[roomID] {
-                keys.append("merge:\(mergeID)")
-            }
             for raw in [candidate.name] + candidate.identifiers {
                 if let phoneKey = ContactListOrdering.phoneKey(raw) {
                     keys.append("phone:\(phoneKey)")
-                    for cid in matchedPhoneToContactID[phoneKey] ?? [] {
-                        keys.append("linked:\(cid)")
-                    }
                 }
                 if let emailKey = ContactListOrdering.emailKey(raw) {
                     keys.append("email:\(emailKey)")
-                    for cid in matchedEmailToContactID[emailKey] ?? [] {
-                        keys.append("linked:\(cid)")
-                    }
                 }
+            }
+            for key in Set(keys) {
+                holdersByKey[key, default: []].append(index)
+            }
+            keysByIndex[index] = Array(Set(keys))
+        }
+        var sharedKeys = Set<String>()
+        for (key, holders) in holdersByKey where holders.count > 1 {
+            let names = holders.map { candidates[$0].name }.filter { !ContactListOrdering.isNumberOrHandle($0) }
+            if namesCouldBeOnePerson(names) {
+                sharedKeys.insert(key)
+            }
+        }
+
+        var firstIndexByKey: [String: Int] = [:]
+        for index in candidates.indices {
+            let candidate = candidates[index]
+            var keys: [String] = keysByIndex[index].filter { sharedKeys.contains($0) }
+            if let roomID = candidate.roomID, !roomID.isEmpty, let mergeID = roomToMergeID[roomID] {
+                keys.append("merge:\(mergeID)")
             }
             for key in keys {
                 if let existing = firstIndexByKey[key] {
@@ -230,7 +214,7 @@ public enum ContactPersonGrouping {
         return rootOrder.compactMap { root -> RankedGroup? in
             guard let indices = componentIndicesByRoot[root], let minIndex = indices.min() else { return nil }
             let members = indices.map { candidates[$0] }
-            let collapsed = collapseSameAccount(members)
+            let collapsed = collapseSameEndpoint(members)
             let sortedEndpoints = collapsed.sorted { lhs, rhs in
                 let leftRank = accountRank[lhs.network] ?? Int.max
                 let rightRank = accountRank[rhs.network] ?? Int.max
@@ -248,16 +232,38 @@ public enum ContactPersonGrouping {
         }
     }
 
-    private struct AccountBucketKey: Hashable {
-        let network: String
-        let accountID: String
+    /// Every pair of names is the same or one is the other with more words ("Pat" and "Pat Lee"): not "Mom" and
+    /// "Dad", the two people one family landline belongs to.
+    private static func namesCouldBeOnePerson(_ names: [String]) -> Bool {
+        let words = names.map { name in
+            Set(
+                NetworkTag.stripped(name)
+                    .lowercased()
+                    .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                    .map(String.init)
+            )
+        }
+        for i in words.indices {
+            for j in words.indices where j > i {
+                if !(words[i].isSubset(of: words[j]) || words[j].isSubset(of: words[i])) {
+                    return false
+                }
+            }
+        }
+        return true
     }
 
-    private static func collapseSameAccount(_ members: [ContactCandidate]) -> [ContactCandidate] {
+    /// One bucket per candidate id (network, account and user ID): the same endpoint seen twice (in Recent and in
+    /// Contacts, say) is one. Different user IDs on one account stay apart.
+    private struct AccountBucketKey: Hashable {
+        let id: String
+    }
+
+    private static func collapseSameEndpoint(_ members: [ContactCandidate]) -> [ContactCandidate] {
         var byAccount: [AccountBucketKey: [ContactCandidate]] = [:]
         var keyOrder: [AccountBucketKey] = []
         for candidate in members {
-            let key = AccountBucketKey(network: candidate.network, accountID: candidate.accountID)
+            let key = AccountBucketKey(id: candidate.id)
             if byAccount[key] == nil {
                 keyOrder.append(key)
             }

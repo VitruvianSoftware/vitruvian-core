@@ -331,6 +331,23 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.search.sections, [])
     }
 
+    /// While New Chat covers the pane, the chat still selected is hidden: it is not offered, and Return on the line does nothing.
+    func testHiddenOpenChatIsNotOfferedForSearch() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1, name: "Eddie")])
+        h.app.selectedRoomID = "!a"
+        try await h.showHome()
+        XCTAssertEqual(h.search.inChatOfferRoomID, "!a")
+
+        h.search.isOpenChatHidden = true
+        XCTAssertNil(h.search.inChatOfferRoomID)
+        XCTAssertFalse(h.search.searchInOpenChat())
+        XCTAssertNil(h.search.scopeRoomID)
+
+        h.search.isOpenChatHidden = false
+        XCTAssertTrue(h.search.searchInOpenChat())
+        XCTAssertEqual(h.search.scopeRoomID, "!a")
+    }
+
     func testSwitchingChatsClosesInChatSearch() async throws {
         let h = try await start(rooms: [room("!a", ts: 1, name: "Eddie"), room("!b", ts: 2, name: "Family")])
         h.app.selectedRoomID = "!a"

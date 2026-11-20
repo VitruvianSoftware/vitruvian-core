@@ -2240,8 +2240,6 @@ public struct StartNewChatDraft: Equatable, Sendable {
     public var searchFailed: Bool
     /// Merged chat definitions known when grouping multi-network contacts into one person row.
     public var mergedChats: [String: MergedChat]
-    /// Explicit linked-contact identifiers keyed by `ContactCandidate.id`.
-    public var linkedContactIDs: [String: String]
 
     public init(
         accounts: [Account] = [],
@@ -2259,8 +2257,7 @@ public struct StartNewChatDraft: Equatable, Sendable {
         isSubmitting: Bool = false,
         isSearching: Bool = false,
         searchFailed: Bool = false,
-        mergedChats: [String: MergedChat] = [:],
-        linkedContactIDs: [String: String] = [:]
+        mergedChats: [String: MergedChat] = [:]
     ) {
         self.accounts = accounts
         self.candidates = candidates
@@ -2278,7 +2275,6 @@ public struct StartNewChatDraft: Equatable, Sendable {
         self.isSearching = isSearching
         self.searchFailed = searchFailed
         self.mergedChats = mergedChats
-        self.linkedContactIDs = linkedContactIDs
         if selectedRecipients.count >= 2 {
             recomputeMode()
         }

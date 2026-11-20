@@ -73,7 +73,7 @@ final class ContactPersonGroupingTests: XCTestCase {
 
     func testSameNormalizedEmailMergesDifferentNetworks() {
         let gchat = candidate("Bob", network: "gchat", identifiers: ["mailto:Bob.Smith@Example.COM"])
-        let slack = candidate("Robert Smith", network: "slack", identifiers: ["bob.smith@example.com"])
+        let slack = candidate("Bob Smith", network: "slack", identifiers: ["bob.smith@example.com"])
 
         let sections = ContactPersonGrouping.sections([gchat, slack])
         XCTAssertEqual(sections.named.count, 1)
@@ -81,22 +81,10 @@ final class ContactPersonGroupingTests: XCTestCase {
         XCTAssertEqual(Set(sections.named[0].networks), ["gchat", "slack"])
     }
 
-    func testLinkedContactIDAndMatchedContactAndMergedChatMergeAcrossNetworks() {
-        // Explicit linkedContactID
-        let a = candidate("Dana", network: "telegram", userID: "@dana_tg", identifiers: ["telegram:dana"])
-        let b = candidate("Dana", network: "discord", userID: "@dana_dc", identifiers: ["discord:dana"])
-        // Bridged via MatchedContact (WhatsApp has phone, Google Chat has email, no shared identifier on candidates)
-        let c = candidate("Evan", network: "whatsapp", userID: "@evan_wa", identifiers: ["+15550100001"])
-        let d = candidate("Evan", network: "gchat", userID: "@evan_gc", identifiers: ["evan@example.com"])
-        let matched = MatchedContact(
-            contactIdentifier: "cn-evan",
-            fullName: "Evan",
-            phones: ["+1 555-010-0001"],
-            emails: ["evan@example.com"]
-        )
-        // Bridged via MergedChat
+    func testMergedChatMergesAcrossNetworksWithNothingElseInCommon() {
         let e = candidate("Finn", network: "whatsapp", userID: "@finn_wa", roomID: "!finn-wa")
         let f = candidate("Finn", network: "signal", userID: "@finn_sig", roomID: "!finn-sig")
+        let other = candidate("Finn", network: "telegram", userID: "@finn_tg", roomID: "!finn-tg")
         let merge = MergedChat(
             mergeID: "merge:finn",
             name: "Finn",
@@ -107,14 +95,9 @@ final class ContactPersonGroupingTests: XCTestCase {
             createdTS: 1
         )
 
-        let sections = ContactPersonGrouping.sections(
-            [a, b, c, d, e, f],
-            linkedContactIDs: [a.id: "person-dana", b.id: "person-dana"],
-            mergedChats: [merge.mergeID: merge],
-            matchedContacts: [matched]
-        )
-        XCTAssertEqual(sections.named.count, 3)
-        XCTAssertTrue(sections.named.allSatisfy { $0.endpoints.count == 2 })
+        let sections = ContactPersonGrouping.sections([e, f, other], mergedChats: [merge.mergeID: merge])
+        XCTAssertEqual(sections.named.count, 2, "the merged pair is one person; the unmerged Finn stays apart")
+        XCTAssertEqual(sections.named.map { $0.endpoints.count }.sorted(), [1, 2])
     }
 
     func testTransitiveMergeCombinesThreeNetworks() {
@@ -138,18 +121,22 @@ final class ContactPersonGroupingTests: XCTestCase {
         XCTAssertTrue(sections.named.allSatisfy { !$0.isMultiNetwork })
     }
 
-    func testSameNetworkAndAccountCollapsesWhileDistinctAccountsStaySeparate() {
+    func testSameEndpointSeenTwiceIsOneButDifferentUserIDsOnOneAccountStayApart() {
         let namedWA = candidate("Alice", network: "whatsapp", account: "wa-personal", userID: "@alice", identifiers: ["+12134476502"])
+        let again = candidate("Alice", network: "whatsapp", account: "wa-personal", userID: "@alice", identifiers: ["+12134476502"])
         let bareWA = candidate("+12134476502", network: "whatsapp", account: "wa-personal", userID: "@12134476502")
         let workWA = candidate("Alice", network: "whatsapp", account: "wa-work", userID: "@alice_work", identifiers: ["+12134476502"])
 
-        let sections = ContactPersonGrouping.sections([bareWA, namedWA, workWA])
+        let sections = ContactPersonGrouping.sections([bareWA, namedWA, again, workWA])
         XCTAssertEqual(sections.named.count, 1)
         XCTAssertEqual(sections.other, [])
         let endpoints = sections.named[0].endpoints
-        XCTAssertEqual(endpoints.count, 2, "same (network, account) collapses; distinct account stays separate")
-        XCTAssertEqual(Set(endpoints.map(\.accountID)), ["wa-personal", "wa-work"])
-        XCTAssertEqual(endpoints.first(where: { $0.accountID == "wa-personal" })?.name, "Alice")
+        XCTAssertEqual(
+            Set(endpoints.map(\.id)),
+            [namedWA.id, bareWA.id, workWA.id],
+            "the repeated endpoint is one; the other user ID and the other account are kept"
+        )
+        XCTAssertEqual(endpoints.count, 3)
     }
 
     func testNamedAndPhoneOnlyEntryOnDifferentNetworksMergeAsOneNamedPerson() {
@@ -188,6 +175,58 @@ final class ContactPersonGroupingTests: XCTestCase {
         let uk = candidate("Sam", network: "signal", userID: "@uk", identifiers: ["+44 791 123 456"])
         let sections = ContactPersonGrouping.sections([us, uk])
         XCTAssertEqual(sections.named.count, 2)
+    }
+
+    // MARK: - Shared numbers and addresses (family landline, shared inbox)
+
+    func testFamilyLandlineSharedByMomAndDadDoesNotMergeThemButMobilesStayTheirOwn() {
+        let landline = "+1 213 555 0100"
+        let momWA = candidate("Mom", network: "whatsapp", userID: "@mom_wa", identifiers: ["+1 213 555 0111", landline])
+        let dadSig = candidate("Dad", network: "signal", userID: "@dad_sig", identifiers: ["+1 213 555 0122", landline])
+
+        let sections = ContactPersonGrouping.sections([momWA, dadSig])
+        XCTAssertEqual(sections.named.count, 2, "the landline belongs to both, so it links neither")
+        XCTAssertEqual(Set(sections.named.map(\.displayName)), ["Mom", "Dad"])
+        XCTAssertTrue(sections.named.allSatisfy { $0.endpoints.count == 1 })
+    }
+
+    func testMomsMobileStillMergesHerAcrossNetworksWhileTheSharedLandlineIsIgnored() {
+        let landline = "+1 213 555 0100"
+        let momWA = candidate("Mom", network: "whatsapp", userID: "@mom_wa", identifiers: ["+1 213 555 0111", landline])
+        let momSig = candidate("Mom", network: "signal", userID: "@mom_sig", identifiers: ["+1 213 555 0111"])
+        let dadSig = candidate("Dad", network: "signal", userID: "@dad_sig", identifiers: ["+1 213 555 0122", landline])
+
+        let sections = ContactPersonGrouping.sections([momWA, momSig, dadSig])
+        XCTAssertEqual(sections.named.count, 2)
+        let mom = sections.named.first { $0.displayName == "Mom" }
+        XCTAssertEqual(mom?.endpoints.count, 2)
+        XCTAssertEqual(sections.named.first { $0.displayName == "Dad" }?.endpoints.count, 1)
+    }
+
+    func testMomAndDadOnTheSameAccountAreBothReachable() {
+        let landline = "+1 213 555 0100"
+        let mom = candidate("Mom", network: "whatsapp", account: "acc-1", userID: "@mom", identifiers: [landline])
+        let dad = candidate("Dad", network: "whatsapp", account: "acc-1", userID: "@dad", identifiers: [landline])
+
+        let sections = ContactPersonGrouping.sections([mom, dad])
+        XCTAssertEqual(sections.named.count, 2)
+        let reachable = sections.named.flatMap(\.endpoints).map(\.userID)
+        XCTAssertEqual(Set(reachable), ["@mom", "@dad"], "neither is swallowed by the other")
+    }
+
+    func testSharedInboxHeldByDifferentlyNamedPeopleLinksNobody() {
+        let sales = candidate("Ann", network: "gchat", userID: "@ann", identifiers: ["team@example.com"])
+        let support = candidate("Raj", network: "slack", userID: "@raj", identifiers: ["TEAM@example.com"])
+        let sections = ContactPersonGrouping.sections([sales, support])
+        XCTAssertEqual(sections.named.count, 2)
+    }
+
+    func testBareNumberEntryStillJoinsTheOnePersonWhoHasThatNumber() {
+        let alice = candidate("Alice", network: "signal", userID: "@a", identifiers: ["+12134476502"])
+        let bare = candidate("+12134476502", network: "whatsapp", userID: "@bare")
+        let sections = ContactPersonGrouping.sections([alice, bare])
+        XCTAssertEqual(sections.named.count, 1)
+        XCTAssertEqual(sections.named[0].endpoints.count, 2)
     }
 
     // MARK: - C5 UI helper logic (overflow edges & row affordances)

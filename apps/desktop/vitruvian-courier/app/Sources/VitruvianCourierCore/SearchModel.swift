@@ -174,6 +174,9 @@ public final class SearchModel: ObservableObject {
     }
     /// ⌘F: the chat searched in. nil searches every chat.
     @Published public private(set) var scope: InboxRow?
+    /// True while New Chat covers the chat pane: the chat still selected is hidden, so ⌘F and the "search in this
+    /// chat" line must not offer it. Set by whoever owns the New Chat draft.
+    @Published public var isOpenChatHidden = false
     /// True while the panel is scoped to a chat (⌘F).
     public var isScoped: Bool { scopeRoomID != nil }
     /// True while the panel is scoped to a single non-merged chat (one room, one network).
@@ -424,7 +427,7 @@ public final class SearchModel: ObservableObject {
     /// The open chat, when the panel can offer to search in it: it searches every chat, and a chat is open. That
     /// chat's "Press ⌘F to search in …" line sits above the rows.
     public var inChatOfferRoomID: String? {
-        guard phase != .closed, scopeRoomID == nil, !isLocked,
+        guard phase != .closed, scopeRoomID == nil, !isLocked, !isOpenChatHidden,
               let roomID = appModel.selectedRoomID, !roomID.isEmpty else { return nil }
         return roomID
     }

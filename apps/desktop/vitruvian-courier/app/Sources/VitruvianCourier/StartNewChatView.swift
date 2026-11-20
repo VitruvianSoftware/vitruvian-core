@@ -96,7 +96,6 @@ enum StartNewChatPresentation {
         accounts: [Account],
         contacts: [ContactCandidate] = [],
         mergedChats: [String: MergedChat] = [:],
-        linkedContactIDs: [String: String] = [:],
         filter: String? = nil,
         limit: Int? = maxRecentChats
     ) -> [ContactPersonGroup] {
@@ -109,7 +108,6 @@ enum StartNewChatPresentation {
         )
         let grouped = ContactPersonGrouping.groupedPreservingOrder(
             recents,
-            linkedContactIDs: linkedContactIDs,
             mergedChats: mergedChats,
             accountOrder: accountOrder(from: accounts)
         )
@@ -151,12 +149,10 @@ enum StartNewChatPresentation {
         _ candidates: [ContactCandidate],
         accounts: [Account] = [],
         mergedChats: [String: MergedChat] = [:],
-        linkedContactIDs: [String: String] = [:],
         filter: String?
     ) -> ContactPersonGrouping.GroupedSections {
         ContactPersonGrouping.sections(
             candidates.filter { matchesAccountFilter($0, filter: filter) },
-            linkedContactIDs: linkedContactIDs,
             mergedChats: mergedChats,
             accountOrder: accountOrder(from: accounts)
         )
@@ -165,7 +161,6 @@ enum StartNewChatPresentation {
     static func typedPersonGroups(from draft: StartNewChatDraft) -> [ContactPersonGroup] {
         ContactPersonGrouping.groupedPreservingOrder(
             draft.filteredCandidates,
-            linkedContactIDs: draft.linkedContactIDs,
             mergedChats: draft.mergedChats,
             accountOrder: accountOrder(from: draft.accounts)
         )
@@ -208,7 +203,6 @@ enum StartNewChatPresentation {
             accounts: draft.accounts,
             contacts: draft.candidates,
             mergedChats: draft.mergedChats,
-            linkedContactIDs: draft.linkedContactIDs,
             filter: draft.selectedAccountFilter,
             limit: maxRecentChats
         )
@@ -217,7 +211,6 @@ enum StartNewChatPresentation {
                 draft.candidates,
                 accounts: draft.accounts,
                 mergedChats: draft.mergedChats,
-                linkedContactIDs: draft.linkedContactIDs,
                 filter: draft.selectedAccountFilter
             ).ordered.prefix(max(0, contactsLimit))
         )
@@ -240,7 +233,6 @@ enum StartNewChatPresentation {
                 accounts: draft.accounts,
                 contacts: draft.candidates,
                 mergedChats: draft.mergedChats,
-                linkedContactIDs: draft.linkedContactIDs,
                 filter: draft.selectedAccountFilter,
                 limit: maxRecentChats
             ).first { $0.id == id }
@@ -251,7 +243,6 @@ enum StartNewChatPresentation {
                 draft.candidates,
                 accounts: draft.accounts,
                 mergedChats: draft.mergedChats,
-                linkedContactIDs: draft.linkedContactIDs,
                 filter: draft.selectedAccountFilter
             )
             .ordered
@@ -932,7 +923,6 @@ public struct StartNewChatView: View {
             accounts: draft.accounts,
             contacts: draft.candidates,
             mergedChats: draft.mergedChats,
-            linkedContactIDs: draft.linkedContactIDs,
             filter: draft.selectedAccountFilter,
             limit: StartNewChatPresentation.maxRecentChats
         )
@@ -940,7 +930,6 @@ public struct StartNewChatView: View {
             draft.candidates,
             accounts: draft.accounts,
             mergedChats: draft.mergedChats,
-            linkedContactIDs: draft.linkedContactIDs,
             filter: draft.selectedAccountFilter
         )
         let allContacts = sections.ordered
