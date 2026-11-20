@@ -66,7 +66,11 @@ fn drain_pipe(mut pipe: impl Read + Send + 'static) -> std::thread::JoinHandle<V
     })
 }
 
-struct ProcessRunner;
+struct ProcessRunner {
+    /// URNs approved by `Allow-destroy:` lines in the pushed commits. Held for
+    /// the whole run, so every retried preview is checked against the same set.
+    allow: Vec<String>,
+}
 
 impl StepRunner for ProcessRunner {
     fn preview_json(&mut self) -> Result<CommandCapture, i32> {
@@ -94,7 +98,7 @@ impl StepRunner for ProcessRunner {
     }
 
     fn check_plan(&mut self, label: &str, plan_json: &str) -> i32 {
-        let rc = refuse_destructive_plan::check_and_report(label, plan_json);
+        let rc = refuse_destructive_plan::check_and_report(label, plan_json, &self.allow);
         let _ = std::io::stdout().flush();
         let _ = std::io::stderr().flush();
         rc
@@ -205,15 +209,27 @@ pub fn run_with_runner(label: &str, policy: RetryPolicy, runner: &mut dyn StepRu
     }
 }
 
-/// Entry point: `guarded-up <stack-label>`.
+const USAGE: &str =
+    "usage: guarded-up <stack-label> [--allow-destroy-from-event <github-event.json>]";
+
+/// Entry point: `guarded-up <stack-label> [--allow-destroy-from-event <path>]`.
 pub fn run(args: &[String]) -> i32 {
-    if args.len() != 1 || args[0].trim().is_empty() {
-        eprintln!("usage: guarded-up <stack-label>");
+    let Ok((pos, event)) = refuse_destructive_plan::split_allow_flag(args) else {
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    if pos.len() != 1 || pos[0].trim().is_empty() {
+        eprintln!("{USAGE}");
         return 2;
     }
+    let label = &pos[0];
+    let allow = event
+        .as_deref()
+        .map(|p| refuse_destructive_plan::load_allow_list(label, p))
+        .unwrap_or_default();
     let policy = RetryPolicy::from_env();
-    let mut runner = ProcessRunner;
-    run_with_runner(&args[0], policy, &mut runner)
+    let mut runner = ProcessRunner { allow };
+    run_with_runner(label, policy, &mut runner)
 }
 
 #[cfg(test)]
@@ -253,7 +269,7 @@ mod tests {
 
         fn check_plan(&mut self, label: &str, plan_json: &str) -> i32 {
             self.events.push("check_plan".to_string());
-            refuse_destructive_plan::check_and_report(label, plan_json)
+            refuse_destructive_plan::check_and_report(label, plan_json, &[])
         }
 
         fn up(&mut self) -> Result<(i32, Vec<u8>), i32> {

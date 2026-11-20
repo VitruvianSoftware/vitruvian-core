@@ -173,11 +173,77 @@ esac
 
 #[test]
 fn bad_cli_usage_exits_2() {
-    for args in [&[][..], &["a", "b"][..], &[""][..]] {
+    for args in [
+        &[][..],
+        &["a", "b"][..],
+        &[""][..],
+        &["a", "--allow-destroy-from-event"][..],
+        &["a", "--bogus"][..],
+    ] {
         let mut c = cmd(&bin("GUARDED_UP_BIN"), "/usr/bin:/bin");
         c.args(args);
         let o = run(c);
         assert_eq!(code(&o), 2, "args: {args:?}");
         assert!(stderr(&o).contains("usage: guarded-up"));
+    }
+}
+
+#[test]
+fn approved_delete_is_applied_and_unapproved_one_is_not() {
+    const URN: &str =
+        "urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-old";
+    for (approved, want_rc, want_calls) in [
+        (true, 0, vec!["preview:1", "up:1"]),
+        (false, 1, vec!["preview:1"]),
+    ] {
+        let d = tempdir("guarded-up-allow");
+        let stubs = d.join("stubs");
+        let calls = d.join("calls.log");
+        write_exec(
+            &stubs.join("pulumi"),
+            &format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+case "${{1:-}}" in
+  preview)
+    echo "preview:1" >> "$CALL_LOG"
+    echo '{{"steps":[{{"op":"delete","urn":"{URN}"}}],"changeSummary":{{"delete":1}}}}'
+    ;;
+  up)
+    echo "up:1" >> "$CALL_LOG"
+    ;;
+  *) exit 99 ;;
+esac
+"#
+            ),
+        );
+        let msg = if approved {
+            format!("Allow-destroy: {URN}")
+        } else {
+            "no approval here".to_string()
+        };
+        let event = d.join("event.json");
+        std::fs::write(
+            &event,
+            format!(r#"{{"commits":[{{"message":"chore: x\n\n{msg}"}}]}}"#),
+        )
+        .unwrap();
+        let mut c = cmd(
+            &bin("GUARDED_UP_BIN"),
+            &format!("{}:/usr/bin:/bin", stubs.display()),
+        );
+        c.env("CALL_LOG", &calls)
+            .arg("sentry production")
+            .arg("--allow-destroy-from-event")
+            .arg(&event);
+        let o = run(c);
+        let got: Vec<String> = read(&calls).lines().map(str::to_string).collect();
+        assert_eq!(
+            code(&o),
+            want_rc,
+            "approved={approved} stderr: {}",
+            stderr(&o)
+        );
+        assert_eq!(got, want_calls, "approved={approved}");
     }
 }

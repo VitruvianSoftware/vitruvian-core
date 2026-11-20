@@ -352,6 +352,8 @@ struct ReconcileCase {
     first_preview_destructive: bool,
     up_409_count: u32,
     second_preview_destructive: bool,
+    /// GitHub event name and payload; None runs with no event (as before).
+    event: Option<(&'static str, &'static str)>,
 }
 
 struct ReconcileOutcome {
@@ -464,6 +466,14 @@ esac
     let up_count = d.join("up.count");
     let gh_output = d.join("github_output");
     std::fs::write(&gh_output, "").unwrap();
+    let event_path = d.join("event.json");
+    let event_name = match case.event {
+        Some((name, payload)) => {
+            std::fs::write(&event_path, payload).unwrap();
+            name
+        }
+        None => "",
+    };
 
     let script = format!(
         "set -euo pipefail\n\
@@ -478,6 +488,8 @@ esac
         .arg("-c")
         .arg(&script)
         .env_clear()
+        .env("EVENT_NAME", event_name)
+        .env("GITHUB_EVENT_PATH", &event_path)
         .env("PATH", format!("{}:/usr/bin:/bin", stubs.display()))
         .env("RUNNER_TEMP", &runner_temp)
         .env("GITHUB_OUTPUT", &gh_output)
@@ -547,6 +559,7 @@ fn sentry_apply_failing_stack_select_stops_before_preview_or_up_and_exits_nonzer
                 first_preview_destructive: false,
                 up_409_count: 0,
                 second_preview_destructive: false,
+                event: None,
             });
             assert_eq!(
                 res.rc, 255,
@@ -580,6 +593,7 @@ fn sentry_apply_up_409_retries_fresh_preview_and_plan_guard_before_second_up() {
         first_preview_destructive: false,
         up_409_count: 1,
         second_preview_destructive: false,
+        event: None,
     });
     assert_eq!(
         ok.rc, 0,
@@ -610,6 +624,7 @@ fn sentry_apply_up_409_retries_fresh_preview_and_plan_guard_before_second_up() {
         first_preview_destructive: false,
         up_409_count: 1,
         second_preview_destructive: true,
+        event: None,
     });
     assert_eq!(
         bad.rc, 1,
@@ -639,6 +654,7 @@ fn sentry_pagerduty_apply_guarded_up_covers_destructive_clean_and_409_replan() {
         first_preview_destructive: true,
         up_409_count: 0,
         second_preview_destructive: false,
+        event: None,
     });
     assert_eq!(
         destructive.rc, 1,
@@ -668,6 +684,7 @@ fn sentry_pagerduty_apply_guarded_up_covers_destructive_clean_and_409_replan() {
         first_preview_destructive: false,
         up_409_count: 0,
         second_preview_destructive: false,
+        event: None,
     });
     assert_eq!(
         clean.rc, 0,
@@ -702,6 +719,7 @@ fn sentry_pagerduty_apply_guarded_up_covers_destructive_clean_and_409_replan() {
         first_preview_destructive: false,
         up_409_count: 1,
         second_preview_destructive: false,
+        event: None,
     });
     assert_eq!(
         replan_ok.rc, 0,
@@ -737,6 +755,7 @@ fn sentry_pagerduty_apply_guarded_up_covers_destructive_clean_and_409_replan() {
         first_preview_destructive: false,
         up_409_count: 1,
         second_preview_destructive: true,
+        event: None,
     });
     assert_eq!(
         replan_bad.rc, 1,
@@ -755,4 +774,72 @@ fn sentry_pagerduty_apply_guarded_up_covers_destructive_clean_and_409_replan() {
         "expected plan-guard refusal on destructive re-plan:\n{}",
         replan_bad.out_file
     );
+}
+
+const APPROVING_PUSH: &str = r#"{"commits":[{"message":"chore(sentry): retire project-backstage\n\nAllow-destroy: urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-backstage\n"}]}"#;
+
+#[test]
+fn sentry_apply_applies_a_delete_only_when_a_pushed_commit_approves_it() {
+    for out_filename in ["pulumi-sentry-out.txt", "pulumi-sentry-pagerduty-out.txt"] {
+        // Push whose commit approves the exact URN -> the delete is applied.
+        let approved = run_reconcile_case(&ReconcileCase {
+            tag: "allow-push",
+            out_filename,
+            action: "up",
+            select_exit_code: 0,
+            first_preview_destructive: true,
+            up_409_count: 0,
+            second_preview_destructive: false,
+            event: Some(("push", APPROVING_PUSH)),
+        });
+        assert_eq!(
+            approved.rc, 0,
+            "{out_filename}: approved delete must apply; calls={:?}, out={}",
+            approved.calls, approved.out_file
+        );
+        assert_eq!(approved.calls, vec!["select", "preview:1", "up:1"]);
+        assert!(
+            approved.out_file.contains("approved by Allow-destroy"),
+            "{out_filename}: out={}",
+            approved.out_file
+        );
+
+        // The same payload on a scheduled run is never read -> refused.
+        for event in ["schedule", "workflow_dispatch"] {
+            let held = run_reconcile_case(&ReconcileCase {
+                tag: "allow-not-push",
+                out_filename,
+                action: "up",
+                select_exit_code: 0,
+                first_preview_destructive: true,
+                up_409_count: 0,
+                second_preview_destructive: false,
+                event: Some((event, APPROVING_PUSH)),
+            });
+            assert_eq!(
+                held.rc, 1,
+                "{out_filename}: {event} run must not honour Allow-destroy; calls={:?}",
+                held.calls
+            );
+            assert_eq!(held.calls, vec!["select", "preview:1"]);
+        }
+
+        // A push with no approval -> refused.
+        let unapproved = run_reconcile_case(&ReconcileCase {
+            tag: "allow-push-none",
+            out_filename,
+            action: "up",
+            select_exit_code: 0,
+            first_preview_destructive: true,
+            up_409_count: 0,
+            second_preview_destructive: false,
+            event: Some(("push", r#"{"commits":[{"message":"chore: unrelated"}]}"#)),
+        });
+        assert_eq!(
+            unapproved.rc, 1,
+            "{out_filename}: calls={:?}",
+            unapproved.calls
+        );
+        assert_eq!(unapproved.calls, vec!["select", "preview:1"]);
+    }
 }
