@@ -971,3 +971,59 @@ async fn drop_longer_than_grace_fails_disconnected() {
         dropped.elapsed()
     );
 }
+
+/// The device comes back inside the grace period with its dialog still open.
+/// Long after the grace the call is still the AI's to cancel, and when it
+/// does the dialog closes on the new link: a late Allow runs nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dialog_kept_across_a_reset_is_closed_when_the_ai_cancels() {
+    let relay = start_relay_with(RelayTiming {
+        reconnect_grace: Duration::from_millis(300),
+        ..relay_timing()
+    })
+    .await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector(&relay, "e-dialog-reset", &proxy.url, 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let call = async move {
+        m.rpc_id(
+            52,
+            "tools/call",
+            json!({"name": "start_process", "arguments": {"command": "rm -rf /tmp/x"}}),
+        )
+        .await
+    };
+    let (answer, ()) = tokio::join!(call, async {
+        until("the dialog to open", || {
+            c.asker.opened.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        proxy.cut();
+        until("the connector to see the drop", || c.logged("link down")).await;
+        proxy.reopen();
+        until("the link to be back", || {
+            relay.logs().matches("\"event\":\"connect\"").count() >= 2
+        })
+        .await;
+        // Past the relay's grace: a relay that failed the call here would
+        // have told the AI already, and left the dialog open.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert_eq!(c.asker.dismissed.load(Ordering::SeqCst), 0);
+        mcp.notify("notifications/cancelled", json!({"requestId": 52}))
+            .await;
+    });
+    assert_eq!(answer["error"]["code"], -32800, "{answer}");
+    until("the dialog to close", || {
+        c.asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
+    until("the calls log line", || {
+        c.calls_log().contains("cancelled at prompt")
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(c.tools.ran("start_process"), 0);
+}

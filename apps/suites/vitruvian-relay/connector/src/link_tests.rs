@@ -3165,3 +3165,32 @@ async fn eviction_takes_an_acknowledged_result_before_an_older_unacknowledged_on
     c.call("c2", "read_file", json!({"path": "/a"}));
     assert_eq!(text(&c.result().await), EVICTED);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_late_allow_after_a_cancel_on_the_new_link_never_runs() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-cancel-new-link");
+    let mut p = parts();
+    p.asker = FakeAsker::answering(None);
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (c, _) = relay.welcome().await;
+    c.call("c1", "start_process", json!({"command": "ls"}));
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    drop(c);
+    // Back within the grace; the relay then gives up on the call and says so
+    // on this link, not the one the call came on.
+    let (c, _) = relay.welcome().await;
+    c.send(ToConnector::Cancel {
+        call_id: "c1".into(),
+    });
+    until("the dismiss", || {
+        asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    asker.set(Waited::Allow);
+    until_logged(&dir, "cancelled at prompt").await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(tools.count(), 0);
+}

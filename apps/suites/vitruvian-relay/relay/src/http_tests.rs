@@ -2706,7 +2706,7 @@ async fn ack_triggers_start_and_delivers_result() {
 }
 
 #[tokio::test]
-async fn an_accepted_result_is_acknowledged_once() {
+async fn an_accepted_result_is_acknowledged() {
     let h = Arc::new(harness().await);
     let (device, key) = h.new_device(ALICE).await;
     let mut fake = h
@@ -2724,13 +2724,114 @@ async fn an_accepted_result_is_acknowledged_once() {
     fake.reply(&call.call_id, "ok");
     within(pending).await.unwrap();
     until(|| fake.result_acks() == [call.call_id.clone()]).await;
-    // The connector sends it again (it never saw the ack, say): the relay has
-    // no call waiting for it, so it is not accepted and not acknowledged.
+}
+
+#[tokio::test]
+async fn repeated_result_for_finished_call_is_acked() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
     fake.reply(&call.call_id, "ok");
-    // A frame behind it that does get an answer, so the first is known read.
-    fake.send(ToRelay::Ping { n: 7 });
-    assert_eq!(fake.next().await, ToConnector::Pong { n: 7 });
-    assert_eq!(fake.result_acks(), [call.call_id]);
+    let first = within(pending).await.unwrap();
+    until(|| fake.result_acks().len() == 1).await;
+    // The connector never saw that ack and sends the result again: nobody
+    // waits for it now, but it is acknowledged so the connector stops.
+    fake.reply(&call.call_id, "ok");
+    until(|| fake.result_acks().len() == 2).await;
+    assert_eq!(fake.result_acks(), [call.call_id.clone(), call.call_id]);
+    assert_eq!(first.json()["result"]["content"][0]["text"], "ok");
+}
+
+#[tokio::test]
+async fn result_after_grace_is_delivered_when_device_reconnected() {
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(300),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    // The link resets; the device is back at once, and runs the command for
+    // well over the grace period.
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    let mut fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert!(!pending.is_finished(), "the call failed after the grace");
+    fake2.reply(&call.call_id, "late but real");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "late but real");
+    // Nothing told the device to stop it.
+    assert!(fake2.frames.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn dialog_open_after_reconnect_is_cancelled_when_relay_gives_up() {
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(300),
+            call_budget: Duration::from_millis(1500),
+            transit_margin: Duration::from_millis(100),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "start_process", json!({"command": "ls"})),
+    );
+    let call = fake.next_call().await;
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    // Back within the grace, with its dialog still open; nobody answers it.
+    let mut fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    // The relay's deadline passes (after the grace): the AI is told, and the
+    // device is told to close the dialog on the connection it has now.
+    let r = within(pending).await.unwrap();
+    assert_eq!(error_text(&r), "The command took too long.");
+    assert_eq!(
+        fake2.next().await,
+        ToConnector::Cancel {
+            call_id: call.call_id
+        }
+    );
 }
 
 #[tokio::test]
