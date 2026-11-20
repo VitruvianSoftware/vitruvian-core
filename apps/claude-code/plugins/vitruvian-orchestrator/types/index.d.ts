@@ -327,6 +327,8 @@ export type StallRow = {
 export type Panel = {
   isCompact: boolean;
   autoOpenedFor: string;
+  /** The person dismissed the band of an open flow; the next progress call shows it again. */
+  bandHidden?: boolean;
 };
 
 declare module "claude-code" {

@@ -4736,3 +4736,106 @@ test("panel falls back to file read when flow has no team event", async ($, on) 
   );
   expect(boardOut).toContain("wren · security");
 });
+
+// Regression (2026-11-20): pressing the band's ✕ while helpers were still
+// working set the whole flow to null, so every later board read came back
+// `[]` and every post came back `{"seq":0}` with no error.
+test("dismissing the band of an open flow hides it but keeps the board", async ($, on) => {
+  mock.clock(on, { now: 50_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>empty-band</Text>;
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Open flow",
+    phase: "delegate",
+    tasks: [
+      { title: "Build it", specialist: "wren", tier: "build", after: [] },
+    ],
+  } as never);
+  const posted = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "@scout defect list goes here",
+    kind: "defect",
+  } as never)) as { result?: string };
+  expect(JSON.parse(String(posted.result))).toEqual({ seq: 1 });
+
+  const band = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(await band.find({ type: "Text", text: /Open flow/ })).toBeDefined();
+  await band.press({ key: "orchestrator-dismiss" });
+  await band.unmount();
+
+  // The band is gone...
+  const hidden = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(
+    await hidden.find({ type: "Text", text: /Open flow/ }),
+  ).toBeUndefined();
+  await hidden.unmount();
+
+  // ...but the board still has the post, and new posts still land.
+  const read = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+    kind: "defect",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(read.isError).toBeUndefined();
+  expect(
+    JSON.parse(String(read.result)).map((p: { seq: number }) => p.seq),
+  ).toEqual([1]);
+  const second = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "a second post",
+  } as never)) as { result?: string };
+  expect(JSON.parse(String(second.result))).toEqual({ seq: 2 });
+
+  // The lead's next progress call brings the band back.
+  await $.tool.call({ tool: PROGRESS_TOOL, phase: "review" } as never);
+  const back = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(await back.find({ type: "Text", text: /Open flow/ })).toBeDefined();
+  await back.unmount();
+});
+
+test("dismissing the band of a closed flow clears it", async ($, on) => {
+  mock.clock(on, { now: 60_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>empty-band</Text>;
+  });
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Done flow",
+    tasks: [
+      { title: "Only task", specialist: "wren", tier: "build", after: [] },
+    ],
+    accept: 1,
+    finished: true,
+  } as never);
+  const band = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  await band.press({ key: "orchestrator-dismiss" });
+  await band.unmount();
+  const after = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect((await after.find({ type: "Text", text: /empty-band/ }))?.text).toBe(
+    "empty-band",
+  );
+  await after.unmount();
+});
+
+test("post and board report an error when there is no flow, instead of seq 0 and []", async ($, on) => {
+  mock.clock(on, { now: 70_000 });
+  const post = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-x",
+    text: "@wren defects",
+    kind: "defect",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(post.isError).toBe(true);
+  expect(String(post.result)).toMatch(/not saved/);
+  const read = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(read.isError).toBe(true);
+  expect(String(read.result)).toMatch(/no orchestrator flow/i);
+});
