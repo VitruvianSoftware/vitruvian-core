@@ -348,4 +348,23 @@ mod tests {
         // Unassigned characters like U+0378 must be escaped as Python does.
         assert_eq!(repr_str("\u{0378}"), "'\\u0378'");
     }
+
+    /// The printable table is Python's own (`str.isprintable()`), not an
+    /// approximation: these code points are not printable, so `repr()` escapes
+    /// them exactly as Python 3 does. Checked with `repr(chr(cp))` in Python 3.15.
+    #[test]
+    fn printable_table_matches_python_repr() {
+        for cp in [0x0378u32, 0x2028, 0xE0001, 0xF0000, 0x10FFFE] {
+            let c = char::from_u32(cp).expect("valid scalar");
+            assert!(!is_printable(c), "U+{cp:04X} must not be printable");
+        }
+        // Control: a printable non-ASCII letter must stay as it is.
+        assert!(is_printable('\u{e9}'));
+        assert_eq!(repr_str("\u{e9}"), "'\u{e9}'");
+        assert_eq!(repr_str("\u{0378}"), "'\\u0378'");
+        assert_eq!(repr_str("\u{2028}"), "'\\u2028'");
+        assert_eq!(repr_str("\u{e0001}"), "'\\U000e0001'");
+        assert_eq!(repr_str("\u{f0000}"), "'\\U000f0000'");
+        assert_eq!(repr_str("\u{10fffe}"), "'\\U0010fffe'");
+    }
 }
