@@ -33,7 +33,7 @@ import fs, {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -190,7 +190,7 @@ test("handleJsonRpcMessage serves initialize, tools/list, and tools/call for pro
     });
     assert.deepEqual(
       listRes.result.tools.map((t) => t.name),
-      ["progress", "step", "post", "board", "channel", "team"],
+      ["progress", "step", "post", "board", "channel", "team", "team_setup"],
     );
 
     const callProgress = handleJsonRpcMessage(
@@ -3259,6 +3259,968 @@ test("team tool supports optional root input (valid, invalid, outside-repo symli
       missingRootPayload.roles.find((r) => r.role === "developer")?.agent,
       "beta",
     );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team_setup tool handles init, starter agents, all-or-nothing conflicts, sync across harnesses, security checks, check:true, and repo no-op", (t) => {
+  const toolDef = TOOLS.find((tool) => tool.name === "team_setup");
+  assert.ok(toolDef, "team_setup tool must exist in TOOLS");
+  assert.deepEqual(toolDef.inputSchema.properties?.action?.enum, [
+    "init",
+    "sync",
+  ]);
+  assert.equal(toolDef.inputSchema.additionalProperties, false);
+
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-team-setup-"));
+  const readSpy = t.mock.method(fs, "readSync");
+  try {
+    const callSetup = (args, meta = undefined, opts = {}) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "team_setup",
+            arguments: args,
+            ...(meta ? { _meta: meta } : {}),
+          },
+        },
+        opts,
+      );
+
+    // 1. Root validation matches team tool.
+    const fileAsRoot = join(tempDir, "not-a-dir.txt");
+    writeFileSync(fileAsRoot, "hi", "utf8");
+    for (const badRoot of [
+      "relative/dir",
+      ".",
+      relative(process.cwd(), tempDir) || ".",
+      join(tempDir, "missing"),
+      fileAsRoot,
+      "",
+      null,
+      123,
+    ]) {
+      const res = callSetup({ action: "init", root: badRoot });
+      assert.equal(res.error?.code, -32602);
+      assert.equal(
+        res.error?.message,
+        "root must be an absolute path to a directory",
+      );
+    }
+
+    // 2. Empty init creates starter team.json and refuses overwrite.
+    const emptyRepo = join(tempDir, "empty-repo");
+    mkdirSync(emptyRepo, { recursive: true });
+    const initEmpty = callSetup({ action: "init", root: emptyRepo });
+    assert.equal(initEmpty.error, undefined);
+    const emptyPayload = JSON.parse(initEmpty.result.content[0].text);
+    assert.equal(emptyPayload.action, "init");
+    assert.deepEqual(emptyPayload.files, [
+      { path: ".agents/team.json", status: "created", reason: null },
+    ]);
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(emptyRepo, ".agents/team.json"), "utf8")),
+      {
+        $schema: "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+        notes: "",
+        roles: {},
+      },
+    );
+    const initAgain = callSetup({ action: "init", root: emptyRepo });
+    assert.equal(initAgain.error?.code, -32602);
+    assert.match(initAgain.error?.message ?? "", /already exists/);
+
+    // 3. Init rejects lead, unknown roles, prototype keys; partial conflict is all-or-nothing.
+    const partialRepo = join(tempDir, "partial-repo");
+    mkdirSync(join(partialRepo, ".agents", "agents"), { recursive: true });
+    writeFileSync(
+      join(partialRepo, ".agents", "agents", "team-qa.md"),
+      "existing qa\n",
+      "utf8",
+    );
+    for (const badAgents of [
+      ["lead"],
+      ["wizard"],
+      ["constructor"],
+      ["__proto__"],
+    ]) {
+      const badRes = callSetup({
+        action: "init",
+        root: partialRepo,
+        agents: badAgents,
+      });
+      assert.equal(badRes.error?.code, -32602);
+    }
+    const conflictRes = callSetup({
+      action: "init",
+      root: partialRepo,
+      agents: ["developer", "qa"],
+    });
+    assert.equal(conflictRes.error?.code, -32602);
+    assert.match(
+      conflictRes.error?.message ?? "",
+      /team-qa\.md already exists/,
+    );
+    assert.equal(
+      fs.existsSync(join(partialRepo, ".agents", "team.json")),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(
+        join(partialRepo, ".agents", "agents", "team-developer.md"),
+      ),
+      false,
+    );
+
+    // 4. Init with agents copies ONLY calling harness (.agents/agents/) starter files and sync round-trips.
+    const starterRepo = join(tempDir, "starter-repo");
+    mkdirSync(starterRepo, { recursive: true });
+    const starterRes = callSetup({
+      action: "init",
+      root: starterRepo,
+      agents: ["developer", "qa"],
+    });
+    assert.equal(starterRes.error, undefined);
+    const starterPayload = JSON.parse(starterRes.result.content[0].text);
+    assert.deepEqual(
+      starterPayload.files.map((f) => f.path),
+      [
+        ".agents/agents/team-developer.md",
+        ".agents/agents/team-qa.md",
+        ".agents/team.json",
+      ],
+    );
+    assert.equal(
+      fs.existsSync(
+        join(starterRepo, ".claude", "agents", "team-developer.md"),
+      ),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(
+        join(starterRepo, ".opencode", "agents", "team-developer.md"),
+      ),
+      false,
+    );
+    const starterDevText = readFileSync(
+      join(starterRepo, ".agents", "agents", "team-developer.md"),
+      "utf8",
+    );
+    assert.match(starterDevText, /^name: team-developer$/m);
+    assert.doesNotMatch(starterDevText, /Do not edit directly/);
+
+    // Edit team.json to set explicit antigravity model and verify sync updates starter file.
+    writeFileSync(
+      join(starterRepo, ".agents", "team.json"),
+      JSON.stringify({
+        roles: {
+          developer: {
+            agent: "team-developer",
+            engine: "native",
+            antigravity: "flash",
+          },
+          qa: { agent: "team-qa", engine: "native" },
+        },
+      }),
+      "utf8",
+    );
+    const checkStarterSync = callSetup({
+      action: "sync",
+      root: starterRepo,
+      check: true,
+    });
+    assert.equal(checkStarterSync.error, undefined);
+    const checkStarterPayload = JSON.parse(
+      checkStarterSync.result.content[0].text,
+    );
+    assert.equal(
+      checkStarterPayload.files.find(
+        (f) => f.path === ".agents/agents/team-developer.md",
+      )?.status,
+      "changed",
+    );
+    assert.equal(
+      readFileSync(
+        join(starterRepo, ".agents", "agents", "team-developer.md"),
+        "utf8",
+      ),
+      starterDevText,
+    );
+
+    const applyStarterSync = callSetup({
+      action: "sync",
+      root: starterRepo,
+    });
+    assert.equal(applyStarterSync.error, undefined);
+    assert.match(
+      readFileSync(
+        join(starterRepo, ".agents", "agents", "team-developer.md"),
+        "utf8",
+      ),
+      /^model: flash$/m,
+    );
+
+    // 5. Sync across all 3 harnesses: explicit values only, skips antigravity-model, no-frontmatter, generated, symlinks, oversize.
+    const syncRepo = join(tempDir, "sync-repo");
+    mkdirSync(join(syncRepo, ".agents", "agents"), { recursive: true });
+    mkdirSync(join(syncRepo, ".claude", "agents"), { recursive: true });
+    mkdirSync(join(syncRepo, ".opencode", "agents"), { recursive: true });
+    const outsideDir = join(tempDir, "outside-sync");
+    mkdirSync(outsideDir, { recursive: true });
+    const outsideTarget = join(outsideDir, "outside.md");
+    writeFileSync(outsideTarget, "---\nname: x\n---\n", "utf8");
+
+    writeFileSync(
+      join(syncRepo, ".agents", "team.json"),
+      JSON.stringify({
+        tiers: {
+          build: {
+            "claude-code": "sonnet",
+            opencode: "anthropic/claude-sonnet-5-5",
+            antigravity: "pro",
+            effort: "high",
+          },
+          deep: {
+            antigravity: "opus",
+          },
+        },
+        roles: {
+          lead: { agent: "boss" },
+          developer: { agent: "dev-a" },
+          qa: { agent: "qa-a" },
+          security: { agent: "sec-a" },
+          docs: { agent: "docs-a" },
+          build: { agent: "big-a" },
+          operations: { agent: "link-a" },
+          infrastructure: { "claude-code": "opus" },
+        },
+      }),
+      "utf8",
+    );
+
+    // lead: no explicit model in team.json -> unchanged (never uses plugin defaults).
+    const bossCc = "---\nname: boss\nmodel: haiku\n---\nBoss body\n";
+    writeFileSync(
+      join(syncRepo, ".claude", "agents", "boss.md"),
+      bossCc,
+      "utf8",
+    );
+    // developer: updated on all 3 harnesses.
+    writeFileSync(
+      join(syncRepo, ".claude", "agents", "dev-a.md"),
+      "---\nname: dev-a\nmodel: haiku\n---\nDev body.\n",
+      "utf8",
+    );
+    writeFileSync(
+      join(syncRepo, ".opencode", "agents", "dev-a.md"),
+      "---\ndescription: Dev\nmode: subagent\n---\nOC dev body.\n",
+      "utf8",
+    );
+    writeFileSync(
+      join(syncRepo, ".agents", "agents", "dev-a.md"),
+      "---\nname: dev-a\nmodel: flash\n---\nAgy dev body.\n",
+      "utf8",
+    );
+    // qa: invalid antigravity model "opus" -> skipped (antigravity-model).
+    writeFileSync(
+      join(syncRepo, ".agents", "agents", "qa-a.md"),
+      "---\nname: qa-a\nmodel: pro\n---\nQA body.\n",
+      "utf8",
+    );
+    // security: no frontmatter -> skipped (no-frontmatter).
+    writeFileSync(
+      join(syncRepo, ".claude", "agents", "sec-a.md"),
+      "No frontmatter here.\n",
+      "utf8",
+    );
+    // docs: generated comment -> skipped (generated).
+    writeFileSync(
+      join(syncRepo, ".claude", "agents", "docs-a.md"),
+      "---\nname: docs-a\n---\n<!-- Generated by tool. Do not edit. -->\nDocs.\n",
+      "utf8",
+    );
+    // build: > 256 KiB -> skipped (too-large) without fs.readSync.
+    writeFileSync(
+      join(syncRepo, ".claude", "agents", "big-a.md"),
+      `---\nname: big-a\n---\n${"x".repeat(260 * 1024)}\n`,
+      "utf8",
+    );
+    // operations: symlink -> skipped (symlink).
+    symlinkSync(
+      outsideTarget,
+      join(syncRepo, ".claude", "agents", "link-a.md"),
+    );
+
+    const readsBefore = readSpy.mock.callCount();
+    const syncRes = callSetup({ action: "sync", root: syncRepo });
+    assert.equal(syncRes.error, undefined);
+    const syncPayload = JSON.parse(syncRes.result.content[0].text);
+    const byPath = new Map(syncPayload.files.map((f) => [f.path, f]));
+
+    assert.equal(byPath.get(".claude/agents/boss.md")?.status, "unchanged");
+    assert.equal(
+      readFileSync(join(syncRepo, ".claude", "agents", "boss.md"), "utf8"),
+      bossCc,
+    );
+    assert.equal(byPath.get(".claude/agents/dev-a.md")?.status, "changed");
+    assert.match(
+      readFileSync(join(syncRepo, ".claude", "agents", "dev-a.md"), "utf8"),
+      /^model: sonnet\neffort: high$/m,
+    );
+    assert.equal(byPath.get(".opencode/agents/dev-a.md")?.status, "changed");
+    assert.match(
+      readFileSync(join(syncRepo, ".opencode", "agents", "dev-a.md"), "utf8"),
+      /^model: anthropic\/claude-sonnet-5-5\nreasoningEffort: high$/m,
+    );
+    assert.equal(byPath.get(".agents/agents/dev-a.md")?.status, "changed");
+    assert.match(
+      readFileSync(join(syncRepo, ".agents", "agents", "dev-a.md"), "utf8"),
+      /^model: pro$/m,
+    );
+    assert.deepEqual(
+      {
+        status: byPath.get(".agents/agents/qa-a.md")?.status,
+        reason: byPath.get(".agents/agents/qa-a.md")?.reason,
+      },
+      { status: "skipped", reason: "antigravity-model" },
+    );
+    assert.deepEqual(
+      {
+        status: byPath.get(".claude/agents/sec-a.md")?.status,
+        reason: byPath.get(".claude/agents/sec-a.md")?.reason,
+      },
+      { status: "skipped", reason: "no-frontmatter" },
+    );
+    assert.deepEqual(
+      {
+        status: byPath.get(".claude/agents/docs-a.md")?.status,
+        reason: byPath.get(".claude/agents/docs-a.md")?.reason,
+      },
+      { status: "skipped", reason: "generated" },
+    );
+    assert.deepEqual(
+      {
+        status: byPath.get(".claude/agents/big-a.md")?.status,
+        reason: byPath.get(".claude/agents/big-a.md")?.reason,
+      },
+      { status: "skipped", reason: "too-large" },
+    );
+    assert.deepEqual(
+      {
+        status: byPath.get(".claude/agents/link-a.md")?.status,
+        reason: byPath.get(".claude/agents/link-a.md")?.reason,
+      },
+      { status: "skipped", reason: "symlink" },
+    );
+    // big-a.md (> 256 KiB) only had team.json + 7 small files read; oversize file never read:
+    assert.ok(readSpy.mock.callCount() > readsBefore);
+
+    // Verify oversize agent file alone never triggers fs.readSync at all:
+    const onlyBigRepo = join(tempDir, "only-big-repo");
+    mkdirSync(join(onlyBigRepo, ".agents"), { recursive: true });
+    mkdirSync(join(onlyBigRepo, ".claude", "agents"), { recursive: true });
+    writeFileSync(
+      join(onlyBigRepo, ".agents", "team.json"),
+      JSON.stringify({ roles: { developer: { agent: "big-only" } } }),
+      "utf8",
+    );
+    writeFileSync(
+      join(onlyBigRepo, ".claude", "agents", "big-only.md"),
+      `---\nname: big-only\n---\n${"z".repeat(260 * 1024)}\n`,
+      "utf8",
+    );
+    // Warm team.json read count by checking exact delta = only team.json reads (2 calls: 1 chunk + EOF 0):
+    const countBeforeOnlyBig = readSpy.mock.callCount();
+    const onlyBigRes = callSetup({ action: "sync", root: onlyBigRepo });
+    const readsForOnlyBig = readSpy.mock.callCount() - countBeforeOnlyBig;
+    assert.equal(readsForOnlyBig, 2); // only .agents/team.json was read, never big-only.md
+    assert.equal(
+      JSON.parse(onlyBigRes.result.content[0].text).files[0]?.reason,
+      "too-large",
+    );
+
+    // Symlinked directory (.claude/agents -> outside) is also refused on sync & init.
+    const symDirRepo = join(tempDir, "symdir-repo");
+    mkdirSync(join(symDirRepo, ".agents"), { recursive: true });
+    mkdirSync(join(symDirRepo, ".claude"), { recursive: true });
+    symlinkSync(outsideDir, join(symDirRepo, ".claude", "agents"));
+    writeFileSync(
+      join(symDirRepo, ".agents", "team.json"),
+      JSON.stringify({ roles: { developer: { agent: "outside" } } }),
+      "utf8",
+    );
+    const symDirSync = callSetup({ action: "sync", root: symDirRepo });
+    assert.equal(symDirSync.error, undefined);
+    const symDirFiles = JSON.parse(symDirSync.result.content[0].text).files;
+    assert.equal(symDirFiles[0]?.status, "skipped");
+    assert.equal(symDirFiles[0]?.reason, "symlink");
+
+    // 6. Real repository .agents/team.json + all 30 real agent files change nothing on sync.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const repoRunfilesRoot = resolve(here, "../../../../..");
+    const realRepoCopy = join(tempDir, "real-repo-copy");
+    mkdirSync(join(realRepoCopy, ".agents", "agents"), { recursive: true });
+    mkdirSync(join(realRepoCopy, ".claude", "agents"), { recursive: true });
+    mkdirSync(join(realRepoCopy, ".opencode", "agents"), { recursive: true });
+    const realTeamText = readFileSync(
+      join(repoRunfilesRoot, ".agents", "team.json"),
+      "utf8",
+    );
+    writeFileSync(
+      join(realRepoCopy, ".agents", "team.json"),
+      realTeamText,
+      "utf8",
+    );
+    const originals = new Map();
+    for (const dir of [
+      ".claude/agents",
+      ".opencode/agents",
+      ".agents/agents",
+    ]) {
+      for (const name of readdirSync(join(repoRunfilesRoot, dir))) {
+        if (!name.endsWith(".md")) continue;
+        const relPath = `${dir}/${name}`;
+        const content = readFileSync(join(repoRunfilesRoot, relPath), "utf8");
+        originals.set(relPath, content);
+        writeFileSync(join(realRepoCopy, relPath), content, "utf8");
+      }
+    }
+    assert.equal(originals.size, 30);
+    const realSync = callSetup({ action: "sync", root: realRepoCopy });
+    assert.equal(realSync.error, undefined);
+    const realPayload = JSON.parse(realSync.result.content[0].text);
+    assert.equal(realPayload.files.length, 30);
+    for (const entry of realPayload.files) {
+      assert.equal(entry.status, "skipped", JSON.stringify(entry));
+      assert.equal(entry.reason, "generated", JSON.stringify(entry));
+      assert.equal(
+        readFileSync(join(realRepoCopy, entry.path), "utf8"),
+        originals.get(entry.path),
+      );
+    }
+
+    // 7. Missing root uses _meta workspace discovery.
+    const metaInitRepo = join(tempDir, "meta-init-repo");
+    mkdirSync(metaInitRepo, { recursive: true });
+    const metaInit = callSetup(
+      { action: "init" },
+      { "antigravity.google/workspace_root": metaInitRepo },
+    );
+    assert.equal(metaInit.error, undefined);
+    assert.equal(
+      fs.existsSync(join(metaInitRepo, ".agents", "team.json")),
+      true,
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("team_setup rulings: shared-agent conflicts, ENOTDIR/EACCES, init write-order rollback, .agents/agents symlink, generated-banner rule, starterAgentFile missing name, malformed JSON, oversize team.json, prototype keys", (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), "orch-mcp-team-setup-rulings-"));
+  try {
+    const callSetup = (args, meta = undefined, opts = {}) =>
+      handleJsonRpcMessage(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "team_setup",
+            arguments: args,
+            ...(meta ? { _meta: meta } : {}),
+          },
+        },
+        opts,
+      );
+
+    // Ruling #1: Shared agent file in sync — equal applied once, differing skipped with conflict naming both roles.
+    const sharedRepo = join(tempDir, "shared-repo");
+    mkdirSync(join(sharedRepo, ".agents", "agents"), { recursive: true });
+    writeFileSync(
+      join(sharedRepo, ".agents", "team.json"),
+      JSON.stringify({
+        tiers: {
+          build: { antigravity: "pro" },
+        },
+        roles: {
+          developer: { agent: "same-a" },
+          build: { agent: "same-a" },
+          qa: { agent: "diff-a", antigravity: "pro" },
+          security: { agent: "diff-a", antigravity: "flash" },
+        },
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(sharedRepo, ".agents", "agents", "same-a.md"),
+      "---\nname: same-a\nmodel: inherit\n---\nSame\n",
+      "utf8",
+    );
+    const diffOriginal = "---\nname: diff-a\nmodel: inherit\n---\nDiff\n";
+    writeFileSync(
+      join(sharedRepo, ".agents", "agents", "diff-a.md"),
+      diffOriginal,
+      "utf8",
+    );
+
+    const sharedRes = callSetup({ action: "sync", root: sharedRepo });
+    assert.equal(sharedRes.error, undefined);
+    const sharedFiles = JSON.parse(sharedRes.result.content[0].text).files;
+    const sameEntries = sharedFiles.filter(
+      (f) => f.path === ".agents/agents/same-a.md",
+    );
+    assert.equal(sameEntries.length, 1);
+    assert.equal(sameEntries[0]?.status, "changed");
+    assert.match(
+      readFileSync(join(sharedRepo, ".agents", "agents", "same-a.md"), "utf8"),
+      /^model: pro$/m,
+    );
+    const diffEntry = sharedFiles.find(
+      (f) => f.path === ".agents/agents/diff-a.md",
+    );
+    assert.equal(diffEntry?.status, "skipped");
+    assert.match(diffEntry?.reason ?? "", /conflict/);
+    assert.match(diffEntry?.reason ?? "", /\bqa\b/);
+    assert.match(diffEntry?.reason ?? "", /\bsecurity\b/);
+    assert.equal(
+      readFileSync(join(sharedRepo, ".agents", "agents", "diff-a.md"), "utf8"),
+      diffOriginal,
+    );
+
+    // Ruling #2: ENOTDIR / EACCES / parent-not-directory refuse the whole action (never "absent") with zero writes.
+    const fileParentInitRepo = join(tempDir, "file-parent-init-repo");
+    mkdirSync(fileParentInitRepo, { recursive: true });
+    writeFileSync(
+      join(fileParentInitRepo, ".agents"),
+      "not a directory\n",
+      "utf8",
+    );
+    const fileParentRes = callSetup({
+      action: "init",
+      root: fileParentInitRepo,
+    });
+    assert.equal(fileParentRes.error?.code, -32602);
+    assert.match(fileParentRes.error?.message ?? "", /not a directory/i);
+
+    const enotdirInitRepo = join(tempDir, "enotdir-init-repo");
+    const eaccesInitRepo = join(tempDir, "eacces-init-repo");
+    const enotdirSyncRepo = join(tempDir, "enotdir-sync-repo");
+    mkdirSync(enotdirInitRepo, { recursive: true });
+    mkdirSync(eaccesInitRepo, { recursive: true });
+    mkdirSync(join(enotdirSyncRepo, ".agents", "agents"), { recursive: true });
+    writeFileSync(
+      join(enotdirSyncRepo, ".agents", "team.json"),
+      JSON.stringify({
+        roles: {
+          developer: { agent: "ok-a", antigravity: "pro" },
+          qa: { agent: "bad-a", antigravity: "pro" },
+        },
+      }),
+      "utf8",
+    );
+    const okOriginal = "---\nname: ok-a\nmodel: inherit\n---\nOK\n";
+    writeFileSync(
+      join(enotdirSyncRepo, ".agents", "agents", "ok-a.md"),
+      okOriginal,
+      "utf8",
+    );
+
+    const origLstat = fs.lstatSync;
+    const lstatMock = t.mock.method(fs, "lstatSync", (p, ...rest) => {
+      if (p === join(enotdirInitRepo, ".agents")) {
+        const err = new Error("ENOTDIR: not a directory, lstat");
+        err.code = "ENOTDIR";
+        throw err;
+      }
+      if (p === join(eaccesInitRepo, ".agents")) {
+        const err = new Error("EACCES: permission denied, lstat");
+        err.code = "EACCES";
+        throw err;
+      }
+      if (p === join(enotdirSyncRepo, ".agents", "agents", "bad-a.md")) {
+        const err = new Error("ENOTDIR: not a directory, lstat");
+        err.code = "ENOTDIR";
+        throw err;
+      }
+      return origLstat.call(fs, p, ...rest);
+    });
+    try {
+      const enotdirInit = callSetup({ action: "init", root: enotdirInitRepo });
+      assert.equal(enotdirInit.error?.code, -32602);
+      assert.match(enotdirInit.error?.message ?? "", /ENOTDIR/);
+      assert.equal(
+        fs.existsSync(join(enotdirInitRepo, ".agents", "team.json")),
+        false,
+      );
+
+      const eaccesInit = callSetup({ action: "init", root: eaccesInitRepo });
+      assert.equal(eaccesInit.error?.code, -32602);
+      assert.match(eaccesInit.error?.message ?? "", /EACCES/);
+      assert.equal(
+        fs.existsSync(join(eaccesInitRepo, ".agents", "team.json")),
+        false,
+      );
+
+      const enotdirSync = callSetup({ action: "sync", root: enotdirSyncRepo });
+      assert.equal(enotdirSync.error?.code, -32602);
+      assert.match(enotdirSync.error?.message ?? "", /ENOTDIR/);
+      assert.equal(
+        readFileSync(
+          join(enotdirSyncRepo, ".agents", "agents", "ok-a.md"),
+          "utf8",
+        ),
+        okOriginal,
+      );
+    } finally {
+      lstatMock.mock.restore();
+    }
+
+    // Ruling #3: init writes starter agent files first and team.json last, rolling back created files on mid-run failure.
+    const rollbackAgentRepo = join(tempDir, "rollback-agent-repo");
+    const rollbackTeamRepo = join(tempDir, "rollback-team-repo");
+    mkdirSync(rollbackAgentRepo, { recursive: true });
+    mkdirSync(rollbackTeamRepo, { recursive: true });
+
+    const attemptedWrites = [];
+    const failTarget1 = join(
+      rollbackAgentRepo,
+      ".agents",
+      "agents",
+      "team-qa.md",
+    );
+    const failTarget2 = join(rollbackTeamRepo, ".agents", "team.json");
+    const origOpen = fs.openSync;
+    const openMock = t.mock.method(fs, "openSync", (p, flags, ...rest) => {
+      if (typeof flags === "number" && (flags & fs.constants.O_CREAT) !== 0) {
+        attemptedWrites.push(p);
+        if (p === failTarget1 || p === failTarget2) {
+          throw new Error(`EIO: disk full writing ${p}`);
+        }
+      }
+      return origOpen.call(fs, p, flags, ...rest);
+    });
+    try {
+      const rb1 = callSetup({
+        action: "init",
+        root: rollbackAgentRepo,
+        agents: ["developer", "qa"],
+      });
+      assert.equal(rb1.error?.code, -32602);
+      assert.deepEqual(attemptedWrites, [
+        join(rollbackAgentRepo, ".agents", "agents", "team-developer.md"),
+        join(rollbackAgentRepo, ".agents", "agents", "team-qa.md"),
+      ]);
+      assert.equal(
+        fs.existsSync(
+          join(rollbackAgentRepo, ".agents", "agents", "team-developer.md"),
+        ),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(
+          join(rollbackAgentRepo, ".agents", "agents", "team-qa.md"),
+        ),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(join(rollbackAgentRepo, ".agents", "team.json")),
+        false,
+      );
+
+      attemptedWrites.length = 0;
+      const rb2 = callSetup({
+        action: "init",
+        root: rollbackTeamRepo,
+        agents: ["developer", "qa"],
+      });
+      assert.equal(rb2.error?.code, -32602);
+      assert.deepEqual(attemptedWrites, [
+        join(rollbackTeamRepo, ".agents", "agents", "team-developer.md"),
+        join(rollbackTeamRepo, ".agents", "agents", "team-qa.md"),
+        join(rollbackTeamRepo, ".agents", "team.json"),
+      ]);
+      assert.equal(
+        fs.existsSync(
+          join(rollbackTeamRepo, ".agents", "agents", "team-developer.md"),
+        ),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(
+          join(rollbackTeamRepo, ".agents", "agents", "team-qa.md"),
+        ),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(join(rollbackTeamRepo, ".agents", "team.json")),
+        false,
+      );
+    } finally {
+      openMock.mock.restore();
+    }
+
+    // Ruling #5: .agents/agents directory symlink refused in both init and sync.
+    const outsideAgentsDir = join(tempDir, "outside-agents-dir");
+    mkdirSync(outsideAgentsDir, { recursive: true });
+    const outsideSymAgent = join(outsideAgentsDir, "sym-a.md");
+    const outsideSymOrig = "---\nname: sym-a\nmodel: inherit\n---\nOutside\n";
+    writeFileSync(outsideSymAgent, outsideSymOrig, "utf8");
+
+    const symInitRepo = join(tempDir, "sym-agents-init-repo");
+    mkdirSync(join(symInitRepo, ".agents"), { recursive: true });
+    symlinkSync(outsideAgentsDir, join(symInitRepo, ".agents", "agents"));
+    const symInit = callSetup({
+      action: "init",
+      root: symInitRepo,
+      agents: ["developer"],
+    });
+    assert.equal(symInit.error?.code, -32602);
+    assert.match(symInit.error?.message ?? "", /\.agents\/agents/);
+    assert.match(symInit.error?.message ?? "", /symlink/);
+    assert.equal(
+      fs.existsSync(join(symInitRepo, ".agents", "team.json")),
+      false,
+    );
+    assert.equal(
+      fs.existsSync(join(outsideAgentsDir, "team-developer.md")),
+      false,
+    );
+
+    const symSyncRepo = join(tempDir, "sym-agents-sync-repo");
+    mkdirSync(join(symSyncRepo, ".agents"), { recursive: true });
+    symlinkSync(outsideAgentsDir, join(symSyncRepo, ".agents", "agents"));
+    writeFileSync(
+      join(symSyncRepo, ".agents", "team.json"),
+      JSON.stringify({
+        roles: { developer: { agent: "sym-a", antigravity: "pro" } },
+      }),
+      "utf8",
+    );
+    const symReadSpy = t.mock.method(fs, "readSync");
+    let symSync;
+    let symReads = 0;
+    try {
+      const beforeSymReads = symReadSpy.mock.callCount();
+      symSync = callSetup({ action: "sync", root: symSyncRepo });
+      symReads = symReadSpy.mock.callCount() - beforeSymReads;
+    } finally {
+      symReadSpy.mock.restore();
+    }
+    assert.equal(symSync.error, undefined);
+    assert.equal(symReads, 2); // only .agents/team.json was read
+    assert.deepEqual(JSON.parse(symSync.result.content[0].text).files, [
+      {
+        path: ".agents/agents/sym-a.md",
+        harness: "antigravity",
+        role: "developer",
+        agent: "sym-a",
+        status: "skipped",
+        reason: "symlink",
+      },
+    ]);
+    assert.equal(readFileSync(outsideSymAgent, "utf8"), outsideSymOrig);
+
+    // Ruling #6: generated-file skip requires both "Generated" and "Do not edit" on one line in first 15 lines.
+    const bannerRepo = join(tempDir, "banner-repo");
+    mkdirSync(join(bannerRepo, ".agents", "agents"), { recursive: true });
+    writeFileSync(
+      join(bannerRepo, ".agents", "team.json"),
+      JSON.stringify({
+        roles: {
+          developer: { agent: "gen-both", antigravity: "pro" },
+          qa: { agent: "plain-dne", antigravity: "pro" },
+          security: { agent: "plain-gen", antigravity: "pro" },
+        },
+      }),
+      "utf8",
+    );
+    const genBothOrig =
+      "---\nname: gen-both\nmodel: flash\n---\n<!-- Generated by tool. Do not edit. -->\nBody\n";
+    writeFileSync(
+      join(bannerRepo, ".agents", "agents", "gen-both.md"),
+      genBothOrig,
+      "utf8",
+    );
+    writeFileSync(
+      join(bannerRepo, ".agents", "agents", "plain-dne.md"),
+      "---\nname: plain-dne\nmodel: flash\n---\n<!-- Do not edit -->\nBody\n",
+      "utf8",
+    );
+    writeFileSync(
+      join(bannerRepo, ".agents", "agents", "plain-gen.md"),
+      "---\nname: plain-gen\nmodel: flash\n---\n<!-- Generated by tool -->\nBody\n",
+      "utf8",
+    );
+    const bannerSync = callSetup({ action: "sync", root: bannerRepo });
+    assert.equal(bannerSync.error, undefined);
+    const bannerByPath = new Map(
+      JSON.parse(bannerSync.result.content[0].text).files.map((f) => [
+        f.path,
+        f,
+      ]),
+    );
+    assert.equal(
+      bannerByPath.get(".agents/agents/gen-both.md")?.reason,
+      "generated",
+    );
+    assert.equal(
+      readFileSync(
+        join(bannerRepo, ".agents", "agents", "gen-both.md"),
+        "utf8",
+      ),
+      genBothOrig,
+    );
+    assert.equal(
+      bannerByPath.get(".agents/agents/plain-dne.md")?.status,
+      "changed",
+    );
+    assert.match(
+      readFileSync(
+        join(bannerRepo, ".agents", "agents", "plain-dne.md"),
+        "utf8",
+      ),
+      /^model: pro$/m,
+    );
+    assert.equal(
+      bannerByPath.get(".agents/agents/plain-gen.md")?.status,
+      "changed",
+    );
+    assert.match(
+      readFileSync(
+        join(bannerRepo, ".agents", "agents", "plain-gen.md"),
+        "utf8",
+      ),
+      /^model: pro$/m,
+    );
+
+    // Ruling #7: starterAgentFile adds `name: team-<role>` when absent in frontmatter.
+    const customPluginAgents = join(tempDir, "custom-plugin-agents");
+    mkdirSync(customPluginAgents, { recursive: true });
+    writeFileSync(
+      join(customPluginAgents, "developer.md"),
+      "---\ndescription: Custom dev without name\n---\nBody\n",
+      "utf8",
+    );
+    const noNameRepo = join(tempDir, "no-name-repo");
+    mkdirSync(noNameRepo, { recursive: true });
+    const noNameInit = callSetup(
+      { action: "init", root: noNameRepo, agents: ["developer"] },
+      undefined,
+      { pluginAgentsDir: customPluginAgents },
+    );
+    assert.equal(noNameInit.error, undefined);
+    assert.match(
+      readFileSync(
+        join(noNameRepo, ".agents", "agents", "team-developer.md"),
+        "utf8",
+      ),
+      /^name: team-developer$/m,
+    );
+
+    // Board rulings: malformed JSON starts with "invalid JSON:", oversize team.json refused before read,
+    // and "constructor" / "__proto__" handled safely without prototype pollution.
+    const badJsonRepo = join(tempDir, "bad-json-repo");
+    mkdirSync(join(badJsonRepo, ".agents"), { recursive: true });
+    writeFileSync(join(badJsonRepo, ".agents", "team.json"), "{bad", "utf8");
+    const badJsonSync = callSetup({ action: "sync", root: badJsonRepo });
+    assert.equal(badJsonSync.error?.code, -32602);
+    assert.equal(
+      (badJsonSync.error?.message ?? "").startsWith("invalid JSON:"),
+      true,
+    );
+
+    const bigTeamRepo = join(tempDir, "big-team-repo");
+    mkdirSync(join(bigTeamRepo, ".agents"), { recursive: true });
+    writeFileSync(
+      join(bigTeamRepo, ".agents", "team.json"),
+      JSON.stringify({ notes: "a".repeat(70 * 1024) }),
+      "utf8",
+    );
+    const bigReadSpy = t.mock.method(fs, "readSync");
+    let bigTeamSync;
+    let bigReads = 0;
+    try {
+      const beforeBig = bigReadSpy.mock.callCount();
+      bigTeamSync = callSetup({ action: "sync", root: bigTeamRepo });
+      bigReads = bigReadSpy.mock.callCount() - beforeBig;
+    } finally {
+      bigReadSpy.mock.restore();
+    }
+    assert.equal(bigTeamSync.error?.code, -32602);
+    assert.match(bigTeamSync.error?.message ?? "", /exceeds maximum size/);
+    assert.equal(bigReads, 0);
+
+    for (const badRoleJson of [
+      '{"roles":{"constructor":{"agent":"dev-a"}}}',
+      '{"roles":{"__proto__":{"agent":"dev-a"}}}',
+    ]) {
+      const protoRoleRepo = join(tempDir, "proto-role-repo");
+      mkdirSync(join(protoRoleRepo, ".agents"), { recursive: true });
+      writeFileSync(
+        join(protoRoleRepo, ".agents", "team.json"),
+        badRoleJson,
+        "utf8",
+      );
+      const protoRoleSync = callSetup({ action: "sync", root: protoRoleRepo });
+      assert.equal(protoRoleSync.error?.code, -32602);
+      assert.match(protoRoleSync.error?.message ?? "", /unknown role/);
+    }
+
+    const ctorAgentRepo = join(tempDir, "ctor-agent-repo");
+    mkdirSync(join(ctorAgentRepo, ".agents", "agents"), { recursive: true });
+    writeFileSync(
+      join(ctorAgentRepo, ".agents", "agents", "constructor.md"),
+      "---\nname: constructor\nmodel: flash\n---\nCtor\n",
+      "utf8",
+    );
+    writeFileSync(
+      join(ctorAgentRepo, ".agents", "team.json"),
+      JSON.stringify({
+        roles: {
+          developer: { agent: "constructor", antigravity: "pro" },
+          build: { agent: "constructor", antigravity: "pro" },
+        },
+      }),
+      "utf8",
+    );
+    const ctorEqualSync = callSetup({ action: "sync", root: ctorAgentRepo });
+    assert.equal(ctorEqualSync.error, undefined);
+    const ctorEqualFiles = JSON.parse(
+      ctorEqualSync.result.content[0].text,
+    ).files;
+    assert.equal(ctorEqualFiles.length, 1);
+    assert.equal(ctorEqualFiles[0]?.status, "changed");
+    assert.match(
+      readFileSync(
+        join(ctorAgentRepo, ".agents", "agents", "constructor.md"),
+        "utf8",
+      ),
+      /^model: pro$/m,
+    );
+
+    writeFileSync(
+      join(ctorAgentRepo, ".agents", "team.json"),
+      JSON.stringify({
+        roles: {
+          developer: { agent: "constructor", antigravity: "pro" },
+          qa: { agent: "constructor", antigravity: "flash" },
+        },
+      }),
+      "utf8",
+    );
+    const ctorConflictSync = callSetup({ action: "sync", root: ctorAgentRepo });
+    assert.equal(ctorConflictSync.error, undefined);
+    const ctorConflictFiles = JSON.parse(
+      ctorConflictSync.result.content[0].text,
+    ).files;
+    assert.equal(ctorConflictFiles.length, 1);
+    assert.equal(ctorConflictFiles[0]?.status, "skipped");
+    assert.match(ctorConflictFiles[0]?.reason ?? "", /conflict/);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

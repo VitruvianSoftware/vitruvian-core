@@ -3019,6 +3019,52 @@ export const MAX_TEAM_FILE_BYTES = 64 * 1024;
  */
 export const MAX_TEAM_ROLES = 10;
 
+/**
+ * Schema `$id` written into starter `.agents/team.json` files.
+ */
+export const TEAM_SCHEMA_ID =
+  "https://vitruviansoftware.dev/schemas/orchestrator-team.json";
+
+/**
+ * Maximum file size in bytes (256 KiB) allowed when reading an agent markdown file.
+ */
+export const MAX_AGENT_FILE_BYTES = 256 * 1024;
+
+/**
+ * Valid `model:` values in Antigravity agent markdown files.
+ *
+ * @type {readonly ("inherit" | "flash" | "pro")[]}
+ */
+export const ANTIGRAVITY_MODELS = Object.freeze(["inherit", "flash", "pro"]);
+
+/**
+ * Relative agent directory segments keyed by harness.
+ *
+ * @type {Readonly<Record<Harness, readonly [string, string]>>}
+ */
+export const TEAM_AGENT_DIRS = Object.freeze({
+  "claude-code": Object.freeze([".claude", "agents"]),
+  opencode: Object.freeze([".opencode", "agents"]),
+  antigravity: Object.freeze([".agents", "agents"]),
+});
+
+/**
+ * Ordered harnesses scanned by `team_setup` `sync`.
+ *
+ * @type {readonly Harness[]}
+ */
+export const TEAM_SYNC_HARNESSES = Object.freeze([
+  "claude-code",
+  "opencode",
+  "antigravity",
+]);
+
+const ANTIGRAVITY_MODEL_SET = new Set(ANTIGRAVITY_MODELS);
+const GENERIC_ROSTER_BANNER_RE =
+  /^<!--\s*Generated from the orchestrator generic roster\.\s*Do not edit directly\.\s*-->[ \t]*$/i;
+const GENERATED_WORD_RE = /\bgenerated\b/i;
+const DO_NOT_EDIT_RE = /\bdo\s+not\s+edit\b/i;
+
 const TEAM_HARNESSES = new Set(["claude-code", "antigravity", "opencode"]);
 const TEAM_TOP_KEYS = new Set(["$schema", "engine", "notes", "tiers", "roles"]);
 const TEAM_TIER_SET = new Set(TEAM_TIERS);
@@ -3754,4 +3800,456 @@ export function formatAgentRoleLabel(agent, roleByAgent) {
     ownString(roleByAgent, norm) || ownString(roleByAgent, bare) || "";
   if (!role || role === bare || role === norm) return clean;
   return `${clean} · ${role}`;
+}
+
+/**
+ * Validates an agent handle (`^[a-z0-9][a-z0-9-]{0,63}$`).
+ *
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+export function isValidAgentName(name) {
+  return typeof name === "string" && VALID_HANDLE_RE.test(name);
+}
+
+/**
+ * Validates optional `agents` role list for `team_setup` `init`, accepting any
+ * deduplicated list of known non-lead orchestrator roles.
+ *
+ * @param {unknown} agents
+ * @returns {{ ok: true, roles: string[] } | { ok: false, error: string }}
+ */
+export function validateStarterAgents(agents) {
+  if (agents === undefined) {
+    return { ok: true, roles: [] };
+  }
+  if (!Array.isArray(agents)) {
+    return {
+      ok: false,
+      error: "agents must be an array of non-lead role names",
+    };
+  }
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {string[]} */
+  const roles = [];
+  for (const item of agents) {
+    if (typeof item !== "string") {
+      return {
+        ok: false,
+        error: "agents entries must be role name strings",
+      };
+    }
+    if (item === "lead") {
+      return { ok: false, error: 'agents cannot include "lead"' };
+    }
+    if (!TEAM_ROLE_SET.has(item)) {
+      return {
+        ok: false,
+        error: `unknown role "${sanitizeShortText(item, 64)}"`,
+      };
+    }
+    if (!seen.has(item)) {
+      seen.add(item);
+      roles.push(item);
+    }
+  }
+  return { ok: true, roles };
+}
+
+/**
+ * Renders a starter `.agents/team.json` file with `$schema`, empty `notes`,
+ * and optional `team-<role>` native role entries.
+ *
+ * @param {string[]} [agents]
+ * @returns {string}
+ */
+export function renderStarterTeam(agents = undefined) {
+  const check = validateStarterAgents(agents);
+  if (!check.ok) {
+    throw new Error(check.error);
+  }
+  /** @type {Record<string, { agent: string, engine: "native" }>} */
+  const roles = Object.create(null);
+  for (const role of check.roles) {
+    roles[role] = { agent: `team-${role}`, engine: "native" };
+  }
+  return (
+    JSON.stringify(
+      {
+        $schema: TEAM_SCHEMA_ID,
+        notes: "",
+        roles,
+      },
+      null,
+      2,
+    ) + "\n"
+  );
+}
+
+/**
+ * Parses leading YAML frontmatter (`---` on line 0 through closing `---`),
+ * preserving exact EOLs and byte boundaries so edits never touch the rest.
+ *
+ * @param {string} text
+ * @returns {{
+ *   openLine: string,
+ *   eol: "\r\n" | "\n",
+ *   fmLines: Array<{ raw: string, eol: string }>,
+ *   closeLineStart: number,
+ *   closeLineEnd: number,
+ *   closeLineIndex: number,
+ * } | null}
+ */
+function parseFrontmatter(text) {
+  if (typeof text !== "string") return null;
+  if (!text.startsWith("---\n") && !text.startsWith("---\r\n")) {
+    return null;
+  }
+  /** @type {"\r\n" | "\n"} */
+  const eol = text.startsWith("---\r\n") ? "\r\n" : "\n";
+  const openLine = `---${eol}`;
+  /** @type {Array<{ raw: string, eol: string }>} */
+  const fmLines = [];
+  let pos = openLine.length;
+  let lineIdx = 1;
+
+  while (pos < text.length) {
+    const nlIdx = text.indexOf("\n", pos);
+    const hasNl = nlIdx !== -1;
+    const rawEnd = hasNl ? nlIdx : text.length;
+    const hasCr = rawEnd > pos && text.charCodeAt(rawEnd - 1) === 13;
+    const contentEnd = hasCr ? rawEnd - 1 : rawEnd;
+    const raw = text.slice(pos, contentEnd);
+    const lineEol = hasNl ? (hasCr ? "\r\n" : "\n") : "";
+    const end = hasNl ? nlIdx + 1 : text.length;
+
+    if (raw === "---") {
+      return {
+        openLine,
+        eol,
+        fmLines,
+        closeLineStart: pos,
+        closeLineEnd: end,
+        closeLineIndex: lineIdx,
+      };
+    }
+
+    fmLines.push({ raw, eol: lineEol });
+    pos = end;
+    lineIdx += 1;
+  }
+
+  return null;
+}
+
+/**
+ * Returns `true` when `s` contains both `"Generated"` and `"Do not edit"`
+ * (case-insensitive).
+ *
+ * @param {string} s
+ * @returns {boolean}
+ */
+function hasGeneratedBannerPair(s) {
+  return GENERATED_WORD_RE.test(s) && DO_NOT_EDIT_RE.test(s);
+}
+
+/**
+ * Returns `true` when a single comment line in the first 15 lines contains
+ * both `"Generated"` and `"Do not edit"` (case-insensitive), ignoring YAML
+ * scalar values and normal Markdown prose/headings outside comments.
+ *
+ * @param {string} text
+ * @param {ReturnType<typeof parseFrontmatter>} fm
+ * @returns {boolean}
+ */
+function hasGeneratedComment(text, fm) {
+  const rawLines = text.split("\n", 15);
+  let inHtmlComment = false;
+  for (let i = 0; i < rawLines.length; i += 1) {
+    const rawLine = rawLines[i];
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    let pos = 0;
+    while (pos < line.length) {
+      if (inHtmlComment) {
+        const endIdx = line.indexOf("-->", pos);
+        const slice = endIdx === -1 ? line.slice(pos) : line.slice(pos, endIdx);
+        if (hasGeneratedBannerPair(slice)) {
+          return true;
+        }
+        if (endIdx === -1) {
+          pos = line.length;
+        } else {
+          inHtmlComment = false;
+          pos = endIdx + 3;
+        }
+      } else {
+        const startIdx = line.indexOf("<!--", pos);
+        if (startIdx === -1) {
+          break;
+        }
+        inHtmlComment = true;
+        pos = startIdx + 4;
+      }
+    }
+    const inFrontmatterBody = fm !== null && i > 0 && i < fm.closeLineIndex;
+    const beforeFrontmatter = fm === null && i === 0;
+    if (
+      (inFrontmatterBody || beforeFrontmatter) &&
+      line.trimStart().startsWith("#") &&
+      hasGeneratedBannerPair(line)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Converts a generic plugin agent markdown file into an editable starter agent
+ * file for `role` (`team-<role>`), rewriting frontmatter `name:` (or appending
+ * `name: team-<role>` at the end of frontmatter when absent) and stripping the
+ * plugin's own generic-roster "Do not edit directly." banner.
+ *
+ * @param {string} text
+ * @param {string} role
+ * @returns {string}
+ */
+export function starterAgentFile(text, role) {
+  if (typeof text !== "string") {
+    throw new Error("agent template text must be a string");
+  }
+  if (typeof role !== "string" || role === "lead" || !TEAM_ROLE_SET.has(role)) {
+    throw new Error(
+      `invalid starter agent role "${sanitizeShortText(role, 64)}"`,
+    );
+  }
+  const fm = parseFrontmatter(text);
+  if (fm === null) {
+    return text;
+  }
+
+  const nextFmLines = fm.fmLines.map((entry) => ({ ...entry }));
+  const nameIdx = nextFmLines.findIndex((entry) =>
+    /^name:(?:[ \t]|$)/.test(entry.raw),
+  );
+  if (nameIdx !== -1) {
+    nextFmLines[nameIdx].raw = `name: team-${role}`;
+  } else {
+    nextFmLines.push({ raw: `name: team-${role}`, eol: fm.eol });
+  }
+
+  let bodyStart = fm.closeLineEnd;
+  if (bodyStart < text.length) {
+    const nlIdx = text.indexOf("\n", bodyStart);
+    const lineEnd = nlIdx === -1 ? text.length : nlIdx + 1;
+    const contentEnd =
+      nlIdx !== -1 && nlIdx > bodyStart && text.charCodeAt(nlIdx - 1) === 13
+        ? nlIdx - 1
+        : nlIdx === -1 && text.endsWith("\r")
+          ? text.length - 1
+          : nlIdx === -1
+            ? text.length
+            : nlIdx;
+    const firstBodyLine = text.slice(bodyStart, contentEnd);
+    if (GENERIC_ROSTER_BANNER_RE.test(firstBodyLine)) {
+      bodyStart = lineEnd;
+    }
+  }
+
+  return (
+    fm.openLine +
+    nextFmLines.map((l) => l.raw + l.eol).join("") +
+    text.slice(fm.closeLineStart, fm.closeLineEnd) +
+    text.slice(bodyStart)
+  );
+}
+
+/**
+ * Applies explicit team-file `model` and `effort` settings to an agent
+ * markdown file's YAML frontmatter for `harness`, keeping all other frontmatter
+ * lines, body bytes, and line endings byte-identical. Pure and never throws.
+ *
+ * @param {string} text
+ * @param {Harness | string} harness
+ * @param {{ model?: string | null, effort?: string | null }} [models]
+ * @returns {{ text: string, changed: boolean, reason: string | null }}
+ */
+export function applyAgentModels(text, harness, models = {}) {
+  if (typeof text !== "string") {
+    return { text: "", changed: false, reason: "no-frontmatter" };
+  }
+  if (typeof harness !== "string" || !TEAM_HARNESSES.has(harness)) {
+    return { text, changed: false, reason: "unknown-harness" };
+  }
+
+  const fm = parseFrontmatter(text);
+  if (hasGeneratedComment(text, fm)) {
+    return { text, changed: false, reason: "generated" };
+  }
+  if (fm === null) {
+    return { text, changed: false, reason: "no-frontmatter" };
+  }
+
+  const rawModel =
+    models && typeof models === "object" ? models.model : undefined;
+  const rawEffort =
+    models && typeof models === "object" ? models.effort : undefined;
+  const hasModel = rawModel !== undefined && rawModel !== null;
+  const hasEffort = rawEffort !== undefined && rawEffort !== null;
+
+  if (hasModel) {
+    if (!isValidTeamHarnessModel(rawModel)) {
+      return { text, changed: false, reason: "invalid-model" };
+    }
+    if (harness === "antigravity" && !ANTIGRAVITY_MODEL_SET.has(rawModel)) {
+      return { text, changed: false, reason: "antigravity-model" };
+    }
+  }
+  if (harness !== "antigravity" && hasEffort) {
+    if (typeof rawEffort !== "string" || !TEAM_EFFORT_SET.has(rawEffort)) {
+      return { text, changed: false, reason: "invalid-effort" };
+    }
+  }
+
+  /** @type {Array<[string, string]>} */
+  const updates = [];
+  if (harness === "claude-code") {
+    if (hasModel) updates.push(["model", /** @type {string} */ (rawModel)]);
+    if (hasEffort) updates.push(["effort", /** @type {string} */ (rawEffort)]);
+  } else if (harness === "opencode") {
+    if (hasModel) updates.push(["model", /** @type {string} */ (rawModel)]);
+    if (hasEffort) {
+      updates.push(["reasoningEffort", /** @type {string} */ (rawEffort)]);
+    }
+  } else if (harness === "antigravity") {
+    if (hasModel) updates.push(["model", /** @type {string} */ (rawModel)]);
+  }
+
+  if (updates.length === 0) {
+    return { text, changed: false, reason: null };
+  }
+
+  const nextFmLines = fm.fmLines.map((entry) => ({ ...entry }));
+  for (const [key, val] of updates) {
+    const keyRe = new RegExp(`^${key}:(?:[ \\t]|$)`);
+    const idx = nextFmLines.findIndex((entry) => keyRe.test(entry.raw));
+    const lineText = `${key}: ${val}`;
+    if (idx !== -1) {
+      nextFmLines[idx].raw = lineText;
+    } else {
+      nextFmLines.push({ raw: lineText, eol: fm.eol });
+    }
+  }
+
+  const nextText =
+    fm.openLine +
+    nextFmLines.map((l) => l.raw + l.eol).join("") +
+    text.slice(fm.closeLineStart);
+  return {
+    text: nextText,
+    changed: nextText !== text,
+    reason: null,
+  };
+}
+
+/**
+ * Plans per-file sync targets across all three harnesses from a parsed team
+ * object using only explicit team-file harness overrides (`source === "team"`
+ * rows via `resolveTeam(team, harness)` without plugin defaults).
+ *
+ * When multiple roles map to the same `(harness, agent)` file:
+ * - if their effective explicit `{ model, effort }` values match, emits one
+ *   entry (`conflict: false`);
+ * - if they differ, emits one entry with `conflict: true` and
+ *   `reason: "conflict: <role1>, <role2>..."` naming every mapped role.
+ *
+ * @param {Record<string, unknown> | null | undefined} team
+ * @returns {Array<{
+ *   path: string,
+ *   segments: readonly [string, string, string],
+ *   harness: Harness,
+ *   agent: string,
+ *   role: string,
+ *   roles: string[],
+ *   model: string | null,
+ *   effort: string | null,
+ *   conflict: boolean,
+ *   reason: string | null,
+ * }>}
+ */
+export function planTeamSync(team) {
+  /** @type {Record<string, ReturnType<typeof resolveTeam>>} */
+  const resolvedByHarness = Object.create(null);
+  for (const harness of TEAM_SYNC_HARNESSES) {
+    resolvedByHarness[harness] = resolveTeam(team, harness);
+  }
+
+  /** @type {Map<string, {
+   *   path: string,
+   *   segments: readonly [string, string, string],
+   *   harness: Harness,
+   *   agent: string,
+   *   role: string,
+   *   roles: string[],
+   *   model: string | null,
+   *   effort: string | null,
+   *   conflict: boolean,
+   *   reason: string | null,
+   * }>} */
+  const byPath = new Map();
+
+  for (let i = 0; i < ROLES.length; i += 1) {
+    const baseRow = resolvedByHarness[TEAM_SYNC_HARNESSES[0]].roles[i];
+    if (
+      !baseRow ||
+      baseRow.source !== "team" ||
+      !isValidAgentName(baseRow.agent)
+    ) {
+      continue;
+    }
+    const role = baseRow.role;
+    const agent = baseRow.agent;
+
+    for (const harness of TEAM_SYNC_HARNESSES) {
+      const hRow = resolvedByHarness[harness].roles[i];
+      if (!hRow) continue;
+      const dir = TEAM_AGENT_DIRS[harness];
+      /** @type {readonly [string, string, string]} */
+      const segments = Object.freeze([dir[0], dir[1], `${agent}.md`]);
+      const relPath = segments.join("/");
+      const model = hRow.model ?? null;
+      const effort = harness === "antigravity" ? null : (hRow.effort ?? null);
+
+      const existing = byPath.get(relPath);
+      if (!existing) {
+        byPath.set(relPath, {
+          path: relPath,
+          segments,
+          harness,
+          agent,
+          role,
+          roles: [role],
+          model,
+          effort,
+          conflict: false,
+          reason: null,
+        });
+      } else {
+        existing.roles.push(role);
+        if (existing.model !== model || existing.effort !== effort) {
+          existing.conflict = true;
+        }
+      }
+    }
+  }
+
+  const out = [];
+  for (const entry of byPath.values()) {
+    if (entry.conflict) {
+      entry.reason = `conflict: ${entry.roles.join(", ")}`;
+    }
+    out.push(entry);
+  }
+  return out;
 }

@@ -38,10 +38,14 @@ js_test(
     size = "small",
     data = [
         "README.md",
+        "hooks/lib/orchestrator-core.mjs",
+        "hooks/lib/prices.mjs",
         "hooks/register.tsx",
         "skills/orchestrate/SKILL.md",
         "//:.agents/roster/generic/roles.tsv",
         "//:.agents/roster/tiers.tsv",
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
         "//apps/claude-code/plugins/vitruvian-orchestrator/types:index.d.ts",
     ] + glob(
         ["agents/*.md"],
@@ -51,6 +55,8 @@ js_test(
     no_copy_to_bin = [
         "//:.agents/roster/generic/roles.tsv",
         "//:.agents/roster/tiers.tsv",
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
         "//apps/claude-code/plugins/vitruvian-orchestrator/types:index.d.ts",
     ],
 )
@@ -61,6 +67,7 @@ filegroup(
         [
             "agents/*.md",
             "skills/orchestrate/SKILL.md",
+            "skills/team-setup/SKILL.md",
         ],
         allow_empty = True,
     ),

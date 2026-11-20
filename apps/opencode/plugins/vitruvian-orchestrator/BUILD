@@ -41,8 +41,17 @@ js_test(
         "README.md",
         "tui.tsx",
         ":adapter",
-    ],
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
+    ] + glob(
+        ["agents/*.md"],
+        allow_empty = True,
+    ),
     entry_point = "lib/adapter.test.mjs",
+    no_copy_to_bin = [
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
+    ],
     node_options = ["--test"],
 )
 
@@ -52,6 +61,7 @@ filegroup(
         [
             "agents/*.md",
             "skills/orchestrate/SKILL.md",
+            "skills/team-setup/SKILL.md",
         ],
         allow_empty = True,
     ),

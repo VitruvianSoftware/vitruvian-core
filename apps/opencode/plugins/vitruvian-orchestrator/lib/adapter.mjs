@@ -21,9 +21,11 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   agentRoleMap,
+  applyAgentModels,
   board,
   burnDown,
   channels,
@@ -35,7 +37,9 @@ import {
   formatAgentRoleLabel,
   formatWake,
   initialFlow,
+  isValidAgentName,
   isValidWorktree,
+  MAX_AGENT_FILE_BYTES,
   MAX_TEAM_FILE_BYTES,
   MAX_TEAM_ROLES,
   members,
@@ -44,23 +48,30 @@ import {
   overview,
   parseTeam,
   pendingWakes,
+  planTeamSync,
   reduce,
   remaining,
+  renderStarterTeam,
   resolveTeam,
   ROLES,
   runCost,
   sanitizeDisplayText,
   spend,
   stalls,
+  starterAgentFile,
   taskBoard,
+  TEAM_AGENT_DIRS,
+  TEAM_SYNC_HARNESSES,
   validateChannelAction,
   validatePostChannel,
+  validateStarterAgents,
   validateTeamEvent,
 } from "./orchestrator-core.mjs";
 import { TIER_DEFAULTS } from "./tier-defaults.mjs";
 
 export {
   agentRoleMap,
+  applyAgentModels,
   board,
   burnDown,
   channels,
@@ -72,7 +83,9 @@ export {
   formatAgentRoleLabel,
   formatWake,
   initialFlow,
+  isValidAgentName,
   isValidWorktree,
+  MAX_AGENT_FILE_BYTES,
   MAX_TEAM_FILE_BYTES,
   MAX_TEAM_ROLES,
   members,
@@ -81,17 +94,23 @@ export {
   overview,
   parseTeam,
   pendingWakes,
+  planTeamSync,
   reduce,
   remaining,
+  renderStarterTeam,
   resolveTeam,
   ROLES,
   runCost,
   sanitizeDisplayText,
   spend,
   stalls,
+  starterAgentFile,
   taskBoard,
+  TEAM_AGENT_DIRS,
+  TEAM_SYNC_HARNESSES,
   validateChannelAction,
   validatePostChannel,
+  validateStarterAgents,
   validateTeamEvent,
 };
 
@@ -959,6 +978,7 @@ export function resolveRepoRoot(cwd = process.cwd()) {
 function isPathInsideRealRoot(realRoot, realTarget) {
   const rel = path.relative(realRoot, realTarget);
   return (
+    rel.length > 0 &&
     rel !== ".." &&
     !rel.startsWith(`..${path.sep}`) &&
     !rel.startsWith("../") &&
@@ -1175,6 +1195,576 @@ export function loadTeamConfigForRoot(root, defaults = TIER_DEFAULTS) {
  */
 export function loadTeamConfig(cwd = process.cwd(), defaults = TIER_DEFAULTS) {
   return loadTeamConfigAtRoot(resolveRepoRoot(cwd), defaults);
+}
+
+const DEFAULT_PLUGIN_AGENTS_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "agents",
+);
+
+function inspectRepoPath(root, realRoot, segments) {
+  let cur = root;
+  for (let i = 0; i < segments.length; i += 1) {
+    cur = path.join(cur, segments[i]);
+    const isLast = i === segments.length - 1;
+    let lst;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch (err) {
+      const code = err && typeof err === "object" ? err.code : undefined;
+      if (code === "ENOENT") {
+        return { status: "absent" };
+      }
+      if (code === "ENOTDIR") {
+        const parentLabel =
+          i > 0 ? segments.slice(0, i).join("/") : segments[0];
+        return {
+          status: "error",
+          reason: "parent-not-directory",
+          error: `ENOTDIR: ${parentLabel} is not a directory`,
+        };
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      return { status: "error", reason: "stat-error", error: msg };
+    }
+
+    if (lst.isSymbolicLink()) {
+      return {
+        status: "symlink",
+        reason: "symlink",
+        error: `${segments.slice(0, i + 1).join("/")} is a symlink`,
+      };
+    }
+
+    let realCur;
+    try {
+      realCur = fs.realpathSync(cur);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { status: "error", reason: "realpath-error", error: msg };
+    }
+    if (!isPathInsideRealRoot(realRoot, realCur)) {
+      return {
+        status: "outside-root",
+        reason: "outside-root",
+        error: `${segments.slice(0, i + 1).join("/")} resolves outside root`,
+      };
+    }
+
+    if (!isLast) {
+      if (!lst.isDirectory()) {
+        return {
+          status: "error",
+          reason: "parent-not-directory",
+          error: `${segments.slice(0, i + 1).join("/")} is not a directory`,
+        };
+      }
+    } else {
+      if (!lst.isFile()) {
+        return {
+          status: "not-a-file",
+          reason: "not-a-file",
+          error: `${segments.join("/")} is not a regular file`,
+        };
+      }
+      return { status: "file", path: cur, realPath: realCur, size: lst.size };
+    }
+  }
+  return { status: "error", reason: "invalid-path", error: "empty path" };
+}
+
+function readBoundedFileNoFollow(filePath, maxBytes, label) {
+  const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
+  let fd;
+  try {
+    fd = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ELOOP") {
+      return { ok: false, reason: "symlink", error: `${label} is a symlink` };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: "read-error",
+      error: `failed to read ${label}: ${msg}`,
+    };
+  }
+
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) {
+      return {
+        ok: false,
+        reason: "not-a-file",
+        error: `${label} is not a regular file`,
+      };
+    }
+    if (st.size > maxBytes) {
+      return {
+        ok: false,
+        reason: "too-large",
+        error: `${label} exceeds maximum size of ${maxBytes} bytes`,
+      };
+    }
+    const chunks = [];
+    let totalBytes = 0;
+    const buf = Buffer.allocUnsafe(8192);
+    while (true) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      totalBytes += n;
+      if (totalBytes > maxBytes) {
+        return {
+          ok: false,
+          reason: "too-large",
+          error: `${label} exceeds maximum size of ${maxBytes} bytes`,
+        };
+      }
+      chunks.push(Buffer.from(buf.subarray(0, n)));
+    }
+    return {
+      ok: true,
+      text: Buffer.concat(chunks, totalBytes).toString("utf8"),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: "read-error",
+      error: `failed to read ${label}: ${msg}`,
+    };
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // Ignore close error.
+    }
+  }
+}
+
+function ensureDirInsideRoot(root, realRoot, dirSegments) {
+  let cur = root;
+  for (let i = 0; i < dirSegments.length; i += 1) {
+    cur = path.join(cur, dirSegments[i]);
+    let lst;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch (err) {
+      const code = err && typeof err === "object" ? err.code : undefined;
+      if (code === "ENOENT") {
+        fs.mkdirSync(cur);
+        lst = fs.lstatSync(cur);
+      } else {
+        throw err;
+      }
+    }
+    if (lst.isSymbolicLink()) {
+      throw new Error(`${dirSegments.slice(0, i + 1).join("/")} is a symlink`);
+    }
+    if (!lst.isDirectory()) {
+      throw new Error(
+        `${dirSegments.slice(0, i + 1).join("/")} is not a directory`,
+      );
+    }
+    const realCur = fs.realpathSync(cur);
+    if (!isPathInsideRealRoot(realRoot, realCur)) {
+      throw new Error(
+        `${dirSegments.slice(0, i + 1).join("/")} resolves outside root`,
+      );
+    }
+  }
+}
+
+function writeNewFileNoFollow(root, realRoot, segments, text) {
+  ensureDirInsideRoot(root, realRoot, segments.slice(0, -1));
+  const targetPath = path.join(root, ...segments);
+  const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
+  const fd = fs.openSync(
+    targetPath,
+    fs.constants.O_WRONLY |
+      fs.constants.O_CREAT |
+      fs.constants.O_EXCL |
+      noFollow,
+    0o644,
+  );
+  let completed = false;
+  try {
+    const buf = Buffer.from(text, "utf8");
+    let written = 0;
+    while (written < buf.length) {
+      written += fs.writeSync(fd, buf, written, buf.length - written);
+    }
+    completed = true;
+    return targetPath;
+  } finally {
+    fs.closeSync(fd);
+    if (!completed) {
+      try {
+        fs.unlinkSync(targetPath);
+      } catch {
+        // Best-effort cleanup of partial new file.
+      }
+    }
+  }
+}
+
+function overwriteFileNoFollow(filePath, text) {
+  const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
+  const fd = fs.openSync(
+    filePath,
+    fs.constants.O_WRONLY | fs.constants.O_TRUNC | noFollow,
+  );
+  try {
+    const buf = Buffer.from(text, "utf8");
+    let written = 0;
+    while (written < buf.length) {
+      written += fs.writeSync(fd, buf, written, buf.length - written);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Executes `team_setup` (`init` or `sync`) for OpenCode, enforcing explicit
+ * `root`, symlink refusal at every component, and realpath containment.
+ *
+ * @param {Record<string, any>} args
+ * @param {{ cwd?: string, pluginAgentsDir?: string }} [options]
+ */
+export function runTeamSetup(args = {}, options = {}) {
+  const inp = args && typeof args === "object" ? args : {};
+  const action = typeof inp.action === "string" ? inp.action.trim() : "";
+  if (action !== "init" && action !== "sync") {
+    return { ok: false, error: 'action must be "init" or "sync"' };
+  }
+  if (inp.check !== undefined && typeof inp.check !== "boolean") {
+    return { ok: false, error: "check must be a boolean" };
+  }
+  const check = inp.check === true;
+
+  const hasRoot =
+    Object.prototype.hasOwnProperty.call(inp, "root") && inp.root !== undefined;
+  const rawRoot = hasRoot
+    ? inp.root
+    : resolveRepoRoot(options.cwd ?? process.cwd());
+  if (typeof rawRoot !== "string" || !path.isAbsolute(rawRoot)) {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  let rootSt;
+  try {
+    rootSt = fs.statSync(rawRoot);
+  } catch {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  if (!rootSt.isDirectory()) {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  const root = rawRoot.replace(/\/+$/, "") || "/";
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(root);
+  } catch {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+
+  if (action === "init") {
+    const starterCheck = validateStarterAgents(inp.agents);
+    if (!starterCheck.ok) {
+      return { ok: false, error: starterCheck.error };
+    }
+    const starterRoles = starterCheck.roles;
+
+    const teamInspect = inspectRepoPath(root, realRoot, [
+      ".agents",
+      "team.json",
+    ]);
+    if (teamInspect.status !== "absent") {
+      return {
+        ok: false,
+        error:
+          teamInspect.status === "file"
+            ? ".agents/team.json already exists"
+            : teamInspect.error || ".agents/team.json cannot be created",
+      };
+    }
+
+    const callingHarness = "opencode";
+    const pluginAgentsDir =
+      options.pluginAgentsDir || DEFAULT_PLUGIN_AGENTS_DIR;
+    const agentDirs = TEAM_AGENT_DIRS[callingHarness];
+    /** @type {Array<{ segments: string[], relPath: string, text: string, role: string, agent: string }>} */
+    const plannedAgents = [];
+
+    for (const role of starterRoles) {
+      const agentName = `team-${role}`;
+      const segments = [...agentDirs, `${agentName}.md`];
+      const relPath = segments.join("/");
+      const targetInspect = inspectRepoPath(root, realRoot, segments);
+      if (targetInspect.status !== "absent") {
+        return {
+          ok: false,
+          error:
+            targetInspect.status === "file"
+              ? `${relPath} already exists`
+              : targetInspect.error || `${relPath} cannot be created`,
+        };
+      }
+      const templatePath = path.join(pluginAgentsDir, `${role}.md`);
+      let templateText;
+      try {
+        const st = fs.statSync(templatePath);
+        if (!st.isFile() || st.size > MAX_AGENT_FILE_BYTES) {
+          return {
+            ok: false,
+            error: `plugin starter template agents/${role}.md is invalid`,
+          };
+        }
+        templateText = fs.readFileSync(templatePath, "utf8");
+        if (Buffer.byteLength(templateText, "utf8") > MAX_AGENT_FILE_BYTES) {
+          return {
+            ok: false,
+            error: `plugin starter template agents/${role}.md is invalid`,
+          };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `failed to read plugin template agents/${role}.md: ${msg}`,
+        };
+      }
+      plannedAgents.push({
+        segments,
+        relPath,
+        text: starterAgentFile(templateText, role),
+        role,
+        agent: agentName,
+      });
+    }
+
+    const teamText = renderStarterTeam(starterRoles);
+    if (!check) {
+      const createdPaths = [];
+      try {
+        for (const item of plannedAgents) {
+          createdPaths.push(
+            writeNewFileNoFollow(root, realRoot, item.segments, item.text),
+          );
+        }
+        createdPaths.push(
+          writeNewFileNoFollow(
+            root,
+            realRoot,
+            [".agents", "team.json"],
+            teamText,
+          ),
+        );
+      } catch (err) {
+        const cleanupErrors = [];
+        for (let i = createdPaths.length - 1; i >= 0; i -= 1) {
+          const createdPath = createdPaths[i];
+          if (!createdPath) continue;
+          try {
+            fs.unlinkSync(createdPath);
+          } catch (rmErr) {
+            const rmMsg =
+              rmErr instanceof Error ? rmErr.message : String(rmErr);
+            cleanupErrors.push(`${createdPath}: ${rmMsg}`);
+          }
+        }
+        const rollbackNote =
+          cleanupErrors.length > 0
+            ? `; rollback errors: ${cleanupErrors.join("; ")}`
+            : "";
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `failed to write starter files: ${msg}${rollbackNote}`,
+        };
+      }
+    }
+
+    const files = [
+      ...plannedAgents.map((item) => ({
+        path: item.relPath,
+        harness: callingHarness,
+        role: item.role,
+        agent: item.agent,
+        status: "created",
+        reason: null,
+      })),
+      { path: ".agents/team.json", status: "created", reason: null },
+    ];
+    return {
+      ok: true,
+      result: { action: "init", root, check, files },
+    };
+  }
+
+  // action === "sync"
+  const teamInspect = inspectRepoPath(root, realRoot, [".agents", "team.json"]);
+  if (teamInspect.status === "absent") {
+    return { ok: false, error: ".agents/team.json does not exist" };
+  }
+  if (teamInspect.status !== "file") {
+    return {
+      ok: false,
+      error: teamInspect.error || ".agents/team.json cannot be read",
+    };
+  }
+  if (teamInspect.size > MAX_TEAM_FILE_BYTES) {
+    return {
+      ok: false,
+      error: `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+    };
+  }
+  const teamRead = readBoundedFileNoFollow(
+    teamInspect.realPath,
+    MAX_TEAM_FILE_BYTES,
+    ".agents/team.json",
+  );
+  if (!teamRead.ok) {
+    return { ok: false, error: teamRead.error };
+  }
+  const parsed = parseTeam(teamRead.text);
+  if (parsed.errors.length > 0 || !parsed.team) {
+    const firstErr = parsed.errors[0];
+    return {
+      ok: false,
+      error:
+        parsed.errors.length === 1 &&
+        typeof firstErr === "string" &&
+        firstErr.startsWith("invalid JSON:")
+          ? firstErr
+          : `invalid .agents/team.json: ${parsed.errors.join("; ")}`,
+    };
+  }
+
+  const targets = planTeamSync(parsed.team);
+  const files = [];
+  const plannedWrites = [];
+
+  for (const target of targets) {
+    const inspected = inspectRepoPath(root, realRoot, target.segments);
+    if (inspected.status === "error") {
+      return { ok: false, error: inspected.error };
+    }
+    if (inspected.status === "absent") {
+      continue;
+    }
+    if (inspected.status !== "file") {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: inspected.reason,
+      });
+      continue;
+    }
+    if (target.conflict) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: target.reason,
+      });
+      continue;
+    }
+    if (inspected.size > MAX_AGENT_FILE_BYTES) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: "too-large",
+      });
+      continue;
+    }
+
+    const fileRead = readBoundedFileNoFollow(
+      inspected.realPath,
+      MAX_AGENT_FILE_BYTES,
+      target.path,
+    );
+    if (!fileRead.ok) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: fileRead.reason,
+      });
+      continue;
+    }
+
+    const applied = applyAgentModels(fileRead.text, target.harness, {
+      model: target.model,
+      effort: target.effort,
+    });
+    if (applied.reason !== null) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: applied.reason,
+      });
+      continue;
+    }
+    if (applied.changed) {
+      plannedWrites.push({
+        realPath: inspected.realPath,
+        relPath: target.path,
+        text: applied.text,
+      });
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "changed",
+        reason: null,
+      });
+    } else {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "unchanged",
+        reason: null,
+      });
+    }
+  }
+
+  if (!check) {
+    for (const op of plannedWrites) {
+      try {
+        overwriteFileNoFollow(op.realPath, op.text);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `failed to write ${op.relPath}: ${msg}`,
+        };
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    result: { action: "sync", root, check, files },
+  };
 }
 
 /**
