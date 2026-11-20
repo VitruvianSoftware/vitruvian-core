@@ -1,0 +1,53 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Deliberate copies ignored by `//tools/dupcheck -- --diff` (one glob per line).
+#
+# Paths matching these globs are ignored both as changed candidate files AND
+# when building the `packages/` reference index, so deliberate copies or
+# generated trees under `packages/` (such as examples or generated SDKs) do not
+# trigger false positives against live code or other generated files.
+
+# Antigravity plugins' identical JSON helper, kept in step by a test.
+apps/antigravity/plugins/*/hooks/src/json.rs
+
+# Orchestrator plugin copies: three files (orchestrator-core.mjs, prices.mjs,
+# tier-defaults.mjs) in each of the three plugin copies (antigravity,
+# claude-code, opencode), all generated from packages/orchestrator-core by
+# tools/agent-roster because each plugin installs on its own.
+apps/*/plugins/vitruvian-orchestrator/**/orchestrator-core.mjs
+apps/*/plugins/vitruvian-orchestrator/**/prices.mjs
+apps/*/plugins/vitruvian-orchestrator/**/tier-defaults.mjs
+
+# oauth-user-inspector's design-system files, because that app also ships as its own repo.
+apps/web/oauth-user-inspector/frontend/design-system/**
+
+# Pulumi foundation example, a published reference copy of the live foundation.
+packages/pulumi/examples/**
+
+# Live Pulumi foundation paired with the published reference copy in packages/pulumi/examples.
+infrastructure/pulumi/foundation/**
+
+# Generated Pulumi provider SDKs (from `pulumi package add`), which share
+# identical boilerplate (e.g., pulumiUtilities.go, provider.go) across providers.
+# Scoped strictly to generated SDK trees so hand-written stack and wrapper code
+# remains checked.
+infrastructure/pulumi/platform/*/sdks/**
+packages/pulumi/library/go/pkg/*/sdk/**
