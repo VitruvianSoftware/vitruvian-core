@@ -26,7 +26,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
 import { Player } from "../types";
-import { ChoiceButton, GameScreen, PlayerPanels, useFrame, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  ChoiceButton,
+  GameScreen,
+  PlayerPanels,
+  useFrame,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 import { randInt } from "../kit/logic";
 
 function buildGearPath(teeth: number, rOut: number, rIn: number): string {
@@ -40,7 +48,9 @@ function buildGearPath(teeth: number, rOut: number, rIn: number): string {
       [base + step * 0.14, rOut],
       [base + step * 0.28, rIn],
     ] as const) {
-      pts.push(`${(Math.cos(ang) * r).toFixed(1)},${(Math.sin(ang) * r).toFixed(1)}`);
+      pts.push(
+        `${(Math.cos(ang) * r).toFixed(1)},${(Math.sin(ang) * r).toFixed(1)}`,
+      );
     }
   }
   return `M ${pts.join(" L ")} Z`;
@@ -78,10 +88,17 @@ function makePuzzles(rand: () => number, total: number): GearPuzzle[] {
     const centers: { x: number; y: number }[] = [{ x: 0, y: 0 }];
 
     for (let k = 1; k < count; k++) {
-      const alphaDeg = zigzag ? ((k - 1) % 2 === 0 ? startSign * 30 : -startSign * 30) : 0;
+      const alphaDeg = zigzag
+        ? (k - 1) % 2 === 0
+          ? startSign * 30
+          : -startSign * 30
+        : 0;
       const rad = (alphaDeg * Math.PI) / 180;
       const prev = centers[k - 1];
-      centers.push({ x: prev.x + dist * Math.cos(rad), y: prev.y + dist * Math.sin(rad) });
+      centers.push({
+        x: prev.x + dist * Math.cos(rad),
+        y: prev.y + dist * Math.sin(rad),
+      });
     }
 
     const xs = centers.map((c) => c.x);
@@ -113,10 +130,21 @@ function SpinArrow({ cw, color }: { cw: boolean; color: string }) {
   );
 }
 
-function Board({ player, round, puzzles }: { player: Player; round: Round; puzzles: GearPuzzle[] }) {
+function Board({
+  player,
+  round,
+  puzzles,
+}: {
+  player: Player;
+  round: Round;
+  puzzles: GearPuzzle[];
+}) {
   const [puzzleIdx, setPuzzleIdx] = useState(0);
   const [spin, setSpin] = useState(0);
-  const [answered, setAnswered] = useState<{ pick: "cw" | "ccw"; ok: boolean } | null>(null);
+  const [answered, setAnswered] = useState<{
+    pick: "cw" | "ccw";
+    ok: boolean;
+  } | null>(null);
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -151,29 +179,54 @@ function Board({ player, round, puzzles }: { player: Player; round: Round; puzzl
           {puzzle.centers.map((c, i) => {
             const isFirst = i === 0;
             const isLast = i === lastIdx;
-            const fill = isFirst ? "#00F2FF" : isLast ? "#FFD700" : i % 2 === 1 ? "#4D79FF" : "#4ECCA3";
+            const fill = isFirst
+              ? "#00F2FF"
+              : isLast
+                ? "#FFD700"
+                : i % 2 === 1
+                  ? "#4D79FF"
+                  : "#4ECCA3";
             const basePhase = i % 2 === 1 ? 15 : 0;
-            const rot = isFirst || answered !== null ? basePhase + (i % 2 === 0 ? spin : -spin) : basePhase;
+            const rot =
+              isFirst || answered !== null
+                ? basePhase + (i % 2 === 0 ? spin : -spin)
+                : basePhase;
 
             return (
-              <g key={i} transform={`translate(${c.x.toFixed(1)},${c.y.toFixed(1)})`}>
+              <g
+                key={i}
+                transform={`translate(${c.x.toFixed(1)},${c.y.toFixed(1)})`}
+              >
                 {isLast && (
                   <circle
                     cx="0"
                     cy="0"
                     r="24"
                     fill="none"
-                    stroke={answered ? (answered.ok ? "#4ECCA3" : "#FF4D4D") : "#FFD700"}
+                    stroke={
+                      answered
+                        ? answered.ok
+                          ? "#4ECCA3"
+                          : "#FF4D4D"
+                        : "#FFD700"
+                    }
                     strokeWidth="2.5"
                     strokeDasharray="5 4"
                   />
                 )}
                 <g transform={`rotate(${rot.toFixed(1)})`}>
-                  <path d={GEAR_PATH} fill={fill} stroke="#0F0C29" strokeWidth="2.5" />
+                  <path
+                    d={GEAR_PATH}
+                    fill={fill}
+                    stroke="#0F0C29"
+                    strokeWidth="2.5"
+                  />
                   <circle cx="0" cy="0" r="5" fill="#0F0C29" />
                 </g>
                 {isFirst && <SpinArrow cw color="#0F0C29" />}
-                {isLast && answered && <SpinArrow cw={puzzle.answer === "cw"} color="#0F0C29" />}
+                {isLast && answered && (
+                  <SpinArrow cw={puzzle.answer === "cw"} color="#0F0C29" />
+                )}
               </g>
             );
           })}
@@ -184,7 +237,9 @@ function Board({ player, round, puzzles }: { player: Player; round: Round; puzzl
         <ChoiceButton
           onClick={() => choose("cw")}
           disabled={!active || !!answered}
-          tone={answered?.pick === "cw" ? (answered.ok ? "good" : "bad") : "default"}
+          tone={
+            answered?.pick === "cw" ? (answered.ok ? "good" : "bad") : "default"
+          }
           className="py-2.5 sm:py-3 text-base sm:text-xl flex items-center justify-center gap-1.5 uppercase"
         >
           <RotateCw className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.8]" />
@@ -193,7 +248,13 @@ function Board({ player, round, puzzles }: { player: Player; round: Round; puzzl
         <ChoiceButton
           onClick={() => choose("ccw")}
           disabled={!active || !!answered}
-          tone={answered?.pick === "ccw" ? (answered.ok ? "good" : "bad") : "default"}
+          tone={
+            answered?.pick === "ccw"
+              ? answered.ok
+                ? "good"
+                : "bad"
+              : "default"
+          }
           className="py-2.5 sm:py-3 text-base sm:text-xl flex items-center justify-center gap-1.5 uppercase"
         >
           <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.8]" />
@@ -206,7 +267,10 @@ function Board({ player, round, puzzles }: { player: Player; round: Round; puzzl
 
 export default function GearGame(props: GameProps) {
   const round = useRound(props, { gameId: "gear", seconds: 25 });
-  const puzzles = useMemo(() => makePuzzles(round.random(), 50), [round.random]);
+  const puzzles = useMemo(
+    () => makePuzzles(round.random(), 50),
+    [round.random],
+  );
 
   return (
     <GameScreen

@@ -75,7 +75,15 @@ function makeBoards(rand: () => number, count: number): boolean[][] {
   });
 }
 
-function Board({ player, round, boards }: { player: Player; round: Round; boards: boolean[][] }) {
+function Board({
+  player,
+  round,
+  boards,
+}: {
+  player: Player;
+  round: Round;
+  boards: boolean[][];
+}) {
   const [boardIdx, setBoardIdx] = useState(0);
   const [grid, setGrid] = useState<boolean[]>(() => boards[0]);
   const [moves, setMoves] = useState(0);
@@ -115,10 +123,16 @@ function Board({ player, round, boards }: { player: Player; round: Round; boards
         <span className="text-brand-cyan tabular-nums">Moves {moves}</span>
       </div>
 
-      <div className="relative flex-1 min-h-0 w-full flex items-center justify-center" style={{ containerType: "size" }}>
+      <div
+        className="relative flex-1 min-h-0 w-full flex items-center justify-center"
+        style={{ containerType: "size" }}
+      >
         <div
           className="relative grid grid-cols-4 grid-rows-4 gap-1.5 sm:gap-2"
-          style={{ width: "min(100cqw, 100cqh, 220px)", height: "min(100cqw, 100cqh, 220px)" }}
+          style={{
+            width: "min(100cqw, 100cqh, 220px)",
+            height: "min(100cqw, 100cqh, 220px)",
+          }}
         >
           {grid.map((lit, idx) => (
             <motion.button

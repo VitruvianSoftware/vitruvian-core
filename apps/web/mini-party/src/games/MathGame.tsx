@@ -38,8 +38,18 @@ import { randInt, shuffle } from "../kit/logic";
 export const sticker = (
   <>
     <rect x="10" y="14" width="100" height="92" rx="18" fill="#00F2FF" />
-    <path d="M38 40 v40 M18 60 h40" stroke="#0F0C29" strokeWidth="10" strokeLinecap="round" />
-    <path d="M70 50 h30 M70 70 h30" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" />
+    <path
+      d="M38 40 v40 M18 60 h40"
+      stroke="#0F0C29"
+      strokeWidth="10"
+      strokeLinecap="round"
+    />
+    <path
+      d="M70 50 h30 M70 70 h30"
+      stroke="#FFFFFF"
+      strokeWidth="10"
+      strokeLinecap="round"
+    />
   </>
 );
 
@@ -80,9 +90,19 @@ function makeQuestions(rand: () => number, count: number): Question[] {
   });
 }
 
-function Board({ player, round, questions }: { player: Player; round: Round; questions: Question[] }) {
+function Board({
+  player,
+  round,
+  questions,
+}: {
+  player: Player;
+  round: Round;
+  questions: Question[];
+}) {
   const [index, setIndex] = useState(0);
-  const [flash, setFlash] = useState<{ value: number; ok: boolean } | null>(null);
+  const [flash, setFlash] = useState<{ value: number; ok: boolean } | null>(
+    null,
+  );
   const q = questions[index % questions.length];
   const active = round.canPlay(player.id) && !flash;
 
@@ -90,22 +110,29 @@ function Board({ player, round, questions }: { player: Player; round: Round; que
     const ok = value === q.answer;
     round.addScore(player.id, ok ? 10 : -5);
     setFlash({ value, ok });
-    window.setTimeout(() => {
-      setFlash(null);
-      setIndex((i) => i + 1);
-    }, ok ? 180 : 450);
+    window.setTimeout(
+      () => {
+        setFlash(null);
+        setIndex((i) => i + 1);
+      },
+      ok ? 180 : 450,
+    );
   };
 
   return (
     <div className="h-full flex flex-col items-center justify-center gap-4 p-4">
-      <div className="text-5xl sm:text-6xl font-black italic tabular-nums">{q.text}</div>
+      <div className="text-5xl sm:text-6xl font-black italic tabular-nums">
+        {q.text}
+      </div>
       <div className="grid grid-cols-3 gap-3 w-full max-w-md">
         {q.options.map((value) => (
           <ChoiceButton
             key={`${index}-${value}`}
             onClick={() => answer(value)}
             disabled={!active}
-            tone={flash?.value === value ? (flash.ok ? "good" : "bad") : "default"}
+            tone={
+              flash?.value === value ? (flash.ok ? "good" : "bad") : "default"
+            }
             className="py-5 tabular-nums"
           >
             {value}
@@ -118,7 +145,10 @@ function Board({ player, round, questions }: { player: Player; round: Round; que
 
 export default function MathGame(props: GameProps) {
   const round = useRound(props, { gameId: "math", seconds: 25 });
-  const questions = useMemo(() => makeQuestions(round.random(), 60), [round.random]);
+  const questions = useMemo(
+    () => makeQuestions(round.random(), 60),
+    [round.random],
+  );
   return (
     <GameScreen
       round={round}
@@ -128,7 +158,9 @@ export default function MathGame(props: GameProps) {
       detail="+10 right · −5 wrong"
     >
       <PlayerPanels round={round} players={props.players}>
-        {(player) => <Board player={player} round={round} questions={questions} />}
+        {(player) => (
+          <Board player={player} round={round} questions={questions} />
+        )}
       </PlayerPanels>
     </GameScreen>
   );

@@ -86,7 +86,9 @@ function ShapeIcon({ id }: { id: number }) {
         />
       )}
       {id === 3 && <polygon points="24,7 41,39 7,39" fill="#4ECCA3" />}
-      {id === 4 && <rect x="9" y="9" width="30" height="30" rx="7" fill="#4D79FF" />}
+      {id === 4 && (
+        <rect x="9" y="9" width="30" height="30" rx="7" fill="#4D79FF" />
+      )}
       {id === 5 && (
         <path
           d="M19 8 h10 v11 h11 v10 h-11 v11 h-10 v-11 h-11 v-10 h11 z"
@@ -107,7 +109,9 @@ function Board({
   decks: number[][];
 }) {
   const [deckIdx, setDeckIdx] = useState(0);
-  const [matched, setMatched] = useState<boolean[]>(() => Array(12).fill(false));
+  const [matched, setMatched] = useState<boolean[]>(() =>
+    Array(12).fill(false),
+  );
   const [flipped, setFlipped] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState<"match" | "miss" | "clear" | null>(null);
@@ -173,10 +177,14 @@ function Board({
           </span>
         )}
         {banner === "match" && (
-          <span className="text-xs font-black italic uppercase text-brand-green">PAIR! +10</span>
+          <span className="text-xs font-black italic uppercase text-brand-green">
+            PAIR! +10
+          </span>
         )}
         {banner === "miss" && (
-          <span className="text-xs font-black italic uppercase text-[#FF4D4D]">NO MATCH</span>
+          <span className="text-xs font-black italic uppercase text-[#FF4D4D]">
+            NO MATCH
+          </span>
         )}
       </div>
 
@@ -192,7 +200,9 @@ function Board({
                 key={`${deckIdx}-${idx}`}
                 type="button"
                 disabled={!canPlay || busy || faceUp}
-                animate={isMiss ? { x: [0, -4, 4, 0] } : { scale: faceUp ? 1 : 0.97 }}
+                animate={
+                  isMiss ? { x: [0, -4, 4, 0] } : { scale: faceUp ? 1 : 0.97 }
+                }
                 transition={{ duration: 0.18 }}
                 onPointerDown={(e: PointerEvent<HTMLButtonElement>) => {
                   e.preventDefault();

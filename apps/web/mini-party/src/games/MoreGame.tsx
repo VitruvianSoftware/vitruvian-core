@@ -70,7 +70,9 @@ function scatterDots(rand: () => number, count: number): Dot[] {
     for (const minDist of thresholds) {
       for (let tries = 0; tries < 36; tries++) {
         const cand = { x: 12 + rand() * 76, y: 12 + rand() * 76 };
-        if (dots.every((d) => Math.hypot(d.x - cand.x, d.y - cand.y) >= minDist)) {
+        if (
+          dots.every((d) => Math.hypot(d.x - cand.x, d.y - cand.y) >= minDist)
+        ) {
           chosen = cand;
           placed = true;
           break;
@@ -86,9 +88,14 @@ function scatterDots(rand: () => number, count: number): Dot[] {
 function makePuzzles(rand: () => number, count: number): Puzzle[] {
   return Array.from({ length: count }, (_, i) => {
     const low =
-      i < 4 ? randInt(rand, 5, 12) : i < 10 ? randInt(rand, 9, 17) : randInt(rand, 12, 23);
+      i < 4
+        ? randInt(rand, 5, 12)
+        : i < 10
+          ? randInt(rand, 9, 17)
+          : randInt(rand, 12, 23);
     const maxDiff = Math.min(25 - low, i < 4 ? 7 : i < 10 ? 4 : 2);
-    const minDiff = i < 4 ? Math.min(4, maxDiff) : i < 10 ? Math.min(2, maxDiff) : 1;
+    const minDiff =
+      i < 4 ? Math.min(4, maxDiff) : i < 10 ? Math.min(2, maxDiff) : 1;
     const high = low + randInt(rand, minDiff, maxDiff);
     const leftWins = rand() < 0.5;
     return {
@@ -134,10 +141,13 @@ function Board({
     setStreak(ok ? streak + 1 : 0);
     setFlash({ picked: side, ok, delta });
 
-    timerRef.current = window.setTimeout(() => {
-      setFlash(null);
-      setIndex((n) => n + 1);
-    }, ok ? 260 : 460);
+    timerRef.current = window.setTimeout(
+      () => {
+        setFlash(null);
+        setIndex((n) => n + 1);
+      },
+      ok ? 260 : 460,
+    );
   };
 
   return (
@@ -213,7 +223,10 @@ function Board({
 
 export default function MoreGame(props: GameProps) {
   const round = useRound(props, { gameId: "more", seconds: 25 });
-  const puzzles = useMemo(() => makePuzzles(round.random(), 60), [round.random]);
+  const puzzles = useMemo(
+    () => makePuzzles(round.random(), 60),
+    [round.random],
+  );
 
   return (
     <GameScreen

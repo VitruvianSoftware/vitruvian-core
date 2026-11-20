@@ -26,7 +26,13 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { motion } from "motion/react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 import { randInt } from "../kit/logic";
 
 export const sticker = (
@@ -72,7 +78,15 @@ function makeRounds(rand: () => number): CupRound[] {
 
 type Step = "wait" | "show" | "shuffle" | "pick" | "reveal";
 
-function Board({ player, round, rounds }: { player: Player; round: Round; rounds: CupRound[] }) {
+function Board({
+  player,
+  round,
+  rounds,
+}: {
+  player: Player;
+  round: Round;
+  rounds: CupRound[];
+}) {
   const [roundIdx, setRoundIdx] = useState(0);
   const [step, setStep] = useState<Step>("wait");
   const [showLifted, setShowLifted] = useState(false);
@@ -112,23 +126,29 @@ function Board({ player, round, rounds }: { player: Player; round: Round; rounds
       let live: [number, number, number] = [0, 1, 2];
       cur.swaps.forEach(([slotA, slotB], i) => {
         timersRef.current.push(
-          window.setTimeout(() => {
-            const cupA = live.indexOf(slotA);
-            const cupB = live.indexOf(slotB);
-            const next: [number, number, number] = [...live];
-            next[cupA] = slotB;
-            next[cupB] = slotA;
-            live = next;
-            setSlots(next);
-            setSwapPair([cupA, cupB]);
-          }, 50 + i * cur.swapMs),
+          window.setTimeout(
+            () => {
+              const cupA = live.indexOf(slotA);
+              const cupB = live.indexOf(slotB);
+              const next: [number, number, number] = [...live];
+              next[cupA] = slotB;
+              next[cupB] = slotA;
+              live = next;
+              setSlots(next);
+              setSwapPair([cupA, cupB]);
+            },
+            50 + i * cur.swapMs,
+          ),
         );
       });
       timersRef.current.push(
-        window.setTimeout(() => {
-          setSwapPair(null);
-          setStep("pick");
-        }, 50 + cur.swaps.length * cur.swapMs),
+        window.setTimeout(
+          () => {
+            setSwapPair(null);
+            setStep("pick");
+          },
+          50 + cur.swaps.length * cur.swapMs,
+        ),
       );
       return clearTimers;
     }
@@ -157,33 +177,56 @@ function Board({ player, round, rounds }: { player: Player; round: Round; rounds
 
   const rightPick = pickedCup === cur.ballCup;
   const status =
-    step === "show" ? "Watch!" : step === "shuffle" ? "Track it..." : step === "pick" ? "Tap a cup!" : rightPick ? "+30!" : "Empty!";
+    step === "show"
+      ? "Watch!"
+      : step === "shuffle"
+        ? "Track it..."
+        : step === "pick"
+          ? "Tap a cup!"
+          : rightPick
+            ? "+30!"
+            : "Empty!";
 
   return (
     <div className="h-full flex flex-col items-center justify-between gap-2 p-3 min-h-0">
       <div className="flex items-center justify-between w-full max-w-[240px] shrink-0">
         <div className="flex gap-1.5">
           {rounds.map((_, i) => (
-            <span key={i} className={`h-2 w-6 rounded-full ${i < roundIdx ? "bg-brand-green" : i === roundIdx ? "bg-brand-cyan" : "bg-white/15"}`} />
+            <span
+              key={i}
+              className={`h-2 w-6 rounded-full ${i < roundIdx ? "bg-brand-green" : i === roundIdx ? "bg-brand-cyan" : "bg-white/15"}`}
+            />
           ))}
         </div>
-        <span className="text-[10px] font-black uppercase tracking-widest text-white/50">{roundIdx + 1} / {TOTAL_ROUNDS}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest text-white/50">
+          {roundIdx + 1} / {TOTAL_ROUNDS}
+        </span>
       </div>
 
-      <div className={`text-xl sm:text-2xl font-black italic uppercase shrink-0 ${step === "reveal" ? (rightPick ? "text-brand-green" : "text-brand-accent") : step === "pick" ? "text-brand-gold animate-pulse" : "text-white"}`}>
+      <div
+        className={`text-xl sm:text-2xl font-black italic uppercase shrink-0 ${step === "reveal" ? (rightPick ? "text-brand-green" : "text-brand-accent") : step === "pick" ? "text-brand-gold animate-pulse" : "text-white"}`}
+      >
         {status}
       </div>
 
       <div className="relative flex-1 min-h-0 w-full max-w-[250px] flex items-end pb-3">
         <div className="relative w-full h-32 sm:h-40">
           {(step === "show" || step === "reveal") && (
-            <motion.div className="absolute bottom-2 left-0 w-1/3 flex justify-center pointer-events-none z-0" animate={{ x: `${slots[cur.ballCup] * 100}%` }} transition={{ duration: 0 }}>
+            <motion.div
+              className="absolute bottom-2 left-0 w-1/3 flex justify-center pointer-events-none z-0"
+              animate={{ x: `${slots[cur.ballCup] * 100}%` }}
+              transition={{ duration: 0 }}
+            >
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-brand-gold border-2 border-white shadow-[0_0_16px_rgba(255,215,0,0.85)]" />
             </motion.div>
           )}
           {[0, 1, 2].map((cupId) => {
-            const lifted = (step === "show" && showLifted && cupId === cur.ballCup) || (step === "reveal" && (cupId === pickedCup || cupId === cur.ballCup));
-            const zIndex = swapPair?.[0] === cupId ? 20 : swapPair?.[1] === cupId ? 10 : 5;
+            const lifted =
+              (step === "show" && showLifted && cupId === cur.ballCup) ||
+              (step === "reveal" &&
+                (cupId === pickedCup || cupId === cur.ballCup));
+            const zIndex =
+              swapPair?.[0] === cupId ? 20 : swapPair?.[1] === cupId ? 10 : 5;
             return (
               <motion.button
                 key={cupId}
@@ -194,15 +237,40 @@ function Board({ player, round, rounds }: { player: Player; round: Round; rounds
                 }}
                 disabled={step !== "pick" || !round.canPlay(player.id)}
                 animate={{ x: `${slots[cupId] * 100}%` }}
-                transition={{ duration: Math.max(0.14, (cur.swapMs / 1000) * 0.8), ease: "easeInOut" }}
+                transition={{
+                  duration: Math.max(0.14, (cur.swapMs / 1000) * 0.8),
+                  ease: "easeInOut",
+                }}
                 style={{ zIndex }}
                 aria-label={`Cup ${cupId + 1}`}
                 className="absolute inset-y-0 left-0 w-1/3 flex items-end justify-center cursor-pointer disabled:cursor-default"
               >
-                <motion.div animate={{ y: lifted ? -36 : 0 }} transition={{ type: "spring", stiffness: 360, damping: 24 }} className="w-16 h-20 sm:w-20 sm:h-24">
-                  <svg viewBox="0 0 80 96" className="w-full h-full drop-shadow-[0_6px_12px_rgba(0,0,0,0.5)]">
-                    <path d="M14 14 H66 L74 88 H6 Z" fill={CUP_COLOR} stroke="#FFFFFF" strokeWidth="4" strokeLinejoin="round" />
-                    <rect x="4" y="82" width="72" height="10" rx="5" fill="#0F0C29" stroke="#FFFFFF" strokeWidth="3" />
+                <motion.div
+                  animate={{ y: lifted ? -36 : 0 }}
+                  transition={{ type: "spring", stiffness: 360, damping: 24 }}
+                  className="w-16 h-20 sm:w-20 sm:h-24"
+                >
+                  <svg
+                    viewBox="0 0 80 96"
+                    className="w-full h-full drop-shadow-[0_6px_12px_rgba(0,0,0,0.5)]"
+                  >
+                    <path
+                      d="M14 14 H66 L74 88 H6 Z"
+                      fill={CUP_COLOR}
+                      stroke="#FFFFFF"
+                      strokeWidth="4"
+                      strokeLinejoin="round"
+                    />
+                    <rect
+                      x="4"
+                      y="82"
+                      width="72"
+                      height="10"
+                      rx="5"
+                      fill="#0F0C29"
+                      stroke="#FFFFFF"
+                      strokeWidth="3"
+                    />
                   </svg>
                 </motion.div>
               </motion.button>
@@ -219,7 +287,13 @@ export default function CupsGame(props: GameProps) {
   const rounds = useMemo(() => makeRounds(round.random()), [round.random]);
 
   return (
-    <GameScreen round={round} players={props.players} title="CUPS!" howTo="Follow the ball under the cup" detail="4 rounds · +30 each right pick">
+    <GameScreen
+      round={round}
+      players={props.players}
+      title="CUPS!"
+      howTo="Follow the ball under the cup"
+      detail="4 rounds · +30 each right pick"
+    >
       <PlayerPanels round={round} players={props.players}>
         {(player) => <Board player={player} round={round} rounds={rounds} />}
       </PlayerPanels>

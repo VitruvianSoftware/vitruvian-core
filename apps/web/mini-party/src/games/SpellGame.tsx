@@ -37,22 +37,96 @@ import { shuffle } from "../kit/logic";
 
 export const sticker = (
   <>
-    <rect x="10" y="42" width="38" height="44" rx="10" fill="#FFD700" transform="rotate(-10 29 64)" />
+    <rect
+      x="10"
+      y="42"
+      width="38"
+      height="44"
+      rx="10"
+      fill="#FFD700"
+      transform="rotate(-10 29 64)"
+    />
     <rect x="41" y="24" width="38" height="44" rx="10" fill="#00F2FF" />
-    <rect x="72" y="44" width="38" height="44" rx="10" fill="#FF0080" transform="rotate(10 91 66)" />
-    <path d="M51 39 H69 M60 39 V55" stroke="#0F0C29" strokeWidth="6" strokeLinecap="round" fill="none" />
+    <rect
+      x="72"
+      y="44"
+      width="38"
+      height="44"
+      rx="10"
+      fill="#FF0080"
+      transform="rotate(10 91 66)"
+    />
+    <path
+      d="M51 39 H69 M60 39 V55"
+      stroke="#0F0C29"
+      strokeWidth="6"
+      strokeLinecap="round"
+      fill="none"
+    />
   </>
 );
 
 const WORDS = [
-  "CAKE", "FROG", "MOON", "JUMP", "FISH", "BIRD", "GOLD", "DRUM",
-  "KING", "DUCK", "WIND", "TREE", "BELL", "BOAT", "KITE", "SNOW",
-  "LION", "CRAB", "BOOK", "MILK", "BIKE", "GIFT", "FLAG", "LOCK",
-  "APPLE", "TIGER", "CLOCK", "CLOUD", "PIZZA", "ROBOT", "CROWN", "MAGIC",
-  "TRAIN", "BEACH", "MUSIC", "FLAME", "STORM", "GHOST", "CANDY", "SHARK",
-  "PLANT", "HOUSE", "WATER", "ZEBRA", "PANDA", "HONEY", "PLANET", "ROCKET",
-  "CASTLE", "DRAGON", "BRIDGE", "JUNGLE", "ISLAND", "GUITAR", "SILVER", "SUNSET",
-  "BUBBLE", "PIRATE", "COOKIE", "MONKEY",
+  "CAKE",
+  "FROG",
+  "MOON",
+  "JUMP",
+  "FISH",
+  "BIRD",
+  "GOLD",
+  "DRUM",
+  "KING",
+  "DUCK",
+  "WIND",
+  "TREE",
+  "BELL",
+  "BOAT",
+  "KITE",
+  "SNOW",
+  "LION",
+  "CRAB",
+  "BOOK",
+  "MILK",
+  "BIKE",
+  "GIFT",
+  "FLAG",
+  "LOCK",
+  "APPLE",
+  "TIGER",
+  "CLOCK",
+  "CLOUD",
+  "PIZZA",
+  "ROBOT",
+  "CROWN",
+  "MAGIC",
+  "TRAIN",
+  "BEACH",
+  "MUSIC",
+  "FLAME",
+  "STORM",
+  "GHOST",
+  "CANDY",
+  "SHARK",
+  "PLANT",
+  "HOUSE",
+  "WATER",
+  "ZEBRA",
+  "PANDA",
+  "HONEY",
+  "PLANET",
+  "ROCKET",
+  "CASTLE",
+  "DRAGON",
+  "BRIDGE",
+  "JUNGLE",
+  "ISLAND",
+  "GUITAR",
+  "SILVER",
+  "SUNSET",
+  "BUBBLE",
+  "PIRATE",
+  "COOKIE",
+  "MONKEY",
 ];
 
 interface Tile {
@@ -79,7 +153,15 @@ function makePuzzles(rand: () => number): Puzzle[] {
   });
 }
 
-function Board({ player, round, puzzles }: { player: Player; round: Round; puzzles: Puzzle[] }) {
+function Board({
+  player,
+  round,
+  puzzles,
+}: {
+  player: Player;
+  round: Round;
+  puzzles: Puzzle[];
+}) {
   const [wordIdx, setWordIdx] = useState(0);
   const [usedIds, setUsedIds] = useState<number[]>([]);
   const [badId, setBadId] = useState<number | null>(null);
@@ -146,7 +228,13 @@ function Board({ player, round, puzzles }: { player: Player; round: Round; puzzl
                     : "bg-white/5 border-white/15"
               }`}
             >
-              {filled ? ch : showHint ? <span className="text-white/20">{ch}</span> : ""}
+              {filled ? (
+                ch
+              ) : showHint ? (
+                <span className="text-white/20">{ch}</span>
+              ) : (
+                ""
+              )}
             </div>
           );
         })}

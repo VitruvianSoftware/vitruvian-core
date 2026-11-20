@@ -45,7 +45,10 @@ export const sticker = (
       fill="none"
     />
     <polygon points="88,20 98,48 70,42" fill="#00F2FF" />
-    <polygon points="60,26 80,50 68,50 68,78 52,78 52,50 40,50" fill="#FFD700" />
+    <polygon
+      points="60,26 80,50 68,50 68,78 52,78 52,50 40,50"
+      fill="#FFD700"
+    />
   </>
 );
 
@@ -102,7 +105,7 @@ function Board({
     setAngles(nextAngles);
 
     const allMatch = cur.target.every(
-      (dir, j) => ((nextAngles[j] / 90) % 4 + 4) % 4 === dir,
+      (dir, j) => (((nextAngles[j] / 90) % 4) + 4) % 4 === dir,
     );
     if (allMatch) {
       setSolved(true);
@@ -147,7 +150,9 @@ function Board({
       <div className="flex flex-col items-center gap-1.5">
         <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-white/50">
           {solved ? (
-            <span className="text-brand-green text-sm font-black italic">+15!</span>
+            <span className="text-brand-green text-sm font-black italic">
+              +15!
+            </span>
           ) : (
             "YOURS (TAP TO TURN)"
           )}
@@ -158,7 +163,7 @@ function Board({
           }`}
         >
           {angles.map((deg, j) => {
-            const matches = ((deg / 90) % 4 + 4) % 4 === cur.target[j];
+            const matches = (((deg / 90) % 4) + 4) % 4 === cur.target[j];
             return (
               <button
                 key={`${puzzleIdx}-u-${j}`}
@@ -185,7 +190,9 @@ function Board({
                   animate={{ rotate: deg }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
                 >
-                  <ArrowGlyph color={matches || solved ? "#4ECCA3" : "#FFD700"} />
+                  <ArrowGlyph
+                    color={matches || solved ? "#4ECCA3" : "#FFD700"}
+                  />
                 </motion.svg>
               </button>
             );
@@ -198,7 +205,10 @@ function Board({
 
 export default function TurnGame(props: GameProps) {
   const round = useRound(props, { gameId: "turn", seconds: 25 });
-  const puzzles = useMemo(() => makePuzzles(round.random(), 50), [round.random]);
+  const puzzles = useMemo(
+    () => makePuzzles(round.random(), 50),
+    [round.random],
+  );
 
   return (
     <GameScreen

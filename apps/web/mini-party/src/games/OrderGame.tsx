@@ -86,8 +86,10 @@ function Board({
 
   useEffect(() => {
     return () => {
-      if (lockTimerRef.current !== null) window.clearTimeout(lockTimerRef.current);
-      if (bannerTimerRef.current !== null) window.clearTimeout(bannerTimerRef.current);
+      if (lockTimerRef.current !== null)
+        window.clearTimeout(lockTimerRef.current);
+      if (bannerTimerRef.current !== null)
+        window.clearTimeout(bannerTimerRef.current);
     };
   }, []);
 
@@ -99,11 +101,14 @@ function Board({
     if (num === next) {
       if (num === 16) {
         const elapsed = (performance.now() - boardStartRef.current) / 1000;
-        const speedBonus = Math.round(50 * Math.max(0, Math.min(1, (18 - elapsed) / 14)));
+        const speedBonus = Math.round(
+          50 * Math.max(0, Math.min(1, (18 - elapsed) / 14)),
+        );
         const pts = 50 + speedBonus;
         round.addScore(player.id, pts);
         setBanner(`CLEAR! +${pts}`);
-        if (bannerTimerRef.current !== null) window.clearTimeout(bannerTimerRef.current);
+        if (bannerTimerRef.current !== null)
+          window.clearTimeout(bannerTimerRef.current);
         bannerTimerRef.current = window.setTimeout(() => setBanner(null), 700);
         setBoardIdx((i) => i + 1);
         setNext(1);
@@ -116,7 +121,8 @@ function Board({
 
     setLocked(true);
     setWrongNum(num);
-    if (lockTimerRef.current !== null) window.clearTimeout(lockTimerRef.current);
+    if (lockTimerRef.current !== null)
+      window.clearTimeout(lockTimerRef.current);
     lockTimerRef.current = window.setTimeout(() => {
       setLocked(false);
       setWrongNum(null);
@@ -130,7 +136,9 @@ function Board({
           Board {boardIdx + 1}
         </span>
         {banner ? (
-          <span className="text-xs font-black italic uppercase text-brand-green">{banner}</span>
+          <span className="text-xs font-black italic uppercase text-brand-green">
+            {banner}
+          </span>
         ) : locked ? (
           <span className="text-xs font-black italic uppercase text-[#FF4D4D] animate-pulse">
             LOCKED 1s!

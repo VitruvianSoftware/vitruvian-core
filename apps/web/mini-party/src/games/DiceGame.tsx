@@ -26,13 +26,33 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Player } from "../types";
-import { ChoiceButton, GameScreen, PlayerPanels, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  ChoiceButton,
+  GameScreen,
+  PlayerPanels,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 import { randInt } from "../kit/logic";
 
 export const sticker = (
   <>
-    <path d="M16 32 L28 24 M12 52 L24 50" stroke="#FFD700" strokeWidth="6" strokeLinecap="round" />
-    <rect x="26" y="24" width="70" height="70" rx="16" fill="#FFFFFF" transform="rotate(-12 61 59)" />
+    <path
+      d="M16 32 L28 24 M12 52 L24 50"
+      stroke="#FFD700"
+      strokeWidth="6"
+      strokeLinecap="round"
+    />
+    <rect
+      x="26"
+      y="24"
+      width="70"
+      height="70"
+      rx="16"
+      fill="#FFFFFF"
+      transform="rotate(-12 61 59)"
+    />
     <g transform="rotate(-12 61 59)">
       <circle cx="43" cy="41" r="6" fill="#0F0C29" />
       <circle cx="79" cy="41" r="6" fill="#0F0C29" />
@@ -46,11 +66,36 @@ export const sticker = (
 const MAX_TURNS = 6;
 const PIPS: Record<number, readonly [number, number][]> = {
   1: [[50, 50]],
-  2: [[28, 28], [72, 72]],
-  3: [[28, 28], [50, 50], [72, 72]],
-  4: [[28, 28], [72, 28], [28, 72], [72, 72]],
-  5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]],
-  6: [[28, 26], [72, 26], [28, 50], [72, 50], [28, 74], [72, 74]],
+  2: [
+    [28, 28],
+    [72, 72],
+  ],
+  3: [
+    [28, 28],
+    [50, 50],
+    [72, 72],
+  ],
+  4: [
+    [28, 28],
+    [72, 28],
+    [28, 72],
+    [72, 72],
+  ],
+  5: [
+    [28, 28],
+    [72, 28],
+    [50, 50],
+    [28, 72],
+    [72, 72],
+  ],
+  6: [
+    [28, 26],
+    [72, 26],
+    [28, 50],
+    [72, 50],
+    [28, 74],
+    [72, 74],
+  ],
 };
 
 function makeRolls(rand: () => number, count: number): number[] {
@@ -72,20 +117,39 @@ function DieFace({ value }: { value: number | null }) {
         strokeWidth="5"
       />
       {pips.map(([cx, cy], idx) => (
-        <circle key={idx} cx={cx} cy={cy} r={value === 1 ? 11 : 8.5} fill={value === 1 ? "#FF4D4D" : "#0F0C29"} />
+        <circle
+          key={idx}
+          cx={cx}
+          cy={cy}
+          r={value === 1 ? 11 : 8.5}
+          fill={value === 1 ? "#FF4D4D" : "#0F0C29"}
+        />
       ))}
-      {value === null && <circle cx="50" cy="50" r="10" fill="#0F0C29" opacity="0.2" />}
+      {value === null && (
+        <circle cx="50" cy="50" r="10" fill="#0F0C29" opacity="0.2" />
+      )}
     </svg>
   );
 }
 
-function Board({ player, round, rolls }: { player: Player; round: Round; rolls: number[] }) {
+function Board({
+  player,
+  round,
+  rolls,
+}: {
+  player: Player;
+  round: Round;
+  rolls: number[];
+}) {
   const [turn, setTurn] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [pot, setPot] = useState(0);
   const [die, setDie] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState<{ text: string; tone: "good" | "bad" } | null>(null);
+  const [banner, setBanner] = useState<{
+    text: string;
+    tone: "good" | "bad";
+  } | null>(null);
   const totalRef = useRef(0);
   const timerRef = useRef<number | null>(null);
 
@@ -129,14 +193,17 @@ function Board({ player, round, rolls }: { player: Player; round: Round; rolls: 
     setPot(0);
     setBusy(true);
     setBanner({ text: `BANKED +${banked}!`, tone: "good" });
-    timerRef.current = window.setTimeout(() => {
-      if (turn + 1 >= MAX_TURNS) round.finish(player.id, nextTotal);
-      else {
-        setTurn((t) => t + 1);
-        setBanner(null);
-        setBusy(false);
-      }
-    }, turn + 1 >= MAX_TURNS ? 300 : 360);
+    timerRef.current = window.setTimeout(
+      () => {
+        if (turn + 1 >= MAX_TURNS) round.finish(player.id, nextTotal);
+        else {
+          setTurn((t) => t + 1);
+          setBanner(null);
+          setBusy(false);
+        }
+      },
+      turn + 1 >= MAX_TURNS ? 300 : 360,
+    );
   };
 
   return (
@@ -150,7 +217,11 @@ function Board({ player, round, rolls }: { player: Player; round: Round; rolls: 
             <span
               key={i}
               className={`w-2.5 h-2.5 rounded-full ${
-                i < turn ? "bg-brand-green" : i === turn ? "bg-brand-gold shadow-[0_0_8px_#FFD700]" : "bg-white/15"
+                i < turn
+                  ? "bg-brand-green"
+                  : i === turn
+                    ? "bg-brand-gold shadow-[0_0_8px_#FFD700]"
+                    : "bg-white/15"
               }`}
             />
           ))}
@@ -172,7 +243,9 @@ function Board({ player, round, rolls }: { player: Player; round: Round; rolls: 
         </div>
         <div className="h-6 flex items-center justify-center">
           {banner && (
-            <span className={`text-sm sm:text-base font-black italic uppercase tracking-wider ${banner.tone === "good" ? "text-brand-green" : "text-[#FF4D4D]"}`}>
+            <span
+              className={`text-sm sm:text-base font-black italic uppercase tracking-wider ${banner.tone === "good" ? "text-brand-green" : "text-[#FF4D4D]"}`}
+            >
               {banner.text}
             </span>
           )}
@@ -187,7 +260,12 @@ function Board({ player, round, rolls }: { player: Player; round: Round; rolls: 
         >
           ROLL
         </ChoiceButton>
-        <ChoiceButton onClick={bank} disabled={!canAct || pot <= 0} tone="good" className="py-3 text-lg sm:text-2xl uppercase">
+        <ChoiceButton
+          onClick={bank}
+          disabled={!canAct || pot <= 0}
+          tone="good"
+          className="py-3 text-lg sm:text-2xl uppercase"
+        >
           BANK (+{pot})
         </ChoiceButton>
       </div>

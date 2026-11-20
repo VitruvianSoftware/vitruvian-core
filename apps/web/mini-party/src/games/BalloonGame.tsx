@@ -40,7 +40,15 @@ export const sticker = (
   <>
     <ellipse cx="60" cy="54" rx="34" ry="40" fill="#00F2FF" />
     <path d="M52 100 L60 90 L68 100 Z" fill="#FF0080" />
-    <ellipse cx="47" cy="39" rx="7" ry="12" fill="#FFFFFF" stroke="none" transform="rotate(-24 47 39)" />
+    <ellipse
+      cx="47"
+      cy="39"
+      rx="7"
+      ry="12"
+      fill="#FFFFFF"
+      stroke="none"
+      transform="rotate(-24 47 39)"
+    />
     <path
       d="M22 20 l-10 -8 M98 20 l10 -8 M60 10 v-8"
       stroke="#FFD700"
@@ -68,7 +76,15 @@ function makeBalloons(rand: () => number): Balloon[] {
 
 type Outcome = "idle" | "banked" | "popped";
 
-function Board({ player, round, balloons }: { player: Player; round: Round; balloons: Balloon[] }) {
+function Board({
+  player,
+  round,
+  balloons,
+}: {
+  player: Player;
+  round: Round;
+  balloons: Balloon[];
+}) {
   const [idx, setIdx] = useState(0);
   const [air, setAir] = useState(0);
   const [outcome, setOutcome] = useState<Outcome>("idle");
@@ -162,7 +178,12 @@ function Board({ player, round, balloons }: { player: Player; round: Round; ball
               transition={{ type: "spring", stiffness: 420, damping: 22 }}
               style={{ originX: "60px", originY: "96px" }}
             >
-              <path d="M54 98 L60 88 L66 98 Z" fill={balloon.color} stroke="#0F0C29" strokeWidth="2.5" />
+              <path
+                d="M54 98 L60 88 L66 98 Z"
+                fill={balloon.color}
+                stroke="#0F0C29"
+                strokeWidth="2.5"
+              />
               <ellipse
                 cx="60"
                 cy="52"
@@ -236,7 +257,9 @@ export default function BalloonGame(props: GameProps) {
       detail="5 balloons · popped = 0 pts"
     >
       <PlayerPanels round={round} players={props.players}>
-        {(player) => <Board player={player} round={round} balloons={balloons} />}
+        {(player) => (
+          <Board player={player} round={round} balloons={balloons} />
+        )}
       </PlayerPanels>
     </GameScreen>
   );

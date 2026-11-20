@@ -25,13 +25,34 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useFrame, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useFrame,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 import { randInt, shuffle } from "../kit/logic";
 
 export const sticker = (
   <>
-    <path d="M20 82 Q 44 28 74 56" stroke="#FFFFFF" strokeWidth="6" strokeDasharray="6 7" strokeLinecap="round" fill="none" />
-    <path d="M28 24 Q 58 76 92 78" stroke="#FF0080" strokeWidth="6" strokeDasharray="6 7" strokeLinecap="round" fill="none" />
+    <path
+      d="M20 82 Q 44 28 74 56"
+      stroke="#FFFFFF"
+      strokeWidth="6"
+      strokeDasharray="6 7"
+      strokeLinecap="round"
+      fill="none"
+    />
+    <path
+      d="M28 24 Q 58 76 92 78"
+      stroke="#FF0080"
+      strokeWidth="6"
+      strokeDasharray="6 7"
+      strokeLinecap="round"
+      fill="none"
+    />
     <circle cx="24" cy="30" r="13" fill="#00F2FF" />
     <circle cx="94" cy="30" r="13" fill="#00F2FF" />
     <circle cx="26" cy="88" r="13" fill="#00F2FF" />
@@ -59,7 +80,8 @@ const MOVE_STEPS = 180;
 const MOVE_SEC = 3.0;
 const SHOW_SEC = 1.0;
 const REVEAL_SEC = 0.95;
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, v));
 
 function makeRounds(rand: () => number): TrackRound[] {
   return Array.from({ length: TOTAL_ROUNDS }, (_, roundIdx) => {
@@ -111,10 +133,26 @@ function makeRounds(rand: () => number): TrackRound[] {
           const dist = Math.hypot(dx, dy) || 0.01;
           if (dist < minDist) {
             const push = ((minDist - dist) * 0.5) / dist;
-            state[i].x = clamp(state[i].x - dx * push, MARGIN, ARENA_W - MARGIN);
-            state[i].y = clamp(state[i].y - dy * push, MARGIN, ARENA_H - MARGIN);
-            state[j].x = clamp(state[j].x + dx * push, MARGIN, ARENA_W - MARGIN);
-            state[j].y = clamp(state[j].y + dy * push, MARGIN, ARENA_H - MARGIN);
+            state[i].x = clamp(
+              state[i].x - dx * push,
+              MARGIN,
+              ARENA_W - MARGIN,
+            );
+            state[i].y = clamp(
+              state[i].y - dy * push,
+              MARGIN,
+              ARENA_H - MARGIN,
+            );
+            state[j].x = clamp(
+              state[j].x + dx * push,
+              MARGIN,
+              ARENA_W - MARGIN,
+            );
+            state[j].y = clamp(
+              state[j].y + dy * push,
+              MARGIN,
+              ARENA_H - MARGIN,
+            );
           }
         }
       }
@@ -124,9 +162,19 @@ function makeRounds(rand: () => number): TrackRound[] {
   });
 }
 
-function Board({ player, round, rounds }: { player: Player; round: Round; rounds: TrackRound[] }) {
+function Board({
+  player,
+  round,
+  rounds,
+}: {
+  player: Player;
+  round: Round;
+  rounds: TrackRound[];
+}) {
   const [roundIdx, setRoundIdx] = useState(0);
-  const [stage, setStage] = useState<"show" | "move" | "pick" | "reveal">("show");
+  const [stage, setStage] = useState<"show" | "move" | "pick" | "reveal">(
+    "show",
+  );
   const [stageTime, setStageTime] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
   const elapsedRef = useRef(0);
@@ -208,13 +256,22 @@ function Board({ player, round, rounds }: { player: Player; round: Round; rounds
         <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-white/50">
           ROUND {roundIdx + 1}/{TOTAL_ROUNDS}
         </span>
-        <span className={`text-xs sm:text-sm font-black italic uppercase ${promptTone}`}>{prompt}</span>
+        <span
+          className={`text-xs sm:text-sm font-black italic uppercase ${promptTone}`}
+        >
+          {prompt}
+        </span>
       </div>
       <div className="relative flex-1 min-h-0 rounded-2xl bg-brand-bg/90 border-2 border-white/10 overflow-hidden">
-        <svg viewBox={`0 0 ${ARENA_W} ${ARENA_H}`} className="w-full h-full touch-none">
+        <svg
+          viewBox={`0 0 ${ARENA_W} ${ARENA_H}`}
+          className="w-full h-full touch-none"
+        >
           {positions.map((pos, idx) => {
-            const isGold = (stage === "show" || stage === "reveal") && idx === cur.target;
-            const isWrong = stage === "reveal" && picked === idx && idx !== cur.target;
+            const isGold =
+              (stage === "show" || stage === "reveal") && idx === cur.target;
+            const isWrong =
+              stage === "reveal" && picked === idx && idx !== cur.target;
             const fill = isGold ? "#FFD700" : isWrong ? "#FF4D4D" : "#00F2FF";
             return (
               <g
@@ -223,7 +280,11 @@ function Board({ player, round, rounds }: { player: Player; round: Round; rounds
                   e.preventDefault();
                   tapBall(idx);
                 }}
-                className={stage === "pick" && active ? "cursor-pointer touch-none" : "touch-none"}
+                className={
+                  stage === "pick" && active
+                    ? "cursor-pointer touch-none"
+                    : "touch-none"
+                }
               >
                 <circle cx={pos.x} cy={pos.y} r={13} fill="transparent" />
                 {isGold && (
@@ -232,13 +293,30 @@ function Board({ player, round, rounds }: { player: Player; round: Round; rounds
                     cy={pos.y}
                     r={BALL_R + 3}
                     fill="none"
-                    stroke={stage === "reveal" && picked === cur.target ? "#4ECCA3" : "#FFD700"}
+                    stroke={
+                      stage === "reveal" && picked === cur.target
+                        ? "#4ECCA3"
+                        : "#FFD700"
+                    }
                     strokeWidth="2"
                     opacity="0.85"
                   />
                 )}
-                <circle cx={pos.x} cy={pos.y} r={BALL_R} fill={fill} stroke="#0F0C29" strokeWidth="2" />
-                <circle cx={pos.x - 2.5} cy={pos.y - 2.5} r={2.4} fill="#FFFFFF" opacity="0.6" />
+                <circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={BALL_R}
+                  fill={fill}
+                  stroke="#0F0C29"
+                  strokeWidth="2"
+                />
+                <circle
+                  cx={pos.x - 2.5}
+                  cy={pos.y - 2.5}
+                  r={2.4}
+                  fill="#FFFFFF"
+                  opacity="0.6"
+                />
               </g>
             );
           })}

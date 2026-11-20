@@ -25,7 +25,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useFrame, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useFrame,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 
 export const sticker = (
   <>
@@ -99,15 +106,28 @@ function wedgePath(startDeg: number, endDeg: number): string {
 }
 
 function wedgeAt(angle: number): WedgeDef {
-  const local = (((-angle) % 360) + 360) % 360;
-  return WEDGES.find((w) => local >= w.start && local < w.end) ?? WEDGES[WEDGES.length - 1];
+  const local = ((-angle % 360) + 360) % 360;
+  return (
+    WEDGES.find((w) => local >= w.start && local < w.end) ??
+    WEDGES[WEDGES.length - 1]
+  );
 }
 
-function Board({ player, round, spins }: { player: Player; round: Round; spins: SpinSpec[] }) {
+function Board({
+  player,
+  round,
+  spins,
+}: {
+  player: Player;
+  round: Round;
+  spins: SpinSpec[];
+}) {
   const active = round.canPlay(player.id);
   const [spinIdx, setSpinIdx] = useState(0);
   const [angle, setAngle] = useState(() => spins[0]?.startAngle ?? 0);
-  const [stage, setStage] = useState<"spinning" | "braking" | "landed">("spinning");
+  const [stage, setStage] = useState<"spinning" | "braking" | "landed">(
+    "spinning",
+  );
   const [landed, setLanded] = useState<WedgeDef | null>(null);
   const sim = useRef({
     angle: spins[0]?.startAngle ?? 0,
@@ -190,11 +210,19 @@ function Board({ player, round, spins }: { player: Player; round: Round; spins: 
       aria-label="Brake wheel"
     >
       <div className="flex-1 min-h-0 w-full flex items-center justify-center">
-        <svg viewBox="0 0 200 200" className="w-full h-full max-w-[208px] max-h-[208px]">
+        <svg
+          viewBox="0 0 200 200"
+          className="w-full h-full max-w-[208px] max-h-[208px]"
+        >
           <g transform={`rotate(${angle} 100 100)`}>
             {WEDGES.map((w, idx) => (
               <g key={idx}>
-                <path d={wedgePath(w.start, w.end)} fill={w.color} stroke="#0F0C29" strokeWidth="3" />
+                <path
+                  d={wedgePath(w.start, w.end)}
+                  fill={w.color}
+                  stroke="#0F0C29"
+                  strokeWidth="3"
+                />
                 <text
                   x="100"
                   y="38"
@@ -210,19 +238,51 @@ function Board({ player, round, spins }: { player: Player; round: Round; spins: 
                 </text>
               </g>
             ))}
-            <circle cx="100" cy="100" r="86" fill="none" stroke="#FFFFFF" strokeWidth="3" />
+            <circle
+              cx="100"
+              cy="100"
+              r="86"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="3"
+            />
           </g>
-          <circle cx="100" cy="100" r="20" fill="#0F0C29" stroke={player.color} strokeWidth="4" />
-          <text x="100" y="101" textAnchor="middle" dominantBaseline="central" fill="#FFFFFF" fontSize="12" fontWeight="900" fontStyle="italic">
+          <circle
+            cx="100"
+            cy="100"
+            r="20"
+            fill="#0F0C29"
+            stroke={player.color}
+            strokeWidth="4"
+          />
+          <text
+            x="100"
+            y="101"
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="#FFFFFF"
+            fontSize="12"
+            fontWeight="900"
+            fontStyle="italic"
+          >
             {spinIdx + 1}/{SPINS_PER_PLAYER}
           </text>
-          <polygon points="100,24 90,4 110,4" fill="#FF0080" stroke="#FFFFFF" strokeWidth="2.5" strokeLinejoin="round" />
+          <polygon
+            points="100,24 90,4 110,4"
+            fill="#FF0080"
+            stroke="#FFFFFF"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
         </svg>
       </div>
 
       <div className="shrink-0 h-6 flex items-center justify-center">
         {landed ? (
-          <span className="text-sm font-black italic uppercase" style={{ color: landed.value === 0 ? "#FF4D4D" : "#4ECCA3" }}>
+          <span
+            className="text-sm font-black italic uppercase"
+            style={{ color: landed.value === 0 ? "#FF4D4D" : "#4ECCA3" }}
+          >
             {landed.value === 0 ? "BUST! +0" : `+${landed.value}!`}
           </span>
         ) : (
@@ -240,7 +300,13 @@ export default function WheelGame(props: GameProps) {
   const spins = useMemo(() => makeSpins(round.random()), [round.random]);
 
   return (
-    <GameScreen round={round} players={props.players} title="WHEEL!" howTo="Tap to brake the wheel under the pointer" detail="4 spins per player · two small 100s, one BUST">
+    <GameScreen
+      round={round}
+      players={props.players}
+      title="WHEEL!"
+      howTo="Tap to brake the wheel under the pointer"
+      detail="4 spins per player · two small 100s, one BUST"
+    >
       <PlayerPanels round={round} players={props.players}>
         {(player) => <Board player={player} round={round} spins={spins} />}
       </PlayerPanels>

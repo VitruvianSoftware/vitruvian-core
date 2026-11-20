@@ -55,7 +55,9 @@ const VISIBLE_FLOORS = 9;
 const COLORS = ["#FF0080", "#FFD700", "#00F2FF", "#4ECCA3", "#4D79FF"];
 
 function Board({ player, round }: { player: Player; round: Round }) {
-  const [tower, setTower] = useState<Floor[]>([{ left: 20, width: START_WIDTH }]);
+  const [tower, setTower] = useState<Floor[]>([
+    { left: 20, width: START_WIDTH },
+  ]);
   const [x, setX] = useState(0);
   const dir = useRef(1);
   const top = tower[tower.length - 1];

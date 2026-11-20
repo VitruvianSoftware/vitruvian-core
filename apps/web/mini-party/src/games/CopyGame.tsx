@@ -62,7 +62,15 @@ function makeLevels(rand: () => number, count: number): number[][] {
 
 type Stage = "wait" | "show" | "input" | "result";
 
-function Board({ player, round, levels }: { player: Player; round: Round; levels: number[][] }) {
+function Board({
+  player,
+  round,
+  levels,
+}: {
+  player: Player;
+  round: Round;
+  levels: number[][];
+}) {
   const [level, setLevel] = useState(0);
   const [stage, setStage] = useState<Stage>("wait");
   const [selected, setSelected] = useState<number[]>([]);
@@ -96,7 +104,9 @@ function Board({ player, round, levels }: { player: Player; round: Round; levels
 
   const toggleCell = (idx: number) => {
     if (!active) return;
-    setSelected((prev) => (prev.includes(idx) ? prev.filter((x) => x !== idx) : [...prev, idx]));
+    setSelected((prev) =>
+      prev.includes(idx) ? prev.filter((x) => x !== idx) : [...prev, idx],
+    );
   };
 
   const submit = () => {
@@ -119,7 +129,9 @@ function Board({ player, round, levels }: { player: Player; round: Round; levels
     <div className="h-full flex flex-col items-center justify-between gap-2 p-3 min-h-0">
       <div className="flex items-center justify-between w-full max-w-[210px] text-[10px] font-black uppercase tracking-widest shrink-0">
         <span className="text-white/50">Level {level + 1}</span>
-        <span className={stage === "show" ? "text-brand-cyan" : "text-brand-gold"}>
+        <span
+          className={stage === "show" ? "text-brand-cyan" : "text-brand-gold"}
+        >
           {stage === "show"
             ? "Memorise!"
             : stage === "result" && delta !== null
@@ -128,23 +140,34 @@ function Board({ player, round, levels }: { player: Player; round: Round; levels
         </span>
       </div>
 
-      <div className="relative flex-1 min-h-0 w-full flex items-center justify-center" style={{ containerType: "size" }}>
+      <div
+        className="relative flex-1 min-h-0 w-full flex items-center justify-center"
+        style={{ containerType: "size" }}
+      >
         <div
           className="grid grid-cols-4 grid-rows-4 gap-1.5"
-          style={{ width: "min(100cqw, 100cqh, 200px)", height: "min(100cqw, 100cqh, 200px)" }}
+          style={{
+            width: "min(100cqw, 100cqh, 200px)",
+            height: "min(100cqw, 100cqh, 200px)",
+          }}
         >
           {ALL_CELLS.map((idx) => {
             const isTarget = targetSet.has(idx);
             const isPicked = selectedSet.has(idx);
             let cellClass = "bg-white/5 border-white/15";
             if (stage === "show" && isTarget) {
-              cellClass = "bg-brand-cyan border-white shadow-[0_0_14px_rgba(0,242,255,0.65)]";
+              cellClass =
+                "bg-brand-cyan border-white shadow-[0_0_14px_rgba(0,242,255,0.65)]";
             } else if (stage === "input" && isPicked) {
-              cellClass = "bg-brand-gold border-white shadow-[0_0_12px_rgba(255,215,0,0.5)]";
+              cellClass =
+                "bg-brand-gold border-white shadow-[0_0_12px_rgba(255,215,0,0.5)]";
             } else if (stage === "result") {
-              if (isPicked && isTarget) cellClass = "bg-brand-green border-white";
-              else if (isPicked && !isTarget) cellClass = "bg-brand-accent border-white";
-              else if (!isPicked && isTarget) cellClass = "bg-brand-cyan/25 border-brand-cyan border-dashed";
+              if (isPicked && isTarget)
+                cellClass = "bg-brand-green border-white";
+              else if (isPicked && !isTarget)
+                cellClass = "bg-brand-accent border-white";
+              else if (!isPicked && isTarget)
+                cellClass = "bg-brand-cyan/25 border-brand-cyan border-dashed";
             }
 
             return (
@@ -168,7 +191,13 @@ function Board({ player, round, levels }: { player: Player; round: Round; levels
       <ChoiceButton
         onClick={submit}
         disabled={!active || selected.length === 0}
-        tone={stage === "result" && delta !== null ? (delta > 0 ? "good" : "bad") : "default"}
+        tone={
+          stage === "result" && delta !== null
+            ? delta > 0
+              ? "good"
+              : "bad"
+            : "default"
+        }
         className="w-full max-w-[200px] py-2 text-lg sm:text-xl shrink-0"
       >
         DONE

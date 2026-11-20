@@ -41,7 +41,12 @@ export const sticker = (
     <circle cx="60" cy="30" r="11" fill="#FF4D4D" />
     <circle cx="60" cy="60" r="11" fill="#FFD93D" />
     <circle cx="60" cy="90" r="12" fill="#4ECCA3" />
-    <path d="M14 44 h12 M10 60 h16 M14 76 h12" stroke="#00F2FF" strokeWidth="6" strokeLinecap="round" />
+    <path
+      d="M14 44 h12 M10 60 h16 M14 76 h12"
+      stroke="#00F2FF"
+      strokeWidth="6"
+      strokeLinecap="round"
+    />
   </>
 );
 
@@ -53,9 +58,21 @@ interface Segment {
 
 const TARGET = 60;
 const LAMPS: { kind: Light; active: string; dim: string }[] = [
-  { kind: "red", active: "bg-[#FF4D4D] shadow-[0_0_12px_#FF4D4D]", dim: "bg-[#FF4D4D]/20" },
-  { kind: "yellow", active: "bg-[#FFD93D] shadow-[0_0_12px_#FFD93D]", dim: "bg-[#FFD93D]/20" },
-  { kind: "green", active: "bg-brand-green shadow-[0_0_12px_#4ECCA3]", dim: "bg-brand-green/20" },
+  {
+    kind: "red",
+    active: "bg-[#FF4D4D] shadow-[0_0_12px_#FF4D4D]",
+    dim: "bg-[#FF4D4D]/20",
+  },
+  {
+    kind: "yellow",
+    active: "bg-[#FFD93D] shadow-[0_0_12px_#FFD93D]",
+    dim: "bg-[#FFD93D]/20",
+  },
+  {
+    kind: "green",
+    active: "bg-brand-green shadow-[0_0_12px_#4ECCA3]",
+    dim: "bg-brand-green/20",
+  },
 ];
 
 function makeSchedule(rand: () => number, totalSec = 35): Segment[] {
@@ -79,7 +96,15 @@ function lightAt(schedule: readonly Segment[], elapsed: number): Light {
   return "green";
 }
 
-function Board({ player, round, light }: { player: Player; round: Round; light: Light }) {
+function Board({
+  player,
+  round,
+  light,
+}: {
+  player: Player;
+  round: Round;
+  light: Light;
+}) {
   const [progress, setProgress] = useState(0);
   const progressRef = useRef(0);
   const [flash, setFlash] = useState<"good" | "bad" | null>(null);
@@ -123,9 +148,14 @@ function Board({ player, round, light }: { player: Player; round: Round; light: 
   };
 
   const pct = (progress / TARGET) * 100;
-  const label = light === "green" ? "GO!" : light === "yellow" ? "WAIT..." : "STOP!";
+  const label =
+    light === "green" ? "GO!" : light === "yellow" ? "WAIT..." : "STOP!";
   const labelColor =
-    light === "green" ? "text-brand-green" : light === "yellow" ? "text-[#FFD93D]" : "text-[#FF4D4D]";
+    light === "green"
+      ? "text-brand-green"
+      : light === "yellow"
+        ? "text-[#FFD93D]"
+        : "text-[#FF4D4D]";
 
   return (
     <button
@@ -135,7 +165,11 @@ function Board({ player, round, light }: { player: Player; round: Round; light: 
         tap();
       }}
       className={`absolute inset-0 flex flex-col justify-between p-3 sm:p-4 touch-none cursor-pointer transition-colors ${
-        flash === "bad" ? "bg-[#FF4D4D]/25" : flash === "good" ? "bg-brand-green/10" : ""
+        flash === "bad"
+          ? "bg-[#FF4D4D]/25"
+          : flash === "good"
+            ? "bg-brand-green/10"
+            : ""
       }`}
       aria-label="Tap to run"
     >
@@ -147,7 +181,9 @@ function Board({ player, round, light }: { player: Player; round: Round; light: 
               className={`w-3.5 h-3.5 rounded-full transition-all ${light === l.kind ? l.active : l.dim}`}
             />
           ))}
-          <span className={`text-sm sm:text-base font-black italic uppercase ml-1 ${labelColor}`}>
+          <span
+            className={`text-sm sm:text-base font-black italic uppercase ml-1 ${labelColor}`}
+          >
             {label}
           </span>
         </div>
@@ -169,7 +205,10 @@ function Board({ player, round, light }: { player: Player; round: Round; light: 
         />
         <div
           className="absolute right-0 inset-y-0 w-3 opacity-80"
-          style={{ backgroundImage: "repeating-linear-gradient(0deg, #fff 0 6px, #0F0C29 6px 12px)" }}
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, #fff 0 6px, #0F0C29 6px 12px)",
+          }}
         />
         {flash === "bad" && (
           <motion.span

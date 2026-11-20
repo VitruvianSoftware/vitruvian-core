@@ -39,8 +39,14 @@ import { randInt } from "../kit/logic";
 
 export const sticker = (
   <>
-    <polygon points="36,14 60,46 46,46 46,104 26,104 26,46 12,46" fill="#00F2FF" />
-    <polygon points="84,106 108,74 94,74 94,16 74,16 74,74 60,74" fill="#FFD700" />
+    <polygon
+      points="36,14 60,46 46,46 46,104 26,104 26,46 12,46"
+      fill="#00F2FF"
+    />
+    <polygon
+      points="84,106 108,74 94,74 94,16 74,16 74,74 60,74"
+      fill="#FFD700"
+    />
   </>
 );
 
@@ -70,9 +76,11 @@ function Board({
 }) {
   const [index, setIndex] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [flash, setFlash] = useState<{ dir: number; ok: boolean; pts: number } | null>(
-    null,
-  );
+  const [flash, setFlash] = useState<{
+    dir: number;
+    ok: boolean;
+    pts: number;
+  } | null>(null);
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -117,7 +125,10 @@ function Board({
         tone={flash?.dir === dir ? (flash.ok ? "good" : "bad") : "default"}
         className="py-2.5 sm:py-3 flex items-center justify-center"
       >
-        <Icon className="w-7 h-7 sm:w-8 sm:h-8 stroke-[3]" aria-label={DIR_LABELS[dir]} />
+        <Icon
+          className="w-7 h-7 sm:w-8 sm:h-8 stroke-[3]"
+          aria-label={DIR_LABELS[dir]}
+        />
       </ChoiceButton>
     );
   };
@@ -172,7 +183,10 @@ function Board({
 
 export default function OppositeGame(props: GameProps) {
   const round = useRound(props, { gameId: "opposite", seconds: 25 });
-  const prompts = useMemo(() => makePrompts(round.random(), 120), [round.random]);
+  const prompts = useMemo(
+    () => makePrompts(round.random(), 120),
+    [round.random],
+  );
 
   return (
     <GameScreen

@@ -25,14 +25,38 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useFrame, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useFrame,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 
 export const sticker = (
   <>
     <rect x="10" y="84" width="100" height="14" rx="7" fill="#00F2FF" />
-    <ellipse cx="46" cy="62" rx="18" ry="13" fill="#FF0080" transform="rotate(-18 46 62)" />
-    <path d="M60 58 V20 L86 30 V44 L60 34" fill="#FFD700" strokeLinejoin="round" />
-    <path d="M22 76 l-8 -10 M98 76 l8 -10 M60 104 v8" stroke="#4ECCA3" strokeWidth="6" strokeLinecap="round" fill="none" />
+    <ellipse
+      cx="46"
+      cy="62"
+      rx="18"
+      ry="13"
+      fill="#FF0080"
+      transform="rotate(-18 46 62)"
+    />
+    <path
+      d="M60 58 V20 L86 30 V44 L60 34"
+      fill="#FFD700"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M22 76 l-8 -10 M98 76 l8 -10 M60 104 v8"
+      stroke="#4ECCA3"
+      strokeWidth="6"
+      strokeLinecap="round"
+      fill="none"
+    />
   </>
 );
 
@@ -69,14 +93,26 @@ function makeChart(rand: () => number): NoteSpec[] {
   return notes;
 }
 
-function Board({ player, round, chart }: { player: Player; round: Round; chart: NoteSpec[] }) {
+function Board({
+  player,
+  round,
+  chart,
+}: {
+  player: Player;
+  round: Round;
+  chart: NoteSpec[];
+}) {
   const active = round.canPlay(player.id);
   const startMsRef = useRef<number | null>(null);
   const statusRef = useRef<NoteStatus[]>(chart.map(() => "pending"));
   const judgeTimerRef = useRef<number | null>(null);
   const pulseTimerRef = useRef<number | null>(null);
   const [nowMs, setNowMs] = useState(0);
-  const [judgement, setJudgement] = useState<{ text: string; color: string; seq: number } | null>(null);
+  const [judgement, setJudgement] = useState<{
+    text: string;
+    color: string;
+    seq: number;
+  } | null>(null);
   const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
@@ -84,18 +120,22 @@ function Board({ player, round, chart }: { player: Player; round: Round; chart: 
   }, [chart]);
 
   useEffect(() => {
-    if (active && startMsRef.current === null) startMsRef.current = performance.now();
+    if (active && startMsRef.current === null)
+      startMsRef.current = performance.now();
   }, [active]);
 
   useEffect(() => {
     return () => {
-      if (judgeTimerRef.current !== null) window.clearTimeout(judgeTimerRef.current);
-      if (pulseTimerRef.current !== null) window.clearTimeout(pulseTimerRef.current);
+      if (judgeTimerRef.current !== null)
+        window.clearTimeout(judgeTimerRef.current);
+      if (pulseTimerRef.current !== null)
+        window.clearTimeout(pulseTimerRef.current);
     };
   }, []);
 
   const showJudge = (text: string, color: string) => {
-    if (judgeTimerRef.current !== null) window.clearTimeout(judgeTimerRef.current);
+    if (judgeTimerRef.current !== null)
+      window.clearTimeout(judgeTimerRef.current);
     setJudgement((prev) => ({ text, color, seq: (prev?.seq ?? 0) + 1 }));
     judgeTimerRef.current = window.setTimeout(() => setJudgement(null), 450);
   };
@@ -122,7 +162,8 @@ function Board({ player, round, chart }: { player: Player; round: Round; chart: 
     const tapMs = performance.now() - startMsRef.current;
 
     setPulse(true);
-    if (pulseTimerRef.current !== null) window.clearTimeout(pulseTimerRef.current);
+    if (pulseTimerRef.current !== null)
+      window.clearTimeout(pulseTimerRef.current);
     pulseTimerRef.current = window.setTimeout(() => setPulse(false), 110);
 
     let bestIdx = -1;
@@ -170,7 +211,9 @@ function Board({ player, round, chart }: { player: Player; round: Round; chart: 
       <div className="relative h-full w-full max-w-[176px] border-x-2 border-white/10 bg-brand-bg/70">
         <div
           className={`absolute inset-x-1 h-2.5 -translate-y-1/2 rounded-full transition-all ${
-            pulse ? "bg-white shadow-[0_0_20px_#00F2FF]" : "bg-brand-cyan/65 shadow-[0_0_12px_rgba(0,242,255,0.5)]"
+            pulse
+              ? "bg-white shadow-[0_0_20px_#00F2FF]"
+              : "bg-brand-cyan/65 shadow-[0_0_12px_rgba(0,242,255,0.5)]"
           }`}
           style={{ top: `${HIT_Y}%` }}
         />
@@ -182,7 +225,9 @@ function Board({ player, round, chart }: { player: Player; round: Round; chart: 
             style={{
               top: `${HIT_Y * (1 - (note.timeMs - nowMs) / TRAVEL_MS)}%`,
               backgroundColor: note.offbeat ? "#FFD700" : "#FF0080",
-              boxShadow: note.offbeat ? "0 0 14px rgba(255,215,0,0.75)" : "0 0 14px rgba(255,0,128,0.75)",
+              boxShadow: note.offbeat
+                ? "0 0 14px rgba(255,215,0,0.75)"
+                : "0 0 14px rgba(255,0,128,0.75)",
             }}
           />
         ))}
@@ -206,7 +251,13 @@ export default function RhythmGame(props: GameProps) {
   const chart = useMemo(() => makeChart(round.random()), [round.random]);
 
   return (
-    <GameScreen round={round} players={props.players} title="BEAT!" howTo="Tap as notes cross the cyan line" detail="PERFECT ±60ms (+10) · GOOD ±140ms (+5) · off-beat −2">
+    <GameScreen
+      round={round}
+      players={props.players}
+      title="BEAT!"
+      howTo="Tap as notes cross the cyan line"
+      detail="PERFECT ±60ms (+10) · GOOD ±140ms (+5) · off-beat −2"
+    >
       <PlayerPanels round={round} players={props.players}>
         {(player) => <Board player={player} round={round} chart={chart} />}
       </PlayerPanels>

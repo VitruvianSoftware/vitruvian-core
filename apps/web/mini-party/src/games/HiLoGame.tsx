@@ -60,7 +60,9 @@ function SuitIcon({ suit, size = 16 }: { suit: number; size?: number }) {
       {suit === 0 && <polygon points="12,2 22,12 12,22 2,12" fill={color} />}
       {suit === 1 && <circle cx="12" cy="12" r="9" fill={color} />}
       {suit === 2 && <polygon points="12,3 22,20 2,20" fill={color} />}
-      {suit === 3 && <rect x="4" y="4" width="16" height="16" rx="4" fill={color} />}
+      {suit === 3 && (
+        <rect x="4" y="4" width="16" height="16" rx="4" fill={color} />
+      )}
     </svg>
   );
 }
@@ -72,10 +74,22 @@ function makeDeck(rand: () => number, count: number): Card[] {
   }));
 }
 
-function Board({ player, round, deck }: { player: Player; round: Round; deck: Card[] }) {
+function Board({
+  player,
+  round,
+  deck,
+}: {
+  player: Player;
+  round: Round;
+  deck: Card[];
+}) {
   const [index, setIndex] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [flash, setFlash] = useState<{ ok: boolean; label: string; guess: "hi" | "lo" } | null>(null);
+  const [flash, setFlash] = useState<{
+    ok: boolean;
+    label: string;
+    guess: "hi" | "lo";
+  } | null>(null);
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -90,7 +104,8 @@ function Board({ player, round, deck }: { player: Player; round: Round; deck: Ca
   const guess = (dir: "hi" | "lo") => {
     if (!active) return;
     const next = deck[(index + 1) % deck.length];
-    const ok = dir === "hi" ? next.value >= card.value : next.value <= card.value;
+    const ok =
+      dir === "hi" ? next.value >= card.value : next.value <= card.value;
     if (ok) {
       const nextStreak = streak + 1;
       const pts = 5 * nextStreak;
@@ -140,7 +155,9 @@ function Board({ player, round, deck }: { player: Player; round: Round; deck: Ca
         {flash && (
           <div
             className={`absolute -top-1 px-3 py-0.5 rounded-full text-xs font-black italic uppercase shadow-lg ${
-              flash.ok ? "bg-brand-green text-brand-bg" : "bg-brand-accent text-white"
+              flash.ok
+                ? "bg-brand-green text-brand-bg"
+                : "bg-brand-accent text-white"
             }`}
           >
             {flash.label}

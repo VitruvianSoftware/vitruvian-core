@@ -25,14 +25,36 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useFrame, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useFrame,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 
 export const sticker = (
   <>
     <rect x="8" y="90" width="104" height="16" rx="7" fill="#4ECCA3" />
     <rect x="74" y="60" width="24" height="32" rx="6" fill="#FF0080" />
-    <path d="M22 86 Q 58 14 98 48" fill="none" stroke="#FFD700" strokeWidth="6" strokeLinecap="round" strokeDasharray="9 8" />
-    <rect x="20" y="34" width="28" height="28" rx="7" fill="#00F2FF" transform="rotate(-14 34 48)" />
+    <path
+      d="M22 86 Q 58 14 98 48"
+      fill="none"
+      stroke="#FFD700"
+      strokeWidth="6"
+      strokeLinecap="round"
+      strokeDasharray="9 8"
+    />
+    <rect
+      x="20"
+      y="34"
+      width="28"
+      height="28"
+      rx="7"
+      fill="#00F2FF"
+      transform="rotate(-14 34 48)"
+    />
     <circle cx="39" cy="43" r="4" fill="#0F0C29" stroke="none" />
   </>
 );
@@ -70,7 +92,15 @@ function makeTrack(rand: () => number, count: number): ObstacleSpec[] {
   return out;
 }
 
-function Board({ player, round, track }: { player: Player; round: Round; track: ObstacleSpec[] }) {
+function Board({
+  player,
+  round,
+  track,
+}: {
+  player: Player;
+  round: Round;
+  track: ObstacleSpec[];
+}) {
   const active = round.canPlay(player.id);
   const sim = useRef({
     scroll: 0,
@@ -83,7 +113,13 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
     flashTimer: 0,
     flash: null as { text: string; ok: boolean } | null,
   });
-  const [snap, setSnap] = useState<Snapshot>({ scroll: 0, y: 0, vy: 0, stunned: false, flash: null });
+  const [snap, setSnap] = useState<Snapshot>({
+    scroll: 0,
+    y: 0,
+    vy: 0,
+    stunned: false,
+    flash: null,
+  });
 
   useEffect(() => {
     sim.current.handled.clear();
@@ -125,7 +161,9 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
         const obsX = obs.distance - s.scroll;
         if (obsX > 115) break;
         const obsH = obs.tall ? 22 : 13;
-        const hitX = RUNNER_X + RUNNER_W - 1.2 > obsX + 0.8 && RUNNER_X + 1.2 < obsX + OBS_W - 0.8;
+        const hitX =
+          RUNNER_X + RUNNER_W - 1.2 > obsX + 0.8 &&
+          RUNNER_X + 1.2 < obsX + OBS_W - 0.8;
         if (hitX && s.y < obsH - 1.2) {
           s.handled.add(obs.id);
           s.stunLeft = 1.0;
@@ -143,7 +181,13 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
       }
     }
 
-    setSnap({ scroll: s.scroll, y: s.y, vy: s.vy, stunned: s.stunLeft > 0, flash: s.flash });
+    setSnap({
+      scroll: s.scroll,
+      y: s.y,
+      vy: s.vy,
+      stunned: s.stunLeft > 0,
+      flash: s.flash,
+    });
   });
 
   const tapJump = () => {
@@ -161,7 +205,11 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
     const x = obs.distance - snap.scroll;
     return x > -15 && x < 115;
   });
-  const tilt = snap.stunned ? -16 : snap.y > 0 ? Math.max(-18, Math.min(18, -snap.vy * 0.09)) : 0;
+  const tilt = snap.stunned
+    ? -16
+    : snap.y > 0
+      ? Math.max(-18, Math.min(18, -snap.vy * 0.09))
+      : 0;
 
   return (
     <button
@@ -173,11 +221,15 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
       className={`absolute inset-0 cursor-pointer overflow-hidden transition-colors ${snap.stunned ? "bg-[#FF4D4D]/15" : ""}`}
       aria-label="Hop"
     >
-      <div className="absolute inset-x-0 bottom-0 border-t-2 border-brand-green/60 bg-brand-bg/90" style={{ height: `${GROUND_PCT}%` }}>
+      <div
+        className="absolute inset-x-0 bottom-0 border-t-2 border-brand-green/60 bg-brand-bg/90"
+        style={{ height: `${GROUND_PCT}%` }}
+      >
         <div
           className="h-1.5 opacity-50"
           style={{
-            backgroundImage: "repeating-linear-gradient(90deg, #4ECCA3 0 18px, transparent 18px 36px)",
+            backgroundImage:
+              "repeating-linear-gradient(90deg, #4ECCA3 0 18px, transparent 18px 36px)",
             backgroundPositionX: `${-(snap.scroll * 4) % 36}px`,
           }}
         />
@@ -193,7 +245,9 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
             bottom: `${GROUND_PCT}%`,
             height: `${obs.tall ? 22 : 13}%`,
             backgroundColor: obs.tall ? "#FFD700" : "#FF0080",
-            boxShadow: obs.tall ? "0 0 12px rgba(255,215,0,0.45)" : "0 0 12px rgba(255,0,128,0.45)",
+            boxShadow: obs.tall
+              ? "0 0 12px rgba(255,215,0,0.45)"
+              : "0 0 12px rgba(255,0,128,0.45)",
           }}
         />
       ))}
@@ -214,7 +268,9 @@ function Board({ player, round, track }: { player: Player; round: Round; track: 
       </div>
 
       {snap.flash && (
-        <div className={`absolute top-3 right-3 text-lg sm:text-xl font-black italic uppercase drop-shadow ${snap.flash.ok ? "text-brand-green" : "text-[#FF4D4D]"}`}>
+        <div
+          className={`absolute top-3 right-3 text-lg sm:text-xl font-black italic uppercase drop-shadow ${snap.flash.ok ? "text-brand-green" : "text-[#FF4D4D]"}`}
+        >
           {snap.flash.text}
         </div>
       )}
@@ -227,7 +283,13 @@ export default function JumpGame(props: GameProps) {
   const track = useMemo(() => makeTrack(round.random(), 120), [round.random]);
 
   return (
-    <GameScreen round={round} players={props.players} title="HOP!" howTo="Tap to jump over blocks" detail="+1 cleared · −3 & 1s stun on hit">
+    <GameScreen
+      round={round}
+      players={props.players}
+      title="HOP!"
+      howTo="Tap to jump over blocks"
+      detail="+1 cleared · −3 & 1s stun on hit"
+    >
       <PlayerPanels round={round} players={props.players}>
         {(player) => <Board player={player} round={round} track={track} />}
       </PlayerPanels>

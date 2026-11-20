@@ -175,7 +175,10 @@ export function useRound(props: GameProps, options: RoundOptions): Round {
     if (phase !== "playing") return;
     const startedAt = performance.now();
     const tick = window.setInterval(() => {
-      const left = Math.max(0, seconds - (performance.now() - startedAt) / 1000);
+      const left = Math.max(
+        0,
+        seconds - (performance.now() - startedAt) / 1000,
+      );
       setTimeLeft(left);
       if (left <= 0) {
         window.clearInterval(tick);
@@ -215,7 +218,12 @@ export function useRound(props: GameProps, options: RoundOptions): Round {
   const finish = useCallback(
     (playerId: number, finalScore?: number) => {
       if (!isMine(playerId) || finishedRef.current[playerId]) return;
-      apply(playerId, finalScore ?? scoresRef.current[playerId] ?? 0, true, true);
+      apply(
+        playerId,
+        finalScore ?? scoresRef.current[playerId] ?? 0,
+        true,
+        true,
+      );
     },
     [apply, isMine],
   );
@@ -239,7 +247,19 @@ export function useRound(props: GameProps, options: RoundOptions): Round {
       addScore,
       finish,
     }),
-    [phase, timeLeft, scores, finished, seed, random, canPlay, isMine, setScore, addScore, finish],
+    [
+      phase,
+      timeLeft,
+      scores,
+      finished,
+      seed,
+      random,
+      canPlay,
+      isMine,
+      setScore,
+      addScore,
+      finish,
+    ],
   );
 }
 
@@ -349,7 +369,10 @@ export function GameScreen({
               </h2>
               <div className="flex flex-wrap justify-center gap-4">
                 {[...players]
-                  .sort((a, b) => (round.scores[b.id] ?? 0) - (round.scores[a.id] ?? 0))
+                  .sort(
+                    (a, b) =>
+                      (round.scores[b.id] ?? 0) - (round.scores[a.id] ?? 0),
+                  )
                   .map((p) => (
                     <div
                       key={p.id}
@@ -387,7 +410,12 @@ interface PlayerPanelsProps {
  * quarter (or half) of the screen. In an online room you get your own board
  * full size, with everyone's live score along the top.
  */
-export function PlayerPanels({ round, players, children, unit = "pts" }: PlayerPanelsProps) {
+export function PlayerPanels({
+  round,
+  players,
+  children,
+  unit = "pts",
+}: PlayerPanelsProps) {
   const mine = players.filter((p) => round.isMine(p.id));
   const others = players.filter((p) => !round.isMine(p.id));
   const grid =
@@ -406,7 +434,10 @@ export function PlayerPanels({ round, players, children, unit = "pts" }: PlayerP
               key={p.id}
               className="flex items-center gap-2 px-3 py-1 rounded-full bg-brand-card/60 border border-white/10"
             >
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+              <span
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ backgroundColor: p.color }}
+              />
               <span className="text-[10px] font-black uppercase tracking-widest opacity-60">
                 {p.name}
               </span>
@@ -414,7 +445,9 @@ export function PlayerPanels({ round, players, children, unit = "pts" }: PlayerP
                 {Math.round(round.scores[p.id] ?? 0)}
               </span>
               {round.finished[p.id] && (
-                <span className="text-[9px] font-black text-brand-green uppercase">done</span>
+                <span className="text-[9px] font-black text-brand-green uppercase">
+                  done
+                </span>
               )}
             </div>
           ))}
@@ -429,21 +462,31 @@ export function PlayerPanels({ round, players, children, unit = "pts" }: PlayerP
           >
             <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: player.color }} />
+                <span
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: player.color }}
+                />
                 <span className="text-[10px] font-black uppercase tracking-widest opacity-50">
                   {player.name}
                   {others.length > 0 && " (you)"}
                 </span>
               </div>
-              <div className="text-xl font-black italic tabular-nums" style={{ color: player.color }}>
+              <div
+                className="text-xl font-black italic tabular-nums"
+                style={{ color: player.color }}
+              >
                 {Math.round(round.scores[player.id] ?? 0)}
-                <span className="text-[10px] ml-1 opacity-60 not-italic uppercase">{unit}</span>
+                <span className="text-[10px] ml-1 opacity-60 not-italic uppercase">
+                  {unit}
+                </span>
               </div>
             </div>
             <ScaledBoard>{children(player)}</ScaledBoard>
             {round.finished[player.id] && round.phase === "playing" && (
               <div className="absolute inset-0 bg-brand-bg/70 backdrop-blur-sm flex items-center justify-center">
-                <span className="text-4xl font-black italic uppercase text-brand-green">Done!</span>
+                <span className="text-4xl font-black italic uppercase text-brand-green">
+                  Done!
+                </span>
               </div>
             )}
           </section>
@@ -462,7 +505,11 @@ const MAX_ZOOM = 2.2;
 
 function ScaledBoard({ children }: { children: ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<{ width: number; height: number; zoom: number } | null>(null);
+  const [box, setBox] = useState<{
+    width: number;
+    height: number;
+    zoom: number;
+  } | null>(null);
   useEffect(() => {
     const el = outer.current;
     if (!el) return;
@@ -482,7 +529,11 @@ function ScaledBoard({ children }: { children: ReactNode }) {
   // (panel size / zoom) px renders exactly the size of the panel.
   const style =
     box && box.zoom > 1
-      ? { width: box.width / box.zoom, height: box.height / box.zoom, zoom: box.zoom }
+      ? {
+          width: box.width / box.zoom,
+          height: box.height / box.zoom,
+          zoom: box.zoom,
+        }
       : { width: "100%", height: "100%" };
   return (
     <div ref={outer} className="relative flex-1 min-h-0">

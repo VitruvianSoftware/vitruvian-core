@@ -73,7 +73,11 @@ export function hashString(text: string): number {
  * The seed for one round. Every device in a room knows the room code and the
  * round number, so they all arrive at the same seed without sending it.
  */
-export function roundSeed(roomId: string | null, round: number, gameIndex: number) {
+export function roundSeed(
+  roomId: string | null,
+  round: number,
+  gameIndex: number,
+) {
   return hashString(`${roomId ?? "local"}:${round}:${gameIndex}`);
 }
 
@@ -92,6 +96,7 @@ export function nextGameIndex(
   const fresh = Array.from({ length: gameCount }, (_, i) => i).filter(
     (i) => !played.includes(i),
   );
-  const pool = fresh.length > 0 ? fresh : Array.from({ length: gameCount }, (_, i) => i);
+  const pool =
+    fresh.length > 0 ? fresh : Array.from({ length: gameCount }, (_, i) => i);
   return pick(rand, pool);
 }

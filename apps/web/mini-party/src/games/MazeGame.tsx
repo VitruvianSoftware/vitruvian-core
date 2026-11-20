@@ -27,7 +27,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from "lucide-react";
 import { motion } from "motion/react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 import { pick } from "../kit/logic";
 
 export const sticker = (
@@ -59,10 +65,42 @@ const DIRS = [
 ] as const;
 
 const DPAD = [
-  { key: "up", col: "col-start-2 row-start-1", bit: N, dr: -1, dc: 0, Icon: ArrowUp, label: "Move up" },
-  { key: "left", col: "col-start-1 row-start-2", bit: W, dr: 0, dc: -1, Icon: ArrowLeft, label: "Move left" },
-  { key: "down", col: "col-start-2 row-start-2", bit: S, dr: 1, dc: 0, Icon: ArrowDown, label: "Move down" },
-  { key: "right", col: "col-start-3 row-start-2", bit: E, dr: 0, dc: 1, Icon: ArrowRight, label: "Move right" },
+  {
+    key: "up",
+    col: "col-start-2 row-start-1",
+    bit: N,
+    dr: -1,
+    dc: 0,
+    Icon: ArrowUp,
+    label: "Move up",
+  },
+  {
+    key: "left",
+    col: "col-start-1 row-start-2",
+    bit: W,
+    dr: 0,
+    dc: -1,
+    Icon: ArrowLeft,
+    label: "Move left",
+  },
+  {
+    key: "down",
+    col: "col-start-2 row-start-2",
+    bit: S,
+    dr: 1,
+    dc: 0,
+    Icon: ArrowDown,
+    label: "Move down",
+  },
+  {
+    key: "right",
+    col: "col-start-3 row-start-2",
+    bit: E,
+    dr: 0,
+    dc: 1,
+    Icon: ArrowRight,
+    label: "Move right",
+  },
 ] as const;
 
 interface Maze {
@@ -85,7 +123,9 @@ function makeMaze(rand: () => number, size: number): Maze {
     const open = DIRS.filter(({ dr, dc }) => {
       const nr = r + dr;
       const nc = c + dc;
-      return nr >= 0 && nr < size && nc >= 0 && nc < size && !visited[nr * size + nc];
+      return (
+        nr >= 0 && nr < size && nc >= 0 && nc < size && !visited[nr * size + nc]
+      );
     });
     if (open.length === 0) {
       stack.pop();
@@ -114,7 +154,15 @@ function makeMaze(rand: () => number, size: number): Maze {
   return { size, cells, path: parts.join(" ") };
 }
 
-function Board({ player, round, mazes }: { player: Player; round: Round; mazes: Maze[] }) {
+function Board({
+  player,
+  round,
+  mazes,
+}: {
+  player: Player;
+  round: Round;
+  mazes: Maze[];
+}) {
   const [mazeIdx, setMazeIdx] = useState(0);
   const [pos, setPos] = useState({ r: 0, c: 0 });
   const [bump, setBump] = useState(false);
@@ -166,7 +214,9 @@ function Board({ player, round, mazes }: { player: Player; round: Round; mazes: 
     <div className="h-full flex flex-col items-center justify-between gap-2 p-2 min-h-0">
       <div className="flex items-center justify-between w-full max-w-[230px] text-[10px] font-black uppercase tracking-widest text-white/50 shrink-0">
         <span>Maze {mazeIdx + 1}</span>
-        <span>{size}×{size}</span>
+        <span>
+          {size}×{size}
+        </span>
       </div>
 
       <motion.div
@@ -174,11 +224,43 @@ function Board({ player, round, mazes }: { player: Player; round: Round; mazes: 
         transition={{ duration: 0.16 }}
         className="relative flex-1 min-h-0 w-full flex items-center justify-center"
       >
-        <svg viewBox={`0 0 ${viewSize} ${viewSize}`} className="w-full h-full max-h-full">
-          <rect x={PAD} y={PAD} width={size * CELL} height={size * CELL} rx={3} fill="#0F0C29" fillOpacity={0.7} />
-          <rect x={exitX + 2.5} y={exitY + 2.5} width={CELL - 5} height={CELL - 5} rx={3} fill="#FFD700" />
-          <circle cx={PAD + CELL / 2} cy={PAD + CELL / 2} r={CELL * 0.22} fill="none" stroke="#00F2FF" strokeOpacity={0.4} strokeWidth={1.5} />
-          <path d={maze.path} stroke={bump ? "#FF0080" : "#00F2FF"} strokeWidth={2} strokeLinecap="round" fill="none" />
+        <svg
+          viewBox={`0 0 ${viewSize} ${viewSize}`}
+          className="w-full h-full max-h-full"
+        >
+          <rect
+            x={PAD}
+            y={PAD}
+            width={size * CELL}
+            height={size * CELL}
+            rx={3}
+            fill="#0F0C29"
+            fillOpacity={0.7}
+          />
+          <rect
+            x={exitX + 2.5}
+            y={exitY + 2.5}
+            width={CELL - 5}
+            height={CELL - 5}
+            rx={3}
+            fill="#FFD700"
+          />
+          <circle
+            cx={PAD + CELL / 2}
+            cy={PAD + CELL / 2}
+            r={CELL * 0.22}
+            fill="none"
+            stroke="#00F2FF"
+            strokeOpacity={0.4}
+            strokeWidth={1.5}
+          />
+          <path
+            d={maze.path}
+            stroke={bump ? "#FF0080" : "#00F2FF"}
+            strokeWidth={2}
+            strokeLinecap="round"
+            fill="none"
+          />
           <motion.circle
             cx={0}
             cy={0}

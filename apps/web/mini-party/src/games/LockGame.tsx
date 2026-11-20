@@ -78,7 +78,13 @@ function polar(cx: number, cy: number, r: number, deg: number) {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
+function arcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startDeg: number,
+  endDeg: number,
+) {
   const s = polar(cx, cy, r, startDeg);
   const e = polar(cx, cy, r, endDeg);
   const large = endDeg - startDeg > 180 ? 1 : 0;
@@ -172,7 +178,13 @@ function Board({
             strokeWidth="18"
           />
           <path
-            d={arcPath(100, 100, 74, pinAngle - arcSpan / 2, pinAngle + arcSpan / 2)}
+            d={arcPath(
+              100,
+              100,
+              74,
+              pinAngle - arcSpan / 2,
+              pinAngle + arcSpan / 2,
+            )}
             fill="none"
             stroke={flash?.ok ? "#FFFFFF" : "#4ECCA3"}
             strokeWidth="18"
@@ -191,7 +203,14 @@ function Board({
               filter: `drop-shadow(0 0 8px ${flash?.ok === false ? "#FF4D4D" : "#FFD700"})`,
             }}
           />
-          <circle cx="100" cy="100" r="24" fill="#16213E" stroke={player.color} strokeWidth="4" />
+          <circle
+            cx="100"
+            cy="100"
+            r="24"
+            fill="#16213E"
+            stroke={player.color}
+            strokeWidth="4"
+          />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span

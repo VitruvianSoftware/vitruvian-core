@@ -195,7 +195,10 @@ function Board({
 
 export default function SafeGame(props: GameProps) {
   const round = useRound(props, { gameId: "safe", seconds: 30 });
-  const secrets = useMemo(() => makeSecrets(round.random(), 50), [round.random]);
+  const secrets = useMemo(
+    () => makeSecrets(round.random(), 50),
+    [round.random],
+  );
 
   return (
     <GameScreen

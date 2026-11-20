@@ -31,4 +31,3 @@ export function createInitialPlayers(count: number): Player[] {
     wins: 0,
   }));
 }
-

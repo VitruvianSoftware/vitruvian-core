@@ -26,17 +26,41 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Player } from "../types";
-import { GameScreen, PlayerPanels, useRound, type GameProps, type Round } from "../kit/round";
+import {
+  GameScreen,
+  PlayerPanels,
+  useRound,
+  type GameProps,
+  type Round,
+} from "../kit/round";
 import { randInt, shuffle } from "../kit/logic";
 
 export const sticker = (
   <>
     <rect x="16" y="18" width="88" height="84" rx="16" fill="#4D79FF" />
     <rect x="26" y="28" width="68" height="64" rx="10" fill="#16213E" />
-    <path d="M26 42 H94" stroke="#FF4D4D" strokeWidth="8" strokeLinecap="round" />
-    <path d="M26 60 H48 M72 60 H94" stroke="#FFD93D" strokeWidth="8" strokeLinecap="round" />
-    <path d="M26 78 H94" stroke="#00F2FF" strokeWidth="8" strokeLinecap="round" />
-    <polygon points="60,44 65,55 76,55 67,62 71,74 60,67 49,74 53,62 44,55 55,55" fill="#FFD700" />
+    <path
+      d="M26 42 H94"
+      stroke="#FF4D4D"
+      strokeWidth="8"
+      strokeLinecap="round"
+    />
+    <path
+      d="M26 60 H48 M72 60 H94"
+      stroke="#FFD93D"
+      strokeWidth="8"
+      strokeLinecap="round"
+    />
+    <path
+      d="M26 78 H94"
+      stroke="#00F2FF"
+      strokeWidth="8"
+      strokeLinecap="round"
+    />
+    <polygon
+      points="60,44 65,55 76,55 67,62 71,74 60,67 49,74 53,62 44,55 55,55"
+      fill="#FFD700"
+    />
   </>
 );
 
@@ -70,7 +94,15 @@ function makeBombs(rand: () => number, count: number): BombSeed[] {
   }));
 }
 
-function Board({ player, round, bombs }: { player: Player; round: Round; bombs: BombSeed[] }) {
+function Board({
+  player,
+  round,
+  bombs,
+}: {
+  player: Player;
+  round: Round;
+  bombs: BombSeed[];
+}) {
   const [bombIdx, setBombIdx] = useState(0);
   const [defused, setDefused] = useState(0);
   const [cutNames, setCutNames] = useState<string[]>([]);
@@ -87,7 +119,10 @@ function Board({ player, round, bombs }: { player: Player; round: Round; bombs: 
   const orderLen = Math.min(5, 3 + defused);
   const wireCount = Math.max(bomb.baseCount, orderLen);
   const wires = bomb.palette.slice(0, wireCount);
-  const order = bomb.orderIdx.filter((i) => i < wireCount).slice(0, orderLen).map((i) => wires[i].name);
+  const order = bomb.orderIdx
+    .filter((i) => i < wireCount)
+    .slice(0, orderLen)
+    .map((i) => wires[i].name);
   const canTap = round.canPlay(player.id) && status === "idle";
 
   const cutWire = (name: string) => {
@@ -166,9 +201,26 @@ function Board({ player, round, bombs }: { player: Player; round: Round; bombs: 
               >
                 {w.name}
               </span>
-              <svg viewBox="0 0 200 30" className="flex-1 h-5 sm:h-6 overflow-visible">
-                <rect x="0" y="7" width="12" height="16" rx="3" fill="#475569" />
-                <rect x="188" y="7" width="12" height="16" rx="3" fill="#475569" />
+              <svg
+                viewBox="0 0 200 30"
+                className="flex-1 h-5 sm:h-6 overflow-visible"
+              >
+                <rect
+                  x="0"
+                  y="7"
+                  width="12"
+                  height="16"
+                  rx="3"
+                  fill="#475569"
+                />
+                <rect
+                  x="188"
+                  y="7"
+                  width="12"
+                  height="16"
+                  rx="3"
+                  fill="#475569"
+                />
                 {isCut ? (
                   <>
                     <motion.path
@@ -194,7 +246,13 @@ function Board({ player, round, bombs }: { player: Player; round: Round; bombs: 
                     <circle cx="100" cy="15" r="5" fill="#FFD700" />
                   </>
                 ) : (
-                  <path d={`M 12 15 Q 100 ${sag} 188 15`} stroke={w.hex} strokeWidth="7" strokeLinecap="round" fill="none" />
+                  <path
+                    d={`M 12 15 Q 100 ${sag} 188 15`}
+                    stroke={w.hex}
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    fill="none"
+                  />
                 )}
               </svg>
             </button>
