@@ -31,7 +31,11 @@ metadata:
 spec:
   retentionPolicy: 14d
   configuration:
-    destinationPath: s3://sentry-db-backups/cnpg/
+    # No trailing slash: with one, barman-cloud-backup-delete lists the
+    # catalogue under an invalid prefix and MinIO rejects the ListObjectsV2
+    # call (XMinioInvalidObjectName), so retention never ran. Backups and WAL
+    # keys (cnpg/sentry-db/...) are unchanged either way.
+    destinationPath: s3://sentry-db-backups/cnpg
     endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
     s3Credentials:
       accessKeyId:
