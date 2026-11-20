@@ -59,8 +59,13 @@ class SocketService {
     this.socket?.on("game-started", callback);
   }
 
+  // Returns a function that stops listening, so a game can clean up when it
+  // ends instead of leaving its handler attached for every later round.
   onRemoteEvent(callback: (data: any) => void) {
     this.socket?.on("remote-event", callback);
+    return () => {
+      this.socket?.off("remote-event", callback);
+    };
   }
 
   disconnect() {

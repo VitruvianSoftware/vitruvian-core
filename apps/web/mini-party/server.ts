@@ -68,7 +68,9 @@ async function startServer() {
     // Production with a built client: serve what `vite build` wrote to dist/.
     app.use(express.static(distPath));
     app.get("/{*splat}", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      // `root` keeps the dotfile check to the file's own name; with a full
+      // path, a build under a hidden folder (~/.cache/bazel) answers 404.
+      res.sendFile("index.html", { root: distPath });
     });
   }
   // Otherwise this is the rooms-only server (the container image): just the

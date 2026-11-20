@@ -168,6 +168,8 @@ vitest.vitest_test(
         "server/**",
         "src/room.ts",
         "src/room.test.ts",
+        "src/kit/logic.ts",
+        "src/kit/logic.test.ts",
     ]) + [
         "package.json",
         "vitest.config.ts",

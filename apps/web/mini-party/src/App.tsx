@@ -20,26 +20,15 @@
  * SOFTWARE.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { GameState, Player, PLAYER_COLORS } from "./types";
-import { createInitialPlayers, MINI_GAMES } from "./constants";
+import { createInitialPlayers } from "./constants";
 import Lobby from "./components/Lobby";
 import { Sticker } from "./art/Sticker";
 import Scoreboard from "./components/Scoreboard";
-import ReactionGame from "./games/ReactionGame";
-import MashGame from "./games/MashGame";
-import PatternGame from "./games/PatternGame";
-import StopGame from "./games/StopGame";
-import CountGame from "./games/CountGame";
-import TargetGame from "./games/TargetGame";
-import TugGame from "./games/TugGame";
-import BalanceGame from "./games/BalanceGame";
-import MatchGame from "./games/MatchGame";
-import FuelGame from "./games/FuelGame";
-import ScanGame from "./games/ScanGame";
-import DodgeGame from "./games/DodgeGame";
-import SmashGame from "./games/SmashGame";
+import { MINI_GAMES } from "./games/catalog";
+import { nextGameIndex, roundSeed, ROUNDS_PER_MATCH } from "./kit/logic";
 import {
   Trophy,
   ChevronRight,
@@ -62,11 +51,31 @@ export default function App() {
     roomFromSearch(window.location.search, REMOTE_PLAY),
   );
   const [myPlayerId, setMyPlayerId] = useState<number | null>(null);
+  // The games played so far this match, in order. Every device in a room
+  // builds the same list from the host's game-started messages.
+  const [played, setPlayed] = useState<number[]>([]);
+  const playedRef = useRef<number[]>([]);
+
+  const beginRound = (gameIndex: number) => {
+    playedRef.current = [...playedRef.current, gameIndex];
+    setPlayed(playedRef.current);
+    setCurrentGameIndex(gameIndex);
+    setGameState("GAME_START");
+  };
+
+  // ?game=<id> plays only that game, for trying one out.
+  const onlyGame = MINI_GAMES.findIndex(
+    (g) => g.id === new URLSearchParams(window.location.search).get("game"),
+  );
+  const pickNextGame = () =>
+    onlyGame >= 0
+      ? onlyGame
+      : nextGameIndex(Math.random, MINI_GAMES.length, playedRef.current);
 
   const startGame = (playerCount: number) => {
     setPlayers(createInitialPlayers(playerCount));
-    setCurrentGameIndex(0);
-    setGameState("GAME_START");
+    playedRef.current = [];
+    beginRound(pickNextGame());
   };
 
   const startRemoteGame = (playerName: string) => {
@@ -90,17 +99,29 @@ export default function App() {
     });
 
     socketService.onGameStarted(({ gameIndex }) => {
-      setCurrentGameIndex(gameIndex);
-      setGameState("GAME_START");
+      if (!Number.isInteger(gameIndex) || !MINI_GAMES[gameIndex]) return;
+      beginRound(gameIndex);
+    });
+
+    // The host moves everyone from the title card into the game, and from the
+    // last round to the final standings.
+    socketService.onRemoteEvent(({ event }) => {
+      if (event === "enter-arena") setGameState("PLAYING");
+      if (event === "match-over") setGameState("SCOREBOARD");
     });
   };
 
-  const handleManualStart = () => {
-    if (roomId) {
-      socketService.startGame(0);
-    } else {
-      setGameState("PLAYING");
-    }
+  // The host's "Ignite Session" in the lobby: pick the first game.
+  const startRemoteMatch = () => {
+    playedRef.current = [];
+    setPlayed([]);
+    socketService.startGame(pickNextGame());
+  };
+
+  // "Enter Arena" on the title card.
+  const enterArena = () => {
+    if (roomId) socketService.sendEvent("enter-arena", {});
+    setGameState("PLAYING");
   };
 
   const copyLink = () => {
@@ -135,14 +156,15 @@ export default function App() {
   };
 
   const nextPhase = () => {
-    if (currentGameIndex < MINI_GAMES.length - 1) {
+    if (playedRef.current.length < ROUNDS_PER_MATCH) {
+      const next = pickNextGame();
       if (roomId) {
-        socketService.startGame(currentGameIndex + 1);
+        socketService.startGame(next);
       } else {
-        setCurrentGameIndex((prev) => prev + 1);
-        setGameState("GAME_START");
+        beginRound(next);
       }
     } else {
+      if (roomId) socketService.sendEvent("match-over", {});
       setGameState("SCOREBOARD");
     }
   };
@@ -151,6 +173,8 @@ export default function App() {
     setGameState("LOBBY");
     setPlayers([]);
     setCurrentGameIndex(0);
+    playedRef.current = [];
+    setPlayed([]);
     setRoomId(null);
     setMyPlayerId(null);
     window.history.replaceState({}, "", window.location.pathname);
@@ -158,40 +182,19 @@ export default function App() {
 
   const renderGame = () => {
     const game = MINI_GAMES[currentGameIndex];
-    // In multiplayer, we pass the "active" player or restrict inputs
-    // For now, let's just pass the players. Games might need subtle tweaks to restrict input to myPlayerId.
-    const props = { players, onEnd: handleGameEnd, myPlayerId };
-
-    switch (game.id) {
-      case "reaction":
-        return <ReactionGame {...props} />;
-      case "mash":
-        return <MashGame {...props} />;
-      case "pattern":
-        return <PatternGame {...props} />;
-      case "stop":
-        return <StopGame {...props} />;
-      case "count":
-        return <CountGame {...props} />;
-      case "target":
-        return <TargetGame {...props} />;
-      case "tug":
-        return <TugGame {...props} />;
-      case "balance":
-        return <BalanceGame {...props} />;
-      case "match":
-        return <MatchGame {...props} />;
-      case "fuel":
-        return <FuelGame {...props} />;
-      case "scan":
-        return <ScanGame {...props} />;
-      case "dodge":
-        return <DodgeGame {...props} />;
-      case "smash":
-        return <SmashGame {...props} />;
-      default:
-        return <div>Unknown Game</div>;
-    }
+    if (!game) return <div>Unknown Game</div>;
+    const Game = game.component;
+    // Same seed on every device in the room: room code + round number.
+    const seed = roundSeed(roomId, played.length, currentGameIndex);
+    return (
+      <Game
+        key={`${played.length}-${game.id}`}
+        players={players}
+        onEnd={handleGameEnd}
+        myPlayerId={myPlayerId}
+        seed={seed}
+      />
+    );
   };
 
   return (
@@ -254,7 +257,7 @@ export default function App() {
                     </button>
                     {players.length >= 2 && myPlayerId === 0 && (
                       <button
-                        onClick={() => handleManualStart()}
+                        onClick={startRemoteMatch}
                         className="px-8 py-4 bg-brand-cyan text-brand-bg font-black uppercase tracking-widest rounded-2xl shadow-[0_0_20px_#00F2FF] hover:scale-105 transition-all cursor-pointer active:scale-95"
                       >
                         Ignite Session
@@ -296,7 +299,7 @@ export default function App() {
                 animate={{ y: 0, opacity: 1 }}
                 className="bg-brand-accent/20 w-fit px-4 py-1 rounded-md text-[10px] font-black tracking-[0.3em] mb-4 mx-auto border border-brand-accent/30 text-brand-accent uppercase"
               >
-                Upcoming Challenge
+                Round {played.length} of {ROUNDS_PER_MATCH}
               </motion.div>
 
               <motion.div
@@ -323,7 +326,7 @@ export default function App() {
 
               {!roomId || myPlayerId === 0 ? (
                 <button
-                  onClick={handleManualStart}
+                  onClick={enterArena}
                   className="px-16 py-6 bg-white text-brand-bg font-black text-2xl hover:bg-brand-cyan transition-all uppercase tracking-widest cursor-pointer active:scale-95 rounded-2xl shadow-2xl"
                   id="start-button"
                 >
@@ -402,7 +405,7 @@ export default function App() {
                   className="flex items-center gap-4 px-14 py-6 bg-brand-accent text-white font-black text-xl hover:bg-brand-accent/80 transition-all uppercase tracking-widest group cursor-pointer active:scale-95 rounded-2xl shadow-xl"
                   id="next-game-button"
                 >
-                  {currentGameIndex < MINI_GAMES.length - 1
+                  {played.length < ROUNDS_PER_MATCH
                     ? "Next Phase"
                     : "Final Standings"}
                   <ChevronRight

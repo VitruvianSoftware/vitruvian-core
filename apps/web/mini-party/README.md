@@ -1,11 +1,27 @@
 # Mini Party
 
-Thirteen rapid-fire party mini-games for 2–4 players. Play on one shared
-screen (each player gets a corner to tap), or start a remote room and share
-the link so everyone plays from their own phone.
+42 rapid-fire party mini-games for 2–4 players. Play on one shared screen
+(each player gets a corner to tap), or start a remote room and share the link
+so everyone plays from their own phone. A match is 10 games picked at random,
+never the same one twice.
 
 The games: ZAP!, BOOST!, ECHO!, PINPOINT!, GLANCE!, SNIPE!, TUG!, STABLE!,
-COLOR!, PUMP!, SEARCH!, AVOID! and SMASH!.
+COLOR!, PUMP!, SEARCH!, AVOID!, SMASH!, SUM!, STACK!, HOP!, CRACK!, 1-2-3!,
+PAIRS!, SORT!, BEAT!, MORE!, WHEEL!, CATCH!, MAZE!, DARK!, SPELL!, CUPS!,
+COPY!, PUFF!, HI-LO!, SNAP!, HOOP!, GREEN!, DEFUSE!, TRACK!, SAFE!, PUSH!,
+SHADOW!, TURN!, FLIP! and GEARS!.
+
+To try one game on its own, add `?game=<id>` to the URL, e.g.
+`?game=stack` (ids are in `src/games/catalog.ts`).
+
+## Adding a game
+
+Build it on the kit in `src/kit/round.tsx`: write a `Board` for one player and
+let `useRound`, `GameScreen` and `PlayerPanels` handle the clock, scores,
+layout and online play. Take all randomness from `round.random()` so every
+player, on every device, gets the same puzzles. `src/games/MathGame.tsx`
+(answer picking) and `src/games/StackGame.tsx` (real time) are the
+references. Export a `sticker`, then add the game to `src/games/catalog.ts`.
 
 Play it at **https://mini-games.vitruviansoftware.dev**.
 
