@@ -10,7 +10,7 @@ A lightweight, Foundation-only Swift Sentry client (`SentryLite.start`, `SentryL
 
 ## When not to use it
 
-- Android or Kotlin apps; use [`//packages/android-crash-privacy`](../../android-crash-privacy/README.md) instead.
+- Android or Kotlin apps; use [`//packages/android-crash-privacy`](../android-crash-privacy/README.md) instead.
 - Apps needing full native crash symbolication, session replay, profiling, or distributed tracing (SentryLite captures `NSException`, `Error`, and message events only).
 
 ## Example
@@ -35,7 +35,7 @@ import SentryLite
 
 ## Depend on it
 
-`//packages/swift/SentryLite:SentryLite`
+`//packages/sentry-lite:SentryLite`
 
 ## Constraints
 
