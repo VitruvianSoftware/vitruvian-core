@@ -138,9 +138,64 @@ pub fn default_kubeconfig(line: u32) -> Res<()> {
     Ok(())
 }
 
-/// `KCTX="${KUBE_CONTEXT:-default}"`.
+/// The context every tool talks to: `$KUBE_CONTEXT` when set, else k3s's
+/// `default`. A kubeconfig without `default` (a cloud session writes one
+/// context, `lab`) gets its only context instead. Several contexts and no
+/// `default` still pin `default`, so kubectl refuses as before rather than
+/// guessing, but the warning names the contexts to choose from.
 pub fn kctx() -> Vec<u8> {
-    sc::env_or("KUBE_CONTEXT", b"default")
+    if sc::env_set_nonempty("KUBE_CONTEXT") {
+        return sc::env_or_empty("KUBE_CONTEXT");
+    }
+    // Read the file default_kubeconfig points at, even for a tool that calls
+    // this first (or never calls it), so the choice cannot come from another
+    // kubeconfig than the one kubectl then uses.
+    let cfg = match sc::env("KUBECONFIG") {
+        Some(v) if !v.is_empty() => v,
+        _ => sc::cat(&[&sc::env_or_empty("HOME"), b"/.kube/cluster.yaml"]),
+    };
+    let mut c = Command::new("kubectl");
+    c.args(["config", "get-contexts", "-o", "name", "--kubeconfig"])
+        .arg(sc::os(&cfg))
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    let names: Vec<Vec<u8>> = match c.output() {
+        Ok(o) if o.status.success() => o
+            .stdout
+            .split(|b| *b == b'\n')
+            .map(|l| l.trim_ascii().to_vec())
+            .filter(|l| !l.is_empty())
+            .collect(),
+        _ => Vec::new(),
+    };
+    let (ctx, note) = choose_context(&names);
+    if let Some(n) = note {
+        warn(&n);
+    }
+    ctx
+}
+
+/// `kctx`'s choice among the kubeconfig's `names`, with the note to print.
+/// Empty `names` (no kubeconfig, or kubectl failed) keeps `default` quietly,
+/// so kubectl reports the real problem itself.
+fn choose_context(names: &[Vec<u8>]) -> (Vec<u8>, Option<Vec<u8>>) {
+    if names.is_empty() || names.iter().any(|n| n == b"default") {
+        return (b"default".to_vec(), None);
+    }
+    if names.len() == 1 {
+        let only = names[0].clone();
+        let note = sc::cat(&[
+            b"gitops: KUBE_CONTEXT unset and no 'default' context; using the only one, '",
+            &only,
+            b"'",
+        ]);
+        return (only, Some(note));
+    }
+    let note = sc::cat(&[
+        b"gitops: KUBE_CONTEXT unset and the kubeconfig has no 'default' context; set KUBE_CONTEXT to one of: ",
+        &names.join(&b", "[..]),
+    ]);
+    (b"default".to_vec(), Some(note))
 }
 
 /// `command -v NAME >/dev/null 2>&1`.
@@ -682,6 +737,29 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         assert_eq!(&args[..2], &["--context", "x"]);
+    }
+
+    #[test]
+    fn choose_context_prefers_default_then_a_lone_context() {
+        let v = |s: &[&str]| s.iter().map(|x| x.as_bytes().to_vec()).collect::<Vec<_>>();
+        // A laptop's k3s kubeconfig: unchanged, and silent.
+        assert_eq!(
+            choose_context(&v(&["gke", "default"])),
+            (b"default".to_vec(), None)
+        );
+        // No kubeconfig, or kubectl failed: unchanged, kubectl reports why.
+        assert_eq!(choose_context(&[]), (b"default".to_vec(), None));
+        // The cloud session's kubeconfig (2026-11-19: every target failed with
+        // `context was not found for specified context: default`).
+        let (ctx, note) = choose_context(&v(&["lab"]));
+        assert_eq!(ctx, b"lab");
+        assert!(String::from_utf8(note.unwrap()).unwrap().contains("'lab'"));
+        // Ambiguous: never guess a cluster, but say what to set.
+        let (ctx, note) = choose_context(&v(&["gke", "lab"]));
+        assert_eq!(ctx, b"default");
+        assert!(String::from_utf8(note.unwrap())
+            .unwrap()
+            .ends_with("gke, lab"));
     }
 
     #[test]
