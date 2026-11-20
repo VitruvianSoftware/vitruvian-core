@@ -1,0 +1,304 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: sentry-apply
+
+# Reconciles self-hosted Sentry (https://sentry.lab.ipv1337.dev) over the
+# Headscale mesh -> Envoy Gateway https-sentry listener (:31103) in order:
+#   1. infrastructure/pulumi/platform/sentry (stack production)
+#   2. infrastructure/pulumi/platform/sentry-pagerduty (stack production)
+# so newly created Sentry projects receive PagerDuty high-priority alert rules
+# in the same run. Before either `pulumi up`, a non-destructive plan guard
+# runs `pulumi preview --json` and fails closed if any delete or replace step
+# is planned. Push to main and the 6-hour schedule run `up`; workflow_dispatch
+# defaults to `preview`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/pulumi/platform/sentry/**"
+      - "infrastructure/pulumi/platform/sentry-pagerduty/**"
+      - ".github/workflows/sentry-apply.yaml"
+      - ".github/actions/homelab-tunnel-setup/**"
+      - ".github/actions/pulumi-summary/**"
+      - "tools/pulumi/src/bin/retry_concurrent_update.rs"
+      - "tools/pulumi/src/retry_concurrent_update.rs"
+      - "tools/pulumi/src/bin/refuse_destructive_plan.rs"
+      - "tools/pulumi/src/refuse_destructive_plan.rs"
+      - "tools/pulumi/src/bin/guarded_up.rs"
+      - "tools/pulumi/src/guarded_up.rs"
+  schedule:
+    # Every 6 hours so Sentry projects created outside git get PagerDuty
+    # high-priority alert rules without waiting for a repository push.
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preview (safe, default) | up (reconciles live Sentry + PagerDuty alert rules)"
+        required: true
+        default: preview
+        type: choice
+        options: [preview, up]
+
+permissions:
+  contents: read
+
+# Serialize applies of the Sentry stacks; never cancel an in-flight pulumi up.
+concurrency:
+  group: sentry-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # Main-only GitHub Environment (no required reviewer) holding SENTRY_TOKEN
+    # and HEADSCALE_CI_AUTHKEY.
+    environment: sentry-production
+    env:
+      GOWORK: off
+      # Authenticates Pulumi's github:// plugin downloads (rate limits).
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Check whether SENTRY_TOKEN is seeded before joining the mesh or running
+      # Pulumi; never print the token. An environment with no token yet exits 0
+      # with a notice so merging before the token is seeded leaves main green.
+      - name: Check SENTRY_TOKEN is present
+        id: key
+        env:
+          SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+          HEADSCALE_CI_AUTHKEY: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SENTRY_TOKEN:-}" ]; then
+            echo "::notice::No SENTRY_TOKEN in the sentry-production environment yet, so nothing was applied. See infrastructure/pulumi/platform/sentry/README.md and infrastructure/pulumi/platform/sentry-pagerduty/README.md."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${HEADSCALE_CI_AUTHKEY:-}" ]; then
+            echo "::error::SENTRY_TOKEN is set in sentry-production, but HEADSCALE_CI_AUTHKEY is missing; see tools/sync-env-secrets/README.md." >&2
+            exit 1
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up the Sentry homelab tunnel
+        if: steps.key.outputs.present == 'true'
+        uses: ./.github/actions/homelab-tunnel-setup
+        with:
+          headscale-authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
+          hostname: sentry.lab.ipv1337.dev
+          health-path: /_health/
+          gateway-scheme: https
+
+      - name: Set up Go
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: infrastructure/pulumi/platform/sentry/go.mod
+          cache-dependency-path: |
+            infrastructure/pulumi/platform/sentry/go.sum
+            infrastructure/pulumi/platform/sentry-pagerduty/go.sum
+
+      - name: Install Pulumi
+        if: steps.key.outputs.present == 'true'
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
+
+      # Build the std-only Rust helpers once (no Bazel on this runner):
+      #   retry-concurrent-update  waits out Pulumi Cloud's 409 lock (preview branch)
+      #   guarded-up               atomically runs `pulumi preview --json` ->
+      #                            refuse-destructive-plan -> `pulumi up`, retrying
+      #                            the whole unit on a 409 lock
+      - name: Build Pulumi CI helpers
+        if: steps.key.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          if ! command -v rustc >/dev/null 2>&1; then
+            echo "::error::no rustc on this runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset})" >&2
+            exit 1
+          fi
+          rustc --edition 2021 -O \
+            "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" \
+            -o "${RUNNER_TEMP}/retry-concurrent-update"
+          rustc --edition 2021 -O \
+            "$GITHUB_WORKSPACE/tools/pulumi/src/bin/guarded_up.rs" \
+            -o "${RUNNER_TEMP}/guarded-up"
+
+      - name: Reconcile platform/sentry (production)
+        id: pulumi-sentry
+        if: steps.key.outputs.present == 'true'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_ACTION: ${{ inputs.action }}
+        working-directory: infrastructure/pulumi/platform/sentry
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            action="${DISPATCH_ACTION:-preview}"
+          else
+            action="up"
+          fi
+          if [ "$action" != "preview" ] && [ "$action" != "up" ]; then
+            echo "::error::unexpected action '${action}' (want preview or up)" >&2
+            exit 1
+          fi
+
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          guarded_up="${RUNNER_TEMP}/guarded-up"
+
+          # Forward 127.0.0.1:443 -> $HOMELAB_GATEWAY (NodePort :31103 on a
+          # cluster node's Headscale IP) preserving TLS/SNI so Envoy terminates
+          # HTTPS with the genuine sentry-tls certificate. Backgrounded in this
+          # step so socat lives for the whole Pulumi command.
+          : "${HOMELAB_GATEWAY:?homelab-tunnel-setup did not pick a gateway node}"
+          sudo socat TCP-LISTEN:443,bind=127.0.0.1,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
+          socat_pid=$!
+          trap 'sudo kill "$socat_pid" 2>/dev/null || sudo pkill -f "TCP-LISTEN:443" 2>/dev/null || true' EXIT
+
+          healthy=false
+          for _ in $(seq 1 15); do
+            if curl -fsS --max-time 5 https://sentry.lab.ipv1337.dev/_health/ >/dev/null 2>&1 \
+               && curl -fsS --max-time 5 https://sentry.lab.ipv1337.dev/api/0/ >/dev/null 2>&1; then
+              healthy=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" != "true" ]; then
+            echo "::error::Sentry route https://sentry.lab.ipv1337.dev (/_health/ and /api/0/) is unreachable through ${HOMELAB_GATEWAY}" >&2
+            curl -sS -D - -o /dev/null --max-time 5 https://sentry.lab.ipv1337.dev/_health/ >&2 || true
+            exit 1
+          fi
+          echo "internal route to sentry.lab.ipv1337.dev is up"
+
+          out_file="${RUNNER_TEMP}/pulumi-sentry-out.txt"
+          : > "$out_file"
+          set +e
+          pulumi stack select production 2>&1 | tee -a "$out_file"
+          ec="${PIPESTATUS[0]}"
+          if [ "$ec" -ne 0 ]; then
+            echo "::error::Pulumi stack 'production' was not found for platform/sentry; refusing to create an empty stack." | tee -a "$out_file" >&2
+          else
+            if [ "$action" = "up" ]; then
+              # guarded-up runs `pulumi preview --json` -> refuse-destructive-plan
+              # -> `pulumi up` as one atomic unit and retries the whole unit on 409.
+              "$guarded_up" "sentry production" 2>&1 | tee -a "$out_file"
+              ec="${PIPESTATUS[0]}"
+            else
+              "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"
+              ec="${PIPESTATUS[0]}"
+            fi
+          fi
+          set -e
+          echo "exit_code=${ec}" >> "$GITHUB_OUTPUT"
+          exit "${ec}"
+
+      - name: Reconcile platform/sentry-pagerduty (production)
+        id: pulumi-sentry-pagerduty
+        if: steps.key.outputs.present == 'true'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_ACTION: ${{ inputs.action }}
+        working-directory: infrastructure/pulumi/platform/sentry-pagerduty
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            action="${DISPATCH_ACTION:-preview}"
+          else
+            action="up"
+          fi
+          if [ "$action" != "preview" ] && [ "$action" != "up" ]; then
+            echo "::error::unexpected action '${action}' (want preview or up)" >&2
+            exit 1
+          fi
+
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          guarded_up="${RUNNER_TEMP}/guarded-up"
+
+          # Backgrounded in this step because GitHub Actions reaps background
+          # processes across step boundaries.
+          : "${HOMELAB_GATEWAY:?homelab-tunnel-setup did not pick a gateway node}"
+          sudo socat TCP-LISTEN:443,bind=127.0.0.1,reuseaddr,fork TCP:"${HOMELAB_GATEWAY}" &
+          socat_pid=$!
+          trap 'sudo kill "$socat_pid" 2>/dev/null || sudo pkill -f "TCP-LISTEN:443" 2>/dev/null || true' EXIT
+
+          healthy=false
+          for _ in $(seq 1 15); do
+            if curl -fsS --max-time 5 https://sentry.lab.ipv1337.dev/_health/ >/dev/null 2>&1 \
+               && curl -fsS --max-time 5 https://sentry.lab.ipv1337.dev/api/0/ >/dev/null 2>&1; then
+              healthy=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" != "true" ]; then
+            echo "::error::Sentry route https://sentry.lab.ipv1337.dev (/_health/ and /api/0/) is unreachable through ${HOMELAB_GATEWAY}" >&2
+            curl -sS -D - -o /dev/null --max-time 5 https://sentry.lab.ipv1337.dev/_health/ >&2 || true
+            exit 1
+          fi
+          echo "internal route to sentry.lab.ipv1337.dev is up"
+
+          out_file="${RUNNER_TEMP}/pulumi-sentry-pagerduty-out.txt"
+          : > "$out_file"
+          set +e
+          pulumi stack select production 2>&1 | tee -a "$out_file"
+          ec="${PIPESTATUS[0]}"
+          if [ "$ec" -ne 0 ]; then
+            echo "::error::Pulumi stack 'production' was not found for platform/sentry-pagerduty; refusing to create an empty stack." | tee -a "$out_file" >&2
+          else
+            if [ "$action" = "up" ]; then
+              # guarded-up runs `pulumi preview --json` -> refuse-destructive-plan
+              # -> `pulumi up` as one atomic unit and retries the whole unit on 409.
+              "$guarded_up" "sentry-pagerduty production" 2>&1 | tee -a "$out_file"
+              ec="${PIPESTATUS[0]}"
+            else
+              "$retry" pulumi preview --diff --non-interactive 2>&1 | tee -a "$out_file"
+              ec="${PIPESTATUS[0]}"
+            fi
+          fi
+          set -e
+          echo "exit_code=${ec}" >> "$GITHUB_OUTPUT"
+          exit "${ec}"
+
+      - name: Pulumi digest (sentry) → step summary
+        if: always() && steps.key.outputs.present == 'true'
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: sentry production
+          out-file: ${{ runner.temp }}/pulumi-sentry-out.txt
+          exit-code: ${{ steps.pulumi-sentry.outputs.exit_code || '1' }}
+
+      - name: Pulumi digest (sentry-pagerduty) → step summary
+        if: always() && steps.key.outputs.present == 'true'
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: sentry-pagerduty production
+          out-file: ${{ runner.temp }}/pulumi-sentry-pagerduty-out.txt
+          exit-code: ${{ steps.pulumi-sentry-pagerduty.outputs.exit_code || '1' }}

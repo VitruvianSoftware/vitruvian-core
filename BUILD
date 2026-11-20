@@ -207,10 +207,14 @@ exports_files(
     visibility = ["//tools/delivery/gen:__pkg__"],
 )
 
-# Read by //gitops/argocd/platform/headscale's test, which keeps the nodes the
-# Zitadel tunnel tries in step with the Headscale ACL that lets tag:ci reach them.
+# Read by //gitops/argocd/platform/headscale's test, which keeps the nodes and ports
+# the homelab tunnel tries in step with the Headscale ACL that lets tag:ci reach them,
+# and verifies zitadel-tunnel-setup delegates to homelab-tunnel-setup.
 exports_files(
-    [".github/actions/zitadel-tunnel-setup/action.yml"],
+    [
+        ".github/actions/homelab-tunnel-setup/action.yml",
+        ".github/actions/zitadel-tunnel-setup/action.yml",
+    ],
     visibility = ["//gitops/argocd/platform/headscale:__pkg__"],
 )
 

@@ -31,13 +31,13 @@
 // source reads *.yaml/*.yml/*.json, so it never tries to apply this.
 {
   "tagOwners": {
-    // Ephemeral GitHub Actions runners (the Zitadel apply workflows). They join
-    // with the HEADSCALE_CI_AUTHKEY pre-auth key, which carries this tag.
+    // Ephemeral GitHub Actions runners (Zitadel and Sentry apply workflows). They
+    // join with the HEADSCALE_CI_AUTHKEY pre-auth key, which carries this tag.
     "tag:ci": ["james@"]
   },
   "hosts": {
     // The wired, bare-metal cluster nodes' headscale-node-agent addresses.
-    // Keep in step with .github/actions/zitadel-tunnel-setup/action.yml.
+    // Keep in step with .github/actions/homelab-tunnel-setup/action.yml.
     "fedora": "100.64.0.7/32",
     "nuc9i5": "100.64.0.6/32",
     "nuc9i9": "100.64.0.8/32"
@@ -54,12 +54,20 @@
       "dst": ["*:*"]
     },
     {
-      // CI reaches the Envoy gateway's HTTP NodePort on the cluster nodes over
-      // TCP, and nothing else (no UDP, no ICMP, no other port).
+      // CI reaches the Envoy gateway's HTTP (:30265) and HTTPS (:31103)
+      // NodePorts on the cluster nodes over TCP, and nothing else (no UDP, no
+      // ICMP, no other port).
       "action": "accept",
       "src": ["tag:ci"],
       "proto": "tcp",
-      "dst": ["fedora:30265", "nuc9i5:30265", "nuc9i9:30265"]
+      "dst": [
+        "fedora:30265",
+        "nuc9i5:30265",
+        "nuc9i9:30265",
+        "fedora:31103",
+        "nuc9i5:31103",
+        "nuc9i9:31103"
+      ]
     }
   ]
 }

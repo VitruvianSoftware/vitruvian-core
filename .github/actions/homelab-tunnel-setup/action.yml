@@ -1,0 +1,198 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Homelab tunnel setup
+description: >-
+  Join the Headscale mesh and prepare local routing to an internal homelab
+  service through the platform Envoy Gateway NodePort (:30265 HTTP or :31103
+  HTTPS). This ONLY prepares the mesh join, /etc/hosts entry, optional local
+  self-signed TLS cert (for gateway-scheme=http), and picks a reachable gateway
+  node into $HOMELAB_GATEWAY (and optional gateway-env-var). It deliberately
+  does NOT start the socat relay itself: backgrounded processes do not survive
+  across a step boundary, so `sudo socat TCP-LISTEN:443,bind=127.0.0.1,... TCP:${HOMELAB_GATEWAY} &` + the
+  health check must stay inlined in the SAME step as the command that uses it.
+
+inputs:
+  headscale-authkey:
+    description: >-
+      Reusable, ephemeral Headscale pre-auth key tagged tag:ci (the
+      HEADSCALE_CI_AUTHKEY environment secret). Minting and rotation:
+      gitops/argocd/platform/headscale/README.md.
+    required: true
+  hostname:
+    description: Target service hostname routed on the Envoy Gateway (e.g. sentry.lab.ipv1337.dev).
+    required: true
+  health-path:
+    description: HTTP(S) path probed on the gateway to select a reachable node (must start with '/').
+    required: true
+  gateway-scheme:
+    description: >-
+      Gateway listener scheme: "https" (default, probes Envoy https-443 NodePort
+      31103 with real TLS/SNI) or "http" (probes Envoy http-80 NodePort 30265
+      and generates a locally trusted self-signed TLS bundle for OPENSSL-LISTEN).
+    required: false
+    default: "https"
+  gateway-env-var:
+    description: >-
+      Environment variable name populated alongside HOMELAB_GATEWAY with the
+      selected <node-ip>:<nodePort>.
+    required: false
+    default: "HOMELAB_GATEWAY"
+  tls-cert-bundle:
+    description: >-
+      Path to write the combined self-signed cert+key PEM when gateway-scheme
+      is "http". Ignored when gateway-scheme is "https".
+    required: false
+    default: "/etc/homelab-internal-ck.pem"
+
+runs:
+  using: composite
+  steps:
+    - name: Join the Headscale mesh (ephemeral, tag:ci)
+      uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+      with:
+        # Self-hosted Headscale, not commercial Tailscale (which is now
+        # offline break-glass on the cluster hosts; see
+        # docs/admin/headscale-tailscale-failover.md). Headscale has no OAuth
+        # clients, so this is a pre-auth key. The key itself carries tag:ci and
+        # makes the node ephemeral, so no `tags:` here (that would add
+        # --advertise-tags, which a tagged key does not need).
+        # The action marks `authkey` deprecated in favour of OAuth; the warning
+        # it prints is expected here.
+        authkey: ${{ inputs.headscale-authkey }}
+        args: --login-server=https://headscale.ipv1337.dev
+        # Pinned, not "latest": a client newer than Headscale v0.26.1 knows is
+        # a risk. 1.104.x is what this action version defaults to and what
+        # James's Mac (1.104.5) already runs against this Headscale.
+        version: 1.104.4
+        hostname: ci-${{ github.run_id }}-${{ github.run_attempt }}
+        # v4 already passes `--accept-routes`; don't add it in args.
+
+    - name: Pick a reachable Envoy gateway node
+      shell: bash
+      env:
+        TARGET_HOSTNAME: ${{ inputs.hostname }}
+        HEALTH_PATH: ${{ inputs.health-path }}
+        GATEWAY_SCHEME: ${{ inputs.gateway-scheme }}
+        GATEWAY_ENV_VAR: ${{ inputs.gateway-env-var }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${TARGET_HOSTNAME}" =~ ^[a-z0-9.-]+$ ]]; then
+          echo "::error::invalid hostname: ${TARGET_HOSTNAME}" >&2
+          exit 1
+        fi
+        if [[ ! "${HEALTH_PATH}" =~ ^/[^[:space:]]*$ ]]; then
+          echo "::error::invalid health-path (must start with '/'): ${HEALTH_PATH}" >&2
+          exit 1
+        fi
+        if [[ "${GATEWAY_SCHEME}" != "http" && "${GATEWAY_SCHEME}" != "https" ]]; then
+          echo "::error::invalid gateway-scheme '${GATEWAY_SCHEME}' (want http or https)" >&2
+          exit 1
+        fi
+        if [[ ! "${GATEWAY_ENV_VAR}" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+          echo "::error::invalid gateway-env-var: ${GATEWAY_ENV_VAR}" >&2
+          exit 1
+        fi
+
+        # The Envoy gateway's pinned NodePorts (30265 for http-80 and 31103 for
+        # https-443 in gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml)
+        # on the wired cluster nodes' Headscale addresses (headscale-node-agent).
+        # The gateway Service is externalTrafficPolicy: Cluster, so any node
+        # forwards to Envoy; trying all three means one node being down does
+        # not break CI. These are the `hosts` in
+        # gitops/argocd/platform/headscale/policy.hujson, which allows tag:ci
+        # to reach exactly these ports -- keep the two lists in step.
+        # Order: nuc9i9 first, the node the workflows used before.
+        candidates="100.64.0.8 100.64.0.6 100.64.0.7"
+        for attempt in $(seq 1 10); do
+          for ip in $candidates; do
+            if [ "${GATEWAY_SCHEME}" = "http" ]; then
+              if curl -fsS --max-time 5 -H "Host: ${TARGET_HOSTNAME}" \
+                  "http://${ip}:30265${HEALTH_PATH}" \
+                  >/dev/null 2>&1; then
+                picked="${ip}:30265"
+                echo "${TARGET_HOSTNAME} answers through ${picked} (attempt ${attempt})"
+                echo "HOMELAB_GATEWAY=${picked}" >>"$GITHUB_ENV"
+                if [ "${GATEWAY_ENV_VAR}" != "HOMELAB_GATEWAY" ]; then
+                  echo "${GATEWAY_ENV_VAR}=${picked}" >>"$GITHUB_ENV"
+                fi
+                exit 0
+              fi
+            else
+              if curl -fsS --max-time 5 --resolve "${TARGET_HOSTNAME}:31103:${ip}" \
+                  "https://${TARGET_HOSTNAME}:31103${HEALTH_PATH}" \
+                  >/dev/null 2>&1; then
+                picked="${ip}:31103"
+                echo "${TARGET_HOSTNAME} answers through ${picked} (attempt ${attempt})"
+                echo "HOMELAB_GATEWAY=${picked}" >>"$GITHUB_ENV"
+                if [ "${GATEWAY_ENV_VAR}" != "HOMELAB_GATEWAY" ]; then
+                  echo "${GATEWAY_ENV_VAR}=${picked}" >>"$GITHUB_ENV"
+                fi
+                exit 0
+              fi
+            fi
+          done
+          sleep 3
+        done
+        echo "::error::No cluster node answered ${TARGET_HOSTNAME}${HEALTH_PATH} (${GATEWAY_SCHEME})" \
+          "over Headscale (${candidates})."
+        tailscale status || true
+        exit 1
+
+    - name: Prepare local route to the Envoy gateway
+      shell: bash
+      env:
+        TARGET_HOSTNAME: ${{ inputs.hostname }}
+        GATEWAY_SCHEME: ${{ inputs.gateway-scheme }}
+        TLS_CERT_BUNDLE: ${{ inputs.tls-cert-bundle }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${TARGET_HOSTNAME}" =~ ^[a-z0-9.-]+$ ]]; then
+          echo "::error::invalid hostname: ${TARGET_HOSTNAME}" >&2
+          exit 1
+        fi
+        if [[ "${GATEWAY_SCHEME}" != "http" && "${GATEWAY_SCHEME}" != "https" ]]; then
+          echo "::error::invalid gateway-scheme '${GATEWAY_SCHEME}' (want http or https)" >&2
+          exit 1
+        fi
+        sudo apt-get update -qq && sudo apt-get install -y -qq socat
+        if [ "${GATEWAY_SCHEME}" = "http" ]; then
+          if [[ -z "${TLS_CERT_BUNDLE}" || "${TLS_CERT_BUNDLE}" != /* ]]; then
+            echo "::error::invalid tls-cert-bundle path: ${TLS_CERT_BUNDLE}" >&2
+            exit 1
+          fi
+          # When Envoy serves the route on HTTP (:30265) while the client requires
+          # HTTPS (e.g. Zitadel ties the JWT-profile audience to https://),
+          # terminate TLS locally with a trusted self-signed cert for the host
+          # and forward decrypted HTTP (Host preserved) to the internal Envoy.
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "${tmpdir}"' EXIT
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout "${tmpdir}/k.pem" -out "${tmpdir}/c.pem" \
+            -days 1 -subj "/CN=${TARGET_HOSTNAME}" \
+            -addext "subjectAltName=DNS:${TARGET_HOSTNAME}"
+          sudo cp "${tmpdir}/c.pem" "/usr/local/share/ca-certificates/${TARGET_HOSTNAME}.crt"
+          sudo update-ca-certificates >/dev/null
+          sudo install -m 0600 /dev/null "${TLS_CERT_BUNDLE}"
+          cat "${tmpdir}/c.pem" "${tmpdir}/k.pem" | sudo tee "${TLS_CERT_BUNDLE}" >/dev/null
+        fi
+        if ! grep -qxF "127.0.0.1 ${TARGET_HOSTNAME}" /etc/hosts; then
+          echo "127.0.0.1 ${TARGET_HOSTNAME}" | sudo tee -a /etc/hosts >/dev/null
+        fi

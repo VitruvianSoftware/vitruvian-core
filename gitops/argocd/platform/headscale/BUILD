@@ -49,6 +49,7 @@ gitops_manifest(
 
 DATA_FILES = [
     "policy.hujson",
+    "//:.github/actions/homelab-tunnel-setup/action.yml",
     "//:.github/actions/zitadel-tunnel-setup/action.yml",
     "//gitops/argocd/platform/envoy-gateway:gateway/envoyproxy.yaml",
     "applicationset.yaml",

@@ -151,7 +151,7 @@ internal Envoy, transparently to the provider (which still uses
           # workflows holding a working form; naming one of them here would go
           # stale, because the port is defined in the gateway EnvoyProxy patch
           # and the workflows only hold copies of it.
-          socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/tmp/ck.pem,verify=0 \
+          socat OPENSSL-LISTEN:443,bind=127.0.0.1,reuseaddr,fork,cert=/tmp/ck.pem,verify=0 \
                 TCP:<a node's Headscale address>:<gateway NodePort> &
           echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts
 

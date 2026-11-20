@@ -78,16 +78,43 @@ this provider".
 2. Apply `infrastructure/pulumi/platform/pagerduty` (`production` stack) so
    `ipv1337/vitruvian-pagerduty/production` exports `sentryIntegrationKey`.
 
-## Preview and apply
+## CI apply and local preview
 
-There is no CI `delivery()` unit because self-hosted Sentry runs on the homelab
-tailnet. Apply from a clean `main` checkout after merging, exporting `SENTRY_TOKEN`
-from Bitwarden (`sentry.lab.ipv1337.dev`, hidden field `SENTRY_TOKEN`):
+This stack is applied automatically by
+[`.github/workflows/sentry-apply.yaml`](../../../../.github/workflows/sentry-apply.yaml)
+against the `production` stack, immediately after
+[`infrastructure/pulumi/platform/sentry`](../sentry/README.md) so new projects
+receive PagerDuty alert rules in the same run:
+
+- **Triggers**: `push` to `main` (touching `infrastructure/pulumi/platform/sentry/**`,
+  `infrastructure/pulumi/platform/sentry-pagerduty/**`, `.github/workflows/sentry-apply.yaml`,
+  `.github/actions/homelab-tunnel-setup/**`, `.github/actions/pulumi-summary/**`,
+  or the Pulumi CI helper binaries),
+  a 6-hour `schedule` (picking up Sentry projects created outside git), and
+  `workflow_dispatch` (`action: preview|up`, defaulting to `preview`).
+- **Environment**: `sentry-production` (main-only, no required reviewer,
+  declared in [`repo-config`](../repo-config/sentry_environments.go)). Holds
+  `SENTRY_TOKEN` (minted with `bazel run //tools/sentry:ci-token`) and
+  `HEADSCALE_CI_AUTHKEY` (synced via
+  [`//tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md#sentry-production)).
+  If `SENTRY_TOKEN` is not seeded yet, the workflow emits a `::notice::` and
+  exits `0`.
+- **Non-destructive plan guard**: before `pulumi up`, the job runs
+  `pulumi preview --json` and passes it to `//tools/pulumi:refuse-destructive-plan`.
+  If any `delete`, `replace`, `create-replacement`, or `delete-replaced` step is
+  planned, the job fails and refuses to apply; deletions and replacements must be
+  performed deliberately by a human.
+- **Route**: joins the Headscale mesh (`tag:ci`) via
+  [`.github/actions/homelab-tunnel-setup`](../../../../.github/actions/homelab-tunnel-setup/action.yml)
+  and forwards `sentry.lab.ipv1337.dev:443` through the Envoy Gateway's
+  `https-sentry` NodePort (`:31103`).
+
+For local debugging on the tailnet, export `SENTRY_TOKEN` from Bitwarden
+(`sentry.lab.ipv1337.dev`, hidden field `SENTRY_TOKEN`) and run preview:
 
 ```sh
 export SENTRY_TOKEN="<token-from-bitwarden>"
 bazel run //infrastructure/pulumi/platform/sentry-pagerduty:preview -- --stack production
-bazel run //infrastructure/pulumi/platform/sentry-pagerduty:up -- --stack production
 ```
 
 ## Regenerating the Sentry SDK

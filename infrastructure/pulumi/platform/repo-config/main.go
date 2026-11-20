@@ -492,6 +492,13 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
+	// The Sentry and Sentry-PagerDuty reconciliation workflow's environment and
+	// its secrets (SENTRY_TOKEN + HEADSCALE_CI_AUTHKEY): main-only, no required
+	// reviewer (sentry_environments.go).
+	if err := sentryEnvironment(ctx, repo); err != nil {
+		return err
+	}
+
 	if err := foundationEnvironments(ctx, cfg, repo); err != nil {
 		return err
 	}

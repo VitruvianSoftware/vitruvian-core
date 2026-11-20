@@ -23,10 +23,10 @@ bazel run //tools/gitops:headscale -- policy get  # confirm what is live
 An edit made in Headplane lasts only until the next `headscale-policy-set`.
 
 What it allows today: James's own devices reach everything (as the old
-allow-all did), and `tag:ci` reaches only TCP to the Envoy gateway NodePort
-`:30265` on the three wired nodes. The node list in the policy's `hosts` must match the
-`candidates` in
-[`zitadel-tunnel-setup`](../../../../.github/actions/zitadel-tunnel-setup/action.yml);
+allow-all did), and `tag:ci` reaches only TCP to the Envoy gateway NodePorts
+`:30265` (HTTP) and `:31103` (HTTPS) on the three wired nodes. The node list in
+the policy's `hosts` must match the `candidates` in
+[`homelab-tunnel-setup`](../../../../.github/actions/homelab-tunnel-setup/action.yml);
 `headscale_values_test` fails if they drift.
 
 ## Expiry monitoring
@@ -90,21 +90,23 @@ Update this table when a key is minted, rotated or retired.
 ## CI pre-auth key (`HEADSCALE_CI_AUTHKEY`)
 
 The Zitadel apply workflows (`zitadel-apps-relay-apply`,
-`zitadel-apps-mcp-slack-apply`, `_zitadel-apps-apply`) join the mesh from
-GitHub Actions with one shared pre-auth key: user `james` (id 1), reusable,
-ephemeral (a runner's node is removed when it goes offline), tagged `tag:ci`.
+`zitadel-apps-mcp-slack-apply`, `_zitadel-apps-apply`) and the Sentry apply
+workflow (`sentry-apply`) join the mesh from GitHub Actions with
+one shared pre-auth key: user `james` (id 1), reusable, ephemeral (a runner's
+node is removed when it goes offline), tagged `tag:ci`.
 
 | Headscale key id | Created | Expires |
 |---|---|---|
 | 5 | 2026-11-14 | **2027-11-14 11:28 PST** |
 
 It lives in the `oauth-user-inspector-{development,nonproduction,production}`
-GitHub Environments, backed up in the Bitwarden deploy-env store
+and `sentry-production` GitHub Environments, backed up in the Bitwarden
+deploy-env store
 ([`tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md)).
 
 **Rotate** before it expires (an expired key fails at "Join the Headscale
 mesh"). From the main checkout, so the store is the shared one; needs `jq`.
-The key goes straight into the three store files and is never printed. Run it
+The key goes straight into the four store files and is never printed. Run it
 as a script (e.g. save it and `bash rotate.sh`), so a failure stops it rather
 than closing your shell:
 
@@ -117,15 +119,15 @@ key="$(bazel run //tools/gitops:headscale-preauthkey-create -- \
 # pushed to Bitwarden and GitHub otherwise).
 [ -n "$key" ] && [ "$key" != null ] || { echo "no key minted; store unchanged" >&2; exit 1; }
 ( umask 077
-  for env in development nonproduction production; do
-    f="tools/sync-env-secrets/secrets/oauth-user-inspector-$env/HEADSCALE_CI_AUTHKEY"
+  for env in oauth-user-inspector-development oauth-user-inspector-nonproduction oauth-user-inspector-production sentry-production; do
+    f="tools/sync-env-secrets/secrets/$env/HEADSCALE_CI_AUTHKEY"
     printf '%s' "$key" >"$f"
     chmod 600 "$f" # umask covers new files only
   done )
 unset key
 bazel run //tools/sync-env-secrets:bw-push
-for env in development nonproduction production; do
-  bazel run //tools/sync-env-secrets:apply -- "oauth-user-inspector-$env"
+for env in oauth-user-inspector-development oauth-user-inspector-nonproduction oauth-user-inspector-production sentry-production; do
+  bazel run //tools/sync-env-secrets:apply -- "$env"
 done
 ```
 

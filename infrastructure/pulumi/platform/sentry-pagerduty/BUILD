@@ -21,8 +21,9 @@
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/sentry-pagerduty:{setup,preview,up,config}`.
-# No delivery() unit: Sentry runs on the homelab tailnet, so changes are
-# applied by hand from the main checkout after merging to `main` (AGENTS.md).
+# Applied in CI by .github/workflows/sentry-apply.yaml (after platform/sentry)
+# over the Headscale mesh (Envoy Gateway https-sentry NodePort :31103), with
+# `sentry-production` holding SENTRY_TOKEN + HEADSCALE_CI_AUTHKEY.
 pulumi_project(
     name = "sentry-pagerduty",
     dir = "infrastructure/pulumi/platform/sentry-pagerduty",

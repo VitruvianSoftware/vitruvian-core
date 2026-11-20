@@ -133,7 +133,9 @@ jobs:
           retry="${RUNNER_TEMP}/retry-concurrent-update"
           rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
           # TLS terminator must live for this step (backgrounded processes don't
-          # survive across steps): localhost:443 -> the Envoy gateway, Host preserved.
+          # survive across steps): homelab-tunnel-setup maps auth.ipv1337.dev to
+          # 127.0.0.1 in /etc/hosts, and socat bound to 127.0.0.1:443 forwards
+          # to the Envoy gateway (Host preserved).
           # Target the gateway's NodePort on a cluster node's Headscale address
           # ($ZITADEL_GATEWAY, picked by the zitadel-tunnel-setup action from the
           # wired nodes that answer), NOT the LB VIP 10.44.86.211: that VIP is a
@@ -143,7 +145,7 @@ jobs:
           # externalTrafficPolicy: Cluster (see envoyproxy.yaml), any node
           # forwards to the Envoy endpoints.
           : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
-          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+          sudo socat OPENSSL-LISTEN:443,bind=127.0.0.1,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
             TCP:"${ZITADEL_GATEWAY}" &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
           # confirm the internal path is up before applying (fail loudly otherwise)

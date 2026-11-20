@@ -74,3 +74,11 @@ site-sync-downloads.yaml
 # reports them as not delivered. No allow-unsoaked key. Each environment's
 # GitHub Environment rules still apply.
 delivery-vitruvian-tabs.yaml unit environment
+
+# Reconciles self-hosted Sentry (infrastructure/pulumi/platform/sentry) and
+# PagerDuty workflow alert rules (infrastructure/pulumi/platform/sentry-pagerduty)
+# in order over the Headscale mesh, guarded against destructive plans. action is
+# preview (default) or up. The sentry-production Environment restricts runs to
+# main, and with no SENTRY_TOKEN seeded yet the job emits a notice and applies
+# nothing.
+sentry-apply.yaml action
