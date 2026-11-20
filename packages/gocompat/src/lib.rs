@@ -19,10 +19,11 @@
 // SOFTWARE.
 
 //! Go standard-library behaviour where Rust's differs, for the tools ported
-//! from Go that must find executables and format errors identically to Go
-//! (`goexec`).
+//! from Go that must find executables, format errors, and map rune case
+//! identically to Go (`goexec`, `unicode`).
 //!
 //! Standard library only, with no third-party crates, so any tool can link
 //! it whatever crate hub it uses.
 
 pub mod goexec;
+pub mod unicode;
