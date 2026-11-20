@@ -54,6 +54,7 @@ import {
   buildAskUserQuestionAnswers,
   buildElicitationRequest,
   buildPermissionOptions,
+  toSessionPermissionUpdates,
   buildPermissionRequest,
   CANCELLED_MESSAGE,
   DECLINED_QUESTION_MESSAGE,
@@ -317,29 +318,47 @@ function createHarness(
 }
 
 describe("permissions and AskUserQuestion", () => {
-  test("buildPermissionOptions offers allow_always only when SDK provides suggestions", () => {
-    const suggestions: PermissionUpdate[] = [
+  test("buildPermissionOptions always offers Always allow this session, as T3 Code does", () => {
+    expect(buildPermissionOptions()).toEqual([
+      { optionId: "allow_once", name: "Allow", kind: "allow_once" },
+      {
+        optionId: "allow_always",
+        name: "Always allow this session",
+        kind: "allow_always",
+      },
+      { optionId: "reject_once", name: "Reject", kind: "reject_once" },
+    ]);
+  });
+
+  test("toSessionPermissionUpdates scopes every rule to the session and falls back to a rule for the tool", () => {
+    expect(
+      toSessionPermissionUpdates("Bash", [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash", ruleContent: "git status" }],
+          behavior: "allow",
+          destination: "userSettings",
+        },
+        { type: "setMode", mode: "bypassPermissions", destination: "session" },
+      ]),
+    ).toEqual([
       {
         type: "addRules",
         rules: [{ toolName: "Bash", ruleContent: "git status" }],
         behavior: "allow",
         destination: "session",
       },
-    ];
-
-    expect(buildPermissionOptions(undefined).map((o) => o.kind)).toEqual([
-      "allow_once",
-      "reject_once",
     ]);
-    expect(buildPermissionOptions([]).map((o) => o.kind)).toEqual([
-      "allow_once",
-      "reject_once",
-    ]);
-    expect(buildPermissionOptions(suggestions)).toEqual([
-      { optionId: "allow_once", name: "Allow", kind: "allow_once" },
-      { optionId: "allow_always", name: "Always allow", kind: "allow_always" },
-      { optionId: "reject_once", name: "Reject", kind: "reject_once" },
-    ]);
+    for (const none of [undefined, []]) {
+      expect(toSessionPermissionUpdates("Edit", none)).toEqual([
+        {
+          type: "addRules",
+          rules: [{ toolName: "Edit" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ]);
+    }
   });
 
   test("maps each permission response option to exact SDK PermissionResult", () => {
@@ -357,7 +376,7 @@ describe("permissions and AskUserQuestion", () => {
       mapPermissionResponse(
         { outcome: { outcome: "selected", optionId: "allow_once" } },
         toolInput,
-        { suggestions, toolUseID: "tu_1" },
+        { toolName: "Bash", suggestions, toolUseID: "tu_1" },
       ),
     ).toEqual({
       behavior: "allow",
@@ -369,7 +388,7 @@ describe("permissions and AskUserQuestion", () => {
       mapPermissionResponse(
         { outcome: { outcome: "selected", optionId: "allow_always" } },
         toolInput,
-        { suggestions, toolUseID: "tu_2" },
+        { toolName: "Bash", suggestions, toolUseID: "tu_2" },
       ),
     ).toEqual({
       behavior: "allow",
@@ -382,7 +401,7 @@ describe("permissions and AskUserQuestion", () => {
       mapPermissionResponse(
         { outcome: { outcome: "selected", optionId: "reject_once" } },
         toolInput,
-        { suggestions, toolUseID: "tu_3" },
+        { toolName: "Bash", suggestions, toolUseID: "tu_3" },
       ),
     ).toEqual({
       behavior: "deny",
@@ -392,6 +411,7 @@ describe("permissions and AskUserQuestion", () => {
 
     expect(
       mapPermissionResponse({ outcome: { outcome: "cancelled" } }, toolInput, {
+        toolName: "Bash",
         suggestions,
         toolUseID: "tu_4",
       }),
@@ -510,8 +530,10 @@ describe("permissions and AskUserQuestion", () => {
         prompt: [{ type: "text", text: "3" }],
       });
 
+      // "Always allow this session" is offered on every request, as in T3.
       expect(observedRequests[0].options.map((o) => o.optionId)).toEqual([
         "allow_once",
+        "allow_always",
         "reject_once",
       ]);
       expect(observedRequests[1].options.map((o) => o.optionId)).toEqual([
@@ -565,18 +587,29 @@ describe("permissions and AskUserQuestion", () => {
       destination: "session",
     };
 
-    expect(
-      buildPermissionOptions([setModeSuggestion]).map((o) => o.optionId),
-    ).toEqual(["allow_once", "reject_once"]);
+    // Only a setMode suggestion: it is dropped, and the session rule for the
+    // tool itself is used instead (T3 toSessionPermissionUpdates).
     expect(
       mapPermissionResponse(
         { outcome: { outcome: "selected", optionId: "allow_always" } },
         { command: "git status" },
-        { suggestions: [setModeSuggestion], toolUseID: "tu_only_setmode" },
+        {
+          toolName: "Bash",
+          suggestions: [setModeSuggestion],
+          toolUseID: "tu_only_setmode",
+        },
       ),
     ).toEqual({
       behavior: "allow",
       updatedInput: { command: "git status" },
+      updatedPermissions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ],
       toolUseID: "tu_only_setmode",
     });
 

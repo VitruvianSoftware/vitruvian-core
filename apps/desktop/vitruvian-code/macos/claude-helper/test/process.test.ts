@@ -157,7 +157,10 @@ describe("dist/main.js process-level stdio", () => {
       version: "0.1.0",
     });
     expect(run.initResponse._meta).toEqual({
-      vitruvian: { claudeVersion: "2.1.45" },
+      vitruvian: {
+        claudeVersion: "2.1.45",
+        minClaudeVersionForMcpSecrets: "2.1.326",
+      },
     });
     expect(run.stderr).toBe("");
     expect(run.exit).toEqual({ code: 0, signal: null });
@@ -177,7 +180,10 @@ describe("dist/main.js process-level stdio", () => {
 
     expect(run.initResponse.protocolVersion).toBe(1);
     expect(run.initResponse._meta).toEqual({
-      vitruvian: { claudeVersion: null },
+      vitruvian: {
+        claudeVersion: null,
+        minClaudeVersionForMcpSecrets: "2.1.326",
+      },
     });
     expect(run.stderr).toBe("");
     expect(run.exit).toEqual({ code: 0, signal: null });

@@ -312,12 +312,17 @@
     "vitruvianInitializeMeta": {
       "description": "Vitruvian metadata returned by initialize reporting the detected Claude CLI version.",
       "type": "object",
-      "required": ["claudeVersion"],
+      "required": ["claudeVersion", "minClaudeVersionForMcpSecrets"],
       "additionalProperties": false,
       "properties": {
         "claudeVersion": {
           "description": "Parsed claude --version string, or null if detection failed.",
           "type": ["string", "null"]
+        },
+        "minClaudeVersionForMcpSecrets": {
+          "description": "The oldest claude that takes MCP servers over stdin. With an older claude, a session whose MCP servers carry env or headers fails to open, so a secret never reaches the command line.",
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
         }
       }
     },

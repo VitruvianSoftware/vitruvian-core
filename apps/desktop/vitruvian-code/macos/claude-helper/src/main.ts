@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 import { readFileSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
@@ -51,6 +51,9 @@ export function parseArgs(argv: readonly string[]): ParsedCliArgs {
 
   if (claudePath.trim().length === 0) {
     throw new Error("Missing required --claude-path argument");
+  }
+  if (!isAbsolute(claudePath) || claudePath.includes("\0")) {
+    throw new Error("--claude-path must be an absolute path");
   }
   return { claudePath };
 }

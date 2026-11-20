@@ -51,6 +51,9 @@ import {
   type ClaudeHelperAgentOptions,
   type ForkFn,
   type QueryFn,
+  MAX_OPEN_SESSIONS,
+  MCP_INITIALIZE_MIN_CLAUDE_VERSION,
+  compareClaudeVersions,
 } from "../src/agent.js";
 import { parseArgs } from "../src/main.js";
 
@@ -287,7 +290,12 @@ interface Harness {
 }
 
 function createConnectedHarness(options: ClaudeHelperAgentOptions): Harness {
-  const { app } = createClaudeHelperApp(options);
+  // Hermetic by default: never run a real `claude --version`. The default is
+  // the oldest claude that takes MCP servers over stdin.
+  const { app } = createClaudeHelperApp({
+    detectVersionFn: async () => "2.1.326",
+    ...options,
+  });
   const receivedUpdates: SessionNotification[] = [];
   const receivedRawMessages: Array<Record<string, unknown>> = [];
   const receivedRawLines: string[] = [];
@@ -408,7 +416,12 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       expect(res.agentCapabilities?.sessionCapabilities?.resume).toEqual({});
       expect(res.agentCapabilities?.sessionCapabilities?.close).toEqual({});
       expect(res.authMethods).toEqual([]);
-      expect(res._meta).toEqual({ vitruvian: { claudeVersion: "2.1.45" } });
+      expect(res._meta).toEqual({
+        vitruvian: {
+          claudeVersion: "2.1.45",
+          minClaudeVersionForMcpSecrets: "2.1.326",
+        },
+      });
     } finally {
       await okHarness.close();
     }
@@ -424,7 +437,12 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
         protocolVersion: 1,
         clientCapabilities: {},
       });
-      expect(res._meta).toEqual({ vitruvian: { claudeVersion: null } });
+      expect(res._meta).toEqual({
+        vitruvian: {
+          claudeVersion: null,
+          minClaudeVersionForMcpSecrets: "2.1.326",
+        },
+      });
     } finally {
       await nullHarness.close();
     }
@@ -1668,6 +1686,129 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       expect(modeUpdates.at(-1)?.update).toEqual({
         sessionUpdate: "current_mode_update",
         currentModeId: "default",
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("MCP_INITIALIZE_MIN_CLAUDE_VERSION matches the Claude Code bundled with the pinned SDK", () => {
+    const sdkPackage = JSON.parse(
+      readFileSync(
+        join(
+          dirname(fileURLToPath(import.meta.url)),
+          "../node_modules/@anthropic-ai/claude-agent-sdk/package.json",
+        ),
+        "utf8",
+      ),
+    ) as { claudeCodeVersion?: string };
+    expect(sdkPackage.claudeCodeVersion).toBe(
+      MCP_INITIALIZE_MIN_CLAUDE_VERSION,
+    );
+    expect(compareClaudeVersions("2.1.326", "2.1.326")).toBe(0);
+    expect(compareClaudeVersions("2.1.322", "2.1.326")).toBe(-1);
+    expect(compareClaudeVersions("2.10.0", "2.9.99")).toBe(1);
+    expect(compareClaudeVersions("2.1.400-beta.1", "2.1.326")).toBe(1);
+  });
+
+  test("MCP servers go over stdin on a new enough claude; an older one never gets secrets on its command line", async () => {
+    const cases: Array<{
+      version: string | null;
+      secrets: boolean;
+      expect: "initialize" | "argv" | "error";
+    }> = [
+      { version: "2.1.326", secrets: true, expect: "initialize" },
+      { version: "2.2.0", secrets: false, expect: "initialize" },
+      { version: "2.1.322", secrets: false, expect: "argv" },
+      { version: "2.1.322", secrets: true, expect: "error" },
+      { version: null, secrets: true, expect: "error" },
+    ];
+    for (const c of cases) {
+      const sid = "550e8400-e29b-41d4-a716-446655440040";
+      const queryHandles: FakeQueryHandle[] = [];
+      const harness = createConnectedHarness({
+        claudePath: "/usr/local/bin/claude",
+        detectVersionFn: async () => c.version,
+        generateSessionIdFn: () => sid,
+        queryFn: ({ prompt, options }) => {
+          const { sdkQuery, handle } = createFakeQuery({
+            options,
+            promptInput: prompt,
+          });
+          queryHandles.push(handle);
+          return sdkQuery;
+        },
+      });
+      try {
+        await harness.client.request("initialize", {
+          protocolVersion: 1,
+          clientCapabilities: {},
+        });
+        if (c.secrets) {
+          await harness.client.request("_vitruvian/secrets", {
+            mcpServers: { docs: { env: { DOCS_TOKEN: "secret-value" } } },
+          });
+        }
+        const open = harness.client.request("session/new", {
+          cwd: "/repo",
+          mcpServers: [
+            {
+              name: "docs",
+              command: "/usr/local/bin/docs-mcp",
+              args: [],
+              env: [],
+            },
+          ],
+        });
+        if (c.expect === "error") {
+          await expect(open).rejects.toMatchObject({
+            message: expect.stringContaining(
+              `Update Claude Code to ${MCP_INITIALIZE_MIN_CLAUDE_VERSION}`,
+            ),
+          });
+          expect(queryHandles).toHaveLength(0);
+        } else {
+          await open;
+          expect(queryHandles[0].options?.mcpServersDelivery).toBe(c.expect);
+        }
+      } finally {
+        await harness.close();
+      }
+    }
+  });
+
+  test("refuses to open more than MAX_OPEN_SESSIONS sessions", async () => {
+    let next = 0;
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      generateSessionIdFn: () =>
+        `550e8400-e29b-41d4-a716-${String(next++).padStart(12, "0")}`,
+      queryFn: ({ prompt, options }) =>
+        createFakeQuery({ options, promptInput: prompt }).sdkQuery,
+    });
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      for (let i = 0; i < MAX_OPEN_SESSIONS; i += 1) {
+        await harness.client.request("session/new", {
+          cwd: "/repo",
+          mcpServers: [],
+        });
+      }
+      await expect(
+        harness.client.request("session/new", { cwd: "/repo", mcpServers: [] }),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("Too many open sessions"),
+      });
+      // Closing one makes room again.
+      await harness.client.request("session/close", {
+        sessionId: "550e8400-e29b-41d4-a716-000000000000",
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
       });
     } finally {
       await harness.close();

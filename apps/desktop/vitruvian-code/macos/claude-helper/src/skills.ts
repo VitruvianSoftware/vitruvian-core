@@ -753,12 +753,37 @@ async function discoverPluginSkillRoots(input: {
   return roots;
 }
 
+/**
+ * Lists `.md` files under `directory`. Symlinks are followed only while they
+ * stay inside the root (as Claude Code's own loader rejects roots that escape
+ * through a symlink), and each real directory is visited once, so a symlink
+ * loop can't recurse without end.
+ */
 async function listMarkdownFilesRecursive(
   directory: string,
   prefix = "",
+  canonicalRoot?: string,
+  visitedDirs?: Set<string>,
 ): Promise<
   Array<{ readonly relativePath: string; readonly fullPath: string }>
 > {
+  const rootReal = canonicalRoot ?? (await safeRealpath(directory));
+  if (!rootReal) {
+    return [];
+  }
+  const dirReal = await safeRealpath(directory);
+  if (
+    !dirReal ||
+    (dirReal !== rootReal && !isInsideDirectory(rootReal, dirReal))
+  ) {
+    return [];
+  }
+  const seen = visitedDirs ?? new Set<string>();
+  if (seen.has(dirReal)) {
+    return [];
+  }
+  seen.add(dirReal);
+
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -775,14 +800,30 @@ async function listMarkdownFilesRecursive(
     const fullPath = path.join(directory, entry.name);
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
-      results.push(...(await listMarkdownFilesRecursive(fullPath, rel)));
+      results.push(
+        ...(await listMarkdownFilesRecursive(fullPath, rel, rootReal, seen)),
+      );
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
       results.push({ relativePath: rel, fullPath });
     } else if (entry.isSymbolicLink()) {
       try {
+        const targetReal = await safeRealpath(fullPath);
+        if (
+          !targetReal ||
+          (targetReal !== rootReal && !isInsideDirectory(rootReal, targetReal))
+        ) {
+          continue;
+        }
         const info = await stat(fullPath);
         if (info.isDirectory()) {
-          results.push(...(await listMarkdownFilesRecursive(fullPath, rel)));
+          results.push(
+            ...(await listMarkdownFilesRecursive(
+              fullPath,
+              rel,
+              rootReal,
+              seen,
+            )),
+          );
         } else if (info.isFile() && entry.name.endsWith(".md")) {
           results.push({ relativePath: rel, fullPath });
         }
@@ -937,10 +978,23 @@ export async function discoverClaudeSkills(
       }
     }
 
+    const canonicalSkillRoot = await safeRealpath(root.directory);
+    if (!canonicalSkillRoot) {
+      continue;
+    }
+
     for (const entry of dirEntries) {
       const skillPath = singleSkill
         ? path.join(root.directory, "SKILL.md")
         : path.join(root.directory, entry, "SKILL.md");
+      // A SKILL.md reached through a symlink must stay inside its root.
+      const canonicalSkillPath = await safeRealpath(skillPath);
+      if (
+        !canonicalSkillPath ||
+        !isInsideDirectory(canonicalSkillRoot, canonicalSkillPath)
+      ) {
+        continue;
+      }
       const contents = await readTextIfExists(skillPath);
       if (contents === undefined) {
         continue;

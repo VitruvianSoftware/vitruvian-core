@@ -72,39 +72,52 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Filters SDK permission suggestions before applying `allow_always`.
- * Drops `setMode` updates so mode changes come only from the app.
- * This is stricter than T3 Code on purpose: `ClaudeAdapterV2.ts:3808-3819`
- * drops `setMode` only under a managed permission ceiling, but here the app's
- * chosen mode is always the ceiling, so an "always allow" may never move it.
+ * The rules an "always allow" answer adds, as T3 Code builds them for its
+ * "Always allow this session" (`ClaudeAdapterV2.ts:3834-3852`): the SDK's
+ * suggestions with every destination set to `session`, so nothing is written
+ * to the user's settings files, or a rule for the tool itself when the SDK
+ * gave none. `setMode` suggestions are dropped so mode changes come only from
+ * the app. That part is stricter than T3 on purpose: T3 drops them only under
+ * a managed permission ceiling (`ClaudeAdapterV2.ts:3808-3819`), but here the
+ * app's chosen mode is always the ceiling.
  */
-export function filterAllowAlwaysSuggestions(
+export function toSessionPermissionUpdates(
+  toolName: string,
   suggestions?: readonly PermissionUpdate[],
 ): PermissionUpdate[] {
-  if (!Array.isArray(suggestions)) {
-    return [];
+  const updates = (Array.isArray(suggestions) ? suggestions : [])
+    .filter((suggestion) => suggestion.type !== "setMode")
+    .map((suggestion): PermissionUpdate => ({
+      ...suggestion,
+      destination: "session",
+    }));
+  if (updates.length > 0) {
+    return updates;
   }
-  return suggestions.filter((suggestion) => suggestion.type !== "setMode");
+  return [
+    {
+      type: "addRules",
+      rules: [{ toolName }],
+      behavior: "allow",
+      destination: "session",
+    },
+  ];
 }
 
-/** Builds ACP permission options; `allow_always` is only included with non-`setMode` SDK suggestions. */
-export function buildPermissionOptions(
-  suggestions?: readonly PermissionUpdate[],
-): PermissionOption[] {
+/** Builds ACP permission options. "Always allow this session" is always offered, as in T3 Code. */
+export function buildPermissionOptions(): PermissionOption[] {
   const options: PermissionOption[] = [
     {
       optionId: ALLOW_ONCE_OPTION_ID,
       name: "Allow",
       kind: "allow_once",
     },
-  ];
-  if (filterAllowAlwaysSuggestions(suggestions).length > 0) {
-    options.push({
+    {
       optionId: ALLOW_ALWAYS_OPTION_ID,
-      name: "Always allow",
+      name: "Always allow this session",
       kind: "allow_always",
-    });
-  }
+    },
+  ];
   options.push({
     optionId: REJECT_ONCE_OPTION_ID,
     name: "Reject",
@@ -141,7 +154,7 @@ export function buildPermissionRequest(
       rawInput: toolInput,
       ...(locations ? { locations } : {}),
     },
-    options: buildPermissionOptions(options.suggestions),
+    options: buildPermissionOptions(),
   };
 }
 
@@ -150,6 +163,7 @@ export function mapPermissionResponse(
   response: RequestPermissionResponse,
   toolInput: Record<string, unknown>,
   options: {
+    readonly toolName: string;
     readonly suggestions?: readonly PermissionUpdate[];
     readonly toolUseID?: string;
   },
@@ -158,6 +172,11 @@ export function mapPermissionResponse(
     ? { toolUseID: options.toolUseID }
     : {};
 
+  // Anything but a well-formed answer denies: never allow by default.
+  if (!isPlainRecord(response) || !isPlainRecord(response.outcome)) {
+    return { behavior: "deny", message: REJECTED_MESSAGE, ...toolUseIdField };
+  }
+
   if (response.outcome.outcome === "cancelled") {
     return {
       behavior: "deny",
@@ -165,6 +184,10 @@ export function mapPermissionResponse(
       interrupt: true,
       ...toolUseIdField,
     };
+  }
+
+  if (response.outcome.outcome !== "selected") {
+    return { behavior: "deny", message: REJECTED_MESSAGE, ...toolUseIdField };
   }
 
   const { optionId } = response.outcome;
@@ -177,15 +200,13 @@ export function mapPermissionResponse(
   }
 
   if (optionId === ALLOW_ALWAYS_OPTION_ID) {
-    const filteredSuggestions = filterAllowAlwaysSuggestions(
-      options.suggestions,
-    );
     return {
       behavior: "allow",
       updatedInput: toolInput,
-      ...(filteredSuggestions.length > 0
-        ? { updatedPermissions: filteredSuggestions }
-        : {}),
+      updatedPermissions: toSessionPermissionUpdates(
+        options.toolName,
+        options.suggestions,
+      ),
       ...toolUseIdField,
     };
   }
@@ -348,10 +369,45 @@ export function mapElicitationResponse(
 ): PermissionResult {
   const toolUseIdField = toolUseID ? { toolUseID } : {};
 
+  if (!isPlainRecord(response)) {
+    return { behavior: "deny", message: REJECTED_MESSAGE, ...toolUseIdField };
+  }
+
   if (response.action === "accept") {
-    const content = isPlainRecord(response.content)
-      ? response.content
-      : undefined;
+    // An accept must answer every question with one of its own options;
+    // anything else denies rather than letting the tool run on empty answers.
+    if (!isPlainRecord(response.content)) {
+      return {
+        behavior: "deny",
+        message: "The answer to the question was missing.",
+        ...toolUseIdField,
+      };
+    }
+    const content = response.content;
+    for (const question of questions) {
+      const value =
+        question.id in content
+          ? content[question.id]
+          : question.question in content
+            ? content[question.question]
+            : undefined;
+      const labels =
+        question.options.length > 0
+          ? new Set(question.options.map((option) => option.label))
+          : null;
+      const validOne = (item: unknown): boolean =>
+        typeof item === "string" && (labels === null || labels.has(item));
+      const ok = question.multiSelect
+        ? Array.isArray(value) && value.every(validOne)
+        : validOne(value);
+      if (!ok) {
+        return {
+          behavior: "deny",
+          message: `The answer to "${question.header || question.question}" was not one of its options.`,
+          ...toolUseIdField,
+        };
+      }
+    }
     return {
       behavior: "allow",
       updatedInput: {
@@ -436,6 +492,18 @@ export function createCanUseToolHandler(
     }
 
     try {
+      // As T3 Code does (ClaudeAdapterV2.ts ~10758-10775): the plan is
+      // captured from the transcript and leaving plan mode is the app's call,
+      // never Claude's.
+      if (toolName === "ExitPlanMode") {
+        return {
+          behavior: "deny",
+          message:
+            "The client captured your proposed plan. Stop here and wait for the user's feedback or implementation request in a later turn.",
+          ...(toolUseID ? { toolUseID } : {}),
+        };
+      }
+
       if (toolName === "AskUserQuestion") {
         const questions = parseAskUserQuestions(toolInput);
         if (questions.length === 0) {
@@ -486,6 +554,7 @@ export function createCanUseToolHandler(
         return cancelledPermissionResult(toolUseID);
       }
       return mapPermissionResponse(race.value, toolInput, {
+        toolName,
         suggestions,
         toolUseID,
       });

@@ -366,6 +366,69 @@ export function parseVitruvianMcpStatusParams(
   return { sessionId: parseSessionIdParams(raw, "_vitruvian/mcpStatus") };
 }
 
+/**
+ * The Claude Code this SDK release bundles. Only that version or newer takes
+ * MCP servers over stdin (`mcpServersDelivery: "initialize"`); older ones get
+ * them on the command line, where any local user can read their env and
+ * headers. A test keeps this in step with the SDK's package.json.
+ */
+export const MCP_INITIALIZE_MIN_CLAUDE_VERSION = "2.1.326";
+
+/** At most this many sessions open at once, so a misbehaving client can't grow the map without end. */
+export const MAX_OPEN_SESSIONS = 32;
+
+/** Compares two `x.y.z` versions numerically; prerelease and build parts are ignored. */
+export function compareClaudeVersions(a: string, b: string): number {
+  const parts = (v: string) =>
+    v
+      .split(/[-+]/, 1)[0]
+      .split(".")
+      .map((n) => Number.parseInt(n, 10) || 0);
+  const [pa, pb] = [parts(a), parts(b)];
+  for (let i = 0; i < 3; i += 1) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
+/** True when any converted MCP server carries env values or headers. */
+export function mcpServersCarrySecrets(
+  servers: Record<string, McpServerConfig> | undefined,
+): boolean {
+  return Object.values(servers ?? {}).some((server) => {
+    const record = server as { env?: object; headers?: object };
+    return (
+      Object.keys(record.env ?? {}).length > 0 ||
+      Object.keys(record.headers ?? {}).length > 0
+    );
+  });
+}
+
+function collectSecretValues(secrets: SecretsPayload): string[] {
+  const values = new Set<string>();
+  const add = (record: Readonly<Record<string, string>> | undefined) => {
+    for (const value of Object.values(record ?? {})) {
+      if (value.length > 0) values.add(value);
+    }
+  };
+  add(secrets.env);
+  for (const server of Object.values(secrets.mcpServers ?? {})) {
+    add(server.env);
+    add(server.headers);
+  }
+  // Longest first, so a secret that contains another is redacted whole.
+  return Array.from(values).sort((x, y) => y.length - x.length);
+}
+
+function redactSecretsInText(text: string, secrets: readonly string[]): string {
+  let out = text;
+  for (const secret of secrets) {
+    out = out.split(secret).join("***");
+  }
+  return out;
+}
+
 function buildSdkEnv(
   baseEnv: NodeJS.ProcessEnv,
   secretEnv: Readonly<Record<string, string>> | undefined,
@@ -617,6 +680,8 @@ export class ClaudeHelperAgent {
   readonly generateSessionIdFn: () => string;
   readonly supportedModelsTimeoutMs: number;
   private secrets: SecretsPayload = {};
+  /** The `claude` version found at initialize; null until then or when `--version` failed. */
+  private claudeVersion: string | null = null;
   private readonly sessions = new Map<string, SessionRecord>();
 
   constructor(options: ClaudeHelperAgentOptions) {
@@ -644,6 +709,7 @@ export class ClaudeHelperAgent {
     } catch {
       claudeVersion = null;
     }
+    this.claudeVersion = claudeVersion;
     return {
       protocolVersion: 1,
       agentInfo: {
@@ -669,6 +735,7 @@ export class ClaudeHelperAgent {
       _meta: {
         vitruvian: {
           claudeVersion,
+          minClaudeVersionForMcpSecrets: MCP_INITIALIZE_MIN_CLAUDE_VERSION,
         },
       },
     };
@@ -904,7 +971,27 @@ export class ClaudeHelperAgent {
     params: VitruvianMcpStatusParams,
   ): Promise<VitruvianMcpStatusResult> {
     const session = this.requireSession(params.sessionId);
-    const servers = await session.query.mcpServerStatus();
+    const rawServers = await session.query.mcpServerStatus();
+    // Each status carries the server's config (with its env and headers), and
+    // its error text may echo them: drop the config and redact the errors.
+    const secretValues = collectSecretValues(this.secrets);
+    const servers = rawServers.map((server) => {
+      const {
+        config: _config,
+        error,
+        ...rest
+      } = server as typeof server & {
+        config?: unknown;
+        error?: unknown;
+      };
+      void _config;
+      return {
+        ...rest,
+        ...(typeof error === "string"
+          ? { error: redactSecretsInText(error, secretValues) }
+          : {}),
+      } as typeof server;
+    });
     return { servers };
   }
 
@@ -921,6 +1008,33 @@ export class ClaudeHelperAgent {
       );
     }
     return session;
+  }
+
+  /**
+   * Sends MCP servers over stdin when this `claude` supports it. An older one
+   * gets them on the command line only when none carries env or headers;
+   * otherwise opening the session fails with an upgrade message, so a secret
+   * never reaches argv.
+   */
+  private mcpServersDelivery(
+    servers: Record<string, McpServerConfig>,
+  ): "initialize" | "argv" {
+    if (
+      this.claudeVersion !== null &&
+      compareClaudeVersions(
+        this.claudeVersion,
+        MCP_INITIALIZE_MIN_CLAUDE_VERSION,
+      ) >= 0
+    ) {
+      return "initialize";
+    }
+    if (mcpServersCarrySecrets(servers)) {
+      throw RequestError.invalidRequest(
+        { minClaudeVersion: MCP_INITIALIZE_MIN_CLAUDE_VERSION },
+        `Update Claude Code to ${MCP_INITIALIZE_MIN_CLAUDE_VERSION} or newer to use MCP servers that need secrets (run \`claude update\`). Found ${this.claudeVersion ?? "an unknown version"}.`,
+      );
+    }
+    return "argv";
   }
 
   private terminateSession(session: SessionRecord): void {
@@ -965,7 +1079,12 @@ export class ClaudeHelperAgent {
       ...(input.additionalDirectories && input.additionalDirectories.length > 0
         ? { additionalDirectories: [...input.additionalDirectories] }
         : {}),
-      ...(input.mcpServers ? { mcpServers: input.mcpServers } : {}),
+      ...(input.mcpServers
+        ? {
+            mcpServers: input.mcpServers,
+            mcpServersDelivery: this.mcpServersDelivery(input.mcpServers),
+          }
+        : {}),
       ...(input.model ? { model: input.model } : {}),
       env: input.env,
     };
@@ -1051,6 +1170,12 @@ export class ClaudeHelperAgent {
     readonly client: AgentContext;
   }): Promise<SessionRecord> {
     const existing = this.sessions.get(input.sessionId);
+    if (!existing && this.sessions.size >= MAX_OPEN_SESSIONS) {
+      throw RequestError.invalidRequest(
+        { maxOpenSessions: MAX_OPEN_SESSIONS },
+        `Too many open sessions (${MAX_OPEN_SESSIONS}); close one first.`,
+      );
+    }
     if (existing) {
       if (input.resume && existing.dead) {
         existing.closed = true;

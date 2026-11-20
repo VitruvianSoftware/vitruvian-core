@@ -21,7 +21,8 @@
     "authMethods": [],
     "_meta": {
       "vitruvian": {
-        "claudeVersion": null
+        "claudeVersion": null,
+        "minClaudeVersionForMcpSecrets": "2.1.326"
       }
     }
   }
