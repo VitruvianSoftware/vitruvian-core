@@ -1,0 +1,23 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "update": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "toolu_01Subagent",
+      "title": "Explore repository",
+      "kind": "other",
+      "status": "pending",
+      "rawInput": {
+        "description": "Explore repository",
+        "prompt": "Find ACP transport definitions"
+      },
+      "_meta": {
+        "vitruvian": {
+          "subagent": true
+        }
+      }
+    }
+  }
+}

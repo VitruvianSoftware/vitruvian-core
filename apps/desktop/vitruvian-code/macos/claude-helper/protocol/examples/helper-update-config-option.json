@@ -1,0 +1,36 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "update": {
+      "sessionUpdate": "config_option_update",
+      "configOptions": [
+        {
+          "id": "mode",
+          "name": "Mode",
+          "category": "mode",
+          "type": "select",
+          "currentValue": "acceptEdits",
+          "options": [
+            { "value": "default", "name": "Ask before acting" },
+            { "value": "acceptEdits", "name": "Auto-accept edits" },
+            { "value": "plan", "name": "Plan" },
+            { "value": "bypassPermissions", "name": "Full access" }
+          ]
+        },
+        {
+          "id": "model",
+          "name": "Model",
+          "category": "model",
+          "type": "select",
+          "currentValue": "claude-opus-4-1",
+          "options": [
+            { "value": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5" },
+            { "value": "claude-opus-4-1", "name": "Claude Opus 4.1" }
+          ]
+        }
+      ]
+    }
+  }
+}

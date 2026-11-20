@@ -1,0 +1,27 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "update": {
+      "sessionUpdate": "plan",
+      "entries": [
+        {
+          "content": "Inspect protocol schema",
+          "priority": "medium",
+          "status": "completed"
+        },
+        {
+          "content": "Add contract examples",
+          "priority": "medium",
+          "status": "in_progress"
+        },
+        {
+          "content": "Run contract tests",
+          "priority": "medium",
+          "status": "pending"
+        }
+      ]
+    }
+  }
+}

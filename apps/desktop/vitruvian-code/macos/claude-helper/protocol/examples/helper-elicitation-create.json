@@ -1,0 +1,54 @@
+{
+  "jsonrpc": "2.0",
+  "id": "elic-1",
+  "method": "elicitation/create",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "toolCallId": "toolu_01AskUser",
+    "mode": "form",
+    "title": "Claude needs input",
+    "message": "Please answer the following questions to continue.",
+    "requestedSchema": {
+      "type": "object",
+      "properties": {
+        "q_0": {
+          "type": "string",
+          "title": "Database",
+          "description": "Which database should we configure?",
+          "oneOf": [
+            {
+              "const": "PostgreSQL",
+              "title": "PostgreSQL",
+              "description": "Primary relational store"
+            },
+            {
+              "const": "SQLite",
+              "title": "SQLite",
+              "description": "Embedded local database"
+            }
+          ]
+        },
+        "q_1": {
+          "type": "array",
+          "title": "Targets",
+          "description": "Which platforms should be generated?",
+          "items": {
+            "anyOf": [
+              {
+                "const": "TypeScript",
+                "title": "TypeScript",
+                "description": "Node ESM helper"
+              },
+              {
+                "const": "Swift",
+                "title": "Swift",
+                "description": "macOS ACP client"
+              }
+            ]
+          }
+        }
+      },
+      "required": ["q_0", "q_1"]
+    }
+  }
+}

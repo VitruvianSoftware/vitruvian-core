@@ -1,0 +1,27 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "update": {
+      "sessionUpdate": "usage_update",
+      "used": 2450,
+      "size": 200000,
+      "cost": {
+        "amount": 0.0142,
+        "currency": "USD"
+      },
+      "inputTokens": 1800,
+      "outputTokens": 450,
+      "cachedTokens": 200,
+      "_meta": {
+        "vitruvian": {
+          "inputTokens": 1800,
+          "outputTokens": 450,
+          "cacheReadTokens": 150,
+          "cacheWriteTokens": 50
+        }
+      }
+    }
+  }
+}

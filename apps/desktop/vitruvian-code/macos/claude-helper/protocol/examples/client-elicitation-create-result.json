@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": "elic-1",
+  "result": {
+    "action": "accept",
+    "content": {
+      "q_0": "PostgreSQL",
+      "q_1": ["TypeScript", "Swift"]
+    }
+  }
+}
