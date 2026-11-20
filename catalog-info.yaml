@@ -53,6 +53,7 @@ spec:
     - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml
     - ./apps/desktop/vitruvian-code/catalog-info.yaml
     - ./apps/extensions/atrium/vitruvian-github/catalog-info.yaml
+    - ./apps/extensions/atrium/vitruvian-tv/catalog-info.yaml
     - ./apps/antigravity/plugins/ext-marketplace/catalog-info.yaml
     - ./apps/antigravity/plugins/gh-watch/catalog-info.yaml
     - ./apps/antigravity/plugins/hookify/catalog-info.yaml
@@ -61,17 +62,29 @@ spec:
     - ./apps/antigravity/plugins/receipts-report/catalog-info.yaml
     - ./apps/antigravity/plugins/savvy-fleet/catalog-info.yaml
     - ./apps/antigravity/plugins/security-guidance/catalog-info.yaml
+    - ./apps/antigravity/plugins/vitruvian-orchestrator/catalog-info.yaml
     - ./apps/antigravity/plugins/worktree-band/catalog-info.yaml
+    - ./apps/claude-code/plugins/vitruvian-orchestrator/catalog-info.yaml
+    - ./apps/opencode/plugins/vitruvian-orchestrator/catalog-info.yaml
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
     - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/vitruvian-remote/catalog-info.yaml
     - ./apps/suites/vitruvian-tabs/catalog-info.yaml
     - ./apps/suites/vitruvian-wand/catalog-info.yaml
+    - ./packages/android-crash-privacy/catalog-info.yaml
+    - ./packages/design-system/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
     - ./packages/gocompat/catalog-info.yaml
+    - ./packages/orchestrator-core/catalog-info.yaml
+    - ./packages/peripherals/catalog-info.yaml
+    - ./packages/pulumi/catalog-info.yaml
+    - ./packages/rust/vitruvian-mcp-auth/catalog-info.yaml
+    - ./packages/rust/vitruvian-pycompat/catalog-info.yaml
+    - ./packages/rust/vitruvian-pyjson/catalog-info.yaml
+    - ./packages/swift/SentryLite/catalog-info.yaml
+    - ./packages/vitruvian-sdk/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml
-    - ./packages/pulumi/catalog-info.yaml
     # Platform infrastructure we operate (not applications we build)
     - ./gitops/catalog-info.yaml
 ---

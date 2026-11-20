@@ -26,14 +26,20 @@ kind: Component
 metadata:
   name: design-system-android
   description: Vitruvian for Jetpack Compose - tokens, primitives and the mobile shell
+  tags:
+    - kotlin
+    - ui
+    - design-system
+    - jetpack-compose
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/design-system-android
     backstage.io/techdocs-ref: dir:.
+    vitruvian.dev/bazel-target: //packages/design-system-android:lib, //packages/design-system-android:compose_compiler
     vitruvian.dev/release-model: none
 spec:
   type: library
   lifecycle: experimental
   owner: platform-team
-  system: vitruvian-remote
   dependsOn:
     - component:design-system
