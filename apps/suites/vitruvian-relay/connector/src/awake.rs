@@ -76,7 +76,8 @@ impl Awake {
             .spawn()
             .map_err(|e| {
                 format!(
-                    "could not keep this Mac awake ({}): {e}",
+                    "could not keep this Mac awake ({}): {e}; set keep_awake = false \
+                     in rules.toml to stop trying",
                     self.binary.display()
                 )
             })?;
@@ -218,6 +219,7 @@ pub(crate) mod tests {
         let awake = Awake::new("/nonexistent/caffeinate");
         let e = awake.set(true).unwrap_err();
         assert!(e.contains("could not keep this Mac awake"), "{e}");
+        assert!(e.contains("set keep_awake = false in rules.toml"), "{e}");
         assert!(!awake.is_on());
         awake.set(false).unwrap();
     }

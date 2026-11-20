@@ -148,7 +148,11 @@ rust_clippy(
         ":vitruvian_relay_connector",
         ":vitruvian_relay_connector_test",
         ":vrelay",
-    ],
+    ] + select({
+        # keychain_test builds on a Mac only (a manual target).
+        "@platforms//os:macos": [":keychain_test"],
+        "//conditions:default": [],
+    }),
 )
 
 test_suite(

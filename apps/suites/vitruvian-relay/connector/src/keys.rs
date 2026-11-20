@@ -29,7 +29,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use vitruvian_relay_protocol::hello_message;
 
-use crate::secrets::{self, DEVICE_KEY};
+use crate::secrets::{self, SecretStore, DEVICE_KEY};
 use crate::state::ensure_dir;
 use crate::Result;
 
@@ -39,7 +39,11 @@ const SEED_LEN: usize = 32;
 /// an error, never silently replaced (that would orphan the registered device).
 pub fn load_or_create(dir: &Path) -> Result<Ed25519KeyPair> {
     ensure_dir(dir)?;
-    let store = secrets::for_dir(dir);
+    load_or_create_in(&*secrets::for_dir(dir))
+}
+
+/// [`load_or_create`] with the store given.
+pub fn load_or_create_in(store: &dyn SecretStore) -> Result<Ed25519KeyPair> {
     let seed = match store.get(DEVICE_KEY)? {
         Some(bytes) => bytes,
         None => {

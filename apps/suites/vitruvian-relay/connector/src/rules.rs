@@ -55,6 +55,10 @@ pub struct Guard {
     roots: Vec<PathBuf>,
     home: PathBuf,
     cwd: PathBuf,
+    /// Whether upper and lower case are the same folder: paths are compared
+    /// lowercased when so, exactly when not. True for the guard (it only
+    /// refuses more), as measured on the volume for the allowed folders.
+    fold: bool,
 }
 
 impl Guard {
@@ -83,20 +87,56 @@ impl Guard {
 
     /// A guard of the same home and working folders whose roots are the
     /// folders a person allowed (`~` and relative paths as in a call).
+    ///
+    /// Compared exactly on a case-sensitive volume: lowercasing there would
+    /// let `~/work` through for an allowed `~/Work`, a different folder.
     fn limited_to(&self, folders: &[String]) -> Guard {
         let roots: Vec<PathBuf> = folders.iter().map(PathBuf::from).collect();
-        Guard::with_roots(&self.home, &self.cwd, &roots)
+        let probe = Guard::build(&self.home, &self.cwd, &roots, false);
+        // Folding is right only if every allowed folder is on a volume that
+        // ignores case (an unknown mix compares exactly: refuses more).
+        let fold = !roots.is_empty()
+            && roots
+                .iter()
+                .all(|r| volume_ignores_case(&probe.real_part(&r.to_string_lossy())));
+        Guard::build(&self.home, &self.cwd, &roots, fold)
+    }
+
+    /// The part of `raw` that exists, with symlinks resolved.
+    fn real_part(&self, raw: &str) -> PathBuf {
+        let mut head = normalize(&self.absolute(raw));
+        loop {
+            if let Ok(real) = std::fs::canonicalize(&head) {
+                return real;
+            }
+            if !head.pop() {
+                return PathBuf::from("/");
+            }
+        }
+    }
+
+    fn case(&self, p: &Path) -> PathBuf {
+        if self.fold {
+            lower(p)
+        } else {
+            p.to_path_buf()
+        }
     }
 
     pub fn with_roots(home: &Path, cwd: &Path, roots: &[PathBuf]) -> Guard {
+        Guard::build(home, cwd, roots, true)
+    }
+
+    fn build(home: &Path, cwd: &Path, roots: &[PathBuf], fold: bool) -> Guard {
         let mut g = Guard {
             roots: Vec::new(),
             home: home.to_path_buf(),
             cwd: cwd.to_path_buf(),
+            fold,
         };
         let mut all = Vec::new();
         for r in roots {
-            all.push(lower(&normalize(&g.absolute(&r.to_string_lossy()))));
+            all.push(g.case(&normalize(&g.absolute(&r.to_string_lossy()))));
             all.push(g.resolve(&r.to_string_lossy()));
         }
         all.sort();
@@ -136,14 +176,14 @@ impl Guard {
                 for part in tail.iter().rev() {
                     out.push(part);
                 }
-                return lower(&normalize(&out));
+                return self.case(&normalize(&out));
             }
             match (head.file_name().map(|n| n.to_os_string()), head.parent()) {
                 (Some(name), Some(parent)) => {
                     tail.push(name);
                     head = parent.to_path_buf();
                 }
-                _ => return lower(&abs),
+                _ => return self.case(&abs),
             }
         }
     }
@@ -178,6 +218,40 @@ fn normalize(p: &Path) -> PathBuf {
 
 fn lower(p: &Path) -> PathBuf {
     PathBuf::from(p.to_string_lossy().to_lowercase())
+}
+
+/// Whether the volume holding `path` (an existing path) treats names that
+/// differ only in case as the same: looks up a name with its case swapped
+/// and asks if it is the very same file. A name with no letters says
+/// nothing, so the next one up is tried.
+fn volume_ignores_case(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    for anc in path.ancestors() {
+        let Some(name) = anc.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        let swapped: String = name
+            .chars()
+            .map(|c| {
+                if c.is_lowercase() {
+                    c.to_uppercase().next().unwrap_or(c)
+                } else {
+                    c.to_lowercase().next().unwrap_or(c)
+                }
+            })
+            .collect();
+        if swapped == name {
+            continue;
+        }
+        let Ok(a) = std::fs::metadata(anc) else {
+            continue;
+        };
+        return match std::fs::metadata(anc.with_file_name(&swapped)) {
+            Ok(b) => a.dev() == b.dev() && a.ino() == b.ino(),
+            Err(_) => false,
+        };
+    }
+    false
 }
 
 /// The path-like string arguments of a call.
@@ -1381,5 +1455,43 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
             toml::from_str(&DEFAULT_RULES.replace("keep_awake = true", "keep_awake = false"))
                 .unwrap();
         assert!(!off.keep_awake);
+    }
+
+    /// Review: the allowed folders are compared exactly on a case-sensitive
+    /// volume (`~/work` is not `~/Work` there) and ignoring case on one that
+    /// ignores it (APFS by default), the guard erring only towards refusing.
+    #[test]
+    fn allowed_folders_follow_the_volumes_case_rules() {
+        let root = test_dir("rules-limit-case");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("Work")).unwrap();
+        let work = home.join("Work");
+        // The probe agrees with asking the volume directly.
+        let ignores = std::fs::metadata(home.join("wORK")).is_ok();
+        assert_eq!(volume_ignores_case(&work), ignores);
+        // Exact mode: the same spelling always; another one only where the
+        // volume itself says it is the same folder (the system then hands
+        // back the folder's real spelling).
+        let exact = Guard::build(&home, &home, std::slice::from_ref(&work), false);
+        assert!(exact.under("~/Work/a"));
+        assert_eq!(exact.under("~/work/a"), ignores);
+        assert_eq!(exact.under("~/WORK"), ignores);
+        // Folding mode (a volume that ignores case): any spelling.
+        let fold = Guard::build(&home, &home, std::slice::from_ref(&work), true);
+        assert!(fold.under("~/Work/a") && fold.under("~/work/a") && fold.under("~/WORK"));
+        // The rules pick the mode from the volume.
+        let r = limited(&home, &["~/Work"]);
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/Work/a"})),
+            Decision::Run
+        );
+        let other_case = r.decide("read_file", &json!({"path": "~/work/a"}));
+        if ignores {
+            assert_eq!(other_case, Decision::Run);
+        } else {
+            assert_eq!(other_case, Decision::Refuse(OUTSIDE_ALLOWED));
+        }
+        // No allowed folder at all never folds into allowing something.
+        assert!(!limited(&home, &[]).limit.unwrap().fold);
     }
 }

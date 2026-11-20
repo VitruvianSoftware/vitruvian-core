@@ -25,6 +25,7 @@
 //! in the state folder as before: `token.json` and `device.key`, mode 0600.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::state::{key_path, token_path, write_private};
 
@@ -34,6 +35,9 @@ pub const SERVICE: &str = "dev.vitruvian.vrelay";
 pub const TOKENS: &str = "tokens";
 /// The device's 32-byte Ed25519 seed.
 pub const DEVICE_KEY: &str = "device_key";
+
+/// What to do about a Keychain that will not answer: appended to its errors.
+pub const KEYCHAIN_NEXT_STEP: &str = "unlock your login Keychain and restart vrelay";
 
 /// A secret store that failed, as a message for the person at the terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,8 +162,13 @@ impl SecretStore for KeychainSecrets {
     }
 
     fn set(&self, account: &str, value: &[u8]) -> Result<(), SecretError> {
-        security_framework::passwords::set_generic_password(&self.service, account, value)
-            .map_err(|e| SecretError(format!("save {account} in the Keychain: {e}")))
+        security_framework::passwords::set_generic_password(&self.service, account, value).map_err(
+            |e| {
+                SecretError(format!(
+                    "save {account} in the Keychain: {e}; {KEYCHAIN_NEXT_STEP}"
+                ))
+            },
+        )
     }
 
     fn delete(&self, account: &str) -> Result<(), SecretError> {
@@ -167,7 +176,7 @@ impl SecretStore for KeychainSecrets {
             Ok(()) => Ok(()),
             Err(e) if e.code() == NOT_FOUND => Ok(()),
             Err(e) => Err(SecretError(format!(
-                "remove {account} from the Keychain: {e}"
+                "remove {account} from the Keychain: {e}; {KEYCHAIN_NEXT_STEP}"
             ))),
         }
     }
@@ -187,34 +196,38 @@ impl Migrated {
 }
 
 /// Moves a state folder's `token.json` and `device.key` into `store`, then
-/// deletes the files. A file is deleted only once the store reads back what
-/// was in it. If the store already holds that secret, it wins (the file is a
-/// stale copy, for example from a crash between the save and the delete) and
-/// the file is just removed. Nothing to move is not an error.
+/// deletes the files. In two steps, so a failure never leaves the secrets
+/// split between the two: first every file is saved in the store and read
+/// back, and only when all of them are there are the files deleted. If the
+/// store already holds a secret, it wins (the file is a stale copy, for
+/// example from a crash between the save and the delete) and the file is
+/// just removed. On an error the files are as they were (or, if only a
+/// delete failed, still there beside the same values). Nothing to move is
+/// not an error.
 pub fn migrate_files_to(store: &dyn SecretStore, dir: &Path) -> Result<Migrated, SecretError> {
     let files = FileSecrets::new(dir);
     let mut moved = Migrated::default();
+    let mut to_delete = Vec::new();
     for account in [TOKENS, DEVICE_KEY] {
         let Some(bytes) = files.get(account)? else {
             continue;
         };
-        let did = match store.get(account)? {
-            Some(_) => false,
-            None => {
-                store.set(account, &bytes)?;
-                if store.get(account)?.as_deref() != Some(bytes.as_slice()) {
-                    return Err(SecretError(format!(
-                        "the saved {account} did not read back; its file is kept"
-                    )));
-                }
-                true
+        if store.get(account)?.is_none() {
+            store.set(account, &bytes)?;
+            if store.get(account)?.as_deref() != Some(bytes.as_slice()) {
+                return Err(SecretError(format!(
+                    "the saved {account} did not read back; its file is kept"
+                )));
             }
-        };
-        files.delete(account)?;
-        match account {
-            TOKENS => moved.tokens = did,
-            _ => moved.device_key = did,
+            match account {
+                TOKENS => moved.tokens = true,
+                _ => moved.device_key = true,
+            }
         }
+        to_delete.push(account);
+    }
+    for account in to_delete {
+        files.delete(account)?;
     }
     Ok(moved)
 }
@@ -236,34 +249,87 @@ pub fn backend(env: Option<&str>, macos: bool) -> Backend {
     }
 }
 
-/// The store for the state folder `dir`. With the Keychain, any `token.json`
-/// or `device.key` left from before it is moved in first, so the device
-/// keeps its key and the person stays signed in.
+/// Opens `keychain` as the store for the state folder `dir`: any
+/// `token.json` or `device.key` left from before it is moved in first, so
+/// the device keeps its key and the person stays signed in.
+///
+/// If that move fails, the files stay the source of truth for this run
+/// (`FileSecrets`) and `log` says what to do; the move is tried again at the
+/// next start. Using the Keychain anyway would find no device key there and
+/// make a new one, orphaning the registered device.
+pub fn open_with(
+    keychain: Arc<dyn SecretStore>,
+    dir: &Path,
+    log: &dyn Fn(&str),
+) -> Arc<dyn SecretStore> {
+    match migrate_files_to(&*keychain, dir) {
+        Ok(m) => {
+            if m.any() {
+                log(&format!(
+                    "moved the sign-in and device key from {} into the Keychain",
+                    dir.display()
+                ));
+            }
+            keychain
+        }
+        Err(e) => {
+            log(&format!(
+                "could not move the sign-in and device key into the Keychain ({e}); \
+                 using the files in {} for now. Unlock your login Keychain and \
+                 restart vrelay to try again.",
+                dir.display()
+            ));
+            Arc::new(FileSecrets::new(dir))
+        }
+    }
+}
+
+/// The store chosen for each state folder, so it is opened (and any move out
+/// of files done) once per process.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Default)]
+struct Chosen(std::sync::Mutex<std::collections::HashMap<PathBuf, Arc<dyn SecretStore>>>);
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+impl Chosen {
+    fn get_or_open(
+        &self,
+        dir: &Path,
+        open: impl FnOnce() -> Arc<dyn SecretStore>,
+    ) -> Arc<dyn SecretStore> {
+        self.0
+            .lock()
+            .unwrap()
+            .entry(dir.to_path_buf())
+            .or_insert_with(open)
+            .clone()
+    }
+}
+
+/// The store for the state folder `dir`, chosen (and any move out of files
+/// done) once per process: later calls get the same store, so a Keychain
+/// that is slow or refusing is not asked again on every token read.
 ///
 /// Test builds always use the files: a test must never reach the login
 /// Keychain's real items.
-pub fn for_dir(dir: &Path) -> Box<dyn SecretStore> {
+pub fn for_dir(dir: &Path) -> Arc<dyn SecretStore> {
     #[cfg(all(target_os = "macos", not(test)))]
     {
+        static CHOSEN: std::sync::OnceLock<Chosen> = std::sync::OnceLock::new();
         let env = std::env::var("VRELAY_SECRETS").ok();
         if backend(env.as_deref(), true) == Backend::Keychain {
-            let store = KeychainSecrets::new();
-            match migrate_files_to(&store, dir) {
-                Ok(m) if m.any() => eprintln!(
-                    "vrelay: moved the sign-in and device key from {} into the Keychain",
-                    dir.display()
-                ),
-                Ok(_) => {}
-                Err(e) => eprintln!("vrelay: could not move secrets into the Keychain: {e}"),
-            }
-            return Box::new(store);
+            return CHOSEN.get_or_init(Chosen::default).get_or_open(dir, || {
+                open_with(Arc::new(KeychainSecrets::new()), dir, &|m| {
+                    eprintln!("vrelay: {m}")
+                })
+            });
         }
     }
-    Box::new(FileSecrets::new(dir))
+    Arc::new(FileSecrets::new(dir))
 }
 
 /// [`for_dir`] for the state folder the environment names (`VRELAY_HOME`).
-pub fn from_env() -> Box<dyn SecretStore> {
+pub fn from_env() -> Arc<dyn SecretStore> {
     for_dir(&crate::config::Config::from_env().dir)
 }
 
@@ -377,6 +443,108 @@ mod tests {
         let e = migrate_files_to(&Broken, &from).unwrap_err();
         assert!(e.0.contains("did not read back"), "{e}");
         assert!(token_path(&from).exists(), "the only copy was deleted");
+    }
+
+    /// Review: if the move into the Keychain fails, the files stay the
+    /// source of truth for the run. The Keychain is never used then: it would
+    /// find no device key and make a new one, orphaning the registered device.
+    #[test]
+    fn failed_migration_keeps_using_the_files() {
+        /// Reads fine and finds nothing; every save is refused.
+        struct DeniesSaves;
+        impl SecretStore for DeniesSaves {
+            fn get(&self, _: &str) -> Result<Option<Vec<u8>>, SecretError> {
+                Ok(None)
+            }
+            fn set(&self, _: &str, _: &[u8]) -> Result<(), SecretError> {
+                Err(SecretError("access denied".into()))
+            }
+            fn delete(&self, _: &str) -> Result<(), SecretError> {
+                Ok(())
+            }
+        }
+        let dir = test_dir("secrets-failed-migration");
+        let files = FileSecrets::new(&dir);
+        let seed = [9u8; 32];
+        files.set(DEVICE_KEY, &seed).unwrap();
+        files.set(TOKENS, br#"{"access_token":"a"}"#).unwrap();
+        let lines = Mutex::new(Vec::new());
+        let store = open_with(Arc::new(DeniesSaves), &dir, &|m| {
+            lines.lock().unwrap().push(m.to_string())
+        });
+        // The files are used, and the person is told what to do.
+        let said = lines.lock().unwrap().join("\n");
+        assert!(said.contains("access denied"), "{said}");
+        assert!(
+            said.contains("Unlock your login Keychain and restart vrelay"),
+            "{said}"
+        );
+        assert_eq!(store.get(DEVICE_KEY).unwrap(), Some(seed.to_vec()));
+        // The device key in use is the registered one: no new seed is made.
+        let key = crate::keys::load_or_create_in(&*store).unwrap();
+        let registered = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed).unwrap();
+        assert_eq!(
+            ring::signature::KeyPair::public_key(&key).as_ref(),
+            ring::signature::KeyPair::public_key(&registered).as_ref()
+        );
+        // Nothing was deleted or rewritten.
+        assert_eq!(std::fs::read(key_path(&dir)).unwrap(), seed);
+        assert_eq!(
+            std::fs::read(token_path(&dir)).unwrap(),
+            br#"{"access_token":"a"}"#
+        );
+    }
+
+    /// A move that fails half way leaves every file where it was, not the
+    /// device key in the Keychain and the sign-in still in a file.
+    #[test]
+    fn a_move_that_fails_part_way_deletes_nothing() {
+        /// Takes the first secret saved, refuses the second.
+        struct TakesOne(Mem);
+        impl SecretStore for TakesOne {
+            fn get(&self, a: &str) -> Result<Option<Vec<u8>>, SecretError> {
+                self.0.get(a)
+            }
+            fn set(&self, a: &str, v: &[u8]) -> Result<(), SecretError> {
+                if a == DEVICE_KEY {
+                    return Err(SecretError("access denied".into()));
+                }
+                self.0.set(a, v)
+            }
+            fn delete(&self, a: &str) -> Result<(), SecretError> {
+                self.0.delete(a)
+            }
+        }
+        let dir = test_dir("secrets-half-migration");
+        let files = FileSecrets::new(&dir);
+        files.set(TOKENS, b"{}").unwrap();
+        files.set(DEVICE_KEY, &[3; 32]).unwrap();
+        assert!(migrate_files_to(&TakesOne(Mem::default()), &dir).is_err());
+        assert!(token_path(&dir).exists(), "the sign-in file was deleted");
+        assert!(key_path(&dir).exists());
+    }
+
+    /// Review: the store is opened (and the move done) once per folder, not on
+    /// every token read.
+    #[test]
+    fn the_store_is_chosen_once_per_folder() {
+        let chosen = Chosen::default();
+        let opened = std::sync::atomic::AtomicUsize::new(0);
+        let open = || -> Arc<dyn SecretStore> {
+            opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Arc::new(Mem::default())
+        };
+        let a = chosen.get_or_open(Path::new("/a"), open);
+        a.set(TOKENS, b"x").unwrap();
+        let again = chosen.get_or_open(Path::new("/a"), open);
+        assert_eq!(
+            again.get(TOKENS).unwrap(),
+            Some(b"x".to_vec()),
+            "a new store"
+        );
+        assert_eq!(opened.load(std::sync::atomic::Ordering::SeqCst), 1);
+        chosen.get_or_open(Path::new("/b"), open);
+        assert_eq!(opened.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[test]
