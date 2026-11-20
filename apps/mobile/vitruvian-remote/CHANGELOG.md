@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.56](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.55...vitruvian-remote-v0.1.56) (2026-11-20)
+
+
+### Bug Fixes
+
+* **vitruvian-remote:** reconnect to Google's speech engine after it restarts ([#5236](https://github.com/VitruvianSoftware/vitruvian-core/issues/5236)) ([d240a45](https://github.com/VitruvianSoftware/vitruvian-core/commit/d240a4551ca244eff71531ea1fa1c29dbee52357))
+
 ## [0.1.55](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-remote-v0.1.54...vitruvian-remote-v0.1.55) (2026-11-19)
 
 
