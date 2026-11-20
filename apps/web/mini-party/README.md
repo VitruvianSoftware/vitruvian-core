@@ -11,7 +11,7 @@ Play it at **https://mini-games.vitruviansoftware.dev**.
 
 Originally built in Google AI Studio; this folder in
 [vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/web/mini-party)
-is the source of truth. [VitruvianSoftware/mini-party](https://github.com/VitruvianSoftware/mini-party)
+is the source of truth. [VitruvianSoftware/vitruvian-party](https://github.com/VitruvianSoftware/vitruvian-party)
 is a read-only mirror of it, updated on every change.
 
 ## Run it

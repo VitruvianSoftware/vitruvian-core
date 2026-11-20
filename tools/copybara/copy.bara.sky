@@ -736,7 +736,8 @@ COMPONENTS = [
     # builds the static site on every export.
     {
         "name": "mini-party",
-        "repo": "mini-party",
+        # Renamed in place from mini-party; the component keeps its name.
+        "repo": "vitruvian-party",
         "subtree": "apps/web/mini-party",
         "standalone_rev_id": "MINI_PARTY_REV_ID",
         "mode": "SQUASH",
