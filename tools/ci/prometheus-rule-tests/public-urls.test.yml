@@ -1,0 +1,41 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Unit tests for PublicUrlDown in gitops/argocd/platform/prometheus/applicationset.yaml
+# (group public-urls): it pages (severity=page, apps PagerDuty service) when a
+# probed public URL has failed for 5m, carries the URL as instance and the
+# app's namespace from the scrape target's labels, and stays quiet while the
+# probe succeeds or after a brief blip.
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    name: PublicUrlDown pages after 5m of failed probes
+    input_series:
+      - series: 'probe_success{job="blackbox-http",instance="https://mini-games.vitruviansoftware.dev/",namespace="mini-party"}'
+        values: '1x3 0x15'
+    promql_expr_test:
+      - expr: ALERTS{alertname="PublicUrlDown", alertstate="firing"}
+        eval_time: 6m
+        exp_samples: []
+      - expr: ALERTS{alertname="PublicUrlDown", alertstate="firing"}
+        eval_time: 12m
+        exp_samples:
+          - labels: 'ALERTS{alertname="PublicUrlDown", alertstate="firing", instance="https://mini-games.vitruviansoftware.dev/", job="blackbox-http", namespace="mini-party", pagerduty_service="apps", severity="page"}'
+            value: 1
+
+  - interval: 1m
+    name: PublicUrlDown ignores a short blip and a healthy URL
+    input_series:
+      # Fails for 3m, then recovers: never reaches the 5m "for".
+      - series: 'probe_success{job="blackbox-http",instance="https://mini-games-rooms.vitruviansoftware.dev/healthz",namespace="mini-party"}'
+        values: '1x3 0x3 1x10'
+      - series: 'probe_success{job="blackbox-http",instance="https://mini-games.vitruviansoftware.dev/",namespace="mini-party"}'
+        values: '1x16'
+    promql_expr_test:
+      - expr: ALERTS{alertname="PublicUrlDown", alertstate="firing"}
+        eval_time: 14m
+        exp_samples: []

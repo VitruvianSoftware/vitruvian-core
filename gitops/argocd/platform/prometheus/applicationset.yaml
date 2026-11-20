@@ -1201,6 +1201,20 @@ spec:
                     annotations:
                       summary: "vitruvian-slack-mcp repeatedly refusing a validly-signed token (sustained 403)"
                       description: "Someone holding a validly-signed token audienced for the vitruvian-slack-mcp project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: vitruvian-slack-mcp: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
+                # Public URLs (blackbox-http job): PublicUrlDown PAGES when a
+                # watched URL has failed every probe for 5m. The instance label
+                # is the URL; namespace comes from the target's labels.
+                - name: public-urls
+                  rules:
+                  - alert: PublicUrlDown
+                    expr: probe_success{job="blackbox-http"} == 0
+                    for: 5m
+                    labels:
+                      severity: page
+                      pagerduty_service: apps
+                    annotations:
+                      summary: "{{ $labels.instance }} is not answering"
+                      description: "Every probe of {{ $labels.instance }} from the cluster has failed for 5m (non-2xx, timeout, TLS or DNS failure). Open it in a browser first; for a GitHub Pages site check the repo's Pages settings still have the custom domain."
                 # -- 12. GitOps delivery (ArgoCD) -----------------------------
                 # The gap these close: on 2026-08-18 a bad key in a chart values
                 # file made ArgoCD unable to render the backstage Application at
@@ -1261,6 +1275,28 @@ spec:
                       description: "{{ $labels.name }} (ns {{ $labels.dest_namespace }}) has reported Degraded for >15m -- its workload is failing its health check, not merely mid-rollout."
             extraScrapeConfigs: |2
 
+              - job_name: 'blackbox-http'
+                # Public URLs probed by the blackbox exporter
+                # (gitops/argocd/platform/blackbox-exporter). Prometheus asks the
+                # exporter to fetch each target and records probe_success; the
+                # PublicUrlDown rule pages on it. Add a URL here to watch it;
+                # its labels name the app so Backstage lists the alert.
+                metrics_path: /probe
+                params:
+                  module: [http_2xx]
+                static_configs:
+                  - targets:
+                      - https://mini-games.vitruviansoftware.dev/
+                      - https://mini-games-rooms.vitruviansoftware.dev/healthz
+                    labels:
+                      namespace: mini-party
+                relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - source_labels: [__param_target]
+                  target_label: instance
+                - target_label: __address__
+                  replacement: blackbox-exporter.monitoring.svc:9115
               - job_name: 'node-exporter'
                 kubernetes_sd_configs:
                   - role: endpoints
