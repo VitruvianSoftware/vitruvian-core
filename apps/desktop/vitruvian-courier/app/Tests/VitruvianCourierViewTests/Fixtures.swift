@@ -111,6 +111,9 @@ enum Fixture {
         formatting: [.bold, .italic, .strikethrough, .code, .pre, .blockquote, .bulletList, .orderedList, .link,
                      .mention],
         maxTextLength: 65536, source: .stored,
+        imageFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/jpeg", "image/png"], caption: true),
+        voiceFeatures: FileKindFeatures(supported: true, mimeTypes: ["audio/ogg; codecs=opus"]),
+        fileFeatures: FileKindFeatures(supported: true, mimeTypes: ["*/*"], caption: true),
         gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/gif", "video/mp4"], caption: true),
         stickerFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/png", "image/webp", "image/gif"]))
 

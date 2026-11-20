@@ -11,14 +11,23 @@ struct SearchFilterBar: View {
     /// The linked networks, for Accounts.
     let accounts: [AccountStatusItem]
 
+    private var controls: SearchPanelControls {
+        SearchPanelControls.resolve(
+            isScopedToChat: search.isScoped,
+            hasAccounts: !accounts.isEmpty,
+            filters: search.filters,
+            hasCommandBarAction: false
+        )
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                if !accounts.isEmpty || !search.filters.networks.isEmpty { accountsChip }
+                if controls.showsAccountsFilter { accountsChip }
                 typeChip
                 senderChip
                 // Inside one chat, whether it is a group is already decided.
-                if search.scope == nil || search.filters.chatType != nil { chatTypeChip }
+                if controls.showsChatTypeFilter { chatTypeChip }
                 periodChip
             }
             .padding(.vertical, 1)

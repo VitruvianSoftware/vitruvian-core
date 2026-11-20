@@ -390,6 +390,20 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertTrue(dispatcher.perform("Chat: Create New Group"))
         XCTAssertNotNil(inbox.startNewChatDraft)
 
+        // ⌘F while New Chat covers the chat pane must not scope search to the hidden chat that is still selected.
+        XCTAssertEqual(inbox.selectedRoomID, "!r2")
+        XCTAssertTrue(search.isOpenChatHidden)
+        XCTAssertTrue(dispatcher.perform("Search: Room"))
+        XCTAssertNil(search.scopeRoomID, "New Chat is open: search every chat")
+        XCTAssertNil(search.inChatOfferRoomID, "and the panel doesn't offer the hidden chat either")
+        search.close()
+        inbox.cancelStartNewChat()
+        XCTAssertFalse(search.isOpenChatHidden)
+        XCTAssertTrue(dispatcher.perform("Search: Room"))
+        XCTAssertEqual(search.scopeRoomID, "!r2", "with the chat showing, ⌘F searches in it")
+        search.close()
+        inbox.openStartNewChat()
+
         // Verify "Chat: Send File" invokes the attachment picker callback on the active composer.
         appModel.selectedRoomID = nil
         conversation.openDetachedRoom(nil)

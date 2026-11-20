@@ -12,6 +12,8 @@ struct SearchOverlay: View {
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     /// Where the chord for searching in the open chat is kept.
     @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    var openChatRoomID: String? = nil
+    var openChatDisplayTitle: String? = nil
     var onOpenCommandBar: ((String) -> Void)? = nil
 
     var body: some View {
@@ -27,6 +29,8 @@ struct SearchOverlay: View {
                     composerPreferences: composerPreferences,
                     hotkeys: hotkeys,
                     maxHeight: proxy.size.height * 0.7,
+                    openChatRoomID: openChatRoomID,
+                    openChatDisplayTitle: openChatDisplayTitle,
                     onOpenCommandBar: onOpenCommandBar
                 )
                     .padding(.top, max(16, proxy.size.height * 0.06))
@@ -43,6 +47,8 @@ struct SearchPanel: View {
     @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
     /// 70% of the window's height: the panel grows with its rows up to this.
     let maxHeight: CGFloat
+    var openChatRoomID: String? = nil
+    var openChatDisplayTitle: String? = nil
     var onOpenCommandBar: ((String) -> Void)? = nil
     @State private var rowsHeight: CGFloat = 0
     @Environment(\.redactNamesAndPictures) private var isRedacted
@@ -60,6 +66,26 @@ struct SearchPanel: View {
     private static let chromeHeight: CGFloat = 112
     /// The "Press ⌘F to search in …" line.
     private static let offerHeight: CGFloat = 34
+
+    private var resolvedScopeName: String? {
+        guard let raw = SearchScopePresentation.displayName(
+            scopeRoomID: search.scopeRoomID,
+            scopeRow: search.scope,
+            inbox: inbox,
+            openChatRoomID: openChatRoomID,
+            openChatDisplayTitle: openChatDisplayTitle
+        ) else { return nil }
+        return SearchRedaction.chatTitle(raw, redacted: isRedacted)
+    }
+
+    private var controls: SearchPanelControls {
+        SearchPanelControls.resolve(
+            isScopedToChat: search.isScoped,
+            hasAccounts: !inbox.linkedNetworks.isEmpty,
+            filters: search.filters,
+            hasCommandBarAction: onOpenCommandBar != nil
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,9 +109,12 @@ struct SearchPanel: View {
             }
             if let notice = search.notice {
                 SearchNoticeView(notice: notice, clearFilters: search.clearFilters, retry: search.retry,
-                                 scopeName: search.scope?.name)
+                                 scopeName: resolvedScopeName)
                 if notice == .welcomeInChat {
-                    RecentChatsList(rows: recentChats) { row in
+                    RecentChatsList(
+                        rows: recentChats,
+                        displayTitle: { inbox.displayTitle(for: $0) }
+                    ) { row in
                         search.close()
                         inbox.select(row.id)
                     }
@@ -138,13 +167,12 @@ struct SearchPanel: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            if let scope = search.scope {
-                ScopeChip(name: scope.name.isEmpty ? String(localized: "Unnamed chat") : scope.name,
-                          remove: search.removeScope)
+            if let scopeName = resolvedScopeName {
+                ScopeChip(name: scopeName, remove: search.removeScope)
             }
             SearchField(text: $search.text, placeholder: placeholder, command: command)
                 .frame(height: 24)
-            if let onOpenCommandBar {
+            if controls.showsCommandsChip, let onOpenCommandBar {
                 Button {
                     let current = search.text
                     search.close()
@@ -326,6 +354,7 @@ private struct SearchSectionView: View {
                                 hit: hit,
                                 chatTitle: inbox.chatTitle(for: hit, fetchedRow: search.hitRows[hit.roomID]),
                                 isSelected: search.selection == item.id,
+                                scopedToSingleChat: search.isScopedToSingleChat,
                                 composerPreferences: composerPreferences
                             )
                                 .id(item.id)
@@ -343,6 +372,7 @@ private struct SearchSectionView: View {
                                   networkName: inbox.networkName,
                                   chatTitle: { inbox.chatTitle(for: $0, fetchedRow: search.hitRows[$0.roomID]) },
                                   isBookmark: section.kind == .bookmarks,
+                                  scopedToSingleChat: search.isScopedToSingleChat,
                                   composerPreferences: composerPreferences)
                         .id(item.id)
                         .contentShape(Rectangle())
@@ -504,6 +534,7 @@ struct SearchNoticeView: View {
 /// "Recent chats" under the empty in-chat search: a click opens the chat.
 struct RecentChatsList: View {
     let rows: [InboxRow]
+    var displayTitle: (InboxRow) -> String = { $0.displayTitle }
     let open: (InboxRow) -> Void
 
     var body: some View {
@@ -516,9 +547,10 @@ struct RecentChatsList: View {
                     .padding(.bottom, 4)
                 ForEach(rows, id: \.id) { row in
                     Button { open(row) } label: {
+                        let resolved = displayTitle(row)
                         HStack(spacing: 10) {
                             ChatAvatar(row: row, size: 28).frame(width: 28, height: 28)
-                            Text(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name)
+                            Text(resolved.isEmpty ? String(localized: "Unnamed chat") : resolved)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                         }

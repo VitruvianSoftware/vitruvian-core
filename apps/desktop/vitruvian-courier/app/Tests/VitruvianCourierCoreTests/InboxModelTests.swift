@@ -1736,6 +1736,52 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testStartNewChatCancelAndEscapeReturnToPreviousChatAndSelectingChatDismissesNewChat() async throws {
+        let h = try await start(autoRelease: true)
+        h.inbox.select("!chatA:courier.local")
+        XCTAssertEqual(h.app.selectedRoomID, "!chatA:courier.local")
+
+        h.inbox.openStartNewChat()
+        XCTAssertNotNil(h.inbox.startNewChatDraft)
+        XCTAssertEqual(h.app.selectedRoomID, "!chatA:courier.local", "previous chat remains remembered while New Chat opens")
+
+        h.inbox.cancelStartNewChat()
+        XCTAssertNil(h.inbox.startNewChatDraft)
+        XCTAssertEqual(h.app.selectedRoomID, "!chatA:courier.local", "Cancel returns to previous chat")
+
+        h.inbox.openStartNewChat()
+        XCTAssertTrue(h.inbox.escape(), "Escape cancels inline New Chat")
+        XCTAssertNil(h.inbox.startNewChatDraft)
+        XCTAssertEqual(h.app.selectedRoomID, "!chatA:courier.local")
+        XCTAssertFalse(h.inbox.escape())
+
+        h.inbox.openStartNewChat()
+        h.inbox.select("!chatA:courier.local")
+        XCTAssertNil(h.inbox.startNewChatDraft, "clicking the previously open chat row closes New Chat and reveals it")
+        XCTAssertEqual(h.app.selectedRoomID, "!chatA:courier.local")
+
+        h.inbox.openStartNewChat()
+        h.inbox.select("!chatB:courier.local")
+        XCTAssertNil(h.inbox.startNewChatDraft)
+        XCTAssertEqual(h.app.selectedRoomID, "!chatB:courier.local")
+        await stop(h)
+    }
+
+    func testStartNewChatCancelWithNoPreviousChatLeavesNothingSelected() async throws {
+        let h = try await start(autoRelease: true)
+        XCTAssertNil(h.app.selectedRoomID)
+        h.inbox.openStartNewChat()
+        XCTAssertNotNil(h.inbox.startNewChatDraft)
+        h.inbox.cancelStartNewChat()
+        XCTAssertNil(h.inbox.startNewChatDraft)
+        XCTAssertNil(h.app.selectedRoomID, "no earlier chat: the pane falls back to the empty state, nothing is invented")
+        h.inbox.openStartNewChat()
+        XCTAssertTrue(h.inbox.escape())
+        XCTAssertNil(h.inbox.startNewChatDraft)
+        XCTAssertNil(h.app.selectedRoomID)
+        await stop(h)
+    }
+
     func testArchiveMergedChatWithOneMemberAlreadyArchivedCountsAsOneRowAndUndoKeepsAlreadyArchivedMember() async throws {
         let h = try await start(autoRelease: true)
         var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice Merged", archived: false)
