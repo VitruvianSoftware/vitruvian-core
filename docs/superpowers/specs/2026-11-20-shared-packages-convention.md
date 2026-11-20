@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Shared packages: one layout, one catalog, reuse before writing
