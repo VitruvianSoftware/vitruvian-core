@@ -107,6 +107,18 @@ rust_test(
     deps = [":headscale_values_lib"],
 )
 
+rust_test(
+    name = "policy_sync_test",
+    size = "small",
+    srcs = ["src/policy_sync_test.rs"],
+    data = [
+        "applicationset.yaml",
+        "configmap-policy.yaml",
+    ],
+    edition = "2021",
+    deps = [":headscale_values_lib"],
+)
+
 # exporter.py, run straight out of configmap-key-exporter.yaml.
 py_test(
     name = "key_exporter_test",
