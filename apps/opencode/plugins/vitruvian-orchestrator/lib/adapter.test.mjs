@@ -3406,8 +3406,10 @@ describe("team tool and panel labels", () => {
         absentPayload.roles[0].effort,
         TIER_DEFAULTS.tiers.lead.effort,
       );
+      assert.equal(absentPayload.roles[0].dispatch, "lead");
       assert.equal(absentPayload.roles[0].gemini, null);
       assert.equal(absentPayload.roles[1].agent, "developer");
+      assert.equal(absentPayload.roles[1].dispatch, "developer");
       assert.equal(absentPayload.roles[1].source, "generic");
       assert.equal(
         absentPayload.roles[1].model,
@@ -3451,11 +3453,23 @@ describe("team tool and panel labels", () => {
         "wren",
       );
       assert.equal(
+        validPayload.roles.find((r) => r.role === "developer").dispatch,
+        "wren",
+      );
+      assert.equal(
         validPayload.roles.find((r) => r.role === "developer").model,
         "anthropic/claude-haiku-5-5",
       );
       assert.equal(
+        validPayload.roles.find((r) => r.role === "infrastructure").dispatch,
+        "infrastructure",
+      );
+      assert.equal(
         validPayload.roles.find((r) => r.role === "release").agent,
+        null,
+      );
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "release").dispatch,
         null,
       );
       assert.equal(
@@ -3506,6 +3520,7 @@ describe("team tool and panel labels", () => {
       assert.deepEqual(Object.keys(oversizePayload.roles[0]), [
         "role",
         "agent",
+        "dispatch",
         "source",
         "tier",
         "gemini",

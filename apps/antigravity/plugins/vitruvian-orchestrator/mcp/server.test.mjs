@@ -2497,9 +2497,11 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       TIER_DEFAULTS.tiers.lead.antigravity,
     );
     assert.equal(absentPayload.roles[0].gemini, null);
+    assert.equal(absentPayload.roles[0].dispatch, "lead");
     assert.equal(absentPayload.roles[0].effort, null);
     assert.equal(absentPayload.roles[1].role, "developer");
     assert.equal(absentPayload.roles[1].agent, "developer");
+    assert.equal(absentPayload.roles[1].dispatch, "developer");
     assert.equal(absentPayload.roles[1].source, "generic");
     assert.equal(
       absentPayload.roles[1].model,
@@ -2548,6 +2550,10 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       "wren",
     );
     assert.equal(
+      validPayload.roles.find((r) => r.role === "developer").dispatch,
+      "wren",
+    );
+    assert.equal(
       validPayload.roles.find((r) => r.role === "developer").source,
       "team",
     );
@@ -2556,7 +2562,15 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
       "pro",
     );
     assert.equal(
+      validPayload.roles.find((r) => r.role === "infrastructure").dispatch,
+      "infrastructure",
+    );
+    assert.equal(
       validPayload.roles.find((r) => r.role === "release").agent,
+      null,
+    );
+    assert.equal(
+      validPayload.roles.find((r) => r.role === "release").dispatch,
       null,
     );
     assert.equal(
@@ -2611,6 +2625,7 @@ test("team tool reads optional .agents/team.json, handles absent/valid/invalid/o
     assert.deepEqual(Object.keys(oversizePayload.roles[0]), [
       "role",
       "agent",
+      "dispatch",
       "source",
       "tier",
       "gemini",

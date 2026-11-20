@@ -88,30 +88,32 @@ function parseRosterTiers() {
   return [...tiers];
 }
 
-function parseRosterAgents() {
-  const raw = readFileSync(join(ROOT, ".agents/roster/agents.tsv"), "utf8");
-  const agents = [];
+function parseGenericRoles() {
+  const raw = readFileSync(
+    join(ROOT, ".agents/roster/generic/roles.tsv"),
+    "utf8",
+  );
+  const roles = [];
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const cols = trimmed.split("\t");
-    if (cols[0] === "name") continue;
+    if (cols[0] === "role") continue;
     if (cols[0])
-      agents.push({
-        name: cols[0],
+      roles.push({
+        role: cols[0],
         tier: cols[1],
-        role: cols[2],
-        description: cols[3],
+        description: cols[2],
       });
   }
-  return agents;
+  return roles;
 }
 
-function parseSkillRosterNames(skillText) {
+function parseSkillRoleNames(skillText) {
   const names = [];
   let inTable = false;
   for (const line of skillText.split(/\r?\n/)) {
-    if (line.startsWith("| Agent | Tier |")) {
+    if (line.startsWith("| Role | Tier |")) {
       inTable = true;
       continue;
     }
@@ -129,7 +131,7 @@ function parseSkillTableTiers(skillText) {
   const tiers = new Set();
   let inTable = false;
   for (const line of skillText.split(/\r?\n/)) {
-    if (line.startsWith("| Agent | Tier |")) {
+    if (line.startsWith("| Role | Tier |")) {
       inTable = true;
       continue;
     }
@@ -289,15 +291,15 @@ test("initial progress phase in SKILL.md matches rules/AGENTS.md and progress ph
   }
 });
 
-test("plugin ships agents/*.md matching the SKILL.md roster and .agents/roster/agents.tsv", () => {
+test("plugin ships role-named agents/*.md matching the SKILL.md role table and .agents/roster/generic/roles.tsv", () => {
   const skill = readPlugin("skills/orchestrate/SKILL.md");
-  const skillNames = parseSkillRosterNames(skill);
-  const rosterNames = parseRosterAgents().map((a) => a.name);
+  const skillRoles = parseSkillRoleNames(skill);
+  const rosterRoles = parseGenericRoles().map((r) => r.role);
 
   assert.deepEqual(
-    skillNames,
-    rosterNames,
-    "SKILL.md roster table must match .agents/roster/agents.tsv",
+    skillRoles,
+    rosterRoles,
+    "SKILL.md role table must match .agents/roster/generic/roles.tsv",
   );
 
   const agentsDir = join(PLUGIN_DIR, "agents");
@@ -311,13 +313,13 @@ test("plugin ships agents/*.md matching the SKILL.md roster and .agents/roster/a
     .sort();
   assert.deepEqual(
     files,
-    [...rosterNames].sort(),
-    `shipped agents/*.md (${files.join(", ")}) must match roster (${rosterNames.join(", ")})`,
+    [...rosterRoles].sort(),
+    `shipped agents/*.md (${files.join(", ")}) must match generic roles (${rosterRoles.join(", ")})`,
   );
 
-  for (const name of rosterNames) {
-    const body = readFileSync(join(agentsDir, `${name}.md`), "utf8");
-    assert.match(body, new RegExp(`^---[\\s\\S]*?\\bname:\\s*${name}\\b`, "m"));
+  for (const role of rosterRoles) {
+    const body = readFileSync(join(agentsDir, `${role}.md`), "utf8");
+    assert.match(body, new RegExp(`^---[\\s\\S]*?\\bname:\\s*${role}\\b`, "m"));
   }
 });
 

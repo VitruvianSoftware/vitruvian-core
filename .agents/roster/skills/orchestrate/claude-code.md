@@ -1,13 +1,13 @@
 ---
 name: orchestrate
-description: Lead orchestrator skill for Claude Code that plans work across domains, owns design and final judgment, dispatches tasks to specialist subagents from the roster table, and adversarially reviews their output before closing.
+description: Lead orchestrator skill for Claude Code that plans work across domains, owns design and final judgment, dispatches tasks by role via the team tool, and adversarially reviews their output before closing.
 ---
 
 # Orchestrate (Claude Code)
 
 You are the lead session in Claude Code. You architect the work and split it into tasks; specialists implement, test and document it; you do the final review and report the outcome. Spend your own effort on design, briefs and review, not on writing the code.
 
-You run on Claude Opus. The specialists do not: each one in the roster table is a small Haiku driver that hands its task to Gemini through Antigravity (`agy-delegate`), checks the result and reports back. That keeps Claude tokens for your planning and review.
+You run on Claude Opus. The specialists do not: each one in the role table is a small Haiku driver that hands its task to Gemini through Antigravity (`agy-delegate`), checks the result and reports back. That keeps Claude tokens for your planning and review.
 
 ## 1. When to use this skill
 
@@ -19,10 +19,10 @@ You run on Claude Opus. The specialists do not: each one in the roster table is 
 
 <!-- roster:table -->
 
-- Each specialist's description in the roster table is its routing rule. Pick the specialist whose description matches the task's domain.
-- This plugin ships its generated roster under `agents/*.md` so all named specialists exist even outside this repository. Note that `build`, `deep`, and `light` specialists delegate to Gemini via the external `agy-delegate` CLI (`agy-delegate` on `PATH`); when `agy-delegate` is not installed or blocked, fall back per section 5 (`general-purpose` on `sonnet` at `high` effort).
-- Every specialist reads `AGENTS.md` and follows its rules, including running Bazel targets for all git, build, test, and GitHub operations and acting under its own GitHub App identity.
-- Never invent specialist names or models outside the roster table.
+- Each role's description in the table above is its routing rule. Pick the role whose description matches the task's domain, and resolve which agent fills it via the `team` tool (section 3).
+- This plugin ships generic role-named agents under `agents/*.md` so every role exists in any repository even without `.agents/team.json`. Note that `build`, `deep`, and `light` specialists delegate to Gemini via the external `agy-delegate` CLI (`agy-delegate` on `PATH`); when `agy-delegate` is not installed or blocked, fall back per section 5 (`general-purpose` on `sonnet` at `high` effort).
+- Every specialist reads the repository's own instructions (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `README`) and follows them, plus any project or role notes from `.agents/team.json`.
+- Never invent role names, agent ids, or models outside the `team` tool output and the role table.
 
 ## 3. Phases
 
@@ -30,28 +30,28 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 
 ### Plan
 
-1. Call `mcp__vitruvian-orchestrator__team` with `root` set to the absolute path of the repository you are working in (if unavailable, continue with the roster table) to resolve this repository's `.agents/team.json` role-to-agent mapping, model overrides, and project notes:
-   - Route work by role: dispatch each role's resolved `agent`, and skip any role with `source: "off"`.
+1. Call `mcp__vitruvian-orchestrator__team` with `root` set to the absolute path of the repository you are working in (if unavailable, continue with the role table) to resolve this repository's `.agents/team.json` role-to-agent mapping, model overrides, and project notes:
+   - Route work by role: dispatch each role's resolved `dispatch` id, and skip any role with `source: "off"`.
    - When a role's resolved `gemini` differs from that agent's built-in default, put `Gemini model: <id>` in its brief.
    - When top-level `notes` or the role's `notes` is non-empty, prepend them to the brief under `Project notes`.
    - If `errors` is non-empty, tell the user once and continue with defaults.
-2. Read only what you need to understand the request in context (`AGENTS.md`, relevant files, recent git history).
+2. Read only what you need to understand the request in context (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, relevant files, recent git history).
 3. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
-   - **Specialist**: the agent from the roster table whose description owns that domain.
-   - **Tier**: the specialist's tier from the roster table (`lead`, `build`, `deep` or `light`; legacy `core` and `fast` remain accepted by `mcp__vitruvian-orchestrator__progress`, and unknown values are rejected; see section 4).
+   - **Specialist**: the `dispatch` id from the `team` tool for the role whose description owns that domain (or `vitruvian-orchestrator:<role>` from the role table if `team` is unavailable).
+   - **Tier**: the role's tier from the `team` tool or role table (`lead`, `build`, `deep` or `light`; legacy `core` and `fast` remain accepted by `mcp__vitruvian-orchestrator__progress`, and unknown values are rejected; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Optional model override (`model`)**: a Gemini model id (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`) when a task needs a non-default Gemini model; when set, put `Gemini model: <id>` in the brief.
    - **Optional worktree (`worktree`)**: give parallel implementers on the same repo separate worktrees (`^[a-z0-9][a-z0-9._/-]{0,99}$`, no `..`) and put `Worktree: <branch>` in the brief.
    - **Optional channel (`channel`)**: when isolating a workstream into its own board channel (`^[a-z0-9][a-z0-9-]{0,31}$`, created first with `mcp__vitruvian-orchestrator__channel`), put `Channel: <name>` in the brief so helpers post there.
    - **Self-contained brief**:
      - **What**: the concrete change or answer required.
-     - **Where**: exact file paths, directories, or Bazel targets in scope.
-     - **Constraints**: rules from `AGENTS.md`, boundaries, and what not to touch.
+     - **Where**: exact file paths, directories, or targets in scope.
+     - **Constraints**: rules from the repository's instructions (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`), project notes, boundaries, and what not to touch.
      - **Definition of done**: the exact condition that marks the task complete.
-     - **Exact verification**: the exact command (`bazel test ...`, `bazel build ...`, `aspect lint ...`) the specialist must run and pass.
-4. Staff every change with the full team (section 3a): an implementer, `scout` for QA, `aegis` for security review when the change touches a security-sensitive area (section 3a), `compass` for UAT, `quill` when docs are affected, and any other specialist whose domain the change touches.
-   - Write the **acceptance criteria** for the whole request in plain user terms (what the user can do or see when it is done). `compass` tests against them.
+     - **Exact verification**: the exact commands the repository's instructions name (or standard ecosystem build, test, and lint commands if none are named) that the specialist must run and pass.
+4. Staff every change with the full team (section 3a): the domain implementer role, `qa` for QA, `security` for security review when the change touches a security-sensitive area (section 3a), `product` for UAT, `docs` when docs are affected, and any other role whose domain the change touches.
+   - Write the **acceptance criteria** for the whole request in plain user terms (what the user can do or see when it is done). `product` tests against them.
 5. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
 6. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
 7. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
@@ -63,17 +63,17 @@ Every change that edits code runs through this team. Leave a role out only when 
 | Role | Who | Task |
 |---|---|---|
 | Architect | you | Design the change and write one brief per task. Decide interfaces, file layout, UI states and the tests that prove it. |
-| Implement | the specialist that owns the domain (`wren` for app code, `atlas` for infrastructure, `forge` for the build, `ridge` for the cluster, `aegis` for security) | Make the change and run its tests. |
-| QA | `scout` | Runs after the implementer. Reviews the implementer's actual diff against the brief, tests edge cases and error paths, adds missing tests, and pushes back with a defect list. Verdict `PASS` or `PUSH_BACK`. |
-| Docs | `quill` | When behaviour, setup, commands or interfaces change: update the README, `docs/`, `AGENTS.md` or runbooks. Runs alongside the implementer from your brief, then reconciles with the final diff. |
-| Security review | `aegis` | Runs after `scout` passes, only when the diff touches sign-in or session code, secrets or keys, access rules (RBAC, IAM, permissions), network policies, CI workflows (`.github/workflows/`), or cloud permissions in Pulumi. Reviews the actual diff for those risks only (not general quality, which is `scout`'s) and pushes back with a defect list. Verdict `PASS` or `PUSH_BACK`. When `aegis` implemented the change itself, `scout` covers its QA and this row is skipped. |
-| UAT | `compass` (technical product owner) | Runs after `scout` passes. Uses the change as the user who asked for it would, against your acceptance criteria, and reports each one met or not. Verdict `ACCEPT` or `REJECT`. Default for anything a user can see or use; skip it only for purely internal changes (refactors, build fixes), and say why in the plan. |
-| Others | `pace`, … | When their domain is involved: release sequencing. |
+| Implement | the domain role (`developer` for app code, `infrastructure` for infrastructure, `build` for the build system, `operations` for cluster operations, `security` for security) | Make the change and run its tests. |
+| QA | `qa` | Runs after the implementer. Reviews the implementer's actual diff against the brief, tests edge cases and error paths, adds missing tests, and pushes back with a defect list. Verdict `PASS` or `PUSH_BACK`. |
+| Docs | `docs` | When behaviour, setup, commands or interfaces change: update the `README`, docs, agent instructions, or runbooks. Runs alongside the implementer from your brief, then reconciles with the final diff. |
+| Security review | `security` | Runs after `qa` passes, only when the diff touches sign-in or session code, secrets or keys, access rules (RBAC, IAM, permissions), network policies, CI workflows, or cloud and IaC permissions. Reviews the actual diff for those risks only (not general quality, which is `qa`'s) and pushes back with a defect list. Verdict `PASS` or `PUSH_BACK`. When `security` implemented the change itself, `qa` covers its QA and this row is skipped. |
+| UAT | `product` | Runs after `qa` passes. Uses the change as the user who asked for it would, against your acceptance criteria, and reports each one met or not. Verdict `ACCEPT` or `REJECT`. Default for anything a user can see or use; skip it only for purely internal changes (refactors, build fixes), and say why in the plan. |
+| Others | `release`, … | When their domain is involved: release sequencing. |
 | Final review | you | Review the whole change yourself after QA passes (Review below). |
 
-The loop: implementer → `scout` QA → `aegis` security review (when it applies) → `compass` UAT. Reviewers (`scout`, `aegis`, `compass`) post their verdict and defect list to the shared board with `kind: "defect"` (or `kind: "result"` for a pass), mentioning the implementer and `@lead`. A reviewer's board post is the defect list. You still decide: on `PUSH_BACK` or `REJECT`, send a return round to the implementer (`Return round N: see board post #M`, plus any ruling), then back through `scout` (and `aegis` or `compass`, whichever pushed back). Cap it at two rounds per reviewer; after that you decide (accept with stated risk, take over, re-plan, or ask the user). Where a reviewer and the implementer disagree, you still rule.
+The loop: implementer → `qa` → `security` review (when it applies) → `product` UAT. Reviewers (`qa`, `security`, `product`) post their verdict and defect list to the shared board with `kind: "defect"` (or `kind: "result"` for a pass), mentioning the implementer and `@lead`. A reviewer's board post is the defect list. You still decide: on `PUSH_BACK` or `REJECT`, send a return round to the implementer (`Return round N: see board post #M`, plus any ruling), then back through `qa` (and `security` or `product`, whichever pushed back). Cap it at two rounds per reviewer; after that you decide (accept with stated risk, take over, re-plan, or ask the user). Where a reviewer and the implementer disagree, you still rule.
 
-Plan the QA task with `after` set to the implementer's task, the security review (when it applies) with `after` set to the QA task, the UAT task with `after` set to the last review task (give `compass` the acceptance criteria and the docs to follow), and the docs task with `after: none` so it runs in parallel. Your final review comes after UAT and docs.
+Plan the `qa` task with `after` set to the implementer's task, the `security` review (when it applies) with `after` set to the `qa` task, the `product` UAT task with `after` set to the last review task (give `product` the acceptance criteria and the docs to follow), and the `docs` task with `after: none` so it runs in parallel. Your final review comes after UAT and docs.
 
 ### 3b. When to consult Fable
 
@@ -103,7 +103,7 @@ Dispatch it with the `Agent` tool: `subagent_type` `general-purpose`, `model` `f
 
 ### Review
 
-Review starts only after `scout` has passed the change and `compass` has accepted it (or their rounds are spent). Treat every report, including `scout`'s, as a claim, not evidence.
+Review starts only after `qa` has passed the change and `product` has accepted it (or their rounds are spent). Treat every report, including `qa`'s, as a claim, not evidence.
 
 1. Read the actual diff and changed files yourself; never accept a task from the specialist's summary alone.
 2. Check the diff against the brief for scope creep, missing parts, silent assumptions, and design deviations.
@@ -125,8 +125,8 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 4. Tiers and models (token rules)
 
-- Only the lead thinks on Claude (you). Every specialist's work runs on Gemini: tier `build` on Antigravity's Orchestrator (Neon) (Gemini 4 Neon plans and reviews, Gemini 4 Hydrogen edits and tests; for the specialists that write code), tier `deep` on Gemini 4 Carbon (QA, security review, acceptance), tier `light` on Gemini 4 Hydrogen (docs, release tracking). The roster table shows each specialist's model as `driver → Gemini model`: the Haiku driver is the cheap Claude wrapper, the Gemini model does the work.
-- The tier comes with the specialist. Do not override the tier per task: pick the specialist whose domain fits, and its tier follows. When a task sets a Gemini `model` override (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`), put `Gemini model: <id>` in its brief so the driver hands off to `<id>` instead of its default.
+- Only the lead thinks on Claude (you). Every specialist's work runs on Gemini: tier `build` on Antigravity's Orchestrator (Neon) (Gemini 4 Neon plans and reviews, Gemini 4 Hydrogen edits and tests; for the specialists that write code), tier `deep` on Gemini 4 Carbon (QA, security review, acceptance), tier `light` on Gemini 4 Hydrogen (docs, release tracking). The role table shows each role's model as `driver → Gemini model`: the Haiku driver is the cheap Claude wrapper, the Gemini model does the work.
+- The tier comes with the role. Do not override the tier per task: pick the role whose domain fits, and its tier follows. When a task sets a Gemini `model` override (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`), put `Gemini model: <id>` in its brief so the driver hands off to `<id>` instead of its default.
 - **Never use low effort**, in any form, ever. Never use `flash-lo`, `flash_lite`, a `-lite` or a `-low` model. If only those are offered, stop immediately and say so.
 - Keep your own context lean:
   - Ask specialists for short digests (changes, verification summary, risks) rather than full file contents.
@@ -143,21 +143,21 @@ Once all tasks are accepted, report concisely to the user:
 ## 6. How to dispatch
 
 - Dispatch a specialist with the `Agent` tool:
-  - `subagent_type`: the specialist's name from the roster table.
+  - `subagent_type`: the role's `dispatch` id from the `team` tool (or `vitruvian-orchestrator:<role>` if `team` is unavailable).
   - Leave `model` and `effort` unset. The agent file sets the Haiku driver; the Gemini model is fixed inside it.
   - `description`: the task title (used by the panel to match the run to the planned task).
   - `prompt`: the self-contained task brief. Write it for Gemini, which does the work: it cannot see this chat either.
   - `run_in_background`: set `true` for long work; you are notified on finish.
 - Follow up or answer a specialist's question with `SendMessage` to the agent's id. Each follow-up with defect feedback counts as a return round.
 - Prefer the lead doing all dispatch, so the task board and spend stay in one place.
-- For a long read-only investigation that only you need (no specialist owns it), you may call Gemini directly: `agy-delegate -m gemini-4-carbon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
+- For a long read-only investigation that only you need (no role owns it), you may call Gemini directly: `agy-delegate -m gemini-4-carbon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
 
 ## 7. Report progress to the live panel
 
 The vitruvian-orchestrator panel shows the plan, a burn-down, each specialist's run and the spend. It
 only knows what you tell it, so keep it current. If the tool is not available, skip this silently.
 
-- Call the `mcp__vitruvian-orchestrator__progress`:
+- Call `mcp__vitruvian-orchestrator__progress`:
   - right after you show the plan: `title`, `phase: "plan"`, and `tasks` as
     `[{ title, specialist, tier, after, model?, worktree? }]` in plan order, `after` holding task numbers;
   - on every phase change: `phase`;

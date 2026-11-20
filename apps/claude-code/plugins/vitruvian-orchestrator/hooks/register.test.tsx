@@ -3746,6 +3746,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
   expect(absentJson.roles[0]).toMatchObject({
     role: "lead",
     agent: "lead",
+    dispatch: "vitruvian-orchestrator:lead",
     source: "generic",
     tier: "lead",
     gemini: null,
@@ -3756,6 +3757,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
   expect(absentJson.roles[1]).toMatchObject({
     role: "developer",
     agent: "developer",
+    dispatch: "vitruvian-orchestrator:developer",
     source: "generic",
     tier: "build",
     gemini: TIER_DEFAULTS.tiers.build.gemini,
@@ -3787,15 +3789,23 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
   expect(validJson.roles[1]).toMatchObject({
     role: "developer",
     agent: "wren",
+    dispatch: "wren",
     source: "team",
     tier: "build",
     model: "haiku",
     effort: "medium",
     notes: "Owns apps/.",
   });
+  expect(validJson.roles[2]).toMatchObject({
+    role: "infrastructure",
+    agent: "infrastructure",
+    dispatch: "vitruvian-orchestrator:infrastructure",
+    source: "generic",
+  });
   expect(validJson.roles[9]).toMatchObject({
     role: "release",
     agent: null,
+    dispatch: null,
     source: "off",
   });
 
@@ -3922,6 +3932,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
   expect(Object.keys(oversizeJson.roles[0])).toEqual([
     "role",
     "agent",
+    "dispatch",
     "source",
     "tier",
     "gemini",
