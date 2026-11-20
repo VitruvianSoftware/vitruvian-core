@@ -1414,7 +1414,9 @@ pub fn render_harness_role_table(roster: &Roster, harness: &str) -> String {
                 format_generic_cell(&spec.claude_code, nt.map(|n| &n.claude_code), &spec.gemini)
             }
             "antigravity" => format_table_cell(&spec.antigravity),
-            "opencode" => format_generic_cell(&spec.opencode, nt.map(|n| &n.opencode), &spec.gemini),
+            "opencode" => {
+                format_generic_cell(&spec.opencode, nt.map(|n| &n.opencode), &spec.gemini)
+            }
             other => panic!("unknown harness '{other}'"),
         };
         lines.push(format!(
@@ -1747,7 +1749,11 @@ pub fn render_antigravity_agent(
     // `invoke_subagent` only when it sets `subagent: true`. agy 1.5.13 calls it either
     // way (probed 2026-11-20), so this follows the documented contract, not observed need.
     // The lead is the entry point, not a subagent, so it does not get the flag.
-    let subagent_line = if spec.gemini.is_some() { "subagent: true\n" } else { "" };
+    let subagent_line = if spec.gemini.is_some() {
+        "subagent: true\n"
+    } else {
+        ""
+    };
     format!(
         "---\nname: {}\ndescription: {}\nmodel: {}\n{}---\n{}\n\n{}\n",
         agent.name,
@@ -2038,7 +2044,10 @@ pub fn render_tier_defaults(roster: &Roster, harness: &str) -> String {
             ));
             out.push_str(&format!("        opencode: {opencode_val},\n"));
             if native_effort != "-" {
-                out.push_str(&format!("        effort: {},\n", json_string(native_effort)));
+                out.push_str(&format!(
+                    "        effort: {},\n",
+                    json_string(native_effort)
+                ));
             }
             out.push_str("      }),\n");
         }
@@ -4432,7 +4441,9 @@ deep\topencode\t-\thigh
         )));
         assert!(cc_dev.contains(GENERIC_GENERATED_COMMENT));
         assert!(cc_dev.contains("You are developer. By default you work natively"));
-        assert!(cc_dev.contains("REQ_ENGINE=\"$(sed -n '/^Engine:/{s/^Engine: //p;q;}' \"$LEAD\")\""));
+        assert!(
+            cc_dev.contains("REQ_ENGINE=\"$(sed -n '/^Engine:/{s/^Engine: //p;q;}' \"$LEAD\")\"")
+        );
         assert!(cc_dev.contains(r#"REQ_ENGINE="${REQ_ENGINE%$(printf '\r')}""#));
         assert!(cc_dev.contains("command -v agy-delegate >/dev/null 2>&1"));
         assert!(cc_dev.contains("without** `delegate` or `delegateUsage`"));
@@ -4508,7 +4519,8 @@ deep\topencode\t-\thigh
 
         let cc_lead = &files["apps/claude-code/plugins/vitruvian-orchestrator/agents/lead.md"];
         assert!(cc_lead.contains("| Role | Tier | Claude Code | Antigravity | OpenCode |"));
-        assert!(cc_lead.contains("| lead | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |"));
+        assert!(cc_lead
+            .contains("| lead | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |"));
         assert!(cc_lead.contains("| developer | deep | sonnet (high) (gemini: haiku (medium) → gemini-4-argon-high) | pro | session model (high) (gemini: anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high) |"));
         assert!(
             find_forbidden_generic_terms(cc_lead).is_empty(),
@@ -4531,7 +4543,10 @@ deep\topencode\t-\thigh
         assert_eq!(resolve_brief_engine("Task\nEngine: gemini\n"), "gemini");
         assert_eq!(resolve_brief_engine("Task\nEngine: native\n"), "native");
         assert_eq!(resolve_brief_engine("Task\n"), "native");
-        assert_eq!(resolve_brief_engine("Task\nEngine: bogus\nEngine: gemini\n"), "native");
+        assert_eq!(
+            resolve_brief_engine("Task\nEngine: bogus\nEngine: gemini\n"),
+            "native"
+        );
         assert_eq!(resolve_brief_engine("Task\n  Engine: gemini\n"), "native");
         assert_eq!(resolve_brief_engine("Task\nEngine: gemini \n"), "native");
         assert_eq!(resolve_brief_engine("Task\r\nEngine: gemini\r\n"), "gemini");
@@ -4610,7 +4625,10 @@ deep\topencode\t-\thigh
         };
 
         assert_eq!(run("Task\nEngine: gemini\n", &path_with), "gemini|gemini");
-        assert_eq!(run("Task\nEngine: gemini\n", &path_without), "gemini|native");
+        assert_eq!(
+            run("Task\nEngine: gemini\n", &path_without),
+            "gemini|native"
+        );
         assert_eq!(
             run("Task\r\nEngine: gemini\r\n", &path_with),
             "gemini|gemini"
@@ -4620,7 +4638,10 @@ deep\topencode\t-\thigh
             "gemini|native"
         );
         assert_eq!(run("Task\nEngine: gemini\r", &path_with), "gemini|gemini");
-        assert_eq!(run("Task\nEngine: gemini\r", &path_without), "gemini|native");
+        assert_eq!(
+            run("Task\nEngine: gemini\r", &path_without),
+            "gemini|native"
+        );
         assert_eq!(
             run("Task\r\nEngine: native\r\n", &path_with),
             "native|native"
@@ -4643,10 +4664,7 @@ deep\topencode\t-\thigh
         );
         assert_eq!(run("Task\nEngine: native\n", &path_with), "native|native");
         assert_eq!(run("Task without engine\n", &path_with), "native|native");
-        assert_eq!(
-            run("Task\nEngine: gemini \n", &path_with),
-            "native|native"
-        );
+        assert_eq!(run("Task\nEngine: gemini \n", &path_with), "native|native");
         assert_eq!(
             run("Task\nEngine: bogus\nEngine: gemini\n", &path_with),
             "native|native"
@@ -4655,10 +4673,7 @@ deep\topencode\t-\thigh
             run("Task\nEngine:\nEngine: gemini\n", &path_with),
             "native|native"
         );
-        assert_eq!(
-            run("Task\n  Engine: gemini\n", &path_with),
-            "native|native"
-        );
+        assert_eq!(run("Task\n  Engine: gemini\n", &path_with), "native|native");
         assert_eq!(
             run("Task\nEngine: $(echo gemini)\n", &path_with),
             "native|native"
@@ -4718,7 +4733,12 @@ deep\topencode\t-\thigh
             if let Some(dir) = cwd {
                 cmd.current_dir(dir);
             }
-            for var in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"] {
+            for var in [
+                "GIT_DIR",
+                "GIT_WORK_TREE",
+                "GIT_INDEX_FILE",
+                "GIT_COMMON_DIR",
+            ] {
                 cmd.env_remove(var);
             }
             cmd.env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -4784,7 +4804,12 @@ deep\topencode\t-\thigh
                 .env("RUN_DIR", &run_dir)
                 .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .env("GIT_CONFIG_SYSTEM", "/dev/null");
-            for var in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"] {
+            for var in [
+                "GIT_DIR",
+                "GIT_WORK_TREE",
+                "GIT_INDEX_FILE",
+                "GIT_COMMON_DIR",
+            ] {
                 cmd.env_remove(var);
             }
             cmd.output().expect("/bin/sh should run")
@@ -4905,7 +4930,10 @@ deep\topencode\t-\thigh
 
         for (bad_gt, needle) in [
             (
-                valid_generic_tiers.replace("deep\tclaude-code\tsonnet\thigh", "deep\tclaude-code\tsonnet\tlow"),
+                valid_generic_tiers.replace(
+                    "deep\tclaude-code\tsonnet\thigh",
+                    "deep\tclaude-code\tsonnet\tlow",
+                ),
                 "never low effort",
             ),
             (
@@ -4913,23 +4941,37 @@ deep\topencode\t-\thigh
                 "never low effort",
             ),
             (
-                valid_generic_tiers.replace("deep\tclaude-code\tsonnet\thigh", "deep\tclaude-code\tclaude-sonnet-low\thigh"),
+                valid_generic_tiers.replace(
+                    "deep\tclaude-code\tsonnet\thigh",
+                    "deep\tclaude-code\tclaude-sonnet-low\thigh",
+                ),
                 "low, lite or flash-lo",
             ),
             (
-                valid_generic_tiers.replace("deep\tclaude-code\tsonnet\thigh", "deep\tclaude-code\tclaude-haiku-lite\thigh"),
+                valid_generic_tiers.replace(
+                    "deep\tclaude-code\tsonnet\thigh",
+                    "deep\tclaude-code\tclaude-haiku-lite\thigh",
+                ),
                 "low, lite or flash-lo",
             ),
             (
-                valid_generic_tiers.replace("deep\topencode\t-\thigh", "deep\topencode\tgoogle/gemini-flash-lo\thigh"),
+                valid_generic_tiers.replace(
+                    "deep\topencode\t-\thigh",
+                    "deep\topencode\tgoogle/gemini-flash-lo\thigh",
+                ),
                 "low, lite or flash-lo",
             ),
             (
-                valid_generic_tiers.replace("deep\topencode\t-\thigh", "deep\topencode\tanthropic/claude-sonnet-lite\thigh"),
+                valid_generic_tiers.replace(
+                    "deep\topencode\t-\thigh",
+                    "deep\topencode\tanthropic/claude-sonnet-lite\thigh",
+                ),
                 "low, lite or flash-lo",
             ),
             (
-                format!("{valid_generic_tiers}lead\tclaude-code\topus\thigh\nlead\topencode\t-\thigh\n"),
+                format!(
+                    "{valid_generic_tiers}lead\tclaude-code\topus\thigh\nlead\topencode\t-\thigh\n"
+                ),
                 "tier 'lead' is not allowed",
             ),
             (
@@ -5115,7 +5157,10 @@ deep\topencode\t-\thigh
             );
             checked += 1;
         }
-        assert_eq!(checked, 20, "expected 10 project + 10 generic Antigravity agents");
+        assert_eq!(
+            checked, 20,
+            "expected 10 project + 10 generic Antigravity agents"
+        );
     }
 
     #[test]

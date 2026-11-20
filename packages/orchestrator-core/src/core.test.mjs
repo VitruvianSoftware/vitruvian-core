@@ -5779,7 +5779,11 @@ test("resolveTeam resolves engine precedence, ignores bad values, forces Antigra
       lead: { engine: "gemini" },
       qa: { engine: "native" },
       docs: { engine: "gemini" },
-      security: { "claude-code": "opus", opencode: "openai/gpt-5", effort: "max" },
+      security: {
+        "claude-code": "opus",
+        opencode: "openai/gpt-5",
+        effort: "max",
+      },
       product: { engine: "native", "claude-code": "opus", effort: "xhigh" },
       build: { tier: "lead" },
       release: "off",
@@ -5918,7 +5922,11 @@ test("resolveTeam resolves engine precedence, ignores bad values, forces Antigra
       docs: { engine: 99 },
     },
   };
-  const badFallthrough = resolveTeam(badValuesTeam, "claude-code", fullDefaults);
+  const badFallthrough = resolveTeam(
+    badValuesTeam,
+    "claude-code",
+    fullDefaults,
+  );
   // developer/infrastructure: bad role & bad tier & bad top -> falls through to "native"
   assert.equal(byRole(badFallthrough, "developer")?.engine, "native");
   assert.equal(byRole(badFallthrough, "developer")?.model, "sonnet");
@@ -5991,7 +5999,11 @@ test("resolveTeam resolves engine precedence, ignores bad values, forces Antigra
       release: { agent: "pace" },
     },
   };
-  const ccTeamLevels = resolveTeam(teamWithEngineLevels, "claude-code", fullDefaults);
+  const ccTeamLevels = resolveTeam(
+    teamWithEngineLevels,
+    "claude-code",
+    fullDefaults,
+  );
   assert.equal(byRole(ccTeamLevels, "lead")?.source, "team");
   assert.equal(byRole(ccTeamLevels, "lead")?.engine, "native");
   assert.equal(byRole(ccTeamLevels, "lead")?.gemini, null);
@@ -6023,9 +6035,16 @@ test("resolveTeam resolves engine precedence, ignores bad values, forces Antigra
   assert.equal(byRole(ccTeamLevels, "release")?.model, "opus");
   assert.equal(byRole(ccTeamLevels, "release")?.effort, "xhigh");
 
-  const ocTeamLevels = resolveTeam(teamWithEngineLevels, "opencode", fullDefaults);
+  const ocTeamLevels = resolveTeam(
+    teamWithEngineLevels,
+    "opencode",
+    fullDefaults,
+  );
   assert.equal(byRole(ocTeamLevels, "lead")?.engine, "native");
-  assert.equal(byRole(ocTeamLevels, "lead")?.model, "anthropic/claude-opus-5-5");
+  assert.equal(
+    byRole(ocTeamLevels, "lead")?.model,
+    "anthropic/claude-opus-5-5",
+  );
   assert.equal(byRole(ocTeamLevels, "lead")?.effort, "high");
   assert.equal(byRole(ocTeamLevels, "developer")?.engine, "gemini");
   assert.equal(byRole(ocTeamLevels, "developer")?.model, null);

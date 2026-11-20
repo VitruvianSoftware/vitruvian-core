@@ -3523,7 +3523,10 @@ describe("team tool and panel labels", () => {
         byRole("developer").model,
         TIER_DEFAULTS.tiers.build.opencode,
       );
-      assert.equal(byRole("developer").effort, TIER_DEFAULTS.tiers.build.effort);
+      assert.equal(
+        byRole("developer").effort,
+        TIER_DEFAULTS.tiers.build.effort,
+      );
       assert.equal(byRole("build").source, "team");
       assert.equal(byRole("build").engine, "gemini");
       assert.equal(byRole("build").model, null);
@@ -3535,7 +3538,10 @@ describe("team tool and panel labels", () => {
       assert.equal(byRole("security").model, "openai/gpt-5");
       assert.equal(byRole("docs").engine, "native");
       assert.equal(byRole("docs").model, null);
-      assert.equal(byRole("docs").effort, TIER_DEFAULTS.tiers.light.native.effort);
+      assert.equal(
+        byRole("docs").effort,
+        TIER_DEFAULTS.tiers.light.native.effort,
+      );
       assert.equal(byRole("release").engine, null);
 
       // 2c. Mapped team role with no engine anywhere gets engine: null and explicit-or-null model/effort
