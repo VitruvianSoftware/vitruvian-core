@@ -529,9 +529,9 @@ jobs:
               - 'apps/desktop/vitruvian-atrium/**'
               - 'apps/desktop/vitruvian-code/**'
               - 'apps/desktop/vitruvian-speaker/**'
-              - 'apps/mobile/vitruvian-remote/**'
+              - 'apps/mobile/vitruvian-remote/macmenu/**'
               - 'packages/peripherals/**'
-              - 'packages/swift/**'
+              - 'packages/swift/SentryLite/**'
               - 'packages/vitruvian-sdk/**'
               - 'tools/**'
               # END generated: macos-paths

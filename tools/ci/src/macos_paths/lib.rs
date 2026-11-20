@@ -154,7 +154,13 @@ pub fn parse_macos_build_targets(ci_yaml: &str) -> Result<Vec<String>, String> {
 }
 
 /// Collapses a main-repo Bazel package into a `dorny/paths-filter` glob.
-/// Returns `None` for empty strings and external repo labels (`@repo//...`).
+/// Each package maps to its own path (`<package>/**`), never to its app or
+/// package root: a package's `/**` already covers its own files and its
+/// non-package subdirectories, and a sibling package under the same app must
+/// not start a Mac build (the Android remote is `apps/mobile/vitruvian-remote`,
+/// its Mac app is `.../macmenu`). `tools/**` stays whole: it is the fixed
+/// toolchain surface. Returns `None` for empty strings and external repo
+/// labels (`@repo//...`).
 pub fn collapse_package(pkg: &str) -> Option<String> {
     let trimmed = pkg.trim();
     if trimmed.is_empty() || trimmed.starts_with('@') {
@@ -165,15 +171,20 @@ pub fn collapse_package(pkg: &str) -> Option<String> {
         return None;
     }
     let segs: Vec<&str> = clean.split('/').collect();
-    let glob = match segs.as_slice() {
-        ["apps", cat, app, ..] => format!("apps/{cat}/{app}/**"),
-        ["apps", ..] => format!("{}/**", segs.join("/")),
-        ["packages", name, ..] => format!("packages/{name}/**"),
-        ["packages"] => "packages/**".to_string(),
-        ["tools", ..] => "tools/**".to_string(),
+    let glob = match segs.first() {
+        Some(&"tools") => "tools/**".to_string(),
         _ => format!("{clean}/**"),
     };
     Some(glob)
+}
+
+/// True when `narrow` is a `<dir>/**` glob strictly inside another `<dir>/**`
+/// glob (for example `packages/swift/SentryLite/**` inside `packages/swift/**`).
+fn is_covered_by(narrow: &str, broad: &str) -> bool {
+    match (narrow.strip_suffix("/**"), broad.strip_suffix("/**")) {
+        (Some(n), Some(b)) => n != b && n.starts_with(&format!("{b}/")),
+        _ => false,
+    }
 }
 
 /// Builds the sorted, deduplicated list of globs from queried packages and `FIXED_ENTRIES`.
@@ -191,7 +202,11 @@ where
             set.insert(glob);
         }
     }
-    set.into_iter().collect()
+    // Drop any glob a broader glob in the list already covers.
+    let all: Vec<String> = set.iter().cloned().collect();
+    set.into_iter()
+        .filter(|g| !all.iter().any(|other| is_covered_by(g, other)))
+        .collect()
 }
 
 /// Runs `bazel query 'deps(set(<targets>))' --output package` and returns stdout lines.
@@ -535,19 +550,19 @@ jobs:
     fn collapses_packages_and_drops_external_repos() {
         assert_eq!(
             collapse_package("apps/desktop/vitruvian-code/macos").as_deref(),
-            Some("apps/desktop/vitruvian-code/**")
+            Some("apps/desktop/vitruvian-code/macos/**")
         );
         assert_eq!(
             collapse_package("apps/mobile/vitruvian-remote/macmenu").as_deref(),
-            Some("apps/mobile/vitruvian-remote/**")
+            Some("apps/mobile/vitruvian-remote/macmenu/**")
         );
         assert_eq!(
             collapse_package("packages/swift/SentryLite").as_deref(),
-            Some("packages/swift/**")
+            Some("packages/swift/SentryLite/**")
         );
         assert_eq!(
             collapse_package("packages/vitruvian-sdk/consumers").as_deref(),
-            Some("packages/vitruvian-sdk/**")
+            Some("packages/vitruvian-sdk/consumers/**")
         );
         assert_eq!(
             collapse_package("packages/peripherals").as_deref(),
@@ -561,6 +576,33 @@ jobs:
         assert_eq!(collapse_package("@rules_swift//swift"), None);
         assert_eq!(collapse_package("@@apple_support+//xcode"), None);
         assert_eq!(collapse_package(""), None);
+    }
+
+    #[test]
+    fn package_under_an_app_never_widens_to_the_app_root() {
+        // The Android remote shares an app root with its Mac app. A change to
+        // the Android-only side must not match the Mac filter.
+        let globs = build_globs(["apps/mobile/vitruvian-remote/macmenu"]);
+        assert!(globs.contains(&"apps/mobile/vitruvian-remote/macmenu/**".to_string()));
+        assert!(
+            !globs.contains(&"apps/mobile/vitruvian-remote/**".to_string()),
+            "app root must not appear: {globs:?}"
+        );
+        let android_only = "apps/mobile/vitruvian-remote/android/app/build.gradle";
+        assert!(!globs.iter().any(|g| g
+            .strip_suffix("/**")
+            .is_some_and(|d| android_only.starts_with(&format!("{d}/")))));
+    }
+
+    #[test]
+    fn build_globs_drops_packages_covered_by_a_broader_glob() {
+        let globs = build_globs(["packages/swift", "packages/swift/SentryLite"]);
+        assert!(globs.contains(&"packages/swift/**".to_string()));
+        assert!(!globs.contains(&"packages/swift/SentryLite/**".to_string()));
+
+        let narrow = build_globs(["packages/swift/SentryLite"]);
+        assert!(narrow.contains(&"packages/swift/SentryLite/**".to_string()));
+        assert!(!narrow.contains(&"packages/swift/**".to_string()));
     }
 
     #[test]
@@ -593,11 +635,11 @@ jobs:
         assert_eq!(
             with_pkgs
                 .iter()
-                .filter(|g| *g == "apps/desktop/vitruvian-code/**")
+                .filter(|g| *g == "apps/desktop/vitruvian-code/macos/**")
                 .count(),
             1
         );
-        assert!(with_pkgs.contains(&"packages/swift/**".to_string()));
+        assert!(with_pkgs.contains(&"packages/swift/SentryLite/**".to_string()));
     }
 
     #[test]
@@ -636,7 +678,7 @@ jobs:
         let once = rewrite_marker_block(SAMPLE_CI, &globs).unwrap();
         assert!(once.contains("# Explanatory comment kept outside markers."));
         assert!(!once.contains("stale/entry/**"));
-        assert!(once.contains("\n              - 'packages/swift/**'\n"));
+        assert!(once.contains("\n              - 'packages/swift/SentryLite/**'\n"));
         assert!(once.contains("\n              - 'tools/**'\n"));
 
         let twice = rewrite_marker_block(&once, &globs).unwrap();
@@ -708,7 +750,7 @@ jobs:
         assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&err));
 
         // Removing a generated line causes --check to fail and print FIX_COMMAND.
-        let drifted = written.replace("              - 'packages/swift/**'\n", "");
+        let drifted = written.replace("              - 'packages/swift/SentryLite/**'\n", "");
         assert_ne!(drifted, written);
         fs::write(&tf.path, drifted).unwrap();
 
@@ -722,7 +764,10 @@ jobs:
         );
         assert_eq!(code, 1);
         let err_s = String::from_utf8_lossy(&err);
-        assert!(err_s.contains("missing: packages/swift/**"), "{err_s}");
+        assert!(
+            err_s.contains("missing: packages/swift/SentryLite/**"),
+            "{err_s}"
+        );
         assert!(err_s.contains(FIX_COMMAND), "missing fix command: {err_s}");
     }
 }
