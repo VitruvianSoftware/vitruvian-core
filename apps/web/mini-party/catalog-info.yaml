@@ -34,7 +34,7 @@ metadata:
     - url: https://mini-games.vitruviansoftware.dev/
       title: Play
       icon: web
-    - url: https://github.com/VitruvianSoftware/mini-party
+    - url: https://github.com/VitruvianSoftware/vitruvian-party
       title: Mirror repository
       icon: github
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/web/mini-party

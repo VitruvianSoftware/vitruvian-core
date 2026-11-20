@@ -20,7 +20,7 @@
 
 # Builds the game and publishes it to GitHub Pages (mini-games.vitruviansoftware.dev).
 #
-# This file only runs in the standalone mirror, VitruvianSoftware/mini-party:
+# This file only runs in the standalone mirror, VitruvianSoftware/vitruvian-party:
 # the monorepo exports apps/web/mini-party/ there on every change, and that push
 # starts this workflow. GitHub Pages has no server, so online rooms go to the
 # rooms server on the homelab cluster (VITE_ROOMS_URL).
