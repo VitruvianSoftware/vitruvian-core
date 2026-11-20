@@ -127,6 +127,27 @@ your checkout. Previews are always fine; applies are not.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
 - macOS app (vitruvian-code): `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode`.
 
+## Reuse before writing
+Before writing a helper or library, look in this order:
+
+1. **Our own packages:** search Backstage through its MCP server if you have it, otherwise
+   read [`packages/README.md`](packages/README.md).
+2. **A third-party library the repo already depends on:** check `MODULE.bazel`, `Cargo.toml`,
+   the `package.json` files and `go.mod`.
+3. **A new third-party library:** pick one that is well known, actively maintained and widely
+   used, with a compatible license, that passes `bazel run //tools/osv-scan`. Add it as the
+   one version for its ecosystem (see "One Version Rule" and the dependency steps below).
+4. **New code:** write it only when none of those fits.
+
+Code used by two or more products goes in `packages/`: one folder per package named for what
+it does, with a `README.md` and `catalog-info.yaml` (see
+[the shared-packages design](docs/superpowers/specs/2026-11-20-shared-packages-convention.md)).
+Code shared inside one product stays in that product. No `utils`, `common`, `misc` or
+`shared` packages.
+
+Why our packages come first: a new dependency costs the one-version rule, license checks,
+vulnerability scans and lockfile upkeep, and our packages already passed those.
+
 ## Repo and dev operations go through Bazel targets
 **Use these targets for every git write.** Raw git writes (`git commit`, `git push`,
 `git rebase`, `git worktree add/remove`, `git stash`, …) are blocked by agent-guard
