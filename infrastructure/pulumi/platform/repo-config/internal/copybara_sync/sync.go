@@ -644,12 +644,21 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				// must go before the new one is created (DeleteBeforeReplace):
 				// a rename takes the site down until the follow-up apply that
 				// sets the domain the create drops.
-				if _, err := github.NewRepositoryPages(ctx, project.Name+"-pages", &github.RepositoryPagesArgs{
-					Repository:    repo.Name,
-					BuildType:     pulumi.String("workflow"),
-					Cname:         pulumi.String(project.PagesDomain),
-					HttpsEnforced: pulumi.Bool(project.PagesHTTPS),
-				}, pulumi.DependsOn([]pulumi.Resource{repo}), pulumi.DeleteBeforeReplace(true)); err != nil {
+				pagesArgs := &github.RepositoryPagesArgs{
+					Repository: repo.Name,
+					BuildType:  pulumi.String("workflow"),
+					Cname:      pulumi.String(project.PagesDomain),
+				}
+				// https_enforced is sent only when wanted. Any value set here,
+				// false included, goes out with the create, and GitHub refuses
+				// it before the domain has a certificate ("404 The certificate
+				// does not exist yet"): that failed the rename's apply on
+				// 2026-11-20, after Pages was already enabled.
+				if project.PagesHTTPS {
+					pagesArgs.HttpsEnforced = pulumi.Bool(true)
+				}
+				if _, err := github.NewRepositoryPages(ctx, project.Name+"-pages", pagesArgs,
+					pulumi.DependsOn([]pulumi.Resource{repo}), pulumi.DeleteBeforeReplace(true)); err != nil {
 					return err
 				}
 			}
