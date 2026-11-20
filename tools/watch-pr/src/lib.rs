@@ -29,7 +29,9 @@ pub mod arith;
 pub mod checks;
 pub mod cli;
 pub mod post_merge;
-pub mod pyjson;
-pub mod pyprint;
+pub use vitruvian_pyjson as pyjson;
 pub mod queue;
 pub mod sh;
+
+#[cfg(test)]
+mod pyjson_test;

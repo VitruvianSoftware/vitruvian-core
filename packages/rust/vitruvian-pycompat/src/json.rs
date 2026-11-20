@@ -19,8 +19,9 @@
 // SOFTWARE.
 
 //! A JSON reader that reads what Python's `json.loads` reads (NaN and
-//! Infinity, integers of any size, the last of two equal keys winning) and a
-//! writer that writes what `json.dumps` writes with its defaults.
+//! Infinity, integers of any size, the last of two equal keys winning), a
+//! writer that writes what `json.dumps` writes with its defaults, and
+//! Python's `==` (`py_eq`).
 
 use crate::pystr;
 
@@ -145,6 +146,51 @@ pub fn dedup(items: &[(String, Value)]) -> Vec<(String, Value)> {
         }
     }
     out
+}
+
+/// `a == b` in Python: ints, floats and bools compare by value, exactly
+/// (an int equals a float only if the float is that very integer), dicts
+/// regardless of key order.
+pub fn py_eq(a: &Value, b: &Value) -> bool {
+    use Value::*;
+    match (a, b) {
+        (Null, Null) => true,
+        (Str(x), Str(y)) => x == y,
+        (Float(x), Float(y)) => x == y,
+        (Arr(x), Arr(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| py_eq(p, q)),
+        (Obj(x), Obj(y)) => {
+            let (x, y) = (dedup(x), dedup(y));
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| y.iter().any(|(k2, v2)| k == k2 && py_eq(v, v2)))
+        }
+        _ => match (int_text(a), int_text(b)) {
+            (Some(x), Some(y)) => x == y,
+            (Some(x), None) => float_is(b, &x),
+            (None, Some(y)) => float_is(a, &y),
+            (None, None) => false,
+        },
+    }
+}
+
+/// An int or a bool as its normalized decimal text.
+fn int_text(v: &Value) -> Option<String> {
+    match v {
+        Value::Int(s) => Some(normalize_int(s)),
+        Value::Bool(b) => Some(if *b { "1" } else { "0" }.into()),
+        _ => None,
+    }
+}
+
+/// Is `v` a float whose exact value is the integer `n`?
+fn float_is(v: &Value, n: &str) -> bool {
+    match v {
+        Value::Float(f) if f.is_finite() && f.fract() == 0.0 => {
+            // Rust prints a float's exact decimal value.
+            normalize_int(&format!("{:.0}", f)) == n
+        }
+        _ => false,
+    }
 }
 
 /// A document that does not parse. The message is in Python's words where
@@ -541,5 +587,42 @@ mod tests {
         assert!(Value::Int("3".into()).truthy());
         assert!(!Value::Obj(vec![]).truthy());
         assert!(!Value::Str(String::new()).truthy());
+    }
+
+    #[test]
+    fn python_equality() {
+        let int = |s: &str| Value::Int(s.into());
+        assert!(py_eq(&int("101"), &Value::Float(101.0)));
+        assert!(py_eq(&int("1"), &Value::Bool(true)));
+        assert!(py_eq(&int("0"), &Value::Bool(false)));
+        assert!(py_eq(&int("-0"), &int("0")));
+        assert!(!py_eq(&int("101"), &Value::Float(101.5)));
+        assert!(!py_eq(&int("101"), &Value::Str("101".into())));
+        assert!(!py_eq(&Value::Float(f64::NAN), &Value::Float(f64::NAN)));
+        assert!(py_eq(&int("9007199254740993"), &int("9007199254740993")));
+        // 2**53 + 1 is not a float; the nearest float is 2**53.
+        assert!(!py_eq(
+            &int("9007199254740993"),
+            &Value::Float(9007199254740992.0)
+        ));
+        assert!(py_eq(
+            &int("9007199254740992"),
+            &Value::Float(9007199254740992.0)
+        ));
+        assert!(py_eq(&Value::Float(1e22), &int("10000000000000000000000")));
+        let a = loads(r#"{"x": [1, 2.0], "y": "z"}"#).unwrap();
+        let b = loads(r#"{"y": "z", "x": [1.0, 2]}"#).unwrap();
+        assert!(py_eq(&a, &b));
+        assert!(!py_eq(&a, &loads(r#"{"y": "z"}"#).unwrap()));
+    }
+
+    #[test]
+    fn dumps_loads_round_trip() {
+        let src = r#"{"z": [1, 1.0, -0.0, 1e+16, 1.5e-07], "a": "é\ud83d\ude00\t\n", "z": "last"}"#;
+        let v = loads(src).unwrap();
+        assert_eq!(v.py_repr(), "{'z': 'last', 'a': 'é😀\\t\\n'}");
+        let dumped = dumps(&v);
+        assert_eq!(dumped, r#"{"z": "last", "a": "\u00e9\ud83d\ude00\t\n"}"#);
+        assert!(py_eq(&loads(&dumped).unwrap(), &v));
     }
 }
