@@ -109,5 +109,55 @@ if run --quiet; then fail "--quiet claimed success with a stale copy"; else
   grep -q "still differs" "$T/out" && pass "--quiet still reports a failure" || fail "--quiet hid a failure: $(cat "$T/out")"
 fi
 
+# --- Third-party Claude Code plugins ---
+cp "$MAIN/apps/claude-code/plugins/$P/lib/core.mjs" "$T/cc-copy/lib/core.mjs"
+mkdir -p "$T/mkt-remote/.claude-plugin" "$T/mkt-local/.claude-plugin"
+echo '{"plugins":[{"name":"tool","source":"./","version":"2.0.0"}]}' >"$T/mkt-remote/.claude-plugin/marketplace.json"
+echo '{"name":"tool","version":"2.0.0"}' >"$T/mkt-remote/.claude-plugin/plugin.json"
+echo '{"plugins":[{"name":"mine","source":"./","version":"9.0.0"}]}' >"$T/mkt-local/.claude-plugin/marketplace.json"
+printf '{"remote":{"source":{"source":"github","repo":"x/y"},"installLocation":"%s"},"local":{"source":{"source":"directory","path":"/x"},"installLocation":"%s"}}' \
+  "$T/mkt-remote" "$T/mkt-local" >"$T/known_marketplaces.json"
+write_installed() { # $1 = installed version of tool@remote
+  printf '{"plugins":{"demo@vitruvian-core":[{"scope":"user","installPath":"%s"}],"tool@remote":[{"scope":"user","version":"%s"},{"scope":"project","projectPath":"/p","version":"0.1.0"}],"mine@local":[{"scope":"user","version":"1.0.0"}]}}' \
+    "$T/cc-copy" "$1" >"$T/installed.json"
+}
+# A fake claude whose `plugin update tool@remote` installs 2.0.0, unless told to fail.
+cat >"$T/claude" <<SH
+#!/usr/bin/env bash
+echo "\$*" >>"$T/claude.calls"
+if [[ "\$1 \$2 \$3" == "plugin update tool@remote" ]]; then
+  [[ -e "$T/fail-update" ]] && exit 1
+  sed -i.bak 's/"version":"1.0.0"},{"scope":"project"/"version":"2.0.0"},{"scope":"project"/' "$T/installed.json"
+fi
+exit 0
+SH
+chmod +x "$T/claude"
+
+write_installed 1.0.0
+rm -f "$T/claude.calls"
+if run --check; then fail "an outdated third-party plugin was not reported"; else
+  grep -q "tool@remote is 1.0.0; its catalog has 2.0.0" "$T/out" && pass "--check reports an outdated third-party plugin" || fail "wrong message: $(cat "$T/out")"
+fi
+[[ ! -e "$T/claude.calls" ]] && pass "--check updates no third-party marketplace or plugin" || fail "--check ran: $(cat "$T/claude.calls")"
+grep -q "mine@local" "$T/out" && fail "a directory marketplace plugin was checked" || pass "directory marketplace plugins are left alone"
+
+if run --no-third-party --check; then pass "--no-third-party skips third-party plugins"; else fail "--no-third-party: $(cat "$T/out")"; fi
+
+if run --quiet && grep -q "tool@remote updated 1.0.0 → 2.0.0" "$T/out"; then pass "refresh updates a third-party plugin and reports it"; else fail "third-party update: $(cat "$T/out")"; fi
+grep -q "^plugin marketplace update remote$" "$T/claude.calls" && pass "refresh updates the plugin's marketplace first" || fail "calls: $(cat "$T/claude.calls")"
+grep -q "^plugin update tool@remote --scope user$" "$T/claude.calls" && pass "update is user scope only" || fail "calls: $(cat "$T/claude.calls")"
+grep -q "local\|mine@" "$T/claude.calls" && fail "refresh touched a directory marketplace: $(cat "$T/claude.calls")" || pass "refresh does not touch directory marketplaces"
+grep -qE -- "(^| )(-y|--yes|--accept-command)( |$)" "$T/claude.calls" && fail "refresh auto-accepted a declared command" || pass "refresh never auto-accepts a marketplace-declared command"
+grep -q '"projectPath":"/p","version":"0.1.0"' "$T/installed.json" && pass "project-scope install is left as is" || fail "project scope changed"
+
+if run --quiet && [[ ! -s "$T/out" ]]; then pass "--quiet is silent when third-party plugins are current"; else fail "--quiet with current plugins printed: $(cat "$T/out")"; fi
+
+write_installed 1.0.0
+touch "$T/fail-update"
+if run --quiet; then fail "a failed third-party update was reported as success"; else
+  grep -q "tool@remote: update failed" "$T/out" && pass "a failed third-party update fails the run and is reported" || fail "failed update: $(cat "$T/out")"
+fi
+rm -f "$T/fail-update"
+
 [[ "$fails" -eq 0 ]] || { echo "$fails failure(s)"; exit 1; }
 echo "all passed"

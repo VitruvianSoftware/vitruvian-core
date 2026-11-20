@@ -32,6 +32,9 @@
 # `claude plugin update` can leave the old files in place; this reinstalls when
 # the copy still differs. OpenCode loads the plugin straight from the main
 # checkout through two small loader files, so it only needs those to exist.
+#
+# It also updates every other Claude Code plugin installed from a remote
+# marketplace (GitHub, git, URL), which Claude Code does not auto-update.
 
 set -euo pipefail
 
@@ -39,9 +42,10 @@ PLUGIN="vitruvian-orchestrator"
 MODE="refresh"
 PULL=1
 QUIET=0
+THIRD_PARTY=1
 
 usage() {
-  sed -n '/^# Refresh this repo/,/^# checkout through/p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '/^# Refresh this repo/,/^# marketplace (GitHub, git, URL)/p' "$0" | sed 's/^# \{0,1\}//'
   cat <<'USAGE'
 
 Options:
@@ -49,6 +53,8 @@ Options:
   --no-pull        Do not fast-forward the main checkout to origin/main first.
   --quiet          Print nothing unless something was updated, is stale or failed
                    (for the scheduled run; see schedule.sh).
+  --no-third-party Skip updating Claude Code plugins installed from remote
+                   (GitHub, git, URL) marketplaces.
   --plugin <name>  Plugin folder name (default: vitruvian-orchestrator).
 USAGE
 }
@@ -58,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --check) MODE="check" ;;
     --no-pull) PULL=0 ;;
     --quiet) QUIET=1 ;;
+    --no-third-party) THIRD_PARTY=0 ;;
     --plugin)
       [[ $# -ge 2 ]] || { echo "--plugin needs a name" >&2; exit 2; }
       PLUGIN="$2"
@@ -224,6 +231,97 @@ if [[ -d "$src" ]]; then
     OPENCODE_CONFIG_DIR="$OPENCODE_DIR" bash "$src/install.sh" >/dev/null
     changed=1
     if opencode_ok "$src"; then ok "loaders rewritten"; else bad "loaders still wrong after install.sh"; failed=1; fi
+  fi
+fi
+
+# 5. Third-party Claude Code plugins. Claude Code does not auto-update plugins from
+# marketplaces other than its official one, so a plugin installed from GitHub stays
+# on whatever version it was installed at (antigravity sat on 0.22.0 for months
+# while its `pro` tier pointed at a model Antigravity no longer offers). Update
+# every user-scope plugin whose marketplace is fetched from a remote (github, git,
+# url); directory marketplaces are local checkouts and are left alone. Never
+# accepts a marketplace-declared command: an update that needs one fails here and
+# is reported, to be run by hand.
+KNOWN_MARKETPLACES_FILE="${AGENT_PLUGINS_KNOWN_MARKETPLACES_FILE:-$(dirname "$CLAUDE_PLUGINS_FILE")/known_marketplaces.json}"
+remote_plugins() { # prints "plugin@marketplace<TAB>version<TAB>marketplace-dir" for each remote user-scope plugin
+  [[ -f "$CLAUDE_PLUGINS_FILE" && -f "$KNOWN_MARKETPLACES_FILE" ]] || return 0
+  python3 -I - "$CLAUDE_PLUGINS_FILE" "$KNOWN_MARKETPLACES_FILE" "$MARKETPLACE" <<'PY'
+import json, sys
+installed = json.load(open(sys.argv[1]))
+known = json.load(open(sys.argv[2]))
+own = sys.argv[3]
+plugins = installed.get("plugins", installed)
+for key in sorted(plugins):
+    name, _, mkt = key.rpartition("@")
+    if not name or mkt == own:
+        continue
+    src = (known.get(mkt) or {}).get("source") or {}
+    if src.get("source") not in ("github", "git", "url"):
+        continue
+    for e in plugins[key]:
+        if e.get("scope") == "user":
+            print(f"{key}\t{e.get('version') or ''}\t{(known.get(mkt) or {}).get('installLocation') or ''}")
+PY
+}
+marketplace_version() { # $1=plugin name $2=marketplace dir; prints the catalog's version, or nothing
+  [[ -n "$2" && -f "$2/.claude-plugin/marketplace.json" ]] || return 0
+  python3 -I - "$1" "$2" <<'PY'
+import json, os, sys
+name, root = sys.argv[1], sys.argv[2]
+m = json.load(open(os.path.join(root, ".claude-plugin", "marketplace.json")))
+for p in m.get("plugins", []):
+    if p.get("name") != name:
+        continue
+    v = p.get("version")
+    src = p.get("source")
+    if not v and isinstance(src, str):
+        f = os.path.normpath(os.path.join(root, src, ".claude-plugin", "plugin.json"))
+        if f.startswith(os.path.realpath(root)) and os.path.isfile(f):
+            v = json.load(open(f)).get("version")
+    print(v or "")
+    break
+PY
+}
+installed_version() { # $1=plugin@marketplace
+  json_field "$CLAUDE_PLUGINS_FILE" \
+    "next((e.get('version') for e in d.get('plugins',d).get('$1',[]) if e.get('scope')=='user'), '')"
+}
+if [[ "$THIRD_PARTY" -eq 1 ]]; then
+  rows="$(remote_plugins)"
+  if [[ -n "$rows" ]]; then
+    echo "Third-party Claude Code plugins"
+    if [[ "$MODE" == "refresh" ]]; then
+      for mkt in $(printf '%s\n' "$rows" | cut -f1 | sed 's/.*@//' | sort -u); do
+        "$CLAUDE" plugin marketplace update "$mkt" >/dev/null 2>&1 || { bad "could not update marketplace $mkt"; failed=1; }
+      done
+    fi
+    while IFS=$'\t' read -r key before dir; do
+      name="${key%@*}"
+      if [[ "$MODE" == "check" ]]; then
+        latest="$(marketplace_version "$name" "$dir")"
+        if [[ -z "$latest" || -z "$before" ]]; then
+          note "$key $before (no catalog version to compare)"
+        elif [[ "$latest" == "$before" ]]; then
+          ok "$key $before is the catalog's version"
+        else
+          bad "$key is $before; its catalog has $latest"
+          stale=1
+        fi
+        continue
+      fi
+      if ! "$CLAUDE" plugin update "$key" --scope user >/dev/null 2>&1; then
+        bad "$key: update failed (it may need a command confirmed by hand: claude plugin update $key)"
+        failed=1
+        continue
+      fi
+      after="$(installed_version "$key")"
+      if [[ "$after" != "$before" ]]; then
+        changed=1
+        ok "$key updated ${before:-?} → ${after:-?}"
+      else
+        ok "$key ${before:-?} is current"
+      fi
+    done <<<"$rows"
   fi
 fi
 
