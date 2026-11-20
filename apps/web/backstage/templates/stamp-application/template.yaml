@@ -177,22 +177,19 @@ spec:
           team; the form gains an owner picker in P2, when the engine can
           honour it.
 
-          ### Two things this PR changes that you did not ask for
+          ### One thing to know before merging
 
-          1. **`catalog-info.yaml` at the repository root was edited.** One line
-             was added to the `vitruvian-core-apps` Location so the new
-             component is actually discovered by the catalog — ADR-019
-             disclose-and-include. Without it the app exists but never appears
-             in Backstage. The edit is idempotent and nothing else in that file
-             is touched.
+          - **CI will flag missing license headers on the rendered files.**
+            The starter templates do not yet carry the MIT header this repo
+            enforces repo-wide. That is a known P1 gap in the initializer, not
+            a problem with this PR: run `bazel run //tools/license:add` before
+            merging — it walks the whole repository, so run it from the repo
+            root and commit only the new files it touches. Resolved per-app for
+            now; fixed properly in the starter templates upstream.
 
-          2. **CI will flag missing license headers on the rendered files.**
-             The starter templates do not yet carry the MIT header this repo
-             enforces repo-wide. That is a known P1 gap in the initializer, not
-             a problem with this PR: run `bazel run //tools/license:add` before
-             merging — it walks the whole repository, so run it from the repo
-             root and commit only the new files it touches. Resolved per-app for
-             now; fixed properly in the starter templates upstream.
+          Once merged to `main`, Backstage discovers the rendered
+          `catalog-info.yaml` automatically via `catalog.providers.github` —
+          no edit to the root `catalog-info.yaml` is needed.
 
   output:
     links:

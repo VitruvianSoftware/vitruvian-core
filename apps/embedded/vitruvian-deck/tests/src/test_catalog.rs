@@ -256,11 +256,13 @@ pub fn run_suite() -> usize {
     assert!(owners_raw.contains("@VitruvianSoftware/platform-team"));
     checks += 1;
 
-    // Root catalog & CODEOWNERS when accessible
+    // Root catalog & CODEOWNERS when accessible.
+    // Per-app discovery via /**/catalog-info.yaml replaced vitruvian-core-apps,
+    // so only verify the root catalog declares the monorepo System.
     let root = repo_root();
     let root_catalog = root.join("catalog-info.yaml");
     if let Ok(root_raw) = fs::read_to_string(&root_catalog) {
-        assert!(root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml"));
+        assert!(root_raw.contains("name: vitruvian-core"));
         checks += 1;
     }
 
@@ -340,8 +342,8 @@ mod tests {
     fn test_root_catalog_wiring() {
         let root_catalog = repo_root().join("catalog-info.yaml");
         if let Ok(root_raw) = fs::read_to_string(&root_catalog) {
-            assert!(root_raw.contains("name: vitruvian-core-apps"));
-            assert!(root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml"));
+            assert!(root_raw.contains("name: vitruvian-core"));
+            assert!(!root_raw.contains("name: vitruvian-core-apps"));
         }
     }
 

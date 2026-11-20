@@ -379,6 +379,24 @@ backstage:
           allowedInstallationOwners: [VitruvianSoftware]
     catalog:
       providers:
+        # Discovers every catalog-info.yaml in VitruvianSoftware/vitruvian-core on
+        # main, including the repo root (minimatch matches root catalog-info.yaml
+        # for /**/catalog-info.yaml). Replaces the static catalog.locations root
+        # entry and the hand-maintained vitruvian-core-apps Location.
+        # validateLocationsExist is deliberately omitted (false): the module throws
+        # at startup when validateLocationsExist is true with a wildcard catalogPath.
+        github:
+          vitruvian-core:
+            host: github.com
+            organization: VitruvianSoftware
+            catalogPath: /**/catalog-info.yaml
+            filters:
+              branch: main
+              repository: vitruvian-core
+            schedule:
+              initialDelay: {seconds: 30}
+              frequency: {minutes: 30}
+              timeout: {minutes: 10}
         # Ingests VitruvianSoftware members and teams as User/Group entities.
         # Exactly one definition with exactly one org, which is what makes the
         # module set alwaysUseDefaultNamespace -- entities land as
@@ -395,11 +413,6 @@ backstage:
             timeout: {minutes: 15}
       rules:
       - allow: [Domain, Component, System, API, Resource, Location, Template, User, Group]
-      locations:
-      - type: url
-        target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
-        rules:
-        - allow: [Domain, Component, System, API, Resource, Location, Template, User, Group]
 # Identity for the Kubernetes plugin's read-only cluster access. Defined in
 # platform/backstage/rbac.yaml; `create: false` because the chart must bind to
 # that ServiceAccount rather than mint its own without the ClusterRole.
