@@ -465,6 +465,65 @@ private let app = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianS
         #expect(detached.all == ["OpenCode is done."])
     }
 
+    @Test func quietSessionSwitchParsesCommonTruthyValues() {
+        for value in ["1", "true", "TRUE", " yes ", "on"] {
+            #expect(QuietSession.isQuiet(environment: [QuietSession.environmentKey: value]))
+        }
+        for value in ["", "0", "false", "no", "off", "quiet"] {
+            #expect(!QuietSession.isQuiet(environment: [QuietSession.environmentKey: value]))
+        }
+        #expect(!QuietSession.isQuiet(environment: [:]))
+    }
+
+    @Test func aQuietSessionReadsNothingAloudWhileTheSameTurnOtherwiseSpeaks() async throws {
+        let dir = scratch()
+        let manager = await Self.manager(dir)
+        let input = try JSONSerialization.data(withJSONObject: ["sessionID": "ses_q", "messages": [
+            ["info": ["role": "user"], "parts": [["type": "text", "text": "q"]]],
+            ["info": ["role": "assistant"], "parts": [["type": "text", "text": "Quiet test reply."]]],
+        ]])
+        func run(_ environment: [String: String], lockDirectory: URL) async -> [String] {
+            let home = Calls()
+            let output = await VitruvianSpeakerCommandLine.stopHook(
+                .opencode, input: input, config: { manager },
+                history: BroadcastHistory(fileURL: dir.appendingPathComponent("h.json")), standsAside: false,
+                lockDirectory: lockDirectory, environment: environment, launchDetached: { _ in }
+            ) { text, _, _, _ in
+                home.add(text)
+                return true
+            }
+            #expect(output == CLIOutput(stdout: ["{}"]))
+            return home.all
+        }
+        // Control: without the switch this very turn is read aloud.
+        #expect(await run([:], lockDirectory: scratch()) == ["Quiet test reply."])
+        // With it, nothing is spoken. The check sits before the per-agent
+        // readers, so it covers Claude Code and Antigravity the same way.
+        #expect(await run([QuietSession.environmentKey: "1"], lockDirectory: scratch()).isEmpty)
+    }
+
+    @Test func theQuietSwitchStillLetsAnAutomationAnnounceOnPurpose() {
+        // Explicit broadcasts are not suppressed by the switch, only by the
+        // existing subagent / non-interactive rules.
+        #expect(!SubagentDetection.isSuppressed(
+            environment: [QuietSession.environmentKey: "1"],
+            home: FileManager.default.temporaryDirectory.appendingPathComponent("no-such-home")))
+    }
+
+    @Test func everyAgentSdkEntrypointIsSkippedButInteractiveOnesAreNot() {
+        for entrypoint in ["sdk-cli", "sdk-ts", "sdk-py"] {
+            #expect(ClaudeStopHook.isProgrammaticEntrypoint(entrypoint))
+            let transcript = [
+                #"{"type":"user","entrypoint":"\#(entrypoint)","message":{"role":"user","content":"do it"}}"#,
+                #"{"type":"assistant","entrypoint":"\#(entrypoint)","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}"#,
+            ].joined(separator: "\n")
+            #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(transcript)) == nil)
+        }
+        for entrypoint in ["cli", "claude-desktop", "claude-vscode"] {
+            #expect(!ClaudeStopHook.isProgrammaticEntrypoint(entrypoint))
+        }
+    }
+
     @Test(arguments: [CodingAgent.antigravity, .opencode])
     func badInputAnswersAndSaysNothing(agent: CodingAgent) async {
         for input in [Data(), Data("garbage".utf8), Data("{}".utf8)] {
