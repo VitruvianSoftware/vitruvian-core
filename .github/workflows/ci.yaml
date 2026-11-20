@@ -517,6 +517,13 @@ jobs:
               - 'apps/desktop/vitruvian-code/**'
               - 'apps/desktop/vitruvian-speaker/**'
               - 'packages/peripherals/**'
+              # Shared Swift code the Mac apps below link (bazel query deps of
+              # macos-build's targets, 2026-11-20). Until this list is generated
+              # from the graph (docs/superpowers/specs/2026-11-20-shared-packages-convention.md,
+              # Decision 7), a package a Mac app starts depending on must be added here.
+              - 'packages/swift/**'
+              - 'packages/vitruvian-sdk/**'
+              - 'apps/desktop/vitruvian-atrium/**'
               - 'apps/mobile/vitruvian-remote/macmenu/**'
               # The pinned Xcode: a bump changes every Swift build.
               - '.xcode-version'
