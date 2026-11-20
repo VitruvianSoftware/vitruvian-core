@@ -4515,6 +4515,7 @@ test("parseTeam(null/undefined) and resolveTeam(null) return generic defaults in
   );
   for (const row of resolved.roles) {
     assert.equal(row.agent, row.role);
+    assert.equal(row.dispatch, `vitruvian-orchestrator:${row.role}`);
     assert.equal(row.source, "generic");
     assert.equal(row.tier, DEFAULT_ROLE_TIERS[row.role]);
     assert.equal(row.notes, "");
@@ -4602,6 +4603,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
   assert.deepEqual(devCc, {
     role: "developer",
     agent: "wren",
+    dispatch: "wren",
     source: "team",
     tier: "build",
     gemini: "gemini-4-argon-high",
@@ -4613,6 +4615,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
   assert.deepEqual(infraCc, {
     role: "infrastructure",
     agent: "infrastructure",
+    dispatch: "vitruvian-orchestrator:infrastructure",
     source: "generic",
     tier: "build",
     gemini: "gemini-pro-orchestrator-neon",
@@ -4624,6 +4627,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
   assert.deepEqual(relCc, {
     role: "release",
     agent: null,
+    dispatch: null,
     source: "off",
     tier: "light",
     gemini: null,
@@ -4634,6 +4638,12 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
 
   const agy = resolveTeam(parsed.team, "antigravity", defaults);
   assert.equal(agy.roles.find((r) => r.role === "developer")?.model, "pro");
+  assert.equal(agy.roles.find((r) => r.role === "developer")?.dispatch, "wren");
+  assert.equal(
+    agy.roles.find((r) => r.role === "infrastructure")?.dispatch,
+    "infrastructure",
+  );
+  assert.equal(agy.roles.find((r) => r.role === "release")?.dispatch, null);
   assert.equal(agy.roles.find((r) => r.role === "lead")?.gemini, null);
 
   const oc = resolveTeam(parsed.team, "opencode", defaults);
@@ -4641,6 +4651,12 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     oc.roles.find((r) => r.role === "developer")?.model,
     "anthropic/claude-haiku-5-5",
   );
+  assert.equal(oc.roles.find((r) => r.role === "developer")?.dispatch, "wren");
+  assert.equal(
+    oc.roles.find((r) => r.role === "infrastructure")?.dispatch,
+    "infrastructure",
+  );
+  assert.equal(oc.roles.find((r) => r.role === "release")?.dispatch, null);
 
   // Explicit precedence test: role override > team tier > defaults, and lead tier always has gemini: null.
   const precedenceParsed = parseTeam(
@@ -4682,6 +4698,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     {
       role: "lead",
       agent: "beacon",
+      dispatch: "beacon",
       source: "team",
       tier: "lead",
       gemini: null,
@@ -4695,6 +4712,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     {
       role: "qa",
       agent: "scout",
+      dispatch: "scout",
       source: "team",
       tier: "deep",
       gemini: "gemini-4-argon-high",
@@ -4709,6 +4727,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     {
       role: "security",
       agent: "security",
+      dispatch: "vitruvian-orchestrator:security",
       source: "generic",
       tier: "lead",
       gemini: null,
@@ -4950,6 +4969,7 @@ test("resolveTeam handles unknown harness by setting model to null while preserv
     {
       role: "lead",
       agent: "lead",
+      dispatch: "lead",
       source: "generic",
       tier: "lead",
       gemini: null,
@@ -4963,6 +4983,7 @@ test("resolveTeam handles unknown harness by setting model to null while preserv
     {
       role: "developer",
       agent: "wren",
+      dispatch: "wren",
       source: "team",
       tier: "build",
       gemini: "gemini-4-argon-high",
@@ -4972,6 +4993,10 @@ test("resolveTeam handles unknown harness by setting model to null while preserv
     },
   );
   assert.equal(resolved.roles.find((r) => r.role === "release")?.model, null);
+  assert.equal(
+    resolved.roles.find((r) => r.role === "release")?.dispatch,
+    null,
+  );
 });
 
 test("agentRoleMap and formatAgentRoleLabel format mapped agents only", () => {
@@ -5239,6 +5264,7 @@ test("sweep item 4: DEFAULT_ROLE_TIERS, parseTeam roles/tiers, and resolveTeam h
     {
       role: "developer",
       agent: "constructor",
+      dispatch: "constructor",
       source: "team",
       tier: "build",
       gemini: null,
@@ -5452,4 +5478,40 @@ test("team reduce event rejects >10 entries (11), bad agent names, bad role name
     }),
     null,
   );
+});
+
+test("resolveTeam computes dispatch id per source and harness", () => {
+  const { team, errors } = parseTeam(
+    JSON.stringify({
+      roles: {
+        lead: { agent: "beacon" },
+        developer: { agent: "developer" },
+        release: "off",
+      },
+    }),
+  );
+  assert.deepEqual(errors, []);
+
+  for (const [harness, expectedGenericQa] of [
+    ["claude-code", "vitruvian-orchestrator:qa"],
+    ["antigravity", "qa"],
+    ["opencode", "qa"],
+    ["unknown-harness", "qa"],
+  ]) {
+    const resolved = resolveTeam(team, harness, { tiers: {} });
+    const lead = resolved.roles.find((r) => r.role === "lead");
+    const dev = resolved.roles.find((r) => r.role === "developer");
+    const qa = resolved.roles.find((r) => r.role === "qa");
+    const rel = resolved.roles.find((r) => r.role === "release");
+
+    assert.equal(lead?.source, "team", harness);
+    assert.equal(lead?.dispatch, "beacon", harness);
+    // Explicit roles.developer.agent === "developer" has source: "team" and is NOT namespaced.
+    assert.equal(dev?.source, "team", harness);
+    assert.equal(dev?.dispatch, "developer", harness);
+    assert.equal(qa?.source, "generic", harness);
+    assert.equal(qa?.dispatch, expectedGenericQa, harness);
+    assert.equal(rel?.source, "off", harness);
+    assert.equal(rel?.dispatch, null, harness);
+  }
 });

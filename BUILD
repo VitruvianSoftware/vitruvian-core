@@ -87,7 +87,9 @@ exports_files(
 exports_files(
     [
         ".agents/roster/agents.tsv",
+        ".agents/roster/generic/roles.tsv",
         ".agents/roster/tiers.tsv",
+        ".agents/roster/team-notes.md",
         ".agents/roster/skills/orchestrate/antigravity.md",
         ".agents/roster/skills/orchestrate/claude-code.md",
         ".agents/roster/skills/orchestrate/opencode.md",
@@ -96,6 +98,7 @@ exports_files(
     visibility = [
         "//apps/antigravity/plugins/vitruvian-orchestrator:__pkg__",
         "//apps/claude-code/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/opencode/plugins/vitruvian-orchestrator:__pkg__",
         "//tools/agent-roster:__pkg__",
     ],
 )
@@ -148,6 +151,15 @@ filegroup(
             "wren",
         ]
     ],
+    visibility = ["//tools/agent-roster:__pkg__"],
+)
+
+filegroup(
+    name = "roster_generic_sources",
+    srcs = [
+        ".agents/roster/generic/roles.tsv",
+        ".agents/roster/team-notes.md",
+    ] + glob([".agents/roster/generic/prompts/*.md"]),
     visibility = ["//tools/agent-roster:__pkg__"],
 )
 

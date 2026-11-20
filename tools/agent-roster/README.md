@@ -1,6 +1,6 @@
 # `//tools/agent-roster`
 
-Generates per-harness agent files for Claude Code (`.claude/agents/*.md` and `apps/claude-code/plugins/vitruvian-orchestrator/agents/*.md`), Antigravity (`.agents/agents/*.md` and `apps/antigravity/plugins/vitruvian-orchestrator/agents/*.md`), and OpenCode (`.opencode/agents/*.md`), plus each harness's `orchestrate` lead skill (`SKILL.md`), from the single roster under `.agents/roster/`.
+Generates per-harness agent files for the **project** profile (`.claude/agents/*.md`, `.agents/agents/*.md`, `.opencode/agents/*.md`) and the **generic** plugin profile (`apps/claude-code/plugins/vitruvian-orchestrator/agents/*.md`, `apps/antigravity/plugins/vitruvian-orchestrator/agents/*.md`, `apps/opencode/plugins/vitruvian-orchestrator/agents/*.md`), each harness's `orchestrate` lead skill (`SKILL.md`), `.agents/team.json` (including `.agents/roster/team-notes.md`), and the vendored core modules from `.agents/roster/`.
 
 ## Commands
 
@@ -43,9 +43,10 @@ Reads `.agents/roster/skills/orchestrate/{claude-code,antigravity,opencode}.md`,
 
 - `apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 - `apps/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
+- `apps/opencode/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 - `.opencode/skills/orchestrate/SKILL.md`
 
-Each `SKILL.md` gets the generated header comment after its frontmatter and a harness-specific `| Agent | Tier | Model | Routing rule |` table in `agents.tsv` order.
+Each `SKILL.md` gets the generic generated header comment after its frontmatter and a harness-specific `| Role | Tier | Model | What it does |` table in `generic/roles.tsv` order.
 
 ## Subdirectories & Boundaries
 - [src](./src/README.md): Component package providing implementation for tools/agent-roster/src.

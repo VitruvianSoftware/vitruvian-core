@@ -45,3 +45,15 @@ js_test(
     entry_point = "lib/adapter.test.mjs",
     node_options = ["--test"],
 )
+
+filegroup(
+    name = "generated_generic_files",
+    srcs = glob(
+        [
+            "agents/*.md",
+            "skills/orchestrate/SKILL.md",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//tools/agent-roster:__pkg__"],
+)

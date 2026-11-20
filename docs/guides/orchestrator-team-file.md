@@ -4,7 +4,7 @@ An optional `.agents/team.json` file at the repository root tells the `vitruvian
 
 ## The ten roles
 
-The orchestrator routes work across ten fixed roles. When you do not map a role to a custom agent, it defaults to the role ID itself (`source: "generic"`).
+The orchestrator routes work across ten fixed roles. When you do not map a role to a custom agent, it uses the plugin's generic agent for that role (`source: "generic"`).
 
 | Role | What it does | Default tier |
 |---|---|---|
@@ -20,6 +20,17 @@ The orchestrator routes work across ten fixed roles. When you do not map a role 
 | `release` | Handles release readiness and sequencing | `light` |
 
 In `vitruvian-core`, these ten roles map to `beacon`, `wren`, `atlas`, `forge`, `ridge`, `scout`, `aegis`, `compass`, `quill`, and `pace`. Those names are just one repository's mapping, not defaults for other repositories.
+
+## The generic team
+
+The `vitruvian-orchestrator` plugin ships ten role-named agents (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`) so orchestration works in any repository without custom agent definitions. Each generic agent reads the repository's own instructions (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `README`) first and falls back to standard ecosystem commands when none are specified.
+
+When a role has no mapping in `.agents/team.json` (`source: "generic"`), it uses its generic agent:
+
+- **Claude Code:** `vitruvian-orchestrator:<role>` (plugin agents are namespaced).
+- **Antigravity and OpenCode:** `<role>`.
+
+The `team` tool's `dispatch` field on each role row gives the exact agent id to start: `agent` when `source` is `"team"`, the generic agent id above when `source` is `"generic"`, and `null` when `source` is `"off"`.
 
 ## Three levels of setup
 
@@ -68,8 +79,8 @@ You can set models per tier under `tiers` or per role under `roles`. For `gemini
 
 For the `lead` tier, `gemini` always resolves to `null`.
 
-- **Gemini model changes take effect on the next dispatch.** When a role's resolved `gemini` value differs from that agent's built-in default, the lead puts `Gemini model: <id>` in the task brief, and drivers already read and validate that line.
-- **Harness model and effort changes require regenerating agent files.** The harness's own model (`claude-code`, `antigravity`, or `opencode`) and `effort` take effect only after the agent files are regenerated. In `vitruvian-core`, run `bazel run //tools/agent-roster -- --write`. For other repositories, a sync command is planned for a later step. Currently, the `team` tool only reports these values; nothing applies them yet.
+- **Gemini model changes take effect on the next dispatch.** When a role's resolved `gemini` model differs from that agent's built-in default, the lead puts `Gemini model: <id>` in the task brief, and drivers already read and validate that line.
+- **Harness model and effort changes require regenerating agent files.** Each harness reads its own model (`claude-code`, `antigravity`, `opencode`) and `effort` from the agent file when the agent loads, so changes take effect only after the agent files are regenerated (in `vitruvian-core`: `bazel run //tools/agent-roster -- --write`; for other repositories: the `sync` command planned in step 3). In step 1, the `team` tool reports these values; nothing applies them yet.
 - **Low-power models are rejected.** Any model string containing `-low`, `-lite`, or `flash-lo` is invalid. Setting `effort` to `"low"` is also rejected; valid `effort` values are `"medium"`, `"high"`, `"xhigh"`, and `"max"`.
 
 ## Turning a role off
@@ -94,7 +105,7 @@ Call the read-only `team` MCP tool (available in Claude Code, Antigravity, and O
 - `file`: `".agents/team.json"` whenever the file is found (including when it has errors), or `null` only when it is absent.
 - `errors`: Any parse, validation, symlink, size-limit, or file-read errors (a missing file is not an error).
 - `notes`: The resolved top-level notes.
-- `roles`: The resolved list of all ten roles in order (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`), showing each role's `agent`, `source`, `tier`, `gemini`, `model`, `effort`, and `notes`.
+- `roles`: The resolved list of all ten roles in order (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`), showing each role's `agent`, `dispatch`, `source`, `tier`, `gemini`, `model`, `effort`, and `notes`.
 
 `.agents/team.json` may be a symlink, as long as its real target is inside the repository:
 
@@ -156,11 +167,11 @@ A role value is either the string `"off"` (not allowed for `lead`) or an object 
 
 ### `team` tool output
 
-The `team` tool takes no input and returns an object with these keys:
+The `team` tool takes one optional input, `root` (the absolute repository path), and returns an object with these keys:
 
 | Key | Type | Rule |
 |---|---|---|
 | `file` | `string \| null` | `".agents/team.json"` whenever the file is found (including when it has errors), or `null` only when absent. |
 | `errors` | `string[]` | Parse (`invalid JSON: ...`), validation, symlink, size-limit, or file-read errors. Empty when valid or absent. |
 | `notes` | `string` | Resolved top-level notes. |
-| `roles` | `object[]` | Resolved entries for all ten roles in order (`role`, `agent`, `source`, `tier`, `gemini`, `model`, `effort`, `notes`). `source` is `"team"`, `"generic"`, or `"off"`; `"off"` sets `agent` to `null`. |
+| `roles` | `object[]` | Resolved entries for all ten roles in order (`role`, `agent`, `dispatch`, `source`, `tier`, `gemini`, `model`, `effort`, `notes`). `source` is `"team"`, `"generic"`, or `"off"`; `"off"` sets `agent` and `dispatch` to `null`. |

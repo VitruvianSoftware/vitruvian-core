@@ -87,7 +87,7 @@ js_test(
         "rules/AGENTS.md",
         "skills/orchestrate/SKILL.md",
         ":server_lib",
-        "//:.agents/roster/agents.tsv",
+        "//:.agents/roster/generic/roles.tsv",
         "//:.agents/roster/tiers.tsv",
     ] + glob(
         ["agents/*.md"],
@@ -95,9 +95,21 @@ js_test(
     ),
     entry_point = "drift.test.mjs",
     no_copy_to_bin = [
-        "//:.agents/roster/agents.tsv",
+        "//:.agents/roster/generic/roles.tsv",
         "//:.agents/roster/tiers.tsv",
     ],
+)
+
+filegroup(
+    name = "generated_generic_files",
+    srcs = glob(
+        [
+            "agents/*.md",
+            "skills/orchestrate/SKILL.md",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//tools/agent-roster:__pkg__"],
 )
 
 filegroup(

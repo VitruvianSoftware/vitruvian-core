@@ -1,0 +1,11 @@
+role	tier	description
+lead	lead	Use this agent as the single entry point to triage multi-domain requests, decompose cross-functional initiatives, delegate subtasks across specialist roles, or coordinate deep refactors in this repository.
+developer	build	Use this agent for feature development, refactoring, and bug fixes across application code in whatever languages the repository uses, plus shared packages in this repository.
+infrastructure	build	Use this agent for cloud and platform infrastructure architecture, infrastructure-as-code, networking and ingress routing, and cluster topology in this repository.
+build	build	Use this agent for the build system and toolchains in this repository - dependency graphs and lockfiles, compiler and SDK toolchains, build file generation, build caching, and CI build configuration.
+operations	build	Use this agent for cluster and service operations in this repository - diagnosing crashing or flapping workloads, GitOps sync failures, secret rotations, deployments, and the observability stack that watches them.
+qa	deep	Use this agent for QA - reviewing an implementer's change and pushing back on defects - and for authoring and running tests, diagnosing test failures and flakiness, closing coverage gaps, and monitoring CI checks on pull requests in this repository.
+security	deep	Use this agent for security audits, supply-chain and dependency CVE reviews, access control and network policies, and secret management in this repository, and for reviewing another specialist's change for security risks.
+product	deep	Use this agent for user acceptance testing (UAT) of a finished change, and for clarifying scope, requirements, prioritization, and resolving cross-component dependencies across services and applications in this repository.
+docs	light	Use this agent for writing and updating technical documentation, onboarding guides, contribution guides, agent instructions, and engineering runbooks in this repository.
+release	light	Use this agent for release readiness, sequencing cross-component dependencies, monitoring merge queue and rollout progression, and flagging release slip risks in this repository.

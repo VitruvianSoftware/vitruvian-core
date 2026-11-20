@@ -3404,6 +3404,7 @@ export function parseTeam(text) {
  *   roles: Array<{
  *     role: string,
  *     agent: string | null,
+ *     dispatch: string | null,
  *     source: "team" | "generic" | "off",
  *     tier: "lead" | "build" | "deep" | "light",
  *     gemini: string | null,
@@ -3435,6 +3436,7 @@ export function resolveTeam(team, harness, defaults = undefined) {
       return {
         role,
         agent: null,
+        dispatch: null,
         source: /** @type {"off"} */ ("off"),
         tier: defaultTier,
         gemini: null,
@@ -3451,6 +3453,11 @@ export function resolveTeam(team, harness, defaults = undefined) {
     const source = /** @type {"team" | "generic"} */ (
       hasMappedAgent ? "team" : "generic"
     );
+    const dispatch = hasMappedAgent
+      ? agent
+      : safeHarness === "claude-code"
+        ? `vitruvian-orchestrator:${role}`
+        : role;
     const roleTier = ownString(roleObj, "tier");
     const tier =
       roleTier !== null && TEAM_TIER_SET.has(roleTier)
@@ -3489,6 +3496,7 @@ export function resolveTeam(team, harness, defaults = undefined) {
     return {
       role,
       agent,
+      dispatch,
       source,
       tier,
       gemini: rawGemini,

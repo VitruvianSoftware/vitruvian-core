@@ -4,8 +4,8 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
 
 ## What is in this plugin
 
-- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches specialist helpers (`wren`, `scout`, `compass`, `quill`, and peers), reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
-- **Specialist subagents (`agents/*.md`)**: Generated from `.agents/roster/` and shipped directly inside this plugin so Antigravity discovers them natively (`<plugin>/agents/*.md`) even outside this repository.
+- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), resolves roles via `team`, dispatches specialist helpers, reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
+- **Specialist subagents (`agents/*.md`)**: Ships role-named generic agents (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`) generated from `.agents/roster/generic/` so Antigravity discovers them natively (`<plugin>/agents/*.md`) in any repository. A repository maps roles to its own agents (such as `.agents/agents/*.md`) with `.agents/team.json`.
 - **Live Orchestrator panel (`sidecars/panel/`)**: Shows five **Flow** cards — **Header**, **Burn-down**, **Task Board**, **Agents**, and **Spend**. Flows with no board posts, no extra channels, and no pause, retire, or kill events stay on this single **Flow** view. Once any of those appear, a tab bar adds **Board**, **Members**, **Graph**, and **Overview**.
 - **Orchestration rule (`rules/AGENTS.md`)**: Reminds the lead and helpers to report progress and surfaces the `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` pill in chat.
 
@@ -17,7 +17,7 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
   - `post`: Adds a message to the board with optional recipients, kind (`result`, `question`, `defect`, or `note`), `replyTo` post number, and `channel` (default `main`).
   - `board`: Reads numbered posts from the board, with optional filters for recipient, author, kind, channel, or search words. For a helper, calling `board` with no recipient (or `to: "me"`) returns posts addressed to that helper or to everyone.
   - `channel`: Lists channels (`action: "list"`, open to all) or creates and archives channels (`action: "create"` or `"archive"`, lead-only, up to 20 channels).
-  - `team`: Reads the repository's optional `.agents/team.json` file (if present) and returns the resolved roles, agents, models, and project notes.
+  - `team`: Reads the repository's optional `.agents/team.json` file (if present) and returns the resolved roles, agents, dispatch ids, models, and project notes.
   - `step`: Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, plus an optional `detail` such as `429 Resource Exhausted`).
   - `progress`: Called only by the lead to publish or update the task plan, change phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
 - **How waking works**: When a post mentions a waiting helper (`@name`), Antigravity delivers a wake straight to the helper's own conversation once for that mention (`@lead` wakes the lead conversation). Only the lead's `@all` wakes everyone who is waiting; `@all` from a helper never broadcasts wakes. Every forwarded post is clearly marked and shown to other agents as helper content, never as instructions from the user, the lead, or the system.
