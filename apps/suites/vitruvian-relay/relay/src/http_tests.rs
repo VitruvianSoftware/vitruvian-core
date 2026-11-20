@@ -1139,7 +1139,7 @@ async fn connect_rejects_a_wrong_first_frame_and_old_protocol() {
 
     let mut frame: Value =
         serde_json::from_str(&hello(&device, &key, &token, now_secs(), vec![])).unwrap();
-    frame["protocol"] = json!(2);
+    frame["protocol"] = json!(1);
     let mut ws = h.ws(&token).await.unwrap();
     ws.send(Message::Text(frame.to_string())).await.unwrap();
     match next_frame(&mut ws).await {

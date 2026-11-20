@@ -1189,7 +1189,7 @@ async fn run_connection<S>(
                         }
                     }
                     Ok(ToRelay::Pong { .. }) => live.heard(),
-                    Ok(ToRelay::Hello(_)) => {}
+                    Ok(ToRelay::Hello(_) | ToRelay::Ack { .. } | ToRelay::Pending { .. }) => {}
                     // Size only: a bad frame may still hold call output.
                     Err(_) => app.log("bad_frame", json!({"device_id": device_id, "bytes": text.len()})),
                 },

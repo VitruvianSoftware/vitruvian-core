@@ -23,7 +23,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const PROTOCOL: u32 = 1;
+/// Protocol version spoken on `/connect`. Both ends must match.
+pub const PROTOCOL: u32 = 2;
 /// Largest frame either side will send or accept. Both ends also set
 /// tokio-tungstenite's `max_message_size` and `max_frame_size` to this.
 pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
@@ -40,6 +41,15 @@ pub const MAX_MISSED_PINGS: u32 = 3;
 /// with the relay's own message, not a 524; the 60 s "ask first" dialog
 /// fits inside (ruling R16; streamed answers with keep-alives would lift it).
 pub const CALL_BUDGET_SECS: u64 = 90;
+/// How long the relay waits for the connector's `ack` after sending a `call`.
+pub const ACK_SECS: u64 = 5;
+/// How long the relay waits on an approval dialog (`pending`) before
+/// replying with a `check_request` handle (and how long each `check_request`
+/// waits).
+pub const APPROVAL_REPLY_SECS: u64 = 10;
+/// How long in-flight calls and open approval dialogs survive a dropped
+/// link while the connector reconnects.
+pub const RECONNECT_GRACE_SECS: u64 = 10;
 
 #[derive(Debug)]
 pub enum FrameError {
@@ -114,6 +124,10 @@ pub struct CallResult {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToRelay {
     Hello(Hello),
+    /// Received the call frame; waiting for `Start` before running it.
+    Ack { call_id: String },
+    /// An approval dialog is open on the computer for this call.
+    Pending { call_id: String },
     Result(CallResult),
     ToolsChanged { tools: Vec<ToolDef> },
     Ping { n: u64 },
@@ -127,7 +141,11 @@ pub enum ToConnector {
     Welcome { device_id: String },
     Reject { reason: String },
     Call(Call),
+    /// The relay is still waiting; the connector may start the call.
+    Start { call_id: String },
     Cancel { call_id: String },
+    /// The relay has accepted the call's result; the connector may drop it.
+    ResultAck { call_id: String },
     Ping { n: u64 },
     Pong { n: u64 },
 }
@@ -145,7 +163,7 @@ pub fn hex(bytes: &[u8]) -> String {
 /// The bytes the device key signs. Binding the token hash stops a signature
 /// being replayed with a different token.
 pub fn hello_message(device_id: &str, ts: u64, token_sha256_hex: &str) -> String {
-    format!("vrelay-hello-v1\n{device_id}\n{ts}\n{token_sha256_hex}")
+    format!("vrelay-hello-v2\n{device_id}\n{ts}\n{token_sha256_hex}")
 }
 
 /// Serialise a frame; refuses one whose encoded form is over `MAX_FRAME_BYTES`.
@@ -211,6 +229,12 @@ mod tests {
             ToRelay::ToolsChanged {
                 tools: vec![tool()],
             },
+            ToRelay::Ack {
+                call_id: "c1".into(),
+            },
+            ToRelay::Pending {
+                call_id: "c1".into(),
+            },
             ToRelay::Ping { n: 1 },
             ToRelay::Pong { n: 2 },
         ];
@@ -234,12 +258,59 @@ mod tests {
             ToConnector::Cancel {
                 call_id: "c1".into(),
             },
+            ToConnector::Start {
+                call_id: "c1".into(),
+            },
+            ToConnector::ResultAck {
+                call_id: "c1".into(),
+            },
             ToConnector::Ping { n: 3 },
             ToConnector::Pong { n: 4 },
         ];
         for f in to_connector {
             let s = encode(&f).unwrap();
             assert_eq!(decode_to_connector(&s).unwrap(), f);
+        }
+    }
+
+    #[test]
+    fn v2_frames_round_trip() {
+        for (frame, wire) in [
+            (
+                ToRelay::Ack {
+                    call_id: "c1".into(),
+                },
+                r#"{"type":"ack","call_id":"c1"}"#,
+            ),
+            (
+                ToRelay::Pending {
+                    call_id: "c1".into(),
+                },
+                r#"{"type":"pending","call_id":"c1"}"#,
+            ),
+        ] {
+            let encoded = encode(&frame).unwrap();
+            assert_eq!(encoded, wire);
+            assert_eq!(decode_to_relay(&encoded).unwrap(), frame);
+        }
+
+        for (frame, wire) in [
+            (
+                ToConnector::Start {
+                    call_id: "c1".into(),
+                },
+                r#"{"type":"start","call_id":"c1"}"#,
+            ),
+            (
+                ToConnector::ResultAck {
+                    call_id: "c1".into(),
+                },
+                r#"{"type":"result_ack","call_id":"c1"}"#,
+            ),
+        ] {
+            let encoded = encode(&frame).unwrap();
+            assert_eq!(encoded, wire);
+            assert_eq!(decode_to_connector(&encoded).unwrap(), frame);
         }
     }
 
@@ -310,18 +381,36 @@ mod tests {
     fn hello_message_is_stable() {
         assert_eq!(
             hello_message("dev-1", 1700000000, "ab12"),
-            "vrelay-hello-v1\ndev-1\n1700000000\nab12"
+            "vrelay-hello-v2\ndev-1\n1700000000\nab12"
         );
     }
 
     #[test]
+    fn hello_message_names_v2() {
+        assert!(hello_message("dev-1", 1_700_000_000, "ab12").starts_with("vrelay-hello-v2\n"));
+    }
+
+    #[test]
     fn constants_match_the_spec() {
-        assert_eq!(PROTOCOL, 1);
+        assert_eq!(PROTOCOL, 2);
         assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
         assert_eq!((PING_SECS, IN_CALL_PING_SECS, MAX_MISSED_PINGS), (20, 2, 3));
         // Ruling R16: under the ~100 s Cloudflare gives an origin that sends
         // nothing (the answer is one JSON body, sent at the end), with the
         // connector's 60 s dialog inside it.
+        assert_eq!(CALL_BUDGET_SECS, 90);
+    }
+
+    #[test]
+    fn protocol_constants_are_pinned() {
+        assert_eq!(PROTOCOL, 2);
+        assert_eq!(ACK_SECS, 5);
+        assert_eq!(APPROVAL_REPLY_SECS, 10);
+        assert_eq!(RECONNECT_GRACE_SECS, 10);
+        assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
+        assert_eq!(PING_SECS, 20);
+        assert_eq!(IN_CALL_PING_SECS, 2);
+        assert_eq!(MAX_MISSED_PINGS, 3);
         assert_eq!(CALL_BUDGET_SECS, 90);
     }
 

@@ -2313,6 +2313,7 @@ async fn session<T: Tools, A: Asker>(
                         }
                     }
                     Ok(ToConnector::Cancel { call_id }) => shared.on_cancel(&call_id),
+                    Ok(ToConnector::Start { .. } | ToConnector::ResultAck { .. }) => {}
                 }
             }
         }
