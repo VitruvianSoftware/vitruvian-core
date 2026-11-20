@@ -28,7 +28,6 @@ import {
   realpath,
   rm,
   stat,
-  writeFile,
 } from "fs/promises";
 import * as path from "path";
 
@@ -49,8 +48,9 @@ import {
  * property of the TARGET repo, not of Backstage. This action therefore owns no
  * templates at all. It validates, shells out to `aspect render-app` with the
  * workspace as cwd (the engine probes `current_dir()` to find its own mount
- * point), and then makes the result catalog-complete. Upgrading a starter is a
- * PR in the target repo; Backstage never needs redeploying for it.
+ * point); Backstage discovers the rendered `catalog-info.yaml` automatically
+ * via `catalog.providers.github`. Upgrading a starter is a PR in the target
+ * repo; Backstage never needs redeploying for it.
  *
  * WHY cwd MATTERS
  * ---------------
@@ -80,12 +80,6 @@ export const INITIALIZER_TASKS_REL = "tools/initializer/tasks.axl";
 /** Repo-root file that must register the engine's tasks with the Aspect CLI. */
 export const MODULE_ASPECT_REL = "MODULE.aspect";
 
-/** Repo-root catalog file whose Location this action keeps complete. */
-export const ROOT_CATALOG_REL = "catalog-info.yaml";
-
-/** `metadata.name` of the Location listing the per-app catalog files. */
-export const CATALOG_LOCATION_NAME = "vitruvian-core-apps";
-
 /**
  * Workspace-relative directory holding ONLY the files this action changed.
  *
@@ -96,9 +90,9 @@ export const CATALOG_LOCATION_NAME = "vitruvian-core-apps";
  * files. GitHub's content-creation limit is 500 requests/hour, so the publish
  * would 403 partway through, every time, leaving a half-pushed branch.
  *
- * So the action stages a subtree containing exactly the rendered application
- * plus the edited root catalog-info.yaml, at their repo-relative paths, and the
- * template points `sourcePath` at it: identical PR content, ~6 blobs.
+ * So the action stages a subtree containing exactly the rendered application at
+ * its repo-relative path, and the template points `sourcePath` at it: identical
+ * PR content, ~5 blobs.
  *
  * The render still happens IN PLACE first and is not moved -- the engine probes
  * the host from `--out` (go.mod, `# gazelle:prefix`, bazel/oci) and rendering
@@ -133,8 +127,6 @@ export type AppRenderResult = {
   catalogInfoPath: string;
   /** Workspace-relative paths of every file the engine wrote. */
   renderedFiles: string[];
-  /** Whether the root catalog-info.yaml gained a Location target. */
-  catalogUpdated: boolean;
   /**
    * Workspace-relative directory holding just the changed files, for the
    * publish step's `sourcePath`. See {@link STAGE_DIR}.
@@ -375,138 +367,6 @@ export function findAspectBinary(
   return undefined;
 }
 
-/**
- * Locate the per-app Location's `targets:` list, or explain what is missing.
- *
- * Shared by the early shape check and the append itself so the two can never
- * disagree about what "a usable root catalog" means.
- */
-export function locateAppTargets(lines: string[]): {
-  targetsIdx: number;
-  end: number;
-} {
-  const nameIdx = lines.findIndex(
-    (line) => line.trim() === `name: ${CATALOG_LOCATION_NAME}`,
-  );
-  if (nameIdx < 0) {
-    throw new Error(
-      `${ROOT_CATALOG_REL} has no Location named ${CATALOG_LOCATION_NAME}, so ` +
-        "there is nowhere to record the new application. Add one (a Location " +
-        "whose spec.targets lists each app's catalog-info.yaml) and re-run.",
-    );
-  }
-
-  let targetsIdx = -1;
-  for (let i = nameIdx + 1; i < lines.length; i++) {
-    if (lines[i].trimEnd() === "---") break;
-    if (lines[i] === "  targets:") {
-      targetsIdx = i;
-      break;
-    }
-  }
-  if (targetsIdx < 0) {
-    throw new Error(
-      `the ${CATALOG_LOCATION_NAME} Location in ${ROOT_CATALOG_REL} has no ` +
-        "`  targets:` list to append to.",
-    );
-  }
-
-  // The list ends at the first line that is neither an item nor an indented
-  // comment.
-  let end = targetsIdx + 1;
-  while (end < lines.length && /^ {2,}(- |#)/.test(lines[end])) end++;
-
-  return { targetsIdx, end };
-}
-
-/**
- * The target a list line refers to, indentation and a leading `./` removed, or
- * undefined if the line is not a list item.
- *
- * Idempotency must not key on the exact bytes this action emits: a target
- * already written by hand as `  - apps/x/catalog-info.yaml` (two-space indent,
- * no `./`) is the SAME entry, and matching only the canonical spelling would
- * append a duplicate. The canonical spelling is still what gets written.
- */
-export function catalogTargetOf(line: string): string | undefined {
-  const match = /^\s+-\s+(\S.*?)\s*$/.exec(line);
-  if (!match) return undefined;
-  return match[1].replace(/^\.\//, "");
-}
-
-/**
- * Insert `targetPath`'s catalog file into the root catalog's per-app Location.
- *
- * ADR-019 disclose-and-include: the stamping PR has to be catalog-complete, or
- * the new component simply never appears in Backstage and someone has to notice
- * and open a second PR. Idempotent across spellings — see {@link catalogTargetOf}.
- */
-export function appendCatalogTarget(
-  content: string,
-  targetPath: string,
-): { content: string; changed: boolean } {
-  const wanted = `${targetPath}/catalog-info.yaml`;
-  const lines = content.split("\n");
-
-  const { targetsIdx, end } = locateAppTargets(lines);
-
-  // Scoped to this Location's own list: an identically-named path under a
-  // different Location is a different statement, and is none of our business.
-  for (let i = targetsIdx + 1; i < end; i++) {
-    if (catalogTargetOf(lines[i]) === wanted) {
-      return { content, changed: false };
-    }
-  }
-
-  // Match the list's OWN indentation rather than assuming four spaces: a
-  // two-space list would read a four-space item as a nested sequence, which is
-  // valid YAML meaning something else entirely.
-  const dash = /^(\s+)- /;
-  let indent = "    ";
-  for (let i = targetsIdx + 1; i < end; i++) {
-    const match = dash.exec(lines[i]);
-    if (match) {
-      indent = match[1];
-      break;
-    }
-  }
-  const entry = `${indent}- ./${targetPath}/catalog-info.yaml`;
-
-  // Keep the leading (uncommented) run sorted, which is how the file is
-  // maintained by hand; a trailing commented group — "Platform infrastructure
-  // we operate" — is deliberately left alone.
-  let insertAt = targetsIdx + 1;
-  for (let i = targetsIdx + 1; i < end; i++) {
-    if (!lines[i].startsWith(`${indent}- `)) break;
-    if (lines[i] > entry) {
-      insertAt = i;
-      break;
-    }
-    insertAt = i + 1;
-  }
-
-  lines.splice(insertAt, 0, entry);
-  return { content: lines.join("\n"), changed: true };
-}
-
-/**
- * Fail-early counterpart to {@link appendCatalogTarget}: prove the root catalog
- * has somewhere to record the app BEFORE the engine runs.
- *
- * Without this, a malformed catalog is only discovered after a full render, so
- * the operator waits out a clone and a render to be told about a YAML shape
- * problem. The append itself stays authoritative; this only front-runs it.
- * A repository with no root catalog at all is not an error — that is warned
- * about after the render, as before.
- */
-export async function assertCatalogAppendable(
-  workspacePath: string,
-): Promise<void> {
-  const catalogPath = path.join(workspacePath, ROOT_CATALOG_REL);
-  if (!(await exists(catalogPath))) return;
-  locateAppTargets((await readFile(catalogPath, "utf8")).split("\n"));
-}
-
 /** Every file under `dir`, as paths relative to `root`, sorted. */
 async function listFiles(root: string, dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -557,9 +417,6 @@ export async function renderApplication(
   }
 
   await assertStampingTarget(workspacePath);
-  // Fail early on a root catalog with nowhere to record the app, rather than
-  // after a full render.
-  await assertCatalogAppendable(workspacePath);
 
   // Now that the workspace is known to exist and to be a stamping target,
   // resolve where the render will REALLY land — this is what defeats a symlink
@@ -652,9 +509,9 @@ export async function renderApplication(
     );
   }
 
-  // catalogInfoPath is a promise this action makes to the template's later
-  // catalog:register step; if the starter did not render one, that step fails
-  // far from the cause.
+  // catalogInfoPath is required for GitHub catalog discovery
+  // (catalog.providers.github with /**/catalog-info.yaml); if the starter did
+  // not render one, the new component will never appear in the catalog.
   const catalogInfoPath = path.posix.join(targetPath, "catalog-info.yaml");
   if (!renderedFiles.includes(catalogInfoPath)) {
     throw new Error(
@@ -670,36 +527,7 @@ export async function renderApplication(
       renderedFiles.map((f) => `  ${f}`).join("\n"),
   );
 
-  const catalogPath = path.join(workspacePath, ROOT_CATALOG_REL);
-  let catalogUpdated = false;
-  if (await exists(catalogPath)) {
-    const before = await readFile(catalogPath, "utf8");
-    const { content, changed } = appendCatalogTarget(before, targetPath);
-    if (changed) {
-      await writeFile(catalogPath, content, "utf8");
-      catalogUpdated = true;
-      // Disclose: this action edits a file the operator did not name, and the
-      // PR diff will show it.
-      logger.info(
-        `${APP_RENDER_ACTION_ID}: edited ${ROOT_CATALOG_REL} — added ` +
-          `"./${targetPath}/catalog-info.yaml" to the ${CATALOG_LOCATION_NAME} ` +
-          "Location so the new component is discovered by the catalog.",
-      );
-    } else {
-      logger.info(
-        `${APP_RENDER_ACTION_ID}: ${ROOT_CATALOG_REL} already lists ` +
-          `"./${targetPath}/catalog-info.yaml"; left unchanged.`,
-      );
-    }
-  } else {
-    logger.warn(
-      `${APP_RENDER_ACTION_ID}: the target repository has no ${ROOT_CATALOG_REL}, ` +
-        "so the new application was not registered with the catalog. Add the " +
-        "component by hand, or add a root catalog Location to the repository.",
-    );
-  }
-
-  // Staged LAST, so it captures the catalog edit above. See STAGE_DIR for why
+  // Staged LAST, after verifying the rendered files. See STAGE_DIR for why
   // the publish step cannot simply point at the workspace.
   const stageRoot = path.join(workspacePath, STAGE_DIR);
   await rm(stageRoot, { recursive: true, force: true });
@@ -708,11 +536,8 @@ export async function renderApplication(
     await mkdir(path.dirname(dest), { recursive: true });
     await copyFile(path.join(outAbs, rel), dest);
   }
-  if (catalogUpdated) {
-    await copyFile(catalogPath, path.join(stageRoot, ROOT_CATALOG_REL));
-  }
   logger.info(
-    `${APP_RENDER_ACTION_ID}: staged ${renderedFiles.length + (catalogUpdated ? 1 : 0)} ` +
+    `${APP_RENDER_ACTION_ID}: staged ${renderedFiles.length} ` +
       `changed file(s) under ${STAGE_DIR}/ for publishing — the pull request ` +
       "carries exactly these, not the whole checkout.",
   );
@@ -721,7 +546,6 @@ export async function renderApplication(
     appPath: targetPath,
     catalogInfoPath,
     renderedFiles,
-    catalogUpdated,
     stagePath: STAGE_DIR,
   };
 }
@@ -735,8 +559,7 @@ export const createAppRenderAction = () =>
     id: APP_RENDER_ACTION_ID,
     description:
       "Stamp a new application into the fetched repository by running that " +
-      "repository's own initializer engine (aspect render-app), then add it to " +
-      "the root catalog Location.",
+      "repository's own initializer engine (aspect render-app).",
     // Rendering happens inside the scaffolder's throwaway workspace, so a dry
     // run does the real work and simply never gets published.
     supportsDryRun: true,

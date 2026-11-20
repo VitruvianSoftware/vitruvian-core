@@ -62,17 +62,108 @@ use vitruvian_mcp_auth::{
     extract_bearer, protected_resource_metadata, www_authenticate, AuthError, Caller, Verifier,
 };
 use vitruvian_relay_protocol::{
-    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, CALL_BUDGET_SECS,
-    MAX_FRAME_BYTES, PROTOCOL,
+    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, APPROVAL_REPLY_SECS,
+    CALL_BUDGET_SECS, MAX_FRAME_BYTES, PARKED_RESULT_SECS, PROTOCOL, REJOIN_WINDOW_SECS,
 };
 
 use crate::config::Settings;
 use crate::devices::{DeviceRecord, DeviceStore};
-use crate::mcp::{era, needs_session, Era, Mcp};
-use crate::registry::{ConnectionId, Registry};
+use crate::mcp::{era, needs_session, Answer, Era, Mcp};
+use crate::parked::Delivery;
+use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
 use crate::{hex, log_event, random_id, uuid_v4, LogSink};
 
-pub type Body = Full<Bytes>;
+/// A response body: one buffer, and (for an MCP result) the delivery to
+/// commit once it has been written out.
+///
+/// The result counts as handed to the AI app only when the bytes carrying it
+/// have been written to the socket and flushed ([`WriteTracker`]), not when
+/// the relay produced it: if the socket turns out to be dead, the body is
+/// dropped or the flush fails, the delivery is never committed, and the
+/// AI app's retry finds the stored result instead of running the command
+/// again. (What a proxy or tunnel does with bytes it has accepted is out of
+/// reach; this closes the window on the relay's side.)
+pub struct Body {
+    inner: Full<Bytes>,
+    /// Waiting for the end of the body.
+    delivery: Option<(Delivery, Option<Arc<WriteTracker>>)>,
+}
+
+impl Body {
+    pub fn new(data: impl Into<Bytes>) -> Self {
+        Body {
+            inner: Full::new(data.into()),
+            delivery: None,
+        }
+    }
+
+    fn with_delivery(mut self, d: Delivery, tracker: Option<Arc<WriteTracker>>) -> Self {
+        self.delivery = Some((d, tracker));
+        self
+    }
+
+    /// The body has been read to its end: hand the delivery to the
+    /// connection to commit at its next flush (or, with no connection to
+    /// watch, now).
+    fn read_to_end(&mut self) {
+        match self.delivery.take() {
+            Some((d, Some(tracker))) => tracker.push(d),
+            Some((d, None)) => d.commit(),
+            None => {}
+        }
+    }
+}
+
+impl hyper::body::Body for Body {
+    type Data = Bytes;
+    type Error = Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, Infallible>>> {
+        use std::task::Poll;
+        let polled = std::pin::Pin::new(&mut self.inner).poll_frame(cx);
+        match &polled {
+            Poll::Ready(None) => self.read_to_end(),
+            // hyper does not poll again after the end of a sized body.
+            Poll::Ready(Some(_)) if hyper::body::Body::is_end_stream(&self.inner) => {
+                self.read_to_end()
+            }
+            _ => {}
+        }
+        polled
+    }
+
+    fn is_end_stream(&self) -> bool {
+        hyper::body::Body::is_end_stream(&self.inner)
+    }
+
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        hyper::body::Body::size_hint(&self.inner)
+    }
+}
+
+/// What a connection has read out of response bodies and not yet flushed:
+/// the deliveries to commit when the socket's next flush succeeds.
+#[derive(Default)]
+pub struct WriteTracker {
+    unflushed: Mutex<Vec<Delivery>>,
+}
+
+impl WriteTracker {
+    fn push(&self, d: Delivery) {
+        self.unflushed.lock().unwrap().push(d);
+    }
+
+    /// The socket flushed: what was written before has gone out.
+    fn flushed(&self) {
+        let done = std::mem::take(&mut *self.unflushed.lock().unwrap());
+        for d in done {
+            d.commit();
+        }
+    }
+}
 
 /// Largest MCP request body. A call's arguments travel inside one frame to the
 /// device, so the body stays under the frame cap with room for the frame's
@@ -104,6 +195,19 @@ pub struct Timing {
     pub max_missed_pings: u32,
     /// How long a tool call may take (`deadline_ms` to the device).
     pub call_budget: Duration,
+    /// How long the relay waits for the connector's `Ack` after writing a `Call`.
+    pub ack_timeout: Duration,
+    /// How long a call whose connector's link dropped waits for it to
+    /// reconnect with the result, before failing `Disconnected`.
+    pub reconnect_grace: Duration,
+    /// How long a request waits on an approval dialog before it answers
+    /// "waiting" with a request id (and how long each `check_request`
+    /// waits). Under the ~15 s after which Claude gives up on a call.
+    pub approval_reply: Duration,
+    /// How long an identical request can still join a call.
+    pub rejoin_window: Duration,
+    /// How long the result of a call nobody took is kept.
+    pub parked_result: Duration,
     /// How far a `hello` timestamp may be from the relay's clock.
     pub max_clock_skew_secs: u64,
     /// How long a call frame is allowed to take to reach the device after
@@ -148,6 +252,11 @@ impl Default for Timing {
             in_call_ping: Duration::from_secs(IN_CALL_PING_SECS),
             max_missed_pings: MAX_MISSED_PINGS,
             call_budget: Duration::from_secs(CALL_BUDGET_SECS),
+            ack_timeout: ACK_TIMEOUT,
+            reconnect_grace: RECONNECT_GRACE,
+            approval_reply: Duration::from_secs(APPROVAL_REPLY_SECS),
+            rejoin_window: Duration::from_secs(REJOIN_WINDOW_SECS),
+            parked_result: Duration::from_secs(PARKED_RESULT_SECS),
             max_clock_skew_secs: 60,
             transit_margin: Duration::from_secs(IN_CALL_PING_SECS) * MAX_MISSED_PINGS,
             send_timeout: Duration::from_secs(30),
@@ -200,9 +309,13 @@ impl App {
         timing: Timing,
         log: LogSink,
     ) -> Arc<App> {
-        let registry = Registry::new();
+        let registry = Registry::with_timeouts(timing.ack_timeout, timing.reconnect_grace);
         Arc::new(App {
-            mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()),
+            mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()).with_parking(
+                timing.approval_reply,
+                timing.rejoin_window,
+                timing.parked_result,
+            ),
             settings,
             mcp_verifier: Arc::new(mcp),
             connector_verifier: Arc::new(connector),
@@ -285,7 +398,7 @@ fn respond(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Re
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "no-store")
-        .body(Full::new(body.into()))
+        .body(Body::new(body))
         .expect("static response parts are valid")
 }
 
@@ -458,6 +571,7 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
 // ---------------------------------------------------------------------- MCP
 
 async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> Response<Body> {
+    let tracker = req.extensions().get::<Arc<WriteTracker>>().cloned();
     let metadata_url = app.settings.device_metadata_url(&device_id);
     let caller =
         match authenticate(&app.mcp_verifier, header_str(&req, header::AUTHORIZATION)).await {
@@ -524,11 +638,11 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
     let is_initialize = era == Era::Legacy && method == Some("initialize");
     match app
         .mcp
-        .handle(&msg, &device_id, &caller, session.as_deref())
+        .handle_tracked(&msg, &device_id, &caller, session.as_deref())
         .await
     {
         None => respond(StatusCode::ACCEPTED, "text/plain", ""),
-        Some(v) => {
+        Some(Answer { value: v, delivery }) => {
             // The stateless revision answers an unknown method with 404; the
             // older ones keep 200 with the JSON-RPC error.
             let status = if era == Era::Modern && v["error"]["code"] == -32601 {
@@ -537,6 +651,9 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
                 StatusCode::OK
             };
             let mut resp = json_response(status, &v);
+            if let Some(d) = delivery {
+                resp = resp.map(|b| b.with_delivery(d, tracker));
+            }
             if is_initialize && v.get("result").is_some() {
                 let id = app.new_session(&device_id, &caller);
                 resp.headers_mut().insert(
@@ -700,7 +817,7 @@ async fn upgrade(app: Arc<App>, mut req: Request<Incoming>) -> Response<Body> {
         .header(header::UPGRADE, "websocket")
         .header(header::CONNECTION, "Upgrade")
         .header(header::SEC_WEBSOCKET_ACCEPT, accept)
-        .body(Full::new(Bytes::new()))
+        .body(Body::new(Bytes::new()))
         .expect("static response parts are valid")
 }
 
@@ -737,8 +854,7 @@ impl App {
     ) -> Result<[u8; 32], String> {
         if hello.protocol != PROTOCOL {
             return Err(format!(
-                "unsupported protocol {}; this relay speaks {PROTOCOL}",
-                hello.protocol
+                "Update vrelay: this relay needs protocol {PROTOCOL}."
             ));
         }
         // Another person's device is "unknown", like one that does not exist.
@@ -1166,7 +1282,8 @@ async fn run_connection<S>(
                         if let Err(e) = send_frame(&mut sink, &f, timeout).await {
                             break e;
                         }
-                        if is_call {
+                        if let ToConnector::Call(call) = &f {
+                            app.registry.call_written(conn, &call.call_id);
                             if let Beat::Ping(n) = live.call_started() {
                                 ticker.reset();
                                 if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
@@ -1181,7 +1298,30 @@ async fn run_connection<S>(
                 None => break "connector went away".into(),
                 Some(Err(e)) => break format!("read error: {e}"),
                 Some(Ok(Message::Text(text))) => match decode_to_relay(&text) {
-                    Ok(ToRelay::Result(r)) => app.registry.complete(conn, r),
+                    Ok(ToRelay::Result(r)) => {
+                        let call_id = r.call_id.clone();
+                        if app.registry.complete(&device_id, conn, r) {
+                            if let Err(e) = send_frame(
+                                &mut sink,
+                                &ToConnector::ResultAck { call_id },
+                                send_timeout,
+                            )
+                            .await
+                            {
+                                break e;
+                            }
+                        }
+                    }
+                    Ok(ToRelay::Ack { call_id }) => {
+                        if app.registry.ack(conn, &call_id) {
+                            if let Err(e) =
+                                send_frame(&mut sink, &ToConnector::Start { call_id }, send_timeout)
+                                    .await
+                            {
+                                break e;
+                            }
+                        }
+                    }
                     Ok(ToRelay::ToolsChanged { tools }) => app.registry.update_tools(&device_id, conn, tools),
                     Ok(ToRelay::Ping { n }) => {
                         if let Err(e) = send_frame(&mut sink, &ToConnector::Pong { n }, send_timeout).await {
@@ -1189,6 +1329,9 @@ async fn run_connection<S>(
                         }
                     }
                     Ok(ToRelay::Pong { .. }) => live.heard(),
+                    Ok(ToRelay::Pending { call_id }) => {
+                        app.registry.pending(conn, &call_id);
+                    }
                     Ok(ToRelay::Hello(_)) => {}
                     // Size only: a bad frame may still hold call output.
                     Err(_) => app.log("bad_frame", json!({"device_id": device_id, "bytes": text.len()})),
@@ -1230,6 +1373,8 @@ struct FirstHead<S> {
     limit: Option<std::pin::Pin<Box<tokio::time::Sleep>>>,
     /// How much of "\r\n\r\n" the bytes so far end with.
     matched: usize,
+    /// Told whenever the socket flushes.
+    tracker: Option<Arc<WriteTracker>>,
 }
 
 impl<S> FirstHead<S> {
@@ -1238,7 +1383,13 @@ impl<S> FirstHead<S> {
             inner,
             limit: Some(Box::pin(tokio::time::sleep(limit))),
             matched: 0,
+            tracker: None,
         }
+    }
+
+    fn tracking(mut self, tracker: Arc<WriteTracker>) -> Self {
+        self.tracker = Some(tracker);
+        self
     }
 }
 
@@ -1296,7 +1447,11 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for FirstHead<S> {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+        let r = std::pin::Pin::new(&mut self.inner).poll_flush(cx);
+        if let (std::task::Poll::Ready(Ok(())), Some(t)) = (&r, &self.tracker) {
+            t.flushed();
+        }
+        r
     }
 
     fn poll_shutdown(
@@ -1318,22 +1473,29 @@ pub async fn serve(listener: TcpListener, app: Arc<App>) {
                 continue;
             }
         };
-        let app = app.clone();
-        let header_timeout = app.timing.header_read_timeout;
-        let first = FirstHead::new(stream, app.timing.first_header_timeout);
-        tokio::spawn(async move {
-            let svc = service_fn(move |req| {
-                let app = app.clone();
-                async move { Ok::<_, Infallible>(handle(app, req).await) }
-            });
-            let _ = http1::Builder::new()
-                .timer(TokioTimer::new())
-                .header_read_timeout(header_timeout)
-                .serve_connection(TokioIo::new(first), svc)
-                .with_upgrades()
-                .await;
-        });
+        tokio::spawn(serve_stream(app.clone(), stream));
     }
+}
+
+/// Serves one connection until it ends.
+pub async fn serve_stream<S>(app: Arc<App>, stream: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let header_timeout = app.timing.header_read_timeout;
+    let tracker = Arc::new(WriteTracker::default());
+    let first = FirstHead::new(stream, app.timing.first_header_timeout).tracking(tracker.clone());
+    let svc = service_fn(move |mut req: Request<Incoming>| {
+        let app = app.clone();
+        req.extensions_mut().insert(tracker.clone());
+        async move { Ok::<_, Infallible>(handle(app, req).await) }
+    });
+    let _ = http1::Builder::new()
+        .timer(TokioTimer::new())
+        .header_read_timeout(header_timeout)
+        .serve_connection(TokioIo::new(first), svc)
+        .with_upgrades()
+        .await;
 }
 
 #[cfg(test)]

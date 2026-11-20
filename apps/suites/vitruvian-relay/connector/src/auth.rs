@@ -300,7 +300,7 @@ pub fn fresh_token_checked(
 }
 
 /// [`fresh_token_checked`] for `tokens` read from `before`, the bytes of
-/// `token.json` they came from: the result is saved only while the file
+/// saved sign-in they came from: the result is saved only while the file
 /// still holds exactly those (a logout or a new login since is never
 /// undone). `None`: read the file now.
 pub fn fresh_token_checked_from(
@@ -320,9 +320,9 @@ pub fn fresh_token_checked_from(
     // used, and saving it is tried as before.)
     let before = match before {
         Some(b) => Some(Some(b.to_vec())),
-        None => match std::fs::read(crate::state::token_path(&cfg.dir)) {
-            Ok(b) => Some(Some(b)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        None => match crate::state::load_token_bytes(&cfg.dir) {
+            Ok(Some(b)) => Some(Some(b)),
+            Ok(None) => None,
             Err(_) => Some(None),
         },
     };
@@ -556,7 +556,10 @@ mod tests {
             if login_again {
                 assert_eq!(load_tokens(&dir).unwrap(), Some(newer));
             } else {
-                assert!(!token_path(&dir).exists(), "the logout was undone");
+                assert!(
+                    crate::state::load_token_bytes(&dir).unwrap().is_none(),
+                    "the logout was undone"
+                );
             }
         }
     }
@@ -569,7 +572,7 @@ mod tests {
         let (base, _calls, _) = token_server(vec![ok_answer()]);
         let dir = test_dir("auth-before-bytes");
         save_tokens(&dir, &near_expiry()).unwrap();
-        let read = std::fs::read(token_path(&dir)).unwrap();
+        let read = crate::state::load_token_bytes(&dir).unwrap().unwrap();
         let newer = Tokens {
             access_token: "newer-login".into(),
             refresh_token: Some("newer-refresh".into()),
