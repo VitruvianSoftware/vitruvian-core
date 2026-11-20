@@ -125,29 +125,53 @@ pub struct CallResult {
 pub enum ToRelay {
     Hello(Hello),
     /// Received the call frame; waiting for `Start` before running it.
-    Ack { call_id: String },
+    Ack {
+        call_id: String,
+    },
     /// An approval dialog is open on the computer for this call.
-    Pending { call_id: String },
+    Pending {
+        call_id: String,
+    },
     Result(CallResult),
-    ToolsChanged { tools: Vec<ToolDef> },
-    Ping { n: u64 },
-    Pong { n: u64 },
+    ToolsChanged {
+        tools: Vec<ToolDef>,
+    },
+    Ping {
+        n: u64,
+    },
+    Pong {
+        n: u64,
+    },
 }
 
 /// Relay to connector.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToConnector {
-    Welcome { device_id: String },
-    Reject { reason: String },
+    Welcome {
+        device_id: String,
+    },
+    Reject {
+        reason: String,
+    },
     Call(Call),
     /// The relay is still waiting; the connector may start the call.
-    Start { call_id: String },
-    Cancel { call_id: String },
+    Start {
+        call_id: String,
+    },
+    Cancel {
+        call_id: String,
+    },
     /// The relay has accepted the call's result; the connector may drop it.
-    ResultAck { call_id: String },
-    Ping { n: u64 },
-    Pong { n: u64 },
+    ResultAck {
+        call_id: String,
+    },
+    Ping {
+        n: u64,
+    },
+    Pong {
+        n: u64,
+    },
 }
 
 /// Lowercase hex, two digits a byte: ids, digests, keys on disk.
