@@ -26,6 +26,10 @@ import os
 public enum SubagentDetection {
     public static let suppressedMessage = "Subagent / non-interactive session detected. Broadcast suppressed."
 
+    /// Deliberately only `sdk-cli` (`claude -p`), not every `sdk-*` entrypoint
+    /// the Stop hook skips: an app built on the Agent SDK may announce on
+    /// purpose, and that must keep working. It is also not muted by
+    /// `QuietSession`, which silences only the automatic read-aloud.
     public static func isClaudeSubagent(environment: [String: String]) -> Bool {
         environment["CLAUDE_CODE_CHILD_SESSION"] == "1"
             || environment["CLAUDE_CODE_SESSION_ATTENDED"] == "0"
