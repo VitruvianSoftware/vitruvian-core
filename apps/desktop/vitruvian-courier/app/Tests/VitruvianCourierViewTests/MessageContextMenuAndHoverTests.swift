@@ -410,4 +410,69 @@ final class MessageContextMenuAndHoverTests: XCTestCase {
             .hidden
         )
     }
+
+    /// B3 (QA): a right-click menu acts on the CLICKED message, never on the selected one. Message `$a` is selected,
+    /// the menu is built for `$b`, and each item must act on `$b`.
+    func testMenuItemsActOnTheClickedMessageNotTheSelectedOne() throws {
+        _ = NSApplication.shared
+        let defaults = try makeDefaults()
+        let dir = try makeTempDir()
+        let m = makeModels(defaults: defaults, dir: dir)
+
+        let a = Fixture.text("$a", "selected one", mine: false, ts: 5, sender: "@alice:courier.local", name: "Alice")
+        let b = Fixture.text("$b", "clicked one", mine: false, ts: 4, sender: "@bob:courier.local", name: "Bob")
+        let c = Fixture.text("$c", "my clicked one", mine: true, ts: 3)
+        m.conversation.setSnapshotStateForTesting(
+            roomID: "!clicked",
+            items: Fixture.items([a, b, c], isDirect: false),
+            row: Fixture.row("!clicked", "Clicked", network: "gchat", direct: false, ts: 3, preview: "x"),
+            features: ChatFeatures(reply: true, edit: true, unsend: true, source: .network)
+        )
+        m.conversation.composer.open("!clicked")
+        m.conversation.selectedMessageID = "$a"
+
+        let actions = MessageRowActions.make(
+            conversation: m.conversation, messageActions: m.messageActions, preferences: m.preferences,
+            composer: m.conversation.composer, ui: MessageUI(), source: .chat,
+            deselect: {}, select: { m.conversation.selectedMessageID = $0 }
+        )
+        func menu(_ id: String) throws -> NSMenu {
+            let msg = try XCTUnwrap(m.conversation.message(id, from: .chat))
+            return try XCTUnwrap(MessageContextMenuBuilder.buildNSMenu(for: msg, actions: actions))
+        }
+        func fire(_ menu: NSMenu, _ title: String) throws {
+            let item = try XCTUnwrap(menu.items.first { $0.title == title }, "missing \(title)")
+            XCTAssertTrue(item.isEnabled, "\(title) must be enabled")
+            _ = item.target?.perform(item.action, with: item)
+        }
+        func settle() { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.3)) }
+
+        try fire(menu("$b"), "Reply…")
+        settle()
+        XCTAssertEqual(m.conversation.composer.replyTarget?.eventID, "$b", "Reply acts on the clicked message")
+
+        try fire(menu("$b"), "React…")
+        settle()
+        XCTAssertEqual(m.messageActions.request, .reactionPicker(messageID: "$b"), "React acts on the clicked message")
+
+        try fire(menu("$b"), "Forward…")
+        settle()
+        XCTAssertEqual(m.messageActions.request, .forward(messageID: "$b"), "Forward acts on the clicked message")
+
+        try fire(menu("$b"), "Delete for Me…")
+        settle()
+        guard case let .confirm(_, messageID, _)? = m.messageActions.request else {
+            return XCTFail("Delete asks for confirmation, got \(String(describing: m.messageActions.request))")
+        }
+        XCTAssertEqual(messageID, "$b", "Delete acts on the clicked message")
+
+        try fire(menu("$c"), "Edit…")
+        settle()
+        if case let .editing(eventID, _) = m.conversation.composer.mode {
+            XCTAssertEqual(eventID, "$c", "Edit acts on the clicked message")
+        } else {
+            XCTFail("Edit did not start editing the clicked message")
+        }
+        XCTAssertEqual(m.conversation.selectedMessageID, "$a", "right-click does not move the selection")
+    }
 }
