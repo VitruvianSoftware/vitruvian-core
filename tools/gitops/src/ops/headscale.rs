@@ -26,7 +26,18 @@ use shell_compat as sc;
 
 use super::common::*;
 
-const SUBCMDS: &str = "raw|apikey-create|apikey-list|apikey-expire|user-create|user-list|user-destroy|node-list|node-register|node-delete|preauthkey-create|preauthkey-list|policy-check|policy-set";
+const SUBCMDS: &str = "raw|apikey-create|apikey-list|apikey-expire|user-create|user-list|user-destroy|node-list|node-register|node-delete|preauthkey-create|preauthkey-list|policy-check|policy-set|policy-sync-pause|policy-sync-resume";
+
+const PAUSE_CONFIGMAP_NAME: &[u8] = b"headscale-policy-sync-pause";
+const PAUSE_CONFIGMAP_YAML: &[u8] = b"\
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headscale-policy-sync-pause
+  namespace: headscale
+data:
+  paused: \"true\"
+";
 
 pub fn main(args: &[Vec<u8>]) -> i32 {
     match run_ops(args) {
@@ -46,6 +57,40 @@ fn run_ops(args: &[Vec<u8>]) -> Res<i32> {
     let k = kctx();
     if !have("kubectl") {
         return die(1, b"ERROR: kubectl not found on PATH.");
+    }
+    match sub.as_slice() {
+        b"policy-sync-pause" => {
+            if !a.is_empty() {
+                return die(2, b"usage: headscale-policy-sync-pause");
+            }
+            return Ok(feed(
+                0,
+                kubectl(&k, &[b"-n", b"headscale", b"apply", b"-f", b"-"]),
+                PAUSE_CONFIGMAP_YAML,
+                None,
+            ));
+        }
+        b"policy-sync-resume" => {
+            if !a.is_empty() {
+                return die(2, b"usage: headscale-policy-sync-resume");
+            }
+            return Ok(run(
+                0,
+                &mut kubectl(
+                    &k,
+                    &[
+                        b"-n",
+                        b"headscale",
+                        b"delete",
+                        b"configmap",
+                        PAUSE_CONFIGMAP_NAME,
+                        b"--ignore-not-found",
+                    ],
+                ),
+                false,
+            ));
+        }
+        _ => {}
     }
     let pod = headscale_pod(&k)?;
     let kexec = |words: &[&[u8]], rest: &[&[u8]]| -> i32 {
@@ -230,5 +275,112 @@ fn policy_exec(k: &[u8], pod: &[u8], verb: &[u8], policy: &[u8]) -> Res<i32> {
             1,
             &sc::cat(&[b"ERROR: kubectl: ", sc::strerror(&e).as_bytes()]),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    struct EnvRestore {
+        saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
+        dir: std::path::PathBuf,
+    }
+
+    impl EnvRestore {
+        fn new(dir: std::path::PathBuf, vars: &[(&'static str, &str)]) -> Self {
+            let mut saved = Vec::with_capacity(vars.len());
+            for (k, v) in vars {
+                saved.push((*k, std::env::var_os(k)));
+                std::env::set_var(k, v);
+            }
+            Self { saved, dir }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (k, old) in self.saved.drain(..) {
+                match old {
+                    Some(v) => std::env::set_var(k, v),
+                    None => std::env::remove_var(k),
+                }
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn subcmds_and_pause_manifest_cover_pause_and_resume() {
+        assert!(SUBCMDS.split('|').any(|s| s == "policy-sync-pause"));
+        assert!(SUBCMDS.split('|').any(|s| s == "policy-sync-resume"));
+        let yaml = std::str::from_utf8(PAUSE_CONFIGMAP_YAML).unwrap();
+        assert!(yaml.contains("kind: ConfigMap"));
+        assert!(yaml.contains("name: headscale-policy-sync-pause"));
+        assert!(yaml.contains("namespace: headscale"));
+        assert!(yaml.contains("paused: \"true\""));
+    }
+
+    #[test]
+    fn policy_sync_pause_and_resume_invoke_expected_kubectl_commands() {
+        let dir =
+            std::env::temp_dir().join(format!("gitops-headscale-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin_dir = dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let log_file = dir.join("kubectl.log");
+        let stdin_file = dir.join("kubectl.stdin");
+        let fake_kubectl = bin_dir.join("kubectl");
+        std::fs::write(
+            &fake_kubectl,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\ncat > '{}'\n",
+                log_file.display(),
+                stdin_file.display()
+            ),
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&fake_kubectl).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_kubectl, perms).unwrap();
+
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        let new_path = format!("{}:{orig_path}", bin_dir.display());
+        let kubeconfig = dir.join("kube.yaml");
+        std::fs::write(&kubeconfig, "apiVersion: v1\n").unwrap();
+        let _guard = EnvRestore::new(
+            dir.clone(),
+            &[
+                ("PATH", &new_path),
+                ("KUBECONFIG", kubeconfig.to_str().unwrap()),
+                ("KUBE_CONTEXT", "test-ctx"),
+            ],
+        );
+
+        assert_eq!(main(&[b"policy-sync-pause".to_vec()]), 0);
+        assert_eq!(std::fs::read(&stdin_file).unwrap(), PAUSE_CONFIGMAP_YAML);
+
+        assert_eq!(main(&[b"policy-sync-resume".to_vec()]), 0);
+
+        let calls = std::fs::read_to_string(&log_file).unwrap();
+        let lines: Vec<&str> = calls.lines().collect();
+        assert_eq!(
+            lines,
+            vec![
+                "--context test-ctx -n headscale apply -f -",
+                "--context test-ctx -n headscale delete configmap headscale-policy-sync-pause --ignore-not-found",
+            ]
+        );
+
+        assert_eq!(
+            main(&[b"policy-sync-pause".to_vec(), b"--unexpected".to_vec()]),
+            2
+        );
+        assert_eq!(
+            main(&[b"policy-sync-resume".to_vec(), b"--unexpected".to_vec()]),
+            2
+        );
     }
 }

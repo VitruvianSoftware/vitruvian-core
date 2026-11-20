@@ -2,7 +2,7 @@
 #
 # Unit tests for the `headscale` alert group in
 # gitops/argocd/platform/prometheus/applicationset.yaml, fed by
-# headscale-key-exporter (gitops/argocd/platform/headscale/).
+# headscale-key-exporter and policy-sync (gitops/argocd/platform/headscale/).
 #
 # These exist because the CI pre-auth key (HEADSCALE_CI_AUTHKEY) and Headplane's
 # API key expire on a date, and nothing used to say so before the day they
@@ -205,4 +205,64 @@ tests:
     alert_rule_test:
       - eval_time: 119m
         alertname: HeadscaleKeyExporterDown
+        exp_alerts: []
+
+  # --------------------------------------------------- policy-sync stale ----
+  - interval: 1m
+    name: Stale unpaused policy-sync fires HeadscalePolicySyncStale after 15m plus 5m for
+    input_series:
+      - series: 'headscale_policy_sync_up{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '1 0x30'
+      - series: 'headscale_policy_sync_last_success_timestamp_seconds{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '0x31'
+      - series: 'headscale_policy_sync_paused{job="kubernetes-service-endpoints",namespace="headscale",service="headscale-policy-sync"}'
+        values: '0x31'
+    alert_rule_test:
+      # 14m = 840s <= 900s (stays silent even past the 5m `for` duration).
+      - eval_time: 14m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts: []
+      # Condition turns true at 16m (960s > 900s); `for: 5m` holds it pending through 20m.
+      - eval_time: 20m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              pagerduty_service: cluster
+              job: kubernetes-service-endpoints
+              namespace: headscale
+              service: headscale-policy-sync
+            exp_annotations:
+              summary: "Headscale ACL policy-sync has not succeeded in 21m 0s"
+              description: "The policy-sync sidecar on deploy/headscale has not completed a clean ACL reconciliation for 21m 0s (>15m) and is not paused, so live Headscale ACLs may have drifted from gitops/argocd/platform/headscale/policy.hujson (or a bad policy failed headscale policy check/set). Check sidecar logs with: bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync."
+
+  - interval: 1m
+    name: Stale policy-sync stays silent while paused
+    input_series:
+      - series: 'headscale_policy_sync_up{service="headscale-policy-sync"}'
+        values: '1x40'
+      - series: 'headscale_policy_sync_last_success_timestamp_seconds{service="headscale-policy-sync"}'
+        values: '0x40'
+      - series: 'headscale_policy_sync_paused{service="headscale-policy-sync"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: HeadscalePolicySyncStale
+        exp_alerts: []
+
+  - interval: 1m
+    name: Fresh policy-sync stays silent
+    input_series:
+      - series: 'headscale_policy_sync_up{service="headscale-policy-sync"}'
+        values: '1x60'
+      - series: 'headscale_policy_sync_last_success_timestamp_seconds{service="headscale-policy-sync"}'
+        values: '0+60x60'
+      - series: 'headscale_policy_sync_paused{service="headscale-policy-sync"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 59m
+        alertname: HeadscalePolicySyncStale
         exp_alerts: []

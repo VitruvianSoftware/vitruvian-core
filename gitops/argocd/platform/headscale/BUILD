@@ -45,6 +45,7 @@ gitops_manifest(
         "pvc-headplane.yaml",
         "service-headplane.yaml",
         "service-key-exporter.yaml",
+        "service-policy-sync.yaml",
     ],
 )
 
@@ -64,6 +65,8 @@ DATA_FILES = [
     "deployment-subnet-router.yaml",
     "dnsendpoint.yaml",
     "httproute.yaml",
+    "service-key-exporter.yaml",
+    "service-policy-sync.yaml",
 ]
 
 rust_library(
@@ -87,6 +90,18 @@ rust_binary(
     deps = [":headscale_values_lib"],
 )
 
+rust_binary(
+    name = "render-check",
+    srcs = ["src/render_check.rs"],
+    data = ["applicationset.yaml"],
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":headscale_values_lib",
+        "@crates//:serde_json",
+    ],
+)
+
 rust_test(
     name = "headscale_values_test",
     size = "small",
@@ -108,12 +123,22 @@ rust_test(
 )
 
 rust_test(
+    name = "policy_lockout_guard_test",
+    size = "small",
+    srcs = ["src/policy_lockout_guard_test.rs"],
+    data = ["policy.hujson"],
+    edition = "2021",
+    deps = [":headscale_values_lib"],
+)
+
+rust_test(
     name = "policy_sync_test",
     size = "small",
     srcs = ["src/policy_sync_test.rs"],
     data = [
         "applicationset.yaml",
         "configmap-policy.yaml",
+        "service-policy-sync.yaml",
     ],
     edition = "2021",
     deps = [":headscale_values_lib"],

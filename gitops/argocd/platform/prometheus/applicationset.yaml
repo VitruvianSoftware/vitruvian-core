@@ -874,6 +874,20 @@ spec:
                       summary: "headscale-key-exporter is not watching every Headscale key"
                       description: "headscale-key-exporter has not read the Headscale API (or some of its records) for 30m, or is not being scraped, so some Headscale key expiries are not being watched. Its log says why: bazel run //tools/gitops:logs -- -n headscale deploy/headscale-key-exporter. An HTTP 401 means its own API key expired or was revoked: re-mint it with bazel run //tools/gitops:seal-headscale-key-exporter."
 
+                  - alert: HeadscalePolicySyncStale
+                    # Fires when the policy-sync sidecar on deploy/headscale has
+                    # not recorded an up=1 reconciliation (in sync, applied, or
+                    # absent policy file) in >15m while not paused via
+                    # ConfigMap/headscale-policy-sync-pause.
+                    expr: time() - headscale_policy_sync_last_success_timestamp_seconds > 900 and headscale_policy_sync_paused == 0
+                    for: 5m
+                    labels:
+                      severity: warning
+                      pagerduty_service: cluster
+                    annotations:
+                      summary: "Headscale ACL policy-sync has not succeeded in {{ $value | humanizeDuration }}"
+                      description: "The policy-sync sidecar on deploy/headscale has not completed a clean ACL reconciliation for {{ $value | humanizeDuration }} (>15m) and is not paused, so live Headscale ACLs may have drifted from gitops/argocd/platform/headscale/policy.hujson (or a bad policy failed headscale policy check/set). Check sidecar logs with: bazel run //tools/gitops:logs -- -n headscale deploy/headscale -c policy-sync."
+
                 # ── 10. Monitoring self ──────────────────────────────────────
                 - name: monitoring-self
                   rules:

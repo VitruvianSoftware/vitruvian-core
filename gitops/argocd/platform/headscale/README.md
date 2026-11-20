@@ -36,12 +36,48 @@ bazel run //tools/gitops:headscale -- policy get
 ```
 
 Manual push is break-glass only (`headscale-policy-check` can still validate a
-local draft against live Headscale before merge):
+local draft against live Headscale before merge). Because `policy-sync`
+reconciles every 60 s from `ConfigMap/headscale-policy`, pause it before any
+emergency override so your change is not overwritten while the PR is in flight:
 
 ```sh
-bazel run //tools/gitops:headscale-policy-check   # validate a local change with live Headscale
-bazel run //tools/gitops:headscale-policy-set     # break-glass only: check, then replace live policy immediately
+bazel run //tools/gitops:headscale-policy-check        # validate a local change with live Headscale
+bazel run //tools/gitops:headscale-policy-sync-pause   # 1. create unmanaged ConfigMap/headscale-policy-sync-pause
+bazel run //tools/gitops:headscale-policy-set          # 2. break-glass: check, then replace live policy immediately
+# 3. merge the fix to policy.hujson (and regenerated configmap-policy.yaml), then resume:
+bazel run //tools/gitops:headscale-policy-sync-resume  # 4. delete ConfigMap/headscale-policy-sync-pause
 ```
+
+Verify the rendered Helm `Deployment` (sidecar, securityContext, non-root socket
+group `65533`, optional ConfigMaps, directory mounts, `policy-metrics` port `9102`)
+locally with:
+
+```sh
+bazel run //gitops/argocd/platform/headscale:render-check
+```
+
+`render-check` pulls the Helm chart over the network (`helm pull`) and is
+therefore non-hermetic, so it runs as a `bazel run` gate rather than a `bazel test`.
+
+`policy-sync` also exposes Prometheus metrics via BusyBox `/busybox/httpd` on
+named port `policy-metrics` (`9102`), atomically rewritten on each loop pass and
+scraped by Prometheus's `kubernetes-service-endpoints` job through
+[`service-policy-sync.yaml`](./service-policy-sync.yaml) (`Service/headscale-policy-sync`):
+
+- `headscale_policy_sync_up`: `1` when the last unpaused reconciliation ended in
+  sync, applied a policy, or skipped by design because `/etc/headscale-policy/policy.hujson`
+  was absent (`! -e`); `0` when Headscale was not ready, `policy.hujson` existed
+  but was unreadable (`! -r`) or failed to snapshot, `policy check` failed, or `policy set` failed.
+- `headscale_policy_sync_last_success_timestamp_seconds`: Unix epoch timestamp of
+  the last reconciliation ending with `up=1`.
+- `headscale_policy_sync_paused`: `1` while `/etc/headscale-policy-pause/paused`
+  is present, `0` otherwise.
+
+Absent-file rule: when `/etc/headscale-policy/policy.hujson` does not exist
+(`! -e`, for example when optional `ConfigMap/headscale-policy` is omitted on a
+cluster without repo-managed policy), `policy-sync` records `up=1` and updates
+`last_success_timestamp_seconds` on every tick so `HeadscalePolicySyncStale`
+never fires continuously. Policy contents are never included in metrics.
 
 What it allows today: James's own devices reach everything (as the old
 allow-all did), and `tag:ci` reaches only TCP to the Envoy gateway NodePorts
@@ -66,6 +102,7 @@ through Alertmanager to ntfy and PagerDuty:
 | `HeadscaleCredentialExpiringSoon` | 30 to 3 days left (stands down when the page takes over) | warning |
 | `HeadscaleCredentialExpiringImminently` | under 3 days left | page |
 | `HeadscaleKeyExporterDown` | for 30 min: a failed read, no successful read in an hour, a record it could not read, or no exporter at all | warning |
+| `HeadscalePolicySyncStale` | for 5 min: last `policy-sync` `up=1` reconciliation older than 15 min while `headscale_policy_sync_paused == 0` | warning |
 
 Expired credentials and spent single-use keys are left out, so a dead key
 does not alert, and an alert resolves at the moment its key expires. That is

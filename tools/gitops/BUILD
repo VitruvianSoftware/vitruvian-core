@@ -293,6 +293,14 @@ TOOLS = {
         "headscale_ops.sh",
         ["policy-set"],
     ),
+    "headscale-policy-sync-pause": (
+        "headscale_ops.sh",
+        ["policy-sync-pause"],
+    ),
+    "headscale-policy-sync-resume": (
+        "headscale_ops.sh",
+        ["policy-sync-resume"],
+    ),
     "rotate-github-otel-webhook-secret": ("rotate_github_otel_webhook_secret.sh", []),
     "cicd-telemetry-smoke": ("cicd_telemetry_smoke.sh", []),
     "seal-arc-github-app": ("seal_arc_github_app.sh", []),

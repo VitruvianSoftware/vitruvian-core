@@ -48,6 +48,10 @@ spec:
             image:
               tag: v0.26.1
             automountServiceAccountToken: false
+            podSecurityContext:
+              fsGroup: 65533
+              supplementalGroups:
+                - 65533
             initContainers:
               config:
                 image: alpine:3.21
@@ -97,9 +101,10 @@ spec:
               HEADSCALE_DNS_MAGIC_DNS: "true"
               HEADSCALE_DNS_BASE_DOMAIN: mesh.ipv1337.dev
               HEADSCALE_POLICY_MODE: database
-              # Headscale's default "0o770" fails Go's base-8 ParseUint in util.GetFileMode
-              # and falls back to 0700; "0770" parses cleanly so the non-root gid 0 sidecar
-              # can talk to /var/run/headscale/headscale.sock.
+              # Headscale's default "0o770" fails Go's base-8 strconv.ParseUint in
+              # util.GetFileMode and falls back to 0700; "0770" parses cleanly so the
+              # non-root policy-sync sidecar (gid 65533 via podSecurityContext.fsGroup)
+              # can connect to /var/run/headscale/headscale.sock.
               HEADSCALE_UNIX_SOCKET_PERMISSION: "0770"
               HEADSCALE_OIDC_CLIENT_SECRET:
                 valueFrom:
@@ -113,26 +118,81 @@ spec:
                 env:
                   HEADSCALE_CONFIG: /tmp/headscale-cli.yaml
                   HEADSCALE_DISABLE_CHECK_UPDATES: "true"
+                ports:
+                  - name: policy-metrics
+                    containerPort: 9102
+                    protocol: TCP
                 command:
                   - /busybox/sh
                   - -c
                   - |
                     set -u
                     POLICY_FILE="${POLICY_FILE:-/etc/headscale-policy/policy.hujson}"
+                    PAUSE_FILE="${PAUSE_FILE:-/etc/headscale-policy-pause/paused}"
                     TMP_DIR="${TMP_DIR:-/tmp}"
                     CLI_CFG="${HEADSCALE_CONFIG:-$TMP_DIR/headscale-cli.yaml}"
                     INTERVAL="${POLICY_SYNC_INTERVAL:-60}"
+                    METRICS_DIR="${METRICS_DIR:-$TMP_DIR/metrics}"
+                    METRICS_PORT="${METRICS_PORT:-9102}"
+                    HTTPD_BIN="${HTTPD_BIN:-/busybox/httpd}"
                     printf 'unix_socket: /var/run/headscale/headscale.sock\ndisable_check_updates: true\n' >"$CLI_CFG"
 
+                    mkdir -p "$METRICS_DIR"
+                    last_up=0
+                    last_success=0
+                    write_metrics() {
+                      {
+                        printf '%s\n' \
+                          "# HELP headscale_policy_sync_up 1 if the last unpaused reconciliation succeeded (in sync, applied, or policy file absent), 0 on failure." \
+                          "# TYPE headscale_policy_sync_up gauge" \
+                          "headscale_policy_sync_up $last_up" \
+                          "# HELP headscale_policy_sync_last_success_timestamp_seconds Unix timestamp of the last reconciliation ending with up=1." \
+                          "# TYPE headscale_policy_sync_last_success_timestamp_seconds gauge" \
+                          "headscale_policy_sync_last_success_timestamp_seconds $last_success" \
+                          "# HELP headscale_policy_sync_paused 1 while the pause marker is present, 0 otherwise." \
+                          "# TYPE headscale_policy_sync_paused gauge" \
+                          "headscale_policy_sync_paused $1" >"$METRICS_DIR/metrics.tmp" &&
+                          mv -f "$METRICS_DIR/metrics.tmp" "$METRICS_DIR/metrics"
+                      } || true
+                    }
+                    if [ -e "$PAUSE_FILE" ]; then
+                      write_metrics 1
+                    else
+                      write_metrics 0
+                    fi
+
+                    httpd_pid=""
+                    if [ -x "$HTTPD_BIN" ]; then
+                      "$HTTPD_BIN" -f -p "$METRICS_PORT" -h "$METRICS_DIR" </dev/null >/dev/null 2>&1 &
+                      httpd_pid=$!
+                      trap '[ -n "$httpd_pid" ] && kill "$httpd_pid" 2>/dev/null || true' EXIT
+                    fi
+
                     sync_once() {
-                      if [ ! -r "$POLICY_FILE" ]; then
-                        echo "policy-sync: policy file $POLICY_FILE not readable yet; skipping"
+                      if [ -e "$PAUSE_FILE" ]; then
+                        echo "policy-sync: paused ($PAUSE_FILE present), skipping"
+                        write_metrics 1
                         return
                       fi
-                      cp "$POLICY_FILE" "$TMP_DIR/policy.hujson" || {
-                        echo "policy-sync: failed to snapshot $POLICY_FILE; skipping"
+                      if [ ! -e "$POLICY_FILE" ]; then
+                        echo "policy-sync: policy file absent, skipping"
+                        last_up=1
+                        last_success="$(date +%s)"
+                        write_metrics 0
                         return
-                      }
+                      fi
+                      if [ ! -r "$POLICY_FILE" ]; then
+                        echo "policy-sync: policy file $POLICY_FILE not readable yet; skipping"
+                        last_up=0
+                        write_metrics 0
+                        return
+                      fi
+                      if ! cp "$POLICY_FILE" "$TMP_DIR/policy.hujson"; then
+                        echo "policy-sync: failed to snapshot $POLICY_FILE; skipping"
+                        last_up=0
+                        write_metrics 0
+                        return
+                      fi
                       sha="$( (sha256sum "$TMP_DIR/policy.hujson" 2>/dev/null || shasum -a 256 "$TMP_DIR/policy.hujson") | cut -c1-12 )"
                       want="$(cat "$TMP_DIR/policy.hujson")"
                       # headscale policy get prints p.Data via fmt.Println (one extra \n);
@@ -140,24 +200,35 @@ spec:
                       if live="$(headscale policy get 2>"$TMP_DIR/err")"; then
                         if [ "$live" = "$want" ]; then
                           echo "policy-sync: in sync ($sha)"
+                          last_up=1
+                          last_success="$(date +%s)"
+                          write_metrics 0
                           return
                         fi
                       elif ! grep -q "acl policy not found" "$TMP_DIR/err" 2>/dev/null; then
                         reason="$(tr '\n' ' ' <"$TMP_DIR/err" 2>/dev/null)"
                         echo "policy-sync: headscale not ready ($reason); live policy unchanged"
+                        last_up=0
+                        write_metrics 0
                         return
                       fi
                       if ! headscale policy check -f "$TMP_DIR/policy.hujson" >/dev/null 2>"$TMP_DIR/err"; then
                         reason="$(tr '\n' ' ' <"$TMP_DIR/err" 2>/dev/null)"
                         echo "policy-sync: check FAILED ($sha), live policy unchanged: $reason"
+                        last_up=0
+                        write_metrics 0
                         return
                       fi
                       if headscale policy set -f "$TMP_DIR/policy.hujson" >/dev/null 2>"$TMP_DIR/err"; then
                         echo "policy-sync: applied $sha"
+                        last_up=1
+                        last_success="$(date +%s)"
                       else
                         reason="$(tr '\n' ' ' <"$TMP_DIR/err" 2>/dev/null)"
                         echo "policy-sync: set FAILED ($sha), live policy unchanged: $reason"
+                        last_up=0
                       fi
+                      write_metrics 0
                     }
 
                     loops=0
@@ -176,6 +247,9 @@ spec:
                   - name: policy
                     mountPath: /etc/headscale-policy
                     readOnly: true
+                  - name: pause
+                    mountPath: /etc/headscale-policy-pause
+                    readOnly: true
                   - name: socket
                     mountPath: /var/run/headscale
                   - name: cli-tmp
@@ -189,7 +263,7 @@ spec:
                 securityContext:
                   runAsNonRoot: true
                   runAsUser: 65532
-                  runAsGroup: 0
+                  runAsGroup: 65533
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
                   capabilities:
@@ -207,9 +281,20 @@ spec:
                 mountPath: /var/run/headscale
               policy:
                 enabled: true
-                type: configMap
-                name: headscale-policy
+                type: custom
                 mountPath: "-"
+                volumeSpec:
+                  configMap:
+                    name: headscale-policy
+                    optional: true
+              pause:
+                enabled: true
+                type: custom
+                mountPath: "-"
+                volumeSpec:
+                  configMap:
+                    name: headscale-policy-sync-pause
+                    optional: true
               cli-tmp:
                 enabled: true
                 type: emptyDir
