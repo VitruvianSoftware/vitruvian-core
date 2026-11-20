@@ -45,18 +45,13 @@ metadata:
 spec:
   targets:
     - ./apps/web/backstage/catalog-info.yaml
-    - ./apps/web/gods-eye-view/catalog-info.yaml
     - ./apps/web/mini-party/catalog-info.yaml
-    - ./apps/cli/ostation/catalog-info.yaml
     - ./apps/cli/vitruvian-devx/catalog-info.yaml
     - ./apps/cli/vitruvian-homelab/catalog-info.yaml
     - ./apps/embedded/vitruvian-deck/catalog-info.yaml
     - ./apps/mcp/vitruvian-slack-mcp/catalog-info.yaml
     - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml
-    - ./apps/desktop/vitruvian-atrium/catalog-info.yaml
     - ./apps/desktop/vitruvian-code/catalog-info.yaml
-    - ./apps/desktop/vitruvian-courier/catalog-info.yaml
-    - ./apps/desktop/vitruvian-speaker/catalog-info.yaml
     - ./apps/extensions/atrium/vitruvian-github/catalog-info.yaml
     - ./apps/extensions/atrium/vitruvian-tv/catalog-info.yaml
     - ./apps/antigravity/plugins/ext-marketplace/catalog-info.yaml
@@ -74,8 +69,6 @@ spec:
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
     - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/vitruvian-remote/catalog-info.yaml
-    - ./apps/mobile/vitruvian-watch/catalog-info.yaml
-    - ./apps/suites/vitruvian-relay/catalog-info.yaml
     - ./apps/suites/vitruvian-tabs/catalog-info.yaml
     - ./apps/suites/vitruvian-wand/catalog-info.yaml
     - ./packages/android-crash-privacy/catalog-info.yaml

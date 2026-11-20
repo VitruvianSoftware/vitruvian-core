@@ -16,22 +16,31 @@ A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's
 
 ## Example
 
-From `tools/merge-queue-stats/src/lib.rs`:
+From `tools/merge-queue-stats/src/lib.rs` (shortened to one option):
 
 ```rust
 pub use vitruvian_pycompat::argparse;
-pub use vitruvian_pycompat::json;
-pub use vitruvian_pycompat::pystr;
-
 use argparse::{Kind, Opt, Parser};
-use json::Value;
 
-pub fn parser(prog: &str) -> Parser {
-    Parser::new(prog, &[
-        Opt { strings: vec!["--since"], dest: "since", kind: Kind::Value, help: None, required: true },
-        Opt { strings: vec!["--repo"], dest: "repo", kind: Kind::Value, help: None, required: false },
-    ])
+fn parser(prog: String) -> Parser {
+    Parser {
+        prog,
+        description: Some("How is main's merge queue doing over a window of days?".into()),
+        opts: vec![
+            Opt::help(),
+            Opt {
+                strings: vec!["--since"],
+                dest: "since",
+                kind: Kind::Value,
+                help: Some("UTC date or datetime, e.g. 2026-10-05".into()),
+                required: true,
+            },
+        ],
+    }
 }
+
+// Later, in the same file:
+// let values = match p.parse(&argv[1.min(argv.len())..], &convert) { Ok(v) => v, ... };
 ```
 
 ## Depend on it
