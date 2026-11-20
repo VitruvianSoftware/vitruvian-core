@@ -37,12 +37,51 @@ public struct ComposerToolItem: Equatable, Sendable, Identifiable {
     }
 }
 
+/// Sizing rules for the composer's inline tool row: the text field keeps its room and the row (which scrolls
+/// sideways) gets only what is left.
+public enum ComposerToolRowMetrics {
+    /// The width the text itself keeps while the tool row is open, whenever the window allows.
+    public static let fieldMinimumWidth: CGFloat = 160
+    /// The narrowest the text ever gets (a very narrow pane): below this the row gives way, not the text.
+    public static let fieldHardMinimumWidth: CGFloat = 100
+    /// The least the open row shows (two buttons) so its tools stay reachable by scrolling.
+    public static let minimumRowWidth: CGFloat = 64
+    public static let toolButtonWidth: CGFloat = 28
+    public static let toolSpacing: CGFloat = 2
+
+    /// The width of `count` tool buttons side by side, before any padding.
+    public static func toolsWidth(count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return CGFloat(count) * toolButtonWidth + CGFloat(count - 1) * toolSpacing
+    }
+
+    /// The width the open tool row may take, in a container `container` wide beside a `plus`-wide button with
+    /// `gap`s around the row.
+    ///
+    /// `fieldMinimum` is the whole field's width when its text is at `fieldHardMinimumWidth`. The row takes all
+    /// of `natural` when it fits; otherwise what is left once the text has `fieldMinimumWidth`; and in a very
+    /// narrow container it keeps `minimumRowWidth` by squeezing the text down to its hard minimum, never further.
+    /// Never negative.
+    public static func rowWidth(natural: CGFloat, container: CGFloat, plus: CGFloat, fieldMinimum: CGFloat,
+                                gap: CGFloat) -> CGFloat {
+        let leftAfterHardMinimum = container - plus - 2 * gap - fieldMinimum
+        let leftAfterComfortableMinimum = leftAfterHardMinimum - (fieldMinimumWidth - fieldHardMinimumWidth)
+        let floor = min(natural, minimumRowWidth)
+        return max(0, min(natural, max(leftAfterComfortableMinimum, min(floor, leftAfterHardMinimum))))
+    }
+}
+
 /// Motion rules for opening and closing the composer's inline tool row.
 public enum ComposerToolRowMotion {
     /// Duration of the slide/rotation or Reduce Motion cross-fade (180 ms, within 160–200 ms).
     public static let duration: TimeInterval = 0.18
 
     public static func usesSlideAndRotation(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
+
+    /// The text field glides aside only with motion; under Reduce Motion it snaps and the row cross-fades.
+    public static func fieldGlides(reduceMotion: Bool) -> Bool {
         !reduceMotion
     }
 
@@ -70,12 +109,14 @@ public enum TabKeyAction: Equatable, Sendable {
 }
 
 extension ChatFeatures {
+    /// Attach and Photo show unless the network explicitly says it cannot take them: no feature data
+    /// (nil) means shown, as it always was for the inline buttons.
     public var supportsFileSendForComposer: Bool {
-        source == .none ? (fileFeatures?.supported ?? true) : (fileFeatures?.supported == true)
+        fileFeatures?.supported != false
     }
 
     public var supportsImageSendForComposer: Bool {
-        source == .none ? (imageFeatures?.supported ?? true) : (imageFeatures?.supported == true)
+        imageFeatures?.supported != false
     }
 
     public var supportsGIFSendForComposer: Bool {
@@ -83,7 +124,7 @@ extension ChatFeatures {
     }
 
     public var supportsVoiceSendForComposer: Bool {
-        source == .none ? (voiceFeatures?.supported ?? true) : supportsVoiceSend
+        voiceFeatures?.supported != false
     }
 
     public var supportsPollCreateForComposer: Bool {

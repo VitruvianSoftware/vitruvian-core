@@ -86,7 +86,14 @@ final class ComposerToolsTests: XCTestCase {
 
     func testUnsupportedNetworkToolsAreHiddenNotGreyed() {
         // Text-only network: hides attachFile, photo, gif, voiceNote, and poll; keeps sendLater and ai.
-        let textOnly = ChatFeatures(reply: true, source: .stored)
+        let unsupported = FileKindFeatures(supported: false, mimeTypes: [])
+        let textOnly = ChatFeatures(
+            reply: true,
+            source: .stored,
+            imageFeatures: unsupported,
+            voiceFeatures: unsupported,
+            fileFeatures: unsupported
+        )
         let (composer, _) = makeComposer(features: textOnly)
         XCTAssertEqual(composer.toolRowItems().map(\.kind), [.sendLater, .ai])
 
@@ -94,6 +101,7 @@ final class ComposerToolsTests: XCTestCase {
         let fileAndVoice = ChatFeatures(
             reply: true,
             source: .stored,
+            imageFeatures: unsupported,
             voiceFeatures: FileKindFeatures(supported: true, mimeTypes: ["audio/mp4"]),
             fileFeatures: FileKindFeatures(supported: true, mimeTypes: ["*/*"])
         )
@@ -109,6 +117,71 @@ final class ComposerToolsTests: XCTestCase {
             composer.toolRowItems().map(\.kind),
             [.attachFile, .photo, .gif, .sticker, .voiceNote, .sendLater, .ai]
         )
+    }
+
+    func testAttachPhotoAndVoiceShowWhenNetworkSaysNothingAndHideOnlyWhenExplicitlyUnsupported() {
+        // nil features (a stored chat with no media data) = shown, as the old inline buttons were.
+        let silent = ChatFeatures(reply: true, source: .stored)
+        XCTAssertNil(silent.fileFeatures)
+        XCTAssertNil(silent.imageFeatures)
+        XCTAssertNil(silent.voiceFeatures)
+        let (composer, _) = makeComposer(features: silent)
+        let kinds = composer.toolRowItems().map(\.kind)
+        XCTAssertTrue(kinds.contains(.attachFile))
+        XCTAssertTrue(kinds.contains(.photo))
+        XCTAssertTrue(kinds.contains(.voiceNote))
+
+        // An explicit "unsupported" hides each one on its own.
+        let unsupported = FileKindFeatures(supported: false, mimeTypes: [])
+        composer.features = ChatFeatures(reply: true, source: .stored, fileFeatures: unsupported)
+        var hidden = composer.toolRowItems().map(\.kind)
+        XCTAssertFalse(hidden.contains(.attachFile))
+        XCTAssertTrue(hidden.contains(.photo))
+        composer.features = ChatFeatures(reply: true, source: .stored, imageFeatures: unsupported)
+        hidden = composer.toolRowItems().map(\.kind)
+        XCTAssertTrue(hidden.contains(.attachFile))
+        XCTAssertFalse(hidden.contains(.photo))
+        composer.features = ChatFeatures(reply: true, source: .stored, voiceFeatures: unsupported)
+        hidden = composer.toolRowItems().map(\.kind)
+        XCTAssertFalse(hidden.contains(.voiceNote))
+    }
+
+    func testToolRowKeepsTheFieldItsMinimumWidth() {
+        let natural = ComposerToolRowMetrics.toolsWidth(count: 9) + 12
+        XCTAssertEqual(ComposerToolRowMetrics.toolsWidth(count: 0), 0)
+        XCTAssertEqual(ComposerToolRowMetrics.toolsWidth(count: 2), 58)
+
+        // The field's non-text parts (badge, buttons, Send) take 101 pt beside its text.
+        let chrome: CGFloat = 101
+        let fieldMinimum = ComposerToolRowMetrics.fieldHardMinimumWidth + chrome
+
+        // Plenty of room: the whole row.
+        XCTAssertEqual(
+            ComposerToolRowMetrics.rowWidth(natural: natural, container: 900, plus: 40, fieldMinimum: fieldMinimum, gap: 8),
+            natural)
+
+        // 480 pt (the main window's narrowest): the text keeps its full 160 pt, the row scrolls in what is left.
+        let wide = ComposerToolRowMetrics.rowWidth(
+            natural: natural, container: 480, plus: 40, fieldMinimum: fieldMinimum, gap: 8)
+        XCTAssertLessThan(wide, natural)
+        XCTAssertGreaterThanOrEqual(480 - 40 - 16 - wide - chrome, ComposerToolRowMetrics.fieldMinimumWidth - 0.001)
+
+        // 340 pt (the thread pane): the text is squeezed to no less than its hard minimum, and the row still
+        // shows at least two tools.
+        let narrow = ComposerToolRowMetrics.rowWidth(
+            natural: natural, container: 340, plus: 40, fieldMinimum: fieldMinimum, gap: 8)
+        XCTAssertGreaterThanOrEqual(narrow, ComposerToolRowMetrics.minimumRowWidth)
+        XCTAssertGreaterThanOrEqual(340 - 40 - 16 - narrow - chrome, ComposerToolRowMetrics.fieldHardMinimumWidth - 0.001)
+
+        // Hopelessly narrow: the row collapses to nothing rather than going negative or squeezing the text.
+        XCTAssertEqual(
+            ComposerToolRowMetrics.rowWidth(natural: natural, container: 100, plus: 40, fieldMinimum: fieldMinimum, gap: 8),
+            0)
+    }
+
+    func testReduceMotionStopsTheFieldGliding() {
+        XCTAssertTrue(ComposerToolRowMotion.fieldGlides(reduceMotion: false))
+        XCTAssertFalse(ComposerToolRowMotion.fieldGlides(reduceMotion: true))
     }
 
     func testStickerAndLocationToolsFollowNetworkSupport() {

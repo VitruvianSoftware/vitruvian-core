@@ -118,7 +118,12 @@ struct ComposerView: View {
     @Environment(\.themeAccentColor) private var themeAccent
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isPlusHovering = false
-    @State private var isAIHovering = false
+    /// The tool row's buttons exist while it is open and while it slides closed.
+    @State private var isToolRowMounted = false
+    /// Set when the row is opened by keyboard, until the first tool has taken focus.
+    @State private var focusFirstTool = false
+    /// Counts up to give the text box the keyboard when the row closes.
+    @State private var textFocusRequest = 0
     /// "It's late — send this later?" is dismissed for the rest of the session, in every chat.
     @ObservedObject private var nudgeSession = SendLaterNudgeSession.shared
 
@@ -130,10 +135,25 @@ struct ComposerView: View {
         .easeOut(duration: ComposerToolRowMotion.duration)
     }
 
-    private var toolRowTransition: AnyTransition {
-        ComposerToolRowMotion.usesSlideAndRotation(reduceMotion: reduceMotionEnabled)
-            ? .move(edge: .leading).combined(with: .opacity)
-            : .opacity
+    /// What the row's layout (and so the text field) animates with: nothing under Reduce Motion, where the field
+    /// snaps and only the row's opacity fades.
+    private var toolRowLayoutAnimation: Animation? {
+        ComposerToolRowMotion.fieldGlides(reduceMotion: reduceMotionEnabled) ? toolRowAnimation : nil
+    }
+
+    /// Opens or closes the row. Keyboard opening moves focus to the first tool; closing hands it back to the text.
+    private func setToolRow(open: Bool, byKeyboard: Bool = false, refocusText: Bool = true) {
+        composer.isToolRowOpen = open
+        if open {
+            if byKeyboard { focusFirstTool = true }
+        } else {
+            focusFirstTool = false
+            if refocusText { textFocusRequest += 1 }
+        }
+    }
+
+    private var toolRowNaturalWidth: CGFloat {
+        ComposerToolRowMetrics.toolsWidth(count: toolRowItems.count) + 12
     }
 
     private var effectiveNetwork: String {
@@ -189,24 +209,18 @@ struct ComposerView: View {
     /// bottom, over the messages that scroll under them.
     private var floating: some View {
         CourierGlassGroup(spacing: 8) {
-            HStack(alignment: .bottom, spacing: 8) {
+            ComposerToolRowLayout(
+                reveal: composer.isToolRowOpen ? 1 : 0,
+                rowNatural: toolRowNaturalWidth,
+                gap: 8,
+                rowHeight: Self.floatingSingleLineHeight
+            ) {
                 ComposerIdleOnly(voiceRecorder: composer.voiceRecorder) {
-                    HStack(alignment: .bottom, spacing: 0) {
-                        plusToggleButton(floating: true)
-                            .courierSurface(.composerButton)
-                            .zIndex(1)
-                        HStack(spacing: 0) {
-                            if composer.isToolRowOpen {
-                                inlineToolRow(floating: true)
-                                    .padding(.horizontal, 6)
-                                    .frame(height: Self.floatingSingleLineHeight)
-                                    .courierSurface(.composerToolRow)
-                                    .padding(.leading, 8)
-                                    .transition(toolRowTransition)
-                            }
-                        }
-                        .clipped()
-                    }
+                    plusToggleButton(floating: true)
+                        .courierSurface(.composerButton)
+                        .layoutValue(key: ComposerRowRoleKey.self, value: .plus)
+                    toolRowSlot(floating: true)
+                        .layoutValue(key: ComposerRowRoleKey.self, value: .row)
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     extras
@@ -216,12 +230,42 @@ struct ComposerView: View {
                 .padding(.trailing, Self.floatingFieldPadding + 1)
                 .padding(.vertical, Self.floatingFieldPadding)
                 .courierSurface(.composerField(singleLineHeight: Self.floatingSingleLineHeight))
+                .layoutValue(key: ComposerRowRoleKey.self, value: .field)
             }
-            .animation(toolRowAnimation, value: composer.isToolRowOpen)
+            .animation(toolRowLayoutAnimation, value: composer.isToolRowOpen)
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 12)
+        .onChange(of: composer.isToolRowOpen, initial: true) { _, open in syncToolRowMount(open: open) }
+    }
+
+    /// Keeps the row's buttons in the view while it slides closed, then drops them (and their key views).
+    private func syncToolRowMount(open: Bool) {
+        if open {
+            isToolRowMounted = true
+        } else {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(ComposerToolRowMotion.duration + 0.05))
+                if !composer.isToolRowOpen { isToolRowMounted = false }
+            }
+        }
+    }
+
+    private func toolRowSlot(floating: Bool) -> some View {
+        let height = floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
+        return ComposerToolRowSlot(
+            isOpen: composer.isToolRowOpen,
+            isMounted: isToolRowMounted || composer.isToolRowOpen,
+            natural: toolRowNaturalWidth,
+            height: height,
+            fade: toolRowAnimation
+        ) {
+            inlineToolRow(floating: floating)
+                .padding(.horizontal, 6)
+                .frame(height: height)
+        }
+        .modifier(ToolRowSurface(isFloating: floating, isMounted: isToolRowMounted || composer.isToolRowOpen))
     }
 
     /// What sits above the text: notices, the voice note's state, the network a merged chat replies on, the edit or
@@ -284,34 +328,42 @@ struct ComposerView: View {
             preferences: preferences,
             voiceRecorder: composer.voiceRecorder
         ) {
-            HStack(alignment: .bottom, spacing: 6) {
-                if !floating {
-                    HStack(alignment: .bottom, spacing: 0) {
-                        plusToggleButton(floating: false)
-                            .zIndex(1)
-                        HStack(spacing: 0) {
-                            if composer.isToolRowOpen {
-                                inlineToolRow(floating: false)
-                                    .padding(.leading, 4)
-                                    .transition(toolRowTransition)
-                            }
-                        }
-                        .clipped()
-                    }
+            if floating {
+                fieldRow(floating: true)
+            } else {
+                ComposerToolRowLayout(
+                    reveal: composer.isToolRowOpen ? 1 : 0,
+                    rowNatural: toolRowNaturalWidth,
+                    gap: 6,
+                    rowHeight: ComposerTextView.minimumHeight
+                ) {
+                    plusToggleButton(floating: false)
+                        .layoutValue(key: ComposerRowRoleKey.self, value: .plus)
+                    toolRowSlot(floating: false)
+                        .layoutValue(key: ComposerRowRoleKey.self, value: .row)
+                    fieldRow(floating: false)
+                        .layoutValue(key: ComposerRowRoleKey.self, value: .field)
                 }
-                textView(floating: floating)
-
-                if showsIncognitoMark { IncognitoMark() }
-
-                primaryActionButton
-
-                if !isEditingMessage {
-                    secondaryActionButton
-                }
-
-                sendButton(floating: floating)
+                .animation(toolRowLayoutAnimation, value: composer.isToolRowOpen)
+                .onChange(of: composer.isToolRowOpen, initial: true) { _, open in syncToolRowMount(open: open) }
             }
-            .animation(toolRowAnimation, value: composer.isToolRowOpen)
+        }
+    }
+
+    /// The text, its badge and the buttons that sit with it, ending in Send, which never leaves the row.
+    private func fieldRow(floating: Bool) -> some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            textView(floating: floating)
+
+            if showsIncognitoMark { IncognitoMark() }
+
+            primaryActionButton
+
+            if !isEditingMessage {
+                secondaryActionButton
+            }
+
+            sendButton(floating: floating)
         }
     }
 
@@ -345,7 +397,7 @@ struct ComposerView: View {
                 ui: ui,
                 height: $textHeight,
                 placeholder: placeholder,
-                focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+                focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)|\(textFocusRequest)",
                 isSpellcheckEnabled: preferences.enableSpellcheck,
                 onEscape: { escapeFirst() || composer.escape() || escapeLast() },
                 onUpArrow: upArrow,
@@ -353,6 +405,7 @@ struct ComposerView: View {
                     composer.attach(urls)
                     return true
                 })
+                .frame(minWidth: ComposerToolRowMetrics.fieldHardMinimumWidth)
                 .frame(height: textHeight)
         }
         if floating {
@@ -533,12 +586,13 @@ struct ComposerView: View {
     }
 
     /// Toggles the inline tool row beside the text field; rotates 45° into ✕ (or cross-fades under Reduce Motion).
+    /// An AppKit key view behind it puts it in the Tab loop; Space or Return there opens the row and moves focus
+    /// to its first tool.
     private func plusToggleButton(floating: Bool) -> some View {
         let usesMotion = ComposerToolRowMotion.usesSlideAndRotation(reduceMotion: reduceMotionEnabled)
+        let side = floating ? Self.floatingSingleLineHeight : 28
         return Button {
-            withAnimation(toolRowAnimation) {
-                composer.isToolRowOpen.toggle()
-            }
+            setToolRow(open: !composer.isToolRowOpen, refocusText: false)
         } label: {
             Group {
                 if usesMotion {
@@ -552,17 +606,16 @@ struct ComposerView: View {
                             )
                         )
                 } else {
-                    Image(systemName: composer.isToolRowOpen ? "xmark" : "plus")
-                        .id(composer.isToolRowOpen)
-                        .transition(.opacity)
+                    ZStack {
+                        Image(systemName: "plus").opacity(composer.isToolRowOpen ? 0 : 1)
+                        Image(systemName: "xmark").opacity(composer.isToolRowOpen ? 1 : 0)
+                    }
+                    .animation(toolRowAnimation, value: composer.isToolRowOpen)
                 }
             }
             .font(floating ? .title3.weight(.medium) : .system(size: 15))
             .foregroundStyle(floating ? .primary : .secondary)
-            .frame(
-                width: floating ? Self.floatingSingleLineHeight : 28,
-                height: floating ? Self.floatingSingleLineHeight : 28
-            )
+            .frame(width: side, height: side)
             .background {
                 if !floating {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -571,7 +624,7 @@ struct ComposerView: View {
             }
             .contentShape(floating ? AnyShape(Circle()) : AnyShape(Rectangle()))
             .frame(
-                width: floating ? Self.floatingSingleLineHeight : 28,
+                width: side,
                 height: floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
             )
             .onHover { isPlusHovering = $0 }
@@ -580,6 +633,18 @@ struct ComposerView: View {
         .help(composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"))
         .accessibilityLabel(composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"))
         .accessibilityIdentifier("composer.plus")
+        .background(
+            ComposerKeyProxy(
+                accessibilityID: "composer.plus",
+                isCircle: floating,
+                onActivate: { setToolRow(open: !composer.isToolRowOpen, byKeyboard: true, refocusText: false) },
+                onEscape: { if composer.isToolRowOpen { setToolRow(open: false) } }
+            )
+            .frame(
+                width: side,
+                height: floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
+            )
+        )
         .background(
             Color.clear
                 .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
@@ -595,54 +660,69 @@ struct ComposerView: View {
         )
     }
 
-    /// The single inline home for composer tools: Attach file, Photo, GIF, Voice note, Send Later, Poll, AI.
+    /// The single inline home for composer tools: Attach file, Photo, GIF, Sticker, Voice note, Send Later, Poll,
+    /// Location, AI.
     private func inlineToolRow(floating: Bool) -> some View {
         let height = floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
-        return HStack(alignment: .center, spacing: 2) {
-            ForEach(toolRowItems) { item in
-                toolRowButton(for: item, height: height)
+        let items = toolRowItems
+        return HStack(alignment: .center, spacing: ComposerToolRowMetrics.toolSpacing) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                toolRowButton(for: item, height: height, isFirst: index == 0)
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func closeToolRowFromTool(refocusText: Bool = true) {
+        setToolRow(open: false, refocusText: refocusText)
+    }
+
+    /// One icon in the tool row, as a real key view: reachable by Tab, Space or Return presses it, Escape closes.
+    private func toolKeyButton(
+        _ item: ComposerToolItem,
+        symbolName: String,
+        tooltip: String,
+        accessibilityTitle: String,
+        height: CGFloat,
+        isFirst: Bool,
+        refocusText: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        ComposerToolKeyButton(
+            symbolName: symbolName,
+            tooltip: tooltip,
+            accessibilityTitle: accessibilityTitle,
+            accessibilityID: item.kind.accessibilityIdentifier,
+            isEnabled: item.isEnabled,
+            disabledHint: item.disabledReason,
+            height: height,
+            wantsFocus: isFirst && focusFirstTool,
+            onFocused: { focusFirstTool = false },
+            onEscape: { closeToolRowFromTool() }
+        ) {
+            closeToolRowFromTool(refocusText: refocusText)
+            action()
+        }
     }
 
     @ViewBuilder
-    private func toolRowButton(for item: ComposerToolItem, height: CGFloat) -> some View {
+    private func toolRowButton(for item: ComposerToolItem, height: CGFloat, isFirst: Bool) -> some View {
         switch item.kind {
         case .attachFile:
-            ComposerToolbarIconButton(
-                symbolName: "paperclip",
-                tooltip: String(localized: "Attach File (⌘O)"),
-                accessibilityTitle: String(localized: "Attach File"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                height: height
-            ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
-                AttachmentPicker.run(into: composer)
-            }
+            toolKeyButton(
+                item, symbolName: "paperclip", tooltip: String(localized: "Attach File (⌘O)"),
+                accessibilityTitle: String(localized: "Attach File"), height: height, isFirst: isFirst
+            ) { AttachmentPicker.run(into: composer) }
         case .photo:
-            ComposerToolbarIconButton(
-                symbolName: "photo",
-                tooltip: String(localized: "Photo"),
-                accessibilityTitle: String(localized: "Photo"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                height: height
-            ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
-                AttachmentPicker.runPhotos(into: composer)
-            }
+            toolKeyButton(
+                item, symbolName: "photo", tooltip: String(localized: "Photo"),
+                accessibilityTitle: String(localized: "Photo"), height: height, isFirst: isFirst
+            ) { AttachmentPicker.runPhotos(into: composer) }
         case .gif:
-            ComposerToolbarIconButton(
-                symbolName: "play.rectangle",
-                tooltip: String(localized: "Send GIF (⌘⇧G)"),
-                accessibilityTitle: String(localized: "Send GIF"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                height: height
+            toolKeyButton(
+                item, symbolName: "play.rectangle", tooltip: String(localized: "Send GIF (⌘⇧G)"),
+                accessibilityTitle: String(localized: "Send GIF"), height: height, isFirst: isFirst,
+                refocusText: false
             ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 if let dispatcher = composer.hotkeyDispatcher {
                     _ = dispatcher.perform("Message: Send GIF")
                 } else {
@@ -650,15 +730,11 @@ struct ComposerView: View {
                 }
             }
         case .sticker:
-            ComposerToolbarIconButton(
-                symbolName: "face.dashed",
-                tooltip: String(localized: "Send Sticker (⌘⌥⇧S)"),
-                accessibilityTitle: String(localized: "Send Sticker"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                height: height
+            toolKeyButton(
+                item, symbolName: "face.dashed", tooltip: String(localized: "Send Sticker (⌘⌥⇧S)"),
+                accessibilityTitle: String(localized: "Send Sticker"), height: height, isFirst: isFirst,
+                refocusText: false
             ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 if let dispatcher = composer.hotkeyDispatcher {
                     _ = dispatcher.perform("Message: Send Sticker")
                 } else {
@@ -666,29 +742,19 @@ struct ComposerView: View {
                 }
             }
         case .voiceNote:
-            ComposerToolbarIconButton(
-                symbolName: "mic",
-                tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
-                accessibilityTitle: String(localized: "Record voice note"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                height: height
+            toolKeyButton(
+                item, symbolName: "mic", tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
+                accessibilityTitle: String(localized: "Record voice note"), height: height, isFirst: isFirst
             ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 composer.preferences = preferences
                 Task { await composer.startVoiceRecording() }
             }
         case .sendLater:
-            ComposerToolbarIconButton(
-                symbolName: "clock.arrow.circlepath",
+            toolKeyButton(
+                item, symbolName: "clock.arrow.circlepath",
                 tooltip: item.disabledReason ?? String(localized: "Send Later (⌘⇧L)"),
-                accessibilityTitle: String(localized: "Send Later"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                disabledHint: item.disabledReason,
-                height: height
+                accessibilityTitle: String(localized: "Send Later"), height: height, isFirst: isFirst
             ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 if let sendLater = menus.sendLater {
                     sendLater()
                 } else {
@@ -696,92 +762,81 @@ struct ComposerView: View {
                 }
             }
         case .poll:
-            ComposerToolbarIconButton(
-                symbolName: "chart.bar",
-                tooltip: String(localized: "Create Poll"),
-                accessibilityTitle: String(localized: "Create Poll"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled && menus.createPoll != nil,
-                height: height
-            ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
-                menus.createPoll?()
-            }
+            toolKeyButton(
+                item, symbolName: "chart.bar", tooltip: String(localized: "Create Poll"),
+                accessibilityTitle: String(localized: "Create Poll"), height: height, isFirst: isFirst
+            ) { menus.createPoll?() }
         case .location:
-            ComposerToolbarIconButton(
-                symbolName: "location",
-                tooltip: String(localized: "Share Location"),
-                accessibilityTitle: String(localized: "Share Location"),
-                accessibilityID: item.kind.accessibilityIdentifier,
-                isEnabled: item.isEnabled,
-                height: height
+            toolKeyButton(
+                item, symbolName: "location", tooltip: String(localized: "Share Location"),
+                accessibilityTitle: String(localized: "Share Location"), height: height, isFirst: isFirst
             ) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
                 if composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     composer.text = "/location "
                 }
             }
         case .ai:
-            aiMenuButton(isEnabled: item.isEnabled, height: height)
+            ComposerToolKeyButton(
+                symbolName: "sparkles",
+                tooltip: String(localized: "AI & Dictation"),
+                accessibilityTitle: String(localized: "AI & Dictation"),
+                accessibilityID: item.kind.accessibilityIdentifier,
+                isEnabled: item.isEnabled,
+                height: height,
+                wantsFocus: isFirst && focusFirstTool,
+                onFocused: { focusFirstTool = false },
+                menuProvider: { aiNSMenu() },
+                onEscape: { closeToolRowFromTool() },
+                action: {}
+            )
         }
     }
 
-    private func aiMenuButton(isEnabled: Bool, height: CGFloat) -> some View {
+    /// Talk to Type / Draft a reply / Rewrite, as a menu the AI tool pops up (by mouse or keyboard).
+    private func aiNSMenu() -> NSMenu {
         let locked = composer.isLocked || composer.hotkeyDispatcher?.lifecycle.isLocked == true
-        return Menu {
-            Button(String(localized: "Talk to Type")) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
-                composer.triggerTalkToType()
-            }
-            .registryShortcut("Message: Talk to Type", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
-            .disabled(composer.roomID == nil || locked)
-            Button(String(localized: "Draft a reply")) {
-                withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
-                if composer.aiProvider.isAvailable {
-                    composer.draftWithAI(tone: nil)
-                } else {
-                    composer.onOpenAISettings()
-                }
-            }
-            .disabled(composer.roomID == nil || locked || !composer.aiProvider.isAvailable)
-            .help(composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
-            Menu(String(localized: "Rewrite…")) {
-                ForEach(AIRewriteTone.allCases, id: \.self) { tone in
-                    Button(tone.label) {
-                        withAnimation(toolRowAnimation) { composer.isToolRowOpen = false }
-                        if composer.aiProvider.isAvailable {
-                            composer.draftWithAI(tone: tone)
-                        } else {
-                            composer.onOpenAISettings()
-                        }
-                    }
-                }
-            }
-            .disabled(composer.roomID == nil || locked || !composer.aiProvider.isAvailable)
-            .help(composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
-        } label: {
-            Image(systemName: "sparkles")
-                .symbolVariant(.none)
-                .font(.system(size: 15))
-                .foregroundStyle(.secondary)
-                .opacity(isEnabled ? 1 : 0.42)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isAIHovering && isEnabled ? Color.primary.opacity(0.08) : .clear)
-                )
-                .contentShape(Rectangle())
-                .frame(width: 28, height: height)
-                .onHover { isAIHovering = $0 }
+        let aiAvailable = composer.aiProvider.isAvailable
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        let talk = ComposerClosureMenuItem(title: String(localized: "Talk to Type")) {
+            closeToolRowFromTool()
+            composer.triggerTalkToType()
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(!isEnabled)
-        .help(String(localized: "AI & Dictation"))
-        .accessibilityLabel(String(localized: "AI & Dictation"))
-        .accessibilityIdentifier(ComposerToolKind.ai.accessibilityIdentifier)
+        talk.isEnabled = composer.roomID != nil && !locked
+        menu.addItem(talk)
+
+        let draft = ComposerClosureMenuItem(title: String(localized: "Draft a reply")) {
+            closeToolRowFromTool()
+            if composer.aiProvider.isAvailable {
+                composer.draftWithAI(tone: nil)
+            } else {
+                composer.onOpenAISettings()
+            }
+        }
+        draft.isEnabled = composer.roomID != nil && !locked && aiAvailable
+        if !aiAvailable { draft.toolTip = String(localized: "Set up AI in Settings") }
+        menu.addItem(draft)
+
+        let rewrite = NSMenuItem(title: String(localized: "Rewrite…"), action: nil, keyEquivalent: "")
+        let tones = NSMenu()
+        tones.autoenablesItems = false
+        for tone in AIRewriteTone.allCases {
+            tones.addItem(
+                ComposerClosureMenuItem(title: tone.label) {
+                    closeToolRowFromTool()
+                    if composer.aiProvider.isAvailable {
+                        composer.draftWithAI(tone: tone)
+                    } else {
+                        composer.onOpenAISettings()
+                    }
+                })
+        }
+        rewrite.submenu = tones
+        rewrite.isEnabled = composer.roomID != nil && !locked && aiAvailable
+        if !aiAvailable { rewrite.toolTip = String(localized: "Set up AI in Settings") }
+        menu.addItem(rewrite)
+        return menu
     }
 
     /// Send Later…, or without a plan that has it, greyed with "Available with a plan".
@@ -805,7 +860,6 @@ struct ComposerView: View {
         let appearance = composer.sendButtonAppearance
         let fillColor: Color = appearance == .activeAccent ? themeAccent : Color(nsColor: .systemGray)
         Button {
-            guard composer.canSend else { return }
             composer.submit()
         } label: {
             ZStack {
@@ -820,6 +874,7 @@ struct ComposerView: View {
             .contentShape(Circle())
         }
         .courierSendButtonStyle()
+        .disabled(!composer.canSend)
         .contextMenu {
             if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
             Button(String(localized: "Send and Archive")) { composer.submit(archive: true) }

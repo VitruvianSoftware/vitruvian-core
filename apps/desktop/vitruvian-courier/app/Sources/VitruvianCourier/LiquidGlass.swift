@@ -316,7 +316,15 @@ private struct CourierEmptyChatToolbar: ViewModifier {
 
 private struct CourierSendButtonStyle: ViewModifier {
     func body(content: Content) -> some View {
-        content.buttonStyle(.plain)
+        content.buttonStyle(CourierSendCircleButtonStyle())
+    }
+}
+
+/// Draws the label as is, so a disabled Send keeps its visible grey circle (the system's plain style would fade it
+/// away) while VoiceOver still reports it unavailable.
+private struct CourierSendCircleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 

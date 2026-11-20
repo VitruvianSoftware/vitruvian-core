@@ -42,12 +42,32 @@ final class ViewSnapshotTests: XCTestCase {
             [element] + (element.accessibilityChildren?() ?? []).flatMap { walk($0 as AnyObject) }
         }
         var ids: Set<String> = []
-        for node in walk(root) {
+        // AppKit-backed controls (the tool row's buttons) are views, not accessibility children of the host.
+        for node in walk(root) + root.descendants(where: { _ in true }) {
             if let id = node.accessibilityIdentifier?(), !id.isEmpty {
                 ids.insert(id)
             }
         }
         return ids
+    }
+
+    /// The accessibility element with this identifier (SwiftUI controls are not views of their own).
+    private func accessibilityNode(_ identifier: String, in root: NSView) -> AnyObject? {
+        func walk(_ element: AnyObject) -> AnyObject? {
+            if element.accessibilityIdentifier?() == identifier { return element }
+            for child in element.accessibilityChildren?() ?? [] {
+                if let found = walk(child as AnyObject) { return found }
+            }
+            return nil
+        }
+        return walk(root)
+    }
+
+    /// An accessibility element's frame in `host`'s coordinates.
+    private func hostFrame(of node: AnyObject, in host: NSView) -> CGRect {
+        let screen = node.accessibilityFrame?() ?? .zero
+        guard let window = host.window else { return screen }
+        return host.convert(window.convertFromScreen(screen), from: nil)
     }
 
     private func timeline(_ items: [TimelineItem], ui: MessageUI? = nil, actions: VitruvianCourier.MessageActions? = nil,
@@ -2725,6 +2745,7 @@ final class ViewSnapshotTests: XCTestCase {
     // MARK: - Milestone 4.5c Task 9 & Batch 6 Package A: Inline tool row, network badge, visible send, Tab focus
 
     func testComposerToolbarAndPlusMenuStickerGIFAndEmojiEntryPoints() throws {
+        _ = NSApplication.shared
         let attribute = "AXEnhancedUserInterface"
         let getter = NSSelectorFromString("accessibilityAttributeValue:")
         let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
@@ -2791,6 +2812,7 @@ final class ViewSnapshotTests: XCTestCase {
             reply: true,
             formatting: [.bold, .italic, .link],
             source: .stored,
+            imageFeatures: FileKindFeatures(supported: false, mimeTypes: []),
             voiceFeatures: FileKindFeatures(supported: true, mimeTypes: ["audio/mp4"]),
             fileFeatures: FileKindFeatures(supported: true, mimeTypes: ["*/*"])
         )
@@ -2817,6 +2839,7 @@ final class ViewSnapshotTests: XCTestCase {
     }
 
     func testComposerNetworkBadgeVisibleSendAndTabFocus() throws {
+        _ = NSApplication.shared
         let attribute = "AXEnhancedUserInterface"
         let getter = NSSelectorFromString("accessibilityAttributeValue:")
         let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
@@ -2995,6 +3018,224 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(textView.string, "\t", "Option-Tab must insert a literal tab")
         XCTAssertEqual(focusModel.text, "\t")
         window.contentView = nil
+    }
+
+    /// A narrow composer (the thread pane) with every tool open must still leave the text box usable, and an
+    /// unknown network id must still get a badge in the field (A1, A3).
+    func testComposerNarrowExpandedToolRowKeepsFieldUsableAndUnknownNetworkBadge() throws {
+        _ = NSApplication.shared
+        let attribute = "AXEnhancedUserInterface"
+        let getter = NSSelectorFromString("accessibilityAttributeValue:")
+        let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
+        let previousAX = NSApp.perform(getter, with: attribute)?.takeUnretainedValue() as? NSNumber ?? false
+        NSApp.perform(setter, with: true, with: attribute)
+        defer { NSApp.perform(setter, with: previousAX, with: attribute) }
+
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "")
+        model.entitlement = AlwaysEntitled()
+        model.preferences = preferences
+        model.network = "some-future-network"
+        model.features.locationSupported = true
+        model.isToolRowOpen = true
+        check(try Snapshot.render("composer-toolbar-expanded-narrow", width: 340) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // The text box keeps real room beside the open tool row at the narrowest widths a composer gets
+        // (the thread pane, and the main window's 480pt minimum), and still fits inside its own width.
+        for width in [340.0, 480.0] {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: width, height: 120),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            let host = NSHostingView(
+                rootView: ComposerView(
+                    composer: model,
+                    preferences: preferences,
+                    textHeight: .constant(ComposerTextView.minimumHeight),
+                    menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+                )
+                .frame(width: width)
+            )
+            host.frame = NSRect(x: 0, y: 0, width: width, height: 60)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            for _ in 0 ..< 25 {
+                RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.004))
+                host.layoutSubtreeIfNeeded()
+            }
+            let ids = collectAccessibilityIdentifiers(in: host)
+            XCTAssertTrue(ids.contains("composer.field.networkBadge"), "an unknown network id still gets a field badge")
+            let textView = try XCTUnwrap(host.first(PlainTextView.self))
+            let frame = textView.convert(textView.bounds, to: host)
+            let minimum = width >= 480
+                ? ComposerToolRowMetrics.fieldMinimumWidth : ComposerToolRowMetrics.fieldHardMinimumWidth
+            XCTAssertGreaterThanOrEqual(
+                frame.width, minimum - 0.5, "text box too narrow with tools open at \(width)pt: \(frame)")
+            XCTAssertLessThanOrEqual(frame.maxX, width, "text box runs past the composer at \(width)pt: \(frame)")
+            // ✕ and Send stay on screen, and the row (clipped, scrolling) never pushes past the composer.
+            let plus = try XCTUnwrap(host.firstDescendant { $0 is ComposerKeyProxyButton })
+            let send = try XCTUnwrap(accessibilityNode("composer.send", in: host))
+            let plusFrame = plus.convert(plus.bounds, to: host)
+            let sendFrame = hostFrame(of: send, in: host)
+            XCTAssertGreaterThanOrEqual(plusFrame.minX, 0, "✕ off screen at \(width)pt")
+            XCTAssertLessThanOrEqual(sendFrame.maxX, width + 0.5, "Send off screen at \(width)pt: \(sendFrame)")
+            let firstTool = try XCTUnwrap(
+                host.firstDescendant { $0.accessibilityIdentifier() == ComposerToolKind.attachFile.accessibilityIdentifier })
+            let toolFrame = firstTool.convert(firstTool.bounds, to: host)
+            XCTAssertLessThanOrEqual(toolFrame.minX, frame.minX, "the row sits before the text box at \(width)pt")
+            window.contentView = nil
+        }
+    }
+
+    /// Hosts the composer in a window with the tool row open and returns what the keyboard tests need.
+    private func hostOpenToolRow(
+        model: ComposerModel, preferences: ComposerPreferences, width: CGFloat = 640
+    ) -> (window: NSWindow, host: NSHostingView<some View>) {
+        _ = NSApplication.shared
+        let attribute = "AXEnhancedUserInterface"
+        let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
+        NSApp.perform(setter, with: true, with: attribute)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: 140),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        let host = NSHostingView(
+            rootView: ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            ).frame(width: width))
+        host.frame = NSRect(x: 0, y: 0, width: width, height: 60)
+        window.contentView = host
+        pump(host, times: 25)
+        return (window, host)
+    }
+
+    private func pump(_ host: NSView, times: Int = 15) {
+        host.layoutSubtreeIfNeeded()
+        for _ in 0 ..< times {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+            host.layoutSubtreeIfNeeded()
+        }
+    }
+
+    private func keyEvent(_ code: UInt16, characters: String, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+        NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: 0, context: nil,
+            characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!
+    }
+
+    func testToolRowIsReachableByKeyboardAndEscapeClosesItFromAnyTool() throws {
+        _ = NSApplication.shared
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "")
+        model.entitlement = AlwaysEntitled()
+        model.preferences = preferences
+        model.features.locationSupported = true
+        let (window, host) = hostOpenToolRow(model: model, preferences: preferences)
+        defer { window.contentView = nil }
+        let textView = try XCTUnwrap(host.first(PlainTextView.self))
+        let proxy = try XCTUnwrap(host.firstDescendant { $0 is ComposerKeyProxyButton } as? ComposerKeyProxyButton)
+
+        // The + is a key view (Tab reaches it with no system keyboard-navigation setting) and Space opens the row
+        // and moves focus to its first tool.
+        XCTAssertTrue(proxy.canBecomeKeyView)
+        XCTAssertTrue(window.makeFirstResponder(proxy))
+        proxy.keyDown(with: keyEvent(49, characters: " "))
+        pump(host)
+        XCTAssertTrue(model.isToolRowOpen)
+        let tools = host.descendants { $0 is ComposerToolNSButton }.compactMap { $0 as? ComposerToolNSButton }
+        XCTAssertGreaterThanOrEqual(tools.count, 7)
+        let first = try XCTUnwrap(tools.first { $0.accessibilityIdentifier() == ComposerToolKind.attachFile.accessibilityIdentifier })
+        XCTAssertTrue(window.firstResponder === first, "opening by keyboard focuses the first tool")
+
+        // Every tool is a key view, so Tab walks the row.
+        XCTAssertTrue(tools.allSatisfy(\.canBecomeKeyView))
+        var visited: Set<String> = []
+        XCTAssertTrue(window.makeFirstResponder(textView))
+        for _ in 0 ..< 40 {
+            window.selectNextKeyView(nil)
+            if let button = window.firstResponder as? ComposerToolNSButton {
+                visited.insert(button.accessibilityIdentifier())
+            }
+        }
+        for kind in [ComposerToolKind.attachFile, .photo, .gif, .sticker, .voiceNote, .sendLater, .poll, .location, .ai] {
+            XCTAssertTrue(visited.contains(kind.accessibilityIdentifier), "Tab never reached \(kind)")
+        }
+
+        // Escape from any tool (not only the text box) closes the row and returns focus to the text.
+        for button in tools {
+            model.isToolRowOpen = true
+            pump(host, times: 5)
+            XCTAssertTrue(window.makeFirstResponder(button))
+            button.keyDown(with: keyEvent(53, characters: "\u{1B}"))
+            pump(host)
+            XCTAssertFalse(model.isToolRowOpen, "Escape from \(button.accessibilityIdentifier()) left the row open")
+            XCTAssertTrue(
+                window.firstResponder === textView,
+                "Escape from \(button.accessibilityIdentifier()) did not return focus to the text")
+        }
+
+        // The + toggled again by keyboard closes the row too.
+        XCTAssertTrue(window.makeFirstResponder(proxy))
+        proxy.keyDown(with: keyEvent(36, characters: "\r"))
+        pump(host)
+        XCTAssertTrue(model.isToolRowOpen)
+        let closeProxy = try XCTUnwrap(host.firstDescendant { $0 is ComposerKeyProxyButton } as? ComposerKeyProxyButton)
+        closeProxy.keyDown(with: keyEvent(53, characters: "\u{1B}"))
+        pump(host)
+        XCTAssertFalse(model.isToolRowOpen)
+    }
+
+    func testTabAcceptsAnOpenEmojiSuggestionInsteadOfMovingFocus() throws {
+        _ = NSApplication.shared
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "")
+        model.preferences = preferences
+        let (window, host) = hostOpenToolRow(model: model, preferences: preferences)
+        defer { window.contentView = nil }
+        let textView = try XCTUnwrap(host.first(PlainTextView.self))
+        XCTAssertTrue(window.makeFirstResponder(textView))
+
+        textView.insertText("hello :smi", replacementRange: textView.selectedRange())
+        pump(host)
+        XCTAssertEqual(model.emojiQuery, "smi", "the emoji picker should be open")
+        XCTAssertFalse(model.emojiCandidates.isEmpty)
+
+        textView.doCommand(by: #selector(NSResponder.insertTab(_:)))
+        pump(host)
+        XCTAssertNil(model.emojiQuery, "Tab accepts the suggestion and closes the picker")
+        XCTAssertFalse(model.text.contains(":smi"), "the :smi shortcode was replaced: \(model.text)")
+        XCTAssertFalse(model.text.contains("\t"), "Tab must not insert whitespace: \(model.text)")
+        XCTAssertTrue(window.firstResponder === textView, "accepting a suggestion keeps focus in the text")
+    }
+
+    func testDisabledSendIsReportedUnavailableAndEnabledSendIsNot() throws {
+        _ = NSApplication.shared
+        let preferences = ComposerPreferences(defaults: defaults())
+        let empty = composer(text: "")
+        empty.preferences = preferences
+        let (emptyWindow, emptyHost) = hostOpenToolRow(model: empty, preferences: preferences)
+        defer { emptyWindow.contentView = nil }
+        let sendEmpty = try XCTUnwrap(accessibilityNode("composer.send", in: emptyHost))
+        XCTAssertEqual(
+            sendEmpty.isAccessibilityEnabled?(), false, "an empty draft's Send must be unavailable to VoiceOver")
+
+        let full = composer(text: "Hello")
+        full.preferences = preferences
+        let (fullWindow, fullHost) = hostOpenToolRow(model: full, preferences: preferences)
+        defer { fullWindow.contentView = nil }
+        let sendFull = try XCTUnwrap(accessibilityNode("composer.send", in: fullHost))
+        XCTAssertEqual(sendFull.isAccessibilityEnabled?(), true)
     }
 
     func testReactionPillAvatarsAndOverflowSnapshot() throws {
