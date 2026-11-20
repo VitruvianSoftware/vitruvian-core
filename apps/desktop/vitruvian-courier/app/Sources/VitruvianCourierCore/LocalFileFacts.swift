@@ -15,6 +15,9 @@ public enum LocalFileFacts {
     /// How long a "not there" answer is trusted.
     public nonisolated static let missingLifetime: TimeInterval = 0.5
 
+    /// How many paths are remembered; past it the oldest answers are dropped (they are looked up again if asked).
+    public nonisolated static let maxFacts = 4096
+
     private struct Fact {
         let exists: Bool
         let at: Date
@@ -55,11 +58,20 @@ public enum LocalFileFacts {
         state.lock.withLock { state.warmer = body }
     }
 
-    /// Looks `paths` up now, on the calling thread (not the main one), and runs the warmer for those that exist.
+    /// Looks `paths` up now, on the calling thread (not the main one), and runs the warmer for those that exist. A file
+    /// that was missing and now is there is announced (a row already on screen re-measures); first sightings are not,
+    /// since a warmed page is looked up before its rows are shown.
     public nonisolated static func warm(paths: [String]) {
         for path in paths where isLocalMediaStorePath(path) {
-            probe(path, announce: false)
+            probe(path, announceFirstSighting: false)
         }
+    }
+
+    /// How many answers are remembered, for tests.
+    public nonisolated static var countForTesting: Int { state.lock.withLock { state.facts.count } }
+
+    public nonisolated static func resetForTesting() {
+        state.lock.withLock { state.facts.removeAll() }
     }
 
     /// Local files the events refer to: media, thumbnails and link-preview pictures.
@@ -81,20 +93,23 @@ public enum LocalFileFacts {
     private nonisolated static func lookUpInBackground(_ path: String) {
         let started = state.lock.withLock { state.inFlight.insert(path).inserted }
         guard started else { return }
-        queue.async { probe(path, announce: true) }
+        queue.async { probe(path, announceFirstSighting: true) }
     }
 
-    private nonisolated static func probe(_ path: String, announce: Bool) {
+    private nonisolated static func probe(_ path: String, announceFirstSighting: Bool) {
         var isDirectory: ObjCBool = false
         let there = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && !isDirectory.boolValue
-        let (changed, warmer) = state.lock.withLock { () -> (Bool, (@Sendable (String) -> Void)?) in
+        let (announce, warmer) = state.lock.withLock { () -> (Bool, (@Sendable (String) -> Void)?) in
             let before = state.facts[path]?.exists
             state.facts[path] = Fact(exists: there, at: Date())
             state.inFlight.remove(path)
-            return ((before ?? false) != there, there ? state.warmer : nil)
+            trimIfNeeded()
+            // A flip is always news; a first sighting only when someone is waiting on it.
+            let news = before == nil ? (announceFirstSighting && there) : before != there
+            return (news, there ? state.warmer : nil)
         }
         if there { warmer?(path) }
-        guard announce, changed else { return }
+        guard announce else { return }
         DispatchQueue.main.async {
             NotificationCenter.default.post(
                 name: ImagePixelSizeReader.didLearnSizeNotification,
@@ -102,5 +117,12 @@ public enum LocalFileFacts {
                 userInfo: [ImagePixelSizeReader.pathUserInfoKey: path]
             )
         }
+    }
+
+    /// Called with the lock held: past `maxFacts`, the oldest quarter goes.
+    private nonisolated static func trimIfNeeded() {
+        guard state.facts.count > maxFacts else { return }
+        let oldest = state.facts.sorted { $0.value.at < $1.value.at }.prefix(maxFacts / 4)
+        for (path, _) in oldest { state.facts.removeValue(forKey: path) }
     }
 }

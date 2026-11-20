@@ -301,6 +301,14 @@ public actor ImagePixelSizeReader {
             for path in uncached {
                 _ = Self.sizeNow(ofFirstReadable: [path])
             }
+            // A link card's picture sizes the card (120–148 pt): known before the card is shown.
+            for event in events {
+                for preview in event.linkPreviews ?? [] {
+                    if let path = preview.imagePath, isLocalMediaStorePath(path) {
+                        _ = Self.sizeNow(ofFirstReadable: [path])
+                    }
+                }
+            }
         }.value
     }
 

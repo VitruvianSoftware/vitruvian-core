@@ -759,4 +759,63 @@ final class TimelineTableViewTests: XCTestCase {
         harness.pump(for: 1.5, until: { pdfHeight() > 200 })
         XCTAssertGreaterThan(pdfHeight(), 200, "once the lookup and the read finished off the main thread, the row grew to the card")
     }
+
+    // MARK: 10. Bounded caches and cancelled decodes
+
+    func testFileFactsAreBounded() {
+        LocalFileFacts.resetForTesting()
+        LocalFileFacts.warm(paths: (0 ..< LocalFileFacts.maxFacts + 600).map { "/nonexistent-courier-facts/\($0)" })
+        XCTAssertLessThanOrEqual(LocalFileFacts.countForTesting, LocalFileFacts.maxFacts)
+        XCTAssertGreaterThan(LocalFileFacts.countForTesting, LocalFileFacts.maxFacts / 2, "it trims the oldest, not everything")
+    }
+
+    func testParsedPDFsAreBoundedAndTheMostRecentStay() throws {
+        let dir = try makeTempDir()
+        InlinePDFDocumentCache.shared.resetForTests()
+        var paths: [String] = []
+        for index in 0 ..< InlinePDFDocumentCache.maxDocuments + 4 {
+            let url = dir.appendingPathComponent("d\(index).pdf")
+            try writePDF(to: url)
+            InlinePDFDocumentCache.shared.parse(path: url.path)
+            paths.append(url.path)
+        }
+        XCTAssertLessThanOrEqual(InlinePDFDocumentCache.shared.cachedCountForTesting, InlinePDFDocumentCache.maxDocuments)
+        XCTAssertTrue(InlinePDFDocumentCache.shared.hasDocument(atPath: paths.last!), "the newest is kept")
+        XCTAssertFalse(InlinePDFDocumentCache.shared.hasDocument(atPath: paths.first!), "the oldest was let go")
+    }
+
+    func testAColdLookupAndAnExplicitParseReadAPDFOnce() throws {
+        let dir = try makeTempDir()
+        let url = dir.appendingPathComponent("once.pdf")
+        try writePDF(to: url)
+        InlinePDFDocumentCache.shared.resetForTests()
+        InlinePDFDocumentCache.installWarmer()
+        _ = InlinePDFDocumentCache.shared.document(atPath: url.path) // starts the background lookup and read
+        InlinePDFDocumentCache.shared.parse(path: url.path) // waits for it if it is under way
+        let deadline = Date().addingTimeInterval(3)
+        while !InlinePDFDocumentCache.shared.hasDocument(atPath: url.path), Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertEqual(InlinePDFDocumentCache.shared.parseCount, 1)
+    }
+
+    func testCancellingTheCallerCancelsADetachedDecode() async {
+        let task = Task { () -> Bool? in
+            await runDetachedCancellable { () -> Bool? in
+                Thread.sleep(forTimeInterval: 0.3)
+                return Task.isCancelled
+            }
+        }
+        try? await Task.sleep(nanoseconds: 60_000_000)
+        task.cancel()
+        let sawCancellation = await task.value
+        XCTAssertEqual(sawCancellation, true, "the work saw the cancellation, so it can stop early")
+
+        let cancelledFirst = Task { () -> Bool? in
+            await runDetachedCancellable { () -> Bool? in true }
+        }
+        cancelledFirst.cancel()
+        let value = await cancelledFirst.value
+        XCTAssertTrue(value == nil || value == true, "a task cancelled before it starts may skip the work")
+    }
 }

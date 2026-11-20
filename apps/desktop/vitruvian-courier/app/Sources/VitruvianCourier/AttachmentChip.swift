@@ -535,6 +535,7 @@ public struct FileAttachmentChip: View {
     }
 
     @State private var factTick = 0
+    @Environment(\.timelineContentRevision) private var contentRevision
 
     /// Draws again when the file's presence is learned (`LocalFileFacts`).
     public var body: some View {
@@ -547,7 +548,8 @@ public struct FileAttachmentChip: View {
             .id(factTick)
     }
 
-    private var chipContent: some View {
+    @ViewBuilder private var chipContent: some View {
+        let _ = contentRevision
         HStack(spacing: 10) {
             categoryBadge
             VStack(alignment: .leading, spacing: 2) {
@@ -951,12 +953,15 @@ public struct EnhancedImageView: View {
             if failedPath == message.mediaPath { failedPath = nil }
             return
         }
-        if message.isGIF,
-           let nsImage = await Task.detached(priority: .utility, operation: { NSImage(contentsOfFile: path) }).value
-        {
-            loadedMedia = LoadedMedia(path: path, cgImage: nil, animatedImage: nsImage)
-            if failedPath == message.mediaPath { failedPath = nil }
-            return
+        if message.isGIF {
+            let decoded = await runDetachedCancellable { Task.isCancelled ? nil : NSImage(contentsOfFile: path) }
+            // Cancelled (the row went away or was reused for another message): nothing to set.
+            guard !Task.isCancelled else { return }
+            if let nsImage = decoded {
+                loadedMedia = LoadedMedia(path: path, cgImage: nil, animatedImage: nsImage)
+                if failedPath == message.mediaPath { failedPath = nil }
+                return
+            }
         }
         if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {
             loadedMedia = LoadedMedia(path: path, cgImage: thumbnail.image, animatedImage: nil)

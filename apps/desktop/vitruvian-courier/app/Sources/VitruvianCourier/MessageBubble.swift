@@ -1071,12 +1071,7 @@ struct MessageRowView: View {
                 .id(message.id)
                 caption
             case .file:
-                if InlinePDFView.canDisplay(message) {
-                    InlinePDFView(message: message)
-                        .id(message.id)
-                } else {
-                    FileAttachmentChip(message: message, preferences: actions.composerPreferences)
-                }
+                FileMessageContent(message: message, preferences: actions.composerPreferences)
                 caption
             case .location:
                 if let geoURI = message.geoURI,
@@ -1750,6 +1745,18 @@ extension EnvironmentValues {
 }
 
 /// Room the table timeline gives a row above its top edge, for an action bar that overhangs it (0 elsewhere).
+/// The table timeline's revision of what a row's cards read from memory (see `TimelineHostedRow.contentRevision`).
+private struct TimelineContentRevisionKey: EnvironmentKey {
+    static let defaultValue = 0
+}
+
+extension EnvironmentValues {
+    var timelineContentRevision: Int {
+        get { self[TimelineContentRevisionKey.self] }
+        set { self[TimelineContentRevisionKey.self] = newValue }
+    }
+}
+
 private struct TimelineTopExtensionKey: EnvironmentKey {
     static let defaultValue: CGFloat = 0
 }
@@ -2246,13 +2253,16 @@ public struct GIFAttachmentView: View {
                     learnedSize = read
                 }
             }
-            let decoded = await Task.detached(priority: .utility) { () -> NSImage? in
-                guard FileManager.default.fileExists(atPath: path) else { return nil }
+            let decoded = await runDetachedCancellable { () -> NSImage? in
+                guard !Task.isCancelled, FileManager.default.fileExists(atPath: path) else { return nil }
                 return NSImage(contentsOfFile: path)
-            }.value
+            }
+            // Cancelled (the view went away or its path changed): nothing to set.
+            guard !Task.isCancelled else { return }
             if let decoded {
                 loadedNSImage = decoded
             } else if let cg = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image {
+                guard !Task.isCancelled else { return }
                 asyncCGImage = cg
             } else {
                 loadFailed = true

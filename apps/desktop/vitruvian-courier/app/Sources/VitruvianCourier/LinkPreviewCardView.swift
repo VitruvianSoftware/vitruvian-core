@@ -19,6 +19,8 @@ public struct LinkPreviewCardView: View {
     public var onBubble: Bool
     public var onOpenURL: (URL) -> Void
 
+    /// Read in `body`, so the card draws again when the table learns something about its files.
+    @Environment(\.timelineContentRevision) private var contentRevision
     @State private var loaded: LoadedThumbnail?
     /// Counts the file facts learned for the picture, so its load starts when the file is known to be there.
     @State private var factTick = 0
@@ -90,11 +92,21 @@ public struct LinkPreviewCardView: View {
         return ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image
     }
 
-    /// The picture's height: it fills the card's width and is cropped to this, loaded yet or not, so the card is
-    /// the same height before and after the picture arrives.
-    private static let thumbnailHeight: CGFloat = 148
+    /// The picture's height: it fills the card's width, so it follows the picture's own proportions within 120–148 pt.
+    /// The size is asked of memory (`ImagePixelSizeReader.cachedSize`, warmed with the page) or the wire's; a picture of
+    /// no known size is the tallest. The same loaded or not, so the card does not change height when it arrives.
+    private var thumbnailHeight: CGFloat {
+        let size: CGSize? = preview.imagePath.flatMap { ImagePixelSizeReader.cachedSize(ofFirstReadable: [$0]) }
+            ?? {
+                guard let w = preview.imageWidth, let h = preview.imageHeight, w > 0, h > 0 else { return nil }
+                return CGSize(width: w, height: h)
+            }()
+        guard let size, size.width > 0, size.height > 0 else { return 148 }
+        return min(148, max(120, 320 * size.height / size.width))
+    }
 
     public var body: some View {
+        let _ = contentRevision
         Button {
             if let url = targetURL {
                 onOpenURL(url)
@@ -107,12 +119,12 @@ public struct LinkPreviewCardView: View {
                             .resizable()
                             .scaledToFill()
                             .frame(maxWidth: 320)
-                            .frame(height: Self.thumbnailHeight)
+                            .frame(height: thumbnailHeight)
                             .clipped()
                     } else {
                         Color.clear
                             .frame(maxWidth: 320)
-                            .frame(height: Self.thumbnailHeight)
+                            .frame(height: thumbnailHeight)
                     }
                 }
 
@@ -164,6 +176,8 @@ public struct LinkPreviewCardView: View {
         }
         .task(id: "\(preview.imagePath ?? "")#\(factTick)") {
             guard let path = localThumbnailPath else { return }
+            // Its size sizes the card; reading it announces it, and a table timeline re-measures the row.
+            _ = await ImagePixelSizeReader.shared.size(ofFirstReadable: [path])
             if let cached = ThumbnailLoader.shared.cachedThumbnail(atPath: path)?.image {
                 loaded = LoadedThumbnail(path: path, image: cached)
             } else if let thumbnail = await ThumbnailLoader.shared.thumbnail(atPath: path) {

@@ -321,7 +321,13 @@ enum TimelineContentRevision {
             hasher.combine(LocalFileFacts.cachedExists(message.mediaPath) ?? false)
             hasher.combine(InlinePDFDocumentCache.shared.hasDocument(atPath: message.mediaPath))
             for preview in message.linkPreviews {
-                if let path = preview.imagePath { hasher.combine(LocalFileFacts.cachedExists(path) ?? false) }
+                if let path = preview.imagePath {
+                    hasher.combine(LocalFileFacts.cachedExists(path) ?? false)
+                    if let size = ImagePixelSizeReader.cachedSize(ofFirstReadable: [path]) {
+                        hasher.combine(Int(size.width.rounded()))
+                        hasher.combine(Int(size.height.rounded()))
+                    }
+                }
             }
             hasher.combine(ui.loadedEmbeds.contains(message.id))
             hasher.combine(message.poll)
@@ -506,6 +512,9 @@ struct TimelineHostedRow: View {
     /// Room above the row for an action bar that overhangs it: the hosting view reaches that far above the row (the
     /// cell positions it so), so SwiftUI can take clicks there; the row itself does not move.
     var topExtension: CGFloat = 0
+    /// Changes when something a card reads from memory (a file's presence, a learned size) did; views that read
+    /// `timelineContentRevision` draw again, which SwiftUI would otherwise skip for unchanged inputs.
+    var contentRevision = 0
 
     var body: some View {
         TimelineItemView(
@@ -532,6 +541,7 @@ struct TimelineHostedRow: View {
             values.clickTargetProbe = env.clickTargetProbe
             values.actionBarFrameProbe = onActionBar
             values.timelineTopExtension = topExtension
+            values.timelineContentRevision = contentRevision
         }
         .coordinateSpace(.named(TimelineRowSpace.name))
     }
@@ -1318,7 +1328,8 @@ struct TimelineTableView: NSViewRepresentable {
                 onActionBar: overrideActions != nil ? nil : { [weak self] rect in
                     self?.actionBarChanged(rect, forRowID: entry.id)
                 },
-                topExtension: overrideActions != nil ? 0 : (topExtensions[entry.id] ?? 0)
+                topExtension: overrideActions != nil ? 0 : (topExtensions[entry.id] ?? 0),
+                contentRevision: entry.contentRevision
             )
         }
 
