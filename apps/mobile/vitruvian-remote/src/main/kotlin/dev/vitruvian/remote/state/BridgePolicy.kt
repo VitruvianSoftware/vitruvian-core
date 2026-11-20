@@ -846,16 +846,23 @@ public object BridgePolicy {
     return attempt(remaining)
   }
 
+  /** A voice count for "the engine did not answer in time". */
+  public const val VOICES_NO_ANSWER: Int = -1
+
   /**
-   * Whether a voice lookup looks like it ran on a client that lost its engine: no answer in time,
-   * or an empty list from a client that listed voices before (a phone with no voices for its
-   * language lists none from the start, and that is not a lost engine).
+   * Whether a lookup's answer ([sharedCount] voices, or [VOICES_NO_ANSWER]) needs a fresh-client
+   * probe.
    */
-  public fun lookupSuggestsStaleClient(
-      timedOut: Boolean,
-      voiceCount: Int,
-      clientListedVoicesBefore: Boolean,
-  ): Boolean = timedOut || (voiceCount == 0 && clientListedVoicesBefore)
+  public fun needsStaleProbe(sharedCount: Int): Boolean = sharedCount <= 0
+
+  /**
+   * Whether the shared client lost its engine: it saw no voices (or got no answer) while a
+   * brand-new client, bound to the engine as it is now, sees some ([probeCount]). When the new
+   * client sees none too, the phone simply has no voices for its language: not stale, so the empty
+   * answer is cached and announcements do not rebuild the client every time.
+   */
+  public fun sharedClientIsStale(sharedCount: Int, probeCount: Int): Boolean =
+      needsStaleProbe(sharedCount) && probeCount > 0
 
   /**
    * The retry helper's view of one attempt's result: it "failed before audio" only when it is an

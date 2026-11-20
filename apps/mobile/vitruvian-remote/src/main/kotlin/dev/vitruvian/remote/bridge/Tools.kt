@@ -934,9 +934,6 @@ public object PhoneTools {
   private val mlKitVoiceGeneration = dev.vitruvian.remote.state.GenerationGate()
   // The picked voice, in memory: read once from prefs, then set by the picker. Null until loaded.
   @Volatile private var mlKitPreferredVoice: String? = null
-  // Whether the shared client has ever listed voices. An empty list from a client that never did
-  // is a phone with no voices for its language, not a lost engine.
-  @Volatile private var mlKitClientHasListedVoices = false
   private val mlKitDownloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
   private data class MlKitVoiceCacheEntry(val voice: VoiceInfo?, val atMs: Long)
@@ -1129,11 +1126,7 @@ public object PhoneTools {
 
   private fun getOrCreateMlKitSynthesizer(): SpeechSynthesizer =
       synchronized(mlKitLock) {
-        mlKitSynthesizer
-            ?: newMlKitClient().also {
-              mlKitSynthesizer = it
-              mlKitClientHasListedVoices = false
-            }
+        mlKitSynthesizer ?: newMlKitClient().also { mlKitSynthesizer = it }
       }
 
   /**
@@ -1222,14 +1215,22 @@ public object PhoneTools {
                 })
           }
         }
-    if (voiceCount > 0) mlKitClientHasListedVoices = true
-    if (BridgePolicy.lookupSuggestsStaleClient(
-        timedOut = lookup == null,
-        voiceCount = voiceCount,
-        clientListedVoicesBefore = mlKitClientHasListedVoices,
-    )) {
-      // A bound engine always lists its voices; none (or no answer) means our client lost it.
-      // Close it and leave the cache alone, so this does not stick for the "not ready" window.
+    val sharedCount = if (lookup == null) BridgePolicy.VOICES_NO_ANSWER else voiceCount
+    // No voices (or no answer) is either a lost engine or a phone with none for its language. Ask
+    // a brand-new client to tell them apart: it is bound to the engine as it is now.
+    val probeCount =
+        if (BridgePolicy.needsStaleProbe(sharedCount)) {
+          withTemporaryMlKitClient { probe ->
+            runBlocking(Dispatchers.IO) {
+              withTimeoutOrNull(MLKIT_LOOKUP_TIMEOUT_MS) { supportedMlKitVoices(probe).size }
+            }
+          } ?: BridgePolicy.VOICES_NO_ANSWER
+        } else {
+          sharedCount
+        }
+    if (BridgePolicy.sharedClientIsStale(sharedCount, probeCount)) {
+      // A new client sees voices ours cannot: ours lost its engine. Close it and leave the cache
+      // alone, so the announcement retries on a new client instead of sticking on "not ready".
       discardMlKitClientIfStale()
       return VoiceLookup(null, staleClient = true)
     }

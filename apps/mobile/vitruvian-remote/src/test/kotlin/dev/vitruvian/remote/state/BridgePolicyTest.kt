@@ -870,14 +870,20 @@ public class BridgePolicyTest {
   }
 
   @Test
-  public fun anEmptyOrMissingVoiceListMeansTheClientLostItsEngine() {
-    assertTrue(BridgePolicy.lookupSuggestsStaleClient(true, -1, clientListedVoicesBefore = false))
-    // Listed voices before, none now: the engine went away under the client.
-    assertTrue(BridgePolicy.lookupSuggestsStaleClient(false, 0, clientListedVoicesBefore = true))
-    // A phone with no voices for its language: empty from the start, not stale, so it is cached
-    // and announcements do not rebuild the client every time.
-    assertFalse(BridgePolicy.lookupSuggestsStaleClient(false, 0, clientListedVoicesBefore = false))
-    assertFalse(BridgePolicy.lookupSuggestsStaleClient(false, 3, clientListedVoicesBefore = true))
+  public fun aNewClientTellsALostEngineFromAPhoneWithNoVoices() {
+    // Voices listed: no probe needed, never stale.
+    assertFalse(BridgePolicy.needsStaleProbe(8))
+    assertFalse(BridgePolicy.sharedClientIsStale(8, probeCount = 8))
+    // Empty or no answer from ours, a new client sees voices: ours lost its engine. This covers
+    // a client made by the picker that never looked up voices before the engine restarted.
+    assertTrue(BridgePolicy.sharedClientIsStale(0, probeCount = 8))
+    assertTrue(BridgePolicy.sharedClientIsStale(BridgePolicy.VOICES_NO_ANSWER, probeCount = 8))
+    // The new client sees none either: a phone with no voices, or an engine that never answers.
+    // Not stale, so the answer is cached instead of rebuilding on every announcement.
+    assertFalse(BridgePolicy.sharedClientIsStale(0, probeCount = 0))
+    assertFalse(
+        BridgePolicy.sharedClientIsStale(
+            BridgePolicy.VOICES_NO_ANSWER, BridgePolicy.VOICES_NO_ANSWER))
   }
 
   @Test
