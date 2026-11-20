@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-19T21:33:02Z",
+  "generated": "2026-11-20T19:30:51Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -147,14 +147,14 @@
       "summary": {
         "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
       },
-      "version": "1.45.3",
+      "version": "1.46.0",
       "protocol": "2",
       "minimumAppVersion": "3.90.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.45.3/VitruvianSpeaker-1.45.3-tool.zip",
-        "sha256": "a4bba8423df903ac5b4981e61ead58f9bcc345ca97c3aea08568f06b19d36949",
-        "size": 4909939
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.46.0/VitruvianSpeaker-1.46.0-tool.zip",
+        "sha256": "109d9f4ade80cb2fcf1348e2a1c75908641b86d3831c5da0740671822b5f2008",
+        "size": 4913266
       },
       "uses": ["notify", "clipboard.read", "open"],
       "commands": [
@@ -200,14 +200,14 @@
       "summary": {
         "en": "Pairs your Android phone with this Mac's Vitruvian Remote helper over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
       },
-      "version": "0.1.55",
+      "version": "0.1.56",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.55/VitruvianRemote-0.1.55-tool.zip",
-        "sha256": "6e1a80ac5820a9c6fab46ba0767855bebfdbd354f0be65a5c40928bac46eff5b",
-        "size": 2525401
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.56/VitruvianRemote-0.1.56-tool.zip",
+        "sha256": "451b7f826dc3faa254feb90b31bf9b8d7242a3582689376799070357d5ed423c",
+        "size": 2525397
       },
       "uses": ["notify", "clipboard.write", "open"],
       "commands": [
