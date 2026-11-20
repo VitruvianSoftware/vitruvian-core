@@ -18,12 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Repo-level catalog root (#500): the System plus a Location pointing at each
-# app's own catalog-info.yaml — the per-app files are the source of truth for
-# ownership/deploy metadata (enforced against .github/CODEOWNERS by
-# tools/conformance). This replaces the stale Aspect scaffold placeholder
-# ("javascript-generated-blueprint") that carried a wrong name, owner, and
-# repo URL.
+# Repo-level catalog root (#500): the monorepo System, Domains, platform
+# Systems/APIs, and Locations for Scaffolder templates and external repos.
+# Per-app and per-package catalog-info.yaml files (and this root file itself)
+# are discovered automatically by Backstage's catalog.providers.github
+# provider (/**/catalog-info.yaml); ownership metadata in per-app files is
+# enforced against .github/CODEOWNERS by tools/conformance.
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
@@ -37,62 +37,9 @@ metadata:
 spec:
   owner: platform-team
 ---
-apiVersion: backstage.io/v1alpha1
-kind: Location
-metadata:
-  name: vitruvian-core-apps
-  description: Per-app component metadata (one catalog-info.yaml per app directory)
-spec:
-  targets:
-    - ./apps/web/backstage/catalog-info.yaml
-    - ./apps/web/mini-party/catalog-info.yaml
-    - ./apps/cli/vitruvian-devx/catalog-info.yaml
-    - ./apps/cli/vitruvian-homelab/catalog-info.yaml
-    - ./apps/embedded/vitruvian-deck/catalog-info.yaml
-    - ./apps/mcp/vitruvian-slack-mcp/catalog-info.yaml
-    - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml
-    - ./apps/desktop/vitruvian-code/catalog-info.yaml
-    - ./apps/extensions/atrium/vitruvian-github/catalog-info.yaml
-    - ./apps/extensions/atrium/vitruvian-tv/catalog-info.yaml
-    - ./apps/antigravity/plugins/ext-marketplace/catalog-info.yaml
-    - ./apps/antigravity/plugins/gh-watch/catalog-info.yaml
-    - ./apps/antigravity/plugins/hookify/catalog-info.yaml
-    - ./apps/antigravity/plugins/live-context/catalog-info.yaml
-    - ./apps/antigravity/plugins/ralph-loop/catalog-info.yaml
-    - ./apps/antigravity/plugins/receipts-report/catalog-info.yaml
-    - ./apps/antigravity/plugins/savvy-fleet/catalog-info.yaml
-    - ./apps/antigravity/plugins/security-guidance/catalog-info.yaml
-    - ./apps/antigravity/plugins/vitruvian-orchestrator/catalog-info.yaml
-    - ./apps/antigravity/plugins/worktree-band/catalog-info.yaml
-    - ./apps/claude-code/plugins/vitruvian-orchestrator/catalog-info.yaml
-    - ./apps/opencode/plugins/vitruvian-orchestrator/catalog-info.yaml
-    - ./apps/web/oauth-user-inspector/catalog-info.yaml
-    - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
-    - ./apps/mobile/vitruvian-remote/catalog-info.yaml
-    - ./apps/suites/vitruvian-tabs/catalog-info.yaml
-    - ./apps/suites/vitruvian-wand/catalog-info.yaml
-    - ./packages/android-crash-privacy/catalog-info.yaml
-    - ./packages/design-system/catalog-info.yaml
-    - ./packages/design-system-android/catalog-info.yaml
-    - ./packages/gocompat/catalog-info.yaml
-    - ./packages/orchestrator-core/catalog-info.yaml
-    - ./packages/peripherals/catalog-info.yaml
-    - ./packages/pulumi/catalog-info.yaml
-    - ./packages/rust/vitruvian-mcp-auth/catalog-info.yaml
-    - ./packages/rust/vitruvian-pycompat/catalog-info.yaml
-    - ./packages/rust/vitruvian-pyjson/catalog-info.yaml
-    - ./packages/swift/SentryLite/catalog-info.yaml
-    - ./packages/vitruvian-sdk/catalog-info.yaml
-    - ./tools/catalog-info.yaml
-    - ./infrastructure/catalog-info.yaml
-    # Platform infrastructure we operate (not applications we build)
-    - ./gitops/catalog-info.yaml
----
-# Scaffolder templates served on Backstage's Create page. Kept in its own
-# Location rather than folded into vitruvian-core-apps above because that list
-# is per-APP component metadata and is appended to automatically by the
-# `vitruvian:app:render` action; a Template is neither an app nor something that
-# action should ever touch.
+# Scaffolder templates served on Backstage's Create page. Kept in an explicit
+# Location because GitHub discovery matches `/**/catalog-info.yaml`, whereas
+# Scaffolder templates live in `template.yaml` files.
 apiVersion: backstage.io/v1alpha1
 kind: Location
 metadata:
@@ -114,8 +61,8 @@ spec:
 ---
 # External VitruvianSoftware repositories. Each already ships its own
 # catalog-info.yaml, so these are Locations pointing at the source of truth in
-# that repo rather than copies maintained here -- the same pattern as the
-# per-app Location above.
+# that repo rather than copies maintained here (GitHub discovery is scoped to
+# vitruvian-core).
 apiVersion: backstage.io/v1alpha1
 kind: Location
 metadata:

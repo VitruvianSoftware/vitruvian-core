@@ -396,8 +396,6 @@ fn codeowners_team(codeowners_path: &Path, app: &str) -> Option<String> {
 pub fn check_app_metadata(ctx: &Context) {
     let app_dirs = get_app_dirs(&ctx.root);
     let codeowners_path = PathBuf::from(&ctx.root).join(".github/CODEOWNERS");
-    let root_catalog = PathBuf::from(&ctx.root).join("catalog-info.yaml");
-    let root_catalog_content = fs::read_to_string(&root_catalog).unwrap_or_default();
 
     for app in &app_dirs {
         let mf = format!("{}/{}/catalog-info.yaml", ctx.root, app);
@@ -461,25 +459,16 @@ pub fn check_app_metadata(ctx: &Context) {
                 ),
                 &format!("set spec.owner: {}", coteam),
             );
-        } else if !root_catalog_content.contains(&format!("./{}/catalog-info.yaml", app)) {
-            ctx.emit_fail(
-                "meta",
-                "catalog-info.yaml",
-                "missing target",
-                &format!("./{}/catalog-info.yaml", app),
-                "the root Location does not list this app's catalog file -- consumers can't discover it",
-                &format!(
-                    "add ./{}/catalog-info.yaml to the root catalog-info.yaml Location targets",
-                    app
-                ),
-            );
         } else {
+            // Backstage GitHub discovery (catalog.providers.github with
+            // /**/catalog-info.yaml) replaced the manual vitruvian-core-apps
+            // Location list in the root catalog-info.yaml.
             ctx.emit_ok(
                 "meta",
                 &format!("{}/catalog-info.yaml", app),
                 &format!("owner:{}", mowner),
                 &format!("owner:{}", coteam),
-                "name + owner match CODEOWNERS; listed in the root Location",
+                "name + owner match CODEOWNERS",
             );
         }
     }

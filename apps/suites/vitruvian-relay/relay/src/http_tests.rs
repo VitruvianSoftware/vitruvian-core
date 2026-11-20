@@ -88,6 +88,16 @@ async fn within<T>(f: impl std::future::Future<Output = T>) -> T {
         .expect("timed out")
 }
 
+/// Waits until `f` holds.
+async fn until(f: impl Fn() -> bool) {
+    within(async {
+        while !f() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+}
+
 fn b64url(bytes: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
@@ -524,6 +534,10 @@ struct FakeDevice {
     frames: mpsc::UnboundedReceiver<ToConnector>,
     out: mpsc::UnboundedSender<ToRelay>,
     answer_pings: Arc<AtomicBool>,
+    auto_ack: Arc<AtomicBool>,
+    starts: Arc<Mutex<Vec<String>>>,
+    /// Ids the relay sent a `ResultAck` for (kept out of `frames`).
+    result_acks: Arc<Mutex<Vec<String>>>,
     /// Pings received from the relay.
     pings: Arc<AtomicU32>,
     closed: Arc<tokio::sync::Notify>,
@@ -538,12 +552,21 @@ impl FakeDevice {
         let (frames_tx, frames) = mpsc::unbounded_channel();
         let (out, mut out_rx) = mpsc::unbounded_channel::<ToRelay>();
         let answer_pings = Arc::new(AtomicBool::new(true));
+        let auto_ack = Arc::new(AtomicBool::new(true));
+        let starts = Arc::new(Mutex::new(Vec::new()));
+        let result_acks = Arc::new(Mutex::new(Vec::new()));
+        let result_acks2 = result_acks.clone();
         let pings = Arc::new(AtomicU32::new(0));
         let pings2 = pings.clone();
         let closed = Arc::new(tokio::sync::Notify::new());
         let is_closed = Arc::new(AtomicBool::new(false));
-        let (answer, closed2, is_closed2) =
-            (answer_pings.clone(), closed.clone(), is_closed.clone());
+        let (answer, auto_ack2, starts2, closed2, is_closed2) = (
+            answer_pings.clone(),
+            auto_ack.clone(),
+            starts.clone(),
+            closed.clone(),
+            is_closed.clone(),
+        );
         tokio::spawn(async move {
             let (mut sink, mut stream) = ws.split();
             loop {
@@ -560,6 +583,25 @@ impl FakeDevice {
                                     let _ = sink.send(Message::Text(encode(&ToRelay::Pong { n }).unwrap())).await;
                                 }
                             }
+                            ToConnector::Call(c) => {
+                                if auto_ack2.load(Ordering::SeqCst) {
+                                    let ack = encode(&ToRelay::Ack {
+                                        call_id: c.call_id.clone(),
+                                    })
+                                    .unwrap();
+                                    let _ = sink.send(Message::Text(ack)).await;
+                                }
+                                let _ = frames_tx.send(ToConnector::Call(c));
+                            }
+                            ToConnector::Start { call_id } => {
+                                starts2.lock().unwrap().push(call_id.clone());
+                                if !auto_ack2.load(Ordering::SeqCst) {
+                                    let _ = frames_tx.send(ToConnector::Start { call_id });
+                                }
+                            }
+                            ToConnector::ResultAck { call_id } => {
+                                result_acks2.lock().unwrap().push(call_id);
+                            }
                             other => { let _ = frames_tx.send(other); }
                         },
                         Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
@@ -575,10 +617,22 @@ impl FakeDevice {
             frames,
             out,
             answer_pings,
+            auto_ack,
+            starts,
+            result_acks,
             pings,
             closed,
             is_closed,
         }
+    }
+
+    /// Ids the relay has acknowledged results for, in order.
+    fn result_acks(&self) -> Vec<String> {
+        self.result_acks.lock().unwrap().clone()
+    }
+
+    fn no_ack(&self) {
+        self.auto_ack.store(false, Ordering::SeqCst);
     }
 
     async fn next(&mut self) -> ToConnector {
@@ -865,11 +919,15 @@ async fn unknown_session_gets_404() {
     let s = h.session(&device, ALICE).await;
     let r = h.rpc(&device, ALICE, Some(&s), list.clone()).await;
     assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(
-        r.json()["result"]["tools"],
-        json!([]),
-        "offline: empty list, no error"
-    );
+    // Offline: no device tools, no error. The relay's own tool is still
+    // listed (a request parked before the device went away can be fetched).
+    let names: Vec<Value> = r.json()["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].clone())
+        .collect();
+    assert_eq!(names, [json!("check_request")]);
     let r = h
         .rpc(
             &device,
@@ -998,7 +1056,11 @@ async fn tools_list_reflects_hello_tools() {
         r.json()["result"]["tools"][0]["inputSchema"],
         json!({"type": "object"})
     );
-    assert_eq!(names(r), vec!["read_file", "list_directory"]);
+    // The relay's own tool follows the device's.
+    assert_eq!(
+        names(r),
+        vec!["read_file", "list_directory", "check_request"]
+    );
 
     // tools_changed: the next tools/list sees it.
     fake.send(ToRelay::ToolsChanged {
@@ -1006,7 +1068,9 @@ async fn tools_list_reflects_hello_tools() {
     });
     within(async {
         loop {
-            if names(h.rpc(&device, ALICE, Some(&s), list.clone()).await) == vec!["write_file"] {
+            if names(h.rpc(&device, ALICE, Some(&s), list.clone()).await)
+                == vec!["write_file", "check_request"]
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -1139,7 +1203,7 @@ async fn connect_rejects_a_wrong_first_frame_and_old_protocol() {
 
     let mut frame: Value =
         serde_json::from_str(&hello(&device, &key, &token, now_secs(), vec![])).unwrap();
-    frame["protocol"] = json!(2);
+    frame["protocol"] = json!(1);
     let mut ws = h.ws(&token).await.unwrap();
     ws.send(Message::Text(frame.to_string())).await.unwrap();
     match next_frame(&mut ws).await {
@@ -1414,7 +1478,7 @@ async fn modern_unknown_version_is_refused_with_the_supported_list() {
 }
 
 #[tokio::test]
-async fn notifications_cancelled_sends_cancel() {
+async fn cancelled_notification_still_cancels() {
     let h = Arc::new(harness().await);
     let (device, key) = h.new_device(ALICE).await;
     let mut fake = h
@@ -1429,6 +1493,11 @@ async fn notifications_cancelled_sends_cancel() {
         call_body(json!(7), "start_process", json!({})),
     );
     let call = fake.next_call().await;
+    // With its dialog open, as the real thing would be: parking is for a
+    // request that goes away, not one the AI app cancels.
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
     let r = h
         .rpc(&device, ALICE, Some(&s), json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
                                               "params": {"requestId": 7, "reason": "user stopped it"}}))
@@ -1443,38 +1512,721 @@ async fn notifications_cancelled_sends_cancel() {
     // The cancelled request is answered (so the HTTP request ends), as an error.
     let r = within(pending).await.unwrap();
     assert!(r.json()["error"].is_object(), "{}", r.body);
-}
-
-#[tokio::test]
-async fn dropped_request_sends_cancel() {
-    let h = Arc::new(harness().await);
-    let (device, key) = h.new_device(ALICE).await;
-    let mut fake = h
-        .connect(ALICE, &device, &key, vec![tool("start_process")])
-        .await;
-    let s = h.session(&device, ALICE).await;
-    let pending = spawn_rpc(
+    until(|| h.logs().contains("\"outcome\":\"cancelled\"")).await;
+    // Nothing is left to rejoin: the same call again starts a new one.
+    let again = spawn_rpc(
         &h,
         &device,
         ALICE,
         &s,
         call_body(json!(8), "start_process", json!({})),
     );
-    let call = fake.next_call().await;
-    // The AI app goes away: the request's connection closes.
-    pending.abort();
+    let call2 = fake.next_call().await;
+    fake.reply(&call2.call_id, "fresh");
     assert_eq!(
-        fake.next().await,
-        ToConnector::Cancel {
-            call_id: call.call_id
-        }
+        within(again).await.unwrap().json()["result"]["content"][0]["text"],
+        "fresh"
     );
-    within(async {
-        while !h.logs().contains("\"outcome\":\"cancelled\"") {
-            tokio::time::sleep(Duration::from_millis(20)).await;
+}
+
+// --------------------------------------------- approvals that outlive the app
+
+/// Timing for the approval tests: the 10 s / 120 s / 300 s of production, a
+/// few hundred milliseconds here.
+fn approval_timing() -> Timing {
+    Timing {
+        approval_reply: Duration::from_millis(300),
+        rejoin_window: Duration::from_secs(30),
+        parked_result: Duration::from_secs(30),
+        ..Timing::default()
+    }
+}
+
+fn text_of(r: &Reply) -> String {
+    r.json()["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no text: {}", r.body))
+        .to_string()
+}
+
+/// The request id inside a waiting reply, checking the text around it.
+fn waiting_id(r: &Reply, device: &str) -> String {
+    let v = r.json();
+    assert_eq!(v["result"]["isError"], false, "{}", r.body);
+    let text = text_of(r);
+    let id = text
+        .split("request_id \"")
+        .nth(1)
+        .and_then(|t| t.split('"').next())
+        .unwrap_or_else(|| panic!("no request id in {text}"))
+        .to_string();
+    assert_eq!(
+        text,
+        format!(
+            "Waiting for you to allow this on \"{device}\". Call check_request with \
+             request_id \"{id}\" to get the result. The request is cancelled if nobody \
+             answers within 60 seconds."
+        )
+    );
+    assert!(
+        id.len() == 18
+            && id.starts_with("r_")
+            && id[2..]
+                .bytes()
+                .all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')),
+        "{id}"
+    );
+    id
+}
+
+fn check_body(rpc_id: u64, request_id: &str) -> Value {
+    call_body(
+        json!(rpc_id),
+        "check_request",
+        json!({"request_id": request_id}),
+    )
+}
+
+const UNKNOWN: &str = "That request has finished or expired. Send the original request again.";
+
+/// A device with `start_process`, an AI session, and a harness with the
+/// approval timing.
+async fn approval_setup() -> (Arc<Harness>, String, FakeDevice, String) {
+    let h = Arc::new(harness_with(approval_timing()).await);
+    let (device, key) = h.new_device(ALICE).await;
+    let fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    (h, device, fake, s)
+}
+
+#[tokio::test]
+async fn slow_approval_returns_waiting_then_result() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let args = json!({"command": "ls"});
+    let started = Instant::now();
+    let first = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(1), "start_process", args),
+    );
+    let call = fake.next_call().await;
+    // The dialog opens on the Mac, and the person takes their time.
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    let r = within(first).await.unwrap();
+    let id = waiting_id(&r, &device);
+    assert!(
+        started.elapsed() >= Duration::from_millis(300),
+        "answered before the approval reply time: {:?}",
+        started.elapsed()
+    );
+    until(|| h.logs().contains("\"outcome\":\"waiting_approval\"")).await;
+    // Still waiting: `check_request` waits its turn, then says so again.
+    let r = h.rpc(&device, ALICE, Some(&s), check_body(2, &id)).await;
+    assert_eq!(waiting_id(&r, &device), id);
+    // The person allows it, after the AI app would have given up (3x here).
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    fake.reply(&call.call_id, "the real result");
+    let r = h.rpc(&device, ALICE, Some(&s), check_body(3, &id)).await;
+    assert_eq!(r.json()["result"]["isError"], false, "{}", r.body);
+    assert_eq!(text_of(&r), "the real result");
+    // Nothing told the device to stop it, and it ran once.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), fake.frames.recv())
+            .await
+            .is_err()
+    );
+    // The result can be fetched again until it expires.
+    let r = h.rpc(&device, ALICE, Some(&s), check_body(4, &id)).await;
+    assert_eq!(text_of(&r), "the real result");
+}
+
+#[tokio::test]
+async fn a_call_with_no_dialog_is_not_answered_waiting() {
+    // `Pending` is what says a person is being asked: a slow call without
+    // one just takes as long as it takes.
+    let (h, device, mut fake, s) = approval_setup().await;
+    let first = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(1), "start_process", json!({"command": "sleep"})),
+    );
+    let call = fake.next_call().await;
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    assert!(!first.is_finished(), "answered a call that had no dialog");
+    fake.reply(&call.call_id, "done at last");
+    assert_eq!(text_of(&within(first).await.unwrap()), "done at last");
+}
+
+#[tokio::test]
+async fn retry_rejoins_the_open_dialog() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let args = json!({"command": "ls", "options": {"b": 1, "a": 2}});
+    let first = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(1), "start_process", args),
+    );
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    // The AI app's retry: the same call, new request id, keys in another order.
+    let again = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(
+            json!(2),
+            "start_process",
+            json!({"options": {"a": 2, "b": 1}, "command": "ls"}),
+        ),
+    );
+    // Both are told the call is waiting, by the same id...
+    let (r1, r2) = (within(first).await.unwrap(), within(again).await.unwrap());
+    assert_eq!(waiting_id(&r1, &device), waiting_id(&r2, &device));
+    // ...and one more retry still finds it (the one dialog is still open).
+    let third = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(
+            json!(3),
+            "start_process",
+            json!({"command": "ls", "options": {"a": 2, "b": 1}}),
+        ),
+    );
+    let r3 = within(third).await.unwrap();
+    assert_eq!(waiting_id(&r3, &device), waiting_id(&r1, &device));
+    // The person allows it: the device saw exactly one call.
+    fake.reply(&call.call_id, "listed");
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            check_body(4, &waiting_id(&r1, &device)),
+        )
+        .await;
+    assert_eq!(text_of(&r), "listed");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), fake.frames.recv())
+            .await
+            .is_err(),
+        "a second call reached the device"
+    );
+    assert!(
+        h.logs().contains("\"outcome\":\"rejoined\""),
+        "{}",
+        h.logs()
+    );
+}
+
+#[tokio::test]
+async fn a_retry_while_the_first_request_is_still_open_joins_it() {
+    // The retry arrives before the dialog is even reported open.
+    let (h, device, mut fake, s) = approval_setup().await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "ls"}));
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    let call = fake.next_call().await;
+    let second = spawn_rpc(&h, &device, ALICE, &s, body(2));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.reply(&call.call_id, "one answer");
+    for r in [within(first).await.unwrap(), within(second).await.unwrap()] {
+        assert_eq!(text_of(&r), "one answer");
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), fake.frames.recv())
+            .await
+            .is_err(),
+        "a second call reached the device"
+    );
+}
+
+#[tokio::test]
+async fn modern_retry_rejoins_the_open_call() {
+    // The stateless revision has no session and so no request-id check:
+    // joining is what stops its retries starting a second call.
+    let (h, device, mut fake, _s) = approval_setup().await;
+    let v = MODERN_VERSIONS[0];
+    let send = |id: u64| {
+        let (h, device) = (h.clone(), device.clone());
+        tokio::spawn(async move {
+            h.modern_rpc(
+                &device,
+                ALICE,
+                None,
+                None,
+                modern(
+                    call_body(json!(id), "start_process", json!({"command": "ls"})),
+                    v,
+                ),
+            )
+            .await
+        })
+    };
+    let first = send(1);
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    let second = send(2);
+    let (r1, r2) = (within(first).await.unwrap(), within(second).await.unwrap());
+    assert_eq!(waiting_id(&r1, &device), waiting_id(&r2, &device));
+    fake.reply(&call.call_id, "listed");
+    let r = h
+        .modern_rpc(
+            &device,
+            ALICE,
+            None,
+            None,
+            modern(check_body(3, &waiting_id(&r1, &device)), v),
+        )
+        .await;
+    assert_eq!(text_of(&r), "listed");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), fake.frames.recv())
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn client_timeout_parks_instead_of_cancelling() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "ls"}));
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    // The AI app gives up: its connection closes.
+    first.abort();
+    until(|| h.logs().contains("\"outcome\":\"parked\"")).await;
+    // The dialog is not touched.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(400), fake.frames.recv())
+            .await
+            .is_err(),
+        "the device was sent something"
+    );
+    // The retry finds the same call, and gets its result.
+    let retry = spawn_rpc(&h, &device, ALICE, &s, body(2));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.reply(&call.call_id, "allowed and ran");
+    assert_eq!(text_of(&within(retry).await.unwrap()), "allowed and ran");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), fake.frames.recv())
+            .await
+            .is_err(),
+        "a second call reached the device"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_that_arrives_after_the_request_went_is_kept_for_the_retry() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "rm x"}));
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    let call = fake.next_call().await;
+    first.abort();
+    until(|| h.logs().contains("\"outcome\":\"parked\"")).await;
+    // The person allows it, and it runs, with nobody on the line.
+    fake.reply(&call.call_id, "removed x");
+    until(|| fake.result_acks().len() == 1).await;
+    // The retry gets that result; it does not run `rm x` a second time.
+    let retry = h.rpc(&device, ALICE, Some(&s), body(2)).await;
+    assert_eq!(text_of(&retry), "removed x");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), fake.frames.recv())
+            .await
+            .is_err(),
+        "a second call reached the device"
+    );
+}
+
+#[tokio::test]
+async fn delivered_call_is_never_reused() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "date"}));
+    // A call that completes and is delivered.
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    let call1 = fake.next_call().await;
+    fake.reply(&call1.call_id, "10:00");
+    assert_eq!(text_of(&within(first).await.unwrap()), "10:00");
+    // The same call again is a new call, with its own answer.
+    let second = spawn_rpc(&h, &device, ALICE, &s, body(2));
+    let call2 = fake.next_call().await;
+    assert_ne!(call1.call_id, call2.call_id);
+    fake.reply(&call2.call_id, "10:05");
+    assert_eq!(text_of(&within(second).await.unwrap()), "10:05");
+
+    // The same after a parked one: its result is handed over by a retry (and
+    // still fetchable by id), but never given to a later, separate call.
+    let third = spawn_rpc(&h, &device, ALICE, &s, body(3));
+    let call3 = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call3.call_id.clone(),
+    });
+    let id = waiting_id(&within(third).await.unwrap(), &device);
+    fake.reply(&call3.call_id, "10:10");
+    let got = h.rpc(&device, ALICE, Some(&s), check_body(4, &id)).await;
+    assert_eq!(text_of(&got), "10:10");
+    let fourth = spawn_rpc(&h, &device, ALICE, &s, body(5));
+    let call4 = fake.next_call().await;
+    assert_ne!(call3.call_id, call4.call_id);
+    fake.reply(&call4.call_id, "10:15");
+    assert_eq!(text_of(&within(fourth).await.unwrap()), "10:15");
+}
+
+/// The server's end of a connection, whose writes fail once `dead` is set
+/// while reads carry on: a socket the AI app has left that the relay has
+/// not yet noticed is gone.
+struct DeadAfter {
+    inner: tokio::io::DuplexStream,
+    dead: Arc<AtomicBool>,
+}
+
+impl tokio::io::AsyncRead for DeadAfter {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for DeadAfter {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        if self.dead.load(Ordering::SeqCst) {
+            return std::task::Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
         }
-    })
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.dead.load(Ordering::SeqCst) {
+            return std::task::Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// A command must never run twice. The result is counted as handed to the AI
+/// app only once the response carrying it has been written out: here the
+/// relay produces the response and hands its body to hyper, whose write then
+/// fails because the app's socket is dead. The app's retry must get the
+/// stored result, not start the command again.
+#[tokio::test]
+async fn result_lost_on_a_dead_socket_stays_rejoinable() {
+    let (h, device, mut fake, s) = approval_setup().await;
+    let args = json!({"command": "rm important"});
+    // The first request, on a connection the test can kill.
+    let (client, server) = tokio::io::duplex(256 * 1024);
+    let dead = Arc::new(AtomicBool::new(false));
+    tokio::spawn(serve_stream(
+        h.app.clone(),
+        DeadAfter {
+            inner: server,
+            dead: dead.clone(),
+        },
+    ));
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(client))
+        .await
+        .unwrap();
+    let conn = tokio::spawn(conn);
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(format!("/mcp/d/{device}"))
+        .header(header::HOST, "relay.example.test");
+    for (k, v) in h.mcp_headers(ALICE, Some(&s)) {
+        req = req.header(k, v);
+    }
+    let body = call_body(json!(1), "start_process", args.clone()).to_string();
+    let first = tokio::spawn(async move {
+        sender
+            .send_request(req.body(Full::new(Bytes::from(body))).unwrap())
+            .await
+            .map(|_| ())
+    });
+    let call = fake.next_call().await;
+    // The socket dies with the call running; then the command finishes.
+    dead.store(true, Ordering::SeqCst);
+    fake.reply(&call.call_id, "removed important");
+    until(|| h.logs().contains("\"outcome\":\"ok\"")).await;
+    // The relay's answer never got out.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!first.is_finished() || first.await.unwrap().is_err());
+    conn.abort();
+    // The retry gets the stored result; the command is not started again.
+    let retry = within(h.rpc(
+        &device,
+        ALICE,
+        Some(&s),
+        call_body(json!(2), "start_process", args.clone()),
+    ))
     .await;
+    assert_eq!(text_of(&retry), "removed important");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), fake.frames.recv())
+            .await
+            .is_err(),
+        "a second call reached the device"
+    );
+    // That answer was written out, so it is handed over for good: the same
+    // call again is a new call.
+    let third = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(3), "start_process", args),
+    );
+    let call3 = fake.next_call().await;
+    assert_ne!(call.call_id, call3.call_id);
+    fake.reply(&call3.call_id, "removed again");
+    assert_eq!(text_of(&within(third).await.unwrap()), "removed again");
+}
+
+#[tokio::test]
+async fn other_persons_request_id_is_unknown() {
+    let h = Arc::new(harness_with(approval_timing()).await);
+    let (alice_dev, akey) = h.new_device(ALICE).await;
+    let (bob_dev, _bkey) = h.new_device(BOB).await;
+    let mut fake = h
+        .connect(ALICE, &alice_dev, &akey, vec![tool("start_process")])
+        .await;
+    let (sa, sb) = (
+        h.session(&alice_dev, ALICE).await,
+        h.session(&bob_dev, BOB).await,
+    );
+    let first = spawn_rpc(
+        &h,
+        &alice_dev,
+        ALICE,
+        &sa,
+        call_body(json!(1), "start_process", json!({"command": "ls"})),
+    );
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    let id = waiting_id(&within(first).await.unwrap(), &alice_dev);
+
+    let bobs = h.rpc(&bob_dev, BOB, Some(&sb), check_body(2, &id)).await;
+    let made_up = h
+        .rpc(
+            &bob_dev,
+            BOB,
+            Some(&sb),
+            check_body(2, "r_0123456789abcdef"),
+        )
+        .await;
+    assert_eq!(text_of(&bobs), UNKNOWN);
+    // Byte for byte the same as for an id that never existed.
+    assert_eq!(bobs.body, made_up.body);
+    assert_eq!(bobs.status, made_up.status);
+    // Bob asking on Alice's endpoint is refused the way every other person is.
+    let r = h.rpc(&alice_dev, BOB, Some(&sb), check_body(3, &id)).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "{}", r.body);
+    // Bob's try took nothing: Alice still gets her result.
+    fake.reply(&call.call_id, "alice's listing");
+    let r = h
+        .rpc(&alice_dev, ALICE, Some(&sa), check_body(4, &id))
+        .await;
+    assert_eq!(text_of(&r), "alice's listing");
+}
+
+#[tokio::test]
+async fn parked_result_is_dropped_after_300s() {
+    // 300 s in production; 400 ms here.
+    let h = Arc::new(
+        harness_with(Timing {
+            approval_reply: Duration::from_millis(100),
+            parked_result: Duration::from_millis(400),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let first = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(1), "start_process", json!({"command": "ls"})),
+    );
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    let id = waiting_id(&within(first).await.unwrap(), &device);
+    fake.reply(&call.call_id, "late");
+    until(|| fake.result_acks().len() == 1).await;
+    // Inside the time it is kept...
+    let r = h.rpc(&device, ALICE, Some(&s), check_body(2, &id)).await;
+    assert_eq!(text_of(&r), "late");
+    // ...and gone after it.
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    let r = h.rpc(&device, ALICE, Some(&s), check_body(3, &id)).await;
+    assert_eq!(text_of(&r), UNKNOWN);
+    assert_eq!(r.json()["result"]["isError"], true);
+}
+
+#[tokio::test]
+async fn a_call_that_failed_is_not_handed_to_a_retry_as_its_answer() {
+    // The device went away mid-call and the AI app's request with it: the
+    // failure is waiting for nobody, so the retry makes a fresh attempt.
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(100),
+            ..approval_timing()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "ls"}));
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    fake.next_call().await;
+    first.abort();
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let mut fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let retry = spawn_rpc(&h, &device, ALICE, &s, body(2));
+    // (The relay's overdue `Cancel` for the first attempt comes first.)
+    let call = loop {
+        if let ToConnector::Call(c) = fake2.next().await {
+            break c;
+        }
+    };
+    fake2.reply(&call.call_id, "second try");
+    assert_eq!(text_of(&within(retry).await.unwrap()), "second try");
+}
+
+#[tokio::test]
+async fn check_request_is_listed_and_replaces_a_device_tool_of_that_name() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let _fake = h
+        .connect(
+            ALICE,
+            &device,
+            &key,
+            vec![tool("read_file"), tool("check_request")],
+        )
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+        )
+        .await;
+    let tools = r.json()["result"]["tools"].as_array().unwrap().clone();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    // The device's own `check_request` is gone; the relay's is the only one.
+    assert_eq!(names, ["read_file", "check_request"]);
+    let ours = &tools[1];
+    assert_eq!(
+        ours["description"],
+        "Get the result of a request that was waiting for approval on the computer."
+    );
+    assert_eq!(ours["inputSchema"]["required"], json!(["request_id"]));
+    assert_eq!(
+        ours["inputSchema"]["properties"]["request_id"]["type"],
+        "string"
+    );
+    let dropped = h
+        .logs()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .find(|v| v["event"] == "tool_dropped")
+        .expect("the drop is logged");
+    assert_eq!(dropped["tool"], "check_request");
+    assert_eq!(dropped["device_id"], device.as_str());
+    // A device without the name logs nothing of the kind.
+    let (device2, key2) = h.new_device(BOB).await;
+    let _f2 = h
+        .connect(BOB, &device2, &key2, vec![tool("read_file")])
+        .await;
+    let s2 = h.session(&device2, BOB).await;
+    let before = h.logs().matches("tool_dropped").count();
+    h.rpc(
+        &device2,
+        BOB,
+        Some(&s2),
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+    )
+    .await;
+    assert_eq!(h.logs().matches("tool_dropped").count(), before);
+}
+
+#[tokio::test]
+async fn check_request_never_reaches_the_device_and_needs_an_id() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("check_request")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            check_body(1, "r_ffffffffffffffff"),
+        )
+        .await;
+    assert_eq!(text_of(&r), UNKNOWN);
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(2), "check_request", json!({})),
+        )
+        .await;
+    assert_eq!(r.json()["error"]["code"], -32602, "{}", r.body);
+    assert!(fake.frames.try_recv().is_err());
 }
 
 #[tokio::test]
@@ -1552,6 +2304,8 @@ async fn silent_drop_mid_call_fails_within_seconds() {
     let h = Arc::new(
         harness_with(Timing {
             in_call_ping: Duration::from_millis(200),
+            // The call is held this long after the link is found dead.
+            reconnect_grace: Duration::from_millis(200),
             ..Timing::default()
         })
         .await,
@@ -1568,7 +2322,7 @@ async fn silent_drop_mid_call_fails_within_seconds() {
     assert_eq!(r.json()["result"]["isError"], true);
     assert_eq!(
         r.json()["result"]["content"][0]["text"],
-        "Your computer disconnected; try again."
+        "Your computer disconnected. The command may already have run; check before trying again."
     );
     // Generous for a loaded runner; the idle path would need 60 s.
     assert!(
@@ -1590,10 +2344,21 @@ async fn connector_pings_are_answered() {
 
 #[tokio::test]
 async fn logs_never_contain_arguments_outputs_or_tokens() {
-    let h = Arc::new(harness().await);
+    let h = Arc::new(
+        harness_with(Timing {
+            approval_reply: Duration::from_millis(200),
+            ..Timing::default()
+        })
+        .await,
+    );
     let (device, key) = h.new_device(ALICE).await;
     let mut fake = h
-        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .connect(
+            ALICE,
+            &device,
+            &key,
+            vec![tool("read_file"), tool("start_process")],
+        )
         .await;
     let s = h.session(&device, ALICE).await;
     let mcp_token = h.mcp_token(ALICE);
@@ -1620,6 +2385,30 @@ async fn logs_never_contain_arguments_outputs_or_tokens() {
         r.json()["result"]["content"][0]["text"],
         "SECRET-OUTPUT-MARKER"
     );
+    // A call that waits for approval, and `check_request` fetching its
+    // result: the arguments, the output and the request id stay out of the
+    // log too, and the fetch is logged as `check_request`.
+    let waiting = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(
+            json!(4),
+            "start_process",
+            json!({"command": "SECRET-COMMAND-MARKER"}),
+        ),
+    );
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Pending {
+        call_id: call.call_id.clone(),
+    });
+    let request_id = waiting_id(&within(waiting).await.unwrap(), &device);
+    fake.reply(&call.call_id, "SECRET-LATE-OUTPUT-MARKER");
+    let fetched = h
+        .rpc(&device, ALICE, Some(&s), check_body(5, &request_id))
+        .await;
+    assert_eq!(text_of(&fetched), "SECRET-LATE-OUTPUT-MARKER");
     // A refused token is not logged either.
     let bad = format!("{mcp_token}tampered");
     h.send(
@@ -1634,6 +2423,9 @@ async fn logs_never_contain_arguments_outputs_or_tokens() {
     for secret in [
         "SECRET-ARGUMENT-MARKER",
         "SECRET-OUTPUT-MARKER",
+        "SECRET-COMMAND-MARKER",
+        "SECRET-LATE-OUTPUT-MARKER",
+        request_id.as_str(),
         &mcp_token,
         &bad,
         &s,
@@ -1663,6 +2455,28 @@ async fn logs_never_contain_arguments_outputs_or_tokens() {
     );
     assert!(call_line["result_bytes"].as_u64().unwrap() > 0);
     assert!(call_line["duration_ms"].is_u64());
+    // The waiting reply and the fetch each have their line.
+    let lines: Vec<Value> = logs
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|v| v["event"] == "call")
+        .collect();
+    let line_for = |tool: &str, outcome: &str| {
+        lines
+            .iter()
+            .find(|v| v["tool"] == tool && v["outcome"] == outcome)
+            .unwrap_or_else(|| panic!("no {tool}/{outcome} line in {logs}"))
+    };
+    assert!(
+        line_for("start_process", "waiting_approval")["arg_bytes"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    let check = line_for("check_request", "ok");
+    assert_eq!(check["device_id"], device.as_str());
+    assert_eq!(check["client_id"], MCP_CLIENT);
+    assert!(check["result_bytes"].as_u64().unwrap() > 0);
 }
 
 #[test]
@@ -1691,6 +2505,31 @@ fn production_timing_matches_the_spec() {
         vitruvian_relay_protocol::MAX_MISSED_PINGS
     );
     assert_eq!(t.call_budget, Duration::from_secs(90));
+    assert_eq!(
+        t.ack_timeout,
+        Duration::from_secs(vitruvian_relay_protocol::ACK_SECS)
+    );
+    assert_eq!(
+        t.reconnect_grace,
+        Duration::from_secs(vitruvian_relay_protocol::RECONNECT_GRACE_SECS)
+    );
+    assert_eq!(t.reconnect_grace, Duration::from_secs(10));
+    // The AI app gives up on a call at about 15 s; the relay answers at 10.
+    assert_eq!(t.approval_reply, Duration::from_secs(10));
+    assert_eq!(
+        t.approval_reply,
+        Duration::from_secs(vitruvian_relay_protocol::APPROVAL_REPLY_SECS)
+    );
+    assert_eq!(t.rejoin_window, Duration::from_secs(120));
+    assert_eq!(
+        t.rejoin_window,
+        Duration::from_secs(vitruvian_relay_protocol::REJOIN_WINDOW_SECS)
+    );
+    assert_eq!(t.parked_result, Duration::from_secs(300));
+    assert_eq!(
+        t.parked_result,
+        Duration::from_secs(vitruvian_relay_protocol::PARKED_RESULT_SECS)
+    );
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
     assert_eq!(t.transit_margin, Duration::from_secs(6));
@@ -2429,7 +3268,10 @@ async fn a_reregistered_device_never_gets_the_calls_still_queued_for_its_old_con
     // The device is registered again: the relay fails the call.
     assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
     let r = within(pending).await.unwrap();
-    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert_eq!(
+        error_text(&r),
+        "Your computer disconnected. The command may already have run; check before trying again."
+    );
 
     // The old connection gets to send again. It must close without handing
     // over the call the relay has already failed.
@@ -2536,7 +3378,10 @@ async fn a_call_frame_that_cannot_be_written_within_its_margin_drops_the_link() 
     let started = Instant::now();
     let args = json!({"data": "x".repeat(16 * 1024)});
     let r = within(h.rpc(&device, ALICE, Some(&s), call_body(json!(1), "t", args))).await;
-    assert_eq!(error_text(&r), "Your computer disconnected; try again.");
+    assert_eq!(
+        error_text(&r),
+        "Your computer disconnected. The command may already have run; check before trying again."
+    );
     assert!(started.elapsed() >= Duration::from_millis(400));
     // (The session logs its reason once its socket is closed.)
     drop(ws);
@@ -2546,4 +3391,305 @@ async fn a_call_frame_that_cannot_be_written_within_its_margin_drops_the_link() 
         }
     })
     .await;
+}
+
+// ------------------------------------------------ p2 task 2: receipt handshake
+
+#[tokio::test]
+async fn call_without_ack_fails_not_received() {
+    let h = Arc::new(
+        harness_with(Timing {
+            ack_timeout: Duration::from_millis(200),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    fake.no_ack();
+    let s = h.session(&device, ALICE).await;
+
+    let started = Instant::now();
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(1), "read_file", json!({"path": "/tmp/x"})),
+    );
+    let call = fake.next_call().await;
+
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        error_text(&r),
+        "Your computer didn't answer in time; try again."
+    );
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert_eq!(
+        fake.next().await,
+        ToConnector::Cancel {
+            call_id: call.call_id.clone(),
+        }
+    );
+    assert!(!h.app.registry.in_flight(&device));
+    assert!(fake.starts.lock().unwrap().is_empty());
+    within(async {
+        while !h.logs().contains("\"outcome\":\"not_received\"") {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+
+    // A late ack after the relay gave up must never trigger Start.
+    fake.send(ToRelay::Ack {
+        call_id: call.call_id,
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(fake.frames.try_recv().is_err());
+    assert!(fake.starts.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ack_triggers_start_and_delivers_result() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    fake.no_ack();
+    let s = h.session(&device, ALICE).await;
+
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Ack {
+        call_id: call.call_id.clone(),
+    });
+    assert_eq!(
+        fake.next().await,
+        ToConnector::Start {
+            call_id: call.call_id.clone(),
+        }
+    );
+    assert_eq!(*fake.starts.lock().unwrap(), vec![call.call_id.clone()]);
+    fake.reply(&call.call_id, "ok");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "ok");
+}
+
+#[tokio::test]
+async fn an_accepted_result_is_acknowledged() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "ok");
+    within(pending).await.unwrap();
+    until(|| fake.result_acks() == [call.call_id.clone()]).await;
+}
+
+#[tokio::test]
+async fn repeated_result_for_finished_call_is_acked() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "ok");
+    let first = within(pending).await.unwrap();
+    until(|| fake.result_acks().len() == 1).await;
+    // The connector never saw that ack and sends the result again: nobody
+    // waits for it now, but it is acknowledged so the connector stops.
+    fake.reply(&call.call_id, "ok");
+    until(|| fake.result_acks().len() == 2).await;
+    assert_eq!(fake.result_acks(), [call.call_id.clone(), call.call_id]);
+    assert_eq!(first.json()["result"]["content"][0]["text"], "ok");
+}
+
+#[tokio::test]
+async fn result_after_grace_is_delivered_when_device_reconnected() {
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(300),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    // The link resets; the device is back at once, and runs the command for
+    // well over the grace period.
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    let mut fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert!(!pending.is_finished(), "the call failed after the grace");
+    fake2.reply(&call.call_id, "late but real");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "late but real");
+    // Nothing told the device to stop it.
+    assert!(fake2.frames.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn dialog_open_after_reconnect_is_cancelled_when_relay_gives_up() {
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(300),
+            call_budget: Duration::from_millis(1500),
+            transit_margin: Duration::from_millis(100),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "start_process", json!({"command": "ls"})),
+    );
+    let call = fake.next_call().await;
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    // Back within the grace, with its dialog still open; nobody answers it.
+    let mut fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    // The relay's deadline passes (after the grace): the AI is told, and the
+    // device is told to close the dialog on the connection it has now.
+    let r = within(pending).await.unwrap();
+    assert_eq!(error_text(&r), "The command took too long.");
+    assert_eq!(
+        fake2.next().await,
+        ToConnector::Cancel {
+            call_id: call.call_id
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_result_over_a_new_connection_reaches_a_call_held_across_a_drop() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    // The link drops with the call running on the device.
+    drop(fake);
+    until(|| !h.app.registry.in_flight(&device)).await;
+    let fake2 = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    fake2.reply(&call.call_id, "survived");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "survived");
+    until(|| fake2.result_acks() == [call.call_id.clone()]).await;
+}
+
+#[tokio::test]
+async fn a_call_held_across_a_drop_fails_when_the_device_stays_away() {
+    let h = Arc::new(
+        harness_with(Timing {
+            reconnect_grace: Duration::from_millis(300),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    fake.next_call().await;
+    let dropped = Instant::now();
+    drop(fake);
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        error_text(&r),
+        "Your computer disconnected. The command may already have run; check before trying again."
+    );
+    assert!(dropped.elapsed() >= Duration::from_millis(300));
+}
+
+#[tokio::test]
+async fn v1_hello_is_rejected_with_update_message() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let token = h.connector_token(ALICE);
+    let mut frame: Value =
+        serde_json::from_str(&hello(&device, &key, &token, now_secs(), vec![])).unwrap();
+    frame["protocol"] = json!(1);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(frame.to_string())).await.unwrap();
+    assert_eq!(
+        next_frame(&mut ws).await,
+        Some(ToConnector::Reject {
+            reason: "Update vrelay: this relay needs protocol 2.".into(),
+        })
+    );
+    assert!(next_frame(&mut ws).await.is_none());
 }

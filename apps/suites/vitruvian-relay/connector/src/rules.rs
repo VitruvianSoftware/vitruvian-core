@@ -36,7 +36,33 @@ use crate::Result;
 
 /// The arguments that name a file or folder, in desktop-commander 0.3.1's
 /// tools (`paths` is a list of them).
-const PATH_ARGS: &[&str] = &["path", "file_path", "source", "destination", "outputPath"];
+const PATH_ARGS: &[&str] = &[
+    "path",
+    "file_path",
+    "source",
+    "destination",
+    "outputPath",
+    // Not in 0.3.1's schema at the top level (see `path_args`), but a name
+    // that would be a path if a later version has it there.
+    "sourcePdf",
+    "sourcePdfPath",
+];
+/// The file tools whose calls name a path (`PATH_ARGS`, or `paths`). While
+/// folders are limited, one of these called with no path at all is refused:
+/// desktop-commander would pick a folder of its own for it.
+const FILE_TOOLS: &[&str] = &[
+    "read_file",
+    "read_multiple_files",
+    "write_file",
+    "edit_block",
+    "move_file",
+    "create_directory",
+    "list_directory",
+    "get_file_info",
+    "start_search",
+    "write_pdf",
+];
+
 /// The tools that read what is under their `path`, however deep: one rooted
 /// at or above a guarded folder would reach it.
 const SEARCH_TOOLS: &[&str] = &["start_search"];
@@ -46,8 +72,8 @@ const SEARCH_TOOLS: &[&str] = &["start_search"];
 /// every call's arguments). Ruling R17. A path is resolved the way the call
 /// would see it (`~`, relative to the working folder, `..`, symlinks)
 /// before it is checked; a search rooted at or above one of these asks
-/// first. Folder limits for every file tool are P2 (desktop-commander's own
-/// setting, or the Keychain for the secrets).
+/// first. The folders the file tools *may* use are `allowed_folders`
+/// (Rules::decide), resolved by the same code.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Guard {
     /// Each folder as written and as resolved, lowercased (APFS ignores
@@ -55,6 +81,10 @@ pub struct Guard {
     roots: Vec<PathBuf>,
     home: PathBuf,
     cwd: PathBuf,
+    /// Whether upper and lower case are the same folder: paths are compared
+    /// lowercased when so, exactly when not. True for the guard (it only
+    /// refuses more), as measured on the volume for the allowed folders.
+    fold: bool,
 }
 
 impl Guard {
@@ -81,15 +111,58 @@ impl Guard {
         )
     }
 
+    /// A guard of the same home and working folders whose roots are the
+    /// folders a person allowed (`~` and relative paths as in a call).
+    ///
+    /// Compared exactly on a case-sensitive volume: lowercasing there would
+    /// let `~/work` through for an allowed `~/Work`, a different folder.
+    fn limited_to(&self, folders: &[String]) -> Guard {
+        let roots: Vec<PathBuf> = folders.iter().map(PathBuf::from).collect();
+        let probe = Guard::build(&self.home, &self.cwd, &roots, false);
+        // Folding is right only if every allowed folder is on a volume that
+        // ignores case (an unknown mix compares exactly: refuses more).
+        let fold = !roots.is_empty()
+            && roots
+                .iter()
+                .all(|r| volume_ignores_case(&probe.real_part(&r.to_string_lossy())));
+        Guard::build(&self.home, &self.cwd, &roots, fold)
+    }
+
+    /// The part of `raw` that exists, with symlinks resolved.
+    fn real_part(&self, raw: &str) -> PathBuf {
+        let mut head = normalize(&self.absolute(raw));
+        loop {
+            if let Ok(real) = std::fs::canonicalize(&head) {
+                return real;
+            }
+            if !head.pop() {
+                return PathBuf::from("/");
+            }
+        }
+    }
+
+    fn case(&self, p: &Path) -> PathBuf {
+        if self.fold {
+            lower(p)
+        } else {
+            p.to_path_buf()
+        }
+    }
+
     pub fn with_roots(home: &Path, cwd: &Path, roots: &[PathBuf]) -> Guard {
+        Guard::build(home, cwd, roots, true)
+    }
+
+    fn build(home: &Path, cwd: &Path, roots: &[PathBuf], fold: bool) -> Guard {
         let mut g = Guard {
             roots: Vec::new(),
             home: home.to_path_buf(),
             cwd: cwd.to_path_buf(),
+            fold,
         };
         let mut all = Vec::new();
         for r in roots {
-            all.push(lower(&normalize(&g.absolute(&r.to_string_lossy()))));
+            all.push(g.case(&normalize(&g.absolute(&r.to_string_lossy()))));
             all.push(g.resolve(&r.to_string_lossy()));
         }
         all.sort();
@@ -129,14 +202,14 @@ impl Guard {
                 for part in tail.iter().rev() {
                     out.push(part);
                 }
-                return lower(&normalize(&out));
+                return self.case(&normalize(&out));
             }
             match (head.file_name().map(|n| n.to_os_string()), head.parent()) {
                 (Some(name), Some(parent)) => {
                     tail.push(name);
                     head = parent.to_path_buf();
                 }
-                _ => return lower(&abs),
+                _ => return self.case(&abs),
             }
         }
     }
@@ -173,6 +246,40 @@ fn lower(p: &Path) -> PathBuf {
     PathBuf::from(p.to_string_lossy().to_lowercase())
 }
 
+/// Whether the volume holding `path` (an existing path) treats names that
+/// differ only in case as the same: looks up a name with its case swapped
+/// and asks if it is the very same file. A name with no letters says
+/// nothing, so the next one up is tried.
+fn volume_ignores_case(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    for anc in path.ancestors() {
+        let Some(name) = anc.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        let swapped: String = name
+            .chars()
+            .map(|c| {
+                if c.is_lowercase() {
+                    c.to_uppercase().next().unwrap_or(c)
+                } else {
+                    c.to_lowercase().next().unwrap_or(c)
+                }
+            })
+            .collect();
+        if swapped == name {
+            continue;
+        }
+        let Ok(a) = std::fs::metadata(anc) else {
+            continue;
+        };
+        return match std::fs::metadata(anc.with_file_name(&swapped)) {
+            Ok(b) => a.dev() == b.dev() && a.ino() == b.ino(),
+            Err(_) => false,
+        };
+    }
+    false
+}
+
 /// The path-like string arguments of a call.
 fn path_args(args: &Value) -> Vec<&str> {
     let mut out: Vec<&str> = PATH_ARGS
@@ -181,6 +288,18 @@ fn path_args(args: &Value) -> Vec<&str> {
         .collect();
     if let Some(list) = args.get("paths").and_then(Value::as_array) {
         out.extend(list.iter().filter_map(Value::as_str));
+    }
+    // `write_pdf` edits a PDF with a list of operations in `content`; an
+    // insert names another PDF to copy pages from (`sourcePdfPath`, nested
+    // in desktop-commander 0.3.1's schema), which it reads from anywhere.
+    if let Some(ops) = args.get("content").and_then(Value::as_array) {
+        for op in ops {
+            out.extend(
+                PATH_ARGS
+                    .iter()
+                    .filter_map(|k| op.get(*k).and_then(Value::as_str)),
+            );
+        }
     }
     out
 }
@@ -202,6 +321,13 @@ config_allow = []    # settings tools to expose anyway; any other tool whose
 no_prompt = ["read_file", "read_multiple_files", "list_directory",
              "get_file_info", "start_search", "get_more_search_results",
              "stop_search", "list_searches"]
+# Keep this Mac from sleeping while vrelay runs, so a call from Claude does not
+# find it asleep. The screen may still sleep. Set it to false to stop.
+keep_awake = true
+# The file tools (read, write, move, search) may only touch these folders and
+# what is inside them; `~` is your home folder. Terminal commands are not
+# limited by this list.
+allowed_folders = ["~"]
 "#;
 
 /// Arguments that turn a tool listed in `no_prompt` into something that must
@@ -215,6 +341,25 @@ pub const ASK_FIRST_ARGS: &[(&str, &str)] = &[("read_file", "isUrl")];
 /// of these was never edited, so `load` replaces it with the current
 /// defaults; any edit, however small, makes the file the person's own.
 const PREVIOUS_DEFAULTS: &[&str] = &[
+    // Before `keep_awake` and `allowed_folders` (Relay P2).
+    r#"# What the relay may do on this Mac. vrelay reads this file when it starts.
+# After an edit, run `vrelay reload`: until then the rules it loaded stay in
+# use (`vrelay status` says when this file has changed since). `vrelay pause`
+# and `vrelay resume` set `paused` and reload in one step.
+paused = false
+hidden = ["set_config_value", "get_config",    # never exposed remotely
+          "get_recent_tool_calls",               # earlier calls' arguments
+          "give_feedback_to_desktop_commander",  # opens a browser form
+          "track_ui_event"]                      # desktop-commander's own UI
+config_allow = []    # settings tools to expose anyway; any other tool whose
+                     # name contains "config" is hidden
+# While paused, no tools are visible and every call is refused.
+# Run without asking: reads only. Every other tool, including any tool a
+# future desktop-commander adds, asks first.
+no_prompt = ["read_file", "read_multiple_files", "list_directory",
+             "get_file_info", "start_search", "get_more_search_results",
+             "stop_search", "list_searches"]
+"#,
     // Before the header that says how to reload (final fix wave).
     r#"paused = false
 hidden = ["set_config_value", "get_config",    # never exposed remotely
@@ -245,6 +390,10 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
 "#,
 ];
 
+/// The refusal for a path outside `allowed_folders`.
+pub const OUTSIDE_ALLOWED: &str =
+    "outside your allowed folders; change them in Vitruvian Relay's settings";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Run,
@@ -261,6 +410,13 @@ pub struct Rules {
     #[serde(default)]
     pub config_allow: Vec<String>,
     pub no_prompt: Vec<String>,
+    /// Hold the Mac awake while `vrelay run` is up (awake.rs).
+    #[serde(default = "default_keep_awake")]
+    pub keep_awake: bool,
+    /// The folders the file tools may touch (a call's path must resolve to
+    /// one of them or below); `~` is the home folder.
+    #[serde(default = "default_allowed_folders")]
+    pub allowed_folders: Vec<String>,
     /// SHA-256 of the file's text as [`load`] read it (empty if these
     /// rules came from elsewhere), so `vrelay status` can tell when the
     /// file has changed since.
@@ -270,6 +426,19 @@ pub struct Rules {
     /// it from its configuration, and a reload keeps it.
     #[serde(skip)]
     pub guard: Guard,
+    /// `allowed_folders` resolved the way a call's paths are, once
+    /// [`Rules::set_guard`] has the home and working folders. `None` until
+    /// then: no limit is applied (the tests' rules, which have no home).
+    #[serde(skip)]
+    limit: Option<Guard>,
+}
+
+fn default_keep_awake() -> bool {
+    true
+}
+
+fn default_allowed_folders() -> Vec<String> {
+    vec!["~".to_string()]
 }
 
 /// The file's text with its `paused = …` line (if any) set to `paused`.
@@ -380,7 +549,11 @@ pub struct Reloaded {
 /// On an error the caller keeps `current`.
 pub fn reload(dir: &Path, current: &Rules, tools: &[ToolDef]) -> Result<Reloaded> {
     let mut rules = load(dir)?;
-    rules.guard = current.guard.clone();
+    if current.limit.is_some() {
+        rules.set_guard(current.guard.clone());
+    } else {
+        rules.guard = current.guard.clone();
+    }
     let visible_changed = rules.visible(tools) != current.visible(tools);
     Ok(Reloaded {
         rules,
@@ -389,6 +562,13 @@ pub fn reload(dir: &Path, current: &Rules, tools: &[ToolDef]) -> Result<Reloaded
 }
 
 impl Rules {
+    /// Sets the folders no call may touch, and resolves `allowed_folders`
+    /// with the same home and working folder.
+    pub fn set_guard(&mut self, guard: Guard) {
+        self.limit = Some(guard.limited_to(&self.allowed_folders));
+        self.guard = guard;
+    }
+
     /// Never shown and never callable: named in `hidden` (ignoring case and
     /// surrounding spaces), or any other tool whose name contains "config"
     /// unless `config_allow` names it exactly. The explicit list wins over
@@ -430,6 +610,18 @@ impl Rules {
             return Decision::Refuse(
                 "that path is in a folder holding vrelay's own sign-in, keys or logs",
             );
+        }
+        // Only the folders the person chose. A search is a path argument
+        // too: its root must be inside them. Terminal commands are not
+        // path-checked: a command line can name a path in too many ways.
+        if let Some(limit) = &self.limit {
+            // No path at all is not "nothing to check": the tool would
+            // fall back to a folder of its own. Fail closed.
+            if paths.iter().any(|p| !limit.under(p))
+                || (paths.is_empty() && FILE_TOOLS.contains(&tool))
+            {
+                return Decision::Refuse(OUTSIDE_ALLOWED);
+            }
         }
         if SEARCH_TOOLS.contains(&tool) && paths.iter().any(|p| self.guard.at_or_above(p)) {
             return Decision::AskFirst;
@@ -1079,5 +1271,352 @@ no_prompt = ["read_file", "read_multiple_files", "list_directory",
         load(&dir).unwrap();
         let again = reload(&dir, &r, &[]).unwrap().rules;
         assert!(refused(&again, "read_file", json!({ "path": token })));
+    }
+
+    /// Rules for a pretend home with a work folder, the folder limits applied.
+    fn limited(home: &Path, allowed: &[&str]) -> Rules {
+        let cfg = Config::from_lookup(|k| (k == "HOME").then(|| home.display().to_string()));
+        let mut r = defaults();
+        r.allowed_folders = allowed.iter().map(|s| s.to_string()).collect();
+        r.set_guard(Guard::for_config(&cfg, &home.join("work")));
+        r
+    }
+
+    fn refused_outside(r: &Rules, tool: &str, args: Value) -> bool {
+        r.decide(tool, &args) == Decision::Refuse(OUTSIDE_ALLOWED)
+    }
+
+    /// `write_pdf` can copy pages from a second PDF named inside its list of
+    /// operations (`sourcePdfPath`, desktop-commander 0.3.1): that file is
+    /// read from wherever it is, so it is checked like any path argument.
+    #[test]
+    fn write_pdf_source_outside_allowed_folders_is_refused() {
+        let root = test_dir("rules-pdf");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        let r = limited(&home, &["~"]);
+        for args in [
+            // As in the 0.3.1 schema: nested in an operation.
+            json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                   "content": [{"type": "insert", "pageIndex": 0,
+                                "sourcePdfPath": "/etc/secret.pdf"}]}),
+            json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                   "content": [{"type": "delete", "pageIndexes": [0]},
+                               {"type": "insert", "pageIndex": 1,
+                                "sourcePdfPath": "~/../other/s.pdf"}]}),
+            // Top level, whichever name.
+            json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                   "sourcePdf": "/etc/secret.pdf"}),
+            json!({"path": "~/work/a.pdf", "sourcePdfPath": "/etc/secret.pdf"}),
+        ] {
+            assert!(refused_outside(&r, "write_pdf", args.clone()), "{args}");
+        }
+        // Inside the folders it is as before: asks first.
+        assert_eq!(
+            r.decide(
+                "write_pdf",
+                &json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                        "content": [{"type": "insert", "pageIndex": 0,
+                                     "sourcePdfPath": "~/work/s.pdf"}]})
+            ),
+            Decision::AskFirst
+        );
+        // The vrelay folders guard covers the same argument, nested or not.
+        let guard_only = {
+            let mut g = defaults();
+            g.set_guard(r.guard.clone());
+            g
+        };
+        assert!(matches!(
+            guard_only.decide(
+                "write_pdf",
+                &json!({"path": "~/work/a.pdf", "outputPath": "~/work/b.pdf",
+                        "content": [{"type": "insert", "pageIndex": 0,
+                                     "sourcePdfPath": "~/Library/Application Support/vrelay/x.pdf"}]})
+            ),
+            Decision::Refuse(why) if why.contains("vrelay's own")
+        ));
+    }
+
+    /// Final review, Minor 5: a file tool with no path argument would use
+    /// desktop-commander's own default folder: refused, whatever the tool.
+    #[test]
+    fn file_tool_without_a_path_is_refused() {
+        let root = test_dir("rules-nopath");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        let r = limited(&home, &["~"]);
+        for tool in FILE_TOOLS {
+            assert!(refused_outside(&r, tool, json!({})), "{tool}");
+        }
+        // Content, but no path; a path that is not a string; no paths.
+        assert!(refused_outside(&r, "write_file", json!({"content": "x"})));
+        assert!(refused_outside(&r, "read_file", json!({"path": 5})));
+        assert!(refused_outside(
+            &r,
+            "read_multiple_files",
+            json!({"paths": []})
+        ));
+        // A tool that takes no path is not affected, and a path inside is
+        // fine.
+        assert_eq!(
+            r.decide("start_process", &json!({"command": "ls"})),
+            Decision::AskFirst
+        );
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/work/a"})),
+            Decision::Run
+        );
+    }
+
+    /// Relay P2: the file tools stay inside the folders the person chose
+    /// (home by default), however the path is written.
+    #[test]
+    fn file_tool_outside_allowed_folders_is_refused() {
+        let root = test_dir("rules-limit");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        let r = limited(&home, &["~"]);
+        assert_eq!(
+            OUTSIDE_ALLOWED,
+            "outside your allowed folders; change them in Vitruvian Relay's settings"
+        );
+        // Outside home: refused, for every path argument and every tool.
+        for (tool, args) in [
+            ("read_file", json!({"path": "/etc/hosts"})),
+            ("read_file", json!({"path": "~/../other/x"})),
+            ("read_file", json!({"path": "../../elsewhere"})),
+            (
+                "read_multiple_files",
+                json!({"paths": ["~/work/a", "/etc/hosts"]}),
+            ),
+            ("write_file", json!({"path": "/etc/hosts", "content": "x"})),
+            ("edit_block", json!({"file_path": "/etc/hosts"})),
+            (
+                "move_file",
+                json!({"source": "~/work/a", "destination": "/tmp/a"}),
+            ),
+            ("get_file_info", json!({"path": "/"})),
+            ("start_search", json!({"path": "/", "pattern": "x"})),
+        ] {
+            assert!(refused_outside(&r, tool, args.clone()), "{tool} {args}");
+        }
+        // Inside it: as before.
+        for p in [
+            "~",
+            "~/work/a.txt",
+            "a.txt",
+            "../work/b",
+            &format!("{}/c", home.display()),
+        ] {
+            assert_eq!(
+                r.decide("read_file", &json!({"path": p})),
+                Decision::Run,
+                "{p}"
+            );
+        }
+        assert_eq!(
+            r.decide("write_file", &json!({"path": "~/work/a.txt"})),
+            Decision::AskFirst
+        );
+        // A tool with no path (the terminal) is not path-checked.
+        assert_eq!(
+            r.decide("start_process", &json!({"command": "cat /etc/hosts"})),
+            Decision::AskFirst
+        );
+        // Chosen folders replace the default; none allows no path at all.
+        let narrow = limited(&home, &["~/work"]);
+        assert_eq!(
+            narrow.decide("read_file", &json!({"path": "~/work/a"})),
+            Decision::Run
+        );
+        assert!(refused_outside(
+            &narrow,
+            "read_file",
+            json!({"path": "~/notes"})
+        ));
+        assert!(refused_outside(
+            &narrow,
+            "read_file",
+            json!({"path": "~/work2/a"})
+        ));
+        let none = limited(&home, &[]);
+        assert!(refused_outside(
+            &none,
+            "read_file",
+            json!({"path": "~/work/a"})
+        ));
+        // vrelay's own folders keep their own, older refusal.
+        let own = r.decide(
+            "read_file",
+            &json!({"path": "~/Library/Application Support/vrelay/token.json"}),
+        );
+        assert!(
+            matches!(own, Decision::Refuse(w) if w.contains("vrelay's own")),
+            "{own:?}"
+        );
+        // A reload keeps the limit, and takes a changed list.
+        let dir = root.join("rules");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            rules_path(&dir),
+            DEFAULT_RULES.replace(
+                "allowed_folders = [\"~\"]",
+                "allowed_folders = [\"~/work\"]",
+            ),
+        )
+        .unwrap();
+        let again = reload(&dir, &r, &[]).unwrap().rules;
+        assert!(refused_outside(
+            &again,
+            "read_file",
+            json!({"path": "~/notes"})
+        ));
+        assert_eq!(
+            again.decide("read_file", &json!({"path": "~/work/a"})),
+            Decision::Run
+        );
+    }
+
+    #[test]
+    fn symlink_out_of_allowed_folder_is_refused() {
+        let root = test_dir("rules-limit-link");
+        let home = root.join("home");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(home.join("work")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret"), "s").unwrap();
+        std::os::unix::fs::symlink(&outside, home.join("work/escape")).unwrap();
+        let r = limited(&home, &["~"]);
+        assert!(refused_outside(
+            &r,
+            "read_file",
+            json!({"path": "~/work/escape/secret"})
+        ));
+        assert!(refused_outside(
+            &r,
+            "read_file",
+            json!({"path": "~/work/escape"})
+        ));
+        // Not yet there, but under the link: still outside.
+        assert!(refused_outside(
+            &r,
+            "write_file",
+            json!({"path": "~/work/escape/new/f"})
+        ));
+        assert!(refused_outside(
+            &r,
+            "start_search",
+            json!({"path": "~/work/escape", "pattern": "s"})
+        ));
+        // A link that stays inside is fine; so is an allowed folder that is itself a link.
+        std::os::unix::fs::symlink(home.join("work"), home.join("again")).unwrap();
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/again/x"})),
+            Decision::Run
+        );
+        let via_link = limited(&home, &["~/again"]);
+        assert_eq!(
+            via_link.decide("read_file", &json!({"path": "~/work/x"})),
+            Decision::Run
+        );
+        assert!(refused_outside(
+            &via_link,
+            "read_file",
+            json!({"path": "~/work/escape/secret"})
+        ));
+    }
+
+    /// An untouched P1 file takes the new defaults; a paused one stays
+    /// paused; an edited one is the person's own and only gains the defaults
+    /// of the settings it never had.
+    #[test]
+    fn p1_rules_file_upgrades_with_new_defaults() {
+        let p1 = PREVIOUS_DEFAULTS[0];
+        assert!(!p1.contains("keep_awake") && !p1.contains("allowed_folders"));
+        let dir = test_dir("rules-p1");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(rules_path(&dir), p1).unwrap();
+        let r = load(&dir).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            DEFAULT_RULES
+        );
+        assert!(r.keep_awake);
+        assert_eq!(r.allowed_folders, vec!["~".to_string()]);
+        // Paused with `vrelay pause` before the upgrade: still paused after.
+        let dir = test_dir("rules-p1-paused");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(rules_path(&dir), with_paused(p1, true).unwrap()).unwrap();
+        let r = load(&dir).unwrap();
+        assert!(r.paused && r.keep_awake);
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            with_paused(DEFAULT_RULES, true).unwrap()
+        );
+        // The older defaults still upgrade, straight to the current ones.
+        let dir = test_dir("rules-p0");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(rules_path(&dir), PREVIOUS_DEFAULTS[1]).unwrap();
+        load(&dir).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(rules_path(&dir)).unwrap(),
+            DEFAULT_RULES
+        );
+        // An edited P1 file is left alone, and the new settings take their defaults.
+        let dir = test_dir("rules-p1-edited");
+        std::fs::create_dir_all(&dir).unwrap();
+        let edited = format!("{p1}# mine\n");
+        std::fs::write(rules_path(&dir), &edited).unwrap();
+        let r = load(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(rules_path(&dir)).unwrap(), edited);
+        assert!(r.keep_awake);
+        assert_eq!(r.allowed_folders, vec!["~".to_string()]);
+        // The current defaults say both out loud.
+        let d = defaults();
+        assert!(d.keep_awake);
+        assert_eq!(d.allowed_folders, vec!["~".to_string()]);
+        let off: Rules =
+            toml::from_str(&DEFAULT_RULES.replace("keep_awake = true", "keep_awake = false"))
+                .unwrap();
+        assert!(!off.keep_awake);
+    }
+
+    /// Review: the allowed folders are compared exactly on a case-sensitive
+    /// volume (`~/work` is not `~/Work` there) and ignoring case on one that
+    /// ignores it (APFS by default), the guard erring only towards refusing.
+    #[test]
+    fn allowed_folders_follow_the_volumes_case_rules() {
+        let root = test_dir("rules-limit-case");
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("Work")).unwrap();
+        let work = home.join("Work");
+        // The probe agrees with asking the volume directly.
+        let ignores = std::fs::metadata(home.join("wORK")).is_ok();
+        assert_eq!(volume_ignores_case(&work), ignores);
+        // Exact mode: the same spelling always; another one only where the
+        // volume itself says it is the same folder (the system then hands
+        // back the folder's real spelling).
+        let exact = Guard::build(&home, &home, std::slice::from_ref(&work), false);
+        assert!(exact.under("~/Work/a"));
+        assert_eq!(exact.under("~/work/a"), ignores);
+        assert_eq!(exact.under("~/WORK"), ignores);
+        // Folding mode (a volume that ignores case): any spelling.
+        let fold = Guard::build(&home, &home, std::slice::from_ref(&work), true);
+        assert!(fold.under("~/Work/a") && fold.under("~/work/a") && fold.under("~/WORK"));
+        // The rules pick the mode from the volume.
+        let r = limited(&home, &["~/Work"]);
+        assert_eq!(
+            r.decide("read_file", &json!({"path": "~/Work/a"})),
+            Decision::Run
+        );
+        let other_case = r.decide("read_file", &json!({"path": "~/work/a"}));
+        if ignores {
+            assert_eq!(other_case, Decision::Run);
+        } else {
+            assert_eq!(other_case, Decision::Refuse(OUTSIDE_ALLOWED));
+        }
+        // No allowed folder at all never folds into allowing something.
+        assert!(!limited(&home, &[]).limit.unwrap().fold);
     }
 }

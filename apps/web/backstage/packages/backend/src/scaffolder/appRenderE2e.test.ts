@@ -46,22 +46,16 @@ import {
 import { tmpdir } from "os";
 import * as path from "path";
 
-import {
-  appendCatalogTarget,
-  findAspectBinary,
-  renderApplication,
-} from "./appRender";
+import { findAspectBinary, renderApplication } from "./appRender";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../../..");
 
 const CATALOG = `apiVersion: backstage.io/v1alpha1
-kind: Location
+kind: System
 metadata:
-  name: vitruvian-core-apps
+  name: vitruvian-core
 spec:
-  targets:
-    - ./backstage/catalog-info.yaml
-    - ./apps/suites/vitruvian-tabs/catalog-info.yaml
+  owner: platform-team
 `;
 
 const silentLogger = () => {
@@ -132,7 +126,7 @@ describeE2e("vitruvian:app:render against the real engine", () => {
     rmSync(host, { recursive: true, force: true });
   });
 
-  it("renders the go starter and registers it in the root catalog", async () => {
+  it("renders the go starter and stages only the rendered files", async () => {
     const log = silentLogger();
     const result = await renderApplication({
       workspacePath: host,
@@ -162,15 +156,14 @@ describeE2e("vitruvian:app:render against the real engine", () => {
     );
     expect(build).toContain('name = "order_service"');
 
-    expect(result.catalogUpdated).toBe(true);
     expect(readFileSync(path.join(host, "catalog-info.yaml"), "utf8")).toBe(
-      appendCatalogTarget(CATALOG, "apps/order_service").content,
+      CATALOG,
     );
 
-    // The staged subtree, against REAL engine output: exactly the six changed
-    // files, at repo-relative paths. This is what the publish step uploads;
-    // pointing it at the workspace would be one API call per file across a
-    // whole checkout.
+    // The staged subtree, against REAL engine output: exactly the five
+    // rendered files, at repo-relative paths. This is what the publish step
+    // uploads; pointing it at the workspace would be one API call per file
+    // across a whole checkout.
     expect(result.stagePath).toBe(".stage");
     const staged = (dir: string, prefix = ""): string[] =>
       readdirSync(dir, { withFileTypes: true })
@@ -181,7 +174,7 @@ describeE2e("vitruvian:app:render against the real engine", () => {
         )
         .sort();
     expect(staged(path.join(host, ".stage"))).toEqual(
-      [...result.renderedFiles, "catalog-info.yaml"].sort(),
+      [...result.renderedFiles].sort(),
     );
   }, 120_000);
 
