@@ -368,6 +368,70 @@ final class TimelineTests: XCTestCase {
         }
     }
 
+    /// The live Google Chat case (Courier 0.3.31): the oldest loaded message ("Sure", Saturday) had no divider above it
+    /// and the first divider was the next day's. Whatever the oldest loaded rows are, the first row is a day divider
+    /// and every row that starts a new day has its own divider directly above.
+    func testTheFirstLoadedRowIsAlwaysADayDividerWhateverTheOldestEventsAre() {
+        func member(_ id: String, ts: Int64, seq: Int64) -> Event {
+            Event(eventID: id, roomID: "!room", sender: "@\(id):example.test", senderName: id, mine: false,
+                  type: "m.room.member", content: json(#"{"membership":"join"}"#), ts: ts, seq: seq, status: .sent)
+        }
+        let sat = at(14, 16, 17)
+        let sure = message("$sure", ts: sat, seq: 10, body: "Sure")
+        let sunday = message("$sun", ts: at(15, 9, 0), seq: 11, body: "Morning")
+
+        let shapes: [(String, [Event])] = [
+            ("plain", [sure, sunday]),
+            ("older edit of an unloaded message first", [edit("$e", of: "$gone", to: "x", ts: at(14, 8, 0)), sure, sunday]),
+            ("reaction to an unloaded message first", [reaction("$r", to: "$gone", key: "👍", ts: at(13, 8, 0)), sure, sunday]),
+            ("a reaction on the oldest message", [sure, reaction("$r", to: "$sure", key: "👍", ts: at(14, 16, 18)), sunday]),
+            ("an edit of the oldest message", [sure, edit("$e", of: "$sure", to: "Sure!", ts: at(14, 16, 20)), sunday]),
+            ("the oldest message deleted (shown)", [sure, redaction("$d", of: "$sure", ts: at(14, 17, 0)), sunday]),
+            ("a member run first", [member("$m1", ts: at(14, 16, 0), seq: 1), sure, sunday]),
+            ("a member run on the day before", [member("$m1", ts: at(13, 16, 0), seq: 1), sure, sunday]),
+            ("a photo run first", [
+                message("$p1", ts: at(14, 16, 0), seq: 1, msgtype: "m.image", media: "/p1.jpg"),
+                message("$p2", ts: at(14, 16, 1), seq: 2, msgtype: "m.image", media: "/p2.jpg"),
+                sure, sunday,
+            ]),
+            ("a lone photo first", [message("$p1", ts: at(14, 16, 0), seq: 1, msgtype: "m.image", media: "/p1.jpg"), sure, sunday]),
+            ("a reply first", [sure, message("$rep", ts: at(14, 16, 30), seq: 12, extra: #","m.relates_to":{"m.in_reply_to":{"event_id":"$sure"}}"#), sunday]),
+            ("a failed message first", [message("$f", ts: at(14, 15, 0), seq: 1, status: "failed"), sure, sunday]),
+            ("a disappearing message first", [message("$x", ts: at(14, 15, 0), seq: 1, expiresAt: at(14, 15, 30)), sure, sunday]),
+        ]
+        for (name, events) in shapes {
+            for hideDeleted in [false, true] {
+                for showUpdates in [false, true] {
+                    for unread in [nil, "$sure", "$sun"] {
+                        let items = Timeline.build(events: events, me: me, firstUnreadID: unread, now: now,
+                                                   hideDeleted: hideDeleted, isDirect: false,
+                                                   showChatUpdates: showUpdates, calendar: utc)
+                        let label = "\(name) hideDeleted=\(hideDeleted) updates=\(showUpdates) unread=\(unread ?? "-")"
+                        guard let first = items.first else { continue }
+                        guard case .dateSeparator = first else {
+                            XCTFail("\(label): first row is not a day divider: \(items.map(\.id))")
+                            continue
+                        }
+                        // Each message / run sits under a divider for its own day.
+                        var day: Date?
+                        for item in items {
+                            switch item {
+                            case let .dateSeparator(d): day = d
+                            case let .message(m):
+                                XCTAssertEqual(day, utc.startOfDay(for: Date(timeIntervalSince1970: Double(m.ts) / 1000)),
+                                               "\(label): \(m.id) is under the wrong day: \(items.map(\.id))")
+                            case let .membershipRun(_, events, _):
+                                XCTAssertEqual(day, utc.startOfDay(for: Date(timeIntervalSince1970: Double(events[0].ts) / 1000)),
+                                               "\(label): member run is under the wrong day: \(items.map(\.id))")
+                            case .newDivider: break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func testMessagesWithTheSameTimeKeepTheEnginesArrivalOrder() {
         let events = [
             message("$b", ts: at(14, 10, 0), seq: 2),
