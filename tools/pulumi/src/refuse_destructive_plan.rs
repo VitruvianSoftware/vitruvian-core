@@ -641,7 +641,7 @@ pub fn check_and_report(label: &str, raw: &str, allow: &[String]) -> i32 {
     };
 
     eprintln!(
-        "::error::Refusing to apply {label}: Pulumi preview contains destructive changes ({detail}). Deleting or replacing a resource can destroy its data. If this is intended, add one `Allow-destroy: <urn>` line per resource to a commit message in the PR and merge it; scheduled runs never apply a delete."
+        "::error::Refusing to apply {label}: Pulumi preview contains destructive changes ({detail}). Deleting or replacing a resource can destroy its data. If this is intended, add one `Allow-destroy: <urn>` line per resource to a commit message in the PR and merge it; scheduled runs never apply a delete. If an approved push's run was cancelled by a later push, merge a new commit carrying the line (re-running the old run would apply an older checkout)."
     );
     eprintln!(
         "error: Refusing to apply {label}: Pulumi preview contains destructive changes ({detail}); refusing to run pulumi up."

@@ -824,6 +824,23 @@ fn sentry_apply_applies_a_delete_only_when_a_pushed_commit_approves_it() {
             assert_eq!(held.calls, vec!["select", "preview:1"]);
         }
 
+        // A push approving a different resource -> refused.
+        let other = run_reconcile_case(&ReconcileCase {
+            tag: "allow-push-other",
+            out_filename,
+            action: "up",
+            select_exit_code: 0,
+            first_preview_destructive: true,
+            up_409_count: 0,
+            second_preview_destructive: false,
+            event: Some((
+                "push",
+                r#"{"commits":[{"message":"x\n\nAllow-destroy: urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-other"}]}"#,
+            )),
+        });
+        assert_eq!(other.rc, 1, "{out_filename}: calls={:?}", other.calls);
+        assert_eq!(other.calls, vec!["select", "preview:1"]);
+
         // A push with no approval -> refused.
         let unapproved = run_reconcile_case(&ReconcileCase {
             tag: "allow-push-none",

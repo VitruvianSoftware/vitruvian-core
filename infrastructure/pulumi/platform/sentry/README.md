@@ -44,6 +44,11 @@ so newly added Sentry projects receive PagerDuty alert rules in the same run):
   after review. A replace needs only its one URN; a resource with children
   needs a line for each. The 6-hourly schedule and manual runs never honour an
   approval, so if the push run fails for another reason, re-run that same run.
+  If a later push cancelled the approving run while it waited in the queue,
+  merge a new commit with the line instead: re-running the cancelled run would
+  apply its older checkout. This relies on the repository squashing with
+  commit messages (`COMMIT_MESSAGES`); if that changes to the PR description,
+  a description line would start approving deletes.
 - **Route**: joins the Headscale mesh (`tag:ci`) via
   [`.github/actions/homelab-tunnel-setup`](../../../../.github/actions/homelab-tunnel-setup/action.yml)
   and forwards `sentry.lab.ipv1337.dev:443` through Envoy Gateway's

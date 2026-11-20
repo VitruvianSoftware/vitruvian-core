@@ -247,3 +247,63 @@ esac
         assert_eq!(got, want_calls, "approved={approved}");
     }
 }
+
+#[test]
+fn approval_still_holds_on_the_replan_after_a_409() {
+    const URN: &str =
+        "urn:pulumi:production::sentry::sentry:index/sentryProject:SentryProject::project-old";
+    let d = tempdir("guarded-up-allow-409");
+    let stubs = d.join("stubs");
+    let calls = d.join("calls.log");
+    write_exec(&stubs.join("sleep"), "#!/usr/bin/env bash\nexit 0\n");
+    write_exec(
+        &stubs.join("pulumi"),
+        &format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+case "${{1:-}}" in
+  preview)
+    echo "preview" >> "$CALL_LOG"
+    echo '{{"steps":[{{"op":"delete","urn":"{URN}"}}],"changeSummary":{{"delete":1}}}}'
+    ;;
+  up)
+    echo "up" >> "$CALL_LOG"
+    if [ ! -f "$UP_ONCE" ]; then
+      touch "$UP_ONCE"
+      echo "error: [409] Conflict: concurrent update in progress" >&2
+      exit 23
+    fi
+    ;;
+  *) exit 99 ;;
+esac
+"#
+        ),
+    );
+    let event = d.join("event.json");
+    std::fs::write(
+        &event,
+        format!(r#"{{"commits":[{{"message":"chore: x\n\nAllow-destroy: {URN}"}}]}}"#),
+    )
+    .unwrap();
+    let mut c = cmd(
+        &bin("GUARDED_UP_BIN"),
+        &format!("{}:/usr/bin:/bin", stubs.display()),
+    );
+    c.env("CALL_LOG", &calls)
+        .env("UP_ONCE", d.join("up.once"))
+        .env("PULUMI_CONFLICT_RETRY_DELAY", "1")
+        .env("PULUMI_CONFLICT_MAX_DELAY", "1")
+        .arg("sentry production")
+        .arg("--allow-destroy-from-event")
+        .arg(&event);
+    let o = run(c);
+    let got: Vec<String> = read(&calls).lines().map(str::to_string).collect();
+    assert_eq!(code(&o), 0, "stderr: {}", stderr(&o));
+    assert_eq!(got, vec!["preview", "up", "preview", "up"]);
+    assert_eq!(
+        stdout(&o).matches("approved by Allow-destroy").count(),
+        2,
+        "both plans must be checked against the approval: {}",
+        stdout(&o)
+    );
+}
