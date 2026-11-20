@@ -25,7 +25,9 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -109,7 +111,7 @@ func nuc9i5Host() *fakeHost {
 		{match: "systemctl is-active k3s.service", out: "active"},
 		{match: "cat /etc/rancher/k3s/config.yaml", out: nuc9i5ConfigYAML},
 		{match: "cat /etc/systemd/system/k3s.service", out: nodeUnit},
-		{match: "grep -rls", out: "/etc/rancher/k3s/config.yaml"},
+		{match: "grep -ls", out: "/etc/rancher/k3s/config.yaml"},
 		{match: "echo populated-dir", out: "symlink"},
 		{match: "readlink /var/lib/kubelet", out: "/home/k3s/kubelet"},
 		{match: "etcd-snapshot save", out: "saved /home/k3s/server/db/snapshots/devx-pre-relocate-kubelet-nuc9i5-1763632800"},
@@ -157,7 +159,7 @@ func relocateOpts(ctl *fakeHost, apply bool, out *bytes.Buffer) RelocateOptions 
 }
 
 // Read-only commands a dry run (or a refusal) may issue.
-var readOnlyPrefixes = []string{"systemctl cat ", "systemctl is-active ", "cat /etc/", "grep -rls", "if mountpoint -q", "readlink ", "k3s kubectl get "}
+var readOnlyPrefixes = []string{"systemctl cat ", "systemctl is-active ", "cat /etc/", "grep -ls", "if mountpoint -q", "readlink ", "k3s kubectl get "}
 
 func assertReadOnly(t *testing.T, name string, calls []string) {
 	t.Helper()
@@ -304,7 +306,7 @@ func TestRelocate_PlanIncludesExecStartEditWhenPresent(t *testing.T) {
 	node := nuc9i5Host()
 	node.prepend(
 		reply{match: "cat /etc/systemd/system/k3s.service", out: k3sServerUnit},
-		reply{match: "grep -rls", out: "/etc/rancher/k3s/config.yaml\n/etc/systemd/system/k3s.service"},
+		reply{match: "grep -ls", out: "/etc/rancher/k3s/config.yaml\n/etc/systemd/system/k3s.service"},
 	)
 	plan := planFor(t, "server", node, controlHost())
 	var cmd string
@@ -330,20 +332,116 @@ func TestRelocate_PlanIncludesExecStartEditWhenPresent(t *testing.T) {
 	}
 }
 
-func TestRelocate_InspectionIgnoresItsOwnLeftovers(t *testing.T) {
-	// A config.yaml.devx-new left by an interrupted run (or the backup) must not make
-	// inspection refuse: the scan excludes both.
+func TestRelocate_ScanLooksOnlyAtWhatK3sReads(t *testing.T) {
 	node := nuc9i5Host()
 	planFor(t, "server", node, controlHost())
 	var scan string
 	for _, c := range node.calls {
-		if strings.HasPrefix(c, "grep -rls") {
+		if strings.HasPrefix(c, "grep -ls") {
 			scan = c
 		}
 	}
-	for _, want := range []string{"--exclude='*.devx-new'", "--exclude='*.pre-relocate-kubelet'"} {
+	for _, want := range []string{
+		"/etc/rancher/k3s/config.yaml ", "/etc/rancher/k3s/config.yaml.d/*.yaml", "/etc/rancher/k3s/config.yaml.d/*.yml",
+		"/etc/systemd/system/k3s.service ", "/etc/systemd/system/k3s.service.d/*.conf", "/etc/systemd/system/k3s.service.env",
+	} {
 		if !strings.Contains(scan, want) {
-			t.Errorf("root-dir scan must carry %s: %s", want, scan)
+			t.Errorf("the scan must cover %s: %s", want, scan)
+		}
+	}
+	if strings.Contains(scan, " -r") || strings.Contains(scan, "/etc/rancher/k3s ") || strings.Contains(scan, "/etc/rancher/k3s/*") {
+		t.Errorf("the scan must not sweep the whole directory (backups are never read by k3s): %s", scan)
+	}
+}
+
+// realScan runs the real scan command against a temp tree laid out like a node and
+// returns its output with the temp root stripped, the way the node would print it.
+func realScan(t *testing.T, files map[string]string, unit string) string {
+	t.Helper()
+	root, err := os.MkdirTemp("", "scan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	for path, content := range files {
+		full := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := strings.ReplaceAll(rootDirScanCmd(stdScanPaths(unit)), "/etc/", root+"/etc/")
+	out, err := exec.Command("sh", "-c", cmd).Output()
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+	return strings.ReplaceAll(string(out), root, "")
+}
+
+// The coordinator's live finding: a config.yaml.bak mentioning root-dir made the
+// real dry run refuse. Only files k3s reads may count.
+func TestRelocate_BackupsAndLeftoversNeverCauseARefusal(t *testing.T) {
+	const rootDir = "kubelet-arg:\n- root-dir=/home/k3s/kubelet\n"
+	base := map[string]string{
+		"etc/rancher/k3s/config.yaml":                         "data-dir: /home/k3s\n" + rootDir,
+		"etc/rancher/k3s/config.yaml.bak":                     rootDir,
+		"etc/rancher/k3s/config.yaml.pre-relocate-kubelet":    rootDir,
+		"etc/rancher/k3s/config.yaml.devx-new":                rootDir,
+		"etc/rancher/k3s/config.yaml.d/notes.txt":             rootDir,
+		"etc/rancher/k3s/config.yaml.d/20-x.yaml.disabled":    rootDir,
+		"etc/systemd/system/k3s.service.pre-relocate-kubelet": "ExecStart=/usr/local/bin/k3s server --kubelet-arg=root-dir=/x\n",
+		"etc/systemd/system/k3s.service.bak":                  rootDir,
+		"etc/systemd/system/k3s.service.d/notes.md":           rootDir,
+	}
+	hits := realScan(t, base, "k3s.service")
+	if strings.TrimSpace(hits) != "/etc/rancher/k3s/config.yaml" {
+		t.Fatalf("only config.yaml is read by k3s here; scan found:\n%s", hits)
+	}
+	node := nuc9i5Host()
+	node.prepend(reply{match: "grep -ls", out: hits})
+	if _, err := relocateProvider("server", node).PlanKubeletRelocation(context.Background(), relocateOpts(controlHost(), false, &bytes.Buffer{})); err != nil {
+		t.Fatalf("backups must not make the plan refuse: %v", err)
+	}
+
+	// A drop-in k3s does read still refuses, whatever its case.
+	for _, drop := range []string{"etc/rancher/k3s/config.yaml.d/10-x.yaml", "etc/rancher/k3s/config.yaml.d/10-x.yml", "etc/rancher/k3s/config.yaml.d/10-x.YAML", "etc/systemd/system/k3s.service.d/10-x.conf", "etc/systemd/system/k3s.service.env"} {
+		files := map[string]string{}
+		for k, v := range base {
+			files[k] = v
+		}
+		files[drop] = rootDir
+		hits := realScan(t, files, "k3s.service")
+		if !strings.Contains(hits, "/"+drop) {
+			t.Errorf("the scan must find %s; got:\n%s", drop, hits)
+			continue
+		}
+		node := nuc9i5Host()
+		node.prepend(reply{match: "grep -ls", out: hits})
+		_, err := relocateProvider("server", node).PlanKubeletRelocation(context.Background(), relocateOpts(controlHost(), false, &bytes.Buffer{}))
+		if !errors.Is(err, ErrRootDirUnsupported) || !strings.Contains(err.Error(), "/"+drop) {
+			t.Errorf("%s must refuse and name the file: %v", drop, err)
+		}
+	}
+}
+
+// The devx cluster.yaml can say pool nuc-cp-1 while the live node label is
+// pool=nuc-worker-1. Nothing in the command may depend on the pool: nodes are found
+// by host name only.
+func TestRelocate_DoesNotDependOnThePool(t *testing.T) {
+	node, ctl := nuc9i5Host(), controlHost()
+	p := NewNativeProvider(config.NodeConfig{Host: "nuc9i5", Kind: "native", Role: "server", Pool: "nuc-cp-1", DataDir: "/home/k3s"}, &config.Config{})
+	p.run = node.run
+	var out bytes.Buffer
+	opts := relocateOpts(ctl, true, &out)
+	opts.ReadyTimeout = time.Second
+	if err := p.RelocateKubelet(context.Background(), opts); err != nil {
+		t.Fatalf("a pool mismatch must not matter: %v", err)
+	}
+	for _, c := range append(append([]string{}, node.calls...), ctl.calls...) {
+		if strings.Contains(c, "pool") || strings.Contains(c, "nuc-cp-1") || strings.Contains(c, "nuc-worker-1") {
+			t.Errorf("no command may use the pool: %s", c)
 		}
 	}
 }
@@ -354,7 +452,7 @@ func TestRelocate_ResumesFromSymlinkAfterTheEdit(t *testing.T) {
 	node := nuc9i5Host()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 	)
 	var out bytes.Buffer
 	plan, err := relocateProvider("server", node).PlanKubeletRelocation(context.Background(), relocateOpts(controlHost(), false, &out))
@@ -378,7 +476,7 @@ func TestRelocate_ResumesFromEmptyDirAfterAFailedMountStep(t *testing.T) {
 	node, ctl := nuc9i5Host(), controlHost()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 		reply{match: "echo populated-dir", out: "empty-dir"},
 		reply{match: "readlink /var/lib/kubelet", out: ""},
 		reply{match: "systemctl is-active k3s.service", out: "inactive"}, // the earlier run stopped it
@@ -410,7 +508,7 @@ func downAndCordoned() (node, ctl *fakeHost) {
 	node, ctl = nuc9i5Host(), controlHost()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 		reply{match: "echo populated-dir", out: "bind"},
 		reply{match: "readlink /var/lib/kubelet", out: ""},
 		reply{match: "systemctl is-active k3s.service", out: "inactive"},
@@ -462,7 +560,7 @@ func TestRelocate_FinishesWhenRunningButStillCordoned(t *testing.T) {
 	node, ctl := nuc9i5Host(), controlHost()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 		reply{match: "echo populated-dir", out: "bind"},
 	)
 	ctl.prepend(reply{match: "get node nuc9i5 --no-headers", out: "nuc9i5 True true cordoned"})
@@ -481,7 +579,7 @@ func TestRelocate_Refusals(t *testing.T) {
 		}
 	}
 	cleanConfig := reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"}
-	noHits := reply{match: "grep -rls", out: ""}
+	noHits := reply{match: "grep -ls", out: ""}
 	cases := []struct {
 		name    string
 		mutate  func(node, ctl *fakeHost)
@@ -589,7 +687,7 @@ func TestRelocate_Refusals(t *testing.T) {
 		{
 			name: "root-dir set in a drop-in devx does not edit",
 			mutate: func(node, _ *fakeHost) {
-				node.prepend(reply{match: "grep -rls", out: "/etc/rancher/k3s/config.yaml\n/etc/rancher/k3s/config.yaml.d/10-kubelet.yaml"})
+				node.prepend(reply{match: "grep -ls", out: "/etc/rancher/k3s/config.yaml\n/etc/rancher/k3s/config.yaml.d/10-kubelet.yaml"})
 			},
 			want: ErrRootDirUnsupported, mention: "10-kubelet.yaml",
 		},
@@ -801,7 +899,7 @@ func TestRelocate_EveryCommandSurvivesTheSudoShell(t *testing.T) {
 	node, ctl := nuc9i5Host(), controlHost()
 	node.prepend(
 		reply{match: "cat /etc/systemd/system/k3s.service", out: k3sServerUnit},
-		reply{match: "grep -rls", out: "/etc/rancher/k3s/config.yaml\n/etc/systemd/system/k3s.service"},
+		reply{match: "grep -ls", out: "/etc/rancher/k3s/config.yaml\n/etc/systemd/system/k3s.service"},
 	)
 	opts := relocateOpts(ctl, true, &bytes.Buffer{})
 	opts.ReadyTimeout = time.Second
@@ -941,7 +1039,7 @@ func TestRelocate_ResumedRunFailureDoesNotMisreportTheConfig(t *testing.T) {
 	node, ctl := nuc9i5Host(), controlHost()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 		reply{match: "enable --now var-lib-kubelet.mount", err: errors.New("Failed to enable unit")},
 	)
 	_, msg := applyErr(t, node, ctl, 0)
@@ -1088,7 +1186,7 @@ func TestRelocate_MissingKubeletDirWithRootDirGoneResumes(t *testing.T) {
 	node := nuc9i5Host()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 		reply{match: "echo populated-dir", out: "absent"},
 		reply{match: "readlink /var/lib/kubelet", out: ""},
 	)
@@ -1266,7 +1364,7 @@ func TestRelocate_RunningNodeCordonedByAnotherReasonCountsAsDone(t *testing.T) {
 	node := nuc9i5Host()
 	node.prepend(
 		reply{match: "cat /etc/rancher/k3s/config.yaml", out: "data-dir: /home/k3s\n"},
-		reply{match: "grep -rls", out: ""},
+		reply{match: "grep -ls", out: ""},
 		reply{match: "echo populated-dir", out: "bind"},
 	)
 	ctl := controlHost()

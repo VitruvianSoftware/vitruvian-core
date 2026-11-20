@@ -227,6 +227,44 @@ type kubeletNodeState struct {
 	symlinkTo   string
 }
 
+// scanPaths are the files that can hold a kubelet root-dir for one k3s unit: exactly
+// the ones k3s and systemd read, and nothing else.
+//
+// k3s (checked at v1.35.3+k3s1, pkg/configfilearg/parser.go) reads its config file
+// (default /etc/rancher/k3s/config.yaml) and then, in directory order, every
+// regular file in "<config file>.d/" whose name ends in .yaml or .yml (the suffix
+// test is case-insensitive: util.HasSuffixI; subdirectories are skipped, see
+// dotDFiles). A backup such as config.yaml.bak, or this command's own
+// .pre-relocate-kubelet and .devx-new files, is never read, so it cannot set
+// root-dir and must not make the scan refuse. systemd reads the unit file, its
+// "<unit>.d/*.conf" drop-ins, and an EnvironmentFile such as <unit>.env, which can
+// carry environment (for example K3S_CONFIG_FILE) for k3s.
+type scanPaths struct {
+	config      string   // the main config file
+	configDrops []string // glob patterns for config.yaml.d drop-ins
+	unitFile    string
+	unitDrops   string // glob for <unit>.d/*.conf
+	unitEnv     string
+}
+
+func stdScanPaths(unit string) scanPaths {
+	d := "/etc/rancher/k3s/config.yaml.d/"
+	return scanPaths{
+		config:      k3sConfigPath,
+		configDrops: []string{d + "*.yaml", d + "*.yml", d + "*.YAML", d + "*.YML"},
+		unitFile:    "/etc/systemd/system/" + unit,
+		unitDrops:   "/etc/systemd/system/" + unit + ".d/*.conf",
+		unitEnv:     "/etc/systemd/system/" + unit + ".env",
+	}
+}
+
+// rootDirScanCmd lists, one per line, the files among those k3s reads that mention
+// root-dir. Globs that match nothing stay literal and are ignored (2>/dev/null).
+func rootDirScanCmd(sp scanPaths) string {
+	files := append(append([]string{sp.config}, sp.configDrops...), sp.unitFile, sp.unitDrops, sp.unitEnv)
+	return "grep -ls root-dir " + strings.Join(files, " ") + " 2>/dev/null || true"
+}
+
 func (p *NativeProvider) inspectKubelet(ctx context.Context, unit, backing string) (kubeletNodeState, error) {
 	var st kubeletNodeState
 	fail := func(what string, err error) (kubeletNodeState, error) {
@@ -247,7 +285,7 @@ func (p *NativeProvider) inspectKubelet(ctx context.Context, unit, backing strin
 	if st.unitText, err = p.run(ctx, "cat /etc/systemd/system/"+unit+" 2>/dev/null || true"); err != nil {
 		return fail("reading "+unit, err)
 	}
-	hits, err := p.run(ctx, "grep -rls --exclude='*"+backupSuffix+"' --exclude='*"+tmpSuffix+"' root-dir /etc/rancher/k3s /etc/systemd/system/"+unit+" /etc/systemd/system/"+unit+".d 2>/dev/null || true")
+	hits, err := p.run(ctx, rootDirScanCmd(stdScanPaths(unit)))
 	if err != nil {
 		return fail("scanning for root-dir", err)
 	}
