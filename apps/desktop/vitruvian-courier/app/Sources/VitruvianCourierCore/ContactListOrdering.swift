@@ -75,6 +75,20 @@ public enum ContactListOrdering {
         return nil
     }
 
+    /// The normalized lowercase email address shared by two spellings (`mailto:Alice@Example.COM`,
+    /// `alice@example.com (GChat)` -> `"alice@example.com"`), or `nil` when `raw` is not an email address.
+    public static func emailKey(_ raw: String) -> String? {
+        var text = strippedOfNetworkTag(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        if text.lowercased().hasPrefix("mailto:") {
+            text = String(text.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard isEmailAddress(text) else { return nil }
+        let parts = text.split(separator: "@", omittingEmptySubsequences: false)
+        let labels = parts[1].split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2, labels.allSatisfy({ !$0.isEmpty }) else { return nil }
+        return text.lowercased()
+    }
+
     /// `candidates` split into named people and number-only entries, each A–Z, with a number-only entry dropped when
     /// a named contact has the same full phone number (on any network). Nothing else is removed.
     public static func sections(_ candidates: [ContactCandidate]) -> Sections {

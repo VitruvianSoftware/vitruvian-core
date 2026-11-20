@@ -15,6 +15,8 @@ struct SearchRowView: View {
     var chatTitle: (MessageHit) -> String = { $0.roomName }
     /// A row of the Bookmarks section: the message, with a bookmark beside it.
     var isBookmark = false
+    /// True when search is scoped to a single non-merged chat: leaves the redundant chat/network suffix off rows.
+    var scopedToSingleChat = false
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @Environment(\.themeAccentColor) private var themeAccent
 
@@ -54,7 +56,8 @@ struct SearchRowView: View {
             PersonResultRow(person: person, networkName: networkName(person.network))
         case let .message(hit):
             MessageResultRow(hit: hit, chatTitle: chatTitle(hit), networkName: networkName(hit.network),
-                             isBookmark: isBookmark, timeFormat: composerPreferences.timeFormat)
+                             isBookmark: isBookmark, scopedToSingleChat: scopedToSingleChat,
+                             timeFormat: composerPreferences.timeFormat)
         case let .recentSearch(text):
             HStack(spacing: 10) {
                 Image(systemName: "clock")
@@ -173,6 +176,7 @@ private struct MessageResultRow: View {
     let chatTitle: String
     let networkName: String
     var isBookmark = false
+    var scopedToSingleChat = false
     var timeFormat: TimeFormatPreference = .system
     @Environment(\.redactNamesAndPictures) private var isRedacted
 
@@ -212,7 +216,7 @@ private struct MessageResultRow: View {
     private var locationLine: String {
         SearchResultLocation.subtitle(
             sender: sender, chatTitle: SearchRedaction.chatTitle(chatTitle, redacted: isRedacted),
-            networkName: networkName, isDirect: hit.isDirect)
+            networkName: networkName, isDirect: hit.isDirect, scopedToSingleChat: scopedToSingleChat)
     }
 }
 
@@ -221,6 +225,7 @@ struct MediaCell: View {
     let hit: MessageHit
     var chatTitle: String? = nil
     let isSelected: Bool
+    var scopedToSingleChat = false
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @State private var image: CGImage?
     @Environment(\.themeAccentColor) private var themeAccent
@@ -237,6 +242,9 @@ struct MediaCell: View {
             locale: locale,
             timeFormat: composerPreferences.timeFormat
         )
+        if scopedToSingleChat {
+            return "\(hit.senderLine) · \(dateText)"
+        }
         return "\(hit.senderLine) · \(chatTitle ?? hit.roomName) · \(dateText)"
     }
 

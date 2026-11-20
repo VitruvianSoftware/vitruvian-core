@@ -72,4 +72,76 @@ final class StartNewChatContactOrderTests: XCTestCase {
         }
         XCTAssertEqual(sizes.count, 2)
     }
+
+    func testMultiNetworkPersonListsOnceAndExpandsToEndpointSubRows() throws {
+        let waAlice = contact("Alice Example", "whatsapp", "wa-1", ["+1 213-447-6502"])
+        let sigAlice = contact("Alice Example", "signal", "sig-1", ["(213) 447-6502"])
+        let sam1 = contact("Sam", "whatsapp", "wa-1", ["+1 555-010-0001"])
+        let sam2 = contact("Sam", "signal", "sig-1", ["+1 555-010-0002"])
+
+        let grouped = StartNewChatPresentation.contactPersonSections(
+            [waAlice, sigAlice, sam1, sam2],
+            accounts: accounts,
+            filter: nil
+        )
+        XCTAssertEqual(grouped.named.count, 3, "Alice merges across WhatsApp and Signal; two Sams stay distinct")
+        let aliceGroup = try XCTUnwrap(grouped.named.first)
+        XCTAssertTrue(aliceGroup.isMultiNetwork)
+        XCTAssertEqual(aliceGroup.networks, ["whatsapp", "signal"])
+
+        let draft = StartNewChatDraft(accounts: accounts, candidates: [waAlice, sigAlice, sam1, sam2])
+        let parentRowID = "contact:\(aliceGroup.id)"
+        let collapsedIDs = StartNewChatPresentation.navigableRowIDs(draft: draft, recentRows: [])
+        XCTAssertEqual(collapsedIDs.count, 3)
+        XCTAssertEqual(collapsedIDs.first, parentRowID)
+        XCTAssertEqual(
+            StartNewChatPresentation.confirmAction(draft: draft, recentRows: [], selectedRowID: parentRowID),
+            .toggleExpand(parentRowID)
+        )
+
+        let expandedIDs = StartNewChatPresentation.navigableRowIDs(
+            draft: draft,
+            recentRows: [],
+            expandedRowIDs: [parentRowID]
+        )
+        let expectedSubIDs = aliceGroup.endpoints.map {
+            StartNewChatPresentation.subRowID(parentRowID: parentRowID, endpoint: $0)
+        }
+        XCTAssertEqual(expandedIDs.count, 5)
+        XCTAssertEqual(Array(expandedIDs[1 ... 2]), expectedSubIDs)
+        XCTAssertEqual(
+            StartNewChatPresentation.confirmAction(
+                draft: draft,
+                recentRows: [],
+                selectedRowID: expectedSubIDs[1],
+                expandedRowIDs: [parentRowID]
+            ),
+            .openDirectChat(sigAlice)
+        )
+    }
+
+    func testMultiNetworkExpandedAndOverflowingChipsSnapshot() throws {
+        let waAlice = contact("Alice Example", "whatsapp", "wa-1", ["+1 213-447-6502"])
+        let sigAlice = contact("Alice Example", "signal", "sig-1", ["(213) 447-6502"])
+        let tgAlice = contact("Alice Example", "telegram", "tg-1", ["+12134476502"])
+        let extraAccounts = accounts + [
+            Account(network: "telegram", displayName: "Telegram", flows: ["qr"], state: .connected),
+            Account(network: "slack", displayName: "Slack", flows: ["oauth"], state: .connected),
+            Account(network: "discord", displayName: "Discord", flows: ["qr"], state: .connected),
+            Account(network: "instagram", displayName: "Instagram", flows: ["cookie"], state: .connected),
+            Account(network: "gchat", displayName: "Google Chat", flows: ["google"], state: .connected),
+        ]
+        let list = [waAlice, sigAlice, tgAlice, contact("Bob Example", "slack", "sl-1", ["bob@example.com"])]
+        let aliceGroup = try XCTUnwrap(
+            StartNewChatPresentation.contactPersonSections(list, accounts: extraAccounts, filter: nil).named.first
+        )
+        let draft = StartNewChatDraft(accounts: extraAccounts, candidates: list)
+        let sizes = try Snapshot.render("start-new-chat-multinetwork", width: 520, height: 520) {
+            StartNewChatView(
+                draft: draft,
+                initialExpandedRowIDs: ["contact:\(aliceGroup.id)"]
+            )
+        }
+        XCTAssertEqual(sizes.count, 2)
+    }
 }

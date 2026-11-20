@@ -7,10 +7,11 @@ import SwiftUI
 
 // MARK: - Start New Chat, New Group, and Blasts Sheet (Task 11)
 
-/// Action executed when confirming the Start New Chat sheet (`Start Chat` button or `⌘↩`).
+/// Action executed when confirming New Chat (`Start Chat` button or `⌘↩` / Return).
 enum StartNewChatConfirmAction: Equatable, Sendable {
     case openDirectChat(ContactCandidate)
     case lookup(StartNewChatLookupAction)
+    case toggleExpand(String)
 }
 
 /// Pure presentation logic for `StartNewChatView`: what the list shows, which rows the arrow keys visit, and what
@@ -32,6 +33,10 @@ enum StartNewChatPresentation {
         return filter == key
             || filter == candidate.network
             || (!candidate.accountID.isEmpty && filter == candidate.accountID)
+    }
+
+    static func accountOrder(from accounts: [Account]) -> [String] {
+        accounts.map(\.network)
     }
 
     /// The most recent one-to-one chats (never groups, hidden chats or merged chats), newest first, as contacts
@@ -86,6 +91,32 @@ enum StartNewChatPresentation {
         return out
     }
 
+    static func recentPersonGroups(
+        from rows: [InboxRow],
+        accounts: [Account],
+        contacts: [ContactCandidate] = [],
+        mergedChats: [String: MergedChat] = [:],
+        filter: String? = nil,
+        limit: Int? = maxRecentChats
+    ) -> [ContactPersonGroup] {
+        let recents = recentDirectChats(
+            from: rows,
+            accounts: accounts,
+            contacts: contacts,
+            filter: filter,
+            limit: nil
+        )
+        let grouped = ContactPersonGrouping.groupedPreservingOrder(
+            recents,
+            mergedChats: mergedChats,
+            accountOrder: accountOrder(from: accounts)
+        )
+        if let limit {
+            return Array(grouped.prefix(max(0, limit)))
+        }
+        return grouped
+    }
+
     private static func resolveAccountID(for row: InboxRow, in accounts: [Account]) -> String {
         guard let account = accounts.first(where: { $0.network == row.network }) else {
             return ""
@@ -114,24 +145,115 @@ enum StartNewChatPresentation {
         contactSections(candidates, filter: filter).ordered
     }
 
-    /// Row IDs in on-screen order: `lookup:` / `search:` once typed, else `recent:` then `contact:`.
+    static func contactPersonSections(
+        _ candidates: [ContactCandidate],
+        accounts: [Account] = [],
+        mergedChats: [String: MergedChat] = [:],
+        filter: String?
+    ) -> ContactPersonGrouping.GroupedSections {
+        ContactPersonGrouping.sections(
+            candidates.filter { matchesAccountFilter($0, filter: filter) },
+            mergedChats: mergedChats,
+            accountOrder: accountOrder(from: accounts)
+        )
+    }
+
+    static func typedPersonGroups(from draft: StartNewChatDraft) -> [ContactPersonGroup] {
+        ContactPersonGrouping.groupedPreservingOrder(
+            draft.filteredCandidates,
+            mergedChats: draft.mergedChats,
+            accountOrder: accountOrder(from: draft.accounts)
+        )
+    }
+
+    static func subRowID(parentRowID: String, endpoint: ContactCandidate) -> String {
+        "\(parentRowID)/endpoint:\(endpoint.id)"
+    }
+
+    static func splitSubRowID(_ rowID: String) -> (parentID: String, endpointID: String)? {
+        guard let range = rowID.range(of: "/endpoint:") else { return nil }
+        return (String(rowID[..<range.lowerBound]), String(rowID[range.upperBound...]))
+    }
+
+    /// Row IDs in on-screen order: `lookup:` / `search:` once typed, else `recent:` then `contact:`, including
+    /// any currently expanded per-network endpoint sub-rows (`<parent>/endpoint:<id>`).
     static func navigableRowIDs(
         draft: StartNewChatDraft,
         recentRows: [InboxRow],
-        contactsLimit: Int = initialContactsLimit
+        contactsLimit: Int = initialContactsLimit,
+        expandedRowIDs: Set<String> = []
     ) -> [String] {
-        if hasTypedQuery(draft.query) {
-            return draft.lookupActions.map { "lookup:\($0.id)" } + draft.filteredCandidates.map { "search:\($0.id)" }
+        func appendRows(for groups: [ContactPersonGroup], prefix: String, into out: inout [String]) {
+            for group in groups {
+                let rowID = "\(prefix):\(group.id)"
+                out.append(rowID)
+                if group.isMultiNetwork && expandedRowIDs.contains(rowID) {
+                    out.append(contentsOf: group.endpoints.map { subRowID(parentRowID: rowID, endpoint: $0) })
+                }
+            }
         }
-        let recents = recentDirectChats(
+
+        if hasTypedQuery(draft.query) {
+            var out = draft.lookupActions.map { "lookup:\($0.id)" }
+            appendRows(for: typedPersonGroups(from: draft), prefix: "search", into: &out)
+            return out
+        }
+        let recents = recentPersonGroups(
             from: recentRows,
             accounts: draft.accounts,
             contacts: draft.candidates,
+            mergedChats: draft.mergedChats,
             filter: draft.selectedAccountFilter,
             limit: maxRecentChats
         )
-        let contacts = sortedContacts(draft.candidates, filter: draft.selectedAccountFilter).prefix(max(0, contactsLimit))
-        return recents.map { "recent:\($0.id)" } + contacts.map { "contact:\($0.id)" }
+        let contacts = Array(
+            contactPersonSections(
+                draft.candidates,
+                accounts: draft.accounts,
+                mergedChats: draft.mergedChats,
+                filter: draft.selectedAccountFilter
+            ).ordered.prefix(max(0, contactsLimit))
+        )
+        var out: [String] = []
+        appendRows(for: recents, prefix: "recent", into: &out)
+        appendRows(for: contacts, prefix: "contact", into: &out)
+        return out
+    }
+
+    static func personGroup(
+        forRowID rowID: String,
+        draft: StartNewChatDraft,
+        recentRows: [InboxRow],
+        contactsLimit: Int = initialContactsLimit
+    ) -> ContactPersonGroup? {
+        if rowID.hasPrefix("recent:") {
+            let id = String(rowID.dropFirst("recent:".count))
+            return recentPersonGroups(
+                from: recentRows,
+                accounts: draft.accounts,
+                contacts: draft.candidates,
+                mergedChats: draft.mergedChats,
+                filter: draft.selectedAccountFilter,
+                limit: maxRecentChats
+            ).first { $0.id == id }
+        }
+        if rowID.hasPrefix("contact:") {
+            let id = String(rowID.dropFirst("contact:".count))
+            return contactPersonSections(
+                draft.candidates,
+                accounts: draft.accounts,
+                mergedChats: draft.mergedChats,
+                filter: draft.selectedAccountFilter
+            )
+            .ordered
+            .prefix(max(0, contactsLimit))
+            .first { $0.id == id }
+        }
+        if rowID.hasPrefix("search:") {
+            let id = String(rowID.dropFirst("search:".count))
+            return typedPersonGroups(from: draft).first { $0.id == id }
+        }
+        return nil
     }
 
     static func candidate(
@@ -140,36 +262,30 @@ enum StartNewChatPresentation {
         recentRows: [InboxRow],
         contactsLimit: Int = initialContactsLimit
     ) -> ContactCandidate? {
-        if rowID.hasPrefix("recent:") {
-            let id = String(rowID.dropFirst("recent:".count))
-            return recentDirectChats(
-                from: recentRows,
-                accounts: draft.accounts,
-                contacts: draft.candidates,
-                filter: draft.selectedAccountFilter,
-                limit: maxRecentChats
-            ).first { $0.id == id }
+        if let (parentID, endpointID) = splitSubRowID(rowID) {
+            return personGroup(
+                forRowID: parentID,
+                draft: draft,
+                recentRows: recentRows,
+                contactsLimit: contactsLimit
+            )?.endpoints.first { $0.id == endpointID }
         }
-        if rowID.hasPrefix("contact:") {
-            let id = String(rowID.dropFirst("contact:".count))
-            return sortedContacts(draft.candidates, filter: draft.selectedAccountFilter)
-                .prefix(max(0, contactsLimit))
-                .first { $0.id == id }
-        }
-        if rowID.hasPrefix("search:") {
-            let id = String(rowID.dropFirst("search:".count))
-            return draft.filteredCandidates.first { $0.id == id }
-        }
-        return nil
+        return personGroup(
+            forRowID: rowID,
+            draft: draft,
+            recentRows: recentRows,
+            contactsLimit: contactsLimit
+        )?.primary
     }
 
-    /// What the primary **Start Chat** button (`⌘↩`) does, or `nil` when it is disabled: the selected row, else the
-    /// first lookup when the query is a valid phone number, email or `@handle`.
+    /// What the primary **Start Chat** button (`⌘↩` / Return) does, or `nil` when it is disabled: opens a single-network
+    /// row or expanded endpoint sub-row, toggles expansion for a multi-network person row, else the first lookup.
     static func confirmAction(
         draft: StartNewChatDraft,
         recentRows: [InboxRow],
         contactsLimit: Int = initialContactsLimit,
-        selectedRowID: String?
+        selectedRowID: String?,
+        expandedRowIDs: Set<String> = []
     ) -> StartNewChatConfirmAction? {
         guard !draft.isSubmitting, draft.selectedRecipients.count < 2 else { return nil }
         if draft.selectedRecipients.count == 1, let single = draft.selectedRecipients.first {
@@ -181,13 +297,22 @@ enum StartNewChatPresentation {
                 if let action = draft.lookupActions.first(where: { $0.id == rawID }) {
                     return .lookup(action)
                 }
-            } else if let candidate = candidate(
+            } else if let (parentID, endpointID) = splitSubRowID(selectedRowID) {
+                if let endpoint = personGroup(
+                    forRowID: parentID,
+                    draft: draft,
+                    recentRows: recentRows,
+                    contactsLimit: contactsLimit
+                )?.endpoints.first(where: { $0.id == endpointID }) {
+                    return .openDirectChat(endpoint)
+                }
+            } else if let group = personGroup(
                 forRowID: selectedRowID,
                 draft: draft,
                 recentRows: recentRows,
                 contactsLimit: contactsLimit
             ) {
-                return .openDirectChat(candidate)
+                return group.isMultiNetwork ? .toggleExpand(selectedRowID) : .openDirectChat(group.primary)
             }
         }
         if let firstLookup = draft.lookupActions.first {
@@ -197,15 +322,12 @@ enum StartNewChatPresentation {
     }
 }
 
-/// Modal sheet for **New Chat** (`⌘N`), **New Group**, and **Blasts** (`⌘⇧N`).
+/// Inline **New Chat** (`⌘N`), **New Group**, and **Blasts** (`⌘⇧N`) view in the chat pane.
 ///
 /// - 1:1 mode: shows **Recent** (up to 8 most recent 1:1 chats) and **Contacts** (A–Z, first 50 with **Show more**)
-///   before typing, or search contacts (`people.contacts`) and look up a phone number / email / `@username`
-///   (`people.resolve`) on any connected account, with **Start Chat** (`⌘↩`) and ↑/↓ keyboard selection.
-/// - Multi-select (`>= 2` recipients): switches between **New Group** (`room.createGroup`, enabled only when all
-///   selected recipients share one account whose bridge implements `GroupCreatingNetworkAPI`, per Ruling 1) and
-///   **Blast** (`blast.send`, available across any mix of networks/accounts with `{recipient.firstName}` support,
-///   a pre-send confirmation listing people and networks, and per-recipient outcomes per Ruling 2).
+///   grouped one row per person (expandable to per-network sub-rows when reachable on multiple networks) before typing,
+///   or search contacts (`people.contacts`) and look up a phone number / email / `@username` (`people.resolve`).
+/// - Multi-select (`>= 2` recipients): switches between **New Group** (`room.createGroup`) and **Blast** (`blast.send`).
 public struct StartNewChatView: View {
     private let externalDraft: StartNewChatDraft
     private let recentRows: [InboxRow]
@@ -213,8 +335,9 @@ public struct StartNewChatView: View {
     @State private var contactsLimit: Int = StartNewChatPresentation.initialContactsLimit
     @State private var selectedRowID: String?
     @State private var hoveredRowID: String?
+    @State private var expandedRowIDs: Set<String> = []
     @State private var chipViewportWidth: CGFloat = 0
-    @State private var chipContentWidth: CGFloat = 0
+    @State private var chipContentMinX: CGFloat = 0
     @State private var chipContentMaxX: CGFloat = 0
 
     public var onQueryChanged: (StartNewChatDraft) -> Void
@@ -228,6 +351,7 @@ public struct StartNewChatView: View {
     public init(
         draft: StartNewChatDraft,
         recentRows: [InboxRow] = [],
+        initialExpandedRowIDs: Set<String> = [],
         onQueryChanged: @escaping (StartNewChatDraft) -> Void = { _ in },
         onOpenDirectChat: @escaping (ContactCandidate) -> Void = { _ in },
         onLookup: @escaping (StartNewChatLookupAction) -> Void = { _ in },
@@ -239,6 +363,7 @@ public struct StartNewChatView: View {
         self.externalDraft = draft
         self.recentRows = recentRows
         _draft = State(initialValue: draft)
+        _expandedRowIDs = State(initialValue: initialExpandedRowIDs)
         self.onQueryChanged = onQueryChanged
         self.onOpenDirectChat = onOpenDirectChat
         self.onLookup = onLookup
@@ -289,12 +414,11 @@ public struct StartNewChatView: View {
             footerSection
         }
         .padding(16)
-        .frame(width: 520)
-        .frame(minHeight: 460)
+        .frame(minWidth: 340, idealWidth: 520, maxWidth: .infinity, minHeight: 320, idealHeight: 520, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: externalDraft) { _, updated in
             // The model owns the contact results, accounts and submit state, and publishes them after the engine
-            // answers. Group name, blast text and mode live only in this sheet until it is submitted, so they stay.
+            // answers. Group name, blast text and mode live only in this view until it is submitted, so they stay.
             var merged = updated
             merged.mode = draft.mode
             merged.groupName = draft.groupName
@@ -303,6 +427,7 @@ public struct StartNewChatView: View {
             guard merged != draft else { return }
             if draft.selectedAccountFilter != updated.selectedAccountFilter || draft.query != updated.query {
                 contactsLimit = StartNewChatPresentation.initialContactsLimit
+                expandedRowIDs = []
             }
             draft = merged
             pruneSelectionIfNeeded()
@@ -314,6 +439,13 @@ public struct StartNewChatView: View {
         .onKeyPress(.downArrow) {
             moveSelection(1)
             return .handled
+        }
+        .onKeyPress(.escape) {
+            onCancel()
+            return .handled
+        }
+        .onExitCommand {
+            onCancel()
         }
     }
 
@@ -419,12 +551,35 @@ public struct StartNewChatView: View {
         return items
     }
 
-    private var chipsHaveOverflow: Bool {
-        chipViewportWidth > 0 && chipContentWidth > chipViewportWidth + 1
+    private var chipOverflowEdges: HorizontalOverflowEdges {
+        HorizontalOverflowEdges.compute(
+            viewportWidth: chipViewportWidth,
+            contentMinX: chipContentMinX,
+            contentMaxX: chipContentMaxX
+        )
     }
 
-    private var chipsOverflowTrailing: Bool {
-        chipViewportWidth > 0 && chipContentMaxX > chipViewportWidth + 1
+    private var chipsHaveAnyOverflow: Bool {
+        chipViewportWidth > 0 && (chipContentMaxX - chipContentMinX) > chipViewportWidth + 1
+    }
+
+    private var chipFadeMask: some View {
+        let edges = chipOverflowEdges
+        let fadeFraction = chipViewportWidth > 0 ? min(0.35, 24.0 / chipViewportWidth) : 0
+        var stops: [Gradient.Stop] = []
+        if edges.leading {
+            stops.append(.init(color: .clear, location: 0))
+            stops.append(.init(color: .black, location: fadeFraction))
+        } else {
+            stops.append(.init(color: .black, location: 0))
+        }
+        if edges.trailing {
+            stops.append(.init(color: .black, location: 1 - fadeFraction))
+            stops.append(.init(color: .clear, location: 1))
+        } else {
+            stops.append(.init(color: .black, location: 1))
+        }
+        return LinearGradient(gradient: Gradient(stops: stops), startPoint: .leading, endPoint: .trailing)
     }
 
     private var accountFilterBar: some View {
@@ -435,6 +590,7 @@ public struct StartNewChatView: View {
                     Button {
                         draft.selectedAccountFilter = pill.filterValue
                         contactsLimit = StartNewChatPresentation.initialContactsLimit
+                        expandedRowIDs = []
                         selectedRowID = nil
                         onQueryChanged(draft)
                     } label: {
@@ -468,11 +624,11 @@ public struct StartNewChatView: View {
                 GeometryReader { geo in
                     let frame = geo.frame(in: .named("startNewChatChips"))
                     Color.clear
-                        .preference(key: ChipContentWidthKey.self, value: frame.width)
+                        .preference(key: ChipContentMinXKey.self, value: frame.minX)
                         .preference(key: ChipContentMaxXKey.self, value: frame.maxX)
                 }
             }
-            .padding(.trailing, chipsHaveOverflow ? 24 : 0)
+            .padding(.trailing, chipsHaveAnyOverflow ? 24 : 0)
         }
         .fixedSize(horizontal: false, vertical: true)
         .coordinateSpace(name: "startNewChatChips")
@@ -482,23 +638,9 @@ public struct StartNewChatView: View {
             }
         }
         .onPreferenceChange(ChipViewportWidthKey.self) { chipViewportWidth = $0 }
-        .onPreferenceChange(ChipContentWidthKey.self) { chipContentWidth = $0 }
+        .onPreferenceChange(ChipContentMinXKey.self) { chipContentMinX = $0 }
         .onPreferenceChange(ChipContentMaxXKey.self) { chipContentMaxX = $0 }
-        .overlay(alignment: .trailing) {
-            if chipsOverflowTrailing {
-                LinearGradient(
-                    colors: [
-                        Color(nsColor: .windowBackgroundColor).opacity(0),
-                        Color(nsColor: .windowBackgroundColor),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: 24)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-        }
+        .mask(chipFadeMask)
     }
 
     // MARK: - Search & Recipient Tokens
@@ -547,6 +689,7 @@ public struct StartNewChatView: View {
                         set: { newValue in
                             draft.query = newValue
                             contactsLimit = StartNewChatPresentation.initialContactsLimit
+                            expandedRowIDs = []
                             pruneSelectionIfNeeded()
                             onQueryChanged(draft)
                         }
@@ -559,6 +702,7 @@ public struct StartNewChatView: View {
                     Button {
                         draft.query = ""
                         contactsLimit = StartNewChatPresentation.initialContactsLimit
+                        expandedRowIDs = []
                         pruneSelectionIfNeeded()
                         onQueryChanged(draft)
                     } label: {
@@ -774,14 +918,20 @@ public struct StartNewChatView: View {
 
     @ViewBuilder
     private var emptyQueryContent: some View {
-        let recents = StartNewChatPresentation.recentDirectChats(
+        let recents = StartNewChatPresentation.recentPersonGroups(
             from: recentRows,
             accounts: draft.accounts,
             contacts: draft.candidates,
+            mergedChats: draft.mergedChats,
             filter: draft.selectedAccountFilter,
             limit: StartNewChatPresentation.maxRecentChats
         )
-        let sections = StartNewChatPresentation.contactSections(draft.candidates, filter: draft.selectedAccountFilter)
+        let sections = StartNewChatPresentation.contactPersonSections(
+            draft.candidates,
+            accounts: draft.accounts,
+            mergedChats: draft.mergedChats,
+            filter: draft.selectedAccountFilter
+        )
         let allContacts = sections.ordered
         let visibleContacts = Array(allContacts.prefix(contactsLimit))
         let visibleNamed = visibleContacts.prefix(sections.named.count)
@@ -790,15 +940,15 @@ public struct StartNewChatView: View {
 
         if !recents.isEmpty {
             sectionHeader(String(localized: "Recent"))
-            ForEach(recents) { candidate in
-                candidateRow(candidate, rowID: "recent:\(candidate.id)")
+            ForEach(recents) { group in
+                personGroupRows(group, rowID: "recent:\(group.id)")
             }
         }
         if !visibleNamed.isEmpty {
             sectionHeader(String(localized: "Contacts"))
                 .padding(.top, recents.isEmpty ? 0 : 6)
-            ForEach(visibleNamed) { candidate in
-                candidateRow(candidate, rowID: "contact:\(candidate.id)")
+            ForEach(visibleNamed) { group in
+                personGroupRows(group, rowID: "contact:\(group.id)")
             }
         }
         if !visibleOther.isEmpty {
@@ -806,8 +956,8 @@ public struct StartNewChatView: View {
             // small heading.
             sectionHeader(String(localized: "Other contacts"))
                 .padding(.top, recents.isEmpty && visibleNamed.isEmpty ? 0 : 6)
-            ForEach(visibleOther) { candidate in
-                candidateRow(candidate, rowID: "contact:\(candidate.id)")
+            ForEach(visibleOther) { group in
+                personGroupRows(group, rowID: "contact:\(group.id)")
             }
         }
         if hasMoreContacts {
@@ -840,7 +990,7 @@ public struct StartNewChatView: View {
     @ViewBuilder
     private var typedResultsContent: some View {
         let lookupActions = draft.lookupActions
-        let candidates = draft.filteredCandidates
+        let groups = StartNewChatPresentation.typedPersonGroups(from: draft)
 
         if !lookupActions.isEmpty {
             ForEach(lookupActions) { action in
@@ -848,9 +998,9 @@ public struct StartNewChatView: View {
             }
         }
 
-        if !candidates.isEmpty {
-            ForEach(candidates) { candidate in
-                candidateRow(candidate, rowID: "search:\(candidate.id)")
+        if !groups.isEmpty {
+            ForEach(groups) { group in
+                personGroupRows(group, rowID: "search:\(group.id)")
             }
         } else if draft.showsNoMatchingContacts {
             Text(String(localized: "No matching contacts found"))
@@ -909,6 +1059,10 @@ public struct StartNewChatView: View {
     private func lookupRow(_ action: StartNewChatLookupAction, rowID: String) -> some View {
         let isKeyboardSelected = selectedRowID == rowID
         let isHovered = hoveredRowID == rowID
+        let affordance = StartNewChatRowAffordance.forLookupRow(
+            isHovered: isHovered,
+            isKeyboardSelected: isKeyboardSelected
+        )
         return Button {
             selectedRowID = rowID
             onLookup(action)
@@ -927,8 +1081,7 @@ public struct StartNewChatView: View {
                     .underline(isHovered || isKeyboardSelected)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Image(systemName: "arrow.up.right.circle")
-                    .foregroundStyle(.secondary)
+                trailingAffordance(affordance)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -951,24 +1104,46 @@ public struct StartNewChatView: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            if hovering {
-                hoveredRowID = rowID
-            } else if hoveredRowID == rowID {
-                hoveredRowID = nil
-            }
+            updateHover(hovering, for: rowID)
         }
         .id(rowID)
     }
 
-    private func candidateRow(_ candidate: ContactCandidate, rowID: String) -> some View {
+    @ViewBuilder
+    private func personGroupRows(_ group: ContactPersonGroup, rowID: String) -> some View {
+        if group.isMultiNetwork {
+            let isExpanded = expandedRowIDs.contains(rowID)
+            multiNetworkParentRow(group, rowID: rowID, isExpanded: isExpanded)
+            if isExpanded {
+                ForEach(group.endpoints) { endpoint in
+                    endpointSubRow(
+                        endpoint,
+                        rowID: StartNewChatPresentation.subRowID(parentRowID: rowID, endpoint: endpoint)
+                    )
+                }
+            }
+        } else {
+            singlePersonRow(group, rowID: rowID)
+        }
+    }
+
+    private func singlePersonRow(_ group: ContactPersonGroup, rowID: String) -> some View {
+        let candidate = group.primary
         let isRecipientSelected = draft.isSelected(candidate)
         let isKeyboardSelected = selectedRowID == rowID
         let isHovered = hoveredRowID == rowID
-        let displayName = candidate.name.isEmpty ? candidate.userID : candidate.name
-        let networkName = NetworkNames.displayName(of: candidate.network) ?? candidate.network
-        let firstDisplayID = ContactsBridge.displayableIdentifiers(candidate.identifiers).first
-            .map(ContactsBridge.displayIdentifier)
+        let networkName = endpointTitle(for: candidate)
+        let handle = ContactPersonGrouping.handle(for: candidate)
         let allowsMultiSelect = !candidate.userID.hasPrefix("!")
+        let affordance = StartNewChatRowAffordance.forPersonRow(
+            isMultiNetwork: false,
+            isExpanded: false,
+            isMultiSelectActive: isMultiSelectActive,
+            allowsMultiSelect: allowsMultiSelect,
+            isRecipientSelected: isRecipientSelected,
+            isHovered: isHovered,
+            isKeyboardSelected: isKeyboardSelected
+        )
 
         return Button {
             selectedRowID = rowID
@@ -984,9 +1159,9 @@ public struct StartNewChatView: View {
             HStack(spacing: 10) {
                 ZStack(alignment: .bottomTrailing) {
                     AvatarView(
-                        path: candidate.avatarPath,
-                        initials: Self.initials(of: displayName),
-                        identity: AvatarColor.identity(id: candidate.userID, fallbackName: displayName),
+                        path: group.avatarPath,
+                        initials: Self.initials(of: group.displayName),
+                        identity: AvatarColor.identity(id: candidate.userID, fallbackName: group.displayName),
                         size: 32
                     )
                     .frame(width: 32, height: 32)
@@ -995,15 +1170,15 @@ public struct StartNewChatView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: displayName)
+                    Text(verbatim: group.displayName)
                         .font(.body)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(verbatim: networkName)
-                        if let firstDisplayID {
+                        if let handle {
                             Text(verbatim: "·")
-                            Text(verbatim: firstDisplayID)
+                            Text(verbatim: handle)
                                 .lineLimit(1)
                         }
                     }
@@ -1012,17 +1187,168 @@ public struct StartNewChatView: View {
                 }
 
                 Spacer(minLength: 4)
+                trailingAffordance(
+                    affordance,
+                    candidateForMultiSelect: candidate,
+                    allowsMultiSelect: allowsMultiSelect
+                )
+            }
+            .modifier(
+                StartNewChatSelectableRowChrome(
+                    isKeyboardSelected: isKeyboardSelected,
+                    isRecipientSelected: isRecipientSelected,
+                    isHovered: isHovered
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            updateHover(hovering, for: rowID)
+        }
+        .id(rowID)
+    }
 
-                if isMultiSelectActive {
-                    if allowsMultiSelect {
-                        Image(systemName: isRecipientSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(isRecipientSelected ? Color.accentColor : Color.secondary)
-                            .font(.body)
+    private func multiNetworkParentRow(_ group: ContactPersonGroup, rowID: String, isExpanded: Bool) -> some View {
+        let isKeyboardSelected = selectedRowID == rowID
+        let isHovered = hoveredRowID == rowID
+        let affordance = StartNewChatRowAffordance.forPersonRow(
+            isMultiNetwork: true,
+            isExpanded: isExpanded,
+            isMultiSelectActive: isMultiSelectActive,
+            allowsMultiSelect: false,
+            isRecipientSelected: false,
+            isHovered: isHovered,
+            isKeyboardSelected: isKeyboardSelected
+        )
+
+        return Button {
+            selectedRowID = rowID
+            toggleExpanded(rowID)
+        } label: {
+            HStack(spacing: 10) {
+                AvatarView(
+                    path: group.avatarPath,
+                    initials: Self.initials(of: group.displayName),
+                    identity: AvatarColor.identity(id: group.primary.userID, fallbackName: group.displayName),
+                    size: 32
+                )
+                .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: group.displayName)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        ForEach(group.networks, id: \.self) { network in
+                            NetworkBadge(
+                                network: network,
+                                name: NetworkNames.displayName(of: network) ?? network,
+                                size: 13
+                            )
+                        }
+                        Text(String(localized: "\(group.endpoints.count) accounts"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                } else if allowsMultiSelect {
+                }
+
+                Spacer(minLength: 4)
+                trailingAffordance(affordance)
+            }
+            .modifier(
+                StartNewChatSelectableRowChrome(
+                    isKeyboardSelected: isKeyboardSelected,
+                    isRecipientSelected: false,
+                    isHovered: isHovered
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            updateHover(hovering, for: rowID)
+        }
+        .id(rowID)
+    }
+
+    private func endpointSubRow(_ endpoint: ContactCandidate, rowID: String) -> some View {
+        let isRecipientSelected = draft.isSelected(endpoint)
+        let isKeyboardSelected = selectedRowID == rowID
+        let isHovered = hoveredRowID == rowID
+        let networkTitle = endpointTitle(for: endpoint)
+        let handle = ContactPersonGrouping.handle(for: endpoint)
+        let allowsMultiSelect = !endpoint.userID.hasPrefix("!")
+        let affordance = StartNewChatRowAffordance.forEndpointSubRow(
+            isMultiSelectActive: isMultiSelectActive,
+            allowsMultiSelect: allowsMultiSelect,
+            isRecipientSelected: isRecipientSelected,
+            isHovered: isHovered,
+            isKeyboardSelected: isKeyboardSelected
+        )
+
+        return Button {
+            selectedRowID = rowID
+            if isMultiSelectActive {
+                if allowsMultiSelect {
+                    draft.toggleRecipient(endpoint)
+                    onQueryChanged(draft)
+                }
+            } else {
+                onOpenDirectChat(endpoint)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                NetworkBadge(network: endpoint.network, name: networkTitle, size: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: networkTitle)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let handle {
+                        Text(verbatim: handle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 4)
+                trailingAffordance(
+                    affordance,
+                    candidateForMultiSelect: endpoint,
+                    allowsMultiSelect: allowsMultiSelect
+                )
+            }
+            .padding(.leading, 36)
+            .modifier(
+                StartNewChatSelectableRowChrome(
+                    isKeyboardSelected: isKeyboardSelected,
+                    isRecipientSelected: isRecipientSelected,
+                    isHovered: isHovered
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            updateHover(hovering, for: rowID)
+        }
+        .id(rowID)
+    }
+
+    @ViewBuilder
+    private func trailingAffordance(
+        _ affordance: StartNewChatRowAffordance,
+        candidateForMultiSelect: ContactCandidate? = nil,
+        allowsMultiSelect: Bool = false
+    ) -> some View {
+        switch affordance {
+        case .none:
+            EmptyView()
+        case .startChat:
+            HStack(spacing: 6) {
+                if allowsMultiSelect, let candidateForMultiSelect {
                     Button {
                         draft.startsInMultiSelect = true
-                        draft.toggleRecipient(candidate)
+                        draft.toggleRecipient(candidateForMultiSelect)
                         onQueryChanged(draft)
                     } label: {
                         Image(systemName: "plus.circle")
@@ -1031,37 +1357,58 @@ public struct StartNewChatView: View {
                     .buttonStyle(.plain)
                     .help(String(localized: "Select for Group or Blast"))
                 }
+                HStack(spacing: 4) {
+                    Text(String(localized: "Start"))
+                    Image(systemName: "arrow.right")
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.primary.opacity(0.08)))
+                .accessibilityHidden(true)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(
-                        isKeyboardSelected
-                            ? Color.accentColor.opacity(0.16)
-                            : (isRecipientSelected
-                                ? Color.accentColor.opacity(0.10)
-                                : (isHovered ? Color.primary.opacity(0.06) : Color.clear))
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(
-                        isKeyboardSelected ? Color.accentColor.opacity(0.45) : Color.clear,
-                        lineWidth: 1
-                    )
-            )
-            .contentShape(Rectangle())
+        case let .expand(isExpanded):
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(isExpanded ? String(localized: "Hide networks") : String(localized: "Show networks"))
+        case let .selectRecipient(isSelected):
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                .font(.body)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            if hovering {
-                hoveredRowID = rowID
-            } else if hoveredRowID == rowID {
-                hoveredRowID = nil
-            }
+    }
+
+    private func endpointTitle(for endpoint: ContactCandidate) -> String {
+        let networkName = NetworkNames.displayName(of: endpoint.network) ?? endpoint.network
+        guard !endpoint.accountID.isEmpty,
+              let account = draft.accounts.first(where: { $0.network == endpoint.network }) else {
+            return networkName
         }
-        .id(rowID)
+        let connectedLogins = account.logins.filter { $0.state == .connected }
+        if connectedLogins.count > 1,
+           let login = connectedLogins.first(where: { $0.accountID == endpoint.accountID }),
+           !login.remoteName.isEmpty {
+            return "\(networkName) (\(login.remoteName))"
+        }
+        return networkName
+    }
+
+    private func updateHover(_ hovering: Bool, for rowID: String) {
+        if hovering {
+            hoveredRowID = rowID
+        } else if hoveredRowID == rowID {
+            hoveredRowID = nil
+        }
+    }
+
+    private func toggleExpanded(_ rowID: String) {
+        if expandedRowIDs.contains(rowID) {
+            expandedRowIDs.remove(rowID)
+        } else {
+            expandedRowIDs.insert(rowID)
+        }
     }
 
     // MARK: - Footer
@@ -1071,7 +1418,8 @@ public struct StartNewChatView: View {
             draft: draft,
             recentRows: recentRows,
             contactsLimit: contactsLimit,
-            selectedRowID: selectedRowID
+            selectedRowID: selectedRowID,
+            expandedRowIDs: expandedRowIDs
         )
     }
 
@@ -1130,7 +1478,8 @@ public struct StartNewChatView: View {
         StartNewChatPresentation.navigableRowIDs(
             draft: draft,
             recentRows: recentRows,
-            contactsLimit: contactsLimit
+            contactsLimit: contactsLimit,
+            expandedRowIDs: expandedRowIDs
         )
     }
 
@@ -1162,6 +1511,20 @@ public struct StartNewChatView: View {
             onOpenDirectChat(candidate)
         case let .lookup(lookupAction):
             onLookup(lookupAction)
+        case let .toggleExpand(rowID):
+            if expandedRowIDs.contains(rowID) {
+                expandedRowIDs.remove(rowID)
+            } else {
+                expandedRowIDs.insert(rowID)
+                if let group = StartNewChatPresentation.personGroup(
+                    forRowID: rowID,
+                    draft: draft,
+                    recentRows: recentRows,
+                    contactsLimit: contactsLimit
+                ), let firstEndpoint = group.endpoints.first {
+                    selectedRowID = StartNewChatPresentation.subRowID(parentRowID: rowID, endpoint: firstEndpoint)
+                }
+            }
         }
     }
 
@@ -1174,18 +1537,29 @@ public struct StartNewChatView: View {
             moveSelection(1)
             return true
         case .confirm:
-            if isMultiSelectActive,
-               let rowID = selectedRowID,
-               let candidate = StartNewChatPresentation.candidate(
-                   forRowID: rowID,
-                   draft: draft,
-                   recentRows: recentRows,
-                          contactsLimit: contactsLimit
-               ),
-               !candidate.userID.hasPrefix("!") {
-                draft.toggleRecipient(candidate)
-                onQueryChanged(draft)
-                return true
+            if isMultiSelectActive, let rowID = selectedRowID {
+                if StartNewChatPresentation.splitSubRowID(rowID) == nil,
+                   let group = StartNewChatPresentation.personGroup(
+                       forRowID: rowID,
+                       draft: draft,
+                       recentRows: recentRows,
+                       contactsLimit: contactsLimit
+                   ),
+                   group.isMultiNetwork {
+                    performConfirm(.toggleExpand(rowID))
+                    return true
+                }
+                if let candidate = StartNewChatPresentation.candidate(
+                    forRowID: rowID,
+                    draft: draft,
+                    recentRows: recentRows,
+                    contactsLimit: contactsLimit
+                ),
+                   !candidate.userID.hasPrefix("!") {
+                    draft.toggleRecipient(candidate)
+                    onQueryChanged(draft)
+                    return true
+                }
             }
             if let action = currentConfirmAction {
                 performConfirm(action)
@@ -1207,19 +1581,49 @@ public struct StartNewChatView: View {
     }
 }
 
-private struct ChipViewportWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+private struct StartNewChatSelectableRowChrome: ViewModifier {
+    let isKeyboardSelected: Bool
+    let isRecipientSelected: Bool
+    let isHovered: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(
+                        isKeyboardSelected
+                            ? Color.accentColor.opacity(0.16)
+                            : (isRecipientSelected
+                                ? Color.accentColor.opacity(0.10)
+                                : (isHovered ? Color.primary.opacity(0.06) : Color.clear))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(
+                        isKeyboardSelected ? Color.accentColor.opacity(0.45) : Color.clear,
+                        lineWidth: 1
+                    )
+            )
+            .contentShape(Rectangle())
+    }
 }
 
-private struct ChipContentWidthKey: PreferenceKey {
+private struct ChipViewportWidthKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct ChipContentMinXKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct ChipContentMaxXKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private enum StartNewChatFieldCommand {

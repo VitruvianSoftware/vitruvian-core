@@ -42,6 +42,89 @@ final class SearchResultPresentationTests: XCTestCase {
             "Kent Hua")
     }
 
+    func testScopedResultOmitsChatAndNetwork() {
+        XCTAssertEqual(
+            SearchResultLocation.subtitle(
+                sender: "Kent Hua",
+                chatTitle: "Eddie & Kent",
+                networkName: "Google Chat",
+                isDirect: false,
+                scopedToSingleChat: true
+            ),
+            "Kent Hua"
+        )
+        XCTAssertEqual(
+            SearchResultLocation.subtitle(
+                sender: "You",
+                chatTitle: "Kent Hua",
+                networkName: "Signal",
+                isDirect: true,
+                scopedToSingleChat: true
+            ),
+            "You"
+        )
+    }
+
+    func testScopeDisplayNameMatchesChatHeader() {
+        let model = inbox()
+        var row = groupRow("!g", name: "Eddie Stecker, Kent Hua")
+        row.network = "gchat"
+        model.setSnapshotRowsForTesting([row])
+        model.setKnownMembers(
+            [
+                GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+            ],
+            isComplete: true,
+            for: "!g"
+        )
+
+        XCTAssertEqual(
+            SearchScopePresentation.displayName(scopeRoomID: "!g", scopeRow: row, inbox: model),
+            "Eddie & Kent"
+        )
+        XCTAssertEqual(
+            SearchScopePresentation.displayName(
+                scopeRoomID: "!g",
+                scopeRow: row,
+                inbox: model,
+                openChatRoomID: "!g",
+                openChatDisplayTitle: "Eddie & Kent"
+            ),
+            "Eddie & Kent"
+        )
+
+        var unnamed = groupRow("!u", name: "")
+        unnamed.memberPreview = []
+        XCTAssertEqual(
+            SearchScopePresentation.displayName(scopeRoomID: "!u", scopeRow: unnamed, inbox: model),
+            "Unnamed chat"
+        )
+        XCTAssertNil(SearchScopePresentation.displayName(scopeRoomID: nil, scopeRow: nil, inbox: model))
+    }
+
+    func testSearchPanelControlsHideAccountsAndCommandsWhenScoped() {
+        let global = SearchPanelControls.resolve(
+            isScopedToChat: false,
+            hasAccounts: true,
+            filters: SearchFilterSet(),
+            hasCommandBarAction: true
+        )
+        XCTAssertTrue(global.showsAccountsFilter)
+        XCTAssertTrue(global.showsChatTypeFilter)
+        XCTAssertTrue(global.showsCommandsChip)
+
+        let scoped = SearchPanelControls.resolve(
+            isScopedToChat: true,
+            hasAccounts: true,
+            filters: SearchFilterSet(networks: ["signal"]),
+            hasCommandBarAction: true
+        )
+        XCTAssertFalse(scoped.showsAccountsFilter)
+        XCTAssertFalse(scoped.showsChatTypeFilter)
+        XCTAssertFalse(scoped.showsCommandsChip)
+    }
+
     // MARK: - The chat's title: the inbox row's
 
     private func inbox() -> InboxModel {

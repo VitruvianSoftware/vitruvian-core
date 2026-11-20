@@ -1153,7 +1153,11 @@ public enum CommandSet {
 
         // 4. Existing CommandSet.search group (3 ledger commands)
         if let search {
-            appendAll(Self.search(search, openRoomID: { inbox?.selectedRoomID ?? conversation?.roomID }))
+            appendAll(Self.search(search, openRoomID: {
+                // New Chat hides the chat that is still selected.
+                if inbox?.startNewChatDraft != nil { return nil }
+                return inbox?.selectedRoomID ?? conversation?.roomID
+            }))
         }
 
         // 5. Existing CommandSet.message group (9 commands) + composer media + record audio + extra message actions
