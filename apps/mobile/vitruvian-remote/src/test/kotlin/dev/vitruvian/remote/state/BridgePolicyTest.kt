@@ -802,4 +802,113 @@ public class BridgePolicyTest {
     assertEquals(0L, BridgePolicy.mlKitFinishWindowMs(15, 20_000))
     assertEquals(15_000L, BridgePolicy.mlKitFinishWindowMs(15, -5))
   }
+
+  @Test
+  public fun retriesOnceOnAFreshClientAfterAnEngineError() {
+    // Seen on a Pixel after Google's speech app updated: every call failed at once with
+    // "not bound to TTS engine" until the client was rebuilt.
+    val budget = BridgePolicy.speakTimeoutSeconds(null, 100)
+    assertTrue(BridgePolicy.retryMlKitWithFreshClient(true, true, 0, budget - 1, 100))
+    // Only once.
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, true, 1, budget - 1, 100))
+    // Not when a new client cannot help (no voice ready, slow start).
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, false, 0, budget - 1, 100))
+    // Never once audio was heard, or the announcement would repeat.
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(false, true, 0, budget - 1, 100))
+    // Not when the budget left could not cover a retry and the Android voice after it.
+    assertFalse(BridgePolicy.retryMlKitWithFreshClient(true, true, 0, 20, 100))
+  }
+
+  private data class FakeAttempt(val failedBeforeAudio: Boolean, val freshHelps: Boolean)
+
+  private fun runRetry(
+      results: List<FakeAttempt>,
+      elapsed: Long,
+      budget: Long = 60,
+      textLength: Int = 100,
+  ): Pair<List<Long>, FakeAttempt> {
+    val budgets = mutableListOf<Long>()
+    val out =
+        BridgePolicy.speakWithFreshClientRetry(
+            budgetSeconds = budget,
+            textLength = textLength,
+            elapsedSeconds = { elapsed },
+            describe = { a: FakeAttempt ->
+              BridgePolicy.MlKitAttempt(a.failedBeforeAudio, a.freshHelps)
+            },
+        ) { remaining ->
+          budgets += remaining
+          results[budgets.size - 1]
+        }
+    return budgets to out
+  }
+
+  @Test
+  public fun aDeadClientIsRetriedOnceWithTheBudgetLeft() {
+    val dead = FakeAttempt(failedBeforeAudio = true, freshHelps = true)
+    val spoke = FakeAttempt(failedBeforeAudio = false, freshHelps = false)
+    val (budgets, out) = runRetry(listOf(dead, spoke), elapsed = 2)
+    assertEquals(listOf(60L, 58L), budgets)
+    assertEquals(spoke, out)
+  }
+
+  @Test
+  public fun noRetryWhenAudioWasHeardOrAFreshClientCannotHelp() {
+    // Something was heard (mid-sentence failure): a retry would repeat the start.
+    val heard = FakeAttempt(failedBeforeAudio = false, freshHelps = true)
+    assertEquals(listOf(60L), runRetry(listOf(heard), elapsed = 2).first)
+    // No voice ready: a new client would not change that.
+    val notReady = FakeAttempt(failedBeforeAudio = true, freshHelps = false)
+    assertEquals(listOf(60L), runRetry(listOf(notReady), elapsed = 2).first)
+    // Twice dead: still only one retry.
+    val dead = FakeAttempt(failedBeforeAudio = true, freshHelps = true)
+    val (budgets, out) = runRetry(listOf(dead, dead, dead), elapsed = 2)
+    assertEquals(2, budgets.size)
+    assertEquals(dead, out)
+    // Too little budget left for a retry plus the Android voice.
+    assertEquals(listOf(60L), runRetry(listOf(dead), elapsed = 40).first)
+  }
+
+  @Test
+  public fun aNewClientTellsALostEngineFromAPhoneWithNoVoices() {
+    // Voices listed: no probe needed, never stale.
+    assertFalse(BridgePolicy.needsStaleProbe(8))
+    assertFalse(BridgePolicy.sharedClientIsStale(8, probeCount = 8))
+    // Empty or no answer from ours, a new client sees voices: ours lost its engine. This covers
+    // a client made by the picker that never looked up voices before the engine restarted.
+    assertTrue(BridgePolicy.sharedClientIsStale(0, probeCount = 8))
+    assertTrue(BridgePolicy.sharedClientIsStale(BridgePolicy.VOICES_NO_ANSWER, probeCount = 8))
+    // The new client sees none either: a phone with no voices, or an engine that never answers.
+    // Not stale, so the answer is cached instead of rebuilding on every announcement.
+    assertFalse(BridgePolicy.sharedClientIsStale(0, probeCount = 0))
+    assertFalse(
+        BridgePolicy.sharedClientIsStale(
+            BridgePolicy.VOICES_NO_ANSWER, BridgePolicy.VOICES_NO_ANSWER))
+  }
+
+  @Test
+  public fun aThrowAfterAudioStartedIsReportedNotRetried() {
+    assertEquals(
+        BridgePolicy.AfterThrow.ReportPartial, BridgePolicy.afterClientThrow(started = true))
+    assertEquals(
+        BridgePolicy.AfterThrow.RetryOrFallBack, BridgePolicy.afterClientThrow(started = false))
+  }
+
+  @Test
+  public fun attemptMappingOnlyRetriesFallbackableErrors() {
+    // A partial result is not an error: never "failed before audio", never retried.
+    val partial =
+        BridgePolicy.mlKitAttemptOf(
+            isError = false, allowFallback = false, freshClientMayHelp = true)
+    assertFalse(partial.failedBeforeAudio)
+    assertFalse(partial.freshClientMayHelp)
+    // An error the Android voice must not take over (e.g. headphones unplugged): no retry.
+    assertFalse(
+        BridgePolicy.mlKitAttemptOf(true, allowFallback = false, freshClientMayHelp = true)
+            .failedBeforeAudio)
+    assertEquals(
+        BridgePolicy.MlKitAttempt(failedBeforeAudio = true, freshClientMayHelp = true),
+        BridgePolicy.mlKitAttemptOf(
+            isError = true, allowFallback = true, freshClientMayHelp = true))
+  }
 }

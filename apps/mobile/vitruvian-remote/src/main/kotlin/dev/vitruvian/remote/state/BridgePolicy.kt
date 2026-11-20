@@ -800,6 +800,95 @@ public object BridgePolicy {
   public fun mlKitFinishWindowMs(timeoutSeconds: Long, elapsedMs: Long): Long =
       (timeoutSeconds * 1000L - elapsedMs.coerceAtLeast(0L)).coerceAtLeast(0L)
 
+  /**
+   * Whether to try ML Kit once more on a new client before falling back to the Android voice: only
+   * when nothing was heard ([failedBeforeAudio]), the failure is one a new client can cure
+   * ([freshClientMayHelp]: an engine error or a thrown client, not "no voice ready" or a slow
+   * start), it is the first retry, and enough of the budget is left to still say [textLength]
+   * characters with ML Kit and, failing that, the Android voice.
+   */
+  public fun retryMlKitWithFreshClient(
+      failedBeforeAudio: Boolean,
+      freshClientMayHelp: Boolean,
+      retriesSoFar: Int,
+      remainingSeconds: Long,
+      textLength: Int,
+  ): Boolean {
+    if (!failedBeforeAudio || !freshClientMayHelp || retriesSoFar >= 1) return false
+    val speech = maxOf(1L, textLength.toLong() / 10L)
+    return remainingSeconds >= 2 * speech + ANDROID_TTS_STARTUP_S + MLKIT_START_TIMEOUT_MS / 1000L
+  }
+
+  /** What [speakWithFreshClientRetry] needs to know about one ML Kit attempt. */
+  public data class MlKitAttempt(val failedBeforeAudio: Boolean, val freshClientMayHelp: Boolean)
+
+  /**
+   * Runs one ML Kit [attempt] with the whole budget, then at most one more on a fresh client when
+   * [retryMlKitWithFreshClient] allows it, with whatever budget is left. Returns the last attempt's
+   * result. The caller falls back to the Android voice from there.
+   */
+  public fun <T> speakWithFreshClientRetry(
+      budgetSeconds: Long,
+      textLength: Int,
+      elapsedSeconds: () -> Long,
+      describe: (T) -> MlKitAttempt,
+      onRetry: (T) -> Unit = {},
+      attempt: (remainingSeconds: Long) -> T,
+  ): T {
+    val first = attempt(budgetSeconds)
+    val described = describe(first)
+    val remaining = budgetSeconds - elapsedSeconds()
+    if (!retryMlKitWithFreshClient(
+        described.failedBeforeAudio, described.freshClientMayHelp, 0, remaining, textLength)) {
+      return first
+    }
+    onRetry(first)
+    return attempt(remaining)
+  }
+
+  /** A voice count for "the engine did not answer in time". */
+  public const val VOICES_NO_ANSWER: Int = -1
+
+  /**
+   * Whether a lookup's answer ([sharedCount] voices, or [VOICES_NO_ANSWER]) needs a fresh-client
+   * probe.
+   */
+  public fun needsStaleProbe(sharedCount: Int): Boolean = sharedCount <= 0
+
+  /**
+   * Whether the shared client lost its engine: it saw no voices (or got no answer) while a
+   * brand-new client, bound to the engine as it is now, sees some ([probeCount]). When the new
+   * client sees none too, the phone simply has no voices for its language: not stale, so the empty
+   * answer is cached and announcements do not rebuild the client every time.
+   */
+  public fun sharedClientIsStale(sharedCount: Int, probeCount: Int): Boolean =
+      needsStaleProbe(sharedCount) && probeCount > 0
+
+  /**
+   * The retry helper's view of one attempt's result: it "failed before audio" only when it is an
+   * error the Android voice may take over from (nothing was heard).
+   */
+  public fun mlKitAttemptOf(
+      isError: Boolean,
+      allowFallback: Boolean,
+      freshClientMayHelp: Boolean,
+  ): MlKitAttempt =
+      MlKitAttempt(
+          failedBeforeAudio = isError && allowFallback,
+          freshClientMayHelp = isError && allowFallback && freshClientMayHelp,
+      )
+
+  /** What to do when the ML Kit client throws mid-call. */
+  public enum class AfterThrow {
+    /** Some audio was heard: report it as cut short; no retry, no fallback. */
+    ReportPartial,
+    /** Nothing was heard: a new client may work, then the Android voice. */
+    RetryOrFallBack,
+  }
+
+  public fun afterClientThrow(started: Boolean): AfterThrow =
+      if (started) AfterThrow.ReportPartial else AfterThrow.RetryOrFallBack
+
   /** Seconds the Android voice needs to start up, on top of the speech itself. */
   public const val ANDROID_TTS_STARTUP_S: Long = 5L
 
