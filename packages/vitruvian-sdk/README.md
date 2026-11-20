@@ -35,6 +35,7 @@ final class KitHost: ToolHost {
             GitHubToolTelemetry.capture(error: error, tags: ["component": "kit_host", "action": "status"])
         }
     }
+    // …
 }
 ```
 

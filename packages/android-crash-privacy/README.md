@@ -20,6 +20,7 @@ From `apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftw
 ```kotlin
 import dev.vitruvian.crashprivacy.DeviceField
 import dev.vitruvian.crashprivacy.configurePrivateSentry
+// …
 import io.sentry.android.core.SentryAndroidOptions
 import java.util.EnumSet
 

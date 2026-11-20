@@ -16,7 +16,7 @@ A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's
 
 ## Example
 
-From `tools/merge-queue-stats/src/lib.rs:25-397`:
+From `tools/merge-queue-stats/src/lib.rs:25-398`:
 
 ```rust
 pub use vitruvian_pycompat::argparse;
