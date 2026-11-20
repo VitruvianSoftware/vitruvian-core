@@ -123,14 +123,19 @@ pub(crate) mod tests {
     use std::time::{Duration, Instant};
 
     /// A stand-in for caffeinate: records its arguments and its pid, then
-    /// waits like the real one.
+    /// waits like the real one. Each file is written whole to a temporary
+    /// name and renamed, so a test that sees the file sees all of it (a
+    /// plain `>` creates it empty first, and a test reading in that moment
+    /// got no pid).
     pub(crate) fn fake_caffeinate(dir: &Path) -> PathBuf {
         std::fs::create_dir_all(dir).unwrap();
         let bin = dir.join("caffeinate");
         std::fs::write(
             &bin,
             format!(
-                "#!/bin/sh\necho $$ > '{pid}'\nprintf '%s\\n' \"$@\" > '{args}'\nexec sleep 60\n",
+                "#!/bin/sh\necho $$ > '{pid}.tmp' && mv '{pid}.tmp' '{pid}'\n\
+                 printf '%s\\n' \"$@\" > '{args}.tmp' && mv '{args}.tmp' '{args}'\n\
+                 exec sleep 60\n",
                 pid = dir.join("pid").display(),
                 args = dir.join("args").display(),
             ),
