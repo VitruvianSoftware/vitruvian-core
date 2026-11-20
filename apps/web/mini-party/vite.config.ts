@@ -23,17 +23,45 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "url";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
-export default defineConfig({
-  // Pin the root to this folder. Under Bazel the working directory is a
-  // symlinked sandbox, and Vite otherwise mixes the symlink and its target
-  // when naming index.html, which fails the build.
-  root: fileURLToPath(new URL(".", import.meta.url)),
-  // Write next to the working directory, which is where Bazel collects dist/.
-  build: {
-    outDir: `${process.cwd()}/${process.env.OUT_DIR ?? "dist"}`,
-    emptyOutDir: true,
-  },
-  plugins: [react(), tailwindcss()],
+const root = fileURLToPath(new URL(".", import.meta.url));
+
+// Adds the Umami tracker (stats.vitruviansoftware.dev) when the build sets
+// VITE_UMAMI_WEBSITE_ID: the GitHub Pages build does (.env.pages); local
+// and server builds do not, so they send no analytics.
+function umami(websiteId: string | undefined): Plugin {
+  return {
+    name: "umami",
+    transformIndexHtml() {
+      if (!websiteId) return [];
+      return [
+        {
+          tag: "script",
+          attrs: {
+            defer: true,
+            src: "https://stats.vitruviansoftware.dev/script.js",
+            "data-website-id": websiteId,
+          },
+          injectTo: "head",
+        },
+      ];
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, root, "VITE_");
+  return {
+    // Pin the root to this folder. Under Bazel the working directory is a
+    // symlinked sandbox, and Vite otherwise mixes the symlink and its target
+    // when naming index.html, which fails the build.
+    root,
+    // Write next to the working directory, which is where Bazel collects dist/.
+    build: {
+      outDir: `${process.cwd()}/${process.env.OUT_DIR ?? "dist"}`,
+      emptyOutDir: true,
+    },
+    plugins: [react(), tailwindcss(), umami(env.VITE_UMAMI_WEBSITE_ID)],
+  };
 });

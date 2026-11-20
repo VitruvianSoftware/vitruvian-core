@@ -68,8 +68,8 @@ Every project exports both an internal and public ingest DSN:
 |---|---|---|---|---|
 | **Web** | Backstage | `backstage` | `node-express` | Internal (`sentry.lab.ipv1337.dev/2`) + Browser rewrite |
 | **Web** | God's Eye View | `gods-eye-view` | `node` | Browser (`sentry-ingest.ipv1337.dev/1`) |
-| **Web** | Mini Party | `mini-party` | `javascript-react` | Browser (`sentry-ingest.ipv1337.dev`, GitHub Pages client) |
-| **Web** | Mini Party Rooms | `mini-party-rooms` | `node` | Internal (`sentry.lab.ipv1337.dev`, homelab rooms server) |
+| **Web** | Mini Party | `mini-party` | `javascript-react` | Browser (`sentry-ingest.ipv1337.dev/21`, GitHub Pages client) |
+| **Web** | Mini Party Rooms | `mini-party-rooms` | `node` | Internal (`sentry.lab.ipv1337.dev/22`, homelab rooms server) |
 | **Web** | OAuth User Inspector | `oauth-user-inspector` | `rust` | Browser / Cloud Run (`sentry-ingest.ipv1337.dev/7`) |
 | **Web** | VitruvianSoftware.dev | `vitruviansoftware-dev` | `javascript` | Browser (`sentry-ingest.ipv1337.dev/6`) |
 | **Suites** | Vitruvian Relay | `vitruvian-relay` | `rust` | Browser / Container (`sentry-ingest.ipv1337.dev/5`) |

@@ -23,10 +23,28 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MotionConfig } from "motion/react";
+import * as Sentry from "@sentry/react";
 import App from "./App.tsx";
 import "./index.css";
 
-createRoot(document.getElementById("root")!).render(
+// Error reporting to the self-hosted Sentry, only where the build sets a DSN:
+// the GitHub Pages build does (.env.pages); local and server builds do not.
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: import.meta.env.MODE,
+    tracesSampleRate: 0,
+  });
+}
+
+// React 19 hands render errors to these callbacks; Sentry reports them. With
+// no DSN, init above was skipped and they report nothing.
+createRoot(document.getElementById("root")!, {
+  onUncaughtError: Sentry.reactErrorHandler(),
+  onCaughtError: Sentry.reactErrorHandler(),
+  onRecoverableError: Sentry.reactErrorHandler(),
+}).render(
   <StrictMode>
     {/* Honour the system's reduce-motion setting in every animation. */}
     <MotionConfig reducedMotion="user">

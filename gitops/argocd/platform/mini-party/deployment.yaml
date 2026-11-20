@@ -77,6 +77,11 @@ spec:
           env:
             - name: ALLOWED_ORIGINS
               value: https://mini-games.vitruviansoftware.dev
+            # The mini-party-rooms Sentry project's in-cluster DSN
+            # (infrastructure/pulumi/platform/sentry, output
+            # mini-party-rooms_dsn_public). Public by design, like every DSN.
+            - name: SENTRY_DSN
+              value: https://7421ce58f43f9f73fd0f4147257e0dd6@sentry.lab.ipv1337.dev/22
           resources:
             requests:
               cpu: 20m
