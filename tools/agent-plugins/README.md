@@ -35,10 +35,23 @@ bazel run //tools/agent-plugins:schedule -- remove
 
 The schedule only keeps copies current. Open sessions still need `/reload-plugins` or a restart.
 
+## Third-party Claude Code plugins
+
+Claude Code does not auto-update plugins from marketplaces other than its official one, so a
+plugin installed from GitHub stays on the version it was installed at. (The Antigravity
+plugin sat on 0.22.0 for months while its `pro` tier pointed at a model Antigravity had
+dropped.) So the refresh also runs `claude plugin update` on every **user-scope** plugin whose
+marketplace comes from a remote (GitHub, git or URL), and reports each version change.
+Directory marketplaces and project-scope installs are left alone. It never accepts a
+marketplace-declared command: an update that needs one fails, is reported, and is yours to
+run by hand. `--check` compares installed versions with each marketplace's local catalog and
+changes nothing. Turn it off with `--no-third-party`.
+
 ## Options
 
 - `--check`: change nothing; list what is stale and exit 1 if anything is.
 - `--no-pull`: don't fast-forward the main checkout.
+- `--no-third-party`: skip the third-party Claude Code plugins.
 - `--quiet`: print nothing unless something changed, is stale or failed (used by the schedule).
 - `--plugin <name>`: the plugin folder name under `apps/<harness>/plugins/` (default `vitruvian-orchestrator`). A harness without that folder is skipped.
 

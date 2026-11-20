@@ -32,6 +32,9 @@
 # `claude plugin update` can leave the old files in place; this reinstalls when
 # the copy still differs. OpenCode loads the plugin straight from the main
 # checkout through two small loader files, so it only needs those to exist.
+#
+# It also updates every other Claude Code plugin installed from a remote
+# marketplace (GitHub, git, URL), which Claude Code does not auto-update.
 
 set -euo pipefail
 
@@ -39,9 +42,10 @@ PLUGIN="vitruvian-orchestrator"
 MODE="refresh"
 PULL=1
 QUIET=0
+THIRD_PARTY=1
 
 usage() {
-  sed -n '/^# Refresh this repo/,/^# checkout through/p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '/^# Refresh this repo/,/^# marketplace (GitHub, git, URL)/p' "$0" | sed 's/^# \{0,1\}//'
   cat <<'USAGE'
 
 Options:
@@ -49,6 +53,8 @@ Options:
   --no-pull        Do not fast-forward the main checkout to origin/main first.
   --quiet          Print nothing unless something was updated, is stale or failed
                    (for the scheduled run; see schedule.sh).
+  --no-third-party Skip updating Claude Code plugins installed from remote
+                   (GitHub, git, URL) marketplaces.
   --plugin <name>  Plugin folder name (default: vitruvian-orchestrator).
 USAGE
 }
@@ -58,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --check) MODE="check" ;;
     --no-pull) PULL=0 ;;
     --quiet) QUIET=1 ;;
+    --no-third-party) THIRD_PARTY=0 ;;
     --plugin)
       [[ $# -ge 2 ]] || { echo "--plugin needs a name" >&2; exit 2; }
       PLUGIN="$2"
@@ -114,15 +121,16 @@ same_tree() {
   [[ -d "$1" && -d "$2" ]] && diff -rq -x node_modules -x .DS_Store "$1" "$2" >/dev/null 2>&1
 }
 
-json_field() { # file-or-dash, python expression over `d`
+json_field() { # file-or-dash, python expression over `d`, then values the expression reads as a[0], a[1], ...
+  # Pass any data (plugin names, keys) as trailing arguments, never inside the expression.
   python3 -I -c 'import json,sys
 src=sys.argv[1]
 d=json.load(sys.stdin if src=="-" else open(src))
 try:
-    v=eval(sys.argv[2],{"d":d})
+    v=eval(sys.argv[2],{"d":d,"a":sys.argv[3:]})
 except Exception:
     v=None
-print(v or "")' "$1" "$2"
+print(v or "")' "$@"
 }
 
 echo "Main checkout: $MAIN"
@@ -156,7 +164,7 @@ fi
 claude_path() {
   [[ -f "$CLAUDE_PLUGINS_FILE" ]] || return 0
   json_field "$CLAUDE_PLUGINS_FILE" \
-    "next((e['installPath'] for e in d.get('plugins',d).get('$PLUGIN@$MARKETPLACE',[]) if e.get('scope')=='user'), '')"
+    "next((e['installPath'] for e in d.get('plugins',d).get(a[0],[]) if e.get('scope')=='user'), '')" "$PLUGIN@$MARKETPLACE"
 }
 src="$MAIN/apps/claude-code/plugins/$PLUGIN"
 if [[ -d "$src" ]]; then
@@ -168,8 +176,8 @@ if [[ -d "$src" ]]; then
     bad "installed copy ${dest:-(not installed)} differs from the main checkout"
     stale=1
   else
-    "$CLAUDE" plugin marketplace update "$MARKETPLACE" >/dev/null
-    if [[ -n "$dest" ]]; then "$CLAUDE" plugin update "$PLUGIN@$MARKETPLACE" >/dev/null || true; fi
+    "$CLAUDE" plugin marketplace update "$MARKETPLACE" </dev/null >/dev/null
+    if [[ -n "$dest" ]]; then "$CLAUDE" plugin update "$PLUGIN@$MARKETPLACE" </dev/null >/dev/null || true; fi
     dest="$(claude_path)"
     if ! same_tree "$src" "$dest"; then
       if [[ -n "$dest" ]]; then
@@ -186,7 +194,7 @@ fi
 # 3. Antigravity: a copy under ~/.gemini/config/plugins.
 agy_path() {
   "$AGY" plugin list --json 2>/dev/null | json_field - \
-    "next((p['path'] for p in (d if isinstance(d,list) else d.get('plugins',[])) if p.get('name')=='$PLUGIN'), '')"
+    "next((p['path'] for p in (d if isinstance(d,list) else d.get('plugins',[])) if p.get('name')==a[0]), '')" "$PLUGIN"
 }
 src="$MAIN/apps/antigravity/plugins/$PLUGIN"
 if [[ -d "$src" ]]; then
@@ -224,6 +232,103 @@ if [[ -d "$src" ]]; then
     OPENCODE_CONFIG_DIR="$OPENCODE_DIR" bash "$src/install.sh" >/dev/null
     changed=1
     if opencode_ok "$src"; then ok "loaders rewritten"; else bad "loaders still wrong after install.sh"; failed=1; fi
+  fi
+fi
+
+# 5. Third-party Claude Code plugins. Claude Code does not auto-update plugins from
+# marketplaces other than its official one, so a plugin installed from GitHub stays
+# on whatever version it was installed at (antigravity sat on 0.22.0 for months
+# while its `pro` tier pointed at a model Antigravity no longer offers). Update
+# every user-scope plugin whose marketplace is fetched from a remote (github, git,
+# url); directory marketplaces are local checkouts and are left alone. Never
+# accepts a marketplace-declared command: an update that needs one fails here and
+# is reported, to be run by hand.
+KNOWN_MARKETPLACES_FILE="${AGENT_PLUGINS_KNOWN_MARKETPLACES_FILE:-$(dirname "$CLAUDE_PLUGINS_FILE")/known_marketplaces.json}"
+remote_plugins() { # prints "plugin@marketplace<TAB>version<TAB>marketplace-dir" for each remote user-scope plugin
+  [[ -f "$CLAUDE_PLUGINS_FILE" && -f "$KNOWN_MARKETPLACES_FILE" ]] || return 0
+  python3 -I - "$CLAUDE_PLUGINS_FILE" "$KNOWN_MARKETPLACES_FILE" "$MARKETPLACE" <<'PY'
+import json, re, sys
+SAFE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._-]*")
+installed = json.load(open(sys.argv[1]))
+known = json.load(open(sys.argv[2]))
+own = sys.argv[3]
+plugins = installed.get("plugins", installed)
+for key in sorted(plugins):
+    name, _, mkt = key.rpartition("@")
+    if not SAFE.fullmatch(key) or mkt == own:  # odd names (quotes, tabs, newlines) are skipped
+        continue
+    src = (known.get(mkt) or {}).get("source") or {}
+    if src.get("source") not in ("github", "git", "url"):
+        continue
+    for e in plugins[key]:
+        if e.get("scope") == "user":
+            ver = str(e.get("version") or "")
+            loc = str((known.get(mkt) or {}).get("installLocation") or "")
+            if any(c in ver + loc for c in "\t\n\r"):
+                continue
+            print(f"{key}\t{ver}\t{loc}")
+PY
+}
+marketplace_version() { # $1=plugin name $2=marketplace dir; prints the catalog's version, or nothing
+  [[ -n "$2" && -f "$2/.claude-plugin/marketplace.json" ]] || return 0
+  python3 -I - "$1" "$2" <<'PY'
+import json, os, sys
+name, root = sys.argv[1], sys.argv[2]
+m = json.load(open(os.path.join(root, ".claude-plugin", "marketplace.json")))
+for p in m.get("plugins", []):
+    if p.get("name") != name:
+        continue
+    v = p.get("version")
+    src = p.get("source")
+    if not v and isinstance(src, str):
+        base = os.path.realpath(root)
+        f = os.path.realpath(os.path.join(root, src, ".claude-plugin", "plugin.json"))
+        if f.startswith(base + os.sep) and os.path.isfile(f):
+            v = json.load(open(f)).get("version")
+    print(v or "")
+    break
+PY
+}
+installed_version() { # $1=plugin@marketplace
+  json_field "$CLAUDE_PLUGINS_FILE" \
+    "next((e.get('version') for e in d.get('plugins',d).get(a[0],[]) if e.get('scope')=='user'), '')" "$1"
+}
+if [[ "$THIRD_PARTY" -eq 1 ]]; then
+  rows="$(remote_plugins)"
+  if [[ -n "$rows" ]]; then
+    echo "Third-party Claude Code plugins"
+    if [[ "$MODE" == "refresh" ]]; then
+      while IFS= read -r mkt; do
+        "$CLAUDE" plugin marketplace update "$mkt" </dev/null >/dev/null 2>&1 || { bad "could not update marketplace $mkt"; failed=1; }
+      done < <(printf '%s\n' "$rows" | cut -f1 | sed 's/.*@//' | sort -u)
+    fi
+    while IFS=$'\t' read -r key before dir; do
+      name="${key%@*}"
+      if [[ "$MODE" == "check" ]]; then
+        latest="$(marketplace_version "$name" "$dir")"
+        if [[ -z "$latest" || -z "$before" ]]; then
+          note "$key $before (no catalog version to compare)"
+        elif [[ "$latest" == "$before" ]]; then
+          ok "$key $before is the catalog's version"
+        else
+          bad "$key is $before; its catalog has $latest"
+          stale=1
+        fi
+        continue
+      fi
+      if ! "$CLAUDE" plugin update "$key" --scope user </dev/null >/dev/null 2>&1; then
+        bad "$key: update failed (it may need a command confirmed by hand: claude plugin update $key)"
+        failed=1
+        continue
+      fi
+      after="$(installed_version "$key")"
+      if [[ "$after" != "$before" ]]; then
+        changed=1
+        ok "$key updated ${before:-?} → ${after:-?}"
+      else
+        ok "$key ${before:-?} is current"
+      fi
+    done <<<"$rows"
   fi
 fi
 
