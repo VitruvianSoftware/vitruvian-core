@@ -24,10 +24,12 @@
 #   2. makes sure every website in SITES exists, printing each website ID
 #      (the `data-website-id` its tracker snippet needs).
 #
-# SITES is "domain" or "domain=id", one per line. With an id, the website is
+# SITES (from the umami-sites ConfigMap, sites-configmap.yaml) is "domain"
+# or "domain=id", one per line. With an id, the website is
 # created with that id, so the site can commit its tracker snippet in the
 # same change (Umami accepts a caller-chosen id). Without one Umami picks it;
-# read it from the log. Add a site here, never in the dashboard.
+# read it from the log. Add a site in sites-configmap.yaml, never in the
+# dashboard.
 # Safe to re-run on every sync: if the sealed password already works it skips
 # the rotation, and it only creates the website when none has that domain. It
 # fails (and Argo shows the hook failed) only when NEITHER password logs in,
@@ -64,12 +66,12 @@ spec:
             - name: UMAMI_URL
               value: http://umami.umami.svc.cluster.local
             - name: SITES
-              # vitruviansoftware.dev predates SITES; its id is in the site's
-              # _config.yml. mini-games.vitruviansoftware.dev is Mini Party
-              # (apps/web/mini-party/index.html).
-              value: |
-                vitruviansoftware.dev
-                mini-games.vitruviansoftware.dev=b59edda9-e89f-414b-abf3-f0a9c8e80932
+              # The site list is the umami-sites ConfigMap
+              # (sites-configmap.yaml): changing it re-runs this hook.
+              valueFrom:
+                configMapKeyRef:
+                  name: umami-sites
+                  key: SITES
             - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
