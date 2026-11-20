@@ -129,72 +129,109 @@ public enum ContactPersonGrouping {
             }
         }
 
-        var parent = Array(candidates.indices)
-
-        func find(_ x: Int) -> Int {
-            var root = x
-            while parent[root] != root {
-                root = parent[root]
-            }
-            var curr = x
-            while parent[curr] != root {
-                let next = parent[curr]
-                parent[curr] = root
-                curr = next
-            }
-            return root
-        }
-
-        func union(_ a: Int, _ b: Int) {
-            let ra = find(a)
-            let rb = find(b)
-            if ra != rb {
-                parent[rb] = ra
-            }
+        let words: [Set<String>?] = candidates.map { candidate in
+            ContactListOrdering.isNumberOrHandle(candidate.name) ? nil : nameWords(candidate.name)
         }
 
         // A phone number or email address links candidates only when everyone who carries it could be one person.
         var holdersByKey: [String: [Int]] = [:]
-        var keysByIndex: [[String]] = Array(repeating: [], count: candidates.count)
         for index in candidates.indices {
             let candidate = candidates[index]
-            var keys: [String] = []
+            var keys = Set<String>()
             for raw in [candidate.name] + candidate.identifiers {
                 if let phoneKey = ContactListOrdering.phoneKey(raw) {
-                    keys.append("phone:\(phoneKey)")
+                    keys.insert("phone:\(phoneKey)")
                 }
                 if let emailKey = ContactListOrdering.emailKey(raw) {
-                    keys.append("email:\(emailKey)")
+                    keys.insert("email:\(emailKey)")
                 }
-            }
-            for key in Set(keys) {
-                holdersByKey[key, default: []].append(index)
-            }
-            keysByIndex[index] = Array(Set(keys))
-        }
-        var sharedKeys = Set<String>()
-        for (key, holders) in holdersByKey where holders.count > 1 {
-            let names = holders.map { candidates[$0].name }.filter { !ContactListOrdering.isNumberOrHandle($0) }
-            if namesCouldBeOnePerson(names) {
-                sharedKeys.insert(key)
-            }
-        }
-
-        var firstIndexByKey: [String: Int] = [:]
-        for index in candidates.indices {
-            let candidate = candidates[index]
-            var keys: [String] = keysByIndex[index].filter { sharedKeys.contains($0) }
-            if let roomID = candidate.roomID, !roomID.isEmpty, let mergeID = roomToMergeID[roomID] {
-                keys.append("merge:\(mergeID)")
             }
             for key in keys {
-                if let existing = firstIndexByKey[key] {
-                    union(existing, index)
-                } else {
-                    firstIndexByKey[key] = index
+                holdersByKey[key, default: []].append(index)
+            }
+        }
+        var sharedHolders: [[Int]] = []
+        for key in holdersByKey.keys.sorted() {
+            guard let holders = holdersByKey[key], holders.count > 1 else { continue }
+            guard namesCouldBeOnePerson(holders.compactMap { words[$0] }) else { continue }
+            sharedHolders.append(holders)
+        }
+
+        // Chats the user merged are one person, whatever the names say.
+        var grouping = UnionFind(count: candidates.count)
+        var firstIndexByMergeID: [String: Int] = [:]
+        for index in candidates.indices {
+            guard let roomID = candidates[index].roomID, !roomID.isEmpty, let mergeID = roomToMergeID[roomID] else {
+                continue
+            }
+            if let existing = firstIndexByMergeID[mergeID] {
+                grouping.union(existing, index)
+            } else {
+                firstIndexByMergeID[mergeID] = index
+            }
+        }
+        let userMerged = grouping
+
+        // Everything the shared numbers and addresses connect, then a check of the whole set: if any two named
+        // people in it could not be the same person, nothing is merged on a bare chain ("Pat" holding Lee's number
+        // and Smith's address). Only exactly equal names link, and a nameless entry joins only when one person fits.
+        var connected = userMerged
+        for holders in sharedHolders {
+            for other in holders.dropFirst() {
+                connected.union(holders[0], other)
+            }
+        }
+        var membersByComponent: [Int: [Int]] = [:]
+        for index in candidates.indices {
+            membersByComponent[connected.find(index), default: []].append(index)
+        }
+        var ambiguousComponents = Set<Int>()
+        for (root, members) in membersByComponent where members.count > 1 {
+            var consistent = true
+            for i in members.indices where consistent {
+                for j in members.indices where j > i {
+                    guard let left = words[members[i]], let right = words[members[j]],
+                          userMerged.find(members[i]) != userMerged.find(members[j]) else { continue }
+                    if !namesCompatible(left, right) {
+                        consistent = false
+                        break
+                    }
+                }
+            }
+            if consistent {
+                for member in members.dropFirst() {
+                    grouping.union(members[0], member)
+                }
+            } else {
+                ambiguousComponents.insert(root)
+            }
+        }
+        if !ambiguousComponents.isEmpty {
+            for holders in sharedHolders where ambiguousComponents.contains(connected.find(holders[0])) {
+                for a in holders {
+                    for b in holders where b > a {
+                        if let left = words[a], let right = words[b], left == right {
+                            grouping.union(a, b)
+                        }
+                    }
+                }
+            }
+            for holders in sharedHolders where ambiguousComponents.contains(connected.find(holders[0])) {
+                for bare in holders where words[bare] == nil {
+                    let owners = Set(
+                        sharedHolders.filter { $0.contains(bare) }
+                            .flatMap { $0 }
+                            .filter { words[$0] != nil }
+                            .map { grouping.find($0) }
+                    )
+                    if owners.count == 1, let owner = owners.first {
+                        grouping.union(owner, bare)
+                    }
                 }
             }
         }
+        let finalGrouping = grouping
+        let find = { (index: Int) -> Int in finalGrouping.find(index) }
 
         var componentIndicesByRoot: [Int: [Int]] = [:]
         var rootOrder: [Int] = []
@@ -232,25 +269,67 @@ public enum ContactPersonGrouping {
         }
     }
 
-    /// Every pair of names is the same or one is the other with more words ("Pat" and "Pat Lee"): not "Mom" and
-    /// "Dad", the two people one family landline belongs to.
-    private static func namesCouldBeOnePerson(_ names: [String]) -> Bool {
-        let words = names.map { name in
-            Set(
-                NetworkTag.stripped(name)
-                    .lowercased()
-                    .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-                    .map(String.init)
-            )
-        }
-        for i in words.indices {
-            for j in words.indices where j > i {
-                if !(words[i].isSubset(of: words[j]) || words[j].isSubset(of: words[i])) {
-                    return false
-                }
+    /// The lowercase words of a display name, without a network tag; nil when it has none.
+    private static func nameWords(_ name: String) -> Set<String>? {
+        let words = Set(
+            NetworkTag.stripped(name)
+                .lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+        )
+        return words.isEmpty ? nil : words
+    }
+
+    /// Words that tell two people of one name apart: a number ("Mom 2", "Pat 2nd") or an ordinal or generation word.
+    private static let distinguishingWords: Set<String> = [
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
+        "i", "ii", "iii", "iv", "v", "jr", "sr", "junior", "senior", "old", "new", "other",
+    ]
+
+    private static func isDistinguishing(_ word: String) -> Bool {
+        word.contains(where: \.isNumber) || distinguishingWords.contains(word)
+    }
+
+    /// The names are the same, or one is the other with more words ("Pat" and "Pat Lee"). Not "Mom" and "Dad", and
+    /// not "Mom" and "Mom 2": an extra number or ordinal word marks another person.
+    private static func namesCompatible(_ lhs: Set<String>, _ rhs: Set<String>) -> Bool {
+        guard lhs.isSubset(of: rhs) || rhs.isSubset(of: lhs) else { return false }
+        return !lhs.symmetricDifference(rhs).contains(where: isDistinguishing)
+    }
+
+    /// Every pair of names could be one person (`namesCompatible`).
+    private static func namesCouldBeOnePerson(_ names: [Set<String>]) -> Bool {
+        for i in names.indices {
+            for j in names.indices where j > i && !namesCompatible(names[i], names[j]) {
+                return false
             }
         }
         return true
+    }
+
+    /// Candidate indices joined into groups.
+    private struct UnionFind {
+        private var parent: [Int]
+
+        init(count: Int) {
+            parent = Array(0 ..< count)
+        }
+
+        func find(_ x: Int) -> Int {
+            var root = x
+            while parent[root] != root {
+                root = parent[root]
+            }
+            return root
+        }
+
+        mutating func union(_ a: Int, _ b: Int) {
+            let ra = find(a)
+            let rb = find(b)
+            if ra != rb {
+                parent[rb] = ra
+            }
+        }
     }
 
     /// One bucket per candidate id (network, account and user ID): the same endpoint seen twice (in Recent and in

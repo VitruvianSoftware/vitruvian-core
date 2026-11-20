@@ -246,6 +246,68 @@ final class ContactPersonGroupingTests: XCTestCase {
         XCTAssertEqual(momOnly.named[0].endpoints.count, 2)
     }
 
+    // MARK: - The whole group must make sense, not each shared number on its own
+
+    /// A bare "Pat" holds Lee's number and Smith's address. Each shared number looks fine alone, but together they
+    /// would make Lee and Smith one person, so nothing is joined on that chain.
+    func testBareNameBridgingTwoDifferentPeopleJoinsNeither() {
+        let lee = candidate("Pat Lee", network: "whatsapp", userID: "@lee", identifiers: ["+12135550101"])
+        let smith = candidate("Pat Smith", network: "gchat", userID: "@smith", identifiers: ["pat.smith@example.com"])
+        let bare = candidate(
+            "Pat", network: "signal", userID: "@pat",
+            identifiers: ["+1 213 555 0101", "Pat.Smith@Example.com"]
+        )
+
+        let sections = ContactPersonGrouping.sections([lee, smith, bare])
+        XCTAssertEqual(sections.named.map(\.displayName).sorted(), ["Pat", "Pat Lee", "Pat Smith"])
+        XCTAssertTrue(sections.named.allSatisfy { $0.endpoints.count == 1 }, "ambiguous: nobody is merged")
+
+        let order = ContactPersonGrouping.sections([bare, smith, lee])
+        XCTAssertEqual(order.named.map(\.displayName).sorted(), ["Pat", "Pat Lee", "Pat Smith"], "input order changes nothing")
+    }
+
+    func testAnAmbiguousSetStillJoinsExactlyEqualNamesAndNumberOnlyEntriesWithOneOwner() {
+        let leeWA = candidate("Pat Lee", network: "whatsapp", userID: "@lee_wa", identifiers: ["+12135550101", "+12135550102"])
+        let leeSig = candidate("Pat Lee", network: "signal", userID: "@lee_sig", identifiers: ["+12135550101", "+12135550102"])
+        let smith = candidate("Pat Smith", network: "gchat", userID: "@smith", identifiers: ["pat.smith@example.com"])
+        let bare = candidate(
+            "Pat", network: "telegram", userID: "@pat",
+            identifiers: ["+1 213 555 0101", "pat.smith@example.com"]
+        )
+        let leeOnlyNumber = candidate("+1 (213) 555-0102", network: "imessage", userID: "@num")
+
+        let sections = ContactPersonGrouping.sections([leeWA, leeSig, smith, bare, leeOnlyNumber])
+        XCTAssertEqual(sections.named.map(\.displayName).sorted(), ["Pat", "Pat Lee", "Pat Smith"])
+        XCTAssertEqual(sections.named.first { $0.displayName == "Pat Lee" }?.endpoints.count, 3)
+        XCTAssertEqual(sections.named.first { $0.displayName == "Pat Smith" }?.endpoints.count, 1)
+        XCTAssertEqual(sections.named.first { $0.displayName == "Pat" }?.endpoints.count, 1)
+    }
+
+    func testANumberOrOrdinalWordMarksAnotherPerson() {
+        let shared = "+1 213 555 0100"
+        for (plain, marked) in [("Mom", "Mom 2"), ("Pat", "Pat 2"), ("Pat", "Pat 2nd"), ("Sam", "Sam Jr"), ("Alex", "Alex Second")] {
+            let one = candidate(plain, network: "whatsapp", userID: "@one", identifiers: [shared])
+            let two = candidate(marked, network: "signal", userID: "@two", identifiers: [shared])
+            let sections = ContactPersonGrouping.sections([one, two])
+            XCTAssertEqual(sections.named.count, 2, "\(plain) and \(marked) are different people")
+        }
+        // An ordinary extra word is still the same person.
+        let one = candidate("Pat", network: "whatsapp", userID: "@one", identifiers: [shared])
+        let two = candidate("Pat Lee", network: "signal", userID: "@two", identifiers: [shared])
+        XCTAssertEqual(ContactPersonGrouping.sections([one, two]).named.count, 1)
+    }
+
+    func testANumberedNameDoesNotJoinThroughAThirdEntry() {
+        let mom = candidate("Mom", network: "whatsapp", userID: "@mom", identifiers: ["+12135550111"])
+        let mom2 = candidate("Mom 2", network: "signal", userID: "@mom2", identifiers: ["+12135550222"])
+        let third = candidate("Mom", network: "telegram", userID: "@third", identifiers: ["+12135550111", "+12135550222"])
+        let sections = ContactPersonGrouping.sections([mom, mom2, third])
+        XCTAssertEqual(sections.named.count, 2)
+        let numbered = sections.named.first { $0.displayName == "Mom 2" }
+        XCTAssertEqual(numbered?.endpoints.map(\.userID), ["@mom2"], "Mom 2 is never folded into Mom")
+        XCTAssertEqual(sections.named.first { $0.displayName == "Mom" }?.endpoints.count, 2)
+    }
+
     // MARK: - C5 UI helper logic (overflow edges & row affordances)
 
     func testHorizontalOverflowEdgesCompute() {
