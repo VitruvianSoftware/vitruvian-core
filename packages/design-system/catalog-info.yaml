@@ -22,7 +22,7 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: design-system
-  description: Shared Vitruvian design tokens, self-hosted fonts, CSS layers, and React UI components with Storybook documentation.
+  description: Shared Vitruvian design tokens, self-hosted fonts, Tailwind v4 theme stylesheet, and React UI components with Storybook documentation.
   tags:
     - typescript
     - ui

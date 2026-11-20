@@ -15,17 +15,22 @@ A `serde_json`-backed JSON parser and Python-compatible formatter (`Py`, `loads`
 
 ## Example
 
-From `tools/npm-trusted-publisher/src/manifest.rs`:
+From `tools/npm-trusted-publisher/src/manifest.rs:23-74`:
 
 ```rust
 use crate::pyjson::{self, Py};
-
+// …
 pub fn load_dict(mf: &str) -> Result<Py, String> {
     let bytes = std::fs::read(mf).map_err(|e| os_error(&e, mf))?;
-    let text = String::from_utf8(bytes).map_err(|e| format!("UnicodeDecodeError: {}: {}", mf, e))?;
-    let d = pyjson::loads(&text).map_err(|e| format!("json.decoder.JSONDecodeError: {}: {}", mf, e))?;
+    let text =
+        String::from_utf8(bytes).map_err(|e| format!("UnicodeDecodeError: {}: {}", mf, e))?;
+    let d =
+        pyjson::loads(&text).map_err(|e| format!("json.decoder.JSONDecodeError: {}: {}", mf, e))?;
     if !d.is_dict() {
-        return Err(format!("AttributeError: '{}' object has no attribute 'get'", type_name(&d)));
+        return Err(format!(
+            "AttributeError: '{}' object has no attribute 'get'",
+            type_name(&d)
+        ));
     }
     Ok(d)
 }

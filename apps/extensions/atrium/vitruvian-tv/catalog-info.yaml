@@ -35,4 +35,3 @@ spec:
   type: application
   lifecycle: production
   owner: platform-team
-  system: vitruvian
