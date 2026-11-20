@@ -391,17 +391,6 @@ mod tests {
     }
 
     #[test]
-    fn constants_match_the_spec() {
-        assert_eq!(PROTOCOL, 2);
-        assert_eq!(MAX_FRAME_BYTES, 4 * 1024 * 1024);
-        assert_eq!((PING_SECS, IN_CALL_PING_SECS, MAX_MISSED_PINGS), (20, 2, 3));
-        // Ruling R16: under the ~100 s Cloudflare gives an origin that sends
-        // nothing (the answer is one JSON body, sent at the end), with the
-        // connector's 60 s dialog inside it.
-        assert_eq!(CALL_BUDGET_SECS, 90);
-    }
-
-    #[test]
     fn protocol_constants_are_pinned() {
         assert_eq!(PROTOCOL, 2);
         assert_eq!(ACK_SECS, 5);
@@ -411,6 +400,9 @@ mod tests {
         assert_eq!(PING_SECS, 20);
         assert_eq!(IN_CALL_PING_SECS, 2);
         assert_eq!(MAX_MISSED_PINGS, 3);
+        // Ruling R16: under the ~100 s Cloudflare gives an origin that sends
+        // nothing (the answer is one JSON body, sent at the end), with the
+        // connector's 60 s dialog inside it.
         assert_eq!(CALL_BUDGET_SECS, 90);
     }
 

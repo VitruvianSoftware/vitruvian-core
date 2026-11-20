@@ -62,8 +62,8 @@ use vitruvian_mcp_auth::{
     extract_bearer, protected_resource_metadata, www_authenticate, AuthError, Caller, Verifier,
 };
 use vitruvian_relay_protocol::{
-    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, CALL_BUDGET_SECS,
-    MAX_FRAME_BYTES, PROTOCOL,
+    decode_to_relay, encode, hello_message, Hello, ToConnector, ToRelay, ACK_SECS,
+    CALL_BUDGET_SECS, MAX_FRAME_BYTES, PROTOCOL,
 };
 
 use crate::config::Settings;
@@ -104,6 +104,8 @@ pub struct Timing {
     pub max_missed_pings: u32,
     /// How long a tool call may take (`deadline_ms` to the device).
     pub call_budget: Duration,
+    /// How long the relay waits for the connector's `Ack` after writing a `Call`.
+    pub ack_timeout: Duration,
     /// How far a `hello` timestamp may be from the relay's clock.
     pub max_clock_skew_secs: u64,
     /// How long a call frame is allowed to take to reach the device after
@@ -148,6 +150,7 @@ impl Default for Timing {
             in_call_ping: Duration::from_secs(IN_CALL_PING_SECS),
             max_missed_pings: MAX_MISSED_PINGS,
             call_budget: Duration::from_secs(CALL_BUDGET_SECS),
+            ack_timeout: Duration::from_secs(ACK_SECS),
             max_clock_skew_secs: 60,
             transit_margin: Duration::from_secs(IN_CALL_PING_SECS) * MAX_MISSED_PINGS,
             send_timeout: Duration::from_secs(30),
@@ -200,7 +203,7 @@ impl App {
         timing: Timing,
         log: LogSink,
     ) -> Arc<App> {
-        let registry = Registry::new();
+        let registry = Registry::with_ack_timeout(timing.ack_timeout);
         Arc::new(App {
             mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()),
             settings,
@@ -737,8 +740,7 @@ impl App {
     ) -> Result<[u8; 32], String> {
         if hello.protocol != PROTOCOL {
             return Err(format!(
-                "unsupported protocol {}; this relay speaks {PROTOCOL}",
-                hello.protocol
+                "Update vrelay: this relay needs protocol {PROTOCOL}."
             ));
         }
         // Another person's device is "unknown", like one that does not exist.
@@ -1166,7 +1168,8 @@ async fn run_connection<S>(
                         if let Err(e) = send_frame(&mut sink, &f, timeout).await {
                             break e;
                         }
-                        if is_call {
+                        if let ToConnector::Call(call) = &f {
+                            app.registry.call_written(conn, &call.call_id);
                             if let Beat::Ping(n) = live.call_started() {
                                 ticker.reset();
                                 if let Err(e) = send_frame(&mut sink, &ToConnector::Ping { n }, send_timeout).await {
@@ -1182,6 +1185,16 @@ async fn run_connection<S>(
                 Some(Err(e)) => break format!("read error: {e}"),
                 Some(Ok(Message::Text(text))) => match decode_to_relay(&text) {
                     Ok(ToRelay::Result(r)) => app.registry.complete(conn, r),
+                    Ok(ToRelay::Ack { call_id }) => {
+                        if app.registry.ack(conn, &call_id) {
+                            if let Err(e) =
+                                send_frame(&mut sink, &ToConnector::Start { call_id }, send_timeout)
+                                    .await
+                            {
+                                break e;
+                            }
+                        }
+                    }
                     Ok(ToRelay::ToolsChanged { tools }) => app.registry.update_tools(&device_id, conn, tools),
                     Ok(ToRelay::Ping { n }) => {
                         if let Err(e) = send_frame(&mut sink, &ToConnector::Pong { n }, send_timeout).await {
@@ -1189,7 +1202,7 @@ async fn run_connection<S>(
                         }
                     }
                     Ok(ToRelay::Pong { .. }) => live.heard(),
-                    Ok(ToRelay::Hello(_) | ToRelay::Ack { .. } | ToRelay::Pending { .. }) => {}
+                    Ok(ToRelay::Hello(_) | ToRelay::Pending { .. }) => {}
                     // Size only: a bad frame may still hold call output.
                     Err(_) => app.log("bad_frame", json!({"device_id": device_id, "bytes": text.len()})),
                 },

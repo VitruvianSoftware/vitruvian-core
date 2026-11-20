@@ -208,6 +208,7 @@ fn outcome(e: CallError) -> &'static str {
     match e {
         CallError::Offline => "offline",
         CallError::Disconnected => "disconnected",
+        CallError::NotReceived => "not_received",
         CallError::Deadline => "deadline",
         CallError::Duplicate => "duplicate",
     }

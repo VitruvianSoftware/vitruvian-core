@@ -614,6 +614,13 @@ enum Stop {
 }
 
 enum Phase {
+    /// Received `Call` and sent `Ack`; waiting for `Start` from the relay
+    /// before recording, prompting, or running.
+    AwaitingStart {
+        ask_first: bool,
+        tx: Option<tokio::sync::oneshot::Sender<()>>,
+        stop: Option<Stop>,
+    },
     /// The dialog is (about to be) open.
     Prompting {
         dismiss: Arc<AtomicBool>,
@@ -713,7 +720,12 @@ impl Calls {
     fn in_flight(&self) -> usize {
         self.live
             .values()
-            .filter(|e| matches!(e.phase, Phase::Prompting { .. } | Phase::Running { .. }))
+            .filter(|e| {
+                matches!(
+                    e.phase,
+                    Phase::AwaitingStart { .. } | Phase::Prompting { .. } | Phase::Running { .. }
+                )
+            })
             .count()
     }
 
@@ -727,7 +739,8 @@ impl Calls {
                 && now < e.deadline
                 && matches!(
                     e.phase,
-                    Phase::Prompting { stop: None, .. }
+                    Phase::AwaitingStart { stop: None, .. }
+                        | Phase::Prompting { stop: None, .. }
                         | Phase::Running {
                             cancelled: false,
                             ..
@@ -739,7 +752,16 @@ impl Calls {
     fn dialogs(&self) -> usize {
         self.live
             .values()
-            .filter(|e| matches!(e.phase, Phase::Prompting { stop: None, .. }))
+            .filter(|e| {
+                matches!(
+                    e.phase,
+                    Phase::AwaitingStart {
+                        ask_first: true,
+                        stop: None,
+                        ..
+                    } | Phase::Prompting { stop: None, .. }
+                )
+            })
             .count()
     }
 
@@ -1051,6 +1073,9 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             let _ = out.send(ToRelay::Result(error_result(&call_id, ID_TOO_LONG)));
             return;
         }
+        let _ = out.send(ToRelay::Ack {
+            call_id: call_id.clone(),
+        });
         let now_unix = (self.clock)();
         let cap = self.timing.results_cap_bytes;
         let mut calls = self.calls.lock().unwrap();
@@ -1112,16 +1137,18 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         // never ran, so a later repeat must not be told it "already
         // started"), and only once its own append has succeeded (`record`):
         // a rewrite of the file meanwhile writes only recorded ids.
-        let dismiss = Arc::new(AtomicBool::new(false));
-        let phase = match &decision {
-            Decision::AskFirst => Phase::Prompting {
-                dismiss: dismiss.clone(),
-                stop: None,
-            },
-            _ => Phase::Running {
+        let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+        let phase = if matches!(decision, Decision::Refuse(_)) {
+            Phase::Running {
                 cancelled: false,
                 started: false,
-            },
+            }
+        } else {
+            Phase::AwaitingStart {
+                ask_first: decision == Decision::AskFirst,
+                tx: Some(start_tx),
+                stop: None,
+            }
         };
         calls.live.insert(
             call_id.clone(),
@@ -1150,6 +1177,62 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         let me = self.clone();
         let out = out.clone();
         tokio::spawn(async move {
+            let expired = tokio::select! {
+                _ = start_rx => false,
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => true,
+            };
+            let dismiss = Arc::new(AtomicBool::new(false));
+            let outcome = {
+                let mut calls = me.calls.lock().unwrap();
+                let paused = me.rules.lock().unwrap().paused;
+                let Some(entry) = calls.live.get_mut(&call_id) else {
+                    return;
+                };
+                let stop = match &entry.phase {
+                    Phase::AwaitingStart { stop, .. } => *stop,
+                    _ => return,
+                };
+                let stop = stop
+                    .or_else(|| (expired || Instant::now() >= deadline).then_some(Stop::Expired))
+                    .or_else(|| paused.then_some(Stop::Paused));
+                match stop {
+                    None => {
+                        entry.phase = match &decision {
+                            Decision::AskFirst => Phase::Prompting {
+                                dismiss: dismiss.clone(),
+                                stop: None,
+                            },
+                            _ => Phase::Running {
+                                cancelled: false,
+                                started: false,
+                            },
+                        };
+                        Ok(())
+                    }
+                    Some(Stop::Paused) => {
+                        let r = error_result(&call_id, PAUSED);
+                        calls.finish(&call_id, r.clone(), cap);
+                        Err(("paused before running", Some(r)))
+                    }
+                    Some(Stop::Expired) => {
+                        let r = error_result(&call_id, TIMED_OUT);
+                        calls.finish(&call_id, r, cap);
+                        Err(("timed out", None))
+                    }
+                    Some(Stop::Cancelled | Stop::LinkDropped | Stop::Shutdown) => {
+                        let r = error_result(&call_id, CANCELLED_EARLY);
+                        calls.finish(&call_id, r, cap);
+                        Err(("cancelled before running", None))
+                    }
+                }
+            };
+            if let Err((log_decision, maybe_result)) = outcome {
+                me.log_call(&call_id, &tool, &arguments, log_decision, json!({}));
+                if let Some(r) = maybe_result {
+                    let _ = out.send(ToRelay::Result(r));
+                }
+                return;
+            }
             // On disk before anything can run.
             if let Err(e) = me.record(call_id.clone(), now_unix).await {
                 me.refuse_unrecorded(&call_id, &tool, &arguments, &e, &out);
@@ -1326,6 +1409,12 @@ impl<T: Tools, A: Asker> Shared<T, A> {
             let mut calls = self.calls.lock().unwrap();
             for (id, e) in calls.live.iter_mut() {
                 match &mut e.phase {
+                    Phase::AwaitingStart { tx, stop, .. } if stop.is_none() => {
+                        *stop = Some(Stop::Paused);
+                        if let Some(tx) = tx.take() {
+                            let _ = tx.send(());
+                        }
+                    }
                     Phase::Prompting { dismiss, stop } if stop.is_none() => {
                         *stop = Some(Stop::Paused);
                         dismiss.store(true, Ordering::SeqCst);
@@ -1444,12 +1533,34 @@ impl<T: Tools, A: Asker> Shared<T, A> {
         }
     }
 
+    fn on_start(&self, conn: u64, call_id: &str) {
+        let mut calls = self.calls.lock().unwrap();
+        if let Some(Entry {
+            conn: entry_conn,
+            phase: Phase::AwaitingStart { tx, stop, .. },
+            ..
+        }) = calls.live.get_mut(call_id)
+        {
+            if *entry_conn == conn && stop.is_none() {
+                if let Some(tx) = tx.take() {
+                    let _ = tx.send(());
+                }
+            }
+        }
+    }
+
     fn on_cancel(&self, call_id: &str) {
         let mut calls = self.calls.lock().unwrap();
         let Some(e) = calls.live.get_mut(call_id) else {
             return;
         };
         match &mut e.phase {
+            Phase::AwaitingStart { tx, stop, .. } if stop.is_none() => {
+                *stop = Some(Stop::Cancelled);
+                if let Some(tx) = tx.take() {
+                    let _ = tx.send(());
+                }
+            }
             Phase::Prompting { dismiss, stop } if stop.is_none() => {
                 *stop = Some(Stop::Cancelled);
                 dismiss.store(true, Ordering::SeqCst);
@@ -1476,6 +1587,12 @@ impl<T: Tools, A: Asker> Shared<T, A> {
                 continue;
             }
             match &mut e.phase {
+                Phase::AwaitingStart { tx, stop, .. } if stop.is_none() => {
+                    *stop = Some(why);
+                    if let Some(tx) = tx.take() {
+                        let _ = tx.send(());
+                    }
+                }
                 Phase::Prompting { dismiss, stop } if stop.is_none() => {
                     *stop = Some(why);
                     dismiss.store(true, Ordering::SeqCst);
@@ -2313,7 +2430,8 @@ async fn session<T: Tools, A: Asker>(
                         }
                     }
                     Ok(ToConnector::Cancel { call_id }) => shared.on_cancel(&call_id),
-                    Ok(ToConnector::Start { .. } | ToConnector::ResultAck { .. }) => {}
+                    Ok(ToConnector::Start { call_id }) => shared.on_start(conn, &call_id),
+                    Ok(ToConnector::ResultAck { .. }) => {}
                 }
             }
         }

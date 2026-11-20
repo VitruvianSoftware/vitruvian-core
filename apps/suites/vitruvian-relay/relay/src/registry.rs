@@ -37,6 +37,8 @@ pub enum CallError {
     Offline,
     /// The connection ended while the call was in flight.
     Disconnected,
+    /// The device did not acknowledge receiving the call in time.
+    NotReceived,
     /// The device did not answer within the call's deadline.
     Deadline,
     /// A call with this id is already in flight. Ids must be unique; the
@@ -49,6 +51,7 @@ impl CallError {
         match self {
             CallError::Offline => "Your computer is offline.",
             CallError::Disconnected => "Your computer disconnected; try again.",
+            CallError::NotReceived => "Your computer didn't answer in time; try again.",
             CallError::Deadline => "The command took too long.",
             CallError::Duplicate => "That command is already running.",
         }
@@ -107,6 +110,12 @@ struct Pending {
     token: u64,
     /// When the relay stops waiting for this call.
     deadline: Instant,
+    /// Notified when the session finishes writing `Call` to the socket.
+    written: Option<oneshot::Sender<()>>,
+    /// Notified when the device acknowledges receipt of the call.
+    ack: Option<oneshot::Sender<()>>,
+    /// Whether `ack` has been received for this call.
+    acked: bool,
     done: oneshot::Sender<Result<CallResult, CallError>>,
 }
 
@@ -156,6 +165,7 @@ impl State {
 pub struct Registry {
     state: Arc<Mutex<State>>,
     cancel_wait: Duration,
+    ack_timeout: Duration,
 }
 
 impl Default for Registry {
@@ -163,6 +173,7 @@ impl Default for Registry {
         Registry {
             state: Arc::default(),
             cancel_wait: CANCEL_WAIT,
+            ack_timeout: Duration::from_secs(vitruvian_relay_protocol::ACK_SECS),
         }
     }
 }
@@ -215,13 +226,51 @@ impl Registry {
         }
     }
 
+    /// A registry whose calls wait `d` for the device's `Ack`.
+    pub fn with_ack_timeout(d: Duration) -> Self {
+        Registry {
+            ack_timeout: d,
+            ..Self::default()
+        }
+    }
+
     /// This registry (the same state), but its `Cancel`s wait `d` for room.
     #[cfg(test)]
     pub(crate) fn cancel_waiting(&self, d: Duration) -> Self {
         Registry {
             state: self.state.clone(),
             cancel_wait: d,
+            ack_timeout: self.ack_timeout,
         }
+    }
+
+    /// Marks a call as written to the socket so the `ack_timeout` wait starts
+    /// from socket transmission rather than queue wait time.
+    pub fn call_written(&self, conn: ConnectionId, call_id: &str) {
+        let mut st = self.state.lock().unwrap();
+        if let Some(p) = st.pending.get_mut(call_id).filter(|p| p.conn_id == conn) {
+            if let Some(tx) = p.written.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
+    /// Records the device's receipt `Ack` for a pending call on `conn`.
+    /// Returns `true` only on the first valid `Ack` while the call is still
+    /// pending, so the session sends `Start` once and never for a late `Ack`.
+    pub fn ack(&self, conn: ConnectionId, call_id: &str) -> bool {
+        let mut st = self.state.lock().unwrap();
+        let Some(p) = st.pending.get_mut(call_id).filter(|p| p.conn_id == conn) else {
+            return false;
+        };
+        if p.acked {
+            return false;
+        }
+        p.acked = true;
+        if let Some(tx) = p.ack.take() {
+            let _ = tx.send(());
+        }
+        true
     }
 
     /// The session calls this just before it writes a call to the socket,
@@ -433,6 +482,8 @@ impl Registry {
         let started = Instant::now();
         let sent = AtomicBool::new(false);
         let (done, mut rx) = oneshot::channel();
+        let (written_tx, written_rx) = oneshot::channel();
+        let (ack_tx, ack_rx) = oneshot::channel();
         let (tx, token, conn_id) = {
             let mut st = self.state.lock().unwrap();
             let conn = st.devices.get(device_id).ok_or(CallError::Offline)?;
@@ -448,6 +499,9 @@ impl Registry {
                     conn_id,
                     token,
                     deadline: started + deadline,
+                    written: Some(written_tx),
+                    ack: Some(ack_tx),
+                    acked: false,
                     done,
                 },
             );
@@ -482,6 +536,44 @@ impl Registry {
                     Err(_) => return Err(CallError::Disconnected),
                 },
                 answer = &mut rx => return answer.unwrap_or(Err(CallError::Disconnected)),
+            }
+            // Wait for the session to write `Call` to the socket before
+            // starting the ack countdown.
+            tokio::select! {
+                w = written_rx => {
+                    if w.is_err() {
+                        return rx.await.unwrap_or(Err(CallError::Disconnected));
+                    }
+                }
+                answer = &mut rx => return answer.unwrap_or(Err(CallError::Disconnected)),
+            }
+            // Wait up to `ack_timeout` for the device to acknowledge receipt.
+            let acked = tokio::select! {
+                res = tokio::time::timeout(self.ack_timeout, ack_rx) => match res {
+                    Ok(Ok(())) => true,
+                    Ok(Err(_)) => return rx.await.unwrap_or(Err(CallError::Disconnected)),
+                    Err(_) => false,
+                },
+                answer = &mut rx => return answer.unwrap_or(Err(CallError::Disconnected)),
+            };
+            if !acked {
+                let timed_out = {
+                    let mut st = self.state.lock().unwrap();
+                    if st
+                        .pending
+                        .get(&call_id)
+                        .is_some_and(|p| p.token == token && !p.acked)
+                    {
+                        st.pending.remove(&call_id);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if timed_out {
+                    self.cancel(device_id, conn_id, &tx, call_id.clone());
+                    return Err(CallError::NotReceived);
+                }
             }
             // A dropped sender without an answer means the connection ended.
             rx.await.unwrap_or(Err(CallError::Disconnected))
@@ -761,6 +853,10 @@ mod tests {
             "Your computer disconnected; try again."
         );
         assert_eq!(
+            CallError::NotReceived.user_message(),
+            "Your computer didn't answer in time; try again."
+        );
+        assert_eq!(
             CallError::Deadline.user_message(),
             "The command took too long."
         );
@@ -1024,5 +1120,39 @@ mod tests {
         expect_call(&mut rx).await;
         reg.complete(conn, result("c1", "again"));
         assert_eq!(within(h).await.unwrap(), Ok(result("c1", "again")));
+    }
+
+    #[tokio::test]
+    async fn unacked_written_call_fails_not_received_and_cancels() {
+        let reg = Registry::with_ack_timeout(Duration::from_millis(100));
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
+        let c = expect_call(&mut rx).await;
+        reg.call_written(conn, &c.call_id);
+        assert_eq!(within(h).await.unwrap(), Err(CallError::NotReceived));
+        assert_eq!(
+            within(rx.recv()).await,
+            Some(ToConnector::Cancel {
+                call_id: "c1".into()
+            })
+        );
+        assert!(!reg.ack(conn, "c1"));
+        assert!(!reg.in_flight("d1"));
+    }
+
+    #[tokio::test]
+    async fn acked_written_call_waits_for_result() {
+        let reg = Registry::with_ack_timeout(Duration::from_millis(100));
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
+        let c = expect_call(&mut rx).await;
+        reg.call_written(conn, &c.call_id);
+        assert!(reg.ack(conn, "c1"));
+        assert!(!reg.ack(conn, "c1"));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        reg.complete(conn, result("c1", "ok"));
+        assert_eq!(within(h).await.unwrap(), Ok(result("c1", "ok")));
     }
 }

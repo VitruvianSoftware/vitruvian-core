@@ -27,6 +27,7 @@ use crate::state::{now_unix, save_device, save_tokens, test_dir, DeviceInfo, Tok
 use crate::status::{link_state, Link as LinkState};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
@@ -55,6 +56,7 @@ struct FakeConn {
     auth: String,
     from: UnboundedReceiver<ToRelay>,
     to: UnboundedSender<ToConnector>,
+    hold_start: Arc<Mutex<HashSet<String>>>,
 }
 
 impl FakeRelay {
@@ -85,8 +87,18 @@ impl FakeRelay {
                     let (mut sink, mut stream) = ws.split();
                     let (from_tx, from) = unbounded_channel();
                     let (to, mut to_rx) = unbounded_channel::<ToConnector>();
+                    let hold_start = Arc::new(Mutex::new(HashSet::new()));
+                    let hold_start2 = hold_start.clone();
                     let auth = auth.lock().unwrap().clone();
-                    if tx.send(FakeConn { auth, from, to }).is_err() {
+                    if tx
+                        .send(FakeConn {
+                            auth,
+                            from,
+                            to,
+                            hold_start,
+                        })
+                        .is_err()
+                    {
                         return;
                     }
                     loop {
@@ -100,9 +112,24 @@ impl FakeRelay {
                                 None => break,
                             },
                             m = stream.next() => match m {
-                                Some(Ok(Message::Text(t))) => {
-                                    let _ = from_tx.send(decode_to_relay(&t).unwrap());
-                                }
+                                Some(Ok(Message::Text(t))) => match decode_to_relay(&t).unwrap() {
+                                    ToRelay::Ack { call_id } => {
+                                        if hold_start2.lock().unwrap().contains(&call_id) {
+                                            let _ = from_tx.send(ToRelay::Ack { call_id });
+                                        } else if sink
+                                            .send(Message::Text(
+                                                encode(&ToConnector::Start { call_id }).unwrap(),
+                                            ))
+                                            .await
+                                            .is_err()
+                                        {
+                                            break;
+                                        }
+                                    }
+                                    other => {
+                                        let _ = from_tx.send(other);
+                                    }
+                                },
                                 Some(Ok(_)) => {}
                                 _ => break,
                             },
@@ -192,6 +219,15 @@ impl FakeConn {
             arguments: args,
             deadline_ms: 30_000,
         }));
+    }
+
+    fn call_without_start(&self, id: &str, tool: &str, args: Value) {
+        self.hold_start.lock().unwrap().insert(id.to_string());
+        self.call(id, tool, args);
+    }
+
+    fn start(&self, id: &str) {
+        self.send(ToConnector::Start { call_id: id.into() });
     }
 
     /// Pings every `every`, as the real relay does while a call is in
@@ -2734,4 +2770,101 @@ fn a_dialog_answer_after_the_deadline_sends_nothing() {
             "{w:?} in time sent nothing"
         );
     }
+}
+
+// ------------------------------------------------ p2 task 2: receipt handshake
+
+#[tokio::test(flavor = "multi_thread")]
+async fn nothing_runs_before_start() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-wait-start");
+    let p = parts();
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+
+    c.call_without_start("c1", "read_file", json!({"path": "/tmp/a"}));
+    c.call_without_start("c2", "start_process", json!({"command": "ls"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c2".into()
+        }
+    );
+
+    c.quiet_for(Duration::from_secs(1)).await;
+    assert!(tools.calls.lock().unwrap().is_empty());
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 0);
+
+    c.start("c1");
+    let r1 = c.result().await;
+    assert_eq!(r1.call_id, "c1");
+    assert!(!r1.is_error);
+    assert_eq!(tools.count(), 1);
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 0);
+
+    c.start("c2");
+    let r2 = c.result().await;
+    assert_eq!(r2.call_id, "c2");
+    assert!(!r2.is_error);
+    assert_eq!(tools.count(), 2);
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancel_before_start_never_runs() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-cancel-before-start");
+    let p = parts();
+    let tools = p.tools.clone();
+    let asker = p.asker.clone();
+    let _run = start(&dir, &relay.url(), p);
+    let (mut c, _) = relay.welcome().await;
+
+    c.call_without_start("c1", "read_file", json!({"path": "/tmp/a"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c1".into()
+        }
+    );
+    c.send(ToConnector::Cancel {
+        call_id: "c1".into(),
+    });
+    until("c1 cancelled before running", || {
+        log_lines(&dir)
+            .iter()
+            .any(|l| l["call_id"] == "c1" && l["decision"] == "cancelled before running")
+    })
+    .await;
+    c.start("c1");
+
+    c.call_without_start("c2", "start_process", json!({"command": "ls"}));
+    assert_eq!(
+        c.recv().await,
+        ToRelay::Ack {
+            call_id: "c2".into()
+        }
+    );
+    c.send(ToConnector::Cancel {
+        call_id: "c2".into(),
+    });
+    until("c2 cancelled before running", || {
+        log_lines(&dir)
+            .iter()
+            .any(|l| l["call_id"] == "c2" && l["decision"] == "cancelled before running")
+    })
+    .await;
+    c.start("c2");
+
+    c.quiet_for(Duration::from_millis(200)).await;
+    assert!(tools.calls.lock().unwrap().is_empty());
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 0);
 }

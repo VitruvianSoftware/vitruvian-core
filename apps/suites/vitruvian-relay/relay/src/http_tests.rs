@@ -524,6 +524,8 @@ struct FakeDevice {
     frames: mpsc::UnboundedReceiver<ToConnector>,
     out: mpsc::UnboundedSender<ToRelay>,
     answer_pings: Arc<AtomicBool>,
+    auto_ack: Arc<AtomicBool>,
+    starts: Arc<Mutex<Vec<String>>>,
     /// Pings received from the relay.
     pings: Arc<AtomicU32>,
     closed: Arc<tokio::sync::Notify>,
@@ -538,12 +540,19 @@ impl FakeDevice {
         let (frames_tx, frames) = mpsc::unbounded_channel();
         let (out, mut out_rx) = mpsc::unbounded_channel::<ToRelay>();
         let answer_pings = Arc::new(AtomicBool::new(true));
+        let auto_ack = Arc::new(AtomicBool::new(true));
+        let starts = Arc::new(Mutex::new(Vec::new()));
         let pings = Arc::new(AtomicU32::new(0));
         let pings2 = pings.clone();
         let closed = Arc::new(tokio::sync::Notify::new());
         let is_closed = Arc::new(AtomicBool::new(false));
-        let (answer, closed2, is_closed2) =
-            (answer_pings.clone(), closed.clone(), is_closed.clone());
+        let (answer, auto_ack2, starts2, closed2, is_closed2) = (
+            answer_pings.clone(),
+            auto_ack.clone(),
+            starts.clone(),
+            closed.clone(),
+            is_closed.clone(),
+        );
         tokio::spawn(async move {
             let (mut sink, mut stream) = ws.split();
             loop {
@@ -558,6 +567,22 @@ impl FakeDevice {
                                 pings2.fetch_add(1, Ordering::SeqCst);
                                 if answer.load(Ordering::SeqCst) {
                                     let _ = sink.send(Message::Text(encode(&ToRelay::Pong { n }).unwrap())).await;
+                                }
+                            }
+                            ToConnector::Call(c) => {
+                                if auto_ack2.load(Ordering::SeqCst) {
+                                    let ack = encode(&ToRelay::Ack {
+                                        call_id: c.call_id.clone(),
+                                    })
+                                    .unwrap();
+                                    let _ = sink.send(Message::Text(ack)).await;
+                                }
+                                let _ = frames_tx.send(ToConnector::Call(c));
+                            }
+                            ToConnector::Start { call_id } => {
+                                starts2.lock().unwrap().push(call_id.clone());
+                                if !auto_ack2.load(Ordering::SeqCst) {
+                                    let _ = frames_tx.send(ToConnector::Start { call_id });
                                 }
                             }
                             other => { let _ = frames_tx.send(other); }
@@ -575,10 +600,16 @@ impl FakeDevice {
             frames,
             out,
             answer_pings,
+            auto_ack,
+            starts,
             pings,
             closed,
             is_closed,
         }
+    }
+
+    fn no_ack(&self) {
+        self.auto_ack.store(false, Ordering::SeqCst);
     }
 
     async fn next(&mut self) -> ToConnector {
@@ -1691,6 +1722,10 @@ fn production_timing_matches_the_spec() {
         vitruvian_relay_protocol::MAX_MISSED_PINGS
     );
     assert_eq!(t.call_budget, Duration::from_secs(90));
+    assert_eq!(
+        t.ack_timeout,
+        Duration::from_secs(vitruvian_relay_protocol::ACK_SECS)
+    );
     assert_eq!(t.max_clock_skew_secs, 60);
     assert_eq!(t.send_timeout, Duration::from_secs(30));
     assert_eq!(t.transit_margin, Duration::from_secs(6));
@@ -2546,4 +2581,115 @@ async fn a_call_frame_that_cannot_be_written_within_its_margin_drops_the_link() 
         }
     })
     .await;
+}
+
+// ------------------------------------------------ p2 task 2: receipt handshake
+
+#[tokio::test]
+async fn call_without_ack_fails_not_received() {
+    let h = Arc::new(
+        harness_with(Timing {
+            ack_timeout: Duration::from_millis(200),
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    fake.no_ack();
+    let s = h.session(&device, ALICE).await;
+
+    let started = Instant::now();
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(1), "read_file", json!({"path": "/tmp/x"})),
+    );
+    let call = fake.next_call().await;
+
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        error_text(&r),
+        "Your computer didn't answer in time; try again."
+    );
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert_eq!(
+        fake.next().await,
+        ToConnector::Cancel {
+            call_id: call.call_id.clone(),
+        }
+    );
+    assert!(!h.app.registry.in_flight(&device));
+    assert!(fake.starts.lock().unwrap().is_empty());
+    within(async {
+        while !h.logs().contains("\"outcome\":\"not_received\"") {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+
+    // A late ack after the relay gave up must never trigger Start.
+    fake.send(ToRelay::Ack {
+        call_id: call.call_id,
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(fake.frames.try_recv().is_err());
+    assert!(fake.starts.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ack_triggers_start_and_delivers_result() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    fake.no_ack();
+    let s = h.session(&device, ALICE).await;
+
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(2), "read_file", json!({"path": "/tmp/y"})),
+    );
+    let call = fake.next_call().await;
+    fake.send(ToRelay::Ack {
+        call_id: call.call_id.clone(),
+    });
+    assert_eq!(
+        fake.next().await,
+        ToConnector::Start {
+            call_id: call.call_id.clone(),
+        }
+    );
+    assert_eq!(*fake.starts.lock().unwrap(), vec![call.call_id.clone()]);
+    fake.reply(&call.call_id, "ok");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["isError"], false);
+    assert_eq!(r.json()["result"]["content"][0]["text"], "ok");
+}
+
+#[tokio::test]
+async fn v1_hello_is_rejected_with_update_message() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let token = h.connector_token(ALICE);
+    let mut frame: Value =
+        serde_json::from_str(&hello(&device, &key, &token, now_secs(), vec![])).unwrap();
+    frame["protocol"] = json!(1);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(frame.to_string())).await.unwrap();
+    assert_eq!(
+        next_frame(&mut ws).await,
+        Some(ToConnector::Reject {
+            reason: "Update vrelay: this relay needs protocol 2.".into(),
+        })
+    );
+    assert!(next_frame(&mut ws).await.is_none());
 }
