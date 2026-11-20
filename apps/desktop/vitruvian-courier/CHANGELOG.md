@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.30...vitruvian-courier-v0.3.31) (2026-11-20)
+
+
+### Features
+
+* **vitruvian-courier:** run the chat timeline on a row-reusing table view ([#5222](https://github.com/VitruvianSoftware/vitruvian-core/issues/5222)) ([c4fce3b](https://github.com/VitruvianSoftware/vitruvian-core/commit/c4fce3b6d99d8ca29e68b43f606a2c1ed536af42))
+
 ## [0.3.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.29...vitruvian-courier-v0.3.30) (2026-11-19)
 
 
