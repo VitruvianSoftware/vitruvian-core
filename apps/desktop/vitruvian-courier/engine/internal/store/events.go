@@ -433,6 +433,17 @@ func (s *Store) EventsAfter(ctx context.Context, roomID string, after Cursor, li
 	return evs, &Cursor{TS: evs[0].TS, Seq: evs[0].Seq}, nil
 }
 
+// EventsBySeq is the events of a room that arrived after afterSeq, up to and including throughSeq, in the order they
+// arrived (oldest arrival first), whatever their own times: a backfill's events are old but arrive last. It is how a
+// reader that gets one "event" change for a whole batch (InsertEvents) finds every event the batch stored.
+func (s *Store) EventsBySeq(ctx context.Context, roomID string, afterSeq, throughSeq int64) ([]Event, error) {
+	evs, err := s.queryEvents(ctx, "SELECT "+eventCols+" FROM events WHERE room_id=$1 AND seq>$2 AND seq<=$3 ORDER BY seq", roomID, afterSeq, throughSeq)
+	if err != nil {
+		return nil, err
+	}
+	return s.serveAll(ctx, evs), nil
+}
+
 // queryEvents runs a query of eventCols and returns its rows as events, in the query's order.
 func (s *Store) queryEvents(ctx context.Context, query string, args ...any) ([]Event, error) {
 	rows, err := s.db.Query(ctx, query, args...)

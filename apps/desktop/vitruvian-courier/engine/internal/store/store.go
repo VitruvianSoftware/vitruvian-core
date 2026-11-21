@@ -84,7 +84,9 @@ type Event struct {
 	Played        bool
 }
 
-// Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq.
+// Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq, except
+// for the one "event" change InsertEvents publishes per chat, where EventID is the batch's oldest event and Seq the
+// chat's latest arrival (EventsBySeq reads the batch).
 type Change struct {
 	Kind, RoomID, EventID string
 	Seq                   int64
