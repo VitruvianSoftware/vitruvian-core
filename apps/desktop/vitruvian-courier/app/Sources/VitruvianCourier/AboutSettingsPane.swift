@@ -45,6 +45,14 @@ struct AboutSettingsPane: View {
         _showLegalNotices = State(initialValue: showLegalNotices || highlightedSettingID == "about.legalNotices")
     }
 
+    static func versionLine(appVersion: String) -> String {
+        String(localized: "Version \(appVersion)")
+    }
+
+    static let reportProblemRowTitle = String(localized: "Report a Problem")
+    static let reportProblemButtonTitle = String(localized: "Send Report…")
+    static let keyboardShortcutsButtonTitle = String(localized: "Show")
+
     /// The release's page for this version, or every Vitruvian Courier release when the version isn't a release's.
     static func releaseNotesURL(version: String) -> URL {
         if let release = SemanticVersion(version) {
@@ -118,7 +126,7 @@ struct AboutSettingsPane: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(String(localized: "Vitruvian Courier"))
                         .font(.title3.weight(.semibold))
-                    Text(String(localized: "Version \(appVersion) (Protocol \(CourierProtocol.version), Build \(buildNumber))"))
+                    Text(Self.versionLine(appVersion: appVersion))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Text(String(localized: "All bridges, message history, and search indexes run locally on this Mac."))
@@ -149,15 +157,15 @@ struct AboutSettingsPane: View {
 
     private var actionsSection: some View {
         Section(String(localized: "Diagnostics & Reference")) {
-            LabeledContent(SettingsNavigationModel.title(for: "about.reportProblem")) {
-                Button(String(localized: "Report a Problem… (⌘⇧P)")) {
+            LabeledContent(Self.reportProblemRowTitle) {
+                Button(Self.reportProblemButtonTitle) {
                     onReportProblem()
                 }
             }
             .settingAnchor("about.reportProblem", highlighted: highlightedSettingID)
 
             LabeledContent(SettingsNavigationModel.title(for: "about.keyboardShortcuts")) {
-                Button(String(localized: "Keyboard Shortcuts (⌘/)")) {
+                Button(Self.keyboardShortcutsButtonTitle) {
                     onShowKeyboardShortcuts()
                 }
             }
@@ -220,6 +228,10 @@ struct AboutSettingsPane: View {
 /// Settings ▸ About ▸ Updates: whether a newer Vitruvian Courier is out, and installing it. The check runs at launch and daily
 /// (unless turned off here), and Vitruvian Courier ▸ Check for Updates… runs it now.
 struct UpdatesSection: View {
+    static let updatePolicyNote = String(
+        localized: "Courier checks for updates when it opens and once a day, and only installs updates signed by Vitruvian Software."
+    )
+
     @ObservedObject var updates: UpdateModel
     var highlightedSettingID: String?
 
@@ -233,7 +245,7 @@ struct UpdatesSection: View {
             .settingAnchor("about.updates", highlighted: highlightedSettingID)
 
             SettingsSwitchRow(String(localized: "Check for updates automatically"), isOn: $updates.checksAutomatically)
-            Text(String(localized: "Vitruvian Courier checks GitHub when it opens and once a day. An update is installed only after its checksum, its Developer ID signature and Apple’s notarization check out; Vitruvian Courier then quits and opens again."))
+            Text(Self.updatePolicyNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

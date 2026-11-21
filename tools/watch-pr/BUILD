@@ -31,7 +31,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "@crates//:serde",
+        "//packages/rust/vitruvian-pyjson:vitruvian_pyjson",
         "@crates//:serde_json",
     ],
 )

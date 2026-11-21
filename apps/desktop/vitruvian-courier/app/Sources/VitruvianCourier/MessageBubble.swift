@@ -77,10 +77,15 @@ struct MessageActions {
     var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
     /// Whether external media embeds load automatically without click-to-load consent.
     var loadExternalEmbedsAutomatically = false
+    /// Whether link cards may fetch their picture and title (`ComposerPreferences.showLinkPreviews`).
+    var showLinkPreviews = true
     /// Preferred time format (`ComposerPreferences.timeFormat`).
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
     var showMessageTimestamps = true
+    /// Shows a message's menu from a button (the hover pill's and the action bar's More); a test replaces it to see what
+    /// was shown without opening a real menu.
+    var presentMenu: @MainActor (NSMenu, NSView?) -> Void = { MessageContextMenuBuilder.popUp($0, relativeTo: $1) }
     /// Shared composer preferences instance to avoid per-row `UserDefaults` allocation in `FileAttachmentChip`.
     var composerPreferences: ComposerPreferences? = nil
     /// Optional appearance preferences for theme bubble colours, font scaling, and name/avatar redaction.
@@ -308,13 +313,7 @@ private struct TimerNoteRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { actions.select(message.id) }
-        .contextMenu {
-            MessageMenuItems(
-                sections: actions.menu(message),
-                hotkeys: actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys,
-                hotkeyDispatcher: actions.hotkeyDispatcher
-            ) { actions.perform($0, message.id) }
-        }
+        .overlay { MessageContextMenuOverlay(message: message, actions: actions) }
         .accessibilityElement(children: .combine)
     }
 }
@@ -350,13 +349,7 @@ private struct CallNoteRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { actions.select(message.id) }
-        .contextMenu {
-            MessageMenuItems(
-                sections: actions.menu(message),
-                hotkeys: actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys,
-                hotkeyDispatcher: actions.hotkeyDispatcher
-            ) { actions.perform($0, message.id) }
-        }
+        .overlay { MessageContextMenuOverlay(message: message, actions: actions) }
         .accessibilityElement(children: .combine)
     }
 }
@@ -381,6 +374,10 @@ struct MessageRowView: View {
     @State private var pointer = ActionBarPointer()
     @State private var settling: Task<Void, Never>?
     @State private var barSize: CGSize = .zero
+    @State private var hoverPillVisible = false
+    @State private var isFadingOutHoverPill = false
+    @State private var hoverFadeOutTask: Task<Void, Never>?
+    @State private var isNativeMenuOpen = false
     /// The reaction chip under the pointer, and the one whose card is open (after a short rest on it).
     @State private var hoveredChip: String?
     @State private var cardChip: String?
@@ -426,9 +423,11 @@ struct MessageRowView: View {
     }
 
     /// What the text reserves for `words` drawn at `metaPointSize`: the text lays it out at 10 pt (RichTextView), so
-    /// a few hair spaces make up the difference.
+    /// a few hair spaces make up the difference. Spaces inside `words` are made non-breaking and hair spaces are glued
+    /// with word joiners so CoreText never wraps part of the reservation onto a new line while the text still fits.
     static func reservedMeta(_ words: String) -> String {
-        words + String(repeating: "\u{200A}", count: max(3, words.count / 2))
+        let nonBreaking = words.replacingOccurrences(of: " ", with: "\u{00A0}")
+        return nonBreaking + String(repeating: "\u{2060}\u{200A}", count: max(3, words.count / 2))
     }
 
     /// Whether this bubble holds only plain text, which is what the width cap is for.
@@ -510,7 +509,7 @@ struct MessageRowView: View {
             }
         }
         // A message edited again has a new version to read.
-        .onChange(of: message.editCount) { _, _ in
+        .onChange(of: message.changedEditCount) { _, _ in
             ui.forget(message.id)
             if ui.historyOpen.contains(message.id) { ui.loadHistory(message.id) }
         }
@@ -530,21 +529,30 @@ struct MessageRowView: View {
         .padding(.top, timelineTopExtension)
         .overlayPreferenceValue(RowAnchorsKey.self, alignment: .topLeading) { anchors in
             let card = openCardKey.flatMap { key in message.reactions.first { $0.key == key } }
-            if (showsActionBar && anchors.bubble != nil) || (card != nil && anchors.openChip != nil) {
+            let showingSelectedBar = actionBarMode == .selectedBar
+            let showingHoverPill = !showingSelectedBar && (actionBarMode == .hoverPill || isFadingOutHoverPill)
+            if ((showingSelectedBar || showingHoverPill) && anchors.bubble != nil) || (card != nil && anchors.openChip != nil) {
                 GeometryReader { proxy in
-                    let bar: CGRect? = showsActionBar ? anchors.bubble.map { bubble in
+                    let bar: CGRect? = (showingSelectedBar || showingHoverPill) ? anchors.bubble.map { bubble in
                         CGRect(origin: MessageActionBarPlacement.origin(bubble: proxy[bubble], row: proxy.size,
                                                                         bar: barSize, mine: message.mine),
                                size: barSize)
                     } : nil
                     if let bar {
-                        MessageActionBar(message: message, actions: actions) { showsMenu = true }
-                            .fixedSize()
-                            .onHover { pointer.barHover($0); pointerMoved() }
-                            .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
-                            .offset(x: bar.minX, y: bar.minY)
-                            .opacity(barSize == .zero ? 0 : 1)
-                            .modifier(ActionBarFrameReport(offset: bar.origin))
+                        Group {
+                            if showingSelectedBar {
+                                MessageActionBar(message: message, actions: actions) { isNativeMenuOpen = $0 }
+                            } else {
+                                MessageHoverPill(message: message, actions: actions) { isNativeMenuOpen = $0 }
+                            }
+                        }
+                        .fixedSize()
+                        .onHover { pointer.barHover($0); pointerMoved() }
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
+                        .offset(x: bar.minX, y: bar.minY)
+                        .opacity(barSize == .zero ? 0 : (showingSelectedBar ? 1 : (hoverPillVisible ? 1 : 0)))
+                        .allowsHitTesting(showingSelectedBar || actionBarMode == .hoverPill)
+                        .modifier(ActionBarFrameReport(offset: bar.origin))
                     }
                     if let card, let chip = anchors.openChip {
                         let spot = ReactionCardPlacement.origin(chip: proxy[chip], row: proxy.size, card: cardSize,
@@ -556,6 +564,44 @@ struct MessageRowView: View {
                             .opacity(cardSize == .zero ? 0 : 1)
                             .allowsHitTesting(false)
                     }
+                }
+            }
+        }
+        .onChange(of: actionBarMode) { oldMode, newMode in
+            switch newMode {
+            case .hoverPill:
+                hoverFadeOutTask?.cancel()
+                hoverFadeOutTask = nil
+                isFadingOutHoverPill = false
+                if oldMode != .hoverPill { hoverPillVisible = false }
+                DispatchQueue.main.async {
+                    withAnimation(.easeOut(duration: ActionBarVisibility.hoverFadeDuration)) {
+                        hoverPillVisible = true
+                    }
+                }
+            case .selectedBar:
+                hoverFadeOutTask?.cancel()
+                hoverFadeOutTask = nil
+                isFadingOutHoverPill = false
+                hoverPillVisible = false
+            case .hidden:
+                if oldMode == .hoverPill && !timelineCovered {
+                    isFadingOutHoverPill = true
+                    withAnimation(.easeOut(duration: ActionBarVisibility.hoverFadeDuration)) {
+                        hoverPillVisible = false
+                    }
+                    hoverFadeOutTask?.cancel()
+                    let ms = Int((ActionBarVisibility.hoverFadeDuration * 1000).rounded())
+                    hoverFadeOutTask = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(ms))
+                        guard !Task.isCancelled else { return }
+                        isFadingOutHoverPill = false
+                    }
+                } else {
+                    hoverFadeOutTask?.cancel()
+                    hoverFadeOutTask = nil
+                    isFadingOutHoverPill = false
+                    hoverPillVisible = false
                 }
             }
         }
@@ -588,16 +634,14 @@ struct MessageRowView: View {
                 )
             }
         }
-        .contextMenu {
-            MessageMenuItems(
-                sections: actions.menu(message),
-                hotkeys: actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys,
-                hotkeyDispatcher: actions.hotkeyDispatcher
-            ) { actions.perform($0, message.id) }
-        }
+        .overlay { MessageContextMenuOverlay(message: message, actions: actions) }
         .onChange(of: message.id) { _, _ in
             if pointer != ActionBarPointer() { pointer = ActionBarPointer() }
             if settling != nil { settling?.cancel(); settling = nil }
+            if hoverFadeOutTask != nil { hoverFadeOutTask?.cancel(); hoverFadeOutTask = nil }
+            if isFadingOutHoverPill { isFadingOutHoverPill = false }
+            if hoverPillVisible { hoverPillVisible = false }
+            if isNativeMenuOpen { isNativeMenuOpen = false }
             if hoveredChip != nil { hoveredChip = nil }
             if cardChip != nil { cardChip = nil }
             if openCard != nil { openCard?.cancel(); openCard = nil }
@@ -611,6 +655,7 @@ struct MessageRowView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
             showsMenu = false
+            isNativeMenuOpen = false
             activeDetectedDate = nil
         }
         .accessibilityElement(children: .contain)
@@ -625,11 +670,19 @@ struct MessageRowView: View {
     /// menu or its reaction picker is open. Pointing at a message shows nothing: moving the pointer quickly over
     /// the chat flashed a bar on every row it crossed. It goes when the pointer leaves the message, and while a
     /// panel or a sheet covers the chat (`ActionBarVisibility`).
+    private var actionBarMode: ActionBarMode {
+        ActionBarVisibility.mode(
+            canAct: canAct,
+            isSelected: isSelected,
+            menuOpen: showsMenu || isNativeMenuOpen,
+            pickingReaction: actions.isPickingReaction(message.id),
+            pointer: pointer,
+            timelineCovered: timelineCovered
+        )
+    }
+
     private var showsActionBar: Bool {
-        ActionBarVisibility.isShown(
-            canAct: canAct, isSelected: isSelected, menuOpen: showsMenu,
-            pickingReaction: actions.isPickingReaction(message.id), pointer: pointer,
-            timelineCovered: timelineCovered)
+        actionBarMode != .hidden
     }
 
     /// The pointer entered or left the row or the bar: entering shows the bar again at once; leaving hides it once
@@ -649,7 +702,7 @@ struct MessageRowView: View {
         cardOverride?.messageID == message.id ? cardOverride?.reactionKey : cardChip
     }
 
-    private var isRaised: Bool { showsActionBar || openCardKey != nil }
+    private var isRaised: Bool { showsActionBar || isFadingOutHoverPill || openCardKey != nil }
 
     /// The pointer on a chip: its hover tint at once, its card after a short rest; off it, both go at once.
     private func chipHovered(_ key: String, _ hovering: Bool) {
@@ -932,7 +985,7 @@ struct MessageRowView: View {
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
                             title: ExternalEmbedDescriptor.embedTitle(in: message),
                             previewImagePath: ExternalEmbedDescriptor.previewImagePath(in: message),
-                            allowsRemoteThumbnail: actions.loadExternalEmbedsAutomatically,
+                            allowsRemoteThumbnail: actions.showLinkPreviews,
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
@@ -1400,12 +1453,46 @@ private struct QuoteView: View {
     }
 }
 
+/// The compact hover pill on an unselected message: React, Reply, and More (…). More opens the message's right-click
+/// menu (`MessageContextMenuBuilder.present`); `menuOpen` tells the row when that menu opens and closes.
+struct MessageHoverPill: View {
+    let message: TimelineMessage
+    let actions: MessageActions
+    let menuOpen: (Bool) -> Void
+    @State private var moreAnchor: NSView?
+
+    var body: some View {
+        HStack(spacing: 1) {
+            ActionBarButton(String(localized: "Add Reaction…")) {
+                actions.perform(.action(.react), message.id)
+            } label: {
+                AddReactionGlyph()
+            }
+            ActionBarButton(String(localized: "Reply")) {
+                actions.reply(message.id)
+            } label: {
+                Image(systemName: "arrowshape.turn.up.left")
+            }
+            ActionBarButton(String(localized: "More")) {
+                MessageContextMenuBuilder.present(for: message, actions: actions, anchor: moreAnchor, isOpen: menuOpen)
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .background(MenuAnchorProbe { moreAnchor = $0 })
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .courierSurface(.actionBar)
+    }
+}
+
 /// The selected message's bar: the quick reactions (the default first), Add Reaction…, Reply and More (the message's
 /// menu).
 private struct MessageActionBar: View {
     let message: TimelineMessage
     let actions: MessageActions
-    let showMenu: () -> Void
+    let menuOpen: (Bool) -> Void
+    @State private var moreAnchor: NSView?
 
     var body: some View {
         HStack(spacing: 1) {
@@ -1428,14 +1515,41 @@ private struct MessageActionBar: View {
                 Image(systemName: "arrowshape.turn.up.left")
             }
             ActionBarButton(String(localized: "More")) {
-                showMenu()
+                MessageContextMenuBuilder.present(for: message, actions: actions, anchor: moreAnchor, isOpen: menuOpen)
             } label: {
                 Image(systemName: "ellipsis")
             }
+            .background(MenuAnchorProbe { moreAnchor = $0 })
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 3)
         .courierSurface(.actionBar)
+    }
+}
+
+private struct MenuAnchorProbe: NSViewRepresentable {
+    let onView: (NSView) -> Void
+
+    func makeNSView(context _: Context) -> AnchorNSView {
+        let view = AnchorNSView()
+        view.onView = onView
+        return view
+    }
+
+    func updateNSView(_ nsView: AnchorNSView, context _: Context) {
+        nsView.onView = onView
+        DispatchQueue.main.async { onView(nsView) }
+    }
+
+    final class AnchorNSView: NSView {
+        var onView: ((NSView) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil { onView?(self) }
+        }
+
+        override func hitTest(_: NSPoint) -> NSView? { nil }
     }
 }
 

@@ -26,10 +26,8 @@
 //! that is not 2xx, `<urlopen error ...>` for a connection that fails.
 //! Redirects are not followed.
 
-use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
-use std::process::{Command, Stdio};
-use std::time::Duration;
+pub use vitruvian_pycompat::http::Request;
+use vitruvian_pycompat::http::{os_error_reason, send_with, Options, TransportError};
 
 /// Why a request failed: `Url` is urllib.error.URLError (HTTPError
 /// included), which the script catches; `Value` is the ValueError urllib
@@ -40,14 +38,6 @@ pub enum Error {
     Value(String),
     /// An exception http.client raises before it sends: (class, message).
     Invalid(&'static str, String),
-}
-
-pub struct Request<'a> {
-    pub method: &'a str,
-    pub url: &'a str,
-    pub headers: &'a [(&'a str, String)],
-    pub body: Option<&'a [u8]>,
-    pub timeout: u64,
 }
 
 pub fn send(req: &Request) -> Result<Vec<u8>, Error> {
@@ -79,234 +69,71 @@ pub fn send(req: &Request) -> Result<Vec<u8>, Error> {
             "'latin-1' codec can't encode characters in a header".into(),
         ));
     }
-    let req = Request { url, ..*req };
-    let req = &req;
-    if let Some(rest) = req.url.strip_prefix("http://") {
-        plain(req, rest)
-    } else if req.url.starts_with("https://") {
-        curl(req)
-    } else {
-        Err(Error::Value(format!(
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(Error::Value(format!(
             "unknown url type: {}",
-            crate::pystr::repr_str(req.url)
-        )))
+            crate::pystr::repr_str(url)
+        )));
     }
-}
 
-fn os_error(e: &std::io::Error) -> String {
-    let text = e.to_string();
-    let text = match text.rfind(" (os error ") {
-        Some(i) => text[..i].to_string(),
-        None => text,
-    };
-    match e.raw_os_error() {
-        Some(code) => format!("<urlopen error [Errno {}] {}>", code, text),
-        None => format!("<urlopen error {}>", text),
-    }
-}
-
-fn plain(req: &Request, rest: &str) -> Result<Vec<u8>, Error> {
-    let (authority, path) = match rest.find(['/', '?']) {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let path = if path.starts_with('?') {
-        format!("/{}", path)
-    } else {
-        path.to_string()
-    };
-    if authority.is_empty() {
-        return Err(Error::Url("<urlopen error no host given>".into()));
-    }
-    let hostport = if authority.contains(':') {
-        authority.to_string()
-    } else {
-        format!("{}:80", authority)
-    };
-    let timeout = Duration::from_secs(req.timeout);
-    let addrs: Vec<_> = hostport
-        .to_socket_addrs()
-        .map_err(|e| Error::Url(os_error(&e)))?
-        .collect();
-    let mut last = None;
-    let mut stream = None;
-    for a in addrs {
-        match TcpStream::connect_timeout(&a, timeout) {
-            Ok(s) => {
-                stream = Some(s);
-                break;
-            }
-            Err(e) => last = Some(e),
-        }
-    }
-    let mut stream = match stream {
-        Some(s) => s,
-        None => {
-            let e = last
-                .unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "no address"));
-            return Err(Error::Url(os_error(&e)));
-        }
-    };
-    let _ = stream.set_read_timeout(Some(timeout));
-    let _ = stream.set_write_timeout(Some(timeout));
-
-    let mut head = format!("{} {} HTTP/1.1\r\n", req.method, path);
-    head.push_str("Accept-Encoding: identity\r\n");
-    head.push_str(&format!("Host: {}\r\n", authority));
-    head.push_str("User-Agent: merge-queue-stats-rs\r\n");
-    head.push_str("Connection: close\r\n");
-    if let Some(body) = req.body {
-        head.push_str("Content-Type: application/x-www-form-urlencoded\r\n");
-        head.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    }
-    let mut wire = head.into_bytes();
-    // Header values go out as latin-1, as http.client encodes them.
-    for (k, v) in req.headers {
-        wire.extend_from_slice(k.as_bytes());
-        wire.extend_from_slice(b": ");
-        wire.extend(v.chars().map(|c| c as u32 as u8));
-        wire.extend_from_slice(b"\r\n");
-    }
-    wire.extend_from_slice(b"\r\n");
-    if let Some(body) = req.body {
-        wire.extend_from_slice(body);
-    }
-    stream
-        .write_all(&wire)
-        .map_err(|e| Error::Url(os_error(&e)))?;
-
-    let mut raw = Vec::new();
-    stream
-        .read_to_end(&mut raw)
-        .map_err(|e| Error::Url(os_error(&e)))?;
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or_else(|| {
-            Error::Url("<urlopen error Remote end closed connection without response>".into())
-        })?;
-    let head = String::from_utf8_lossy(&raw[..split]).to_string();
-    let mut body = raw[split + 4..].to_vec();
-    let mut lines = head.split("\r\n");
-    let status = lines.next().unwrap_or("");
-    let mut parts = status.splitn(3, ' ');
-    let _version = parts.next();
-    let code: u16 = parts
-        .next()
-        .and_then(|c| c.parse().ok())
-        .ok_or_else(|| Error::Url(format!("<urlopen error bad status line {:?}>", status)))?;
-    let reason = parts.next().unwrap_or("").to_string();
-    let mut chunked = false;
-    let mut length: Option<usize> = None;
-    for line in lines {
-        if let Some((k, v)) = line.split_once(':') {
-            let k = k.trim().to_ascii_lowercase();
-            let v = v.trim();
-            if k == "transfer-encoding" && v.to_ascii_lowercase().contains("chunked") {
-                chunked = true;
-            } else if k == "content-length" {
-                length = v.parse().ok();
-            }
-        }
-    }
-    if chunked {
-        body = dechunk(&body);
-    } else if let Some(n) = length {
-        body.truncate(n);
-    }
-    if !(200..300).contains(&code) {
-        return Err(Error::Url(format!("HTTP Error {}: {}", code, reason)));
-    }
-    Ok(body)
-}
-
-fn dechunk(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < data.len() {
-        let line_end = match data[i..].windows(2).position(|w| w == b"\r\n") {
-            Some(p) => i + p,
-            None => break,
-        };
-        let size_text = String::from_utf8_lossy(&data[i..line_end]);
-        let size_text = size_text.split(';').next().unwrap_or("").trim();
-        let size = usize::from_str_radix(size_text, 16).unwrap_or(0);
-        i = line_end + 2;
-        if size == 0 {
-            break;
-        }
-        let end = (i + size).min(data.len());
-        out.extend_from_slice(&data[i..end]);
-        i = end + 2;
-    }
-    out
-}
-
-/// A string for a curl config file: quoted, with \ and " escaped.
-fn quote(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-fn curl(req: &Request) -> Result<Vec<u8>, Error> {
-    const MARK: &[u8] = b"\n__merge_queue_stats_status__";
-    // Everything goes in a config on stdin, so the token stays out of `ps`.
-    let mut config = String::new();
-    config.push_str(&format!("url = {}\n", quote(req.url)));
-    config.push_str(&format!("request = {}\n", quote(req.method)));
-    config.push_str(&format!("max-time = {}\n", req.timeout));
-    for (k, v) in req.headers {
-        config.push_str(&format!("header = {}\n", quote(&format!("{}: {}", k, v))));
-    }
-    if let Some(body) = req.body {
-        config.push_str("header = \"Content-Type: application/x-www-form-urlencoded\"\n");
-        config.push_str(&format!(
-            "data-binary = {}\n",
-            quote(&String::from_utf8_lossy(body))
+    let mut headers_buf;
+    let headers: &[(&str, String)] = if req.body.is_some() {
+        headers_buf = Vec::with_capacity(req.headers.len() + 1);
+        headers_buf.push((
+            "Content-Type",
+            "application/x-www-form-urlencoded".to_string(),
         ));
-    }
-    config.push_str("write-out = \"\\n__merge_queue_stats_status__%{http_code}\"\n");
-    let mut child = Command::new("curl")
-        .args(["-sS", "-K", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| Error::Url(os_error(&e)))?;
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        let _ = stdin.write_all(config.as_bytes());
-    }
-    let out = child
-        .wait_with_output()
-        .map_err(|e| Error::Url(os_error(&e)))?;
-    let pos = out.stdout.windows(MARK.len()).rposition(|w| w == MARK);
-    let pos = match (out.status.success(), pos) {
-        (true, Some(p)) => p,
-        _ => {
-            let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            return Err(Error::Url(format!("<urlopen error {}>", msg)));
-        }
+        headers_buf.extend(req.headers.iter().cloned());
+        &headers_buf
+    } else {
+        req.headers
     };
-    let code: u16 = String::from_utf8_lossy(&out.stdout[pos + MARK.len()..])
-        .trim()
-        .parse()
-        .unwrap_or(0);
-    if !(200..300).contains(&code) {
-        return Err(Error::Url(format!("HTTP Error {}: {}", code, reason(code))));
+
+    let inner = Request {
+        url,
+        headers,
+        ..*req
+    };
+    let opts = Options {
+        user_agent: "merge-queue-stats-rs",
+        timeout: None,
+    };
+    let resp = send_with(&inner, &opts).map_err(|e| match e {
+        TransportError::NoHost => Error::Url("<urlopen error no host given>".into()),
+        TransportError::Resolve(e)
+        | TransportError::Connect { err: e, .. }
+        | TransportError::Io(e)
+        | TransportError::CurlSpawn(e)
+        | TransportError::CurlWait(e) => {
+            Error::Url(format!("<urlopen error {}>", os_error_reason(&e)))
+        }
+        TransportError::NoAddress => Error::Url("<urlopen error no address>".into()),
+        TransportError::NoResponse => {
+            Error::Url("<urlopen error Remote end closed connection without response>".into())
+        }
+        TransportError::BadStatusLine(s) => {
+            Error::Url(format!("<urlopen error bad status line {:?}>", s))
+        }
+        TransportError::CurlFailed { stderr, .. } | TransportError::NoStatus { stderr } => {
+            Error::Url(format!("<urlopen error {}>", stderr))
+        }
+        TransportError::InvalidScheme => {
+            Error::Value(format!("unknown url type: {}", crate::pystr::repr_str(url)))
+        }
+    })?;
+
+    if !(200..300).contains(&resp.status) {
+        let phrase = if resp.reason.is_empty() {
+            reason(resp.status)
+        } else {
+            resp.reason.as_str()
+        };
+        return Err(Error::Url(format!(
+            "HTTP Error {}: {}",
+            resp.status, phrase
+        )));
     }
-    Ok(out.stdout[..pos].to_vec())
+    Ok(resp.body)
 }
 
 /// The standard reason phrase: curl does not pass the server's on.
@@ -330,19 +157,45 @@ fn reason(code: u16) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
+    use std::sync::mpsc;
     use std::thread;
+    use std::time::Duration;
 
-    fn serve(response: &'static [u8]) -> String {
+    fn serve(response: &'static [u8]) -> (String, mpsc::Receiver<Vec<u8>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let (mut s, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 4096];
-            let _ = s.read(&mut buf);
+            let mut r = BufReader::new(s.try_clone().unwrap());
+            let mut req = Vec::new();
+            let mut len = 0usize;
+            loop {
+                let mut line = String::new();
+                let n = r.read_line(&mut line).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                req.extend_from_slice(line.as_bytes());
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if trimmed.is_empty() {
+                    break;
+                }
+                if let Some(v) = trimmed.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap_or(0);
+                }
+            }
+            if len > 0 {
+                let mut body = vec![0u8; len];
+                let _ = r.read_exact(&mut body);
+                req.extend_from_slice(&body);
+            }
+            let _ = tx.send(req);
             s.write_all(response).unwrap();
         });
-        format!("http://{}/x?y=1", addr)
+        (format!("http://{}/x?y=1", addr), rx)
     }
 
     fn get(url: &str) -> Result<Vec<u8>, Error> {
@@ -357,17 +210,46 @@ mod tests {
 
     #[test]
     fn reads_length_and_chunked_bodies() {
-        let url = serve(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n[]extra");
+        let (url, _) = serve(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n[]extra");
         assert_eq!(get(&url).unwrap(), b"[]");
-        let url = serve(
+        let (url, _) = serve(
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n[1\r\n1\r\n]\r\n0\r\n\r\n",
         );
         assert_eq!(get(&url).unwrap(), b"[1]");
     }
 
     #[test]
+    fn posts_body_with_headers_and_form_content_type() {
+        let (url, rx) = serve(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok");
+        let headers = [
+            ("Authorization", "Bearer tok".to_string()),
+            ("X-Custom", "v".to_string()),
+        ];
+        let body = send(&Request {
+            method: "POST",
+            url: &url,
+            headers: &headers,
+            body: Some(b"{\"q\":1}"),
+            timeout: 5,
+        })
+        .unwrap();
+        assert_eq!(body, b"ok");
+        let sent = String::from_utf8(rx.recv().unwrap()).unwrap();
+        assert!(sent.starts_with("POST /x?y=1 HTTP/1.1\r\n"), "{}", sent);
+        assert!(sent.contains("Authorization: Bearer tok\r\n"), "{}", sent);
+        assert!(sent.contains("X-Custom: v\r\n"), "{}", sent);
+        assert!(
+            sent.contains("Content-Type: application/x-www-form-urlencoded\r\n"),
+            "{}",
+            sent
+        );
+        assert!(sent.contains("Content-Length: 7\r\n"), "{}", sent);
+        assert!(sent.ends_with("\r\n\r\n{\"q\":1}"), "{}", sent);
+    }
+
+    #[test]
     fn errors_read_as_urllib_words_them() {
-        let url = serve(b"HTTP/1.0 502 Bad Gateway\r\n\r\n");
+        let (url, _) = serve(b"HTTP/1.0 502 Bad Gateway\r\n\r\n");
         assert_eq!(
             get(&url),
             Err(Error::Url("HTTP Error 502: Bad Gateway".into()))
@@ -377,6 +259,30 @@ mod tests {
         match get("http://127.0.0.1:9/") {
             Err(Error::Url(m)) => assert!(m.starts_with("<urlopen error [Errno "), "{}", m),
             other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn times_out_when_server_does_not_reply() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel::<()>();
+        let handle = thread::spawn(move || {
+            let (_s, _) = listener.accept().unwrap();
+            let _ = rx.recv_timeout(Duration::from_secs(5));
+        });
+        let res = send(&Request {
+            method: "GET",
+            url: &format!("http://{}/slow", addr),
+            headers: &[],
+            body: None,
+            timeout: 1,
+        });
+        drop(tx);
+        let _ = handle.join();
+        match res {
+            Err(Error::Url(msg)) => assert!(msg.starts_with("<urlopen error "), "{msg}"),
+            other => panic!("expected timeout Url error, got {other:?}"),
         }
     }
 }

@@ -22,16 +22,10 @@
 //! a plain socket; `https://` through curl, since the standard library has
 //! no TLS. The token reaches curl through its config on stdin, never argv.
 
-use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
-/// A response: status and body.
-pub struct Response {
-    pub status: u16,
-    pub body: Vec<u8>,
-}
+pub use vitruvian_pycompat::http::Response;
+use vitruvian_pycompat::http::{send_with, Options, Request, TransportError};
 
 /// POSTs `body` to `url`. Err is why it could not be reached, as the text
 /// after Go's `Post "<url>": `.
@@ -41,180 +35,141 @@ pub fn post(
     body: &[u8],
     timeout: Duration,
 ) -> Result<Response, String> {
-    if let Some(rest) = url.strip_prefix("http://") {
-        plain(rest, headers, body, timeout)
-    } else if url.starts_with("https://") {
-        curl(url, headers, body, timeout)
-    } else {
-        Err(format!(
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(format!(
             "unsupported protocol scheme {}",
             unitfile::gocompat::quote::quote(url.split(':').next().unwrap_or(""))
-        ))
-    }
-}
-
-fn plain(
-    rest: &str,
-    headers: &[(&str, String)],
-    body: &[u8],
-    timeout: Duration,
-) -> Result<Response, String> {
-    let (authority, path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let hostport = if authority.contains(':') {
-        authority.to_string()
-    } else {
-        format!("{authority}:80")
-    };
-    let addr = hostport
-        .to_socket_addrs()
-        .map_err(|e| format!("dial tcp: {e}"))?
-        .next()
-        .ok_or_else(|| "dial tcp: no address".to_string())?;
-    let mut s = TcpStream::connect_timeout(&addr, timeout).map_err(|e| {
-        format!(
-            "dial tcp {addr}: connect: {}",
-            unitfile::gocompat::oserr::errno_text(&e)
-        )
-    })?;
-    let _ = s.set_read_timeout(Some(timeout));
-    let _ = s.set_write_timeout(Some(timeout));
-    let mut wire = format!(
-        "POST {path} HTTP/1.1\r\nHost: {authority}\r\nUser-Agent: verified-run\r\nContent-Length: {}\r\nConnection: close\r\n",
-        body.len()
-    );
-    for (k, v) in headers {
-        wire.push_str(&format!("{k}: {v}\r\n"));
-    }
-    wire.push_str("\r\n");
-    let mut bytes = wire.into_bytes();
-    bytes.extend_from_slice(body);
-    s.write_all(&bytes).map_err(|e| e.to_string())?;
-    let mut raw = Vec::new();
-    s.read_to_end(&mut raw).map_err(|e| e.to_string())?;
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or_else(|| "malformed HTTP response".to_string())?;
-    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
-    let mut lines = head.split("\r\n");
-    let status: u16 = lines
-        .next()
-        .and_then(|l| l.split(' ').nth(1))
-        .and_then(|c| c.parse().ok())
-        .ok_or_else(|| "malformed HTTP status line".to_string())?;
-    let mut body = raw[split + 4..].to_vec();
-    let mut chunked = false;
-    let mut length = None;
-    for l in lines {
-        if let Some((k, v)) = l.split_once(':') {
-            let (k, v) = (k.trim().to_ascii_lowercase(), v.trim());
-            if k == "transfer-encoding" && v.to_ascii_lowercase().contains("chunked") {
-                chunked = true;
-            } else if k == "content-length" {
-                length = v.parse::<usize>().ok();
-            }
-        }
-    }
-    if chunked {
-        body = dechunk(&body);
-    } else if let Some(n) = length {
-        body.truncate(n);
-    }
-    Ok(Response { status, body })
-}
-
-fn dechunk(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < data.len() {
-        let Some(p) = data[i..].windows(2).position(|w| w == b"\r\n") else {
-            break;
-        };
-        let size_text = String::from_utf8_lossy(&data[i..i + p]).into_owned();
-        let size = usize::from_str_radix(size_text.split(';').next().unwrap_or("").trim(), 16)
-            .unwrap_or(0);
-        i += p + 2;
-        if size == 0 {
-            break;
-        }
-        let end = (i + size).min(data.len());
-        out.extend_from_slice(&data[i..end]);
-        i = end + 2;
-    }
-    out
-}
-
-fn config_quote(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-const STATUS_MARK: &str = "\n__verified_run_status__:";
-
-fn curl(
-    url: &str,
-    headers: &[(&str, String)],
-    body: &[u8],
-    timeout: Duration,
-) -> Result<Response, String> {
-    let mut cfg = String::new();
-    cfg.push_str(&format!("url = {}\n", config_quote(url)));
-    cfg.push_str("request = \"POST\"\n");
-    for (k, v) in headers {
-        cfg.push_str(&format!(
-            "header = {}\n",
-            config_quote(&format!("{k}: {v}"))
         ));
     }
-    cfg.push_str(&format!(
-        "data-binary = {}\n",
-        config_quote(&String::from_utf8_lossy(body))
-    ));
-    cfg.push_str(&format!("max-time = {}\n", timeout.as_secs()));
-    cfg.push_str(&format!(
-        "write-out = {}\n",
-        config_quote(&format!("{STATUS_MARK}%{{http_code}}"))
-    ));
-    let mut child = Command::new("curl")
-        .args(["--silent", "--show-error", "--config", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("curl: {e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(cfg.as_bytes());
-    }
-    let out = child.wait_with_output().map_err(|e| format!("curl: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let raw = out.stdout;
-    let mark = STATUS_MARK.as_bytes();
-    let at = raw
-        .windows(mark.len())
-        .rposition(|w| w == mark)
-        .ok_or_else(|| "curl gave no status".to_string())?;
-    let status: u16 = String::from_utf8_lossy(&raw[at + mark.len()..])
-        .trim()
-        .parse()
-        .map_err(|_| "curl gave no status".to_string())?;
-    Ok(Response {
-        status,
-        body: raw[..at].to_vec(),
+    let req = Request {
+        method: "POST",
+        url,
+        headers,
+        body: Some(body),
+        timeout: timeout.as_secs(),
+    };
+    let opts = Options {
+        user_agent: "verified-run",
+        timeout: Some(timeout),
+    };
+    send_with(&req, &opts).map_err(|e| match e {
+        TransportError::NoHost => "dial tcp: no host".to_string(),
+        TransportError::Resolve(e) => format!("dial tcp: {e}"),
+        TransportError::NoAddress => "dial tcp: no address".to_string(),
+        TransportError::Connect { addr, err } => format!(
+            "dial tcp {addr}: connect: {}",
+            unitfile::gocompat::oserr::errno_text(&err)
+        ),
+        TransportError::Io(e) => e.to_string(),
+        TransportError::NoResponse => "malformed HTTP response".to_string(),
+        TransportError::BadStatusLine(_) => "malformed HTTP status line".to_string(),
+        TransportError::CurlSpawn(e) | TransportError::CurlWait(e) => format!("curl: {e}"),
+        TransportError::CurlFailed { stderr, .. } => stderr,
+        TransportError::NoStatus { .. } => "curl gave no status".to_string(),
+        TransportError::InvalidScheme => format!(
+            "unsupported protocol scheme {}",
+            unitfile::gocompat::quote::quote(url.split(':').next().unwrap_or(""))
+        ),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+
+    fn serve(response: &'static [u8]) -> (String, mpsc::Receiver<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut r = BufReader::new(s.try_clone().unwrap());
+            let mut req = Vec::new();
+            let mut len = 0usize;
+            loop {
+                let mut line = String::new();
+                let n = r.read_line(&mut line).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                req.extend_from_slice(line.as_bytes());
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if trimmed.is_empty() {
+                    break;
+                }
+                if let Some(v) = trimmed.to_ascii_lowercase().strip_prefix("content-length:") {
+                    len = v.trim().parse().unwrap_or(0);
+                }
+            }
+            if len > 0 {
+                let mut body = vec![0u8; len];
+                let _ = r.read_exact(&mut body);
+                req.extend_from_slice(&body);
+            }
+            let _ = tx.send(req);
+            s.write_all(response).unwrap();
+        });
+        (format!("http://{addr}/path"), rx)
+    }
+
+    #[test]
+    fn posts_body_headers_and_reads_length_and_chunked_responses() {
+        let (url, rx) = serve(b"HTTP/1.1 201 Created\r\nContent-Length: 4\r\n\r\ndoneEXTRA");
+        let headers = [
+            ("Authorization", "Bearer secret".to_string()),
+            ("X-Test", "1".to_string()),
+        ];
+        let resp = post(&url, &headers, b"{\"ok\":true}", Duration::from_secs(5)).unwrap();
+        assert_eq!(resp.status, 201);
+        assert_eq!(resp.body, b"done");
+        let sent = String::from_utf8(rx.recv().unwrap()).unwrap();
+        assert!(sent.starts_with("POST /path HTTP/1.1\r\n"), "{sent}");
+        assert!(sent.contains("Authorization: Bearer secret\r\n"), "{sent}");
+        assert!(sent.contains("X-Test: 1\r\n"), "{sent}");
+        assert!(sent.contains("Content-Length: 11\r\n"), "{sent}");
+        assert!(sent.ends_with("\r\n\r\n{\"ok\":true}"), "{sent}");
+
+        let (url_chunked, _) = serve(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n1\r\n!\r\n0\r\n\r\n",
+        );
+        let resp2 = post(&url_chunked, &[], b"", Duration::from_secs(5)).unwrap();
+        assert_eq!(resp2.status, 200);
+        assert_eq!(resp2.body, b"hi!");
+    }
+
+    #[test]
+    fn returns_non_2xx_status_and_body() {
+        let (url, _) = serve(b"HTTP/1.1 422 Unprocessable Entity\r\nContent-Length: 3\r\n\r\nbad");
+        let resp = post(&url, &[], b"{}", Duration::from_secs(5)).unwrap();
+        assert_eq!(resp.status, 422);
+        assert_eq!(resp.body, b"bad");
+    }
+
+    #[test]
+    fn times_out_when_server_does_not_reply() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel::<()>();
+        let handle = thread::spawn(move || {
+            let (_s, _) = listener.accept().unwrap();
+            let _ = rx.recv_timeout(Duration::from_secs(5));
+        });
+        let url = format!("http://{addr}/slow");
+        let res = post(&url, &[], b"{}", Duration::from_millis(200));
+        drop(tx);
+        let _ = handle.join();
+        assert!(res.is_err(), "expected timeout error");
+    }
+
+    #[test]
+    fn rejects_unsupported_scheme() {
+        let err = post("ftp://example.com/x", &[], b"", Duration::from_secs(1))
+            .err()
+            .unwrap();
+        assert!(err.contains("unsupported protocol scheme \"ftp\""), "{err}");
+    }
 }

@@ -22,11 +22,14 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: gocompat
-  description: Go standard-library process lookup and exec behaviour for Rust ports of Go tools
+  description: Go standard-library exec, path, UTF-8, error-text, and Unicode helpers for Rust ports of Go tools
   tags:
     - rust
     - go-compat
     - process
+    - paths
+    - utf8
+    - unicode
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     vitruvian.dev/bazel-target: //packages/gocompat:vitruvian_gocompat

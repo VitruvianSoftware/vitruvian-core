@@ -294,6 +294,22 @@ fn build_unit_packages(
     Ok(compute_unit_packages(&roots, &edges))
 }
 
+/// The packages `bazel query //... --output=package` printed. It prints the
+/// root package as an empty line, which [`non_empty_lines`] drops, so it is
+/// added back here whenever the repository has a root BUILD file; without it
+/// the map would not know "//:all" and every root npm change would fall back
+/// to the slow live query.
+pub fn map_packages(repo_root: &str, stdout: &str) -> Vec<String> {
+    let mut pkgs = non_empty_lines(stdout);
+    let has_root = ["BUILD", "BUILD.bazel"]
+        .iter()
+        .any(|b| std::path::Path::new(repo_root).join(b).is_file());
+    if has_root && !pkgs.iter().any(|p| p.is_empty()) {
+        pkgs.insert(0, String::new());
+    }
+    pkgs
+}
+
 /// The strict queries behind the dependency map.
 pub fn build_rdeps_map(ctx: &Ctx, repo_root: &str, commit: &str) -> Result<RdepsMap, String> {
     let tests = strict_query(ctx, repo_root, TEST_UNIVERSE_EXPR, &["--output=label"])?;
@@ -314,7 +330,7 @@ pub fn build_rdeps_map(ctx: &Ctx, repo_root: &str, commit: &str) -> Result<Rdeps
         commit,
         &non_empty_lines(&tests),
         &edges,
-        &non_empty_lines(&pkgs),
+        &map_packages(repo_root, &pkgs),
     );
     // Optional: if it cannot be computed, Mac units are matched the old way.
     // Never let it cost the whole map, which every plan's speed rests on.

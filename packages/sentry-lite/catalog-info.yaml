@@ -30,8 +30,8 @@ metadata:
     - telemetry
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/swift/SentryLite
-    vitruvian.dev/bazel-target: //packages/swift/SentryLite:SentryLite
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/sentry-lite
+    vitruvian.dev/bazel-target: //packages/sentry-lite:SentryLite
 spec:
   type: library
   lifecycle: production

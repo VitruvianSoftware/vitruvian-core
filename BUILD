@@ -94,6 +94,9 @@ exports_files(
         ".agents/roster/skills/orchestrate/antigravity.md",
         ".agents/roster/skills/orchestrate/claude-code.md",
         ".agents/roster/skills/orchestrate/opencode.md",
+        ".agents/roster/skills/team-setup/antigravity.md",
+        ".agents/roster/skills/team-setup/claude-code.md",
+        ".agents/roster/skills/team-setup/opencode.md",
         ".agents/team.json",
     ],
     visibility = [
@@ -152,7 +155,12 @@ filegroup(
             "wren",
         ]
     ],
-    visibility = ["//tools/agent-roster:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/claude-code/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/opencode/plugins/vitruvian-orchestrator:__pkg__",
+        "//tools/agent-roster:__pkg__",
+    ],
 )
 
 filegroup(

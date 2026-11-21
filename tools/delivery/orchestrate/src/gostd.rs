@@ -31,6 +31,8 @@ use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 
+pub use vitruvian_gocompat::gostd::{clean, errno_text, join, path_error};
+
 /// unicode.IsPrint, close enough for the strings this tool quotes: every
 /// control, format, separator, private-use and noncharacter code point is
 /// treated as unprintable. (Unassigned code points, which Go also escapes,
@@ -99,43 +101,6 @@ pub fn quote_rune(out: &mut String, c: char, q: char) {
     }
 }
 
-/// path.Clean.
-pub fn clean(p: &str) -> String {
-    if p.is_empty() {
-        return ".".to_string();
-    }
-    let rooted = p.starts_with('/');
-    let mut parts: Vec<&str> = Vec::new();
-    for seg in p.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                if parts.last().map_or(false, |l| *l != "..") {
-                    parts.pop();
-                } else if !rooted {
-                    parts.push("..");
-                }
-            }
-            s => parts.push(s),
-        }
-    }
-    let body = parts.join("/");
-    match (rooted, body.is_empty()) {
-        (true, _) => format!("/{}", body),
-        (false, true) => ".".to_string(),
-        (false, false) => body,
-    }
-}
-
-/// path.Join (and, on unix, filepath.Join).
-pub fn join(elems: &[&str]) -> String {
-    let nonempty: Vec<&str> = elems.iter().copied().filter(|e| !e.is_empty()).collect();
-    if nonempty.is_empty() {
-        return String::new();
-    }
-    clean(&nonempty.join("/"))
-}
-
 /// path.Base (and, on unix, filepath.Base).
 pub fn base(p: &str) -> String {
     if p.is_empty() {
@@ -149,26 +114,6 @@ pub fn base(p: &str) -> String {
         Some(i) => t[i + 1..].to_string(),
         None => t.to_string(),
     }
-}
-
-/// The text Go's syscall.Errno.Error() gives an OS error: the C library's
-/// message with its first letter lowered, which is how Go's tables read.
-pub fn errno_text(e: &io::Error) -> String {
-    let full = e.to_string();
-    let msg = match full.rfind(" (os error ") {
-        Some(i) => &full[..i],
-        None => full.as_str(),
-    };
-    let mut cs = msg.chars();
-    match cs.next() {
-        Some(f) => f.to_lowercase().collect::<String>() + cs.as_str(),
-        None => String::new(),
-    }
-}
-
-/// A *PathError's text: "<op> <path>: <errno>".
-pub fn path_error(op: &str, path: &str, e: &io::Error) -> String {
-    format!("{} {}: {}", op, path, errno_text(e))
 }
 
 /// os.ReadFile, with Go's error texts ("open ..." / "read ...").

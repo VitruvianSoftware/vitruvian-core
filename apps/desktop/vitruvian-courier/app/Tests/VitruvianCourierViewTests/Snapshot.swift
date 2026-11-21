@@ -79,4 +79,13 @@ extension NSView {
         }
         return nil
     }
+
+    /// Every view in this view's tree that `test` accepts, depth first.
+    func descendants(where test: (NSView) -> Bool) -> [NSView] {
+        (test(self) ? [self] : []) + subviews.flatMap { $0.descendants(where: test) }
+    }
+
+    func firstDescendant(where test: (NSView) -> Bool) -> NSView? {
+        descendants(where: test).first
+    }
 }

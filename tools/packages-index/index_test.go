@@ -77,8 +77,8 @@ spec:
   owner: platform-team
 `)
 
-	writeTestFile(t, root, "packages/swift/SentryLite/README.md", "# SentryLite\n")
-	writeTestFile(t, root, "packages/swift/SentryLite/catalog-info.yaml", `apiVersion: backstage.io/v1alpha1
+	writeTestFile(t, root, "packages/sentry-lite/README.md", "# SentryLite\n")
+	writeTestFile(t, root, "packages/sentry-lite/catalog-info.yaml", `apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: sentry-lite
@@ -93,7 +93,7 @@ metadata:
     - cpp
     - telemetry
   annotations:
-    vitruvian.dev/bazel-target: //packages/swift/SentryLite:SentryLite
+    vitruvian.dev/bazel-target: //packages/sentry-lite:SentryLite
 spec:
   type: library
   owner: mobile-team
