@@ -2202,6 +2202,36 @@ rust_test(
     deps = [":ci_testkit"],
 )
 
+# macos-paths: generates ci.yaml's detect-macos path filter from the Bazel
+# dependency graph of macos-build's targets and fails on drift. Shells out to
+# `bazel query` itself, so build it and run `bazel-bin/tools/ci/macos_paths`
+# rather than `bazel run`.
+rust_library(
+    name = "macos_paths_lib",
+    srcs = ["src/macos_paths/lib.rs"],
+    crate_name = "macos_paths",
+    crate_root = "src/macos_paths/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "macos_paths",
+    srcs = ["src/macos_paths/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":macos_paths_lib"],
+)
+
+rust_test(
+    name = "macos_paths_test",
+    size = "small",
+    crate = ":macos_paths_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
 # agent-guard reads this file to check its refusal advice names a real target
 # (//tools/agent-guard:pending_target_files).
 exports_files(
