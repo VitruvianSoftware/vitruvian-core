@@ -177,7 +177,7 @@ struct PhotoEditSheet: View {
             }
         default:
             HStack {
-                Text(String(localized: "The photo goes to the AI service you chose in Settings ▸ AI."))
+                Text(model.destinationLine ?? "")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)

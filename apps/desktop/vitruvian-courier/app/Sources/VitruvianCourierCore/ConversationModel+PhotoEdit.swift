@@ -24,7 +24,7 @@ extension ConversationModel {
     @discardableResult
     public func editPhotoWithAI(_ source: PhotoEditSource) -> Bool {
         guard isPhotoEditingOffered, let backend = photoEditBackend else { return false }
-        photoEdit?.cancel()
+        photoEdit?.close()
         photoEdit = PhotoEditModel(
             source: source,
             backend: backend,
@@ -43,7 +43,7 @@ extension ConversationModel {
     }
 
     public func closePhotoEdit() {
-        photoEdit?.cancel()
+        photoEdit?.close()
         photoEdit = nil
     }
 }

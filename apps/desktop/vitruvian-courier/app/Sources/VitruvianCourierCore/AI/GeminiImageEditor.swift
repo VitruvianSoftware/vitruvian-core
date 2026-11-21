@@ -72,9 +72,9 @@ public struct GeminiImageEditor: AIImageEditor, CustomStringConvertible, CustomD
             return .failure(.network)
         }
         guard (200 ..< 300).contains(response.statusCode) else {
-            return .failure(Self.failure(status: response.statusCode, body: data))
+            return .failure(Self.failure(status: response.statusCode, body: data, key: apiKey))
         }
-        return Self.parse(data)
+        return Self.parse(data, key: apiKey)
     }
 
     /// The request that would be sent: exposed so tests can read it without a network.
@@ -103,7 +103,7 @@ public struct GeminiImageEditor: AIImageEditor, CustomStringConvertible, CustomD
         "RECITATION", "IMAGE_RECITATION",
     ]
 
-    static func parse(_ data: Data) -> ImageEditResult {
+    static func parse(_ data: Data, key: String) -> ImageEditResult {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return .failure(.noImageReturned(note: nil))
         }
@@ -126,13 +126,13 @@ public struct GeminiImageEditor: AIImageEditor, CustomStringConvertible, CustomD
         if let reason = candidate["finishReason"] as? String, blockedFinishReasons.contains(reason) {
             return .failure(.refused)
         }
-        let said = parts.compactMap { $0["text"] as? String }.joined(separator: " ")
+        let said = ImageEditText.scrub(parts.compactMap { $0["text"] as? String }.joined(separator: " "), key: key)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return .failure(.noImageReturned(note: said.isEmpty ? nil : String(said.prefix(300))))
     }
 
-    static func failure(status: Int, body: Data) -> ImageEditFailure {
-        let detail = AIClientHTTP.extractErrorMessage(from: body)
+    static func failure(status: Int, body: Data, key: String) -> ImageEditFailure {
+        let detail = ImageEditText.errorDetail(from: body, key: key)
         let lowered = detail.lowercased()
         switch status {
         case 413:

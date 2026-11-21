@@ -386,6 +386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
+        // Edited photos left in the scratch folder by "Add to Message" for over a day go too.
+        Task.detached(priority: .utility) { PhotoEditScratch.sweep() }
         updates.startAutomaticChecks()
         PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in
             windowOpener.show()

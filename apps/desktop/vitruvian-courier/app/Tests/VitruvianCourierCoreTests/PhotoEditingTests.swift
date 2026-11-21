@@ -180,6 +180,7 @@ final class PhotoEditingTests: XCTestCase {
     }
 
     func testModelIDsAreOneConstantEach() {
+        // The only place the IDs are written out in tests; every other test reads the constants.
         XCTAssertEqual(GeminiImageModel.default, "gemini-nano-banana-2.1")
         XCTAssertEqual(OpenAIImageModel.default, "gpt-image-2.6-sunburst")
     }
@@ -340,7 +341,7 @@ final class PhotoEditingTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent"
+            "https://generativelanguage.googleapis.com/v1beta/models/\(GeminiImageModel.default):generateContent"
         )
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-api-key"), "fixture-google-key")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
@@ -380,7 +381,7 @@ final class PhotoEditingTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-openai-key")
         XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") ?? false)
         let parts = try multipartParts(request)
-        XCTAssertEqual(parts.fields["model"], "gpt-image-2.6-sunburst")
+        XCTAssertEqual(parts.fields["model"], OpenAIImageModel.default)
         XCTAssertTrue(parts.fields["prompt"]?.hasSuffix("brighten it") ?? false)
         XCTAssertTrue(parts.fileHeaders.contains(#"name="image[]""#))
         XCTAssertTrue(parts.fileHeaders.contains("Content-Type: image/jpeg"))
@@ -612,6 +613,7 @@ final class PhotoEditingTests: XCTestCase {
         let resolution: Box<PhotoEditingResolution>
         let drafted: Box<[(URL, String)]>
         let settingsAsked: Box<[AIProviderKind?]>
+        let scratchRoot: URL
         let cleanup: () -> Void
     }
 
@@ -620,7 +622,9 @@ final class PhotoEditingTests: XCTestCase {
     private func makeRig(
         resolution: PhotoEditingResolution = .service(.googleAIStudio, source: .savedKey),
         result: ImageEditResult? = nil,
-        consented: [AIProviderKind] = []
+        consented: [AIProviderKind] = [],
+        fileName: String = "beach.jpg",
+        draftSucceeds: Bool = true
     ) throws -> Rig {
         let (suite, cleanup) = defaults()
         let consent = PhotoEditConsentStore(defaults: suite)
@@ -644,14 +648,14 @@ final class PhotoEditingTests: XCTestCase {
             consent: consent
         )
         let model = PhotoEditModel(
-            source: PhotoEditSource(path: photo.path, fileName: "beach.jpg", mimeType: "image/jpeg", roomID: "!room"),
+            source: PhotoEditSource(path: photo.path, fileName: fileName, mimeType: "image/jpeg", roomID: "!room"),
             backend: backend,
-            draftIntoMessage: { url, room in drafted.value.append((url, room)); return true },
+            draftIntoMessage: { url, room in drafted.value.append((url, room)); return draftSucceeds },
             openAISettings: { asked.value.append($0) },
             scratchDirectory: dir.appendingPathComponent("drafts")
         )
         return Rig(model: model, editor: editor, consent: consent, resolution: box, drafted: drafted,
-                   settingsAsked: asked, cleanup: cleanup)
+                   settingsAsked: asked, scratchRoot: dir.appendingPathComponent("drafts"), cleanup: cleanup)
     }
 
     private func waitForEdit(_ model: PhotoEditModel) async throws {
@@ -892,6 +896,192 @@ final class PhotoEditingTests: XCTestCase {
         XCTAssertEqual(h.conversation.photoEdit?.phase, .unavailable(.noService))
         h.conversation.closePhotoEdit()
         XCTAssertNil(h.conversation.photoEdit)
+    }
+
+
+    // MARK: - Keys never reach the screen
+
+    // Built in two pieces so the file holds no key-shaped literal for the secret scan to flag.
+    private let leakedGoogleKey = "AI" + "zaSyFixtureKeyNotReal0123456789abcdef"
+    private let leakedOpenAIKey = "sk-proj-FixtureKeyNotReal0123456789abcdef"
+
+    private func assertNoKey(_ failure: ImageEditFailure, keys: [String], file: StaticString = #filePath, line: UInt = #line) {
+        var texts: [String] = [String(describing: failure)]
+        for service in AIProviderKind.photoEditingServices { texts.append(failure.message(service: service)) }
+        for text in texts {
+            for key in keys {
+                XCTAssertFalse(text.contains(key), "key in: \(text)", file: file, line: line)
+                XCTAssertFalse(text.contains(String(key.dropFirst(6))), "half a key in: \(text)", file: file, line: line)
+            }
+            XCTAssertFalse(text.contains("AIza"), text, file: file, line: line)
+            XCTAssertFalse(text.contains("sk-proj"), text, file: file, line: line)
+        }
+    }
+
+    func testAServerErrorThatEchoesTheKeyIsScrubbedBeforeItIsShown() async {
+        let echo = #"{"error":{"code":400,"message":"Request failed for key \#(leakedGoogleKey): bad things","status":"INVALID_ARGUMENT"}}"#
+        let transport = StubHTTPTransport()
+        transport.enqueue(status: 400, json: echo)
+        let gemini = GeminiImageEditor(apiKey: leakedGoogleKey, transport: transport)
+        let result = await gemini.edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        guard case let .failure(failure) = result else { return XCTFail("expected a failure") }
+        guard case let .server(status, detail) = failure else { return XCTFail("expected the server's words, got \(failure)") }
+        XCTAssertEqual(status, 400)
+        XCTAssertTrue(detail.contains("bad things"), "the rest of the message is kept")
+        assertNoKey(failure, keys: [leakedGoogleKey])
+
+        // Plain text, long enough to be cut: the cut can't leave half a key.
+        let padding = String(repeating: "x", count: 280)
+        let plain = StubHTTPTransport()
+        plain.enqueue(status: 502, body: Data((padding + " " + leakedGoogleKey + " tail").utf8))
+        let cutResult = await GeminiImageEditor(apiKey: leakedGoogleKey, transport: plain)
+            .edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        guard case let .failure(cut) = cutResult else { return XCTFail("expected a failure") }
+        assertNoKey(cut, keys: [leakedGoogleKey])
+
+        let openAIEcho = StubHTTPTransport()
+        openAIEcho.enqueue(status: 400, json: #"{"error":{"message":"Bad request for \#(leakedOpenAIKey) and Bearer \#(leakedOpenAIKey)."}}"#)
+        let openAIResult = await OpenAIImageEditor(apiKey: leakedOpenAIKey, transport: openAIEcho)
+            .edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        guard case let .failure(openAIFailure) = openAIResult else { return XCTFail("expected a failure") }
+        XCTAssertEqual(openAIFailure.message(service: .openAI).contains("Bad request"), true)
+        assertNoKey(openAIFailure, keys: [leakedOpenAIKey])
+    }
+
+    func testTextTheModelSaysInsteadOfAPictureIsScrubbedToo() async {
+        let words = #"{"candidates":[{"content":{"parts":[{"text":"I can't use \#(leakedGoogleKey) or sk-AnotherFixtureNotReal99999 here."}]},"finishReason":"STOP"}]}"#
+        let transport = StubHTTPTransport()
+        transport.enqueue(status: 200, json: words)
+        let result = await GeminiImageEditor(apiKey: leakedGoogleKey, transport: transport)
+            .edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        guard case let .failure(failure) = result, case let .noImageReturned(note) = failure else { return XCTFail("expected words only") }
+        XCTAssertTrue(note?.contains("I can't use") ?? false)
+        assertNoKey(failure, keys: [leakedGoogleKey, "sk-AnotherFixtureNotReal99999"])
+    }
+
+    // MARK: - A sender's file name can't reach outside the scratch folder
+
+    func testFileNameFromASenderIsReducedToASafeName() {
+        func name(_ original: String) -> String { PhotoEditModel.safeFileName(from: original, fileExtension: "png") }
+        XCTAssertEqual(name("../../x.jpg"), "x edited.png")
+        XCTAssertEqual(name("/etc/passwd"), "passwd edited.png")
+        XCTAssertEqual(name("..\\..\\win.jpg"), "win edited.png")
+        XCTAssertEqual(name(".hidden.jpg"), "hidden edited.png")
+        XCTAssertEqual(name("a/b/c.jpg"), "c edited.png")
+        XCTAssertEqual(name("beach.jpg"), "beach edited.png")
+        XCTAssertEqual(name(".."), "Edited Photo.png")
+        XCTAssertEqual(name("../"), "Edited Photo.png")
+        XCTAssertEqual(name(""), "Edited Photo.png")
+        XCTAssertEqual(name("   "), "Edited Photo.png")
+        XCTAssertEqual(name("..jpg"), "jpg edited.png")
+        XCTAssertFalse(name("a:b\u{0}c.jpg").contains(":"))
+        XCTAssertLessThanOrEqual(name(String(repeating: "n", count: 400) + ".jpg").count, 140)
+    }
+
+    func testAddToMessageNeverWritesOutsideItsFolderWhateverTheSenderCalledThePhoto() async throws {
+        let rig = try makeRig(consented: [.googleAIStudio], fileName: "../../escape.jpg")
+        defer { rig.cleanup() }
+        rig.model.instruction = "brighten it"
+        rig.model.submit()
+        try await waitForEdit(rig.model)
+        XCTAssertTrue(rig.model.addToMessage())
+        let file = try XCTUnwrap(rig.drafted.value.first?.0).standardizedFileURL
+        XCTAssertTrue(file.path.hasPrefix(rig.model.sessionFolder.standardizedFileURL.path + "/"), file.path)
+        XCTAssertEqual(file.lastPathComponent, "escape edited.png")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rig.scratchRoot.deletingLastPathComponent().appendingPathComponent("escape edited.png").path))
+    }
+
+    // MARK: - Where the photo goes, in words
+
+    func testTheSheetNamesTheServiceTheEditActuallyGoesTo() throws {
+        // Automatic fell back to a saved Google key while the main service is something else.
+        let fallback = try makeRig(resolution: .service(.googleAIStudio, source: .savedKey))
+        defer { fallback.cleanup() }
+        XCTAssertEqual(fallback.model.destinationLine, "The photo goes to Google AI Studio.")
+        let openAI = try makeRig(resolution: .service(.openAI, source: .chosen))
+        defer { openAI.cleanup() }
+        XCTAssertEqual(openAI.model.destinationLine, "The photo goes to OpenAI.")
+        // Nobody can edit: nothing to name.
+        let none = try makeRig(resolution: .noService)
+        defer { none.cleanup() }
+        XCTAssertNil(none.model.destinationLine)
+        // A key added in Settings while the sheet is open changes who it names.
+        none.resolution.value = .service(.googleAIStudio, source: .savedKey)
+        none.model.recheck()
+        XCTAssertEqual(none.model.destinationLine, "The photo goes to Google AI Studio.")
+        none.resolution.value = .service(.openAI, source: .savedKey)
+        none.model.recheck()
+        XCTAssertEqual(none.model.destinationLine, "The photo goes to OpenAI.")
+    }
+
+    // MARK: - Scratch files
+
+    func testClosingWithoutAddingLeavesNothingBehindAndAFailedDraftIsCleanedUp() async throws {
+        let rig = try makeRig(consented: [.googleAIStudio], draftSucceeds: false)
+        defer { rig.cleanup() }
+        rig.model.instruction = "brighten it"
+        rig.model.submit()
+        try await waitForEdit(rig.model)
+        // The composer refused (it is locked, say): the file made for it is removed again.
+        XCTAssertFalse(rig.model.addToMessage())
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: rig.model.sessionFolder.path).count, 0)
+        rig.model.close()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rig.model.sessionFolder.path), "the session's folder is gone")
+    }
+
+    func testClosingAfterAddToMessageKeepsTheFileTheDraftHolds() async throws {
+        let rig = try makeRig(consented: [.googleAIStudio])
+        defer { rig.cleanup() }
+        rig.model.instruction = "brighten it"
+        rig.model.submit()
+        try await waitForEdit(rig.model)
+        XCTAssertTrue(rig.model.addToMessage())
+        let file = try XCTUnwrap(rig.drafted.value.first?.0)
+        rig.model.close()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "still attached to the draft")
+        // A second sheet's close doesn't touch the first one's files either.
+        let other = try makeRig(consented: [.googleAIStudio])
+        defer { other.cleanup() }
+        other.model.close()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    func testClosingWithoutAddingRemovesAFolderTheSessionMade() throws {
+        let rig = try makeRig(consented: [.googleAIStudio])
+        defer { rig.cleanup() }
+        try FileManager.default.createDirectory(at: rig.model.sessionFolder, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: rig.model.sessionFolder.appendingPathComponent("leftover.png"))
+        rig.model.close()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rig.model.sessionFolder.path))
+    }
+
+    func testSweepRemovesWhatIsOlderThanADayAndKeepsTheRest() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("photo-sweep-\(UUID().uuidString)")
+        scratch.append(root)
+        let now = Date()
+        func session(_ name: String, age: TimeInterval) throws -> URL {
+            let folder = root.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: folder.appendingPathComponent("p edited.png"))
+            try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-age)], ofItemAtPath: folder.path)
+            return folder
+        }
+        let old = try session("old", age: 2 * 24 * 3600)
+        let dayAndABit = try session("dayish", age: 24 * 3600 + 60)
+        let fresh = try session("fresh", age: 3600)
+        let stray = root.appendingPathComponent("stray.png")
+        try Data("x".utf8).write(to: stray)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-3 * 24 * 3600)], ofItemAtPath: stray.path)
+
+        XCTAssertEqual(PhotoEditScratch.sweep(directory: root, now: now), 3)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dayAndABit.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fresh.appendingPathComponent("p edited.png").path), "today's stays")
+        // Nothing there, or no such folder: nothing to do.
+        XCTAssertEqual(PhotoEditScratch.sweep(directory: root, now: now), 0)
+        XCTAssertEqual(PhotoEditScratch.sweep(directory: root.appendingPathComponent("missing"), now: now), 0)
+        XCTAssertEqual(PhotoEditScratch.defaultDirectory.lastPathComponent, PhotoEditScratch.folderName)
     }
 
     // MARK: - Where "Edit with AI…" shows

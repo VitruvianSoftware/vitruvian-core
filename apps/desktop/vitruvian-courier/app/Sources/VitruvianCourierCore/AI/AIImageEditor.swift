@@ -180,3 +180,35 @@ enum PhotoEditPrompt {
             + "Return the edited photo. Instruction: \(trimmed)"
     }
 }
+
+/// Text from an AI service that may be shown to the person: with the API key, and anything shaped like a key, taken out.
+/// Some services echo the key in an error ("API key AIza… is not valid"), and that text ends up on screen.
+enum ImageEditText {
+    static let removed = "[removed]"
+
+    private static let keyShapes: [String] = [
+        "AIza[0-9A-Za-z_\\-]{16,}",
+        "sk-[0-9A-Za-z_\\-]{12,}",
+        "(?i)bearer\\s+[0-9A-Za-z._~+/=\\-]{8,}",
+    ]
+
+    /// `text` without `key` (every occurrence, also with surrounding whitespace trimmed off the key) or key-shaped tokens.
+    static func scrub(_ text: String, key: String) -> String {
+        var out = text
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            out = out.replacingOccurrences(of: trimmed, with: removed)
+        }
+        for pattern in keyShapes {
+            out = out.replacingOccurrences(of: pattern, with: removed, options: .regularExpression)
+        }
+        return out
+    }
+
+    /// The plain message in a service's error body, scrubbed *before* it is cut to length, so a cut can't leave half a key.
+    static func errorDetail(from body: Data, key: String) -> String {
+        guard let raw = String(data: body, encoding: .utf8) else { return "" }
+        let cleaned = scrub(raw, key: key)
+        return scrub(AIClientHTTP.extractErrorMessage(from: Data(cleaned.utf8)), key: key)
+    }
+}

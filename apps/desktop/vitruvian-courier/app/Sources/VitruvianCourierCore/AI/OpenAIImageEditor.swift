@@ -66,7 +66,7 @@ public struct OpenAIImageEditor: AIImageEditor, CustomStringConvertible, CustomD
             return .failure(.network)
         }
         guard (200 ..< 300).contains(response.statusCode) else {
-            return .failure(Self.failure(status: response.statusCode, body: data))
+            return .failure(Self.failure(status: response.statusCode, body: data, key: apiKey))
         }
         return Self.parse(data)
     }
@@ -109,8 +109,8 @@ public struct OpenAIImageEditor: AIImageEditor, CustomStringConvertible, CustomD
         return .failure(.noImageReturned(note: nil))
     }
 
-    static func failure(status: Int, body: Data) -> ImageEditFailure {
-        let detail = AIClientHTTP.extractErrorMessage(from: body)
+    static func failure(status: Int, body: Data, key: String) -> ImageEditFailure {
+        let detail = ImageEditText.errorDetail(from: body, key: key)
         let lowered = detail.lowercased()
         var code = ""
         if let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],

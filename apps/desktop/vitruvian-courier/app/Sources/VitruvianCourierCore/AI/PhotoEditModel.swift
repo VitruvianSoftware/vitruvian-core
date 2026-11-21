@@ -26,6 +26,38 @@ public struct PhotoEditBackend {
     }
 }
 
+/// Where edited photos wait while they are attached to a draft. The composer holds an attachment by its file's address
+/// (it doesn't copy it), so a file stays until the draft is sent or dropped; anything left behind is swept at launch.
+public enum PhotoEditScratch {
+    public static let folderName = "VitruvianCourierEditedPhotos"
+    public static let maxAge: TimeInterval = 24 * 60 * 60
+
+    public static var defaultDirectory: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent(folderName, isDirectory: true)
+    }
+
+    /// Removes what is older than `maxAge` under `directory` (a session's folder at a time). Run at launch, when no
+    /// draft can still hold one of these files: drafts' attachments are not kept across launches. Returns how many
+    /// entries it removed.
+    @discardableResult
+    public static func sweep(
+        directory: URL = defaultDirectory, olderThan age: TimeInterval = maxAge, now: Date = Date(),
+        fileManager: FileManager = .default
+    ) -> Int {
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey], options: []
+        ) else { return 0 }
+        var removed = 0
+        for entry in entries {
+            let modified = (try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            // An entry with no readable date is as old as can be.
+            guard modified.map({ now.timeIntervalSince($0) > age }) ?? true else { continue }
+            if (try? fileManager.removeItem(at: entry)) != nil { removed += 1 }
+        }
+        return removed
+    }
+}
+
 /// The result of one edit: the picture, and who made it.
 public struct PhotoEditOutcome: Equatable, Sendable {
     public let image: EditedImage
@@ -60,6 +92,8 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
     @Published public private(set) var phase: Phase = .ready
     /// A line about what the last Save or Add to Message did.
     @Published public private(set) var notice: String?
+    /// The service the photo goes to, as things stand: Settings' choice, or the fallback Automatic picked. Nil when none can edit.
+    @Published public private(set) var service: AIProviderKind?
 
     private let backend: PhotoEditBackend
     private let readPhoto: @Sendable (String) throws -> Data
@@ -68,6 +102,11 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
     private let openAISettings: @MainActor (AIProviderKind?) -> Void
     private var task: Task<Void, Never>?
     private var generation = 0
+    /// This sheet's own folder under `scratchDirectory`, made when a result is first added to a message.
+    private let sessionID = UUID().uuidString
+    private var addedToMessage = false
+
+    var sessionFolder: URL { scratchDirectory.appendingPathComponent(sessionID, isDirectory: true) }
 
     public init(
         source: PhotoEditSource,
@@ -75,7 +114,7 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
         draftIntoMessage: @escaping @MainActor (URL, String) -> Bool,
         openAISettings: @escaping @MainActor (AIProviderKind?) -> Void = { _ in },
         readPhoto: @escaping @Sendable (String) throws -> Data = { try Data(contentsOf: URL(fileURLWithPath: $0)) },
-        scratchDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("VitruvianCourierEditedPhotos")
+        scratchDirectory: URL = PhotoEditScratch.defaultDirectory
     ) {
         self.source = source
         self.backend = backend
@@ -92,13 +131,14 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
 
     /// Reads who edits photos again: a key added in Settings turns "can't edit" into "ready".
     public func recheck() {
+        let resolution = backend.resolve()
+        service = resolution.service
         switch phase {
         case .working, .confirming, .done:
             return
         case .ready, .failed, .unavailable:
             break
         }
-        let resolution = backend.resolve()
         if resolution.service == nil {
             phase = .unavailable(resolution)
         } else if case .unavailable = phase {
@@ -119,6 +159,7 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
     public func submit() {
         guard canSubmit else { return }
         let resolution = backend.resolve()
+        self.service = resolution.service
         guard let service = resolution.service else {
             phase = .unavailable(resolution)
             return
@@ -141,6 +182,22 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
     public func declineConsent() {
         guard case .confirming = phase else { return }
         phase = .ready
+    }
+
+    /// "The photo goes to Google AI Studio.": names the service that will get it, which with Automatic may be a fallback.
+    public var destinationLine: String? {
+        service.map { String(localized: "The photo goes to \($0.label).") }
+    }
+
+    /// The sheet is closing: stops any edit, and clears this sheet's files unless a result was added to a message (the
+    /// draft holds that file by its address, so it stays until launch's sweep).
+    public func close() {
+        cancel()
+        if !addedToMessage { removeSessionFolder() }
+    }
+
+    private func removeSessionFolder() {
+        try? FileManager.default.removeItem(at: sessionFolder)
     }
 
     /// Stops an edit in progress, or leaves the sheet: no result is kept.
@@ -197,12 +254,22 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
         return nil
     }
 
-    /// The name a saved or drafted copy gets: the original's name with "edited" before the extension.
+    /// The name a saved or drafted copy gets: the original's name with "edited" before the extension. The original's name
+    /// comes from whoever sent the photo, so only its last path component is used, with leading dots and separators
+    /// dropped ("../../x.jpg" is "x edited.png"); with nothing left it is "Edited Photo.png".
     public var suggestedFileName: String {
-        let ext = outcome?.image.fileExtension ?? "png"
-        let base = (source.fileName as NSString).deletingPathExtension
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (base.isEmpty ? "Photo" : base) + " edited." + ext
+        Self.safeFileName(from: source.fileName, fileExtension: outcome?.image.fileExtension ?? "png")
+    }
+
+    static func safeFileName(from original: String, fileExtension ext: String) -> String {
+        let slashed = original.replacingOccurrences(of: "\\", with: "/")
+        var last = (slashed as NSString).lastPathComponent
+        let drop = CharacterSet(charactersIn: "./:").union(.whitespacesAndNewlines).union(.controlCharacters)
+        last = String(last.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) && $0 != ":" && $0 != "/" })
+        while let first = last.unicodeScalars.first, drop.contains(first) { last.unicodeScalars.removeFirst() }
+        let base = (last as NSString).deletingPathExtension.trimmingCharacters(in: drop)
+        guard !base.isEmpty else { return "Edited Photo." + ext }
+        return String(base.prefix(120)) + " edited." + ext
     }
 
     /// Save to Mac…: writes the result to `url` (picked in a save panel).
@@ -223,19 +290,27 @@ public final class PhotoEditModel: ObservableObject, Identifiable {
     @discardableResult
     public func addToMessage() -> Bool {
         guard let outcome else { return false }
-        let folder = scratchDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        // A folder of its own for each add, so adding twice never changes a file a draft already holds.
+        let folder = sessionFolder.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let file = folder.appendingPathComponent(suggestedFileName)
+        guard file.standardizedFileURL.path.hasPrefix(sessionFolder.standardizedFileURL.path + "/") else {
+            notice = String(localized: "Couldn’t prepare the photo.")
+            return false
+        }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try outcome.image.data.write(to: file, options: .atomic)
         } catch {
+            try? FileManager.default.removeItem(at: folder)
             notice = String(localized: "Couldn’t prepare the photo.")
             return false
         }
         guard draftIntoMessage(file, source.roomID) else {
+            try? FileManager.default.removeItem(at: folder)
             notice = String(localized: "Couldn’t add the photo to the message box.")
             return false
         }
+        addedToMessage = true
         notice = String(localized: "Added to your message. Nothing is sent until you press Send.")
         return true
     }

@@ -155,10 +155,10 @@ field for what to change, then the original and the result side by side. From th
 or **Add to Message**, which puts the edited photo in that chat's message box as a draft. **Nothing is ever sent by the
 sheet**; posting is the person's own Send. The item is hidden while AI is off.
 
-- **Who can edit.** Google AI Studio (`gemini-nano-banana-2.1`, "Nano Banana 2.1", through `generateContent`, an
-  inline image plus the instruction in, an inline image out) and OpenAI (`gpt-image-2.6-sunburst`, `POST
-  /v1/images/edits`, multipart, base64 out). Both IDs are one constant each (`GeminiImageModel.default`,
-  `OpenAIImageModel.default`), checked against the vendors' docs on 2026-11-21. Anthropic, Apple Intelligence, Ollama,
+- **Who can edit.** Google AI Studio (the "Nano Banana" image model, through `generateContent`, an inline image plus
+  the instruction in, an inline image out) and OpenAI (`POST /v1/images/edits`, multipart, base64 out). The model IDs
+  are one constant each, `GeminiImageModel.default` and `OpenAIImageModel.default`, with why each was chosen beside
+  it; they were checked against the vendors' docs on 2026-11-21. Change them there, nowhere else. Anthropic, Apple Intelligence, Ollama,
   LM Studio, Unsloth and custom servers can't. Apple's on-device Image Playground makes new stylised pictures, not edits
   of a photo, so it is treated as unsupported.
 - **Settings ▸ AI ▸ Photo editing**: Automatic / Google AI Studio / OpenAI, with a key field for Google AI Studio (and
@@ -171,6 +171,10 @@ sheet**; posting is the person's own Send. The item is hidden while AI is off.
 - **Before it leaves the Mac** (`PhotoEditPreparer`): the long edge is cut to 2048 px, the photo is turned upright and
   re-drawn from its pixels alone (no GPS, EXIF, XMP or IPTC), as a JPEG, or a PNG if it has see-through parts. Over
   14 MB after that is "too big".
+- **What is shown and kept.** An error's words from a service are scrubbed of the API key (and key-shaped text) before
+  they reach the sheet. A copy added to a message lives in a per-sheet scratch folder (`PhotoEditScratch`) that is
+  removed if the sheet closes without it, and anything over a day old is swept at launch. The name comes from the
+  sender's file name reduced to its last path component.
 - **Privacy question**: the first photo to each service asks once ("This sends the photo to Google AI Studio. It may be
   someone else's photo."); the yes is remembered per service (`PhotoEditConsentStore`).
 
