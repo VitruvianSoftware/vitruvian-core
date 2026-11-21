@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -83,6 +84,13 @@ func (c *Client) populateLinkPreviewImage(ctx context.Context, roomID id.RoomID,
 	}
 	data, err := c.downloadLinkPreviewImage(ctx, imageURL)
 	if err != nil || len(data) == 0 || len(data) > maxLinkPreviewImageBytes {
+		// The host only (never the address, which can carry a token), so a picture host the download refuses shows up.
+		host := ""
+		if u, perr := url.Parse(imageURL); perr == nil {
+			host = u.Hostname()
+		}
+		zerolog.Ctx(ctx).Info().Err(err).Str("host", host).Int("bytes", len(data)).
+			Msg("Google Chat: link card picture not carried")
 		return
 	}
 	meta, err := media.InspectImage(bytes.NewReader(data))
