@@ -243,6 +243,48 @@ extension ChatInfoPresentation {
     public static var disappearingExplanation: String {
         String(localized: "New messages disappear after the set time")
     }
+
+    /// The network that has a chat history setting in place of a disappearing timer: Google Chat's history on or off.
+    public static let historySettingNetwork = "gchat"
+
+    /// The row Chat Info's Privacy section shows for a chat's disappearing messages, or nil when the chat has nothing
+    /// to say about them.
+    ///
+    /// Google Chat has no timer, only history: on keeps messages, off deletes them after 24 hours (Beeper calls it
+    /// Disappearing messages). This client can read it but has no call to change it, so the row is read only and says
+    /// where to change it; it appears only when Google has told us the setting, so it never claims one it doesn't know.
+    /// Every other network keeps its timer row, which has a picker when the chat's features offer timers.
+    public static func disappearingRow(for info: RoomInfoResult) -> DisappearingRow? {
+        if info.network == historySettingNetwork, let off = info.historyOff {
+            return DisappearingRow(
+                title: String(localized: "Chat history"),
+                value: off ? String(localized: "Off") : String(localized: "On"),
+                explanation: off
+                    ? String(localized: "History is off: messages disappear after 24 hours. Change this in Google Chat.")
+                    : String(localized: "History is on: messages are kept. Change this in Google Chat."),
+                isHistorySetting: true
+            )
+        }
+        guard info.features.disappearing != nil || info.disappearingMS > 0 || info.features.currentTimer != nil else {
+            return nil
+        }
+        let ms = info.disappearingMS > 0 ? info.disappearingMS : (info.features.currentTimer?.timerMS ?? 0)
+        return DisappearingRow(
+            title: String(localized: "Disappearing Messages"),
+            value: ms > 0 ? MessageActions.duration(ms) : String(localized: "Off"),
+            explanation: disappearingExplanation,
+            isHistorySetting: false
+        )
+    }
+}
+
+/// The Privacy section's disappearing-messages row: its title, what it is set to, and the line under it.
+public struct DisappearingRow: Equatable, Sendable {
+    public let title: String
+    public let value: String
+    public let explanation: String
+    /// Google Chat's history setting, which this app reads but cannot change (no picker).
+    public let isHistorySetting: Bool
 }
 
 extension ChatReadAloud {
@@ -254,4 +296,47 @@ extension ChatReadAloud {
         default: String(localized: "Follows Vitruvian Speaker’s settings. Muted chats are never read aloud.")
         }
     }
+}
+
+// MARK: - Link tiles
+
+/// What a link tile in Chat Info's Shared section shows: the preview's picture when it has one, the page's title,
+/// who shared it, and the site. With no preview at all (no picture and no title) it falls back to a globe and the
+/// site, as before.
+public struct ChatInfoLinkCard: Equatable, Sendable {
+    /// The page's title from the link preview; nil when there is none (or it is only the site's name).
+    public let title: String?
+    /// The site, shown on one line (cut in the middle when it is too long, never broken across lines).
+    public let domain: String
+    /// The preview's picture, when it has one on this Mac.
+    public let imagePath: String?
+    /// The small avatar of whoever shared it; nil when the sender is not known.
+    public let sender: ChatInfoPresentation.MediaSender?
+    /// The symbol drawn when there is no picture: a pin for a map link, else a globe.
+    public let symbolName: String
+    public let isMap: Bool
+
+    public init(link: RoomLink, members: [Member] = [], ownAvatarPath: String = "") {
+        title = link.displayTitle
+        domain = link.displayDomain
+        imagePath = link.hasImage ? link.imagePath : nil
+        sender = ChatInfoPresentation.linkSender(for: link, members: members, ownAvatarPath: ownAvatarPath)
+        symbolName = link.cardSymbolName
+        isMap = link.isMapsLink
+    }
+
+    /// The tile has nothing of its own to show: a globe and the site.
+    public var isFallback: Bool { imagePath == nil && title == nil }
+
+    /// The words above the site: the page's title, or (a map with no title) "Map". nil for a plain link with no title,
+    /// whose site is already on the tile.
+    public var headline: String? {
+        if let title { return title }
+        return isMap ? String(localized: "Map") : nil
+    }
+
+    /// The most lines the title takes.
+    public static let titleLineLimit = 2
+    /// The site always takes one.
+    public static let domainLineLimit = 1
 }

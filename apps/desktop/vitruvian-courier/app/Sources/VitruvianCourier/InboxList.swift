@@ -20,6 +20,8 @@ struct InboxList: View {
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @ObservedObject var ui: InboxUI
+    /// The conversation pane's model: its sheets are what Edit Chat… and Report as Spam… in a chat's menu open.
+    var conversation: ConversationModel? = nil
     /// Opens ⌘K's search. When the window doesn't pass it, the header's button chooses the Search… item of the
     /// menu bar, which is the same thing ⌘K does.
     var openSearch: (@MainActor () -> Void)? = nil
@@ -70,7 +72,8 @@ struct InboxList: View {
                 Divider()
             }
             if !preferences.regularPinnedRows, !pinned.isEmpty {
-                PinnedStrip(inbox: inbox, spaces: spaces, ui: ui, rows: pinned, doubleClick: doubleClick)
+                PinnedStrip(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation, rows: pinned,
+                            doubleClick: doubleClick)
                 Divider()
             }
             chats
@@ -173,6 +176,8 @@ struct InboxList: View {
                             onHoverChange: { inside in
                                 if inside {
                                     hoverTracker.roomID = row.id
+                                    // The menu offers Delete Chat… only where the network can: ask now, so it knows.
+                                    inbox.prefetchFeatures(for: row)
                                 } else if hoverTracker.roomID == row.id {
                                     hoverTracker.roomID = nil
                                 }
@@ -181,8 +186,10 @@ struct InboxList: View {
                             accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
                             decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
                                 ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.id),
-                                                showsKeys: false)
+                                                showsKeys: false, conversation: conversation)
                             }
+                            // A native menu, so the system's own "Ask Siri" item is left out.
+                            .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row.id) }
                             .tag(row.id)
                             // Within the last 20 chats loaded: read the next page.
                             .onAppear { inbox.rowAppeared(at: index + offset) }
@@ -190,14 +197,10 @@ struct InboxList: View {
                 }
                 .listStyle(.inset)
                 .courierSidebarList()
-                .contextMenu(forSelectionType: String.self) { ids in
-                    if let id = ids.first, id != InboxModel.newChatRowID {
-                        ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(id))
-                    }
-                } primaryAction: { ids in
+                .contextMenu(forSelectionType: String.self, menu: { _ in EmptyView() }, primaryAction: { ids in
                     if let id = ids.first, id != InboxModel.newChatRowID,
                        let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
-                }
+                })
                 .onKeyPress(phases: .down, action: key)
                 .onExitCommand { _ = inbox.escape() }
             }

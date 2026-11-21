@@ -4630,6 +4630,84 @@ func TestSyncWorldQueuesChatResyncAndGetChatInfoIncludesSpaceMembers(t *testing.
 	require.NotContains(t, chatInfo.Members.MemberMap, MakeUserID("112233445566778899999"), "GetChatInfo must exclude non-joined invited member")
 }
 
+// D3: get_group tells a chat's history setting (Google's retention state), and the portal keeps it for Chat Info:
+// "ephemeral one day" is history off, "permanent" is history on, and a reply with no state says nothing (nil).
+func TestGetChatInfoRecordsTheChatsHistorySetting(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	var state atomic.Int32 // a pb.RetentionSettings_RetentionState; -1 sends no retention settings
+	state.Store(-1)
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/get_group":
+			group := &pb.Group{GroupId: pb.SpaceGroupID("space_threaded"), Name: pb.String("Threaded Eng")}
+			if got := state.Load(); got >= 0 {
+				group.RetentionSettings = &pb.RetentionSettings{State: pb.RetentionSettings_RetentionState(got).Enum()}
+			}
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{Group: group}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	require.NoError(t, client.syncWorld(ctx))
+	portal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, portal)
+	meta, ok := portal.Metadata.(*PortalMetadata)
+	require.True(t, ok)
+	// syncWorld may already have read the group once: start each case from not-read.
+	meta.HistoryOff = nil
+
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	_, known := meta.ChatHistoryOff()
+	require.False(t, known, "a get_group with no retention settings says nothing about history")
+
+	state.Store(int32(pb.RetentionSettings_EPHEMERAL_ONE_DAY))
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	off, known := meta.ChatHistoryOff()
+	require.True(t, known)
+	require.True(t, off, "ephemeral one day is history off")
+
+	state.Store(int32(pb.RetentionSettings_PERMANENT))
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	off, known = meta.ChatHistoryOff()
+	require.True(t, known)
+	require.False(t, off, "permanent is history on")
+
+	// Not read again with nothing new to say: the last answer stays.
+	state.Store(-1)
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	off, known = meta.ChatHistoryOff()
+	require.True(t, known)
+	require.False(t, off)
+}
+
+func TestHistoryOffOfRetentionState(t *testing.T) {
+	off, known := historyOffOf(pb.RetentionSettings_EPHEMERAL_ONE_DAY)
+	require.True(t, off)
+	require.True(t, known)
+	off, known = historyOffOf(pb.RetentionSettings_PERMANENT)
+	require.False(t, off)
+	require.True(t, known)
+	_, known = historyOffOf(pb.RetentionSettings_UNKNOWN_RETENTION_STATE)
+	require.False(t, known)
+	var nilMeta *PortalMetadata
+	_, known = nilMeta.ChatHistoryOff()
+	require.False(t, known)
+}
+
 func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
 	enableTestLoopback(t)
 	ctx := context.Background()
@@ -5112,6 +5190,7 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 	var slowGetMembers atomic.Bool
 	var inFlightGetMembers atomic.Int64
 	var maxConcurrentGetMembers atomic.Int64
+	var answeredGetMembers atomic.Int64
 	var pingDone atomic.Bool
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5152,6 +5231,7 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 				"member@example.com",
 				"",
 			))
+			answeredGetMembers.Add(1)
 		case "/u/0/webchannel/register":
 			w.Header().Add("Set-Cookie", "COMPASS=dynamite-ui=csess_n2; Path=/; Domain=chat.google.com")
 			w.WriteHeader(http.StatusOK)
@@ -5220,19 +5300,21 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 		},
 	})
 
-	start := time.Now()
 	client.mu.Lock()
 	ch := client.streamCh
 	client.mu.Unlock()
 	require.NotNil(t, ch)
 	ch <- streamNotification{kind: EventKindEventProto, payload: liveEvtBytes}
 
+	// The event must not wait behind the slow member lookups. That is a condition, not a clock: when the event has
+	// been delivered, the lookups (300 of them, 40 ms each, 4 at a time) must still be going. A blocked event would
+	// only arrive after they all finished, however fast or slow the machine is.
 	require.Eventually(t, func() bool {
 		msg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_n2", "msg_after_300_sync"))
 		return err == nil && msg != nil
-	}, 900*time.Millisecond, 15*time.Millisecond, "world sync with 300 members and slow get_members must not delay subsequent stream event beyond ~1s")
-	elapsed := time.Since(start)
-	require.Less(t, elapsed, time.Second, "subsequent stream event must be delivered in under 1s")
+	}, 30*time.Second, 15*time.Millisecond, "the subsequent stream event must be delivered")
+	require.Less(t, answeredGetMembers.Load(), int64(memberCount),
+		"the subsequent stream event must be delivered while the world sync's member lookups are still running")
 	require.LessOrEqual(t, maxConcurrentGetMembers.Load(), int64(4), "background ghost prewarm worker concurrency must be capped at 4")
 
 	// Verify I6 behaviour remains intact: synced 300-member space ChatResync includes all 300 members.

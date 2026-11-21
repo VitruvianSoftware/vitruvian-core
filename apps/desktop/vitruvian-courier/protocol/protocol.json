@@ -1994,6 +1994,10 @@
         "title": {
           "type": "string?",
           "doc": "The page's title from the message's link preview; left out when the message had no preview or it had no title."
+        },
+        "image_path": {
+          "type": "string?",
+          "doc": "The file of the link preview's picture, when the message's preview has one and it is on this Mac; left out otherwise."
         }
       }
     },
@@ -2040,6 +2044,10 @@
         "disappearing_ms": {
           "type": "int",
           "doc": "Current disappearing message timer in ms, or 0 when off."
+        },
+        "history_off": {
+          "type": "bool?",
+          "doc": "The network's own chat history setting where it has one (Google Chat): true is history off (messages disappear after a day on the network), false is on. Left out when the network has none or has not said what it is for this chat. Read only."
         },
         "pinned_event_ids": {
           "type": "string[]",

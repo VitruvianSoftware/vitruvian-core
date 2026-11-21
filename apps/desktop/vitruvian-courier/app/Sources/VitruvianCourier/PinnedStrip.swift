@@ -11,6 +11,7 @@ struct PinnedStrip: View {
     @ObservedObject var inbox: InboxModel
     @ObservedObject var spaces: SpacesModel
     let ui: InboxUI
+    var conversation: ConversationModel? = nil
     let rows: [InboxRow]
     let doubleClick: (InboxRow) -> Void
 
@@ -37,9 +38,9 @@ struct PinnedStrip: View {
                     }
                     // VoiceOver (and any accessibility client) presses the tile as it would a button.
                     .accessibilityAction { click(row) }
-                    .contextMenu {
-                        ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row))
-                    }
+                    // A native menu, so the system's own "Ask Siri" item is left out.
+                    .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row) }
+                    .onHover { inside in if inside { inbox.prefetchFeatures(for: row) } }
             }
         }
         .padding(.horizontal, 10)
@@ -76,7 +77,7 @@ struct PinnedChat: View {
 
     /// The chat's name, or with "Redact names and pictures" on, its stand-in, as the chat list shows it.
     private var displayName: String {
-        let formatted = displayTitleOverride ?? row.displayTitle
+        let formatted = PhoneNumberFormat.display(displayTitleOverride ?? row.displayTitle)
         let raw = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
         return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }
