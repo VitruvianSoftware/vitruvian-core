@@ -36,7 +36,7 @@ exports_files(
 
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
-    "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+    "//packages/mcp-auth:vitruvian_mcp_auth",
     "@vitruvian_relay_crates//:base64",
     "@vitruvian_relay_crates//:bytes",
     "@vitruvian_relay_crates//:futures-util",
@@ -78,7 +78,7 @@ rust_binary(
     edition = "2021",
     deps = [
         ":vitruvian_relay",
-        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+        "//packages/mcp-auth:vitruvian_mcp_auth",
         "@vitruvian_relay_crates//:serde_json",
         "@vitruvian_relay_crates//:tokio",
     ],
@@ -104,7 +104,7 @@ rust_test(
         ":vitruvian_relay",
         "//apps/suites/vitruvian-relay/connector:vitruvian_relay_connector",
         "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
-        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+        "//packages/mcp-auth:vitruvian_mcp_auth",
         "@vitruvian_relay_crates//:base64",
         "@vitruvian_relay_crates//:bytes",
         "@vitruvian_relay_crates//:http",

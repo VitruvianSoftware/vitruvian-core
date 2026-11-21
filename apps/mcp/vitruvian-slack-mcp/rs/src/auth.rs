@@ -21,7 +21,7 @@
 //! Bearer-token checks for the HTTP transport.
 //!
 //! The checking itself lives in the shared `vitruvian-mcp-auth` crate
-//! (packages/rust/vitruvian-mcp-auth in the monorepo, `mcp-auth/` in the
+//! (packages/mcp-auth in the monorepo, `mcp-auth/` in the
 //! standalone repo), which the Vitruvian Relay uses too: one verifier, so a
 //! fix to token checking reaches every server at once. It checks an RS256
 //! access token from the Zitadel issuer the way the TypeScript server did

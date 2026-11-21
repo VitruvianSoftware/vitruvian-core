@@ -74,8 +74,8 @@ jobs:
               --values-file gitops/argocd/platform/mcp-slack/values.yaml \
               --path apps/mcp/vitruvian-slack-mcp/rs \
               --path apps/mcp/vitruvian-slack-mcp/Dockerfile \
-              --path packages/rust/vitruvian-mcp-auth/Cargo.toml \
-              --path packages/rust/vitruvian-mcp-auth/src \
+              --path packages/mcp-auth/Cargo.toml \
+              --path packages/mcp-auth/src \
               --shared-path .github/workflows/vitruvian-slack-mcp-image.yaml \
               2>"$err_file")" || rc=$?
             if [ "$rc" -eq 0 ] && [ -n "$out" ]; then
