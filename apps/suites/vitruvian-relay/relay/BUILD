@@ -68,6 +68,7 @@ rust_library(
         "src/lib.rs",
         "src/mcp.rs",
         "src/parked.rs",
+        "src/ratelimit.rs",
         "src/registry.rs",
         "src/store.rs",
         "src/store_contract.rs",

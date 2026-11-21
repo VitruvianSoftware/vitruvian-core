@@ -28,7 +28,7 @@ use vitruvian_mcp_auth::{verifier, VerifierConfig};
 use vitruvian_relay::config::{wants_version, Settings};
 use vitruvian_relay::http::{serve, App, Timing};
 use vitruvian_relay::legacy_devices::{import_legacy_devices, Imported};
-use vitruvian_relay::store::PgStore;
+use vitruvian_relay::store::{purge_activity_forever, PgStore, Store, ACTIVITY_PURGE_EVERY};
 use vitruvian_relay::{log_event, stdout_log, stop_signal};
 
 /// A problem with the system's certificates, as a log line like any other.
@@ -110,11 +110,18 @@ async fn main() {
         }
         Err(e) => fail(e),
     }
+    let store: Arc<dyn Store> = Arc::new(store);
+    // Calls are kept for 30 days: this clears the older ones once an hour.
+    tokio::spawn(purge_activity_forever(
+        store.clone(),
+        log.clone(),
+        ACTIVITY_PURGE_EVERY,
+    ));
     let app = App::new(
         settings,
         mcp,
         connector,
-        Arc::new(store),
+        store,
         Timing::default(),
         log.clone(),
     );

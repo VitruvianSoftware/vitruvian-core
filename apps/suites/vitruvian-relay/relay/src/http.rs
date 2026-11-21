@@ -74,6 +74,7 @@ use crate::devices::{
 };
 use crate::mcp::{era, needs_session, Answer, Era, Mcp};
 use crate::parked::Delivery;
+use crate::ratelimit::{RateLimit, CALLS_PER_MINUTE_PER_USER, RATE_BURST};
 use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
 use crate::store::{Store, StoreError, UNAVAILABLE_MESSAGE};
 use crate::{hex, log_event, random_id, uuid_v4, LogSink};
@@ -242,6 +243,13 @@ pub struct Timing {
     /// be longer than a `/connect` takes from reading the key to registering
     /// (seconds); the rest is only memory.
     pub key_change_memory: Duration,
+    /// How often a connected device's "last seen" is brought up to date
+    /// (it is also set when the device connects and when it disconnects).
+    pub seen_every: Duration,
+    /// Calls one person may make in a minute, once their burst is used up.
+    pub calls_per_minute: u32,
+    /// Calls one person may make at once after being quiet.
+    pub rate_burst: u32,
     /// Seconds since the epoch.
     pub clock: fn() -> u64,
 }
@@ -275,6 +283,9 @@ impl Default for Timing {
             body_timeout: Duration::from_secs(30),
             max_connection_lifetime: Duration::from_secs(12 * 60 * 60),
             key_change_memory: Duration::from_secs(5 * 60),
+            seen_every: Duration::from_secs(5 * 60),
+            calls_per_minute: CALLS_PER_MINUTE_PER_USER,
+            rate_burst: RATE_BURST,
             clock: unix_now,
         }
     }
@@ -352,7 +363,14 @@ impl App {
     ) -> Arc<App> {
         let registry = Registry::with_timeouts(timing.ack_timeout, timing.reconnect_grace);
         Arc::new(App {
-            mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()).with_parking(
+            mcp: Mcp::new(
+                registry.clone(),
+                timing.call_budget,
+                log.clone(),
+                store.clone(),
+            )
+            .with_rate_limit(RateLimit::new(timing.calls_per_minute, timing.rate_burst))
+            .with_parking(
                 timing.approval_reply,
                 timing.rejoin_window,
                 timing.parked_result,
@@ -376,6 +394,22 @@ impl App {
 
     fn log(&self, event: &str, fields: Value) {
         log_event(&self.log, event, fields);
+    }
+
+    /// Records that `device_id` is connected, or has just been: its "last
+    /// seen", which the offline message and the device list show. Done in the
+    /// background, so a slow database never holds up the link (whose pings
+    /// share the loop); a failure is logged and the next one tries again.
+    fn note_seen(self: &Arc<Self>, device_id: &str) {
+        let (app, id, at) = (self.clone(), device_id.to_string(), SystemTime::now());
+        tokio::spawn(async move {
+            if let Err(e) = app.store.touch_seen(&id, at).await {
+                app.log(
+                    "touch_seen_failed",
+                    json!({"device_id": id, "error": e.to_string()}),
+                );
+            }
+        });
     }
 
     /// The key generation now: take it before reading a device's key.
@@ -1475,6 +1509,7 @@ async fn run_connection<S>(
         return;
     }
     let started = Instant::now();
+    app.note_seen(&device_id);
     app.log(
         "connect",
         json!({"device_id": device_id, "connector_version": hello.connector_version.chars().take(32).collect::<String>()}),
@@ -1497,6 +1532,13 @@ async fn run_connection<S>(
     let expires = tokio::time::sleep(limit);
     tokio::pin!(expires);
     let mut ended: Option<Ending> = None;
+    // "Last seen" is brought up to date while the device stays connected, so
+    // a computer that drops without a goodbye is still seen as of a few
+    // minutes ago, not as of when it connected.
+    let seen_every = t.seen_every.max(Duration::from_millis(1));
+    let mut seen_ticker =
+        tokio::time::interval_at(tokio::time::Instant::now() + seen_every, seen_every);
+    seen_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let reason: String = loop {
         tokio::select! {
@@ -1516,6 +1558,7 @@ async fn run_connection<S>(
                     }
                 }
             }
+            _ = seen_ticker.tick() => app.note_seen(&device_id),
             _ = closer.closed() => break "closed: a cancel could not be queued".into(),
             _ = &mut expires => {
                 ended = Some(ending);
@@ -1624,6 +1667,7 @@ async fn run_connection<S>(
         }
     };
     app.registry.disconnect(&device_id, conn);
+    app.note_seen(&device_id);
     if let Some(ending) = ended {
         // A reason the connector can log; it then reconnects (with a
         // refreshed token if that was the reason).

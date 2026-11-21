@@ -62,6 +62,41 @@ pub const STORE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Connections kept open to Postgres.
 pub const POOL_SIZE: usize = 8;
 
+/// How long a call stays in the activity log.
+pub const ACTIVITY_RETENTION_DAYS: u64 = 30;
+
+/// How often the relay clears out calls older than [`ACTIVITY_RETENTION_DAYS`].
+pub const ACTIVITY_PURGE_EVERY: Duration = Duration::from_secs(60 * 60);
+
+/// Deletes the calls recorded more than [`ACTIVITY_RETENTION_DAYS`] before
+/// `now`; how many.
+pub async fn purge_expired_activity(store: &dyn Store, now: SystemTime) -> Result<u64, StoreError> {
+    let keep = Duration::from_secs(ACTIVITY_RETENTION_DAYS * 24 * 60 * 60);
+    store
+        .purge_activity_before(now.checked_sub(keep).unwrap_or(SystemTime::UNIX_EPOCH))
+        .await
+}
+
+/// Clears out old calls once an hour, for as long as the relay runs (the
+/// first time at once, so a relay that restarts often still tidies up). A
+/// failure is logged and tried again an hour later; it never stops the relay.
+pub async fn purge_activity_forever(store: Arc<dyn Store>, log: LogSink, every: Duration) {
+    let mut tick = tokio::time::interval(every);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tick.tick().await;
+        match purge_expired_activity(store.as_ref(), SystemTime::now()).await {
+            Ok(0) => {}
+            Ok(rows) => log_event(&log, "activity_purged", json!({"rows": rows})),
+            Err(e) => log_event(
+                &log,
+                "activity_purge_failed",
+                json!({"error": e.to_string()}),
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreError {
     /// The person already has [`MAX_DEVICES_PER_USER`] devices.
@@ -167,6 +202,8 @@ struct MemInner {
 pub struct MemStore {
     inner: Mutex<MemInner>,
     fail: Mutex<Option<StoreError>>,
+    /// Only writing to the activity log fails (the rest of the store works).
+    fail_activity: Mutex<Option<StoreError>>,
 }
 
 impl Default for MemStore {
@@ -184,12 +221,20 @@ impl MemStore {
                 activity: Vec::new(),
             }),
             fail: Mutex::new(None),
+            fail_activity: Mutex::new(None),
         }
     }
 
     /// Every call answers `error` until this is called with `None`.
     pub fn fail_with(&self, error: Option<StoreError>) {
         *self.fail.lock().unwrap() = error;
+    }
+
+    /// Recording a call answers `error` until this is called with `None`;
+    /// everything else keeps working. For showing that a call is never
+    /// failed by its own log line.
+    pub fn fail_activity_writes_with(&self, error: Option<StoreError>) {
+        *self.fail_activity.lock().unwrap() = error;
     }
 
     fn check(&self) -> Result<(), StoreError> {
@@ -336,6 +381,9 @@ impl Store for MemStore {
 
     async fn record_activity(&self, row: &ActivityRow) -> Result<(), StoreError> {
         self.check()?;
+        if let Some(e) = *self.fail_activity.lock().unwrap() {
+            return Err(e);
+        }
         self.inner.lock().unwrap().activity.push(row.clone());
         Ok(())
     }
@@ -1039,5 +1087,83 @@ A0kAMEYCIQDpSb4ugaMT4kxFHQSo+rV+86/e59EaDxJ4ETI3SOtBUgIhAMylImP3
         assert_eq!(s.devices_of("x").await, Err(StoreError::Unavailable));
         s.fail_with(None);
         assert_eq!(s.device("x").await, Ok(None));
+    }
+
+    fn row_at(at: SystemTime, tool: &str) -> ActivityRow {
+        ActivityRow {
+            at,
+            owner_sub: "alice".into(),
+            device_id: "d1".into(),
+            client_id: "claude".into(),
+            tool: tool.into(),
+            arg_bytes: Some(1),
+            result_bytes: Some(2),
+            duration_ms: Some(3),
+            outcome: "ok".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn purge_removes_rows_older_than_30_days() {
+        assert_eq!(ACTIVITY_RETENTION_DAYS, 30);
+        let day = Duration::from_secs(24 * 60 * 60);
+        let now = SystemTime::now();
+        let s = MemStore::new();
+        for (days, tool) in [
+            (45, "old"),
+            (31, "just_over"),
+            (29, "just_under"),
+            (0, "new"),
+        ] {
+            s.record_activity(&row_at(now - day * days, tool))
+                .await
+                .unwrap();
+        }
+        assert_eq!(purge_expired_activity(&s, now).await, Ok(2));
+        let kept: Vec<String> = s
+            .activity_of("alice", None, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.tool)
+            .collect();
+        assert_eq!(kept, ["new", "just_under"]);
+        // Nothing more to remove the next time.
+        assert_eq!(purge_expired_activity(&s, now).await, Ok(0));
+    }
+
+    #[tokio::test]
+    async fn the_purge_loop_logs_what_it_removed_and_survives_a_failing_store() {
+        let day = Duration::from_secs(24 * 60 * 60);
+        let s = Arc::new(MemStore::new());
+        s.record_activity(&row_at(SystemTime::now() - day * 40, "old"))
+            .await
+            .unwrap();
+        let lines = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink_lines = lines.clone();
+        let log: LogSink = Arc::new(move |l| sink_lines.lock().unwrap().push(l.to_string()));
+        let task = tokio::spawn(purge_activity_forever(
+            s.clone(),
+            log,
+            Duration::from_millis(20),
+        ));
+        let has = |needle: &str| lines.lock().unwrap().iter().any(|l| l.contains(needle));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !has("\"activity_purged\"") {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the old row was purged and logged");
+        s.fail_with(Some(StoreError::Unavailable));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !has("\"activity_purge_failed\"") {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("a failure is logged");
+        assert!(!task.is_finished(), "a failed purge does not stop the loop");
+        task.abort();
     }
 }

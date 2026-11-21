@@ -46,7 +46,7 @@ use tokio::net::{TcpListener, TcpStream};
 use vitruvian_mcp_auth::{verifier, VerifierConfig};
 use vitruvian_relay::config::Settings;
 use vitruvian_relay::http::{serve, App, Timing};
-use vitruvian_relay::store::PgStore;
+use vitruvian_relay::store::{PgStore, Store};
 use vitruvian_relay::LogSink;
 
 const PUBLIC_URL: &str = "https://relay.example.test";
@@ -210,6 +210,7 @@ struct Relay {
     addr: SocketAddr,
     rsa: Arc<RsaKeyPair>,
     logs: Arc<Mutex<Vec<String>>>,
+    server: tokio::task::JoinHandle<()>,
 }
 
 /// A relay whose store is Postgres at `database_url`.
@@ -257,8 +258,13 @@ async fn start_relay(database_url: &str) -> Relay {
     );
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(serve(listener, app));
-    Relay { addr, rsa, logs }
+    let server = tokio::spawn(serve(listener, app));
+    Relay {
+        addr,
+        rsa,
+        logs,
+        server,
+    }
 }
 
 impl Relay {
@@ -320,7 +326,14 @@ fn text_of(r: &Reply) -> String {
 async fn assert_calls_work(relay: &Relay, path: &str, session: &str, id: u64) {
     let r = relay.tools_call(path, session, id).await;
     assert_eq!(r.status, 200, "{}", r.body);
-    assert_eq!(text_of(&r), "Your computer is offline.", "{}", r.body);
+    // Which computer, and that it has never been seen (nothing has connected).
+    assert_eq!(
+        text_of(&r),
+        "Your computer \"My Mac\" is offline (last seen never). \
+         It may be asleep, shut down or off the network.",
+        "{}",
+        r.body
+    );
 }
 
 /// How long the relay may take to say the database is down: the store's own
@@ -436,4 +449,93 @@ async fn a_slow_database_is_given_one_limit_in_all_not_one_per_step() {
     // Fast again: works.
     proxy.set(Mode::Open);
     assert_calls_work(&relay, &path, &session, 3).await;
+}
+
+/// Calls are kept in the database, not in the relay: one that was recorded by
+/// a relay that has since stopped is there for the next one, and the rows hold
+/// no content (no column has what the call asked for).
+#[tokio::test(flavor = "multi_thread")]
+async fn activity_survives_restart() {
+    let db = fresh_database().await;
+    let first = start_relay(&db.url()).await;
+    let r = first.register(1, None).await;
+    assert_eq!(r.status, 200, "{}", r.body);
+    let device = r.json()["device_id"].as_str().unwrap().to_string();
+    let (path, session) = first.open_session(&device).await;
+    // `tools_call` asks for /top/secret.
+    assert_calls_work(&first, &path, &session, 1).await;
+
+    // The row is written just after the answer goes out.
+    let client = db.client().await;
+    let rows = async {
+        loop {
+            let n: i64 = client
+                .query_one("SELECT count(*) FROM activity", &[])
+                .await
+                .unwrap()
+                .get(0);
+            if n >= 1 {
+                return n;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), rows)
+        .await
+        .expect("the call was recorded");
+
+    // The relay stops; another one starts on the same database.
+    first.server.abort();
+    drop(first);
+    let second = start_relay(&db.url()).await;
+    let store = PgStore::connect(&db.url(), None, Arc::new(|_| {}))
+        .await
+        .expect("a store on the same database");
+    let kept = store.activity_of(ALICE, None, 10).await.unwrap();
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    let row = &kept[0];
+    assert_eq!(
+        (
+            row.tool.as_str(),
+            row.outcome.as_str(),
+            row.device_id.as_str()
+        ),
+        ("read_file", "offline", device.as_str())
+    );
+    assert_eq!(row.owner_sub, ALICE);
+    assert_eq!(row.client_id, MCP_CLIENT);
+    assert!(row.arg_bytes.is_some_and(|n| n > 0));
+    assert!(row.duration_ms.is_some());
+
+    // The second relay carries on (same device, new session) and adds to it.
+    let (path2, session2) = second.open_session(&device).await;
+    assert_calls_work(&second, &path2, &session2, 1).await;
+    let both = async {
+        loop {
+            let rows = store.activity_of(ALICE, None, 10).await.unwrap();
+            if rows.len() >= 2 {
+                return rows;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    let both = tokio::time::timeout(Duration::from_secs(10), both)
+        .await
+        .expect("the second relay recorded its call");
+    assert!(both[0].at >= both[1].at, "newest first");
+
+    // No column holds the arguments: look at every row as text, the way
+    // someone running psql would.
+    let dump: Vec<String> = client
+        .query("SELECT a::text FROM activity a", &[])
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    assert_eq!(dump.len(), 2);
+    assert!(
+        dump.iter().all(|row| !row.contains("secret")),
+        "arguments reached the database: {dump:?}"
+    );
 }

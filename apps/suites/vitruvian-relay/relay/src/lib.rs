@@ -27,6 +27,7 @@ pub mod http;
 pub mod legacy_devices;
 pub mod mcp;
 pub mod parked;
+pub mod ratelimit;
 pub mod registry;
 pub mod store;
 #[doc(hidden)]

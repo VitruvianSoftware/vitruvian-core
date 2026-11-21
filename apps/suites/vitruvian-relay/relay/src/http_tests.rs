@@ -1315,8 +1315,398 @@ async fn call_reaches_the_device_and_answers() {
     assert_eq!(r.json()["result"]["isError"], true);
     assert_eq!(
         r.json()["result"]["content"][0]["text"],
-        "Your computer is offline."
+        offline_said("My Mac", "never")
     );
+}
+
+/// The words for a call to a computer that is not connected.
+fn offline_said(name: &str, last_seen: &str) -> String {
+    format!(
+        "Your computer \"{name}\" is offline (last seen {last_seen}). \
+         It may be asleep, shut down or off the network."
+    )
+}
+
+/// The activity rows for `sub`, once there are `n` of them (they are written
+/// in the background, after the call has answered).
+async fn activity_when(h: &Harness, sub: &str, n: usize) -> Vec<crate::store::ActivityRow> {
+    within(async {
+        loop {
+            let rows = h.store.activity_of(sub, None, 100).await.unwrap();
+            if rows.len() >= n {
+                return rows;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+}
+
+/// The relay keeps no content (spec 7.2): the row says which tool, how big,
+/// how long and how it went, and no column can hold what was asked or said.
+#[tokio::test]
+async fn activity_row_written_without_content() {
+    const MARKER: &str = "SECRET-MARKER-9f3a";
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let args = json!({"path": format!("/tmp/{MARKER}")});
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(5), "read_file", args.clone()),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, &format!("the file says {MARKER}"));
+    let r = within(pending).await.unwrap();
+    assert!(text_of(&r).contains(MARKER), "the person gets the result");
+
+    let rows = activity_when(&h, ALICE, 1).await;
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row.owner_sub, ALICE);
+    assert_eq!(row.device_id, device);
+    assert_eq!(row.client_id, MCP_CLIENT);
+    assert_eq!(row.tool, "read_file");
+    assert_eq!(row.outcome, "ok");
+    assert_eq!(row.arg_bytes, Some(args.to_string().len() as u32));
+    let reply = json!([{"type": "text", "text": format!("the file says {MARKER}")}]);
+    assert_eq!(row.result_bytes, Some(reply.to_string().len() as u32));
+    assert!(row.duration_ms.is_some());
+    // Nothing a person said or got back is in the row, or in the log.
+    assert!(!format!("{row:?}").contains(MARKER), "{row:?}");
+    assert!(!h.logs().contains(MARKER), "the log holds content");
+
+    // Another person never sees it.
+    assert!(h
+        .store
+        .activity_of(BOB, None, 100)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+/// Every call is recorded, a refusal and an offline computer included.
+#[tokio::test]
+async fn every_call_is_recorded_whatever_its_outcome() {
+    let h = Arc::new(harness().await);
+    let (device, _key) = h.new_device(ALICE).await;
+    let s = h.session(&device, ALICE).await;
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(1), "read_file", json!({})),
+        )
+        .await;
+    assert!(error_text(&r).contains("is offline"));
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(2), CHECK_REQUEST_NAME, json!({"request_id": "nope"})),
+        )
+        .await;
+    assert_eq!(r.json()["result"]["isError"], true);
+
+    let rows = activity_when(&h, ALICE, 2).await;
+    let mut seen: Vec<(String, String)> = rows
+        .iter()
+        .map(|r| (r.tool.clone(), r.outcome.clone()))
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ("check_request".to_string(), "unknown_request".to_string()),
+            ("read_file".to_string(), "offline".to_string()),
+        ]
+    );
+}
+
+const CHECK_REQUEST_NAME: &str = crate::mcp::CHECK_REQUEST;
+
+/// A call is never failed by its own log line: the person gets the result,
+/// the failed write is logged, and nothing is kept.
+#[tokio::test]
+async fn activity_write_failure_does_not_fail_call() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    h.store
+        .fail_activity_writes_with(Some(StoreError::Unavailable));
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(5), "read_file", json!({})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "contents");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["result"]["isError"], false, "{}", r.body);
+    assert_eq!(text_of(&r), "contents");
+
+    until(|| h.logs().contains("\"activity_write_failed\"")).await;
+    assert!(h
+        .store
+        .activity_of(ALICE, None, 10)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // The database is writable again: the next call is recorded.
+    h.store.fail_activity_writes_with(None);
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(6), "read_file", json!({"again": 1})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "contents");
+    within(pending).await.unwrap();
+    assert_eq!(activity_when(&h, ALICE, 1).await.len(), 1);
+}
+
+#[tokio::test]
+async fn offline_message_names_device_and_last_seen() {
+    let h = harness().await;
+    let key = ed25519();
+    let r = h.register_with(ALICE, &key, Some("Studio Mac"), None).await;
+    let device = r.json()["device_id"].as_str().unwrap().to_string();
+    let s = h.session(&device, ALICE).await;
+    let ask = |id: u64| {
+        h.rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(id), "read_file", json!({"n": id})),
+        )
+    };
+
+    // Never connected.
+    assert_eq!(
+        error_text(&ask(1).await),
+        offline_said("Studio Mac", "never")
+    );
+
+    // Seen at various times before now.
+    let now = SystemTime::now();
+    for (secs, said) in [
+        (5, "just now"),
+        (60, "1 minute ago"),
+        (7 * 60 + 30, "7 minutes ago"),
+        (3600, "1 hour ago"),
+        (3 * 3600 + 120, "3 hours ago"),
+        (24 * 3600, "1 day ago"),
+        (4 * 24 * 3600 + 3600, "4 days ago"),
+    ] {
+        h.store
+            .touch_seen(&device, now - Duration::from_secs(secs))
+            .await
+            .unwrap();
+        assert_eq!(
+            error_text(&ask(2 + secs).await),
+            offline_said("Studio Mac", said),
+            "{secs} s ago"
+        );
+    }
+
+    // It says which computer, so a second one has its own words.
+    let other = h
+        .register_with(ALICE, &ed25519(), Some("Laptop"), None)
+        .await;
+    let other = other.json()["device_id"].as_str().unwrap().to_string();
+    let s2 = h.session(&other, ALICE).await;
+    let r = h
+        .rpc(
+            &other,
+            ALICE,
+            Some(&s2),
+            call_body(json!(1), "read_file", json!({})),
+        )
+        .await;
+    assert_eq!(error_text(&r), offline_said("Laptop", "never"));
+
+    // Plain words that end with what to do or what may be going on.
+    let said = error_text(&ask(99_999).await);
+    assert!(said.ends_with("It may be asleep, shut down or off the network."));
+}
+
+#[test]
+fn how_long_ago_is_said_the_way_a_person_would() {
+    let now = SystemTime::now();
+    let at = |secs: u64| Some(now - Duration::from_secs(secs));
+    assert_eq!(crate::mcp::ago(None, now), "never");
+    for (secs, said) in [
+        (0, "just now"),
+        (59, "just now"),
+        (60, "1 minute ago"),
+        (119, "1 minute ago"),
+        (120, "2 minutes ago"),
+        (3599, "59 minutes ago"),
+        (3600, "1 hour ago"),
+        (86_399, "23 hours ago"),
+        (86_400, "1 day ago"),
+        (30 * 86_400, "30 days ago"),
+    ] {
+        assert_eq!(crate::mcp::ago(at(secs), now), said, "{secs} s");
+    }
+    // A last-seen in the future (a clock that stepped back) is "just now".
+    assert_eq!(
+        crate::mcp::ago(Some(now + Duration::from_secs(90)), now),
+        "just now"
+    );
+}
+
+/// 20 calls at once are fine, the 21st is refused in plain words and recorded
+/// as such, and it is per person: someone else is not held up.
+#[tokio::test]
+async fn twenty_first_burst_call_is_rate_limited() {
+    // The same burst, but refilling one call a minute so the test does not
+    // depend on how fast it runs.
+    let h = harness_with(Timing {
+        calls_per_minute: 1,
+        ..Timing::default()
+    })
+    .await;
+    assert_eq!(Timing::default().calls_per_minute, 60);
+    assert_eq!(Timing::default().rate_burst, 20);
+    let (device, _key) = h.new_device(ALICE).await;
+    let s = h.session(&device, ALICE).await;
+    for i in 1..=20u64 {
+        let r = h
+            .rpc(
+                &device,
+                ALICE,
+                Some(&s),
+                call_body(json!(i), "read_file", json!({"i": i})),
+            )
+            .await;
+        assert!(
+            error_text(&r).contains("is offline"),
+            "call {i}: {}",
+            r.body
+        );
+    }
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(21), "read_file", json!({"i": 21})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        error_text(&r),
+        "Too many requests from your account; wait a minute and try again."
+    );
+    // Still refused, not a protocol error, and the session is fine.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 22, "method": "tools/list"}),
+        )
+        .await;
+    assert!(r.json()["result"]["tools"].is_array(), "{}", r.body);
+
+    // Recorded as such.
+    let rows = activity_when(&h, ALICE, 21).await;
+    assert_eq!(
+        rows.iter().filter(|r| r.outcome == "rate_limited").count(),
+        1
+    );
+    assert_eq!(rows.iter().filter(|r| r.outcome == "offline").count(), 20);
+
+    // Bob has his own allowance.
+    let (bobs, _k) = h.new_device(BOB).await;
+    let sb = h.session(&bobs, BOB).await;
+    let r = h
+        .rpc(
+            &bobs,
+            BOB,
+            Some(&sb),
+            call_body(json!(1), "read_file", json!({})),
+        )
+        .await;
+    assert!(error_text(&r).contains("is offline"), "{}", r.body);
+}
+
+/// "Last seen" is kept up to date: when the computer connects, while it stays
+/// connected, and when it goes.
+#[tokio::test]
+async fn last_seen_is_kept_up_to_date() {
+    let h = harness_with(Timing {
+        seen_every: Duration::from_millis(40),
+        ..Timing::default()
+    })
+    .await;
+    let (device, key) = h.new_device(ALICE).await;
+    let last_seen = || async { h.store.device(&device).await.unwrap().unwrap().last_seen };
+    assert_eq!(last_seen().await, None);
+
+    let fake = h.connect(ALICE, &device, &key, vec![]).await;
+    // On connecting.
+    within(async {
+        while last_seen().await.is_none() {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+    // Then again while it stays connected.
+    let old = SystemTime::now() - Duration::from_secs(3600);
+    h.store.touch_seen(&device, old).await.unwrap();
+    within(async {
+        while last_seen().await == Some(old) {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+    drop(fake);
+}
+
+#[tokio::test]
+async fn last_seen_is_set_on_connect_and_on_disconnect() {
+    // The periodic update is five minutes here: only the connect and the
+    // disconnect can have touched it.
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let last_seen = || async { h.store.device(&device).await.unwrap().unwrap().last_seen };
+    let fake = h.connect(ALICE, &device, &key, vec![]).await;
+    within(async {
+        while last_seen().await.is_none() {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+
+    let old = SystemTime::now() - Duration::from_secs(3600);
+    h.store.touch_seen(&device, old).await.unwrap();
+    drop(fake);
+    within(async {
+        while last_seen().await == Some(old) {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+    assert!(last_seen().await.unwrap() > old);
 }
 
 /// A request in the stateless MCP revision: the version in `_meta` and,
@@ -3820,7 +4210,7 @@ async fn a_database_that_is_down_gets_a_plain_message_then_recovers() {
     assert_eq!(r.json()["result"]["isError"], true);
     assert_eq!(
         r.json()["result"]["content"][0]["text"],
-        "Your computer is offline."
+        offline_said("My Mac", "never")
     );
     assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
 }

@@ -23,8 +23,8 @@
 //! caller owns the device, and the session; this module answers the message.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
@@ -33,11 +33,13 @@ use vitruvian_relay_protocol::{
     Call, ToolDef, APPROVAL_REPLY_SECS, PARKED_RESULT_SECS, REJOIN_WINDOW_SECS,
 };
 
+use crate::devices::DeviceRecord;
 use crate::parked::{
     CallHandle, Delivery, Fetch, Outcome, Owned, ParkedCalls, RejoinKey, RequestId, UNKNOWN_REQUEST,
 };
+use crate::ratelimit::{RateLimit, RATE_LIMITED_MESSAGE, RATE_LIMITED_OUTCOME};
 use crate::registry::{CallError, Registry};
-use crate::store::{STORE_UNAVAILABLE_OUTCOME, UNAVAILABLE_MESSAGE};
+use crate::store::{ActivityRow, Store, STORE_UNAVAILABLE_OUTCOME, UNAVAILABLE_MESSAGE};
 use crate::{log_event, random_id, LogSink};
 
 /// The revisions `initialize` agrees to, newest first: the handshake-and-
@@ -206,6 +208,11 @@ pub struct Mcp {
     registry: Registry,
     call_budget: Duration,
     log: LogSink,
+    /// Where each call's activity row is written, and where the offline
+    /// message finds the computer's name and when it was last seen.
+    store: Arc<dyn Store>,
+    /// Calls per person per minute.
+    limiter: RateLimit,
     in_flight: Mutex<HashMap<Key, InFlight>>,
     parked: ParkedCalls,
     /// How long a request waits for an approval dialog before it answers
@@ -232,11 +239,59 @@ impl Drop for InFlightEntry<'_> {
     }
 }
 
-/// The one log line per call. Written on drop, so a call whose HTTP request
-/// was dropped mid-way is logged too (outcome `parked`: the call goes on).
+/// What the AI app is told when the computer is not connected, for a computer
+/// the relay could not look up (the database did not answer): the same words,
+/// without its name.
+const OFFLINE_NO_NAME: &str =
+    "Your computer is offline. It may be asleep, shut down or off the network.";
+
+/// How long ago `then` was, as a person would say it: "just now" under a
+/// minute, then whole minutes, hours and days ("1 minute ago", "3 hours ago").
+/// `never` for a computer that has not been seen. A time in the future (the
+/// relay's own clock stepped back) reads as "just now".
+pub fn ago(then: Option<SystemTime>, now: SystemTime) -> String {
+    let Some(then) = then else {
+        return "never".into();
+    };
+    let secs = now.duration_since(then).map_or(0, |d| d.as_secs());
+    let (n, unit) = match secs {
+        0..=59 => return "just now".into(),
+        60..=3599 => (secs / 60, "minute"),
+        3600..=86_399 => (secs / 3600, "hour"),
+        _ => (secs / 86_400, "day"),
+    };
+    format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" })
+}
+
+/// The reply for a call to a computer that is not connected: which one, and
+/// when it was last seen, so the person knows whether to wait or go and look.
+pub fn offline_text(device: Option<&DeviceRecord>, now: SystemTime) -> String {
+    match device {
+        Some(d) => format!(
+            "Your computer \"{}\" is offline (last seen {}). It may be asleep, shut down or off the network.",
+            d.name,
+            ago(d.last_seen, now)
+        ),
+        None => OFFLINE_NO_NAME.into(),
+    }
+}
+
+/// A byte count as the activity log keeps it (a column of 32-bit integers).
+fn count(n: usize) -> Option<u32> {
+    Some(u32::try_from(n).unwrap_or(u32::MAX))
+}
+
+/// The one log line per call, and the call's row in the activity log.
+/// Written on drop, so a call whose HTTP request was dropped mid-way is
+/// recorded too (outcome `parked`: the call goes on).
 /// Sizes and names only: never arguments or output (spec §7.2).
 struct CallLog {
     log: LogSink,
+    store: Arc<dyn Store>,
+    /// Who made the call: the person the activity row belongs to.
+    owner_sub: String,
+    /// When the call started.
+    at: SystemTime,
     device_id: String,
     client_id: String,
     tool: String,
@@ -248,6 +303,7 @@ struct CallLog {
 
 impl Drop for CallLog {
     fn drop(&mut self) {
+        let duration_ms = self.started.elapsed().as_millis() as u64;
         log_event(
             &self.log,
             "call",
@@ -257,10 +313,46 @@ impl Drop for CallLog {
                 "tool": self.tool,
                 "arg_bytes": self.arg_bytes,
                 "result_bytes": self.result_bytes,
-                "duration_ms": self.started.elapsed().as_millis() as u64,
+                "duration_ms": duration_ms,
                 "outcome": self.outcome,
             }),
         );
+        // The same facts, kept for the person's activity list. Written in the
+        // background: a slow or failed write must never hold up or fail the
+        // call (it is logged, `activity_write_failed`, and that is all).
+        let row = ActivityRow {
+            at: self.at,
+            owner_sub: self.owner_sub.clone(),
+            device_id: self.device_id.clone(),
+            client_id: self.client_id.clone(),
+            tool: self.tool.clone(),
+            arg_bytes: count(self.arg_bytes),
+            result_bytes: count(self.result_bytes),
+            duration_ms: Some(u32::try_from(duration_ms).unwrap_or(u32::MAX)),
+            outcome: self.outcome.to_string(),
+        };
+        let store = self.store.clone();
+        let log = self.log.clone();
+        let write = async move {
+            if let Err(e) = store.record_activity(&row).await {
+                log_event(
+                    &log,
+                    "activity_write_failed",
+                    json!({"device_id": row.device_id, "outcome": row.outcome,
+                           "error": e.to_string()}),
+                );
+            }
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(write);
+            }
+            Err(_) => log_event(
+                &self.log,
+                "activity_write_failed",
+                json!({"device_id": self.device_id, "error": "no runtime to write on"}),
+            ),
+        }
     }
 }
 
@@ -276,11 +368,21 @@ fn outcome(e: CallError) -> &'static str {
 }
 
 impl Mcp {
-    pub fn new(registry: Registry, call_budget: Duration, log: LogSink) -> Self {
+    pub fn new(
+        registry: Registry,
+        call_budget: Duration,
+        log: LogSink,
+        store: Arc<dyn Store>,
+    ) -> Self {
         Mcp {
             registry,
             call_budget,
             log,
+            store,
+            limiter: RateLimit::new(
+                crate::ratelimit::CALLS_PER_MINUTE_PER_USER,
+                crate::ratelimit::RATE_BURST,
+            ),
             in_flight: Mutex::new(HashMap::new()),
             parked: ParkedCalls::new(
                 Duration::from_secs(REJOIN_WINDOW_SECS),
@@ -302,6 +404,48 @@ impl Mcp {
         self.approval_reply = approval_reply;
         self.parked = ParkedCalls::new(rejoin_window, result_ttl);
         self
+    }
+
+    /// Replaces the per-person call limit (tests; the settings default to
+    /// [`crate::ratelimit::CALLS_PER_MINUTE_PER_USER`] and
+    /// [`crate::ratelimit::RATE_BURST`]).
+    pub fn with_rate_limit(mut self, limiter: RateLimit) -> Self {
+        self.limiter = limiter;
+        self
+    }
+
+    /// The record of one call, written when it is dropped.
+    fn call_log(
+        &self,
+        device_id: &str,
+        caller: &Caller,
+        tool: &str,
+        arg_bytes: usize,
+        outcome: &'static str,
+    ) -> CallLog {
+        CallLog {
+            log: self.log.clone(),
+            store: self.store.clone(),
+            owner_sub: caller.subject.clone(),
+            at: SystemTime::now(),
+            device_id: device_id.to_string(),
+            client_id: caller.client_id.clone(),
+            tool: tool.chars().take(MAX_LOGGED_TOOL_CHARS).collect(),
+            arg_bytes,
+            result_bytes: 0,
+            started: Instant::now(),
+            outcome,
+        }
+    }
+
+    /// What a failed call is told. Mostly the fixed words for the failure;
+    /// for an offline computer, which one and when it was last seen.
+    async fn failure_text(&self, e: CallError, device_id: &str) -> String {
+        if e != CallError::Offline {
+            return e.user_message().to_string();
+        }
+        let device = self.store.device(device_id).await.ok().flatten();
+        offline_text(device.as_ref(), SystemTime::now())
     }
 
     /// Answers one JSON-RPC message for `device_id`, counting a result as
@@ -441,17 +585,15 @@ impl Mcp {
         let tool = params.get("name").and_then(Value::as_str).unwrap_or("");
         let arg_bytes = params.get("arguments").map_or(0, |a| a.to_string().len());
         let result = text_result(UNAVAILABLE_MESSAGE, true);
-        // Written when this drops, at the end of the function.
-        let _log = CallLog {
-            log: self.log.clone(),
-            device_id: device_id.to_string(),
-            client_id: caller.client_id.clone(),
-            tool: tool.chars().take(MAX_LOGGED_TOOL_CHARS).collect(),
+        // Recorded when this drops, at the end of the function.
+        let mut log = self.call_log(
+            device_id,
+            caller,
+            tool,
             arg_bytes,
-            result_bytes: result["content"].to_string().len(),
-            started: Instant::now(),
-            outcome: STORE_UNAVAILABLE_OUTCOME,
-        };
+            STORE_UNAVAILABLE_OUTCOME,
+        );
+        log.result_bytes = result["content"].to_string().len();
         Some(rpc_result(id, result))
     }
 
@@ -508,18 +650,24 @@ impl Mcp {
             Some(v @ Value::Object(_)) => v.clone(),
             Some(_) => return rpc_error(id, -32602, "Invalid params: arguments must be an object"),
         };
-        let mut log = CallLog {
-            log: self.log.clone(),
-            device_id: device_id.to_string(),
-            client_id: caller.client_id.clone(),
-            tool: tool.chars().take(MAX_LOGGED_TOOL_CHARS).collect(),
-            arg_bytes: arguments.to_string().len(),
-            result_bytes: 0,
-            started: Instant::now(),
-            // A request that ends without an answer left its call running:
-            // it is parked, for the retry to find.
-            outcome: "parked",
-        };
+        // A request that ends without an answer left its call running: it is
+        // parked, for the retry to find.
+        let mut log = self.call_log(
+            device_id,
+            caller,
+            tool,
+            arguments.to_string().len(),
+            "parked",
+        );
+        // Per person, whatever the computer or the AI app: a flood is stopped
+        // before it reaches the computer. A refusal is still a call that is
+        // recorded, and it spends nothing.
+        if self.limiter.check(&caller.subject).is_err() {
+            log.outcome = RATE_LIMITED_OUTCOME;
+            let result = text_result(RATE_LIMITED_MESSAGE, true);
+            log.result_bytes = result["content"].to_string().len();
+            return rpc_result(id, result);
+        }
         if tool == CHECK_REQUEST {
             return self
                 .check_request(id, &arguments, caller, &mut log, delivery)
@@ -627,7 +775,8 @@ impl Mcp {
                         } else {
                             outcome(e)
                         };
-                        rpc_result(id, text_result(e.user_message(), true))
+                        let said = self.failure_text(e, device_id).await;
+                        rpc_result(id, text_result(&said, true))
                     }
                 }
             }
@@ -673,7 +822,8 @@ impl Mcp {
                     }
                     Err(e) => {
                         log.outcome = outcome(e);
-                        rpc_result(id, text_result(e.user_message(), true))
+                        let said = self.failure_text(e, &owned.device_id).await;
+                        rpc_result(id, text_result(&said, true))
                     }
                 }
             }
@@ -752,7 +902,7 @@ impl Drop for Waiting<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use crate::store::MemStore;
     use tokio::sync::mpsc;
     use vitruvian_relay_protocol::{CallResult, ToConnector, ToolDef};
 
@@ -771,6 +921,7 @@ mod tests {
                 reg.clone(),
                 Duration::from_secs(vitruvian_relay_protocol::CALL_BUDGET_SECS),
                 log,
+                Arc::new(MemStore::new()),
             ),
             reg,
         )
@@ -933,7 +1084,13 @@ mod tests {
     async fn check_request_says_still_working_for_a_call_with_no_dialog() {
         let reg = Registry::new();
         let log: LogSink = Arc::new(|_| {});
-        let m = Mcp::new(reg.clone(), Duration::from_secs(60), log).with_parking(
+        let m = Mcp::new(
+            reg.clone(),
+            Duration::from_secs(60),
+            log,
+            Arc::new(MemStore::new()),
+        )
+        .with_parking(
             Duration::from_millis(50),
             Duration::from_secs(30),
             Duration::from_secs(30),
