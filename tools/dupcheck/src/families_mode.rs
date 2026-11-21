@@ -40,11 +40,8 @@ pub const FAMILIES: &[&str] = &[
 
 // Canonical shared-helper package prefixes excluded from copy counts (matching the
 // rollout tracker's "outside packages/rust/" plus the post-rename package folders).
-const SHARED_HELPER_PACKAGE_PREFIXES: &[&str] = &[
-    "packages/rust/",
-    "packages/pycompat/",
-    "packages/gocompat/",
-];
+const SHARED_HELPER_PACKAGE_PREFIXES: &[&str] =
+    &["packages/rust/", "packages/pycompat/", "packages/gocompat/"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FamilyRow {
