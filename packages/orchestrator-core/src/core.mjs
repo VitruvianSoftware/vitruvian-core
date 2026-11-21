@@ -3626,8 +3626,10 @@ export function resolveTeam(team, harness, defaults = undefined) {
     );
     const dispatch = hasMappedAgent
       ? agent
-      : safeHarness === "claude-code"
-        ? `vitruvian-orchestrator:${role}`
+      : safeHarness === "claude-code" || safeHarness === "opencode"
+        ? // Both plugins register their generic agents under this prefix
+          // (OpenCode ships its own `build` agent, which a bare role would hit).
+          `vitruvian-orchestrator:${role}`
         : role;
     const roleTier = ownString(roleObj, "tier");
     const tier =

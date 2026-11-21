@@ -3410,10 +3410,16 @@ describe("team tool and panel labels", () => {
         absentPayload.roles[0].effort,
         TIER_DEFAULTS.tiers.lead.effort,
       );
-      assert.equal(absentPayload.roles[0].dispatch, "lead");
+      assert.equal(
+        absentPayload.roles[0].dispatch,
+        "vitruvian-orchestrator:lead",
+      );
       assert.equal(absentPayload.roles[0].gemini, null);
       assert.equal(absentPayload.roles[1].agent, "developer");
-      assert.equal(absentPayload.roles[1].dispatch, "developer");
+      assert.equal(
+        absentPayload.roles[1].dispatch,
+        "vitruvian-orchestrator:developer",
+      );
       assert.equal(absentPayload.roles[1].source, "generic");
       assert.equal(absentPayload.roles[1].engine, "native");
       assert.equal(
@@ -3476,7 +3482,7 @@ describe("team tool and panel labels", () => {
       );
       assert.equal(
         validPayload.roles.find((r) => r.role === "infrastructure").dispatch,
-        "infrastructure",
+        "vitruvian-orchestrator:infrastructure",
       );
       assert.equal(
         validPayload.roles.find((r) => r.role === "release").agent,

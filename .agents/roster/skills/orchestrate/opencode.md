@@ -38,7 +38,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 2. Read only what you need to understand the request in context (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, relevant files, recent git history).
 3. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
-   - **Specialist**: the `dispatch` id from the `team` tool for the role whose description owns that domain (or the role name from the role table if `team` is unavailable).
+   - **Specialist**: the `dispatch` id from the `team` tool for the role whose description owns that domain (or `vitruvian-orchestrator:<role>` from the role table if `team` is unavailable).
    - **Tier**: the role's tier from the `team` tool or role table (`lead`, `build`, `deep` or `light`; legacy `core` and `fast` remain accepted by `progress`, and unknown values are rejected; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Optional model override (`model`)**: a Gemini model id (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`) when a task needs a non-default Gemini model; when set, put `Gemini model: <id>` in the brief.
@@ -145,7 +145,7 @@ Once all tasks are accepted, report concisely to the user:
 ## 6. How to dispatch
 
 - Dispatch a specialist with the `subagent` tool:
-  - `agent`: the role's `dispatch` id from the `team` tool (or `<role>` from the role table if `team` is unavailable).
+  - `agent`: the role's `dispatch` id from the `team` tool (or `vitruvian-orchestrator:<role>` from the role table if `team` is unavailable).
   - Leave `model` unset: OpenCode cannot set a model at dispatch, so the agent file's model is used.
   - `description`: the task title (used by the panel to match the run to the planned task).
   - `prompt`: the self-contained task brief (include `Engine: gemini` and `Gemini model: <id>` when applicable; the specialist cannot see this chat either).
