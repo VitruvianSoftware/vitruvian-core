@@ -48,6 +48,17 @@ public struct ComposerAttachment: Equatable, Identifiable, Sendable {
     }
 }
 
+/// What typed markdown became when its closing marker was typed, so Undo can put the markers back: the text and ranges
+/// as they were (and the caret), and as they are now. It undoes only while the box still holds `after`.
+public struct MarkdownConversionRecord: Equatable, Sendable {
+    public let serial: Int
+    public let beforeText: String
+    public let beforeEntities: [TextEntity]
+    public let beforeCaret: Int
+    public let afterText: String
+    public let afterEntities: [TextEntity]
+}
+
 /// Where the GIF picker's online results are.
 public enum GIFResultsState: Equatable, Sendable {
     case idle
@@ -319,6 +330,8 @@ public final class ComposerModel: ObservableObject {
     }
     /// The formatting of `text`. Kept with the in-memory draft; room.setDraft still keeps the text only.
     @Published public var entities: [TextEntity] = []
+    /// The last typed markdown that was turned into formatting, while Undo can still put its markers back.
+    @Published public private(set) var lastMarkdownConversion: MarkdownConversionRecord?
     /// A key with no selection: applies to what is typed next, there.
     @Published public private(set) var pendingKinds: Set<TextEntity.Kind> = []
     @Published public private(set) var mode: ComposerMode = .new
@@ -853,7 +866,8 @@ public final class ComposerModel: ObservableObject {
         network = ""
         otherPerson = nil
         if let roomID {
-            if !unknownDrafts.contains(roomID), text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
+            let body = Self.draftText(text, entities)
+            if !unknownDrafts.contains(roomID), body != (savedTexts[roomID] ?? "") { saveDraft(body, in: roomID) }
             drafts[roomID] = currentContents.isEmpty ? nil : currentContents
         }
         draftToken += 1 // a wait for the chat left behind saves nothing
@@ -864,7 +878,8 @@ public final class ComposerModel: ObservableObject {
         if let room, draft.text.isEmpty {
             if let kept = savedTexts[room] ?? savedDraft(room) {
                 savedTexts[room] = kept
-                setContents(kept, [])
+                let restored = Self.restoredDraft(kept)
+                setContents(restored.text, restored.entities)
             } else {
                 // Not in the rows loaded: look it up, and save nothing for it until the answer says what it is.
                 setContents("", [])
@@ -949,8 +964,9 @@ public final class ComposerModel: ObservableObject {
             var open = openContents
             if open.text.isEmpty {
                 openingChat = true
-                open.text = kept
-                open.entities = []
+                let restored = Self.restoredDraft(kept)
+                open.text = restored.text
+                open.entities = restored.entities
                 openContents = open
                 openingChat = false
             } else if !kept.isEmpty {
@@ -967,7 +983,21 @@ public final class ComposerModel: ObservableObject {
     }
 
     /// The text the chat's draft is: while editing, what was in the composer before, never the edit.
-    private var draftBody: String { isEditing ? stash.text : text }
+    private var draftBody: String {
+        isEditing ? Self.draftText(stash.text, stash.entities) : Self.draftText(text, entities)
+    }
+
+    /// What the engine keeps of a draft (text only): the styles written as markers, which open as styles again
+    /// (`restoredDraft`). A chat network's own formatting, a link or a mention is plain in a saved draft, as before.
+    private static func draftText(_ text: String, _ entities: [TextEntity]) -> String {
+        MarkdownConverter.markdown(text: text, entities: entities)
+    }
+
+    /// A draft the engine kept, with its markers turned back into styles.
+    private static func restoredDraft(_ kept: String) -> (text: String, entities: [TextEntity]) {
+        guard let converted = MarkdownConverter.convertAll(text: kept) else { return (kept, []) }
+        return (converted.text, converted.entities)
+    }
 
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
     private func draftTextChanged() {
@@ -1043,6 +1073,24 @@ public final class ComposerModel: ObservableObject {
             return
         }
         entities = EntityEditing.toggle(kind, in: range, of: string, entities: entities)
+    }
+
+    /// Undo right after typed markdown became formatting: the literal markers come back. Does nothing once the box
+    /// holds anything but what the conversion made. True when it put them back.
+    @discardableResult
+    public func undoMarkdownConversion(_ record: MarkdownConversionRecord) -> Bool {
+        guard !isLocked, text == record.afterText, entities == record.afterEntities else { return false }
+        settingContents = true
+        text = record.beforeText
+        settingContents = false
+        entities = record.beforeEntities
+        pendingKinds = []
+        selection = NSRange(location: record.beforeCaret, length: 0)
+        caretSerial += 1
+        caretRequest = CaretRequest(location: record.beforeCaret, serial: caretSerial)
+        lastMarkdownConversion = nil
+        updateQueries(caret: record.beforeCaret)
+        return true
     }
 
     /// A formatting key, or the Message menu's item, on `range`: the link key asks for the link dialog, the others
@@ -1297,6 +1345,7 @@ public final class ComposerModel: ObservableObject {
             && preEditString.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n")
         var currentEntities = EntityEditing.fitted(updated, to: preEditString)
         var effectiveCaret = caret
+        var replacedEmoticon = false
 
         if !openingChat,
            length > 0,
@@ -1307,6 +1356,7 @@ public final class ComposerModel: ObservableObject {
                !currentEntities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, match.range) }) {
                 let replaced = preEditString.replacingCharacters(in: match.range, with: match.replacement)
                 let glyphLength = (match.replacement as NSString).length
+                replacedEmoticon = true
                 settingContents = true
                 text = replaced
                 settingContents = false
@@ -1324,6 +1374,30 @@ public final class ComposerModel: ObservableObject {
                 caretSerial += 1
                 caretRequest = CaretRequest(location: effectiveCaret, serial: caretSerial)
             }
+        }
+
+        // `**bold**`, `_italic_`, `~~strike~~` and `code`, just closed or pasted, become the formatting itself.
+        if !openingChat, length > 0, !replacedEmoticon, effectiveCaret <= (text as NSString).length,
+           let converted = MarkdownConverter.convert(
+               text: text, entities: currentEntities, inserted: NSRange(location: range.location, length: length)
+           ) {
+            let record = MarkdownConversionRecord(
+                serial: caretSerial + 1,
+                beforeText: text,
+                beforeEntities: currentEntities,
+                beforeCaret: effectiveCaret,
+                afterText: converted.text,
+                afterEntities: converted.entities
+            )
+            settingContents = true
+            text = converted.text
+            settingContents = false
+            currentEntities = converted.entities
+            effectiveCaret = converted.map(effectiveCaret)
+            pendingKinds = []
+            caretSerial += 1
+            caretRequest = CaretRequest(location: effectiveCaret, serial: caretSerial)
+            lastMarkdownConversion = record
         }
 
         entities = currentEntities
@@ -2085,9 +2159,11 @@ public final class ComposerModel: ObservableObject {
         }
         downloadingGIFID = candidate.id
         defer { downloadingGIFID = nil }
+        // The MP4 loop only where the chat's network says it takes MP4 as a GIF; everywhere else, the GIF.
+        let asMP4 = candidate.mp4URL != nil && Self.takesMP4(features)
         let file: URL
         do {
-            file = try await gifProvider.fetchFile(for: candidate)
+            file = try await gifProvider.fetchFile(for: candidate, asMP4: asMP4)
         } catch {
             notices = [.sendFailed(reason: String(localized: "Couldn’t download that GIF. Check your connection and try again."))]
             return
@@ -2098,11 +2174,16 @@ public final class ComposerModel: ObservableObject {
             packID: "online_gif",
             name: candidate.title,
             mediaURL: file.path,
-            mimeType: candidate.mimeType,
+            mimeType: asMP4 ? "video/mp4" : candidate.mimeType,
             width: candidate.width,
             height: candidate.height,
             usage: ["gif"]
         ))
+    }
+
+    /// Whether the chat's network lists `video/mp4` among the types it takes for a GIF.
+    static func takesMP4(_ features: ChatFeatures) -> Bool {
+        features.gifFeatures?.mimeTypes?.contains { $0.lowercased() == "video/mp4" } ?? false
     }
 
     /// Clears a staged pending GIF from the composer.

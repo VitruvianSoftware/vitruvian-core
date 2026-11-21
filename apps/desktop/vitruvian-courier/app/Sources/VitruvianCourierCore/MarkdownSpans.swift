@@ -40,7 +40,7 @@ public struct MarkdownSpan: Equatable, Sendable {
 /// Finds the markdown spans in a draft. It is deliberately cautious, so a word is never styled by accident:
 ///
 /// - A marker needs text hugging it on the inside (`** bold **` and `2 * 3 * 4` do nothing).
-/// - `_` only counts at the edge of a word, so `snake_case_name` stays plain.
+/// - A single `_` or `*` only counts at the edge of a word, so `snake_case_name` and `2*3*4` stay plain.
 /// - A span never reaches across a line break, except a fence of three or more backticks.
 /// - Code is not looked into: `**x**` inside backticks is just code.
 /// - A backslash keeps the next punctuation mark as itself (`\*not italic\*`).
@@ -48,17 +48,30 @@ public enum MarkdownSpans {
     /// Longer drafts are not styled: the scan is cheap, but a paste of a whole file is not a message being formatted.
     public static let maximumLength = 20_000
 
+    /// The deepest a span may sit inside others; what is nested deeper is left as typed. It keeps nesting from
+    /// costing more than a few passes over the draft.
+    private static let maximumDepth = 8
+
     public static func parse(_ text: String) -> [MarkdownSpan] {
         let units = Array(text.utf16)
         guard units.count >= 2, units.count <= maximumLength else { return [] }
         var scanner = Scanner(units: units)
-        scanner.scan(0, units.count)
+        scanner.scan(0, units.count, depth: 0)
         return scanner.spans
     }
 
+    /// One pass over the draft's code and escapes first (they bind tighter than emphasis, and the same way wherever a
+    /// span starts), then the emphasis. Every search that finds no closing marker is remembered, so a draft full of
+    /// openers that never close is scanned a few times over, not once per opener.
     private struct Scanner {
         let units: [UInt16]
         var spans: [MarkdownSpan] = []
+        /// For a position that starts a code span or a backslash escape: the position just after it; else 0.
+        private var jump: [Int]
+        /// For a position that starts a code span: where its closing run starts; else -1.
+        private var codeClose: [Int]
+        /// The earliest start from which a search for a closer of this kind, ending at this limit, found none.
+        private var failed: [Int: Int] = [:]
 
         private static let backslash = UInt16(UInt8(ascii: "\\"))
         private static let backtick = UInt16(UInt8(ascii: "`"))
@@ -69,19 +82,80 @@ public enum MarkdownSpans {
 
         init(units: [UInt16]) {
             self.units = units
+            jump = [Int](repeating: 0, count: units.count + 1)
+            codeClose = [Int](repeating: -1, count: units.count + 1)
+            findCodeAndEscapes()
         }
 
-        mutating func scan(_ low: Int, _ high: Int) {
-            var i = low
-            while i < high {
+        private func runLength(of unit: UInt16, at start: Int, before high: Int) -> Int {
+            var end = start
+            while end < high, units[end] == unit { end += 1 }
+            return end - start
+        }
+
+        private mutating func findCodeAndEscapes() {
+            let count = units.count
+            // Where each line ends, for the searches that stop there.
+            var lineEnd = [Int](repeating: count, count: count + 1)
+            var next = count
+            var index = count - 1
+            while index >= 0 {
+                if units[index] == Self.newline { next = index }
+                lineEnd[index] = next
+                index -= 1
+            }
+            // (run length, line end) pairs already searched in vain; a fence (3 or more) may cross lines.
+            var noClose: Set<[Int]> = []
+            var i = 0
+            while i < count {
                 let unit = units[i]
-                if unit == Self.backslash, i + 1 < high, isPunctuation(units[i + 1]) {
+                if unit == Self.backslash, i + 1 < count, isPunctuation(units[i + 1]) {
+                    jump[i] = i + 2
                     i += 2
                     continue
                 }
-                if unit == Self.backtick {
+                guard unit == Self.backtick else {
+                    i += 1
+                    continue
+                }
+                let run = runLength(of: unit, at: i, before: count)
+                let limit = run < 3 ? lineEnd[i] : count
+                let key = [run, limit]
+                if !noClose.contains(key) {
+                    var j = i + run
+                    var found = -1
+                    while j < limit {
+                        if units[j] == Self.backtick {
+                            let length = runLength(of: units[j], at: j, before: count)
+                            if length == run {
+                                found = j
+                                break
+                            }
+                            j += length
+                        } else {
+                            j += 1
+                        }
+                    }
+                    if found >= 0 {
+                        codeClose[i] = found
+                        jump[i] = found + run
+                        i = found + run
+                        continue
+                    }
+                    noClose.insert(key)
+                }
+                i += run
+            }
+        }
+
+        mutating func scan(_ low: Int, _ high: Int, depth: Int) {
+            var i = low
+            while i < high {
+                let unit = units[i]
+                if codeClose[i] >= 0 {
                     let run = runLength(of: unit, at: i, before: high)
-                    if let close = backtickClose(after: i + run, before: high, run: run), close > i + run {
+                    let close = codeClose[i]
+                    if close + run <= high {
                         spans.append(MarkdownSpan(
                             kind: .code,
                             open: NSRange(location: i, length: run),
@@ -89,9 +163,15 @@ public enum MarkdownSpans {
                             close: NSRange(location: close, length: run)
                         ))
                         i = close + run
-                    } else {
-                        i += run
+                        continue
                     }
+                }
+                if jump[i] > 0, unit == Self.backslash {
+                    i = jump[i]
+                    continue
+                }
+                if unit == Self.backtick {
+                    i += runLength(of: unit, at: i, before: high)
                     continue
                 }
                 if unit == Self.star || unit == Self.underscore || unit == Self.tilde {
@@ -102,7 +182,7 @@ public enum MarkdownSpans {
                     case Self.star: want = run >= 2 ? 2 : 1
                     default: want = run == 1 ? 1 : 0 // `__init__` is a name, not emphasis
                     }
-                    if want > 0, canOpen(unit, at: i, want: want, before: high),
+                    if want > 0, depth < MarkdownSpans.maximumDepth, canOpen(unit, at: i, want: want, before: high),
                        let close = findClose(unit, want: want, from: i + want, before: high) {
                         let kind: MarkdownSpan.Kind = unit == Self.tilde ? .strikethrough : (want == 2 ? .bold : .italic)
                         spans.append(MarkdownSpan(
@@ -111,7 +191,7 @@ public enum MarkdownSpans {
                             content: NSRange(location: i + want, length: close - (i + want)),
                             close: NSRange(location: close, length: want)
                         ))
-                        scan(i + want, close)
+                        scan(i + want, close, depth: depth + 1)
                         i = close + want
                     } else {
                         i += max(run, 1)
@@ -122,54 +202,28 @@ public enum MarkdownSpans {
             }
         }
 
-        private func runLength(of unit: UInt16, at start: Int, before high: Int) -> Int {
-            var end = start
-            while end < high, units[end] == unit { end += 1 }
-            return end - start
-        }
-
-        /// Where the next run of exactly `run` backticks starts. Short runs stop at the end of the line.
-        private func backtickClose(after start: Int, before high: Int, run: Int) -> Int? {
-            var j = start
-            while j < high {
-                let unit = units[j]
-                if unit == Self.newline, run < 3 { return nil }
-                if unit == Self.backtick {
-                    let length = runLength(of: unit, at: j, before: high)
-                    if length == run { return j }
-                    j += length
-                } else {
-                    j += 1
-                }
-            }
-            return nil
-        }
-
         private func canOpen(_ marker: UInt16, at i: Int, want: Int, before high: Int) -> Bool {
             let next = i + want
             guard next < high, !isWhitespace(units[next]) else { return false }
-            if marker == Self.underscore, i > 0, isWordCharacter(units[i - 1]) { return false }
+            if want == 1, marker != Self.tilde, i > 0, isWordCharacter(units[i - 1]) { return false }
             return true
         }
 
         /// The start of the marker that closes a span opened with `want` of `marker`, searching from `start`.
-        private func findClose(_ marker: UInt16, want: Int, from start: Int, before high: Int) -> Int? {
+        private mutating func findClose(_ marker: UInt16, want: Int, from start: Int, before high: Int) -> Int? {
+            let key = ((Int(marker) * 4) + want) * (units.count + 1) + high
+            if let earlier = failed[key], start >= earlier { return nil }
             var j = start
             while j < high {
                 let unit = units[j]
-                if unit == Self.newline { return nil }
-                if unit == Self.backslash, j + 1 < high {
-                    j += 2
+                if unit == Self.newline { break }
+                if jump[j] > 0, unit == Self.backslash || unit == Self.backtick {
+                    // An escape, or code: skipped whole, so a marker in it closes nothing.
+                    j = jump[j]
                     continue
                 }
                 if unit == Self.backtick {
-                    // Code inside is skipped whole: a marker in it closes nothing.
-                    let run = runLength(of: unit, at: j, before: high)
-                    if let close = backtickClose(after: j + run, before: high, run: run) {
-                        j = close + run
-                    } else {
-                        j += run
-                    }
+                    j += runLength(of: unit, at: j, before: high)
                     continue
                 }
                 if unit == marker {
@@ -184,12 +238,13 @@ public enum MarkdownSpans {
                 }
                 j += 1
             }
+            failed[key] = min(failed[key] ?? start, start)
             return nil
         }
 
         private func isValidClose(_ marker: UInt16, at position: Int, want: Int, before high: Int) -> Bool {
             guard !isWhitespace(units[position - 1]) else { return false }
-            if marker == Self.underscore {
+            if want == 1, marker != Self.tilde {
                 let after = position + want
                 if after < high, isWordCharacter(units[after]) { return false }
             }

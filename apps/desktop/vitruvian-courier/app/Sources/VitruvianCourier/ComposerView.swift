@@ -1365,6 +1365,7 @@ struct ComposerTextView: NSViewRepresentable {
         private var applying = false
         private var styled: (text: String, entities: [TextEntity])?
         private var caretSerial = 0
+        private var conversionSerial = 0
 
         init(_ parent: ComposerTextView) {
             self.parent = parent
@@ -1389,6 +1390,17 @@ struct ComposerTextView: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: location, length: 0))
                 applying = false
                 report(selection: textView.selectedRange())
+            }
+            // Typed markdown that just became formatting: Undo puts its markers back. (The text came in from the
+            // model above, which clears the view's own undo history, so this is the one step it holds.)
+            if let conversion = composer.lastMarkdownConversion, conversion.serial != conversionSerial {
+                conversionSerial = conversion.serial
+                if textView.string == conversion.afterText, let undo = textView.undoManager {
+                    undo.registerUndo(withTarget: self) { target in
+                        MainActor.assumeIsolated { target.composer.undoMarkdownConversion(conversion) }
+                    }
+                    undo.setActionName(String(localized: "Formatting"))
+                }
             }
             restyle()
         }
@@ -1424,7 +1436,9 @@ struct ComposerTextView: NSViewRepresentable {
             editing = nil
             inEdit = false
             report(selection: textView.selectedRange())
-            restyle()
+            // Typed markdown that became formatting changed the model's text (markers gone): the view takes it now,
+            // with the caret where the model put it, not a moment later.
+            if composer.text != textView.string { sync() } else { restyle() }
             updateHeight()
         }
 
@@ -1723,40 +1737,10 @@ final class PlainTextView: NSTextView {
                 storage.addAttribute(.backgroundColor, value: NSColor.tertiaryLabelColor, range: range)
             }
         }
-        applyLiveMarkdown(to: storage)
         storage.endEditing()
         typingAttributes = Self.baseAttributes
         decorations = entities.filter { [.blockquote, .bulletList, .orderedList].contains($0.kind) }
         needsDisplay = true
-    }
-
-    /// Markdown typed as text (`code`, **bold**, _italic_, ~~strike~~) takes on its look as it is typed, and its
-    /// marker characters are drawn faint. Only attributes change: the text, the caret, undo and what is sent do not.
-    private func applyLiveMarkdown(to storage: NSTextStorage) {
-        let length = storage.length
-        let manager = NSFontManager.shared
-        let faint = NSColor.labelColor.withAlphaComponent(0.25)
-        for span in MarkdownSpans.parse(storage.string) {
-            guard span.whole.location >= 0, span.whole.location + span.whole.length <= length else { continue }
-            for marker in [span.open, span.close] {
-                storage.addAttribute(.foregroundColor, value: faint, range: marker)
-            }
-            let range = span.content
-            switch span.kind {
-            case .bold, .italic:
-                let trait: NSFontTraitMask = span.kind == .bold ? .boldFontMask : .italicFontMask
-                storage.enumerateAttribute(.font, in: range) { value, part, _ in
-                    let font = value as? NSFont ?? Self.baseFont
-                    storage.addAttribute(.font, value: manager.convert(font, toHaveTrait: trait), range: part)
-                }
-            case .strikethrough:
-                storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-            case .code:
-                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: Self.baseFont.pointSize,
-                                                                               weight: .regular), range: range)
-                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: range)
-            }
-        }
     }
 
     private static let indented: NSParagraphStyle = {
@@ -1817,6 +1801,11 @@ final class PlainTextView: NSTextView {
         guard window?.firstResponder === self, let kind = Self.formatKind(for: event) else {
             return super.performKeyEquivalent(with: event)
         }
+        // ⌘E is Archive everywhere else: here it is Code only over a selection, and with none it stays Archive.
+        if kind == .code, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command],
+           selectedRange().length == 0 {
+            return super.performKeyEquivalent(with: event)
+        }
         return onFormat(kind, false) || super.performKeyEquivalent(with: event)
     }
 
@@ -1836,6 +1825,7 @@ final class PlainTextView: NSTextView {
             switch key {
             case "b": return .bold
             case "i": return .italic
+            case "e": return .code
             default: return nil
             }
         case [.command, .shift]:

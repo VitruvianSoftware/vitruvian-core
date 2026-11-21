@@ -6,9 +6,11 @@ import Foundation
 public struct GIFCandidate: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
-    /// The file that is sent (an MP4 loop, or a GIF).
+    /// The GIF to send (an MP4 only when the service has no GIF for it).
     public var mediaURL: String
     public var mimeType: String
+    /// The same GIF as an MP4 loop, a fraction of the size, for a chat whose network takes MP4 as a GIF.
+    public var mp4URL: String?
     public var width: Int?
     public var height: Int?
     /// A small animated GIF for the picker's tile, when the provider has one.
@@ -21,7 +23,8 @@ public struct GIFCandidate: Identifiable, Equatable, Sendable {
         mimeType: String,
         width: Int? = nil,
         height: Int? = nil,
-        previewURL: String? = nil
+        previewURL: String? = nil,
+        mp4URL: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -30,6 +33,7 @@ public struct GIFCandidate: Identifiable, Equatable, Sendable {
         self.width = width
         self.height = height
         self.previewURL = previewURL
+        self.mp4URL = mp4URL
     }
 }
 
@@ -50,8 +54,9 @@ public protocol GIFProvider: Sendable {
     var unavailableReason: String { get }
     func trending() async throws -> [GIFCandidate]
     func search(_ query: String) async throws -> [GIFCandidate]
-    /// Downloads the file to send for `candidate` to this Mac and returns where it is.
-    func fetchFile(for candidate: GIFCandidate) async throws -> URL
+    /// Downloads the file to send for `candidate` to this Mac and returns where it is: its MP4 loop with `asMP4` (when
+    /// it has one), else its GIF.
+    func fetchFile(for candidate: GIFCandidate, asMP4: Bool) async throws -> URL
     /// Downloads the small animated preview for `candidate`; nil when it has none.
     func fetchPreview(for candidate: GIFCandidate) async throws -> URL?
 }
@@ -61,7 +66,11 @@ extension GIFProvider {
         String(localized: "Online GIF search isn’t available yet in Vitruvian Courier. You can still send GIFs from your recent history or local files on this Mac.")
     }
 
-    public func fetchFile(for candidate: GIFCandidate) async throws -> URL { throw GIFProviderError.unavailable }
+    public func fetchFile(for candidate: GIFCandidate, asMP4: Bool) async throws -> URL { throw GIFProviderError.unavailable }
+    /// The GIF itself.
+    public func fetchFile(for candidate: GIFCandidate) async throws -> URL {
+        try await fetchFile(for: candidate, asMP4: false)
+    }
     public func fetchPreview(for candidate: GIFCandidate) async throws -> URL? { nil }
 }
 
@@ -239,6 +248,8 @@ public enum KlipyAPI {
         var id: FlexibleID?
         var slug: String?
         var title: String?
+        /// "gif" for a GIF. KLIPY can mix adverts into a page (type "ad"); nothing but a GIF or a clip is offered.
+        var type: String?
         var file: [String: [String: Format]]?
     }
 
@@ -264,10 +275,13 @@ public enum KlipyAPI {
     }
 
     private static func candidate(_ item: Item) -> GIFCandidate? {
+        // Never an advert: only an item that says it is a GIF (or a clip) is shown. No type, or another one, is skipped.
+        guard let type = item.type?.lowercased(), type == "gif" || type == "clip" else { return nil }
         guard let id = item.id?.text ?? item.slug, !id.isEmpty, let file = item.file else { return nil }
-        // To send: a loop as MP4 (a hundredth of the GIF's size), else the GIF. To show: a small animated GIF.
-        let sending = pick(file, sizes: ["md", "sm", "hd", "xs"], formats: ["mp4", "gif"])
+        // To send: the GIF (medium, else small), or its MP4 loop where the chat takes one. To show: a small GIF.
+        let sending = pick(file, sizes: ["md", "sm", "hd", "xs"], formats: ["gif", "mp4"])
         guard let (format, media) = sending, let mediaURL = media.url else { return nil }
+        let loop = pick(file, sizes: ["md", "sm", "hd", "xs"], formats: ["mp4"])?.1.url
         let preview = pick(file, sizes: ["sm", "xs", "md"], formats: ["gif"])?.1.url
         let named = (item.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let title = named.isEmpty ? (item.slug ?? "GIF").trimmingCharacters(in: .whitespacesAndNewlines) : named
@@ -278,7 +292,8 @@ public enum KlipyAPI {
             mimeType: format == "mp4" ? "video/mp4" : "image/gif",
             width: media.width,
             height: media.height,
-            previewURL: preview
+            previewURL: preview,
+            mp4URL: loop
         )
     }
 
@@ -350,8 +365,11 @@ public struct KlipyGIFProvider: GIFProvider {
         return try await fetchCandidates(request)
     }
 
-    public func fetchFile(for candidate: GIFCandidate) async throws -> URL {
-        try await download(candidate.mediaURL, as: Self.fileName(candidate.id, suffix: "", mimeType: candidate.mimeType))
+    public func fetchFile(for candidate: GIFCandidate, asMP4: Bool) async throws -> URL {
+        if asMP4, let loop = candidate.mp4URL {
+            return try await download(loop, as: Self.fileName(candidate.id, suffix: "", mimeType: "video/mp4"))
+        }
+        return try await download(candidate.mediaURL, as: Self.fileName(candidate.id, suffix: "", mimeType: candidate.mimeType))
     }
 
     public func fetchPreview(for candidate: GIFCandidate) async throws -> URL? {

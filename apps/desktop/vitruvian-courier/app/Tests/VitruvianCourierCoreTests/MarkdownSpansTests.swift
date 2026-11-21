@@ -60,6 +60,7 @@ final class MarkdownSpansTests: XCTestCase {
 
     func testTextThatMerelyLooksLikeMarkersIsLeftAlone() {
         XCTAssertEqual(styled("2 * 3 * 4"), [])
+        XCTAssertEqual(styled("2*3*4"), [])
         XCTAssertEqual(styled("** not bold **"), [])
         XCTAssertEqual(styled("snake_case_name and other_name"), [])
         XCTAssertEqual(styled("__init__"), [])
@@ -106,5 +107,23 @@ final class MarkdownSpansTests: XCTestCase {
     func testManyUnmatchedMarkersStillFinish() {
         let text = String(repeating: "*a ", count: 4_000)
         XCTAssertEqual(MarkdownSpans.parse(text), [])
+    }
+
+    /// A 5,000-character draft built to be slow (openers that never close, backtick runs of different lengths on one
+    /// line, deep nesting) is scanned well inside a keystroke, since the box scans on every change.
+    func testAdversarialFiveThousandCharDraftsAreScannedQuickly() {
+        let drafts = [
+            String(repeating: "*a ", count: 1_700),
+            String(repeating: "`a `` ", count: 850),
+            String(repeating: "_a ", count: 1_700),
+            String(repeating: "**a *b _c ", count: 500),
+            String(repeating: "*a **b _c_ d** e* ", count: 280),
+            String(repeating: "~~a ", count: 1_250),
+        ]
+        for draft in drafts {
+            let started = Date()
+            _ = MarkdownSpans.parse(draft)
+            XCTAssertLessThan(Date().timeIntervalSince(started), 0.25, "\(draft.prefix(12))…")
+        }
     }
 }

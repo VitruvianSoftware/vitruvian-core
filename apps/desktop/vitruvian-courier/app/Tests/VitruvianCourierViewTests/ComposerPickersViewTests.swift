@@ -30,74 +30,111 @@ final class ComposerPickersViewTests: XCTestCase {
         view.textStorage?.attributes(at: index, effectiveRange: nil) ?? [:]
     }
 
-    // MARK: Live formatting
+    // MARK: Typed markdown becomes formatting
 
-    func testTypedMarkdownIsStyledAsYouTypeWithoutChangingTheText() throws {
-        let view = PlainTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 100))
-        let text = "a **bold** _it_ ~~no~~ `code` z"
-        view.string = text
-        view.apply([])
-        XCTAssertEqual(view.string, text, "only attributes change: what is sent is what was typed")
-        let ns = text as NSString
-
-        let boldWord = ns.range(of: "bold")
-        let boldFont = try XCTUnwrap(attributes(view, at: boldWord.location)[.font] as? NSFont)
-        XCTAssertTrue(NSFontManager.shared.traits(of: boldFont).contains(.boldFontMask))
-
-        let italicWord = ns.range(of: "it")
-        let italicFont = try XCTUnwrap(attributes(view, at: italicWord.location)[.font] as? NSFont)
-        XCTAssertTrue(NSFontManager.shared.traits(of: italicFont).contains(.italicFontMask))
-
-        let struck = ns.range(of: "no")
-        XCTAssertNotNil(attributes(view, at: struck.location)[.strikethroughStyle])
-
-        let codeWord = ns.range(of: "code")
-        let codeFont = try XCTUnwrap(attributes(view, at: codeWord.location)[.font] as? NSFont)
-        XCTAssertTrue(codeFont.isFixedPitch, "code is monospaced")
-        XCTAssertNotNil(attributes(view, at: codeWord.location)[.backgroundColor], "code sits on a shaded chip")
-
-        // The markers are still there, drawn faint; plain words are not.
-        let opening = ns.range(of: "**")
-        let faint = try XCTUnwrap(attributes(view, at: opening.location)[.foregroundColor] as? NSColor)
-        let plain = try XCTUnwrap(attributes(view, at: 0)[.foregroundColor] as? NSColor)
-        XCTAssertLessThan(faint.alphaComponent, plain.alphaComponent * 0.5, "the marker is much fainter than the words")
-        XCTAssertNil(attributes(view, at: 0)[.strikethroughStyle])
-        let tick = ns.range(of: "`")
-        XCTAssertNil(attributes(view, at: tick.location)[.backgroundColor], "the chip is behind the words, not the ticks")
-    }
-
-    func testTextThatOnlyLooksLikeMarkdownIsNotStyled() throws {
-        let view = PlainTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 100))
-        view.string = "2 * 3 * 4 and snake_case_name"
-        view.apply([])
-        let plain = try XCTUnwrap(attributes(view, at: 0)[.foregroundColor] as? NSColor)
-        for index in 0 ..< (view.string as NSString).length {
-            let color = try XCTUnwrap(attributes(view, at: index)[.foregroundColor] as? NSColor)
-            XCTAssertEqual(color.alphaComponent, plain.alphaComponent, accuracy: 0.001, "character \(index) was dimmed")
-        }
-    }
-
-    func testTypingKeepsTheCaretAndRestyles() throws {
+    private func hostedComposer() throws -> (ComposerModel, NSHostingView<ComposerView>, PlainTextView) {
         let (composer, preferences) = makeComposer()
         let host = NSHostingView(rootView: ComposerView(
             composer: composer, preferences: preferences, textHeight: .constant(ComposerTextView.minimumHeight)
         ))
+        // In a window, as the box is in the app: the window gives the text view its undo manager.
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 160), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.contentView = host
         host.frame = NSRect(x: 0, y: 0, width: 620, height: 160)
         host.layoutSubtreeIfNeeded()
+        addTeardownBlock { window.contentView = nil }
         let textView = try XCTUnwrap(host.first(PlainTextView.self))
-        textView.insertText("hello **wor", replacementRange: textView.selectedRange())
-        XCTAssertEqual(try XCTUnwrap(textView.textStorage).length, 11)
-        let caretBefore = textView.selectedRange()
-        textView.insertText("ld**", replacementRange: textView.selectedRange())
+        return (composer, host, textView)
+    }
+
+    private func pump() {
         for _ in 0 ..< 10 { RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.004)) }
-        XCTAssertEqual(textView.string, "hello **world**")
-        XCTAssertEqual(textView.selectedRange(), NSRange(location: 15, length: 0), "the caret is where typing left it")
-        XCTAssertEqual(caretBefore, NSRange(location: 11, length: 0))
-        let font = try XCTUnwrap(attributes(textView, at: 9)[.font] as? NSFont)
-        XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.boldFontMask), "styled once the closing marker is typed")
-        // Text typed after the closing marker is plain.
-        let typing = try XCTUnwrap(textView.typingAttributes[.font] as? NSFont)
-        XCTAssertFalse(NSFontManager.shared.traits(of: typing).contains(.boldFontMask))
+    }
+
+    private func isBold(_ view: PlainTextView, at index: Int) -> Bool {
+        guard let font = attributes(view, at: index)[.font] as? NSFont else { return false }
+        return NSFontManager.shared.traits(of: font).contains(.boldFontMask)
+    }
+
+    func testTypingTheClosingMarkerStylesTheWordsAndTakesTheMarkersOut() throws {
+        let (composer, _, textView) = try hostedComposer()
+        for character in "say **bold**" {
+            textView.insertText(String(character), replacementRange: textView.selectedRange())
+        }
+        pump()
+        XCTAssertEqual(textView.string, "say bold", "the markers are gone from the box")
+        XCTAssertEqual(composer.text, "say bold", "and from what will be sent")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .bold, offset: 4, length: 4)])
+        XCTAssertTrue(isBold(textView, at: 4))
+        XCTAssertFalse(isBold(textView, at: 0))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 8, length: 0), "the caret is after the words")
+        // Typing goes on in the plain style.
+        textView.insertText(" more", replacementRange: textView.selectedRange())
+        pump()
+        XCTAssertEqual(textView.string, "say bold more")
+        XCTAssertFalse(isBold(textView, at: 9))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .bold, offset: 4, length: 4)])
+    }
+
+    func testUndoRightAfterTheConversionBringsTheMarkersBack() throws {
+        let (composer, _, textView) = try hostedComposer()
+        for character in "say **bold**" {
+            textView.insertText(String(character), replacementRange: textView.selectedRange())
+        }
+        pump()
+        XCTAssertEqual(textView.string, "say bold")
+        let undo = try XCTUnwrap(textView.undoManager)
+        XCTAssertTrue(undo.canUndo)
+        undo.undo()
+        pump()
+        XCTAssertEqual(textView.string, "say **bold**")
+        XCTAssertEqual(composer.text, "say **bold**")
+        XCTAssertEqual(composer.entities, [])
+        XCTAssertFalse(isBold(textView, at: 4))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 12, length: 0))
+    }
+
+    func testPastedMarkdownConvertsToo() throws {
+        let (composer, _, textView) = try hostedComposer()
+        textView.insertText("a **b** _c_ `d`", replacementRange: textView.selectedRange())
+        pump()
+        XCTAssertEqual(textView.string, "a b c d")
+        XCTAssertEqual(composer.entities.map(\.kind), [.bold, .italic, .code])
+        let code = try XCTUnwrap(attributes(textView, at: 6)[.font] as? NSFont)
+        XCTAssertTrue(code.isFixedPitch)
+    }
+
+    func testTextThatOnlyLooksLikeMarkdownIsLeftAsTyped() throws {
+        let (composer, _, textView) = try hostedComposer()
+        textView.insertText("2*3*4 and snake_case_name", replacementRange: textView.selectedRange())
+        pump()
+        XCTAssertEqual(textView.string, "2*3*4 and snake_case_name")
+        XCTAssertEqual(composer.entities, [])
+    }
+
+    func testCommandBIAndEAndShiftXAreTheStyleKeysAndCommandEIsArchiveWithNoSelection() throws {
+        func key(_ chars: String, _ flags: NSEvent.ModifierFlags, code: UInt16) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
+                             characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        }
+        XCTAssertEqual(PlainTextView.formatKind(for: key("b", [.command], code: 0x0B)), .bold)
+        XCTAssertEqual(PlainTextView.formatKind(for: key("i", [.command], code: 0x22)), .italic)
+        XCTAssertEqual(PlainTextView.formatKind(for: key("e", [.command], code: 0x0E)), .code)
+        XCTAssertEqual(PlainTextView.formatKind(for: key("x", [.command, .shift], code: 0x07)), .strikethrough)
+
+        let (composer, _, textView) = try hostedComposer()
+        textView.insertText("make code here", replacementRange: textView.selectedRange())
+        pump()
+        // With nothing selected, ⌘E is not Code (it stays Archive elsewhere in the app).
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+        _ = textView.performKeyEquivalent(with: key("e", [.command], code: 0x0E))
+        XCTAssertEqual(composer.entities, [])
+        // Over a selection it is Code.
+        textView.setSelectedRange(NSRange(location: 5, length: 4))
+        composer.selectionChanged(to: NSRange(location: 5, length: 4))
+        XCTAssertTrue(textView.onFormat(.code, false))
+        XCTAssertEqual(composer.entities.map(\.kind), [.code])
     }
 
     // MARK: Emoji picker

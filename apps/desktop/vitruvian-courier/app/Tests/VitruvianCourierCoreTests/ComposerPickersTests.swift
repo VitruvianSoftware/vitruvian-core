@@ -49,8 +49,9 @@ final class FakeGIFProvider: GIFProvider, @unchecked Sendable {
     }
 
     private func candidate(_ id: String) -> GIFCandidate {
-        GIFCandidate(id: id, title: "GIF \(id)", mediaURL: "https://static.klipy.com/\(id).mp4", mimeType: "video/mp4",
-                     width: 320, height: 240, previewURL: "https://static.klipy.com/\(id).gif")
+        GIFCandidate(id: id, title: "GIF \(id)", mediaURL: "https://static.klipy.com/\(id).gif", mimeType: "image/gif",
+                     width: 320, height: 240, previewURL: "https://static.klipy.com/\(id)-sm.gif",
+                     mp4URL: "https://static.klipy.com/\(id).mp4")
     }
 
     func trending() async throws -> [GIFCandidate] {
@@ -72,12 +73,13 @@ final class FakeGIFProvider: GIFProvider, @unchecked Sendable {
         return [candidate("found-\(query)")]
     }
 
-    func fetchFile(for candidate: GIFCandidate) async throws -> URL {
+    func fetchFile(for candidate: GIFCandidate, asMP4: Bool) async throws -> URL {
         bump("file")
+        bump(asMP4 ? "file-mp4" : "file-gif")
         if candidate.id == "broken" { throw GIFProviderError.status(404) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent("\(candidate.id).mp4")
-        try Data("mp4".utf8).write(to: url)
+        let url = folder.appendingPathComponent("\(candidate.id).\(asMP4 ? "mp4" : "gif")")
+        try Data("bytes".utf8).write(to: url)
         return url
     }
 
@@ -260,13 +262,28 @@ final class ComposerPickersTests: XCTestCase {
         await composer.selectGIFCandidate(chosen)
         let pending = try XCTUnwrap(composer.pendingGIF, "the GIF is on the draft")
         XCTAssertEqual(pending.name, "GIF t1")
-        XCTAssertEqual(pending.mimeType, "video/mp4")
-        XCTAssertTrue(pending.mediaURL.hasSuffix("t1.mp4"), "it is the downloaded file, not the address")
+        XCTAssertEqual(pending.mimeType, "image/gif", "the GIF where the chat does not list MP4")
+        XCTAssertTrue(pending.mediaURL.hasSuffix("t1.gif"), "it is the downloaded file, not the address")
         XCTAssertTrue(FileManager.default.fileExists(atPath: pending.mediaURL))
         XCTAssertFalse(composer.isGIFPickerPresented)
         XCTAssertNil(composer.downloadingGIFID)
         XCTAssertTrue(made.sender.gifSends.isEmpty, "choosing alone never sends")
         XCTAssertEqual(made.provider.count("file"), 1)
+    }
+
+    func testTheMP4LoopIsSentOnlyWhereTheChatListsMP4() async throws {
+        for (types, expectMP4) in [(["video/mp4", "image/gif"], true), (["image/gif"], false), (nil, false), ([], false)] as [([String]?, Bool)] {
+            let made = make()
+            var features = ChatFeatures.noFeatures
+            features.gifFeatures = FileKindFeatures(supported: true, mimeTypes: types)
+            made.composer.features = features
+            await made.composer.refreshGIFResults()
+            await made.composer.selectGIFCandidate(try XCTUnwrap(made.composer.gifResults.first))
+            let pending = try XCTUnwrap(made.composer.pendingGIF)
+            XCTAssertEqual(pending.mediaURL.hasSuffix(".mp4"), expectMP4, "\(String(describing: types))")
+            XCTAssertEqual(pending.mimeType, expectMP4 ? "video/mp4" : "image/gif")
+            XCTAssertEqual(made.provider.count(expectMP4 ? "file-mp4" : "file-gif"), 1)
+        }
     }
 
     func testAFailedDownloadSaysSoAndAttachesNothing() async {

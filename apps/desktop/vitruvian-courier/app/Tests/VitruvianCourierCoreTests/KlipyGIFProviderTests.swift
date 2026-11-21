@@ -46,10 +46,10 @@ final class KlipyGIFProviderTests: XCTestCase {
          "sm": {"gif": {"url": "https://static.klipy.com/ii/a/sm.gif", "width": 220, "height": 220, "size": 314884},
                 "mp4": {"url": "https://static.klipy.com/ii/a/sm.mp4", "width": 320, "height": 320, "size": 49565}},
          "xs": {"gif": {"url": "https://static.klipy.com/ii/a/xs.gif", "width": 90, "height": 90, "size": 71468}}}},
-      {"id": "abc123", "slug": "only-gif", "title": "  ",
+      {"id": "abc123", "slug": "only-gif", "title": "  ", "type": "gif",
        "file": {"hd": {"gif": {"url": "https://static1.klipy.com/ii/b/hd.gif", "width": 400, "height": 200, "size": 100}}}},
-      {"id": 3, "slug": "no-file", "title": "Empty", "file": {}},
-      {"id": 4, "slug": "broken", "title": 5, "file": "nope"}
+      {"id": 3, "slug": "no-file", "title": "Empty", "type": "gif", "file": {}},
+      {"id": 4, "slug": "broken", "title": 5, "type": "gif", "file": "nope"}
     ], "current_page": 1, "per_page": 24, "has_next": true}}
     """.utf8)
 
@@ -176,13 +176,14 @@ final class KlipyGIFProviderTests: XCTestCase {
 
     // MARK: Replies
 
-    func testTheReplyBecomesCandidatesWithAnMP4ToSendAndAGIFToShow() throws {
+    func testTheReplyBecomesCandidatesWithAGIFAnMP4AndASmallPreview() throws {
         let found = try KlipyAPI.candidates(from: Self.page)
         XCTAssertEqual(found.map(\.id), ["8041071659142944", "abc123"], "an item with no file, or one that does not decode, is left out")
         let first = found[0]
         XCTAssertEqual(first.title, "Hello Hi")
-        XCTAssertEqual(first.mediaURL, "https://static.klipy.com/ii/a/md.mp4")
-        XCTAssertEqual(first.mimeType, "video/mp4")
+        XCTAssertEqual(first.mediaURL, "https://static.klipy.com/ii/a/md.gif", "the GIF is what is sent, medium size")
+        XCTAssertEqual(first.mimeType, "image/gif")
+        XCTAssertEqual(first.mp4URL, "https://static.klipy.com/ii/a/md.mp4", "and its MP4 loop, for a chat that takes one")
         XCTAssertEqual(first.width, 498)
         XCTAssertEqual(first.previewURL, "https://static.klipy.com/ii/a/sm.gif")
         let second = found[1]
@@ -191,6 +192,37 @@ final class KlipyGIFProviderTests: XCTestCase {
         XCTAssertEqual(second.mimeType, "image/gif")
         XCTAssertEqual(second.height, 200)
         XCTAssertNil(second.previewURL, "no small GIF to show")
+        XCTAssertNil(second.mp4URL)
+    }
+
+    /// KLIPY can mix adverts into a page (the reply's meta carries `ad_max_resize_percent`): an item whose `type` is
+    /// not a GIF or clip is never offered, even when it carries files that would play.
+    func testAnAdvertInAPageIsNeverOffered() throws {
+        let body = Data("""
+        {"result": true, "data": {"data": [
+          {"id": 1, "slug": "real", "title": "Real", "type": "gif",
+           "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/r/md.gif", "width": 10, "height": 10}}}},
+          {"id": 2, "slug": "sponsored", "title": "Sponsored", "type": "ad", "content": "<script>x</script>",
+           "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/ad/md.gif", "width": 10, "height": 10}}}},
+          {"id": 3, "slug": "clip", "title": "Clip", "type": "clip",
+           "file": {"md": {"mp4": {"url": "https://static.klipy.com/ii/c/md.mp4", "width": 10, "height": 10}}}}
+        ], "current_page": 1, "per_page": 24, "has_next": false}, "meta": {"ad_max_resize_percent": 50}}
+        """.utf8)
+        XCTAssertEqual(try KlipyAPI.candidates(from: body).map(\.id), ["1", "3"])
+    }
+
+    func testAnItemWithNoTypeOrAnUnknownOneIsSkippedToo() throws {
+        let body = Data("""
+        {"result": true, "data": {"data": [
+          {"id": 1, "slug": "typed", "title": "T", "type": "gif",
+           "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/r/md.gif", "width": 10, "height": 10}}}},
+          {"id": 2, "slug": "untyped", "title": "U",
+           "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/u/md.gif", "width": 10, "height": 10}}}},
+          {"id": 3, "slug": "odd", "title": "O", "type": "native_ad",
+           "file": {"md": {"gif": {"url": "https://static.klipy.com/ii/o/md.gif", "width": 10, "height": 10}}}}
+        ]}}
+        """.utf8)
+        XCTAssertEqual(try KlipyAPI.candidates(from: body).map(\.id), ["1"])
     }
 
     func testAnEmptyPageIsNotAnError() throws {
@@ -247,14 +279,20 @@ final class KlipyGIFProviderTests: XCTestCase {
         let klipy = provider(transport)
         let candidate = try XCTUnwrap(KlipyAPI.candidates(from: Self.page).first)
         let file = try await klipy.fetchFile(for: candidate)
-        XCTAssertEqual(file.pathExtension, "mp4")
+        XCTAssertEqual(file.pathExtension, "gif", "the GIF unless the chat takes MP4")
         XCTAssertEqual(file.deletingLastPathComponent().standardizedFileURL, cache.standardizedFileURL)
         XCTAssertEqual(try Data(contentsOf: file), Data("mp4-bytes".utf8))
-        XCTAssertEqual(transport.requests.first?.url?.absoluteString, "https://static.klipy.com/ii/a/md.mp4")
+        XCTAssertEqual(transport.requests.first?.url?.absoluteString, "https://static.klipy.com/ii/a/md.gif")
         let again = try await klipy.fetchFile(for: candidate)
         XCTAssertEqual(again, file)
         XCTAssertEqual(transport.requests.count, 1, "the second time comes from the cache")
 
+        let loop = try await klipy.fetchFile(for: candidate, asMP4: true)
+        XCTAssertEqual(loop.pathExtension, "mp4")
+        XCTAssertEqual(transport.requests.last?.url?.absoluteString, "https://static.klipy.com/ii/a/md.mp4")
+        let noLoop = GIFCandidate(id: "g", title: "g", mediaURL: "https://static.klipy.com/g.gif", mimeType: "image/gif")
+        let gifOnly = try await klipy.fetchFile(for: noLoop, asMP4: true)
+        XCTAssertEqual(gifOnly.pathExtension, "gif", "no MP4 to send: the GIF")
         let preview = try await klipy.fetchPreview(for: candidate)
         XCTAssertEqual(preview?.pathExtension, "gif")
         XCTAssertNotEqual(preview, file)
