@@ -311,23 +311,18 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.search.sections, [])
     }
 
-    /// Searching every chat keeps its step-by-step Escape: filters, then text, then the panel.
-    func testEscapeCascadeWhenSearchingEveryChat() async throws {
+    /// D6: searching every chat, one Escape closes the panel too, even with text and a filter in it.
+    func testEscapeClosesAtOnceWhenSearchingEveryChat() async throws {
         let h = try await start(rooms: [room("!a", ts: 1)])
         try await h.showHome()
         try await h.type("pic")
         h.search.filters.sender = "me"
         try await waitUntil { h.search.phase == .results }
 
-        XCTAssertFalse(h.search.escape())
-        XCTAssertTrue(h.search.filters.isEmpty, "first the filters")
-        XCTAssertEqual(h.search.text, "pic")
-
-        XCTAssertFalse(h.search.escape())
-        XCTAssertEqual(h.search.text, "", "then the text")
-
-        XCTAssertTrue(h.search.escape(), "then the panel closes")
+        XCTAssertTrue(h.search.escape(), "one Escape closes it")
         XCTAssertEqual(h.search.phase, .closed)
+        XCTAssertEqual(h.search.text, "")
+        XCTAssertTrue(h.search.filters.isEmpty)
         XCTAssertEqual(h.search.sections, [])
     }
 

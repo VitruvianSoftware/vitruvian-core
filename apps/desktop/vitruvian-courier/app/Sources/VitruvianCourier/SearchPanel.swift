@@ -547,7 +547,7 @@ struct RecentChatsList: View {
                     .padding(.bottom, 4)
                 ForEach(rows, id: \.id) { row in
                     Button { open(row) } label: {
-                        let resolved = displayTitle(row)
+                        let resolved = PhoneNumberFormat.display(displayTitle(row))
                         HStack(spacing: 10) {
                             ChatAvatar(row: row, size: 28).frame(width: 28, height: 28)
                             Text(resolved.isEmpty ? String(localized: "Unnamed chat") : resolved)

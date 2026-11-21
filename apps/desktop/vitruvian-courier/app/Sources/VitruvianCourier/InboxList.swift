@@ -173,6 +173,8 @@ struct InboxList: View {
                             onHoverChange: { inside in
                                 if inside {
                                     hoverTracker.roomID = row.id
+                                    // The menu offers Delete Chat… only where the network can: ask now, so it knows.
+                                    inbox.prefetchFeatures(for: row)
                                 } else if hoverTracker.roomID == row.id {
                                     hoverTracker.roomID = nil
                                 }
@@ -183,6 +185,8 @@ struct InboxList: View {
                                 ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.id),
                                                 showsKeys: false)
                             }
+                            // A native menu, so the system's own "Ask Siri" item is left out.
+                            .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui) { menuIDs(row.id) }
                             .tag(row.id)
                             // Within the last 20 chats loaded: read the next page.
                             .onAppear { inbox.rowAppeared(at: index + offset) }
@@ -190,14 +194,10 @@ struct InboxList: View {
                 }
                 .listStyle(.inset)
                 .courierSidebarList()
-                .contextMenu(forSelectionType: String.self) { ids in
-                    if let id = ids.first, id != InboxModel.newChatRowID {
-                        ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(id))
-                    }
-                } primaryAction: { ids in
+                .contextMenu(forSelectionType: String.self, menu: { _ in EmptyView() }, primaryAction: { ids in
                     if let id = ids.first, id != InboxModel.newChatRowID,
                        let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
-                }
+                })
                 .onKeyPress(phases: .down, action: key)
                 .onExitCommand { _ = inbox.escape() }
             }

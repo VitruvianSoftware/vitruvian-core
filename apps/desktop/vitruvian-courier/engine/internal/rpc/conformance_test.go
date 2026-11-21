@@ -409,7 +409,8 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 		{"FileKindFeatures", *fk},
 		{"MediaCapFeature", mc},
 		{"Member", store.MemberHit{}},
-		{"RoomInfoResult", actions.RoomInfo{}},
+		// HistoryOff is left out when the network has no such setting, so the sample carries it.
+		{"RoomInfoResult", actions.RoomInfo{HistoryOff: func() *bool { off := true; return &off }()}},
 		{"ContactCandidate", actions.ContactCandidate{RoomID: "!r:courier.local"}},
 		{"BlastMessage", actions.BlastMessage{}},
 		{"MergedChat", mergedChatJSON{}},

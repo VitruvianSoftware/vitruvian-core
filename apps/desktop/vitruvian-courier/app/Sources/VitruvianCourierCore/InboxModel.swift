@@ -184,6 +184,10 @@ public final class InboxModel: ObservableObject {
     @Published public var startNewChatDraft: StartNewChatDraft?
     /// Active Merge / Edit Merged Chat modal draft.
     @Published public var mergedChatEditorDraft: MergedChatEditorDraft?
+    /// What each chat's network said its chat can do, and when (room.features). Not published: the menu reads it as it
+    /// opens, and a change here should not draw the list again.
+    private var chatFeaturesCache: [String: (features: ChatFeatures, at: Date)] = [:]
+    private var featuresInFlight: Set<String> = []
     /// Active Custom… reminder sheet request (`RemindMeMenu`).
     @Published public var customReminder: ReminderRequest?
     /// Whether the ⌘L Remind Me popover is presented.
@@ -1109,6 +1113,61 @@ public final class InboxModel: ObservableObject {
             fail(error)
         }
         requestRead(waiting: false)
+    }
+
+    // MARK: - What a chat's network can do (the right-click menu), and Delete
+
+    /// How long what a chat can do is trusted before it is asked again: a login that drops or reconnects changes it.
+    public static let featuresFreshFor: TimeInterval = 120
+
+    /// What `roomID`'s network says its chat can do (room.features), when it was asked lately; nil when it hasn't
+    /// been, or the answer is old. The menu reads this, so Delete Chat… is only ever offered where it can work.
+    public func cachedFeatures(for roomID: String, now: Date = Date()) -> ChatFeatures? {
+        guard let kept = chatFeaturesCache[roomID], now.timeIntervalSince(kept.at) < Self.featuresFreshFor else { return nil }
+        return kept.features
+    }
+
+    /// Asks the engine what `roomID` can do, unless that is known already or being asked. A chat that stands for
+    /// several (a merged chat) has no features of its own. Never throws: with no answer, the menu leaves out what
+    /// depends on it.
+    public func loadFeatures(for roomID: String) async {
+        guard !isLocked, !roomID.hasPrefix("merge:"), cachedFeatures(for: roomID) == nil,
+              !featuresInFlight.contains(roomID), let client = appModel.client else { return }
+        featuresInFlight.insert(roomID)
+        defer { featuresInFlight.remove(roomID) }
+        let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: roomID))
+        guard client === appModel.client, let read else { return }
+        chatFeaturesCache[roomID] = (read, Date())
+    }
+
+    /// Starts `loadFeatures` for the chat a pointer is on, so the menu has the answer by the time it is opened.
+    public func prefetchFeatures(for row: InboxRow) {
+        guard row.mergeID.isEmpty, cachedFeatures(for: row.roomID) == nil, !featuresInFlight.contains(row.roomID) else { return }
+        let roomID = row.roomID
+        Task { [weak self] in await self?.loadFeatures(for: roomID) }
+    }
+
+    /// Deletes a chat: removed from this Mac and, where its network allows it, from the network (room.delete). The
+    /// chat that was open moves to a neighbour as it does when it is archived. A refusal is said in the toast, and the
+    /// chat stays. True once it is gone.
+    @discardableResult
+    public func deleteChat(roomID: String) async -> Bool {
+        guard !beginAction([roomID]).isEmpty, !roomID.hasPrefix("merge:"), let client = appModel.client else { return false }
+        let next = neighbor(for: preferences.afterArchive, leaving: [roomID], fallBack: true)
+        let wasOpen = appModel.isOpen(roomID: roomID)
+        do {
+            let _: Empty = try await client.call("room.delete", RoomParams(roomID: roomID))
+        } catch {
+            showToast(EngineErrorText.text(for: error, network: rowsByID[roomID]?.network,
+                                           fallback: String(localized: "Couldn’t delete the chat.")))
+            requestRead(waiting: false)
+            return false
+        }
+        chatFeaturesCache[roomID] = nil
+        if wasOpen { apply(next) }
+        showToast(String(localized: "Chat deleted"))
+        requestRead(waiting: false)
+        return true
     }
 
     /// Pins the targets, or unpins them when every one is pinned already. A network that takes pins hears it.

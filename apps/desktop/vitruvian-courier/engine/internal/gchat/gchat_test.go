@@ -4630,6 +4630,84 @@ func TestSyncWorldQueuesChatResyncAndGetChatInfoIncludesSpaceMembers(t *testing.
 	require.NotContains(t, chatInfo.Members.MemberMap, MakeUserID("112233445566778899999"), "GetChatInfo must exclude non-joined invited member")
 }
 
+// D3: get_group tells a chat's history setting (Google's retention state), and the portal keeps it for Chat Info:
+// "ephemeral one day" is history off, "permanent" is history on, and a reply with no state says nothing (nil).
+func TestGetChatInfoRecordsTheChatsHistorySetting(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	var state atomic.Int32 // a pb.RetentionSettings_RetentionState; -1 sends no retention settings
+	state.Store(-1)
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/get_group":
+			group := &pb.Group{GroupId: pb.SpaceGroupID("space_threaded"), Name: pb.String("Threaded Eng")}
+			if got := state.Load(); got >= 0 {
+				group.RetentionSettings = &pb.RetentionSettings{State: pb.RetentionSettings_RetentionState(got).Enum()}
+			}
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{Group: group}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	require.NoError(t, client.syncWorld(ctx))
+	portal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, portal)
+	meta, ok := portal.Metadata.(*PortalMetadata)
+	require.True(t, ok)
+	// syncWorld may already have read the group once: start each case from not-read.
+	meta.HistoryOff = nil
+
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	_, known := meta.ChatHistoryOff()
+	require.False(t, known, "a get_group with no retention settings says nothing about history")
+
+	state.Store(int32(pb.RetentionSettings_EPHEMERAL_ONE_DAY))
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	off, known := meta.ChatHistoryOff()
+	require.True(t, known)
+	require.True(t, off, "ephemeral one day is history off")
+
+	state.Store(int32(pb.RetentionSettings_PERMANENT))
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	off, known = meta.ChatHistoryOff()
+	require.True(t, known)
+	require.False(t, off, "permanent is history on")
+
+	// Not read again with nothing new to say: the last answer stays.
+	state.Store(-1)
+	_, err = client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	off, known = meta.ChatHistoryOff()
+	require.True(t, known)
+	require.False(t, off)
+}
+
+func TestHistoryOffOfRetentionState(t *testing.T) {
+	off, known := historyOffOf(pb.RetentionSettings_EPHEMERAL_ONE_DAY)
+	require.True(t, off)
+	require.True(t, known)
+	off, known = historyOffOf(pb.RetentionSettings_PERMANENT)
+	require.False(t, off)
+	require.True(t, known)
+	_, known = historyOffOf(pb.RetentionSettings_UNKNOWN_RETENTION_STATE)
+	require.False(t, known)
+	var nilMeta *PortalMetadata
+	_, known = nilMeta.ChatHistoryOff()
+	require.False(t, known)
+}
+
 func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
 	enableTestLoopback(t)
 	ctx := context.Background()

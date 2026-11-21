@@ -1314,7 +1314,7 @@ struct ConversationHeader: View {
     @ViewBuilder
     private var identity: some View {
         if let row {
-            let formatted = displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle
+            let formatted = PhoneNumberFormat.display(displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle)
             let shownTitle = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
             // The inbox's picture: a group with none gets the group picture, not initials.
             // 28 pt with a square clip keeps multi-circle group avatars fully inside the header and above its hairline.

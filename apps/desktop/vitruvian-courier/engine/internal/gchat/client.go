@@ -776,6 +776,7 @@ func (c *Client) getChatInfo(ctx context.Context, portal *bridgev2.Portal, world
 	var memberGaiaIDs []string
 	var storedAppIDs []string
 	nameFromGoogle := false
+	historyRead, historyOff := false, false
 	c.metaMu.Lock()
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		memberGaiaIDs = append(memberGaiaIDs, meta.MemberUserIDs...)
@@ -836,6 +837,8 @@ func (c *Client) getChatInfo(ctx context.Context, portal *bridgev2.Portal, world
 						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
 							topic = &desc
 						}
+						// The chat's history setting: Chat Info shows it (read only: this client has no call to change it).
+						historyOff, historyRead = historyOffOf(g.GetRetentionSettings().GetState())
 					}
 					for _, m := range resp.GetMemberships() {
 						state := m.GetMembershipState()
@@ -895,6 +898,9 @@ func (c *Client) getChatInfo(ctx context.Context, portal *bridgev2.Portal, world
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		meta.AppUserIDs = appIDs
 		meta.NameFromGoogle = nameFromGoogle
+		if historyRead {
+			meta.setHistoryOff(historyOff)
+		}
 		// A space can have thousands of members, so only which of them are apps is kept (app_user_ids); the member
 		// list itself is read from get_group each time it is needed.
 		switch {
@@ -927,6 +933,19 @@ func (c *Client) getChatInfo(ctx context.Context, portal *bridgev2.Portal, world
 		CanBackfill: true,
 		Members:     members,
 	}, nil
+}
+
+// historyOffOf is whether a retention state means history is off, and whether it says anything: Google's "permanent"
+// is history on and "ephemeral one day" is history off; a state not given or not known is no answer.
+func historyOffOf(state pb.RetentionSettings_RetentionState) (off, known bool) {
+	switch state {
+	case pb.RetentionSettings_EPHEMERAL_ONE_DAY:
+		return true, true
+	case pb.RetentionSettings_PERMANENT:
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func (c *Client) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

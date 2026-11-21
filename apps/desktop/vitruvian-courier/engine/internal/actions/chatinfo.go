@@ -30,6 +30,9 @@ type RoomLink struct {
 	Host    string `json:"host"`
 	// Title is the page title from the message's link preview; left out when the message has none.
 	Title string `json:"title,omitempty"`
+	// ImagePath is the file of the link preview's picture, when the message's preview has one and it is on this
+	// Mac; left out otherwise.
+	ImagePath string `json:"image_path,omitempty"`
 }
 
 type RoomInfo struct {
@@ -54,6 +57,46 @@ type RoomInfo struct {
 	// them is "at least".
 	SharedCapped bool     `json:"shared_capped"`
 	Features     Features `json:"features"`
+	// HistoryOff is the network's own "chat history" setting where it has one (Google Chat): true is history off
+	// (messages disappear after a day on the network), false is history on. nil: the network has no such setting, or
+	// has not said what it is for this chat, so nothing is claimed either way. Read only: nothing here changes it.
+	HistoryOff *bool `json:"history_off,omitempty"`
+}
+
+// historyReporter is what a network's chat metadata offers when the network has a per-chat history setting (Google
+// Chat's *PortalMetadata): known says the network has told the engine the setting.
+type historyReporter interface {
+	ChatHistoryOff() (off, known bool)
+}
+
+// historyOffOf is the history setting a chat's metadata reports, or nil when it has none or doesn't know it.
+func historyOffOf(meta any) *bool {
+	reporter, ok := meta.(historyReporter)
+	if !ok {
+		return nil
+	}
+	off, known := reporter.ChatHistoryOff()
+	if !known {
+		return nil
+	}
+	return &off
+}
+
+// historyOff is the chat's history setting as its network last reported it (nil: not a network with one, or unread).
+func (a *Actions) historyOff(ctx context.Context, roomID string) *bool {
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil || !ok {
+		return nil
+	}
+	h, ok := a.eng.Host(room.Network)
+	if !ok || h == nil {
+		return nil
+	}
+	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(roomID))
+	if err != nil || portal == nil {
+		return nil
+	}
+	return historyOffOf(portal.Metadata)
 }
 
 func (a *Actions) mediaPath(uri string) string {
@@ -104,6 +147,8 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 		disappearingMs = timer.Timer.Milliseconds()
 	}
 
+	historyOff := a.historyOff(ctx, roomID)
+
 	pinnedIDs := []string{}
 	if raw, ok, err := a.s.GetState(ctx, roomID, event.StatePinnedEvents.Type, ""); err == nil && ok {
 		var pinned event.PinnedEventsEventContent
@@ -148,12 +193,13 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 	sharedLinks := make([]RoomLink, 0, len(rawLinks))
 	for _, l := range rawLinks {
 		sharedLinks = append(sharedLinks, RoomLink{
-			EventID: l.EventID,
-			Sender:  l.Sender,
-			TS:      l.TS.UnixMilli(),
-			URL:     l.URL,
-			Host:    l.Host,
-			Title:   l.Title,
+			EventID:   l.EventID,
+			Sender:    l.Sender,
+			TS:        l.TS.UnixMilli(),
+			URL:       l.URL,
+			Host:      l.Host,
+			Title:     l.Title,
+			ImagePath: a.mediaPath(l.ImageURI),
 		})
 	}
 	feat, err := a.Features(ctx, roomID)
@@ -174,6 +220,7 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 		IsDirect:       room.IsDirect,
 		Encrypted:      encrypted,
 		DisappearingMs: disappearingMs,
+		HistoryOff:     historyOff,
 		PinnedEventIDs: pinnedIDs,
 		Members:        members,
 		SharedMedia:    sharedMedia,
