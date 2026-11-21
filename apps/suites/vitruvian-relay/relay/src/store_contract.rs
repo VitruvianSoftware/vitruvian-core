@@ -341,12 +341,4 @@ pub async fn store_contract(store: &dyn Store) {
             .await,
         Ok(0)
     );
-
-    // --- import_if_empty: this store already has devices, so it copies none
-    assert_eq!(
-        store
-            .import_if_empty(&[new_device(&alice, "imported", 1)])
-            .await,
-        Ok(0)
-    );
 }

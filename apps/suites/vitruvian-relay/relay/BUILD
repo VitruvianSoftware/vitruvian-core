@@ -68,7 +68,6 @@ _LIB_SRCS = [
     "src/devices.rs",
     "src/http.rs",
     "src/http_tests.rs",
-    "src/legacy_devices.rs",
     "src/lib.rs",
     "src/mcp.rs",
     "src/parked.rs",

@@ -19,8 +19,7 @@
 # SOFTWARE.
 
 # The Vitruvian Relay's workspace and lock file. Apart from the repo-root
-# workspace, like the spike's, because the relay's image builds with cargo from
-# this folder. Bazel reads the same lock through the @vitruvian_relay_crates hub
+# workspace, because the relay's image builds with cargo from this folder. Bazel reads the same lock through the @vitruvian_relay_crates hub
 # (MODULE.bazel). The shared token checker lives in
 # packages/mcp-auth and comes in as a path dependency.
 # Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay
@@ -28,7 +27,7 @@
 resolver = "2"
 members = ["relay", "protocol", "connector", "connector/scripts"]
 
-# A smaller image: the release binary ships without debug symbols (as the
-# spike's did). Bazel builds ignore cargo profiles.
+# A smaller image: the release binary ships without debug symbols. Bazel
+# builds ignore cargo profiles.
 [profile.release]
 strip = true

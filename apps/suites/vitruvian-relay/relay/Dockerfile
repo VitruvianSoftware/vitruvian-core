@@ -107,9 +107,7 @@ RUN set -eu; \
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app
 # DATABASE_URL (Postgres) is required and has no default: the chart sets it.
-# The relay no longer keeps devices on a volume; it reads /data/devices.json
-# once, at start, only to copy a P1 install's device into Postgres (removed in
-# Task 13 of the P2 plan).
+# The relay keeps devices and calls in Postgres and writes nothing to disk.
 ENV PORT=3000 \
     HOME=/tmp
 COPY --from=build --chmod=0755 /vitruvian-relay /app/vitruvian-relay

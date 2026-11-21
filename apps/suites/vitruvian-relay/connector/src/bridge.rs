@@ -21,7 +21,8 @@
 //! The bridge to `desktop-commander`: runs the pinned package over stdio as
 //! an MCP server and speaks JSON-RPC to it, one message per line.
 //!
-//! What spike D found, built in here:
+//! What testing desktop-commander found (spike D of
+//! docs/superpowers/plans/2026-11-09-relay-p0-spikes.md), built in here:
 //! - It starts commands as its own children, and they outlive it. So it runs
 //!   in its own process group, and whenever it goes (stopped, crashed, or
 //!   exited by itself) the whole group is killed.
@@ -72,7 +73,8 @@ pub const DC_CONFIG_DIR: &str = ".claude-server-commander";
 /// characters). Task 8 must not send a longer one.
 pub const CALL_ID_RESERVE: usize = 256;
 
-/// desktop-commander 0.3.1's integrity, as pinned and tested in spike D.
+/// desktop-commander 0.3.1's integrity, as pinned and tested in spike D
+/// (docs/superpowers/plans/2026-11-09-relay-p0-spikes.md).
 pub const DC_INTEGRITY: &str = "sha512-cx7KTscLF951adHmDLVCDIVTqJ/Bg1LtdRILZoo5wa/UMeyOfMAuOJOEBulNMKBKb5Xd3nHDQnB9aXroN9Fw5A==";
 
 /// Longest line read from desktop-commander's stdout. A reply over 4 MiB is
@@ -2348,7 +2350,7 @@ mod tests {
     }
 
     /// The lock pins the version the code was checked against, with the
-    /// checksum spike D tested.
+    /// checksum tested in spike D (docs/superpowers/plans/2026-11-09-relay-p0-spikes.md).
     #[test]
     fn dc_lock_pins_0_3_1_with_the_known_checksum() {
         let lock = std::fs::read_to_string(runfile(

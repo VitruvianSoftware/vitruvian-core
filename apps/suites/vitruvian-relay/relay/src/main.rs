@@ -27,7 +27,6 @@ use tokio::net::TcpListener;
 use vitruvian_mcp_auth::{verifier, VerifierConfig};
 use vitruvian_relay::config::{wants_version, Settings};
 use vitruvian_relay::http::{serve, App, Timing};
-use vitruvian_relay::legacy_devices::{import_legacy_devices, Imported};
 use vitruvian_relay::store::{purge_activity_forever, PgStore, Store, ACTIVITY_PURGE_EVERY};
 use vitruvian_relay::{log_event, stdout_log, stop_signal};
 
@@ -98,19 +97,6 @@ async fn main() {
     .await
     .unwrap_or_else(|e| fail(format!("cannot open the device store: {e}")));
     log_event(&log, "store_ready", serde_json::json!({}));
-    // REMOVE IN TASK 13: carry the P1 device file's devices over, once.
-    match import_legacy_devices(&store, &settings.legacy_devices_file).await {
-        Ok(Imported::NoFile) => {}
-        Ok(Imported::TableNotEmpty) => log_event(
-            &log,
-            "legacy_import_skipped",
-            serde_json::json!({"reason": "the database already has devices"}),
-        ),
-        Ok(Imported::Copied(n)) => {
-            log_event(&log, "legacy_import", serde_json::json!({"devices": n}))
-        }
-        Err(e) => fail(e),
-    }
     let store: Arc<dyn Store> = Arc::new(store);
     // Calls are kept for 30 days: this clears the older ones once an hour.
     tokio::spawn(purge_activity_forever(

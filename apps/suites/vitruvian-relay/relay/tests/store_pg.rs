@@ -30,7 +30,6 @@ use std::sync::{Arc, Mutex};
 
 use pg_support::fresh_database;
 use vitruvian_relay::devices::NewDevice;
-use vitruvian_relay::legacy_devices::{import_legacy_devices, Imported};
 use vitruvian_relay::random_id;
 use vitruvian_relay::store::{PgStore, Store, StoreError, MAX_DEVICES_PER_USER, SCHEMA_VERSION};
 use vitruvian_relay::LogSink;
@@ -187,44 +186,6 @@ async fn the_device_limit_holds_when_inserts_race() {
         store.devices_of("alice").await.unwrap().len(),
         MAX_DEVICES_PER_USER
     );
-}
-
-#[tokio::test]
-async fn the_p1_file_is_imported_once_into_an_empty_database() {
-    let db = fresh_database().await;
-    let store = PgStore::connect(&db.url(), None, quiet()).await.unwrap();
-    let dir = std::env::var_os("TEST_TMPDIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(format!("relay-pg-import-{}", random_id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let file = dir.join("devices.json");
-    std::fs::write(
-        &file,
-        format!(
-            r#"{{"james-mac":{{"owner_sub":"james","public_key_ed25519":"{}"}}}}"#,
-            "0a".repeat(32)
-        ),
-    )
-    .unwrap();
-
-    assert_eq!(
-        import_legacy_devices(&store, &file).await.unwrap(),
-        Imported::Copied(1)
-    );
-    let d = store.device("james-mac").await.unwrap().expect("imported");
-    assert_eq!(
-        (d.owner_sub.as_str(), d.public_key_ed25519),
-        ("james", [10; 32])
-    );
-    // A restart: the table has a row, so the file is left alone.
-    assert_eq!(
-        import_legacy_devices(&store, &file).await.unwrap(),
-        Imported::TableNotEmpty
-    );
-    assert_eq!(store.devices_of("james").await.unwrap().len(), 1);
-    // The file itself is never touched.
-    assert!(file.exists());
 }
 
 /// Anything but `sslmode=disable` means TLS that is checked, and there is no

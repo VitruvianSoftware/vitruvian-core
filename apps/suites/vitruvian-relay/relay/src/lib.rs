@@ -26,7 +26,6 @@ pub mod config;
 pub mod dashboard;
 pub mod devices;
 pub mod http;
-pub mod legacy_devices;
 pub mod mcp;
 pub mod parked;
 pub mod ratelimit;

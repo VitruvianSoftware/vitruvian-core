@@ -327,6 +327,11 @@ impl Table {
 }
 
 /// A request id that is the caller's (see [`ParkedCalls::owned`]).
+///
+/// Only `ParkedCalls::find` may build one, after the ownership check:
+/// [`ParkedCalls::wait_for`] hands over the result without asking who is
+/// asking, so a hand-made `Owned` would skip the check. The fields are
+/// private to this module for that reason; keep it that way.
 pub struct Owned {
     pub id: RequestId,
     /// The device the request was made on.

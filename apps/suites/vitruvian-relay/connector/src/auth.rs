@@ -21,7 +21,6 @@
 //! Sign-in against Zitadel (OAuth device flow, RFC 8628), token refresh, and
 //! registering the device with the relay. Blocking I/O on purpose: it is one
 //! person's terminal tool, and Task 8 calls these from a worker thread.
-//! The device-flow parsing is the spike's (`spike/src/client.rs`).
 
 use std::time::{Duration, Instant};
 
@@ -1093,7 +1092,7 @@ mod tests {
     }
 
     #[test]
-    fn token_answers_parse_like_the_spike() {
+    fn token_answers_parse_by_rfc_8628() {
         assert_eq!(
             parse_token_response(400, &json!({"error": "slow_down"}), 0),
             Poll::SlowDown

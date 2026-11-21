@@ -49,9 +49,6 @@ pub struct Settings {
     /// cluster's `ca.crt`). Unset means the system's certificates. Not needed
     /// when the URL says `sslmode=disable` (tests).
     pub database_ca_file: Option<PathBuf>,
-    /// REMOVE IN TASK 13: the P1 device file, read once at start to copy its
-    /// devices into Postgres if the database has none.
-    pub legacy_devices_file: PathBuf,
     /// Overrides where signing keys are fetched. Unset in production (keys come
     /// from `{issuer}/oauth/v2/keys`); set for local runs against test keys.
     pub jwks_uri: Option<String>,
@@ -215,9 +212,6 @@ impl Settings {
             required_role: opt("REQUIRED_ROLE").unwrap_or_else(|| DEFAULT_REQUIRED_ROLE.into()),
             database_url: Secret(req("DATABASE_URL")?),
             database_ca_file: opt("DATABASE_CA_FILE").map(PathBuf::from),
-            legacy_devices_file: PathBuf::from(
-                opt("LEGACY_DEVICES_FILE").unwrap_or_else(|| "/data/devices.json".into()),
-            ),
             jwks_uri,
             token_uri,
         })
@@ -328,7 +322,6 @@ mod tests {
             "postgres://relay:pw@relay-db-rw:5432/relay"
         );
         assert_eq!(s.database_ca_file, None);
-        assert_eq!(s.legacy_devices_file, PathBuf::from("/data/devices.json"));
         assert_eq!(s.jwks_uri, None);
         assert_eq!(s.token_uri, None);
         assert_eq!(s.dashboard_client_id, "dash-id");
@@ -355,17 +348,12 @@ mod tests {
         env.insert("PORT", "8080");
         env.insert("REQUIRED_ROLE", " relay-tester ");
         env.insert("DATABASE_CA_FILE", "/etc/relay-db-ca/ca.crt");
-        env.insert("LEGACY_DEVICES_FILE", "/var/relay/devices.json");
         let s = load(&env).unwrap();
         assert_eq!(s.port, 8080);
         assert_eq!(s.required_role, "relay-tester");
         assert_eq!(
             s.database_ca_file,
             Some(PathBuf::from("/etc/relay-db-ca/ca.crt"))
-        );
-        assert_eq!(
-            s.legacy_devices_file,
-            PathBuf::from("/var/relay/devices.json")
         );
     }
 

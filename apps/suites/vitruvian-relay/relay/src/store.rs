@@ -183,11 +183,6 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<ActivityRow>, StoreError>;
     /// Deletes calls recorded before `t`; how many.
     async fn purge_activity_before(&self, t: SystemTime) -> Result<u64, StoreError>;
-    /// Copies `devices` in only if the store holds no device at all (revoked
-    /// ones count), as one step. How many were copied; `0` means it was not
-    /// empty. For the one-time import of the P1 file
-    /// ([`crate::legacy_devices`]).
-    async fn import_if_empty(&self, devices: &[NewDevice]) -> Result<u64, StoreError>;
 }
 
 // ---------------------------------------------------------------- MemStore
@@ -448,19 +443,6 @@ impl Store for MemStore {
         let before = m.activity.len();
         m.activity.retain(|r| r.at >= t);
         Ok((before - m.activity.len()) as u64)
-    }
-
-    async fn import_if_empty(&self, devices: &[NewDevice]) -> Result<u64, StoreError> {
-        self.check()?;
-        let mut m = self.inner.lock().unwrap();
-        if !m.devices.is_empty() {
-            return Ok(0);
-        }
-        for d in devices {
-            m.devices.push(to_record(d));
-            m.revoked.push(false);
-        }
-        Ok(devices.len() as u64)
     }
 }
 
@@ -995,38 +977,6 @@ impl Store for PgStore {
             c.deadline,
             c.execute("DELETE FROM activity WHERE at < $1", &[&t]),
         )
-        .await
-    }
-
-    async fn import_if_empty(&self, devices: &[NewDevice]) -> Result<u64, StoreError> {
-        let mut c = self.client("import_if_empty").await?;
-        self.timed("import_if_empty", c.deadline, async {
-            let tx = c.transaction().await?;
-            // The migrations' lock: an import never runs inside another
-            // relay's migration.
-            tx.execute(
-                &format!("SELECT pg_advisory_xact_lock({MIGRATION_LOCK})"),
-                &[],
-            )
-            .await?;
-            let existing: i64 = tx
-                .query_one("SELECT count(*) FROM devices", &[])
-                .await?
-                .get(0);
-            if existing > 0 {
-                return Ok(0);
-            }
-            for d in devices {
-                let key: &[u8] = &d.public_key_ed25519;
-                tx.execute(
-                    "INSERT INTO devices (id, owner_sub, name, public_key) VALUES ($1, $2, $3, $4)",
-                    &[&d.device_id, &d.owner_sub, &d.name, &key],
-                )
-                .await?;
-            }
-            tx.commit().await?;
-            Ok(devices.len() as u64)
-        })
         .await
     }
 }
