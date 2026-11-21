@@ -52,6 +52,8 @@ go_test(
     name = "actions_test",
     srcs = [
         "actions_test.go",
+        "article_qa_test.go",
+        "article_security_test.go",
         "article_test.go",
         "chatstate_test.go",
         "delete_test.go",
