@@ -165,6 +165,8 @@ chmod 600 "${HOME}/.kube/config"
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	{
 		echo "export KUBECONFIG=${HOME}/.kube/config"
+		# //tools/gitops falls back to the only context, but say it outright.
+		echo "export KUBE_CONTEXT=lab"
 		echo 'export NO_PROXY="100.64.0.0/10,k8s-api.lab.ipv1337.dev,.lab.ipv1337.dev,localhost,127.0.0.1"'
 	} >>"$CLAUDE_ENV_FILE"
 fi
@@ -224,10 +226,20 @@ if [ "$state" != Running ]; then
 	exit 0
 fi
 
-if probe="$(kubectl --kubeconfig "${HOME}/.kube/config" --request-timeout=10s get --raw=/version 2>&1)"; then
-	echo "${written}; apiserver reachable via SOCKS5 :1055"
-	exit 0
-fi
+# The first dial after joining can fail while the DERP path to the control
+# planes is still being set up: tailscaled's SOCKS5 proxy answers "general SOCKS
+# server failure", and the same probe succeeds seconds later. Retry only that,
+# a few times; any other answer (Unauthorized, a timeout) is reported at once.
+for attempt in 1 2 3; do
+	if probe="$(kubectl --kubeconfig "${HOME}/.kube/config" --request-timeout=10s get --raw=/version 2>&1)"; then
+		echo "${written}; apiserver reachable via SOCKS5 :1055"
+		exit 0
+	fi
+	case "$probe" in
+	*"SOCKS server failure"*) [ "$attempt" -lt 3 ] && sleep "${KUBE_SETUP_RETRY_SLEEP:-5}" ;;
+	*) break ;;
+	esac
+done
 case "$probe" in
 *Unauthorized*) reason="the apiserver rejected LAB_SA_TOKEN (Unauthorized)" ;;
 *) reason="the tailnet is up but kubectl got: $(printf '%s\n' "$probe" | grep -v '^[[:space:]]*$' | tail -n1)" ;;
