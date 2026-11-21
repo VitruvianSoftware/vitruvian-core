@@ -437,6 +437,16 @@ struct MessageRowView: View {
         return !RichTextLayout.blocks(of: message.rich).contains { $0.kind == .code }
     }
 
+    /// Where the hover pill sits up and down: on a text bubble's last line, at the middle of anything else (a picture,
+    /// a video, a link card, a GIF, a file, code). Tall ones are centred whatever they hold (`MessageActionBarPlacement`).
+    private var hoverPillLevel: MessageActionBarPlacement.Level {
+        let isPlainText = contentIsText && (message.kind == .text || message.kind == .notice || message.kind == .emote)
+            && message.linkPreviews.isEmpty && ExternalEmbedDescriptor.first(in: message) == nil
+            && message.galleryItems.isEmpty
+            && !RichTextLayout.blocks(of: message.rich).contains { $0.kind == .code }
+        return isPlainText ? .lastLine : .centre
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if message.mine {
@@ -538,7 +548,7 @@ struct MessageRowView: View {
                         if let mark = anchors.bubbleMark { frame = frame.union(proxy[mark]) }
                         return CGRect(origin: MessageActionBarPlacement.origin(
                             bubble: frame, row: proxy.size, bar: barSize, mine: message.mine,
-                            level: showingHoverPill ? .lastLine : .top
+                            level: showingHoverPill ? hoverPillLevel : .top
                         ), size: barSize)
                     } : nil
                     if let bar {
@@ -1786,9 +1796,15 @@ enum MessageActionBarPlacement {
     enum Level {
         /// Level with the bubble's top (the selected message's wider bar).
         case top
-        /// Centred on the bubble's last line (the compact hover pill).
+        /// Centred on the bubble's last line (the compact hover pill on a text bubble). On a bubble taller than
+        /// `tallBubble` it is centred on the bubble instead: a last line that far down is out of the eye's reach.
         case lastLine
+        /// Centred on the bubble: a picture, video, link card, GIF or any other bubble that is not just text.
+        case centre
     }
+
+    /// A bubble taller than this takes the pill at its middle, whatever it holds.
+    static let tallBubble: CGFloat = 120
 
     static func origin(bubble: CGRect, row: CGSize, bar: CGSize, mine: Bool, level: Level = .top) -> CGPoint {
         let beside = mine ? bubble.minX - gap - bar.width : bubble.maxX + gap
@@ -1799,9 +1815,11 @@ enum MessageActionBarPlacement {
             case .top:
                 // Level with the bubble's top, or centred on a bubble shorter than the bar; never above the row.
                 y = bubble.height >= bar.height ? bubble.minY : bubble.midY - bar.height / 2
-            case .lastLine:
+            case .lastLine where bubble.height <= tallBubble:
                 // Centred on the last line; a bubble of one short line is centred as a whole.
                 y = max(bubble.midY, bubble.maxY - lastLineCentreInset) - bar.height / 2
+            case .lastLine, .centre:
+                y = bubble.midY - bar.height / 2
             }
             return CGPoint(x: beside, y: max(0, y))
         }

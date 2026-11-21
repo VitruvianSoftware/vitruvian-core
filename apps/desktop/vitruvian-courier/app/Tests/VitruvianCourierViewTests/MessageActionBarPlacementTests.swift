@@ -96,13 +96,42 @@ final class HoverPillPlacementTests: XCTestCase {
         XCTAssertEqual(spot.y + pill.height / 2, okay.midY, accuracy: 1)
     }
 
-    func testCentredOnTheLastLineOfATallBubbleNotItsTop() {
-        let tall = CGRect(x: 36, y: 3, width: 300, height: 90)
-        let spot = MessageActionBarPlacement.origin(bubble: tall, row: row, bar: pill, mine: false, level: .lastLine)
-        XCTAssertEqual(spot.y + pill.height / 2, tall.maxY - MessageActionBarPlacement.lastLineCentreInset)
-        XCTAssertGreaterThan(spot.y, tall.minY, "not at the top, as the selected message's bar is")
-        let top = MessageActionBarPlacement.origin(bubble: tall, row: row, bar: pill, mine: false, level: .top)
-        XCTAssertEqual(top.y, tall.minY)
+    func testCentredOnTheLastLineOfAMultiLineTextBubbleNotItsTop() {
+        let lines = CGRect(x: 36, y: 3, width: 300, height: 90)
+        let spot = MessageActionBarPlacement.origin(bubble: lines, row: row, bar: pill, mine: false, level: .lastLine)
+        XCTAssertEqual(spot.y + pill.height / 2, lines.maxY - MessageActionBarPlacement.lastLineCentreInset)
+        XCTAssertGreaterThan(spot.y, lines.minY, "not at the top, as the selected message's bar is")
+        let top = MessageActionBarPlacement.origin(bubble: lines, row: row, bar: pill, mine: false, level: .top)
+        XCTAssertEqual(top.y, lines.minY)
+    }
+
+    /// A bubble taller than ~120 pt (a long text, a picture) takes the pill at its middle, not at its far-down last line.
+    func testATallBubbleTakesThePillAtItsMiddleWhateverItHolds() {
+        let tall = CGRect(x: 36, y: 3, width: 300, height: 260)
+        let wasLastLine = MessageActionBarPlacement.origin(bubble: tall, row: CGSize(width: 1000, height: 300), bar: pill,
+                                                           mine: false, level: .lastLine)
+        XCTAssertEqual(wasLastLine.y + pill.height / 2, tall.midY, "a tall text bubble: the middle, not the last line")
+        let photo = MessageActionBarPlacement.origin(bubble: tall, row: CGSize(width: 1000, height: 300), bar: pill,
+                                                     mine: false, level: .centre)
+        XCTAssertEqual(photo.y + pill.height / 2, tall.midY, "a picture: the middle")
+        XCTAssertEqual(photo.x, tall.maxX + gap)
+    }
+
+    func testTheTallLimitIsAboutOneHundredAndTwentyPoints() {
+        let atLimit = CGRect(x: 36, y: 3, width: 300, height: MessageActionBarPlacement.tallBubble)
+        let over = CGRect(x: 36, y: 3, width: 300, height: MessageActionBarPlacement.tallBubble + 1)
+        let r = CGSize(width: 1000, height: 300)
+        XCTAssertEqual(MessageActionBarPlacement.tallBubble, 120)
+        XCTAssertEqual(MessageActionBarPlacement.origin(bubble: atLimit, row: r, bar: pill, mine: false, level: .lastLine).y
+                       + pill.height / 2, atLimit.maxY - MessageActionBarPlacement.lastLineCentreInset)
+        XCTAssertEqual(MessageActionBarPlacement.origin(bubble: over, row: r, bar: pill, mine: false, level: .lastLine).y
+                       + pill.height / 2, over.midY)
+    }
+
+    func testAShortPictureIsCentredToo() {
+        let small = CGRect(x: 36, y: 3, width: 90, height: 60)
+        let spot = MessageActionBarPlacement.origin(bubble: small, row: row, bar: pill, mine: false, level: .centre)
+        XCTAssertEqual(spot.y + pill.height / 2, small.midY)
     }
 
     func testOverTheTopCornerWhenThereIsNoRoomBeside() {

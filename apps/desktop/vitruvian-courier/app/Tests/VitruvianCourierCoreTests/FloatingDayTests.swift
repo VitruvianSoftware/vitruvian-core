@@ -101,6 +101,20 @@ final class FloatingDayTests: XCTestCase {
                        "no gesture just now: the jump to the newest message, a search result")
     }
 
+    /// The capsule's words are asked for on scroll events: a date formatter is made once per format, not once per ask.
+    func testDateFormattersAreReusedNotRebuiltPerCall() {
+        let now = at(11, 21)
+        let en = Locale(identifier: "en_US")
+        _ = FloatingDay.text(day: at(11, 14, 0), now: now, calendar: utc, locale: en)
+        _ = FloatingDay.text(day: at(11, 19, 0), now: now, calendar: utc, locale: en)
+        let built = FloatingDay.formatterBuildCount
+        for _ in 0 ..< 200 {
+            XCTAssertEqual(FloatingDay.text(day: at(11, 14, 0), now: now, calendar: utc, locale: en), "Sat, Nov 14")
+            XCTAssertEqual(FloatingDay.text(day: at(11, 19, 0), now: now, calendar: utc, locale: en), "Thursday")
+        }
+        XCTAssertEqual(FloatingDay.formatterBuildCount, built, "no formatter built after the first of each format")
+    }
+
     func testTimings() {
         XCTAssertEqual(FloatingDay.fadeOutDelay, 1.0)
         XCTAssertEqual(FloatingDay.fadeDuration, 0.2)

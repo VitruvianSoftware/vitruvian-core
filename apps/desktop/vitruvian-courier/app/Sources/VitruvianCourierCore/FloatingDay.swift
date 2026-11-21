@@ -82,12 +82,41 @@ public enum FloatingDay {
         }
     }
 
+    /// How many date formatters have been built, for the test that proves they are reused (one per format, not one per
+    /// scroll event).
+    public static var formatterBuildCount: Int { formatters.builds }
+
+    private static let formatters = FormatterCache()
+
     private static func format(_ date: Date, _ template: String, calendar: Calendar, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.setLocalizedDateFormatFromTemplate(template)
-        return formatter.string(from: date)
+        formatters.formatter(template: template, calendar: calendar, locale: locale).string(from: date)
+    }
+
+    /// Date formatters are costly to make and the capsule needs one on every scroll event that crosses to another day:
+    /// they are made once per format, calendar and locale.
+    private final class FormatterCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cached: [String: DateFormatter] = [:]
+        private var buildCount = 0
+        var builds: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return buildCount
+        }
+
+        func formatter(template: String, calendar: Calendar, locale: Locale) -> DateFormatter {
+            let key = "\(template)|\(calendar.identifier)|\(calendar.timeZone.identifier)|\(locale.identifier)"
+            lock.lock()
+            defer { lock.unlock() }
+            if let hit = cached[key] { return hit }
+            let formatter = DateFormatter()
+            formatter.calendar = calendar
+            formatter.locale = locale
+            formatter.timeZone = calendar.timeZone
+            formatter.setLocalizedDateFormatFromTemplate(template)
+            cached[key] = formatter
+            buildCount += 1
+            return formatter
+        }
     }
 }

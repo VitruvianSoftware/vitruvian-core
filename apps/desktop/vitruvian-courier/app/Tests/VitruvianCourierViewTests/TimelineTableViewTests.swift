@@ -1192,9 +1192,10 @@ final class TimelineTableViewTests: XCTestCase {
         XCTAssertFalse(capsule.model.isVisible)
     }
 
-    /// The test seam (`noteUserScrollForTesting`) is not what the app listens to: a real wheel event is. With no wheel
-    /// event the timeline moving (a key, an app jump) shows no capsule; after one it does.
-    func testARealWheelEventLetsTheCapsuleShowButAKeyDoesNot() throws {
+    /// The test seam (`noteUserScrollForTesting`) is not what the app listens to: a real wheel event on the timeline's
+    /// own scroll view is. With no such event the timeline moving (a key, an app jump) shows no capsule, and neither
+    /// does a wheel event that went to another pane (the inbox's list); after one on the timeline it does.
+    func testARealWheelEventOnTheTimelineLetsTheCapsuleShowButAKeyOrAnotherPanesWheelDoesNot() throws {
         let items = threeDays()
         let h = try mountTable(items: items)
         defer { h.tearDown() }
@@ -1206,6 +1207,13 @@ final class TimelineTableViewTests: XCTestCase {
             h.scrollView.reflectScrolledClipView(clip)
             h.pump(for: 0.05)
         }
+        func wheelEvent() throws -> NSEvent {
+            let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -12,
+                                           wheel2: 0, wheel3: 0))
+            let wheel = try XCTUnwrap(NSEvent(cgEvent: cg))
+            XCTAssertEqual(wheel.type, .scrollWheel)
+            return wheel
+        }
 
         let key = try XCTUnwrap(NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
@@ -1216,12 +1224,35 @@ final class TimelineTableViewTests: XCTestCase {
         XCTAssertFalse(capsule.model.isVisible, "a key press is not a wheel, a drag or a scroller")
 
         h.pump(for: 1.0)
-        let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -12,
-                                       wheel2: 0, wheel3: 0))
-        let wheel = try XCTUnwrap(NSEvent(cgEvent: cg))
-        XCTAssertEqual(wheel.type, .scrollWheel)
-        NSApp.sendEvent(wheel)
+        // A wheel event for another pane: the app routes it (so the monitor sees it) but not to the timeline.
+        let otherPane = NSScrollView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        NSApp.sendEvent(try wheelEvent())
+        otherPane.scrollWheel(with: try wheelEvent())
+        moveTimeline(to: 360)
+        XCTAssertFalse(capsule.model.isVisible, "scrolling the inbox must never show the timeline's capsule")
+
+        h.pump(for: 1.0)
+        h.scrollView.scrollWheel(with: try wheelEvent())
         moveTimeline(to: 420)
-        XCTAssertTrue(capsule.model.isVisible, "a wheel event just before the move lets the capsule show")
+        XCTAssertTrue(capsule.model.isVisible, "a wheel event on the timeline's own scroll view lets the capsule show")
+    }
+
+    /// A drag that began in another pane is not the timeline's scrolling either.
+    func testADragNotBeganInTheTimelineDoesNotShowTheCapsule() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        h.pump(for: 1.0)
+        let drag = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDragged, location: NSPoint(x: 5, y: 5), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil, eventNumber: 0,
+            clickCount: 1, pressure: 1))
+        NSApp.sendEvent(drag)
+        let clip = h.scrollView.contentView
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: 300))
+        h.scrollView.reflectScrolledClipView(clip)
+        h.pump(for: 0.05)
+        XCTAssertFalse(capsule.model.isVisible)
     }
 }

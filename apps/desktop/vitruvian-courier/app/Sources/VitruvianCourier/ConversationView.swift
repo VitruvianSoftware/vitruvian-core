@@ -1284,7 +1284,7 @@ struct ConversationHeader: View {
         switch part {
         case .strip:
             HStack(spacing: 10) {
-                identityButton(spacing: 10)
+                identityButton(spacing: 10, isHeader: false)
                 Spacer(minLength: 0)
                 actions
             }
@@ -1301,7 +1301,7 @@ struct ConversationHeader: View {
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isHeader)
         case .identity:
-            identityButton(spacing: 8)
+            identityButton(spacing: 8, isHeader: true)
                 .frame(maxHeight: 34)
                 .clipped()
         case .actions:
@@ -1309,19 +1309,25 @@ struct ConversationHeader: View {
         }
     }
 
-    /// The chat's picture, name and network as one button: it shows or hides Chat Info, as the ⓘ button does.
-    private func identityButton(spacing: CGFloat) -> some View {
-        let label = ChatInfoHeaderToggle.label(isShowing: conversation.isShowingChatInfo)
-        return Button(action: conversation.toggleChatInfo) {
-            HStack(alignment: .center, spacing: spacing) { identity }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(label)
-        .accessibilityLabel(label)
-        .accessibilityValue(row.map(titleText(of:)) ?? "")
-        .disabled(row == nil)
+    /// The chat's picture, name and network as a header button: a click shows or hides Chat Info, as the ⓘ button does;
+    /// a drag still moves the window and a double click still does the title bar's action (`ChatHeaderPointerArea`).
+    /// VoiceOver reads the chat's title, then its network and timer, and says a press shows Chat Info.
+    private func identityButton(spacing: CGFloat, isHeader: Bool) -> some View {
+        let tooltip = ChatInfoHeaderToggle.label(isShowing: conversation.isShowingChatInfo)
+        let title = row.map(titleText(of:)) ?? ""
+        let value = ChatHeaderAccessibility.value(subtitle: row.flatMap(subtitle(of:)), timer: conversation.timerLine)
+        return HStack(alignment: .center, spacing: spacing) { identity }
+            .contentShape(Rectangle())
+            .overlay {
+                if row != nil { ChatHeaderPointerArea(onToggle: conversation.toggleChatInfo) }
+            }
+            .help(tooltip)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(ChatHeaderAccessibility.label(title: title))
+            .accessibilityValue(value)
+            .accessibilityHint(ChatHeaderAccessibility.hint(isShowing: conversation.isShowingChatInfo))
+            .accessibilityAddTraits(isHeader ? [.isButton, .isHeader] : .isButton)
+            .accessibilityAction(.default) { conversation.toggleChatInfo() }
     }
 
     private func titleText(of row: InboxRow) -> String {

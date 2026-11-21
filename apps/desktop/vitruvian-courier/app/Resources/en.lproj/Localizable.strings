@@ -1939,6 +1939,10 @@
 "Show chat info" = "Show chat info";
 /* The chat's header: clicking the name or picture closes Chat Info (VoiceOver and tooltip). */
 "Hide chat info" = "Hide chat info";
+/* VoiceOver hint on the chat's header while Chat Info is closed. */
+"Shows chat info" = "Shows chat info";
+/* VoiceOver hint on the chat's header while Chat Info is open. */
+"Hides chat info" = "Hides chat info";
 
 /* Under an edited message whose versions are open: closes them. */
 "Hide Edits" = "Hide Edits";
