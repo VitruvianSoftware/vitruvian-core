@@ -75,7 +75,7 @@ Over the day that produced:
 - the reuse rule in `AGENTS.md`;
 - the `dupcheck` tool;
 - a template for new packages, so the next one starts with both description files;
-- seven helper merges: `argparse` and Go `exec` helpers, two Unicode tables, Go standard-library helpers, JSON, HTTP, and Python string and error helpers.
+- eight helper merges: `argparse` and Go `exec` helpers, three rounds of Unicode tables, Go standard-library helpers, JSON, HTTP, and Python string and error helpers.
 
 ## What it measured
 
@@ -85,7 +85,7 @@ All copy counts below come from the same tool run against two commits: the commi
 |---|---:|---:|---:|---:|
 | `json` | 16 | 15 | 9,246 | 8,865 |
 | `argparse` | 5 | 2 | 2,996 | 1,118 |
-| `unicode_tables` | 4 | 2 | 4,518 | 2,353 |
+| `unicode_tables` | 4 | 1 | 4,518 | 913 |
 | `pystr` | 10 | 7 | 3,298 | 2,832 |
 | `http` | 8 | 5 | 3,188 | 2,550 |
 | `jq` | 7 | 7 | 2,077 | 2,077 |
@@ -93,12 +93,12 @@ All copy counts below come from the same tool run against two commits: the commi
 | `pyerr` | 8 | 5 | 825 | 523 |
 | `gostd` | 3 | 0 | 1,263 | 0 |
 | `goexec` | 2 | 0 | 608 | 0 |
-| **Total** | **68** | **47** | **29,769** | **21,859** |
+| **Total** | **68** | **46** | **29,769** | **20,419** |
 
-- **Copies:** 68 → 47, down 21.
-- **Lines repeated in another copy:** 18,277 → 11,811, down 6,466. As a share of the lines in copies, 61% → 54%.
-- **Net code:** the seven helper merges added 5,635 lines and removed 8,621, for **2,986 fewer lines in the repo**. That includes all the new equivalence tests. Three merges grew the repo. One moved a large Unicode case table into a shared package along with new tests, one added tests for the shared Go helpers, and the shared HTTP client is bigger than any single copy because it carries the strictest security handling of all of them.
-- **Backstage:** libraries listed went from **3 to 13**, and components from **33 to 47**. Seven more apps are registered by a change still in the merge queue.
+- **Copies:** 68 → 46, down 22.
+- **Lines repeated in another copy:** 18,277 → 10,394, down 7,883. As a share of the lines in copies, 61% → 50%.
+- **Net code:** the eight helper merges added 6,045 lines and removed 10,084, for **4,039 fewer lines in the repo**. That includes all the new equivalence tests. Three merges grew the repo. One moved a large Unicode case table into a shared package along with new tests, one added tests for the shared Go helpers, and the shared HTTP client is bigger than any single copy because it carries the strictest security handling of all of them.
+- **Backstage:** libraries listed went from **3 to 13**, and components from **33 to 54**.
 - **Catalog entries:** every package in `packages/` now has one (13 packages, after splitting the folders that held several), up from 2 of 9 folders.
 
 ## Did it work for a new agent?
@@ -111,9 +111,9 @@ Numbers about copies say nothing about whether the next agent will find the shar
 4. Call an HTTP API from a standard-library-only Rust tool and pass a token safely.
 5. Add crash reporting to a Mac app without the full Sentry SDK.
 
-It found the right package for four of the five from `packages/README.md` alone. **It failed on the HTTP client.** The client existed, merged that afternoon, but neither its catalog entry nor its README mentioned HTTP, and the only search hit for "token" pointed at an authentication package for MCP servers, which is the wrong one. A shared package that nobody can find is not much better than no package. We opened a fix for the description the same evening.
+It found the right package for four of the five from `packages/README.md` alone. **It failed on the HTTP client.** The client existed, merged that afternoon, but neither its catalog entry nor its README mentioned HTTP, and the only search hit for "token" pointed at an authentication package for MCP servers, which is the wrong one. A shared package that nobody can find is not much better than no package. We fixed the description the same evening, and a Backstage search for "http curl token" now returns the right package.
 
-The same test caught a worse gap: the conformance rule that refuses an uncatalogued package was not on `main` yet. The change carrying it had been rejected twice by the merge queue because an unrelated end-to-end test still expected the old, wider build visibility. Nobody had noticed. We fixed the test and re-queued it.
+The same test caught a worse gap: the conformance rule that refuses an uncatalogued package was not on `main` yet. The change carrying it had been rejected twice by the merge queue because an unrelated end-to-end test still expected the old, wider build visibility. Nobody had noticed. We fixed the test, and the rule landed that evening.
 
 Both failures are why the acceptance test is worth running. Each was invisible from the pull requests themselves.
 
@@ -126,7 +126,7 @@ Some of this is still open, and some of it will stay that way.
 - **Some tools cannot use shared code yet.** A few tools are built in CI with plain `rustc` outside Bazel, so they cannot link a shared crate without a workflow change. Those changes need a human's approval in our repo, by design, and are queued separately.
 - **Two merges changed behaviour, on purpose.** The old copies of Python's "is this character printable?" check were hand-written guesses. The shared one uses Python's real table. That changes how **956,555 code points** print in three tools. Almost all of them are characters you will never see (unassigned, private-use and tag characters), and every spot-check matched Python 3. A smaller change of the same kind made the shared JSON printer escape a few rare characters the way Python does. Matching Python is the point of these tools, so we kept both changes and pinned them with tests. They are still changes, and we listed them in each pull request.
 - **Agents cannot query Backstage unattended yet.** We wanted every agent to search the portal through its MCP server with a read-only token. Backstage's current backend refuses to delegate a token that is restricted to read permissions, so a read-only token cannot reach the catalog through that path. That work is parked. For now, agents read the generated `packages/README.md`, which holds the same information.
-- **The duplicate check does not block merges yet.** It runs and reports on every pull request once its CI change is approved, and becomes required after it has run cleanly for a while.
+- **The duplicate check does not block merges yet.** It now runs on every pull request and merge-queue commit, and becomes a required check after it has run cleanly for a while.
 
 ## What we would tell another team
 
