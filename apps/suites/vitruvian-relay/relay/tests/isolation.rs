@@ -52,8 +52,8 @@ mod isolation {
 
     use crate::pg_support::{fresh_database, Database};
     use crate::relay_support::{
-        b64, call_body, ed25519, hello, initialize_body, send, start_relay_with, tool, Relay,
-        Reply, ALICE, BOB, PUBLIC_URL, WAIT,
+        b64, call_body, ed25519, hello, initialize_body, send, start_relay_with, tool, FakeDevice,
+        Relay, Reply, ALICE, BOB, PUBLIC_URL, WAIT,
     };
 
     /// What a connector is told about a computer that is not its person's.
@@ -142,6 +142,8 @@ mod isolation {
     /// What an answer is, minus the clock: status, headers and body, with each
     /// id in `ids` written as the name beside it (an answer about a computer
     /// repeats its id in a link; two ids must not make two answers differ).
+    /// Because ids become `<id>`, a difference only in the id itself cannot
+    /// show here; fine for UUIDs, which carry nothing.
     fn shape(r: &Reply, ids: &[(&str, &str)]) -> (u16, Vec<(String, String)>, String) {
         let name = |s: &str| {
             ids.iter()
@@ -712,9 +714,12 @@ mod isolation {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn check_request_with_bobs_request_id() {
-        let w = world_with(approval_timing()).await;
+    /// Bob's call is waiting for him to allow it on his Mac. His computer
+    /// (which answers when told to), the call it was sent, the request id Bob
+    /// was given, and Bob's session.
+    async fn bobs_request_waiting(
+        w: &World,
+    ) -> (FakeDevice, vitruvian_relay_protocol::Call, String, String) {
         let mut bobs_computer = w
             .relay
             .connect(
@@ -725,9 +730,6 @@ mod isolation {
             )
             .await;
         let bob_session = w.relay.session(BOB, &w.bob.laptop.id).await;
-        let alice_session = w.relay.session(ALICE, &w.alice.laptop.id).await;
-
-        // Bob's call opens a dialog on his Mac and he is told to wait.
         let relay = w.relay.clone();
         let (bob_id, sess) = (w.bob.laptop.id.clone(), bob_session.clone());
         let first = tokio::spawn(async move {
@@ -743,32 +745,61 @@ mod isolation {
         let call = bobs_computer.next_call().await;
         bobs_computer.pending(&call.call_id);
         let id = waiting_id(&first.await.unwrap());
+        (bobs_computer, call, id, bob_session)
+    }
 
-        // Alice asks for it by id, on her own computer.
-        let made_up = "r_0123456789abcdef";
-        let theirs = w
+    /// Bob finishes it, and still gets his result: nothing Alice tried took it.
+    async fn assert_bob_still_gets_his_result(
+        w: &World,
+        computer: &FakeDevice,
+        call: &vitruvian_relay_protocol::Call,
+        id: &str,
+        bob_session: &str,
+    ) {
+        computer.reply(&call.call_id, "bob's listing");
+        let r = w
             .relay
-            .rpc(
+            .rpc(BOB, &w.bob.laptop.id, Some(bob_session), check_body(9, id))
+            .await;
+        assert_eq!(text_of(&r), "bob's listing");
+    }
+
+    /// Alice asks for Bob's request by id on HER OWN computer's endpoint: the
+    /// request ownership check (`Mcp::owned_request`) alone decides this.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn check_request_with_bobs_request_id() {
+        let w = world_with(approval_timing()).await;
+        let (bobs_computer, call, id, bob_session) = bobs_request_waiting(&w).await;
+        let alice_session = w.relay.session(ALICE, &w.alice.laptop.id).await;
+
+        let ask = |request_id: &str, n: u64| {
+            w.relay.rpc(
                 ALICE,
                 &w.alice.laptop.id,
                 Some(&alice_session),
-                check_body(2, &id),
+                check_body(n, request_id),
             )
-            .await;
-        let nothing = w
-            .relay
-            .rpc(
-                ALICE,
-                &w.alice.laptop.id,
-                Some(&alice_session),
-                check_body(2, made_up),
-            )
-            .await;
+        };
+        let theirs = ask(&id, 2).await;
+        let nothing = ask("r_0123456789abcdef", 2).await;
         assert_eq!(text_of(&theirs), UNKNOWN_REQUEST);
         assert_eq!(shape(&theirs, &[]), shape(&nothing, &[]));
+        // Twice, and the same: asking does not change what she is told.
+        let again = ask(&id, 3).await;
+        assert_eq!(text_of(&again), UNKNOWN_REQUEST);
 
-        // Asking on Bob's own endpoint, where the request lives, is refused
-        // like any other computer that is not hers.
+        assert_bob_still_gets_his_result(&w, &bobs_computer, &call, &id, &bob_session).await;
+    }
+
+    /// Alice asks on Bob's computer's endpoint, where his request lives: she
+    /// is refused like for any computer that is not hers (the device ownership
+    /// check, `App::owned_device`).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn check_request_on_bobs_device_endpoint() {
+        let w = world_with(approval_timing()).await;
+        let (bobs_computer, call, id, bob_session) = bobs_request_waiting(&w).await;
+        let alice_session = w.relay.session(ALICE, &w.alice.laptop.id).await;
+
         let nowhere = nobody();
         let a = w
             .relay
@@ -791,18 +822,7 @@ mod isolation {
             &nowhere,
         );
 
-        // Alice's tries took nothing: Bob still gets his result.
-        bobs_computer.reply(&call.call_id, "bob's listing");
-        let r = w
-            .relay
-            .rpc(
-                BOB,
-                &w.bob.laptop.id,
-                Some(&bob_session),
-                check_body(4, &id),
-            )
-            .await;
-        assert_eq!(text_of(&r), "bob's listing");
+        assert_bob_still_gets_his_result(&w, &bobs_computer, &call, &id, &bob_session).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]

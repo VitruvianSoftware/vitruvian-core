@@ -87,21 +87,41 @@ bazel test //apps/suites/vitruvian-relay/relay:unit_tests
 bazel run //apps/suites/vitruvian-relay/relay:vitruvian-relay -- --version
 ```
 
-## Tenant isolation, and its canary
+## Tenant isolation, and its canaries
 
 One person must never reach another's computer or request.
 `tests/isolation.rs` has Alice and Bob, each with two computers (both call one
 "MacBook Pro"), and checks that what Alice is told about Bob's computer or
 request is byte for byte what she is told about one that does not exist, and
-that Bob's side is untouched. Every route that names a computer goes through
-`App::owned_device`, and every request id through `Mcp::owned_request`.
+that Bob's side is untouched. There are two checks, and each is the only place
+its question is decided: `App::owned_device` for every route that names a
+computer, and `Mcp::owned_request` for every request id.
 
 ```
 bazel test //apps/suites/vitruvian-relay/relay:vitruvian_relay_isolation_test
 bazel test //apps/suites/vitruvian-relay/relay:vitruvian_relay_isolation_canary_test
+bazel test //apps/suites/vitruvian-relay/relay:vitruvian_relay_isolation_request_canary_test
 ```
 
-The canary builds the same tests against a relay with `owned_device` broken on
-purpose (`--cfg relay_broken_ownership`, the only place that break exists) and
-passes only if the isolation tests fail there (`tests/expect_failure.sh`). A
-check that cannot fail would prove nothing.
+A check that cannot fail would prove nothing, so each check has a canary: the
+same tests built against a relay with that one check broken on purpose (the
+`relay_broken_ownership` and `relay_broken_request_ownership` cfgs, each in
+exactly one place), run by `tests/expect_failure.sh`. A canary passes only if
+the tests named for its break all fail, and some other test still passes (so
+the failures are the break being noticed, not the database being down).
+
+- The device canary (`App::owned_device`) must fail
+  `mcp_initialize_tools_list_and_call_on_bobs_device`,
+  `dashboard_device_page_rename_remove_for_bobs_device`,
+  `hello_with_bobs_device_id` and `check_request_on_bobs_device_endpoint`.
+- The request canary (`Mcp::owned_request`) must fail
+  `check_request_with_bobs_request_id`.
+
+Other isolation tests are not protected by a canary, because something else
+holds even when those two checks are broken, and they pass in both canaries:
+`register_with_bobs_device_id` and the rename and remove forms (the store only
+changes a row its owner asks about), `rejoin_never_crosses_people` (a retry's
+key includes the person), `activity_lists_only_own_rows` (the activity query
+is by person), `protected_resource_metadata_for_bobs_device` (a public route
+that never looks at who owns what) and `same_names_stay_separate`. They are
+there to show those layers hold, not to notice a broken check.

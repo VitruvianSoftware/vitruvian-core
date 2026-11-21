@@ -90,21 +90,23 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     proc_macro_deps = ["@vitruvian_relay_crates//:async-trait"],
-    # `relay_broken_ownership` (App::owned_device) is the canary's cfg and is
-    # never set here; naming it keeps rustc from calling it a typo. Once any
-    # --check-cfg is given, rules_rust's build no longer knows `test` on its
-    # own, so that is named too.
+    # `relay_broken_ownership` (App::owned_device) and
+    # `relay_broken_request_ownership` (Mcp::owned_request) are the canaries'
+    # cfgs and are never set here; naming them keeps rustc from calling them
+    # typos. Once any --check-cfg is given, rules_rust's build no longer knows
+    # `test` on its own, so that is named too.
     rustc_flags = [
         "--check-cfg=cfg(relay_broken_ownership)",
+        "--check-cfg=cfg(relay_broken_request_ownership)",
         "--check-cfg=cfg(test)",
     ],
     deps = _CRATES,
 )
 
-# The canary's relay: the same sources with the ownership check deliberately
-# broken (`App::owned_device` returns a device whatever the subject). Only the
-# isolation canary test is built on it, and it must never be linked into
-# anything that ships.
+# The canaries' relays: the same sources with one ownership check deliberately
+# broken each. This one breaks the device check (`App::owned_device` returns a
+# device whatever the subject). Only the isolation canary test is built on it,
+# and it must never be linked into anything that ships.
 rust_library(
     name = "vitruvian_relay_broken_ownership",
     testonly = True,
@@ -115,6 +117,23 @@ rust_library(
     edition = "2021",
     proc_macro_deps = ["@vitruvian_relay_crates//:async-trait"],
     rustc_flags = ["--cfg=relay_broken_ownership"],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+    deps = _CRATES,
+)
+
+# And this one breaks the request check (`Mcp::owned_request` returns a
+# request whoever it belongs to). Same rules.
+rust_library(
+    name = "vitruvian_relay_broken_request_ownership",
+    testonly = True,
+    srcs = _LIB_SRCS,
+    compile_data = _LIB_COMPILE_DATA,
+    crate_name = "vitruvian_relay",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    proc_macro_deps = ["@vitruvian_relay_crates//:async-trait"],
+    rustc_flags = ["--cfg=relay_broken_request_ownership"],
     tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = _CRATES,
@@ -245,12 +264,13 @@ service_test(
 
 # Tenant isolation (spec 7.4, tests/isolation.rs): two people, each with two
 # computers, and nothing one can ask reaches or reveals the other's. The same
-# sources are built twice. `:vitruvian_relay_isolation_test` runs them against
-# the relay as it is and must pass. `:vitruvian_relay_isolation_canary_test`
-# runs them against a relay whose ownership check is deliberately broken
-# (`:vitruvian_relay_broken_ownership`) through expect_failure.sh, and passes
-# only if the isolation tests fail there: a check that cannot fail proves
-# nothing.
+# sources are built three times. `:vitruvian_relay_isolation_test` runs them
+# against the relay as it is and must pass. The two canaries run them against
+# a relay with one ownership check deliberately broken, through
+# expect_failure.sh, and pass only if the tests that exist to notice that break
+# fail there (a check that cannot fail proves nothing):
+#   `:vitruvian_relay_isolation_canary_test`          the device check
+#   `:vitruvian_relay_isolation_request_canary_test`  the request check
 _ISOLATION_SRCS = [
     "tests/isolation.rs",
     "tests/pg_support.rs",
@@ -292,17 +312,53 @@ service_test(
     test = ":isolation_itest_bin",
 )
 
-# Runs the broken build's isolation tests and passes only if they fail.
+rust_test(
+    name = "isolation_request_canary_itest_bin",
+    size = "small",
+    srcs = _ISOLATION_SRCS,
+    crate_root = "tests/isolation.rs",
+    edition = "2021",
+    tags = ["manual"],
+    deps = [
+        d
+        for d in _PG_TEST_DEPS
+        if d != ":vitruvian_relay"
+    ] + [":vitruvian_relay_broken_request_ownership"] + _RELAY_OVER_HTTP_TEST_DEPS,
+)
+
+# Run a broken build's isolation tests and pass only if the tests listed in
+# EXPECT_FAILURE_REQUIRED fail (and some other test passes). Not `args`:
+# service_test starts its test without any, but does pass the test's
+# environment on.
 sh_test(
     name = "isolation_canary_runner",
     size = "small",
     srcs = ["tests/expect_failure.sh"],
     data = [":isolation_canary_itest_bin"],
-    # Not `args`: service_test starts its test without any, but does pass the
-    # test's environment on.
     env = {
         "EXPECT_FAILURE_BINARY": "$(rootpath :isolation_canary_itest_bin)",
         "EXPECT_FAILURE_PREFIX": "isolation::",
+        # The tests that look at someone else's computer.
+        "EXPECT_FAILURE_REQUIRED": " ".join([
+            "isolation::mcp_initialize_tools_list_and_call_on_bobs_device",
+            "isolation::dashboard_device_page_rename_remove_for_bobs_device",
+            "isolation::hello_with_bobs_device_id",
+            "isolation::check_request_on_bobs_device_endpoint",
+        ]),
+    },
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "isolation_request_canary_runner",
+    size = "small",
+    srcs = ["tests/expect_failure.sh"],
+    data = [":isolation_request_canary_itest_bin"],
+    env = {
+        "EXPECT_FAILURE_BINARY": "$(rootpath :isolation_request_canary_itest_bin)",
+        "EXPECT_FAILURE_PREFIX": "isolation::",
+        # The test that asks for someone else's request by id.
+        "EXPECT_FAILURE_REQUIRED": "isolation::check_request_with_bobs_request_id",
     },
     tags = ["manual"],
 )
@@ -316,6 +372,17 @@ service_test(
         "no-remote-exec",
     ],
     test = ":isolation_canary_runner",
+)
+
+service_test(
+    name = "vitruvian_relay_isolation_request_canary_test",
+    size = "medium",
+    services = [":postgres"],
+    tags = [
+        "exclusive-if-local",
+        "no-remote-exec",
+    ],
+    test = ":isolation_request_canary_runner",
 )
 
 rust_test(
@@ -359,6 +426,7 @@ rust_clippy(
         ":database_down_itest_bin",
         ":isolation_canary_itest_bin",
         ":isolation_itest_bin",
+        ":isolation_request_canary_itest_bin",
         ":store_pg_itest_bin",
         ":vitruvian-relay",
         ":vitruvian_relay",
@@ -382,6 +450,7 @@ test_suite(
         ":database_down_test",
         ":store_pg_test",
         ":vitruvian_relay_isolation_canary_test",
+        ":vitruvian_relay_isolation_request_canary_test",
         ":vitruvian_relay_isolation_test",
     ],
 )

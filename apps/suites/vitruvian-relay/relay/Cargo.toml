@@ -33,10 +33,11 @@ rust-version = "1.98"
 publish = false
 license = "MIT"
 
-# `relay_broken_ownership` is set by the BUILD file's canary build only (see
-# `App::owned_device`); naming it here keeps rustc from calling it a typo.
+# `relay_broken_ownership` and `relay_broken_request_ownership` are set by the
+# BUILD file's canary builds only (see `App::owned_device` and
+# `Mcp::owned_request`); naming them here keeps rustc from calling them typos.
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(relay_broken_ownership)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(relay_broken_ownership)', 'cfg(relay_broken_request_ownership)'] }
 
 [lib]
 name = "vitruvian_relay"

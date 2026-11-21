@@ -20,38 +20,43 @@
 # SOFTWARE.
 
 # The canary: runs a test binary that is meant to FAIL, and passes only when it
-# does, for the right reason.
+# fails in the way it should.
 #
-#   expect_failure.sh <test binary> <test name prefix>
+#   expect_failure.sh <test binary> <test name prefix> [required test...]
 #
 # or, where the caller cannot pass arguments (rules_itest's service_test starts
-# its test with none), the same two as EXPECT_FAILURE_BINARY (a runfiles path)
-# and EXPECT_FAILURE_PREFIX.
+# its test with none), the same as EXPECT_FAILURE_BINARY (a runfiles path),
+# EXPECT_FAILURE_PREFIX and EXPECT_FAILURE_REQUIRED (test names, separated by
+# spaces).
 #
 # The binary here is the relay's tenant isolation tests built against a relay
-# whose ownership check is deliberately broken. Passing means all of:
+# with one ownership check deliberately broken. Passing means all of:
 #
 #   1. the binary exited non-zero;
-#   2. its output names at least one test starting with the prefix (here
-#      `isolation::`) as FAILED, so it failed on an isolation test and not on
-#      something else (a build or start-up problem would fail no test by name);
-#   3. at least one test with that prefix passed, so the database and the relay
-#      worked and the failures are the isolation tests noticing the break, not
-#      the harness falling over (that would fail every test).
+#   2. every required test is reported FAILED. These are the tests that exist
+#      to notice this break, so one of them passing means the break went
+#      unseen (and a test that fails for another reason does not count for it);
+#   3. at least one test with the prefix passed, so the database and the relay
+#      worked and the failures are the tests noticing the break, not the
+#      harness falling over (that would fail every test).
 #
 # If the binary passes, the isolation tests cannot see the break they exist to
 # catch, and this exits 1.
 
 set -u
 
-if [ "$#" -eq 2 ]; then
+required=""
+if [ "$#" -ge 2 ]; then
 	binary="$1"
 	prefix="$2"
+	shift 2
+	required="$*"
 elif [ "$#" -eq 0 ] && [ -n "${EXPECT_FAILURE_BINARY:-}" ] && [ -n "${EXPECT_FAILURE_PREFIX:-}" ]; then
 	binary="$EXPECT_FAILURE_BINARY"
 	prefix="$EXPECT_FAILURE_PREFIX"
+	required="${EXPECT_FAILURE_REQUIRED:-}"
 else
-	echo "usage: expect_failure.sh <test binary> <test name prefix>" >&2
+	echo "usage: expect_failure.sh <test binary> <test name prefix> [required test...]" >&2
 	exit 2
 fi
 
@@ -99,6 +104,22 @@ if [ -z "$failed" ]; then
 	echo "It failed for some other reason (the build, or starting up)." >&2
 	exit 1
 fi
+
+missed=""
+for name in $required; do
+	if ! grep -qxF "test $name ... FAILED" "$out"; then
+		missed="$missed $name"
+	fi
+done
+if [ -n "$missed" ]; then
+	echo "CANARY FAILED: these tests should have noticed the break, but did not fail:" >&2
+	for name in $missed; do
+		echo "  $name" >&2
+	done
+	echo "The break is going unseen by the tests that exist to catch it." >&2
+	exit 1
+fi
+
 if [ -z "$passed" ]; then
 	echo "CANARY FAILED: every ${prefix} test failed, none passed." >&2
 	echo "That is the harness (the database, the relay) not working, not the break being noticed." >&2

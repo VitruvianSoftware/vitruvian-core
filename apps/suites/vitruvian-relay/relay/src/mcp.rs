@@ -876,11 +876,9 @@ impl Mcp {
             log.outcome = "unknown_request";
             return rpc_result(id, text_result(UNKNOWN_REQUEST, true));
         };
-        match self
-            .parked
-            .take(&caller.subject, &request_id, self.approval_reply)
-            .await
-        {
+        // Waits on the request `owned_request` returned, and does not ask
+        // whose it is again: that was decided once, above.
+        match ParkedCalls::wait_for(&owned, self.approval_reply).await {
             Fetch::Done(done) => {
                 *delivery = Some(self.parked.delivery(&request_id));
                 match done {
@@ -921,6 +919,15 @@ impl Mcp {
     /// names a request by id (`check_request`, the device in its waiting
     /// text) goes through it, so none can answer for someone else's.
     fn owned_request(&self, subject: &str, request_id: &RequestId) -> Option<Owned> {
+        // The canary's deliberate break (BUILD: `relay_broken_request_ownership`,
+        // run by `:vitruvian_relay_isolation_request_canary_test`, which must
+        // see the isolation tests fail). Set on no build that ships.
+        #[cfg(relay_broken_request_ownership)]
+        {
+            let _ = subject;
+            self.parked.owned_by_anyone(request_id)
+        }
+        #[cfg(not(relay_broken_request_ownership))]
         self.parked.owned(subject, request_id)
     }
 }
