@@ -437,7 +437,8 @@ enum MessageRowActions {
                     responseLanguage: composer.aiPreferences.responseLanguage,
                     translationLanguages: composer.aiPreferences.translationLanguages,
                     canReadAloud: canReadAloud,
-                    isReadingAloud: messageActions.readAloud.isReadingOnVitruvianSpeaker
+                    isReadingAloud: messageActions.readAloud.isReadingOnVitruvianSpeaker,
+                    canEditPhoto: conversation.offersPhotoEdit(for: message)
                 )
             },
             perform: { command, id in
@@ -474,6 +475,7 @@ enum MessageRowActions {
                         chatTitle: resolvedChatTitle(for: msg),
                         from: source
                     )
+                case .editPhoto: conversation.editPhotoWithAI(messageID: id, from: source)
                 case .more, .info: break
                 }
             },

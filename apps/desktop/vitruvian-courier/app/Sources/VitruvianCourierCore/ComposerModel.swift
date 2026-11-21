@@ -1744,7 +1744,38 @@ public final class ComposerModel: ObservableObject {
     }
 
     public func removeAttachment(_ id: UUID) {
+        let removed = attachments.filter { $0.id == id }
         attachments.removeAll { $0.id == id }
+        for file in removed { releaseScratchFile(file.url) }
+    }
+
+    /// Where "Edit with AI…" keeps the photos it added to a draft. A file there goes once it is sent or taken out of the
+    /// draft; any other file is never touched.
+    public var scratchRoot: URL = PhotoEditScratch.defaultDirectory
+    /// How long after a held message's undo window a sent scratch file waits before it goes.
+    public var scratchReleaseGrace: Duration = .seconds(2)
+
+    /// Deletes `url` if it is in the scratch folder and no draft holds it (an undone send puts the file back in one).
+    private func releaseScratchFile(_ url: URL) {
+        guard PhotoEditScratch.isInside(url, root: scratchRoot) else { return }
+        let held = attachments.contains { $0.url == url } || stash.attachments.contains { $0.url == url }
+            || drafts.values.contains { $0.attachments.contains { $0.url == url } }
+        guard !held else { return }
+        PhotoEditScratch.remove(url, root: scratchRoot)
+    }
+
+    /// A file was sent: its scratch copy goes now, or when the undo window has passed (Undo gives the file back).
+    private func releaseScratchFileAfterSend(_ url: URL, hold: Int) {
+        guard PhotoEditScratch.isInside(url, root: scratchRoot) else { return }
+        if hold <= 0 {
+            releaseScratchFile(url)
+            return
+        }
+        let wait = Duration.milliseconds(hold) + scratchReleaseGrace
+        Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            self?.releaseScratchFile(url)
+        }
     }
 
     public func dismissNotice() {
@@ -2703,6 +2734,7 @@ public final class ComposerModel: ObservableObject {
                 }
                 if hold > 0 { held.add(eventID, in: room, copy: copy, holdMillis: hold) }
                 onSent(room, eventID)
+                if case let .file(file) = item { releaseScratchFileAfterSend(file.url, hold: hold) }
                 reply = nil
             } catch {
                 let itemMaxSize: Int64?

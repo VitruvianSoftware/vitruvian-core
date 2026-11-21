@@ -148,6 +148,11 @@ struct MainWindow: View {
                             NSPasteboard.general.writeObjects([nsImage])
                             conversation.onToast(String(localized: "Copied image"))
                         },
+                        canEditWithAI: { conversation.offersPhotoEdit(for: $0) },
+                        onEditWithAI: { item in
+                            guard let photo = PhotoEditSource(item: item) else { return }
+                            conversation.editPhotoWithAI(photo)
+                        },
                         onQuickLook: { item in
                             guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
                             QuickLookPreviewCoordinator.shared.preview(
@@ -207,6 +212,16 @@ struct MainWindow: View {
                 }
                 .sheet(item: customReminderBinding) { request in
                     CustomReminderSheet(request: request, inbox: inbox)
+                }
+                // Edit with AI…, from the photo viewer or a photo's menu. Here, not in the chat, so it still works
+                // over the viewer, which disables the content behind it.
+                .sheet(item: $conversation.photoEdit, onDismiss: { conversation.closePhotoEdit() }) { edit in
+                    PhotoEditSheet(
+                        model: edit,
+                        onClose: { conversation.closePhotoEdit() },
+                        onToast: { conversation.onToast($0) }
+                    )
+                    .environment(\.redactNamesAndPictures, appearance.redactNamesAndPictures)
                 }
                 .sheet(
                     isPresented: Binding(
