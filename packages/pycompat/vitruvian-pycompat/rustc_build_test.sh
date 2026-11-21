@@ -13,7 +13,7 @@ set -euo pipefail
 : "${REAL_RUSTC:?}"
 export RUSTC
 RUSTC=$(cd "$(dirname "$REAL_RUSTC")" && pwd)/$(basename "$REAL_RUSTC")
-build=packages/rust/vitruvian-pycompat/rustc-build.sh
+build=packages/pycompat/vitruvian-pycompat/rustc-build.sh
 out=${TEST_TMPDIR:-$(mktemp -d)}
 
 bash "$build" "$out/sync" sync_downloads \

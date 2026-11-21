@@ -146,7 +146,7 @@ runs:
         externs=()
         for i in "${!dep_names[@]}"; do
           if [ -n "$(find -L "$(dirname "${dep_srcs[$i]}")" -name '*.rs' -exec grep -l vitruvian_pycompat {} + 2>/dev/null || true)" ]; then
-            bash "$root/packages/rust/vitruvian-pycompat/rustc-build.sh" --lib "$out" "${dep_names[$i]}" "${dep_srcs[$i]}" -O
+            bash "$root/packages/pycompat/vitruvian-pycompat/rustc-build.sh" --lib "$out" "${dep_names[$i]}" "${dep_srcs[$i]}" -O
           else
             rustc --edition 2021 -O --crate-type lib --crate-name "${dep_names[$i]}" "${dep_srcs[$i]}" -o "$out/lib${dep_names[$i]}.rlib"
           fi

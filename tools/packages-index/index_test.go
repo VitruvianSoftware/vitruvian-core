@@ -58,8 +58,8 @@ spec:
   owner: platform-team
 `)
 
-	writeTestFile(t, root, "packages/rust/vitruvian-pycompat/README.md", "# vitruvian-pycompat\n")
-	writeTestFile(t, root, "packages/rust/vitruvian-pycompat/catalog-info.yaml", `apiVersion: backstage.io/v1alpha1
+	writeTestFile(t, root, "packages/pycompat/vitruvian-pycompat/README.md", "# vitruvian-pycompat\n")
+	writeTestFile(t, root, "packages/pycompat/vitruvian-pycompat/catalog-info.yaml", `apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: vitruvian-pycompat
@@ -71,7 +71,7 @@ metadata:
     - rust
     - json
   annotations:
-    vitruvian.dev/bazel-target: //packages/rust/vitruvian-pycompat:vitruvian_pycompat, //packages/rust/vitruvian-pycompat:extra
+    vitruvian.dev/bazel-target: //packages/pycompat/vitruvian-pycompat:vitruvian_pycompat, //packages/pycompat/vitruvian-pycompat:extra
 spec:
   type: library
   owner: platform-team
@@ -200,7 +200,7 @@ spec:
 	if entries[4].Description != "Python string and JSON compatibility crate" {
 		t.Errorf("vitruvian-pycompat description = %q", entries[4].Description)
 	}
-	if entries[4].BazelTarget != "`//packages/rust/vitruvian-pycompat:vitruvian_pycompat`, `//packages/rust/vitruvian-pycompat:extra`" {
+	if entries[4].BazelTarget != "`//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat`, `//packages/pycompat/vitruvian-pycompat:extra`" {
 		t.Errorf("vitruvian-pycompat target = %q", entries[4].BazelTarget)
 	}
 }
