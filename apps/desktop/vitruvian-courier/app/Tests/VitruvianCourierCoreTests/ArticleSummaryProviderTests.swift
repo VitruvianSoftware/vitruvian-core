@@ -303,7 +303,7 @@ final class ArticleSummaryProviderTests: XCTestCase {
         XCTAssertEqual(sent["model"] as? String, "gpt-x")
         let tool = try XCTUnwrap((sent["tools"] as? [[String: Any]])?.first)
         XCTAssertEqual(tool["type"] as? String, "web_search")
-        XCTAssertEqual((tool["filters"] as? [String: Any])?["blocked_domains"] as? [String], ["usatoday.com"])
+        XCTAssertNil(tool["filters"], "no domain filter is sent: the paywalled site is dropped locally")
         XCTAssertEqual(sent["include"] as? [String], ["web_search_call.action.sources"])
         XCTAssertTrue((sent["input"] as? String)?.contains("Bridge opens early") ?? false)
         XCTAssertFalse(try bodyString(request).contains("SECRET-DESCRIPTION"))

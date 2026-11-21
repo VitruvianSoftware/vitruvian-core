@@ -144,6 +144,11 @@ public enum AIProviderKind: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// The service's name in "Summarize with …": Anthropic's assistant is Claude.
+    public var summarizerName: String {
+        self == .anthropic ? String(localized: "Claude") : label
+    }
+
     public func provenanceFooter(model: String) -> String {
         if isLocal {
             return String(localized: "via \(model) · on this Mac")

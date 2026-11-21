@@ -26,6 +26,11 @@ struct ArticleSummaryControls {
     }
     /// Whether an AI service is ready: part of the row's height signature, since the button comes and goes with it.
     var aiIsAvailable: () -> Bool = { false }
+    /// The AI service's name for the button's tooltip ("Claude"): the person sees where the article goes before the
+    /// first send.
+    var providerName: () -> String = { "" }
+    var suggestionsHeight: (URL) -> Int? = { _ in nil }
+    var setSuggestionsHeight: (URL, CGFloat) -> Void = { _, _ in }
 
     /// What the row's height depends on for `message`: whether Summarize is offered, and the state of each link's
     /// summary (a spinner, bullets and a failure are all different heights).
@@ -35,7 +40,10 @@ struct ArticleSummaryControls {
         guard hasAny() else { return hasher.finalize() }
         var urls: [URL] = message.linkPreviews.compactMap { ArticleSummaryRequest(preview: $0)?.url }
         if let first = ArticleSummaryRequest.first(in: message, isEmbed: Self.isEmbed)?.url { urls.append(first) }
-        for url in urls { hasher.combine(state(url)) }
+        for url in urls {
+            hasher.combine(state(url))
+            hasher.combine(suggestionsHeight(url))
+        }
         return hasher.finalize()
     }
 
@@ -54,6 +62,13 @@ struct ArticleSummarySection: View {
     var onBubble: Bool
     let controls: ArticleSummaryControls
 
+    /// "Summarize with Claude": names the service the article's text goes to.
+    private var buttonHelp: String { Self.help(providerName: controls.providerName()) }
+
+    static func help(providerName name: String) -> String {
+        name.isEmpty ? String(localized: "Summarize this article with AI") : String(localized: "Summarize with \(name)")
+    }
+
     var body: some View {
         if let state = controls.state(request.url) {
             ArticleSummaryPanel(url: request.url, state: state, onBubble: onBubble, controls: controls)
@@ -71,7 +86,7 @@ struct ArticleSummarySection: View {
                     )
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Summarize this article with AI"))
+            .help(buttonHelp)
             .accessibilityLabel(String(localized: "Summarize"))
             .accessibilityIdentifier("article-summarize")
         }
@@ -153,6 +168,13 @@ struct ArticleSummaryPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             footer(summary)
+            if let suggestions = summary.searchSuggestionsHTML {
+                // Google's terms: its search suggestions go under whatever its search grounded.
+                SearchSuggestionsBlock(
+                    html: suggestions,
+                    height: CGFloat(controls.suggestionsHeight(url) ?? Int(SearchSuggestionsBlock.placeholderHeight)),
+                    onHeight: { controls.setSuggestionsHeight(url, $0) })
+            }
         case let .failed(failure):
             if let header = ArticleSummaryCopy.header(for: state) {
                 Text(header)
@@ -191,10 +213,11 @@ struct ArticleSummaryPanel: View {
 
     private func footer(_ summary: ArticleSummary) -> some View {
         HStack(spacing: 10) {
-            Text(ArticleSummaryCopy.footer(provider: summary.provider))
+            Text(ArticleSummaryCopy.footer(for: summary))
                 .font(.caption2)
                 .foregroundStyle(secondary)
-                .lineLimit(1)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button(String(localized: "Open article")) { controls.open(summary.sourceURL) }
                 .buttonStyle(.borderless)

@@ -41,9 +41,17 @@ public struct ArticleSummary: Codable, Hashable, Sendable {
     /// The linked page's site ("usatoday.com").
     public var linkDomain: String
     public var origin: ArticleSummaryOrigin
+    /// The footer line, as the other AI features write it (`AIProvider.provenanceFooter`): "via <model> · sent to
+    /// Anthropic" or "via <model> · on this Mac". nil in a summary kept by an earlier version.
+    public var provenance: String?
+    /// Google's search suggestions (HTML and CSS) when the page was found by Google AI Studio's search: Google's terms
+    /// require them under anything that search grounded. Kept with the summary, so they come back with it.
+    public var searchSuggestionsHTML: String?
 
     public init(bullets: [String], provider: String, sourceURL: URL, sourceDomain: String, linkDomain: String,
-                origin: ArticleSummaryOrigin) {
+                origin: ArticleSummaryOrigin, provenance: String? = nil, searchSuggestionsHTML: String? = nil) {
+        self.provenance = provenance
+        self.searchSuggestionsHTML = searchSuggestionsHTML
         self.bullets = bullets
         self.provider = provider
         self.sourceURL = sourceURL
@@ -135,6 +143,13 @@ public enum ArticleSummaryCopy {
                 return reason
             }
         }
+    }
+
+    /// The line under a summary: the provenance footer the other AI features show ("via <model> · sent to
+    /// Anthropic"), or "Summary by Anthropic" for a summary kept without one.
+    public static func footer(for summary: ArticleSummary) -> String {
+        if let provenance = summary.provenance, !provenance.isEmpty { return provenance }
+        return footer(provider: summary.provider)
     }
 
     /// "Summary by Anthropic".
@@ -437,11 +452,18 @@ public final class ArticleSummaryModel: ObservableObject {
     /// The summaries in progress, finished or failed, by link. A dismissed one is gone (its finished summary stays in
     /// the cache).
     @Published public private(set) var states: [String: ArticleSummaryState] = [:]
+    /// How tall Google's search suggestions are under each link's summary, in points, once the view has measured them.
+    /// Part of what the timeline's rows are measured by.
+    @Published public private(set) var suggestionHeights: [String: Int] = [:]
 
     /// The AI service in use. `bindAIProviderStore` keeps it current.
     public var aiProvider: any AIProvider = UnavailableAIProvider()
-    /// The name of the AI service for "Summary by …".
+    /// The name of the AI service ("Anthropic").
     public var providerName: @MainActor () -> String = { "" }
+    /// The footer under a summary (`AIProvider.provenanceFooter`).
+    public var provenance: @MainActor () -> String = { "" }
+    /// Whether the app is locked: nothing is read or sent while it is, and work in flight stops.
+    public var isLocked: @MainActor () -> Bool = { false }
     public var reader: (any ArticleReading)?
     public let cache: ArticleSummaryCache
     /// How many pages found by the search are tried, at most.
@@ -460,6 +482,7 @@ public final class ArticleSummaryModel: ObservableObject {
     public func bindAIProviderStore(_ store: AIProviderStore) {
         aiProvider = store.provider
         providerName = { [weak store] in store.map { $0.provider.providerName(preferences: $0.preferences) } ?? "" }
+        provenance = { [weak store] in store.map { $0.provider.provenanceFooter(preferences: $0.preferences) } ?? "" }
         aiStoreCancellable = store.$provider.sink { [weak self] next in self?.aiProvider = next }
     }
 
@@ -497,10 +520,18 @@ public final class ArticleSummaryModel: ObservableObject {
         states[key] = .working(.reading)
         let provider = aiProvider
         let name = providerName()
+        let footer = provenance()
         tasks[key]?.cancel()
         tasks[key] = Task { [weak self] in
             guard let self else { return }
-            let outcome = await self.run(request, key: key, provider: provider, providerName: name)
+            let outcome: Outcome
+            do {
+                outcome = try await self.run(request, key: key, provider: provider, providerName: name, provenance: footer)
+            } catch {
+                // Closed, or the app locked: the panel goes, and nothing more is sent.
+                if !Task.isCancelled { self.tasks[key] = nil; self.states[key] = nil }
+                return
+            }
             guard !Task.isCancelled else { return }
             self.tasks[key] = nil
             switch outcome {
@@ -521,6 +552,15 @@ public final class ArticleSummaryModel: ObservableObject {
         summarize(request)
     }
 
+    public func suggestionsHeight(for url: URL) -> Int? { suggestionHeights[Self.key(for: url)] }
+
+    public func setSuggestionsHeight(_ points: CGFloat, for url: URL) {
+        let height = Int(points.rounded(.up))
+        let key = Self.key(for: url)
+        guard height > 0, height < 400, suggestionHeights[key] != height else { return }
+        suggestionHeights[key] = height
+    }
+
     /// Closes the panel. A summary in progress is stopped; a finished one stays in the cache.
     public func dismiss(_ url: URL) {
         let key = Self.key(for: url)
@@ -529,7 +569,7 @@ public final class ArticleSummaryModel: ObservableObject {
         states[key] = nil
     }
 
-    /// Stops everything in progress and closes every panel (the app locked, or the chat changed).
+    /// Stops everything in progress and closes every panel (the app locked).
     public func dismissAll() {
         for task in tasks.values { task.cancel() }
         tasks = [:]
@@ -553,19 +593,28 @@ public final class ArticleSummaryModel: ObservableObject {
         states[key] = .working(phase)
     }
 
+    /// The work stopped: its panel was closed, or the app locked.
+    private struct Halted: Error {}
+
+    private func checkNotHalted() throws {
+        if Task.isCancelled || isLocked() { throw Halted() }
+    }
+
     private func run(_ request: ArticleSummaryRequest, key: String, provider: any AIProvider,
-                     providerName: String) async -> Outcome {
+                     providerName: String, provenance: String) async throws -> Outcome {
         let linkDomain = ArticleSummaryKey.domain(of: request.url)
-        let page = await read(request.url)
-        // A closed panel stops the work: nothing more is read or sent.
-        if Task.isCancelled { return .failed(.aiError(reason: "")) }
+        try checkNotHalted()
+        let page = try await read(request.url)
+        // A closed panel, or a lock, stops the work: nothing more is read or sent, and a read that failed because the
+        // app was locked is not "couldn't read it" (which would go on to a web search).
+        try checkNotHalted()
 
         // The linked page itself, when it can be read.
         if let page, !page.paywalled, !page.needsBrowser, !page.text.isEmpty {
             setPhase(.summarizing, key: key)
             return await summarize(
-                page, provider: provider, providerName: providerName, sourceURL: pageURL(page, fallback: request.url),
-                linkDomain: linkDomain, origin: .page
+                page, provider: provider, providerName: providerName, provenance: provenance,
+                sourceURL: pageURL(page, fallback: request.url), linkDomain: linkDomain, origin: .page
             )
         }
 
@@ -579,21 +628,23 @@ public final class ArticleSummaryModel: ObservableObject {
         guard !headline.isEmpty else { return nothing() }
 
         setPhase(.searching, key: key)
-        let sources: [WebSource]
-        switch await provider.findUnpaywalledSource(headline: headline, site: linkDomain, description: description) {
+        let findings: WebSearchFindings
+        let searched = await provider.findUnpaywalledSource(headline: headline, site: linkDomain, description: description)
+        try checkNotHalted()
+        switch searched {
         case .unsupported:
             return nothing()
         case let .unavailable(reason):
-            return Task.isCancelled ? nothing() : nothing(reason)
+            return nothing(reason)
         case let .sources(found):
-            sources = found
+            findings = found
         }
 
-        for source in sources.prefix(maxCandidates) {
-            guard !Task.isCancelled else { return nothing() }
+        for source in findings.sources.prefix(maxCandidates) {
+            try checkNotHalted()
             setPhase(.checking, key: key)
-            let found = await read(source.url)
-            guard !Task.isCancelled else { return nothing() }
+            let found = try await read(source.url)
+            try checkNotHalted()
             guard let candidate = found, !candidate.paywalled, !candidate.needsBrowser, !candidate.text.isEmpty else { continue }
             let landed = pageURL(candidate, fallback: source.url)
             // The search can lead back to the paywalled site (a redirect, a mirror): that isn't a way round it.
@@ -605,12 +656,13 @@ public final class ArticleSummaryModel: ObservableObject {
                 headline: headline, description: description,
                 candidateTitle: candidate.title, candidateText: candidate.text
             )
+            try checkNotHalted()
             switch verdict {
             case .same:
                 setPhase(.summarizing, key: key)
                 return await summarize(
-                    candidate, provider: provider, providerName: providerName, sourceURL: landed,
-                    linkDomain: linkDomain, origin: .elsewhere(why)
+                    candidate, provider: provider, providerName: providerName, provenance: provenance, sourceURL: landed,
+                    linkDomain: linkDomain, origin: .elsewhere(why), searchSuggestionsHTML: findings.suggestionsHTML
                 )
             case .different:
                 continue
@@ -621,17 +673,27 @@ public final class ArticleSummaryModel: ObservableObject {
         return nothing()
     }
 
-    private func read(_ url: URL) async -> ArticleResult? {
+    /// The page, or nil when it couldn't be read. A read refused because the app is locked, or cancelled, halts the
+    /// work instead: it must not go on to a web search.
+    private func read(_ url: URL) async throws -> ArticleResult? {
         guard let reader else { return nil }
-        return try? await reader.readArticle(at: url)
+        do {
+            return try await reader.readArticle(at: url)
+        } catch is CancellationError {
+            throw Halted()
+        } catch {
+            if let engine = error as? EngineError, engine == EngineError.appLocked { throw Halted() }
+            return nil
+        }
     }
 
     private func pageURL(_ page: ArticleResult, fallback: URL) -> URL {
         URL(string: page.url).flatMap { $0.scheme?.lowercased() == "https" ? $0 : nil } ?? fallback
     }
 
-    private func summarize(_ page: ArticleResult, provider: any AIProvider, providerName: String, sourceURL: URL,
-                           linkDomain: String, origin: ArticleSummaryOrigin) async -> Outcome {
+    private func summarize(_ page: ArticleResult, provider: any AIProvider, providerName: String, provenance: String,
+                           sourceURL: URL, linkDomain: String, origin: ArticleSummaryOrigin,
+                           searchSuggestionsHTML: String? = nil) async -> Outcome {
         let disposition = await provider.summarizeArticle(title: page.title, site: page.site, text: page.text)
         switch disposition {
         case let .unavailable(reason):
@@ -641,7 +703,8 @@ public final class ArticleSummaryModel: ObservableObject {
             guard !bullets.isEmpty else { return .failed(.aiError(reason: AIClientError.badResponse.message)) }
             return .summary(ArticleSummary(
                 bullets: bullets, provider: providerName, sourceURL: sourceURL,
-                sourceDomain: ArticleSummaryKey.domain(of: sourceURL), linkDomain: linkDomain, origin: origin
+                sourceDomain: ArticleSummaryKey.domain(of: sourceURL), linkDomain: linkDomain, origin: origin,
+                provenance: provenance.isEmpty ? nil : provenance, searchSuggestionsHTML: searchSuggestionsHTML
             ))
         }
     }
@@ -655,6 +718,13 @@ public final class ArticleSummaryModel: ObservableObject {
 }
 
 extension AIProvider {
+    /// The service's name for "Summarize with …" ("Claude", "OpenAI", "Google AI Studio").
+    @MainActor
+    public func summarizerName(preferences: AIPreferences) -> String {
+        if let configured = self as? ConfiguredAIProvider { return configured.kind.summarizerName }
+        return preferences.selectedEngine.summarizerName
+    }
+
     /// The name of the AI service for "Summary by …".
     @MainActor
     public func providerName(preferences: AIPreferences) -> String {

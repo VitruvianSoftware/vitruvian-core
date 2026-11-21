@@ -109,8 +109,8 @@ public struct OpenAICompatibleClient: WebSearchingClient, Sendable {
 
     /// Responses API (`POST /v1/responses`) with the `web_search` tool, asking for the sources it consulted. The
     /// pages are the answer's `url_citation` annotations first, then every source the search listed. The paywalled
-    /// site goes in the tool's `filters.blocked_domains`. Docs: developers.openai.com/api/docs/guides/tools-web-search
-    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> [WebSource] {
+    /// site is left out here, on this side (the tool's `blocked_domains` filter isn't used). Docs: developers.openai.com/api/docs/guides/tools-web-search
+    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> WebSearchFindings {
         guard supportsWebSearch else { throw AIClientError.notConfigured }
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModel.isEmpty else { throw AIClientError.notConfigured }
@@ -122,20 +122,16 @@ public struct OpenAICompatibleClient: WebSearchingClient, Sendable {
         if let apiKey {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
-        var tool: [String: Any] = ["type": "web_search"]
-        if let domain = excludingDomain.map(WebSourceFilter.normalizedHost), !domain.isEmpty {
-            tool["filters"] = ["blocked_domains": [domain]]
-        }
         let body: [String: Any] = [
             "model": trimmedModel,
             "input": prompt,
-            "tools": [tool],
+            "tools": [["type": "web_search"]],
             "include": ["web_search_call.action.sources"],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         let (data, _) = try await AIClientHTTP.send(request, using: transport)
-        return WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain)
+        return WebSearchFindings(sources: WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain))
     }
 
     public static func parseWebSources(from data: Data) throws -> [WebSource] {

@@ -114,7 +114,7 @@ public struct GeminiClient: WebSearchingClient, Sendable {
     /// `groundingMetadata.groundingChunks`; the model's own words are not used, because they can name pages that
     /// don't exist. Each chunk's `uri` is a Google redirect to the page and its `title` is the site's domain, so the
     /// excluded site is matched on the title as well. Docs: ai.google.dev/gemini-api/docs/google-search
-    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> [WebSource] {
+    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> WebSearchFindings {
         guard !apiKey.isEmpty else { throw AIClientError.notConfigured }
         let cleanModel = Self.stripModelsPrefix(model)
         guard !cleanModel.isEmpty else { throw AIClientError.notConfigured }
@@ -131,22 +131,34 @@ public struct GeminiClient: WebSearchingClient, Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         let (data, _) = try await AIClientHTTP.send(request, using: transport)
-        return WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain)
+        let parsed = try Self.parseSearch(from: data)
+        return WebSearchFindings(sources: WebSourceFilter.clean(parsed.sources, excludingDomain: excludingDomain),
+                                 suggestionsHTML: parsed.suggestionsHTML)
     }
 
     public static func parseWebSources(from data: Data) throws -> [WebSource] {
+        try parseSearch(from: data).sources
+    }
+
+    /// The grounding chunks, and Google's search suggestions (`searchEntryPoint.renderedContent`, HTML and CSS), which
+    /// Google's terms require to be shown wherever a grounded answer is used.
+    public static func parseSearch(from data: Data) throws -> WebSearchFindings {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let candidates = json["candidates"] as? [[String: Any]]
         else {
             throw AIClientError.badResponse
         }
-        let chunks = (candidates.first?["groundingMetadata"] as? [String: Any])?["groundingChunks"] as? [[String: Any]] ?? []
-        return chunks.compactMap { chunk -> WebSource? in
+        let metadata = candidates.first?["groundingMetadata"] as? [String: Any]
+        let chunks = metadata?["groundingChunks"] as? [[String: Any]] ?? []
+        let sources = chunks.compactMap { chunk -> WebSource? in
             guard let web = chunk["web"] as? [String: Any],
                   let raw = web["uri"] as? String, let url = URL(string: raw)
             else { return nil }
             return WebSource(url: url, title: (web["title"] as? String) ?? "")
         }
+        let rendered = (metadata?["searchEntryPoint"] as? [String: Any])?["renderedContent"] as? String
+        let trimmed = rendered?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return WebSearchFindings(sources: sources, suggestionsHTML: trimmed?.isEmpty == false ? trimmed : nil)
     }
 
     public static func stripModelsPrefix(_ name: String) -> String {

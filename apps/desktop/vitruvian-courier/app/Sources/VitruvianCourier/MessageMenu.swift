@@ -562,7 +562,12 @@ enum MessageRowActions {
                 dismiss: { messageActions.articleSummaries.dismiss($0) },
                 retry: { messageActions.articleSummaries.retry($0) },
                 copy: { text in messageActions.copyPlainText(text) },
-                aiIsAvailable: { messageActions.articleSummaries.aiProvider.isAvailable }
+                aiIsAvailable: { messageActions.articleSummaries.aiProvider.isAvailable },
+                providerName: {
+                    messageActions.articleSummaries.aiProvider.summarizerName(preferences: messageActions.aiPreferences)
+                },
+                suggestionsHeight: { messageActions.articleSummaries.suggestionsHeight(for: $0) },
+                setSuggestionsHeight: { messageActions.articleSummaries.setSuggestionsHeight($1, for: $0) }
             ))
     }
 }

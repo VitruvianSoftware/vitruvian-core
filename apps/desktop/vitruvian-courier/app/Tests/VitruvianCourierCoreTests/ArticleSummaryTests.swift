@@ -14,20 +14,22 @@ import XCTest
 private final class FakeReader: ArticleReading, @unchecked Sendable {
     private let lock = NSLock()
     private var pages: [String: ArticleResult] = [:]
-    private var failing: Set<String> = []
+    private var failing: [String: Error] = [:]
     private var _reads: [String] = []
     var delay: Duration?
+    var onRead: (@Sendable () -> Void)?
 
     var reads: [String] { lock.withLock { _reads } }
 
     func set(_ url: String, _ result: ArticleResult) { lock.withLock { pages[url] = result } }
-    func fail(_ url: String) { lock.withLock { _ = failing.insert(url) } }
+    func fail(_ url: String, with error: Error = EngineError.notConnected) { lock.withLock { failing[url] = error } }
 
     func readArticle(at url: URL) async throws -> ArticleResult {
         lock.withLock { _reads.append(url.absoluteString) }
         if let delay { try await Task.sleep(for: delay) }
-        let (result, fails) = lock.withLock { (pages[url.absoluteString], failing.contains(url.absoluteString)) }
-        if fails { throw EngineError.notConnected }
+        let (result, failure) = lock.withLock { (pages[url.absoluteString], failing[url.absoluteString]) }
+        onRead?()
+        if let failure { throw failure }
         return try XCTUnwrap(result, "no page set for \(url)")
     }
 }
@@ -273,7 +275,7 @@ final class ArticleSummaryModelTests: XCTestCase {
             found.append(WebSource(url: url, title: ""))
         }
         reader.set(usa.absoluteString, page(usa.absoluteString, text: "teaser", paywalled: true))
-        provider.search = .sources(found)
+        provider.search = .sources(WebSearchFindings(sources: found))
         _ = await run(request())
         XCTAssertEqual(provider.checks.count, 3)
     }
@@ -434,6 +436,192 @@ final class ArticleSummaryModelTests: XCTestCase {
         XCTAssertNil(cache.summary(for: "k0"))
         XCTAssertNotNil(cache.summary(for: "k\(ArticleSummaryCache.maxEntries + 4)"))
     }
+}
+
+// MARK: - Round 1
+
+@MainActor
+final class ArticleSummaryRound1Tests: XCTestCase {
+    private var provider: FakeProvider!
+    private var reader: FakeReader!
+    private var cache: ArticleSummaryCache!
+    private var model: ArticleSummaryModel!
+    private let suggestions = #"<div class="container"><style>.chip{color:#444}</style><a class="chip" href="https://www.google.com/search?q=bridge">bridge opens early</a></div>"#
+
+    override func setUp() async throws {
+        provider = FakeProvider()
+        reader = FakeReader()
+        cache = ArticleSummaryCache()
+        model = ArticleSummaryModel(cache: cache, reader: reader)
+        model.aiProvider = provider
+        model.providerName = { "Google AI Studio" }
+        model.provenance = { "via gemini-x · sent to Google AI Studio" }
+    }
+
+    private func request() -> ArticleSummaryRequest {
+        ArticleSummaryRequest(url: usa, headline: "Bridge opens early", description: "Two months ahead of schedule.")
+    }
+
+    // 1. Google's search suggestions
+
+    func testGoogleSearchSuggestionsTravelWithTheSummaryAndTheCache() async throws {
+        reader.set(usa.absoluteString, page(usa.absoluteString, text: "teaser", paywalled: true))
+        reader.set(ap.absoluteString, page(ap.absoluteString, title: "Bridge opens early"))
+        provider.search = .sources(WebSearchFindings(sources: [WebSource(url: ap, title: "apnews.com")], suggestionsHTML: suggestions))
+        model.summarize(request())
+        await model.waitForSummary(of: usa)
+        guard case let .summary(summary)? = model.state(for: usa) else { return XCTFail() }
+        XCTAssertEqual(summary.searchSuggestionsHTML, suggestions, "shown under any summary the search found")
+
+        // Kept with the summary: it reappears with it, and survives the file.
+        model.dismiss(usa)
+        model.summarize(request())
+        guard case let .summary(again)? = model.state(for: usa) else { return XCTFail() }
+        XCTAssertEqual(again.searchSuggestionsHTML, suggestions)
+        let data = try JSONEncoder().encode(again)
+        XCTAssertEqual(try JSONDecoder().decode(ArticleSummary.self, from: data).searchSuggestionsHTML, suggestions)
+    }
+
+    func testASummaryOfTheLinkedPageHasNoSearchSuggestions() async {
+        reader.set(usa.absoluteString, page(usa.absoluteString))
+        model.summarize(request())
+        await model.waitForSummary(of: usa)
+        guard case let .summary(summary)? = model.state(for: usa) else { return XCTFail() }
+        XCTAssertNil(summary.searchSuggestionsHTML, "no search was made")
+    }
+
+    func testGeminiRenderedContentIsReadAndOtherServicesHaveNone() async throws {
+        let gemini = StubHTTPTransport()
+        gemini.enqueue(status: 200, json: """
+        {"candidates":[{"content":{"parts":[{"text":"x"}]},"groundingMetadata":{
+          "searchEntryPoint":{"renderedContent":"<div class=\\"container\\">chips</div>"},
+          "groundingChunks":[{"web":{"uri":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/B","title":"apnews.com"}}]}}]}
+        """)
+        let g = ConfiguredAIProvider(kind: .googleAIStudio, client: GeminiClient(apiKey: "k", transport: gemini), model: "gemini-x")
+        let found = await g.findUnpaywalledSource(headline: "h", site: "usatoday.com", description: "")
+        guard case let .sources(findings) = found else { return XCTFail("\(found)") }
+        XCTAssertEqual(findings.suggestionsHTML, #"<div class="container">chips</div>"#)
+        XCTAssertEqual(findings.sources.count, 1)
+
+        let none = StubHTTPTransport()
+        none.enqueue(status: 200, json: #"{"candidates":[{"content":{"parts":[{"text":"x"}]},"groundingMetadata":{"searchEntryPoint":{"renderedContent":"  "},"groundingChunks":[]}}]}"#)
+        let blank = ConfiguredAIProvider(kind: .googleAIStudio, client: GeminiClient(apiKey: "k", transport: none), model: "gemini-x")
+        let blankFound = await blank.findUnpaywalledSource(headline: "h", site: "usatoday.com", description: "")
+        XCTAssertEqual(blankFound, .sources([]), "empty suggestions are none")
+
+        let anthropic = StubHTTPTransport()
+        anthropic.enqueue(status: 200, json: #"{"content":[{"type":"text","text":"x"}]}"#)
+        let a = ConfiguredAIProvider(kind: .anthropic, client: AnthropicClient(apiKey: "k", transport: anthropic), model: "m")
+        let aFound = await a.findUnpaywalledSource(headline: "h", site: "usatoday.com", description: "")
+        XCTAssertEqual(aFound, .sources([]))
+    }
+
+    // 4. The footer and the button's tooltip
+
+    func testTheFooterIsTheProvenanceLineTheOtherAIFeaturesUse() async throws {
+        reader.set(usa.absoluteString, page(usa.absoluteString))
+        model.summarize(request())
+        await model.waitForSummary(of: usa)
+        guard case let .summary(summary)? = model.state(for: usa) else { return XCTFail() }
+        XCTAssertEqual(summary.provenance, "via gemini-x · sent to Google AI Studio")
+        XCTAssertEqual(ArticleSummaryCopy.footer(for: summary), "via gemini-x · sent to Google AI Studio")
+        XCTAssertEqual(AIProviderKind.googleAIStudio.provenanceFooter(model: "gemini-x"), "via gemini-x · sent to Google AI Studio",
+                       "the same wording as translation and chat summaries")
+
+        // A summary kept without one still has a footer.
+        var old = summary
+        old.provenance = nil
+        XCTAssertEqual(ArticleSummaryCopy.footer(for: old), "Summary by Google AI Studio")
+    }
+
+    func testTheButtonsTooltipNamesTheService() {
+        XCTAssertEqual(AIProviderKind.anthropic.summarizerName, "Claude")
+        XCTAssertEqual(AIProviderKind.openAI.summarizerName, "OpenAI")
+        XCTAssertEqual(AIProviderKind.googleAIStudio.summarizerName, "Google AI Studio")
+        XCTAssertEqual(AIProviderKind.appleIntelligence.summarizerName, "Apple Intelligence")
+        XCTAssertEqual(AIProviderKind.ollama.summarizerName, "Ollama")
+    }
+
+    // 5. OpenAI's blocked-domains filter
+
+    func testOpenAISearchSendsNoDomainFilterAndFiltersLocally() async throws {
+        let transport = StubHTTPTransport()
+        transport.enqueue(status: 200, json: """
+        {"output":[{"type":"message","content":[{"type":"output_text","text":"x","annotations":[
+          {"type":"url_citation","url":"https://www.usatoday.com/a","title":"USA"},
+          {"type":"url_citation","url":"https://apnews.com/b","title":"AP"}]}]}]}
+        """)
+        let provider = ConfiguredAIProvider(
+            kind: .openAI, client: OpenAICompatibleClient(baseURL: URL(string: "https://api.openai.com/v1")!, key: "k", transport: transport),
+            model: "gpt-x")
+        let result = await provider.findUnpaywalledSource(headline: "h", site: "usatoday.com", description: "")
+        let sent = try body(transport.requests.first)
+        let tool = try XCTUnwrap((sent["tools"] as? [[String: Any]])?.first)
+        XCTAssertEqual(tool["type"] as? String, "web_search")
+        XCTAssertNil(tool["filters"], "an unverified filter isn't sent")
+        XCTAssertEqual(result, .sources([WebSource(url: URL(string: "https://apnews.com/b")!, title: "AP")]), "the paywalled site is dropped here")
+    }
+
+    // 6. Lock, and the cache's clear hooks
+
+    func testAReadTheLockRefusedDoesNotFallThroughToAWebSearch() async {
+        reader.fail(usa.absoluteString, with: EngineError.appLocked)
+        provider.search = .sources([WebSource(url: ap, title: "")])
+        model.summarize(request())
+        await model.waitForSummary(of: usa)
+        XCTAssertNil(model.state(for: usa), "the panel goes; it isn't \"couldn't read\"")
+        XCTAssertTrue(provider.searches.isEmpty, "nothing was sent to a web search")
+        XCTAssertTrue(provider.summaries.isEmpty)
+    }
+
+    func testTheAppLockingDuringARead() async {
+        final class Flag: @unchecked Sendable { var on = false }
+        let locked = Flag()
+        model.isLocked = { locked.on }
+        reader.set(usa.absoluteString, page(usa.absoluteString, text: "teaser", paywalled: true))
+        reader.onRead = { locked.on = true }
+        provider.search = .sources([WebSource(url: ap, title: "")])
+        model.summarize(request())
+        await model.waitForSummary(of: usa)
+        XCTAssertNil(model.state(for: usa))
+        XCTAssertTrue(provider.searches.isEmpty, "a page read as the app locked doesn't go on to a web search")
+    }
+
+    func testDismissAllStopsAReadInFlight() async {
+        reader.set(usa.absoluteString, page(usa.absoluteString, text: "teaser", paywalled: true))
+        reader.delay = .milliseconds(150)
+        provider.search = .sources([WebSource(url: ap, title: "")])
+        model.summarize(request())
+        model.dismissAll()
+        try? await Task.sleep(for: .milliseconds(350))
+        XCTAssertTrue(model.states.isEmpty)
+        XCTAssertTrue(provider.searches.isEmpty)
+    }
+
+    func testTurningAIOffForgetsTheKeptSummaries() throws {
+        let suite = "test.courier.articles.ai-off.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.selectedEngine = .anthropic
+        prefs.enableContextualAI = true
+        let store = AIProviderStore(preferences: prefs, keyStore: AIKeyStore(store: InMemoryCredentialStore(["anthropic": "k"])),
+                                    transport: StubHTTPTransport())
+        let summary = ArticleSummary(bullets: ["One."], provider: "", sourceURL: ap, sourceDomain: "apnews.com",
+                                     linkDomain: "apnews.com", origin: .page)
+        ArticleSummaryCache.shared.removeAll()
+        ArticleSummaryCache.shared.store(summary, for: "k")
+        prefs.selectedEngine = .openAI
+        XCTAssertNotNil(ArticleSummaryCache.shared.summary(for: "k"), "switching service keeps them")
+        prefs.enableContextualAI = false
+        XCTAssertNil(ArticleSummaryCache.shared.summary(for: "k"), "AI off forgets them")
+        _ = store
+    }
+}
+
+private func body(_ request: URLRequest?) throws -> [String: Any] {
+    let data = try XCTUnwrap(StubHTTPTransport.bodyData(of: try XCTUnwrap(request)))
+    return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 }
 
 // MARK: - Pure helpers

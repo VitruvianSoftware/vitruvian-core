@@ -2733,6 +2733,7 @@ struct TimelineTableView: NSViewRepresentable {
             for key in model.articleSummaries.states.keys.sorted() {
                 hasher.combine(key)
                 hasher.combine(model.articleSummaries.states[key])
+                hasher.combine(model.articleSummaries.suggestionHeights[key])
             }
             return hasher.finalize()
         }

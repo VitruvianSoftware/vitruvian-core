@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -39,6 +40,8 @@ const (
 	teaserMaxRunes     = 500
 	teaserMinDescRunes = 140
 	maxDescriptionRune = 600
+	// structuredBodyMinRunes: a schema.org articleBody this long is taken as the story.
+	structuredBodyMinRunes = 400
 )
 
 // Article is the readable part of a page.
@@ -100,7 +103,7 @@ func (a *Actions) ReadArticle(ctx context.Context, rawURL string) (*Article, err
 		res.NeedsBrowser = true
 		return res, nil
 	}
-	if ct := strings.ToLower(resp.Header.Get("Content-Type")); ct != "" && !strings.Contains(ct, "html") && !strings.Contains(ct, "xml") {
+	if !readableContentType(resp.Header.Get("Content-Type")) {
 		res.NeedsBrowser = true
 		return res, nil
 	}
@@ -112,11 +115,29 @@ func (a *Actions) ReadArticle(ctx context.Context, rawURL string) (*Article, err
 		res.NeedsBrowser = true
 		return res, nil
 	}
+	// A server that names no type: what the bytes look like decides.
+	if strings.TrimSpace(resp.Header.Get("Content-Type")) == "" && !strings.HasPrefix(http.DetectContentType(raw), "text/html") {
+		res.NeedsBrowser = true
+		return res, nil
+	}
 	finalURL := u
 	if resp.Request != nil && resp.Request.URL != nil {
 		finalURL = resp.Request.URL
 	}
 	return ExtractArticle(raw, resp.Header.Get("Content-Type"), finalURL), nil
+}
+
+// readableContentType says whether a response is a web page: text/html or application/xhtml+xml, and nothing else (a
+// feed, JSON or plain text isn't an article). A response with no Content-Type is decided by its bytes (ReadArticle).
+func readableContentType(header string) bool {
+	if strings.TrimSpace(header) == "" {
+		return true
+	}
+	mt, _, err := mime.ParseMediaType(header)
+	if err != nil {
+		return false
+	}
+	return mt == "text/html" || mt == "application/xhtml+xml"
 }
 
 // ExtractArticle reads the main text, title, site, description and paywall state out of a page's HTML. contentType is
@@ -151,17 +172,21 @@ func ExtractArticle(raw []byte, contentType string, pageURL *url.URL) *Article {
 	marker := ld.notFree || meta["article:content_tier"] == "locked" || hasPaywallMarker(doc)
 	textRunes := utf8.RuneCountInString(text)
 	descRunes := utf8.RuneCountInString(out.Description)
+	// The page's own structured articleBody (schema.org) is the story whenever it is long enough to be one and the
+	// page's text isn't far longer: a script-built shell, or a shell of cookie notices, is no match for it. Unless
+	// the site marks the article as not free: then the structured data is the paywalled part.
+	ldRunes := utf8.RuneCountInString(ld.articleBody)
+	usedLD := false
+	if !marker && ldRunes >= structuredBodyMinRunes && ldRunes*2 >= textRunes {
+		text = joinParagraphs(splitBodyParagraphs(ld.articleBody), MaxArticleTextRunes)
+		textRunes = utf8.RuneCountInString(text)
+		usedLD = true
+	}
 	switch {
 	case marker && textRunes < paywallFullTextRunes:
 		out.Paywalled = true
-	case !marker && textRunes < teaserMaxRunes && descRunes >= teaserMinDescRunes && textRunes < 2*descRunes && textRunes >= minArticleRunes:
+	case !usedLD && !marker && textRunes < teaserMaxRunes && descRunes >= teaserMinDescRunes && textRunes < 2*descRunes && textRunes >= minArticleRunes:
 		out.Paywalled = true
-	}
-	// A page whose text is only in its structured data (script-built pages often keep an articleBody there), unless
-	// the site marks the article as not free: then the structured data is the paywalled part.
-	if !out.Paywalled && textRunes < 600 && utf8.RuneCountInString(ld.articleBody) > textRunes {
-		text = joinParagraphs(splitBodyParagraphs(ld.articleBody), MaxArticleTextRunes)
-		textRunes = utf8.RuneCountInString(text)
 	}
 	out.Text = text
 	if !out.Paywalled && textRunes < minArticleRunes {
@@ -420,9 +445,28 @@ func isFurnitureToken(tok string) bool {
 	return false
 }
 
+// furnitureFragments are pieces of a class or id that mark a cookie or consent notice or a comment list wherever they
+// sit in the name ("onetrust-consent-sdk", "commentlist", "cookie-banner"). Like the words above they only count for
+// an element that holds a small part of the page.
+var furnitureFragments = []string{"cookie", "consent", "onetrust", "commentlist", "comment-list", "gdpr"}
+
+// furnitureRoles are the ARIA roles of page furniture and pop-ups.
+var furnitureRoles = map[string]bool{
+	"dialog": true, "alertdialog": true, "navigation": true, "banner": true, "contentinfo": true, "complementary": true,
+}
+
 func looksLikeFurniture(n *html.Node) bool {
+	if furnitureRoles[strings.ToLower(strings.TrimSpace(attrOf(n, "role")))] || strings.EqualFold(attrOf(n, "aria-modal"), "true") {
+		return true
+	}
 	for _, key := range []string{"class", "id"} {
-		for _, tok := range strings.Fields(attrOf(n, key)) {
+		val := strings.ToLower(attrOf(n, key))
+		for _, frag := range furnitureFragments {
+			if strings.Contains(val, frag) {
+				return true
+			}
+		}
+		for _, tok := range strings.Fields(val) {
 			if isFurnitureToken(tok) {
 				return true
 			}
@@ -617,9 +661,34 @@ func pickArticleText(doc *html.Node) ([]paragraph, *html.Node) {
 		return best, bestRoot
 	}
 	if body != nil {
-		try([]*html.Node{body})
+		try([]*html.Node{tightestRoot(body)})
 	}
 	return best, bestRoot
+}
+
+// tightestRoot narrows a page with no article markup to the container that holds the text: from n, it steps into a
+// child element for as long as that child holds at least 80% of the story text n has, so sibling blocks (a footer
+// of links, a comment area, a sign-up box) are outside it. The text density, not the tag, picks the block.
+func tightestRoot(n *html.Node) *html.Node {
+	total := paragraphsRunes(collectFrom(n))
+	cur := n
+	for depth := 0; depth < 12 && total > 0; depth++ {
+		var next *html.Node
+		for ch := cur.FirstChild; ch != nil; ch = ch.NextSibling {
+			if ch.Type != html.ElementNode || skipTags[ch.DataAtom] {
+				continue
+			}
+			if paragraphsRunes(collectFrom(ch))*10 >= total*8 {
+				next = ch
+				break
+			}
+		}
+		if next == nil {
+			break
+		}
+		cur = next
+	}
+	return cur
 }
 
 // joinParagraphs makes the text: paragraphs split by a blank line, stopping at max runes on a paragraph boundary

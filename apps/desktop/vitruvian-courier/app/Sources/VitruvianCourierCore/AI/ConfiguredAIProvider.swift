@@ -113,12 +113,12 @@ public struct ConfiguredAIProvider: AIProvider, Sendable {
             return .unsupported
         }
         do {
-            let sources = try await searcher.searchWeb(
+            let findings = try await searcher.searchWeb(
                 prompt: AIPrompts.findSourcePrompt(headline: headline, site: site),
                 excludingDomain: site,
                 model: model
             )
-            return .sources(sources)
+            return .sources(findings)
         } catch let error as AIClientError {
             return .unavailable(reason: error.message)
         } catch {

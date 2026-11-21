@@ -15,6 +15,23 @@ public struct WebSource: Equatable, Hashable, Sendable {
     }
 }
 
+/// What a service's web search found: the pages, and the "search suggestions" Google requires to be shown with
+/// anything its search grounded (Google AI Studio only: `groundingMetadata.searchEntryPoint.renderedContent`, Google's
+/// own HTML and CSS). An array literal is a findings with no suggestions.
+public struct WebSearchFindings: Equatable, Sendable, ExpressibleByArrayLiteral {
+    public var sources: [WebSource]
+    public var suggestionsHTML: String?
+
+    public init(sources: [WebSource], suggestionsHTML: String? = nil) {
+        self.sources = sources
+        self.suggestionsHTML = suggestionsHTML
+    }
+
+    public init(arrayLiteral elements: WebSource...) {
+        self.init(sources: elements)
+    }
+}
+
 /// What `AIProvider.findUnpaywalledSource` found.
 public enum AISourceSearchDisposition: Equatable, Sendable {
     /// This service has no web search of its own (Apple Intelligence, Ollama, LM Studio, Unsloth, a custom server).
@@ -23,7 +40,7 @@ public enum AISourceSearchDisposition: Equatable, Sendable {
     /// The service couldn't search: no key, rate limit, an error. `reason` is in plain words.
     case unavailable(reason: String)
     /// The pages the search turned up, best first, never from the paywalled site. May be empty.
-    case sources([WebSource])
+    case sources(WebSearchFindings)
 }
 
 /// A chat client whose service can search the web itself while it answers (Google AI Studio's `google_search` tool,
@@ -39,7 +56,7 @@ public protocol WebSearchingClient: ChatModelClient {
     /// Asks the service to search the web for `prompt` and returns the pages it found, best first. Pages on
     /// `excludingDomain` (a host such as `usatoday.com`, with or without `www.`) are not returned, and the service is
     /// asked not to search it where its API allows.
-    func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> [WebSource]
+    func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> WebSearchFindings
 }
 
 enum WebSourceFilter {

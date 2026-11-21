@@ -218,6 +218,8 @@ public final class AIProviderStore: ObservableObject {
             cancelModelLoad()
             availableModels = []
             currentEngineForModels = nil
+            // Turning AI off forgets the summaries it wrote.
+            if wasEnabled { ArticleSummaryCache.shared.removeAll() }
             wasEnabled = false
             rebuildProvider()
             return

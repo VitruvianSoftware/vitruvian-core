@@ -275,4 +275,96 @@ final class ArticleSummaryViewTests: XCTestCase {
         }
         check(sizes)
     }
+
+    // MARK: Round 1
+
+    func testGoogleSearchSuggestionsNeverNavigateInsideTheApp() throws {
+        let search = try XCTUnwrap(URL(string: "https://www.google.com/search?q=bridge+opens+early"))
+        XCTAssertEqual(SearchSuggestionsPolicy.decide(url: search, isLinkClick: true, isMainFrame: true), .openInBrowser(search),
+                       "a click on a Google search link opens in the person's browser")
+        for refused in ["https://evil.example/search", "http://www.google.com/search?q=x", "javascript:alert(1)",
+                        "https://google.com.evil.example/x", "https://user@www.google.com/x", "file:///etc/passwd"] {
+            XCTAssertEqual(SearchSuggestionsPolicy.decide(url: URL(string: refused), isLinkClick: true, isMainFrame: true), .cancel, refused)
+        }
+        XCTAssertEqual(SearchSuggestionsPolicy.decide(url: URL(string: "about:blank"), isLinkClick: false, isMainFrame: true), .allow,
+                       "the first load of the HTML Courier hands over")
+        XCTAssertEqual(SearchSuggestionsPolicy.decide(url: search, isLinkClick: false, isMainFrame: true), .cancel,
+                       "a page that moves itself on is not followed")
+        XCTAssertEqual(SearchSuggestionsPolicy.decide(url: search, isLinkClick: false, isMainFrame: false), .cancel, "no frames")
+        XCTAssertEqual(SearchSuggestionsPolicy.decide(url: URL(string: "about:blank"), isLinkClick: false, isMainFrame: false), .cancel)
+
+        let configuration = SearchSuggestionsPolicy.makeConfiguration()
+        XCTAssertFalse(configuration.defaultWebpagePreferences.allowsContentJavaScript, "JavaScript is off for Google's page")
+        XCTAssertFalse(configuration.websiteDataStore.isPersistent, "nothing is stored")
+        // Every request the page itself makes is blocked; the rule list is valid JSON that matches everything.
+        let rules = try JSONSerialization.jsonObject(with: Data(SearchSuggestionsPolicy.blockEverythingRules.utf8)) as? [[String: Any]]
+        XCTAssertEqual((rules?.first?["action"] as? [String: Any])?["type"] as? String, "block")
+        XCTAssertEqual((rules?.first?["trigger"] as? [String: Any])?["url-filter"] as? String, ".*")
+    }
+
+    func testAnOpenSummaryFromGeminiShowsGoogleSearchSuggestionsUnderIt() throws {
+        let html = #"<div class="container"><a href="https://www.google.com/search?q=bridge">bridge opens early</a></div>"#
+        var withSuggestions = summary(origin: .elsewhere(.paywalled))
+        withSuggestions.searchSuggestionsHTML = html
+        var heights: [Int] = []
+        var panelControls = controls(state: .summary(withSuggestions))
+        panelControls.setSuggestionsHeight = { _, h in heights.append(Int(h)) }
+        let state = ArticleSummaryState.summary(withSuggestions)
+        let with = try Snapshot.render("article-summary-suggestions", width: 360) {
+            ArticleSummaryPanel(url: url, state: state, onBubble: false, controls: panelControls).padding(14)
+        }
+        let without = try Snapshot.render("article-summary-no-suggestions", width: 360) {
+            ArticleSummaryPanel(url: url, state: .summary(summary(origin: .elsewhere(.paywalled))), onBubble: false,
+                                controls: controls(state: .summary(summary(origin: .elsewhere(.paywalled))))).padding(14)
+        }
+        check(with)
+        XCTAssertGreaterThanOrEqual(with[0].height, without[0].height + SearchSuggestionsBlock.placeholderHeight - 1,
+                                    "Google's suggestions take room under the summary")
+    }
+
+    func testTheSummaryModelKeepsTheSuggestionsHeightAndTheRowsSignatureFollowsIt() async throws {
+        let world = try makeWorld()
+        let item = try XCTUnwrap(Fixture.items([linkMessageEvent()]).first { $0.id == "$link" })
+        func revision() -> Int {
+            TimelineContentRevision.compute(item: item, showsSent: false, actions: world.actions, ui: world.ui,
+                                            messageActions: world.messageActions,
+                                            voiceNoteTranscripts: world.conversation.voiceNoteTranscripts,
+                                            timerChoicesCount: 0, envHeightSignature: world.env.heightSignature)
+        }
+        world.messageActions.summarizeLink(ArticleSummaryRequest(url: url, headline: "Bridge opens early"))
+        await world.messageActions.articleSummaries.waitForSummary(of: url)
+        let before = revision()
+        world.actions.articleSummary.setSuggestionsHeight(url, 61.2)
+        XCTAssertEqual(world.actions.articleSummary.suggestionsHeight(url), 62)
+        XCTAssertNotEqual(before, revision(), "a measured height makes the row measured again")
+        world.actions.articleSummary.setSuggestionsHeight(url, 0)
+        world.actions.articleSummary.setSuggestionsHeight(url, 100_000)
+        XCTAssertEqual(world.actions.articleSummary.suggestionsHeight(url), 62, "an absurd height is ignored")
+    }
+
+    func testTheButtonsTooltipNamesTheServiceBeforeTheFirstSend() throws {
+        XCTAssertEqual(ArticleSummarySection.help(providerName: "Claude"), "Summarize with Claude")
+        XCTAssertEqual(ArticleSummarySection.help(providerName: ""), "Summarize this article with AI")
+        let world = try makeWorld()
+        world.messageActions.aiProvider = ConfiguredAIProvider(kind: .anthropic, client: AnthropicClient(apiKey: "k"), model: "claude-x")
+        XCTAssertEqual(world.actions.articleSummary.providerName(), "Claude")
+        world.messageActions.aiProvider = ConfiguredAIProvider(kind: .googleAIStudio, client: GeminiClient(apiKey: "k"), model: "gemini-x")
+        XCTAssertEqual(world.actions.articleSummary.providerName(), "Google AI Studio")
+    }
+
+    func testLockingTheAppClosesSummariesInFlight() throws {
+        let world = try makeWorld()
+        world.messageActions.articleSummaries.reader = SlowReader()
+        world.messageActions.summarizeLink(ArticleSummaryRequest(url: url, headline: "Bridge opens early"))
+        XCTAssertNotNil(world.messageActions.articleSummaries.state(for: url))
+        world.messageActions.dismissAllPresentations()
+        XCTAssertNil(world.messageActions.articleSummaries.state(for: url), "a lock closes the panel and stops the work")
+    }
+
+    private final class SlowReader: ArticleReading, @unchecked Sendable {
+        func readArticle(at url: URL) async throws -> ArticleResult {
+            try await Task.sleep(for: .seconds(5))
+            throw EngineError.notConnected
+        }
+    }
 }

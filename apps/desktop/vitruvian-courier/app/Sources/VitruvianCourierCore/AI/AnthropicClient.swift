@@ -118,7 +118,7 @@ public struct AnthropicClient: WebSearchingClient, Sendable {
 
     /// Messages API with the `web_search` server tool. The sources are what Claude cited, then every result the search
     /// returned. A search that fails inside a 200 answer (`web_search_tool_result_error`) gives no sources.
-    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> [WebSource] {
+    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> WebSearchFindings {
         guard !apiKey.isEmpty else { throw AIClientError.notConfigured }
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModel.isEmpty else { throw AIClientError.notConfigured }
@@ -147,7 +147,7 @@ public struct AnthropicClient: WebSearchingClient, Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
         let (data, _) = try await AIClientHTTP.send(request, using: transport)
-        return WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain)
+        return WebSearchFindings(sources: WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain))
     }
 
     /// Reads the pages out of a Messages answer that used the web search tool: the `web_search_result_location`

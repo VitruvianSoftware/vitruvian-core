@@ -174,6 +174,10 @@ public final class MessageActionsModel: ObservableObject {
         summaries.providerName = { [weak self] in
             self.map { $0.aiProvider.providerName(preferences: $0.aiPreferences) } ?? ""
         }
+        summaries.provenance = { [weak self] in
+            self.map { $0.aiProvider.provenanceFooter(preferences: $0.aiPreferences) } ?? ""
+        }
+        summaries.isLocked = { [weak self] in self?.isLocked ?? false }
         // The cards' panels redraw when a summary moves on: the timeline reads it through this model.
         subscriptions.append(summaries.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() })
         appModel.onChange { [weak self] change in self?.handle(change) }
@@ -200,6 +204,8 @@ public final class MessageActionsModel: ObservableObject {
 
     public func dismissAllPresentations() {
         request = nil
+        // A summary in flight stops, so a read the lock refused can't go on to a web search.
+        articleSummaries.dismissAll()
     }
 
     /// Binds this model to a shared `AIProviderStore` so `aiPreferences` and live `aiProvider` updates stay in sync.
