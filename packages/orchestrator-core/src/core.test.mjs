@@ -4670,7 +4670,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
   assert.equal(oc.roles.find((r) => r.role === "developer")?.dispatch, "wren");
   assert.equal(
     oc.roles.find((r) => r.role === "infrastructure")?.dispatch,
-    "infrastructure",
+    "vitruvian-orchestrator:infrastructure",
   );
   assert.equal(oc.roles.find((r) => r.role === "release")?.dispatch, null);
 
@@ -5642,7 +5642,7 @@ test("resolveTeam computes dispatch id per source and harness", () => {
   for (const [harness, expectedGenericQa] of [
     ["claude-code", "vitruvian-orchestrator:qa"],
     ["antigravity", "qa"],
-    ["opencode", "qa"],
+    ["opencode", "vitruvian-orchestrator:qa"],
     ["unknown-harness", "qa"],
   ]) {
     const resolved = resolveTeam(team, harness, { tiers: {} });
