@@ -26,6 +26,7 @@
 //! //tools/cloud-bootstrap:cloud-bootstrap_test.
 
 use std::fs;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -33,6 +34,9 @@ use std::time::Duration;
 use crate::manifest::{self, Profile};
 use crate::sh::{self, which};
 use crate::{note, warn, Ctx};
+
+/// Why each failed Secret Manager read failed, this run only (in the state dir).
+pub const SECRET_READ_ERRORS: &str = "secret-read-errors";
 
 const MARK_BEGIN: &str =
     "# >>> vitruvian-core cloud session (managed by tools/cloud-bootstrap) — do not edit by hand";
@@ -136,11 +140,63 @@ impl Ctx {
         }
     }
 
-    /// gcloud_secret: the value, or None after printing gcloud's reason.
-    /// gcloud EXITS 0 while printing "ERROR: ... Reauthentication failed" on a
-    /// broken credential, so neither the status nor an empty result is trusted
-    /// alone.
+    /// gcloud_secret: the value, or None once every attempt failed.
+    ///
+    /// A failed read is retried (the ESC exchange's count and delay): at
+    /// session start the first read could fail while every later one worked,
+    /// and the scrub then blanked the sandbox's placeholder, leaving the
+    /// session without GH_TOKEN (seen on every new session, 2026-11-19..21,
+    /// while re-running `auth` by hand always read it). Each failure's reason
+    /// goes to SECRET_READ_ERRORS in the state dir, because a SessionStart
+    /// hook's stderr is never shown to anyone.
     fn gcloud_secret(&self, p: &Profile, name: &str) -> Option<Vec<u8>> {
+        let tries = self.esc_retries.max(1);
+        for attempt in 1..=tries {
+            match self.gcloud_secret_once(p, name) {
+                Ok(v) => return Some(v),
+                Err(stderr) => {
+                    crate::err_bytes(&sh::indent(&stderr, "    "));
+                    self.log_secret_error(name, attempt, tries, &stderr);
+                    if attempt < tries {
+                        note(&format!(
+                            "{name}: read {attempt}/{tries} failed; retrying in {}s",
+                            self.esc_retry_delay_raw
+                        ));
+                        std::thread::sleep(self.esc_retry_delay);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// One `<name>: attempt n/N: <gcloud's last line>` per failed read, 0600.
+    /// gcloud's error text names the secret and the reason, never a value.
+    fn log_secret_error(&self, name: &str, attempt: u32, tries: u32, stderr: &[u8]) {
+        let why = sh::lines(stderr)
+            .iter()
+            .rev()
+            .find(|l| !l.iter().all(|b| b.is_ascii_whitespace()))
+            .map(|l| sh::lossy(l))
+            .unwrap_or_else(|| "no output from gcloud".to_string());
+        let _ = sh::private_dir(&self.state_dir);
+        let f = self.state_dir.join(SECRET_READ_ERRORS);
+        let line = format!("{name}: attempt {attempt}/{tries}: {why}\n");
+        let res = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(0o600)
+            .open(&f)
+            .and_then(|mut h| std::io::Write::write_all(&mut h, line.as_bytes()));
+        if res.is_ok() {
+            let _ = fs::set_permissions(&f, fs::Permissions::from_mode(0o600));
+        }
+    }
+
+    /// One read: the value, or gcloud's stderr. gcloud EXITS 0 while printing
+    /// "ERROR: ... Reauthentication failed" on a broken credential, so neither
+    /// the status nor an empty result is trusted alone.
+    fn gcloud_secret_once(&self, p: &Profile, name: &str) -> Result<Vec<u8>, Vec<u8>> {
         let mut cmd = Command::new(&self.gcloud_bin);
         match &self.esc_token_file {
             Some(f) => cmd.arg(format!("--access-token-file={}", sh::path_str(f))),
@@ -155,10 +211,9 @@ impl Ctx {
             .iter()
             .any(|l| l.starts_with(b"ERROR:"));
         if !r.ok || err_line || out.is_empty() {
-            crate::err_bytes(&sh::indent(&r.stderr, "    "));
-            return None;
+            return Err(r.stderr);
         }
-        Some(out)
+        Ok(out)
     }
 
     fn esc_fail(&mut self, profile: &str, reason: &str) {

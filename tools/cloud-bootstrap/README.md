@@ -378,6 +378,15 @@ satisfied, so it works as a gate. It never prints a secret value; a credential i
 reported by name and byte length, which is enough to tell a real token from a
 truncated paste.
 
+A failed Secret Manager read is retried (the ESC exchange's
+`VITRUVIAN_ESC_RETRIES` / `VITRUVIAN_ESC_RETRY_DELAY`, 3 tries 5s apart), because
+at session start the first read could fail while every later one worked — and the
+scrub then blanked the sandbox's placeholder, so new sessions had no `GH_TOKEN`.
+A SessionStart hook's stderr is shown to no one, so each failed read's reason
+also goes to `secret-read-errors` in the state dir (0600, this run only; gcloud's
+message, never a value). When `whoami` reports a credential `missing`, read that
+file first.
+
 An unset or unknown `VITRUVIAN_PROFILE` bootstraps **nothing** and lists the
 valid names — as does a list containing one bad name. There is deliberately no
 default: a session's capability is a choice, not a fallback.
