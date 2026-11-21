@@ -179,6 +179,13 @@ public enum AIProviderKind: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// The most article characters one summary sends. Apple Intelligence and local servers have small context
+    /// windows (Apple's holds about 4,000 tokens, Ollama's default is the same), and a longer prompt is cut off or
+    /// refused; a cloud service takes the engine's full 20,000.
+    public var articleCharacterBudget: Int {
+        isLocal ? 8000 : 20000
+    }
+
     public var privacyNotice: String {
         if isLocal {
             return String(localized: "Stays on this Mac.")

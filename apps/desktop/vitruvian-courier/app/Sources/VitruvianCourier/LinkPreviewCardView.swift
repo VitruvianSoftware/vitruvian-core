@@ -18,6 +18,9 @@ public struct LinkPreviewCardView: View {
     public let preview: LinkPreviewItem
     public var onBubble: Bool
     public var onOpenURL: (URL) -> Void
+    /// "Summarize" and its panel, under the card (E1). One self-contained insertion (`ArticleSummarySection`): it moves
+    /// into the card's footer slot as it is. Nothing is offered by default.
+    var articleSummary = ArticleSummaryControls()
 
     /// Read in `body`, so the card draws again when the table learns something about its files.
     @Environment(\.timelineContentRevision) private var contentRevision
@@ -41,6 +44,13 @@ public struct LinkPreviewCardView: View {
         self.preview = preview
         self.onBubble = onBubble
         self.onOpenURL = onOpenURL
+    }
+
+    /// The card with "Summarize" turned on.
+    func withArticleSummary(_ controls: ArticleSummaryControls) -> LinkPreviewCardView {
+        var card = self
+        card.articleSummary = controls
+        return card
     }
 
     private var targetURL: URL? {
@@ -106,8 +116,17 @@ public struct LinkPreviewCardView: View {
     }
 
     public var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            cardButton
+            if let request = ArticleSummaryRequest(preview: preview) {
+                ArticleSummarySection(request: request, onBubble: onBubble, controls: articleSummary)
+            }
+        }
+    }
+
+    private var cardButton: some View {
         let _ = contentRevision
-        Button {
+        return Button {
             if let url = targetURL {
                 onOpenURL(url)
             }

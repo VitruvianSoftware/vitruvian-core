@@ -232,6 +232,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One Read Aloud service for the app: a second Read Aloud on this Mac's voice stops the first, in any window.
         let readAloud = ReadAloudService()
         self.readAloud = readAloud
+        // "Summarize" keeps each finished summary in the app's data folder, so a chat opened again doesn't send the
+        // article to the AI service again.
+        ArticleSummaryCache.shared.enablePersistence(
+            at: EngineLocation.dataDirectory(environment: environment).appendingPathComponent(ArticleSummaryCache.fileName))
         let messageActions = MessageActionsModel(conversation: conversation, appModel: model,
                                                  preferences: composerPreferences, pasteboard: SystemPasteboard(),
                                                  readAloud: readAloud)

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -62,6 +63,13 @@ func protocolDir(t *testing.T) string {
 	t.Fatalf("protocol.json not found; tried %v", tried)
 	return ""
 }
+
+// articlePage is the page article.read's example is run against.
+const articlePage = `<!doctype html><html><head><title>New bridge opens early</title>
+<meta property="og:title" content="New bridge opens early"><meta property="og:site_name" content="Example News">
+</head><body><article><p>Officials said on Tuesday that the new bridge across the river will open to traffic in March, two months ahead of schedule.</p>
+<p>The project cost 48 million dollars, according to the transport department, which paid for it with a federal grant.</p>
+<p>Local businesses expect the crossing to cut a 25 minute detour for about 9,000 drivers a day, the mayor's office said.</p></article></body></html>`
 
 type fieldSpec struct {
 	Type   string   `json:"type"`
@@ -347,7 +355,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 13, Protocol, "engine speaks protocol 13")
+	require.Equal(t, 14, Protocol, "engine speaks protocol 14")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -357,7 +365,7 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	for _, ex := range exs {
 		byName[ex.name] = true
 	}
-	for _, want := range []string{"room.info", "people.resolve", "merge.create", "message.markPlayed", "message.sendVoice", "message.sendLocation"} {
+	for _, want := range []string{"room.info", "people.resolve", "merge.create", "message.markPlayed", "message.sendVoice", "message.sendLocation", "article.read"} {
 		require.True(t, byName[want], "example %s.json must exist", want)
 	}
 
@@ -432,6 +440,7 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 		{"StorageUsageResult", store.StorageUsage{Rooms: []store.RoomStorageUsage{}}},
 		{"StorageCleanupParams", store.StorageCleanupFilter{RoomIDs: []string{"!r:courier.local"}, OlderThanMS: 1, IncludeStickers: true}},
 		{"StorageCleanupResult", store.StorageCleanupReport{}},
+		{"ArticleResult", actions.Article{}},
 		{"IntegrationsStatus", localapi.Status{}},
 		{"APIToken", apiTokenJSON{}},
 		{"PairRequest", localapi.PairRequest{}},
@@ -1186,6 +1195,15 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: room2, Network: "signal", Name: "Alice Example", IsDirect: true}))
 		require.NoError(t, w.s.SetMember(ctx, room2, sigAlice, json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
 		require.NoError(t, w.s.SetProfileExtraMeta(ctx, sigAlice, []string{"tel:+15550100101"}, "", false))
+	case "article.read":
+		// The engine reads the page from a local TLS server, never the example's real address.
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = rw.Write([]byte(articlePage))
+		}))
+		t.Cleanup(srv.Close)
+		w.deps.Actions.SetLinkPreviewHTTPClient(srv.Client())
+		params["url"] = srv.URL + "/news/bridge-opens-early"
 	case "message.markPlayed":
 		params["room_id"], params["event_id"] = w.room, w.events[0]
 	case "message.sendVoice":

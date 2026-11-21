@@ -1,6 +1,6 @@
 {
   "name": "Vitruvian Courier engine protocol",
-  "protocol": 13,
+  "protocol": 14,
   "doc": "How Vitruvian Courier.app talks to its vitruvian-courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -711,6 +711,48 @@
     "RoomParams": {
       "fields": {
         "room_id": { "type": "string" }
+      }
+    },
+    "ArticleParams": {
+      "doc": "article.read: the link whose article is to be read.",
+      "fields": {
+        "url": {
+          "type": "string",
+          "doc": "An https link. Any other scheme is -32014."
+        }
+      }
+    },
+    "ArticleResult": {
+      "doc": "What article.read found at a link. A page that couldn't be read is an answer, not an error: needs_browser is true and text is empty.",
+      "fields": {
+        "url": {
+          "type": "string",
+          "doc": "Where the page ended up, after redirects (at most 3, each to an https link)."
+        },
+        "title": {
+          "type": "string",
+          "doc": "The page's own title (og:title, then its first heading, then its title tag); \"\" when it has none."
+        },
+        "site": {
+          "type": "string",
+          "doc": "The site's name (og:site_name), or its host without \"www.\"."
+        },
+        "description": {
+          "type": "string",
+          "doc": "The page's description (og:description or its description tag), at most 600 characters; \"\" when it has none."
+        },
+        "text": {
+          "type": "string",
+          "doc": "The article's main text: paragraphs split by a blank line, at most 20,000 characters, cut between paragraphs. Navigation, ads, comments and related links are left out. Only a teaser when paywalled; \"\" when needs_browser."
+        },
+        "paywalled": {
+          "type": "bool",
+          "doc": "The site keeps the article behind a subscription or sign-in: the page says so (schema.org isAccessibleForFree false, a locked content tier, a paywall element) and holds only a lead, or the page is a short lead under a long description, or the site answered 402."
+        },
+        "needs_browser": {
+          "type": "bool",
+          "doc": "Nothing readable came back: the page didn't load (an error, a refused or private address, a timeout), isn't a web page (a PDF), or builds its text with scripts. Never true together with paywalled."
+        }
       }
     },
     "LoadOlderResult": {
@@ -2832,6 +2874,12 @@
       "params": "RoomEventsParams",
       "result": "EventsPage",
       "errors": [-32020]
+    },
+    "article.read": {
+      "doc": "Read the main text of the article at a link, for Summarize on a link card. The engine fetches the page itself with the limits a link preview has: https only, 3 seconds, at most 3 redirects (each to https), no private, loopback or tailnet address (checked on the address the name resolves to), and at most 1 MiB of the page. Nothing is stored. The app asks only when Show link previews is on, since it is the same kind of request. A page that can't be read is a result with needs_browser; an address that isn't an https link is -32014.",
+      "params": "ArticleParams",
+      "result": "ArticleResult",
+      "errors": [-32014]
     },
     "room.loadOlder": {
       "doc": "Load ONE page of a chat's older history from its network (a manual backwards backfill) into the store, and say how many messages came and whether more remain. The app calls it only when the person scrolls to the oldest message it holds and the engine has no older one; nothing is filled in the background. One load per chat at a time (a call while one runs answers loading), and a chat with nothing older answers has_more false from a short cooldown. A network that can't load older history (iMessage), or a chat with nothing to backfill, answers has_more false; a network that isn't running or a login that isn't connected answers has_more true with nothing added. After a page, read the older events with room.events before. An unknown chat is -32020.",

@@ -190,6 +190,7 @@ var methods = map[string]handler{
 	"inbox.list":           inboxList,
 	"room.events":          roomEvents,
 	"room.loadOlder":       roomLoadOlder,
+	"article.read":         articleRead,
 	"room.markRead":        roomMarkRead,
 	"thread.markRead":      threadMarkRead,
 	"thread.unread":        threadUnread,

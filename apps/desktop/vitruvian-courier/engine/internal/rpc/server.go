@@ -64,7 +64,8 @@ import (
 // integrations.tokens, integrations.createToken, integrations.revokeToken, integrations.setCanSend,
 // integrations.answerPairing) and two notifications besides changed: integrations.pairRequest and app.focus.
 // Protocol 13 adds room.loadOlder: a page of a chat's older history from its network, when the person scrolls to the top.
-const Protocol = 13
+// Protocol 14 adds article.read: the main text of a linked article, for "Summarize" on a link card.
+const Protocol = 14
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20

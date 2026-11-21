@@ -1,0 +1,23 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "article.read",
+    "params": {
+      "url": "https://www.example.com/news/bridge-opens-early"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "result": {
+      "url": "https://www.example.com/news/bridge-opens-early",
+      "title": "New bridge opens early",
+      "site": "Example News",
+      "description": "A new bridge across the river will open to traffic in March, two months early, officials say.",
+      "text": "Officials said on Tuesday that the new bridge across the river will open to traffic in March.\n\nThe project cost 48 million dollars, according to the transport department.",
+      "paywalled": false,
+      "needs_browser": false
+    }
+  }
+}

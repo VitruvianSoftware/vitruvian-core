@@ -3,7 +3,7 @@
 
 import Foundation
 
-public struct GeminiClient: ChatModelClient, Sendable {
+public struct GeminiClient: WebSearchingClient, Sendable {
     public static let defaultBaseURL = URL(string: "https://generativelanguage.googleapis.com")!
 
     public let baseURL: URL
@@ -104,6 +104,49 @@ public struct GeminiClient: ChatModelClient, Sendable {
             throw AIClientError.badResponse
         }
         return combined
+    }
+
+    // MARK: - Web search
+
+    public var supportsWebSearch: Bool { true }
+
+    /// `generateContent` with the `google_search` tool ("Grounding with Google Search"). The sources are the answer's
+    /// `groundingMetadata.groundingChunks`; the model's own words are not used, because they can name pages that
+    /// don't exist. Each chunk's `uri` is a Google redirect to the page and its `title` is the site's domain, so the
+    /// excluded site is matched on the title as well. Docs: ai.google.dev/gemini-api/docs/google-search
+    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> [WebSource] {
+        guard !apiKey.isEmpty else { throw AIClientError.notConfigured }
+        let cleanModel = Self.stripModelsPrefix(model)
+        guard !cleanModel.isEmpty else { throw AIClientError.notConfigured }
+
+        let url = AIClientHTTP.endpoint(baseURL: baseURL, path: "/v1beta/models/\(cleanModel):generateContent")
+        var request = URLRequest(url: url, timeoutInterval: AIClientHTTP.cloudCompletionTimeout)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "contents": [["role": "user", "parts": [["text": prompt]]]],
+            "tools": [["google_search": [String: Any]()]],
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+
+        let (data, _) = try await AIClientHTTP.send(request, using: transport)
+        return WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain)
+    }
+
+    public static func parseWebSources(from data: Data) throws -> [WebSource] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let candidates = json["candidates"] as? [[String: Any]]
+        else {
+            throw AIClientError.badResponse
+        }
+        let chunks = (candidates.first?["groundingMetadata"] as? [String: Any])?["groundingChunks"] as? [[String: Any]] ?? []
+        return chunks.compactMap { chunk -> WebSource? in
+            guard let web = chunk["web"] as? [String: Any],
+                  let raw = web["uri"] as? String, let url = URL(string: raw)
+            else { return nil }
+            return WebSource(url: url, title: (web["title"] as? String) ?? "")
+        }
     }
 
     public static func stripModelsPrefix(_ name: String) -> String {

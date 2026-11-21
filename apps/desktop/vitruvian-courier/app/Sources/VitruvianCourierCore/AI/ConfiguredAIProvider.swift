@@ -85,6 +85,70 @@ public struct ConfiguredAIProvider: AIProvider, Sendable {
         return await complete(turns)
     }
 
+    public func summarizeArticle(title: String, site: String, text: String) async -> AIProviderDisposition {
+        guard isAvailable else {
+            return .unavailable(reason: AIClientError.notConfigured.message)
+        }
+        let turns = AIPrompts.summarizeArticle(
+            title: title,
+            site: site,
+            text: text,
+            characterLimit: kind.articleCharacterBudget,
+            responseLanguage: responseLanguage,
+            customInstructions: customInstructions
+        )
+        return await complete(turns)
+    }
+
+    /// True when this provider's service can search the web itself (Google AI Studio, OpenAI, Anthropic).
+    public var supportsWebSearch: Bool {
+        (client as? any WebSearchingClient)?.supportsWebSearch == true
+    }
+
+    public func findUnpaywalledSource(headline: String, site: String, description _: String) async -> AISourceSearchDisposition {
+        guard isAvailable else {
+            return .unavailable(reason: AIClientError.notConfigured.message)
+        }
+        guard let searcher = client as? any WebSearchingClient, searcher.supportsWebSearch else {
+            return .unsupported
+        }
+        do {
+            let sources = try await searcher.searchWeb(
+                prompt: AIPrompts.findSourcePrompt(headline: headline, site: site),
+                excludingDomain: site,
+                model: model
+            )
+            return .sources(sources)
+        } catch let error as AIClientError {
+            return .unavailable(reason: error.message)
+        } catch {
+            return .unavailable(reason: AIClientError.unreachable.message)
+        }
+    }
+
+    public func isSameStory(
+        headline: String,
+        description: String,
+        candidateTitle: String,
+        candidateText: String
+    ) async -> AISameStoryDisposition {
+        guard isAvailable else {
+            return .unavailable(reason: AIClientError.notConfigured.message)
+        }
+        let turns = AIPrompts.sameStory(
+            headline: headline,
+            description: description,
+            candidateTitle: candidateTitle,
+            candidateText: candidateText
+        )
+        switch await complete(turns) {
+        case let .unavailable(reason):
+            return .unavailable(reason: reason)
+        case let .text(answer):
+            return AIPrompts.parseYesNo(answer) == true ? .same : .different
+        }
+    }
+
     private func complete(_ turns: [AIChatTurn]) async -> AIProviderDisposition {
         do {
             let output = try await client.complete(turns, model: model)

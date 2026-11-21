@@ -98,6 +98,8 @@ struct MessageActions {
     var openAISettings: (() -> Void)? = nil
     /// Dismisses an inline translation row for a message ID.
     var dismissTranslation: (String) -> Void = { _ in }
+    /// "Summarize" on a link card and the panel under it (`ArticleSummaryModel`); nothing offered by default.
+    var articleSummary = ArticleSummaryControls()
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -976,6 +978,16 @@ struct MessageRowView: View {
                 if message.kind != .deleted && message.kind != .undecryptable {
                     ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
                         LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
+                            .withArticleSummary(actions.articleSummary)
+                            .takesOwnClick()
+                    }
+                    // A link with no card ("Summarize Link" from the menu): its summary shows under the message.
+                    if ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty, actions.articleSummary.hasAny(),
+                       let request = ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed),
+                       let state = actions.articleSummary.state(request.url) {
+                        ArticleSummaryPanel(url: request.url, state: state,
+                                            onBubble: message.mine && !message.suppressesBubbleBackground,
+                                            controls: actions.articleSummary)
                             .takesOwnClick()
                     }
                     if let embed = ExternalEmbedDescriptor.first(in: message) {

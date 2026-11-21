@@ -111,8 +111,12 @@ public final class MessageActionsModel: ObservableObject {
     @Published public private(set) var translatingEventIDs: Set<String> = []
     /// Per-event provenance footers (`via <model> · on this Mac` or `via <model> · sent to <Provider>`).
     @Published public private(set) var translationProvenance: [String: String] = [:]
-    /// AI provider used for message translation.
-    public var aiProvider: any AIProvider = UnavailableAIProvider()
+    /// AI provider used for message translation and article summaries.
+    public var aiProvider: any AIProvider = UnavailableAIProvider() {
+        didSet { articleSummaries.aiProvider = aiProvider }
+    }
+    /// The summaries of linked articles shown under link cards ("Summarize"), and the cache that keeps them.
+    public let articleSummaries: ArticleSummaryModel
     /// AI preferences (`AIPreferences`) used to resolve `responseLanguage` and provenance.
     public var aiPreferences: AIPreferences = AIPreferences()
     /// Opens Settings ▸ AI.
@@ -152,6 +156,8 @@ public final class MessageActionsModel: ObservableObject {
     public init(conversation: ConversationModel, appModel: AppModel, preferences: ComposerPreferences,
                 pasteboard: TextPasteboard, readAloud: ReadAloudService? = nil) {
         let resolvedReadAloud = readAloud ?? ReadAloudService()
+        let summaries = ArticleSummaryModel(reader: EngineArticleReader(client: { [weak appModel] in appModel?.client }))
+        self.articleSummaries = summaries
         self.conversation = conversation
         self.appModel = appModel
         self.preferences = preferences
@@ -165,6 +171,11 @@ public final class MessageActionsModel: ObservableObject {
                 self?.onToast(message)
             }
         }
+        summaries.providerName = { [weak self] in
+            self.map { $0.aiProvider.providerName(preferences: $0.aiPreferences) } ?? ""
+        }
+        // The cards' panels redraw when a summary moves on: the timeline reads it through this model.
+        subscriptions.append(summaries.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() })
         appModel.onChange { [weak self] change in self?.handle(change) }
         subscriptions.append(resolvedReadAloud.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
@@ -199,6 +210,14 @@ public final class MessageActionsModel: ObservableObject {
             .sink { [weak self] nextProvider in
                 self?.aiProvider = nextProvider
             }
+    }
+
+    /// Summarizes the article behind a link ("Summarize" on a card, "Summarize Link" in a message's menu): the panel
+    /// under the card shows it. Nothing is posted to the chat. A summary kept for the link is shown without sending
+    /// anything.
+    public func summarizeLink(_ request: ArticleSummaryRequest) {
+        guard !isLocked else { return }
+        articleSummaries.summarize(request)
     }
 
     /// Requests inline translation for `eventID` into `targetLanguage` (defaulting to `aiPreferences.responseLanguage`) using `aiProvider`.
