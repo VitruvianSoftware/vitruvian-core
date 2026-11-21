@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.32...vitruvian-courier-v0.3.33) (2026-11-21)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** every stored message reachable by scrolling up, no jumping forward while scrolling back ([#5279](https://github.com/VitruvianSoftware/vitruvian-core/issues/5279)) ([9b6a5d2](https://github.com/VitruvianSoftware/vitruvian-core/commit/9b6a5d20333fae0e1e5757d0f778f230de27d22b))
+
 ## [0.3.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.31...vitruvian-courier-v0.3.32) (2026-11-20)
 
 
