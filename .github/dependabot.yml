@@ -60,6 +60,7 @@ updates:
       - "/apps/antigravity/plugins/receipts-report/.github/workflows"
       - "/apps/antigravity/plugins/savvy-fleet/.github/workflows"
       - "/apps/antigravity/plugins/security-guidance/.github/workflows"
+      - "/apps/antigravity/plugins/vitruvian-orchestrator/.github/workflows"
       - "/apps/antigravity/plugins/worktree-band/.github/workflows"
       - "/apps/desktop/vitruvian-code/.github/workflows"
       - "/apps/mcp/vitruvian-roborock-mcp/.github/workflows"

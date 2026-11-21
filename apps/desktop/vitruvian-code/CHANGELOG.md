@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.39.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.38.0...vitruvian-code-v1.39.0) (2026-11-21)
+
+
+### Features
+
+* **vitruvian-code:** Claude helper that runs the Agent SDK over ACP ([#5262](https://github.com/VitruvianSoftware/vitruvian-core/issues/5262)) ([79c3fa8](https://github.com/VitruvianSoftware/vitruvian-core/commit/79c3fa8049aea300e0bb1fad7e4f01c7102dac1b))
+
 ## [1.38.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.37.0...vitruvian-code-v1.38.0) (2026-11-18)
 
 

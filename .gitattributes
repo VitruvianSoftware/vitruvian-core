@@ -66,6 +66,7 @@ packages/vitruvian-sdk/kits/rust/src/generated/mod.rs      linguist-generated=tr
 # file to that layout.
 apps/**/vitruvian-tool.json                            rules-lint-ignored=true
 apps/antigravity/plugins/*/plugin.json                 rules-lint-ignored=true
+apps/claude-code/plugins/*/.claude-plugin/plugin.json  rules-lint-ignored=true
 # Written by //tools/sync-site-tools:sync and held by //tools/sync-site-tools:in_sync_test.
 .claude-plugin/marketplace.json                                 rules-lint-ignored=true
 apps/web/vitruviansoftware-dev/.claude-plugin/marketplace.json  rules-lint-ignored=true
