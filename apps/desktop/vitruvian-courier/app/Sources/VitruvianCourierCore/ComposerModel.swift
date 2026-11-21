@@ -996,8 +996,7 @@ public final class ComposerModel: ObservableObject {
     /// A draft the engine kept, with its markers turned back into styles and its escapes (`\*` for a `*` that was left
     /// as typed) taken out.
     private static func restoredDraft(_ kept: String) -> (text: String, entities: [TextEntity]) {
-        let converted = MarkdownConverter.convertAll(text: kept)
-        return MarkdownConverter.unescaped(text: converted?.text ?? kept, entities: converted?.entities ?? [])
+        MarkdownConverter.restoredDraft(kept)
     }
 
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.

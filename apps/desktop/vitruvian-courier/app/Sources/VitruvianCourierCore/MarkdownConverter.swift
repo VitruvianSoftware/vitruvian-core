@@ -193,6 +193,18 @@ public enum MarkdownConverter {
         return out
     }
 
+    /// A draft the engine kept, as the box opens it: markers turned back into styles, escapes taken out.
+    public static func restoredDraft(_ kept: String) -> (text: String, entities: [TextEntity]) {
+        let converted = convertAll(text: kept)
+        return unescaped(text: converted?.text ?? kept, entities: converted?.entities ?? [])
+    }
+
+    /// A kept draft as the person sees it in the box, for the inbox's "Draft:" line: no markers for styles (they are
+    /// styles in the box) and no backslash escapes.
+    public static func visibleDraft(_ kept: String) -> String {
+        restoredDraft(kept).text
+    }
+
     /// Takes out the backslashes `markdown` put in: one before an ASCII punctuation mark goes. The ranges follow.
     public static func unescaped(text: String, entities: [TextEntity]) -> (text: String, entities: [TextEntity]) {
         let units = Array(text.utf16)

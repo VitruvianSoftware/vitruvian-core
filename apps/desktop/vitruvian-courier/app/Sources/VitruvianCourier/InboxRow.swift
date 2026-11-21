@@ -240,7 +240,7 @@ struct InboxRowView<HoverMenu: View>: View {
             Text(line)
                 .foregroundStyle(themeAccent)
         } else if !row.draft.isEmpty {
-            Text(String(localized: "Draft:")).foregroundStyle(.red) + Text(verbatim: " " + row.draft)
+            Text(String(localized: "Draft:")).foregroundStyle(.red) + Text(verbatim: " " + MarkdownConverter.visibleDraft(row.draft))
         } else if style.showPreviews {
             preview
         }

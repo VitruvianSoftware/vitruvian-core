@@ -237,6 +237,28 @@ final class MarkdownConversionTests: XCTestCase {
         }
     }
 
+    /// The inbox's "Draft:" line shows the draft as the box shows it: no escapes, no style markers.
+    func testTheInboxDraftLineShowsTheDraftAsTheBoxDoes() async throws {
+        XCTAssertEqual(MarkdownConverter.visibleDraft("say **bold** and _it_"), "say bold and it")
+        XCTAssertEqual(MarkdownConverter.visibleDraft("\\*\\*x\\*\\* kept"), "**x** kept")
+        XCTAssertEqual(MarkdownConverter.visibleDraft("C:\\\\dir \\\\\\* ok"), "C:\\dir \\* ok")
+        XCTAssertEqual(MarkdownConverter.visibleDraft("plain text"), "plain text")
+
+        // What the box saved for text left as typed reads back, in that line, exactly as the box showed it.
+        let made = make()
+        type("**x**", into: made.composer)
+        XCTAssertEqual(made.composer.text, "x")
+        XCTAssertTrue(made.composer.undoMarkdownConversion(try XCTUnwrap(made.composer.lastMarkdownConversion)))
+        type(" and \\path", into: made.composer)
+        XCTAssertEqual(made.composer.text, "**x** and \\path")
+        let shown = made.composer.text
+        made.composer.open("!b")
+        for _ in 0 ..< 50 { await Task.yield() }
+        let saved = try XCTUnwrap(made.sender.savedDrafts.last)
+        XCTAssertNotEqual(saved, shown, "the kept draft carries escapes")
+        XCTAssertEqual(MarkdownConverter.visibleDraft(saved), shown)
+    }
+
     // MARK: What is sent
 
     func testTheRangesAreWhatIsSentAndTheMarkersAreNot() async {
