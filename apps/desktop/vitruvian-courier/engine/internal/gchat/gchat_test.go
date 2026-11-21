@@ -41,6 +41,11 @@ import (
 )
 
 // buildSyntheticSelfUserStatusResponse encodes GetSelfUserStatusResponse { user_status: UserStatus { user_id: UserId { id: gaiaID } } }.
+// setupWait is how long a test waits for its fake server to reach the state it needs before checking
+// behaviour. It is a ceiling, not a latency claim: the waits return as soon as the condition holds, and a
+// busy CI machine can take several seconds to get there.
+const setupWait = 30 * time.Second
+
 func buildSyntheticSelfUserStatusResponse(gaiaID string) []byte {
 	return pb.MustMarshal(&pb.GetSelfUserStatusResponse{
 		UserStatus: &pb.UserStatus{
@@ -1072,7 +1077,7 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	require.Eventually(t, func() bool {
 		msg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_1", "msg_live_1"))
 		return err == nil && msg != nil
-	}, 3*time.Second, 20*time.Millisecond, "Connect must sync world, open WebChannel stream, and deliver live message")
+	}, setupWait, 20*time.Millisecond, "Connect must sync world, open WebChannel stream, and deliver live message")
 
 	require.Equal(t, int64(1), worldSyncCalls.Load(), "Connect must run initial world sync once")
 	client.metaMu.Lock()
@@ -1102,7 +1107,7 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	require.Eventually(t, func() bool {
 		msg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_1", "msg_missed_1"))
 		return err == nil && msg != nil
-	}, 3*time.Second, 20*time.Millisecond, "reconnect must run catch_up_user and deliver missed message")
+	}, setupWait, 20*time.Millisecond, "reconnect must run catch_up_user and deliver missed message")
 
 	require.Equal(t, int64(1), catchUpUserCalls.Load())
 	client.metaMu.Lock()
@@ -1204,7 +1209,7 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 
 	require.Eventually(t, func() bool {
 		return client.lastBridgeState() == status.StateBadCredentials && !client.IsLoggedIn()
-	}, 3*time.Second, 20*time.Millisecond, "401 response must transition login to BAD_CREDENTIALS")
+	}, setupWait, 20*time.Millisecond, "401 response must transition login to BAD_CREDENTIALS")
 }
 
 func buildSendTestPaginatedWorldResponse() []byte {
@@ -4978,7 +4983,7 @@ func TestAttachmentEventFollowedByReactionPreservesOrderWithoutBlockingDrainer(t
 
 	require.Eventually(t, func() bool {
 		return len(client.recordedChatResyncs()) >= 4
-	}, 2*time.Second, 20*time.Millisecond, "initial world sync must complete")
+	}, setupWait, 20*time.Millisecond, "initial world sync must complete")
 
 	spaceGID := pb.SpaceGroupID("space_threaded")
 	dmGID := pb.DMGroupID("dm_alpha")
@@ -5257,7 +5262,7 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 		defer client.ghostMu.Unlock()
 		ghost, err := h.Bridge.GetGhostByID(ctx, memberUID)
 		return err == nil && ghost != nil && ghost.Name == "Member User"
-	}, 5*time.Second, 20*time.Millisecond, "prewarmed member ghost must carry the fetched display name")
+	}, setupWait, 20*time.Millisecond, "prewarmed member ghost must carry the fetched display name")
 }
 
 func TestStreamErrorBeforeConnectTransitionsToTransientDisconnect(t *testing.T) {
@@ -5664,7 +5669,7 @@ func TestWorldSyncRefreshesUnnamedAndPlaceholderPortalsLeavingOneToOneDMUnchange
 			Receiver: ul.ID,
 		})
 		return err == nil && p != nil && p.Name == "Fetched Space Name"
-	}, 2*time.Second, 20*time.Millisecond, "unnamed space portal from world sync must be refreshed via get_group")
+	}, setupWait, 20*time.Millisecond, "unnamed space portal from world sync must be refreshed via get_group")
 
 	require.Eventually(t, func() bool {
 		p, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
@@ -5672,7 +5677,7 @@ func TestWorldSyncRefreshesUnnamedAndPlaceholderPortalsLeavingOneToOneDMUnchange
 			Receiver: ul.ID,
 		})
 		return err == nil && p != nil && p.Name == "Ann, Bob"
-	}, 2*time.Second, 20*time.Millisecond, "unnamed group DM portal must be refreshed with member names after world sync")
+	}, setupWait, 20*time.Millisecond, "unnamed group DM portal must be refreshed with member names after world sync")
 
 	oneToOnePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
 		ID:       MakeDMPortalID("dm_one_to_one"),
@@ -5771,7 +5776,7 @@ func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
 	require.Eventually(t, func() bool {
 		m, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
 		return err == nil && m != nil
-	}, 3*time.Second, 20*time.Millisecond, "the message sent while Vitruvian Courier was closed must arrive")
+	}, setupWait, 20*time.Millisecond, "the message sent while Vitruvian Courier was closed must arrive")
 	require.Equal(t, int64(900), ul.Metadata.(*UserLoginMetadata).UserRevision)
 
 	// The stream drops and comes back: catch-up runs again and must not store the message twice.
