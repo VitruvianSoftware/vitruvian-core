@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.16.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.16.1...oauth-user-inspector-v1.16.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** let the site load its Google Fonts ([#5330](https://github.com/VitruvianSoftware/vitruvian-core/issues/5330)) ([c047c5f](https://github.com/VitruvianSoftware/vitruvian-core/commit/c047c5f2e5bd3eb3a5cad9ebc4d1348d92452940))
+
 ## [1.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.16.0...oauth-user-inspector-v1.16.1) (2026-11-14)
 
 
