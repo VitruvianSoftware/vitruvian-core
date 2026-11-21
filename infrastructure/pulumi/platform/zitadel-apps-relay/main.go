@@ -21,23 +21,31 @@
 // The Zitadel project and OIDC clients for the Vitruvian Relay
 // (docs/superpowers/specs/2026-11-07-vitruvian-relay-design.md §6).
 //
-// Four kinds of client, all issuing JWT access tokens so the relay can
+// Five kinds of client, all issuing JWT access tokens so the relay can
 // validate them locally against JWKS. All but gemini are public (no secret)
 // with PKCE:
 //
 //   - connector: the program on the user's computer. It signs in with the OAuth
 //     device flow (RFC 8628), so it has no redirect URI at all.
+//
 //   - claude: Claude's "use your own OAuth client" option. Claude's hosted apps
 //     (web, desktop, mobile) use one fixed callback.
+//
 //   - chatgpt: created only when chatgptRedirectUris is set. Our Zitadel does
 //     not advertise RFC 9207 issuer identification, so ChatGPT uses a
 //     per-connector callback (https://chatgpt.com/connector/oauth/{id}) that
 //     is only known after the connector is started in ChatGPT's UI.
+//
 //   - gemini: created only when geminiRedirectUris is set. The Gemini app's
 //     custom connector form asks for a client id AND secret and shows a
 //     per-user callback on oauth-redirect.googleusercontent.com. It is the one
 //     confidential client (client_secret_post), matching the sibling
 //     zitadel-apps-mcp-slack client that already works with Gemini.
+//
+//   - dashboard: the relay's own server-rendered web page, where signed-in
+//     people see their computers and activity. The relay does the sign-in
+//     (authorization code with PKCE, no secret) and checks the same role claim
+//     as the MCP endpoint. Its callback is on the relay's own host.
 //
 // WHY ITS OWN PROJECT: Zitadel's audience scope is per project, so sharing a
 // project with another app would blur that boundary. But note what the sibling
@@ -46,8 +54,17 @@
 // therefore authorise on the token's client id (azp) and subject, never on
 // `aud` alone. Exported clientIds exist for exactly that pin.
 //
-// P0 SCOPE: projectRoleCheck is on with one grant, so only the named user can
-// complete a sign-in through these clients while the relay is a spike.
+// WHO MAY SIGN IN (P2, invite-only): projectRoleCheck is on, so a sign-in only
+// completes for someone holding the relay-user role through a user grant.
+// James holds it through grantUserIds. Other people hold it through
+// inviteUserIds, who live in the separate "Vitruvian Relay customers" org (the
+// project is granted to that org, with the one role). Grants are config, applied
+// by CI. There is no open sign-up: the customer org's login policy is left
+// alone (README: Sign-up and invites).
+//
+// ROLE CLAIM: the project asserts roles, so access tokens carry
+// urn:zitadel:iam:org:project:{projectId}:roles. The relay requires the role
+// key inside it. The exported roleClaim output is that claim name.
 //
 // APPLYING: CI only, over tailnet (the public edge 403s the management API).
 // See ../zitadel-apps/APPLYING-FROM-CI.md and
@@ -80,6 +97,15 @@ const claudeCallback = "https://claude.ai/api/mcp/auth_callback"
 const (
 	chatgptCallbackHost = "chatgpt.com"
 	geminiCallbackHost  = "oauth-redirect.googleusercontent.com"
+	// relayHost is where the relay's own web pages live. Sign-in itself stays
+	// on auth.ipv1337.dev.
+	relayHost = "relay.vitruviansoftware.dev"
+)
+
+// The dashboard's sign-in callback and where Zitadel sends people after sign-out.
+const (
+	dashboardCallback = "https://" + relayHost + "/auth/callback"
+	dashboardLogout   = "https://" + relayHost + "/"
 )
 
 // pathRule allows one callback path shape: either exactly Exact, or Prefix
@@ -114,6 +140,8 @@ var (
 	}
 	// The Gemini app's custom connectors: /r/user_bound_custom-mcp-{id}.
 	geminiCallbackPaths = []pathRule{{Prefix: "/r/user_bound_custom-mcp-"}}
+	// The relay dashboard has exactly one callback.
+	dashboardCallbackPaths = []pathRule{{Exact: "/auth/callback"}}
 )
 
 // clientSpec is everything about one OIDC client that this stack decides.
@@ -127,6 +155,11 @@ type clientSpec struct {
 	// AuthMethod is how the client authenticates at the token endpoint.
 	// OIDC_AUTH_METHOD_TYPE_NONE = public client, PKCE required.
 	AuthMethod string
+	// PostLogoutURIs is where Zitadel may send the browser after sign-out.
+	PostLogoutURIs []string
+	// AccessTokenRoleAssertion puts the user's roles into the access token.
+	// Only read when the client is created (the provider ignores later changes).
+	AccessTokenRoleAssertion bool
 }
 
 const (
@@ -180,7 +213,28 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 			AuthMethod:   authPost,
 		})
 	}
+	// The dashboard's callback is a fixed constant, but it goes through the same
+	// check as the configured ones so a typo in it can never ship.
+	dashboard, err := parseRedirectURIs(dashboardCallback, relayHost, dashboardCallbackPaths)
+	if err != nil {
+		return nil, err
+	}
+	specs = append(specs, clientSpec{
+		Key:                      "dashboard",
+		AppType:                  "OIDC_APP_TYPE_WEB",
+		GrantTypes:               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+		RedirectURIs:             dashboard,
+		AuthMethod:               authNone,
+		PostLogoutURIs:           []string{dashboardLogout},
+		AccessTokenRoleAssertion: true,
+	})
 	return specs, nil
+}
+
+// roleClaim is the access-token claim that holds the user's roles for this
+// project, as an object keyed by role key.
+func roleClaim(projectID string) string {
+	return "urn:zitadel:iam:org:project:" + projectID + ":roles"
 }
 
 // parseRedirectURIs splits a comma-separated list and refuses anything that is
@@ -232,16 +286,22 @@ func parseBool(raw, key string) (bool, error) {
 	return v, nil
 }
 
-// resolveGrantUserIDs enforces that the role check and its grant land in the
-// same apply. Check on with nobody granted locks everyone out, and the
-// failure shows up later as a rejected login rather than as a config change.
-func resolveGrantUserIDs(projectRoleCheck bool, raw, roleKey string) ([]string, error) {
+// splitIDs turns a comma-separated list of user ids into a clean slice.
+func splitIDs(raw string) []string {
 	var ids []string
 	for _, id := range strings.Split(raw, ",") {
 		if trimmed := strings.TrimSpace(id); trimmed != "" {
 			ids = append(ids, trimmed)
 		}
 	}
+	return ids
+}
+
+// resolveGrantUserIDs enforces that the role check and its grant land in the
+// same apply. Check on with nobody granted locks everyone out, and the
+// failure shows up later as a rejected login rather than as a config change.
+func resolveGrantUserIDs(projectRoleCheck bool, raw, roleKey string) ([]string, error) {
+	ids := splitIDs(raw)
 	if projectRoleCheck && len(ids) == 0 {
 		return nil, fmt.Errorf(
 			"%s:projectRoleCheck is true but grantUserIds is empty; refusing to apply. "+
@@ -272,6 +332,7 @@ func main() {
 		if err != nil {
 			return err
 		}
+		inviteIDs := splitIDs(cfg.Get("inviteUserIds"))
 		specs, err := clientSpecs(cfg.Get("chatgptRedirectUris"), cfg.Get("geminiRedirectUris"))
 		if err != nil {
 			return err
@@ -280,8 +341,9 @@ func main() {
 		ignoreOrg := pulumi.IgnoreChanges([]string{"orgId"})
 
 		projectArgs := &zitadel.ProjectArgs{
-			Name:                 pulumi.String(projectName),
-			ProjectRoleAssertion: pulumi.Bool(false),
+			Name: pulumi.String(projectName),
+			// On, so access tokens carry the roles claim the relay checks.
+			ProjectRoleAssertion: pulumi.Bool(true),
 			ProjectRoleCheck:     pulumi.Bool(projectRoleCheck),
 		}
 		if orgID != "" {
@@ -319,6 +381,39 @@ func main() {
 			}
 		}
 
+		// Customers: their own org, the project granted to it with the one
+		// role, and one user grant per invited person. The invitee's user lives
+		// in the customer org; the grant ties them to the project grant.
+		customerOrg, err := zitadel.NewOrg(ctx, "customers", &zitadel.OrgArgs{
+			Name: pulumi.String("Vitruvian Relay customers"),
+		})
+		if err != nil {
+			return err
+		}
+		projectGrantArgs := &zitadel.ProjectGrantArgs{
+			ProjectId:    project.ID(),
+			GrantedOrgId: customerOrg.ID(),
+			RoleKeys:     pulumi.StringArray{pulumi.String(roleKey)},
+		}
+		if orgID != "" {
+			projectGrantArgs.OrgId = pulumi.String(orgID)
+		}
+		projectGrant, err := zitadel.NewProjectGrant(ctx, projectName+"-customers", projectGrantArgs, ignoreOrg, pulumi.DependsOn([]pulumi.Resource{role}))
+		if err != nil {
+			return err
+		}
+		for _, userID := range inviteIDs {
+			if _, err := zitadel.NewUserGrant(ctx, "invite-"+userID, &zitadel.UserGrantArgs{
+				OrgId:          customerOrg.ID(),
+				ProjectId:      project.ID(),
+				ProjectGrantId: projectGrant.ID(),
+				UserId:         pulumi.String(userID),
+				RoleKeys:       pulumi.StringArray{pulumi.String(roleKey)},
+			}); err != nil {
+				return err
+			}
+		}
+
 		// Replace-triggering fields the provider does not read back; ignoring
 		// them stops a spurious diff from replacing (= deleting) a live client.
 		clientOpts := pulumi.IgnoreChanges([]string{
@@ -327,7 +422,7 @@ func main() {
 		})
 
 		for _, s := range specs {
-			app, err := zitadel.NewApplicationOidc(ctx, projectName+"-"+s.Key, &zitadel.ApplicationOidcArgs{
+			appArgs := &zitadel.ApplicationOidcArgs{
 				ProjectId:     project.ID(),
 				Name:          pulumi.String(projectName + "-" + s.Key),
 				RedirectUris:  pulumi.ToStringArray(s.RedirectURIs),
@@ -340,10 +435,15 @@ func main() {
 				Version:                  pulumi.String("OIDC_VERSION_1_0"),
 				AccessTokenType:          pulumi.String("OIDC_TOKEN_TYPE_JWT"),
 				DevMode:                  pulumi.Bool(false),
-				AccessTokenRoleAssertion: pulumi.Bool(false),
+				AccessTokenRoleAssertion: pulumi.Bool(s.AccessTokenRoleAssertion),
 				IdTokenRoleAssertion:     pulumi.Bool(false),
 				IdTokenUserinfoAssertion: pulumi.Bool(false),
-			}, clientOpts)
+			}
+			// Set only where there is one, so the existing clients' plans do not move.
+			if len(s.PostLogoutURIs) > 0 {
+				appArgs.PostLogoutRedirectUris = pulumi.ToStringArray(s.PostLogoutURIs)
+			}
+			app, err := zitadel.NewApplicationOidc(ctx, projectName+"-"+s.Key, appArgs, clientOpts)
 			if err != nil {
 				return err
 			}
@@ -363,6 +463,10 @@ func main() {
 		}
 
 		ctx.Export("projectId", project.ID())
+		ctx.Export("customerOrgId", customerOrg.ID())
+		ctx.Export("roleClaim", project.ID().ApplyT(func(id pulumi.ID) string {
+			return roleClaim(string(id))
+		}).(pulumi.StringOutput))
 		ctx.Export("projectRoleCheck", project.ProjectRoleCheck)
 		ctx.Export("scopes", project.ID().ApplyT(func(id pulumi.ID) string {
 			return "openid offline_access urn:zitadel:iam:org:project:id:" + string(id) + ":aud"

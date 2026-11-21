@@ -30,8 +30,8 @@ func TestClientSpecsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 2 {
-		t.Fatalf("want connector and claude only, got %d clients", len(specs))
+	if len(specs) != 3 {
+		t.Fatalf("want connector, claude and dashboard only, got %d clients", len(specs))
 	}
 	conn, claude := specs[0], specs[1]
 	if conn.Key != "connector" || conn.AppType != "OIDC_APP_TYPE_NATIVE" || len(conn.RedirectURIs) != 0 {
@@ -57,7 +57,7 @@ func TestClientSpecsChatGPT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 3 || specs[2].Key != "chatgpt" {
+	if len(specs) != 4 || specs[2].Key != "chatgpt" {
 		t.Fatalf("want a chatgpt client third, got %+v", specs)
 	}
 	want := []string{"https://chatgpt.com/connector/oauth/abc123", "https://chatgpt.com/connector_platform_oauth_redirect"}
@@ -72,7 +72,7 @@ func TestClientSpecsGemini(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 3 || specs[2].Key != "gemini" {
+	if len(specs) != 4 || specs[2].Key != "gemini" {
 		t.Fatalf("want a gemini client third, got %+v", specs)
 	}
 	g := specs[2]
@@ -178,5 +178,83 @@ func TestEmptyPathRuleMatchesNothing(t *testing.T) {
 		if (pathRule{}).matches(p) {
 			t.Errorf("empty rule matched %q", p)
 		}
+	}
+}
+
+func TestDashboardRedirectIsPinned(t *testing.T) {
+	const want = "https://relay.vitruviansoftware.dev/auth/callback"
+	if dashboardCallback != want {
+		t.Fatalf("dashboard callback is %q, want %q", dashboardCallback, want)
+	}
+	// The one allowed callback passes the same check every other client uses.
+	got, err := parseRedirectURIs(dashboardCallback, relayHost, dashboardCallbackPaths)
+	if err != nil || !reflect.DeepEqual(got, []string{want}) {
+		t.Fatalf("the pinned callback must pass: got %v %v", got, err)
+	}
+	// Anything else, even on the relay's own host, must be refused.
+	bad := []string{
+		"http://relay.vitruviansoftware.dev/auth/callback",               // not https
+		"https://relay.vitruviansoftware.dev/",                           // the post-logout page, not a callback
+		"https://relay.vitruviansoftware.dev/auth/callback/x",            // extra segment
+		"https://relay.vitruviansoftware.dev/auth/callbackx",             // look-alike path
+		"https://relay.vitruviansoftware.dev/auth/callback?next=/admin",  // query
+		"https://relay.vitruviansoftware.dev/auth/callback#",             // empty fragment
+		"https://relay.vitruviansoftware.dev/mcp",                        // another relay path
+		"https://relay-spike.ipv1337.dev/auth/callback",                  // the old spike host
+		"https://relay.vitruviansoftware.dev.evil.example/auth/callback", // look-alike host
+		"HTTPS://relay.vitruviansoftware.dev/auth/callback",              // upper-case scheme
+		`https://relay.vitruviansoftware.dev/auth/callback\..\evil`,      // backslash walk
+	}
+	for _, raw := range bad {
+		if _, err := parseRedirectURIs(raw, relayHost, dashboardCallbackPaths); err == nil {
+			t.Errorf("%q: want refusal, got none", raw)
+		}
+	}
+
+	// The dashboard client uses exactly that callback and nothing wider.
+	specs, err := clientSpecs("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d *clientSpec
+	for i := range specs {
+		if specs[i].Key == "dashboard" {
+			d = &specs[i]
+		}
+	}
+	if d == nil {
+		t.Fatal("no dashboard client")
+	}
+	if !reflect.DeepEqual(d.RedirectURIs, []string{want}) {
+		t.Errorf("dashboard redirects: got %v", d.RedirectURIs)
+	}
+	if !reflect.DeepEqual(d.PostLogoutURIs, []string{"https://relay.vitruviansoftware.dev/"}) {
+		t.Errorf("dashboard post-logout: got %v", d.PostLogoutURIs)
+	}
+	if d.AppType != "OIDC_APP_TYPE_WEB" || d.AuthMethod != authNone {
+		t.Errorf("dashboard must be a public web client with PKCE: %+v", d)
+	}
+	if !reflect.DeepEqual(d.GrantTypes, []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"}) {
+		t.Errorf("dashboard must use the authorization code grant only: %v", d.GrantTypes)
+	}
+	if !d.AccessTokenRoleAssertion {
+		t.Error("dashboard access tokens must carry the role claim the relay checks")
+	}
+}
+
+func TestRoleClaimNamesTheProject(t *testing.T) {
+	if got, want := roleClaim("123"), "urn:zitadel:iam:org:project:123:roles"; got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestInviteUserIDsMayBeEmpty(t *testing.T) {
+	// No invitees yet is a normal state: only James holds the role.
+	if got, err := resolveGrantUserIDs(false, "", "relay-user"); err != nil || len(got) != 0 {
+		t.Errorf("got %v %v", got, err)
+	}
+	got, err := resolveGrantUserIDs(false, " 1, 2 ,,3", "relay-user")
+	if err != nil || !reflect.DeepEqual(got, []string{"1", "2", "3"}) {
+		t.Errorf("got %v %v", got, err)
 	}
 }

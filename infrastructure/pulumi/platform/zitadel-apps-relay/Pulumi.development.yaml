@@ -28,12 +28,17 @@ config:
   zitadel-apps-relay:projectName: relay
   zitadel-apps-relay:orgId: "378818267051001367" # the "Vitruvian" FirstInstance org
   zitadel-apps-relay:roleKey: relay-user
-  # P0: only James may sign in through the relay's clients. The check and the
-  # grant land in the same apply (main.go refuses the check without a grant).
+  # Invite-only: you can sign in only if you hold the relay-user role through a
+  # user grant. The check and the grant land in the same apply (main.go refuses
+  # the check without a grant). James's grant is grantUserIds below; everyone
+  # else is in inviteUserIds. Both are applied by CI, never by hand.
   # 378818267051722263 is the account for james.nguyen@gmail.com, the one that
   # can log in (see zitadel-apps-mcp-slack's config for how that was confirmed).
   zitadel-apps-relay:projectRoleCheck: "true"
   zitadel-apps-relay:grantUserIds: "378818267051722263"
+  # Comma-separated Zitadel user ids of invited customers. Each user must
+  # already exist in the "Vitruvian Relay customers" org. Empty = nobody invited.
+  zitadel-apps-relay:inviteUserIds: ""
   # ChatGPT's per-connector callback, copied from ChatGPT's "Add custom MCP
   # server" screen. Empty = no ChatGPT client yet (spike A, second half).
   zitadel-apps-relay:chatgptRedirectUris: ""
