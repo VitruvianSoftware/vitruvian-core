@@ -120,9 +120,9 @@ fn check_public_url(url: &str) -> Result<(), String> {
     ))
 }
 
-/// JWKS_URI and TOKEN_URI point at the identity service, so a token or a
-/// sign-in code must never travel to them in plain text: the same rule as
-/// PUBLIC_URL, but they have a path.
+/// ISSUER, JWKS_URI and TOKEN_URI point at the identity service, so a token or
+/// a sign-in code must never travel to them in plain text: the same rule as
+/// PUBLIC_URL, but they may have a path.
 fn check_endpoint_url(name: &str, url: &str) -> Result<(), String> {
     if safe_url(url, false) {
         return Ok(());
@@ -191,6 +191,11 @@ impl Settings {
                     .into(),
             );
         }
+        // The issuer is where people are sent to sign in, and where the keys
+        // that check every token come from: the same rule as the endpoints
+        // under it.
+        let issuer = req("ISSUER")?.trim_end_matches('/').to_string();
+        check_endpoint_url("ISSUER", &issuer)?;
         let jwks_uri = opt("JWKS_URI");
         let token_uri = opt("TOKEN_URI");
         for (name, value) in [("JWKS_URI", &jwks_uri), ("TOKEN_URI", &token_uri)] {
@@ -201,7 +206,7 @@ impl Settings {
         Ok(Settings {
             port,
             public_url,
-            issuer: req("ISSUER")?.trim_end_matches('/').to_string(),
+            issuer,
             project_id: req("PROJECT_ID")?,
             mcp_client_ids,
             mcp_client_labels,
@@ -464,7 +469,7 @@ mod tests {
 
     #[test]
     fn identity_service_urls_are_https_or_local_http() {
-        for name in ["JWKS_URI", "TOKEN_URI"] {
+        for name in ["ISSUER", "JWKS_URI", "TOKEN_URI"] {
             for ok in [
                 "https://auth.example.dev/oauth/v2/keys",
                 "http://localhost:9000/keys",

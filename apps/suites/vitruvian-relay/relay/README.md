@@ -38,8 +38,9 @@ Settings come from the environment (`src/config.rs`): `PUBLIC_URL`,
 `DASHBOARD_CLIENT_ID` (all three client id lists must be disjoint),
 `MCP_CLIENT_LABELS` (optional, `Claude=<id>,Gemini=<id>`: what the dashboard
 calls each AI app), `TOKEN_URI` (optional, overrides
-`{ISSUER}/oauth/v2/token` for local runs and tests; it and `JWKS_URI` must be
-https, or http on localhost or 127.0.0.1, or the relay will not start),
+`{ISSUER}/oauth/v2/token` for local runs and tests; it, `ISSUER` and
+`JWKS_URI` must be https, or http on localhost or 127.0.0.1, or the relay will
+not start),
 `REQUIRED_ROLE` (default `relay-user`), `DATABASE_URL` (Postgres; the
 connection is TLS checked against `DATABASE_CA_FILE`, or the system's
 certificates, unless the URL says `sslmode=disable`, which is for tests),
@@ -85,3 +86,22 @@ connections sooner, or it will now and then reuse one the relay just closed
 bazel test //apps/suites/vitruvian-relay/relay:unit_tests
 bazel run //apps/suites/vitruvian-relay/relay:vitruvian-relay -- --version
 ```
+
+## Tenant isolation, and its canary
+
+One person must never reach another's computer or request.
+`tests/isolation.rs` has Alice and Bob, each with two computers (both call one
+"MacBook Pro"), and checks that what Alice is told about Bob's computer or
+request is byte for byte what she is told about one that does not exist, and
+that Bob's side is untouched. Every route that names a computer goes through
+`App::owned_device`, and every request id through `Mcp::owned_request`.
+
+```
+bazel test //apps/suites/vitruvian-relay/relay:vitruvian_relay_isolation_test
+bazel test //apps/suites/vitruvian-relay/relay:vitruvian_relay_isolation_canary_test
+```
+
+The canary builds the same tests against a relay with `owned_device` broken on
+purpose (`--cfg relay_broken_ownership`, the only place that break exists) and
+passes only if the isolation tests fail there (`tests/expect_failure.sh`). A
+check that cannot fail would prove nothing.

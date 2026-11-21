@@ -485,11 +485,18 @@ impl App {
         subject: &str,
         device_id: &str,
     ) -> Result<Option<DeviceRecord>, StoreError> {
-        Ok(self
-            .store
-            .device(device_id)
-            .await?
-            .filter(|rec| rec.owner_sub == subject))
+        let found = self.store.device(device_id).await?;
+        // The canary's deliberate break (BUILD: `relay_broken_ownership`, run
+        // by `:vitruvian_relay_isolation_canary_test`, which must see the
+        // isolation tests fail). It exists here and nowhere else, and is never
+        // set on a build that ships.
+        #[cfg(relay_broken_ownership)]
+        {
+            let _ = subject;
+            Ok(found)
+        }
+        #[cfg(not(relay_broken_ownership))]
+        Ok(found.filter(|rec| rec.owner_sub == subject))
     }
 
     /// Removes `device_id` from `subject`'s account: stored as revoked, its

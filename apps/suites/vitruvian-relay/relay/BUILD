@@ -22,6 +22,7 @@
 
 load("@rules_itest//:itest.bzl", "itest_service", "service_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # The relay server: device registry and call routing, MCP over Streamable HTTP
@@ -58,33 +59,64 @@ _CRATES = [
     "@vitruvian_relay_crates//:ureq",
 ]
 
+_LIB_SRCS = [
+    "src/config.rs",
+    "src/dashboard/mod.rs",
+    "src/dashboard/pages.rs",
+    "src/dashboard/session.rs",
+    "src/dashboard/tests.rs",
+    "src/devices.rs",
+    "src/http.rs",
+    "src/http_tests.rs",
+    "src/legacy_devices.rs",
+    "src/lib.rs",
+    "src/mcp.rs",
+    "src/parked.rs",
+    "src/ratelimit.rs",
+    "src/registry.rs",
+    "src/store.rs",
+    "src/store_contract.rs",
+]
+
+# The schema (src/store.rs include_str!s it) and the dashboard's stylesheet
+# (src/dashboard/mod.rs), compiled into the binary.
+_LIB_COMPILE_DATA = glob(["migrations/*.sql"]) + ["src/dashboard/relay.css"]
+
 rust_library(
     name = "vitruvian_relay",
-    srcs = [
-        "src/config.rs",
-        "src/dashboard/mod.rs",
-        "src/dashboard/pages.rs",
-        "src/dashboard/session.rs",
-        "src/dashboard/tests.rs",
-        "src/devices.rs",
-        "src/http.rs",
-        "src/http_tests.rs",
-        "src/legacy_devices.rs",
-        "src/lib.rs",
-        "src/mcp.rs",
-        "src/parked.rs",
-        "src/ratelimit.rs",
-        "src/registry.rs",
-        "src/store.rs",
-        "src/store_contract.rs",
-    ],
-    # The schema (src/store.rs include_str!s it) and the dashboard's
-    # stylesheet (src/dashboard/mod.rs), compiled into the binary.
-    compile_data = glob(["migrations/*.sql"]) + ["src/dashboard/relay.css"],
+    srcs = _LIB_SRCS,
+    compile_data = _LIB_COMPILE_DATA,
     crate_name = "vitruvian_relay",
     crate_root = "src/lib.rs",
     edition = "2021",
     proc_macro_deps = ["@vitruvian_relay_crates//:async-trait"],
+    # `relay_broken_ownership` (App::owned_device) is the canary's cfg and is
+    # never set here; naming it keeps rustc from calling it a typo. Once any
+    # --check-cfg is given, rules_rust's build no longer knows `test` on its
+    # own, so that is named too.
+    rustc_flags = [
+        "--check-cfg=cfg(relay_broken_ownership)",
+        "--check-cfg=cfg(test)",
+    ],
+    deps = _CRATES,
+)
+
+# The canary's relay: the same sources with the ownership check deliberately
+# broken (`App::owned_device` returns a device whatever the subject). Only the
+# isolation canary test is built on it, and it must never be linked into
+# anything that ships.
+rust_library(
+    name = "vitruvian_relay_broken_ownership",
+    testonly = True,
+    srcs = _LIB_SRCS,
+    compile_data = _LIB_COMPILE_DATA,
+    crate_name = "vitruvian_relay",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    proc_macro_deps = ["@vitruvian_relay_crates//:async-trait"],
+    rustc_flags = ["--cfg=relay_broken_ownership"],
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
     deps = _CRATES,
 )
 
@@ -141,6 +173,22 @@ _PG_TEST_DEPS = [
     "@vitruvian_relay_crates//:tokio-postgres",
 ]
 
+# What the tests that run the whole relay over HTTP (tests/relay_support.rs)
+# use besides the library itself.
+_RELAY_OVER_HTTP_TEST_DEPS = [
+    "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
+    "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+    "@vitruvian_relay_crates//:base64",
+    "@vitruvian_relay_crates//:bytes",
+    "@vitruvian_relay_crates//:futures-util",
+    "@vitruvian_relay_crates//:http",
+    "@vitruvian_relay_crates//:http-body-util",
+    "@vitruvian_relay_crates//:hyper",
+    "@vitruvian_relay_crates//:hyper-util",
+    "@vitruvian_relay_crates//:ring",
+    "@vitruvian_relay_crates//:tokio-tungstenite",
+]
+
 # The store contract on PostgreSQL (the same checks the unit test runs on the
 # in-memory store), the migrations, and the TLS default. Run through
 # :store_pg_test, which starts the database; on its own it has none.
@@ -176,20 +224,12 @@ rust_test(
     srcs = [
         "tests/database_down.rs",
         "tests/pg_support.rs",
+        "tests/relay_support.rs",
     ],
     crate_root = "tests/database_down.rs",
     edition = "2021",
     tags = ["manual"],
-    deps = _PG_TEST_DEPS + [
-        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
-        "@vitruvian_relay_crates//:base64",
-        "@vitruvian_relay_crates//:bytes",
-        "@vitruvian_relay_crates//:http",
-        "@vitruvian_relay_crates//:http-body-util",
-        "@vitruvian_relay_crates//:hyper",
-        "@vitruvian_relay_crates//:hyper-util",
-        "@vitruvian_relay_crates//:ring",
-    ],
+    deps = _PG_TEST_DEPS + _RELAY_OVER_HTTP_TEST_DEPS,
 )
 
 service_test(
@@ -201,6 +241,81 @@ service_test(
         "no-remote-exec",
     ],
     test = ":database_down_itest_bin",
+)
+
+# Tenant isolation (spec 7.4, tests/isolation.rs): two people, each with two
+# computers, and nothing one can ask reaches or reveals the other's. The same
+# sources are built twice. `:vitruvian_relay_isolation_test` runs them against
+# the relay as it is and must pass. `:vitruvian_relay_isolation_canary_test`
+# runs them against a relay whose ownership check is deliberately broken
+# (`:vitruvian_relay_broken_ownership`) through expect_failure.sh, and passes
+# only if the isolation tests fail there: a check that cannot fail proves
+# nothing.
+_ISOLATION_SRCS = [
+    "tests/isolation.rs",
+    "tests/pg_support.rs",
+    "tests/relay_support.rs",
+]
+
+rust_test(
+    name = "isolation_itest_bin",
+    size = "small",
+    srcs = _ISOLATION_SRCS,
+    crate_root = "tests/isolation.rs",
+    edition = "2021",
+    tags = ["manual"],
+    deps = _PG_TEST_DEPS + _RELAY_OVER_HTTP_TEST_DEPS,
+)
+
+rust_test(
+    name = "isolation_canary_itest_bin",
+    size = "small",
+    srcs = _ISOLATION_SRCS,
+    crate_root = "tests/isolation.rs",
+    edition = "2021",
+    tags = ["manual"],
+    deps = [
+        d
+        for d in _PG_TEST_DEPS
+        if d != ":vitruvian_relay"
+    ] + [":vitruvian_relay_broken_ownership"] + _RELAY_OVER_HTTP_TEST_DEPS,
+)
+
+service_test(
+    name = "vitruvian_relay_isolation_test",
+    size = "medium",
+    services = [":postgres"],
+    tags = [
+        "exclusive-if-local",
+        "no-remote-exec",
+    ],
+    test = ":isolation_itest_bin",
+)
+
+# Runs the broken build's isolation tests and passes only if they fail.
+sh_test(
+    name = "isolation_canary_runner",
+    size = "small",
+    srcs = ["tests/expect_failure.sh"],
+    data = [":isolation_canary_itest_bin"],
+    # Not `args`: service_test starts its test without any, but does pass the
+    # test's environment on.
+    env = {
+        "EXPECT_FAILURE_BINARY": "$(rootpath :isolation_canary_itest_bin)",
+        "EXPECT_FAILURE_PREFIX": "isolation::",
+    },
+    tags = ["manual"],
+)
+
+service_test(
+    name = "vitruvian_relay_isolation_canary_test",
+    size = "medium",
+    services = [":postgres"],
+    tags = [
+        "exclusive-if-local",
+        "no-remote-exec",
+    ],
+    test = ":isolation_canary_runner",
 )
 
 rust_test(
@@ -242,6 +357,8 @@ rust_clippy(
     testonly = True,
     deps = [
         ":database_down_itest_bin",
+        ":isolation_canary_itest_bin",
+        ":isolation_itest_bin",
         ":store_pg_itest_bin",
         ":vitruvian-relay",
         ":vitruvian_relay",
@@ -264,6 +381,8 @@ test_suite(
     tests = [
         ":database_down_test",
         ":store_pg_test",
+        ":vitruvian_relay_isolation_canary_test",
+        ":vitruvian_relay_isolation_test",
     ],
 )
 
