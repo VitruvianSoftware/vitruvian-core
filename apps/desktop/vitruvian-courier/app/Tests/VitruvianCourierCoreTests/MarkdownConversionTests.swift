@@ -445,4 +445,64 @@ final class MarkdownConversionTests: XCTestCase {
             XCTAssertLessThan(worst, 0.1, "a keystroke in \(chunk.debugDescription)")
         }
     }
+
+    /// The one-pass removal and merge give exactly what removing and adding one at a time gave, on made-up drafts.
+    func testOnePassRemovalAndMergeMatchOneAtATime() {
+        var rng = SystemRandomNumberGenerator()
+        let kinds: [TextEntity.Kind] = [.bold, .italic, .code, .mention, .link, .strikethrough]
+        for _ in 0 ..< 2_000 {
+            let length = Int.random(in: 0 ... 40, using: &rng)
+            let string = String(repeating: "x", count: length) as NSString
+            var entities: [TextEntity] = []
+            for _ in 0 ..< Int.random(in: 0 ... 6, using: &rng) where length > 0 {
+                let offset = Int.random(in: 0 ..< length, using: &rng)
+                let size = Int.random(in: 1 ... length - offset, using: &rng)
+                entities.append(TextEntity(kind: kinds.randomElement(using: &rng)!, offset: offset, length: size))
+            }
+            entities.sort(by: TextEntity.precedes)
+            var removed: [NSRange] = []
+            var at = 0
+            while length > 0, at < length, removed.count < 8 {
+                at += Int.random(in: 0 ... 5, using: &rng)
+                guard at < length else { break }
+                let size = Int.random(in: 1 ... min(3, length - at), using: &rng)
+                removed.append(NSRange(location: at, length: size))
+                at += size
+            }
+            var expectedText = string
+            var expected = entities
+            for marker in removed.reversed() {
+                expectedText = expectedText.replacingCharacters(in: marker, with: "") as NSString
+                expected = EntityEditing.replacing(expected, range: marker, with: 0)
+            }
+            let got = MarkdownConverter.removingAll(removed, from: string, entities: entities)
+            XCTAssertEqual(got.text, expectedText as String, "removing \(removed) from \(length)")
+            XCTAssertEqual(got.entities, expected, "removing \(removed) from \(entities)")
+
+            let made = (0 ..< Int.random(in: 0 ... 5, using: &rng)).compactMap { _ -> TextEntity? in
+                guard length > 0 else { return nil }
+                let offset = Int.random(in: 0 ..< length, using: &rng)
+                let kind: TextEntity.Kind = [.bold, .italic, .code].randomElement(using: &rng)!
+                return TextEntity(kind: kind, offset: offset, length: Int.random(in: 1 ... length - offset, using: &rng))
+            }
+            // As the converter uses it: onto ranges already fitted, and fitted again after. A box never holds two code
+            // ranges that overlap or touch (code is only ever added merged), and the converter never adds code that runs
+            // into code already there, so the made-up drafts don't either.
+            func touchesCode(_ entity: TextEntity, in list: [TextEntity]) -> Bool {
+                list.contains { $0.kind == .code && $0.offset <= entity.offset + entity.length && entity.offset <= $0.offset + $0.length }
+            }
+            var fitted: [TextEntity] = []
+            for entity in EntityEditing.fitted(entities, to: string) {
+                if entity.kind == .code, touchesCode(entity, in: fitted) { continue }
+                fitted.append(entity)
+            }
+            let added = made.filter { $0.kind != .code || !touchesCode($0, in: fitted) }
+            var oneAtATime = fitted
+            for entity in added {
+                oneAtATime = EntityEditing.adding(entity.kind, in: entity.range, of: string, entities: oneAtATime)
+            }
+            XCTAssertEqual(EntityEditing.fitted(MarkdownConverter.merging(added, into: fitted), to: string),
+                           EntityEditing.fitted(oneAtATime, to: string), "adding \(added) to \(fitted)")
+        }
+    }
 }

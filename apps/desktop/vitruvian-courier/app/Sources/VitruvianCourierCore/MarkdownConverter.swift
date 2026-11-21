@@ -86,22 +86,38 @@ public enum MarkdownConverter {
         }
         removed.sort { $0.location < $1.location }
 
-        var newText = string as String
-        var newEntities = entities
-        for marker in removed.reversed() {
-            newText = (newText as NSString).replacingCharacters(in: marker, with: "")
-            newEntities = EntityEditing.replacing(newEntities, range: marker, with: 0)
-        }
+        // In one pass, not a copy of the whole text (and every range) per marker: a draft of a few thousand characters
+        // is read back like this on every keystroke.
+        let (newText, newEntities) = removingAll(removed, from: string, entities: entities)
         let result = Result(text: newText, entities: newEntities, removed: removed)
         var ranged = result
         let updated = newText as NSString
-        for (kind, content) in styled {
-            let start = result.map(content.location)
-            let stop = result.map(content.location + content.length)
-            guard stop > start else { continue }
-            ranged.entities = EntityEditing.adding(kind, in: NSRange(location: start, length: stop - start), of: updated,
-                                                   entities: ranged.entities)
+        // `result.map`, by binary search: `removed` is in order and doesn't overlap, so the ends are in order too.
+        var removedBefore: [Int] = [0] // units in removed[0 ..< i]
+        removedBefore.reserveCapacity(removed.count + 1)
+        for marker in removed { removedBefore.append(removedBefore[removedBefore.count - 1] + marker.length) }
+        func map(_ position: Int) -> Int {
+            var low = 0
+            var high = removed.count
+            while low < high {
+                let mid = (low + high) / 2
+                if removed[mid].location + removed[mid].length <= position { low = mid + 1 } else { high = mid }
+            }
+            return position - removedBefore[low]
         }
+        var added: [TextEntity] = []
+        for (kind, content) in styled {
+            let start = map(content.location)
+            let stop = map(content.location + content.length)
+            guard stop > start else { continue }
+            if kind.isBlock {
+                ranged.entities = EntityEditing.adding(kind, in: NSRange(location: start, length: stop - start), of: updated,
+                                                       entities: ranged.entities)
+            } else {
+                added.append(TextEntity(kind: kind, offset: start, length: stop - start))
+            }
+        }
+        ranged.entities = merging(added, into: ranged.entities)
         ranged.entities = EntityEditing.fitted(ranged.entities, to: updated)
         return ranged
     }
@@ -171,11 +187,16 @@ public enum MarkdownConverter {
         // where any could read back as a marker, all of them (outside code) are escaped: then none can.
         var escaped: Set<Int> = []
         let hasStyles = entities.contains { [.bold, .italic, .strikethrough, .code, .pre].contains($0.kind) }
-        let literalCode = entities.filter { $0.kind == .code || $0.kind == .pre }.map(\.range)
+        // Which units are inside code, marked once: not every code range checked again for every character.
+        var inCode = [Bool](repeating: false, count: string.length)
+        for entity in entities where entity.kind == .code || entity.kind == .pre {
+            let from = max(0, entity.offset)
+            let to = min(string.length, entity.offset + entity.length)
+            if from < to { for position in from ..< to { inCode[position] = true } }
+        }
         if hasStyles || !MarkdownSpans.parse(text).isEmpty {
             for position in 0 ..< string.length where isMarkerCharacter(string.character(at: position)) {
-                let spot = NSRange(location: position, length: 1)
-                if !literalCode.contains(where: { NSIntersectionRange($0, spot).length > 0 }) { escaped.insert(position) }
+                if !inCode[position] { escaped.insert(position) }
             }
         }
         // Inside code, the markers of what would be a span are escaped, as before (the code itself is not read).
@@ -271,14 +292,85 @@ public enum MarkdownConverter {
             }
         }
         guard !removed.isEmpty else { return (text, entities) }
-        var out = text as NSString
-        var ranges = entities
-        for position in removed.reversed() {
-            let marker = NSRange(location: position, length: 1)
-            out = out.replacingCharacters(in: marker, with: "") as NSString
-            ranges = EntityEditing.replacing(ranges, range: marker, with: 0)
+        return removingAll(removed.map { NSRange(location: $0, length: 1) }, from: text as NSString, entities: entities)
+    }
+
+    /// `string` without `removed` (in order, not overlapping), and the ranges as `EntityEditing.replacing` leaves them
+    /// after each removal in turn: a position moves back by what is removed before it, a range wholly removed goes,
+    /// and a mention any removal touches goes. One pass over the text, a binary search per range.
+    static func removingAll(_ removed: [NSRange], from string: NSString, entities: [TextEntity])
+        -> (text: String, entities: [TextEntity]) {
+        guard !removed.isEmpty else { return (string as String, entities) }
+        var out = ""
+        out.reserveCapacity(string.length)
+        var cursor = 0
+        var before: [Int] = [] // units removed before removed[i]
+        before.reserveCapacity(removed.count)
+        var total = 0
+        for marker in removed {
+            out += string.substring(with: NSRange(location: cursor, length: marker.location - cursor))
+            cursor = marker.location + marker.length
+            before.append(total)
+            total += marker.length
         }
-        return (out as String, ranges)
+        out += string.substring(from: cursor)
+        // The last removal that starts before `position`.
+        func last(before position: Int) -> Int? {
+            var low = 0
+            var high = removed.count
+            while low < high {
+                let mid = (low + high) / 2
+                if removed[mid].location < position { low = mid + 1 } else { high = mid }
+            }
+            return low == 0 ? nil : low - 1
+        }
+        func map(_ position: Int) -> Int {
+            guard let i = last(before: position) else { return position }
+            return position - before[i] - min(removed[i].length, position - removed[i].location)
+        }
+        var result: [TextEntity] = []
+        for var entity in entities {
+            let first = entity.offset
+            let stop = entity.offset + entity.length
+            if entity.kind == .mention {
+                // Touched by a removal: the last one starting before its end reaches into it.
+                if let i = last(before: stop), removed[i].location + removed[i].length > first { continue }
+                entity.offset = map(first)
+                result.append(entity)
+                continue
+            }
+            let start = map(first)
+            let end = map(stop)
+            guard end > start else { continue }
+            entity.offset = start
+            entity.length = end - start
+            result.append(entity)
+        }
+        return (out, result.sorted(by: TextEntity.precedes))
+    }
+
+    /// `EntityEditing.adding` of each inline range in `added`, at once: a kind's ranges that overlap or touch, new or
+    /// already there, become one. Onto fitted ranges and fitted after, as `convert` does, it gives what adding them
+    /// one at a time gives (a test holds it to that), without a scan and sort of every range per new one.
+    static func merging(_ added: [TextEntity], into entities: [TextEntity]) -> [TextEntity] {
+        guard !added.isEmpty else { return entities }
+        let kinds = Set(added.map(\.kind))
+        var kept = entities.filter { !kinds.contains($0.kind) }
+        for kind in kinds {
+            let ranges = (entities + added).filter { $0.kind == kind }.sorted { $0.offset < $1.offset }
+            var open: TextEntity?
+            for range in ranges {
+                if var current = open, range.offset <= current.offset + current.length {
+                    current.length = max(current.offset + current.length, range.offset + range.length) - current.offset
+                    open = current
+                } else {
+                    if let current = open { kept.append(current) }
+                    open = range
+                }
+            }
+            if let current = open { kept.append(current) }
+        }
+        return kept.sorted(by: TextEntity.precedes)
     }
 
     /// `*`, `_`, `~` and the backtick: the characters a draft escapes.
