@@ -516,6 +516,31 @@ final class ArticleSummaryRound1Tests: XCTestCase {
         XCTAssertEqual(aFound, .sources([]))
     }
 
+    func testTheSearchesGoogleRanTravelWithTheSummaryForTheFallback() async throws {
+        let gemini = StubHTTPTransport()
+        gemini.enqueue(status: 200, json: """
+        {"candidates":[{"content":{"parts":[{"text":"x"}]},"groundingMetadata":{
+          "webSearchQueries":["bridge opens early"," ","who won the bridge race"],
+          "searchEntryPoint":{"renderedContent":"<div>chips</div>"},
+          "groundingChunks":[{"web":{"uri":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/B","title":"apnews.com"}}]}}]}
+        """)
+        let g = ConfiguredAIProvider(kind: .googleAIStudio, client: GeminiClient(apiKey: "k", transport: gemini), model: "gemini-x")
+        let found = await g.findUnpaywalledSource(headline: "h", site: "usatoday.com", description: "")
+        guard case let .sources(findings) = found else { return XCTFail("\(found)") }
+        XCTAssertEqual(findings.searchQueries, ["bridge opens early", "who won the bridge race"])
+
+        reader.set(usa.absoluteString, page(usa.absoluteString, text: "teaser", paywalled: true))
+        reader.set(ap.absoluteString, page(ap.absoluteString, title: "Bridge opens early"))
+        provider.search = .sources(WebSearchFindings(sources: [WebSource(url: ap, title: "apnews.com")], suggestionsHTML: suggestions,
+                                                     searchQueries: ["bridge opens early"]))
+        model.summarize(request())
+        await model.waitForSummary(of: usa)
+        guard case let .summary(summary)? = model.state(for: usa) else { return XCTFail() }
+        XCTAssertEqual(summary.searchQueries, ["bridge opens early"])
+        let again = try JSONDecoder().decode(ArticleSummary.self, from: JSONEncoder().encode(summary))
+        XCTAssertEqual(again.searchQueries, ["bridge opens early"], "kept with the summary")
+    }
+
     // 4. The footer and the button's tooltip
 
     func testTheFooterIsTheProvenanceLineTheOtherAIFeaturesUse() async throws {

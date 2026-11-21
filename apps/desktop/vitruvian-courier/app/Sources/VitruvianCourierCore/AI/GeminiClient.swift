@@ -133,7 +133,7 @@ public struct GeminiClient: WebSearchingClient, Sendable {
         let (data, _) = try await AIClientHTTP.send(request, using: transport)
         let parsed = try Self.parseSearch(from: data)
         return WebSearchFindings(sources: WebSourceFilter.clean(parsed.sources, excludingDomain: excludingDomain),
-                                 suggestionsHTML: parsed.suggestionsHTML)
+                                 suggestionsHTML: parsed.suggestionsHTML, searchQueries: parsed.searchQueries)
     }
 
     public static func parseWebSources(from data: Data) throws -> [WebSource] {
@@ -158,7 +158,11 @@ public struct GeminiClient: WebSearchingClient, Sendable {
         }
         let rendered = (metadata?["searchEntryPoint"] as? [String: Any])?["renderedContent"] as? String
         let trimmed = rendered?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return WebSearchFindings(sources: sources, suggestionsHTML: trimmed?.isEmpty == false ? trimmed : nil)
+        let queries = (metadata?["webSearchQueries"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return WebSearchFindings(sources: sources, suggestionsHTML: trimmed?.isEmpty == false ? trimmed : nil,
+                                 searchQueries: queries)
     }
 
     public static func stripModelsPrefix(_ name: String) -> String {

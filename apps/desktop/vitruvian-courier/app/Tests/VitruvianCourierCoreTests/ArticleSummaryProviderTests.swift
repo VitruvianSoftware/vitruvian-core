@@ -274,10 +274,10 @@ final class ArticleSummaryProviderTests: XCTestCase {
         XCTAssertFalse(sentText.contains("SECRET-DESCRIPTION"))
 
         // The paywalled site is dropped by its title (the domain); the others come back in order, by Google's links.
-        XCTAssertEqual(result, .sources([
+        XCTAssertEqual(result, .sources(WebSearchFindings(sources: [
             WebSource(url: URL(string: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/BBB")!, title: "apnews.com"),
             WebSource(url: URL(string: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/CCC")!, title: "reuters.com"),
-        ]))
+        ], searchQueries: ["bridge opens early"])))
     }
 
     func testOpenAISearchesWithItsResponsesAPIWebSearchToolAndReadsCitationsThenSources() async throws {

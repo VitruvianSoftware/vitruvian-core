@@ -172,6 +172,7 @@ struct ArticleSummaryPanel: View {
                 // Google's terms: its search suggestions go under whatever its search grounded.
                 SearchSuggestionsBlock(
                     html: suggestions,
+                    queries: summary.searchQueries ?? [],
                     height: CGFloat(controls.suggestionsHeight(url) ?? Int(SearchSuggestionsBlock.placeholderHeight)),
                     onHeight: { controls.setSuggestionsHeight(url, $0) })
             }

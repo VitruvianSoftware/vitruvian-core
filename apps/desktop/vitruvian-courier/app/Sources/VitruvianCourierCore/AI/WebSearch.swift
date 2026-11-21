@@ -21,10 +21,14 @@ public struct WebSource: Equatable, Hashable, Sendable {
 public struct WebSearchFindings: Equatable, Sendable, ExpressibleByArrayLiteral {
     public var sources: [WebSource]
     public var suggestionsHTML: String?
+    /// The searches Google ran (`groundingMetadata.webSearchQueries`): the fallback when Google's own suggestions can't
+    /// be shown safely.
+    public var searchQueries: [String]
 
-    public init(sources: [WebSource], suggestionsHTML: String? = nil) {
+    public init(sources: [WebSource], suggestionsHTML: String? = nil, searchQueries: [String] = []) {
         self.sources = sources
         self.suggestionsHTML = suggestionsHTML
+        self.searchQueries = searchQueries
     }
 
     public init(arrayLiteral elements: WebSource...) {

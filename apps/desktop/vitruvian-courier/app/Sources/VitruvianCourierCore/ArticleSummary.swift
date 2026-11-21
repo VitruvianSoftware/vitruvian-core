@@ -47,9 +47,13 @@ public struct ArticleSummary: Codable, Hashable, Sendable {
     /// Google's search suggestions (HTML and CSS) when the page was found by Google AI Studio's search: Google's terms
     /// require them under anything that search grounded. Kept with the summary, so they come back with it.
     public var searchSuggestionsHTML: String?
+    /// The searches Google ran: shown as "Search Google for: …" links when its suggestions can't be shown.
+    public var searchQueries: [String]?
 
     public init(bullets: [String], provider: String, sourceURL: URL, sourceDomain: String, linkDomain: String,
-                origin: ArticleSummaryOrigin, provenance: String? = nil, searchSuggestionsHTML: String? = nil) {
+                origin: ArticleSummaryOrigin, provenance: String? = nil, searchSuggestionsHTML: String? = nil,
+                searchQueries: [String]? = nil) {
+        self.searchQueries = searchQueries
         self.provenance = provenance
         self.searchSuggestionsHTML = searchSuggestionsHTML
         self.bullets = bullets
@@ -662,7 +666,8 @@ public final class ArticleSummaryModel: ObservableObject {
                 setPhase(.summarizing, key: key)
                 return await summarize(
                     candidate, provider: provider, providerName: providerName, provenance: provenance, sourceURL: landed,
-                    linkDomain: linkDomain, origin: .elsewhere(why), searchSuggestionsHTML: findings.suggestionsHTML
+                    linkDomain: linkDomain, origin: .elsewhere(why), searchSuggestionsHTML: findings.suggestionsHTML,
+                    searchQueries: findings.searchQueries
                 )
             case .different:
                 continue
@@ -693,7 +698,7 @@ public final class ArticleSummaryModel: ObservableObject {
 
     private func summarize(_ page: ArticleResult, provider: any AIProvider, providerName: String, provenance: String,
                            sourceURL: URL, linkDomain: String, origin: ArticleSummaryOrigin,
-                           searchSuggestionsHTML: String? = nil) async -> Outcome {
+                           searchSuggestionsHTML: String? = nil, searchQueries: [String] = []) async -> Outcome {
         let disposition = await provider.summarizeArticle(title: page.title, site: page.site, text: page.text)
         switch disposition {
         case let .unavailable(reason):
@@ -704,7 +709,8 @@ public final class ArticleSummaryModel: ObservableObject {
             return .summary(ArticleSummary(
                 bullets: bullets, provider: providerName, sourceURL: sourceURL,
                 sourceDomain: ArticleSummaryKey.domain(of: sourceURL), linkDomain: linkDomain, origin: origin,
-                provenance: provenance.isEmpty ? nil : provenance, searchSuggestionsHTML: searchSuggestionsHTML
+                provenance: provenance.isEmpty ? nil : provenance, searchSuggestionsHTML: searchSuggestionsHTML,
+                searchQueries: searchQueries.isEmpty ? nil : searchQueries
             ))
         }
     }
