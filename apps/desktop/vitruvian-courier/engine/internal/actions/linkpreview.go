@@ -29,8 +29,9 @@ const (
 	maxLinkPreviewImageBytes = 2 * 1024 * 1024
 )
 
-// The page and the picture each have their own time (variables so a test can shorten them): a slow page does not use up
-// the picture's.
+// A preview of a message I send has one time for the page and the picture together (linkPreviewTimeout), so a slow site
+// never holds a send up longer than that. A link card's picture (PreviewImageForURL) gets its own, after the page's
+// (variables so a test can shorten them).
 var (
 	linkPreviewTimeout      = 3 * time.Second
 	linkPreviewImageTimeout = 5 * time.Second
@@ -99,6 +100,9 @@ func (a *Actions) getLinkPreviewClient() *http.Client {
 			return nil
 		},
 		Transport: &http.Transport{
+			// One page and one picture per client: nothing is kept idle, so a client made for each fetch leaves no
+			// connection (or the goroutines that serve it) behind.
+			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				host, port, err := net.SplitHostPort(addr)
 				if err != nil {
@@ -178,7 +182,7 @@ func (a *Actions) applyLinkPreviews(ctx context.Context, c *event.MessageEventCo
 }
 
 func (a *Actions) fetchLinkPreview(ctx context.Context, targetURL string) *event.BeeperLinkPreview {
-	lp, _ := a.fetchLinkPreviewDetail(ctx, targetURL)
+	lp, _ := a.fetchLinkPreviewDetail(ctx, targetURL, false)
 	return lp
 }
 
@@ -192,9 +196,10 @@ type linkPreviewImageOutcome struct {
 	Err error
 }
 
-// fetchLinkPreviewDetail is fetchLinkPreview and what became of the page's picture. The page has its own time
-// (linkPreviewTimeout) and the picture its own (linkPreviewImageTimeout).
-func (a *Actions) fetchLinkPreviewDetail(ctx context.Context, targetURL string) (*event.BeeperLinkPreview, linkPreviewImageOutcome) {
+// fetchLinkPreviewDetail is fetchLinkPreview and what became of the page's picture. The page and the picture share
+// linkPreviewTimeout, as for a message I send; with ownImageTime (a link card's picture, which holds nothing up) the
+// picture has linkPreviewImageTimeout of its own after the page's.
+func (a *Actions) fetchLinkPreviewDetail(ctx context.Context, targetURL string, ownImageTime bool) (*event.BeeperLinkPreview, linkPreviewImageOutcome) {
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
 		return nil, linkPreviewImageOutcome{}
@@ -203,6 +208,8 @@ func (a *Actions) fetchLinkPreviewDetail(ctx context.Context, targetURL string) 
 	defer cancel()
 
 	client := a.getLinkPreviewClient()
+	// Whatever the client kept idle goes when the fetch ends (a client given by a test keeps connections alive).
+	defer client.CloseIdleConnections()
 	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, linkPreviewImageOutcome{}
@@ -249,10 +256,13 @@ func (a *Actions) fetchLinkPreviewDetail(ctx context.Context, targetURL string) 
 		case err != nil || imgURL.Scheme != "https":
 			outcome.Err = errors.New("the page's picture is not an https address")
 		default:
-			// The picture has its own time, apart from the page's.
-			imgCtx, imgCancel := context.WithTimeout(ctx, linkPreviewImageTimeout)
+			imgCtx := fetchCtx // the page's time, shared (a send)
+			if ownImageTime {
+				var imgCancel context.CancelFunc
+				imgCtx, imgCancel = context.WithTimeout(ctx, linkPreviewImageTimeout)
+				defer imgCancel()
+			}
 			outcome.Err = a.populatePreviewImage(imgCtx, client, imgURL.String(), preview)
-			imgCancel()
 		}
 	}
 	return preview, outcome

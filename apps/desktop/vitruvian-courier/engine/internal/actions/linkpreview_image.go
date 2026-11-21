@@ -131,7 +131,7 @@ func (a *Actions) fetchPreviewImage(ctx context.Context, canonical, key string) 
 	// was too big or was not a picture), which is believed for an hour only.
 	rec := previewImageRecord{State: "unknown", AtMilli: previewImageNow().UnixMilli()}
 	var res PreviewImage
-	if lp, outcome := a.fetchLinkPreviewDetail(ctx, canonical); lp != nil {
+	if lp, outcome := a.fetchLinkPreviewDetail(ctx, canonical, true); lp != nil {
 		switch uri := string(lp.ImageURL); {
 		case uri != "" && a.previewImagePath(uri) != "":
 			rec = previewImageRecord{

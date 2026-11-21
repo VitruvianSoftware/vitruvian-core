@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/media"
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
@@ -388,4 +389,61 @@ func TestPreviewImageRowsArePrunedOnWrite(t *testing.T) {
 	_, err := a.PreviewImageForURL(ctx, ps.url+"/story")
 	require.NoError(t, err)
 	require.Equal(t, 1, remembered(), "the expired rows went with the write")
+}
+
+// Every fetch closes what it kept idle: ten fetches leave no connection open at the site (a client that keeps
+// connections alive, as a test's does, would leave ten), and the production client keeps none to begin with.
+func TestLinkPreviewFetchesLeaveNoIdleConnections(t *testing.T) {
+	ctx := context.Background()
+	var mu sync.Mutex
+	open := map[net.Conn]http.ConnState{}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "text/html")
+		_, _ = rw.Write([]byte(`<meta property="og:title" content="A story">`))
+	}))
+	srv.Config.ConnState = func(c net.Conn, state http.ConnState) {
+		mu.Lock()
+		defer mu.Unlock()
+		if state == http.StateClosed || state == http.StateHijacked {
+			delete(open, c)
+			return
+		}
+		open[c] = state
+	}
+	srv.StartTLS()
+	defer srv.Close()
+
+	a := previewActions(t)
+	a.SetLinkPreviewHTTPClient(srv.Client())
+	for i := 0; i < 10; i++ {
+		require.NotNil(t, a.fetchLinkPreview(ctx, fmt.Sprintf("%s/story-%d", srv.URL, i)))
+	}
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(open) == 0
+	}, 3*time.Second, 20*time.Millisecond, "no connection is left open at the site")
+
+	// The production client keeps nothing alive, so a client made for each fetch leaves nothing behind.
+	b := previewActions(t)
+	transport, ok := b.getLinkPreviewClient().Transport.(*http.Transport)
+	require.True(t, ok)
+	require.True(t, transport.DisableKeepAlives)
+}
+
+// A link I send waits for its page and picture together for 3 seconds at most, as before: the picture's separate 5
+// seconds belong to a received link card only.
+func TestOutgoingLinkPreviewKeepsTheSingleThreeSecondBudget(t *testing.T) {
+	ctx := context.Background()
+	a := previewActions(t)
+	base := dripServer(t, a, false, true) // the page answers at once; the picture never finishes
+	enabled := false
+	content := &event.MessageEventContent{Body: "Read " + base + "/story"}
+	start := time.Now()
+	a.applyLinkPreviews(ctx, content, &enabled)
+	elapsed := time.Since(start)
+	require.Less(t, elapsed, 3600*time.Millisecond, "a slow picture does not hold a send up past the 3 seconds")
+	require.GreaterOrEqual(t, elapsed, 2*time.Second, "it did wait for it")
+	require.Len(t, content.BeeperLinkPreviews, 1, "the page's preview still goes, without the picture")
+	require.Empty(t, string(content.BeeperLinkPreviews[0].ImageURL))
 }
