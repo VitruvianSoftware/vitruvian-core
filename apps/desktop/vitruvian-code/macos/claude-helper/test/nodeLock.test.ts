@@ -72,8 +72,18 @@ describe("claude-helper node.lock", () => {
       ),
     ) as Record<string, { "darwin-arm64": string; "darwin-x64": string }>;
 
+    if (Object.keys(rulesNodejsSums).length === 0) {
+      throw new Error(
+        "rules_nodejs_darwin_sums.json is empty: node_lock.bzl no longer finds rules_nodejs's Node checksums (it reads the private nodejs/private/node_versions.bzl). See node_lock.bzl.",
+      );
+    }
     const entry = rulesNodejsSums[nvmrcVersion];
-    expect(entry).toBeDefined();
+    if (entry === undefined) {
+      throw new Error(
+        `rules_nodejs has no Darwin arm64+x64 checksums for Node ${nvmrcVersion} (//:.nvmrc). ` +
+          "Upgrade rules_nodejs, or move .nvmrc to a version it knows, then update node.lock.",
+      );
+    }
     expect(lock["darwin-arm64"]).toBe(entry["darwin-arm64"]);
     expect(lock["darwin-x64"]).toBe(entry["darwin-x64"]);
   });

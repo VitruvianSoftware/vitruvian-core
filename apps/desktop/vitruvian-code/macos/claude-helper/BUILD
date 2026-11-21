@@ -68,7 +68,7 @@ esbuild.esbuild(
         ":node_modules",
     ],
     outs = [
-        "built/claude-helper.mjs",
+        "built/esbuild/claude-helper.mjs",
         "built/metafile.json",
     ],
     args = [
@@ -77,7 +77,7 @@ esbuild.esbuild(
         "--platform=node",
         "--target=node22",
         "--format=esm",
-        "--outfile=built/claude-helper.mjs",
+        "--outfile=built/esbuild/claude-helper.mjs",
         "--metafile=built/metafile.json",
     ],
     chdir = package_name(),
@@ -86,6 +86,25 @@ esbuild.esbuild(
 js_binary(
     name = "extract_packages_bin",
     entry_point = "scripts/extract-packages.mjs",
+)
+
+js_binary(
+    name = "normalize_bundle_bin",
+    entry_point = "scripts/normalize-bundle.mjs",
+)
+
+# esbuild's module comments spell the sandbox path (bazel-out/<host config>/...);
+# keep the checked-in bundle the same bytes on every machine and build mode.
+js_run_binary(
+    name = "built_bundle",
+    srcs = [":built/esbuild/claude-helper.mjs"],
+    outs = ["built/claude-helper.mjs"],
+    args = [
+        "built/esbuild/claude-helper.mjs",
+        "built/claude-helper.mjs",
+    ],
+    chdir = package_name(),
+    tool = ":normalize_bundle_bin",
 )
 
 js_run_binary(
@@ -184,6 +203,7 @@ jest_test(
         "bundle/packages.json",
         "jest.config.cjs",
         "package.json",
+        "scripts/normalize-bundle.mjs",
         "test/bundle.test.ts",
         "tsconfig.json",
         "tsconfig.test.json",

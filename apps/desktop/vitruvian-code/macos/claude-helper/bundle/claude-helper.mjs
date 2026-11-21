@@ -4,13 +4,13 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/main.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/main.ts
 import { readFileSync as readFileSync2, realpathSync as realpathSync2 } from "node:fs";
 import { isAbsolute as isAbsolute2, resolve as resolve2 } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/schema/index.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/schema/index.js
 var AGENT_METHODS = {
   initialize: "initialize",
   authenticate: "authenticate",
@@ -43,7 +43,7 @@ var PROTOCOL_METHODS = {
   cancel_request: "$/cancel_request"
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/util.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -899,7 +899,7 @@ function constantCatch(value) {
   return fn;
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/core.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -1020,7 +1020,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/errors.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/errors.js
 function _getMessage() {
   const internals = this._zod;
   internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -1135,7 +1135,7 @@ function formatError(error2, mapper = (issue2) => issue2.message) {
   return fieldErrors;
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/parse.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
   return { callee: params?.callee ?? callee, Err: params?.Err };
 }
@@ -1283,7 +1283,7 @@ var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/regexes.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/;
 var cuid2 = /^[0-9a-z]+$/;
 var ulid = /^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$/;
@@ -1341,7 +1341,7 @@ var boolean = /^(?:true|false)$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/checks.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -1661,7 +1661,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/doc.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = [], closed = {}) {
     this.content = [];
@@ -1702,14 +1702,14 @@ ${content.join("\n")}
   }
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/versions.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 6,
   patch: 7
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/schemas.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -3276,7 +3276,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/memoizer.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/memoizer.js
 var $ZodCyclicError = class extends Error {
   constructor() {
     super(`Cannot parse a reference cycle that closes through a transform`);
@@ -3550,7 +3550,7 @@ function isBackEdge(ctx, value) {
   return backEdges !== void 0 && isRef(value) && backEdges.has(value);
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/locales/en.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/locales/en.js
 var error = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -3675,7 +3675,7 @@ function en_default() {
   };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/registries.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/registries.js
 var _a2;
 var $ZodRegistry = class {
   constructor() {
@@ -3723,7 +3723,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/api.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
   if (def.checks)
     def.checks = [...def.checks];
@@ -4231,7 +4231,7 @@ function _check(fn, params) {
   return ch2;
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
   for (const source of sources) {
     for (const key of Reflect.ownKeys(source)) {
@@ -4761,7 +4761,7 @@ var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) =
   return finalize(ctx, schema);
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/json-schema-processors.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/json-schema-processors.js
 var narrowMin = (agg, key, value) => {
   if (agg[key] === void 0 || value > agg[key])
     agg[key] = value;
@@ -5290,7 +5290,7 @@ var optionalProcessor = (schema, ctx, _json, params) => {
   seen.ref = def.innerType;
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/classic/errors.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/classic/errors.js
 var _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
   Object.defineProperty(proto, key, {
@@ -5335,7 +5335,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, void 0
   Parent: Error
 });
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/classic/parse.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/classic/parse.js
 var parse = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -5349,7 +5349,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/classic/schemas.js
+// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
   if (!globalConfig.localeError)
     config(en_default());
@@ -6265,7 +6265,7 @@ function preprocess(fn, schema) {
   });
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/schema-deserialize.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/schema-deserialize.js
 var skippedItem = /* @__PURE__ */ Symbol("skippedItem");
 function defaultOnError(schema, fallback) {
   return schema.catch(fallback);
@@ -6336,7 +6336,7 @@ function wideInt() {
   });
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/schema/zod.gen.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/schema/zod.gen.js
 var zRequestId = union([wideInt(), string2()]).nullable();
 var zSessionId = string2();
 var zWriteTextFileRequest = object({
@@ -7453,7 +7453,7 @@ var zCancelRequestNotification = object({
   _meta: defaultOnError(record(string2(), unknown()).nullish(), () => void 0)
 });
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/jsonrpc.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/jsonrpc.js
 var CANCEL_REQUEST_METHOD = "$/cancel_request";
 function treatSessionNotFoundAsSuccess(method, response, success) {
   if (method !== "session/close" && method !== "session/delete") {
@@ -8321,7 +8321,7 @@ function protocolErrorResponse(error2) {
   };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/stream-limits.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/stream-limits.js
 var DEFAULT_MAX_MESSAGE_BYTES = 32 * 1024 * 1024;
 var MessageTooLargeError = class extends Error {
   maxMessageBytes;
@@ -8380,7 +8380,7 @@ var MessageBuffer = class {
   }
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/line-buffer.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/line-buffer.js
 var newline = 10;
 var carriageReturn = 13;
 var LineBuffer = class {
@@ -8467,7 +8467,7 @@ function stripCarriageReturn(line) {
   return line[line.byteLength - 1] === carriageReturn ? line.subarray(0, -1) : line;
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/stream.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/stream.js
 function ndJsonStream(output, input, options = {}) {
   const maxMessageBytes = resolveMaxMessageBytes(options.maxMessageBytes);
   const textEncoder = new TextEncoder();
@@ -8573,7 +8573,7 @@ function ndJsonStream(output, input, options = {}) {
   return { readable, writable };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/schema/guards.gen.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/schema/guards.gen.js
 var zGuardCreateElicitationRequestForm = zElicitationFormMode.and(object({ mode: literal("form") })).and(object({ message: string2() }));
 var zGuardCreateElicitationRequestUrl = zElicitationUrlMode.and(object({ mode: literal("url") })).and(object({ message: string2() }));
 var zGuardCreateElicitationRequestCustom = union([zElicitationSessionScope, zElicitationRequestScope]).and(object({ message: string2() }));
@@ -8591,7 +8591,7 @@ var zGuardCreateElicitationResponseCancel = object({
   action: literal("cancel")
 });
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/app-handlers.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/app-handlers.js
 function parseParams(parser, params) {
   if (!parser) {
     return params;
@@ -8641,10 +8641,10 @@ function registerAppNotification(builder, spec, context, handler) {
   }
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/connection-access.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/core/connection-access.js
 var connectionContextOf = /* @__PURE__ */ Symbol("connectionContextOf");
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/stable/acp.js
+// node_modules/.aspect_rules_js/@agentclientprotocol+sdk@2.7.0_zod@4.6.7/node_modules/@agentclientprotocol/sdk/dist/v1/stable/acp.js
 function ndJsonStream2(output, input, options) {
   return ndJsonStream(output, input, options);
 }
@@ -9637,10 +9637,10 @@ var TerminalHandle = class _TerminalHandle {
   }
 };
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/agent.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/agent.ts
 import { randomUUID } from "node:crypto";
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/node_modules/.aspect_rules_js/@anthropic-ai+claude-agent-sdk@0.3.326_1271099569/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
+// node_modules/.aspect_rules_js/@anthropic-ai+claude-agent-sdk@0.3.326_1271099569/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
 import { createRequire as pee } from "node:module";
 import { createHash as PI, randomBytes as hee, randomUUID as es } from "crypto";
 import { basename as WI, dirname as vb, join as Oee } from "path";
@@ -41901,10 +41901,10 @@ async function nst(e10, t, n) {
   return await e10.append({ projectKey: r, sessionId: i }, s), { sessionId: i };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/mapping.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/mapping.ts
 import { basename } from "node:path";
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/skills.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/skills.ts
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import os2 from "node:os";
 import path from "node:path";
@@ -42687,7 +42687,7 @@ function mergeAvailableCommands(sdkCommands, diskCommands) {
   return Array.from(byKey.values());
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/mapping.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/mapping.ts
 var ROOT_STREAM_SCOPE = "__root__";
 var DEFAULT_CONTEXT_WINDOW_TOKENS = 2e5;
 var AUTH_ERROR_PATTERN = /authentication_failed|auth_required|not logged in|invalid api key|claude auth login|unauthorized|oauth token.*expired/i;
@@ -43280,7 +43280,7 @@ function classifySdkResult(message, state, cancelled) {
   };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/modes.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/modes.ts
 var DEFAULT_CLAUDE_MODE = "default";
 var CLAUDE_MODES = [
   {
@@ -43320,7 +43320,7 @@ function sdkPermissionOptionsForMode(mode) {
   };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/permissions.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/permissions.ts
 var ALLOW_ONCE_OPTION_ID = "allow_once";
 var ALLOW_ALWAYS_OPTION_ID = "allow_always";
 var REJECT_ONCE_OPTION_ID = "reject_once";
@@ -43690,7 +43690,7 @@ function createCanUseToolHandler(options) {
   };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/usageLimits.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/usageLimits.ts
 var MAX_DATE_MS = 864e13;
 var MAX_WAIT_MS = 30 * 24 * 60 * 60 * 1e3;
 var WINDOW_LABELS = {
@@ -43877,7 +43877,7 @@ function extractUsageLimit(sessionId, message, options) {
   return null;
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/version.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/version.ts
 import { execFile } from "node:child_process";
 var CLAUDE_VERSION_TIMEOUT_MS = 5e3;
 var SEMVER_PATTERN = /\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/;
@@ -43910,7 +43910,7 @@ async function detectClaudeVersion(claudePath, timeoutMs = CLAUDE_VERSION_TIMEOU
   });
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/agent.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/agent.ts
 var DEFAULT_SUPPORTED_MODELS_TIMEOUT_MS = 250;
 var SUPPORTED_IMAGE_MIME_TYPES = /* @__PURE__ */ new Set([
   "image/jpeg",
@@ -44950,7 +44950,7 @@ function createClaudeHelperApp(options) {
   return { app, helper };
 }
 
-// ../../../../../../../../../../../../../execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/apps/desktop/vitruvian-code/macos/claude-helper/src/main.ts
+// apps/desktop/vitruvian-code/macos/claude-helper/src/main.ts
 function parseArgs(argv) {
   let claudePath = "";
   for (let i = 0; i < argv.length; i += 1) {

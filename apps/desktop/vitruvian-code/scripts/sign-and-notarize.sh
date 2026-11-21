@@ -334,6 +334,10 @@ sign_app_inside_out() {
 	if [ ! -d "${app}" ]; then
 		fail_error "App bundle not found: ${app}"
 	fi
+	# Everything below compares paths as text (the main executable, Helpers/node),
+	# so spell the app one way: no trailing or doubled slashes, no ./ or ../, no
+	# symlinks.
+	app="$(cd "${app}" && /bin/pwd -P)"
 	if [ -n "${entitlements}" ] && [ ! -f "${entitlements}" ]; then
 		fail_error "Entitlements file not found: ${entitlements}"
 	fi

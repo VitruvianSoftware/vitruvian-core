@@ -329,6 +329,9 @@ jobs:
           cp /tmp/universal/node "$folder/bin/node"
           chmod 755 "$folder/bin/node"
           cp macos/claude-helper/bundle/claude-helper.mjs "$folder/bin/claude-helper/claude-helper.mjs"
+          # Node and the helper are in the folder, Node holds both architectures
+          # and is signed with the JIT entitlements, before any of it is zipped.
+          "$RUNNER_TEMP/check-packaged-app" --tool-folder "$folder" arm64 x86_64
           asset="vitruvian-code-tool-${VERSION}.zip"
           (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
           cd "${GITHUB_WORKSPACE}"

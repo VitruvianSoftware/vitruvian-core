@@ -679,6 +679,99 @@ mod tests {
     }
 
     #[test]
+    fn check_packaged_app_tool_folder_rejects_missing_thin_unentitled_node_and_missing_helper() {
+        let dir = std::env::temp_dir().join("check_pkg_tool_folder_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let fake_bin = dir.join("fake_bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
+        let full_codesign = "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then\n  cat <<'PLIST'\n<plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>\nPLIST\nfi\nexit 0\n";
+        make_fake_tool(&fake_bin, "codesign", full_codesign);
+
+        let folder = dir.join("vitruvian-code");
+        fs::create_dir_all(folder.join("bin/claude-helper")).unwrap();
+        fs::write(folder.join("vitruvian-tool.json"), b"{}").unwrap();
+        fs::write(folder.join("bin/mermaid.min.js"), b"m").unwrap();
+        for exe in ["bin/tool"] {
+            fs::write(folder.join(exe), b"fake").unwrap();
+            fs::set_permissions(folder.join(exe), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let node = folder.join("bin/node");
+        let helper = folder.join("bin/claude-helper/claude-helper.mjs");
+
+        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+
+        let args: Vec<String> = vec![
+            "check-packaged-app".into(),
+            "--tool-folder".into(),
+            folder.to_str().unwrap().into(),
+            "arm64".into(),
+            "x86_64".into(),
+        ];
+
+        // 1. No node, no helper -> fails.
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 2. Node present, helper missing -> fails.
+        fs::write(&node, b"fake-node").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 3. Helper empty -> fails.
+        fs::write(&helper, b"").unwrap();
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 4. Helper there, node not executable -> fails.
+        fs::write(&helper, b"export {};\n").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(check_packaged_app::run(&args), 1);
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // 5. Node thin (arm64 only) -> fails.
+        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64\"\n");
+        assert_eq!(check_packaged_app::run(&args), 1);
+        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
+
+        // 6. Only one of the two entitlements -> fails.
+        make_fake_tool(
+            &fake_bin,
+            "codesign",
+            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>'; fi\nexit 0\n",
+        );
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 7. Signature that does not verify -> fails.
+        make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 1\n");
+        assert_eq!(check_packaged_app::run(&args), 1);
+        make_fake_tool(&fake_bin, "codesign", full_codesign);
+
+        // 8. Everything in place -> passes.
+        assert_eq!(check_packaged_app::run(&args), 0);
+
+        // The architectures asked for are the ones checked: a universal ask of a
+        // node with two slices passes, an arm64 ask of the same node fails.
+        let arm_only: Vec<String> = vec![
+            "check-packaged-app".into(),
+            "--tool-folder".into(),
+            folder.to_str().unwrap().into(),
+            "arm64".into(),
+        ];
+        assert_eq!(check_packaged_app::run(&arm_only), 1);
+
+        // No folder named is a usage error, not a pass.
+        assert_eq!(
+            check_packaged_app::run(&["check-packaged-app".into(), "--tool-folder".into()]),
+            2
+        );
+
+        std::env::set_var("PATH", &orig_path);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn bazel_app_holds_node_rejects_missing_node_wrong_arch_and_bad_helper_hash() {
         let dir = std::env::temp_dir().join("bazel_app_holds_node_unit_test");
         let _ = fs::remove_dir_all(&dir);

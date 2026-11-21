@@ -625,6 +625,9 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             && tool_zip.iter().any(|l| l.contains("$folder/bin/node"))
             && tool_zip
                 .iter()
+                .any(|l| l.contains("check-packaged-app\" --tool-folder \"$folder\" arm64 x86_64"))
+            && tool_zip
+                .iter()
                 .any(|l| l.contains("$folder/bin/claude-helper/claude-helper.mjs")),
     );
     problems

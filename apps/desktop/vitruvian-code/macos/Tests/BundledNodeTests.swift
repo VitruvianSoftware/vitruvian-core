@@ -197,13 +197,21 @@ final class BundledNodeTests: XCTestCase {
         XCTAssertNil(BundledNode.locate(in: emptyHelper))
     }
 
-    func testFoundInPackagedAppWhenProvided() throws {
-        guard let path = ProcessInfo.processInfo.environment["VITRUVIAN_CODE_PACKAGED_APP"], !path.isEmpty else {
-            throw XCTSkip("VITRUVIAN_CODE_PACKAGED_APP is not set: no packaged app to check")
-        }
-        let bundle = try XCTUnwrap(Bundle(url: URL(fileURLWithPath: path)))
-        let found = try XCTUnwrap(BundledNode.locate(in: bundle), "packaged app must contain bundled node and claude-helper.mjs")
-        XCTAssertTrue(found.nodeURL.path.hasSuffix("/Contents/Helpers/node"))
-        XCTAssertTrue(found.helperURL.path.hasSuffix("/Contents/Resources/claude-helper/claude-helper.mjs"))
+    /// The layout `bundle.rs` and the Bazel app write, file for file: the main
+    /// program, both helpers, the helper's script and Mermaid's SwiftPM bundle.
+    /// This runs under Bazel and SwiftPM alike; it never skips.
+    func testFindsBundledNodeAndHelperInThePackagedAppLayout() throws {
+        let bundle = try makeApp(files: [
+            ("Helpers/bot-engine", "#!/bin/sh\n", true),
+            ("Helpers/node", "#!/bin/sh\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+            ("Resources/VitruvianCode_VitruvianCodeUI.bundle/mermaid.min.js", "m\n", false),
+        ])
+        let found = try XCTUnwrap(BundledNode.locate(in: bundle), "the packaged app must hold bundled node and claude-helper.mjs")
+        XCTAssertTrue(found.nodeURL.path.hasSuffix("/Sample.app/Contents/Helpers/node"), found.nodeURL.path)
+        XCTAssertTrue(
+            found.helperURL.path.hasSuffix("/Sample.app/Contents/Resources/claude-helper/claude-helper.mjs"),
+            found.helperURL.path
+        )
     }
 }

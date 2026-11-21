@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -120,6 +120,76 @@ describe("bundled claude-helper.mjs isolated load check", () => {
     const bundleSource = readFileSync(BUNDLE_MJS, "utf8");
     expect(bundleSource).not.toMatch(
       /from\s*["']@anthropic-ai\/claude-agent-sdk-(darwin|linux|win32)-/,
+    );
+  });
+
+  test("is the same bytes on every machine: no Bazel output path or host config name", () => {
+    const bundleSource = readFileSync(BUNDLE_MJS, "utf8");
+    // The sandbox path (`bazel-out/<host config>/bin`), and the names of the
+    // host configs it carries: `darwin_arm64-fastbuild`, `darwin_x86_64-opt`...
+    expect(bundleSource).not.toMatch(/bazel-out/);
+    expect(bundleSource).not.toMatch(/execroot/);
+    expect(bundleSource).not.toMatch(/darwin_(arm64|x86_64|amd64)/);
+    expect(bundleSource).not.toMatch(/-(fastbuild|dbg|opt)\b.*\/bin\//);
+    expect(bundleSource).not.toMatch(/^\/\/ (\.\.\/)+/m);
+  });
+
+  test("normalize-bundle.mjs keeps the package-relative module path whatever the sandbox depth or host config", () => {
+    const dir = makeTempDir();
+    const input = join(dir, "in.mjs");
+    const output = join(dir, "out.mjs");
+    const expected = [
+      "// apps/x/src/main.ts",
+      "// node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/util.js",
+      "// @__NO_SIDE_EFFECTS__",
+      "const a = 1;",
+      "",
+    ].join("\n");
+    for (const config of [
+      "darwin_arm64-fastbuild",
+      "darwin_x86_64-opt",
+      "k8-dbg",
+    ]) {
+      for (const up of [
+        "../../../",
+        "../../../../../../../../../../../../../",
+      ]) {
+        writeFileSync(
+          input,
+          [
+            `// ${up}execroot/_main/bazel-out/${config}/bin/apps/x/src/main.ts`,
+            `// ${up}execroot/_main/bazel-out/${config}/bin/node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/util.js`,
+            "// @__NO_SIDE_EFFECTS__",
+            "const a = 1;",
+            "",
+          ].join("\n"),
+          "utf8",
+        );
+        const run = spawnSync(
+          resolveRealNodeBinary(),
+          [
+            join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"),
+            input,
+            output,
+          ],
+          { encoding: "utf8" },
+        );
+        expect(run.stderr).toBe("");
+        expect(run.status).toBe(0);
+        expect(readFileSync(output, "utf8")).toBe(expected);
+      }
+    }
+
+    // A path it does not know how to shorten must fail the build, not ship.
+    writeFileSync(input, "// /Users/someone/execroot/odd/layout.js\n", "utf8");
+    const bad = spawnSync(
+      resolveRealNodeBinary(),
+      [join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"), input, output],
+      { encoding: "utf8" },
+    );
+    expect(bad.status).not.toBe(0);
+    expect(bad.stderr).toMatch(
+      /bazel-out or execroot path is still in the bundle/,
     );
   });
 

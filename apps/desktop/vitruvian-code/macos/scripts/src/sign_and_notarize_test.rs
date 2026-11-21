@@ -931,3 +931,67 @@ fn signs_nested_helpers_node_and_node_macho_with_jit_entitlements_in_both_modes(
         }
     }
 }
+
+#[test]
+fn signs_node_with_jit_entitlements_however_the_app_path_is_spelled() {
+    // The script finds node by comparing paths as text; a spelling of the same
+    // app that differs from the one `find` prints must not sign node without
+    // its entitlements and say nothing.
+    let dir = scratch_dir("node_signing_path_spellings");
+    let fake_bin = dir.join("fake_bin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    install_fake_signing_toolchain(&fake_bin, false);
+    let harness = create_mocked_harness_script(&dir, &fake_bin);
+
+    let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", true);
+    add_helpers(&app);
+    let link = dir.join("link-to-folder");
+    std::os::unix::fs::symlink(&dir, &link).unwrap();
+    let app_str = app.to_str().unwrap().to_string();
+    let spellings = [
+        app_str.clone(),
+        format!("{}/", app_str),
+        format!("{}//", app_str),
+        format!("{}/./Vitruvian Code.app", dir.display()),
+        format!(
+            "{}/../{}/Vitruvian Code.app",
+            dir.display(),
+            dir.file_name().unwrap().to_string_lossy()
+        ),
+        format!("{}/Vitruvian Code.app", link.display()),
+        format!("{}/Vitruvian Code.app/", link.display()),
+    ];
+
+    let node_ent = node_entitlements_path();
+    for (i, spelling) in spellings.iter().enumerate() {
+        let log_dir = dir.join(format!("logs{i}"));
+        let runner_temp = dir.join(format!("runner_temp{i}"));
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::create_dir_all(&runner_temp).unwrap();
+        let out = Command::new(&harness)
+            .args(["apps", "--entitlements-app", spelling])
+            .env("FAKE_LOG_DIR", &log_dir)
+            .env("RUNNER_TEMP", &runner_temp)
+            .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
+            .env("VITRUVIAN_CODE_NODE_ENTITLEMENTS", &node_ent)
+            .env("SIGNING", "adhoc")
+            .output()
+            .expect("run sign-and-notarize harness");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "spelling {spelling:?} stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let codesign_log = fs::read_to_string(log_dir.join("codesign.log")).unwrap();
+        assert!(
+            codesign_log.lines().any(|l| {
+                l.contains("--sign ")
+                    && l.contains("Contents/Helpers/node")
+                    && l.contains(&format!("--entitlements {}", node_ent.display()))
+            }),
+            "spelling {spelling:?}: node was not signed with node.entitlements:\n{codesign_log}"
+        );
+    }
+}
