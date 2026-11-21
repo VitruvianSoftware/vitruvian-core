@@ -591,6 +591,17 @@ mod tests {
     }
 
     #[test]
+    fn node_entitlements_must_be_exactly_the_jit_pair() {
+        let exact = "<plist><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>";
+        assert!(check_packaged_app::unexpected_entitlement_keys(exact).is_empty());
+        let extra = "<plist><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/></dict></plist>";
+        assert_eq!(
+            check_packaged_app::unexpected_entitlement_keys(extra),
+            vec!["com.apple.security.cs.disable-library-validation".to_string()]
+        );
+    }
+
+    #[test]
     fn check_packaged_app_rejects_missing_bad_arch_unentitled_node_and_missing_helper() {
         let dir = std::env::temp_dir().join("check_pkg_node_failures_test");
         let _ = fs::remove_dir_all(&dir);

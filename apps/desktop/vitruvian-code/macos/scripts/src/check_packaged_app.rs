@@ -44,6 +44,18 @@ pub fn entitlements_plist_has_true(plist: &str, key: &str) -> bool {
     rest.starts_with("<true/>")
 }
 
+/// Every `<key>` in an entitlements plist that isn't one Node needs. Node is
+/// signed with `node.entitlements` alone, so anything else (for example
+/// `disable-library-validation`) means it was signed with the wrong file.
+pub fn unexpected_entitlement_keys(plist: &str) -> Vec<String> {
+    plist
+        .split("<key>")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("</key>").map(|(k, _)| k.trim().to_string()))
+        .filter(|k| !REQUIRED_NODE_ENTITLEMENTS.contains(&k.as_str()))
+        .collect()
+}
+
 pub fn check_node_entitlements(node_exe: &Path) -> Result<(), String> {
     let out = Command::new("codesign")
         .args(["-d", "--entitlements", "-", "--xml"])
@@ -76,6 +88,14 @@ pub fn check_node_entitlements(node_exe: &Path) -> Result<(), String> {
                 key
             ));
         }
+    }
+    let extra = unexpected_entitlement_keys(&xml);
+    if !extra.is_empty() {
+        return Err(format!(
+            "{} carries entitlements beyond the JIT pair: {}",
+            node_exe.display(),
+            extra.join(", ")
+        ));
     }
     Ok(())
 }
