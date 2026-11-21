@@ -33,3 +33,16 @@ bash "$build" "$out/scope" release_scope \
 bash "$build" --test "$out/scope" release_scope tools/release-scope/src/lib.rs
 "$out/scope/release_scope-test" >/dev/null
 echo "PASS release_scope and its tests build with plain rustc and run"
+
+bash "$build" --lib "$out/appset-lib" appset_render \
+	tools/gitops/appset-render/src/lib.rs -O
+test -f "$out/appset-lib/libvitruvian_pycompat.rlib"
+test -f "$out/appset-lib/libappset_render.rlib"
+echo "PASS appset_render rlib builds with plain rustc (--lib) and links pycompat"
+
+bash "$build" "$out/appset" appset_render \
+	tools/gitops/appset-render/src/lib.rs tools/gitops/appset-render/src/main.rs -O
+"$out/appset/appset_render" --help >/dev/null 2>&1
+bash "$build" --test "$out/appset" appset_render tools/gitops/appset-render/src/lib.rs -O
+"$out/appset/appset_render-test" >/dev/null
+echo "PASS appset_render and its tests build with plain rustc and run"

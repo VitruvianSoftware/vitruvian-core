@@ -25,8 +25,15 @@ rust_test(
     crate = ":vitruvian_pycompat",
 )
 
-# rustc-build.sh is the out-of-Bazel build the scheduled workflows and
-# package-desktop use; this test runs it the way they do.
+# Sources and plain-rustc build helper, for //tools/ci:build_ci_tool_test.
+filegroup(
+    name = "srcs",
+    srcs = glob(["src/**/*.rs"]) + ["rustc-build.sh"],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
+# rustc-build.sh is the out-of-Bazel build the scheduled workflows,
+# package-desktop and build-ci-tool use; this test runs it the way they do.
 sh_test(
     name = "rustc_build_test",
     size = "medium",
@@ -34,6 +41,7 @@ sh_test(
     data = glob(["src/**/*.rs"]) + [
         "rustc-build.sh",
         "//tools/agent-app:rust_sources",
+        "//tools/gitops/appset-render:srcs",
         "//tools/release-scope:rust_sources",
         "//tools/sync-downloads:rust_sources",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
