@@ -2,6 +2,13 @@
 
 All notable changes to the vitruvian-orchestrator Antigravity plugin are recorded here.
 
+## [0.2.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-orchestrator-antigravity-v0.2.1...vitruvian-orchestrator-antigravity-v0.2.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **vitruvian-orchestrator-antigravity:** report the plugin's real version from the MCP server ([#5310](https://github.com/VitruvianSoftware/vitruvian-core/issues/5310)) ([8d8808f](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d8808f3d6739bf0fecc2e83cffe589628018aaf))
+
 ## [0.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-orchestrator-antigravity-v0.2.0...vitruvian-orchestrator-antigravity-v0.2.1) (2026-11-21)
 
 
