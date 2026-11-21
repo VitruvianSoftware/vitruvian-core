@@ -24,6 +24,13 @@ Component package providing implementation for `tools/bazel-cache/src`.
 - `[lib.rs:LiveState]`
 - `[lib.rs:classify_base]`
 - `[lib.rs:classify_root]`
+- `[lib.rs:StatusEnv]`
+- `[lib.rs:CacheEntry]`
+- `[lib.rs:CacheStatusReport]`
+- `[lib.rs:discover_cache_candidates]`
+- `[lib.rs:collect_cache_status]`
+- `[lib.rs:format_cache_status_text]`
+- `[lib.rs:format_cache_status_json]`
 
 ## Invariants
 - None
