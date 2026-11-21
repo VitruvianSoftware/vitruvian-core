@@ -29,11 +29,12 @@
 //!   GET    /mcp/d/{id}, DELETE /mcp/d/{id}                   405: no SSE stream or session delete in P1
 //!   POST   /devices                                          register this person's device (connector token)
 //!   GET    /connect                                          the connector's WebSocket (connector token)
+//!   GET    /, /auth/*, /devices, /devices/{id}, /activity    the dashboard (a signed-in browser, [`crate::dashboard`])
 //!
 //! What it guards: an AI app's token only works on `/mcp`, the connector's
-//! only on `/devices` and `/connect` (one verifier per side, each pinned to
-//! its client ids, and each asking for the Zitadel role that marks an invited
-//! person). A device answers only its owner, and
+//! only on `/devices` and `/connect`, the dashboard's only on `/auth/*` (one
+//! verifier per side, each pinned to its client ids, and each asking for the
+//! Zitadel role that marks an invited person). A device answers only its owner, and
 //! [`App::owned_device`] is the one place that is decided: anyone else gets
 //! the same answer as for a device that does not exist. Nothing logged
 //! carries call arguments, output or a token.
@@ -69,6 +70,7 @@ use vitruvian_relay_protocol::{
 };
 
 use crate::config::Settings;
+use crate::dashboard::{self, Dashboard};
 use crate::devices::{
     clean_device_name, DeviceRecord, NewDevice, DEFAULT_DEVICE_NAME, DEVICE_NAME_MAX,
 };
@@ -321,10 +323,15 @@ struct Session {
 }
 
 pub struct App {
-    settings: Settings,
+    pub(crate) settings: Settings,
     mcp_verifier: Arc<Verifier>,
     connector_verifier: Arc<Verifier>,
-    store: Arc<dyn Store>,
+    /// Pinned to the dashboard's own client id: its token works only on
+    /// `/auth/*`, and no other token works there.
+    pub(crate) dashboard_verifier: Arc<Verifier>,
+    /// Dashboard sessions, and the client that exchanges a sign-in code.
+    pub(crate) dashboard: Dashboard,
+    pub(crate) store: Arc<dyn Store>,
     /// A counter that goes up each time a device's key is replaced
     /// ([`App::key_changed`]). A `/connect` takes the number before it reads
     /// the device's key, and registers only if that device has not changed
@@ -337,10 +344,10 @@ pub struct App {
     /// the map holds only the changes of the last few minutes, never one per
     /// device ever changed.
     key_changes: Mutex<HashMap<String, (u64, Instant, Change)>>,
-    registry: Registry,
+    pub(crate) registry: Registry,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
-    timing: Timing,
+    pub(crate) timing: Timing,
     log: LogSink,
     /// Tests: pause a connection between checking its hello and registering
     /// it (reached, release).
@@ -357,6 +364,7 @@ impl App {
         settings: Settings,
         mcp: Verifier,
         connector: Verifier,
+        dashboard_verifier: Verifier,
         store: Arc<dyn Store>,
         timing: Timing,
         log: LogSink,
@@ -378,6 +386,8 @@ impl App {
             settings,
             mcp_verifier: Arc::new(mcp),
             connector_verifier: Arc::new(connector),
+            dashboard_verifier: Arc::new(dashboard_verifier),
+            dashboard: Dashboard::new(concat!("vitruvian-relay/", env!("CARGO_PKG_VERSION"))),
             store,
             key_generation: AtomicU64::new(0),
             key_changes: Mutex::new(HashMap::new()),
@@ -392,7 +402,7 @@ impl App {
         })
     }
 
-    fn log(&self, event: &str, fields: Value) {
+    pub(crate) fn log(&self, event: &str, fields: Value) {
         log_event(&self.log, event, fields);
     }
 
@@ -572,17 +582,17 @@ fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
     respond(status, "text/plain", msg)
 }
 
-fn not_found() -> Response<Body> {
+pub(crate) fn not_found() -> Response<Body> {
     text(StatusCode::NOT_FOUND, "not found")
 }
 
 /// A device id in a path: what `uuid_v4` makes, or anything shaped like it.
 /// Checked before it goes into a header or a log line.
-fn valid_device_id(id: &str) -> bool {
+pub(crate) fn valid_device_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-fn header_str(req: &Request<Incoming>, name: header::HeaderName) -> Option<&str> {
+pub(crate) fn header_str(req: &Request<Incoming>, name: header::HeaderName) -> Option<&str> {
     req.headers().get(name).and_then(|v| v.to_str().ok())
 }
 
@@ -600,7 +610,7 @@ fn accepts_json(accept: Option<&str>) -> bool {
 
 /// Reads a request body: 413 only when it is over `limit`, 408 when it does
 /// not arrive in time, 400 for anything else wrong with it.
-async fn read_body(
+pub(crate) async fn read_body(
     body: Incoming,
     limit: usize,
     timeout: Duration,
@@ -718,6 +728,9 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
             ),
             _ => not_found(),
         };
+    }
+    if dashboard::wants(&method, &path) {
+        return dashboard::handle(app, req).await;
     }
     match (method, path.as_str()) {
         (Method::GET, "/healthz") => text(StatusCode::OK, "ok"),
@@ -1825,4 +1838,4 @@ where
 
 #[cfg(test)]
 #[path = "http_tests.rs"]
-mod tests;
+pub(crate) mod tests;

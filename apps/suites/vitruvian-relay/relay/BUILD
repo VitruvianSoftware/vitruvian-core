@@ -55,12 +55,17 @@ _CRATES = [
     "@vitruvian_relay_crates//:tokio-postgres",
     "@vitruvian_relay_crates//:tokio-postgres-rustls",
     "@vitruvian_relay_crates//:tokio-tungstenite",
+    "@vitruvian_relay_crates//:ureq",
 ]
 
 rust_library(
     name = "vitruvian_relay",
     srcs = [
         "src/config.rs",
+        "src/dashboard/mod.rs",
+        "src/dashboard/pages.rs",
+        "src/dashboard/session.rs",
+        "src/dashboard/tests.rs",
         "src/devices.rs",
         "src/http.rs",
         "src/http_tests.rs",
@@ -73,8 +78,9 @@ rust_library(
         "src/store.rs",
         "src/store_contract.rs",
     ],
-    # The schema, compiled into the binary (src/store.rs include_str!s it).
-    compile_data = glob(["migrations/*.sql"]),
+    # The schema (src/store.rs include_str!s it) and the dashboard's
+    # stylesheet (src/dashboard/mod.rs), compiled into the binary.
+    compile_data = glob(["migrations/*.sql"]) + ["src/dashboard/relay.css"],
     crate_name = "vitruvian_relay",
     crate_root = "src/lib.rs",
     edition = "2021",

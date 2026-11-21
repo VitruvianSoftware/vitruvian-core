@@ -49,15 +49,16 @@ use vitruvian_relay_protocol::{
     ToolDef, PROTOCOL,
 };
 
-const PUBLIC_URL: &str = "https://relay.example.test";
-const ISSUER: &str = "https://auth.example.test";
-const PROJECT_ID: &str = "123456789";
-const MCP_CLIENT: &str = "claude-client";
-const CONNECTOR_CLIENT: &str = "connector-client";
-const ALICE: &str = "alice";
-const BOB: &str = "bob";
+pub(crate) const PUBLIC_URL: &str = "https://relay.example.test";
+pub(crate) const ISSUER: &str = "https://auth.example.test";
+pub(crate) const PROJECT_ID: &str = "123456789";
+pub(crate) const MCP_CLIENT: &str = "claude-client";
+pub(crate) const CONNECTOR_CLIENT: &str = "connector-client";
+pub(crate) const ALICE: &str = "alice";
+pub(crate) const BOB: &str = "bob";
 /// The Zitadel role that lets a person in.
-const ROLE: &str = "relay-user";
+pub(crate) const ROLE: &str = "relay-user";
+pub(crate) const DASHBOARD_CLIENT: &str = "dashboard-client";
 const ACCEPT: &str = "application/json, text/event-stream";
 
 // A throwaway 2048-bit RSA key (PKCS#8 DER, base64url), the same test-only key
@@ -84,14 +85,14 @@ const TEST_RSA_KEY: &str = concat!(
     "xLI",
 );
 
-async fn within<T>(f: impl std::future::Future<Output = T>) -> T {
+pub(crate) async fn within<T>(f: impl std::future::Future<Output = T>) -> T {
     tokio::time::timeout(Duration::from_secs(10), f)
         .await
         .expect("timed out")
 }
 
 /// Waits until `f` holds.
-async fn until(f: impl Fn() -> bool) {
+pub(crate) async fn until(f: impl Fn() -> bool) {
     within(async {
         while !f() {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -100,15 +101,15 @@ async fn until(f: impl Fn() -> bool) {
     .await
 }
 
-fn b64url(bytes: &[u8]) -> String {
+pub(crate) fn b64url(bytes: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn b64(bytes: &[u8]) -> String {
+pub(crate) fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -130,7 +131,7 @@ fn jwks(pair: &RsaKeyPair) -> Value {
     }]})
 }
 
-fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
+pub(crate) fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
     mint_exp(pair, client_id, sub, now_secs() + 600)
 }
 
@@ -144,7 +145,7 @@ fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) 
 }
 
 /// `role: None` is a person who signed in but was never invited.
-fn mint_with_role(
+pub(crate) fn mint_with_role(
     pair: &RsaKeyPair,
     client_id: &str,
     sub: &str,
@@ -177,7 +178,7 @@ fn mint_with_role(
 }
 
 /// Serves the key set on a loopback port from a plain thread.
-fn start_jwks_server(body: String) -> String {
+pub(crate) fn start_jwks_server(body: String) -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/oauth/v2/keys", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -198,44 +199,121 @@ fn start_jwks_server(body: String) -> String {
     url
 }
 
-struct Harness {
-    app: Arc<App>,
-    addr: std::net::SocketAddr,
-    rsa: RsaKeyPair,
-    logs: Arc<Mutex<Vec<String>>>,
-    store: Arc<MemStore>,
+/// A stand-in for the identity service's token endpoint: records the forms
+/// it is sent and answers with whatever the test last set.
+pub(crate) struct TokenServer {
+    pub(crate) url: String,
+    requests: Arc<Mutex<Vec<String>>>,
+    answer: Arc<Mutex<(u16, String)>>,
 }
 
-struct Reply {
-    status: StatusCode,
-    headers: http::HeaderMap,
-    body: String,
+impl TokenServer {
+    /// Answers every exchange with this access token.
+    pub(crate) fn give_token(&self, access_token: &str) {
+        *self.answer.lock().unwrap() = (
+            200,
+            json!({"access_token": access_token, "token_type": "Bearer", "expires_in": 3600})
+                .to_string(),
+        );
+    }
+
+    /// Answers every exchange with an error.
+    pub(crate) fn refuse(&self) {
+        *self.answer.lock().unwrap() = (400, json!({"error": "invalid_grant"}).to_string());
+    }
+
+    /// The form bodies sent so far.
+    pub(crate) fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+fn start_token_server() -> TokenServer {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/oauth/v2/token", listener.local_addr().unwrap());
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let answer = Arc::new(Mutex::new((
+        400,
+        json!({"error": "invalid_grant"}).to_string(),
+    )));
+    let (seen, reply) = (requests.clone(), answer.clone());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut length = 0usize;
+            let mut line = String::new();
+            while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
+                if let Some((k, v)) = line.split_once(':') {
+                    if k.eq_ignore_ascii_case("content-length") {
+                        length = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                line.clear();
+            }
+            let mut body = vec![0u8; length];
+            std::io::Read::read_exact(&mut reader, &mut body).unwrap();
+            seen.lock()
+                .unwrap()
+                .push(String::from_utf8_lossy(&body).into_owned());
+            let (status, text) = reply.lock().unwrap().clone();
+            let _ = write!(
+                stream,
+                "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+                text.len()
+            );
+        }
+    });
+    TokenServer {
+        url,
+        requests,
+        answer,
+    }
+}
+
+pub(crate) struct Harness {
+    pub(crate) app: Arc<App>,
+    pub(crate) addr: std::net::SocketAddr,
+    pub(crate) rsa: RsaKeyPair,
+    pub(crate) logs: Arc<Mutex<Vec<String>>>,
+    pub(crate) store: Arc<MemStore>,
+    pub(crate) tokens: TokenServer,
+}
+
+pub(crate) struct Reply {
+    pub(crate) status: StatusCode,
+    pub(crate) headers: http::HeaderMap,
+    pub(crate) body: String,
 }
 
 impl Reply {
-    fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         serde_json::from_str(&self.body).unwrap_or_else(|_| panic!("not JSON: {}", self.body))
     }
-    fn header(&self, name: &str) -> Option<String> {
+    pub(crate) fn header(&self, name: &str) -> Option<String> {
         self.headers
             .get(name)
             .map(|v| v.to_str().unwrap().to_string())
     }
 }
 
-async fn harness() -> Harness {
+pub(crate) async fn harness() -> Harness {
     harness_with(Timing::default()).await
 }
 
-async fn harness_with(timing: Timing) -> Harness {
+pub(crate) async fn harness_with(timing: Timing) -> Harness {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
+    let tokens = start_token_server();
     let env: std::collections::HashMap<&str, String> = [
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
         ("ISSUER", ISSUER.to_string()),
         ("PROJECT_ID", PROJECT_ID.to_string()),
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
+        ("DASHBOARD_CLIENT_ID", DASHBOARD_CLIENT.to_string()),
+        ("MCP_CLIENT_LABELS", format!("Claude={MCP_CLIENT}")),
+        ("TOKEN_URI", tokens.url.clone()),
         (
             "DATABASE_URL",
             "postgres://unused@localhost/unused".to_string(),
@@ -266,6 +344,7 @@ async fn harness_with(timing: Timing) -> Harness {
         settings,
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
+        verifier_for(vec![DASHBOARD_CLIENT.into()]),
         store.clone(),
         timing,
         sink,
@@ -279,25 +358,30 @@ async fn harness_with(timing: Timing) -> Harness {
         rsa,
         logs,
         store,
+        tokens,
     }
 }
 
 impl Harness {
-    fn mcp_token(&self, sub: &str) -> String {
+    pub(crate) fn mcp_token(&self, sub: &str) -> String {
         mint(&self.rsa, MCP_CLIENT, sub)
     }
 
-    fn connector_token(&self, sub: &str) -> String {
+    pub(crate) fn connector_token(&self, sub: &str) -> String {
         mint(&self.rsa, CONNECTOR_CLIENT, sub)
     }
 
-    fn logs(&self) -> String {
+    pub(crate) fn dashboard_token(&self, sub: &str) -> String {
+        mint(&self.rsa, DASHBOARD_CLIENT, sub)
+    }
+
+    pub(crate) fn logs(&self) -> String {
         self.logs.lock().unwrap().join("\n")
     }
 
     /// Opens a connection and sends one request. The returned future drives
     /// the response; dropping it (and the connection task) drops the request.
-    async fn send(
+    pub(crate) async fn send(
         &self,
         method: &str,
         path: &str,
@@ -354,12 +438,12 @@ impl Harness {
         String::from_utf8_lossy(&got).into_owned()
     }
 
-    async fn get(&self, path: &str) -> Reply {
+    pub(crate) async fn get(&self, path: &str) -> Reply {
         self.send("GET", path, &[], "").await
     }
 
     /// A new device for `sub` (no name, no device id sent).
-    async fn register(&self, sub: &str, key: &Ed25519KeyPair) -> Reply {
+    pub(crate) async fn register(&self, sub: &str, key: &Ed25519KeyPair) -> Reply {
         self.register_with(sub, key, None, None).await
     }
 
@@ -382,7 +466,7 @@ impl Harness {
         self.register_body(sub, &body.to_string()).await
     }
 
-    async fn register_body(&self, sub: &str, body: &str) -> Reply {
+    pub(crate) async fn register_body(&self, sub: &str, body: &str) -> Reply {
         self.send(
             "POST",
             "/devices",
@@ -404,14 +488,18 @@ impl Harness {
     }
 
     /// Registers a device for `sub` and returns its id and key.
-    async fn new_device(&self, sub: &str) -> (String, Ed25519KeyPair) {
+    pub(crate) async fn new_device(&self, sub: &str) -> (String, Ed25519KeyPair) {
         let key = ed25519();
         let r = self.register(sub, &key).await;
         assert_eq!(r.status, StatusCode::OK, "{}", r.body);
         (r.json()["device_id"].as_str().unwrap().to_string(), key)
     }
 
-    fn mcp_headers(&self, sub: &str, session: Option<&str>) -> Vec<(&'static str, String)> {
+    pub(crate) fn mcp_headers(
+        &self,
+        sub: &str,
+        session: Option<&str>,
+    ) -> Vec<(&'static str, String)> {
         let mut h = vec![
             ("authorization", format!("Bearer {}", self.mcp_token(sub))),
             ("accept", ACCEPT.to_string()),
@@ -423,7 +511,13 @@ impl Harness {
         h
     }
 
-    async fn rpc(&self, device: &str, sub: &str, session: Option<&str>, body: Value) -> Reply {
+    pub(crate) async fn rpc(
+        &self,
+        device: &str,
+        sub: &str,
+        session: Option<&str>,
+        body: Value,
+    ) -> Reply {
         self.send(
             "POST",
             &format!("/mcp/d/{device}"),
@@ -434,7 +528,7 @@ impl Harness {
     }
 
     /// `initialize`, then returns the session id it handed out.
-    async fn session(&self, device: &str, sub: &str) -> String {
+    pub(crate) async fn session(&self, device: &str, sub: &str) -> String {
         let r = self
             .rpc(
                 device,
@@ -451,7 +545,7 @@ impl Harness {
 
     // The error is tungstenite's own (it carries the refused HTTP response).
     #[allow(clippy::result_large_err)]
-    async fn ws(
+    pub(crate) async fn ws(
         &self,
         token: &str,
     ) -> Result<
@@ -484,7 +578,7 @@ impl Harness {
     }
 
     /// Connects as the device and waits for `welcome`.
-    async fn connect(
+    pub(crate) async fn connect(
         &self,
         sub: &str,
         device: &str,
@@ -520,7 +614,7 @@ impl Harness {
     }
 }
 
-fn ed25519() -> Ed25519KeyPair {
+pub(crate) fn ed25519() -> Ed25519KeyPair {
     let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
     Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap()
 }
@@ -555,7 +649,7 @@ where
     }
 }
 
-fn tool(name: &str) -> ToolDef {
+pub(crate) fn tool(name: &str) -> ToolDef {
     ToolDef {
         name: name.into(),
         description: format!("the {name} tool"),
@@ -565,18 +659,18 @@ fn tool(name: &str) -> ToolDef {
 
 /// A connector on a real WebSocket: answers pings (until told not to), hands
 /// calls and cancels to the test, and sends what the test gives it.
-struct FakeDevice {
-    frames: mpsc::UnboundedReceiver<ToConnector>,
-    out: mpsc::UnboundedSender<ToRelay>,
-    answer_pings: Arc<AtomicBool>,
-    auto_ack: Arc<AtomicBool>,
-    starts: Arc<Mutex<Vec<String>>>,
+pub(crate) struct FakeDevice {
+    pub(crate) frames: mpsc::UnboundedReceiver<ToConnector>,
+    pub(crate) out: mpsc::UnboundedSender<ToRelay>,
+    pub(crate) answer_pings: Arc<AtomicBool>,
+    pub(crate) auto_ack: Arc<AtomicBool>,
+    pub(crate) starts: Arc<Mutex<Vec<String>>>,
     /// Ids the relay sent a `ResultAck` for (kept out of `frames`).
-    result_acks: Arc<Mutex<Vec<String>>>,
+    pub(crate) result_acks: Arc<Mutex<Vec<String>>>,
     /// Pings received from the relay.
-    pings: Arc<AtomicU32>,
-    closed: Arc<tokio::sync::Notify>,
-    is_closed: Arc<AtomicBool>,
+    pub(crate) pings: Arc<AtomicU32>,
+    pub(crate) closed: Arc<tokio::sync::Notify>,
+    pub(crate) is_closed: Arc<AtomicBool>,
 }
 
 impl FakeDevice {
@@ -670,22 +764,22 @@ impl FakeDevice {
         self.auto_ack.store(false, Ordering::SeqCst);
     }
 
-    async fn next(&mut self) -> ToConnector {
+    pub(crate) async fn next(&mut self) -> ToConnector {
         within(self.frames.recv()).await.expect("device frame")
     }
 
-    async fn next_call(&mut self) -> Call {
+    pub(crate) async fn next_call(&mut self) -> Call {
         match self.next().await {
             ToConnector::Call(c) => c,
             other => panic!("expected a call, got {other:?}"),
         }
     }
 
-    fn send(&self, f: ToRelay) {
+    pub(crate) fn send(&self, f: ToRelay) {
         self.out.send(f).unwrap();
     }
 
-    fn reply(&self, call_id: &str, text: &str) {
+    pub(crate) fn reply(&self, call_id: &str, text: &str) {
         self.send(ToRelay::Result(CallResult {
             call_id: call_id.into(),
             content: json!([{"type": "text", "text": text}]),
@@ -694,7 +788,7 @@ impl FakeDevice {
         }));
     }
 
-    async fn wait_closed(&self) {
+    pub(crate) async fn wait_closed(&self) {
         within(async {
             while !self.is_closed.load(Ordering::SeqCst) {
                 let _ =
@@ -705,13 +799,13 @@ impl FakeDevice {
     }
 }
 
-fn call_body(id: Value, tool: &str, args: Value) -> Value {
+pub(crate) fn call_body(id: Value, tool: &str, args: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
            "params": {"name": tool, "arguments": args}})
 }
 
 /// Starts a tools/call in the background.
-fn spawn_rpc(
+pub(crate) fn spawn_rpc(
     h: &Arc<Harness>,
     device: &str,
     sub: &str,
@@ -3751,7 +3845,7 @@ impl HeldSends {
     }
 }
 
-fn error_text(r: &Reply) -> String {
+pub(crate) fn error_text(r: &Reply) -> String {
     assert_eq!(r.json()["result"]["isError"], true, "{}", r.body);
     r.json()["result"]["content"][0]["text"]
         .as_str()

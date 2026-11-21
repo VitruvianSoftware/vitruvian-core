@@ -68,6 +68,7 @@ async fn main() {
     };
     let mcp = verifier_for(settings.mcp_client_ids.clone());
     let connector = verifier_for(vec![settings.connector_client_id.clone()]);
+    let dashboard = verifier_for(vec![settings.dashboard_client_id.clone()]);
     let port = settings.port;
     let log = stdout_log();
     log_event(
@@ -121,6 +122,7 @@ async fn main() {
         settings,
         mcp,
         connector,
+        dashboard,
         store,
         Timing::default(),
         log.clone(),

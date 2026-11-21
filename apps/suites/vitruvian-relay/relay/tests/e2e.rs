@@ -237,6 +237,7 @@ async fn start_relay_in(timing: RelayTiming, store: Arc<MemStore>) -> Relay {
         ("PROJECT_ID", PROJECT_ID.to_string()),
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
+        ("DASHBOARD_CLIENT_ID", "dashboard-client".to_string()),
         (
             "DATABASE_URL",
             "postgres://unused@localhost/unused".to_string(),
@@ -266,6 +267,7 @@ async fn start_relay_in(timing: RelayTiming, store: Arc<MemStore>) -> Relay {
         settings,
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
+        verifier_for(vec!["dashboard-client".into()]),
         store.clone(),
         timing,
         sink,

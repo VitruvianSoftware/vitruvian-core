@@ -19,9 +19,11 @@
 // SOFTWARE.
 
 //! The relay server: which devices are connected, how calls reach them, and
-//! the HTTP side (MCP for AI apps, device registration, `/connect`).
+//! the HTTP side (MCP for AI apps, device registration, `/connect`, and the
+//! dashboard).
 
 pub mod config;
+pub mod dashboard;
 pub mod devices;
 pub mod http;
 pub mod legacy_devices;

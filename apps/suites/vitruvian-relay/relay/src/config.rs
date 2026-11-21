@@ -31,8 +31,14 @@ pub struct Settings {
     pub project_id: String,
     /// Client ids of the AI apps allowed on `/mcp/d/{device_id}` (Claude).
     pub mcp_client_ids: Vec<String>,
+    /// What to call each AI app in the dashboard (`Claude=<id>`), from
+    /// `MCP_CLIENT_LABELS`. Optional; an app with no label is "an AI app".
+    pub mcp_client_labels: Vec<(String, String)>,
     /// Client id of the connector, the only one allowed on `/devices` and `/connect`.
     pub connector_client_id: String,
+    /// Client id of the dashboard's sign-in (`relay-dashboard`), the only one
+    /// allowed on `/auth/*`. In neither of the other two lists.
+    pub dashboard_client_id: String,
     /// The Zitadel project role that marks an invited person. Being able to
     /// sign in is not enough: a token without it is refused (`role_missing`).
     pub required_role: String,
@@ -49,6 +55,9 @@ pub struct Settings {
     /// Overrides where signing keys are fetched. Unset in production (keys come
     /// from `{issuer}/oauth/v2/keys`); set for local runs against test keys.
     pub jwks_uri: Option<String>,
+    /// Overrides where the dashboard's sign-in code is exchanged. Unset in
+    /// production (`{issuer}/oauth/v2/token`); set for local runs and tests.
+    pub token_uri: Option<String>,
 }
 
 /// The role an invited person holds, unless `REQUIRED_ROLE` says otherwise.
@@ -128,11 +137,40 @@ impl Settings {
         if mcp_client_ids.is_empty() {
             return Err("MCP_CLIENT_IDS must name at least one id".into());
         }
+        let mut mcp_client_labels = Vec::new();
+        for entry in csv(&opt("MCP_CLIENT_LABELS").unwrap_or_default()) {
+            let pair = entry
+                .split_once('=')
+                .map(|(label, id)| (label.trim(), id.trim()))
+                .filter(|(label, id)| !label.is_empty() && !id.is_empty());
+            let Some((label, id)) = pair else {
+                return Err(format!(
+                    "MCP_CLIENT_LABELS entry {entry:?} must look like Claude=<client id>"
+                ));
+            };
+            if !mcp_client_ids.iter().any(|known| known == id) {
+                return Err(format!(
+                    "MCP_CLIENT_LABELS names {id:?}, which is not in MCP_CLIENT_IDS"
+                ));
+            }
+            mcp_client_labels.push((label.to_string(), id.to_string()));
+        }
         let connector_client_id = req("CONNECTOR_CLIENT_ID")?;
         if mcp_client_ids.contains(&connector_client_id) {
             // The connector's token must never work on /mcp, nor an AI app's
             // on /connect.
             return Err("CONNECTOR_CLIENT_ID must not also be in MCP_CLIENT_IDS".into());
+        }
+        let dashboard_client_id = req("DASHBOARD_CLIENT_ID")?;
+        if mcp_client_ids.contains(&dashboard_client_id)
+            || dashboard_client_id == connector_client_id
+        {
+            // The same rule for the dashboard: its token must never work on
+            // /mcp, /devices or /connect, nor theirs on /auth/*.
+            return Err(
+                "DASHBOARD_CLIENT_ID must not also be in MCP_CLIENT_IDS or be CONNECTOR_CLIENT_ID"
+                    .into(),
+            );
         }
         Ok(Settings {
             port,
@@ -140,7 +178,9 @@ impl Settings {
             issuer: req("ISSUER")?.trim_end_matches('/').to_string(),
             project_id: req("PROJECT_ID")?,
             mcp_client_ids,
+            mcp_client_labels,
             connector_client_id,
+            dashboard_client_id,
             required_role: opt("REQUIRED_ROLE").unwrap_or_else(|| DEFAULT_REQUIRED_ROLE.into()),
             database_url: Secret(req("DATABASE_URL")?),
             database_ca_file: opt("DATABASE_CA_FILE").map(PathBuf::from),
@@ -148,7 +188,52 @@ impl Settings {
                 opt("LEGACY_DEVICES_FILE").unwrap_or_else(|| "/data/devices.json".into()),
             ),
             jwks_uri: opt("JWKS_URI"),
+            token_uri: opt("TOKEN_URI"),
         })
+    }
+
+    /// What the dashboard calls the AI app with this client id.
+    pub fn mcp_client_label(&self, client_id: &str) -> Option<&str> {
+        self.mcp_client_labels
+            .iter()
+            .find(|(_, id)| id == client_id)
+            .map(|(label, _)| label.as_str())
+    }
+
+    /// The client id of the AI app labelled `label` (case does not matter).
+    pub fn mcp_client_id_of(&self, label: &str) -> Option<&str> {
+        self.mcp_client_labels
+            .iter()
+            .find(|(l, _)| l.eq_ignore_ascii_case(label))
+            .map(|(_, id)| id.as_str())
+    }
+
+    /// Where the dashboard sends a person to sign in.
+    pub fn authorize_url(&self) -> String {
+        format!("{}/oauth/v2/authorize", self.issuer)
+    }
+
+    /// Where the dashboard exchanges a sign-in code for a token.
+    pub fn token_url(&self) -> String {
+        self.token_uri
+            .clone()
+            .unwrap_or_else(|| format!("{}/oauth/v2/token", self.issuer))
+    }
+
+    /// Where Zitadel sends a person back to after signing in.
+    pub fn dashboard_callback_url(&self) -> String {
+        format!("{}/auth/callback", self.public_url)
+    }
+
+    /// Where a person can end their sign-in on the identity service itself,
+    /// and come back to the relay's front page.
+    pub fn end_session_url(&self) -> String {
+        format!(
+            "{}/oidc/v1/end_session?client_id={}&post_logout_redirect_uri={}",
+            self.issuer,
+            crate::dashboard::form_encode(&self.dashboard_client_id),
+            crate::dashboard::form_encode(&format!("{}/", self.public_url)),
+        )
     }
 
     /// The URL an AI app is given for one device.
@@ -189,6 +274,7 @@ mod tests {
             ("PROJECT_ID", "123"),
             ("MCP_CLIENT_IDS", "claude-id, ,chatgpt-id"),
             ("CONNECTOR_CLIENT_ID", "conn-id"),
+            ("DASHBOARD_CLIENT_ID", "dash-id"),
             ("DATABASE_URL", "postgres://relay:pw@relay-db-rw:5432/relay"),
         ]
         .into_iter()
@@ -213,7 +299,18 @@ mod tests {
         assert_eq!(s.database_ca_file, None);
         assert_eq!(s.legacy_devices_file, PathBuf::from("/data/devices.json"));
         assert_eq!(s.jwks_uri, None);
+        assert_eq!(s.token_uri, None);
+        assert_eq!(s.dashboard_client_id, "dash-id");
         assert_eq!(s.required_role, "relay-user");
+        assert_eq!(
+            s.authorize_url(),
+            "https://auth.example.dev/oauth/v2/authorize"
+        );
+        assert_eq!(s.token_url(), "https://auth.example.dev/oauth/v2/token");
+        assert_eq!(
+            s.dashboard_callback_url(),
+            "https://relay.example.dev/auth/callback"
+        );
         assert_eq!(
             s.device_mcp_url("d-1"),
             "https://relay.example.dev/mcp/d/d-1"
@@ -269,6 +366,7 @@ mod tests {
             "PROJECT_ID",
             "MCP_CLIENT_IDS",
             "CONNECTOR_CLIENT_ID",
+            "DASHBOARD_CLIENT_ID",
             "DATABASE_URL",
         ] {
             let mut env = base();
@@ -302,11 +400,40 @@ mod tests {
                 "claude-id",
                 "connector id shared with an AI app",
             ),
+            (
+                "DASHBOARD_CLIENT_ID",
+                "claude-id",
+                "dashboard id shared with an AI app",
+            ),
+            (
+                "DASHBOARD_CLIENT_ID",
+                "conn-id",
+                "dashboard id shared with the connector",
+            ),
+            ("MCP_CLIENT_LABELS", "Claude", "a label with no id"),
+            (
+                "MCP_CLIENT_LABELS",
+                "Claude=nobody",
+                "a label for an unknown id",
+            ),
         ] {
             let mut env = base();
             env.insert(k, v);
             assert!(load(&env).is_err(), "{why} must be refused");
         }
+    }
+
+    #[test]
+    fn ai_apps_can_be_given_names_for_the_dashboard() {
+        let mut env = base();
+        env.insert("MCP_CLIENT_LABELS", "Claude=claude-id, Gemini = chatgpt-id");
+        env.insert("TOKEN_URI", " http://127.0.0.1:9/token ");
+        let s = load(&env).unwrap();
+        assert_eq!(s.mcp_client_label("claude-id"), Some("Claude"));
+        assert_eq!(s.mcp_client_label("chatgpt-id"), Some("Gemini"));
+        assert_eq!(s.mcp_client_label("other"), None);
+        assert_eq!(s.mcp_client_id_of("claude"), Some("claude-id"));
+        assert_eq!(s.token_url(), "http://127.0.0.1:9/token");
     }
 
     #[test]

@@ -739,6 +739,11 @@ impl Mcp {
         if let Some(key) = &key {
             let mut map = self.in_flight.lock().unwrap();
             if map.contains_key(key) {
+                // It starts nothing, so it costs nothing: give back the
+                // place spent just above.
+                if spends {
+                    self.limiter.refund(&caller.subject);
+                }
                 return rpc_error(id, -32600, "Invalid Request: this id is already running");
             }
             map.insert(
@@ -1142,6 +1147,67 @@ mod tests {
         assert_eq!(other.await.unwrap()["result"]["isError"], false);
         // Finished calls leave nothing behind.
         assert!(m.in_flight.lock().unwrap().is_empty());
+    }
+
+    /// A request that reuses the id of one still running is refused, and
+    /// the place it spent in the person's call limit is given back: only a
+    /// call that starts something costs anything.
+    #[tokio::test]
+    async fn a_reused_running_id_does_not_use_up_the_call_limit() {
+        let (m, reg) = mcp();
+        // Three places, and so little refill that none comes back in the test.
+        let m = Arc::new(m.with_rate_limit(RateLimit::new(1, 3)));
+        let (tx, mut rx) = mpsc::channel(8);
+        let conn = reg.connect(
+            "d1",
+            vec![ToolDef {
+                name: "t".into(),
+                description: "".into(),
+                input_schema: json!({}),
+            }],
+            tx,
+        );
+        let call = |args: Value| {
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                   "params": {"name": "t", "arguments": args}})
+        };
+        let first = {
+            let (m, body) = (m.clone(), call(json!({})));
+            tokio::spawn(async move { m.handle(&body, "d1", &caller(), Some("s1")).await.unwrap() })
+        };
+        let ToConnector::Call(running) = rx.recv().await.unwrap() else {
+            panic!()
+        };
+        // The same id, asking for something else, five times over: each is
+        // refused as a reused id, none is "too many requests".
+        for n in 0..5 {
+            let again = ask(&m, call(json!({"n": n}))).await;
+            assert_eq!(again["error"]["code"], -32600, "reuse {n}: {again}");
+        }
+        // Two places are still left for real calls.
+        let next = {
+            let m = m.clone();
+            let body = call(json!({"other": true}));
+            tokio::spawn(async move { m.handle(&body, "d1", &caller(), Some("s2")).await.unwrap() })
+        };
+        let ToConnector::Call(second) = rx.recv().await.unwrap() else {
+            panic!("the next real call was held back by the refused ones")
+        };
+        for c in [running, second] {
+            reg.complete(
+                "d1",
+                conn,
+                CallResult {
+                    call_id: c.call_id,
+                    content: json!([]),
+                    is_error: false,
+                    truncated: false,
+                },
+            );
+        }
+        first.await.unwrap();
+        let answered = next.await.unwrap();
+        assert_eq!(answered["result"]["isError"], false, "{answered}");
     }
 
     /// Final review, Minor 4: `check_request` says "waiting for you" only
