@@ -1,11 +1,13 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
-/// A message's menu (02 §3.4.2's order, the 4.3 subset), from `MessageMenu.sections`: the sections a divider apart,
-/// each item with its key, a greyed one with why as its tooltip, and the greyed lines that only say something.
+/// A message's menu (02 §3.4.2's order, with secondary items in a "More" submenu), from `MessageMenu.sections`:
+/// the sections a divider apart, each item with its key, a greyed one with why as its tooltip, and the greyed lines
+/// that only say something.
 @MainActor
 struct MessageMenuItems: View {
     private let makeSections: () -> [[MessageMenuItem]]
@@ -42,7 +44,7 @@ struct MessageMenuItems: View {
             return AnyView(
                 Menu(item.title) {
                     ForEach(item.children) { child in
-                        leafButton(child, locked: locked)
+                        menuElement(child)
                     }
                 }
                 .disabled(!enabled)
@@ -62,7 +64,9 @@ struct MessageMenuItems: View {
                     choose(item.command)
                 }
                 .registryShortcut(hotkeyID, in: hotkeys)
-                .disabled(!enabled || (hotkeyDispatcher.map { !$0.canPerform(hotkeyID) } ?? false))
+                // Do not gate context-menu items on HotkeyDispatcher.canPerform (which requires an already-selected
+                // message); a context menu targets the clicked message directly.
+                .disabled(!enabled)
                 .help(item.help ?? "")
             } else {
                 Button(item.title) {
@@ -103,34 +107,33 @@ struct MessageMenuList: View {
         .frame(minWidth: 240)
     }
 
-    @ViewBuilder
-    private func rowView(_ item: MessageMenuItem) -> some View {
+    private func rowView(_ item: MessageMenuItem) -> AnyView {
         if !item.children.isEmpty {
-            Menu {
-                ForEach(item.children) { child in
-                    Button(child.title) {
-                        choose(child.command)
+            return AnyView(
+                Menu {
+                    ForEach(item.children) { child in
+                        submenuElement(child)
                     }
-                    .disabled(!child.isEnabled)
-                }
-            } label: {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(item.title)
-                            .foregroundStyle(item.isEnabled ? .primary : .secondary)
-                        if let help = item.help {
-                            Text(help).font(.caption).foregroundStyle(.secondary)
+                } label: {
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title)
+                                .foregroundStyle(item.isEnabled ? .primary : .secondary)
+                            if let help = item.help {
+                                Text(help).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!item.isEnabled)
-        } else {
+                .buttonStyle(.plain)
+                .disabled(!item.isEnabled)
+            )
+        }
+        return AnyView(
             Button { choose(item.command) } label: {
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 1) {
@@ -151,6 +154,211 @@ struct MessageMenuList: View {
             }
             .buttonStyle(.plain)
             .disabled(!item.isEnabled)
+        )
+    }
+
+    private func submenuElement(_ item: MessageMenuItem) -> AnyView {
+        if !item.children.isEmpty {
+            return AnyView(
+                Menu(item.title) {
+                    ForEach(item.children) { child in
+                        submenuElement(child)
+                    }
+                }
+                .disabled(!item.isEnabled)
+            )
+        }
+        return AnyView(
+            Button(item.title) {
+                choose(item.command)
+            }
+            .disabled(!item.isEnabled)
+        )
+    }
+}
+
+/// Native AppKit `NSMenu` builder and presenter for message right-click and hover-pill "More" menus.
+///
+/// Sets `allowsContextMenuPlugIns = false` (suppressing system "Ask Siri" / Services plug-ins) and
+/// `autoenablesItems = false` (preventing AppKit's responder chain from disabling items like Reply on unselected rows).
+@MainActor
+enum MessageContextMenuBuilder {
+    final class ActionTarget: NSObject {
+        private let run: () -> Void
+        init(_ run: @escaping () -> Void) { self.run = run }
+        @objc func invoke(_: Any?) { run() }
+    }
+
+    static func buildNSMenu(for message: TimelineMessage, actions: MessageActions) -> NSMenu? {
+        let isLocked = actions.hotkeyDispatcher?.lifecycle.isLocked == true
+        guard !isLocked else { return nil }
+        let sections = actions.menu(message)
+        let hotkeys = actions.hotkeys ?? MessageRowActions.sharedFallbackHotkeys
+        return buildNSMenu(sections: sections, hotkeys: hotkeys, isLocked: isLocked) { command in
+            actions.perform(command, message.id)
+        }
+    }
+
+    static func buildNSMenu(
+        sections: [[MessageMenuItem]],
+        hotkeys: HotkeyRegistry,
+        isLocked: Bool,
+        choose: @escaping (MessageMenuItem.Command) -> Void
+    ) -> NSMenu? {
+        guard !sections.isEmpty, !isLocked else { return nil }
+        let menu = NSMenu()
+        menu.allowsContextMenuPlugIns = false
+        menu.autoenablesItems = false
+        for (index, section) in sections.enumerated() {
+            if index > 0 { menu.addItem(.separator()) }
+            for item in section {
+                menu.addItem(makeMenuItem(item, hotkeys: hotkeys, isLocked: isLocked, choose: choose))
+            }
+        }
+        return menu
+    }
+
+    /// The More button's action: the same menu a right-click on the message builds, shown below `anchor`. `isOpen`
+    /// says true as it opens and false once it has closed (the row keeps its hover pill while it is open).
+    static func present(for message: TimelineMessage, actions: MessageActions, anchor: NSView?,
+                        isOpen: @escaping (Bool) -> Void) {
+        guard let menu = buildNSMenu(for: message, actions: actions) else { return }
+        isOpen(true)
+        DispatchQueue.main.async {
+            defer { isOpen(false) }
+            actions.presentMenu(menu, anchor)
+        }
+    }
+
+    static func popUp(_ menu: NSMenu, relativeTo anchor: NSView?) {
+        if let anchor, anchor.window != nil {
+            let point = NSPoint(x: 0, y: anchor.isFlipped ? anchor.bounds.height + 4 : -4)
+            menu.popUp(positioning: nil, at: point, in: anchor)
+            return
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    private static func makeMenuItem(
+        _ item: MessageMenuItem,
+        hotkeys: HotkeyRegistry,
+        isLocked: Bool,
+        choose: @escaping (MessageMenuItem.Command) -> Void
+    ) -> NSMenuItem {
+        let enabled = item.isEnabled && !isLocked
+        if !item.children.isEmpty {
+            let nsItem = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+            let sub = NSMenu(title: item.title)
+            sub.allowsContextMenuPlugIns = false
+            sub.autoenablesItems = false
+            for child in item.children {
+                sub.addItem(makeMenuItem(child, hotkeys: hotkeys, isLocked: isLocked, choose: choose))
+            }
+            nsItem.submenu = sub
+            nsItem.isEnabled = enabled
+            nsItem.toolTip = item.help
+            return nsItem
+        }
+
+        let nsItem = NSMenuItem(
+            title: item.title,
+            action: enabled ? #selector(ActionTarget.invoke(_:)) : nil,
+            keyEquivalent: ""
+        )
+        if enabled {
+            let target = ActionTarget { choose(item.command) }
+            nsItem.target = target
+            // Retain the handler directly on the menu item for the lifetime of the menu.
+            nsItem.representedObject = target
+        }
+        nsItem.isEnabled = enabled
+        nsItem.toolTip = item.help
+        applyKeyEquivalent(item.key, hotkeys: hotkeys, to: nsItem)
+        return nsItem
+    }
+
+    private static func applyKeyEquivalent(_ key: MenuKey?, hotkeys: HotkeyRegistry, to item: NSMenuItem) {
+        guard let key else { return }
+        if let hotkeyID = key.hotkeyID {
+            guard hotkeys.isEnabled(hotkeyID), let chord = hotkeys.primaryChord(for: hotkeyID) else { return }
+            item.keyEquivalent = keyEquivalentString(for: chord.key)
+            var mask: NSEvent.ModifierFlags = []
+            if chord.command { mask.insert(.command) }
+            if chord.shift { mask.insert(.shift) }
+            if chord.option { mask.insert(.option) }
+            if chord.control { mask.insert(.control) }
+            item.keyEquivalentModifierMask = mask
+            return
+        }
+        if key == .commandC {
+            item.keyEquivalent = "c"
+            item.keyEquivalentModifierMask = [.command]
+        }
+    }
+
+    private static func keyEquivalentString(for rawKey: String) -> String {
+        switch rawKey.lowercased() {
+        case "up", "uparrow":
+            return String(Character(UnicodeScalar(NSUpArrowFunctionKey)!))
+        case "down", "downarrow":
+            return String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
+        case "left", "leftarrow":
+            return String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!))
+        case "right", "rightarrow":
+            return String(Character(UnicodeScalar(NSRightArrowFunctionKey)!))
+        default:
+            if let ch = KeyChord.keyEquivalentCharacter(for: rawKey) {
+                return String(ch)
+            }
+            return rawKey
+        }
+    }
+}
+
+/// Overlay used in SwiftUI fallback timelines and `ThreadPane` to present the native `NSMenu` (with
+/// `allowsContextMenuPlugIns = false`) on right-click. Inside `TimelineTableView`, `TimelineHostingView` handles
+/// `menu(for:)` directly and this view lets every event pass through.
+struct MessageContextMenuOverlay: NSViewRepresentable {
+    let message: TimelineMessage
+    let actions: MessageActions
+
+    func makeNSView(context _: Context) -> CatcherView {
+        let view = CatcherView()
+        view.message = message
+        view.actions = actions
+        return view
+    }
+
+    func updateNSView(_ nsView: CatcherView, context _: Context) {
+        nsView.message = message
+        nsView.actions = actions
+    }
+
+    final class CatcherView: NSView {
+        var message: TimelineMessage?
+        var actions: MessageActions?
+
+        private var isInsideTimelineTableHost: Bool {
+            var cursor = superview
+            while let view = cursor {
+                if view is TimelineHostingView { return true }
+                cursor = view.superview
+            }
+            return false
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard !isInsideTimelineTableHost,
+                  let event = NSApp.currentEvent,
+                  event.type == .rightMouseDown
+                      || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
+            else { return nil }
+            return super.hitTest(point)
+        }
+
+        override func menu(for _: NSEvent) -> NSMenu? {
+            guard let message, let actions else { return nil }
+            return MessageContextMenuBuilder.buildNSMenu(for: message, actions: actions)
         }
     }
 }
@@ -266,7 +474,7 @@ enum MessageRowActions {
                         chatTitle: resolvedChatTitle(for: msg),
                         from: source
                     )
-                case .info: break
+                case .more, .info: break
                 }
             },
             hotkeys: registry,
@@ -310,6 +518,7 @@ enum MessageRowActions {
                 )
             },
             loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically,
+            showLinkPreviews: preferences.showLinkPreviews,
             timeFormat: preferences.timeFormat,
             showMessageTimestamps: preferences.showMessageTimestamps,
             composerPreferences: preferences,

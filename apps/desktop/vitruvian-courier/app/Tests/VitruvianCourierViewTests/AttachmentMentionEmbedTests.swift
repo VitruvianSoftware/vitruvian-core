@@ -343,13 +343,22 @@ final class AttachmentMentionEmbedTests: XCTestCase {
             XCTAssertGreaterThan(try redPixelCount("embed-network-picture", suffix), 500, "the network's picture is drawn")
         }
 
-        // Allowed: the picture is fetched.
+        // Allowed: the picture and oEmbed metadata are fetched when title is absent.
         try Snapshot.render("embed-remote-on", width: 360, prepare: settleUntilRed) {
             EmbedConsentCard(messageID: "$e", descriptor: descriptor, isLoaded: false, allowsRemoteThumbnail: true,
                              session: session, onLoadEmbed: {}).padding(14)
         }
-        XCTAssertEqual(EmbedCountingURLProtocol.requests, ["https://i.ytimg.com/vi/Zx9Qk3LmN-_/hqdefault.jpg"])
+        XCTAssertTrue(
+            EmbedCountingURLProtocol.requests.contains("https://i.ytimg.com/vi/Zx9Qk3LmN-_/hqdefault.jpg"),
+            "thumbnail must be fetched: \(EmbedCountingURLProtocol.requests)"
+        )
+        XCTAssertTrue(
+            EmbedCountingURLProtocol.requests.contains("https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DZx9Qk3LmN-_&format=json"),
+            "oEmbed title/channel must be fetched when no bridge title exists: \(EmbedCountingURLProtocol.requests)"
+        )
         XCTAssertGreaterThan(try redPixelCount("embed-remote-on", "light"), 100, "the fetched picture is drawn")
+        XCTAssertEqual(EmbedThumbnail.cachedMetadata(videoID: "Zx9Qk3LmN-_"),
+                       YouTubeMetadata(title: "Real Video Title", authorName: "Demo Channel"))
     }
 
     /// The red region's box in a rendered card, in pixels.
@@ -541,10 +550,13 @@ final class AttachmentMentionEmbedTests: XCTestCase {
         }
     }
 
-    func testBrokenLocalPreviewStillMakesNoYouTubeRequestWhenExternalContentIsOff() throws {
+    func testBrokenLocalPreviewMakesNoRequestWhenRemoteIsNotAllowedAndTheRowFetchesPictureAndTitleWithoutAWebView() throws {
         let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.match(urlString: "https://youtu.be/K9mPq2LwX-_"))
         EmbedThumbnail.clearCache()
-        EmbedCountingURLProtocol.reset(body: Data())
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(NSImage(size: NSSize(width: 16, height: 9), flipped: false) { rect in
+            NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).setFill(); rect.fill(); return true
+        }.tiffRepresentation)))
+        EmbedCountingURLProtocol.reset(body: try XCTUnwrap(rep.representation(using: .png, properties: [:])))
         let session = EmbedCountingURLProtocol.session()
         let missingLocal = FileManager.default.temporaryDirectory
             .appendingPathComponent("missing-preview-\(UUID().uuidString).png").path
@@ -555,29 +567,87 @@ final class AttachmentMentionEmbedTests: XCTestCase {
                              session: session, onLoadEmbed: {}).padding(14)
         }
         XCTAssertEqual(EmbedCountingURLProtocol.requests, [],
-                       "even when the local preview file is missing/unreadable, setting off must never fall back to i.ytimg.com")
+                       "even when the local preview file is missing/unreadable, allowsRemoteThumbnail: false must never fall back to i.ytimg.com")
 
-        // Also verify full TimelineItemView (MessageRowView) with loadExternalEmbedsAutomatically == false.
+        // Verify full TimelineItemView (MessageRowView) with loadExternalEmbedsAutomatically == false still fetches
+        // the YouTube thumbnail and oEmbed title/channel for the consent card (without instantiating a WKWebView).
         URLProtocol.registerClass(EmbedCountingURLProtocol.self)
         defer { URLProtocol.unregisterClass(EmbedCountingURLProtocol.self) }
-        EmbedCountingURLProtocol.reset(body: Data())
-        var ytEvent = Fixture.text("$row-yt-off", "https://youtu.be/K9mPq2LwX-_", mine: false, ts: 2)
-        ytEvent.linkPreviews = [LinkPreviewItem(matchedURL: "https://youtu.be/K9mPq2LwX-_", title: "Demo video")]
-        let rowItem = try XCTUnwrap(Fixture.items([ytEvent], isDirect: true).first { if case .message = $0 { true } else { false } })
+        EmbedThumbnail.clearCache()
+        EmbedCountingURLProtocol.reset(body: try XCTUnwrap(rep.representation(using: .png, properties: [:])))
+        let ytEventNoTitle = Fixture.text("$row-yt-off", "https://youtu.be/K9mPq2LwX-_", mine: false, ts: 2)
+        let rowItem = try XCTUnwrap(Fixture.items([ytEventNoTitle], isDirect: true).first { if case .message = $0 { true } else { false } })
         var rowActions = VitruvianCourier.MessageActions(now: { Fixture.now })
         rowActions.loadExternalEmbedsAutomatically = false
-        _ = try Snapshot.render("message-row-yt-off", width: 420, prepare: settle) {
+        try Snapshot.render("message-row-yt-off", width: 420, prepare: settleUntilRed) {
             TimelineItemView(item: rowItem, isSelected: false, showsSent: false, actions: rowActions, ui: MessageUI())
         }
-        XCTAssertEqual(EmbedCountingURLProtocol.requests, [],
-                       "MessageRowView with loadExternalEmbedsAutomatically == false makes no network request")
+        XCTAssertTrue(
+            EmbedCountingURLProtocol.requests.contains("https://i.ytimg.com/vi/K9mPq2LwX-_/hqdefault.jpg"),
+            "MessageRowView with click-to-load must still fetch YouTube thumbnail: \(EmbedCountingURLProtocol.requests)"
+        )
+        XCTAssertTrue(
+            EmbedCountingURLProtocol.requests.contains("https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DK9mPq2LwX-_&format=json"),
+            "MessageRowView without bridge title must fetch YouTube oEmbed: \(EmbedCountingURLProtocol.requests)"
+        )
+        XCTAssertEqual(
+            EmbedThumbnail.cachedMetadata(videoID: "K9mPq2LwX-_"),
+            YouTubeMetadata(title: "Real Video Title", authorName: "Demo Channel")
+        )
+        XCTAssertGreaterThan(try redPixelCount("message-row-yt-off", "light"), 100)
+
+        // Confirm no WKWebView is created while loadExternalEmbedsAutomatically == false.
+        let host = NSHostingView(rootView: TimelineItemView(item: rowItem, isSelected: false, showsSent: false, actions: rowActions, ui: MessageUI()))
+        host.layoutSubtreeIfNeeded()
+        XCTAssertFalse(EmbedConsentCard.containsWebView(in: host))
+    }
+
+    /// "Show link previews" off: the message row makes no request for the card, and does not draw a picture it kept
+    /// from when the setting was on. The player's own switch is separate: this row is still click-to-load.
+    func testShowLinkPreviewsOffMakesTheRowAskForNothingAndDrawNoKeptPicture() async throws {
+        URLProtocol.registerClass(EmbedCountingURLProtocol.self)
+        defer { URLProtocol.unregisterClass(EmbedCountingURLProtocol.self) }
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(NSImage(size: NSSize(width: 16, height: 9), flipped: false) { rect in
+            NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).setFill(); rect.fill(); return true
+        }.tiffRepresentation)))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        EmbedThumbnail.clearCache()
+        EmbedCountingURLProtocol.reset(body: png)
+        // Warm the in-memory caches the way an earlier session with the setting on would have.
+        let session = EmbedCountingURLProtocol.session()
+        let kept = await EmbedThumbnail.fetch(videoID: "K9mPq2LwX-_", showLinkPreviews: true, session: session)
+        XCTAssertNotNil(kept)
+        _ = await EmbedThumbnail.fetchMetadata(videoID: "K9mPq2LwX-_", showLinkPreviews: true, session: session)
+        EmbedCountingURLProtocol.reset(body: png)
+
+        let event = Fixture.text("$row-yt-previews-off", "https://youtu.be/K9mPq2LwX-_", mine: false, ts: 2)
+        let rowItem = try XCTUnwrap(Fixture.items([event], isDirect: true).first { if case .message = $0 { true } else { false } })
+        var rowActions = VitruvianCourier.MessageActions(now: { Fixture.now })
+        rowActions.loadExternalEmbedsAutomatically = false
+        rowActions.showLinkPreviews = false
+        try Snapshot.render("message-row-yt-previews-off", width: 420, prepare: settle) {
+            TimelineItemView(item: rowItem, isSelected: false, showsSent: false, actions: rowActions, ui: MessageUI())
+        }
+        XCTAssertEqual(EmbedCountingURLProtocol.requests, [], "Show link previews off: the row asks for nothing")
+        XCTAssertEqual(try redPixelCount("message-row-yt-previews-off", "light"), 0, "a kept picture is not drawn either")
+    }
+
+    func testPlainTextYouTubeURLWithoutEntitiesOrPreviewsMatchesDescriptor() throws {
+        let plain = try XCTUnwrap(Fixture.messages([
+            Fixture.text("$yt-plain", "check this out https://youtu.be/dQw4w9WgXcQ thanks", mine: false, ts: 1),
+        ]).first)
+        XCTAssertTrue(plain.linkPreviews.isEmpty)
+        XCTAssertTrue(plain.rich.entities.isEmpty)
+        let descriptor = try XCTUnwrap(ExternalEmbedDescriptor.first(in: plain))
+        XCTAssertEqual(descriptor.youTubeVideoID, "dQw4w9WgXcQ")
     }
 }
 
-/// Answers every request with a small picture and remembers what was asked for.
+/// Answers image and YouTube oEmbed requests and remembers what was asked for.
 final class EmbedCountingURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var requests: [String] = []
     nonisolated(unsafe) static var body = Data()
+    nonisolated(unsafe) static var oEmbedBody = Data(#"{"title":"Real Video Title","author_name":"Demo Channel"}"#.utf8)
     private static let lock = NSLock()
 
     static func reset(body: Data) {
@@ -596,9 +666,10 @@ final class EmbedCountingURLProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        let urlString = request.url?.absoluteString ?? ""
         Self.lock.lock()
-        Self.requests.append(request.url?.absoluteString ?? "")
-        let body = Self.body
+        Self.requests.append(urlString)
+        let body = request.url?.path.contains("oembed") == true ? Self.oEmbedBody : Self.body
         Self.lock.unlock()
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -639,7 +710,7 @@ struct StaleHost: View {
 
     var body: some View {
         EmbedConsentCard(messageID: "$e", descriptor: model.descriptor, isLoaded: false, allowsRemoteThumbnail: true,
-                         fetchPicture: fetch, onLoadEmbed: {})
+                         fetchPicture: fetch, fetchMetadata: { _ in nil }, onLoadEmbed: {})
             .padding(14)
     }
 }

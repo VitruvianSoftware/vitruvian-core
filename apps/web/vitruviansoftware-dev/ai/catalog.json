@@ -566,11 +566,12 @@
       ],
       "capabilities": [
         "Sidecar UI",
-        "1 Skill",
+        "2 Skills",
         "Rules"
       ],
       "skills": [
-        "orchestrate"
+        "orchestrate",
+        "team-setup"
       ],
       "hooks": [],
       "rules": [
@@ -602,10 +603,11 @@
         "claude-code"
       ],
       "capabilities": [
-        "1 Skill"
+        "2 Skills"
       ],
       "skills": [
-        "orchestrate"
+        "orchestrate",
+        "team-setup"
       ],
       "hooks": [],
       "rules": [],

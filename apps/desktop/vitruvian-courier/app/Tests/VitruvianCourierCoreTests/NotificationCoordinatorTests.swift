@@ -302,6 +302,20 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// A batch the engine stores in one go (a forward backfill catching up) is one `event` change per chat, naming the
+    /// batch's OLDEST event. Every new message in the page still notifies, whichever event the change names.
+    func testABatchChangeNamingTheOldestEventStillNotifiesEveryNewMessage() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 10)
+        h.script.events["!a"] = (1 ... 5).reversed().map {
+            message("$\($0)", ts: connectedMillis + Int64($0) * 1000, text: "m\($0)")
+        }
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 5 }
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["m1", "m2", "m3", "m4", "m5"])
+        await finish(h)
+    }
+
     func testYourOwnMessagesAndMutedChatsAreSilent() async throws {
         let h = try await start()
         h.clock.advance(seconds: 5)

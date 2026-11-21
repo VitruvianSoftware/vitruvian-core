@@ -10,7 +10,7 @@ Shared privacy-hardened Sentry initialization, device-field allowlisting (`Devic
 
 ## When not to use it
 
-- macOS Swift apps or extensions; use [`//packages/swift/SentryLite`](../swift/SentryLite/README.md) instead.
+- macOS Swift apps or extensions; use [`//packages/sentry-lite:SentryLite`](../sentry-lite/README.md) instead.
 - Rust or Node.js services; use the standard Sentry crates/packages (`sentry` or `@sentry/node`) directly.
 
 ## Example

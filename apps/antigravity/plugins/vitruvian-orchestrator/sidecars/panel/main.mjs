@@ -62,6 +62,7 @@ import {
   DEFAULT_STALL_MS,
   DEFAULT_WAITING_STALL_MS,
   flowAgentRoleMap,
+  formatLeadWakes,
   formatWake,
   initialFlow,
   MAX_TEAM_FILE_BYTES,
@@ -1688,6 +1689,13 @@ export async function checkAndWakeBoardMentions(options = {}) {
     }
 
     const wakes = pendingWakes(state.flow, alreadyWokenForFlow);
+    // Wakes for the lead's own conversation are grouped by post, so a post that
+    // mentions @lead and a helper with no conversation of its own reaches the
+    // lead once (with the "Wake @helper" line), not once per mentioned name.
+    /** @type {Array<{ targetCid: string, post: any, wakes: any[], toLead: boolean }>} */
+    const sends = [];
+    /** @type {Map<number, { targetCid: string, post: any, wakes: any[], toLead: boolean }>} */
+    const leadSendBySeq = new Map();
     for (const wake of wakes) {
       const wakeKey = `${wake.seq}:${wake.target}`;
       const scopedKey = `${state.conversationId}:${wakeKey}`;
@@ -1707,15 +1715,7 @@ export async function checkAndWakeBoardMentions(options = {}) {
         continue;
       }
 
-      let targetCid = state.conversationId;
-      let message;
-      if (wake.target === "lead") {
-        targetCid = state.conversationId;
-        message = formatWake(wake, post, {
-          mode: "worker",
-          harness: "antigravity",
-        });
-      } else {
+      if (wake.target !== "lead") {
         const baseRunId = wake.runId ? String(wake.runId).split("#")[0] : "";
         const rawChildCid =
           (wake.runId && knownChildMap.get(wake.runId)) ||
@@ -1723,52 +1723,74 @@ export async function checkAndWakeBoardMentions(options = {}) {
           "";
         const childCid = sanitizeValidCid(rawChildCid);
         if (childCid) {
-          targetCid = childCid;
-          message = formatWake(wake, post, {
+          sends.push({
+            targetCid: childCid,
+            post,
+            wakes: [wake],
+            toLead: false,
+          });
+          continue;
+        }
+      }
+      const existing = leadSendBySeq.get(wake.seq);
+      if (existing) {
+        existing.wakes.push(wake);
+      } else {
+        const send = {
+          targetCid: state.conversationId,
+          post,
+          wakes: [wake],
+          toLead: true,
+        };
+        leadSendBySeq.set(wake.seq, send);
+        sends.push(send);
+      }
+    }
+
+    for (const send of sends) {
+      const message = send.toLead
+        ? formatLeadWakes(send.wakes, send.post, { harness: "antigravity" })
+        : formatWake(send.wakes[0], send.post, {
             mode: "worker",
             harness: "antigravity",
           });
-        } else {
-          targetCid = state.conversationId;
-          message = formatWake(wake, post, {
-            mode: "lead",
-            harness: "antigravity",
-          });
-        }
-      }
-
-      wokenMentions.add(scopedKey);
+      const scopedKeys = send.wakes.map(
+        (w) => `${state.conversationId}:${w.seq}:${w.target}`,
+      );
+      for (const k of scopedKeys) wokenMentions.add(k);
       try {
         if (typeof options.sendMessage === "function") {
-          await options.sendMessage(targetCid, message, {
+          await options.sendMessage(send.targetCid, message, {
             title: "Orchestrator Board",
           });
         }
-        try {
-          appendFileSync(
-            candidate.filePath,
-            `${JSON.stringify({
-              type: "wake",
-              at: now,
-              seq: wake.seq,
-              target: wake.target,
-            })}\n`,
-            "utf8",
-          );
-        } catch {
-          // Best-effort persistence; wokenMentions suppresses in-memory repeats.
+        for (const [i, wake] of send.wakes.entries()) {
+          try {
+            appendFileSync(
+              candidate.filePath,
+              `${JSON.stringify({
+                type: "wake",
+                at: now,
+                seq: wake.seq,
+                target: wake.target,
+              })}\n`,
+              "utf8",
+            );
+          } catch {
+            // Best-effort persistence; wokenMentions suppresses in-memory repeats.
+          }
+          delivered.push({
+            conversationId: send.targetCid,
+            leadConversationId: state.conversationId,
+            seq: wake.seq,
+            target: wake.target,
+            key: scopedKeys[i],
+            message,
+          });
         }
-        delivered.push({
-          conversationId: targetCid,
-          leadConversationId: state.conversationId,
-          seq: wake.seq,
-          target: wake.target,
-          key: scopedKey,
-          message,
-        });
       } catch {
-        // Swallow sendMessage errors just like the stall watchdog; remove key so next tick retries.
-        wokenMentions.delete(scopedKey);
+        // Swallow sendMessage errors just like the stall watchdog; remove keys so next tick retries.
+        for (const k of scopedKeys) wokenMentions.delete(k);
       }
     }
   }

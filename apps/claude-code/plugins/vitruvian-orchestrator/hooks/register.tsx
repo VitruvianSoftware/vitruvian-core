@@ -54,6 +54,7 @@ import type {
 } from "../types";
 import {
   agentRoleMap,
+  applyAgentModels,
   board as boardView,
   burnDown,
   channels as channelsView,
@@ -61,26 +62,32 @@ import {
   delegateCost,
   flowAgentRoleMap,
   formatAgentRoleLabel,
-  formatWake,
+  formatLeadWakes,
   initialFlow,
   isValidChannel,
   isValidWorktree,
+  MAX_AGENT_FILE_BYTES,
   MAX_TEAM_FILE_BYTES,
   members,
   mentionGraph,
   overview as overviewView,
   parseTeam,
   pendingWakes,
+  planTeamSync,
   reduce,
   remaining,
+  renderStarterTeam,
   resolveTeam,
   runCost,
   sanitizeDisplayText,
   spend,
   stalls,
+  starterAgentFile,
   taskBoard,
+  TEAM_AGENT_DIRS,
   validateChannelAction,
   validatePostChannel,
+  validateStarterAgents,
   validateTeamEvent,
 } from "./lib/orchestrator-core.mjs";
 import { TIER_DEFAULTS } from "./lib/tier-defaults.mjs";
@@ -96,6 +103,7 @@ const POST_TOOL = "mcp__vitruvian-orchestrator__post";
 const BOARD_TOOL = "mcp__vitruvian-orchestrator__board";
 const CHANNEL_TOOL = "mcp__vitruvian-orchestrator__channel";
 const TEAM_TOOL = "mcp__vitruvian-orchestrator__team";
+const TEAM_SETUP_TOOL = "mcp__vitruvian-orchestrator__team_setup";
 const POST_KINDS: readonly PostKind[] = [
   "note",
   "question",
@@ -2617,36 +2625,47 @@ async function deliverPendingWakes(
   if (!f || f.closedAt !== null) return;
   const woken = getWokenSet(f.startedAt);
   const wakes = pendingWakes(f, woken) as PendingWake[];
+  // Every wake lands in the lead's session, so group them by post: a post that
+  // mentions @lead and a waiting helper must reach the lead once, carrying the
+  // "Wake @helper" line, not once per mentioned name.
+  const bySeq = new Map<number, PendingWake[]>();
   for (const w of wakes) {
-    const key = `${w.seq}:${w.target}`;
-    if (woken.has(key)) continue;
-    const fullPost = (f.posts ?? []).find((p) => p.seq === w.seq);
-    const text = formatWake(w, fullPost, {
-      mode: w.target === "lead" ? "worker" : "lead",
-      harness: "claude-code",
-    });
-    woken.add(key);
+    if (woken.has(`${w.seq}:${w.target}`)) continue;
+    const group = bySeq.get(w.seq);
+    if (group) group.push(w);
+    else bySeq.set(w.seq, [w]);
+  }
+  for (const [seq, group] of bySeq) {
+    const keys = group.map((w) => `${w.seq}:${w.target}`);
+    if (keys.some((k) => woken.has(k))) continue;
+    const fullPost = (f.posts ?? []).find((p) => p.seq === seq);
+    const text = formatLeadWakes(group, fullPost, { harness: "claude-code" });
+    for (const k of keys) woken.add(k);
     try {
       await $.prompt.submit({ text });
     } catch {
-      // Session busy or unavailable; remove in-flight key so the next turn.complete or stallTick retries.
-      woken.delete(key);
+      // Session busy or unavailable; remove in-flight keys so the next turn.complete or stallTick retries.
+      for (const k of keys) woken.delete(k);
       continue;
     }
     try {
       const wakeAt = await $.clock.now();
       await update($, flow, (prev) =>
         prev
-          ? reduce(prev, {
-              type: "wake",
-              at: wakeAt,
-              seq: w.seq,
-              target: w.target,
-            })
+          ? group.reduce(
+              (acc, w) =>
+                reduce(acc, {
+                  type: "wake",
+                  at: wakeAt,
+                  seq: w.seq,
+                  target: w.target,
+                }),
+              prev,
+            )
           : prev,
       );
     } catch {
-      // Prompt was already submitted; keep key in woken so we do not double-send.
+      // Prompt was already submitted; keep keys in woken so we do not double-send.
     }
   }
 }
@@ -2743,6 +2762,17 @@ const isNotFoundError = (err: unknown): boolean => {
   }
   const msg = formatFsError(err);
   return /\bENOENT\b|\bENOTDIR\b|no such file or directory/i.test(msg);
+};
+
+const isEnoentError = (err: unknown): boolean => {
+  if (err && typeof err === "object" && "code" in err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0) {
+      return code === "ENOENT";
+    }
+  }
+  const msg = formatFsError(err);
+  return /\bENOENT\b|no such file or directory/i.test(msg);
 };
 
 function isPathInsideRoot(root: string, target: string): boolean {
@@ -2942,6 +2972,635 @@ async function getAgentRoles(
     cachedAgentRoles = Object.create(null);
   }
   return cachedAgentRoles;
+}
+
+async function resolveSetupRoot(
+  $: EngineInterface,
+  explicitRoot?: unknown,
+): Promise<
+  | { ok: true; repoRoot: string; realRoot: string }
+  | { ok: false; error: string }
+> {
+  if (explicitRoot !== undefined) {
+    if (typeof explicitRoot !== "string" || !isAbsolutePath(explicitRoot)) {
+      return { ok: false, error: INVALID_ROOT_ERROR };
+    }
+    const explicitStat = await $.fs
+      .stat(explicitRoot, { resolve: true })
+      .catch(() => undefined);
+    if (!explicitStat || explicitStat.kind !== "dir") {
+      return { ok: false, error: INVALID_ROOT_ERROR };
+    }
+    const repoRoot = explicitRoot.replace(/\/+$/, "") || "/";
+    const realRoot =
+      (explicitStat.realPath || repoRoot).replace(/\/+$/, "") || "/";
+    return { ok: true, repoRoot, realRoot };
+  }
+
+  let cwd = "";
+  try {
+    cwd = String((await $.session.cwd()) ?? "").trim();
+  } catch {
+    cwd = "";
+  }
+  if (!cwd || !isAbsolutePath(cwd)) {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  let repoRoot = cwd.replace(/\/+$/, "") || "/";
+  try {
+    const res = await $.process.run(
+      ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+      { timeoutMs: 5_000 },
+    );
+    if (
+      res.exitCode === 0 &&
+      typeof res.stdout === "string" &&
+      res.stdout.trim()
+    ) {
+      repoRoot = res.stdout.trim().replace(/\/+$/, "") || "/";
+    }
+  } catch {
+    // Fall back to cwd when git is unavailable or cwd is outside a git repo.
+  }
+  if (!isAbsolutePath(repoRoot)) {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  const rootStat = await $.fs
+    .stat(repoRoot, { resolve: true })
+    .catch(() => undefined);
+  if (!rootStat || rootStat.kind !== "dir") {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+  const realRoot = (rootStat.realPath || repoRoot).replace(/\/+$/, "") || "/";
+  return { ok: true, repoRoot, realRoot };
+}
+
+async function verifySetupRootUnchanged(
+  $: EngineInterface,
+  repoRoot: string,
+  realRoot: string,
+): Promise<string | null> {
+  const rootStat = await $.fs
+    .stat(repoRoot, { resolve: true })
+    .catch(() => undefined);
+  if (!rootStat || rootStat.kind !== "dir") {
+    return INVALID_ROOT_ERROR;
+  }
+  const currentRealRoot =
+    (rootStat.realPath || repoRoot).replace(/\/+$/, "") || "/";
+  if (currentRealRoot !== realRoot) {
+    return "repository root changed before write";
+  }
+  return null;
+}
+
+type InspectedRepoPath =
+  | { status: "absent" }
+  | { status: "file"; path: string; realPath: string; size: number }
+  | {
+      status: "symlink" | "outside-root" | "not-a-file" | "error";
+      reason: string;
+      error: string;
+    };
+
+async function inspectRepoPathClaude(
+  $: EngineInterface,
+  repoRoot: string,
+  realRoot: string,
+  segments: readonly string[],
+): Promise<InspectedRepoPath> {
+  const base = repoRoot === "/" ? "" : repoRoot;
+  for (let i = 0; i < segments.length; i += 1) {
+    const cur = `${base}/${segments.slice(0, i + 1).join("/")}`;
+    const relLabel = segments.slice(0, i + 1).join("/");
+    const isLast = i === segments.length - 1;
+
+    let linkStat;
+    try {
+      linkStat = await $.fs.stat(cur);
+    } catch (err) {
+      if (isEnoentError(err)) {
+        return { status: "absent" };
+      }
+      return {
+        status: "error",
+        reason: "stat-error",
+        error: `failed to stat ${relLabel}: ${formatFsError(err)}`,
+      };
+    }
+
+    if (linkStat.isLink) {
+      return {
+        status: "symlink",
+        reason: "symlink",
+        error: `${relLabel} is a symlink`,
+      };
+    }
+
+    let resolved;
+    try {
+      resolved = await $.fs.stat(cur, { resolve: true });
+    } catch (err) {
+      return {
+        status: "error",
+        reason: "realpath-error",
+        error: `failed to resolve ${relLabel}: ${formatFsError(err)}`,
+      };
+    }
+    const realCur =
+      typeof resolved?.realPath === "string" ? resolved.realPath.trim() : "";
+    if (!realCur || !isPathInsideRoot(realRoot, realCur)) {
+      return {
+        status: "outside-root",
+        reason: "outside-root",
+        error: `${relLabel} resolves outside root`,
+      };
+    }
+
+    if (!isLast) {
+      if (resolved.kind !== "dir") {
+        return {
+          status: "error",
+          reason: "parent-not-directory",
+          error: `${relLabel} is not a directory`,
+        };
+      }
+    } else {
+      if (resolved.kind !== "file") {
+        return {
+          status: "not-a-file",
+          reason: "not-a-file",
+          error: `${relLabel} is not a regular file`,
+        };
+      }
+      // Accepted limitation: Claude Code's $.fs.stat exposes only kind, size,
+      // mtimeMs, isLink, and realPath (no nlink or dev/ino), so hard-linked
+      // target files cannot be detected or refused through the plugin API.
+      // Accepted because git cannot store hard links: a cloned repository cannot
+      // plant one, so exploiting this needs an attacker already on the machine.
+      return {
+        status: "file",
+        path: cur,
+        realPath: realCur,
+        size: resolved.size,
+      };
+    }
+  }
+  return { status: "error", reason: "invalid-path", error: "empty path" };
+}
+
+type TeamSetupInput = {
+  action?: unknown;
+  root?: unknown;
+  agents?: unknown;
+  check?: unknown;
+};
+
+async function runTeamSetupTool($: EngineInterface, input: TeamSetupInput) {
+  const action = typeof input?.action === "string" ? input.action.trim() : "";
+  if (action !== "init" && action !== "sync") {
+    return { ok: false as const, error: 'action must be "init" or "sync"' };
+  }
+  if (input?.check !== undefined && typeof input.check !== "boolean") {
+    return { ok: false as const, error: "check must be a boolean" };
+  }
+  const check = input?.check === true;
+
+  const hasRoot =
+    input !== null &&
+    typeof input === "object" &&
+    Object.prototype.hasOwnProperty.call(input, "root") &&
+    input.root !== undefined;
+  const rootRes = await resolveSetupRoot($, hasRoot ? input.root : undefined);
+  if (!rootRes.ok) {
+    return rootRes;
+  }
+  const { repoRoot, realRoot } = rootRes;
+  const base = repoRoot === "/" ? "" : repoRoot;
+
+  if (action === "init") {
+    const starterCheck = validateStarterAgents(input?.agents);
+    if (!starterCheck.ok) {
+      return { ok: false as const, error: starterCheck.error };
+    }
+    const starterRoles = starterCheck.roles;
+
+    const teamInspect = await inspectRepoPathClaude($, repoRoot, realRoot, [
+      ".agents",
+      "team.json",
+    ]);
+    if (teamInspect.status !== "absent") {
+      return {
+        ok: false as const,
+        error:
+          teamInspect.status === "file"
+            ? ".agents/team.json already exists"
+            : teamInspect.error || ".agents/team.json cannot be created",
+      };
+    }
+
+    const callingHarness = "claude-code" as const;
+    const agentDirs = TEAM_AGENT_DIRS[callingHarness];
+    const pluginRoot = String($.plugin.root ?? "").replace(/\/+$/, "");
+    if (starterRoles.length > 0 && !pluginRoot) {
+      return { ok: false as const, error: "plugin root is unavailable" };
+    }
+
+    const plannedAgents: Array<{
+      relPath: string;
+      segments: readonly string[];
+      targetPath: string;
+      text: string;
+      role: string;
+      agent: string;
+    }> = [];
+
+    for (const role of starterRoles) {
+      const agentName = `team-${role}`;
+      const segments = [...agentDirs, `${agentName}.md`];
+      const relPath = segments.join("/");
+      const targetInspect = await inspectRepoPathClaude(
+        $,
+        repoRoot,
+        realRoot,
+        segments,
+      );
+      if (targetInspect.status !== "absent") {
+        return {
+          ok: false as const,
+          error:
+            targetInspect.status === "file"
+              ? `${relPath} already exists`
+              : targetInspect.error || `${relPath} cannot be created`,
+        };
+      }
+
+      const templatePath = `${pluginRoot}/agents/${role}.md`;
+      let tplStat;
+      try {
+        tplStat = await $.fs.stat(templatePath, { resolve: true });
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: `failed to read plugin template agents/${role}.md: ${formatFsError(err)}`,
+        };
+      }
+      if (tplStat.kind !== "file" || tplStat.size > MAX_AGENT_FILE_BYTES) {
+        return {
+          ok: false as const,
+          error: `plugin starter template agents/${role}.md is invalid`,
+        };
+      }
+      let templateText = "";
+      try {
+        templateText = String(await $.fs.read(templatePath));
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: `failed to read plugin template agents/${role}.md: ${formatFsError(err)}`,
+        };
+      }
+      if (
+        new TextEncoder().encode(templateText).length > MAX_AGENT_FILE_BYTES
+      ) {
+        return {
+          ok: false as const,
+          error: `plugin starter template agents/${role}.md is invalid`,
+        };
+      }
+      plannedAgents.push({
+        relPath,
+        segments,
+        targetPath: `${base}/${relPath}`,
+        text: starterAgentFile(templateText, role),
+        role,
+        agent: agentName,
+      });
+    }
+
+    const teamText = renderStarterTeam(starterRoles);
+    if (!check) {
+      // $.fs has no mkdir or unlink. We rely on $.fs.write creating missing parent
+      // folders (e.g. a repo with no .claude/agents yet). No published doc states
+      // this; it was checked live by running init with starter agents in a repo
+      // without .claude/agents (step 3 UAT, 2026-11-20). If it ever stops holding,
+      // the write throws and the rollback below reports the failure.
+      const createdPaths: string[] = [];
+      try {
+        for (const item of plannedAgents) {
+          // Best-effort TOCTOU mitigation: $.fs has no fd/O_NOFOLLOW/O_EXCL
+          // open-and-write API, so re-running symlink and inside-root checks
+          // before each write narrows the window; a concurrent swap between stat
+          // and $.fs.write remains a residual race.
+          const rootErr = await verifySetupRootUnchanged($, repoRoot, realRoot);
+          if (rootErr) {
+            throw new Error(rootErr);
+          }
+          const recheck = await inspectRepoPathClaude(
+            $,
+            repoRoot,
+            realRoot,
+            item.segments,
+          );
+          if (recheck.status !== "absent") {
+            throw new Error(
+              recheck.status === "file"
+                ? `${item.relPath} already exists`
+                : recheck.error || `${item.relPath} cannot be created`,
+            );
+          }
+          await $.fs.write(item.targetPath, item.text);
+          createdPaths.push(item.targetPath);
+        }
+        // Best-effort TOCTOU mitigation (same residual race as above).
+        const rootErr = await verifySetupRootUnchanged($, repoRoot, realRoot);
+        if (rootErr) {
+          throw new Error(rootErr);
+        }
+        const teamRecheck = await inspectRepoPathClaude($, repoRoot, realRoot, [
+          ".agents",
+          "team.json",
+        ]);
+        if (teamRecheck.status !== "absent") {
+          throw new Error(
+            teamRecheck.status === "file"
+              ? ".agents/team.json already exists"
+              : teamRecheck.error || ".agents/team.json cannot be created",
+          );
+        }
+        const teamPath = `${base}/.agents/team.json`;
+        await $.fs.write(teamPath, teamText);
+        createdPaths.push(teamPath);
+      } catch (err) {
+        // $.fs exposes no unlink/remove method, so clean up files created by
+        // this run in reverse order via rm -f.
+        const cleanupErrors: string[] = [];
+        for (let i = createdPaths.length - 1; i >= 0; i -= 1) {
+          const createdPath = createdPaths[i];
+          if (!createdPath) continue;
+          try {
+            const rmRes = await $.process.run(["rm", "-f", "--", createdPath], {
+              timeoutMs: 5_000,
+            });
+            if (rmRes.exitCode !== 0) {
+              const detail =
+                typeof rmRes.stderr === "string" && rmRes.stderr.trim()
+                  ? rmRes.stderr.trim()
+                  : `exit ${rmRes.exitCode}`;
+              cleanupErrors.push(`${createdPath}: ${detail}`);
+            }
+          } catch (rmErr) {
+            cleanupErrors.push(`${createdPath}: ${formatFsError(rmErr)}`);
+          }
+        }
+        const rollbackNote =
+          cleanupErrors.length > 0
+            ? `; rollback errors: ${cleanupErrors.join("; ")}`
+            : "";
+        return {
+          ok: false as const,
+          error: `failed to write starter files: ${formatFsError(err)}${rollbackNote}`,
+        };
+      }
+    }
+
+    const files = [
+      ...plannedAgents.map((item) => ({
+        path: item.relPath,
+        harness: callingHarness,
+        role: item.role,
+        agent: item.agent,
+        status: "created",
+        reason: null,
+      })),
+      { path: ".agents/team.json", status: "created", reason: null },
+    ];
+    return {
+      ok: true as const,
+      result: { action: "init", root: repoRoot, check, files },
+    };
+  }
+
+  // action === "sync"
+  const teamInspect = await inspectRepoPathClaude($, repoRoot, realRoot, [
+    ".agents",
+    "team.json",
+  ]);
+  if (teamInspect.status === "absent") {
+    return { ok: false as const, error: ".agents/team.json does not exist" };
+  }
+  if (teamInspect.status !== "file") {
+    return {
+      ok: false as const,
+      error: teamInspect.error || ".agents/team.json cannot be read",
+    };
+  }
+  if (teamInspect.size > MAX_TEAM_FILE_BYTES) {
+    return {
+      ok: false as const,
+      error: `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+    };
+  }
+  let teamText = "";
+  try {
+    teamText = String(await $.fs.read(teamInspect.realPath));
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: `failed to read .agents/team.json: ${formatFsError(err)}`,
+    };
+  }
+  if (new TextEncoder().encode(teamText).length > MAX_TEAM_FILE_BYTES) {
+    return {
+      ok: false as const,
+      error: `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+    };
+  }
+  const parsed = parseTeam(teamText);
+  if (parsed.errors.length > 0 || !parsed.team) {
+    return {
+      ok: false as const,
+      error: `invalid .agents/team.json: ${parsed.errors.join("; ")}`,
+    };
+  }
+
+  const targets = planTeamSync(parsed.team);
+  const files: Array<{
+    path: string;
+    harness: string;
+    role: string;
+    agent: string;
+    status: "changed" | "unchanged" | "skipped";
+    reason: string | null;
+  }> = [];
+  const plannedWrites: Array<{
+    realPath: string;
+    relPath: string;
+    segments: readonly string[];
+    text: string;
+  }> = [];
+
+  for (const target of targets) {
+    const inspected = await inspectRepoPathClaude(
+      $,
+      repoRoot,
+      realRoot,
+      target.segments,
+    );
+    if (inspected.status === "error") {
+      return { ok: false as const, error: inspected.error };
+    }
+    if (inspected.status === "absent") {
+      continue;
+    }
+    if (inspected.status !== "file") {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: inspected.reason,
+      });
+      continue;
+    }
+    if (target.conflict) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: target.reason,
+      });
+      continue;
+    }
+    if (inspected.size > MAX_AGENT_FILE_BYTES) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: "too-large",
+      });
+      continue;
+    }
+
+    let fileText = "";
+    try {
+      fileText = String(await $.fs.read(inspected.realPath));
+    } catch {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: "read-error",
+      });
+      continue;
+    }
+    if (new TextEncoder().encode(fileText).length > MAX_AGENT_FILE_BYTES) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: "too-large",
+      });
+      continue;
+    }
+
+    const applied = applyAgentModels(fileText, target.harness, {
+      model: target.model,
+      effort: target.effort,
+    });
+    if (applied.reason !== null) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: applied.reason,
+      });
+      continue;
+    }
+    if (applied.changed) {
+      plannedWrites.push({
+        realPath: inspected.realPath,
+        relPath: target.path,
+        segments: target.segments,
+        text: applied.text,
+      });
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "changed",
+        reason: null,
+      });
+    } else {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "unchanged",
+        reason: null,
+      });
+    }
+  }
+
+  if (!check) {
+    for (const op of plannedWrites) {
+      // Best-effort TOCTOU mitigation: $.fs has no fd/O_NOFOLLOW/inode API, so
+      // re-running symlink and inside-root checks before each write narrows the
+      // window; a concurrent swap between stat and $.fs.write remains a
+      // residual race.
+      const rootErr = await verifySetupRootUnchanged($, repoRoot, realRoot);
+      if (rootErr) {
+        return {
+          ok: false as const,
+          error: `refused to write ${op.relPath}: ${rootErr}`,
+        };
+      }
+      const recheck = await inspectRepoPathClaude(
+        $,
+        repoRoot,
+        realRoot,
+        op.segments,
+      );
+      if (recheck.status !== "file" || recheck.realPath !== op.realPath) {
+        const detail =
+          recheck.status === "absent"
+            ? "file disappeared before write"
+            : recheck.status === "file"
+              ? "resolved path changed before write"
+              : recheck.error;
+        return {
+          ok: false as const,
+          error: `refused to write ${op.relPath}: ${detail}`,
+        };
+      }
+      try {
+        await $.fs.write(recheck.realPath, op.text);
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: `failed to write ${op.relPath}: ${formatFsError(err)}`,
+        };
+      }
+    }
+  }
+
+  return {
+    ok: true as const,
+    result: { action: "sync", root: repoRoot, check, files },
+  };
 }
 
 export const register: Register = (on) => {
@@ -3198,6 +3857,40 @@ export const register: Register = (on) => {
       },
     });
 
+    await $.tool.register({
+      name: "team_setup",
+      description:
+        "Initialize a starter .agents/team.json (and optional team-<role> starter agents) or sync explicit team.json harness model settings into repository agent files.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["init", "sync"],
+            description: "Setup action: init or sync.",
+          },
+          root: {
+            type: "string",
+            description:
+              "Optional absolute path to the repository root directory.",
+          },
+          agents: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Optional non-lead role names to copy as editable team-<role> starter agents during init.",
+          },
+          check: {
+            type: "boolean",
+            description:
+              "When true, check and report changes without writing any files.",
+          },
+        },
+        required: ["action"],
+        additionalProperties: false,
+      },
+    });
+
     await $.command.register({
       name: "orchestrator-panel",
       description:
@@ -3310,6 +4003,18 @@ export const register: Register = (on) => {
       }
     }
     return { result: JSON.stringify(res) };
+  });
+
+  on("tool.call", { tool: TEAM_SETUP_TOOL }, async ($, e) => {
+    if (e.agentId) {
+      return { result: "team_setup is for the lead only", isError: true };
+    }
+    const input = e as unknown as TeamSetupInput;
+    const res = await runTeamSetupTool($, input);
+    if (!res.ok) {
+      return { result: res.error, isError: true };
+    }
+    return { result: JSON.stringify(res.result) };
   });
 
   on("tool.call", { tool: TOOL }, async ($, e) => {

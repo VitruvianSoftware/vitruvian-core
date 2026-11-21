@@ -23,9 +23,9 @@ Component package providing implementation for `tools/agent-app/src`.
 ## Invariants
 - [github.rs:253]: `assert!(decode_json(b"<html>").is_err());`
 - [github.rs:254]: `assert!(decode_json(b"").is_err());`
-- [json.rs:464]: `assert!(matches!(v.get("b"), Some(Value::Float(f)) if f.is_infinite()));`
-- [json.rs:465]: `assert!(loads("[1,]").is_err());`
-- [json.rs:466]: `assert!(loads("{} x").is_err());`
+- [json_test.rs:29]: `assert!(matches!(v.get("b"), Some(Value::Float(f)) if f.is_infinite()));`
+- [json_test.rs:30]: `assert!(loads("[1,]").is_err());`
+- [json_test.rs:31]: `assert!(loads("{} x").is_err());`
 - [pyerr.rs:110]: `assert!(`
 - [pyerr.rs:115]: `assert!(decode_utf8(b"\xe2\x82")`
 - [pystr.rs:233]: `assert!(is_space('\u{1c}'));`

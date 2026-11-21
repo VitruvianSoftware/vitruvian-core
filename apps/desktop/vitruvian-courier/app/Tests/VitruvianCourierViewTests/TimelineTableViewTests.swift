@@ -682,6 +682,38 @@ final class TimelineTableViewTests: XCTestCase {
         XCTAssertEqual(try watchedMinY(), before, accuracy: 1.0, "an older page joining the top does not move what is on screen")
     }
 
+    /// The oldest message the chat has shows its date above it when scrolled to the top, under the header and not
+    /// hidden behind it, whether the chat opened that way or older pages joined the top and the history then ended.
+    func testTheOldestMessageShowsItsDateDividerBelowTheHeader() throws {
+        let newer = (1 ... 30).map { Fixture.text("$n\($0)", "Newer \($0)", mine: $0 % 2 == 0, ts: 60 - $0) }
+        let harness = try mountTable(items: Fixture.items(newer, isDirect: false), hasOlder: true)
+        defer { harness.tearDown() }
+        harness.pump(for: 0.4)
+        for _ in 0 ..< 5 { harness.scrollBy(-120) }
+        harness.pump(for: 0.2)
+
+        // Two days of older messages join the top, and the history ends there.
+        let older = (1 ... 12).map { Fixture.text("$o\($0)", "Older \($0)", mine: false, ts: 3000 - $0) }
+        harness.conversation.setSnapshotItemsForTesting(Fixture.items(older + newer, isDirect: false), hasOlder: false)
+        harness.pump(for: 0.3)
+        harness.scrollToTop()
+        harness.pump(for: 0.3)
+
+        // The row above the first message, past the control that offers to load earlier ones from the network.
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.kind != .topControl })
+        guard case .dateSeparator? = harness.coordinator.entries[row].item else {
+            return XCTFail("the oldest message has its date divider above it")
+        }
+        let clip = harness.scrollView.contentView.bounds
+        let rect = harness.tableView.rect(ofRow: row)
+        XCTAssertGreaterThanOrEqual(
+            rect.minY - clip.minY, harness.scrollView.contentInsets.top - 1,
+            "the divider is below the header, not hidden behind it"
+        )
+        XCTAssertGreaterThan(rect.height, 0)
+        XCTAssertLessThanOrEqual(rect.maxY, clip.maxY, "the divider is on screen")
+    }
+
     // MARK: 9. Sizing rows never waits on the disk
 
     private func writePDF(to url: URL) throws {
@@ -858,5 +890,215 @@ final class TimelineTableViewTests: XCTestCase {
         harness.pump(for: 0.4)
         XCTAssertFalse(harness.coordinator.isShutDown)
         XCTAssertEqual(harness.tableView.rect(ofRow: row).height, before, "measured again, not left at the placeholder")
+    }
+
+    // MARK: 12. Back-scroll stability, anchoring, and short-chat auto-load
+
+    func testUpdateWithin150msOfScrollingUpDoesNotJumpToBottom() throws {
+        let initialEvents = (1 ... 30).map { idx in
+            Fixture.text("$m\(idx)", "Message #\(idx)", mine: idx % 2 == 0, ts: 60 - idx)
+        }
+        let harness = try mountTable(items: Fixture.items(initialEvents, isDirect: false))
+        defer { harness.tearDown() }
+        harness.pump(for: 0.4)
+        XCTAssertTrue(harness.conversation.isAtBottom)
+
+        for _ in 0 ..< 6 {
+            harness.scrollBy(-120)
+        }
+        // Stay strictly inside the 150ms leavingBottomConfirmDelayNanoseconds window.
+        let originBefore = harness.scrollView.contentView.bounds.origin.y
+        let visible = harness.tableView.rows(in: harness.tableView.visibleRect)
+        let watchedID = harness.coordinator.entries[visible.location + visible.length / 2].id
+        func watchedScreenMinY() throws -> CGFloat {
+            let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == watchedID })
+            return harness.host.convert(harness.tableView.rect(ofRow: row), from: harness.tableView).minY
+        }
+        let watchedBefore = try watchedScreenMinY()
+
+        let appended = Fixture.text("$m31", "Incoming while scrolling up", mine: false, ts: 1)
+        harness.conversation.setSnapshotItemsForTesting(Fixture.items(initialEvents + [appended], isDirect: false))
+        harness.pump(for: 0.05)
+
+        XCTAssertEqual(
+            harness.scrollView.contentView.bounds.origin.y,
+            originBefore,
+            accuracy: 1.0,
+            "an update within 150ms of scrolling up must not snap back to bottom"
+        )
+        XCTAssertEqual(
+            try watchedScreenMinY(),
+            watchedBefore,
+            accuracy: 1.0,
+            "visible row must stay anchored when update lands within 150ms of scrolling up"
+        )
+    }
+
+    func testAboveViewportHeightChangesKeepFirstVisibleRowAnchored() throws {
+        let dir = try makeTempDir()
+        let lateImageURL = dir.appendingPathComponent("late-preview.png")
+
+        var events: [Event] = []
+        for idx in 1 ... 30 {
+            let ts = 90 - idx
+            if idx == 2 {
+                var linkEvent = Fixture.text("$m2", "See https://example.com/late", mine: false, ts: ts)
+                linkEvent.linkPreviews = [
+                    LinkPreviewItem(
+                        matchedURL: "https://example.com/late",
+                        url: "https://example.com/late",
+                        title: "Late Preview",
+                        imagePath: lateImageURL.path
+                    ),
+                ]
+                events.append(linkEvent)
+            } else if idx == 3 {
+                events.append(Fixture.event("$m3", mine: false, ts: ts, content: [
+                    "msgtype": .string("m.audio"),
+                    "body": .string("voice.m4a"),
+                    "org.matrix.msc3245.voice": .object([:]),
+                ]))
+            } else if idx == 4 {
+                events.append(Fixture.text("$m4", "Short", mine: false, ts: ts))
+            } else {
+                events.append(Fixture.text("$m\(idx)", "Message #\(idx)", mine: idx % 2 == 0, ts: ts))
+            }
+        }
+
+        let harness = try mountTable(items: Fixture.items(events, isDirect: false))
+        defer { harness.tearDown() }
+        harness.pump(for: 0.4)
+
+        // Scroll up so $m2, $m3, $m4 are strictly above the viewport while we are not at bottom.
+        for _ in 0 ..< 5 {
+            harness.scrollBy(-90)
+        }
+        harness.pump(for: 0.25)
+        XCTAssertFalse(harness.conversation.isAtBottom)
+
+        let rowM2 = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$m2" })
+        let rowM3 = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$m3" })
+        let rowM4 = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$m4" })
+        XCTAssertLessThan(
+            harness.tableView.rect(ofRow: rowM4).maxY,
+            harness.scrollView.contentView.bounds.minY,
+            "$m2..$m4 must lie strictly above the viewport"
+        )
+
+        let visible = harness.tableView.rows(in: harness.tableView.visibleRect)
+        let firstVisibleRow = visible.location
+        let anchorID = harness.coordinator.entries[firstVisibleRow].id
+        func anchorScreenMinY() throws -> CGFloat {
+            let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == anchorID })
+            return harness.host.convert(harness.tableView.rect(ofRow: row), from: harness.tableView).minY
+        }
+
+        // (a) Image / link preview turns up on disk above viewport.
+        harness.pump(for: LocalFileFacts.missingLifetime + 0.08)
+        let m2HeightBefore = harness.tableView.rect(ofRow: rowM2).height
+        let anchorBeforeImage = try anchorScreenMinY()
+        try writePNG(to: lateImageURL, width: 640, height: 360)
+        LocalFileFacts.warm(paths: [lateImageURL.path])
+        harness.pump(for: 0.35)
+        XCTAssertGreaterThan(harness.tableView.rect(ofRow: rowM2).height, m2HeightBefore + 80)
+        XCTAssertEqual(
+            try anchorScreenMinY(),
+            anchorBeforeImage,
+            accuracy: 1.0,
+            "above-viewport image/link preview load must keep first visible row anchored"
+        )
+
+        // (b) Voice-note transcript arrives above viewport.
+        let m3HeightBefore = harness.tableView.rect(ofRow: rowM3).height
+        let anchorBeforeTranscript = try anchorScreenMinY()
+        let transcript = String(repeating: "Transcript line for voice note above viewport. ", count: 8)
+        harness.conversation.voiceNoteTranscripts.setEntryForTesting(
+            .transcribed(text: transcript, provenance: .onThisMac, isCollapsed: false),
+            for: "$m3"
+        )
+        harness.pump(for: 0.2)
+        XCTAssertGreaterThan(harness.tableView.rect(ofRow: rowM3).height, m3HeightBefore + 20)
+        XCTAssertEqual(
+            try anchorScreenMinY(),
+            anchorBeforeTranscript,
+            accuracy: 1.0,
+            "above-viewport transcript arrival must keep first visible row anchored"
+        )
+
+        // (c) Message above viewport grows from an edit / diffed update.
+        let m4HeightBefore = harness.tableView.rect(ofRow: rowM4).height
+        let anchorBeforeEdit = try anchorScreenMinY()
+        var editedEvents = events
+        editedEvents[3] = Fixture.text(
+            "$m4",
+            String(repeating: "Expanded text line above the viewport so row height increases. ", count: 6),
+            mine: false,
+            ts: 90 - 4
+        )
+        harness.conversation.setSnapshotItemsForTesting(Fixture.items(editedEvents, isDirect: false))
+        harness.pump(for: 0.2)
+        XCTAssertGreaterThan(harness.tableView.rect(ofRow: rowM4).height, m4HeightBefore + 20)
+        XCTAssertEqual(
+            try anchorScreenMinY(),
+            anchorBeforeEdit,
+            accuracy: 1.0,
+            "above-viewport row edit height growth must keep first visible row anchored"
+        )
+    }
+
+    func testPinToBottomTimerCancelledByScrollWithoutScrollWheelEvent() throws {
+        let events = (1 ... 30).map { idx in
+            Fixture.text("$p\(idx)", "Pin test message #\(idx)", mine: idx % 2 == 0, ts: 60 - idx)
+        }
+        // mountTable pumps only 0.2s, leaving the ~1.5s pin-to-bottom timer active.
+        let harness = try mountTable(items: Fixture.items(events, isDirect: false))
+        defer { harness.tearDown() }
+
+        // Scroll directly on clipView without a scrollWheel event (e.g. scroller thumb drag or key scroll).
+        let clip = harness.scrollView.contentView
+        let targetY = max(-harness.scrollView.contentInsets.top, clip.bounds.origin.y - 240)
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: targetY))
+        harness.scrollView.reflectScrolledClipView(clip)
+        harness.pump(for: 0.02)
+        let originAfterScroll = clip.bounds.origin.y
+
+        // Pump past several pin-to-bottom timer callbacks (0.3s, 0.5s, 0.75s).
+        harness.pump(for: 0.65)
+        XCTAssertEqual(
+            clip.bounds.origin.y,
+            originAfterScroll,
+            accuracy: 1.0,
+            "non-wheel user scroll during 1.5s open pin window must cancel pin-to-bottom timer"
+        )
+
+        // Also check PageUp keyDown cancels an active pin timer even when content updates during pin window.
+        let keyHarness = try mountTable(items: Fixture.items(events, isDirect: false))
+        defer { keyHarness.tearDown() }
+        let keyClip = keyHarness.scrollView.contentView
+        let keyTargetY = max(-keyHarness.scrollView.contentInsets.top, keyClip.bounds.origin.y - 180)
+        keyClip.scroll(to: NSPoint(x: keyClip.bounds.origin.x, y: keyTargetY))
+        keyHarness.scrollView.reflectScrolledClipView(keyClip)
+        if let pageUp = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: keyHarness.window.windowNumber,
+            context: nil,
+            characters: String(UnicodeScalar(NSPageUpFunctionKey)!),
+            charactersIgnoringModifiers: String(UnicodeScalar(NSPageUpFunctionKey)!),
+            isARepeat: false,
+            keyCode: 116
+        ) {
+            NSApp.sendEvent(pageUp)
+        }
+        let originAfterKey = keyClip.bounds.origin.y
+        keyHarness.pump(for: 0.65)
+        XCTAssertEqual(
+            keyClip.bounds.origin.y,
+            originAfterKey,
+            accuracy: 1.0,
+            "PageUp keyDown during 1.5s open pin window must cancel pin-to-bottom timer"
+        )
     }
 }

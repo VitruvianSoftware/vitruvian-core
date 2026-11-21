@@ -147,4 +147,93 @@ final class SearchResultRowTests: XCTestCase {
         }
         XCTAssertEqual(sizes.count, 2)
     }
+
+    func testScopedPanelUsesHeaderNameHidesAccountsAndCommandsAndOmitsChatLocation() throws {
+        let name = "courier.searchrows.scoped.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let app = offlineApp()
+        app.setAccountsForTesting([
+            Account(network: "gchat", displayName: "Google Chat", flows: ["google"], state: .connected),
+            Account(network: "signal", displayName: "Signal", flows: ["qr"], state: .connected),
+        ])
+        let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: defaults))
+        var row = Fixture.row("!g", "Eddie Stecker, Kent Hua", network: "gchat", direct: false, ts: 5, preview: "Dinner?")
+        row.memberPreview = [
+            RowMember(userID: "@eddie", name: "Eddie Stecker"),
+            RowMember(userID: "@kent", name: "Kent Hua"),
+        ]
+        inbox.setSnapshotRowsForTesting([row])
+        inbox.setKnownMembers(
+            [
+                GroupTitleMember(userID: "@eddie", name: "Eddie Stecker"),
+                GroupTitleMember(userID: "@kent", name: "Kent Hua"),
+            ],
+            isComplete: true,
+            for: "!g"
+        )
+
+        let search = SearchModel(appModel: app, recents: RecentSearches(defaults: defaults), open: { _ in })
+        search.show(in: "!g")
+        XCTAssertTrue(search.isScoped)
+        XCTAssertTrue(search.isScopedToSingleChat)
+
+        let resolvedScope = SearchScopePresentation.displayName(
+            scopeRoomID: search.scopeRoomID,
+            scopeRow: search.scope,
+            inbox: inbox,
+            openChatRoomID: "!g",
+            openChatDisplayTitle: "Eddie & Kent"
+        )
+        XCTAssertEqual(resolvedScope, "Eddie & Kent")
+
+        let controls = SearchPanelControls.resolve(
+            isScopedToChat: search.isScoped,
+            hasAccounts: !inbox.linkedNetworks.isEmpty,
+            filters: search.filters,
+            hasCommandBarAction: true
+        )
+        XCTAssertFalse(controls.showsAccountsFilter)
+        XCTAssertFalse(controls.showsCommandsChip)
+
+        let groupHit = hit("Dinner with Eddie?", ranges: [(0, 6)])
+        let expectedTime = SearchDate.text(forMillis: groupHit.ts)
+        XCTAssertEqual(
+            MediaCell(hit: groupHit, chatTitle: "Eddie & Kent", isSelected: false, scopedToSingleChat: true).helpText(),
+            "Kent Hua · \(expectedTime)"
+        )
+        XCTAssertEqual(
+            SearchResultLocation.subtitle(
+                sender: "Kent Hua",
+                chatTitle: "Eddie & Kent",
+                networkName: "Google Chat",
+                isDirect: false,
+                scopedToSingleChat: search.isScopedToSingleChat
+            ),
+            "Kent Hua"
+        )
+
+        let sizes = try Snapshot.render("search-panel-scoped", width: 680) {
+            VStack(alignment: .leading, spacing: 8) {
+                SearchPanel(
+                    search: search,
+                    inbox: inbox,
+                    maxHeight: 260,
+                    openChatRoomID: "!g",
+                    openChatDisplayTitle: "Eddie & Kent",
+                    onOpenCommandBar: { _ in }
+                )
+                SearchRowView(
+                    item: .message(groupHit),
+                    isSelected: true,
+                    networkName: { _ in "Google Chat" },
+                    chatTitle: { _ in "Eddie & Kent" },
+                    scopedToSingleChat: search.isScopedToSingleChat
+                )
+            }
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+        XCTAssertEqual(sizes.count, 2)
+    }
 }

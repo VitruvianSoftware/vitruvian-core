@@ -231,6 +231,25 @@ final class CommandSetTests: XCTestCase {
 
     // MARK: - Search
 
+    /// New Chat hides the chat that is still selected, so "Search messages in current chat" is off while it is open.
+    func testSearchInCurrentChatIsOffWhileNewChatCoversThePane() async throws {
+        let (h, spaces, _) = try await start()
+        let searchH = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
+        searchHarnesses.append(searchH)
+        let all = CommandSet.all(inbox: h.inbox, spaces: spaces, search: searchH.search)
+        let here = try command(all, "Search messages in current chat")
+
+        h.inbox.select("!a")
+        XCTAssertTrue(here.isEnabled(), "a chat is showing")
+
+        h.inbox.openStartNewChat()
+        XCTAssertNotNil(h.inbox.startNewChatDraft)
+        XCTAssertFalse(here.isEnabled(), "the chat is hidden behind New Chat")
+
+        h.inbox.cancelStartNewChat()
+        XCTAssertTrue(here.isEnabled())
+    }
+
     func testSearchCommandsHaveLedgerNamesAndRun() async throws {
         let h = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
         searchHarnesses.append(h)

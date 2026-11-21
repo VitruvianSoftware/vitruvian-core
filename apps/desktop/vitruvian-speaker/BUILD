@@ -23,7 +23,7 @@ swift_library(
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianSpeakerCore",
-        "//packages/swift/SentryLite",
+        "//packages/sentry-lite:SentryLite",
     ],
 )
 

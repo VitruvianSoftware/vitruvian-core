@@ -3,19 +3,61 @@
 
 import Foundation
 
-/// When a message's hover bar (quick reactions, Reply, More) is on screen.
+/// How a message's floating action UI renders: hidden, compact hover pill, or full selected action bar.
+public enum ActionBarMode: Equatable, Sendable {
+    case hidden
+    case hoverPill
+    case selectedBar
+}
+
+/// When a message's hover pill or selected action bar is on screen.
 ///
-/// It is the selected message's. It goes when the pointer leaves the message (its row, or the bar itself, which sits
-/// over the row's top corner), and while anything covers the timeline: the ⌘K search panel, the command bar, a sheet
-/// or an alert. Covering only pauses it: the pointer's place is kept, so when the cover closes with the pointer
-/// still over the message, the bar is back without the pointer having to leave and return. It stays while the
-/// message's own menu or reaction picker is open, which the pointer leaves to reach.
+/// A hovered unselected message shows the compact pill (React, Reply, More) with a 120 ms fade; a selected message
+/// shows the full bar. Neither shows while anything covers the timeline (⌘K search,
+/// command bar, sheet, alert). Covering only pauses it: the pointer's place is kept, so when the cover closes with
+/// the pointer still over the message, the bar/pill returns without re-entry. Both stay open while the message's
+/// menu or reaction picker is open.
 public enum ActionBarVisibility {
-    public static func isShown(canAct: Bool, isSelected: Bool, menuOpen: Bool, pickingReaction: Bool,
-                               pointer: ActionBarPointer, timelineCovered: Bool) -> Bool {
-        guard canAct, !timelineCovered else { return false }
-        if menuOpen || pickingReaction { return true }
-        return isSelected && !pointer.hasLeft
+    /// Fade-in / fade-out duration for the hover pill (~120 ms).
+    public static let hoverFadeDuration: TimeInterval = 0.12
+
+    public static func mode(
+        canAct: Bool,
+        isSelected: Bool,
+        menuOpen: Bool,
+        pickingReaction: Bool,
+        pointer: ActionBarPointer,
+        timelineCovered: Bool
+    ) -> ActionBarMode {
+        guard canAct, !timelineCovered else { return .hidden }
+        if menuOpen || pickingReaction {
+            return isSelected ? .selectedBar : .hoverPill
+        }
+        if isSelected {
+            return pointer.hasLeft ? .hidden : .selectedBar
+        }
+        if pointer.isHovered {
+            return .hoverPill
+        }
+        return .hidden
+    }
+
+    public static func isShown(
+        canAct: Bool,
+        isSelected: Bool,
+        menuOpen: Bool,
+        pickingReaction: Bool,
+        pointer: ActionBarPointer,
+        timelineCovered: Bool
+    ) -> Bool {
+        mode(
+            canAct: canAct,
+            isSelected: isSelected,
+            menuOpen: menuOpen,
+            pickingReaction: pickingReaction,
+            pointer: pointer,
+            timelineCovered: timelineCovered
+        ) != .hidden
     }
 }
 
@@ -30,6 +72,8 @@ public struct ActionBarPointer: Equatable, Sendable {
 
     public private(set) var inRow = false
     public private(set) var onBar = false
+    /// Whether the pointer entered this message and has not yet settled away.
+    public private(set) var hasEntered = false
     /// The pointer went (or the timeline was covered), and has not come back.
     public private(set) var hasLeft = false
 
@@ -38,19 +82,31 @@ public struct ActionBarPointer: Equatable, Sendable {
     /// True while the pointer is on the row or on its bar.
     public var isOver: Bool { inRow || onBar }
 
+    /// True while the pointer is hovering this message (including the brief crossing gap before `settle()`).
+    public var isHovered: Bool { isOver || (hasEntered && !hasLeft) }
+
     public mutating func rowHover(_ inside: Bool) {
         inRow = inside
-        if inside { hasLeft = false }
+        if inside {
+            hasEntered = true
+            hasLeft = false
+        }
     }
 
     public mutating func barHover(_ inside: Bool) {
         onBar = inside
-        if inside { hasLeft = false }
+        if inside {
+            hasEntered = true
+            hasLeft = false
+        }
     }
 
     /// The moment after the pointer left both: it is gone, unless it came back.
     public mutating func settle() {
-        if !isOver { hasLeft = true }
+        if !isOver {
+            hasLeft = true
+            hasEntered = false
+        }
     }
 
     /// The message was selected anew (a key, say): its bar shows.

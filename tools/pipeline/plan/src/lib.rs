@@ -37,8 +37,8 @@ pub use gates::{
 };
 pub use query::{
     build_test_rdeps_query, compute_rdeps_map, compute_unit_packages, earlier_map_base,
-    internal_query_errors, is_mac_runner, last_lines, load_rdeps_map, parse_graph_edges,
-    peek_rdeps_map_commit, RdepsMap, RDEPS_MAP_SCHEMA,
+    internal_query_errors, is_mac_runner, last_lines, load_rdeps_map, map_packages,
+    parse_graph_edges, peek_rdeps_map_commit, RdepsMap, RDEPS_MAP_SCHEMA,
 };
 
 use std::time::Instant;

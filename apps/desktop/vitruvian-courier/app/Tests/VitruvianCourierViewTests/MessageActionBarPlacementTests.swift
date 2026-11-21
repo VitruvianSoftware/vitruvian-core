@@ -54,6 +54,19 @@ final class MessageActionBarPlacementTests: XCTestCase {
         XCTAssertEqual(MessageActionBarPlacement.origin(bubble: mine, row: row, bar: bar, mine: true).x,
                        MessageActionBarPlacement.edgeMargin)
     }
+
+    func testCompactHoverPillGoesRightOfTheirsAndLeftOfMine() {
+        let hoverPill = CGSize(width: 84, height: 28)
+        let theirs = CGRect(x: 36, y: 3, width: 120, height: 30)
+        let theirSpot = MessageActionBarPlacement.origin(bubble: theirs, row: row, bar: hoverPill, mine: false)
+        XCTAssertEqual(theirSpot.x, theirs.maxX + MessageActionBarPlacement.gap)
+        XCTAssertEqual(theirSpot.y, theirs.minY)
+
+        let mine = CGRect(x: 520, y: 3, width: 140, height: 30)
+        let mySpot = MessageActionBarPlacement.origin(bubble: mine, row: row, bar: hoverPill, mine: true)
+        XCTAssertEqual(mySpot.x + hoverPill.width, mine.minX - MessageActionBarPlacement.gap)
+        XCTAssertEqual(mySpot.y, mine.minY)
+    }
 }
 
 /// Where the who-reacted card goes: above its chip, unless that would cover the selected message's action bar.

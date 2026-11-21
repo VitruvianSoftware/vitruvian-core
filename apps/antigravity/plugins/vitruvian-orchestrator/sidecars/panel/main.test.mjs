@@ -1572,11 +1572,12 @@ test("security item 2: checkAndWakeBoardMentions fences adversarial post text in
       now: t0 + 5000,
     });
 
-    assert.equal(sent.length, 2);
+    // The post mentions @lead and @atlas (no conversation of its own): the
+    // lead gets it once, carrying the line to wake atlas.
+    assert.equal(sent.length, 1);
     const atlasWake = sent.find((s) => s.msg.includes("Wake @atlas"));
-    const leadWake = sent.find((s) => !s.msg.includes("Wake @atlas"));
     assert.ok(atlasWake);
-    assert.ok(leadWake);
+    assert.equal(atlasWake.msg.split("<board-post seq=").length, 2);
     assert.equal(
       atlasWake.msg.endsWith(
         "\n</board-post>\nWake @atlas and pass it this post.",
@@ -1584,7 +1585,6 @@ test("security item 2: checkAndWakeBoardMentions fences adversarial post text in
       true,
     );
     assert.equal(atlasWake.msg.includes("‹/board-post›"), true);
-    assert.equal(leadWake.msg.endsWith("\n</board-post>"), true);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

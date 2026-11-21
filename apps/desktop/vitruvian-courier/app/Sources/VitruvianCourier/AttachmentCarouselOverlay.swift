@@ -43,6 +43,7 @@ public struct AttachmentCarouselOverlay: View {
     public var onDownload: (CarouselItem) -> Void
     public var onClose: () -> Void
 
+    @Environment(\.redactNamesAndPictures) private var isRedacted
     @State private var panOffset: CGSize = .zero
     @State private var dragStartOffset: CGSize = .zero
     @State private var showReactionPopover = false
@@ -91,13 +92,26 @@ public struct AttachmentCarouselOverlay: View {
                     centerStage(for: item)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    if !item.caption.isEmpty && item.caption != item.fileName {
-                        Text(verbatim: item.caption)
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.92))
-                            .lineLimit(2)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 6)
+                    let captionText = PhotoViewerPresentation.displayCaption(
+                        caption: item.caption,
+                        fileName: item.fileName
+                    )
+                    let reactionChips = PhotoViewerPresentation.visibleChips(item.reactions)
+                    if captionText != nil || !reactionChips.isEmpty {
+                        VStack(spacing: 6) {
+                            if let captionText {
+                                Text(verbatim: captionText)
+                                    .font(.callout)
+                                    .foregroundStyle(.white.opacity(0.92))
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                            }
+                            if !reactionChips.isEmpty {
+                                PhotoViewerReactionChips(chips: reactionChips)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 6)
                     }
 
                     Divider()
@@ -129,50 +143,36 @@ public struct AttachmentCarouselOverlay: View {
 
     private func topBar(for item: CarouselItem) -> some View {
         HStack(spacing: 10) {
-            let displaySender = item.mine
-                ? String(localized: "You")
-                : (item.senderName.isEmpty ? item.sender : item.senderName)
+            let displaySender = PhotoViewerPresentation.displaySender(
+                sender: item.sender,
+                senderName: item.senderName,
+                mine: item.mine,
+                redacted: isRedacted
+            )
+            let headerText = PhotoViewerPresentation.headerText(for: item, redacted: isRedacted)
+            let avatarIdentity = isRedacted
+                ? AvatarColor.identity(id: displaySender, fallbackName: displaySender)
+                : AvatarColor.identity(id: item.sender, fallbackName: displaySender)
             AvatarView(
-                path: item.senderAvatarPath,
+                path: isRedacted ? "" : item.senderAvatarPath,
                 initials: Self.initials(of: displaySender),
-                identity: AvatarColor.identity(id: item.sender, fallbackName: displaySender)
+                identity: avatarIdentity
             )
             .frame(width: 28, height: 28)
 
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(verbatim: displaySender)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: headerText)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
 
-                    Text(verbatim: model.positionLabel)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.white.opacity(0.16)))
-                }
-                HStack(spacing: 6) {
-                    if !item.fileName.isEmpty {
-                        Text(verbatim: item.fileName)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.8))
-                            .lineLimit(1)
-                    }
-                    if item.ts > 0 {
-                        Text(verbatim: "•")
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.5))
-                        Text(
-                            Date(timeIntervalSince1970: Double(item.ts) / 1000.0)
-                                .formatted(date: .abbreviated, time: .shortened)
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.75))
-                        .lineLimit(1)
-                    }
-                }
+                Text(verbatim: model.positionLabel)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.white.opacity(0.16)))
+                    .fixedSize()
             }
 
             Spacer(minLength: 12)
@@ -634,5 +634,44 @@ struct CarouselFilmstripTile: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The photo's reactions in the viewer (emoji and count), read-only; reacting stays in the toolbar.
+struct PhotoViewerReactionChips: View {
+    let chips: [ReactionChip]
+    @Environment(\.redactNamesAndPictures) private var isRedacted
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollView(.horizontal, showsIndicators: false) { row }
+        }
+    }
+
+    private var row: some View {
+        HStack(spacing: 6) {
+            ForEach(chips) { chip in
+                HStack(spacing: 4) {
+                    ReactionKeyView(chip: chip, size: 13)
+                    Text(verbatim: "\(chip.count)")
+                        .font(.caption.monospacedDigit())
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(chip.mine ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.14)))
+                .overlay(
+                    Capsule().strokeBorder(
+                        chip.mine ? Color.accentColor.opacity(0.75) : Color.white.opacity(0.18),
+                        lineWidth: 1
+                    )
+                )
+                .help(chip.tooltipText(redacted: isRedacted))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(PhotoViewerPresentation.chipAccessibility(for: chip, redacted: isRedacted).label)
+                .accessibilityValue(PhotoViewerPresentation.chipAccessibility(for: chip, redacted: isRedacted).value)
+            }
+        }
     }
 }

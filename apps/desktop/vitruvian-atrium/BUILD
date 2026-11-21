@@ -295,7 +295,7 @@ swift_library(
         ":VitruvianAtriumDesign",
         ":VitruvianAtriumServices",
         ":VitruvianAtriumUI",
-        "//packages/swift/SentryLite",
+        "//packages/sentry-lite:SentryLite",
     ],
 )
 
@@ -321,7 +321,7 @@ swift_library(
         ":VitruvianAtriumDesign",
         ":VitruvianAtriumServices",
         ":VitruvianAtriumUI",
-        "//packages/swift/SentryLite",
+        "//packages/sentry-lite:SentryLite",
     ],
 )
 

@@ -632,6 +632,9 @@ public final class ConversationModel: ObservableObject {
     private var seenIDs = Set<String>()
     private var olderCursor: Cursor?
     private var olderPagesLoaded = false
+    private var pendingOlderProbeEventIDs = Set<String>()
+    private var pendingOlderProbeForced = false
+    private var olderProbeTask: Task<Void, Never>?
     private var firstUnreadID: String?
     private var unreadAtOpen = 0
     /// The next newest page is the first since the chat was opened (or came back from a window): it places the
@@ -1464,6 +1467,10 @@ public final class ConversationModel: ObservableObject {
         earlierRead?.cancel()
         earlierRead = nil
         earlierAnchorID = nil
+        pendingOlderProbeEventIDs = []
+        pendingOlderProbeForced = false
+        olderProbeTask?.cancel()
+        olderProbeTask = nil
         isLoadingNewer = false
         problem = nil
         isAwayFromLatest = false
@@ -1547,7 +1554,12 @@ public final class ConversationModel: ObservableObject {
             await fetchAround(anchor, reveal: !windowLoaded)
             return
         }
-        dropPending = true
+        let keepOlder = !isAtBottom && isLoaded && !events.isEmpty
+        if !keepOlder {
+            dropPending = true
+        } else if !hasOlder, olderPagesLoaded {
+            pendingOlderProbeForced = true
+        }
         await fetchNewest()
     }
 
@@ -1566,9 +1578,16 @@ public final class ConversationModel: ObservableObject {
     private func handle(_ change: Change) {
         guard let open = roomID else { return }
         switch change {
-        case let .event(room, _):
+        case let .event(room, eventID):
             guard matchesOpenRoom(room) else { return } // a kept chat is read again whenever it is opened
             if anchorID != nil { hasNewerWhileAway = true }
+            if anchorID == nil, !hasOlder, !earlierMayArrive, olderPagesLoaded {
+                if eventID.isEmpty {
+                    pendingOlderProbeForced = true
+                } else {
+                    pendingOlderProbeEventIDs.insert(eventID)
+                }
+            }
             requestRefetch()
             if earlierMayArrive { readEarlier() }
             readUnreadThreads()
@@ -1729,8 +1748,24 @@ public final class ConversationModel: ObservableObject {
             events[event.eventID] = event
         }
         seenIDs.formUnion(pageIDs)
-        if !olderPagesLoaded { olderCursor = page.before }
+        if !olderPagesLoaded {
+            olderCursor = page.before
+        } else if let before = page.before {
+            // Older pages were read, so their cursor is the one to go on from, with one exception: stored rows that
+            // arrived later (a backfill) sit below this page, and a cursor that said "no more" never saw them. When
+            // this page reaches down to the oldest message held, its cursor is the way to them; when the held
+            // messages go further down than the page, only a look below them can tell (`probeOlder`).
+            let reachesHeld = events.values.map(Self.position).min()
+                .map { Position(ts: before.ts, seq: before.seq) <= $0 } ?? true
+            if reachesHeld { olderCursor = before }
+        }
         hasOlder = olderCursor != nil
+        let probeIDs = pendingOlderProbeEventIDs
+        let probeForced = pendingOlderProbeForced
+        pendingOlderProbeEventIDs.removeAll()
+        pendingOlderProbeForced = false
+        let shouldProbeOlder = !hasOlder && olderPagesLoaded && !earlierMayArrive && anchorID == nil && !events.isEmpty
+            && (probeForced || probeIDs.contains { events[$0] == nil && !seenIDs.contains($0) })
         if messageGoneOnNewest {
             messageGoneOnNewest = false
             problem = .messageGone
@@ -1765,6 +1800,9 @@ public final class ConversationModel: ObservableObject {
         if scrollDownOnNewest {
             scrollDownOnNewest = false
             jumpToBottomRequest += 1
+        }
+        if shouldProbeOlder {
+            probeOlder()
         }
     }
 
@@ -2188,6 +2226,26 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    private func probeOlder() {
+        guard !hasOlder, !isLoadingOlder, anchorID == nil, let room = roomID, let client = appModel.client,
+              let oldest = events.values.map(Self.position).min() else { return }
+        let before = Cursor(ts: oldest.ts, seq: oldest.seq)
+        let owner = generation
+        let epoch = pageEpoch
+        olderProbeTask?.cancel()
+        olderProbeTask = Task { [weak self] in
+            let params = self?.eventsParams(room: room, before: before, limit: 1)
+                ?? RoomEventsParams(roomID: room, before: before, limit: 1)
+            let page: EventsPage? = try? await client.call("room.events", params)
+            guard let self, !Task.isCancelled, owner == self.generation, epoch == self.pageEpoch,
+                  client === self.appModel.client, self.roomID == room, !self.hasOlder,
+                  let page, !page.events.isEmpty || page.before != nil else { return }
+            let currentOldest = self.events.values.map(Self.position).min() ?? oldest
+            self.olderCursor = Cursor(ts: currentOldest.ts, seq: currentOldest.seq)
+            self.hasOlder = true
+        }
+    }
+
     /// The person scrolled to the oldest message this Mac holds and there is none older here: asks the engine to load
     /// a page of older history from the chat's network (`room.loadOlder`), as Beeper does. It does nothing while a
     /// load runs, once the engine has said there is no more, in a merged chat, or while older messages are still on
@@ -2208,13 +2266,25 @@ public final class ConversationModel: ObservableObject {
                 result = nil
             }
             guard let self, owner == self.generation else { return }
-            self.isLoadingEarlier = false
-            guard client === self.appModel.client, self.roomID == room else { return }
+            guard client === self.appModel.client, self.roomID == room else {
+                self.isLoadingEarlier = false
+                return
+            }
             // A failed load says nothing about whether more remain: the next scroll to the top tries again.
-            guard let result else { return }
+            guard let result else {
+                self.isLoadingEarlier = false
+                return
+            }
+            if !self.hasOlder {
+                await self.fetchAndApplyEarlier(room: room, client: client, owner: owner)
+            }
+            guard owner == self.generation, client === self.appModel.client, self.roomID == room else {
+                self.isLoadingEarlier = false
+                return
+            }
             self.canLoadEarlier = result.hasMore
             self.earlierMayArrive = result.hasMore
-            if result.added > 0 { self.readEarlier() }
+            self.isLoadingEarlier = false
         }
     }
 
@@ -2224,30 +2294,34 @@ public final class ConversationModel: ObservableObject {
     /// is how it shows without another scroll. The latest read wins; the view keeps the person's place
     /// (`takeEarlierAnchor`).
     private func readEarlier() {
-        guard !hasOlder, let room = roomID, appModel.mergedChats[room] == nil, let client = appModel.client,
-              let oldest = events.values.map(Self.position).min() else { return }
-        let before = Cursor(ts: oldest.ts, seq: oldest.seq)
+        guard !hasOlder, let room = roomID, appModel.mergedChats[room] == nil, let client = appModel.client else { return }
         let owner = generation
         earlierRead?.cancel()
         earlierRead = Task { [weak self] in
-            let page: EventsPage? = try? await client.call(
-                "room.events", self?.eventsParams(room: room, before: before, limit: Self.pageSize)
-                    ?? RoomEventsParams(roomID: room, before: before, limit: Self.pageSize))
-            if let page, !page.events.isEmpty {
-                await ImagePixelSizeReader.shared.warm(events: page.events)
-            }
-            guard let self, !Task.isCancelled, owner == self.generation, client === self.appModel.client,
-                  self.roomID == room, !self.hasOlder, let page, !page.events.isEmpty else { return }
-            self.earlierAnchorID = self.firstMessageID
-            for event in page.events {
-                self.events[event.eventID] = event
-                self.seenIDs.insert(event.eventID)
-            }
-            self.olderPagesLoaded = true
-            self.olderCursor = page.before
-            self.hasOlder = page.before != nil
-            self.rebuild()
+            await self?.fetchAndApplyEarlier(room: room, client: client, owner: owner)
         }
+    }
+
+    private func fetchAndApplyEarlier(room: String, client: EngineClient, owner: Int) async {
+        guard !hasOlder, appModel.mergedChats[room] == nil,
+              let oldest = events.values.map(Self.position).min() else { return }
+        let before = Cursor(ts: oldest.ts, seq: oldest.seq)
+        let page: EventsPage? = try? await client.call(
+            "room.events", eventsParams(room: room, before: before, limit: Self.pageSize))
+        if let page, !page.events.isEmpty {
+            await ImagePixelSizeReader.shared.warm(events: page.events)
+        }
+        guard !Task.isCancelled, owner == generation, client === appModel.client,
+              roomID == room, !hasOlder, let page, !page.events.isEmpty else { return }
+        earlierAnchorID = firstMessageID
+        for event in page.events {
+            events[event.eventID] = event
+            seenIDs.insert(event.eventID)
+        }
+        olderPagesLoaded = true
+        olderCursor = page.before
+        hasOlder = page.before != nil
+        rebuild()
     }
 
     /// The first message of the timeline (what the view anchors on when older messages join above it).

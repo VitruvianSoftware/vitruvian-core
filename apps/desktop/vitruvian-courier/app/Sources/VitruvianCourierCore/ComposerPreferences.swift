@@ -365,6 +365,16 @@ public final class ComposerPreferences: ObservableObject {
             defaults.set(loadExternalEmbedsAutomatically, forKey: Self.loadExternalEmbedsAutomaticallyKey)
         }
     }
+    public static let showLinkPreviewsKey = "courier.preferences.showLinkPreviews"
+    /// "Show link previews" (`setting:appearance Show link previews`, default `true`). Off, Courier makes no request of
+    /// its own for a link card (no picture, no title); a card shows only what the chat network's preview brought with
+    /// the message. It does not decide whether the inline player loads: that is `loadExternalEmbedsAutomatically`.
+    @Published public var showLinkPreviews: Bool {
+        didSet {
+            guard canMutate({ showLinkPreviews = oldValue }) else { return }
+            defaults.set(showLinkPreviews, forKey: Self.showLinkPreviewsKey)
+        }
+    }
     /// "Primary composer button" (`setting:appearance Primary composer button`, default `.emojiPicker`).
     @Published public var primaryComposerButton: PrimaryComposerButton {
         didSet {
@@ -476,6 +486,7 @@ public final class ComposerPreferences: ObservableObject {
         alwaysAskWhereToSaveFiles = defaults.object(forKey: Self.alwaysAskWhereToSaveFilesKey) as? Bool ?? false
         disableOutgoingLinkPreviews = defaults.object(forKey: Self.disableOutgoingLinkPreviewsKey) as? Bool ?? true
         loadExternalEmbedsAutomatically = defaults.object(forKey: Self.loadExternalEmbedsAutomaticallyKey) as? Bool ?? false
+        showLinkPreviews = defaults.object(forKey: Self.showLinkPreviewsKey) as? Bool ?? true
         primaryComposerButton = toolbarButton(
             "primaryComposerButton",
             fallback: Self.defaultPrimaryComposerButton,

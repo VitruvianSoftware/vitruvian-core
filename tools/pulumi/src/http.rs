@@ -26,10 +26,8 @@
 //! with its status, a URLError with its reason, or an exception urllib or
 //! http.client raises before anything is sent. Redirects are not followed.
 
-use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
-use std::process::{Command, Stdio};
-use std::time::Duration;
+pub use vitruvian_pycompat::http::Request;
+use vitruvian_pycompat::http::{os_error_reason, send_with, Options, TransportError};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -40,14 +38,6 @@ pub enum Error {
     /// An exception raised before the request goes out: (class, message).
     /// The script catches none of these.
     Invalid(&'static str, String),
-}
-
-pub struct Request<'a> {
-    pub method: &'a str,
-    pub url: &'a str,
-    pub headers: &'a [(&'a str, String)],
-    pub body: Option<&'a [u8]>,
-    pub timeout: u64,
 }
 
 /// `urllib.parse._splittype`: the scheme before the first ':' when nothing
@@ -134,229 +124,44 @@ pub fn send(req: &Request) -> Result<Vec<u8>, Error> {
             ));
         }
     }
-    let req = Request { url, ..*req };
-    if kind == "http" {
-        plain(&req, rest)
-    } else {
-        curl(&req)
-    }
-}
 
-/// `str(OSError)`: `[Errno N] text`.
-fn os_reason(e: &std::io::Error) -> String {
-    let text = e.to_string();
-    let text = match text.rfind(" (os error ") {
-        Some(i) => text[..i].to_string(),
-        None => text,
+    let inner = Request { url, ..*req };
+    let opts = Options {
+        user_agent: "rotate-access-token-rs",
+        timeout: None,
     };
-    match e.raw_os_error() {
-        Some(code) => format!("[Errno {}] {}", code, text),
-        None => text,
-    }
-}
-
-fn plain(req: &Request, rest: &str) -> Result<Vec<u8>, Error> {
-    let (authority, path) = match rest.find(['/', '?']) {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
-    let path = if path.starts_with('?') {
-        format!("/{}", path)
-    } else {
-        path.to_string()
-    };
-    let hostport = if authority.contains(':') {
-        authority.to_string()
-    } else {
-        format!("{}:80", authority)
-    };
-    let timeout = Duration::from_secs(req.timeout);
-    let addrs: Vec<_> = hostport
-        .to_socket_addrs()
-        .map_err(|e| Error::Url(os_reason(&e)))?
-        .collect();
-    let mut last = None;
-    let mut stream = None;
-    for a in addrs {
-        match TcpStream::connect_timeout(&a, timeout) {
-            Ok(s) => {
-                stream = Some(s);
-                break;
-            }
-            Err(e) => last = Some(e),
+    let resp = send_with(&inner, &opts).map_err(|e| match e {
+        TransportError::NoHost => Error::Url("no host given".into()),
+        TransportError::Resolve(e)
+        | TransportError::Connect { err: e, .. }
+        | TransportError::Io(e)
+        | TransportError::CurlSpawn(e)
+        | TransportError::CurlWait(e) => Error::Url(os_error_reason(&e)),
+        TransportError::NoAddress => Error::Url("no address".into()),
+        TransportError::NoResponse => {
+            Error::Url("Remote end closed connection without response".into())
         }
-    }
-    let mut stream = match stream {
-        Some(s) => s,
-        None => {
-            let e = last
-                .unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "no address"));
-            return Err(Error::Url(os_reason(&e)));
+        TransportError::BadStatusLine(s) => Error::Url(format!("bad status line {:?}", s)),
+        TransportError::CurlFailed { stderr, .. } | TransportError::NoStatus { stderr } => {
+            Error::Url(stderr)
         }
-    };
-    let _ = stream.set_read_timeout(Some(timeout));
-    let _ = stream.set_write_timeout(Some(timeout));
+        TransportError::InvalidScheme => Error::Url(format!("unknown url type: {}", kind)),
+    })?;
 
-    let mut head = format!("{} {} HTTP/1.1\r\n", req.method, path);
-    head.push_str("Accept-Encoding: identity\r\n");
-    head.push_str(&format!("Host: {}\r\n", authority));
-    head.push_str("User-Agent: rotate-access-token-rs\r\n");
-    head.push_str("Connection: close\r\n");
-    if let Some(body) = req.body {
-        head.push_str(&format!("Content-Length: {}\r\n", body.len()));
+    if !(200..300).contains(&resp.status) {
+        return Err(Error::Http(resp.status));
     }
-    let mut wire = head.into_bytes();
-    // Header values go out as latin-1, as http.client encodes them.
-    for (k, v) in req.headers {
-        wire.extend_from_slice(k.as_bytes());
-        wire.extend_from_slice(b": ");
-        wire.extend(v.chars().map(|c| c as u32 as u8));
-        wire.extend_from_slice(b"\r\n");
-    }
-    wire.extend_from_slice(b"\r\n");
-    if let Some(body) = req.body {
-        wire.extend_from_slice(body);
-    }
-    stream
-        .write_all(&wire)
-        .map_err(|e| Error::Url(os_reason(&e)))?;
-
-    let mut raw = Vec::new();
-    stream
-        .read_to_end(&mut raw)
-        .map_err(|e| Error::Url(os_reason(&e)))?;
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or_else(|| Error::Url("Remote end closed connection without response".into()))?;
-    let head = String::from_utf8_lossy(&raw[..split]).to_string();
-    let mut body = raw[split + 4..].to_vec();
-    let mut lines = head.split("\r\n");
-    let status = lines.next().unwrap_or("");
-    let code: u16 = status
-        .split(' ')
-        .nth(1)
-        .and_then(|c| c.parse().ok())
-        .ok_or_else(|| Error::Url(format!("bad status line {:?}", status)))?;
-    let mut chunked = false;
-    let mut length: Option<usize> = None;
-    for line in lines {
-        if let Some((k, v)) = line.split_once(':') {
-            let k = k.trim().to_ascii_lowercase();
-            let v = v.trim();
-            if k == "transfer-encoding" && v.to_ascii_lowercase().contains("chunked") {
-                chunked = true;
-            } else if k == "content-length" {
-                length = v.parse().ok();
-            }
-        }
-    }
-    if chunked {
-        body = dechunk(&body);
-    } else if let Some(n) = length {
-        body.truncate(n);
-    }
-    if !(200..300).contains(&code) {
-        return Err(Error::Http(code));
-    }
-    Ok(body)
-}
-
-fn dechunk(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < data.len() {
-        let line_end = match data[i..].windows(2).position(|w| w == b"\r\n") {
-            Some(p) => i + p,
-            None => break,
-        };
-        let size_text = String::from_utf8_lossy(&data[i..line_end]);
-        let size_text = size_text.split(';').next().unwrap_or("").trim();
-        let size = usize::from_str_radix(size_text, 16).unwrap_or(0);
-        i = line_end + 2;
-        if size == 0 {
-            break;
-        }
-        let end = (i + size).min(data.len());
-        out.extend_from_slice(&data[i..end]);
-        i = end + 2;
-    }
-    out
-}
-
-/// A string for a curl config file: quoted, with \ and " escaped.
-fn quote(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-fn curl(req: &Request) -> Result<Vec<u8>, Error> {
-    const MARK: &[u8] = b"\n__rotate_access_token_status__";
-    // Everything goes in a config on stdin, so the token stays out of `ps`.
-    let mut config = String::new();
-    config.push_str(&format!("url = {}\n", quote(req.url)));
-    config.push_str(&format!("request = {}\n", quote(req.method)));
-    config.push_str(&format!("max-time = {}\n", req.timeout));
-    for (k, v) in req.headers {
-        config.push_str(&format!("header = {}\n", quote(&format!("{}: {}", k, v))));
-    }
-    if let Some(body) = req.body {
-        config.push_str(&format!(
-            "data-binary = {}\n",
-            quote(&String::from_utf8_lossy(body))
-        ));
-    }
-    config.push_str("write-out = \"\\n__rotate_access_token_status__%{http_code}\"\n");
-    let mut child = Command::new("curl")
-        .args(["-sS", "-K", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| Error::Url(os_reason(&e)))?;
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        let _ = stdin.write_all(config.as_bytes());
-    }
-    let out = child
-        .wait_with_output()
-        .map_err(|e| Error::Url(os_reason(&e)))?;
-    let pos = out.stdout.windows(MARK.len()).rposition(|w| w == MARK);
-    let pos = match (out.status.success(), pos) {
-        (true, Some(p)) => p,
-        _ => {
-            return Err(Error::Url(
-                String::from_utf8_lossy(&out.stderr).trim().to_string(),
-            ))
-        }
-    };
-    let code: u16 = String::from_utf8_lossy(&out.stdout[pos + MARK.len()..])
-        .trim()
-        .parse()
-        .unwrap_or(0);
-    if !(200..300).contains(&code) {
-        return Err(Error::Http(code));
-    }
-    Ok(out.stdout[..pos].to_vec())
+    Ok(resp.body)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::mpsc;
     use std::thread;
+    use std::time::Duration;
 
     /// One response, and the request that got it.
     fn serve(response: &'static [u8]) -> (String, mpsc::Receiver<Vec<u8>>) {
@@ -448,5 +253,26 @@ mod tests {
             timeout: 1,
         });
         assert!(matches!(r, Err(Error::Invalid("ValueError", _))));
+    }
+
+    #[test]
+    fn times_out_when_server_does_not_reply() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel::<()>();
+        let handle = thread::spawn(move || {
+            let (_s, _) = listener.accept().unwrap();
+            let _ = rx.recv_timeout(Duration::from_secs(5));
+        });
+        let res = send(&Request {
+            method: "GET",
+            url: &format!("http://{}/slow", addr),
+            headers: &[],
+            body: None,
+            timeout: 1,
+        });
+        drop(tx);
+        let _ = handle.join();
+        assert!(matches!(res, Err(Error::Url(_))), "{res:?}");
     }
 }
