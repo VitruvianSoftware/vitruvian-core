@@ -412,6 +412,8 @@ public final class AccountsAndBridgesModel: ObservableObject {
             lastToast = String(localized: "Account removed")
             await refresh()
             await appModel.refreshAccounts()
+            // The last account gone: no chats are left, so the summaries of their links go too.
+            if !appModel.accounts.contains(where: { !$0.logins.isEmpty }) { ArticleSummaryCache.shared.removeAll() }
         } catch {
             lastError = error.localizedDescription
         }

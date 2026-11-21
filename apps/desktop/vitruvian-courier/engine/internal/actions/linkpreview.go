@@ -135,6 +135,11 @@ func isPrivateOrLoopbackIP(ip net.IP) bool {
 		return true
 	}
 	addr = addr.Unmap()
+	// An IPv6 form that carries an IPv4 address (NAT64, 6to4, IPv4-compatible) is judged by that address: a gateway
+	// turns the connection into one to the IPv4 host, which may be on this Mac or its network.
+	if v4, ok := embeddedIPv4(addr); ok {
+		return isPrivateOrLoopbackIP(v4.AsSlice())
+	}
 	if !addr.IsGlobalUnicast() || addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() || addr.IsUnspecified() {
 		return true
 	}
@@ -144,6 +149,31 @@ func isPrivateOrLoopbackIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+var (
+	nat64Prefix      = netip.MustParsePrefix("64:ff9b::/96")   // RFC 6052 well-known prefix
+	nat64LocalPrefix = netip.MustParsePrefix("64:ff9b:1::/48") // RFC 8215 local-use prefix
+	ipv4CompatPrefix = netip.MustParsePrefix("::/96")          // deprecated IPv4-compatible
+	sixToFourPrefix  = netip.MustParsePrefix("2002::/16")      // 6to4
+)
+
+// embeddedIPv4 is the IPv4 address an IPv6 address carries, when it is one of the forms that do.
+func embeddedIPv4(addr netip.Addr) (netip.Addr, bool) {
+	if !addr.Is6() {
+		return netip.Addr{}, false
+	}
+	b := addr.As16()
+	switch {
+	case nat64Prefix.Contains(addr), ipv4CompatPrefix.Contains(addr):
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
+	case nat64LocalPrefix.Contains(addr):
+		// RFC 6052: a /48 prefix puts the IPv4 address in bytes 6-7 and 9-10 (byte 8 is zero).
+		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true
+	case sixToFourPrefix.Contains(addr):
+		return netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}), true
+	}
+	return netip.Addr{}, false
 }
 
 func firstURLInText(body string) string {

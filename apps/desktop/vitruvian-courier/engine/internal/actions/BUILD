@@ -4,6 +4,7 @@ go_library(
     name = "actions",
     srcs = [
         "actions.go",
+        "article.go",
         "chatinfo.go",
         "chatstate.go",
         "delete.go",
@@ -42,6 +43,9 @@ go_library(
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
         "@org_golang_x_image//webp",
+        "@org_golang_x_net//html",
+        "@org_golang_x_net//html/atom",
+        "@org_golang_x_net//html/charset",
     ],
 )
 
@@ -49,6 +53,10 @@ go_test(
     name = "actions_test",
     srcs = [
         "actions_test.go",
+        "article_probe_test.go",
+        "article_qa_test.go",
+        "article_security_test.go",
+        "article_test.go",
         "chatstate_test.go",
         "delete_test.go",
         "disappear_test.go",

@@ -438,6 +438,8 @@ enum MessageRowActions {
                     translationLanguages: composer.aiPreferences.translationLanguages,
                     canReadAloud: canReadAloud,
                     isReadingAloud: messageActions.readAloud.isReadingOnVitruvianSpeaker,
+                    hasSummarizableLink: preferences.showLinkPreviews
+                        && ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed) != nil,
                     canEditPhoto: conversation.offersPhotoEdit(for: message)
                 )
             },
@@ -463,6 +465,11 @@ enum MessageRowActions {
                         messageActions.translateMessage(eventID: id, targetLanguage: lang)
                         messageActions.onOpenAISettings()
                     }
+                case .summarizeLink:
+                    guard preferences.showLinkPreviews, let msg = conversation.message(id, from: source),
+                          let request = ArticleSummaryRequest.first(in: msg, isEmbed: ArticleSummaryControls.isEmbed)
+                    else { return }
+                    messageActions.summarizeLink(request)
                 case .transcribeVoiceNote:
                     guard let msg = conversation.message(id, from: source) else { return }
                     let store = conversation.voiceNoteTranscripts
@@ -547,6 +554,23 @@ enum MessageRowActions {
             },
             dismissTranslation: { id in
                 messageActions.dismissTranslation(eventID: id)
-            })
+            },
+            articleSummary: ArticleSummaryControls(
+                canSummarize: { url in
+                    messageActions.articleSummaries.canSummarize(url, showLinkPreviews: preferences.showLinkPreviews)
+                },
+                state: { messageActions.articleSummaries.state(for: $0) },
+                hasAny: { !messageActions.articleSummaries.states.isEmpty },
+                summarize: { messageActions.summarizeLink($0) },
+                dismiss: { messageActions.articleSummaries.dismiss($0) },
+                retry: { messageActions.articleSummaries.retry($0) },
+                copy: { text in messageActions.copyPlainText(text) },
+                aiIsAvailable: { messageActions.articleSummaries.aiProvider.isAvailable },
+                providerName: {
+                    messageActions.articleSummaries.aiProvider.summarizerName(preferences: messageActions.aiPreferences)
+                },
+                suggestionsHeight: { messageActions.articleSummaries.suggestionsHeight(for: $0) },
+                setSuggestionsHeight: { messageActions.articleSummaries.setSuggestionsHeight($1, for: $0) }
+            ))
     }
 }
