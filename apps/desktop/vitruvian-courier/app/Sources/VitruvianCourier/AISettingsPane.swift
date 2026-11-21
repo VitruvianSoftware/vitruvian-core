@@ -112,6 +112,8 @@ public struct AISettingsPane: View {
     public var highlightedSettingID: String? = nil
 
     @State private var apiKeyInput: String = ""
+    @State private var photoKeyInputs: [AIProviderKind: String] = [:]
+    @FocusState private var focusedPhotoKey: AIProviderKind?
 
     @MainActor
     public init(
@@ -152,6 +154,7 @@ public struct AISettingsPane: View {
                 if preferences.enableContextualAI {
                     selectedProviderSection
                 }
+                photoEditingSection
                 customInstructionsSection
                 translationLanguagesSection
                 talkToTypeSection
@@ -191,6 +194,10 @@ public struct AISettingsPane: View {
                 if let targetID {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(targetID, anchor: .center)
+                    }
+                    // "Open AI Settings" from Edit with AI lands the cursor in the key field it asks for.
+                    if let service = PhotoEditingChoice.keyService(forSettingID: targetID) {
+                        focusedPhotoKey = service
                     }
                 }
             }
@@ -543,6 +550,93 @@ public struct AISettingsPane: View {
 
     private func privacySentence(for kind: AIProviderKind) -> String {
         kind.privacyNotice
+    }
+
+    // MARK: - Photo Editing
+
+    private var photoEditingSection: some View {
+        let resolution = store.photoEditingResolution
+        let showsOpenAIKey = preferences.photoEditingChoice == .openAI
+        return Section {
+            Picker(String(localized: "Photo editing"), selection: $preferences.photoEditingChoice) {
+                ForEach(PhotoEditingChoice.allCases) { choice in
+                    Text(choice.label).tag(choice)
+                }
+            }
+            .settingAnchor(PhotoEditingChoice.settingID, highlighted: highlightedSettingID)
+
+            Text(resolution.settingsStatusLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            photoEditingKeyRow(for: .googleAIStudio)
+            if showsOpenAIKey {
+                photoEditingKeyRow(for: .openAI)
+            }
+
+            Text(String(localized: "“Edit with AI…” sends the photo to the service you pick here. Your AI service above stays as it is. Google only edits photos with a key that has billing turned on."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text(String(localized: "Photo editing"))
+        }
+    }
+
+    private func photoEditingKeyRow(for kind: AIProviderKind) -> some View {
+        let input = Binding(
+            get: { photoKeyInputs[kind] ?? "" },
+            set: { photoKeyInputs[kind] = $0 }
+        )
+        let trimmed = input.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let anchor = PhotoEditingChoice.settingID(forKeyOf: kind)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                SecureField(
+                    String(localized: "\(kind.label) key"),
+                    text: input,
+                    prompt: Text(String(localized: "Paste \(kind.label) key…"))
+                )
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedPhotoKey, equals: kind)
+
+                Button(String(localized: "Save")) {
+                    guard !trimmed.isEmpty else { return }
+                    if case .success = store.saveKey(trimmed, for: kind) {
+                        photoKeyInputs[kind] = ""
+                    }
+                }
+                .disabled(trimmed.isEmpty)
+
+                if let portalURL = kind.keyPortalURL {
+                    Link(String(localized: "Get a key"), destination: portalURL)
+                        .font(.caption.weight(.medium))
+                }
+            }
+            if store.hasKey(for: kind) {
+                HStack(spacing: 8) {
+                    let suffix = store.keyStore.keyLastFour(for: kind) ?? ""
+                    Text(String(localized: "Stored in Keychain · …\(suffix)"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "Remove")) {
+                        if case .success = store.removeKey(for: kind) {
+                            photoKeyInputs[kind] = ""
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    Spacer(minLength: 0)
+                }
+            }
+            // The AI service section above shows the same error while it has key controls of its own.
+            let mainShowsKeyControls = preferences.enableContextualAI && preferences.selectedEngine.acceptsKey
+            if let keyError = store.keyError, !mainShowsKeyControls {
+                Text(keyError)
+                    .font(.caption)
+                    .foregroundStyle(Color.red)
+            }
+        }
+        .settingAnchor(anchor, highlighted: highlightedSettingID)
     }
 
     // MARK: - Custom Instructions

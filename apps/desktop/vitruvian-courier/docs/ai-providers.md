@@ -148,6 +148,32 @@ Files (new unless noted), all under `apps/desktop/vitruvian-courier/app/Sources/
 - **Loading / error**: in place, never modal. Loading: "Summarizing N messages…" / "Writing…" with **Cancel**.
   Error: one plain line and **Retry**; the person's text is never changed by a failure.
 
+## Edit a photo with AI (batch 7, E2)
+
+"Edit with AI…" is in the photo viewer's bar and in a photo message's menu (More). It opens a sheet: the photo, a
+field for what to change, then the original and the result side by side. From there: **Try Again**, **Save to Mac…**,
+or **Add to Message**, which puts the edited photo in that chat's message box as a draft. **Nothing is ever sent by the
+sheet**; posting is the person's own Send. The item is hidden while AI is off.
+
+- **Who can edit.** Google AI Studio (`gemini-nano-banana-2.1`, "Nano Banana 2.1", through `generateContent`, an
+  inline image plus the instruction in, an inline image out) and OpenAI (`gpt-image-2.6-sunburst`, `POST
+  /v1/images/edits`, multipart, base64 out). Both IDs are one constant each (`GeminiImageModel.default`,
+  `OpenAIImageModel.default`), checked against the vendors' docs on 2026-11-21. Anthropic, Apple Intelligence, Ollama,
+  LM Studio, Unsloth and custom servers can't. Apple's on-device Image Playground makes new stylised pictures, not edits
+  of a photo, so it is treated as unsupported.
+- **Settings ▸ AI ▸ Photo editing**: Automatic / Google AI Studio / OpenAI, with a key field for Google AI Studio (and
+  OpenAI when it is the choice). Automatic is the main AI service if it can edit photos and has its key, else a saved
+  Google AI Studio key, else a saved OpenAI key, else none (`PhotoEditingResolver`, pure). The choice and its keys never
+  change the main AI service.
+- **No service can edit photos**: "Your AI service can't edit photos. Add a Google AI Studio key to use Nano Banana for
+  photo edits." with Open AI Settings (scrolls to the Google AI Studio key field and puts the cursor in it) and a link to
+  Google's key page. Google lists its image models as paid-tier only, so the footnote says a key needs billing turned on.
+- **Before it leaves the Mac** (`PhotoEditPreparer`): the long edge is cut to 2048 px, the photo is turned upright and
+  re-drawn from its pixels alone (no GPS, EXIF, XMP or IPTC), as a JPEG, or a PNG if it has see-through parts. Over
+  14 MB after that is "too big".
+- **Privacy question**: the first photo to each service asks once ("This sends the photo to Google AI Studio. It may be
+  someone else's photo."); the yes is remembered per service (`PhotoEditConsentStore`).
+
 ## Tests (must exist and pass under Bazel)
 
 - Each client against the stub transport: the exact request (URL, method, headers, JSON body) and parsing of a

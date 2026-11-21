@@ -296,6 +296,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuCoordinator.openSettings(pane: .ai)
         }
         conversation.onOpenAISettings = openAISettings
+        // "Open AI Settings" in Edit with AI: Settings ▸ AI at the key the edit needs, with the cursor in it.
+        conversation.onOpenPhotoEditingSettings = { [weak self] kind in
+            self?.menuCoordinator.openSettings(
+                pane: .ai,
+                highlightedSettingID: PhotoEditingChoice.settingID(forKeyOf: kind)
+            )
+        }
         conversation.onToggleMute = { [weak inbox] roomID in
             guard !roomID.isEmpty else { return }
             Task { await inbox?.toggleMute(ids: [roomID]) }
