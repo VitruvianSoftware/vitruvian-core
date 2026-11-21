@@ -9,8 +9,15 @@
   "types": "./types/index.d.ts",
   "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/claude-code/plugins/vitruvian-orchestrator",
   "license": "MIT",
-  "keywords": ["subagents", "orchestration", "routing", "claude-code"],
+  "keywords": [
+    "subagents",
+    "orchestration",
+    "routing",
+    "claude-code"
+  ],
   "x-vitruvian": {
-    "ecosystems": ["claude-code"]
+    "ecosystems": [
+      "claude-code"
+    ]
   }
 }

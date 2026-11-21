@@ -23,6 +23,8 @@ and the files the site registry reads.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
@@ -139,4 +141,49 @@ filegroup(
         "//apps/antigravity/plugins/ext-marketplace:__pkg__",
         "//tools/sync-site-tools:__pkg__",
     ],
+)
+
+# The release-please layout (plugin.json, the panel's package.json, the manifest and the
+# changelog at one version), checked by the test every Antigravity plugin shares.
+filegroup(
+    name = "release_files",
+    srcs = [
+        ".release-please-manifest.json",
+        "CHANGELOG.md",
+        "plugin.json",
+        "release-please-config.json",
+        "sidecars/panel/package.json",
+    ],
+)
+
+rust_test(
+    name = "version_rs_test",
+    size = "small",
+    srcs = ["//apps/antigravity:plugin_version_test.rs"],
+    crate_root = "//apps/antigravity:plugin_version_test.rs",
+    data = [":release_files"],
+    edition = "2021",
+    rustc_env = {
+        "PLUGIN_NAME": "vitruvian-orchestrator",
+        "PLUGIN_PKG": package_name(),
+    },
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+pipeline_unit(
+    name = "antigravity-vitruvian-orchestrator",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        ":drift_test",
+        ":panel_test",
+        ":server_test",
+        ":version_rs_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 15,
 )

@@ -46,7 +46,9 @@ on:
       - "apps/antigravity/plugins/receipts-report/**"
       - "apps/antigravity/plugins/savvy-fleet/**"
       - "apps/antigravity/plugins/security-guidance/**"
+      - "apps/antigravity/plugins/vitruvian-orchestrator/**"
       - "apps/antigravity/plugins/worktree-band/**"
+      - "apps/claude-code/plugins/vitruvian-orchestrator/**"
       - "apps/mcp/vitruvian-slack-mcp/**"
       - "apps/desktop/vitruvian-code/**"
       - "apps/web/oauth-user-inspector/**"
@@ -86,7 +88,9 @@ jobs:
             apps/antigravity/plugins/receipts-report
             apps/antigravity/plugins/savvy-fleet
             apps/antigravity/plugins/security-guidance
+            apps/antigravity/plugins/vitruvian-orchestrator
             apps/antigravity/plugins/worktree-band
+            apps/claude-code/plugins/vitruvian-orchestrator
             apps/mcp/vitruvian-slack-mcp
             apps/desktop/vitruvian-code
             apps/web/oauth-user-inspector

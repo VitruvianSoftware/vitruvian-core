@@ -6,7 +6,7 @@
     "name": "VitruvianSoftware",
     "url": "https://github.com/VitruvianSoftware"
   },
-  "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator",
+  "repository": "https://github.com/VitruvianSoftware/vitruvian-orchestrator-antigravity",
   "license": "MIT",
   "keywords": [
     "subagents",
@@ -17,6 +17,8 @@
     "mcp"
   ],
   "x-vitruvian": {
-    "ecosystems": ["antigravity"]
+    "ecosystems": [
+      "antigravity"
+    ]
   }
 }

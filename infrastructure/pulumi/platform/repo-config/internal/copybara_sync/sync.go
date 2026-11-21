@@ -395,6 +395,18 @@ var syncedProjects = []syncedProject{
 		Description:    "Antigravity plugin that watches your GitHub pull requests and wakes the agent when CI fails, conflicts appear or the change lands",
 	},
 	{
+		// Export-only mirror of the vitruvian-orchestrator Antigravity plugin
+		// (apps/antigravity/plugins/vitruvian-orchestrator becomes its root, the
+		// shape `agy plugin install <repo url>` wants). Name uppercase-snakes to
+		// VITRUVIAN_ORCHESTRATOR_ANTIGRAVITY_SYNC_SSH_KEY, consumed by
+		// copybara-export-vitruvian-orchestrator-antigravity.yaml.
+		Name:           "vitruvian-orchestrator-antigravity",
+		StandaloneRepo: "vitruvian-orchestrator-antigravity",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Antigravity plugin: a lead agent plans the work, specialist agents do it, and a live panel shows the plan, the board and the spend",
+	},
+	{
 		// Export-only mirror for the vitruviansoftware.dev website
 		// (apps/web/vitruviansoftware-dev). The repo already exists and stays the
 		// GitHub Pages publisher for the custom domain: the monorepo exports the
