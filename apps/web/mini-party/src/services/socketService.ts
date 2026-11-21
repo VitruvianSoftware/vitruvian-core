@@ -22,6 +22,22 @@
 
 import { io, Socket } from "socket.io-client";
 import { ROOMS_URL } from "../features";
+import {
+  MIN_SERVER_PROTOCOL,
+  PROTOCOL,
+  VERSION_REFUSED,
+  type ServerInfo,
+} from "../protocol";
+
+// Why online play cannot go on: this page is older than the rooms server
+// accepts ("reload-page"), or the server is older than this page can play on
+// ("server-behind", usually for the few minutes a server update takes).
+export type VersionProblem = "reload-page" | "server-behind";
+
+export interface Versions {
+  protocol: number;
+  minServerProtocol: number;
+}
 
 // A random seat key for this browser tab. The rooms server holds a dropped
 // player's seat for a short while, and this key is how the same tab claims it
@@ -67,17 +83,51 @@ export class SocketService {
   private roomId: string | null = null;
   private join: Join | null = null;
   private readonly key: string;
+  private problem: VersionProblem | null = null;
+  private readonly problemListeners = new Set<(p: VersionProblem) => void>();
 
   constructor(
     private readonly url: string | undefined = ROOMS_URL,
     key: string = playerKey(),
+    private readonly versions: Versions = {
+      protocol: PROTOCOL,
+      minServerProtocol: MIN_SERVER_PROTOCOL,
+    },
   ) {
     this.key = key;
   }
 
+  private versionProblem(problem: VersionProblem) {
+    if (this.problem) return;
+    this.problem = problem;
+    this.problemListeners.forEach((cb) => cb(problem));
+  }
+
   connect() {
     if (!this.socket) {
-      const socket = this.url ? io(this.url) : io();
+      const options = { auth: { protocol: this.versions.protocol } };
+      const socket = this.url ? io(this.url, options) : io(options);
+      socket.on("connect_error", (err) => {
+        if (err.message === VERSION_REFUSED) this.versionProblem("reload-page");
+      });
+      // The server announces its version first thing on every connection.
+      // A server from before the check announces nothing and speaks
+      // protocol 1, which shows as some other event arriving first.
+      let announced = false;
+      const checkServer = (protocol: number) => {
+        announced = true;
+        if (protocol < this.versions.minServerProtocol) {
+          this.versionProblem("server-behind");
+          socket.disconnect();
+        }
+      };
+      socket.on("connect", () => {
+        announced = false;
+      });
+      socket.onAny((event: string, info?: Partial<ServerInfo>) => {
+        if (event === "server-info") checkServer(info?.protocol ?? 1);
+        else if (!announced) checkServer(1);
+      });
       // socket.io reconnects on its own after a drop, but as a new socket
       // the server has not seated. Ask for the seat again on every
       // connection; the server ignores a repeat from a socket already seated.
@@ -108,6 +158,17 @@ export class SocketService {
       this.socket?.off("disconnect", down);
     };
   }
+
+  // Calls back once if this page and the rooms server cannot play together;
+  // at once if that is already known. Returns a function that stops.
+  onVersionProblem(callback: (problem: VersionProblem) => void) {
+    if (this.problem) callback(this.problem);
+    this.problemListeners.add(callback);
+    return () => {
+      this.problemListeners.delete(callback);
+    };
+  }
+
   startGame(gameIndex: number) {
     if (this.roomId) {
       this.socket?.emit("start-game", { roomId: this.roomId, gameIndex });

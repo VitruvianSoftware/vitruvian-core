@@ -37,8 +37,9 @@ import {
   Radio,
   Globe,
   WifiOff,
+  RefreshCw,
 } from "lucide-react";
-import { socketService } from "./services/socketService";
+import { socketService, type VersionProblem } from "./services/socketService";
 import { REMOTE_PLAY } from "./features";
 import { roomFromSearch } from "./room";
 import { analytics } from "./analytics";
@@ -48,6 +49,11 @@ export default function App() {
   // Online only: false while this device's connection to the rooms server is
   // down. socket.io keeps retrying and the seat is held, so this is a pause.
   const [online, setOnline] = useState(true);
+  // Online only: set when this page and the rooms server are different
+  // versions that cannot play together.
+  const [versionProblem, setVersionProblem] = useState<VersionProblem | null>(
+    null,
+  );
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentGameIndex, setCurrentGameIndex] = useState(0);
   const [lastGameWinners, setLastGameWinners] = useState<number[]>([]);
@@ -107,6 +113,7 @@ export default function App() {
 
     socketService.joinRoom(id, playerName, PLAYER_COLORS[0]); // Host or Joiner
     socketService.onConnectionChange(setOnline);
+    socketService.onVersionProblem(setVersionProblem);
 
     socketService.onRoomUpdate(({ players: remotePlayers }) => {
       setPlayers(remotePlayers);
@@ -474,7 +481,30 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {roomId && !online && (
+      {roomId && versionProblem && (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl bg-brand-card/95 border border-brand-accent/40 shadow-2xl backdrop-blur-xl max-w-[calc(100vw-2rem)]"
+        >
+          <span className="text-xs font-black italic uppercase tracking-widest">
+            {versionProblem === "reload-page"
+              ? "A new version is out — reload to keep playing online"
+              : "Online play is updating — try again in a minute"}
+          </span>
+          {versionProblem === "reload-page" && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-2 shrink-0 px-3 py-2 rounded-xl bg-brand-accent text-white text-xs font-black italic uppercase tracking-widest"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reload
+            </button>
+          )}
+        </div>
+      )}
+
+      {roomId && !online && !versionProblem && (
         <div
           role="status"
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl bg-brand-card/95 border border-brand-accent/40 shadow-2xl backdrop-blur-xl"
