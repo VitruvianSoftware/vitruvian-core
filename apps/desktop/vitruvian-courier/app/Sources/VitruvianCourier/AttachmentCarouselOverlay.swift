@@ -20,6 +20,7 @@ public struct AttachmentCarouselOverlay: View {
         String(localized: "React"),
         String(localized: "Reply"),
         String(localized: "Copy Image"),
+        String(localized: "Edit with AI…"),
         String(localized: "Quick Look"),
         String(localized: "Download"),
         String(localized: "Close"),
@@ -39,6 +40,9 @@ public struct AttachmentCarouselOverlay: View {
     public var onReact: (CarouselItem, String) -> Void
     public var onReply: (CarouselItem) -> Void
     public var onCopyImage: (CarouselItem) -> Void
+    /// Whether the bar shows Edit with AI… for an item: AI is on and the item is a photo this Mac holds.
+    public var canEditWithAI: (CarouselItem) -> Bool
+    public var onEditWithAI: (CarouselItem) -> Void
     public var onQuickLook: (CarouselItem) -> Void
     public var onDownload: (CarouselItem) -> Void
     public var onClose: () -> Void
@@ -55,6 +59,8 @@ public struct AttachmentCarouselOverlay: View {
         onReact: @escaping (CarouselItem, String) -> Void = { _, _ in },
         onReply: @escaping (CarouselItem) -> Void = { _ in },
         onCopyImage: @escaping (CarouselItem) -> Void = { _ in },
+        canEditWithAI: @escaping (CarouselItem) -> Bool = { _ in false },
+        onEditWithAI: @escaping (CarouselItem) -> Void = { _ in },
         onQuickLook: @escaping (CarouselItem) -> Void = { _ in },
         onDownload: @escaping (CarouselItem) -> Void = { _ in },
         onClose: @escaping () -> Void = {}
@@ -65,6 +71,8 @@ public struct AttachmentCarouselOverlay: View {
         self.onReact = onReact
         self.onReply = onReply
         self.onCopyImage = onCopyImage
+        self.canEditWithAI = canEditWithAI
+        self.onEditWithAI = onEditWithAI
         self.onQuickLook = onQuickLook
         self.onDownload = onDownload
         self.onClose = onClose
@@ -229,6 +237,15 @@ public struct AttachmentCarouselOverlay: View {
                         systemImage: "doc.on.doc"
                     ) {
                         onCopyImage(item)
+                    }
+                }
+
+                if canEditWithAI(item) {
+                    carouselActionButton(
+                        title: String(localized: "Edit with AI…"),
+                        systemImage: "wand.and.stars"
+                    ) {
+                        onEditWithAI(item)
                     }
                 }
 

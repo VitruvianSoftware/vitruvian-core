@@ -49,7 +49,7 @@ struct RichTextView: View {
     private func blockView(_ block: RichTextLayout.Block, reservesMeta: Bool = false) -> some View {
         switch block.kind {
         case .paragraph:
-            (Text(joined(block.lines)) + metaGap(reservesMeta))
+            chipped(lineText(block.lines) + metaGap(reservesMeta), block.lines)
                 .fixedSize(horizontal: false, vertical: true)
         case .quote:
             HStack(alignment: .top, spacing: 7) {
@@ -57,7 +57,7 @@ struct RichTextView: View {
                     .fill(onBubble ? Color.white.opacity(0.7) : Color.secondary.opacity(0.6))
                     .frame(width: 3)
                 // Quoted text and links are a touch softer; mentions inside it set their own colour and stay full strength.
-                (Text(joined(block.lines, dimmed: true)) + metaGap(reservesMeta))
+                chipped(lineText(block.lines, dimmed: true) + metaGap(reservesMeta), block.lines)
                     .foregroundStyle(onBubble ? Color.white.opacity(0.85) : Color.primary.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -70,7 +70,7 @@ struct RichTextView: View {
                         Text(verbatim: block.kind == .bulletList ? "•" : "\(index + 1).")
                             .monospacedDigit()
                             .frame(minWidth: 12, alignment: .trailing)
-                        (Text(attributed(line)) + metaGap(isLastLine))
+                        chipped(lineText([line]) + metaGap(isLastLine), [line])
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -104,6 +104,44 @@ struct RichTextView: View {
 
     private var tint: Color { onBubble ? Color.white.opacity(0.2) : Color.primary.opacity(0.08) }
 
+    /// The chip behind an inline code span: a shaded, rounded patch (on a coloured bubble, a lighter one).
+    private var chipFill: Color { onBubble ? Color.white.opacity(0.22) : Color.secondary.opacity(0.2) }
+
+    /// Inline code is drawn as a rounded chip where the system can (macOS 15 on); before that, as the square tint the
+    /// text style gives it.
+    static var drawsCodeChips: Bool {
+        if #available(macOS 15.0, *) { true } else { false }
+    }
+
+    private func hasInlineCode(_ lines: [[RichTextLayout.Run]]) -> Bool {
+        lines.contains { $0.contains { $0.code && !($0.spoiler && !revealed) } }
+    }
+
+    /// `lines` as one `Text`. With inline code to chip, the code spans are marked so `CodeChipRenderer` can find them.
+    private func lineText(_ lines: [[RichTextLayout.Run]], dimmed: Bool = false) -> Text {
+        guard Self.drawsCodeChips, hasInlineCode(lines), #available(macOS 15.0, *) else {
+            return Text(joined(lines, dimmed: dimmed))
+        }
+        var result = Text(verbatim: "")
+        for (index, line) in lines.enumerated() {
+            if index > 0 { result = result + Text(verbatim: "\n") }
+            for piece in pieces(line, dimmed: dimmed, chips: true) {
+                result = result + (piece.chip ? Text(piece.text).customAttribute(CodeChipAttribute()) : Text(piece.text))
+            }
+        }
+        return result
+    }
+
+    /// `text` with a chip drawn behind each of its marked code spans, when `lines` has any.
+    @ViewBuilder
+    private func chipped(_ text: Text, _ lines: [[RichTextLayout.Run]]) -> some View {
+        if Self.drawsCodeChips, hasInlineCode(lines), #available(macOS 15.0, *) {
+            text.textRenderer(CodeChipRenderer(fill: chipFill))
+        } else {
+            text
+        }
+    }
+
     private func joined(_ lines: [[RichTextLayout.Run]], dimmed: Bool = false) -> AttributedString {
         var result = AttributedString()
         for (index, line) in lines.enumerated() {
@@ -115,8 +153,16 @@ struct RichTextView: View {
 
     /// One line's runs as styled text. `dimmed` (inside a quote) softens links the way the rest of the quote is softened.
     private func attributed(_ runs: [RichTextLayout.Run], dimmed: Bool = false) -> AttributedString {
-        let linkColor = dimmed ? self.linkColor.opacity(0.85) : self.linkColor
         var result = AttributedString()
+        for piece in pieces(runs, dimmed: dimmed, chips: false) { result.append(piece.text) }
+        return result
+    }
+
+    /// One line's runs, each as styled text. `chips`: inline code is left for `CodeChipRenderer` to draw a chip behind
+    /// (marked `chip`), not given a square background here.
+    private func pieces(_ runs: [RichTextLayout.Run], dimmed: Bool, chips: Bool) -> [(text: AttributedString, chip: Bool)] {
+        let linkColor = dimmed ? self.linkColor.opacity(0.85) : self.linkColor
+        var result: [(text: AttributedString, chip: Bool)] = []
         for run in runs {
             var piece: AttributedString
             if run.link == nil, run.mention == nil, !run.code {
@@ -129,7 +175,8 @@ struct RichTextView: View {
             if run.italic { font = font.italic() }
             piece.font = font
             if run.strikethrough { piece.strikethroughStyle = .single }
-            if run.code { piece.backgroundColor = tint }
+            let isChip = chips && run.code && !(run.spoiler && !revealed)
+            if run.code && !isChip { piece.backgroundColor = tint }
             if let url = run.link {
                 piece.link = url
                 piece.underlineStyle = .single
@@ -151,8 +198,32 @@ struct RichTextView: View {
                 piece.backgroundColor = onBubble ? Color.white.opacity(0.55) : Color.secondary.opacity(0.55)
                 piece.link = nil
             }
-            result.append(piece)
+            result.append((piece, isChip))
         }
         return result
+    }
+}
+
+/// Marks a span of inline code in a message's text, for `CodeChipRenderer`.
+@available(macOS 15.0, *)
+struct CodeChipAttribute: TextAttribute {}
+
+/// Draws message text as it is, with a shaded rounded chip behind each span marked `CodeChipAttribute`: 4 pt corners,
+/// reaching 2 pt past the code on each side (into the space around it). The chips are drawn first, so they sit
+/// behind the text of the words beside them.
+@available(macOS 15.0, *)
+struct CodeChipRenderer: TextRenderer {
+    var fill: Color
+    var cornerRadius: CGFloat = 4
+    var horizontalPadding: CGFloat = 2
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        for line in layout {
+            for run in line where run[CodeChipAttribute.self] != nil {
+                let rect = run.typographicBounds.rect.insetBy(dx: -horizontalPadding, dy: 0)
+                context.fill(Path(roundedRect: rect, cornerRadius: cornerRadius), with: .color(fill))
+            }
+        }
+        for line in layout { context.draw(line) }
     }
 }

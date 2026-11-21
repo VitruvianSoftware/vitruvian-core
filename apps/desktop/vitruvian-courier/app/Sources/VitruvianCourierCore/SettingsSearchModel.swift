@@ -545,6 +545,13 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["link previews", "thumbnail", "picture", "title", "youtube", "privacy", "ip address", "links"]
         ),
         SettingDefinition(
+            id: "appearance.searchGIFsOnline",
+            pane: .appearance,
+            section: "Conversation",
+            title: "Search GIFs online",
+            keywords: ["gif", "gifs", "klipy", "search", "privacy", "ip address", "trending"]
+        ),
+        SettingDefinition(
             id: "appearance.quickReaction",
             pane: .appearance,
             section: "Conversation",
@@ -857,6 +864,13 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["translate", "translation", "arabic", "spanish", "french", "languages"]
         ),
         SettingDefinition(
+            id: "ai.photoEditing",
+            pane: .ai,
+            section: "Photo editing",
+            title: "Photo editing",
+            keywords: ["photo", "picture", "image", "edit", "nano banana", "google ai studio", "openai", "gpt image"]
+        ),
+        SettingDefinition(
             id: "ai.talkToType",
             pane: .ai,
             section: "Talk to Type & Voice Transcription",
@@ -1006,6 +1020,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "appearance.showMembershipEvents",
         "appearance.loadExternalEmbeds",
         "appearance.showLinkPreviews",
+        "appearance.searchGIFsOnline",
         "appearance.quickReaction",
         "appearance.enableSpellcheck",
         "appearance.showFormattingMenu",
@@ -1048,6 +1063,7 @@ public final class SettingsNavigationModel: ObservableObject {
         // AISettingsPane
         "ai.contextual",
         "ai.translation",
+        "ai.photoEditing",
         "ai.talkToType",
         "ai.slashCommands",
         // PlusSettingsPane

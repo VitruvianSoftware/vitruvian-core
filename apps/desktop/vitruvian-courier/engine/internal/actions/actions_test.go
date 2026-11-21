@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -1083,6 +1084,79 @@ func TestRoomInfoAndSetLocalOverride(t *testing.T) {
 	require.Equal(t, "Renamed Locally", info.Name)
 	require.Equal(t, "Original Group", info.RemoteName)
 	require.Equal(t, "Renamed Locally", info.LocalName)
+}
+
+// D2: a shared link carries the file of its link preview's picture, when the picture is on this Mac.
+func TestRoomInfoSharedLinkCarriesThePreviewImagePath(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", false)
+	roomID := "!linkimg:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: roomID, Network: "whatsapp", Name: "Links"}))
+
+	hash, err := w.m.Put([]byte("fake-preview-picture"))
+	require.NoError(t, err)
+	wantPath, err := w.m.Path(hash)
+	require.NoError(t, err)
+
+	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	for i, content := range []string{
+		`{"msgtype":"m.text","body":"https://news.test/a","com.beeper.linkpreviews":[{"matched_url":"https://news.test/a","og:title":"A story","og:image":"` + string(ids.ContentURI(hash)) + `"}]}`,
+		`{"msgtype":"m.text","body":"https://news.test/b","com.beeper.linkpreviews":[{"matched_url":"https://news.test/b","og:title":"Another","og:image":"mxc://elsewhere.example/gone"}]}`,
+		`{"msgtype":"m.text","body":"https://news.test/c"}`,
+	} {
+		_, err = w.s.InsertEvent(ctx, store.Event{
+			RoomID:  roomID,
+			EventID: fmt.Sprintf("$link%d", i),
+			Sender:  "@whatsapp_alice:courier.local",
+			Type:    event.EventMessage.Type,
+			Content: json.RawMessage(content),
+			TS:      t0.Add(time.Duration(i) * time.Minute),
+			Status:  "sent",
+		})
+		require.NoError(t, err)
+	}
+
+	info, err := w.a.RoomInfo(ctx, roomID, false)
+	require.NoError(t, err)
+	paths := map[string]string{}
+	for _, l := range info.SharedLinks {
+		paths[l.URL] = l.ImagePath
+	}
+	require.Equal(t, map[string]string{
+		"https://news.test/a": wantPath,
+		"https://news.test/b": "",
+		"https://news.test/c": "",
+	}, paths)
+}
+
+type fakeHistoryMeta struct{ off, known bool }
+
+func (m fakeHistoryMeta) ChatHistoryOff() (bool, bool) { return m.off, m.known }
+
+// D3: Chat Info's history setting is whatever the network's chat metadata reports, and nothing when it has no such
+// setting or has not said.
+func TestHistoryOffComesFromTheNetworksChatMetadata(t *testing.T) {
+	off := historyOffOf(fakeHistoryMeta{off: true, known: true})
+	require.NotNil(t, off)
+	require.True(t, *off)
+	on := historyOffOf(fakeHistoryMeta{off: false, known: true})
+	require.NotNil(t, on)
+	require.False(t, *on)
+	require.Nil(t, historyOffOf(fakeHistoryMeta{off: true, known: false}), "not told yet: no claim")
+	require.Nil(t, historyOffOf(struct{}{}), "a network with no history setting")
+	require.Nil(t, historyOffOf(nil))
+
+	// A chat that is not bound to a live portal has none either, and the field is left out of the JSON.
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", false)
+	roomID := "!nohistory:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: roomID, Network: "whatsapp", Name: "Plain"}))
+	info, err := w.a.RoomInfo(ctx, roomID, false)
+	require.NoError(t, err)
+	require.Nil(t, info.HistoryOff)
+	raw, err := json.Marshal(info)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "history_off")
 }
 
 func TestExportChatWritesChronologicalPlainText(t *testing.T) {

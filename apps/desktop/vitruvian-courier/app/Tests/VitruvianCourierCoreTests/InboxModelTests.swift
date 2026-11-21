@@ -1969,6 +1969,20 @@ final class InboxScript: @unchecked Sendable {
         set { lock.withLock { _mergedChats = newValue } }
     }
 
+    /// The chats whose network can delete them (room.features says can_delete), and the chats room.delete removed.
+    private var _holdFeatures = false
+    /// While set, room.features is not answered (a slow network).
+    var holdFeatures: Bool {
+        get { lock.withLock { _holdFeatures } }
+        set { lock.withLock { _holdFeatures = newValue } }
+    }
+
+    private var _deletable: Set<String> = []
+    var deletable: Set<String> {
+        get { lock.withLock { _deletable } }
+        set { lock.withLock { _deletable = newValue } }
+    }
+
     var blastEvents: [[String: Any]] {
         get { lock.withLock { _blastEvents } }
         set { lock.withLock { _blastEvents = newValue } }
@@ -2116,6 +2130,16 @@ final class InboxScript: @unchecked Sendable {
             return .result([String: Any]())
         case "room.setLowPriority", "room.setHidden", "room.setLabel":
             return .result(["room_ids": ids])
+        case "room.features":
+            if holdFeatures { return .later }
+            let room = params?["room_id"] as? String ?? ""
+            var features = featuresJSON()
+            features["can_delete"] = deletable.contains(room)
+            return .result(features)
+        case "room.delete":
+            let room = params?["room_id"] as? String ?? ""
+            lock.withLock { _rooms.removeAll { $0["room_id"] as? String == room } }
+            return .result([String: Any]())
         case "merge.list":
             return .result(["merged_chats": mergedChats])
         case "blast.send":

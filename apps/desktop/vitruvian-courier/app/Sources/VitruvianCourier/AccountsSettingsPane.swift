@@ -151,7 +151,7 @@ struct AccountsSettingsPane: View {
                                             .foregroundStyle(Color.primary)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
-                                        Text(entry.remoteName)
+                                        Text(PhoneNumberFormat.display(entry.remoteName))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
@@ -312,7 +312,7 @@ struct AccountsSettingsPane: View {
                             .foregroundStyle(statusColor(entry.state))
                             .clipShape(Capsule())
                     }
-                    Text(entry.remoteName)
+                    Text(PhoneNumberFormat.display(entry.remoteName))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     if !entry.error.isEmpty {

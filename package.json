@@ -23,6 +23,7 @@
       "@octokit/request-error@3": "^5.1.1",
       "@octokit/request@6": "^8.4.1",
       "@prisma/config>deepmerge-ts": "^8.0.0",
+      "@prisma/config>effect": "^3.22.5",
       "adm-zip@0.6": "^0.6.1",
       "axios@1": "^1.20.0",
       "body-parser@1": "^1.20.9",

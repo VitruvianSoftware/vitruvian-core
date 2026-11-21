@@ -24,14 +24,14 @@
 # .github/workflows/vitruvian-relay-image.yaml from the repo root:
 #
 #   docker buildx build -f apps/suites/vitruvian-relay/relay/Dockerfile \
-#     --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+#     --build-context mcpauth=packages/mcp-auth \
 #     apps/suites/vitruvian-relay
 #
 # The context is the relay WORKSPACE (apps/suites/vitruvian-relay), not this
 # folder, because the relay is a member of that workspace and its Cargo.lock
 # lives there. The shared token checker comes in as a second, named context
 # (`mcpauth`), because relay/Cargo.toml path-depends on
-# ../../../../packages/rust/vitruvian-mcp-auth. The layout under /src mirrors
+# ../../../../packages/mcp-auth. The layout under /src mirrors
 # the repo, so that path resolves unchanged. vitruvian-mcp-auth has no lock of
 # its own: the workspace's lock covers it.
 #
@@ -62,9 +62,9 @@ RUN set -eu; \
       echo "export CARGO_TARGET_${LINKER_SLUG}_LINKER=${TRIPLET}-gcc" >> /tmp/cross.env; \
     fi
 
-COPY --from=mcpauth Cargo.toml /src/packages/rust/vitruvian-mcp-auth/
-RUN mkdir -p /src/packages/rust/vitruvian-mcp-auth/src && \
-    printf '// stub for dependency prebuild\n' > /src/packages/rust/vitruvian-mcp-auth/src/lib.rs
+COPY --from=mcpauth Cargo.toml /src/packages/mcp-auth/
+RUN mkdir -p /src/packages/mcp-auth/src && \
+    printf '// stub for dependency prebuild\n' > /src/packages/mcp-auth/src/lib.rs
 WORKDIR /src/apps/suites/vitruvian-relay
 COPY Cargo.toml Cargo.lock ./
 COPY relay/Cargo.toml relay/
@@ -83,12 +83,12 @@ RUN set -eu; \
     printf 'fn main() { std::process::exit(97); }\n' > connector/scripts/src/main.rs && \
     cargo build --release --locked --target "$RUST_TARGET" -p vitruvian-relay --bin vitruvian-relay
 
-COPY --from=mcpauth src /src/packages/rust/vitruvian-mcp-auth/src
+COPY --from=mcpauth src /src/packages/mcp-auth/src
 COPY relay/src relay/src
 COPY protocol/src protocol/src
 RUN set -eu; \
     . /tmp/cross.env; \
-    find /src/packages/rust/vitruvian-mcp-auth/src relay/src protocol/src -type f -name '*.rs' -exec touch {} + && \
+    find /src/packages/mcp-auth/src relay/src protocol/src -type f -name '*.rs' -exec touch {} + && \
     rm -rf target/"$RUST_TARGET"/release/vitruvian-relay* \
            target/"$RUST_TARGET"/release/deps/*vitruvian_relay* \
            target/"$RUST_TARGET"/release/deps/*vitruvian_mcp_auth* \

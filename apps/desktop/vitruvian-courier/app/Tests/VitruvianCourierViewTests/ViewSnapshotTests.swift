@@ -2056,7 +2056,7 @@ final class ViewSnapshotTests: XCTestCase {
 
         // 6. Plain-words check: user-facing strings never expose API names.
         let strings = LocationCardView.userVisibleStrings
-            + LinkPreviewCardView.userVisibleStrings
+            + LinkPreviewCardView<EmptyView>.userVisibleStrings
             + EmbedConsentCard.userVisibleStrings
         for text in strings {
             XCTAssertFalse(text.contains("MKMapSnapshotter"), "no API names in text people read: \(text)")
@@ -2678,12 +2678,12 @@ final class ViewSnapshotTests: XCTestCase {
         })
     }
 
-    // MARK: - Milestone 4.5c Task 8: GIFPickerPopover and pending GIF pill snapshots
+    // MARK: - Milestone 4.5c Task 8: GIFPickerStrip and pending GIF pill snapshots
 
     func testGIFPickerPopoverAndPendingGIFSnapshots() throws {
         let emptyModel = composer(text: "")
-        check(try Snapshot.render("gif-picker-empty", width: 340) {
-            GIFPickerPopover(composer: emptyModel)
+        check(try Snapshot.render("gif-picker-empty", width: 620) {
+            GIFPickerStrip(composer: emptyModel)
         })
 
         let populatedModel = composer(text: "")
@@ -2714,8 +2714,8 @@ final class ViewSnapshotTests: XCTestCase {
                 ),
             ]
         )
-        check(try Snapshot.render("gif-picker-populated", width: 340) {
-            GIFPickerPopover(composer: populatedModel)
+        check(try Snapshot.render("gif-picker-populated", width: 620) {
+            GIFPickerStrip(composer: populatedModel)
         })
 
         let preferences = ComposerPreferences(defaults: defaults())
@@ -3717,8 +3717,8 @@ final class ViewSnapshotTests: XCTestCase {
             ]
         )
         gifQueryModel.gifSearchQuery = "Celebration"
-        check(try Snapshot.render("gif-picker-search-query", width: 340) {
-            GIFPickerPopover(composer: gifQueryModel)
+        check(try Snapshot.render("gif-picker-search-query", width: 620) {
+            GIFPickerStrip(composer: gifQueryModel)
         })
     }
 

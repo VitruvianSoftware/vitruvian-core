@@ -217,11 +217,22 @@ final class TimelineReadabilityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(ytWidth, EmbedConsentCard.maxWidth)
     }
 
+    /// The bubble the hover pill is placed by is the bubble's own frame. A text bubble sits in a frame as wide as its text
+    /// may go (640 pt), and the pill was placed by that: ~500 pt to the right of a short "Okay".
+    func testAShortMessagesAnchorIsItsBubbleNotItsRowsFrame() throws {
+        for mine in [false, true] {
+            let width = try bubbleWidth(Fixture.text("$ok\(mine)", "Okay", mine: mine, ts: 2), window: 1400,
+                                        snapshot: "timeline-short-okay-\(mine)")
+            XCTAssertGreaterThan(width, 20)
+            XCTAssertLessThan(width, 200, "the frame of a bubble holding four letters, not of the room for 640 pt of text")
+        }
+    }
+
     func testPlainTextBubbleStopsAtAReadableWidth() throws {
         let long = String(repeating: "A long line of chat text that would stretch across a very wide window. ", count: 20)
         let wide = try bubbleWidth(Fixture.text("$w", long, mine: false, ts: 2), window: 1400)
         XCTAssertGreaterThan(wide, 300)
-        XCTAssertLessThanOrEqual(wide, MessageRowView.textBubbleMaxWidth + 1, "capped at the text width")
+        XCTAssertLessThanOrEqual(wide, BubbleWidth.maxWidth(rowWidth: 1400) + 1, "capped at the text width")
         let narrow = try bubbleWidth(Fixture.text("$n", long, mine: false, ts: 2), window: 320)
         XCTAssertLessThanOrEqual(narrow, 320, "a narrow window still fits")
         XCTAssertGreaterThan(narrow, 150)
@@ -232,7 +243,7 @@ final class TimelineReadabilityTests: XCTestCase {
     func testAVeryLongWordStaysInsideTheBubble() throws {
         let word = String(repeating: "W", count: 400)
         let wide = try bubbleWidth(Fixture.text("$lw1", word, mine: false, ts: 2), window: 1400, snapshot: "timeline-long-word")
-        XCTAssertLessThanOrEqual(wide, MessageRowView.textBubbleMaxWidth + 1)
+        XCTAssertLessThanOrEqual(wide, BubbleWidth.maxWidth(rowWidth: 1400) + 1)
         let narrow = try bubbleWidth(Fixture.text("$lw2", word, mine: false, ts: 2), window: 320, snapshot: "timeline-long-word")
         XCTAssertLessThanOrEqual(narrow, 320)
         let oneLine = fittingHeight(Fixture.text("$lw3", "W", mine: false, ts: 2), showTimes: false, width: 320)

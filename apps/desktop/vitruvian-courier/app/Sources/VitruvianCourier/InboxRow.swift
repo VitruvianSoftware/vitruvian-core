@@ -103,7 +103,7 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     private var displayTitle: String {
-        var formatted = displayTitleOverride ?? row.displayTitle
+        var formatted = PhoneNumberFormat.display(displayTitleOverride ?? row.displayTitle)
         // A request from a stranger the bridge could not name: say who it is from, not "Facebook user" twice.
         if row.request, RequestPresentation.isPlaceholderName(formatted) {
             formatted = RequestPresentation.title(name: formatted, handle: requestHandle, networkName: networkName)
@@ -240,7 +240,7 @@ struct InboxRowView<HoverMenu: View>: View {
             Text(line)
                 .foregroundStyle(themeAccent)
         } else if !row.draft.isEmpty {
-            Text(String(localized: "Draft:")).foregroundStyle(.red) + Text(verbatim: " " + row.draft)
+            Text(String(localized: "Draft:")).foregroundStyle(.red) + Text(verbatim: " " + MarkdownConverter.visibleDraft(row.draft))
         } else if style.showPreviews {
             preview
         }

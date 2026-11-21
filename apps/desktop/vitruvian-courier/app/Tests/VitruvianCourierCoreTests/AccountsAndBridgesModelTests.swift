@@ -519,5 +519,38 @@ final class AccountsAndBridgesModelTests: XCTestCase {
         await model.refresh()
         XCTAssertNil(model.lastError, "and goes once a read works")
     }
-}
 
+    /// Round 1: the kept article summaries go when the last account is removed, and stay while another remains.
+    func testRemovingTheLastAccountForgetsKeptArticleSummaries() async throws {
+        var remaining = true
+        let server = try TestEngineServer { method, _ in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "accounts.list":
+                let logins: [[String: Any]] = remaining ? [["account_id": "tg1", "remote_name": "@a", "state": "CONNECTED", "error": ""]] : []
+                return .result(["accounts": [[
+                    "network": "telegram", "display_name": "Telegram", "flows": ["qr"], "state": "CONNECTED", "error": "",
+                    "remote_name": "", "not_started": "", "syncs": [String](), "logins": logins,
+                ]]])
+            default:
+                return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer { process.exit(0); app.supervisor.stop() }
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: FakeDockTileService(), pasteboard: SpyTextPasteboard())
+        let summary = ArticleSummary(bullets: ["One."], provider: "", sourceURL: URL(string: "https://example.com/a")!,
+                                     sourceDomain: "example.com", linkDomain: "example.com", origin: .page)
+
+        ArticleSummaryCache.shared.removeAll()
+        ArticleSummaryCache.shared.store(summary, for: "k")
+        await model.removeAccount(network: "telegram", accountID: "tg2", logoutRemote: false, deleteChats: false)
+        XCTAssertNotNil(ArticleSummaryCache.shared.summary(for: "k"), "another account is still linked")
+
+        remaining = false
+        await model.removeAccount(network: "telegram", accountID: "tg1", logoutRemote: false, deleteChats: false)
+        XCTAssertNil(ArticleSummaryCache.shared.summary(for: "k"), "no account is left: the summaries go")
+    }
+}

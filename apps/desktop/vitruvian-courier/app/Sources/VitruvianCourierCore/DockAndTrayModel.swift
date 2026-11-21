@@ -282,9 +282,14 @@ public final class AppMenuCoordinator: ObservableObject {
         }
     }
 
-    public func openSettings(pane: SettingsPaneID, accountKey: String? = nil) {
+    /// Opens Settings at `pane`; `highlightedSettingID` scrolls to and marks one setting in it (Photo editing's
+    /// Google AI Studio key, for "Open AI Settings" in the Edit with AI sheet).
+    public func openSettings(pane: SettingsPaneID, accountKey: String? = nil, highlightedSettingID: String? = nil) {
         guard !lifecycle.isLocked else { return }
         settingsNavigation.openPane(pane, accountKey: accountKey)
+        if let highlightedSettingID, AppLockGate.shared.canPerform(.settingsChange) {
+            settingsNavigation.highlightedSettingID = highlightedSettingID
+        }
         showSettingsWindow()
     }
 

@@ -218,6 +218,8 @@ public final class AIProviderStore: ObservableObject {
             cancelModelLoad()
             availableModels = []
             currentEngineForModels = nil
+            // Turning AI off forgets the summaries it wrote.
+            if wasEnabled { ArticleSummaryCache.shared.removeAll() }
             wasEnabled = false
             rebuildProvider()
             return
@@ -625,6 +627,35 @@ public final class AIProviderStore: ObservableObject {
             }
             return .none
         }
+    }
+
+    // MARK: - Photo editing
+
+    /// Who edits photos now, from Settings ▸ AI ▸ Photo editing and the keys saved: see `PhotoEditingResolver`.
+    public var photoEditingResolution: PhotoEditingResolution {
+        PhotoEditingResolver.resolve(
+            choice: preferences.photoEditingChoice,
+            aiEnabled: preferences.enableContextualAI,
+            mainService: preferences.selectedEngine,
+            hasKey: { [keyStore] in keyStore.hasKey(for: $0) }
+        )
+    }
+
+    /// The editor for `kind` with its saved key (Google AI Studio or OpenAI), or one that says why it can't.
+    public func makeImageEditor(for kind: AIProviderKind) -> any AIImageEditor {
+        ImageEditors.make(for: kind, keyStore: keyStore, transport: transport)
+    }
+
+    /// What the "Edit with AI…" sheet reads from these settings.
+    public func photoEditBackend(consent: PhotoEditConsentStore = PhotoEditConsentStore()) -> PhotoEditBackend {
+        PhotoEditBackend(
+            isOffered: { [weak self] in self?.preferences.enableContextualAI ?? false },
+            resolve: { [weak self] in self?.photoEditingResolution ?? .aiOff },
+            makeEditor: { [weak self] kind in
+                self?.makeImageEditor(for: kind) ?? UnavailableImageEditor(provider: kind, failure: .noKey)
+            },
+            consent: consent
+        )
     }
 
     // MARK: - Provider Construction

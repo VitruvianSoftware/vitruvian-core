@@ -246,20 +246,8 @@ struct ConversationView: View {
                                   close: { conversation.isCreatingPoll = false })
             }
         }
-        .sheet(item: $conversation.activeEditGroupDraft) { draft in
-            EditGroupSheet(
-                draft: draft,
-                onSave: { updated in
-                    Task { _ = await conversation.saveGroupEdit(updated) }
-                },
-                onResetLocalOverride: {
-                    Task { _ = await conversation.resetLocalOverride(roomID: draft.roomID, network: draft.network) }
-                },
-                onCancel: {
-                    conversation.activeEditGroupDraft = nil
-                }
-            )
-        }
+        // Edit Chat… and Report as Spam… are hosted by the window (`ChatRoomSheets`), so the inbox's menu can open them
+        // for a chat that isn't open.
         .sheet(
             isPresented: Binding(
                 get: { conversation.activeAddParticipantsRoom != nil },
@@ -296,17 +284,6 @@ struct ConversationView: View {
                     )
                 }
             }
-        }
-        .sheet(item: $conversation.activeReportSpamDraft) { draft in
-            ReportSpamSheet(
-                draft: draft,
-                onConfirm: { confirmed in
-                    Task { _ = await conversation.reportSpam(confirmed) }
-                },
-                onCancel: {
-                    conversation.activeReportSpamDraft = nil
-                }
-            )
         }
         .sheet(item: $conversation.activeViewOnceMessage) { msg in
             ViewOnceSheet(
@@ -1284,7 +1261,7 @@ struct ConversationHeader: View {
         switch part {
         case .strip:
             HStack(spacing: 10) {
-                identity
+                identityButton(spacing: 10, isHeader: false)
                 Spacer(minLength: 0)
                 actions
             }
@@ -1298,24 +1275,47 @@ struct ConversationHeader: View {
                     .fill(Color(nsColor: .separatorColor))
                     .frame(height: PaneHeaderMetrics.hairlineHeight)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isHeader)
         case .identity:
-            HStack(alignment: .center, spacing: 8) { identity }
+            identityButton(spacing: 8, isHeader: true)
                 .frame(maxHeight: 34)
                 .clipped()
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
         case .actions:
             actions
         }
     }
 
+    /// The chat's picture, name and network as a header button: a click shows or hides Chat Info, as the ⓘ button does;
+    /// a drag still moves the window and a double click still does the title bar's action (`ChatHeaderPointerArea`).
+    /// VoiceOver reads the chat's title, then its network and timer, and says a press shows Chat Info.
+    private func identityButton(spacing: CGFloat, isHeader: Bool) -> some View {
+        let tooltip = ChatInfoHeaderToggle.label(isShowing: conversation.isShowingChatInfo)
+        let title = row.map(titleText(of:)) ?? ""
+        let value = ChatHeaderAccessibility.value(subtitle: row.flatMap(subtitle(of:)), timer: conversation.timerLine)
+        return HStack(alignment: .center, spacing: spacing) { identity }
+            .contentShape(Rectangle())
+            .overlay {
+                if row != nil { ChatHeaderPointerArea(onToggle: conversation.toggleChatInfo) }
+            }
+            .help(tooltip)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(ChatHeaderAccessibility.label(title: title))
+            .accessibilityValue(value)
+            .accessibilityHint(ChatHeaderAccessibility.hint(isShowing: conversation.isShowingChatInfo))
+            .accessibilityAddTraits(isHeader ? [.isButton, .isHeader] : .isButton)
+            .accessibilityAction(.default) { conversation.toggleChatInfo() }
+    }
+
+    private func titleText(of row: InboxRow) -> String {
+        let formatted = PhoneNumberFormat.display(displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle)
+        let title = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
+        return redactNamesAndPictures ? AppearancePreferences.redactedText(title, kind: .chatTitle) : title
+    }
+
     @ViewBuilder
     private var identity: some View {
         if let row {
-            let formatted = displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle
-            let shownTitle = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
             // The inbox's picture: a group with none gets the group picture, not initials.
             // 28 pt with a square clip keeps multi-circle group avatars fully inside the header and above its hairline.
             ChatAvatar(row: row, size: 28)
@@ -1323,14 +1323,10 @@ struct ConversationHeader: View {
                 .blur(radius: redactNamesAndPictures ? 6 : 0)
                 .clipShape(Rectangle())
             VStack(alignment: .leading, spacing: 1) {
-                Text(
-                    redactNamesAndPictures
-                        ? AppearancePreferences.redactedText(shownTitle, kind: .chatTitle)
-                        : shownTitle
-                )
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+                Text(titleText(of: row))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                 let subtitle = subtitle(of: row)
                 if subtitle != nil || conversation.timerLine != nil {
                     HStack(spacing: 4) {

@@ -149,8 +149,9 @@ only `main` and `vitruvian-courier-v*` tags may deploy to it.
 |---|---|
 | `COURIER_TELEGRAM_API_ID` | Vitruvian Courier's Telegram app `api_id` (my.telegram.org ▸ API development tools), built into the released app. |
 | `COURIER_TELEGRAM_API_HASH` | Its `api_hash`, paired with the id above. |
+| `COURIER_KLIPY_API_KEY` | Vitruvian Courier's KLIPY app key (KLIPY partner dashboard), built into the released app for GIF search. Optional: without it the app hides online GIF search. |
 
-The local install reads the same two files from `secrets/vitruvian-courier-release/`
+The local install reads the same files (the two Telegram ones, and `COURIER_KLIPY_API_KEY`) from `secrets/vitruvian-courier-release/`
 (`apps/desktop/vitruvian-courier/app/README.md`). To set them:
 `set -- vitruvian-courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
 `apply -- vitruvian-courier-release`.

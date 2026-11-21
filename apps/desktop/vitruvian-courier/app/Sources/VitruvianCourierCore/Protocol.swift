@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 13
+    public static let version = 14
     public static let schemaVersion = 11
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
@@ -1349,6 +1349,52 @@ public struct RoomParams: ProtocolType, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
+    }
+}
+
+/// `article.read`: the link whose article is to be read.
+public struct ArticleParams: ProtocolType, Equatable {
+    public static let protocolName = "ArticleParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// An https link.
+    public var url: String
+
+    public init(url: String) { self.url = url }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case url
+    }
+}
+
+/// `article.read`: what the engine found at a link. A page it couldn't read is an answer with `needsBrowser` set,
+/// not an error.
+public struct ArticleResult: ProtocolType, Equatable {
+    public static let protocolName = "ArticleResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Where the page ended up, after redirects.
+    public var url: String
+    public var title: String
+    public var site: String
+    public var description: String
+    /// The main text, at most 20,000 characters; only a teaser when `paywalled`; empty when `needsBrowser`.
+    public var text: String
+    public var paywalled: Bool
+    public var needsBrowser: Bool
+
+    public init(url: String, title: String, site: String, description: String, text: String,
+                paywalled: Bool, needsBrowser: Bool) {
+        self.url = url
+        self.title = title
+        self.site = site
+        self.description = description
+        self.text = text
+        self.paywalled = paywalled
+        self.needsBrowser = needsBrowser
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case url, title, site, description, text, paywalled
+        case needsBrowser = "needs_browser"
     }
 }
 
@@ -2710,6 +2756,46 @@ public struct StickersListParams: ProtocolType, Equatable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case refreshBridgePacks = "refresh_bridge_packs"
+    }
+}
+
+/// `linkPreview.image`'s params: the link's address (https).
+public struct LinkPreviewImageParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "LinkPreviewImageParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var url: String
+
+    public init(url: String) {
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case url
+    }
+}
+
+/// `linkPreview.image`'s answer: the picture a page names as its own, saved on this Mac. Every field is nil when the page
+/// has no picture, or none could be had.
+public struct LinkPreviewImageResult: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "LinkPreviewImageResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var imagePath: String?
+    public var imageWidth: Int?
+    public var imageHeight: Int?
+    public var blurhash: String?
+
+    public init(imagePath: String? = nil, imageWidth: Int? = nil, imageHeight: Int? = nil, blurhash: String? = nil) {
+        self.imagePath = imagePath
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+        self.blurhash = blurhash
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case imagePath = "image_path"
+        case imageWidth = "image_width"
+        case imageHeight = "image_height"
+        case blurhash
     }
 }
 
@@ -4237,16 +4323,21 @@ public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
     public var host: String
     /// The page's title from the message's link preview; nil when the message had none (or an engine before this field).
     public var title: String?
+    /// The file of the link preview's picture, when the message's preview has one and it is on this Mac; nil otherwise
+    /// (or from an engine before this field).
+    public var imagePath: String?
 
     public var id: String { "\(eventID):\(url)" }
 
-    public init(eventID: String, sender: String, ts: Int64, url: String, host: String, title: String? = nil) {
+    public init(eventID: String, sender: String, ts: Int64, url: String, host: String, title: String? = nil,
+                imagePath: String? = nil) {
         self.eventID = eventID
         self.sender = sender
         self.ts = ts
         self.url = url
         self.host = host
         self.title = title
+        self.imagePath = imagePath
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -4256,6 +4347,7 @@ public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
         case url
         case host
         case title
+        case imagePath = "image_path"
     }
 }
 
@@ -4274,6 +4366,10 @@ public struct RoomInfoResult: ProtocolType, Equatable {
     public var isDirect: Bool
     public var encrypted: Bool
     public var disappearingMS: Int64
+    /// The network's own chat history setting where it has one (Google Chat): true is history off (messages disappear
+    /// after a day on the network), false is on. nil when the network has none or has not said (or an engine before
+    /// this field). Read only.
+    public var historyOff: Bool?
     public var pinnedEventIDs: [String]
     public var members: [Member]
     public var sharedMedia: [Event]
@@ -4286,7 +4382,8 @@ public struct RoomInfoResult: ProtocolType, Equatable {
 
     public init(roomID: String, name: String, remoteName: String, localName: String = "", topic: String = "",
                 avatarPath: String = "", localAvatarURI: String = "", network: String, accountID: String = "",
-                isDirect: Bool, encrypted: Bool = false, disappearingMS: Int64 = 0, pinnedEventIDs: [String] = [],
+                isDirect: Bool, encrypted: Bool = false, disappearingMS: Int64 = 0, historyOff: Bool? = nil,
+                pinnedEventIDs: [String] = [],
                 members: [Member] = [], sharedMedia: [Event] = [], sharedFiles: [Event] = [],
                 sharedLinks: [RoomLink] = [], sharedCapped: Bool? = nil, features: ChatFeatures) {
         self.roomID = roomID
@@ -4301,6 +4398,7 @@ public struct RoomInfoResult: ProtocolType, Equatable {
         self.isDirect = isDirect
         self.encrypted = encrypted
         self.disappearingMS = disappearingMS
+        self.historyOff = historyOff
         self.pinnedEventIDs = pinnedEventIDs
         self.members = members
         self.sharedMedia = sharedMedia
@@ -4323,6 +4421,7 @@ public struct RoomInfoResult: ProtocolType, Equatable {
         case isDirect = "is_direct"
         case encrypted
         case disappearingMS = "disappearing_ms"
+        case historyOff = "history_off"
         case pinnedEventIDs = "pinned_event_ids"
         case members
         case sharedMedia = "shared_media"
@@ -5578,6 +5677,7 @@ public enum ProtocolMethods {
         "search.query": .readOnlyOrBackground,
         "room.events": .readOnlyOrBackground,
         "room.loadOlder": .userInitiatedMutation,
+        "article.read": .userInitiatedMutation,
         "room.features": .readOnlyOrBackground,
         "room.markRead": .userInitiatedMutation,
         "thread.markRead": .userInitiatedMutation,
@@ -5641,6 +5741,7 @@ public enum ProtocolMethods {
         "merge.delete": .userInitiatedMutation,
         "stickers.list": .userInitiatedMutation,
         "stickers.import": .userInitiatedMutation,
+        "linkPreview.image": .userInitiatedMutation,
         "bridges.list": .userInitiatedMutation,
         "bridges.restart": .userInitiatedMutation,
         "accounts.remove": .userInitiatedMutation,
@@ -5693,6 +5794,7 @@ public enum ProtocolMethods {
         "autoArchive.delete": (RuleIDParams.self, Empty.self),
         "room.events": (RoomEventsParams.self, EventsPage.self),
         "room.loadOlder": (RoomParams.self, LoadOlderResult.self),
+        "article.read": (ArticleParams.self, ArticleResult.self),
         "search.query": (SearchParams.self, SearchResult.self),
         "room.markRead": (MarkReadParams.self, Empty.self),
         "thread.markRead": (ThreadParams.self, Empty.self),
@@ -5756,6 +5858,7 @@ public enum ProtocolMethods {
         "merge.suggest": (Empty.self, MergeSuggestResult.self),
         "stickers.list": (StickersListParams.self, ListStickersResult.self),
         "stickers.import": (ImportStickerParams.self, StickerItem.self),
+        "linkPreview.image": (LinkPreviewImageParams.self, LinkPreviewImageResult.self),
         "bridges.list": (Empty.self, BridgesResult.self),
         "bridges.restart": (BridgeRestartParams.self, Empty.self),
         "accounts.remove": (AccountRemoveParams.self, Empty.self),
@@ -5784,7 +5887,7 @@ public enum ProtocolMethods {
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetReadAloudParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
         AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, MarkReadParams.self,
-        ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self, LoadOlderResult.self,
+        ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self, LoadOlderResult.self, ArticleParams.self, ArticleResult.self,
         Event.self, Reader.self, PollTally.self, PollOption.self, ThreadSummary.self, EventsPage.self,
         SearchParams.self, SearchFilters.self, SearchResult.self, PersonHit.self, MessageHits.self, MessageHit.self,
         TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, TextEntity.self, ChatFeatures.self,
@@ -5807,6 +5910,7 @@ public enum ProtocolMethods {
         FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
         BridgedStickerRef.self, SendStickerParams.self, SendGIFParams.self,
         StickerItem.self, StickerPack.self, ListStickersResult.self, StickersListParams.self, ImportStickerParams.self,
+        LinkPreviewImageParams.self, LinkPreviewImageResult.self,
         BridgeInfo.self, BridgesResult.self, BridgeRestartParams.self, AccountRemoveParams.self, SubAccountItem.self,
         SubAccountsParams.self, SubAccountsResult.self, SetSubAccountParams.self, DiagnosticsExportParams.self,
         RoomDiagnostic.self, MessageDiagnostic.self, DiagnosticsExportResult.self,

@@ -580,7 +580,7 @@ public struct ChatInfoPane: View {
                                 onSelectEvent(event.eventID)
                             }
                         case let .link(link):
-                            ChatInfoLinkTile(link: link) { onSelectEvent(link.eventID) }
+                            ChatInfoLinkTile(link: link, members: info.members, ownAvatarPath: ownAvatarPath) { onSelectEvent(link.eventID) }
                         }
                     }
                 }
@@ -713,18 +713,6 @@ public struct ChatInfoPane: View {
 
     // MARK: - Privacy: encryption and disappearing messages
 
-    private var disappearingSummary: String {
-        let ms = info.disappearingMS > 0
-            ? info.disappearingMS
-            : (info.features.currentTimer?.timerMS ?? 0)
-        guard ms > 0 else { return String(localized: "Off") }
-        return VitruvianCourierCore.MessageActions.duration(ms)
-    }
-
-    private var showsDisappearing: Bool {
-        info.features.disappearing != nil || info.disappearingMS > 0 || info.features.currentTimer != nil
-    }
-
     private var privacySection: some View {
         let encryption = ChatEncryption.of(info)
         return ChatInfoSection(title: String(localized: "Privacy"), count: nil, isExpanded: nil) {
@@ -748,28 +736,29 @@ public struct ChatInfoPane: View {
                 .accessibilityElement(children: .combine)
                 .chatInfoRowProbe("encryption:\(encryption.title)")
 
-                if showsDisappearing {
+                if let row = ChatInfoPresentation.disappearingRow(for: info) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 8) {
-                            Image(systemName: "timer")
+                            Image(systemName: row.isHistorySetting ? "clock.arrow.circlepath" : "timer")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 16)
-                            Text(String(localized: "Disappearing Messages"))
+                            Text(row.title)
                                 .font(.body)
                             Spacer(minLength: 4)
-                            if !timerChoices.isEmpty {
-                                Menu(disappearingSummary) {
+                            if !row.isHistorySetting, !timerChoices.isEmpty {
+                                Menu(row.value) {
                                     DisappearingItems(choices: timerChoices, set: onSelectTimer)
                                 }
                                 .menuStyle(.borderlessButton)
                                 .fixedSize()
                             } else {
-                                Text(disappearingSummary)
+                                Text(row.value)
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        Text(ChatInfoPresentation.disappearingExplanation)
+                        .chatInfoRowProbe("disappearing:\(row.title)=\(row.value)")
+                        Text(row.explanation)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 24)
@@ -1107,39 +1096,92 @@ private struct ChatInfoContactRowView: View {
     }
 }
 
-/// A link in the Shared box: a card with the site's icon, the page's title and the site.
+/// A link in the Shared box: the preview's picture when it has one, the page's title (two lines), then who shared it
+/// and the site on one line. With no preview at all, a globe and the site.
 private struct ChatInfoLinkTile: View {
     let link: RoomLink
+    let card: ChatInfoLinkCard
     let action: () -> Void
+    @State private var image: CGImage?
+
+    init(link: RoomLink, members: [Member], ownAvatarPath: String, action: @escaping () -> Void) {
+        self.link = link
+        card = ChatInfoLinkCard(link: link, members: members, ownAvatarPath: ownAvatarPath)
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 4) {
-                Image(systemName: link.cardSymbolName)
-                    .font(.title3)
-                    .foregroundStyle(link.isMapsLink ? Color.red : Color.secondary)
-                Spacer(minLength: 0)
-                Text(verbatim: link.cardTitle)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                // The site under a title that is not the site already.
-                if link.cardTitle != link.displayDomain {
-                    Text(verbatim: link.displayDomain)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 0) {
+                if card.imagePath != nil {
+                    Color.primary.opacity(0.07)
+                        .overlay {
+                            if let image {
+                                Image(decorative: image, scale: 1)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                                    .clipped()
+                            } else {
+                                Image(systemName: card.symbolName)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                } else if card.isFallback {
+                    Image(systemName: card.symbolName)
+                        .font(.title3)
+                        .foregroundStyle(card.isMap ? Color.red : Color.secondary)
+                        .padding(8)
+                    Spacer(minLength: 0)
+                } else {
+                    Spacer(minLength: 0)
                 }
+                VStack(alignment: .leading, spacing: 3) {
+                    if let headline = card.headline {
+                        Text(verbatim: headline)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(ChatInfoLinkCard.titleLineLimit)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 4) {
+                        if let sender = card.sender {
+                            AvatarView(path: sender.avatarPath, initials: sender.initials,
+                                       identity: sender.identity, size: 14)
+                                .frame(width: 14, height: 14)
+                                .clipShape(Circle())
+                                .accessibilityHidden(true)
+                        }
+                        // The site on one line, cut in the middle when long: never broken across lines ("usatoday.-com").
+                        Text(verbatim: card.domain)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(ChatInfoLinkCard.domainLineLimit)
+                            .truncationMode(.middle)
+                            .allowsTightening(false)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
             .aspectRatio(1, contentMode: .fit)
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.07)))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .task(id: card.imagePath ?? "") {
+            guard let path = card.imagePath else {
+                image = nil
+                return
+            }
+            image = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+        }
         .help(link.url)
         .contextMenu {
             Button(String(localized: "Open Link")) {

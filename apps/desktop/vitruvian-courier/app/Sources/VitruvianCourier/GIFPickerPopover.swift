@@ -22,73 +22,129 @@ enum GIFFilePicker {
     }
 }
 
-/// The GIF picker popover (`GifPicker.tsx`), showing the offline privacy notice when `gifProvider.isAvailable == false`,
-/// a search filter over recent local GIFs, and a `"Choose GIF from Mac…"` button.
-struct GIFPickerPopover: View {
+/// The GIF picker, a strip in the chat just above the message box (not a pop-over that spills over the inbox): a
+/// search box on top, the GIFs in a row that scrolls sideways, and "Choose GIF from Mac…". With "Search GIFs online" on
+/// (and a key in this build) it shows the GIFs I sent or chose before, then what is trending, and searches the GIF
+/// service for what is typed. With it off, only the recent GIFs, filtered by what is typed. Choosing a GIF attaches it
+/// to the draft as any GIF is; it is never sent by this alone. Escape closes the strip.
+struct GIFPickerStrip: View {
     @ObservedObject var composer: ComposerModel
+    @FocusState private var searchFocused: Bool
 
-    private static let columns: [GridItem] = Array(
-        repeating: GridItem(.flexible(minimum: 120, maximum: 160), spacing: 8),
-        count: 2
-    )
+    static let height: CGFloat = 220
+    private static let tileHeight: CGFloat = 138
 
-    private var filteredRecentGIFs: [StickerItemWire] {
-        let query = composer.gifSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return composer.recentGIFs }
-        return composer.recentGIFs.filter { item in
-            item.name.lowercased().contains(query)
-                || (item.shortcode?.lowercased().contains(query) == true)
+    enum Entry: Identifiable {
+        case recent(StickerItemWire)
+        case online(GIFCandidate)
+
+        var id: String {
+            switch self {
+            case let .recent(item): "recent:\(item.id)"
+            case let .online(candidate): "online:\(candidate.id)"
+            }
         }
+    }
+
+    private var query: String {
+        composer.gifSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var recentMatches: [StickerItemWire] {
+        guard !query.isEmpty else { return composer.recentGIFs }
+        let needle = query.lowercased()
+        return composer.recentGIFs.filter { item in
+            item.name.lowercased().contains(needle) || (item.shortcode?.lowercased().contains(needle) == true)
+        }
+    }
+
+    /// What the row shows: online, the recent GIFs (with no search typed) and then the service's; offline, the recent.
+    private var entries: [Entry] {
+        if composer.canSearchGIFsOnline {
+            let recent = query.isEmpty ? composer.recentGIFs.map(Entry.recent) : []
+            return recent + composer.gifResults.map(Entry.online)
+        }
+        return recentMatches.map(Entry.recent)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            searchBar
+            topBar
                 .padding(.horizontal, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
-
-            if !composer.gifProvider.isAvailable {
-                offlineNoticeBanner
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
-            }
-
-            Divider()
-
-            gifGridArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            footerBar
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+            row
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.tileHeight + 10)
+            captionBar
                 .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.vertical, 5)
         }
-        .frame(width: 320, height: 320)
+        .frame(maxWidth: .infinity)
+        .frame(height: Self.height, alignment: .top)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.regularMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         )
-        .task {
-            if composer.stickerPacks.isEmpty && composer.recentGIFs.isEmpty {
-                await composer.loadStickers(refresh: false)
+        .onExitCommand { composer.isGIFPickerPresented = false }
+        .onAppear { DispatchQueue.main.async { searchFocused = true } }
+        .task { await composer.loadStickers(refresh: false) }
+        // A search waits for a pause in typing; an empty box (trending) and a setting change do not wait.
+        .task(id: "\(composer.gifSearchQuery)|\(composer.canSearchGIFsOnline)") {
+            if !query.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
+            guard !Task.isCancelled else { return }
+            await composer.refreshGIFResults()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "GIF picker"))
+        .accessibilityIdentifier("composer.gifPicker")
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            searchField
+            Button {
+                GIFFilePicker.run(into: composer)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.caption.weight(.semibold))
+                    Text(String(localized: "Choose GIF from Mac…"))
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(Color.accentColor)
             }
+            .buttonStyle(.plain)
+            .disabled(!composer.canSendGIF)
+            Button {
+                composer.isGIFPickerPresented = false
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Close (Esc)"))
+            .accessibilityLabel(String(localized: "Close GIF picker"))
         }
     }
 
-    private var searchBar: some View {
+    private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField(String(localized: "Search recent GIFs"), text: $composer.gifSearchQuery)
-                .textFieldStyle(.plain)
-                .font(.callout)
+            TextField(
+                composer.canSearchGIFsOnline ? String(localized: "Search GIFs") : String(localized: "Search recent GIFs"),
+                text: $composer.gifSearchQuery
+            )
+            .textFieldStyle(.plain)
+            .font(.callout)
+            .focused($searchFocused)
+            .accessibilityIdentifier("composer.gifPicker.search")
             if !composer.gifSearchQuery.isEmpty {
                 Button {
                     composer.gifSearchQuery = ""
@@ -103,166 +159,232 @@ struct GIFPickerPopover: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-        )
-    }
-
-    private var offlineNoticeBanner: some View {
-        HStack(alignment: .top, spacing: 7) {
-            Image(systemName: "lock.shield")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 1)
-            Text(String(localized: "Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below."))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-        )
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
     }
 
     @ViewBuilder
-    private var gifGridArea: some View {
-        let items = filteredRecentGIFs
-        if items.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.secondary)
-                Text(
-                    composer.gifSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ? String(localized: "No recent GIFs")
-                        : String(localized: "No matching GIFs")
-                )
-                .font(.callout.weight(.medium))
-                Text(String(localized: "Choose a GIF or MP4 loop from your Mac below."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-            }
-            .padding(16)
+    private var row: some View {
+        let shown = entries
+        if shown.isEmpty {
+            emptyState
         } else {
-            ScrollView {
-                LazyVGrid(columns: Self.columns, spacing: 8) {
-                    ForEach(items) { item in
-                        GIFCellView(
-                            item: item,
-                            thumbnailLoader: composer.thumbnailLoader,
-                            isEnabled: composer.canSendGIF
-                        ) {
-                            Task { await composer.selectGIF(item) }
+            ScrollView(.horizontal, showsIndicators: true) {
+                LazyHStack(spacing: 8) {
+                    ForEach(shown) { entry in
+                        GIFTile(entry: entry, composer: composer, height: Self.tileHeight) {
+                            switch entry {
+                            case let .recent(item): Task { await composer.selectGIF(item) }
+                            case let .online(candidate): Task { await composer.selectGIFCandidate(candidate) }
+                            }
                         }
                     }
                 }
-                .padding(10)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
             }
         }
     }
 
-    private var footerBar: some View {
-        HStack {
-            Button {
-                GIFFilePicker.run(into: composer)
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.caption.weight(.semibold))
-                    Text(String(localized: "Choose GIF from Mac…"))
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundStyle(Color.accentColor)
+    @ViewBuilder
+    private var emptyState: some View {
+        VStack(spacing: 5) {
+            if composer.canSearchGIFsOnline, composer.gifResultsState == .loading {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "Finding GIFs…"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else if case let .failed(reason) = composer.gifResultsState, composer.canSearchGIFsOnline {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.secondary)
+                Text(reason)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.secondary)
+                Text(query.isEmpty ? String(localized: "No recent GIFs") : String(localized: "No matching GIFs"))
+                    .font(.callout.weight(.medium))
+                Text(String(localized: "Choose a GIF or MP4 loop from your Mac."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
-            .disabled(!composer.canSendGIF)
-
-            Spacer(minLength: 8)
         }
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var captionBar: some View {
+        HStack(spacing: 6) {
+            Text(captionText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if composer.canSearchGIFsOnline {
+                Text(String(localized: "Powered by KLIPY"))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private var captionText: String {
+        if !composer.canSearchGIFsOnline {
+            if composer.gifProvider.isAvailable {
+                return String(localized: "Online GIF search is off, so nothing leaves your Mac.")
+            }
+            return String(localized: "Online GIF search is disabled so nothing leaves your Mac.")
+        }
+        if query.isEmpty { return String(localized: "Your recent GIFs, then trending") }
+        return String(format: String(localized: "Results for “%@”"), query)
     }
 }
 
-private struct GIFCellView: View {
-    let item: StickerItemWire
-    let thumbnailLoader: ThumbnailLoader?
-    let isEnabled: Bool
+/// One GIF in the strip: a small preview that plays (a GIF, or an online GIF's preview) or at least shows its first
+/// frame (an MP4 loop), never a play icon with a file name.
+private struct GIFTile: View {
+    let entry: GIFPickerStrip.Entry
+    @ObservedObject var composer: ComposerModel
+    let height: CGFloat
     let onSelect: () -> Void
-    @State private var loadedThumbnail: CGImage?
+
+    @State private var animatedPath: String?
+    @State private var still: CGImage?
+    @State private var didFinishLoading = false
+    /// Width over height, read from the file once it is known; until then the provider's size, or a square.
+    @State private var measuredAspect: CGFloat?
+
+    private var title: String {
+        switch entry {
+        case let .recent(item): item.name
+        case let .online(candidate): candidate.title
+        }
+    }
+
+    private var width: CGFloat {
+        if let measuredAspect { return min(max(height * measuredAspect, 70), 260) }
+        let size: (Int?, Int?)
+        switch entry {
+        case let .recent(item): size = (item.width, item.height)
+        case let .online(candidate): size = (candidate.width, candidate.height)
+        }
+        guard let w = size.0, let h = size.1, w > 0, h > 0 else { return height }
+        return min(max(height * CGFloat(w) / CGFloat(h), 70), 260)
+    }
+
+    private var isDownloading: Bool {
+        if case let .online(candidate) = entry { return composer.downloadingGIFID == candidate.id }
+        return false
+    }
 
     var body: some View {
         Button(action: onSelect) {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 84)
-
-                Group {
-                    if let cgImage = loadedThumbnail {
-                        Image(decorative: cgImage, scale: 2.0, orientation: .up)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(height: 84)
-                            .clipped()
-                    } else {
-                        VStack(spacing: 4) {
-                            if let emoji = item.emoji, !emoji.isEmpty {
-                                Text(verbatim: emoji)
-                                    .font(.system(size: 26))
-                            } else {
-                                Image(systemName: "play.rectangle.fill")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(item.name)
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .padding(.horizontal, 6)
-                        }
+                    .fill(Color.primary.opacity(0.07))
+                if let animatedPath {
+                    AnimatedGIFImage(path: animatedPath)
+                        .allowsHitTesting(false)
+                } else if let still {
+                    Image(decorative: still, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                } else if !didFinishLoading {
+                    ProgressView().controlSize(.small)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                HStack(spacing: 4) {
-                    Text(verbatim: "GIF")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.black.opacity(0.68)))
-
-                    Spacer(minLength: 0)
+                if isDownloading {
+                    ProgressView().controlSize(.small)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.35))
                 }
-                .padding(6)
             }
-            .frame(height: 84)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-            )
+            .frame(width: width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1.0 : 0.45)
-        .help(item.name)
-        .accessibilityLabel(item.name)
-        .task(id: item.mediaURL) {
-            guard loadedThumbnail == nil,
-                  let path = ThumbnailLoader.resolveMediaPath(item.mediaURL)
-            else { return }
-            let loader = thumbnailLoader ?? .shared
-            loadedThumbnail = await loader.thumbnail(atPath: path)?.image
+        .disabled(!composer.canSendGIF || composer.downloadingGIFID != nil)
+        .opacity(composer.canSendGIF ? 1.0 : 0.45)
+        .help(title)
+        .accessibilityLabel(title)
+        .task(id: entry.id) { await load() }
+    }
+
+    private func load() async {
+        defer { didFinishLoading = true }
+        let loader = composer.thumbnailLoader ?? .shared
+        switch entry {
+        case let .recent(item):
+            guard let path = ThumbnailLoader.resolveMediaPath(item.mediaURL) else { return }
+            await show(fileAt: path, loader: loader)
+        case let .online(candidate):
+            // The service's preview is someone else's file too: it gets the same limits as a recent GIF.
+            if let file = await composer.gifPreviewFile(for: candidate) { await show(fileAt: file.path, loader: loader) }
         }
+    }
+
+    /// Plays a GIF the limits allow (`LoopLimits`, from its header, before anything is decoded), shows the first frame
+    /// of one that is too big and of an MP4 loop, and leaves the placeholder for one that is huge.
+    private func show(fileAt path: String, loader: ThumbnailLoader) async {
+        let kind = await Task.detached { LoopFileKind.detect(atPath: path) }.value
+        let limit = kind == .mp4 ? LoopLimits.Display.stillFrame : await Task.detached { LoopLimits.display(forFileAt: path) }.value
+        switch limit {
+        case .animate where kind == .gif:
+            animatedPath = path
+            measuredAspect = await aspect(ofFileAt: path, loader: loader)
+        case .placeholder:
+            break
+        default:
+            if let picture = await loader.loopThumbnail(atPath: path)?.image {
+                still = picture
+                measuredAspect = CGFloat(picture.width) / CGFloat(max(picture.height, 1))
+            }
+        }
+    }
+}
+
+private func aspect(ofFileAt path: String, loader: ThumbnailLoader) async -> CGFloat? {
+    guard let size = await loader.pixelSize(atPath: path), size.width > 0, size.height > 0 else { return nil }
+    return size.width / size.height
+}
+
+/// An animated GIF from a file, filling its frame. It does not take clicks: the tile's button does.
+private struct AnimatedGIFImage: NSViewRepresentable {
+    let path: String
+
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView()
+        view.animates = true
+        view.imageScaling = .scaleProportionallyUpOrDown
+        view.isEditable = false
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        view.image = NSImage(contentsOfFile: path)
+        context.coordinator.path = path
+        return view
+    }
+
+    func updateNSView(_ view: NSImageView, context: Context) {
+        guard context.coordinator.path != path else { return }
+        context.coordinator.path = path
+        view.image = NSImage(contentsOfFile: path)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var path = ""
     }
 }

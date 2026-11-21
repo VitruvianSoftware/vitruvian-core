@@ -60,6 +60,13 @@ struct RemindMeItems: View {
 
     /// A menu is drawn before it is opened, so "In an Hour" is worked out again from now when it is chosen.
     private func remind(_ title: String, fallback: Date) {
+        Self.remind(title, fallback: fallback, inbox: inbox, ids: ids)
+        done()
+    }
+
+    /// Sets the reminder the suggestion `title` stands for, worked out from now; `fallback` is the time the menu drew
+    /// it at, used only if the suggestion is no longer in the list.
+    static func remind(_ title: String, fallback: Date? = nil, inbox: InboxModel, ids: [String]?) {
         let now = Date()
         let due = ReminderPresets.presets(
             now: now,
@@ -67,10 +74,9 @@ struct RemindMeItems: View {
             lastUsed: inbox.preferences.lastUsedReminder,
             suggestions: inbox.preferences.timeSuggestions
         )
-            .first { $0.title == title }?.date ?? fallback
+            .first { $0.title == title }?.date ?? fallback ?? now
         let condition = inbox.preferences.remindDefault
         Task { await inbox.remind(at: max(due, now.addingTimeInterval(60)), condition: condition, ids: ids) }
-        done()
     }
 }
 

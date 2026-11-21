@@ -184,4 +184,130 @@ final class ChatInfoSectionsTests: XCTestCase {
                        "Every new message is read aloud. Muted chats are never read aloud.")
         XCTAssertEqual(ChatReadAloud.never.explanation, "This chat is never read aloud.")
     }
+
+    // MARK: - Link tiles (D2)
+
+    private func richLink(
+        _ url: String = "https://www.usatoday.com/story/news/abc", title: String? = "Senate passes the bill",
+        image: String? = "/tmp/preview.jpg", sender: String = "@a:x"
+    ) -> RoomLink {
+        RoomLink(eventID: "$l", sender: sender, ts: 1, url: url, host: URL(string: url)?.host ?? "", title: title,
+                 imagePath: image)
+    }
+
+    func testALinkTileShowsThePictureTheTitleTheSenderAndTheSite() {
+        let members = [Member(userID: "@a:x", name: "Alice Park", avatarPath: "/tmp/alice.png")]
+        let card = ChatInfoLinkCard(link: richLink(), members: members)
+        XCTAssertEqual(card.imagePath, "/tmp/preview.jpg")
+        XCTAssertEqual(card.headline, "Senate passes the bill")
+        XCTAssertEqual(card.domain, "www.usatoday.com")
+        XCTAssertEqual(card.sender?.name, "Alice Park")
+        XCTAssertEqual(card.sender?.avatarPath, "/tmp/alice.png")
+        XCTAssertEqual(card.sender?.initials, "A")
+        XCTAssertFalse(card.isFallback)
+    }
+
+    func testALinkTileKeepsTheSiteOnOneLineAndTheTitleToTwo() {
+        XCTAssertEqual(ChatInfoLinkCard.domainLineLimit, 1, "the site is never broken across lines")
+        XCTAssertEqual(ChatInfoLinkCard.titleLineLimit, 2)
+    }
+
+    func testALinkWithNoPreviewFallsBackToAGlobeAndTheSite() {
+        let card = ChatInfoLinkCard(link: richLink(title: nil, image: nil))
+        XCTAssertTrue(card.isFallback)
+        XCTAssertNil(card.imagePath)
+        XCTAssertNil(card.headline, "the site is not said twice")
+        XCTAssertEqual(card.symbolName, "globe")
+        XCTAssertEqual(card.domain, "www.usatoday.com")
+        // A title that is only the site's name says nothing more than the site.
+        XCTAssertTrue(ChatInfoLinkCard(link: richLink(title: "www.usatoday.com", image: nil)).isFallback)
+        // An empty picture path is no picture.
+        XCTAssertNil(ChatInfoLinkCard(link: richLink(image: "")).imagePath)
+    }
+
+    func testAPictureWithNoTitleStillShowsThePicture() {
+        let card = ChatInfoLinkCard(link: richLink(title: nil))
+        XCTAssertFalse(card.isFallback)
+        XCTAssertEqual(card.imagePath, "/tmp/preview.jpg")
+        XCTAssertNil(card.headline)
+    }
+
+    func testAMapLinkWithNoTitleIsCalledMap() {
+        let card = ChatInfoLinkCard(link: richLink("https://maps.app.goo.gl/x", title: nil, image: nil))
+        XCTAssertEqual(card.headline, "Map")
+        XCTAssertEqual(card.symbolName, "mappin.circle.fill")
+        XCTAssertTrue(card.isMap)
+    }
+
+    func testTheSenderOfALinkIsMeOrAMemberOrJustTheirID() {
+        XCTAssertEqual(
+            ChatInfoPresentation.linkSender(for: richLink(sender: Timeline.meUserID), members: [], ownAvatarPath: "/tmp/me.png"),
+            ChatInfoPresentation.MediaSender(name: "You", initials: "Y", avatarPath: "/tmp/me.png", identity: Timeline.meUserID)
+        )
+        let unknown = ChatInfoPresentation.linkSender(for: richLink(sender: "@zed:x"), members: [], ownAvatarPath: "")
+        XCTAssertEqual(unknown?.name, "@zed:x")
+        XCTAssertEqual(unknown?.avatarPath, "")
+        XCTAssertNil(ChatInfoPresentation.linkSender(for: richLink(sender: " "), members: [], ownAvatarPath: ""))
+    }
+
+    func testCopiesOfALinkKeepThePictureAnotherCopyHas() {
+        let url = "https://news.test/a"
+        let older = RoomLink(eventID: "$old", sender: "@a:x", ts: 10, url: url, host: "news.test", title: "Story",
+                             imagePath: "/tmp/p.jpg")
+        let newer = RoomLink(eventID: "$new", sender: "@a:x", ts: 20, url: url, host: "news.test")
+        for order in [[older, newer], [newer, older]] {
+            let kept = RoomLink.deduplicated(order)
+            XCTAssertEqual(kept.count, 1)
+            XCTAssertEqual(kept[0].eventID, "$new", "the newest message wins")
+            XCTAssertEqual(kept[0].imagePath, "/tmp/p.jpg")
+            XCTAssertEqual(kept[0].title, "Story")
+        }
+    }
+
+    // MARK: - Disappearing messages and Google Chat's history (D3)
+
+    private func info(network: String, disappearingMS: Int64 = 0, historyOff: Bool? = nil) -> RoomInfoResult {
+        RoomInfoResult(roomID: "!r:x", name: "Chat", remoteName: "Chat", network: network, isDirect: false,
+                       disappearingMS: disappearingMS, historyOff: historyOff, features: .noFeatures)
+    }
+
+    func testGoogleChatShowsItsHistorySettingOnOrOffAndSaysWhereToChangeIt() throws {
+        let off = try XCTUnwrap(ChatInfoPresentation.disappearingRow(for: info(network: "gchat", historyOff: true)))
+        XCTAssertEqual(off.title, "Chat history")
+        XCTAssertEqual(off.value, "Off")
+        XCTAssertEqual(off.explanation, "History is off: messages disappear after 24 hours. Change this in Google Chat.")
+        XCTAssertTrue(off.isHistorySetting, "read only: no picker")
+
+        let on = try XCTUnwrap(ChatInfoPresentation.disappearingRow(for: info(network: "gchat", historyOff: false)))
+        XCTAssertEqual(on.title, "Chat history")
+        XCTAssertEqual(on.value, "On")
+        XCTAssertEqual(on.explanation, "History is on: messages are kept. Change this in Google Chat.")
+    }
+
+    func testGoogleChatShowsNoRowWhenItsHistorySettingIsNotKnown() {
+        XCTAssertNil(ChatInfoPresentation.disappearingRow(for: info(network: "gchat")),
+                     "never claim a setting Google has not told us")
+    }
+
+    func testOtherNetworksKeepTheirDisappearingTimerRowAndIgnoreHistory() throws {
+        XCTAssertNil(ChatInfoPresentation.disappearingRow(for: info(network: "whatsapp")))
+        XCTAssertNil(ChatInfoPresentation.disappearingRow(for: info(network: "whatsapp", historyOff: true)),
+                     "only Google Chat has a history setting")
+        let timer = try XCTUnwrap(
+            ChatInfoPresentation.disappearingRow(for: info(network: "whatsapp", disappearingMS: 604_800_000)))
+        XCTAssertEqual(timer.title, "Disappearing Messages")
+        XCTAssertEqual(timer.value, MessageActions.duration(604_800_000))
+        XCTAssertFalse(timer.isHistorySetting)
+    }
+
+    func testHistorySettingRidesTheEnginesHistoryOffField() throws {
+        let sent = try JSONEncoder().encode(info(network: "gchat", historyOff: true))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: sent) as? [String: Any])
+        XCTAssertEqual(object["history_off"] as? Bool, true)
+        XCTAssertEqual(try JSONDecoder().decode(RoomInfoResult.self, from: sent).historyOff, true)
+        // An engine from before the field leaves it out: nothing is claimed.
+        object["history_off"] = nil
+        let older = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertNil(try JSONDecoder().decode(RoomInfoResult.self, from: older).historyOff)
+    }
 }

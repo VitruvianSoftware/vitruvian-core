@@ -1,0 +1,20 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 51,
+    "method": "linkPreview.image",
+    "params": {
+      "url": "https://www.example.com/news/story"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 51,
+    "result": {
+      "image_path": "/Users/alex/Library/Application Support/Vitruvian Courier/media/3f/3fa1c0d2b94e7f5a6c8d1e0b2a4f6c8e0d2b4a6c8e0f1a3b5c7d9e1f2a4b6c8d",
+      "image_width": 1200,
+      "image_height": 630,
+      "blurhash": "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+    }
+  }
+}

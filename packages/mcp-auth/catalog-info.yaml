@@ -31,8 +31,8 @@ metadata:
     - mcp
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/rust/vitruvian-mcp-auth
-    vitruvian.dev/bazel-target: //packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth, //packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth_slack_mcp_hub
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/mcp-auth
+    vitruvian.dev/bazel-target: //packages/mcp-auth:vitruvian_mcp_auth, //packages/mcp-auth:vitruvian_mcp_auth_slack_mcp_hub
 spec:
   type: library
   lifecycle: production

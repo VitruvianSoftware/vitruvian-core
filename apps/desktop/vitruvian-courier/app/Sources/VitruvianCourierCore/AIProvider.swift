@@ -29,6 +29,14 @@ public enum AIProviderDisposition: Equatable, Sendable {
     case text(String)
 }
 
+/// The same-story check's answer (`AIProvider.isSameStory`).
+public enum AISameStoryDisposition: Equatable, Sendable {
+    case same
+    /// A clear "no", or an answer that wasn't a clear yes: never lets a summary through.
+    case different
+    case unavailable(reason: String)
+}
+
 /// Spec §3 seam for chat AI features (Settings ▸ AI, AIPane, Draft with AI, Rewrite, Translate, Summarize).
 /// Speech features (`TalkToTypeModel`, `VoiceNoteTranscriptStore`) use `SpeechEngine` directly rather than `AIProvider`.
 /// `UnavailableAIProvider` is completely offline and never contacts any server.
@@ -39,6 +47,34 @@ public protocol AIProvider: Sendable {
     func draftResponse(context: AIChatContext, draft: String, tone: AIRewriteTone?) async -> AIProviderDisposition
     func translate(text: String, targetLanguage: String) async -> AIProviderDisposition
     func summarize(context: AIChatContext) async -> AIProviderDisposition
+
+    /// Summarizes the text of an article in 3 to 5 bullets: what happened, the key numbers, who said what, and
+    /// nothing the text doesn't say. Only `text` (and the title and site's name) is sent.
+    func summarizeArticle(title: String, site: String, text: String) async -> AIProviderDisposition
+
+    /// Looks for the same story on a site that isn't paywalled, using this service's own web search. Only the
+    /// `headline` and the `site`'s name are sent; `description` is what the caller knows of the story and is
+    /// deliberately not sent (it is for `isSameStory`). A service with no web search of its own answers
+    /// `.unsupported` and sends nothing.
+    func findUnpaywalledSource(headline: String, site: String, description: String) async -> AISourceSearchDisposition
+
+    /// The check a found article must pass before it is summarized: is it the same event, date and key facts as the
+    /// headline and description say? A yes/no question, so a lookalike page never becomes "the summary".
+    func isSameStory(headline: String, description: String, candidateTitle: String, candidateText: String) async -> AISameStoryDisposition
+}
+
+extension AIProvider {
+    public func summarizeArticle(title _: String, site _: String, text _: String) async -> AIProviderDisposition {
+        .unavailable(reason: String(localized: "Article summaries aren’t available."))
+    }
+
+    public func findUnpaywalledSource(headline _: String, site _: String, description _: String) async -> AISourceSearchDisposition {
+        .unsupported
+    }
+
+    public func isSameStory(headline _: String, description _: String, candidateTitle _: String, candidateText _: String) async -> AISameStoryDisposition {
+        .unavailable(reason: String(localized: "Article summaries aren’t available."))
+    }
 }
 
 public struct UnavailableAIProvider: AIProvider {
@@ -65,6 +101,15 @@ public struct UnavailableAIProvider: AIProvider {
     }
     public func summarize(context _: AIChatContext) async -> AIProviderDisposition {
         .unavailable(reason: customReason ?? String(localized: "AI chat summaries aren’t available yet in Vitruvian Courier."))
+    }
+    public func summarizeArticle(title _: String, site _: String, text _: String) async -> AIProviderDisposition {
+        .unavailable(reason: customReason ?? String(localized: "Article summaries aren’t available yet in Vitruvian Courier."))
+    }
+    public func findUnpaywalledSource(headline _: String, site _: String, description _: String) async -> AISourceSearchDisposition {
+        .unsupported
+    }
+    public func isSameStory(headline _: String, description _: String, candidateTitle _: String, candidateText _: String) async -> AISameStoryDisposition {
+        .unavailable(reason: customReason ?? String(localized: "Article summaries aren’t available yet in Vitruvian Courier."))
     }
 }
 
@@ -148,6 +193,13 @@ public final class AIPreferences: ObservableObject {
             set(enableSlashCommands, "enableSlashCommands")
         }
     }
+    /// Which service edits photos ("Edit with AI…"). Never changes `selectedEngine`.
+    @Published public var photoEditingChoice: PhotoEditingChoice {
+        didSet {
+            guard canMutate({ photoEditingChoice = oldValue }) else { return }
+            set(photoEditingChoice.rawValue, "photoEditingChoice")
+        }
+    }
 
     public static let supportedTranslationLanguages: [String] = [
         "Arabic", "Chinese (Simplified)", "Chinese (Traditional)", "Dutch",
@@ -203,6 +255,8 @@ public final class AIPreferences: ObservableObject {
         autoTranscribeVoiceNotes = bool("autoTranscribeVoiceNotes", false)
         transcriptionLanguage = string("transcriptionLanguage", "Auto-Detect")
         enableSlashCommands = bool("enableSlashCommands", true)
+        photoEditingChoice = defaults.string(forKey: Self.key("photoEditingChoice"))
+            .flatMap(PhotoEditingChoice.init(rawValue:)) ?? .automatic
         isInitializing = false
     }
 

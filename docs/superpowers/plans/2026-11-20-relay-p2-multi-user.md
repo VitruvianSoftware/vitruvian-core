@@ -425,7 +425,7 @@ asks for.
 
 **Files:**
 - Modify:
-  - `packages/rust/vitruvian-mcp-auth/src/verifier.rs`: `VerifierConfig` gains `required_role: Option<String>`. An empty `allowed_subjects` is allowed only when `required_role` is set. The slack-mcp's behaviour is unchanged and its tests must still pass.
+  - `packages/mcp-auth/src/verifier.rs`: `VerifierConfig` gains `required_role: Option<String>`. An empty `allowed_subjects` is allowed only when `required_role` is set. The slack-mcp's behaviour is unchanged and its tests must still pass.
   - `relay/src/http.rs` (`register_device`, `check_hello`, `owned_device`), `relay/src/config.rs`: `ALLOWED_SUBJECTS` removed, `REQUIRED_ROLE` (default `relay-user`) added.
   - `connector/src/auth.rs` (`register_device` sends `device_id` when it has one and `name`), `connector/src/main.rs`: `vrelay login --name <name>`, defaulting to `scutil --get ComputerName`.
 - Test: `verifier.rs` tests, `relay/src/http_tests.rs`, `relay/tests/e2e.rs`. `mint` takes `sub`, and `start_relay` drops `ALLOWED_SUBJECTS`.
@@ -449,7 +449,7 @@ asks for.
   - `sixth_device_is_refused`.
   - `name_is_trimmed_and_capped`.
   - Review Focus 3, `revoke_closes_live_link`.
-- [ ] **Step 2:** `bazel test //packages/rust/vitruvian-mcp-auth/... //apps/suites/vitruvian-relay/...` → FAIL.
+- [ ] **Step 2:** `bazel test //packages/mcp-auth/... //apps/suites/vitruvian-relay/...` → FAIL.
 - [ ] **Step 3:** Implement. Replace every `owner_sub == caller.subject` comparison in `http.rs` (`:468`, `:745`, `:1040`) with `owned_device`.
 - [ ] **Step 4:** The same command → PASS. Also `bazel test //apps/mcp/vitruvian-slack-mcp/...` → PASS.
 - [ ] **Step 5:** Commit `feat(relay): several computers per person, access by role`.
