@@ -140,12 +140,45 @@ public enum MarkdownConverter {
     /// draft (it keeps text only), so the styles come back from `convertAll` when the draft is opened. Other kinds
     /// (links, mentions, quotes, lists, spoilers) have no marker here and are plain in a saved draft, as before.
     public static func markdown(text: String, entities: [TextEntity]) -> String {
+        let written = render(text: text, entities: entities)
+        let styled = entities.filter { [.bold, .italic, .strikethrough, .code, .pre].contains($0.kind) }.sorted(by: TextEntity.precedes)
+        guard !styled.isEmpty else { return written }
+        // Saving must never change what comes back. Where the markers would not read back as these very ranges (a
+        // marker the address guard keeps out of an address, say), the words are kept and the styles dropped, which
+        // does read back the same every time.
+        let back = restoredDraft(written)
+        // (A style's edge spaces stay outside its markers, so what reads back is the range without them.)
+        let string = text as NSString
+        let expected: [TextEntity] = styled.compactMap { entity in
+            guard entity.offset >= 0, entity.length > 0, entity.offset + entity.length <= string.length else { return nil }
+            guard entity.kind != .pre else { return entity }
+            var start = entity.offset
+            var stop = entity.offset + entity.length
+            while start < stop, isBlank(string.character(at: start)) { start += 1 }
+            while stop > start, isBlank(string.character(at: stop - 1)) { stop -= 1 }
+            guard stop > start else { return nil }
+            return TextEntity(kind: entity.kind, offset: start, length: stop - start)
+        }
+        return back.text == text && back.entities == expected ? written : render(text: text, entities: [])
+    }
+
+    private static func render(text: String, entities: [TextEntity]) -> String {
         let string = text as NSString
         let kinds: [TextEntity.Kind: String] = [.bold: "**", .italic: "_", .strikethrough: "~~"]
         var inserts: [(position: Int, group: Int, size: Int, index: Int, marker: String)] = []
         // Characters that are left as typed but would read back as markers (after Undo kept `**x**` as it was typed)
-        // get a backslash, and so does every backslash, so `unescaped` can undo exactly what is done here.
+        // get a backslash. Escaping only some of a draft's marker characters can change which of the rest pair up, so
+        // where any could read back as a marker, all of them (outside code) are escaped: then none can.
         var escaped: Set<Int> = []
+        let hasStyles = entities.contains { [.bold, .italic, .strikethrough, .code, .pre].contains($0.kind) }
+        let literalCode = entities.filter { $0.kind == .code || $0.kind == .pre }.map(\.range)
+        if hasStyles || !MarkdownSpans.parse(text).isEmpty {
+            for position in 0 ..< string.length where isMarkerCharacter(string.character(at: position)) {
+                let spot = NSRange(location: position, length: 1)
+                if !literalCode.contains(where: { NSIntersectionRange($0, spot).length > 0 }) { escaped.insert(position) }
+            }
+        }
+        // Inside code, the markers of what would be a span are escaped, as before (the code itself is not read).
         for span in MarkdownSpans.parse(text) {
             for marker in [span.open, span.close] {
                 for position in marker.location ..< marker.location + marker.length { escaped.insert(position) }
@@ -161,6 +194,17 @@ public enum MarkdownConverter {
         }
         for position in escaped { inserts.append((position, 2, 0, position, "\\")) }
         for (index, entity) in entities.enumerated() {
+            if entity.kind == .pre {
+                guard entity.offset >= 0, entity.length > 0, entity.offset + entity.length <= string.length,
+                      entity.offset == 0 || string.character(at: entity.offset - 1) == 0x0A,
+                      entity.offset + entity.length == string.length || string.character(at: entity.offset + entity.length) == 0x0A
+                else { continue }
+                let body = string.substring(with: entity.range)
+                let fence = String(repeating: "`", count: max(3, longestRun(of: "`", in: body) + 1))
+                inserts.append((entity.offset, 1, -entity.length, index, fence + "\n"))
+                inserts.append((entity.offset + entity.length, 0, entity.length, index, "\n" + fence))
+                continue
+            }
             guard entity.offset >= 0, entity.length > 0, entity.offset + entity.length <= string.length else { continue }
             var start = entity.offset
             var stop = entity.offset + entity.length
@@ -175,13 +219,7 @@ public enum MarkdownConverter {
                 close = marker
             } else if entity.kind == .code {
                 let body = string.substring(with: NSRange(location: start, length: stop - start))
-                var longest = 0
-                var run = 0
-                for scalar in body.unicodeScalars {
-                    run = scalar == "`" ? run + 1 : 0
-                    longest = max(longest, run)
-                }
-                let fence = String(repeating: "`", count: longest + 1)
+                let fence = String(repeating: "`", count: longestRun(of: "`", in: body) + 1)
                 open = fence
                 close = fence
             } else {
@@ -246,6 +284,16 @@ public enum MarkdownConverter {
     /// `*`, `_`, `~` and the backtick: the characters a draft escapes.
     private static func isMarkerCharacter(_ unit: unichar) -> Bool {
         unit == 0x2A || unit == 0x5F || unit == 0x7E || unit == 0x60
+    }
+
+    private static func longestRun(of character: Character, in text: String) -> Int {
+        var longest = 0
+        var run = 0
+        for each in text {
+            run = each == character ? run + 1 : 0
+            longest = max(longest, run)
+        }
+        return longest
     }
 
     private static func isBlank(_ unit: unichar) -> Bool {

@@ -252,9 +252,6 @@ private struct GIFTile: View {
     let height: CGFloat
     let onSelect: () -> Void
 
-    /// A GIF bigger than this shows its first frame, so a strip of big files stays light.
-    private static let animationLimit = 8 * 1024 * 1024
-
     @State private var animatedPath: String?
     @State private var still: CGImage?
     @State private var didFinishLoading = false
@@ -325,23 +322,32 @@ private struct GIFTile: View {
 
     private func load() async {
         defer { didFinishLoading = true }
+        let loader = composer.thumbnailLoader ?? .shared
         switch entry {
         case let .recent(item):
             guard let path = ThumbnailLoader.resolveMediaPath(item.mediaURL) else { return }
-            let kind = await Task.detached { LoopFileKind.detect(atPath: path) }.value
-            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
-            let loader = composer.thumbnailLoader ?? .shared
-            if kind == .gif, size > 0, size <= Self.animationLimit {
-                animatedPath = path
-                measuredAspect = await aspect(ofFileAt: path, loader: loader)
-            } else if let picture = await loader.loopThumbnail(atPath: path)?.image {
+            await show(fileAt: path, loader: loader)
+        case let .online(candidate):
+            // The service's preview is someone else's file too: it gets the same limits as a recent GIF.
+            if let file = await composer.gifPreviewFile(for: candidate) { await show(fileAt: file.path, loader: loader) }
+        }
+    }
+
+    /// Plays a GIF the limits allow (`LoopLimits`, from its header, before anything is decoded), shows the first frame
+    /// of one that is too big and of an MP4 loop, and leaves the placeholder for one that is huge.
+    private func show(fileAt path: String, loader: ThumbnailLoader) async {
+        let kind = await Task.detached { LoopFileKind.detect(atPath: path) }.value
+        let limit = kind == .mp4 ? LoopLimits.Display.stillFrame : await Task.detached { LoopLimits.display(forFileAt: path) }.value
+        switch limit {
+        case .animate where kind == .gif:
+            animatedPath = path
+            measuredAspect = await aspect(ofFileAt: path, loader: loader)
+        case .placeholder:
+            break
+        default:
+            if let picture = await loader.loopThumbnail(atPath: path)?.image {
                 still = picture
                 measuredAspect = CGFloat(picture.width) / CGFloat(max(picture.height, 1))
-            }
-        case let .online(candidate):
-            if let file = await composer.gifPreviewFile(for: candidate) {
-                animatedPath = file.path
-                measuredAspect = await aspect(ofFileAt: file.path, loader: composer.thumbnailLoader ?? .shared)
             }
         }
     }

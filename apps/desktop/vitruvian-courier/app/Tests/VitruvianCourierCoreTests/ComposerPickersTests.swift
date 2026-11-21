@@ -385,4 +385,37 @@ final class ComposerPickersTests: XCTestCase {
         let missing = await loader.loopThumbnail(atPath: "/nonexistent/file")
         XCTAssertNil(missing)
     }
+
+    // MARK: Limits on what a tile plays
+
+    func testLimitsOnWhatATilePlays() {
+        let megabyte = 1024 * 1024
+        typealias Display = LoopLimits.Display
+        XCTAssertEqual(LoopLimits.display(bytes: 300_000, width: 220, height: 220, frames: 30), .animate)
+        XCTAssertEqual(LoopLimits.display(bytes: 8 * megabyte, width: 2048, height: 2048, frames: 500), .animate, "at the limits")
+        XCTAssertEqual(LoopLimits.display(bytes: 8 * megabyte + 1, width: 220, height: 220, frames: 30), .stillFrame, "bytes")
+        XCTAssertEqual(LoopLimits.display(bytes: 1000, width: 2049, height: 100, frames: 3), .stillFrame, "wide")
+        XCTAssertEqual(LoopLimits.display(bytes: 1000, width: 100, height: 2049, frames: 3), .stillFrame, "tall")
+        XCTAssertEqual(LoopLimits.display(bytes: 1000, width: 100, height: 100, frames: 501), .stillFrame, "frames")
+        XCTAssertEqual(LoopLimits.display(bytes: 1000, width: 4097, height: 10, frames: 1), .placeholder, "huge: not even a frame")
+        XCTAssertEqual(LoopLimits.display(bytes: 1000, width: 0, height: 0, frames: 0), .placeholder)
+    }
+
+    func testTheLimitsAreReadFromTheFileHeader() throws {
+        func gif(width: Int, height: Int) throws -> String {
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
+                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                       bytesPerRow: 0, bitsPerPixel: 0)!
+            let file = tempFile()
+            try rep.representation(using: .gif, properties: [:])!.write(to: file)
+            return file.path
+        }
+        XCTAssertEqual(LoopLimits.display(forFileAt: try gif(width: 60, height: 40)), .animate)
+        XCTAssertEqual(LoopLimits.display(forFileAt: try gif(width: 3000, height: 4)), .stillFrame, "over 2048 pixels wide")
+        XCTAssertEqual(LoopLimits.display(forFileAt: try gif(width: 5000, height: 4)), .placeholder, "over 4096")
+        XCTAssertEqual(LoopLimits.display(forFileAt: "/nonexistent/file"), .placeholder)
+        let text = tempFile()
+        try Data("not a picture".utf8).write(to: text)
+        XCTAssertEqual(LoopLimits.display(forFileAt: text.path), .stillFrame, "ImageIO cannot read it: a still, or nothing")
+    }
 }
