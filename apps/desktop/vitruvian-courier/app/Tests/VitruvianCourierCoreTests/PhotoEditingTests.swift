@@ -496,7 +496,7 @@ final class PhotoEditingTests: XCTestCase {
     func testEveryFailureReadsInPlainWords() {
         let failures: [ImageEditFailure] = [
             .unsupported, .noKey, .keyRejected, .refused, .network, .tooLarge, .rateLimited, .needsPaidAccess,
-            .unreadablePhoto, .noImageReturned(note: nil), .noImageReturned(note: "No."), .server(status: 500, detail: ""),
+            .unreadablePhoto, .noImageReturned(note: nil), .noImageReturned(note: "No."), .responseTooLarge, .server(status: 500, detail: ""),
             .server(status: 400, detail: "Bad"), .cancelled,
         ]
         for failure in failures {

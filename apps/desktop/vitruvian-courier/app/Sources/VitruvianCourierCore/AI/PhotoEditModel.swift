@@ -36,6 +36,26 @@ public enum PhotoEditScratch {
         FileManager.default.temporaryDirectory.appendingPathComponent(folderName, isDirectory: true)
     }
 
+    /// Whether `url` is a file inside `root` (not `root` itself). Symlinks are resolved on both sides.
+    public static func isInside(_ url: URL, root: URL = defaultDirectory) -> Bool {
+        let file = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let base = root.resolvingSymlinksInPath().standardizedFileURL.path
+        return file.hasPrefix(base + "/") && file.count > base.count + 1
+    }
+
+    /// Deletes `file` if it is inside `root`, and its folder when that is left empty (and is not `root`). Anything outside
+    /// `root` is left alone. Returns whether it deleted the file.
+    @discardableResult
+    public static func remove(_ file: URL, root: URL = defaultDirectory, fileManager: FileManager = .default) -> Bool {
+        guard isInside(file, root: root) else { return false }
+        guard (try? fileManager.removeItem(at: file)) != nil else { return false }
+        let folder = file.deletingLastPathComponent()
+        if isInside(folder, root: root), (try? fileManager.contentsOfDirectory(atPath: folder.path))?.isEmpty == true {
+            try? fileManager.removeItem(at: folder)
+        }
+        return true
+    }
+
     /// Removes what is older than `maxAge` under `directory` (a session's folder at a time). Run at launch, when no
     /// draft can still hold one of these files: drafts' attachments are not kept across launches. Returns how many
     /// entries it removed.

@@ -832,13 +832,20 @@ final class TimelineTableViewTests: XCTestCase {
     }
 
     func testCancellingTheCallerCancelsADetachedDecode() async {
+        // Cancel only once the work has started, and have the work wait for the cancellation (up to 20 s, only a backstop),
+        // so neither a slow start nor a slow cancel can change the outcome.
+        let started = DecodeStartedFlag()
         let task = Task { () -> Bool? in
             await runDetachedCancellable { () -> Bool? in
-                Thread.sleep(forTimeInterval: 0.3)
+                started.set()
+                let deadline = Date().addingTimeInterval(20)
+                while !Task.isCancelled, Date() < deadline { Thread.sleep(forTimeInterval: 0.005) }
                 return Task.isCancelled
             }
         }
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        let startedBy = Date().addingTimeInterval(20)
+        while !started.isSet, Date() < startedBy { try? await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertTrue(started.isSet, "the work started")
         task.cancel()
         let sawCancellation = await task.value
         XCTAssertEqual(sawCancellation, true, "the work saw the cancellation, so it can stop early")
@@ -1101,4 +1108,12 @@ final class TimelineTableViewTests: XCTestCase {
             "PageUp keyDown during 1.5s open pin window must cancel pin-to-bottom timer"
         )
     }
+}
+
+/// Set from the detached work, read by the test: tells it the work is running.
+private final class DecodeStartedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.withLock { value } }
+    func set() { lock.withLock { value = true } }
 }

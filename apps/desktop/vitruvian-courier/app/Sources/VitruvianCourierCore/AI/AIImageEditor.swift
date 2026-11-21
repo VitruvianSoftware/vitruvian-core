@@ -78,6 +78,8 @@ public enum ImageEditFailure: Equatable, Sendable {
     case noImageReturned(note: String?)
     /// Any other error the service reported.
     case server(status: Int, detail: String)
+    /// The service's answer was bigger than a photo edit can be (over 64 MB), so it was dropped unread.
+    case responseTooLarge
     /// The person stopped the edit.
     case cancelled
 
@@ -118,6 +120,8 @@ public enum ImageEditFailure: Equatable, Sendable {
                 return String(localized: "\(name) had a problem (error \(status)). Try again.")
             }
             return String(localized: "\(name) had a problem: \(detail)")
+        case .responseTooLarge:
+            return String(localized: "\(name) sent back something too big to use. Try again.")
         case .cancelled:
             return String(localized: "Stopped.")
         }
@@ -183,7 +187,7 @@ public enum ImageEditors {
     public static func make(
         for kind: AIProviderKind,
         keyStore: AIKeyStore,
-        transport: any HTTPTransport = URLSessionHTTPTransport.shared
+        transport: any HTTPTransport = ImageEditHTTPTransport.shared
     ) -> any AIImageEditor {
         guard kind.canEditPhotos else {
             return UnavailableImageEditor(provider: kind, failure: .unsupported)

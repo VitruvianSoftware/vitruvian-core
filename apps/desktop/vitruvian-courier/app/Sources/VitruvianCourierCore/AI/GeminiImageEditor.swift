@@ -29,7 +29,7 @@ public struct GeminiImageEditor: AIImageEditor, CustomStringConvertible, CustomD
         apiKey: String,
         model: String = GeminiImageModel.default,
         baseURL: URL = GeminiClient.defaultBaseURL,
-        transport: any HTTPTransport = URLSessionHTTPTransport.shared,
+        transport: any HTTPTransport = ImageEditHTTPTransport.shared,
         maxUploadBytes: Int = PhotoEditPreparer.maxUploadBytes
     ) {
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -68,6 +68,8 @@ public struct GeminiImageEditor: AIImageEditor, CustomStringConvertible, CustomD
             return .failure(.cancelled)
         } catch let urlError as URLError where urlError.code == .cancelled {
             return .failure(.cancelled)
+        } catch let urlError as URLError where urlError.code == .dataLengthExceedsMaximum {
+            return .failure(.responseTooLarge)
         } catch {
             return .failure(.network)
         }
