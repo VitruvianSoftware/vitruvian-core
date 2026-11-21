@@ -87,9 +87,23 @@ import {
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
 import { TIER_DEFAULTS } from "../sidecars/panel/lib/tier-defaults.mjs";
 
+// The version comes from plugin.json, which release-please bumps; a copy here
+// would go stale on the first release.
+function pluginVersion() {
+  try {
+    const manifest = readFileSync(
+      fileURLToPath(new URL("../plugin.json", import.meta.url)),
+      "utf8",
+    );
+    return String(JSON.parse(manifest).version ?? "unknown");
+  } catch {
+    return "unknown";
+  }
+}
+
 export const SERVER_INFO = Object.freeze({
   name: "vitruvian-orchestrator",
-  version: "0.2.0",
+  version: pluginVersion(),
 });
 
 export const TOOLS = Object.freeze([
