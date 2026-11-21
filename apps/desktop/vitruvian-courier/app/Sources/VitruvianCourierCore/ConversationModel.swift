@@ -764,6 +764,7 @@ public final class ConversationModel: ObservableObject {
         self.locale = locale
         self.calendarBridge = CalendarBridge(now: now, calendar: calendar)
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
+        composer.gifProvider = KlipyGIFProvider.fromBundle()
         thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
         audioPlayer = AudioPlayerModel(appModel: appModel, preferences: preferences)
         audioPlayer.conversation = self

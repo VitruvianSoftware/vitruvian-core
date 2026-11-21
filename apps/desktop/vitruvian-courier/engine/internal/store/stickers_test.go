@@ -55,7 +55,7 @@ func TestListRecentStickersAndGIFs(t *testing.T) {
 	mkMsg(t, s, "!r1", "$img1", me, "m.room.message",
 		`{"msgtype":"m.image","body":"Photo","url":"mxc://courier.local/photo111","info":{"mimetype":"image/jpeg","w":800,"h":600}}`,
 		time.Unix(210, 0))
-	mkMsg(t, s, "!r1", "$gif2", ghost, "m.room.message",
+	mkMsg(t, s, "!r1", "$gif2", me, "m.room.message",
 		`{"msgtype":"m.video","body":"Loop","url":"mxc://courier.local/gif22222","info":{"mimetype":"video/mp4","w":400,"h":300,"fi.mau.gif":true}}`,
 		time.Unix(220, 0))
 	// Duplicate of gif1 at a newer timestamp.
@@ -63,9 +63,17 @@ func TestListRecentStickersAndGIFs(t *testing.T) {
 		`{"msgtype":"m.image","body":"Party Again","url":"mxc://courier.local/gif11111","info":{"mimetype":"image/gif","w":320,"h":240,"fi.mau.gif":true}}`,
 		time.Unix(230, 0))
 
+	// A GIF somebody else sent me (a spam chat, say) is newer than all of mine but is never one of my recents.
+	mkMsg(t, s, "!r1", "$gif-received", ghost, "m.room.message",
+		`{"msgtype":"m.video","body":"TON Staking","url":"mxc://courier.local/spam9999","info":{"mimetype":"video/mp4","w":400,"h":300,"fi.mau.gif":true}}`,
+		time.Unix(240, 0))
+
 	gifs, err := s.ListRecentGIFs(ctx, 40)
 	require.NoError(t, err)
-	require.Len(t, gifs, 2)
+	require.Len(t, gifs, 2, "received GIFs must not appear in recents")
+	for _, g := range gifs {
+		require.NotEqual(t, "mxc://courier.local/spam9999", g.URL)
+	}
 	require.Equal(t, "mxc://courier.local/gif11111", gifs[0].URL)
 	require.Equal(t, "Party Again", gifs[0].Body)
 	require.Equal(t, "mxc://courier.local/gif22222", gifs[1].URL)

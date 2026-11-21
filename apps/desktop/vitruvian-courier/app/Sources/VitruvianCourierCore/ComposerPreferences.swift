@@ -375,6 +375,16 @@ public final class ComposerPreferences: ObservableObject {
             defaults.set(showLinkPreviews, forKey: Self.showLinkPreviewsKey)
         }
     }
+    public static let searchGIFsOnlineKey = "courier.preferences.searchGIFsOnline"
+    /// "Search GIFs online" (default `true`). Off, Courier asks no GIF service for anything: what is typed in GIF
+    /// search and this Mac's address stay here, and the GIF picker offers recent GIFs and files from this Mac.
+    /// `GIFSearchPolicy` is the one place that asks.
+    @Published public var searchGIFsOnline: Bool {
+        didSet {
+            guard canMutate({ searchGIFsOnline = oldValue }) else { return }
+            defaults.set(searchGIFsOnline, forKey: Self.searchGIFsOnlineKey)
+        }
+    }
     /// "Primary composer button" (`setting:appearance Primary composer button`, default `.emojiPicker`).
     @Published public var primaryComposerButton: PrimaryComposerButton {
         didSet {
@@ -487,6 +497,7 @@ public final class ComposerPreferences: ObservableObject {
         disableOutgoingLinkPreviews = defaults.object(forKey: Self.disableOutgoingLinkPreviewsKey) as? Bool ?? true
         loadExternalEmbedsAutomatically = defaults.object(forKey: Self.loadExternalEmbedsAutomaticallyKey) as? Bool ?? false
         showLinkPreviews = defaults.object(forKey: Self.showLinkPreviewsKey) as? Bool ?? true
+        searchGIFsOnline = defaults.object(forKey: Self.searchGIFsOnlineKey) as? Bool ?? true
         primaryComposerButton = toolbarButton(
             "primaryComposerButton",
             fallback: Self.defaultPrimaryComposerButton,

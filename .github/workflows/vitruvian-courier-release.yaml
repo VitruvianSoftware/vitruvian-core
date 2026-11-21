@@ -42,7 +42,9 @@
 #     The environment is declared in infrastructure/pulumi/platform/repo-config
 #     (vitruvian_courier_release.go: only main and vitruvian-courier-v* tags may deploy to it); a
 #     person sets the values once with //tools/sync-env-secrets, as
-#     apps/desktop/vitruvian-courier/docs/cutover.md says. This workflow never sets them.
+#     apps/desktop/vitruvian-courier/docs/cutover.md says. This workflow never sets them;
+#   - COURIER_KLIPY_API_KEY, the same kind of secret of the same environment: the key for GIF search in
+#     the message box. Unlike Telegram's it is optional: without it the released app hides online GIF search.
 name: vitruvian-courier-release
 
 on:
@@ -191,6 +193,8 @@ jobs:
           # sign-in needs no developer keys. Never printed.
           COURIER_TELEGRAM_API_ID: ${{ secrets.COURIER_TELEGRAM_API_ID }}
           COURIER_TELEGRAM_API_HASH: ${{ secrets.COURIER_TELEGRAM_API_HASH }}
+          # KLIPY's key for GIF search, built into the app as Resources/KlipyApp.plist. Optional; never printed.
+          COURIER_KLIPY_API_KEY: ${{ secrets.COURIER_KLIPY_API_KEY }}
         run: bazel run //apps/desktop/vitruvian-courier/app:publish
 
       # The job's last word, and not the publishing script's: ask GitHub what
