@@ -26,6 +26,10 @@ public struct LinkPreviewCardView<Footer: View>: View {
     public let preview: LinkPreviewItem
     public var onBubble: Bool
     public var onOpenURL: (URL) -> Void
+    /// Where the page's picture comes from when the preview has none (`linkPreview.image`); nil asks for nothing.
+    private let images: LinkPreviewImages?
+    /// "Show link previews" (`LinkPreviewPolicy`): off, the card never asks for a picture.
+    private let allowsRemoteImage: Bool
     private let footer: Footer
 
     /// Read in `body`, so the card draws again when the table learns something about its files.
@@ -33,6 +37,8 @@ public struct LinkPreviewCardView<Footer: View>: View {
     @State private var loaded: LoadedThumbnail?
     /// Counts the file facts learned for the picture, so its load starts when the file is known to be there.
     @State private var factTick = 0
+    /// Counts the pictures `images` has handed this card, so it draws again when one arrives.
+    @State private var imageTick = 0
 
     public static var userVisibleStrings: [String] {
         [String(localized: "Link Preview"), String(localized: "Open Link")]
@@ -51,24 +57,19 @@ public struct LinkPreviewCardView<Footer: View>: View {
             guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
             _ = NSWorkspace.shared.open(url)
         },
+        images: LinkPreviewImages? = nil,
+        allowsRemoteImage: Bool = false,
         @ViewBuilder footer: () -> Footer
     ) {
         self.preview = preview
         self.onBubble = onBubble
         self.onOpenURL = onOpenURL
+        self.images = images
+        self.allowsRemoteImage = allowsRemoteImage
         self.footer = footer()
     }
 
-    private var targetURL: URL? {
-        let raw = (preview.url?.isEmpty == false ? preview.url : preview.matchedURL) ?? ""
-        guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https"
-        else {
-            return nil
-        }
-        return url
-    }
+    private var targetURL: URL? { preview.pageURL }
 
     private var domainHeader: String {
         if let siteName = preview.siteName?.trimmingCharacters(in: .whitespacesAndNewlines), !siteName.isEmpty {
@@ -94,10 +95,30 @@ public struct LinkPreviewCardView<Footer: View>: View {
         return desc
     }
 
+    /// The picture the card is to draw: the one the chat network's preview saved on this Mac, else (when the preview
+    /// came without one) the one fetched for the page. Memory only, so a card that is measured or drawn again knows it.
+    private var pictureRef: (path: String, width: Int?, height: Int?)? {
+        if let path = preview.imagePath, !path.isEmpty {
+            return (path, preview.imageWidth, preview.imageHeight)
+        }
+        if let url = targetURL, let fetched = images?.cached(for: url) {
+            return (fetched.path, fetched.width, fetched.height)
+        }
+        return nil
+    }
+
+    /// Whether this card should ask for the page's picture: the network's preview has none, "Show link previews" is on
+    /// and the address is one `LinkPreviewPolicy` lets Courier ask about.
+    private var asksForPicture: URL? {
+        guard images != nil, preview.imagePath?.isEmpty ?? true, let url = targetURL,
+              LinkPreviewPolicy.mayRequest(url, showLinkPreviews: allowsRemoteImage) else { return nil }
+        return url
+    }
+
     /// The picture's path once it is known to be on disk. Asked of memory (`LocalFileFacts`), never of the disk, so
     /// laying out or measuring the card does not wait on a file; the answer arrives with `didLearnSizeNotification`.
     private var localThumbnailPath: String? {
-        guard let path = preview.imagePath, isLocalMediaStorePath(path),
+        guard let path = pictureRef?.path, isLocalMediaStorePath(path),
               LocalFileFacts.exists(path) == true else { return nil }
         return path
     }
@@ -112,9 +133,9 @@ public struct LinkPreviewCardView<Footer: View>: View {
     /// with the page) or the wire's; a picture of no known size is taken to be a page's usual 1.91 : 1. The same loaded
     /// or not, so the card does not change height when it arrives.
     private var pictureAspect: CGFloat {
-        let size: CGSize? = preview.imagePath.flatMap { ImagePixelSizeReader.cachedSize(ofFirstReadable: [$0]) }
+        let size: CGSize? = (pictureRef?.path).flatMap { ImagePixelSizeReader.cachedSize(ofFirstReadable: [$0]) }
             ?? {
-                guard let w = preview.imageWidth, let h = preview.imageHeight, w > 0, h > 0 else { return nil }
+                guard let w = pictureRef?.width, let h = pictureRef?.height, w > 0, h > 0 else { return nil }
                 return CGSize(width: w, height: h)
             }()
         guard let size, size.width > 0, size.height > 0 else { return 1.91 }
@@ -125,6 +146,7 @@ public struct LinkPreviewCardView<Footer: View>: View {
 
     public var body: some View {
         let _ = contentRevision
+        let _ = imageTick
         let hasPicture = localThumbnailPath != nil
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -196,11 +218,20 @@ public struct LinkPreviewCardView<Footer: View>: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
         .onReceive(NotificationCenter.default.publisher(for: ImagePixelSizeReader.didLearnSizeNotification)) { note in
-            if let path = note.userInfo?[ImagePixelSizeReader.pathUserInfoKey] as? String, path == preview.imagePath {
+            if let path = note.userInfo?[ImagePixelSizeReader.pathUserInfoKey] as? String, path == pictureRef?.path {
                 factTick += 1
             }
         }
-        .task(id: "\(preview.imagePath ?? "")#\(factTick)") {
+        // A preview with no picture: ask once for the page's own (the engine fetches it, and remembers the answer).
+        .task(id: asksForPicture?.absoluteString ?? "") {
+            guard let url = asksForPicture, let images else { return }
+            guard let image = await images.image(for: url, showLinkPreviews: allowsRemoteImage) else { return }
+            LocalFileFacts.warm(paths: [image.path])
+            imageTick += 1
+            // Its size sizes the card; reading it announces it, and a table timeline re-measures the row.
+            _ = await ImagePixelSizeReader.shared.size(ofFirstReadable: [image.path])
+        }
+        .task(id: "\(pictureRef?.path ?? "")#\(factTick)") {
             guard let path = localThumbnailPath else { return }
             // Its size sizes the card; reading it announces it, and a table timeline re-measures the row.
             _ = await ImagePixelSizeReader.shared.size(ofFirstReadable: [path])
@@ -221,9 +252,12 @@ extension LinkPreviewCardView where Footer == EmptyView {
         onOpenURL: @escaping (URL) -> Void = { url in
             guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
             _ = NSWorkspace.shared.open(url)
-        }
+        },
+        images: LinkPreviewImages? = nil,
+        allowsRemoteImage: Bool = false
     ) {
-        self.init(preview: preview, onBubble: onBubble, onOpenURL: onOpenURL) { EmptyView() }
+        self.init(preview: preview, onBubble: onBubble, onOpenURL: onOpenURL, images: images,
+                  allowsRemoteImage: allowsRemoteImage) { EmptyView() }
     }
 }
 

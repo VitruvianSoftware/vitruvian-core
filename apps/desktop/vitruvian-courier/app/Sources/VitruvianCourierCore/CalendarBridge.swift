@@ -191,7 +191,7 @@ public final class CalendarBridge: ObservableObject {
 
             let matchedText = String(text[range])
             // "today", "Sunday", "this weekend" on their own are ordinary words, not something to put on a calendar.
-            if isBareDayReference(matchedText) { continue }
+            if isBareDayReference(matchedText, duration: match.duration, hasTimeZone: match.timeZone != nil) { continue }
             let resolvedStart = resolveStartDate(
                 rawDate: rawDate,
                 matchedText: matchedText,
@@ -228,10 +228,19 @@ public final class CalendarBridge: ObservableObject {
         "this", "next", "last", "on", "the", "coming", "every", "morning", "afternoon", "evening", "night",
     ]
 
-    /// The matched text is only a relative day or a weekday ("today", "Sunday", "this weekend", "next Friday"):
+    /// Whether a detector match is only a relative day or a weekday ("today", "Sunday", "this weekend", "next Friday"):
     /// no number, no time, no month. Those read as ordinary words, so they are not underlined. "Sunday at 7pm",
-    /// "Nov 30" and "7:30pm" are not bare. English words only: other languages keep what the detector found.
-    nonisolated public static func isBareDayReference(_ matched: String) -> Bool {
+    /// "Nov 30" and "7:30pm" are not bare.
+    ///
+    /// What the detector says comes first: a match that has a length (`duration` above 0, a range such as "2 to 3pm") or
+    /// its own time zone states a time and is never bare. Beyond that the detector gives no sign: probing
+    /// `NSDataDetector` shows `duration` 0 and no time zone for every match, and a date with no time ("Sunday", "Nov
+    /// 30") is given 12:00 exactly like an explicit "noon" or "12pm". So the rest is read from the matched words: any
+    /// digit is a date or time, and a match made only of day words (English) is bare. Another language's words are not
+    /// on the list, so its matches are kept as the detector found them.
+    nonisolated public static func isBareDayReference(_ matched: String, duration: TimeInterval = 0,
+                                                      hasTimeZone: Bool = false) -> Bool {
+        if duration > 0 || hasTimeZone { return false }
         let words = matched.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
         guard !words.isEmpty else { return false }
         if words.contains(where: { $0.contains(where: \.isNumber) }) { return false }

@@ -290,6 +290,9 @@ var methods = map[string]handler{
 	"stickers.list":   stickersList,
 	"stickers.import": stickersImport,
 
+	// A link card's own picture, for a received preview that came without one (linkpreview.go).
+	"linkPreview.image": linkPreviewImage,
+
 	// Bridges, account removal, sub-accounts, and diagnostics (protocol 9).
 	"bridges.list":           bridgesList,
 	"bridges.restart":        bridgesRestart,

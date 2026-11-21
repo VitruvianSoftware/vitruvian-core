@@ -79,6 +79,8 @@ struct MessageActions {
     var loadExternalEmbedsAutomatically = false
     /// Whether link cards may fetch their picture and title (`ComposerPreferences.showLinkPreviews`).
     var showLinkPreviews = true
+    /// Where link cards get the page's picture when the chat network's preview came without one; nil asks for nothing.
+    var linkPreviewImages: LinkPreviewImages? = nil
     /// Preferred time format (`ComposerPreferences.timeFormat`).
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
@@ -1049,7 +1051,10 @@ struct MessageRowView: View {
     @ViewBuilder
     private var linkCards: some View {
         ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
-            LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground) {
+            LinkPreviewCardView(
+                preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground,
+                images: actions.linkPreviewImages, allowsRemoteImage: actions.showLinkPreviews
+            ) {
                 linkCardFooter(preview)
             }
             .takesOwnClick()

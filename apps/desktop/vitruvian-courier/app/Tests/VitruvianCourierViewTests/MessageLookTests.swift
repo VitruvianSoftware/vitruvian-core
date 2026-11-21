@@ -208,6 +208,61 @@ final class MessageLookTests: XCTestCase {
                        "what goes in the footer sits inside the card, under its text")
     }
 
+    private func noPictureCard(_ url: String = "https://www.example.com/news/story") -> LinkPreviewItem {
+        LinkPreviewItem(matchedURL: url, url: url, title: "A story", siteName: "example.com")
+    }
+
+    func testACardWithNoPictureAsksForThePageOnceAndDrawsIt() throws {
+        let path = try picture(red: 1, green: 0, blue: 0, width: 1200, height: 630)
+        LocalFileFacts.warm(paths: [path])
+        var asked: [URL] = []
+        let images = LinkPreviewImages { url in
+            asked.append(url)
+            return LinkPreviewImage(path: path, width: 1200, height: 630)
+        }
+        // Drawn twice (light and dark are two cards of the same chat): one request.
+        _ = try Snapshot.render("look-card-fetched", width: 520, prepare: settle(until: isRed)) {
+            LinkPreviewCardView(preview: noPictureCard(), images: images, allowsRemoteImage: true).padding(14)
+        }
+        XCTAssertEqual(asked.count, 1, "asked once, however many cards are drawn")
+        XCTAssertEqual(images.requestCount, 1)
+        let rep = try bitmap("look-card-fetched")
+        XCTAssertNotNil(box(of: rep, width: 520, where: isRed), "the fetched picture is drawn on the card")
+    }
+
+    func testACardAsksForNothingWhenShowLinkPreviewsIsOff() throws {
+        let path = try picture(red: 1, green: 0, blue: 0, width: 1200, height: 630)
+        var asked = 0
+        let images = LinkPreviewImages { _ in
+            asked += 1
+            return LinkPreviewImage(path: path, width: 1200, height: 630)
+        }
+        _ = try Snapshot.render("look-card-policy-off", width: 520, prepare: { view in
+            for _ in 0 ..< 100 {
+                RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))
+                view.layoutSubtreeIfNeeded()
+            }
+        }) {
+            LinkPreviewCardView(preview: noPictureCard(), images: images, allowsRemoteImage: false).padding(14)
+        }
+        XCTAssertEqual(asked, 0, "Show link previews off: the page is not asked about")
+        XCTAssertNil(box(of: try bitmap("look-card-policy-off"), width: 520, where: isRed))
+    }
+
+    func testACardWhoseNetworkPreviewHasAPictureAsksForNothing() throws {
+        let path = try picture(red: 0, green: 0, blue: 1, width: 1200, height: 630)
+        LocalFileFacts.warm(paths: [path])
+        var asked = 0
+        let images = LinkPreviewImages { _ in asked += 1; return nil }
+        var preview = noPictureCard()
+        preview.imagePath = path
+        _ = try Snapshot.render("look-card-has-picture", width: 520, prepare: settle(until: isBlue)) {
+            LinkPreviewCardView(preview: preview, images: images, allowsRemoteImage: true).padding(14)
+        }
+        XCTAssertEqual(asked, 0)
+        XCTAssertNotNil(box(of: try bitmap("look-card-has-picture"), width: 520, where: isBlue))
+    }
+
     // MARK: A4. Inline code chip
 
     func testInlineCodeIsDrawnOnARoundedChip() throws {

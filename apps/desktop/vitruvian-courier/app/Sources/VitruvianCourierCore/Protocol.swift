@@ -2713,6 +2713,46 @@ public struct StickersListParams: ProtocolType, Equatable, Hashable, Sendable {
     }
 }
 
+/// `linkPreview.image`'s params: the link's address (https).
+public struct LinkPreviewImageParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "LinkPreviewImageParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var url: String
+
+    public init(url: String) {
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case url
+    }
+}
+
+/// `linkPreview.image`'s answer: the picture a page names as its own, saved on this Mac. Every field is nil when the page
+/// has no picture, or none could be had.
+public struct LinkPreviewImageResult: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "LinkPreviewImageResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var imagePath: String?
+    public var imageWidth: Int?
+    public var imageHeight: Int?
+    public var blurhash: String?
+
+    public init(imagePath: String? = nil, imageWidth: Int? = nil, imageHeight: Int? = nil, blurhash: String? = nil) {
+        self.imagePath = imagePath
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+        self.blurhash = blurhash
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case imagePath = "image_path"
+        case imageWidth = "image_width"
+        case imageHeight = "image_height"
+        case blurhash
+    }
+}
+
 public struct ImportStickerParams: ProtocolType, Equatable, Hashable, Sendable {
     public static let protocolName = "ImportStickerParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
@@ -5641,6 +5681,7 @@ public enum ProtocolMethods {
         "merge.delete": .userInitiatedMutation,
         "stickers.list": .userInitiatedMutation,
         "stickers.import": .userInitiatedMutation,
+        "linkPreview.image": .userInitiatedMutation,
         "bridges.list": .userInitiatedMutation,
         "bridges.restart": .userInitiatedMutation,
         "accounts.remove": .userInitiatedMutation,
@@ -5756,6 +5797,7 @@ public enum ProtocolMethods {
         "merge.suggest": (Empty.self, MergeSuggestResult.self),
         "stickers.list": (StickersListParams.self, ListStickersResult.self),
         "stickers.import": (ImportStickerParams.self, StickerItem.self),
+        "linkPreview.image": (LinkPreviewImageParams.self, LinkPreviewImageResult.self),
         "bridges.list": (Empty.self, BridgesResult.self),
         "bridges.restart": (BridgeRestartParams.self, Empty.self),
         "accounts.remove": (AccountRemoveParams.self, Empty.self),
@@ -5807,6 +5849,7 @@ public enum ProtocolMethods {
         FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
         BridgedStickerRef.self, SendStickerParams.self, SendGIFParams.self,
         StickerItem.self, StickerPack.self, ListStickersResult.self, StickersListParams.self, ImportStickerParams.self,
+        LinkPreviewImageParams.self, LinkPreviewImageResult.self,
         BridgeInfo.self, BridgesResult.self, BridgeRestartParams.self, AccountRemoveParams.self, SubAccountItem.self,
         SubAccountsParams.self, SubAccountsResult.self, SetSubAccountParams.self, DiagnosticsExportParams.self,
         RoomDiagnostic.self, MessageDiagnostic.self, DiagnosticsExportResult.self,

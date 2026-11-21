@@ -124,6 +124,10 @@ final class CalendarBridgeTests: XCTestCase {
             XCTAssertEqual(!CalendarBridge.isBareDayReference(text), keeps, "isBareDayReference(\(text))")
         }
         XCTAssertFalse(CalendarBridge.isBareDayReference(""))
+        // What the detector says about the match decides first: one with a length or a time zone states a time.
+        XCTAssertTrue(CalendarBridge.isBareDayReference("Sunday"))
+        XCTAssertFalse(CalendarBridge.isBareDayReference("Sunday", duration: 3600), "a range is a stated time")
+        XCTAssertFalse(CalendarBridge.isBareDayReference("Sunday", hasTimeZone: true), "a time zone is a stated time")
 
         // Through the real detector, from a date long ago so every match counts as upcoming.
         let long = Date(timeIntervalSince1970: 946_684_800)
