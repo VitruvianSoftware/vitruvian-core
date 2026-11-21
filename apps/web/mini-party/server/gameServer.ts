@@ -22,6 +22,13 @@
 
 import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
+import {
+  claimedProtocol,
+  MIN_CLIENT_PROTOCOL,
+  PROTOCOL,
+  VERSION_REFUSED,
+  type ServerInfo,
+} from "../src/protocol";
 
 export const MAX_PLAYERS = 4;
 
@@ -55,6 +62,8 @@ export interface GameServerOptions {
   // game at https://mini-games.vitruviansoftware.dev. Empty: same origin only.
   allowedOrigins?: string[];
   limits?: Partial<Limits>;
+  // The oldest page version to seat; tests raise it to see a refusal.
+  minClientProtocol?: number;
 }
 
 export interface RoomPlayer {
@@ -137,6 +146,21 @@ export function attachGameServer(
       );
     },
   });
+  const info: ServerInfo = {
+    protocol: PROTOCOL,
+    minClientProtocol: options.minClientProtocol ?? MIN_CLIENT_PROTOCOL,
+  };
+  // A page too old for this server is refused before it connects. socket.io
+  // gives the page this error and does not retry, so it can ask for a reload.
+  io.use((socket, next) => {
+    if (
+      claimedProtocol(socket.handshake.auth?.protocol) >= info.minClientProtocol
+    ) {
+      next();
+      return;
+    }
+    next(Object.assign(new Error(VERSION_REFUSED), { data: info }));
+  });
   const rooms = new Map<string, Room>();
   // The room each socket sits in; a socket is in at most one.
   const roomOf = new Map<string, string>();
@@ -212,6 +236,9 @@ export function attachGameServer(
       socket.disconnect(true);
       return;
     }
+    // Tell the page which version it is talking to, so a page newer than
+    // this server can tell the server is behind.
+    socket.emit("server-info", info);
     const allowed = rateLimiter();
     socket.use((_packet, next) => {
       if (allowed()) next();
@@ -300,5 +327,5 @@ export function attachGameServer(
     socket.on("disconnect", () => leave(socket, true));
   });
 
-  return { io, rooms };
+  return { io, rooms, info };
 }
