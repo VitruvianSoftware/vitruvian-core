@@ -68,13 +68,17 @@ PORT=47811 VITRUVIAN_ORCH_DIR="$(pwd)/apps/antigravity/plugins/vitruvian-orchest
 
 ## Install
 
-Install via the Antigravity CLI from the repository:
-
 ```bash
-agy plugin install apps/antigravity/plugins/vitruvian-orchestrator
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-orchestrator-antigravity
 ```
 
-Or link directly from the `vitruvian-core` monorepo into Antigravity's plugin folder:
+That repository is a read-only copy of this folder, published from `vitruvian-core`. Each
+release is tagged there as `v<version>` with notes from [CHANGELOG.md](./CHANGELOG.md).
+Open issues and pull requests against
+[vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core).
+
+To run it from a checkout of `vitruvian-core` instead, link this folder into Antigravity's
+plugin folder:
 
 ```bash
 ln -s "$(pwd)/apps/antigravity/plugins/vitruvian-orchestrator" ~/.gemini/config/plugins/vitruvian-orchestrator

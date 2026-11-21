@@ -454,6 +454,21 @@ COMPONENTS = [
         "export_only": True,
     },
     {
+        # The vitruvian-orchestrator Antigravity plugin, exported like gh-watch:
+        # its folder becomes the mirror's root, so `agy plugin install
+        # https://github.com/VitruvianSoftware/vitruvian-orchestrator-antigravity`
+        # finds plugin.json at the top. Export-only: developed and released here.
+        # The Claude Code plugin needs no mirror (this repository's marketplace
+        # serves it) and the OpenCode plugin ships on npm.
+        "name": "vitruvian-orchestrator-antigravity",
+        "repo": "vitruvian-orchestrator-antigravity",
+        "subtree": "apps/antigravity/plugins/vitruvian-orchestrator",
+        "standalone_rev_id": "VITRUVIAN_ORCHESTRATOR_ANTIGRAVITY_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        "export_only": True,
+    },
+    {
         "name": "site-vitruviansoftware-dev",
         "repo": "site-vitruviansoftware-dev",
         "subtree": "apps/web/vitruviansoftware-dev",

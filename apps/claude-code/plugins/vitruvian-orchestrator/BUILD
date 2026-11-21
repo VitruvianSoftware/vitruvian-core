@@ -61,6 +61,18 @@ js_test(
     ],
 )
 
+js_test(
+    name = "version_test",
+    size = "small",
+    data = [
+        ".claude-plugin/plugin.json",
+        ".release-please-manifest.json",
+        "CHANGELOG.md",
+        "release-please-config.json",
+    ],
+    entry_point = "version.test.mjs",
+)
+
 filegroup(
     name = "generated_generic_files",
     srcs = glob(
