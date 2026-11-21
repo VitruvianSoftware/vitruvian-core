@@ -39,10 +39,13 @@ public enum MarkdownConverter {
     private static func convert(text: String, entities: [TextEntity], where wanted: (MarkdownSpan) -> Bool) -> Result? {
         let string = text as NSString
         let code = entities.filter { $0.kind == .code || $0.kind == .pre }
-        let chosen = MarkdownSpans.parse(text).filter { span in
-            guard wanted(span) else { return false }
+        let parsed = MarkdownSpans.parse(text).filter(wanted)
+        guard !parsed.isEmpty else { return nil }
+        // An address and a mention are one word: `https://x.com/_a_` and `@_john_` keep their characters.
+        let guarded = protectedRanges(in: text, entities: entities)
+        let chosen = parsed.filter { span in
             // Text inside code is just text, and so is a span that runs into code that is already there.
-            return !code.contains { touches($0, span.whole) }
+            !code.contains { touches($0, span.whole) } && !guarded.contains { NSIntersectionRange($0, span.whole).length > 0 }
         }
         guard !chosen.isEmpty else { return nil }
 
@@ -99,6 +102,21 @@ public enum MarkdownConverter {
         return ranged
     }
 
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+    private static let addressWord = try? NSRegularExpression(pattern: #"(?i)(?:https?://|www\.)\S+"#)
+    private static let mentionWord = try? NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])@\S+"#)
+
+    /// Addresses (as macOS finds them, and any `http(s)://` or `www.` word), `@mention` words, and links and mentions
+    /// already made: no markdown inside them converts.
+    private static func protectedRanges(in text: String, entities: [TextEntity]) -> [NSRange] {
+        let whole = NSRange(location: 0, length: (text as NSString).length)
+        var ranges = entities.filter { $0.kind == .link || $0.kind == .mention }.map(\.range)
+        ranges += linkDetector?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        ranges += addressWord?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        ranges += mentionWord?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        return ranges
+    }
+
     private static func touches(_ entity: TextEntity, _ range: NSRange) -> Bool {
         entity.offset < range.location + range.length && entity.offset + entity.length > range.location
     }
@@ -112,6 +130,23 @@ public enum MarkdownConverter {
         let string = text as NSString
         let kinds: [TextEntity.Kind: String] = [.bold: "**", .italic: "_", .strikethrough: "~~"]
         var inserts: [(position: Int, group: Int, size: Int, index: Int, marker: String)] = []
+        // Characters that are left as typed but would read back as markers (after Undo kept `**x**` as it was typed)
+        // get a backslash, and so does every backslash, so `unescaped` can undo exactly what is done here.
+        var escaped: Set<Int> = []
+        for span in MarkdownSpans.parse(text) {
+            for marker in [span.open, span.close] {
+                for position in marker.location ..< marker.location + marker.length { escaped.insert(position) }
+            }
+        }
+        // A backslash the person typed is doubled; and the mark it was protecting is escaped again, or doubling the
+        // backslash would let the mark mean something.
+        for position in 0 ..< string.length where string.character(at: position) == 0x5C {
+            escaped.insert(position)
+            if position + 1 < string.length, isASCIIPunctuation(string.character(at: position + 1)) {
+                escaped.insert(position + 1)
+            }
+        }
+        for position in escaped { inserts.append((position, 2, 0, position, "\\")) }
         for (index, entity) in entities.enumerated() {
             guard entity.offset >= 0, entity.length > 0, entity.offset + entity.length <= string.length else { continue }
             var start = entity.offset
@@ -156,6 +191,34 @@ public enum MarkdownConverter {
         }
         out += string.substring(from: cursor)
         return out
+    }
+
+    /// Takes out the backslashes `markdown` put in: one before an ASCII punctuation mark goes. The ranges follow.
+    public static func unescaped(text: String, entities: [TextEntity]) -> (text: String, entities: [TextEntity]) {
+        let units = Array(text.utf16)
+        var removed: [Int] = []
+        var index = 0
+        while index < units.count {
+            if units[index] == 0x5C, index + 1 < units.count, isASCIIPunctuation(units[index + 1]) {
+                removed.append(index)
+                index += 2
+            } else {
+                index += 1
+            }
+        }
+        guard !removed.isEmpty else { return (text, entities) }
+        var out = text as NSString
+        var ranges = entities
+        for position in removed.reversed() {
+            let marker = NSRange(location: position, length: 1)
+            out = out.replacingCharacters(in: marker, with: "") as NSString
+            ranges = EntityEditing.replacing(ranges, range: marker, with: 0)
+        }
+        return (out as String, ranges)
+    }
+
+    private static func isASCIIPunctuation(_ unit: unichar) -> Bool {
+        (0x21...0x2F).contains(unit) || (0x3A...0x40).contains(unit) || (0x5B...0x60).contains(unit) || (0x7B...0x7E).contains(unit)
     }
 
     private static func isBlank(_ unit: unichar) -> Bool {

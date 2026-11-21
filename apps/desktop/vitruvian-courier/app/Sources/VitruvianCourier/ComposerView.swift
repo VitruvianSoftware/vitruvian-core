@@ -1429,7 +1429,8 @@ struct ComposerTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView, !applying else { return }
             if let edit = editing {
-                composer.textChanged(to: textView.string, replacing: edit.range, with: edit.length)
+                composer.textChanged(to: textView.string, replacing: edit.range, with: edit.length,
+                                     composing: textView.hasMarkedText())
             } else if composer.text != textView.string {
                 composer.text = textView.string
             }

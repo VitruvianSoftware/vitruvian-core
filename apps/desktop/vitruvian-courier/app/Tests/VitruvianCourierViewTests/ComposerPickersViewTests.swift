@@ -137,6 +137,28 @@ final class ComposerPickersViewTests: XCTestCase {
         XCTAssertEqual(composer.entities.map(\.kind), [.code])
     }
 
+    func testNothingConvertsWhileTextIsStillBeingComposed() throws {
+        let (composer, _, textView) = try hostedComposer()
+        let none = NSRange(location: NSNotFound, length: 0)
+        // An input method keeps what is being composed (here, with both markers in it) as marked text.
+        let delegate = try XCTUnwrap(textView.delegate)
+        _ = delegate.textView?(textView, shouldChangeTextIn: NSRange(location: 0, length: 0), replacementString: "**ab**")
+        textView.setMarkedText("**ab**", selectedRange: NSRange(location: 6, length: 0), replacementRange: none)
+        // What NSTextView tells its delegate on each change while composing.
+        delegate.textDidChange?(Notification(name: NSText.didChangeNotification, object: textView))
+        pump()
+        XCTAssertTrue(textView.hasMarkedText())
+        XCTAssertEqual(textView.string, "**ab**", "the markers are still there while composing")
+        XCTAssertEqual(composer.text, textView.string, "the model and the box agree mid-composition")
+        XCTAssertEqual(composer.entities, [], "nothing converted mid-composition")
+        // Committing it is what the person typed: now it converts.
+        textView.insertText("**ab**", replacementRange: textView.markedRange())
+        pump()
+        XCTAssertEqual(textView.string, "ab")
+        XCTAssertEqual(composer.text, "ab")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .bold, offset: 0, length: 2)])
+    }
+
     // MARK: Emoji picker
 
     func testEmojiPickerDrawsAndTheButtonTogglesIt() throws {

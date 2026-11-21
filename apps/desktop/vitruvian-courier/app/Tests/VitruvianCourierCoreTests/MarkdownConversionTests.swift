@@ -175,6 +175,68 @@ final class MarkdownConversionTests: XCTestCase {
         XCTAssertEqual(composer.entities, [entity(.pre, 0, 19)])
     }
 
+    // MARK: Addresses, mentions, kept-literal markers
+
+    /// An address or an @mention is one word: markers inside it are part of it, not formatting.
+    func testAddressesAndMentionNamesAreNeverConverted() {
+        for typed in ["see https://x.com/a_b_c now", "see https://x.com/_a_ now", "go https://x.com/?q=*a* ok",
+                      "@john_doe_ hi", "@_john_ hi"] {
+            let composer = make().composer
+            type(typed, into: composer)
+            XCTAssertEqual(composer.text, typed, "typed: \(typed)")
+            XCTAssertEqual(composer.entities, [], "typed: \(typed)")
+        }
+    }
+
+    func testMoreAddressShapesAndAMentionAlreadyMade() {
+        for typed in ["see www.example.com/_a_ ok", "mail me_a_b@example.com now", "**https://x.com/a**"] {
+            let composer = make().composer
+            type(typed, into: composer)
+            XCTAssertEqual(composer.text, typed, "typed: \(typed)")
+            XCTAssertEqual(composer.entities, [], "typed: \(typed)")
+        }
+        // A mention that is already a range keeps what is inside it.
+        XCTAssertNil(MarkdownConverter.convertAll(text: "hi _Ann_", entities: [
+            TextEntity(kind: .mention, offset: 3, length: 5, userID: "@ann:x"),
+        ]))
+        // Words beside an address still convert.
+        let composer = make().composer
+        type("see https://x.com and **this**", into: composer)
+        XCTAssertEqual(composer.text, "see https://x.com and this")
+        XCTAssertEqual(composer.entities, [entity(.bold, 22, 4)])
+    }
+
+    func testMarkersLeftAsTypedAfterUndoStayLiteralInTheSavedDraft() async throws {
+        let made = make()
+        type("**x**", into: made.composer)
+        XCTAssertEqual(made.composer.text, "x")
+        XCTAssertTrue(made.composer.undoMarkdownConversion(try XCTUnwrap(made.composer.lastMarkdownConversion)))
+        XCTAssertEqual(made.composer.text, "**x**")
+        made.composer.open("!b")
+        for _ in 0 ..< 50 { await Task.yield() }
+        let saved = try XCTUnwrap(made.sender.savedDrafts.last)
+        XCTAssertEqual(saved, "\\*\\*x\\*\\*", "each kept-literal marker is escaped")
+
+        // Reopened from the engine's draft: still literal, not bold.
+        let again = make(draft: saved).composer
+        again.open("!draft")
+        XCTAssertEqual(again.text, "**x**")
+        XCTAssertEqual(again.entities, [])
+    }
+
+    func testBackslashesSurviveTheDraftRoundTrip() {
+        for (text, entities) in [
+            ("C:\\dir\\*not*", [TextEntity]()), ("a \\*b* c", [TextEntity]()), ("one \\ two", [TextEntity]()),
+            ("bold \\x", [TextEntity(kind: .bold, offset: 0, length: 4)]),
+        ] {
+            let written = MarkdownConverter.markdown(text: text, entities: entities)
+            let converted = MarkdownConverter.convertAll(text: written)
+            let back = MarkdownConverter.unescaped(text: converted?.text ?? written, entities: converted?.entities ?? [])
+            XCTAssertEqual(back.text, text, written)
+            XCTAssertEqual(back.entities, entities, written)
+        }
+    }
+
     // MARK: What is sent
 
     func testTheRangesAreWhatIsSentAndTheMarkersAreNot() async {

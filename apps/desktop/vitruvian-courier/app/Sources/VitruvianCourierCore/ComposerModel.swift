@@ -993,10 +993,11 @@ public final class ComposerModel: ObservableObject {
         MarkdownConverter.markdown(text: text, entities: entities)
     }
 
-    /// A draft the engine kept, with its markers turned back into styles.
+    /// A draft the engine kept, with its markers turned back into styles and its escapes (`\*` for a `*` that was left
+    /// as typed) taken out.
     private static func restoredDraft(_ kept: String) -> (text: String, entities: [TextEntity]) {
-        guard let converted = MarkdownConverter.convertAll(text: kept) else { return (kept, []) }
-        return (converted.text, converted.entities)
+        let converted = MarkdownConverter.convertAll(text: kept)
+        return MarkdownConverter.unescaped(text: converted?.text ?? kept, entities: converted?.entities ?? [])
     }
 
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
@@ -1030,12 +1031,13 @@ public final class ComposerModel: ObservableObject {
     /// The text view's edit: `range` of the old text was replaced by `length` UTF-16 units, giving `text`. The ranges
     /// follow it (EntityEditing.replacing); typed where a formatting key was pressed with no selection, it takes that
     /// formatting; and "@" or ";" with letters at the caret is looked up.
-    public func textChanged(to text: String, replacing range: NSRange, with length: Int) {
+    /// `composing` is an input method still composing text (the view has marked text): nothing converts until it commits.
+    public func textChanged(to text: String, replacing range: NSRange, with length: Int, composing: Bool = false) {
         guard !isLocked else { return }
         settingContents = true
         self.text = text
         settingContents = false
-        applyEdit(range: range, length: length)
+        applyEdit(range: range, length: length, composing: composing)
         typingChanged()
     }
 
@@ -1322,7 +1324,7 @@ public final class ComposerModel: ObservableObject {
         draftTextChanged()
     }
 
-    private func applyEdit(range: NSRange, length: Int) {
+    private func applyEdit(range: NSRange, length: Int, composing: Bool = false) {
         dismissedEmojiRange = nil
         var updated = EntityEditing.replacing(entities, range: range, with: length)
         let caret = range.location + length
@@ -1377,7 +1379,7 @@ public final class ComposerModel: ObservableObject {
         }
 
         // `**bold**`, `_italic_`, `~~strike~~` and `code`, just closed or pasted, become the formatting itself.
-        if !openingChat, length > 0, !replacedEmoticon, effectiveCaret <= (text as NSString).length,
+        if !openingChat, !composing, length > 0, !replacedEmoticon, effectiveCaret <= (text as NSString).length,
            let converted = MarkdownConverter.convert(
                text: text, entities: currentEntities, inserted: NSRange(location: range.location, length: length)
            ) {
