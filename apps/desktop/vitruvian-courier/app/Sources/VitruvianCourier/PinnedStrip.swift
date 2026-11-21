@@ -11,6 +11,7 @@ struct PinnedStrip: View {
     @ObservedObject var inbox: InboxModel
     @ObservedObject var spaces: SpacesModel
     let ui: InboxUI
+    var conversation: ConversationModel? = nil
     let rows: [InboxRow]
     let doubleClick: (InboxRow) -> Void
 
@@ -38,7 +39,7 @@ struct PinnedStrip: View {
                     // VoiceOver (and any accessibility client) presses the tile as it would a button.
                     .accessibilityAction { click(row) }
                     // A native menu, so the system's own "Ask Siri" item is left out.
-                    .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui) { menuIDs(row) }
+                    .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row) }
                     .onHover { inside in if inside { inbox.prefetchFeatures(for: row) } }
             }
         }

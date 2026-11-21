@@ -59,6 +59,21 @@ final class ChatContextNSMenuTests: XCTestCase {
 
         context.features = { _ in .noFeatures }
         XCTAssertFalse(try menu(context).items.map(\.title).contains("Delete Chat…"))
+
+        context.features = { _ in nil }
+        XCTAssertTrue(try menu(context).items.map(\.title).contains("Delete Chat…"),
+                      "a cold menu whose network hasn't answered still offers it, and finds out when it is chosen")
+    }
+
+    func testEditAndReportItemsRunTheirActions() throws {
+        var chosen: [ChatMenuCommand] = []
+        let menu = try menu(ChatMenuContext(rows: [row()])) { chosen.append($0) }
+        for title in ["Edit Chat…", "Report as Spam…"] {
+            let item = try XCTUnwrap(menu.items.first { $0.title == title })
+            XCTAssertTrue(item.isEnabled, title)
+            _ = item.target?.perform(item.action, with: item)
+        }
+        XCTAssertEqual(chosen, [.editChat(roomID: "!a"), .reportSpam(roomID: "!a")])
     }
 
     func testChoosingDeleteReportsTheCommandAndALabelShowsATick() throws {
@@ -88,6 +103,12 @@ final class ChatContextNSMenuTests: XCTestCase {
         XCTAssertNil(plan.action)
     }
 
+    private func rightClick() throws -> NSEvent {
+        try XCTUnwrap(NSEvent.mouseEvent(
+            with: .rightMouseDown, location: NSPoint(x: 12, y: 7), modifierFlags: [], timestamp: 0, windowNumber: 0,
+            context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    }
+
     func testTheRightClickOverlayAsksForItsMenuOnlyOnARightClick() throws {
         var asked = 0
         let overlay = ChatNativeContextMenu.CatcherView()
@@ -98,9 +119,37 @@ final class ChatContextNSMenuTests: XCTestCase {
         }
         // No right-click in flight: the overlay lets every other event through.
         XCTAssertNil(overlay.hitTest(NSPoint(x: 10, y: 10)))
-        XCTAssertNotNil(overlay.menu(for: try XCTUnwrap(NSEvent.mouseEvent(
-            with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-            eventNumber: 0, clickCount: 1, pressure: 1))))
+        XCTAssertNotNil(overlay.menu(for: try rightClick()))
         XCTAssertEqual(asked, 1)
+    }
+
+    /// A menu that doesn't yet know what the chat's network can do waits a moment, then opens where the click was.
+    func testAColdMenuWarmsUpThenOpensWhereTheClickWas() async throws {
+        let overlay = ChatNativeContextMenu.CatcherView()
+        overlay.frame = NSRect(x: 0, y: 0, width: 100, height: 40)
+        var warm = false
+        var order: [String] = []
+        var shown: [(NSMenu, NSPoint)] = []
+        overlay.isCold = { !warm }
+        overlay.warmUp = {
+            order.append("warmUp")
+            warm = true
+        }
+        overlay.makeMenu = {
+            order.append("build")
+            return NSMenu(title: "chat")
+        }
+        overlay.present = { menu, point, _ in shown.append((menu, point)) }
+
+        XCTAssertNil(overlay.menu(for: try rightClick()), "cold: the menu isn't built until it has asked")
+        for _ in 0 ..< 200 where shown.isEmpty { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(order, ["warmUp", "build"], "it asks first, then builds with the answer")
+        XCTAssertEqual(shown.count, 1)
+        XCTAssertEqual(shown.first?.1, NSPoint(x: 12, y: 7), "where the click was")
+
+        // Warm now: it opens at once, with no wait.
+        order = []
+        XCTAssertNotNil(overlay.menu(for: try rightClick()))
+        XCTAssertEqual(order, ["build"])
     }
 }

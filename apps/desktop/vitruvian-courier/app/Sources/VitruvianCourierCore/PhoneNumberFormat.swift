@@ -8,9 +8,10 @@ import Foundation
 /// A bridge names a chat or an account for a number it has no name for, in E.164 (a "+", then the country code and
 /// the number, digits only). This groups those digits for display. It never changes what is stored or searched.
 ///
-/// It is deliberately small: the country codes whose numbers have one fixed length and a common way of grouping.
-/// Anything else (a name, an email, a number with letters or spaces already in it, a country this table doesn't
-/// know, a number of an unusual length) comes back exactly as it was, so a wrong grouping is never invented.
+/// It is deliberately small: only the kinds of number that are always grouped one way. Anything else (a name, an
+/// email, a number with letters or spaces already in it, a country this table doesn't know, a kind of number a
+/// country groups several ways, a number of an unusual length) comes back exactly as it was, so a wrong grouping is
+/// never invented.
 public enum PhoneNumberFormat {
     /// `text` with its E.164 number grouped, or `text` unchanged when it isn't one this knows how to group.
     public static func display(_ text: String) -> String {
@@ -44,40 +45,49 @@ public enum PhoneNumberFormat {
     }
 
     /// The group sizes for a country's national number (digits after the country code), or nil when it isn't a
-    /// length that country uses. Country calling codes are prefix-free, so the first match is the one.
+    /// number that country groups one way for certain. Country calling codes are prefix-free, so the first match is
+    /// the one. Where a country's numbers are grouped several ways (the UK's, Germany's, a landline's), only the
+    /// kinds that are always grouped the same way are here; every other number comes back as it was, because a
+    /// wrong grouping is worse than none.
     private static let rules: [(String, (String) -> [Int]?)] = [
-        // United Kingdom: mobiles 7xxx xxxxxx, London 20 xxxx xxxx, the rest 10 digits as xxxx xxxxxx.
+        // United Kingdom: mobiles (7xxx xxxxxx) and London (20 xxxx xxxx). No other UK number is grouped.
         ("44", { n in
-            guard n.count == 10, n.first != "0" else { return nil }
+            guard n.count == 10 else { return nil }
+            if n.hasPrefix("7") { return [4, 6] }
             if n.hasPrefix("20") { return [2, 4, 4] }
-            return [4, 6]
+            return nil
         }),
-        // Australia: mobiles 4xx xxx xxx, landlines 2/3/7/8 xxxx xxxx.
+        // Australia: mobiles 4xx xxx xxx; landlines 2, 3, 7 or 8 then 4 and 4.
         ("61", { n in
             guard n.count == 9 else { return nil }
-            return n.hasPrefix("4") ? [3, 3, 3] : [1, 4, 4]
+            if n.hasPrefix("4") { return [3, 3, 3] }
+            if let first = n.first, "2378".contains(first) { return [1, 4, 4] }
+            return nil
         }),
-        // France: 9 digits, one then pairs: 6 12 34 56 78.
+        // France: every number is 9 digits, grouped 6 12 34 56 78.
         ("33", { n in n.count == 9 && n.first != "0" ? [1, 2, 2, 2, 2] : nil }),
-        // Spain: 9 digits in threes.
-        ("34", { n in n.count == 9 ? [3, 3, 3] : nil }),
-        // Netherlands: 9 digits, one then eight: 6 12345678.
-        ("31", { n in n.count == 9 ? [1, 8] : nil }),
-        // Mexico: 10 digits, two-digit area then 4 and 4: 55 1234 5678.
-        ("52", { n in n.count == 10 ? [2, 4, 4] : nil }),
-        // Brazil: 11 digits, two-digit area then a 9-leading mobile: 11 91234 5678.
-        ("55", { n in n.count == 11 ? [2, 5, 4] : (n.count == 10 ? [2, 4, 4] : nil) }),
-        // India: 10 digits, 5 and 5: 98765 43210.
-        ("91", { n in n.count == 10 ? [5, 5] : nil }),
-        // Japan: 10 digits, 2, 4, 4: 90 1234 5678.
-        ("81", { n in n.count == 10 ? [2, 4, 4] : nil }),
-        // China: 11-digit mobiles, 3, 4, 4: 138 0013 8000.
-        ("86", { n in n.count == 11 ? [3, 4, 4] : nil }),
-        // Vietnam: 9 digits, 3, 3, 3: 912 345 678 (a mobile written without its leading 0).
-        ("84", { n in n.count == 9 ? [3, 3, 3] : nil }),
-        // Singapore: 8 digits, 4 and 4.
-        ("65", { n in n.count == 8 ? [4, 4] : nil }),
-        // Ireland: 9 digits for a mobile: 85 123 4567.
-        ("353", { n in n.count == 9 ? [2, 3, 4] : nil }),
+        // Spain: mobiles (6xx or 7xx) in threes.
+        ("34", { n in n.count == 9 && (n.hasPrefix("6") || n.hasPrefix("7")) ? [3, 3, 3] : nil }),
+        // Netherlands: mobiles, 6 12345678.
+        ("31", { n in n.count == 9 && n.hasPrefix("6") ? [1, 8] : nil }),
+        // Mexico: Mexico City, Guadalajara and Monterrey (55, 33, 81) then 4 and 4.
+        ("52", { n in n.count == 10 && ["55", "33", "81"].contains(String(n.prefix(2))) ? [2, 4, 4] : nil }),
+        // Brazil: a mobile is the area code, then 9xxxx xxxx; a landline, the area code then 4 and 4.
+        ("55", { n in
+            let digits = Array(n)
+            if n.count == 11, digits[2] == "9" { return [2, 5, 4] }
+            if n.count == 10, "2345".contains(digits[2]) { return [2, 4, 4] }
+            return nil
+        }),
+        // India: mobiles (6-9) as 98765 43210.
+        ("91", { n in n.count == 10 && "6789".contains(n.first ?? "0") ? [5, 5] : nil }),
+        // Japan: mobiles (70, 80, 90) as 90 1234 5678.
+        ("81", { n in n.count == 10 && ["70", "80", "90"].contains(String(n.prefix(2))) ? [2, 4, 4] : nil }),
+        // China: mobiles (11 digits, starting 1) as 138 0013 8000.
+        ("86", { n in n.count == 11 && n.hasPrefix("1") ? [3, 4, 4] : nil }),
+        // Singapore: 8 digits starting 6, 8 or 9, as 9123 4567.
+        ("65", { n in n.count == 8 && "689".contains(n.first ?? "0") ? [4, 4] : nil }),
+        // Ireland: mobiles (8x) as 85 123 4567.
+        ("353", { n in n.count == 9 && n.hasPrefix("8") ? [2, 3, 4] : nil }),
     ]
 }

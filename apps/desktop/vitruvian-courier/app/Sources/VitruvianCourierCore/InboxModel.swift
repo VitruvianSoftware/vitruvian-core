@@ -1147,6 +1147,38 @@ public final class InboxModel: ObservableObject {
         Task { [weak self] in await self?.loadFeatures(for: roomID) }
     }
 
+    /// What Delete Chat… finds out when it is chosen.
+    public enum DeleteResolution: Equatable, Sendable {
+        /// The network can delete it: ask first, with these features.
+        case ask(ChatFeatures)
+        /// The network says it can't.
+        case unsupported
+        /// The engine could not say.
+        case unknown
+    }
+
+    /// Whether `roomID` can be deleted, asked of the engine if it isn't known yet. Delete Chat… is shown while the
+    /// answer is not in, so this is what decides when it is chosen.
+    public func resolveDelete(roomID: String) async -> DeleteResolution {
+        await loadFeatures(for: roomID)
+        guard let features = cachedFeatures(for: roomID) else { return .unknown }
+        return features.canDelete ? .ask(features) : .unsupported
+    }
+
+    /// Waits up to `limit` seconds for what `roomID`'s network can do, asking the engine if it hasn't been asked, so a
+    /// menu opened on a chat the pointer never rested on still knows. The ask goes on past `limit`, so the next menu has
+    /// it. nil when it isn't known in time: the menu then offers Delete Chat… and finds out when it is chosen.
+    public func featuresWaiting(for roomID: String, upTo limit: TimeInterval = 0.15) async -> ChatFeatures? {
+        if let known = cachedFeatures(for: roomID) { return known }
+        guard !roomID.hasPrefix("merge:") else { return nil }
+        Task { [weak self] in await self?.loadFeatures(for: roomID) }
+        let deadline = Date().addingTimeInterval(limit)
+        while Date() < deadline, cachedFeatures(for: roomID) == nil {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return cachedFeatures(for: roomID)
+    }
+
     /// Deletes a chat: removed from this Mac and, where its network allows it, from the network (room.delete). The
     /// chat that was open moves to a neighbour as it does when it is archived. A refusal is said in the toast, and the
     /// chat stays. True once it is gone.

@@ -18,6 +18,8 @@ struct ChatContextMenu: View {
     /// in a button would take those keys from the Chat menu while the pointer is on the row.
     var showsKeys = true
     var features: ChatFeatures? = nil
+    /// The conversation pane's model, whose sheets Edit Chat… and Report as Spam… open.
+    var conversation: ConversationModel? = nil
     var onEditChat: ((String) -> Void)? = nil
     var onLeaveGroup: ((String) -> Void)? = nil
     var onDeleteChat: ((String) -> Void)? = nil
@@ -31,6 +33,7 @@ struct ChatContextMenu: View {
     private var actions: ChatMenuActions {
         var actions = ChatMenuActions(inbox: inbox, spaces: spaces, ui: ui, ids: ids, showsKeys: showsKeys)
         actions.features = features
+        actions.conversation = conversation
         actions.onEditChat = onEditChat
         actions.onLeaveGroup = onLeaveGroup
         actions.onDeleteChat = onDeleteChat
@@ -109,6 +112,7 @@ struct ChatMenuActions {
     var showsKeys = true
     /// The chat's features when the caller already has them (Chat Info does); else what the inbox has asked the engine.
     var features: ChatFeatures?
+    var conversation: ConversationModel?
     var onEditChat: ((String) -> Void)?
     var onLeaveGroup: ((String) -> Void)?
     var onDeleteChat: ((String) -> Void)?
@@ -151,7 +155,7 @@ struct ChatMenuActions {
         context.features = { row in known ?? inbox.cachedFeatures(for: row.roomID) }
         context.chatName = { inbox.displayTitle(for: $0) }
         context.canLeaveGroups = onLeaveGroup != nil
-        // A chat whose features haven't been read is asked now, so the next menu has the answer.
+        // A chat whose network hasn't been asked what it can do is asked now, for the next menu.
         if rows.count == 1, features == nil { inbox.prefetchFeatures(for: rows[0]) }
         return context
     }
@@ -159,6 +163,20 @@ struct ChatMenuActions {
     func sections() -> [[ChatMenuItem]] {
         ChatMenuPlan.sections(context())
     }
+
+    /// A native menu is built on the spot, so a chat whose network hasn't been asked yet is asked first.
+    var isCold: Bool {
+        guard features == nil, let row = rows.first, rows.count == 1, row.mergeID.isEmpty else { return false }
+        return inbox.cachedFeatures(for: row.roomID) == nil
+    }
+
+    /// Gives a cold menu a moment (up to 150 ms) to learn what the chat's network can do.
+    func warmUp() async {
+        guard isCold, let row = rows.first else { return }
+        _ = await inbox.featuresWaiting(for: row.roomID, upTo: ChatMenuActions.warmUpLimit)
+    }
+
+    static let warmUpLimit: TimeInterval = 0.15
 
     func run(_ command: ChatMenuCommand) {
         let inbox = inbox
@@ -201,23 +219,48 @@ struct ChatMenuActions {
             }
         case .mergeChat:
             if let row = rows.first { inbox.openMergeEditor(for: row) }
-        case let .editChat(roomID): onEditChat?(roomID)
+        case let .editChat(roomID):
+            if let onEditChat {
+                onEditChat(roomID)
+            } else if let conversation {
+                Task { await ChatRoomActions.editChat(roomID: roomID, inbox: inbox, conversation: conversation) }
+            }
         case let .leaveGroup(roomID): onLeaveGroup?(roomID)
         case let .deleteChat(roomID):
             if let onDeleteChat { onDeleteChat(roomID) } else { confirmAndDelete(roomID) }
-        case let .reportSpam(roomID): onReportSpam?(roomID)
+        case let .reportSpam(roomID):
+            if let onReportSpam {
+                onReportSpam(roomID)
+            } else if let conversation {
+                Task { await ChatRoomActions.reportSpam(roomID: roomID, inbox: inbox, conversation: conversation) }
+            }
         }
     }
 
-    /// Delete Chat…: asks first, then deletes through the engine.
+    /// Delete Chat…: finds out whether the chat's network can delete it (the menu shows the item until the network
+    /// has said it can't), asks first, then deletes through the engine.
     private func confirmAndDelete(_ roomID: String) {
         guard let row = inbox.targetRows([roomID]).first else { return }
-        let features = features ?? inbox.cachedFeatures(for: roomID) ?? .noFeatures
-        let text = ChatDeleteConfirmation.text(networkName: inbox.networkName(row.network), features: features)
-        guard Confirm.ask(text.title, detail: text.detail, action: String(localized: "Delete"), destructive: true) else {
-            return
+        let features = features
+        let networkName = inbox.networkName(row.network)
+        let chatName = inbox.displayTitle(for: row)
+        Task {
+            let resolution: InboxModel.DeleteResolution
+            if let features {
+                resolution = features.canDelete ? .ask(features) : .unsupported
+            } else {
+                resolution = await inbox.resolveDelete(roomID: roomID)
+            }
+            guard case let .ask(known) = resolution else {
+                Confirm.tell(ChatDeleteConfirmation.unavailable(resolution, networkName: networkName))
+                return
+            }
+            let text = ChatDeleteConfirmation.text(chatName: chatName, networkName: networkName, features: known)
+            guard Confirm.ask(text.title, detail: text.detail, action: String(localized: "Delete"), destructive: true) else {
+                return
+            }
+            await inbox.deleteChat(roomID: roomID)
         }
-        Task { await inbox.deleteChat(roomID: roomID) }
     }
 }
 
@@ -275,22 +318,37 @@ enum ChatContextNSMenu {
 }
 
 /// Opens `makeMenu`'s menu on a right-click (or control-click) of the view it covers, and lets every other event
-/// through, as `MessageContextMenuOverlay` does for a message.
+/// through, as `MessageContextMenuOverlay` does for a message. A menu that is `isCold` (it doesn't yet know what the
+/// chat's network can do) gets a moment to find out first, then opens where the click was.
 struct ChatNativeContextMenu: NSViewRepresentable {
     let makeMenu: @MainActor () -> NSMenu?
+    var isCold: @MainActor () -> Bool = { false }
+    var warmUp: @MainActor () async -> Void = {}
 
     func makeNSView(context _: Context) -> CatcherView {
         let view = CatcherView()
-        view.makeMenu = makeMenu
+        apply(to: view)
         return view
     }
 
     func updateNSView(_ nsView: CatcherView, context _: Context) {
-        nsView.makeMenu = makeMenu
+        apply(to: nsView)
+    }
+
+    private func apply(to view: CatcherView) {
+        view.makeMenu = makeMenu
+        view.isCold = isCold
+        view.warmUp = warmUp
     }
 
     final class CatcherView: NSView {
         var makeMenu: (@MainActor () -> NSMenu?)?
+        var isCold: (@MainActor () -> Bool)?
+        var warmUp: (@MainActor () async -> Void)?
+        /// Shows a menu where the click was; a test records it.
+        var present: @MainActor (NSMenu, NSPoint, NSView) -> Void = { menu, point, view in
+            menu.popUp(positioning: nil, at: point, in: view)
+        }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             guard let event = NSApp.currentEvent,
@@ -300,8 +358,16 @@ struct ChatNativeContextMenu: NSViewRepresentable {
             return super.hitTest(point)
         }
 
-        override func menu(for _: NSEvent) -> NSMenu? {
-            makeMenu?()
+        override func menu(for event: NSEvent) -> NSMenu? {
+            guard isCold?() == true else { return makeMenu?() }
+            // Cold: wait a moment for the network's answer, then open the menu where the click was.
+            let point = convert(event.locationInWindow, from: nil)
+            Task { @MainActor [weak self] in
+                await self?.warmUp?()
+                guard let self, let menu = self.makeMenu?() else { return }
+                self.present(menu, point, self)
+            }
+            return nil
         }
     }
 }
@@ -312,21 +378,30 @@ private struct ChatRowContextMenu: ViewModifier {
     let spaces: SpacesModel
     let ui: InboxUI
     let ids: () -> [String]?
+    let conversation: ConversationModel?
     @Environment(\.searchInChat) private var searchInChat
     @Environment(\.openDetachedWindow) private var openDetachedWindow
     @Environment(\.openWindow) private var openWindow
 
     func body(content: Content) -> some View {
-        content.overlay(ChatNativeContextMenu { buildMenu() })
+        content.overlay(ChatNativeContextMenu(makeMenu: { buildMenu() }, isCold: { actions().isCold },
+                                              warmUp: { await actions().warmUp() }))
     }
 
     @MainActor
-    private func buildMenu() -> NSMenu? {
+    private func actions() -> ChatMenuActions {
         var actions = ChatMenuActions(inbox: inbox, spaces: spaces, ui: ui, ids: ids())
+        actions.conversation = conversation
         actions.searchInChat = searchInChat
         actions.openDetachedWindow = openDetachedWindow
         actions.openLabelWindow = { openWindow(id: WindowID.label, value: $0) }
         actions.openThemeWindow = { openWindow(id: WindowID.chatTheme, value: $0) }
+        return actions
+    }
+
+    @MainActor
+    private func buildMenu() -> NSMenu? {
+        let actions = actions()
         return ChatContextNSMenu.build(actions.sections()) { actions.run($0) }
     }
 }
@@ -334,9 +409,9 @@ private struct ChatRowContextMenu: ViewModifier {
 extension View {
     /// Right-clicking this chat row or tile opens the chat menu as a native menu. `ids` says which chats it acts on
     /// (nil: the chats selected), read when the menu opens.
-    func chatRowContextMenu(inbox: InboxModel, spaces: SpacesModel, ui: InboxUI,
+    func chatRowContextMenu(inbox: InboxModel, spaces: SpacesModel, ui: InboxUI, conversation: ConversationModel? = nil,
                             ids: @escaping () -> [String]?) -> some View {
-        modifier(ChatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: ids))
+        modifier(ChatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: ids, conversation: conversation))
     }
 }
 

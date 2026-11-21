@@ -231,7 +231,7 @@ Not yet checked by eye. The tests cover the logic behind each one. Look at these
   - ↑ ↓ and ⌃P ⌃N move the selection, and the list scrolls to follow it;
   - Tab and ⇧Tab jump from one section to the next;
   - Return opens the selected row;
-  - Esc steps back one thing at a time: first the filters, then the text, then the "In:" chat, then it closes;
+  - Esc closes search at once, even with words or filters in it;
   - ⌫ with nothing typed removes the "In:" chat;
   - ⌘⌫ clears the text.
 - [ ] Choosing a recent search puts its words in the field and searches them. Check where the cursor ends up (it should be at the end of the words).

@@ -5190,6 +5190,7 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 	var slowGetMembers atomic.Bool
 	var inFlightGetMembers atomic.Int64
 	var maxConcurrentGetMembers atomic.Int64
+	var answeredGetMembers atomic.Int64
 	var pingDone atomic.Bool
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5230,6 +5231,7 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 				"member@example.com",
 				"",
 			))
+			answeredGetMembers.Add(1)
 		case "/u/0/webchannel/register":
 			w.Header().Add("Set-Cookie", "COMPASS=dynamite-ui=csess_n2; Path=/; Domain=chat.google.com")
 			w.WriteHeader(http.StatusOK)
@@ -5298,19 +5300,21 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 		},
 	})
 
-	start := time.Now()
 	client.mu.Lock()
 	ch := client.streamCh
 	client.mu.Unlock()
 	require.NotNil(t, ch)
 	ch <- streamNotification{kind: EventKindEventProto, payload: liveEvtBytes}
 
+	// The event must not wait behind the slow member lookups. That is a condition, not a clock: when the event has
+	// been delivered, the lookups (300 of them, 40 ms each, 4 at a time) must still be going. A blocked event would
+	// only arrive after they all finished, however fast or slow the machine is.
 	require.Eventually(t, func() bool {
 		msg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_n2", "msg_after_300_sync"))
 		return err == nil && msg != nil
-	}, 900*time.Millisecond, 15*time.Millisecond, "world sync with 300 members and slow get_members must not delay subsequent stream event beyond ~1s")
-	elapsed := time.Since(start)
-	require.Less(t, elapsed, time.Second, "subsequent stream event must be delivered in under 1s")
+	}, 30*time.Second, 15*time.Millisecond, "the subsequent stream event must be delivered")
+	require.Less(t, answeredGetMembers.Load(), int64(memberCount),
+		"the subsequent stream event must be delivered while the world sync's member lookups are still running")
 	require.LessOrEqual(t, maxConcurrentGetMembers.Load(), int64(4), "background ghost prewarm worker concurrency must be capped at 4")
 
 	// Verify I6 behaviour remains intact: synced 300-member space ChatResync includes all 300 members.

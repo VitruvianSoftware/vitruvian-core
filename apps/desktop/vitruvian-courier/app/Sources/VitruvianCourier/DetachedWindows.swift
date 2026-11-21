@@ -96,7 +96,8 @@ struct DetachedSpaceWindowView: View {
                     spaces: spaces,
                     preferences: inbox.preferences,
                     composerPreferences: session.composerPreferences,
-                    ui: ui
+                    ui: ui,
+                    conversation: conversation
                 )
                 .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
                 if conversation.roomID != nil {

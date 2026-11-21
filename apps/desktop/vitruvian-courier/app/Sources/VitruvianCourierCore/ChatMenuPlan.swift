@@ -280,24 +280,64 @@ public enum ChatMenuPlan {
         return ChatMenuItem("copy", String(localized: "Copy"), children: items)
     }
 
-    /// Delete Chat… is offered only where the chat's network can delete it (its features say so): never a dead item.
-    /// A merged chat is several chats, so it is deleted from its own chats, not here.
+    /// Delete Chat… is offered unless the chat's network has said it can't delete: a network that can (its features
+    /// say so) shows it, and so does a network that hasn't answered yet, where choosing it finds out first and
+    /// explains if the answer is no. Never a dead item for a network known to refuse. A merged chat is several chats,
+    /// so it is deleted from its own chats, not here.
     static func offersDelete(_ row: InboxRow, features: ChatFeatures?, _ context: ChatMenuContext) -> Bool {
-        guard context.canDeleteChats, features?.canDelete == true else { return false }
+        guard context.canDeleteChats, features?.canDelete != false else { return false }
         return row.mergeID.isEmpty && !row.roomID.hasPrefix("merge:")
     }
 }
 
-/// Asking before a chat is deleted from the inbox's menu.
+/// Asking before a chat is deleted from the inbox's menu, and saying so when it can't be.
 public enum ChatDeleteConfirmation {
-    /// The question and what it does. The chat leaves this Mac; where the network allows it, it is deleted there too
-    /// (that is what a network that offers Delete does), and a network where deleting a group also leaves it says so.
-    public static func text(networkName: String?, features: ChatFeatures) -> (title: String, detail: String) {
+    /// The question and what Delete does, as the engine does it: the chat is hidden on this Mac and deleted for the
+    /// person on the network, and the others in the chat keep theirs. A network where deleting a group also leaves it
+    /// (WhatsApp) says that too.
+    public static func text(chatName: String, networkName: String?, features: ChatFeatures)
+        -> (title: String, detail: String) {
+        let trimmed = chatName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = trimmed.isEmpty ? String(localized: "this chat") : trimmed
         let place = networkName ?? String(localized: "its network")
-        var detail = String(localized: "It’s removed from this Mac and from \(place) where the network allows it.")
+        var detail = String(localized: "It’s hidden here and deleted for you on \(place). Others in the chat keep their copy.")
         if features.deleteLeavesGroup {
-            detail += " " + String(localized: "This also leaves the group.")
+            detail += " " + String(localized: "You’ll also leave the group.")
         }
-        return (String(localized: "Delete this chat?"), detail)
+        return (String(localized: "Delete “\(name)”?"), detail)
+    }
+
+    /// What Delete Chat… says when the chat's network can't delete it, or the engine couldn't say.
+    public static func unavailable(_ resolution: InboxModel.DeleteResolution, networkName: String?) -> String {
+        let place = networkName ?? String(localized: "This network")
+        switch resolution {
+        case .unsupported:
+            return String(localized: "\(place) doesn’t let Vitruvian Courier delete this chat.")
+        case .unknown:
+            return String(localized: "Couldn’t check whether \(place) can delete this chat. Try again in a moment.")
+        case .ask:
+            return ""
+        }
+    }
+}
+
+/// Edit Chat… and Report as Spam… from the inbox's menu: what Chat Info's buttons do for the open chat, for the chat
+/// that was right-clicked. Their sheets belong to the conversation pane, so when no chat is open the right-clicked one
+/// is opened first, so the sheet has a pane to appear in.
+@MainActor
+public enum ChatRoomActions {
+    public static func editChat(roomID: String, inbox: InboxModel, conversation: ConversationModel) async {
+        openIfNoneOpen(roomID, inbox, conversation)
+        await conversation.beginEditChat(roomID: roomID)
+    }
+
+    public static func reportSpam(roomID: String, inbox: InboxModel, conversation: ConversationModel) async {
+        openIfNoneOpen(roomID, inbox, conversation)
+        await conversation.beginReportSpam(roomID: roomID)
+    }
+
+    private static func openIfNoneOpen(_ roomID: String, _ inbox: InboxModel, _ conversation: ConversationModel) {
+        guard inbox.selectedRoomID?.isEmpty ?? true, conversation.roomID == nil else { return }
+        inbox.select(roomID)
     }
 }

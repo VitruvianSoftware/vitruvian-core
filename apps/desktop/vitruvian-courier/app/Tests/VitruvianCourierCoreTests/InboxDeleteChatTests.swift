@@ -81,4 +81,64 @@ final class InboxDeleteChatTests: XCTestCase {
         XCTAssertFalse(deleted)
         XCTAssertEqual(h.count("room.delete"), 0)
     }
+
+    // MARK: Cold right-click
+
+    func testAColdMenuWaitsAMomentForWhatTheNetworkCanDo() async throws {
+        let h = try await start()
+        h.script.deletable = ["!a"]
+        XCTAssertNil(h.inbox.cachedFeatures(for: "!a"))
+        let features = await h.inbox.featuresWaiting(for: "!a", upTo: 3)
+        XCTAssertEqual(features?.canDelete, true, "a chat never pointed at still gets its answer before the menu shows")
+        XCTAssertEqual(h.count("room.features"), 1)
+    }
+
+    func testASlowNetworkDoesNotHoldTheMenuUp() async throws {
+        let h = try await start()
+        h.script.holdFeatures = true
+        let started = Date()
+        let features = await h.inbox.featuresWaiting(for: "!a", upTo: 0.15)
+        XCTAssertNil(features, "no answer in time: the menu shows Delete Chat… and finds out when it is chosen")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "it waits a moment, not for the engine")
+    }
+
+    func testChoosingDeleteOnAnUnknownChatFindsOutFirst() async throws {
+        let h = try await start()
+        h.script.deletable = ["!a"]
+        let ask = await h.inbox.resolveDelete(roomID: "!a")
+        guard case let .ask(features) = ask else { return XCTFail("a network that can delete is asked about") }
+        XCTAssertTrue(features.canDelete)
+
+        let refused = await h.inbox.resolveDelete(roomID: "!b")
+        XCTAssertEqual(refused, .unsupported, "a network that can't delete is told so, not shown a dead item")
+    }
+
+    func testChoosingDeleteWhenTheEngineCannotSayIsNotAYes() async throws {
+        let h = try await start()
+        h.script.fail("room.features", code: -32000)
+        let unknown = await h.inbox.resolveDelete(roomID: "!a")
+        XCTAssertEqual(unknown, .unknown)
+    }
+
+    // MARK: Edit Chat… and Report as Spam… (D1 round 1)
+
+    func testEditChatAndReportAsSpamOpenTheirSheetsForTheRightClickedChat() async throws {
+        let h = try await start()
+        let conversation = ConversationModel(appModel: h.app, preferences: ComposerPreferences(defaults: h.store.defaults))
+        await ChatRoomActions.editChat(roomID: "!b", inbox: h.inbox, conversation: conversation)
+        XCTAssertEqual(conversation.activeEditGroupDraft?.roomID, "!b", "Edit Chat… opens the edit sheet for that chat")
+        XCTAssertEqual(h.inbox.selectedRoomID, "!b", "with no chat open, it opens so the sheet has a pane to appear in")
+
+        await ChatRoomActions.reportSpam(roomID: "!c", inbox: h.inbox, conversation: conversation)
+        XCTAssertEqual(conversation.activeReportSpamDraft?.roomID, "!c", "Report as Spam… opens its sheet for that chat")
+    }
+
+    func testEditChatLeavesTheOpenChatOpen() async throws {
+        let h = try await start()
+        let conversation = ConversationModel(appModel: h.app, preferences: ComposerPreferences(defaults: h.store.defaults))
+        h.inbox.select("!a")
+        await ChatRoomActions.editChat(roomID: "!b", inbox: h.inbox, conversation: conversation)
+        XCTAssertEqual(h.inbox.selectedRoomID, "!a")
+        XCTAssertEqual(conversation.activeEditGroupDraft?.roomID, "!b")
+    }
 }

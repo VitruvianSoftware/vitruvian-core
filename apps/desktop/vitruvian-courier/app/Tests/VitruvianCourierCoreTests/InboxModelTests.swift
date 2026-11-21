@@ -1970,6 +1970,13 @@ final class InboxScript: @unchecked Sendable {
     }
 
     /// The chats whose network can delete them (room.features says can_delete), and the chats room.delete removed.
+    private var _holdFeatures = false
+    /// While set, room.features is not answered (a slow network).
+    var holdFeatures: Bool {
+        get { lock.withLock { _holdFeatures } }
+        set { lock.withLock { _holdFeatures = newValue } }
+    }
+
     private var _deletable: Set<String> = []
     var deletable: Set<String> {
         get { lock.withLock { _deletable } }
@@ -2124,6 +2131,7 @@ final class InboxScript: @unchecked Sendable {
         case "room.setLowPriority", "room.setHidden", "room.setLabel":
             return .result(["room_ids": ids])
         case "room.features":
+            if holdFeatures { return .later }
             let room = params?["room_id"] as? String ?? ""
             var features = featuresJSON()
             features["can_delete"] = deletable.contains(room)

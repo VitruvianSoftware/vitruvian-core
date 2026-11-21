@@ -313,6 +313,7 @@ struct MainWindow: View {
                         preferences: preferences,
                         composerPreferences: composerPreferences,
                         ui: ui,
+                        conversation: conversation,
                         openSearch: { search.show() }
                     )
                 }

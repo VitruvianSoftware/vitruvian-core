@@ -70,7 +70,8 @@ final class ChatMenuPlanTests: XCTestCase {
         XCTAssertFalse(titles(context).contains("Delete Chat…"), "a network that can't delete shows no dead item")
 
         context.features = { _ in nil }
-        XCTAssertFalse(titles(context).contains("Delete Chat…"), "while the network hasn't said, nothing is claimed")
+        XCTAssertTrue(titles(context).contains("Delete Chat…"),
+                      "a network that hasn't answered yet shows it; choosing it finds out first")
     }
 
     func testDeleteFollowsEachChatsOwnNetwork() {
@@ -118,17 +119,34 @@ final class ChatMenuPlanTests: XCTestCase {
 
     // MARK: Confirmation
 
-    func testDeleteConfirmationNamesTheNetworkAndSaysWhatItDoes() {
-        let plain = ChatDeleteConfirmation.text(networkName: "WhatsApp", features: features(canDelete: true))
-        XCTAssertEqual(plain.title, "Delete this chat?")
-        XCTAssertEqual(plain.detail, "It’s removed from this Mac and from WhatsApp where the network allows it.")
+    func testDeleteConfirmationSaysWhatTheEngineReallyDoes() {
+        let plain = ChatDeleteConfirmation.text(chatName: "Sam Lee", networkName: "Signal", features: features(canDelete: true))
+        XCTAssertEqual(plain.title, "Delete “Sam Lee”?")
+        XCTAssertEqual(plain.detail, "It’s hidden here and deleted for you on Signal. Others in the chat keep their copy.")
+    }
 
-        let leaving = ChatDeleteConfirmation.text(networkName: "WhatsApp", features: features(canDelete: true, leavesGroup: true))
-        XCTAssertEqual(leaving.detail,
-                       "It’s removed from this Mac and from WhatsApp where the network allows it. This also leaves the group.")
+    func testDeletingAWhatsAppGroupAlsoSaysYouLeaveIt() {
+        let group = ChatDeleteConfirmation.text(chatName: "Hike", networkName: "WhatsApp",
+                                                features: features(canDelete: true, leavesGroup: true))
+        XCTAssertEqual(group.title, "Delete “Hike”?")
+        XCTAssertEqual(
+            group.detail,
+            "It’s hidden here and deleted for you on WhatsApp. Others in the chat keep their copy. You’ll also leave the group.")
+    }
 
-        let unknown = ChatDeleteConfirmation.text(networkName: nil, features: features(canDelete: true))
-        XCTAssertEqual(unknown.detail, "It’s removed from this Mac and from its network where the network allows it.")
+    func testDeleteConfirmationFallsBackWhenTheNameOrNetworkIsUnknown() {
+        let text = ChatDeleteConfirmation.text(chatName: "  ", networkName: nil, features: features(canDelete: true))
+        XCTAssertEqual(text.title, "Delete “this chat”?")
+        XCTAssertEqual(text.detail, "It’s hidden here and deleted for you on its network. Others in the chat keep their copy.")
+    }
+
+    func testWhenDeleteCannotBeDoneTheMenuSaysWhy() {
+        XCTAssertEqual(ChatDeleteConfirmation.unavailable(.unsupported, networkName: "Google Chat"),
+                       "Google Chat doesn’t let Vitruvian Courier delete this chat.")
+        XCTAssertEqual(ChatDeleteConfirmation.unavailable(.unknown, networkName: "Signal"),
+                       "Couldn’t check whether Signal can delete this chat. Try again in a moment.")
+        XCTAssertEqual(ChatDeleteConfirmation.unavailable(.unsupported, networkName: nil),
+                       "This network doesn’t let Vitruvian Courier delete this chat.")
     }
 
     // MARK: The rest of the menu stays as it was
@@ -144,7 +162,7 @@ final class ChatMenuPlanTests: XCTestCase {
                 ["Archive", "Mute", "Mark as Unread", "Pin", "Search…", "Hide", "Move to Low Priority", "Label", "Remind Me",
                  "Open in New Window", "Chat Theme…", "Copy"],
                 ["Begin Selecting"],
-                ["Merge with Another Chat…", "Edit Chat…", "Report as Spam…"],
+                ["Merge with Another Chat…", "Edit Chat…", "Delete Chat…", "Report as Spam…"],
             ]
         )
         XCTAssertEqual(sections[0].first?.key, ChatMenuKey("e"))

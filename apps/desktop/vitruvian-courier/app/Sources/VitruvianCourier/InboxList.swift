@@ -20,6 +20,8 @@ struct InboxList: View {
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @ObservedObject var ui: InboxUI
+    /// The conversation pane's model: its sheets are what Edit Chat… and Report as Spam… in a chat's menu open.
+    var conversation: ConversationModel? = nil
     /// Opens ⌘K's search. When the window doesn't pass it, the header's button chooses the Search… item of the
     /// menu bar, which is the same thing ⌘K does.
     var openSearch: (@MainActor () -> Void)? = nil
@@ -70,7 +72,8 @@ struct InboxList: View {
                 Divider()
             }
             if !preferences.regularPinnedRows, !pinned.isEmpty {
-                PinnedStrip(inbox: inbox, spaces: spaces, ui: ui, rows: pinned, doubleClick: doubleClick)
+                PinnedStrip(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation, rows: pinned,
+                            doubleClick: doubleClick)
                 Divider()
             }
             chats
@@ -183,10 +186,10 @@ struct InboxList: View {
                             accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
                             decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
                                 ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.id),
-                                                showsKeys: false)
+                                                showsKeys: false, conversation: conversation)
                             }
                             // A native menu, so the system's own "Ask Siri" item is left out.
-                            .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui) { menuIDs(row.id) }
+                            .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row.id) }
                             .tag(row.id)
                             // Within the last 20 chats loaded: read the next page.
                             .onAppear { inbox.rowAppeared(at: index + offset) }
