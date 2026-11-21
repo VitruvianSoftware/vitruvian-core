@@ -40,8 +40,9 @@ appear in at least one other copy.
 
 - Backstage catalog: 33 components, **3** of type `library` (`design-system-android`,
   `pulumi-library-go`, `pulumi-library-ts`).
-- A full-text search of the catalog for `json`, through Backstage's MCP server: **0
-  results**, although 16 tools carry a JSON helper.
+- ~~A full-text search of the catalog for `json`, through Backstage's MCP server: 0
+  results.~~ Not a valid baseline: that MCP tool's `full_text_search` parameter returns
+  nothing even for exact entity names. Use a tag filter or `search_backstage` instead.
 - `packages/`: 9 top-level folders, **2** with a `catalog-info.yaml`.
 - `packages/README.md`: lists 7 of the 9 folders, each as "Contract for packages/X". It
   leaves out `packages/rust/` and `packages/swift/`.
@@ -59,18 +60,47 @@ Speaker being built on a Mac. Fixed by hand in #5244, until step 11 generates th
 
 | Step | What | PR | State |
 |---|---|---|---|
-| 1 | Mac filter gap: confirmed and fixed by hand | #5244 | waiting for James's approval |
-| 2 | Catalog entries and README contract for every package and product | | |
-| 3 | Catalog check in CI, new-package initializer template | | |
-| 4 | Backstage finds catalog files itself | | |
-| 5 | Generated `packages/README.md` with drift test | | |
-| 6 | Reuse-first rule in `AGENTS.md` | | |
-| 7 | Backstage MCP for every agent tool | | |
-| 8 | Duplicate-code check (warning) | | |
-| 9 | Helpers moved into shared packages, one family per PR | | |
-| 10 | Package renames, one per PR | | |
-| 11 | Blocking duplicate check, generated Mac filter | | |
+| 1 | Mac filter gap: confirmed and fixed by hand | #5244 | merged |
+| 2 | Catalog entries and README contract for every package and product | #5249, #5272 | #5249 merged; #5272 (seven apps) in the merge queue |
+| 3 | Catalog check in CI, new-package initializer template | #5272 | in the merge queue |
+| 4 | Backstage finds catalog files itself | #5256, #5259 | merged |
+| 5 | Generated `packages/README.md` with drift test | #5260 | merged |
+| 6 | Reuse-first rule in `AGENTS.md` | #5247 | merged |
+| 7 | Backstage MCP for every agent tool | #5269 (draft), #5270 | parked: Backstage cannot delegate a read-only restricted token |
+| 8 | Duplicate-code check (warning) | #5252, #5281 | tool merged; CI job waits for James's approval |
+| 9 | Helpers moved into shared packages, one family per PR | #5251, #5255, #5258, #5280, #5282, #5283, #5284, #5267 | seven merged; #5267 waits for James's approval; jq ruled out |
+| 10 | Package renames, one per PR | #5274 | SentryLite merged; design-system in progress; pycompat and mcp-auth need workflow changes |
+| 11 | Blocking duplicate check, generated Mac filter | #5281 | generated filter in #5281; making the check required is a later repo-config change |
 
 ## After
 
-Filled in when the rollout is done, with the same measurements, at a pinned commit.
+Measured at `efe2e0b61` (`origin/main` after #5284, 2026-11-20 17:39 PST) with
+`bazel run //tools/dupcheck -- --families --ref <commit>`. The baseline was re-run with the
+same tool at `aaf841f83` and gave the same totals as the hand count above.
+
+| Helper | Copies | Code lines | Also in another copy |
+|---|---|---|---|
+| `json` | 15 | 8,865 | 6,155 (69%) |
+| `argparse` | 2 | 1,118 | 343 (30%) |
+| `unicode_tables` | 2 | 2,353 | 1,417 (60%) |
+| `pystr` | 7 | 2,832 | 1,201 (42%) |
+| `http` | 5 | 2,550 | 791 (31%) |
+| `jq` | 7 | 2,077 | 1,050 (50%) |
+| `pyjson` | 4 | 1,541 | 622 (40%) |
+| `pyerr` | 5 | 523 | 232 (44%) |
+| `gostd` | 0 | 0 | 0 (0%) |
+| `goexec` | 0 | 0 | 0 (0%) |
+| **Total** | **47** | **21,859** | **11,811 (54%)** |
+
+- Copies 68 → 47; repeated lines 18,277 → 11,811.
+- The seven merged helper PRs: +5,635 / −8,621 lines, net −2,986, tests included.
+- Backstage: 47 components (from 33), 13 of type `library` (from 3). #5272 registers seven
+  more apps.
+- `packages/`: 13 packages, each with a `catalog-info.yaml` (from 2 of 9 folders).
+- `packages/README.md`: generated from the catalog files, with a drift test.
+- New-agent acceptance test: found the right package for 4 of 5 needs. The miss (pycompat's
+  undocumented HTTP client) is fixed in #5290.
+
+Known gaps: most of the 15 remaining JSON copies have their own value and error types; the 7 `jq` copies disagree
+on 10 behaviours; tools built with plain `rustc` in CI need a workflow change to link shared
+crates.
