@@ -853,7 +853,8 @@ extension ComposerModelTests {
         composer.startEditing(original)
         composer.text = "not a draft"
         for _ in 0 ..< 50 { await Task.yield() }
-        XCTAssertTrue(made.sender.savedDrafts.contains("half typed"), "what is typed outside an edit is kept")
+        // The engine keeps text only, so the bold range is written as markers, and opens as bold again.
+        XCTAssertTrue(made.sender.savedDrafts.contains("**half** typed"), "what is typed outside an edit is kept")
         XCTAssertFalse(made.sender.savedDrafts.contains("not a draft"))
         XCTAssertTrue(composer.escape())
 

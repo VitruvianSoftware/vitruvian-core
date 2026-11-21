@@ -111,6 +111,7 @@ public final class ThreadModel: ObservableObject {
         self.sleep = sleep
         composer = ComposerModel(sender: ThreadMessageSender(base: EngineMessageSender(appModel: appModel)), now: now)
         composer.isThreadPaneComposer = true
+        composer.gifProvider = KlipyGIFProvider.fromBundle()
         // The chat's draft is the chat composer's: the pane's composer neither takes it nor saves over it.
         composer.savedDraft = { _ in "" }
         composer.onSettled = { [weak self] in self?.requestRefetch() }

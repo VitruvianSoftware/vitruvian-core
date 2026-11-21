@@ -14,6 +14,43 @@ pub mod run_test_copy;
 mod tests {
     use super::*;
 
+    // --- inject_app_credentials: the KLIPY key ------------------------------------
+
+    #[test]
+    fn klipy_key_accepts_what_is_safe_in_an_address() {
+        assert_eq!(
+            inject_app_credentials::validate_klipy_key("  abc-DEF_123.x~y\n").unwrap(),
+            "abc-DEF_123.x~y"
+        );
+    }
+
+    #[test]
+    fn klipy_key_refuses_the_rest() {
+        for bad in [
+            "", "   ", "a/b", "a?b=c", "a b c", "../x", "a#b", "$(KEY)", "ключ",
+        ] {
+            assert!(
+                inject_app_credentials::validate_klipy_key(bad).is_err(),
+                "{bad:?}"
+            );
+        }
+        assert!(inject_app_credentials::validate_klipy_key(&"a".repeat(201)).is_err());
+        assert!(inject_app_credentials::validate_klipy_key(&"a".repeat(200)).is_ok());
+    }
+
+    #[test]
+    fn klipy_plist_holds_one_string_called_api_key() {
+        let plist = inject_app_credentials::generate_klipy_plist("abc123");
+        assert!(plist.contains("<key>api_key</key>\n\t<string>abc123</string>"));
+        assert!(plist.starts_with("<?xml"));
+    }
+
+    #[test]
+    fn klipy_errors_never_print_the_key() {
+        let err = inject_app_credentials::validate_klipy_key("sekrit/with/slashes").unwrap_err();
+        assert!(!err.contains("sekrit"));
+    }
+
     // --- inject_app_credentials: credential validation -----------------------
 
     #[test]
@@ -274,6 +311,7 @@ mod tests {
                 "BUILD_WORKSPACE_DIRECTORY",
                 "COURIER_TELEGRAM_API_ID",
                 "COURIER_TELEGRAM_API_HASH",
+                "COURIER_KLIPY_API_KEY",
                 "VITRUVIAN_COURIER_SIGN_IDENTITY",
                 "VITRUVIAN_COURIER_SIGN_FLAGS",
                 "PATH",
@@ -360,6 +398,7 @@ mod tests {
         );
         std::env::remove_var("VITRUVIAN_COURIER_SIGN_IDENTITY");
         std::env::remove_var("VITRUVIAN_COURIER_SIGN_FLAGS");
+        std::env::remove_var("COURIER_KLIPY_API_KEY");
 
         let code = inject_app_credentials::run(&[
             "inject-app-credentials".to_string(),
@@ -381,6 +420,47 @@ mod tests {
         assert!(sign_lines[0].contains("--identifier com.vitruviansoftware.courier.engine"));
         assert!(sign_lines[1].ends_with("Vitruvian Courier.app"));
         assert!(sign_lines[1].contains("--entitlements"));
+
+        // No KLIPY key: the injection still succeeds, and the app gets no KlipyApp.plist (GIF search stays hidden).
+        let klipy_plist = app_dir.join("Contents/Resources/KlipyApp.plist");
+        assert!(!klipy_plist.exists(), "no key, no file");
+
+        let run_again = || {
+            inject_app_credentials::run(&[
+                "inject-app-credentials".to_string(),
+                "--entitlements".to_string(),
+                ents.to_string_lossy().to_string(),
+                app_dir.to_string_lossy().to_string(),
+            ])
+        };
+
+        // A KLIPY key in the environment is written as `api_key`.
+        std::env::set_var("COURIER_KLIPY_API_KEY", "klipy-test_key.1");
+        assert_eq!(run_again(), 0);
+        let klipy = std::fs::read_to_string(&klipy_plist).unwrap();
+        assert!(klipy.contains("<key>api_key</key>"));
+        assert!(klipy.contains("<string>klipy-test_key.1</string>"));
+
+        // A key in the store is read when the environment has none.
+        std::env::remove_var("COURIER_KLIPY_API_KEY");
+        let store = work.join("store");
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(store.join("COURIER_KLIPY_API_KEY"), "from-the-store\n").unwrap();
+        std::env::set_var("VITRUVIAN_COURIER_SECRETS_DIR", &store);
+        assert_eq!(run_again(), 0);
+        assert!(std::fs::read_to_string(&klipy_plist)
+            .unwrap()
+            .contains("<string>from-the-store</string>"));
+
+        // A key that is there but wrong fails the injection, as Telegram's would.
+        std::env::set_var("COURIER_KLIPY_API_KEY", "bad/key");
+        assert_eq!(run_again(), 2);
+
+        // Taking the key away again removes the old file, so a rebuilt app never keeps a stale one.
+        std::env::remove_var("COURIER_KLIPY_API_KEY");
+        std::fs::remove_file(store.join("COURIER_KLIPY_API_KEY")).unwrap();
+        assert_eq!(run_again(), 0);
+        assert!(!klipy_plist.exists());
 
         let _ = std::fs::remove_dir_all(&work);
     }

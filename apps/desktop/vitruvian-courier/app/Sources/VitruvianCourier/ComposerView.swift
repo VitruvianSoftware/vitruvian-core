@@ -178,9 +178,20 @@ struct ComposerView: View {
     static var floatingSingleLineHeight: CGFloat { ComposerTextView.minimumHeight + 2 * floatingFieldPadding }
 
     var body: some View {
-        Group {
-            if drawsLiquidGlass { floating } else { bar }
+        // The GIF picker is a strip in the chat, just above the message box (with glass, the box's own side margins).
+        VStack(spacing: 0) {
+            if composer.isGIFPickerPresented {
+                GIFPickerStrip(composer: composer)
+                    .padding(.horizontal, drawsLiquidGlass ? 12 : 0)
+                    .padding(.top, drawsLiquidGlass ? 6 : 0)
+                    .transition(.opacity)
+            }
+            Group {
+                if drawsLiquidGlass { floating } else { bar }
+            }
         }
+        .onChange(of: composer.isGIFPickerPresented) { _, open in if !open { textFocusRequest += 1 } }
+        .onChange(of: composer.isEmojiPickerPresented) { _, open in if !open { textFocusRequest += 1 } }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -645,12 +656,6 @@ struct ComposerView: View {
                 height: floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
             )
         )
-        .background(
-            Color.clear
-                .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-                    GIFPickerPopover(composer: composer)
-                }
-        )
         .overlay(
             Color.clear
                 .allowsHitTesting(false)
@@ -913,14 +918,16 @@ struct ComposerView: View {
     private var emojiToolbarButton: some View {
         ComposerToolbarIconButton(
             symbolName: "face.smiling",
-            tooltip: String(localized: "Emoji & Symbols (⌃⌘Space)"),
+            tooltip: String(localized: "Emoji (⌃⌘Space opens Emoji & Symbols)"),
             accessibilityTitle: String(localized: "Emoji and symbols"),
             accessibilityID: "composer.toolbar.emoji",
             isEnabled: true,
             height: ComposerTextView.minimumHeight
         ) {
-            composer.openEmojiAutocomplete()
-            NSApp.orderFrontCharacterPalette(nil)
+            composer.toggleEmojiPicker()
+        }
+        .popover(isPresented: $composer.isEmojiPickerPresented, arrowEdge: .top) {
+            EmojiPickerPopover(composer: composer)
         }
     }
 
@@ -1358,6 +1365,7 @@ struct ComposerTextView: NSViewRepresentable {
         private var applying = false
         private var styled: (text: String, entities: [TextEntity])?
         private var caretSerial = 0
+        private var conversionSerial = 0
 
         init(_ parent: ComposerTextView) {
             self.parent = parent
@@ -1382,6 +1390,17 @@ struct ComposerTextView: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: location, length: 0))
                 applying = false
                 report(selection: textView.selectedRange())
+            }
+            // Typed markdown that just became formatting: Undo puts its markers back. (The text came in from the
+            // model above, which clears the view's own undo history, so this is the one step it holds.)
+            if let conversion = composer.lastMarkdownConversion, conversion.serial != conversionSerial {
+                conversionSerial = conversion.serial
+                if textView.string == conversion.afterText, let undo = textView.undoManager {
+                    undo.registerUndo(withTarget: self) { target in
+                        MainActor.assumeIsolated { target.composer.undoMarkdownConversion(conversion) }
+                    }
+                    undo.setActionName(String(localized: "Formatting"))
+                }
             }
             restyle()
         }
@@ -1410,14 +1429,17 @@ struct ComposerTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView, !applying else { return }
             if let edit = editing {
-                composer.textChanged(to: textView.string, replacing: edit.range, with: edit.length)
+                composer.textChanged(to: textView.string, replacing: edit.range, with: edit.length,
+                                     composing: textView.hasMarkedText())
             } else if composer.text != textView.string {
                 composer.text = textView.string
             }
             editing = nil
             inEdit = false
             report(selection: textView.selectedRange())
-            restyle()
+            // Typed markdown that became formatting changed the model's text (markers gone): the view takes it now,
+            // with the caret where the model put it, not a moment later.
+            if composer.text != textView.string { sync() } else { restyle() }
             updateHeight()
         }
 
@@ -1780,6 +1802,11 @@ final class PlainTextView: NSTextView {
         guard window?.firstResponder === self, let kind = Self.formatKind(for: event) else {
             return super.performKeyEquivalent(with: event)
         }
+        // ⌘E is Archive everywhere else: here it is Code only over a selection, and with none it stays Archive.
+        if kind == .code, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command],
+           selectedRange().length == 0 {
+            return super.performKeyEquivalent(with: event)
+        }
         return onFormat(kind, false) || super.performKeyEquivalent(with: event)
     }
 
@@ -1799,6 +1826,7 @@ final class PlainTextView: NSTextView {
             switch key {
             case "b": return .bold
             case "i": return .italic
+            case "e": return .code
             default: return nil
             }
         case [.command, .shift]:

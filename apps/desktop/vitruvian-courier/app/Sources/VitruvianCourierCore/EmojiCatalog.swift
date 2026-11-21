@@ -177,8 +177,8 @@ public struct EmojiCatalog: Sendable {
         EmojiCandidate(shortcode: shortcode, glyph: glyph, keywords: keywords)
     }
 
-    public static let defaultEntries: [EmojiCandidate] = [
-        // Smileys & emotion
+    /// Smileys & emotion.
+    private static let smileys: [EmojiCandidate] = [
         item("smile", "😄", ["happy", "joy", "grin", "face"]),
         item("smiley", "😃", ["happy", "joy", "haha"]),
         item("smirk", "😏", ["smug", "sly"]),
@@ -268,8 +268,10 @@ public struct EmojiCatalog: Sendable {
         item("ghost", "👻", ["spooky", "halloween", "boo"]),
         item("alien", "👽", ["ufo", "space"]),
         item("robot", "🤖", ["bot", "ai"]),
+    ]
 
-        // Hearts & symbols
+    /// Hearts & symbols.
+    private static let hearts: [EmojiCandidate] = [
         item("heart", "❤️", ["love", "red"]),
         item("orange_heart", "🧡", ["love", "orange"]),
         item("yellow_heart", "💛", ["love", "yellow"]),
@@ -288,8 +290,10 @@ public struct EmojiCatalog: Sendable {
         item("sweat_drops", "💦", ["water", "workout"]),
         item("dash", "💨", ["wind", "fast", "run"]),
         item("zzz", "💤", ["sleep", "snore"]),
+    ]
 
-        // Hands & people
+    /// Hands & people.
+    private static let hands: [EmojiCandidate] = [
         item("wave", "👋", ["hello", "hi", "bye"]),
         item("raised_back_of_hand", "🤚", ["stop", "hand"]),
         item("raised_hand", "✋", ["highfive", "stop"]),
@@ -324,8 +328,10 @@ public struct EmojiCatalog: Sendable {
         item("shrug", "🤷", ["idk", "whatever", "dunno"]),
         item("facepalm", "🤦", ["ugh", "doh", "mistake"]),
         item("saluting_face", "🫡", ["salute", "respect", "yes sir"]),
+    ]
 
-        // Animals & nature
+    /// Animals & nature.
+    private static let animals: [EmojiCandidate] = [
         item("dog", "🐶", ["puppy", "pet", "woof"]),
         item("cat", "🐱", ["kitty", "meow", "pet"]),
         item("mouse", "🐭", ["rodent", "squeak"]),
@@ -357,8 +363,10 @@ public struct EmojiCatalog: Sendable {
         item("sunny", "☀️", ["sun", "weather", "bright"]),
         item("rainbow", "🌈", ["pride", "colorful", "weather"]),
         item("snowflake", "❄️", ["cold", "winter", "snow"]),
+    ]
 
-        // Food & drink
+    /// Food & drink.
+    private static let food: [EmojiCandidate] = [
         item("coffee", "☕", ["cafe", "espresso", "morning"]),
         item("tea", "🍵", ["green", "matcha", "drink"]),
         item("beer", "🍺", ["Cheers", "brew", "pint"]),
@@ -379,8 +387,10 @@ public struct EmojiCatalog: Sendable {
         item("apple", "🍎", ["fruit", "red"]),
         item("banana", "🍌", ["fruit", "potassium"]),
         item("avocado", "🥑", ["guacamole", "green"]),
+    ]
 
-        // Celebrations, objects & status
+    /// Celebrations, objects & status.
+    private static let objects: [EmojiCandidate] = [
         item("tada", "🎉", ["party", "congrats", "celebrate", "hooray"]),
         item("confetti_ball", "🎊", ["party", "celebrate"]),
         item("balloon", "🎈", ["party", "celebrate"]),
@@ -410,4 +420,30 @@ public struct EmojiCatalog: Sendable {
         item("question", "❓", ["help", "ask"]),
         item("exclamation", "❗", ["important", "alert"]),
     ]
+
+    public static let defaultEntries: [EmojiCandidate] = smileys + hearts + hands + animals + food + objects
+
+    private static func builtIn(_ category: EmojiCategory) -> [EmojiCandidate] {
+        switch category {
+        case .smileys: smileys
+        case .hearts: hearts
+        case .hands: hands
+        case .animals: animals
+        case .food: food
+        case .objects: objects
+        }
+    }
+
+    private static let categoryByShortcode: [String: EmojiCategory] = {
+        var map: [String: EmojiCategory] = [:]
+        for category in EmojiCategory.allCases {
+            for entry in builtIn(category) { map[entry.shortcode] = category }
+        }
+        return map
+    }()
+
+    /// The emoji of one picker category, in the order they are listed. Only built-in emoji belong to a category.
+    public func entries(in category: EmojiCategory) -> [EmojiCandidate] {
+        entries.filter { Self.categoryByShortcode[$0.shortcode] == category }
+    }
 }

@@ -145,6 +145,14 @@ Or create the two files by hand and run `bazel run //tools/sync-env-secrets:bw-p
 
 Keeping the ID out of Bazel is about the build pipeline (no remote-cache entry holding it), not about hiding it from users: the `api_hash` of an app that ships is not a secret, and anyone can read it out of the app.
 
+## KLIPY key (GIF search)
+
+The GIF picker's online search and trending list use KLIPY (the service Beeper uses). KLIPY wants each app to carry its own key. It is handled exactly like the Telegram app ID above, and is never in git or in a Bazel output.
+
+- **Where it lives.** `tools/sync-env-secrets/secrets/vitruvian-courier-release/COURIER_KLIPY_API_KEY` (gitignored, backed up in Bitwarden), and the secret of the same name in the `vitruvian-courier-release` GitHub Environment. Set it with `bazel run //tools/sync-env-secrets:set -- vitruvian-courier-release COURIER_KLIPY_API_KEY`.
+- **How it gets into the app.** The injector (`inject-app-credentials`, which `:install` and `:publish` both run) writes `Contents/Resources/KlipyApp.plist` (`api_key`, a string) from `COURIER_KLIPY_API_KEY` in the environment, else from that store file, before it signs the app. It checks the key (letters, digits and `. _ ~ -`, at most 200) and never prints it. A key that is there but malformed fails the injection; a key that is missing does not: the plist is left out (a stale one from an earlier injection is removed), and the app hides online GIF search and offers recent GIFs and "Choose GIF from Mac…", as before.
+- **What the app does with it.** `KlipyConfiguration` reads the plist at launch. Online search also needs Settings ▸ Messages ▸ "Search GIFs online" (on by default); off, the app asks KLIPY for nothing.
+
 ### Signing
 
 The injector signs the app after it writes the plist, and it signs it the way the Vitruvian desktop app is signed. The point in practice: a Vitruvian Courier installed on this Mac has the same signature every time it is rebuilt, so macOS treats each new build as the same app. Keychain items (the saved sign-ins) and the privacy approvals you gave it carry over, and Gatekeeper sees a real developer's name instead of an unsigned app.
