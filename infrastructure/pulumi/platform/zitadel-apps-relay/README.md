@@ -76,6 +76,27 @@ stack's README explains why).
   apply it without at least one grant in `grantUserIds`, because that
   combination locks everyone out and looks like a server bug at the next login.
 
+## Two sets of clients: old and `-v2`
+
+The multi-user relay refuses any access token that lacks the `relay-user` role
+claim. The clients first created for the relay (`relay-connector`,
+`relay-claude`, and `relay-chatgpt` / `relay-gemini` where configured) were
+made with role assertion off. Zitadel's provider can only change that by
+replacing the client, which deletes the live one and its client id. So the old
+clients are left alone, and each has a sibling with role assertion on:
+`relay-connector-v2`, `relay-claude-v2`, `relay-chatgpt-v2`, `relay-gemini-v2`.
+They have the same type, grants, callbacks and sign-in method. Their ids and
+secrets are the `connectorV2ClientId`, `claudeV2ClientId`, `chatgptV2ClientId`,
+`geminiV2ClientId` and `geminiV2ClientSecret` outputs. `relay-dashboard` already
+asserts roles and is not duplicated.
+
+- **The new relay uses the `-v2` clients and the dashboard.** The current relay
+  keeps working on the old ones until it is replaced.
+- **The old set is removed after the relay moves (Task 13)** and James has
+  reconfigured Claude and reinstalled the connector against the `-v2` ids. A
+  later change deletes the old clients from `main.go`. Until then, both exist,
+  and this change only creates things: no deletes or replaces.
+
 ## Who can sign in
 
 - **James** holds `relay-user` through `grantUserIds` (his account in the

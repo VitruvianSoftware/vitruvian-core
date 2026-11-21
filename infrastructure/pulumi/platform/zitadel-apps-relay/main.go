@@ -42,6 +42,12 @@
 //     confidential client (client_secret_post), matching the sibling
 //     zitadel-apps-mcp-slack client that already works with Gemini.
 //
+//   - every client above also has a "-v2" sibling that asserts the user's roles
+//     in its access tokens (see clientSpecs). The multi-user relay requires the
+//     role claim, but the live clients were made with that off and the provider
+//     can only change it by replacing (= deleting) them. The old set keeps the
+//     current relay working until it is replaced; a later change removes it.
+//
 //   - dashboard: the relay's own server-rendered web page, where signed-in
 //     people see their computers and activity. The relay does the sign-in
 //     (authorization code with PKCE, no secret) and checks the same role claim
@@ -148,7 +154,9 @@ var (
 // Built by pure functions so the decisions are unit-tested; main only turns
 // specs into resources.
 type clientSpec struct {
-	Key          string // resource name suffix and export prefix
+	Key string // resource name suffix, e.g. "connector-v2"
+	// ExportKey prefixes the stack outputs, e.g. "connectorV2" gives connectorV2ClientId.
+	ExportKey    string
 	AppType      string
 	GrantTypes   []string
 	RedirectURIs []string
@@ -174,6 +182,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 	specs := []clientSpec{
 		{
 			Key:          "connector",
+			ExportKey:    "connector",
 			AppType:      "OIDC_APP_TYPE_NATIVE",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_DEVICE_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: []string{},
@@ -181,6 +190,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 		},
 		{
 			Key:          "claude",
+			ExportKey:    "claude",
 			AppType:      "OIDC_APP_TYPE_WEB",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: []string{claudeCallback},
@@ -194,6 +204,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 	if len(chatgpt) > 0 {
 		specs = append(specs, clientSpec{
 			Key:          "chatgpt",
+			ExportKey:    "chatgpt",
 			AppType:      "OIDC_APP_TYPE_WEB",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: chatgpt,
@@ -207,11 +218,23 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 	if len(gemini) > 0 {
 		specs = append(specs, clientSpec{
 			Key:          "gemini",
+			ExportKey:    "gemini",
 			AppType:      "OIDC_APP_TYPE_WEB",
 			GrantTypes:   []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
 			RedirectURIs: gemini,
 			AuthMethod:   authPost,
 		})
+	}
+	// A role-asserting sibling of every client above. The live clients were
+	// created with accessTokenRoleAssertion off, and the provider cannot change
+	// that without replacing (= deleting) them, so the multi-user relay gets its
+	// own copies instead. Same type, grants, redirects and auth method.
+	for _, old := range append([]clientSpec(nil), specs...) {
+		v2 := old
+		v2.Key = old.Key + "-v2"
+		v2.ExportKey = old.ExportKey + "V2"
+		v2.AccessTokenRoleAssertion = true
+		specs = append(specs, v2)
 	}
 	// The dashboard's callback is a fixed constant, but it goes through the same
 	// check as the configured ones so a typo in it can never ship.
@@ -221,6 +244,7 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 	}
 	specs = append(specs, clientSpec{
 		Key:                      "dashboard",
+		ExportKey:                "dashboard",
 		AppType:                  "OIDC_APP_TYPE_WEB",
 		GrantTypes:               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
 		RedirectURIs:             dashboard,
@@ -451,15 +475,15 @@ func main() {
 			// [secret]. A client id is not a credential: it goes into the
 			// relay's config and the AI apps' connector settings, so it is
 			// reported in plain text.
-			ctx.Export(s.Key+"ClientId", pulumi.Unsecret(app.ClientId))
+			ctx.Export(s.ExportKey+"ClientId", pulumi.Unsecret(app.ClientId))
 			if s.AuthMethod != authNone {
 				// Stays a secret output: encrypted in state, masked in logs.
 				// Read it with the stack target's --show-secrets.
-				ctx.Export(s.Key+"ClientSecret", app.ClientSecret)
+				ctx.Export(s.ExportKey+"ClientSecret", app.ClientSecret)
 			}
 			// Exported because it is ignored above, so Pulumi never reconciles
 			// it; the relay's local JWT validation depends on it being JWT.
-			ctx.Export(s.Key+"AccessTokenType", app.AccessTokenType)
+			ctx.Export(s.ExportKey+"AccessTokenType", app.AccessTokenType)
 		}
 
 		ctx.Export("projectId", project.ID())

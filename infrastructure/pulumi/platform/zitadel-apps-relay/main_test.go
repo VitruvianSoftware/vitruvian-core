@@ -30,8 +30,8 @@ func TestClientSpecsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 3 {
-		t.Fatalf("want connector, claude and dashboard only, got %d clients", len(specs))
+	if len(specs) != 5 {
+		t.Fatalf("want connector, claude, their two -v2 siblings and the dashboard, got %d clients", len(specs))
 	}
 	conn, claude := specs[0], specs[1]
 	if conn.Key != "connector" || conn.AppType != "OIDC_APP_TYPE_NATIVE" || len(conn.RedirectURIs) != 0 {
@@ -57,7 +57,7 @@ func TestClientSpecsChatGPT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 4 || specs[2].Key != "chatgpt" {
+	if len(specs) != 7 || specs[2].Key != "chatgpt" {
 		t.Fatalf("want a chatgpt client third, got %+v", specs)
 	}
 	want := []string{"https://chatgpt.com/connector/oauth/abc123", "https://chatgpt.com/connector_platform_oauth_redirect"}
@@ -72,7 +72,7 @@ func TestClientSpecsGemini(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 4 || specs[2].Key != "gemini" {
+	if len(specs) != 7 || specs[2].Key != "gemini" {
 		t.Fatalf("want a gemini client third, got %+v", specs)
 	}
 	g := specs[2]
@@ -256,5 +256,57 @@ func TestInviteUserIDsMayBeEmpty(t *testing.T) {
 	got, err := resolveGrantUserIDs(false, " 1, 2 ,,3", "relay-user")
 	if err != nil || !reflect.DeepEqual(got, []string{"1", "2", "3"}) {
 		t.Errorf("got %v %v", got, err)
+	}
+}
+
+// The live clients can't be changed to assert roles without being replaced, so
+// each has a -v2 sibling that does. Old ones must stay exactly as they were.
+func TestRoleAssertingSiblings(t *testing.T) {
+	cb := "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc"
+	specs, err := clientSpecs("https://chatgpt.com/connector/oauth/abc", cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]clientSpec{}
+	for _, sp := range specs {
+		if _, dup := byKey[sp.Key]; dup {
+			t.Fatalf("duplicate client key %q", sp.Key)
+		}
+		byKey[sp.Key] = sp
+	}
+	for _, base := range []string{"connector", "claude", "chatgpt", "gemini"} {
+		old, ok := byKey[base]
+		if !ok {
+			t.Fatalf("missing live client %q", base)
+		}
+		v2, ok := byKey[base+"-v2"]
+		if !ok {
+			t.Fatalf("missing role-asserting sibling %q", base+"-v2")
+		}
+		if old.AccessTokenRoleAssertion {
+			t.Errorf("%s: the live client must stay as it is (role assertion off)", base)
+		}
+		if old.ExportKey != base || v2.ExportKey != base+"V2" {
+			t.Errorf("%s: export keys %q / %q", base, old.ExportKey, v2.ExportKey)
+		}
+		if !v2.AccessTokenRoleAssertion {
+			t.Errorf("%s-v2 must assert roles in access tokens", base)
+		}
+		if v2.AppType != old.AppType || v2.AuthMethod != old.AuthMethod ||
+			!reflect.DeepEqual(v2.GrantTypes, old.GrantTypes) ||
+			!reflect.DeepEqual(v2.RedirectURIs, old.RedirectURIs) ||
+			!reflect.DeepEqual(v2.PostLogoutURIs, old.PostLogoutURIs) {
+			t.Errorf("%s-v2 differs from %s beyond role assertion:\n old %+v\n v2  %+v", base, base, old, v2)
+		}
+	}
+	if !byKey["dashboard"].AccessTokenRoleAssertion {
+		t.Error("dashboard must assert roles")
+	}
+	// Every client except the old four asserts roles; the old four do not.
+	for _, sp := range specs {
+		isOld := sp.Key == "connector" || sp.Key == "claude" || sp.Key == "chatgpt" || sp.Key == "gemini"
+		if sp.AccessTokenRoleAssertion == isOld {
+			t.Errorf("%s: roleAssertion=%v is wrong", sp.Key, sp.AccessTokenRoleAssertion)
+		}
 	}
 }
