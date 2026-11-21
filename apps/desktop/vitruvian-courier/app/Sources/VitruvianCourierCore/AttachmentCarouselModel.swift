@@ -57,6 +57,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
     public let ts: Int64
     public let caption: String
     public let viewOnce: Bool
+    public let reactions: [ReactionChip]
 
     public init(
         eventID: String,
@@ -77,7 +78,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         mine: Bool = false,
         ts: Int64 = 0,
         caption: String = "",
-        viewOnce: Bool = false
+        viewOnce: Bool = false,
+        reactions: [ReactionChip] = []
     ) {
         self.eventID = eventID
         self.roomID = roomID
@@ -98,6 +100,7 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
         self.ts = ts
         self.caption = caption
         self.viewOnce = viewOnce
+        self.reactions = reactions
     }
 
     /// Creates a `CarouselItem` from a `TimelineMessage` if it is a non-view-once image, video or sticker.
@@ -131,7 +134,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
             mine: message.mine,
             ts: message.ts,
             caption: captionText,
-            viewOnce: false
+            viewOnce: false,
+            reactions: message.reactions
         )
     }
 
@@ -279,7 +283,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                                 mine: msg.mine,
                                 ts: msg.ts,
                                 caption: galleryItem.caption != galleryItem.fileName ? galleryItem.caption : "",
-                                viewOnce: false
+                                viewOnce: false,
+                                reactions: galleryItem.reactions
                             )
                         )
                     }
@@ -288,6 +293,58 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                 }
             default:
                 break
+            }
+        }
+        return result
+    }
+
+    /// This item with `reactions` as its reactions.
+    public func withReactions(_ reactions: [ReactionChip]) -> CarouselItem {
+        CarouselItem(
+            eventID: eventID,
+            roomID: roomID,
+            kind: kind,
+            mediaPath: mediaPath,
+            thumbnailPath: thumbnailPath,
+            fileName: fileName,
+            mimeType: mimeType,
+            width: width,
+            height: height,
+            blurhash: blurhash,
+            durationMS: durationMS,
+            isGIF: isGIF,
+            sender: sender,
+            senderName: senderName,
+            senderAvatarPath: senderAvatarPath,
+            mine: mine,
+            ts: ts,
+            caption: caption,
+            viewOnce: viewOnce,
+            reactions: reactions
+        )
+    }
+
+    /// `items` with each one's reactions taken from `timelineItems`. An item whose event the timeline doesn't have
+    /// (older media paged in from the engine) keeps the reactions it has.
+    public static func applyingReactions(from timelineItems: [TimelineItem], to items: [CarouselItem]) -> [CarouselItem] {
+        let byEvent = reactionsByEventID(from: timelineItems)
+        return items.map { item in
+            guard let reactions = byEvent[item.eventID], reactions != item.reactions else { return item }
+            return item.withReactions(reactions)
+        }
+    }
+
+    /// Collects reactions keyed by event ID for single media messages and gallery tiles from `timelineItems`.
+    public static func reactionsByEventID(from timelineItems: [TimelineItem]) -> [String: [ReactionChip]] {
+        var result: [String: [ReactionChip]] = [:]
+        for timelineItem in timelineItems {
+            guard case let .message(msg) = timelineItem else { continue }
+            if !msg.galleryItems.isEmpty {
+                for galleryItem in msg.galleryItems {
+                    result[galleryItem.id] = galleryItem.reactions
+                }
+            } else {
+                result[msg.id] = msg.reactions
             }
         }
         return result
@@ -346,7 +403,8 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
                 mine: existing.mine || incoming.mine,
                 ts: existing.ts > 0 ? existing.ts : incoming.ts,
                 caption: !existing.caption.isEmpty ? existing.caption : incoming.caption,
-                viewOnce: false
+                viewOnce: false,
+                reactions: !existing.reactions.isEmpty ? existing.reactions : incoming.reactions
             )
         }
 
@@ -364,12 +422,14 @@ public struct CarouselItem: Identifiable, Equatable, Sendable {
             }
         }
 
-        return byID.values.sorted { lhs, rhs in
+        let sorted = byID.values.sorted { lhs, rhs in
             if lhs.ts != rhs.ts {
                 return lhs.ts < rhs.ts
             }
             return lhs.eventID < rhs.eventID
         }
+        // Media that came in as a search or paging hit carries no reactions of its own: take them from the timeline.
+        return applyingReactions(from: timelineItems, to: sorted)
     }
 }
 
@@ -409,6 +469,7 @@ public final class AttachmentCarouselModel: ObservableObject {
     private var pagedHits: [MediaHit] = []
     private var requestedEventID: String?
     private var userHasNavigated = false
+    private var timelineSubscriptions: [AnyCancellable] = []
 
     public var isPresented: Bool {
         !items.isEmpty && items.indices.contains(currentIndex)
@@ -438,6 +499,26 @@ public final class AttachmentCarouselModel: ObservableObject {
         self.appModel = appModel
         self.conversation = conversation
         onSelectedEventChanged = { [weak conversation] id in conversation?.activeLightboxMessageID = id }
+        // The chips follow the timeline while the viewer is open: my own reaction from the React button and ones that
+        // arrive from others. `@Published` hands over the new value before the property changes, so use that.
+        timelineSubscriptions = [
+            conversation.$items.dropFirst().sink { [weak self, weak conversation] chatItems in
+                guard let conversation else { return }
+                self?.syncReactions(from: chatItems + conversation.thread.items)
+            },
+            conversation.thread.$items.dropFirst().sink { [weak self, weak conversation] threadItems in
+                guard let conversation else { return }
+                self?.syncReactions(from: conversation.items + threadItems)
+            },
+        ]
+    }
+
+    private func syncReactions(from timelineItems: [TimelineItem]) {
+        guard !items.isEmpty else { return }
+        let updated = CarouselItem.applyingReactions(from: timelineItems, to: items)
+        if updated != items {
+            items = updated
+        }
     }
 
     /// Opens the carousel with `items`, selecting `selectedEventID`, then widens it to the chat's full list of

@@ -160,6 +160,40 @@ jobs:
         with:
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
+      # GitHub refuses a branch update while its PR is in the merge queue. A
+      # fix that lands on main while the release PR is queued then makes
+      # release-please's push fail: the PR merges with stale notes and a tag
+      # that holds the newer code (Courier 0.3.32 shipped #5268 and #5264 and
+      # listed neither). Out of the queue it can be refreshed. After
+      # release-please, `rearm` puts back a PR that release-please had nothing
+      # to push to. See tools/ci/src/release_pr_dequeue/README.md.
+      # The release branch is named for the package's `component` in its
+      # release-please config: release-please--branches--main--components--<component>.
+      - name: Find this package's release-please component
+        id: component
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          component="$(jq -er '.packages[env.PACKAGE].component' "${PACKAGE}/release-please-config.json")"
+          echo "name=${component}" >> "$GITHUB_OUTPUT"
+
+      - name: Build //tools/ci:release_pr_dequeue (no Bazel on this job)
+        id: dequeue-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: release_pr_dequeue
+
+      - name: Take a stale release PR out of the merge queue
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          COMPONENT: ${{ steps.component.outputs.name }}
+          CODE_PATH: ${{ matrix.package }}
+          MAIN_SHA: ${{ github.sha }}
+          DEQUEUE_BIN: ${{ steps.dequeue-bin.outputs.path }}
+        run: '"$DEQUEUE_BIN"'
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
@@ -167,6 +201,18 @@ jobs:
           config-file: ${{ matrix.package }}/release-please-config.json
           manifest-file: ${{ matrix.package }}/.release-please-manifest.json
           target-branch: main
+
+      # release-please pushes only when the release PR's text changes, so a PR
+      # that was dequeued for a commit that adds nothing to its notes would stay
+      # out of the queue. Put it back (a held, draft or already-armed PR is left alone).
+      - name: Put the release PR back in the merge queue
+        if: ${{ !cancelled() && steps.dequeue-bin.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          COMPONENT: ${{ steps.component.outputs.name }}
+          DEQUEUE_BIN: ${{ steps.dequeue-bin.outputs.path }}
+        run: '"$DEQUEUE_BIN" rearm'
 
       # apps/suites/vitruvian-tabs/extension only: when the extension release is cut, build the
       # Chrome zip and attach it to that GitHub Release. Gated on this matrix

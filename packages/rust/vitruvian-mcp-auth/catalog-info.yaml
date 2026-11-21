@@ -1,0 +1,39 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vitruvian-mcp-auth
+  description: OAuth 2.1 bearer token verifier, JWKS cache, and RFC 9728 Protected Resource Metadata builder for Zitadel-backed MCP servers.
+  tags:
+    - rust
+    - auth
+    - oidc
+    - jwt
+    - mcp
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/rust/vitruvian-mcp-auth
+    vitruvian.dev/bazel-target: //packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth, //packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth_slack_mcp_hub
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team

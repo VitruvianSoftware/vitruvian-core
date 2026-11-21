@@ -27,7 +27,6 @@
 /apps/antigravity/ @VitruvianSoftware/platform-team
 /packages/android-crash-privacy/ @VitruvianSoftware/platform-team
 /packages/design-system/ @VitruvianSoftware/platform-team
-/packages/design-system-android/ @VitruvianSoftware/platform-team
 /packages/orchestrator-core/ @VitruvianSoftware/platform-team
 /packages/pulumi/ @VitruvianSoftware/platform-team
 /tools/agent-guard/ @VitruvianSoftware/platform-team
@@ -46,6 +45,7 @@
 /apps/web/mini-party/ @VitruvianSoftware/platform-team
 /apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
 /apps/web/vitruviansoftware-dev/ @VitruvianSoftware/platform-team
+/packages/design-system/android/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/ext-marketplace/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/gh-watch/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/hookify/ @VitruvianSoftware/platform-team

@@ -46,7 +46,7 @@ ts_project(
     root_dir = "src",
     source_map = True,
     # Bare `swc` does not inherit this target's own out_dir/root_dir (custom
-    # transpilers aren't passed them -- see packages/design-system/BUILD for
+    # transpilers aren't passed them -- see packages/design-system/web/BUILD for
     # the full explanation), so SWC would otherwise land real JS output
     # mirroring root_dir in place instead of under dist/, alongside only the
     # tsc-emitted declarations. Currently latent here (only type-only imports

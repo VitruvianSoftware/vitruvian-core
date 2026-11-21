@@ -32,12 +32,14 @@ pub use vitruvian_pycompat::argparse;
 pub mod drift;
 pub mod github;
 pub mod http;
-pub mod json;
+pub use vitruvian_pycompat::json;
 pub mod pyerr;
-pub mod pystr;
+pub use vitruvian_pycompat::pystr;
 
 #[cfg(test)]
 mod drift_test;
+#[cfg(test)]
+mod json_test;
 
 use std::io::{Read, Write};
 use std::path::Path;

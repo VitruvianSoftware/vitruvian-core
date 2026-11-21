@@ -104,8 +104,11 @@ runs:
             exit 1
             ;;
         esac
-        src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
-        # Each dep: a known name at its one path, std-only (built with no --extern).
+        root="${SOURCE_ROOT:-$GITHUB_WORKSPACE}"
+        src="$root/tools"
+        # Each dep: a known name at its one path. Any dep whose sources use
+        # vitruvian_pycompat is built via rustc-build.sh --lib so
+        # libvitruvian_pycompat.rlib is compiled into $out and linked in.
         # Split on whitespace into an array, so nothing in DEPS is globbed.
         dep_list=()
         read -r -a dep_list <<<"${DEPS:-}" || true
@@ -142,7 +145,11 @@ runs:
         rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
         externs=()
         for i in "${!dep_names[@]}"; do
-          rustc --edition 2021 -O --crate-type lib --crate-name "${dep_names[$i]}" "${dep_srcs[$i]}" -o "$out/lib${dep_names[$i]}.rlib"
+          if [ -n "$(find -L "$(dirname "${dep_srcs[$i]}")" -name '*.rs' -exec grep -l vitruvian_pycompat {} + 2>/dev/null || true)" ]; then
+            bash "$root/packages/rust/vitruvian-pycompat/rustc-build.sh" --lib "$out" "${dep_names[$i]}" "${dep_srcs[$i]}" -O
+          else
+            rustc --edition 2021 -O --crate-type lib --crate-name "${dep_names[$i]}" "${dep_srcs[$i]}" -o "$out/lib${dep_names[$i]}.rlib"
+          fi
           externs+=(--extern "${dep_names[$i]}=$out/lib${dep_names[$i]}.rlib")
         done
         rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" ${externs[@]+"${externs[@]}"} -o "$out/lib$TOOL.rlib"

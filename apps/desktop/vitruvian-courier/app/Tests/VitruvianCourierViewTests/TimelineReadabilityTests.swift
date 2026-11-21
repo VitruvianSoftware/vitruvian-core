@@ -315,6 +315,51 @@ final class TimelineReadabilityTests: XCTestCase {
         }
     }
 
+    func testTimeAndEditedTuckIntoLastLineWhenRoomExistsAndWrapWhenFull() {
+        let reserved = MessageRowView.reservedMeta("Edited  11:47 PM")
+        XCTAssertFalse(reserved.contains(" "), "reservedMeta must replace spaces with NBSP so timestamp never splits mid-line")
+        XCTAssertTrue(reserved.contains("\u{2060}\u{200A}"), "trailing hair spaces stay glued via word joiner")
+
+        func addedHeight(_ event: Event, width: CGFloat) -> CGFloat {
+            fittingHeight(event, showTimes: true, width: width) - fittingHeight(event, showTimes: false, width: width)
+        }
+
+        // 1. Short message + Edited tucks onto the same line.
+        let shortEdited = [
+            Fixture.text("$short-ed", "Hi!", mine: false, ts: 5),
+            Fixture.edit("$short-ed-e", of: "$short-ed", "Hey!", ts: 4),
+        ]
+        let shortItem = Fixture.items(shortEdited).first { if case .message = $0 { true } else { false } }!
+        let shortWithTime = NSHostingView(rootView: TimelineItemView(
+            item: shortItem, isSelected: false, showsSent: false,
+            actions: { var a = VitruvianCourier.MessageActions(now: { Fixture.now }); a.showMessageTimestamps = true; return a }(),
+            ui: MessageUI()
+        ).frame(width: 420).fixedSize(horizontal: false, vertical: true)).fittingSize.height
+        let shortWithoutTime = NSHostingView(rootView: TimelineItemView(
+            item: shortItem, isSelected: false, showsSent: false,
+            actions: { var a = VitruvianCourier.MessageActions(now: { Fixture.now }); a.showMessageTimestamps = false; return a }(),
+            ui: MessageUI()
+        ).frame(width: 420).fixedSize(horizontal: false, vertical: true)).fittingSize.height
+        XCTAssertLessThan(shortWithTime - shortWithoutTime, 1, "short edited text tucks Edited + time onto line 1")
+
+        // 2. Multi-line message with a short last line keeps the time on that last line.
+        let multiShortEnd = Fixture.text("$multi-short", "First part of the message wraps onto another line\ndone.", mine: false, ts: 5)
+        XCTAssertLessThan(addedHeight(multiShortEnd, width: 420), 1, "short last line shares its line with the time")
+
+        // 3. Message whose last line fills the available width wraps the time onto a new line below.
+        let tight = Fixture.text("$tight", "This line fills almost all of the narrow bubble width", mine: false, ts: 5)
+        XCTAssertGreaterThan(addedHeight(tight, width: 250), lineHeight(11) * 0.8, "full last line wraps the time below")
+
+        // 4. Bullet list whose last item has room tucks the time onto that last bullet line.
+        let listEvent = Fixture.event("$list", mine: false, ts: 5, content: [
+            "msgtype": .string("m.text"),
+            "body": .string("Bread\nMilk"),
+            "format": .string("org.matrix.custom.html"),
+            "formatted_body": .string("<ul><li>Bread</li><li>Milk</li></ul>"),
+        ])
+        XCTAssertLessThan(addedHeight(listEvent, width: 420), 1, "bullet list with room tucks time onto its last item")
+    }
+
     // MARK: Thread line
 
     /// How much red (the accent) a view draws, as the sum of how far each pixel's red is above its green and blue.

@@ -1727,11 +1727,14 @@ describe("security hardening (items 1, 2, 3, 5, 6)", () => {
           { sessionID: "ses_scout", agent: "scout" },
         );
 
-      assert.equal(promptCalls.length, 2);
+      // The post mentions @lead and @atlas (no session of its own): the lead
+      // gets it once, carrying the line to wake atlas.
+      assert.equal(promptCalls.length, 1);
       const leadWake = promptCalls.find((c) =>
         c.text.includes("Wake @atlas and pass it this post."),
       );
       assert.ok(leadWake, "expected lead-routed wake for @atlas");
+      assert.equal(leadWake.sessionID, "ses_root");
       const lines = leadWake.text.split("\n");
       assert.equal(
         lines[0],
@@ -3398,6 +3401,7 @@ describe("team tool and panel labels", () => {
       assert.equal(absentPayload.file, null);
       assert.deepEqual(absentPayload.errors, []);
       assert.equal(absentPayload.roles.length, 10);
+      assert.equal(absentPayload.roles[0].engine, "native");
       assert.equal(
         absentPayload.roles[0].model,
         TIER_DEFAULTS.tiers.lead.opencode,
@@ -3411,17 +3415,23 @@ describe("team tool and panel labels", () => {
       assert.equal(absentPayload.roles[1].agent, "developer");
       assert.equal(absentPayload.roles[1].dispatch, "developer");
       assert.equal(absentPayload.roles[1].source, "generic");
+      assert.equal(absentPayload.roles[1].engine, "native");
       assert.equal(
         absentPayload.roles[1].model,
-        TIER_DEFAULTS.tiers.build.opencode,
+        TIER_DEFAULTS.tiers.build.native.opencode,
       );
+      assert.equal(absentPayload.roles[1].model, null);
       assert.equal(
         absentPayload.roles[1].effort,
-        TIER_DEFAULTS.tiers.build.effort,
+        TIER_DEFAULTS.tiers.build.native.effort,
       );
       assert.equal(
         absentPayload.roles[1].gemini,
         TIER_DEFAULTS.tiers.build.gemini,
+      );
+      assert.equal(
+        absentPayload.roles.find((r) => r.role === "docs").effort,
+        TIER_DEFAULTS.tiers.light.native.effort,
       );
 
       // 2. Valid file
@@ -3457,6 +3467,10 @@ describe("team tool and panel labels", () => {
         "wren",
       );
       assert.equal(
+        validPayload.roles.find((r) => r.role === "developer").engine,
+        null,
+      );
+      assert.equal(
         validPayload.roles.find((r) => r.role === "developer").model,
         "anthropic/claude-haiku-5-5",
       );
@@ -3475,6 +3489,95 @@ describe("team tool and panel labels", () => {
       assert.equal(
         validPayload.roles.find((r) => r.role === "release").source,
         "off",
+      );
+      assert.equal(
+        validPayload.roles.find((r) => r.role === "release").engine,
+        null,
+      );
+
+      // 2b. Engine precedence selects driver vs native defaults on OpenCode;
+      //     mapped team rows keep explicit-or-null model/effort
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          engine: "gemini",
+          tiers: { light: { engine: "native" } },
+          roles: {
+            lead: { agent: "beacon", engine: "gemini" },
+            build: { agent: "forge" },
+            qa: { engine: "native" },
+            security: { opencode: "openai/gpt-5" },
+            release: "off",
+          },
+        }),
+        "utf8",
+      );
+      const enginePayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.deepEqual(enginePayload.errors, []);
+      const byRole = (role) => enginePayload.roles.find((r) => r.role === role);
+      assert.equal(byRole("lead").source, "team");
+      assert.equal(byRole("lead").engine, "native");
+      assert.equal(byRole("lead").model, TIER_DEFAULTS.tiers.lead.opencode);
+      assert.equal(byRole("developer").source, "generic");
+      assert.equal(byRole("developer").engine, "gemini");
+      assert.equal(
+        byRole("developer").model,
+        TIER_DEFAULTS.tiers.build.opencode,
+      );
+      assert.equal(
+        byRole("developer").effort,
+        TIER_DEFAULTS.tiers.build.effort,
+      );
+      assert.equal(byRole("build").source, "team");
+      assert.equal(byRole("build").engine, "gemini");
+      assert.equal(byRole("build").model, null);
+      assert.equal(byRole("build").effort, null);
+      assert.equal(byRole("qa").engine, "native");
+      assert.equal(byRole("qa").model, null);
+      assert.equal(byRole("qa").effort, TIER_DEFAULTS.tiers.deep.native.effort);
+      assert.equal(byRole("security").engine, "gemini");
+      assert.equal(byRole("security").model, "openai/gpt-5");
+      assert.equal(byRole("docs").engine, "native");
+      assert.equal(byRole("docs").model, null);
+      assert.equal(
+        byRole("docs").effort,
+        TIER_DEFAULTS.tiers.light.native.effort,
+      );
+      assert.equal(byRole("release").engine, null);
+
+      // 2c. Mapped team role with no engine anywhere gets engine: null and explicit-or-null model/effort
+      fs.writeFileSync(
+        teamPath,
+        JSON.stringify({
+          roles: {
+            developer: { agent: "wren" },
+            qa: { agent: "scout", engine: "native" },
+          },
+        }),
+        "utf8",
+      );
+      const teamNullPayload = JSON.parse(
+        (await teamTool.execute({}, { sessionID: "ses_root" })).content,
+      );
+      assert.deepEqual(teamNullPayload.errors, []);
+      const byRoleNull = (role) =>
+        teamNullPayload.roles.find((r) => r.role === role);
+      assert.equal(byRoleNull("developer").source, "team");
+      assert.equal(byRoleNull("developer").engine, null);
+      assert.equal(byRoleNull("developer").model, null);
+      assert.equal(byRoleNull("developer").effort, null);
+      assert.equal(byRoleNull("qa").source, "team");
+      assert.equal(byRoleNull("qa").engine, "native");
+      assert.equal(byRoleNull("qa").model, null);
+      assert.equal(byRoleNull("qa").effort, null);
+      assert.equal(byRoleNull("infrastructure").source, "generic");
+      assert.equal(byRoleNull("infrastructure").engine, "native");
+      assert.equal(byRoleNull("infrastructure").model, null);
+      assert.equal(
+        byRoleNull("infrastructure").effort,
+        TIER_DEFAULTS.tiers.build.native.effort,
       );
 
       // 3. Invalid file -> reports errors and falls back to generic defaults
@@ -3523,6 +3626,7 @@ describe("team tool and panel labels", () => {
         "dispatch",
         "source",
         "tier",
+        "engine",
         "gemini",
         "model",
         "effort",
@@ -4194,5 +4298,1672 @@ describe("team tool and panel labels", () => {
       tuiSrc,
       /flowAgentRoleMap\(flow\)\s*\?\?\s*readAgentRoles\(\)/,
     );
+  });
+
+  it("team_setup tool handles init, OpenCode starter agents, all-or-nothing conflicts, sync across harnesses, security checks, check:true, and repo no-op", async (t) => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-team-setup-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const fallbackRepo = path.join(tmpDir, "fallback-repo");
+    fs.mkdirSync(fallbackRepo, { recursive: true });
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+    const readSpy = t.mock.method(fs, "readSync");
+
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: fallbackRepo,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const setupTool = tools.get("team_setup");
+      assert.ok(setupTool, "team_setup tool must be registered");
+      assert.deepEqual(setupTool.input?.properties?.action?.enum, [
+        "init",
+        "sync",
+      ]);
+      assert.equal(setupTool.input?.additionalProperties, false);
+
+      // 1. Root validation matches team tool.
+      const fileAsRoot = path.join(tmpDir, "not-a-dir.txt");
+      fs.writeFileSync(fileAsRoot, "hi", "utf8");
+      for (const badRoot of [
+        "rel/path",
+        ".",
+        path.relative(process.cwd(), tmpDir) || ".",
+        path.join(tmpDir, "missing"),
+        fileAsRoot,
+        "",
+        null,
+        123,
+      ]) {
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              { action: "init", root: badRoot },
+              { sessionID: "ses_root" },
+            ),
+          { message: "root must be an absolute path to a directory" },
+        );
+      }
+
+      // 2. Empty init creates starter team.json and refuses overwrite.
+      const emptyRepo = path.join(tmpDir, "empty-repo");
+      fs.mkdirSync(emptyRepo, { recursive: true });
+      const initEmpty = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "init", root: emptyRepo },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      assert.equal(initEmpty.action, "init");
+      assert.deepEqual(initEmpty.files, [
+        { path: ".agents/team.json", status: "created", reason: null },
+      ]);
+      assert.deepEqual(
+        JSON.parse(
+          fs.readFileSync(path.join(emptyRepo, ".agents", "team.json"), "utf8"),
+        ),
+        {
+          $schema:
+            "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+          notes: "",
+          roles: {},
+        },
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "init", root: emptyRepo },
+            { sessionID: "ses_root" },
+          ),
+        /already exists/,
+      );
+
+      // 3. Init rejects lead, unknown roles, prototype keys; partial conflict is all-or-nothing.
+      const partialRepo = path.join(tmpDir, "partial-repo");
+      fs.mkdirSync(path.join(partialRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(partialRepo, ".opencode", "agents", "team-qa.md"),
+        "existing qa\n",
+        "utf8",
+      );
+      for (const badAgents of [
+        ["lead"],
+        ["wizard"],
+        ["constructor"],
+        ["__proto__"],
+      ]) {
+        await assert.rejects(() =>
+          setupTool.execute(
+            { action: "init", root: partialRepo, agents: badAgents },
+            { sessionID: "ses_root" },
+          ),
+        );
+      }
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "init", root: partialRepo, agents: ["developer", "qa"] },
+            { sessionID: "ses_root" },
+          ),
+        /team-qa\.md already exists/,
+      );
+      assert.equal(
+        fs.existsSync(path.join(partialRepo, ".agents", "team.json")),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(
+          path.join(partialRepo, ".opencode", "agents", "team-developer.md"),
+        ),
+        false,
+      );
+
+      // 4. Init with agents copies ONLY calling harness (.opencode/agents/) starter files and sync round-trips.
+      const starterRepo = path.join(tmpDir, "starter-repo");
+      fs.mkdirSync(starterRepo, { recursive: true });
+      const starterPayload = JSON.parse(
+        (
+          await setupTool.execute(
+            {
+              action: "init",
+              root: starterRepo,
+              agents: ["developer", "qa"],
+            },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      assert.deepEqual(
+        starterPayload.files.map((f) => f.path),
+        [
+          ".opencode/agents/team-developer.md",
+          ".opencode/agents/team-qa.md",
+          ".agents/team.json",
+        ],
+      );
+      assert.equal(
+        fs.existsSync(
+          path.join(starterRepo, ".claude", "agents", "team-developer.md"),
+        ),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(
+          path.join(starterRepo, ".agents", "agents", "team-developer.md"),
+        ),
+        false,
+      );
+      const starterDevText = fs.readFileSync(
+        path.join(starterRepo, ".opencode", "agents", "team-developer.md"),
+        "utf8",
+      );
+      assert.match(starterDevText, /^name: team-developer$/m);
+      assert.doesNotMatch(starterDevText, /Do not edit directly/);
+
+      // Edit team.json to set explicit opencode model/effort and sync.
+      fs.writeFileSync(
+        path.join(starterRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "team-developer",
+              engine: "native",
+              opencode: "anthropic/claude-opus-5-5",
+              effort: "max",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const checkStarter = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: starterRepo, check: true },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      assert.equal(
+        checkStarter.files.find(
+          (f) => f.path === ".opencode/agents/team-developer.md",
+        )?.status,
+        "changed",
+      );
+      assert.equal(
+        fs.readFileSync(
+          path.join(starterRepo, ".opencode", "agents", "team-developer.md"),
+          "utf8",
+        ),
+        starterDevText,
+      );
+
+      await setupTool.execute(
+        { action: "sync", root: starterRepo },
+        { sessionID: "ses_root" },
+      );
+      assert.match(
+        fs.readFileSync(
+          path.join(starterRepo, ".opencode", "agents", "team-developer.md"),
+          "utf8",
+        ),
+        /^model: anthropic\/claude-opus-5-5\nreasoningEffort: max$/m,
+      );
+
+      // 5. Sync across all 3 harnesses, oversize without fs.readSync, symlinks, antigravity-model, no-frontmatter, generated.
+      const syncRepo = path.join(tmpDir, "sync-repo");
+      fs.mkdirSync(path.join(syncRepo, ".agents", "agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(syncRepo, ".claude", "agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(syncRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      const outsideDir = path.join(tmpDir, "outside-sync");
+      fs.mkdirSync(outsideDir, { recursive: true });
+      const outsideTarget = path.join(outsideDir, "outside.md");
+      fs.writeFileSync(outsideTarget, "---\nname: x\n---\n", "utf8");
+
+      fs.writeFileSync(
+        path.join(syncRepo, ".agents", "team.json"),
+        JSON.stringify({
+          tiers: {
+            build: {
+              "claude-code": "sonnet",
+              opencode: "anthropic/claude-sonnet-5-5",
+              antigravity: "pro",
+              effort: "high",
+            },
+            deep: {
+              antigravity: "opus",
+            },
+          },
+          roles: {
+            lead: { agent: "boss" },
+            developer: { agent: "dev-a" },
+            qa: { agent: "qa-a" },
+            security: { agent: "sec-a" },
+            docs: { agent: "docs-a" },
+            build: { agent: "big-a" },
+            operations: { agent: "link-a" },
+          },
+        }),
+        "utf8",
+      );
+
+      const bossOc = "---\ndescription: Boss\nmode: subagent\n---\nBoss\n";
+      fs.writeFileSync(
+        path.join(syncRepo, ".opencode", "agents", "boss.md"),
+        bossOc,
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".claude", "agents", "dev-a.md"),
+        "---\nname: dev-a\nmodel: haiku\n---\nDev\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".opencode", "agents", "dev-a.md"),
+        "---\ndescription: Dev\nmode: subagent\n---\nDev\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".agents", "agents", "dev-a.md"),
+        "---\nname: dev-a\nmodel: flash\n---\nDev\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".agents", "agents", "qa-a.md"),
+        "---\nname: qa-a\nmodel: pro\n---\nQA\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".opencode", "agents", "sec-a.md"),
+        "Plain text\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".opencode", "agents", "docs-a.md"),
+        "---\ndescription: Docs\n---\n<!-- Generated by tool. Do not edit. -->\nDocs\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(syncRepo, ".opencode", "agents", "big-a.md"),
+        `---\ndescription: Big\n---\n${"x".repeat(260 * 1024)}\n`,
+        "utf8",
+      );
+      fs.symlinkSync(
+        outsideTarget,
+        path.join(syncRepo, ".opencode", "agents", "link-a.md"),
+      );
+
+      const syncPayload = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: syncRepo },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      const byPath = new Map(syncPayload.files.map((f) => [f.path, f]));
+      assert.equal(byPath.get(".opencode/agents/boss.md")?.status, "unchanged");
+      assert.equal(
+        fs.readFileSync(
+          path.join(syncRepo, ".opencode", "agents", "boss.md"),
+          "utf8",
+        ),
+        bossOc,
+      );
+      assert.equal(byPath.get(".claude/agents/dev-a.md")?.status, "changed");
+      assert.equal(byPath.get(".opencode/agents/dev-a.md")?.status, "changed");
+      assert.equal(byPath.get(".agents/agents/dev-a.md")?.status, "changed");
+      assert.equal(
+        byPath.get(".agents/agents/qa-a.md")?.reason,
+        "antigravity-model",
+      );
+      assert.equal(
+        byPath.get(".opencode/agents/sec-a.md")?.reason,
+        "no-frontmatter",
+      );
+      assert.equal(
+        byPath.get(".opencode/agents/docs-a.md")?.reason,
+        "generated",
+      );
+      assert.equal(
+        byPath.get(".opencode/agents/big-a.md")?.reason,
+        "too-large",
+      );
+      assert.equal(byPath.get(".opencode/agents/link-a.md")?.reason, "symlink");
+
+      // Oversize agent file alone never invokes fs.readSync.
+      const onlyBigRepo = path.join(tmpDir, "only-big-repo");
+      fs.mkdirSync(path.join(onlyBigRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(onlyBigRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(onlyBigRepo, ".agents", "team.json"),
+        JSON.stringify({ roles: { developer: { agent: "big-only" } } }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(onlyBigRepo, ".opencode", "agents", "big-only.md"),
+        `---\ndescription: Big\n---\n${"y".repeat(260 * 1024)}\n`,
+        "utf8",
+      );
+      const readsBeforeBig = readSpy.mock.callCount();
+      const bigOnlyRes = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: onlyBigRepo },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      assert.equal(readSpy.mock.callCount() - readsBeforeBig, 2);
+      assert.equal(bigOnlyRes.files[0]?.reason, "too-large");
+
+      // 6. Real repository .agents/team.json + all 30 real agent files change nothing on sync.
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const repoRunfilesRoot = path.resolve(here, "../../../../..");
+      const realRepoCopy = path.join(tmpDir, "real-repo-copy");
+      fs.mkdirSync(path.join(realRepoCopy, ".agents", "agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(realRepoCopy, ".claude", "agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(realRepoCopy, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(realRepoCopy, ".agents", "team.json"),
+        fs.readFileSync(
+          path.join(repoRunfilesRoot, ".agents", "team.json"),
+          "utf8",
+        ),
+        "utf8",
+      );
+      const originals = new Map();
+      for (const dir of [
+        ".claude/agents",
+        ".opencode/agents",
+        ".agents/agents",
+      ]) {
+        for (const name of fs.readdirSync(path.join(repoRunfilesRoot, dir))) {
+          if (!name.endsWith(".md")) continue;
+          const relPath = `${dir}/${name}`;
+          const content = fs.readFileSync(
+            path.join(repoRunfilesRoot, relPath),
+            "utf8",
+          );
+          originals.set(relPath, content);
+          fs.writeFileSync(path.join(realRepoCopy, relPath), content, "utf8");
+        }
+      }
+      assert.equal(originals.size, 30);
+      const realPayload = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: realRepoCopy },
+            { sessionID: "ses_root" },
+          )
+        ).content,
+      );
+      assert.equal(realPayload.files.length, 30);
+      for (const entry of realPayload.files) {
+        assert.equal(entry.status, "skipped", JSON.stringify(entry));
+        assert.equal(entry.reason, "generated", JSON.stringify(entry));
+        assert.equal(
+          fs.readFileSync(path.join(realRepoCopy, entry.path), "utf8"),
+          originals.get(entry.path),
+        );
+      }
+
+      // 7. Missing root uses ctx.directory discovery.
+      const fallbackInit = JSON.parse(
+        (await setupTool.execute({ action: "init" }, { sessionID: "ses_root" }))
+          .content,
+      );
+      assert.equal(fallbackInit.action, "init");
+      assert.equal(
+        fs.existsSync(path.join(fallbackRepo, ".agents", "team.json")),
+        true,
+      );
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("team_setup rulings: shared-agent conflicts, ENOTDIR/EACCES, init write-order rollback, .opencode/agents symlink, generated-banner rule, malformed JSON, oversize team.json, prototype keys", async (t) => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-team-setup-rulings-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const fallbackRepo = path.join(tmpDir, "fallback-repo");
+    fs.mkdirSync(fallbackRepo, { recursive: true });
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: fallbackRepo,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const setupTool = tools.get("team_setup");
+      assert.ok(setupTool, "team_setup tool must be registered");
+
+      // Ruling #1: Shared agent file in sync — equal applied once, differing skipped with conflict naming both roles.
+      const sharedRepo = path.join(tmpDir, "shared-repo");
+      fs.mkdirSync(path.join(sharedRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(sharedRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(sharedRepo, ".agents", "team.json"),
+        JSON.stringify({
+          tiers: {
+            build: { opencode: "anthropic/claude-sonnet-5-5", effort: "high" },
+          },
+          roles: {
+            developer: { agent: "same-a" },
+            build: { agent: "same-a" },
+            qa: {
+              agent: "diff-a",
+              opencode: "anthropic/claude-opus-5-5",
+              effort: "max",
+            },
+            security: {
+              agent: "diff-a",
+              opencode: "anthropic/claude-haiku-5-5",
+              effort: "max",
+            },
+          },
+        }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(sharedRepo, ".opencode", "agents", "same-a.md"),
+        "---\ndescription: Same\nmode: subagent\n---\nSame\n",
+        "utf8",
+      );
+      const diffOrig = "---\ndescription: Diff\nmode: subagent\n---\nDiff\n";
+      fs.writeFileSync(
+        path.join(sharedRepo, ".opencode", "agents", "diff-a.md"),
+        diffOrig,
+        "utf8",
+      );
+
+      const sharedRes = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: sharedRepo },
+            { sessionID: "ses_ruling" },
+          )
+        ).content,
+      );
+      const sameEntries = sharedRes.files.filter(
+        (f) => f.path === ".opencode/agents/same-a.md",
+      );
+      assert.equal(sameEntries.length, 1);
+      assert.equal(sameEntries[0]?.status, "changed");
+      assert.match(
+        fs.readFileSync(
+          path.join(sharedRepo, ".opencode", "agents", "same-a.md"),
+          "utf8",
+        ),
+        /^model: anthropic\/claude-sonnet-5-5\nreasoningEffort: high$/m,
+      );
+      const diffEntry = sharedRes.files.find(
+        (f) => f.path === ".opencode/agents/diff-a.md",
+      );
+      assert.equal(diffEntry?.status, "skipped");
+      assert.match(diffEntry?.reason ?? "", /conflict/);
+      assert.match(diffEntry?.reason ?? "", /\bqa\b/);
+      assert.match(diffEntry?.reason ?? "", /\bsecurity\b/);
+      assert.equal(
+        fs.readFileSync(
+          path.join(sharedRepo, ".opencode", "agents", "diff-a.md"),
+          "utf8",
+        ),
+        diffOrig,
+      );
+
+      // Ruling #2: ENOTDIR / EACCES / parent-not-directory refuse the whole action (never "absent") with zero writes.
+      const fileParentInitRepo = path.join(tmpDir, "file-parent-init-repo");
+      fs.mkdirSync(fileParentInitRepo, { recursive: true });
+      fs.writeFileSync(
+        path.join(fileParentInitRepo, ".agents"),
+        "not a directory\n",
+        "utf8",
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "init", root: fileParentInitRepo },
+            { sessionID: "ses_ruling" },
+          ),
+        /not a directory/i,
+      );
+
+      const enotdirInitRepo = path.join(tmpDir, "enotdir-init-repo");
+      const eaccesInitRepo = path.join(tmpDir, "eacces-init-repo");
+      const enotdirSyncRepo = path.join(tmpDir, "enotdir-sync-repo");
+      fs.mkdirSync(enotdirInitRepo, { recursive: true });
+      fs.mkdirSync(eaccesInitRepo, { recursive: true });
+      fs.mkdirSync(path.join(enotdirSyncRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(enotdirSyncRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(enotdirSyncRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "ok-a",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+            qa: {
+              agent: "bad-a",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const okOrig = "---\ndescription: OK\nmode: subagent\n---\nOK\n";
+      fs.writeFileSync(
+        path.join(enotdirSyncRepo, ".opencode", "agents", "ok-a.md"),
+        okOrig,
+        "utf8",
+      );
+
+      const origLstat = fs.lstatSync;
+      const lstatMock = t.mock.method(fs, "lstatSync", (p, ...rest) => {
+        if (p === path.join(enotdirInitRepo, ".agents")) {
+          const err = new Error("ENOTDIR: not a directory, lstat");
+          err.code = "ENOTDIR";
+          throw err;
+        }
+        if (p === path.join(eaccesInitRepo, ".agents")) {
+          const err = new Error("EACCES: permission denied, lstat");
+          err.code = "EACCES";
+          throw err;
+        }
+        if (
+          p === path.join(enotdirSyncRepo, ".opencode", "agents", "bad-a.md")
+        ) {
+          const err = new Error("ENOTDIR: not a directory, lstat");
+          err.code = "ENOTDIR";
+          throw err;
+        }
+        return origLstat.call(fs, p, ...rest);
+      });
+      try {
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              { action: "init", root: enotdirInitRepo },
+              { sessionID: "ses_ruling" },
+            ),
+          /ENOTDIR/,
+        );
+        assert.equal(
+          fs.existsSync(path.join(enotdirInitRepo, ".agents", "team.json")),
+          false,
+        );
+
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              { action: "init", root: eaccesInitRepo },
+              { sessionID: "ses_ruling" },
+            ),
+          /EACCES/,
+        );
+        assert.equal(
+          fs.existsSync(path.join(eaccesInitRepo, ".agents", "team.json")),
+          false,
+        );
+
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              { action: "sync", root: enotdirSyncRepo },
+              { sessionID: "ses_ruling" },
+            ),
+          /ENOTDIR/,
+        );
+        assert.equal(
+          fs.readFileSync(
+            path.join(enotdirSyncRepo, ".opencode", "agents", "ok-a.md"),
+            "utf8",
+          ),
+          okOrig,
+        );
+      } finally {
+        lstatMock.mock.restore();
+      }
+
+      // Ruling #3: init writes starter agent files first and team.json last, rolling back created files on mid-run failure.
+      const rollbackAgentRepo = path.join(tmpDir, "rollback-agent-repo");
+      const rollbackTeamRepo = path.join(tmpDir, "rollback-team-repo");
+      fs.mkdirSync(rollbackAgentRepo, { recursive: true });
+      fs.mkdirSync(rollbackTeamRepo, { recursive: true });
+
+      const attemptedWrites = [];
+      const failTarget1 = path.join(
+        rollbackAgentRepo,
+        ".opencode",
+        "agents",
+        "team-qa.md",
+      );
+      const failTarget2 = path.join(rollbackTeamRepo, ".agents", "team.json");
+      const origOpen = fs.openSync;
+      const openMock = t.mock.method(fs, "openSync", (p, flags, ...rest) => {
+        if (typeof flags === "number" && (flags & fs.constants.O_CREAT) !== 0) {
+          attemptedWrites.push(p);
+          if (p === failTarget1 || p === failTarget2) {
+            throw new Error(`EIO: disk full writing ${p}`);
+          }
+        }
+        return origOpen.call(fs, p, flags, ...rest);
+      });
+      try {
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              {
+                action: "init",
+                root: rollbackAgentRepo,
+                agents: ["developer", "qa"],
+              },
+              { sessionID: "ses_ruling" },
+            ),
+          /failed to write starter files/,
+        );
+        assert.deepEqual(attemptedWrites, [
+          path.join(
+            rollbackAgentRepo,
+            ".opencode",
+            "agents",
+            "team-developer.md",
+          ),
+          path.join(rollbackAgentRepo, ".opencode", "agents", "team-qa.md"),
+        ]);
+        assert.equal(
+          fs.existsSync(
+            path.join(
+              rollbackAgentRepo,
+              ".opencode",
+              "agents",
+              "team-developer.md",
+            ),
+          ),
+          false,
+        );
+        assert.equal(
+          fs.existsSync(
+            path.join(rollbackAgentRepo, ".opencode", "agents", "team-qa.md"),
+          ),
+          false,
+        );
+        assert.equal(
+          fs.existsSync(path.join(rollbackAgentRepo, ".agents", "team.json")),
+          false,
+        );
+
+        attemptedWrites.length = 0;
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              {
+                action: "init",
+                root: rollbackTeamRepo,
+                agents: ["developer", "qa"],
+              },
+              { sessionID: "ses_ruling" },
+            ),
+          /failed to write starter files/,
+        );
+        assert.deepEqual(attemptedWrites, [
+          path.join(
+            rollbackTeamRepo,
+            ".opencode",
+            "agents",
+            "team-developer.md",
+          ),
+          path.join(rollbackTeamRepo, ".opencode", "agents", "team-qa.md"),
+          path.join(rollbackTeamRepo, ".agents", "team.json"),
+        ]);
+        assert.equal(
+          fs.existsSync(
+            path.join(
+              rollbackTeamRepo,
+              ".opencode",
+              "agents",
+              "team-developer.md",
+            ),
+          ),
+          false,
+        );
+        assert.equal(
+          fs.existsSync(
+            path.join(rollbackTeamRepo, ".opencode", "agents", "team-qa.md"),
+          ),
+          false,
+        );
+        assert.equal(
+          fs.existsSync(path.join(rollbackTeamRepo, ".agents", "team.json")),
+          false,
+        );
+      } finally {
+        openMock.mock.restore();
+      }
+
+      // Ruling #5: .opencode/agents directory symlink refused in both init and sync.
+      const outsideAgentsDir = path.join(tmpDir, "outside-opencode-agents");
+      fs.mkdirSync(outsideAgentsDir, { recursive: true });
+      const outsideSymAgent = path.join(outsideAgentsDir, "sym-a.md");
+      const outsideSymOrig =
+        "---\ndescription: Outside\nmode: subagent\n---\nOutside\n";
+      fs.writeFileSync(outsideSymAgent, outsideSymOrig, "utf8");
+
+      const symInitRepo = path.join(tmpDir, "sym-opencode-init-repo");
+      fs.mkdirSync(path.join(symInitRepo, ".opencode"), { recursive: true });
+      fs.symlinkSync(
+        outsideAgentsDir,
+        path.join(symInitRepo, ".opencode", "agents"),
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "init", root: symInitRepo, agents: ["developer"] },
+            { sessionID: "ses_ruling" },
+          ),
+        /\.opencode\/agents.*symlink/,
+      );
+      assert.equal(
+        fs.existsSync(path.join(symInitRepo, ".agents", "team.json")),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(path.join(outsideAgentsDir, "team-developer.md")),
+        false,
+      );
+
+      const symSyncRepo = path.join(tmpDir, "sym-opencode-sync-repo");
+      fs.mkdirSync(path.join(symSyncRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(symSyncRepo, ".opencode"), { recursive: true });
+      fs.symlinkSync(
+        outsideAgentsDir,
+        path.join(symSyncRepo, ".opencode", "agents"),
+      );
+      fs.writeFileSync(
+        path.join(symSyncRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "sym-a",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const symReadSpy = t.mock.method(fs, "readSync");
+      let symSync;
+      let symReads = 0;
+      try {
+        const beforeSymReads = symReadSpy.mock.callCount();
+        symSync = JSON.parse(
+          (
+            await setupTool.execute(
+              { action: "sync", root: symSyncRepo },
+              { sessionID: "ses_ruling" },
+            )
+          ).content,
+        );
+        symReads = symReadSpy.mock.callCount() - beforeSymReads;
+      } finally {
+        symReadSpy.mock.restore();
+      }
+      assert.equal(symReads, 2); // only .agents/team.json was read
+      assert.deepEqual(symSync.files, [
+        {
+          path: ".opencode/agents/sym-a.md",
+          harness: "opencode",
+          role: "developer",
+          agent: "sym-a",
+          status: "skipped",
+          reason: "symlink",
+        },
+      ]);
+      assert.equal(fs.readFileSync(outsideSymAgent, "utf8"), outsideSymOrig);
+
+      // Ruling #6: generated-file skip requires both "Generated" and "Do not edit" on one line in first 15 lines.
+      const bannerRepo = path.join(tmpDir, "banner-repo");
+      fs.mkdirSync(path.join(bannerRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(bannerRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(bannerRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "gen-both",
+              opencode: "anthropic/claude-opus-5-5",
+              effort: "max",
+            },
+            qa: {
+              agent: "plain-dne",
+              opencode: "anthropic/claude-opus-5-5",
+              effort: "max",
+            },
+            security: {
+              agent: "plain-gen",
+              opencode: "anthropic/claude-opus-5-5",
+              effort: "max",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const genBothOrig =
+        "---\ndescription: Gen both\n---\n<!-- Generated by tool. Do not edit. -->\nBody\n";
+      fs.writeFileSync(
+        path.join(bannerRepo, ".opencode", "agents", "gen-both.md"),
+        genBothOrig,
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(bannerRepo, ".opencode", "agents", "plain-dne.md"),
+        "---\ndescription: Plain DNE\n---\n<!-- Do not edit -->\nBody\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(bannerRepo, ".opencode", "agents", "plain-gen.md"),
+        "---\ndescription: Plain gen\n---\n<!-- Generated by tool -->\nBody\n",
+        "utf8",
+      );
+      const bannerRes = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: bannerRepo },
+            { sessionID: "ses_ruling" },
+          )
+        ).content,
+      );
+      const bannerByPath = new Map(bannerRes.files.map((f) => [f.path, f]));
+      assert.equal(
+        bannerByPath.get(".opencode/agents/gen-both.md")?.reason,
+        "generated",
+      );
+      assert.equal(
+        fs.readFileSync(
+          path.join(bannerRepo, ".opencode", "agents", "gen-both.md"),
+          "utf8",
+        ),
+        genBothOrig,
+      );
+      assert.equal(
+        bannerByPath.get(".opencode/agents/plain-dne.md")?.status,
+        "changed",
+      );
+      assert.match(
+        fs.readFileSync(
+          path.join(bannerRepo, ".opencode", "agents", "plain-dne.md"),
+          "utf8",
+        ),
+        /^model: anthropic\/claude-opus-5-5\nreasoningEffort: max$/m,
+      );
+      assert.equal(
+        bannerByPath.get(".opencode/agents/plain-gen.md")?.status,
+        "changed",
+      );
+      assert.match(
+        fs.readFileSync(
+          path.join(bannerRepo, ".opencode", "agents", "plain-gen.md"),
+          "utf8",
+        ),
+        /^model: anthropic\/claude-opus-5-5\nreasoningEffort: max$/m,
+      );
+
+      // Ruling #7: starterAgentFile adds `name: team-<role>` when absent via custom pluginAgentsDir too.
+      const customPluginAgents = path.join(tmpDir, "custom-plugin-agents");
+      fs.mkdirSync(customPluginAgents, { recursive: true });
+      fs.writeFileSync(
+        path.join(customPluginAgents, "developer.md"),
+        "---\ndescription: Custom dev without name\n---\nBody\n",
+        "utf8",
+      );
+      const noNameRepo = path.join(tmpDir, "no-name-repo");
+      fs.mkdirSync(noNameRepo, { recursive: true });
+      const noNameRes = adapterModule.runTeamSetup(
+        { action: "init", root: noNameRepo, agents: ["developer"] },
+        { pluginAgentsDir: customPluginAgents },
+      );
+      assert.equal(noNameRes.ok, true);
+      assert.match(
+        fs.readFileSync(
+          path.join(noNameRepo, ".opencode", "agents", "team-developer.md"),
+          "utf8",
+        ),
+        /^name: team-developer$/m,
+      );
+
+      // Board rulings: malformed JSON starts with "invalid JSON:", oversize team.json refused before read,
+      // and "constructor" / "__proto__" handled safely without prototype pollution.
+      const badJsonRepo = path.join(tmpDir, "bad-json-repo");
+      fs.mkdirSync(path.join(badJsonRepo, ".agents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(badJsonRepo, ".agents", "team.json"),
+        "{bad",
+        "utf8",
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "sync", root: badJsonRepo },
+            { sessionID: "ses_ruling" },
+          ),
+        (err) =>
+          err instanceof Error && err.message.startsWith("invalid JSON:"),
+      );
+
+      const bigTeamRepo = path.join(tmpDir, "big-team-repo");
+      fs.mkdirSync(path.join(bigTeamRepo, ".agents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(bigTeamRepo, ".agents", "team.json"),
+        JSON.stringify({ notes: "a".repeat(70 * 1024) }),
+        "utf8",
+      );
+      const bigReadSpy = t.mock.method(fs, "readSync");
+      let bigReads = 0;
+      try {
+        const beforeBig = bigReadSpy.mock.callCount();
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              { action: "sync", root: bigTeamRepo },
+              { sessionID: "ses_ruling" },
+            ),
+          /exceeds maximum size/,
+        );
+        bigReads = bigReadSpy.mock.callCount() - beforeBig;
+      } finally {
+        bigReadSpy.mock.restore();
+      }
+      assert.equal(bigReads, 0);
+
+      for (const badRoleJson of [
+        '{"roles":{"constructor":{"agent":"dev-a"}}}',
+        '{"roles":{"__proto__":{"agent":"dev-a"}}}',
+      ]) {
+        const protoRoleRepo = path.join(tmpDir, "proto-role-repo");
+        fs.mkdirSync(path.join(protoRoleRepo, ".agents"), { recursive: true });
+        fs.writeFileSync(
+          path.join(protoRoleRepo, ".agents", "team.json"),
+          badRoleJson,
+          "utf8",
+        );
+        await assert.rejects(
+          () =>
+            setupTool.execute(
+              { action: "sync", root: protoRoleRepo },
+              { sessionID: "ses_ruling" },
+            ),
+          /unknown role/,
+        );
+      }
+
+      const ctorAgentRepo = path.join(tmpDir, "ctor-agent-repo");
+      fs.mkdirSync(path.join(ctorAgentRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(ctorAgentRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(ctorAgentRepo, ".opencode", "agents", "constructor.md"),
+        "---\ndescription: Ctor\nmode: subagent\n---\nCtor\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(ctorAgentRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "constructor",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+            build: {
+              agent: "constructor",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const ctorEqualRes = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: ctorAgentRepo },
+            { sessionID: "ses_ruling" },
+          )
+        ).content,
+      );
+      assert.equal(ctorEqualRes.files.length, 1);
+      assert.equal(ctorEqualRes.files[0]?.status, "changed");
+      assert.match(
+        fs.readFileSync(
+          path.join(ctorAgentRepo, ".opencode", "agents", "constructor.md"),
+          "utf8",
+        ),
+        /^model: anthropic\/claude-opus-5-5$/m,
+      );
+
+      fs.writeFileSync(
+        path.join(ctorAgentRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "constructor",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+            qa: {
+              agent: "constructor",
+              opencode: "anthropic/claude-sonnet-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const ctorConflictRes = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: ctorAgentRepo },
+            { sessionID: "ses_ruling" },
+          )
+        ).content,
+      );
+      assert.equal(ctorConflictRes.files.length, 1);
+      assert.equal(ctorConflictRes.files[0]?.status, "skipped");
+      assert.match(ctorConflictRes.files[0]?.reason ?? "", /conflict/);
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("team_setup aegis round-1 security rulings: hardlinks, TOCTOU parent swaps, complex-frontmatter/multi-line quoted model:, and sonnet: charset", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-team-setup-sec-"),
+    );
+    const stateDir = path.join(tmpDir, "state");
+    const fallbackRepo = path.join(tmpDir, "fallback-repo");
+    fs.mkdirSync(fallbackRepo, { recursive: true });
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = stateDir;
+
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        directory: fallbackRepo,
+        session: { get: async () => null, prompt: async () => {} },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+      const setupTool = tools.get("team_setup");
+      assert.ok(setupTool, "team_setup tool must be registered");
+
+      // 1. Hard links (nlink > 1) refused in sync and init, leaving outside target untouched.
+      const outsideDir = path.join(tmpDir, "outside");
+      fs.mkdirSync(outsideDir, { recursive: true });
+      const outsideAgent = path.join(outsideDir, "outside-agent.md");
+      const outsideAgentOrig =
+        "---\ndescription: Outside\nmode: subagent\n---\nOutside sentinel\n";
+      fs.writeFileSync(outsideAgent, outsideAgentOrig, "utf8");
+      const outsideTeam = path.join(outsideDir, "outside-team.json");
+      const outsideTeamOrig = JSON.stringify({
+        roles: {
+          developer: {
+            agent: "dev-a",
+            opencode: "anthropic/claude-opus-5-5",
+          },
+        },
+      });
+      fs.writeFileSync(outsideTeam, outsideTeamOrig, "utf8");
+
+      const syncHardRepo = path.join(tmpDir, "sync-hard-repo");
+      fs.mkdirSync(path.join(syncHardRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(syncHardRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(syncHardRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "hard-a",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      fs.linkSync(
+        outsideAgent,
+        path.join(syncHardRepo, ".opencode", "agents", "hard-a.md"),
+      );
+      const syncHardRes = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: syncHardRepo },
+            { sessionID: "ses_sec" },
+          )
+        ).content,
+      );
+      assert.deepEqual(syncHardRes.files, [
+        {
+          path: ".opencode/agents/hard-a.md",
+          harness: "opencode",
+          role: "developer",
+          agent: "hard-a",
+          status: "skipped",
+          reason: "hardlink",
+        },
+      ]);
+      assert.equal(fs.readFileSync(outsideAgent, "utf8"), outsideAgentOrig);
+
+      const syncHardTeamRepo = path.join(tmpDir, "sync-hard-team-repo");
+      fs.mkdirSync(path.join(syncHardTeamRepo, ".agents"), { recursive: true });
+      fs.linkSync(
+        outsideTeam,
+        path.join(syncHardTeamRepo, ".agents", "team.json"),
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "sync", root: syncHardTeamRepo },
+            { sessionID: "ses_sec" },
+          ),
+        /hardlink/,
+      );
+      assert.equal(fs.readFileSync(outsideTeam, "utf8"), outsideTeamOrig);
+
+      const initHardTeamRepo = path.join(tmpDir, "init-hard-team-repo");
+      fs.mkdirSync(path.join(initHardTeamRepo, ".agents"), { recursive: true });
+      fs.linkSync(
+        outsideTeam,
+        path.join(initHardTeamRepo, ".agents", "team.json"),
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "init", root: initHardTeamRepo },
+            { sessionID: "ses_sec" },
+          ),
+        /hardlink/,
+      );
+      assert.equal(fs.readFileSync(outsideTeam, "utf8"), outsideTeamOrig);
+
+      const initHardAgentRepo = path.join(tmpDir, "init-hard-agent-repo");
+      fs.mkdirSync(path.join(initHardAgentRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.linkSync(
+        outsideAgent,
+        path.join(
+          initHardAgentRepo,
+          ".opencode",
+          "agents",
+          "team-developer.md",
+        ),
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            {
+              action: "init",
+              root: initHardAgentRepo,
+              agents: ["developer", "qa"],
+            },
+            { sessionID: "ses_sec" },
+          ),
+        /hardlink/,
+      );
+      assert.equal(
+        fs.existsSync(path.join(initHardAgentRepo, ".agents", "team.json")),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(
+          path.join(initHardAgentRepo, ".opencode", "agents", "team-qa.md"),
+        ),
+        false,
+      );
+      assert.equal(fs.readFileSync(outsideAgent, "utf8"), outsideAgentOrig);
+
+      // 2a. TOCTOU in sync: parent swapped to symlink -> outside dir aborts only that file as changed-during-sync.
+      const toctouSyncSymRepo = path.join(tmpDir, "toctou-sync-sym-repo");
+      fs.mkdirSync(path.join(toctouSyncSymRepo, ".agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(toctouSyncSymRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(toctouSyncSymRepo, ".claude", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(toctouSyncSymRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "dev-a",
+              opencode: "anthropic/claude-opus-5-5",
+              "claude-code": "opus",
+            },
+          },
+        }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(toctouSyncSymRepo, ".opencode", "agents", "dev-a.md"),
+        "---\ndescription: Dev\nmode: subagent\n---\nDev\n",
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(toctouSyncSymRepo, ".claude", "agents", "dev-a.md"),
+        "---\nname: dev-a\nmodel: sonnet\n---\nDev\n",
+        "utf8",
+      );
+      const outsideVictimDir = path.join(tmpDir, "outside-victim-sync-dir");
+      fs.mkdirSync(outsideVictimDir, { recursive: true });
+      const victimOrig =
+        "---\ndescription: Victim\nmode: subagent\n---\nVictim\n";
+      fs.writeFileSync(
+        path.join(outsideVictimDir, "dev-a.md"),
+        victimOrig,
+        "utf8",
+      );
+      const movedSyncAgents = path.join(tmpDir, "moved-sync-agents");
+      const toctouSyncSymRes = adapterModule.runTeamSetup(
+        { action: "sync", root: toctouSyncSymRepo },
+        {
+          _beforeWrite: (ctx) => {
+            if (ctx.path === ".opencode/agents/dev-a.md") {
+              const targetDir = path.join(
+                toctouSyncSymRepo,
+                ".opencode",
+                "agents",
+              );
+              fs.renameSync(targetDir, movedSyncAgents);
+              fs.symlinkSync(outsideVictimDir, targetDir);
+            }
+          },
+        },
+      );
+      assert.equal(toctouSyncSymRes.ok, true);
+      const symSyncByPath = new Map(
+        toctouSyncSymRes.result.files.map((f) => [f.path, f]),
+      );
+      assert.deepEqual(
+        {
+          status: symSyncByPath.get(".opencode/agents/dev-a.md")?.status,
+          reason: symSyncByPath.get(".opencode/agents/dev-a.md")?.reason,
+        },
+        { status: "skipped", reason: "changed-during-sync" },
+      );
+      assert.equal(
+        symSyncByPath.get(".claude/agents/dev-a.md")?.status,
+        "changed",
+      );
+      assert.equal(
+        fs.readFileSync(path.join(outsideVictimDir, "dev-a.md"), "utf8"),
+        victimOrig,
+      );
+
+      // 2b. TOCTOU in sync: parent swapped to a new real directory (different dev/ino) -> changed-during-sync.
+      const toctouSyncDirRepo = path.join(tmpDir, "toctou-sync-dir-repo");
+      fs.mkdirSync(path.join(toctouSyncDirRepo, ".agents"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(toctouSyncDirRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(toctouSyncDirRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "dev-a",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(toctouSyncDirRepo, ".opencode", "agents", "dev-a.md"),
+        "---\ndescription: Dev\nmode: subagent\n---\nDev\n",
+        "utf8",
+      );
+      const movedSyncReal = path.join(tmpDir, "moved-sync-real");
+      const decoyText = "---\ndescription: Decoy\nmode: subagent\n---\nDecoy\n";
+      const toctouSyncDirRes = adapterModule.runTeamSetup(
+        { action: "sync", root: toctouSyncDirRepo },
+        {
+          _beforeWrite: (ctx) => {
+            if (ctx.path === ".opencode/agents/dev-a.md") {
+              const targetDir = path.join(
+                toctouSyncDirRepo,
+                ".opencode",
+                "agents",
+              );
+              fs.renameSync(targetDir, movedSyncReal);
+              fs.mkdirSync(targetDir);
+              fs.writeFileSync(
+                path.join(targetDir, "dev-a.md"),
+                decoyText,
+                "utf8",
+              );
+            }
+          },
+        },
+      );
+      assert.equal(toctouSyncDirRes.ok, true);
+      assert.deepEqual(
+        {
+          status: toctouSyncDirRes.result.files[0]?.status,
+          reason: toctouSyncDirRes.result.files[0]?.reason,
+        },
+        { status: "skipped", reason: "changed-during-sync" },
+      );
+      assert.equal(
+        fs.readFileSync(
+          path.join(toctouSyncDirRepo, ".opencode", "agents", "dev-a.md"),
+          "utf8",
+        ),
+        decoyText,
+      );
+
+      // 2c. TOCTOU in init: parent swapped before Write #1 -> aborts with zero writes.
+      const toctouInitFirstRepo = path.join(tmpDir, "toctou-init-first-repo");
+      fs.mkdirSync(path.join(toctouInitFirstRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      const outsideInitDir = path.join(tmpDir, "outside-init-dir");
+      fs.mkdirSync(outsideInitDir, { recursive: true });
+      const movedInitFirst = path.join(tmpDir, "moved-init-first");
+      const toctouInitFirstRes = adapterModule.runTeamSetup(
+        { action: "init", root: toctouInitFirstRepo, agents: ["developer"] },
+        {
+          _beforeWrite: (ctx) => {
+            if (ctx.path === ".opencode/agents/team-developer.md") {
+              const targetDir = path.join(
+                toctouInitFirstRepo,
+                ".opencode",
+                "agents",
+              );
+              fs.renameSync(targetDir, movedInitFirst);
+              fs.symlinkSync(outsideInitDir, targetDir);
+            }
+          },
+        },
+      );
+      assert.equal(toctouInitFirstRes.ok, false);
+      assert.match(toctouInitFirstRes.error, /changed-during-sync|symlink/);
+      assert.equal(
+        fs.existsSync(path.join(outsideInitDir, "team-developer.md")),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(path.join(toctouInitFirstRepo, ".agents", "team.json")),
+        false,
+      );
+
+      // 2d. TOCTOU in init between Write #1 and Write #2: .agents swapped to symlink -> refuses write AND rolls back .opencode/agents/team-developer.md.
+      const toctouInitMidSymRepo = path.join(
+        tmpDir,
+        "toctou-init-mid-sym-repo",
+      );
+      fs.mkdirSync(path.join(toctouInitMidSymRepo, ".agents"), {
+        recursive: true,
+      });
+      const outsideInitAgentsDir = path.join(tmpDir, "outside-init-mid-agents");
+      fs.mkdirSync(outsideInitAgentsDir, { recursive: true });
+      const movedInitMidAgents = path.join(tmpDir, "moved-init-mid-agents");
+      const toctouInitMidSymRes = adapterModule.runTeamSetup(
+        { action: "init", root: toctouInitMidSymRepo, agents: ["developer"] },
+        {
+          _beforeWrite: (ctx) => {
+            if (ctx.path === ".agents/team.json") {
+              const agentsRoot = path.join(toctouInitMidSymRepo, ".agents");
+              fs.renameSync(agentsRoot, movedInitMidAgents);
+              fs.symlinkSync(outsideInitAgentsDir, agentsRoot);
+            }
+          },
+        },
+      );
+      assert.equal(toctouInitMidSymRes.ok, false);
+      assert.match(toctouInitMidSymRes.error, /changed-during-sync|symlink/);
+      assert.equal(
+        fs.existsSync(path.join(outsideInitAgentsDir, "team.json")),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(
+          path.join(
+            toctouInitMidSymRepo,
+            ".opencode",
+            "agents",
+            "team-developer.md",
+          ),
+        ),
+        false,
+      );
+
+      // 2e. _beforeWrite seam is NOT reachable from public input.
+      let publicHookCalled = false;
+      const publicArgsRepo1 = path.join(tmpDir, "public-args-repo-1");
+      const publicArgsRepo2 = path.join(tmpDir, "public-args-repo-2");
+      fs.mkdirSync(publicArgsRepo1, { recursive: true });
+      fs.mkdirSync(publicArgsRepo2, { recursive: true });
+      await setupTool.execute(
+        {
+          action: "init",
+          root: publicArgsRepo1,
+          _beforeWrite: () => {
+            publicHookCalled = true;
+          },
+        },
+        { sessionID: "ses_sec" },
+      );
+      assert.equal(publicHookCalled, false);
+      const directPublicRes = adapterModule.runTeamSetup({
+        action: "init",
+        root: publicArgsRepo2,
+        _beforeWrite: () => {
+          publicHookCalled = true;
+        },
+      });
+      assert.equal(directPublicRes.ok, true);
+      assert.equal(publicHookCalled, false);
+
+      // 3. Frontmatter edit rules: multi-line quoted model: preserved verbatim; duplicate model: skipped as complex-frontmatter.
+      const fmRepo = path.join(tmpDir, "fm-repo");
+      fs.mkdirSync(path.join(fmRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(fmRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(fmRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: {
+            developer: {
+              agent: "quoted-a",
+              opencode: "anthropic/claude-opus-5-5",
+              effort: "max",
+            },
+            qa: {
+              agent: "dup-a",
+              opencode: "anthropic/claude-opus-5-5",
+            },
+          },
+        }),
+        "utf8",
+      );
+      const quotedOrig = [
+        "---",
+        "name: quoted-a",
+        'description: "Multi-line description',
+        "model: fake-quoted",
+        "reasoningEffort: fake-quoted",
+        'end quote"',
+        "model: anthropic/claude-sonnet-5-5",
+        "---",
+        "Body",
+        "",
+      ].join("\n");
+      fs.writeFileSync(
+        path.join(fmRepo, ".opencode", "agents", "quoted-a.md"),
+        quotedOrig,
+        "utf8",
+      );
+      const dupOrig = [
+        "---",
+        "name: dup-a",
+        "model: anthropic/claude-sonnet-5-5",
+        "model: anthropic/claude-haiku-5-5",
+        "---",
+        "Body",
+        "",
+      ].join("\n");
+      fs.writeFileSync(
+        path.join(fmRepo, ".opencode", "agents", "dup-a.md"),
+        dupOrig,
+        "utf8",
+      );
+      const fmSync = JSON.parse(
+        (
+          await setupTool.execute(
+            { action: "sync", root: fmRepo },
+            { sessionID: "ses_sec" },
+          )
+        ).content,
+      );
+      const fmByPath = new Map(fmSync.files.map((f) => [f.path, f]));
+      assert.equal(
+        fmByPath.get(".opencode/agents/quoted-a.md")?.status,
+        "changed",
+      );
+      assert.equal(
+        fs.readFileSync(
+          path.join(fmRepo, ".opencode", "agents", "quoted-a.md"),
+          "utf8",
+        ),
+        [
+          "---",
+          "name: quoted-a",
+          'description: "Multi-line description',
+          "model: fake-quoted",
+          "reasoningEffort: fake-quoted",
+          'end quote"',
+          "model: anthropic/claude-opus-5-5",
+          "reasoningEffort: max",
+          "---",
+          "Body",
+          "",
+        ].join("\n"),
+      );
+      assert.deepEqual(
+        {
+          status: fmByPath.get(".opencode/agents/dup-a.md")?.status,
+          reason: fmByPath.get(".opencode/agents/dup-a.md")?.reason,
+        },
+        { status: "skipped", reason: "complex-frontmatter" },
+      );
+      assert.equal(
+        fs.readFileSync(
+          path.join(fmRepo, ".opencode", "agents", "dup-a.md"),
+          "utf8",
+        ),
+        dupOrig,
+      );
+
+      // 4. Model charset: trailing ':', '.' or '-' (e.g. "sonnet:") is refused/skipped and never written.
+      const badCharsetRepo = path.join(tmpDir, "bad-charset-repo");
+      fs.mkdirSync(path.join(badCharsetRepo, ".agents"), { recursive: true });
+      fs.mkdirSync(path.join(badCharsetRepo, ".opencode", "agents"), {
+        recursive: true,
+      });
+      const ocUntouchedOrig =
+        "---\ndescription: Dev\nmode: subagent\nmodel: anthropic/claude-haiku-5-5\n---\nBody\n";
+      fs.writeFileSync(
+        path.join(badCharsetRepo, ".opencode", "agents", "dev-a.md"),
+        ocUntouchedOrig,
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(badCharsetRepo, ".agents", "team.json"),
+        JSON.stringify({
+          roles: { developer: { agent: "dev-a", opencode: "sonnet:" } },
+        }),
+        "utf8",
+      );
+      await assert.rejects(
+        () =>
+          setupTool.execute(
+            { action: "sync", root: badCharsetRepo },
+            { sessionID: "ses_sec" },
+          ),
+        /invalid model/,
+      );
+      const ocAfter = fs.readFileSync(
+        path.join(badCharsetRepo, ".opencode", "agents", "dev-a.md"),
+        "utf8",
+      );
+      assert.equal(ocAfter, ocUntouchedOrig);
+      assert.equal(ocAfter.includes("sonnet:"), false);
+      assert.deepEqual(
+        adapterModule.applyAgentModels(ocUntouchedOrig, "opencode", {
+          model: "sonnet:",
+        }),
+        { text: ocUntouchedOrig, changed: false, reason: "invalid-model" },
+      );
+    } finally {
+      if (prevDir === undefined)
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      else process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

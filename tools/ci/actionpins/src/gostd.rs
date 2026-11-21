@@ -27,6 +27,9 @@ use crate::goprint::{PRINTABLE, SPACE};
 use std::io;
 use std::path::Path;
 
+pub use vitruvian_gocompat::goexec::clean;
+pub use vitruvian_gocompat::gostd::errno_text;
+
 const RUNE_ERROR: u32 = 0xFFFD;
 
 fn in_table(table: &[(u32, u32)], r: u32) -> bool {
@@ -45,51 +48,8 @@ fn in_table(table: &[(u32, u32)], r: u32) -> bool {
 
 /// `utf8.DecodeRune`: the rune and its width; (RuneError, 1) when invalid.
 pub fn decode_rune(s: &[u8]) -> (u32, usize) {
-    let Some(&b0) = s.first() else {
-        return (RUNE_ERROR, 0);
-    };
-    if b0 < 0x80 {
-        return (b0 as u32, 1);
-    }
-    let cont = |i: usize, lo: u8, hi: u8| s.get(i).filter(|&&b| b >= lo && b <= hi).copied();
-    match b0 {
-        0xC2..=0xDF => match cont(1, 0x80, 0xBF) {
-            Some(b1) => ((((b0 & 0x1F) as u32) << 6) | (b1 & 0x3F) as u32, 2),
-            None => (RUNE_ERROR, 1),
-        },
-        0xE0..=0xEF => {
-            let (lo, hi) = match b0 {
-                0xE0 => (0xA0, 0xBF),
-                0xED => (0x80, 0x9F),
-                _ => (0x80, 0xBF),
-            };
-            match (cont(1, lo, hi), cont(2, 0x80, 0xBF)) {
-                (Some(b1), Some(b2)) => (
-                    (((b0 & 0x0F) as u32) << 12) | (((b1 & 0x3F) as u32) << 6) | (b2 & 0x3F) as u32,
-                    3,
-                ),
-                _ => (RUNE_ERROR, 1),
-            }
-        }
-        0xF0..=0xF4 => {
-            let (lo, hi) = match b0 {
-                0xF0 => (0x90, 0xBF),
-                0xF4 => (0x80, 0x8F),
-                _ => (0x80, 0xBF),
-            };
-            match (cont(1, lo, hi), cont(2, 0x80, 0xBF), cont(3, 0x80, 0xBF)) {
-                (Some(b1), Some(b2), Some(b3)) => (
-                    (((b0 & 0x07) as u32) << 18)
-                        | (((b1 & 0x3F) as u32) << 12)
-                        | (((b2 & 0x3F) as u32) << 6)
-                        | (b3 & 0x3F) as u32,
-                    4,
-                ),
-                _ => (RUNE_ERROR, 1),
-            }
-        }
-        _ => (RUNE_ERROR, 1),
-    }
+    let (r, width) = vitruvian_gocompat::gostd::decode_rune(s);
+    (r.map_or(RUNE_ERROR, |c| c as u32), width)
 }
 
 /// `utf8.DecodeLastRune`.
@@ -244,20 +204,6 @@ pub fn scan_lines(data: &[u8]) -> (Vec<&[u8]>, bool) {
 
 pub const ERR_TOO_LONG: &str = "bufio.Scanner: token too long";
 
-/// The text Go's syscall.Errno prints: the C library's, lower-cased first.
-pub fn errno_text(err: &io::Error) -> String {
-    let text = err.to_string();
-    let text = match text.find(" (os error ") {
-        Some(at) => &text[..at],
-        None => &text,
-    };
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(c) => c.to_lowercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
 /// `*os.PathError`'s text: `<op> <path>: <errno>`.
 pub fn path_error(op: &str, path: &[u8], err: &io::Error) -> Vec<u8> {
     let mut out = op.as_bytes().to_vec();
@@ -265,60 +211,6 @@ pub fn path_error(op: &str, path: &[u8], err: &io::Error) -> Vec<u8> {
     out.extend_from_slice(path);
     out.extend_from_slice(b": ");
     out.extend_from_slice(errno_text(err).as_bytes());
-    out
-}
-
-/// `filepath.Clean`.
-pub fn clean(path: &[u8]) -> Vec<u8> {
-    if path.is_empty() {
-        return b".".to_vec();
-    }
-    let rooted = path[0] == b'/';
-    let n = path.len();
-    let mut out: Vec<u8> = Vec::with_capacity(n);
-    let (mut r, mut dotdot) = (0, 0);
-    if rooted {
-        out.push(b'/');
-        r = 1;
-        dotdot = 1;
-    }
-    while r < n {
-        if path[r] == b'/' {
-            r += 1;
-        } else if path[r] == b'.' && (r + 1 == n || path[r + 1] == b'/') {
-            r += 1;
-        } else if path[r] == b'.'
-            && path.get(r + 1) == Some(&b'.')
-            && (r + 2 == n || path[r + 2] == b'/')
-        {
-            r += 2;
-            if out.len() > dotdot {
-                // Back up over the last element and the slash before it.
-                let mut w = out.len() - 1;
-                while w > dotdot && out[w] != b'/' {
-                    w -= 1;
-                }
-                out.truncate(w);
-            } else if !rooted {
-                if !out.is_empty() {
-                    out.push(b'/');
-                }
-                out.extend_from_slice(b"..");
-                dotdot = out.len();
-            }
-        } else {
-            if (rooted && out.len() != 1) || (!rooted && !out.is_empty()) {
-                out.push(b'/');
-            }
-            while r < n && path[r] != b'/' {
-                out.push(path[r]);
-                r += 1;
-            }
-        }
-    }
-    if out.is_empty() {
-        return b".".to_vec();
-    }
     out
 }
 

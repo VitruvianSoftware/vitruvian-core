@@ -105,6 +105,8 @@ struct MainWindow: View {
                         inbox: inbox,
                         composerPreferences: composerPreferences,
                         hotkeys: hotkeys,
+                        openChatRoomID: conversation.roomID,
+                        openChatDisplayTitle: conversation.openChatDisplayTitle,
                         onOpenCommandBar: { initialQuery in
                             commandBar.open(initialQuery: initialQuery)
                         }
@@ -205,42 +207,6 @@ struct MainWindow: View {
                 }
                 .sheet(item: customReminderBinding) { request in
                     CustomReminderSheet(request: request, inbox: inbox)
-                }
-                .sheet(
-                    isPresented: Binding(
-                        get: { inbox.startNewChatDraft != nil },
-                        set: { shown in if !shown { inbox.startNewChatDraft = nil } }
-                    )
-                ) {
-                    if let draft = inbox.startNewChatDraft {
-                        StartNewChatView(
-                            draft: draft,
-                            recentRows: inbox.rows,
-                            onQueryChanged: { updated in
-                                inbox.updateStartNewChatDraft(updated)
-                            },
-                            onOpenDirectChat: { candidate in
-                                Task { await inbox.openDirectChat(with: candidate) }
-                            },
-                            onLookup: { action in
-                                Task { await inbox.performStartNewChatLookup(action) }
-                            },
-                            onRetrySearch: {
-                                Task { await inbox.retryStartNewChatSearch() }
-                            },
-                            onCreateGroup: { updated in
-                                inbox.startNewChatDraft = updated
-                                Task { await inbox.submitNewGroupChat() }
-                            },
-                            onSendBlast: { updated in
-                                inbox.startNewChatDraft = updated
-                                Task { await inbox.submitBlast() }
-                            },
-                            onCancel: {
-                                inbox.startNewChatDraft = nil
-                            }
-                        )
-                    }
                 }
                 .sheet(
                     isPresented: Binding(
@@ -359,6 +325,36 @@ struct MainWindow: View {
                         if inbox.showsAddNetwork {
                             AddNetworkPrompt(add: inbox.addNetwork)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if let draft = inbox.startNewChatDraft {
+                            StartNewChatView(
+                                draft: draft,
+                                recentRows: inbox.rows,
+                                onQueryChanged: { updated in
+                                    inbox.updateStartNewChatDraft(updated)
+                                },
+                                onOpenDirectChat: { candidate in
+                                    Task { await inbox.openDirectChat(with: candidate) }
+                                },
+                                onLookup: { action in
+                                    Task { await inbox.performStartNewChatLookup(action) }
+                                },
+                                onRetrySearch: {
+                                    Task { await inbox.retryStartNewChatSearch() }
+                                },
+                                onCreateGroup: { updated in
+                                    inbox.startNewChatDraft = updated
+                                    Task { await inbox.submitNewGroupChat() }
+                                },
+                                onSendBlast: { updated in
+                                    inbox.startNewChatDraft = updated
+                                    Task { await inbox.submitBlast() }
+                                },
+                                onCancel: {
+                                    inbox.cancelStartNewChat()
+                                }
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .courierEmptyChatToolbar(isConnected: model.engineState == .connected)
                         } else if conversation.roomID != nil || model.selectedRoomID != nil {
                             ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
                                              messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,

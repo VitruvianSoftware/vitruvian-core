@@ -297,6 +297,7 @@ func tail(ctx context.Context, s *store.Store) error {
 	feed, cancel := s.Subscribe()
 	defer cancel()
 	fmt.Println("Waiting for messages. Ctrl-C to stop.")
+	shown := map[string]int64{} // per chat, the latest arrival (seq) already shown
 	for {
 		select {
 		case <-ctx.Done():
@@ -305,17 +306,46 @@ func tail(ctx context.Context, s *store.Store) error {
 			if c.Kind != "event" {
 				continue
 			}
-			e, ok, err := s.GetEvent(ctx, c.EventID)
-			if err != nil || !ok || e.Type != event.EventMessage.Type {
-				continue
+			if err := printNewMessages(ctx, s, os.Stdout, shown, c); err != nil && ctx.Err() == nil {
+				fmt.Fprintln(os.Stderr, "tail:", err)
 			}
-			var body struct {
-				Body string `json:"body"`
-			}
-			_ = json.Unmarshal(e.Content, &body)
-			fmt.Printf("%s  %s  %s: %s\n", e.TS.Format(time.Kitchen), e.RoomID, e.Sender, body.Body)
 		}
 	}
+}
+
+// printNewMessages prints every message of the change's chat that arrived since the last one shown for it, up to the
+// change's own seq. A change can stand for a whole batch (a backfill stores many events and publishes one change per
+// chat, naming the batch's oldest event and the chat's latest seq), so the event it names is not the only new one.
+// The first change seen for a chat has nothing shown yet: it starts at the event it names.
+func printNewMessages(ctx context.Context, s *store.Store, w io.Writer, shown map[string]int64, c store.Change) error {
+	after, ok := shown[c.RoomID]
+	if !ok {
+		first, found, err := s.GetEvent(ctx, c.EventID)
+		if err != nil || !found {
+			return err
+		}
+		after = first.Seq - 1
+	}
+	through := c.Seq
+	if through < after {
+		return nil // an older change than what is shown already
+	}
+	evs, err := s.EventsBySeq(ctx, c.RoomID, after, through)
+	if err != nil {
+		return err
+	}
+	shown[c.RoomID] = through
+	for _, e := range evs {
+		if e.Type != event.EventMessage.Type {
+			continue
+		}
+		var body struct {
+			Body string `json:"body"`
+		}
+		_ = json.Unmarshal(e.Content, &body)
+		fmt.Fprintf(w, "%s  %s  %s: %s\n", e.TS.Format(time.Kitchen), e.RoomID, e.Sender, body.Body)
+	}
+	return nil
 }
 
 // waitStatus waits for the bridge to report what happened to a queued message.

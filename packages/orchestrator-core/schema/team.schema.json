@@ -8,6 +8,10 @@
     "$schema": {
       "type": "string"
     },
+    "engine": {
+      "$ref": "#/$defs/engine",
+      "description": "Default execution engine for all roles unless overridden by tier or role. Generic roles default to \"native\" when unset; mapped team roles on non-Antigravity harnesses resolve to null (the agent file decides) when unset."
+    },
     "notes": {
       "$ref": "#/$defs/notes"
     },
@@ -68,6 +72,11 @@
       "type": "string",
       "enum": ["medium", "high", "xhigh", "max"]
     },
+    "engine": {
+      "type": "string",
+      "enum": ["native", "gemini"],
+      "description": "Execution engine (precedence: role > tier > top level). Unset defaults to \"native\" for generic roles and null (agent file decides) for mapped team roles on non-Antigravity harnesses; Antigravity and lead rows are always \"native\"."
+    },
     "agent": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
@@ -75,7 +84,8 @@
     "model": {
       "type": "string",
       "minLength": 1,
-      "pattern": "\\S",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._/:-]{0,126}[A-Za-z0-9])?$",
       "not": {
         "pattern": "-[lL][oO][wW]|-[lL][iI][tT][eE]|[fF][lL][aA][sS][hH]-[lL][oO]"
       }
@@ -95,6 +105,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "engine": {
+          "$ref": "#/$defs/engine",
+          "description": "Execution engine override for roles in this tier (beats top-level engine)."
+        },
         "gemini": { "$ref": "#/$defs/geminiModel" },
         "claude-code": { "$ref": "#/$defs/model" },
         "antigravity": { "$ref": "#/$defs/model" },
@@ -108,6 +122,10 @@
       "properties": {
         "agent": { "$ref": "#/$defs/agent" },
         "tier": { "$ref": "#/$defs/tier" },
+        "engine": {
+          "$ref": "#/$defs/engine",
+          "description": "Execution engine override for this role (beats tier and top-level engine)."
+        },
         "gemini": { "$ref": "#/$defs/geminiModel" },
         "claude-code": { "$ref": "#/$defs/model" },
         "antigravity": { "$ref": "#/$defs/model" },

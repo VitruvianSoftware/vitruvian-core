@@ -29,6 +29,7 @@ import {
   applyPostCall,
   applyProgressCall,
   applyStepCall,
+  formatLeadWakes,
   formatWake,
   loadTeamConfig,
   loadTeamConfigForRoot,
@@ -37,6 +38,7 @@ import {
   parseModelAndEffort,
   pendingWakes,
   reduce,
+  runTeamSetup,
   validateTeamEvent,
 } from "./lib/adapter.mjs";
 import {
@@ -315,6 +317,34 @@ const TEAM_INPUT_SCHEMA = {
         "Optional absolute path to the repository root directory containing .agents/team.json.",
     },
   },
+  additionalProperties: false,
+};
+
+const TEAM_SETUP_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["init", "sync"],
+      description: "Setup action: init or sync.",
+    },
+    root: {
+      type: "string",
+      description: "Optional absolute path to the repository root directory.",
+    },
+    agents: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional non-lead role names to copy as editable team-<role> starter agents during init.",
+    },
+    check: {
+      type: "boolean",
+      description:
+        "When true, check and report changes without writing any files.",
+    },
+  },
+  required: ["action"],
   additionalProperties: false,
 };
 
@@ -730,6 +760,11 @@ export default {
       if (!initial || initial.closedAt) return;
 
       const wakes = pendingWakes(initial);
+      // Wakes for the root (lead) session are grouped by post, so a post that
+      // mentions @lead and a helper with no session of its own reaches the
+      // lead once (with the "Wake @helper" line), not once per mentioned name.
+      const sends = [];
+      const leadSendBySeq = new Map();
       for (const wake of wakes) {
         const current = flowsByRoot.get(rootID);
         if (!current || current.closedAt) break;
@@ -741,57 +776,73 @@ export default {
         ) {
           continue;
         }
+        const post = Array.isArray(current.posts)
+          ? current.posts.find((p) => p.seq === wake.seq)
+          : undefined;
 
-        wokenMentions.add(scopedKey);
-        try {
-          const post = Array.isArray(current.posts)
-            ? current.posts.find((p) => p.seq === wake.seq)
-            : undefined;
-
-          let targetSessionID = rootID;
-          let text;
-          if (wake.target === "lead") {
-            targetSessionID = rootID;
-            text = formatWake(wake, post, {
-              mode: "worker",
-              harness: "opencode",
+        if (wake.target !== "lead") {
+          const baseRunId = wake.runId ? String(wake.runId).split("#")[0] : "";
+          const candidateChildID = baseRunId || wake.runId || "";
+          let knownChild = false;
+          try {
+            knownChild = Boolean(
+              candidateChildID && (await isKnownChildSession(candidateChildID)),
+            );
+          } catch {
+            knownChild = false;
+          }
+          if (knownChild) {
+            sends.push({
+              sessionID: candidateChildID,
+              post,
+              wakes: [wake],
+              toLead: false,
             });
-          } else {
-            const baseRunId = wake.runId
-              ? String(wake.runId).split("#")[0]
-              : "";
-            const candidateChildID = baseRunId || wake.runId || "";
-            const knownChild =
-              candidateChildID && (await isKnownChildSession(candidateChildID));
-            if (knownChild) {
-              targetSessionID = candidateChildID;
-              text = formatWake(wake, post, {
+            continue;
+          }
+        }
+        const existing = leadSendBySeq.get(wake.seq);
+        if (existing) {
+          existing.wakes.push(wake);
+        } else {
+          const send = { sessionID: rootID, post, wakes: [wake], toLead: true };
+          leadSendBySeq.set(wake.seq, send);
+          sends.push(send);
+        }
+      }
+
+      for (const send of sends) {
+        const current = flowsByRoot.get(rootID);
+        if (!current || current.closedAt) break;
+        const scopedKeys = send.wakes.map(
+          (w) => `${rootID}:${current.startedAt}:${w.seq}:${w.target}`,
+        );
+        if (scopedKeys.some((k) => wokenMentions.has(k))) continue;
+        for (const k of scopedKeys) wokenMentions.add(k);
+        try {
+          const text = send.toLead
+            ? formatLeadWakes(send.wakes, send.post, { harness: "opencode" })
+            : formatWake(send.wakes[0], send.post, {
                 mode: "worker",
                 harness: "opencode",
               });
-            } else {
-              targetSessionID = rootID;
-              text = formatWake(wake, post, {
-                mode: "lead",
-                harness: "opencode",
-              });
-            }
-          }
-
-          await ctx.session.prompt({ sessionID: targetSessionID, text });
+          await ctx.session.prompt({ sessionID: send.sessionID, text });
           const latest = flowsByRoot.get(rootID);
           if (latest) {
-            const wokenFlow = reduce(latest, {
-              type: "wake",
-              at: Date.now(),
-              seq: wake.seq,
-              target: wake.target,
-            });
+            let wokenFlow = latest;
+            for (const w of send.wakes) {
+              wokenFlow = reduce(wokenFlow, {
+                type: "wake",
+                at: Date.now(),
+                seq: w.seq,
+                target: w.target,
+              });
+            }
             persistFlow(rootID, wokenFlow);
           }
         } catch {
-          // Swallow prompt errors; remove in-flight key so a later pass retries.
-          wokenMentions.delete(scopedKey);
+          // Swallow prompt errors; remove in-flight keys so a later pass retries.
+          for (const k of scopedKeys) wokenMentions.delete(k);
         }
       }
     }
@@ -1025,7 +1076,7 @@ export default {
         registry.add({
           name: "team",
           description:
-            "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+            "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, engines (role > tier > top level; generic defaults to native, mapped team roles default to null so the agent file decides and keep model/effort explicit-or-null; lead is always native), model overrides, and project notes (read-only).",
           options: { codemode: false },
           input: TEAM_INPUT_SCHEMA,
           execute: async (args, toolCtx) => {
@@ -1085,6 +1136,29 @@ export default {
 
             return {
               content: JSON.stringify(result),
+            };
+          },
+        });
+
+        registry.add({
+          name: "team_setup",
+          description:
+            "Initialize a starter .agents/team.json (and optional team-<role> starter agents) or sync explicit team.json harness model settings into repository agent files.",
+          options: { codemode: false },
+          input: TEAM_SETUP_INPUT_SCHEMA,
+          execute: async (args, toolCtx) => {
+            const rawCwd =
+              toolCtx?.cwd ||
+              toolCtx?.directory ||
+              ctx?.directory ||
+              ctx?.worktree ||
+              process.cwd();
+            const res = runTeamSetup(args || {}, { cwd: String(rawCwd) });
+            if (!res.ok) {
+              throw new Error(res.error);
+            }
+            return {
+              content: JSON.stringify(res.result),
             };
           },
         });

@@ -910,6 +910,11 @@ pub fn check_guard_review_paths(ctx: &Context) {
     // Read the README for doc checks.
     let readme_path = format!("{}/tools/agent-guard/README.md", ctx.root);
     let readme = fs::read_to_string(&readme_path).unwrap_or_default();
+    // AGENTS.md is what every agent reads first; if it misses a pattern an
+    // agent opens that PR expecting no review (#5227 touched a workflow and
+    // waited on James unannounced).
+    let agents_path = format!("{}/AGENTS.md", ctx.root);
+    let agents = fs::read_to_string(&agents_path).unwrap_or_default();
 
     let mut has_failures = false;
 
@@ -956,6 +961,17 @@ pub fn check_guard_review_paths(ctx: &Context) {
             );
             has_failures = true;
         }
+        if !agents.contains(&backticked) {
+            ctx.emit_fail(
+                "guardreview",
+                "AGENTS.md",
+                p,
+                "listed",
+                "not listed in AGENTS.md: agents would open that PR expecting no review",
+                &format!("add `{p}` to AGENTS.md's list of files that need James's approval"),
+            );
+            has_failures = true;
+        }
     }
 
     if !has_failures {
@@ -964,7 +980,7 @@ pub fn check_guard_review_paths(ctx: &Context) {
             src_rel,
             &format!("{total} pattern(s)"),
             "matches a file",
-            "every path that needs James's approval still names a file, and the README lists it",
+            "every path that needs James's approval still names a file, and the README and AGENTS.md list it",
         );
     }
 }

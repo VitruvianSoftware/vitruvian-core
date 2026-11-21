@@ -44,8 +44,9 @@ load(
 
 # gazelle:ignore
 
-# Inter-app boundary (#82): nothing outside this app may depend on its internals.
-package(default_visibility = ["//visibility:private"])
+# Inter-app boundary (#82): default targets to vitruvian-atrium-internal visibility
+# so other apps cannot depend on its internals.
+package(default_visibility = ["//apps/desktop/vitruvian-atrium:__subpackages__"])
 
 MACOS_ONLY = ["@platforms//os:macos"]
 
@@ -294,7 +295,7 @@ swift_library(
         ":VitruvianAtriumDesign",
         ":VitruvianAtriumServices",
         ":VitruvianAtriumUI",
-        "//packages/swift/SentryLite",
+        "//packages/sentry-lite:SentryLite",
     ],
 )
 
@@ -320,7 +321,7 @@ swift_library(
         ":VitruvianAtriumDesign",
         ":VitruvianAtriumServices",
         ":VitruvianAtriumUI",
-        "//packages/swift/SentryLite",
+        "//packages/sentry-lite:SentryLite",
     ],
 )
 

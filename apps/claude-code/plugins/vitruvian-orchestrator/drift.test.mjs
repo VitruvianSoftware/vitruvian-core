@@ -30,6 +30,12 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  applyAgentModels,
+  parseTeam,
+  planTeamSync,
+} from "./hooks/lib/orchestrator-core.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 function findRepoRoot() {
@@ -271,4 +277,27 @@ test("plugin ships role-named agents/*.md matching SKILL.md role table and docum
   assert.match(skill, /agy-delegate[\s\S]{0,120}(PATH|outside)/i);
   const readme = readPlugin("README.md");
   assert.match(readme, /agents\/\*\.md/);
+});
+
+test("team_setup sync against the real repository team.json and 30 agent files changes nothing", () => {
+  const teamText = readFileSync(join(ROOT, ".agents/team.json"), "utf8");
+  const parsed = parseTeam(teamText);
+  assert.equal(parsed.errors.length, 0);
+  assert.ok(parsed.team);
+
+  const targets = planTeamSync(parsed.team);
+  assert.equal(targets.length, 30);
+
+  for (const target of targets) {
+    assert.equal(target.conflict, false, `${target.path} unexpected conflict`);
+    const filePath = join(ROOT, target.path);
+    const text = readFileSync(filePath, "utf8");
+    const applied = applyAgentModels(text, target.harness, {
+      model: target.model,
+      effort: target.effort,
+    });
+    assert.equal(applied.changed, false, `${target.path} changed`);
+    assert.equal(applied.reason, "generated", `${target.path} reason`);
+    assert.equal(applied.text, text, `${target.path} text`);
+  }
 });

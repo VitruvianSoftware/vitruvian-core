@@ -23,6 +23,7 @@
 //! the WebSocket link to the relay (`run`). The installer is `scripts/`.
 
 pub mod auth;
+pub mod awake;
 pub mod bridge;
 pub mod config;
 pub mod keys;
@@ -30,6 +31,7 @@ pub mod link;
 pub mod proc;
 pub mod prompt;
 pub mod rules;
+pub mod secrets;
 pub mod state;
 pub mod status;
 

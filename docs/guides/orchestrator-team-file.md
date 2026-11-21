@@ -69,19 +69,65 @@ Map any role under `roles` to an agent name in your repository, optionally overr
 }
 ```
 
+## Engine
+
+Each role resolves an `engine`: `"native"` (default) or `"gemini"`.
+
+- **`native` (default):** the specialist does the work itself on its own harness model.
+- **`gemini`:** the specialist is a driver that hands the task to Gemini via `agy-delegate`, checks the result, and reports back.
+
+In Antigravity, the engine is always `"native"` because the agent already runs on Gemini.
+
+A role mapped to your own agent (`roles.<role>.agent`) with no `engine` set anywhere resolves to `engine: null`: your agent's own file decides how it runs, and the lead passes no model override unless the team file sets one. `native` and `gemini` defaults apply to the plugin's generic agents.
+
+You can set `engine` at three levels. The most specific value wins:
+
+1. Role (`roles.<role>.engine`)
+2. Tier (`tiers.<tier>.engine`)
+3. Top level (`engine`)
+4. Default (`"native"` when absent everywhere)
+
+Non-string or unknown values are schema errors; `resolveTeam` ignores them and falls through to the next level.
+
+```json
+{ "engine": "gemini", "tiers": { "light": { "engine": "native" } } }
+```
+
+In `vitruvian-core`, the generated `.agents/team.json` sets top-level `"engine": "gemini"` so its named agents continue running as Gemini drivers.
+
+### Engine model defaults
+
+A team-file harness model (`roles.<role>` or `tiers.<tier>`) always wins. Otherwise, the resolved row's `model` and `effort` depend on `engine`:
+
+- When `engine` is `"gemini"`, the row uses the driver default: `haiku` in Claude Code, `anthropic/claude-haiku-5-5` in OpenCode, at `medium` effort.
+- When `engine` is `"native"`, generic agents use these native defaults:
+
+| Tier | Claude Code | OpenCode | Effort |
+|---|---|---|---|
+| `build` | `sonnet` | `(session model)` | `high` |
+| `deep` | `sonnet` | `(session model)` | `high` |
+| `light` | `sonnet` | `(session model)` | `medium` |
+
+`(session model)` means no `model` is set (`null` in the resolved row and no `model:` line in the generic OpenCode agent file), so OpenCode uses the user's own session provider. Low effort and lite models are never used.
+
+For the `lead` role, `engine` is always `"native"`. For `"off"` roles, `engine` is `null`.
+
 ## Models
 
 You can set models per tier under `tiers` or per role under `roles`. For `gemini`, the active harness's own model (`claude-code`, `antigravity`, or `opencode`), and `effort`, the lead resolves each setting in this order:
 
 1. Role override (`roles.<role>.<key>`)
 2. Team tier setting (`tiers.<tier>.<key>`)
-3. The plugin's built-in tier default
+3. The plugin's built-in tier default (based on `engine` for harness models)
 
 For the `lead` tier, `gemini` always resolves to `null`.
 
-- **Gemini model changes take effect on the next dispatch.** When a role's resolved `gemini` model differs from that agent's built-in default, the lead puts `Gemini model: <id>` in the task brief, and drivers already read and validate that line.
-- **Harness model and effort changes require regenerating agent files.** Each harness reads its own model (`claude-code`, `antigravity`, `opencode`) and `effort` from the agent file when the agent loads, so changes take effect only after the agent files are regenerated (in `vitruvian-core`: `bazel run //tools/agent-roster -- --write`; for other repositories: the `sync` command planned in step 3). In step 1, the `team` tool reports these values; nothing applies them yet.
 - **Low-power models are rejected.** Any model string containing `-low`, `-lite`, or `flash-lo` is invalid. Setting `effort` to `"low"` is also rejected; valid `effort` values are `"medium"`, `"high"`, `"xhigh"`, and `"max"`.
+
+### When a model change takes effect
+
+- **The Gemini model (`gemini`) takes effect on the next dispatch:** the lead puts it in the brief as `Gemini model: <id>`, and drivers already read and validate that line.
+- **The harness's own model and effort (`claude-code`, `antigravity`, `opencode`, `effort`) take effect only after the agent files are regenerated or synced:** each harness reads these values from the agent file when the agent loads (in `vitruvian-core`: `bazel run //tools/agent-roster -- --write`; in other repositories: run `team_setup` with `action: "sync"`, or invoke the `team-setup` skill). In Claude Code the lead also passes the row's `model` to the Agent tool at dispatch, so it applies to the next run even before a sync; Antigravity and OpenCode read it only from the agent file.
 
 ## Turning a role off
 
@@ -105,7 +151,7 @@ Call the read-only `team` MCP tool (available in Claude Code, Antigravity, and O
 - `file`: `".agents/team.json"` whenever the file is found (including when it has errors), or `null` only when it is absent.
 - `errors`: Any parse, validation, symlink, size-limit, or file-read errors (a missing file is not an error).
 - `notes`: The resolved top-level notes.
-- `roles`: The resolved list of all ten roles in order (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`), showing each role's `agent`, `dispatch`, `source`, `tier`, `gemini`, `model`, `effort`, and `notes`.
+- `roles`: The resolved list of all ten roles in order (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`), showing each role's `agent`, `dispatch`, `source`, `tier`, `engine`, `gemini`, `model`, `effort`, and `notes`.
 
 `.agents/team.json` may be a symlink, as long as its real target is inside the repository:
 
@@ -115,6 +161,33 @@ Call the read-only `team` MCP tool (available in Claude Code, Antigravity, and O
 - A file larger than 64 KiB is not read and reports a size-limit error.
 
 If `.agents/team.json` is larger than 64 KiB, is a symlink pointing outside the repository, is a dangling symlink, has malformed JSON, or contains any invalid key or value, the file is not used: every role falls back to defaults, and the lead surfaces `errors` to you once and continues with defaults.
+
+## Set it up and keep it in sync
+
+Use the `team-setup` skill or call the `team_setup` MCP tool (pass `root` as the absolute repository path) to create your starter team file or copy its model settings into your repository's agent files.
+
+### `init`: create a starter setup
+
+`team_setup` with `action: "init"` creates `.agents/team.json` with `$schema`, an empty `notes` string, and empty `roles` (so every role starts on the plugin's generic agent). It never overwrites existing files.
+
+- Pass `agents: ["developer", ...]` (any role except `lead`) to copy those roles' generic agents into the calling harness's agent folder as `team-<role>.md` (`.claude/agents/`, `.agents/agents/`, or `.opencode/agents/`), rewrite `name:`, and map each role in `.agents/team.json` with `"agent": "team-<role>"` and `"engine": "native"`.
+- If `.agents/team.json` or any requested `team-<role>.md` file already exists, `init` refuses and writes nothing (all-or-nothing).
+- After `init`, edit `.agents/team.json` and run `sync` to apply your model settings.
+
+### `sync`: apply models to agent files
+
+`team_setup` with `action: "sync"` updates model and effort lines in your repository's own agent files for every role with `source: "team"`. It reads only explicit harness values from `.agents/team.json` (role setting, then tier setting) and never writes plugin defaults:
+
+| Harness | Agent file | Frontmatter lines updated |
+|---|---|---|
+| Claude Code | `.claude/agents/<agent>.md` | `model:`, `effort:` |
+| OpenCode | `.opencode/agents/<agent>.md` | `model:`, `reasoningEffort:` |
+| Antigravity | `.agents/agents/<agent>.md` | `model:` (`inherit`, `flash`, or `pro` only) |
+
+- **Edits stay minimal:** Only those YAML frontmatter lines change; missing keys are added at the end of frontmatter, and the body and all other keys stay byte-identical.
+- **Safe skips:** Sync skips and reports files with a `"Generated by ... Do not edit"` header comment, files without YAML frontmatter, symlinks, paths outside the repository, and Antigravity values other than `inherit`, `flash`, or `pro` (Antigravity silently drops files with unknown models).
+- **Dry-run mode:** Pass `check: true` (for CI or previewing) to write nothing and report each file as `changed`, `unchanged`, or `skipped (<reason>)`.
+- **Why OpenCode needs `sync`:** OpenCode cannot override an agent's model at dispatch time (`subagent` uses the model and reasoning effort in `.opencode/agents/<agent>.md`), so run `sync` after editing OpenCode model or effort settings in `.agents/team.json`.
 
 ## How vitruvian-core uses it
 
@@ -134,6 +207,7 @@ In `vitruvian-core`, `.agents/team.json` is generated from `.agents/roster/agent
 | Key | Type | Rule |
 |---|---|---|
 | `$schema` | `string` | Optional. Schema URL (`https://vitruviansoftware.dev/schemas/orchestrator-team.json`). |
+| `engine` | `string` | Optional. Repo-wide default engine: `"native"` (default) or `"gemini"`. |
 | `notes` | `string` | Optional. Repo-wide notes for every specialist. At most 2000 characters after display-text sanitization. |
 | `tiers` | `object` | Optional. Per-tier defaults. Allowed keys: `lead`, `build`, `deep`, `light`. |
 | `roles` | `object` | Optional. Per-role settings. Allowed keys: `lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`. |
@@ -144,6 +218,7 @@ Each tier value is an object with any of these optional keys:
 
 | Key | Type | Rule |
 |---|---|---|
+| `engine` | `string` | Optional. Per-tier engine: `"native"` or `"gemini"`. |
 | `gemini` | `string` | Optional. Must match `^gemini-[a-z0-9.-]+$` and must not contain `-low`, `-lite`, or `flash-lo`. Resolves to `null` for the `lead` tier. |
 | `claude-code` | `string` | Optional. Model for Claude Code. Must not contain `-low`, `-lite`, or `flash-lo`. |
 | `antigravity` | `string` | Optional. Model for Antigravity. Must not contain `-low`, `-lite`, or `flash-lo`. |
@@ -158,6 +233,7 @@ A role value is either the string `"off"` (not allowed for `lead`) or an object 
 |---|---|---|
 | `agent` | `string` | Optional. Agent name in your repository. Must match `^[a-z0-9][a-z0-9-]{0,63}$`. Defaults to the role ID. |
 | `tier` | `string` | Optional. One of `"lead"`, `"build"`, `"deep"`, `"light"`. Defaults to the role's default tier. |
+| `engine` | `string` | Optional. Per-role engine: `"native"` or `"gemini"`. |
 | `gemini` | `string` | Optional. Per-role Gemini model override. Must match `^gemini-[a-z0-9.-]+$` and must not contain `-low`, `-lite`, or `flash-lo` (resolves to `null` for the `lead` tier). |
 | `claude-code` | `string` | Optional. Per-role Claude Code model override. Same rules as `tiers.<tier>.claude-code`. |
 | `antigravity` | `string` | Optional. Per-role Antigravity model override. Same rules as `tiers.<tier>.antigravity`. |
@@ -174,4 +250,4 @@ The `team` tool takes one optional input, `root` (the absolute repository path),
 | `file` | `string \| null` | `".agents/team.json"` whenever the file is found (including when it has errors), or `null` only when absent. |
 | `errors` | `string[]` | Parse (`invalid JSON: ...`), validation, symlink, size-limit, or file-read errors. Empty when valid or absent. |
 | `notes` | `string` | Resolved top-level notes. |
-| `roles` | `object[]` | Resolved entries for all ten roles in order (`role`, `agent`, `dispatch`, `source`, `tier`, `gemini`, `model`, `effort`, `notes`). `source` is `"team"`, `"generic"`, or `"off"`; `"off"` sets `agent` and `dispatch` to `null`. |
+| `roles` | `object[]` | Resolved entries for all ten roles in order (`role`, `agent`, `dispatch`, `source`, `tier`, `engine`, `gemini`, `model`, `effort`, `notes`). `source` is `"team"`, `"generic"`, or `"off"`; `"off"` sets `agent`, `dispatch`, and `engine` to `null`. |

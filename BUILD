@@ -98,11 +98,15 @@ exports_files(
     [
         ".agents/roster/agents.tsv",
         ".agents/roster/generic/roles.tsv",
+        ".agents/roster/generic/tiers.tsv",
         ".agents/roster/tiers.tsv",
         ".agents/roster/team-notes.md",
         ".agents/roster/skills/orchestrate/antigravity.md",
         ".agents/roster/skills/orchestrate/claude-code.md",
         ".agents/roster/skills/orchestrate/opencode.md",
+        ".agents/roster/skills/team-setup/antigravity.md",
+        ".agents/roster/skills/team-setup/claude-code.md",
+        ".agents/roster/skills/team-setup/opencode.md",
         ".agents/team.json",
     ],
     visibility = [
@@ -161,13 +165,19 @@ filegroup(
             "wren",
         ]
     ],
-    visibility = ["//tools/agent-roster:__pkg__"],
+    visibility = [
+        "//apps/antigravity/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/claude-code/plugins/vitruvian-orchestrator:__pkg__",
+        "//apps/opencode/plugins/vitruvian-orchestrator:__pkg__",
+        "//tools/agent-roster:__pkg__",
+    ],
 )
 
 filegroup(
     name = "roster_generic_sources",
     srcs = [
         ".agents/roster/generic/roles.tsv",
+        ".agents/roster/generic/tiers.tsv",
         ".agents/roster/team-notes.md",
     ] + glob([".agents/roster/generic/prompts/*.md"]),
     visibility = ["//tools/agent-roster:__pkg__"],
@@ -472,13 +482,11 @@ doctor(
 )
 
 # Sponsor buttons (FUNDING.yml) whose folder has no BUILD of its own: the
-# monorepo's, Vitruvian Courier's and pulumi-library's. The stripe stack's
-# donations_pages_test.go checks each opens a donate page that a Payment Link
-# backs.
+# monorepo's and pulumi-library's. The stripe stack's donations_pages_test.go
+# checks each opens a donate page that a Payment Link backs.
 exports_files(
     [
         ".github/FUNDING.yml",
-        "apps/desktop/vitruvian-courier/.github/FUNDING.yml",
         "packages/pulumi/library/.github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],

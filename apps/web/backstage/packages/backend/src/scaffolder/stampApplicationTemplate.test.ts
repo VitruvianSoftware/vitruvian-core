@@ -226,11 +226,12 @@ describe("the stamp-application template", () => {
     expect(pr.draft).toBe(true);
   });
 
-  it("discloses both surprises in the pull request body", () => {
+  it("discloses the license-header gap and automatic catalog discovery in the pull request body", () => {
     const body = stepFor("publish:github:pull-request").input.description;
-    // ADR-019 disclose-and-include: the action edits a file nobody named.
-    expect(body).toContain("catalog-info.yaml");
-    expect(body).toContain("vitruvian-core-apps");
+    // Per-app discovery via catalog.providers.github replaced the manual root
+    // vitruvian-core-apps Location append.
+    expect(body).not.toContain("vitruvian-core-apps");
+    expect(body).toContain("catalog.providers.github");
     // The known P1 gap, so the reviewer is not surprised by a red gate.
     expect(body).toContain("license headers");
     expect(body).toContain("//tools/license:add");
@@ -260,12 +261,11 @@ describe("the stamp-application template", () => {
       doc.includes("name: vitruvian-core-templates"),
     );
     expect(templatesLocation).toBeDefined();
-    // Deliberately NOT in vitruvian-core-apps: that list is per-app component
-    // metadata and the render action appends to it automatically.
+    // vitruvian-core-apps was retired in favour of catalog.providers.github.
     const appsLocation = locations.find((doc) =>
       doc.includes("name: vitruvian-core-apps"),
     );
-    expect(appsLocation).not.toContain("templates/stamp-application");
+    expect(appsLocation).toBeUndefined();
   });
 
   it("offers only languages the target repo's engine can render", () => {

@@ -215,7 +215,7 @@ swift_library(
     deps = [
         ":VitruvianCodeCore",
         ":VitruvianCodeUI",
-        "//packages/swift/SentryLite",
+        "//packages/sentry-lite:SentryLite",
     ],
 )
 

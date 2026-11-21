@@ -99,7 +99,7 @@ fn run_in(pkg: &Path, bin: &Path, args: &[&std::ffi::OsStr]) -> i32 {
 pub fn run(_args: &[Vec<u8>]) -> i32 {
     let here = design_sync_dir();
     let root = here.parent().unwrap_or(&here).to_path_buf();
-    let pkg = root.join("packages/design-system");
+    let pkg = root.join("packages/design-system/web");
 
     if !pkg.is_dir() {
         err(&[

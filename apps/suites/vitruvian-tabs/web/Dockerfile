@@ -34,13 +34,13 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/suites/vitruvian-tabs/web/package.json apps/suites/vitruvian-tabs/web/package.json
 COPY apps/suites/vitruvian-tabs/shared/package.json apps/suites/vitruvian-tabs/shared/package.json
-COPY packages/design-system/package.json packages/design-system/package.json
+COPY packages/design-system/web/package.json packages/design-system/web/package.json
 
 RUN pnpm install --frozen-lockfile
 
 # Copy source for all needed workspaces
 COPY apps/suites/vitruvian-tabs/shared/ apps/suites/vitruvian-tabs/shared/
-COPY packages/design-system/ packages/design-system/
+COPY packages/design-system/web/ packages/design-system/web/
 COPY apps/suites/vitruvian-tabs/web/ apps/suites/vitruvian-tabs/web/
 
 # Build workspace dependencies before building Next.js app

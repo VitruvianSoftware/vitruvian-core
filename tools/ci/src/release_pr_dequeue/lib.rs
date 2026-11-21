@@ -20,6 +20,13 @@
 
 //! release-pr-dequeue — take a component's release PR out of the merge
 //! queue when main has just gained a change that PR does not list.
+//!
+//! `release_pr_dequeue rearm` is the second half, run AFTER release-please:
+//! release-please pushes to the release branch only when the PR's text
+//! changes, so a release PR dequeued for a commit that adds nothing to the
+//! notes (a chore, a docs change) is never pushed to, never fires the
+//! auto-merge workflow's `synchronize`, and would sit out of the queue.
+//! `rearm` puts it back (unless it is held, a draft, queued or armed).
 
 use shell_compat::{capture, cat, out, read_fields, subst};
 use std::process::Command;
@@ -30,6 +37,11 @@ fn skip(msg: &[u8]) -> i32 {
         msg,
         b"\n",
     ]));
+    0
+}
+
+fn warn_titled(title: &[u8], msg: &[u8]) -> i32 {
+    out(&cat(&[b"::warning title=", title, b"::", msg, b"\n"]));
     0
 }
 
@@ -72,7 +84,140 @@ fn code_at(repo: &[u8], sha: &[u8], code_path: &[u8]) -> Result<Vec<u8>, Vec<u8>
     Ok(subst(r.stdout))
 }
 
-pub fn run(_args: &[Vec<u8>]) -> i32 {
+pub fn run(args: &[Vec<u8>]) -> i32 {
+    match args.first().map(|a| a.as_slice()) {
+        None => dequeue(),
+        Some(b"rearm") => rearm(),
+        Some(other) => {
+            shell_compat::err(&cat(&[
+                b"unknown argument '",
+                other,
+                b"' (the only mode is `rearm`)\n",
+            ]));
+            2
+        }
+    }
+}
+
+/// Put the component's release PR back in the merge queue when something
+/// (this run's dequeue, or a person) left it out and release-please did not
+/// push. Never fails the release run. A held (`do-not-automerge`) or draft PR
+/// is left alone, as release-pr-automerge.yaml leaves it.
+fn rearm() -> i32 {
+    const TITLE: &[u8] = b"release PR not put back in the merge queue";
+    let repo = match require("REPO") {
+        Ok(v) => v,
+        Err(_) => return 1,
+    };
+    let component = match require("COMPONENT") {
+        Ok(v) => v,
+        Err(_) => return 1,
+    };
+    let branch = cat(&[b"release-please--branches--main--components--", &component]);
+    let owner_end = repo.iter().position(|&c| c == b'/').unwrap_or(repo.len());
+    let owner = &repo[..owner_end];
+    let name = if owner_end < repo.len() {
+        &repo[owner_end + 1..]
+    } else {
+        b""
+    };
+
+    let query = b"query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){pullRequests(headRefName:$branch,states:OPEN,first:10){nodes{number isCrossRepository isDraft isInMergeQueue autoMergeRequest{enabledAt} labels(first:50){nodes{name}}}}}}";
+    let jq_expr = r#".data.repository.pullRequests.nodes | map(select(.isCrossRepository | not)) | .[0] // empty | "\(.number)\t\(.isDraft)\t\(.isInMergeQueue)\t\(.autoMergeRequest != null)\t\([.labels.nodes[].name] | index("do-not-automerge") != null)""#;
+    let r = capture(
+        72,
+        Command::new("gh")
+            .arg("api")
+            .arg("graphql")
+            .arg("-f")
+            .arg(shell_compat::os(&cat(&[b"owner=", owner])))
+            .arg("-f")
+            .arg(shell_compat::os(&cat(&[b"name=", name])))
+            .arg("-f")
+            .arg(shell_compat::os(&cat(&[b"branch=", &branch])))
+            .arg("-f")
+            .arg(shell_compat::os(&cat(&[b"query=", query])))
+            .arg("--jq")
+            .arg(jq_expr),
+    );
+    let row = subst(if r.ok() {
+        r.stdout.clone()
+    } else {
+        cat(&[&r.stdout, &r.stderr])
+    });
+    if !r.ok() {
+        return warn_titled(
+            TITLE,
+            &cat(&[b"could not list open release PRs on ", &branch, b": ", &row]),
+        );
+    }
+    if row.is_empty() {
+        out(&cat(&[
+            b"No open release PR on ",
+            &branch,
+            b" \xe2\x80\x94 nothing to put back.\n",
+        ]));
+        return 0;
+    }
+    let fields = read_fields(&row, b"\t", 5);
+    let (pr, draft, queued, armed, held) =
+        (&fields[0], &fields[1], &fields[2], &fields[3], &fields[4]);
+    for (flag, why) in [
+        (held, "held (do-not-automerge)"),
+        (draft, "a draft"),
+        (queued, "in the merge queue"),
+        (armed, "set to auto-merge"),
+    ] {
+        if flag.as_slice() == b"true" {
+            out(&cat(&[
+                b"Release PR #",
+                pr,
+                b" is ",
+                why.as_bytes(),
+                b" \xe2\x80\x94 leaving it as it is.\n",
+            ]));
+            return 0;
+        }
+    }
+    // Only a row with a PR number and all four flags answered "false" gets here.
+    if pr.is_empty()
+        || [draft, queued, armed, held]
+            .iter()
+            .any(|f| f.as_slice() != b"false")
+    {
+        return warn_titled(TITLE, &cat(&[b"unreadable release PR row: ", &row]));
+    }
+    let m = capture(
+        107,
+        Command::new("gh")
+            .arg("pr")
+            .arg("merge")
+            .arg(shell_compat::os(pr))
+            .arg("-R")
+            .arg(shell_compat::os(&repo))
+            .arg("--squash")
+            .arg("--auto"),
+    );
+    if !m.ok() {
+        return warn_titled(
+            TITLE,
+            &cat(&[
+                b"could not arm auto-merge on #",
+                pr,
+                b": ",
+                &subst(cat(&[&m.stdout, &m.stderr])),
+            ]),
+        );
+    }
+    out(&cat(&[
+        b"Release PR #",
+        pr,
+        b" was out of the merge queue and is set to auto-merge again.\n",
+    ]));
+    0
+}
+
+fn dequeue() -> i32 {
     let repo = match require("REPO") {
         Ok(v) => v,
         Err(_) => return 1,

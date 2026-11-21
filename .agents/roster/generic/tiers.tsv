@@ -1,0 +1,20 @@
+# Native model defaults for generic plugin agents (Claude Code and OpenCode).
+#
+# When a role runs on engine "native" (the default outside Antigravity), it does the
+# work itself instead of acting as a Haiku driver for Gemini. Antigravity already runs
+# natively using the `antigravity` column in `.agents/roster/tiers.tsv`.
+#
+# Format rules:
+# - Same 4-column TSV format and validation rules as `.agents/roster/tiers.tsv`.
+# - Claude Code accepts opus|sonnet|haiku|fable|inherit or a full claude-* id,
+#   plus effort medium|high|xhigh|max (never low, never -lite/-low/flash-lo).
+# - OpenCode accepts a full provider/model id or "-" meaning the user's session model
+#   (null in tier-defaults.mjs, and no model:/reasoningEffort: lines in generic agent files).
+# - Effort "low" is forbidden.
+tier	harness	model	effort
+build	claude-code	sonnet	high
+build	opencode	-	high
+deep	claude-code	sonnet	high
+deep	opencode	-	high
+light	claude-code	sonnet	medium
+light	opencode	-	medium

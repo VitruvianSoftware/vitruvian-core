@@ -100,3 +100,13 @@ jobs:
             cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           bazel run "${cache[@]}" //tools/conformance:check
+
+      - name: Verify detect-macos path filter matches the Bazel graph
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${cache[@]}" //tools/ci:macos_paths
+          bazel-bin/tools/ci/macos_paths --check

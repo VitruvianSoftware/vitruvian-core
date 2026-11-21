@@ -141,7 +141,7 @@ struct InboxList: View {
     private var chats: some View {
         if !inbox.isLoaded {
             SkeletonRows(compact: preferences.compactList)
-        } else if inbox.rows.isEmpty {
+        } else if inbox.rows.isEmpty && inbox.startNewChatDraft == nil {
             EmptyStateView(state: EmptyState.of(inbox.query), guidance: EmptyStateGuidance.of(inbox.query),
                            goToInbox: { spaces.select("inbox") })
         } else {
@@ -157,6 +157,10 @@ struct InboxList: View {
             // The times are read against "now", which moves on: draw again every minute.
             TimelineView(.everyMinute) { timeline in
                 List(selection: selection(for: rows)) {
+                    if let draft = inbox.startNewChatDraft {
+                        NewChatPlaceholderRow(draft: draft, style: style)
+                            .tag(InboxModel.newChatRowID)
+                    }
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         InboxRowView(
                             row: row,
@@ -187,11 +191,12 @@ struct InboxList: View {
                 .listStyle(.inset)
                 .courierSidebarList()
                 .contextMenu(forSelectionType: String.self) { ids in
-                    if let id = ids.first {
+                    if let id = ids.first, id != InboxModel.newChatRowID {
                         ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(id))
                     }
                 } primaryAction: { ids in
-                    if let id = ids.first, let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
+                    if let id = ids.first, id != InboxModel.newChatRowID,
+                       let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
                 }
                 .onKeyPress(phases: .down, action: key)
                 .onExitCommand { _ = inbox.escape() }
@@ -200,17 +205,26 @@ struct InboxList: View {
                 // A key moved the selection, which may be off screen.
                 if let id { scroll.scrollTo(id) }
             }
+            .onChange(of: inbox.startNewChatDraft != nil) { _, isCreating in
+                if isCreating { scroll.scrollTo(InboxModel.newChatRowID, anchor: .top) }
+            }
         }
     }
 
-    /// The open chat is the list's selection. While selecting, a click toggles a chat (⇧-click selects up to it)
-    /// and the list shows checkmarks instead; outside it, ⌘-click and ⇧-click start selecting.
+    /// The open chat is the list's selection (or the inline "New Chat" row while starting a chat). While selecting, a
+    /// click toggles a chat (⇧-click selects up to it) and the list shows checkmarks instead; outside it, ⌘-click and
+    /// ⇧-click start selecting.
     private func selection(for listedRows: [InboxRow]) -> Binding<String?> {
         Binding(get: {
-            inbox.isSelecting ? nil : listedRows.first(where: { inbox.isOpen($0.id) || inbox.isOpen($0.roomID) })?.id
+            if inbox.isSelecting { return nil }
+            if inbox.startNewChatDraft != nil { return InboxModel.newChatRowID }
+            return listedRows.first(where: { inbox.isOpen($0.id) || inbox.isOpen($0.roomID) })?.id
         }, set: { id in
             let flags = NSEvent.modifierFlags
             let click = [.leftMouseDown, .leftMouseUp].contains(NSApp.currentEvent?.type)
+            if id == InboxModel.newChatRowID {
+                return
+            }
             if inbox.isSelecting {
                 // Arrow keys don't change what is selected; clicks do.
                 guard click, let id else { return }
@@ -443,5 +457,78 @@ enum MainMenuAction {
             if let submenu = item.submenu, choose(title, in: submenu) { return true }
         }
         return false
+    }
+}
+
+/// Placeholder row selected at the top of the inbox while composing a new chat in the detail pane.
+private struct NewChatPlaceholderRow: View {
+    let draft: StartNewChatDraft
+    let style: RowStyle
+    @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeAccentColor) private var themeAccent
+    @Environment(\.courierZoomMultiplier) private var zoom
+
+    private var pointSizes: (title: CGFloat, preview: CGFloat, time: CGFloat) {
+        FontSizeScale.inboxRowPointSizes(
+            scale: appearanceEnv?.fontSizeScale ?? style.fontSizeScale,
+            zoom: zoom
+        )
+    }
+
+    private var titleText: String {
+        if draft.selectedRecipients.count >= 2 {
+            switch draft.mode {
+            case .newGroup: return String(localized: "New Group Chat")
+            case .blast: return String(localized: "New Blast Message")
+            case .directChat: return String(localized: "New Chat")
+            }
+        }
+        if draft.startsInMultiSelect || !draft.selectedRecipients.isEmpty {
+            return String(localized: "New Group or Blast")
+        }
+        return String(localized: "New Chat")
+    }
+
+    private var subtitleText: String {
+        if !draft.selectedRecipients.isEmpty {
+            return draft.selectedRecipients
+                .map { $0.name.isEmpty ? $0.userID : $0.name }
+                .joined(separator: ", ")
+        }
+        let trimmed = draft.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+        return String(localized: "Choose a person to message")
+    }
+
+    var body: some View {
+        let avatarSize: CGFloat = style.compact ? 28 : 40
+        HStack(spacing: style.compact ? 8 : 10) {
+            ZStack {
+                Circle()
+                    .fill(themeAccent.opacity(0.16))
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: round(avatarSize * 0.42), weight: .semibold))
+                    .foregroundStyle(themeAccent)
+            }
+            .frame(width: avatarSize, height: avatarSize)
+
+            VStack(alignment: .leading, spacing: style.compact ? 1 : 3) {
+                Text(titleText)
+                    .font(.system(size: pointSizes.title, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitleText)
+                    .font(.system(size: pointSizes.preview))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, style.compact ? 1 : 4)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("inbox.newChatPlaceholderRow")
     }
 }

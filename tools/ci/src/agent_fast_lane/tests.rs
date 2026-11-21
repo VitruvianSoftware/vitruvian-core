@@ -204,6 +204,7 @@ fn ci_yaml_heavy_jobs_skip_on_the_fast_lane_and_fast_checks_never_do() {
     let fast_checks = [
         "license-check",
         "lint-naming",
+        "dupcheck",
         "changes",
         // Moved here from their own workflows, which never saw the label.
         "gitops-validate",

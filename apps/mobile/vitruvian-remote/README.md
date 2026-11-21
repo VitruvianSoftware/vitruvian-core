@@ -3,7 +3,7 @@
 Formerly **android-remote**. Releases up to 0.1.39 are tagged `android-remote-v*`; later ones are `vitruvian-remote-v*`.
 
 A remote control and observability console for a Mac, built in the
-[Vitruvian](../../../packages/design-system/README.md) design language and shaped for a
+[Vitruvian](../../../packages/design-system/web/README.md) design language and shaped for a
 foldable — specifically the Pixel 11 Pro Fold, folded, unfolded and in tabletop
 posture.
 
@@ -91,7 +91,7 @@ redistribute it under a licence that permits vendoring, so `ANDROID_HOME` has to
 point at a local install. Nothing else in the monorepo is affected — without it
 only the two Android packages fail to build.
 
-Depends on `//packages/design-system-android:lib`, which is where every colour, size
+Depends on `//packages/design-system/android:lib`, which is where every colour, size
 and font comes from. Nothing in this app defines a design value of its own.
 
 ## Layout
@@ -201,8 +201,8 @@ a second signing key, for what Obtainium already does with no setup on our side.
 
 ## Design source
 
-The design is `packages/design-system/ANDROID.md` plus the tokens in
-`packages/design-system/src/tokens.json`, and this app is a direct
+The design is `packages/design-system/web/ANDROID.md` plus the tokens in
+`packages/design-system/web/src/tokens.json`, and this app is a direct
 implementation of a Claude Design handoff built on both. Colours, type, spacing
 and copy are final and token-derived; if a value here disagrees with
 `tokens.json`, `tokens.json` is right.

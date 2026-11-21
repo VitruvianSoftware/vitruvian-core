@@ -531,6 +531,112 @@ _EXPECTED_OUTPUTS = {
 }
 _SMOKE_PKG = "app/" + _SMOKE_NAME
 
+_PACKAGE_EXPECTED_OUTPUTS = ["BUILD", "README.md", "catalog-info.yaml"]
+_PACKAGE_README_SECTIONS = [
+    "## What it gives you",
+    "## When to use it",
+    "## When not to use it",
+    "## Example",
+    "## Depend on it",
+    "## Constraints",
+]
+
+def _package_render_data(app, name, language, description, owner, lifecycle, extra_tags_csv, target):
+    """Build (project_snake, project_kebab, flags) for rendering tools/initializer/package."""
+    if "/" in name or ".." in name:
+        fail("package name {!r} must not contain '/' or '..'".format(name))
+    parts = [p.lower() for p in name.replace("-", "_").split("_") if p]
+    if not parts:
+        fail("package name {!r} must contain at least one alphanumeric segment".format(name))
+    project_kebab = "-".join(parts)
+    project_snake = "_".join(parts)
+
+    pkg_cfg = app.get("package", {})
+    lang = language if language else pkg_cfg.get("default_language", "rust")
+    pkg_owner = owner if owner else pkg_cfg.get("default_owner", "platform-team")
+    pkg_lifecycle = lifecycle if lifecycle else pkg_cfg.get("default_lifecycle", "experimental")
+    pkg_desc = description if description else "Shared {} library package.".format(project_kebab)
+    target_name = target if target else project_kebab
+    bazel_target = "//packages/{}:{}".format(project_kebab, target_name)
+
+    tags = [lang]
+    for raw_tag in extra_tags_csv.split(","):
+        tag = raw_tag.strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    tags_yaml = "\n".join(["    - " + t for t in tags])
+
+    flags = {
+        "language": lang,
+        "description": pkg_desc,
+        "owner": pkg_owner,
+        "lifecycle": pkg_lifecycle,
+        "tags_yaml": tags_yaml,
+        "target_name": target_name,
+        "bazel_target": bazel_target,
+    }
+    return (project_snake, project_kebab, flags)
+
+def _render_package_impl(ctx):
+    base = _base(ctx)
+    app = load_app_config(ctx, base)
+
+    problems = validate_app_config(app)
+    if problems:
+        for p in problems:
+            ctx.std.io.stdout.write("  - {}\n".format(p))
+        fail("application metadata contract is invalid; run `aspect check-metadata`")
+    if "package" not in app:
+        fail("config.json has no 'package' section")
+
+    project_snake, project_kebab, flags = _package_render_data(
+        app,
+        ctx.args.name,
+        ctx.args.language,
+        ctx.args.description,
+        ctx.args.owner,
+        ctx.args.lifecycle,
+        ctx.args.tags,
+        ctx.args.target,
+    )
+
+    raw_out = ctx.args.out if ctx.args.out else "packages/" + project_kebab
+    out_segs = _path_segments(_absolute(ctx, raw_out))
+    if not out_segs:
+        fail("--out resolves to the filesystem root, which render-package would clear; pass a directory")
+    out_abs = "/" + "/".join(out_segs)
+    if out_segs[-1] != project_kebab:
+        fail("--out must end in packages/{} (or directory named {!r}); got {}".format(
+            project_kebab, project_kebab, out_abs))
+
+    app_render_config = _render_config(app)
+    template_dir = base + "/" + app["package"]["template_dir"]
+
+    if ctx.std.fs.exists(out_abs):
+        ctx.std.fs.remove_dir_all(out_abs)
+    ctx.std.fs.create_dir_all(out_abs)
+
+    written = render(ctx, app_render_config, template_dir, out_abs, project_snake, flags)
+    ctx.std.io.stdout.write("rendered package {!r} -> {} ({} files)\n".format(
+        project_kebab, out_abs, len(written)))
+    return 0
+
+render_package = task(
+    kind = "render-package",
+    summary = "Render a shared package skeleton under packages/<name>",
+    implementation = _render_package_impl,
+    args = {
+        "name": args.string(required = True, description = "Package name (kebab-case or snake_case)"),
+        "out": args.string(default = "", description = "Output directory (defaults to packages/<project_kebab>)"),
+        "language": args.string(default = "", description = "Primary language tag (defaults to config.json package.default_language)"),
+        "description": args.string(default = "", description = "One-sentence description of what the package provides"),
+        "owner": args.string(default = "", description = "Backstage spec.owner (defaults to config.json package.default_owner)"),
+        "lifecycle": args.string(default = "", description = "Backstage spec.lifecycle (defaults to config.json package.default_lifecycle)"),
+        "tags": args.string(default = "", description = "Comma-separated extra Backstage metadata.tags"),
+        "target": args.string(default = "", description = "Primary public Bazel target name (defaults to <project_kebab>)"),
+    },
+)
+
 def _check_renders_impl(ctx):
     base = _base(ctx)
     app = load_app_config(ctx, base)
@@ -605,6 +711,49 @@ def _check_renders_impl(ctx):
             # in the template replaced by a literal.
             if rel == "BUILD.bazel" and ('name = "' + _SMOKE_NAME) not in content:
                 failures.append("{} [{}]: BUILD.bazel has no target named after the project; gazelle names Go targets after the directory, so a literal here is a stale-BUILD failure downstream".format(label, language))
+        checked += 1
+
+    if "package" in app:
+        pkg_snake, pkg_kebab, pkg_flags = _package_render_data(
+            app,
+            "smoke-pkg",
+            "",
+            "",
+            "",
+            "",
+            "example",
+            "",
+        )
+        pkg_out = base_out + "/package-smoke"
+        ctx.std.fs.create_dir_all(pkg_out)
+        pkg_tmpl_dir = base + "/" + app["package"]["template_dir"]
+        pkg_written = render(ctx, app_render_config, pkg_tmpl_dir, pkg_out, pkg_snake, pkg_flags)
+        pkg_label = "package:" + pkg_kebab
+        if not pkg_written:
+            failures.append("{}: rendered zero files".format(pkg_label))
+        pkg_leftover = [r for r in pkg_written if r.endswith(suffix)]
+        if pkg_leftover:
+            failures.append("{}: output(s) still carry suffix {!r}: {}".format(
+                pkg_label, suffix, ", ".join(sorted(pkg_leftover))))
+        if sorted(pkg_written) != sorted(_PACKAGE_EXPECTED_OUTPUTS):
+            failures.append("{}: rendered {} but expected {}".format(
+                pkg_label, sorted(pkg_written), sorted(_PACKAGE_EXPECTED_OUTPUTS)))
+        for rel in pkg_written:
+            content = ctx.std.fs.read_to_string(pkg_out + "/" + rel)
+            if "{{" in content or "{%" in content:
+                failures.append("{}: {} still contains unrendered Jinja".format(pkg_label, rel))
+            if rel == "README.md":
+                for section in _PACKAGE_README_SECTIONS:
+                    if section not in content:
+                        failures.append("{}: README.md missing section {!r}".format(pkg_label, section))
+            if rel == "catalog-info.yaml":
+                if "type: library" not in content:
+                    failures.append("{}: catalog-info.yaml missing 'type: library'".format(pkg_label))
+                expected_target = "vitruvian.dev/bazel-target: //packages/" + pkg_kebab + ":" + pkg_kebab
+                if expected_target not in content:
+                    failures.append("{}: catalog-info.yaml missing {!r}".format(pkg_label, expected_target))
+            if rel == "BUILD" and ('name = "' + pkg_kebab + '"') not in content:
+                failures.append("{}: BUILD missing target name {!r}".format(pkg_label, pkg_kebab))
         checked += 1
 
     ctx.std.io.stdout.write("check-renders: {} selection(s) rendered\n".format(checked))

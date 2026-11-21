@@ -154,7 +154,7 @@ pub fn check_global_impact(files: &[String]) -> (bool, String) {
 }
 
 const FRONTEND_PREFIXES: &[&str] = &[
-    "packages/design-system/",
+    "packages/design-system/web/",
     "apps/suites/vitruvian-tabs/web/",
     "apps/suites/vitruvian-tabs/extension/",
     "backstage/packages/app/",
@@ -271,6 +271,51 @@ fn file_exists(p: &str) -> bool {
     fs::metadata(p).map(|m| !m.is_dir()).unwrap_or(false)
 }
 
+/// Root files that npm builds read. They belong to the root package, and so
+/// does the pnpm store (`//:.aspect_rules_js/...`) that every
+/// `node_modules` link in the repo points into, so the tests that depend on
+/// the root package are exactly the npm consumers: far fewer than a full
+/// sweep. The directory walk below never reaches the root package, which is
+/// why a change to one of these used to run no tests at all.
+const ROOT_NPM_FILES: &[&str] = &[
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    ".npmrc",
+];
+
+/// The packages of the other pnpm locks MODULE.bazel translates with the
+/// root `.npmrc`. Each lock's store lives in its own package, so a change to
+/// `.npmrc` reaches that lock's consumers through it, not through the root.
+fn npmrc_lock_packages(repo_root: &str) -> Vec<String> {
+    let Ok(module) = fs::read_to_string(path::join(&[repo_root, "MODULE.bazel"])) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for call in module.split("npm_translate_lock(").skip(1) {
+        let call = call.split("\n)").next().unwrap_or(call);
+        let mut npmrc = "";
+        let mut lock = "";
+        for line in call.lines() {
+            let line = line.trim().trim_end_matches(',');
+            if let Some(v) = line.strip_prefix("npmrc = ") {
+                npmrc = v.trim_matches('"');
+            } else if let Some(v) = line.strip_prefix("pnpm_lock = ") {
+                lock = v.trim_matches('"');
+            }
+        }
+        if npmrc != "//:.npmrc" {
+            continue;
+        }
+        if let Some((pkg, _)) = lock.strip_prefix("//").and_then(|l| l.split_once(':')) {
+            if !pkg.is_empty() {
+                out.push(format!("//{pkg}:all"));
+            }
+        }
+    }
+    out
+}
+
 /// Maps repository-relative changed files to their enclosing Bazel
 /// packages ("//dir:all"), sorted.
 pub fn resolve_packages(repo_root: &str, files: &[String]) -> Vec<String> {
@@ -279,6 +324,13 @@ pub fn resolve_packages(repo_root: &str, files: &[String]) -> Vec<String> {
         let clean = rel.strip_prefix("./").unwrap_or(rel);
         let clean = clean.strip_prefix('/').unwrap_or(clean);
         if clean.is_empty() {
+            continue;
+        }
+        if ROOT_NPM_FILES.contains(&clean) {
+            set.insert("//:all".to_string());
+            if clean == ".npmrc" {
+                set.extend(npmrc_lock_packages(repo_root));
+            }
             continue;
         }
         let mut dir = path::dir(clean);

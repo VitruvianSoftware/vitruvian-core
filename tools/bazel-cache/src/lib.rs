@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::ffi::{CStr, CString, OsStr};
 use std::fs;
@@ -27,7 +28,7 @@ use std::os::raw::{c_char, c_int};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::process::ExitStatusExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
 const MARKER: &[u8] = b".vitruvian-worktree";
@@ -1526,6 +1527,663 @@ fn cmd_gc_bytes(
     0
 }
 
+/// Environment and workspace snapshot used to discover local developer cache paths.
+#[derive(Debug, Clone)]
+pub struct StatusEnv {
+    pub home: PathBuf,
+    pub workspace: Option<PathBuf>,
+    pub bazel_user: String,
+    pub is_macos: bool,
+    pub vars: BTreeMap<String, String>,
+}
+
+impl StatusEnv {
+    /// Build a `StatusEnv` from the current process environment and workspace directory.
+    pub fn from_process(home: &[u8], workspace: &[u8], bazel_user: &[u8]) -> Self {
+        const KEYS: &[&str] = &[
+            "GOCACHE",
+            "GOMODCACHE",
+            "GOPATH",
+            "PNPM_HOME",
+            "NPM_CONFIG_CACHE",
+            "npm_config_cache",
+            "CARGO_HOME",
+            "UV_CACHE_DIR",
+            "PIP_CACHE_DIR",
+            "GRADLE_USER_HOME",
+            "HOMEBREW_CACHE",
+            "XDG_CACHE_HOME",
+            "XDG_DATA_HOME",
+        ];
+        let mut vars = BTreeMap::new();
+        for &k in KEYS {
+            if let Some(v) = env::var_os(k) {
+                let s = v.to_string_lossy().into_owned();
+                if !s.is_empty() {
+                    vars.insert(k.to_string(), s);
+                }
+            }
+        }
+        let ws = if workspace.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(OsStr::from_bytes(workspace)))
+        };
+        Self {
+            home: PathBuf::from(OsStr::from_bytes(home)),
+            workspace: ws,
+            bazel_user: String::from_utf8_lossy(bazel_user).into_owned(),
+            is_macos: cfg!(target_os = "macos"),
+            vars,
+        }
+    }
+
+    fn var(&self, key: &str) -> Option<&str> {
+        self.vars
+            .get(key)
+            .map(String::as_str)
+            .filter(|s| !s.is_empty())
+    }
+
+    fn xdg_cache(&self) -> PathBuf {
+        self.var("XDG_CACHE_HOME")
+            .map(|v| expand_cache_path(v, &self.home, self.workspace.as_deref()))
+            .unwrap_or_else(|| self.home.join(".cache"))
+    }
+
+    fn xdg_data(&self) -> PathBuf {
+        self.var("XDG_DATA_HOME")
+            .map(|v| expand_cache_path(v, &self.home, self.workspace.as_deref()))
+            .unwrap_or_else(|| self.home.join(".local/share"))
+    }
+}
+
+/// Measured state for a single discovered developer cache directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheEntry {
+    pub name: String,
+    pub path: PathBuf,
+    pub exists: bool,
+    pub symlink_target: Option<String>,
+    pub broken: bool,
+    pub bytes: u64,
+    pub human: String,
+}
+
+/// Aggregated inventory of discovered local caches and size totals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheStatusReport {
+    pub entries: Vec<CacheEntry>,
+    pub total_bytes: u64,
+    pub local_bytes: u64,
+    pub symlink_bytes: u64,
+}
+
+fn strip_quotes(s: &str) -> &str {
+    let bytes = s.as_bytes();
+    if bytes.len() >= 2
+        && ((bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\''))
+    {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    }
+}
+
+fn expand_cache_path(raw: &str, home: &Path, workspace: Option<&Path>) -> PathBuf {
+    let s = strip_quotes(raw.trim());
+    if s == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = s.strip_prefix("~/") {
+        return home.join(rest);
+    }
+    if let Some(ws) = workspace {
+        if s == "%workspace%" {
+            return ws.to_path_buf();
+        }
+        if let Some(rest) = s.strip_prefix("%workspace%/") {
+            return ws.join(rest);
+        }
+    }
+    PathBuf::from(s)
+}
+
+fn normalize_display_path(p: &Path) -> PathBuf {
+    let raw = p.as_os_str().as_bytes();
+    if raw.len() > 1 && raw.ends_with(b"/") {
+        let mut trimmed = raw;
+        while trimmed.len() > 1 && trimmed.ends_with(b"/") {
+            trimmed = &trimmed[..trimmed.len() - 1];
+        }
+        PathBuf::from(OsStr::from_bytes(trimmed))
+    } else {
+        p.to_path_buf()
+    }
+}
+
+fn parse_bazelrc_cache_flags(
+    rc_path: &Path,
+    home: &Path,
+    workspace: Option<&Path>,
+    out: &mut Vec<(String, PathBuf)>,
+) {
+    let Ok(content) = fs::read_to_string(rc_path) else {
+        return;
+    };
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.is_empty() {
+            continue;
+        }
+        // Skip config-scoped directives (e.g. `common:ci`) so `--all` only reports active defaults.
+        if !tokens[0].starts_with('-') && tokens[0].contains(':') {
+            continue;
+        }
+        let mut i = 0;
+        while i < tokens.len() {
+            let tok = tokens[i];
+            if let Some(val) = tok.strip_prefix("--disk_cache=") {
+                if !val.is_empty() && !(val.contains("%workspace%") && workspace.is_none()) {
+                    out.push((
+                        "Bazel disk cache (bazelrc)".to_string(),
+                        expand_cache_path(val, home, workspace),
+                    ));
+                }
+            } else if tok == "--disk_cache" {
+                if let Some(val) = tokens.get(i + 1) {
+                    if !val.is_empty()
+                        && !val.starts_with('-')
+                        && !(val.contains("%workspace%") && workspace.is_none())
+                    {
+                        out.push((
+                            "Bazel disk cache (bazelrc)".to_string(),
+                            expand_cache_path(val, home, workspace),
+                        ));
+                        i += 1;
+                    }
+                }
+            } else if let Some(val) = tok.strip_prefix("--repository_cache=") {
+                if !val.is_empty() && !(val.contains("%workspace%") && workspace.is_none()) {
+                    out.push((
+                        "Bazel repo cache (bazelrc)".to_string(),
+                        expand_cache_path(val, home, workspace),
+                    ));
+                }
+            } else if tok == "--repository_cache" {
+                if let Some(val) = tokens.get(i + 1) {
+                    if !val.is_empty()
+                        && !val.starts_with('-')
+                        && !(val.contains("%workspace%") && workspace.is_none())
+                    {
+                        out.push((
+                            "Bazel repo cache (bazelrc)".to_string(),
+                            expand_cache_path(val, home, workspace),
+                        ));
+                        i += 1;
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+}
+
+/// Discover well-known local developer cache paths across Bazel and sibling ecosystems.
+pub fn discover_cache_candidates(env: &StatusEnv) -> Vec<(String, PathBuf)> {
+    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+    let bazel_sub = format!("_bazel_{}", env.bazel_user);
+
+    // Bazel
+    let mac_bazel_root = env.home.join("Library/Caches/bazel").join(&bazel_sub);
+    let linux_bazel_root = env.home.join(".cache/bazel").join(&bazel_sub);
+    if env.is_macos {
+        candidates.push(("Bazel output root".to_string(), mac_bazel_root));
+        if linux_bazel_root.exists() {
+            candidates.push(("Bazel output root (~/.cache)".to_string(), linux_bazel_root));
+        }
+    } else {
+        candidates.push(("Bazel output root".to_string(), linux_bazel_root));
+        if mac_bazel_root.exists() {
+            candidates.push(("Bazel output root (Library)".to_string(), mac_bazel_root));
+        }
+    }
+    candidates.push((
+        "Bazel worktrees".to_string(),
+        env.home.join(".cache/bazel/worktrees"),
+    ));
+    candidates.push((
+        "Bazel repo cache".to_string(),
+        env.home.join(".cache/bazel/repository-cache"),
+    ));
+    let mac_bazelisk = env.home.join("Library/Caches/bazelisk");
+    let xdg_bazelisk = env.xdg_cache().join("bazelisk");
+    if env.is_macos {
+        candidates.push(("Bazelisk cache".to_string(), mac_bazelisk));
+        if xdg_bazelisk.exists() {
+            candidates.push(("Bazelisk cache (~/.cache)".to_string(), xdg_bazelisk));
+        }
+    } else {
+        candidates.push(("Bazelisk cache".to_string(), xdg_bazelisk));
+    }
+    if let Some(ws) = env.workspace.as_deref() {
+        parse_bazelrc_cache_flags(&ws.join(".bazelrc"), &env.home, Some(ws), &mut candidates);
+        parse_bazelrc_cache_flags(
+            &ws.join("user.bazelrc"),
+            &env.home,
+            Some(ws),
+            &mut candidates,
+        );
+    }
+    parse_bazelrc_cache_flags(
+        &env.home.join(".bazelrc"),
+        &env.home,
+        env.workspace.as_deref(),
+        &mut candidates,
+    );
+
+    // Go
+    let go_cache = env
+        .var("GOCACHE")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| {
+            if env.is_macos {
+                env.home.join("Library/Caches/go-build")
+            } else {
+                env.xdg_cache().join("go-build")
+            }
+        });
+    candidates.push(("Go build cache".to_string(), go_cache));
+
+    let go_mod = env
+        .var("GOMODCACHE")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| {
+            let gopath = env
+                .var("GOPATH")
+                .and_then(|v| v.split(':').find(|s| !s.is_empty()))
+                .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+                .unwrap_or_else(|| env.home.join("go"));
+            gopath.join("pkg/mod")
+        });
+    candidates.push(("Go module cache".to_string(), go_mod));
+
+    // JS/TS
+    let pnpm_store = env
+        .var("PNPM_HOME")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()).join("store"))
+        .unwrap_or_else(|| {
+            if env.is_macos {
+                env.home.join("Library/pnpm/store")
+            } else {
+                env.xdg_data().join("pnpm/store")
+            }
+        });
+    candidates.push(("pnpm store".to_string(), pnpm_store));
+
+    let npm_cache = env
+        .var("NPM_CONFIG_CACHE")
+        .or_else(|| env.var("npm_config_cache"))
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| env.home.join(".npm"));
+    candidates.push(("npm cache".to_string(), npm_cache));
+
+    let yarn_cache = if env.is_macos {
+        env.home.join("Library/Caches/Yarn")
+    } else {
+        env.xdg_cache().join("yarn")
+    };
+    candidates.push(("Yarn cache".to_string(), yarn_cache));
+    candidates.push(("Bun cache".to_string(), env.home.join(".bun/install/cache")));
+
+    // Rust
+    let cargo_home = env
+        .var("CARGO_HOME")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| env.home.join(".cargo"));
+    candidates.push(("Cargo registry".to_string(), cargo_home.join("registry")));
+    candidates.push(("Cargo git".to_string(), cargo_home.join("git")));
+
+    // Python
+    let uv_cache = env
+        .var("UV_CACHE_DIR")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| env.xdg_cache().join("uv"));
+    candidates.push(("uv cache".to_string(), uv_cache));
+
+    let pip_cache = env
+        .var("PIP_CACHE_DIR")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| {
+            if env.is_macos {
+                env.home.join("Library/Caches/pip")
+            } else {
+                env.xdg_cache().join("pip")
+            }
+        });
+    candidates.push(("pip cache".to_string(), pip_cache));
+
+    // JVM
+    candidates.push(("Maven repo".to_string(), env.home.join(".m2/repository")));
+    let gradle_home = env
+        .var("GRADLE_USER_HOME")
+        .map(|v| expand_cache_path(v, &env.home, env.workspace.as_deref()))
+        .unwrap_or_else(|| env.home.join(".gradle"));
+    candidates.push(("Gradle caches".to_string(), gradle_home.join("caches")));
+
+    // macOS / System
+    let xcode_dd = env.home.join("Library/Developer/Xcode/DerivedData");
+    let xcode_cache = env.home.join("Library/Caches/com.apple.dt.Xcode");
+    if env.is_macos || xcode_dd.exists() {
+        candidates.push(("Xcode DerivedData".to_string(), xcode_dd));
+    }
+    if env.is_macos || xcode_cache.exists() {
+        candidates.push(("Xcode cache".to_string(), xcode_cache));
+    }
+    if let Some(hb) = env.var("HOMEBREW_CACHE") {
+        candidates.push((
+            "Homebrew cache".to_string(),
+            expand_cache_path(hb, &env.home, env.workspace.as_deref()),
+        ));
+    } else {
+        let mac_hb = env.home.join("Library/Caches/Homebrew");
+        if env.is_macos || mac_hb.exists() {
+            candidates.push(("Homebrew cache".to_string(), mac_hb));
+        }
+    }
+
+    candidates
+}
+
+struct DiscoveredEntry {
+    entry: CacheEntry,
+    measure_path: Option<PathBuf>,
+}
+
+/// Inspect discovered cache paths, resolve symlinks, measure disk usage in parallel, and build a report.
+pub fn collect_cache_status(
+    env: &StatusEnv,
+    include_all: bool,
+    paths_only: bool,
+) -> CacheStatusReport {
+    let candidates = discover_cache_candidates(env);
+    let mut seen_paths: HashSet<PathBuf> = HashSet::new();
+    let mut seen_canon: HashSet<PathBuf> = HashSet::new();
+    let mut discovered: Vec<DiscoveredEntry> = Vec::new();
+
+    for (name, raw_path) in candidates {
+        let path = normalize_display_path(&raw_path);
+        if !seen_paths.insert(path.clone()) {
+            continue;
+        }
+
+        let (exists, symlink_target, broken, canonical) = match fs::symlink_metadata(&path) {
+            Err(_) => (false, None, false, None),
+            Ok(meta) if meta.file_type().is_symlink() => {
+                let target = fs::read_link(&path)
+                    .ok()
+                    .map(|t| t.to_string_lossy().into_owned());
+                if fs::metadata(&path).is_ok() {
+                    let canon = fs::canonicalize(&path).ok();
+                    (true, target, false, canon)
+                } else {
+                    (false, target, true, None)
+                }
+            }
+            Ok(_) => {
+                let canon = fs::canonicalize(&path).ok();
+                (true, None, false, canon)
+            }
+        };
+
+        if let Some(ref c) = canonical {
+            if !seen_canon.insert(c.clone()) {
+                continue;
+            }
+        }
+
+        if !include_all && !exists && !broken {
+            continue;
+        }
+
+        let measure_path = if exists && !paths_only {
+            // Measure the resolved target when symlinked so `du -sk` counts target contents, not the symlink inode.
+            Some(canonical.unwrap_or_else(|| path.clone()))
+        } else {
+            None
+        };
+
+        discovered.push(DiscoveredEntry {
+            entry: CacheEntry {
+                name,
+                path,
+                exists,
+                symlink_target,
+                broken,
+                bytes: 0,
+                human: human(0),
+            },
+            measure_path,
+        });
+    }
+
+    if !paths_only {
+        let sizes: Vec<u64> = std::thread::scope(|scope| {
+            let handles: Vec<_> = discovered
+                .iter()
+                .map(|item| {
+                    scope.spawn(|| match &item.measure_path {
+                        Some(p) => size_of_bytes(p.as_os_str().as_bytes()),
+                        None => 0,
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap_or(0)).collect()
+        });
+        for (item, bytes) in discovered.iter_mut().zip(sizes) {
+            item.entry.bytes = bytes;
+            item.entry.human = human(bytes);
+        }
+    }
+
+    let mut entries: Vec<CacheEntry> = discovered.into_iter().map(|d| d.entry).collect();
+    entries.sort_by(|a, b| {
+        b.bytes
+            .cmp(&a.bytes)
+            .then_with(|| (b.exists || b.broken).cmp(&(a.exists || a.broken)))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    let mut total_bytes: u64 = 0;
+    let mut local_bytes: u64 = 0;
+    let mut symlink_bytes: u64 = 0;
+    for e in &entries {
+        total_bytes = total_bytes.saturating_add(e.bytes);
+        if e.symlink_target.is_some() {
+            symlink_bytes = symlink_bytes.saturating_add(e.bytes);
+        } else {
+            local_bytes = local_bytes.saturating_add(e.bytes);
+        }
+    }
+
+    CacheStatusReport {
+        entries,
+        total_bytes,
+        local_bytes,
+        symlink_bytes,
+    }
+}
+
+/// Format a `CacheStatusReport` as an aligned human-readable summary table.
+pub fn format_cache_status_text(report: &CacheStatusReport, paths_only: bool) -> String {
+    let mut out = String::new();
+    let max_name = report
+        .entries
+        .iter()
+        .map(|e| e.name.len())
+        .max()
+        .unwrap_or(0);
+    let max_size = report
+        .entries
+        .iter()
+        .map(|e| {
+            if !e.exists && !e.broken {
+                1
+            } else {
+                e.human.len()
+            }
+        })
+        .max()
+        .unwrap_or(4)
+        .max(7);
+
+    let mut has_symlink = false;
+    for e in &report.entries {
+        if e.symlink_target.is_some() {
+            has_symlink = true;
+        }
+        if !paths_only {
+            let size_col = if !e.exists && !e.broken {
+                "-"
+            } else {
+                e.human.as_str()
+            };
+            out.push_str(&format!("{size_col:>max_size$}  "));
+        }
+        out.push_str(&format!(
+            "{:<max_name$}  {}",
+            e.name,
+            e.path.to_string_lossy()
+        ));
+        if let Some(ref target) = e.symlink_target {
+            out.push_str(&format!(" -> {target}"));
+            if e.broken {
+                out.push_str(" (broken)");
+            }
+        } else if !e.exists {
+            out.push_str(" (missing)");
+        }
+        out.push('\n');
+    }
+
+    if !paths_only {
+        if !report.entries.is_empty() {
+            out.push('\n');
+        }
+        if has_symlink {
+            out.push_str(&format!(
+                "Total: {} ({} local, {} via symlink)\n",
+                human(report.total_bytes),
+                human(report.local_bytes),
+                human(report.symlink_bytes),
+            ));
+        } else {
+            out.push_str(&format!("Total: {}\n", human(report.total_bytes)));
+        }
+    }
+    out
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Format a `CacheStatusReport` as JSON.
+pub fn format_cache_status_json(report: &CacheStatusReport) -> String {
+    let mut out = String::from("{\n  \"entries\": [\n");
+    for (idx, e) in report.entries.iter().enumerate() {
+        let sym = match &e.symlink_target {
+            Some(t) => json_escape(t),
+            None => "null".to_string(),
+        };
+        let comma = if idx + 1 < report.entries.len() {
+            ","
+        } else {
+            ""
+        };
+        out.push_str(&format!(
+            "    {{\"name\": {}, \"path\": {}, \"exists\": {}, \"symlink_target\": {}, \"broken\": {}, \"bytes\": {}, \"human\": {}}}{}\n",
+            json_escape(&e.name),
+            json_escape(&e.path.to_string_lossy()),
+            e.exists,
+            sym,
+            e.broken,
+            e.bytes,
+            json_escape(&e.human),
+            comma
+        ));
+    }
+    out.push_str(&format!(
+        "  ],\n  \"total_bytes\": {},\n  \"local_bytes\": {},\n  \"symlink_bytes\": {}\n}}\n",
+        report.total_bytes, report.local_bytes, report.symlink_bytes
+    ));
+    out
+}
+
+fn cmd_status_bytes(
+    prog: &[u8],
+    args: &[&[u8]],
+    env: &StatusEnv,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let mut include_all = false;
+    let mut json = false;
+    let mut paths_only = false;
+
+    for &arg in args {
+        match arg {
+            b"--all" => include_all = true,
+            b"--json" => json = true,
+            b"--paths-only" => paths_only = true,
+            b"-h" | b"--help" => {
+                let _ = out.write_all(
+                    b"usage: bazel run //tools/bazel-cache:status -- [--all] [--json] [--paths-only]\n",
+                );
+                let _ = out.flush();
+                return 0;
+            }
+            other => {
+                let mut msg = b"unknown flag: ".to_vec();
+                msg.extend_from_slice(other);
+                return die_bytes(err, prog, &msg);
+            }
+        }
+    }
+
+    let report = collect_cache_status(env, include_all, paths_only);
+    let rendered = if json {
+        format_cache_status_json(&report)
+    } else {
+        format_cache_status_text(&report, paths_only)
+    };
+    if let Err(code) = write_builtin_bytes(out, err, prog, 300, b"printf", rendered.as_bytes()) {
+        return code;
+    }
+    0
+}
+
 pub fn run<S: AsRef<OsStr>>(args: &[S]) -> i32 {
     let mut stdout = FdWriter(1);
     let mut stderr = FdWriter(2);
@@ -1595,7 +2253,7 @@ pub fn run_with_io<S: AsRef<OsStr>>(args: &[S], out: &mut dyn Write, err: &mut d
 
     let mut stray0 = home.clone();
     stray0.extend_from_slice(b"/Library/Caches/bazel");
-    let mut stray1 = home;
+    let mut stray1 = home.clone();
     stray1.extend_from_slice(b"/.cache/bazel");
     let stray_parents = [stray0, stray1];
 
@@ -1610,11 +2268,11 @@ pub fn run_with_io<S: AsRef<OsStr>>(args: &[S], out: &mut dyn Write, err: &mut d
             out,
             err,
         ),
-        _ => die_bytes(
-            err,
-            prog,
-            b"usage: bazel-cache.sh gc [--days N] [--execute]",
-        ),
+        Some(b"status") => {
+            let status_env = StatusEnv::from_process(&home, &pwd, &bazel_user);
+            cmd_status_bytes(prog, &raw_args[2..], &status_env, out, err)
+        }
+        _ => die_bytes(err, prog, b"usage: bazel-cache.sh <gc|status> [options]"),
     }
 }
 
@@ -1807,6 +2465,196 @@ mod tests {
 
         fs::write(tmp.join("DO_NOT_BUILD_HERE"), b"/tmp/foo\0bar\n").unwrap();
         assert_eq!(workspace_of(&tmp.to_string_lossy()), "/tmp/foobar");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_status_discovers_sorts_and_resolves_symlinks() {
+        let tmp = env::temp_dir().join(format!("bazel_cache_status_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let home = tmp.join("home");
+        let external = tmp.join("external");
+        let ws = tmp.join("ws");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&external).unwrap();
+        fs::create_dir_all(&ws).unwrap();
+
+        // Local cache (bigger: 64 KiB)
+        let wt_dir = home.join(".cache/bazel/worktrees");
+        fs::create_dir_all(&wt_dir).unwrap();
+        fs::write(wt_dir.join("blob.bin"), vec![0x41u8; 64 * 1024]).unwrap();
+
+        // Symlinked cache pointing to external (smaller: 8 KiB)
+        let ext_repo = external.join("repo-cache");
+        fs::create_dir_all(&ext_repo).unwrap();
+        fs::write(ext_repo.join("item.bin"), vec![0x42u8; 8 * 1024]).unwrap();
+        let repo_link = home.join(".cache/bazel/repository-cache");
+        std::os::unix::fs::symlink(&ext_repo, &repo_link).unwrap();
+
+        // Broken symlink
+        let broken_link = home.join(".npm");
+        std::os::unix::fs::symlink(external.join("does-not-exist"), &broken_link).unwrap();
+
+        let status_env = StatusEnv {
+            home: home.clone(),
+            workspace: Some(ws.clone()),
+            bazel_user: "testuser".to_string(),
+            is_macos: true,
+            vars: BTreeMap::new(),
+        };
+
+        let report = collect_cache_status(&status_env, false, false);
+        assert_eq!(report.entries.len(), 3);
+        assert_eq!(report.entries[0].name, "Bazel worktrees");
+        assert!(report.entries[0].bytes >= 64 * 1024);
+        assert_eq!(report.entries[0].symlink_target, None);
+
+        assert_eq!(report.entries[1].name, "Bazel repo cache");
+        assert!(report.entries[1].bytes >= 8 * 1024);
+        assert_eq!(
+            report.entries[1].symlink_target.as_deref(),
+            Some(ext_repo.to_string_lossy().as_ref())
+        );
+        assert!(!report.entries[1].broken);
+
+        assert_eq!(report.entries[2].name, "npm cache");
+        assert!(!report.entries[2].exists);
+        assert!(report.entries[2].broken);
+        assert_eq!(report.entries[2].bytes, 0);
+
+        assert_eq!(report.local_bytes, report.entries[0].bytes);
+        assert_eq!(report.symlink_bytes, report.entries[1].bytes);
+        assert_eq!(
+            report.total_bytes,
+            report.local_bytes + report.symlink_bytes
+        );
+
+        let text = format_cache_status_text(&report, false);
+        assert!(text.contains("-> "));
+        assert!(text.contains("(broken)"));
+        assert!(text.contains("via symlink)"));
+
+        let json = format_cache_status_json(&report);
+        assert!(json.contains("\"name\": \"Bazel repo cache\""));
+        assert!(json.contains("\"broken\": true"));
+        assert!(json.contains("\"symlink_bytes\":"));
+
+        // `--all` includes missing candidates, and `--paths-only` leaves bytes at 0
+        let all_paths = collect_cache_status(&status_env, true, true);
+        assert!(all_paths.entries.len() > 3);
+        assert_eq!(all_paths.total_bytes, 0);
+        let paths_text = format_cache_status_text(&all_paths, true);
+        assert!(paths_text.contains("(missing)"));
+        assert!(!paths_text.contains("Total:"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_status_env_overrides_and_bazelrc_parsing() {
+        let tmp = env::temp_dir().join(format!("bazel_cache_env_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let home = tmp.join("home");
+        let ws = tmp.join("ws");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&ws).unwrap();
+
+        let custom_go = tmp.join("custom-gocache");
+        let custom_gomod = tmp.join("custom-gomod");
+        let custom_uv = tmp.join("custom-uv");
+        let disk_cache = tmp.join("disk-cache");
+        let ws_repo_cache = ws.join("local-repo-cache");
+        fs::create_dir_all(&custom_go).unwrap();
+        fs::create_dir_all(&custom_gomod).unwrap();
+        fs::create_dir_all(&custom_uv).unwrap();
+        fs::create_dir_all(&disk_cache).unwrap();
+        fs::create_dir_all(&ws_repo_cache).unwrap();
+
+        fs::write(
+            ws.join(".bazelrc"),
+            "# comment\ncommon --disk_cache=\ncommon:ci --disk_cache=/tmp/ci-only\ncommon --repository_cache=%workspace%/local-repo-cache\n",
+        )
+        .unwrap();
+        fs::write(
+            ws.join("user.bazelrc"),
+            format!("common --disk_cache={}\n", disk_cache.display()),
+        )
+        .unwrap();
+
+        let mut vars = BTreeMap::new();
+        vars.insert(
+            "GOCACHE".to_string(),
+            custom_go.to_string_lossy().into_owned(),
+        );
+        vars.insert(
+            "GOMODCACHE".to_string(),
+            custom_gomod.to_string_lossy().into_owned(),
+        );
+        vars.insert(
+            "UV_CACHE_DIR".to_string(),
+            custom_uv.to_string_lossy().into_owned(),
+        );
+
+        let status_env = StatusEnv {
+            home: home.clone(),
+            workspace: Some(ws.clone()),
+            bazel_user: "testuser".to_string(),
+            is_macos: false,
+            vars,
+        };
+
+        let report = collect_cache_status(&status_env, false, true);
+        let paths: Vec<PathBuf> = report.entries.iter().map(|e| e.path.clone()).collect();
+        assert!(paths.contains(&custom_go));
+        assert!(paths.contains(&custom_gomod));
+        assert!(paths.contains(&custom_uv));
+        assert!(paths.contains(&disk_cache));
+        assert!(paths.contains(&ws_repo_cache));
+        assert!(!paths.contains(&PathBuf::from("/tmp/ci-only")));
+
+        // Verify cmd_status_bytes flags (--help, --json, unknown flag)
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        assert_eq!(
+            cmd_status_bytes(
+                b"bazel-cache",
+                &[b"--help"],
+                &status_env,
+                &mut out,
+                &mut err
+            ),
+            0
+        );
+        assert!(String::from_utf8_lossy(&out).contains("usage:"));
+
+        out.clear();
+        err.clear();
+        assert_eq!(
+            cmd_status_bytes(
+                b"bazel-cache",
+                &[b"--json", b"--paths-only"],
+                &status_env,
+                &mut out,
+                &mut err
+            ),
+            0
+        );
+        assert!(String::from_utf8_lossy(&out).contains("\"entries\": ["));
+
+        out.clear();
+        err.clear();
+        assert_ne!(
+            cmd_status_bytes(
+                b"bazel-cache",
+                &[b"--bogus"],
+                &status_env,
+                &mut out,
+                &mut err
+            ),
+            0
+        );
+        assert!(String::from_utf8_lossy(&err).contains("unknown flag"));
 
         let _ = fs::remove_dir_all(&tmp);
     }

@@ -183,6 +183,14 @@ pub fn refusal(dir: &Path, now: u64) -> Option<String> {
     v.get("refused").and_then(Value::as_str).map(str::to_string)
 }
 
+/// Whether the running `vrelay run` is holding the Mac awake right now.
+/// With no agent running, nothing is.
+pub fn keeping_awake(dir: &Path, now: u64) -> bool {
+    fresh_status(dir, now)
+        .and_then(|v| v.get("keep_awake").and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
 /// What to say about the rules: paused or not (as loaded, or as the file
 /// says when nothing is running), and whether the file changed since.
 fn rules_lines(dir: &Path, now: u64) -> Vec<String> {
@@ -240,6 +248,10 @@ pub fn render(dir: &Path, now: u64) -> String {
     if let Some(why) = refusal(dir, now) {
         out.push_str(&format!("Refused:  {why}\n"));
     }
+    out.push_str(&format!(
+        "Keeping this Mac awake: {}\n",
+        if keeping_awake(dir, now) { "yes" } else { "no" }
+    ));
     for l in rules_lines(dir, now) {
         out.push_str(&format!("Rules:    {l}\n"));
     }
@@ -276,6 +288,31 @@ mod tests {
 
     fn write_status(dir: &Path, body: &str) {
         write_private(&status_path(dir), body.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn status_says_whether_the_mac_is_kept_awake() {
+        let dir = test_dir("status-awake");
+        // Nothing running: nothing is holding it awake.
+        assert!(render(&dir, 1000).contains("Keeping this Mac awake: no\n"));
+        write_status(
+            &dir,
+            r#"{"state":"connected","updated_unix":999,"last_pong_unix":999,"keep_awake":true}"#,
+        );
+        assert!(render(&dir, 1000).contains("Keeping this Mac awake: yes\n"));
+        write_status(
+            &dir,
+            r#"{"state":"connected","updated_unix":999,"last_pong_unix":999,"keep_awake":false}"#,
+        );
+        assert!(render(&dir, 1000).contains("Keeping this Mac awake: no\n"));
+        // A status from an older vrelay, or a stale one: no.
+        write_status(&dir, r#"{"state":"connected","updated_unix":999}"#);
+        assert!(render(&dir, 1000).contains("Keeping this Mac awake: no\n"));
+        write_status(
+            &dir,
+            r#"{"state":"connected","updated_unix":1,"keep_awake":true}"#,
+        );
+        assert!(render(&dir, 1000).contains("Keeping this Mac awake: no\n"));
     }
 
     #[test]

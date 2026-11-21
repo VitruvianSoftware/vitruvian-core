@@ -23,12 +23,14 @@
 mod app;
 mod brew;
 mod catalog;
+mod catalog_entries;
 mod ci;
 mod delivery;
 mod governance;
 mod iac;
 mod labels;
 mod layout;
+mod release_dequeue;
 mod security;
 mod swift_tests;
 mod versions;
@@ -63,6 +65,7 @@ pub fn run_all(ctx: &Context) {
     ci::check_cache_save(ctx);
     ci::check_goproxy_fallback(ctx);
     ci::check_image_workflow_paths(ctx);
+    release_dequeue::check_release_dequeue(ctx);
 
     iac::check_zitadel_import(ctx);
     iac::check_pulumi_project_names(ctx);
@@ -93,6 +96,8 @@ pub fn run_all(ctx: &Context) {
 
     governance::check_naming_conventions(ctx);
     governance::check_owners(ctx);
+    governance::check_packages_index(ctx);
+    catalog_entries::check_catalog_entries(ctx);
     governance::check_root_directories(ctx);
     governance::check_preview_governance(ctx);
     governance::check_lab_hostnames_served(ctx);

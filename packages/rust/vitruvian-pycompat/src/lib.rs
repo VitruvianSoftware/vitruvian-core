@@ -20,7 +20,8 @@
 
 //! Python's behaviour where Rust's differs, for the tools ported from Python
 //! that must print exactly what the Python did: its string rules (`pystr`),
-//! its `json` module (`json`) and its `argparse` (`argparse`).
+//! its `json` module (`json`), its exceptions and tracebacks (`pyerr`), its
+//! `argparse` (`argparse`), and its HTTP transport (`http`).
 //!
 //! One copy, shared: these started as byte-identical copies in each ported
 //! tool. A tool that needs a slightly different version keeps its own module
@@ -28,6 +29,8 @@
 //! are what prove a change here is safe for it.
 
 pub mod argparse;
+pub mod http;
 pub mod json;
+pub mod pyerr;
 pub mod pystr;
 pub mod unicode_tables;

@@ -3,7 +3,7 @@
   "globalName": "Vitruvian",
   "shape": "storybook",
   "storybookStatic": ".design-sync/sb-reference",
-  "storybookConfigDir": "packages/design-system/.storybook",
+  "storybookConfigDir": "packages/design-system/web/.storybook",
   "buildCmd": "bazel run //tools/design-sync:prepare",
   "titleMap": {
     "Overview": "Plate",
@@ -17,14 +17,14 @@
     "Lists,ledger&icons": "ListItem",
     "PageLayouts": "Shell"
   },
-  "extraEntries": ["../../.design-sync/preview-ground.mjs"],
+  "extraEntries": ["../../../.design-sync/preview-ground.mjs"],
   "provider": {
     "component": "VitruvianGround",
     "props": {
       "theme": "dark"
     }
   },
-  "extraFonts": ["../../.design-sync/fonts.css"],
+  "extraFonts": ["../../../.design-sync/fonts.css"],
   "overrides": {
     "Card": {
       "cardMode": "column"

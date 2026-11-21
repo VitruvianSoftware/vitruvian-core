@@ -1,14 +1,50 @@
 # peripherals
 
-Turns the RGB light on a GravaStar mouse into a status light for the Mac.
-Anything that runs on the Mac (a Claude Code hook, a CI watcher, Vitruvian Speaker)
-can make the mouse glow **blue while working, green on success, red on
-failure**, then put back the lighting you had before.
+## What it gives you
 
-It is a Swift package with no third-party dependencies. It talks to the mouse
-over IOKit HID, the same way the vendor's web tool (controlhub.top) does.
-Supported hardware: GravaStar Mercury, CompX chipset, USB `3554:F549`, over
-the 2.4 GHz dongle, on macOS 14 or later.
+A zero-dependency Swift IOKit HID library (`CompXProtocol`, `CompXHID`, `StatusSignals`) and signed `gravastar-mouse` CLI / stdio MCP server that turns the RGB LED on a GravaStar Mercury mouse (CompX chipset, USB `3554:F549`, 2.4 GHz dongle) into a macOS status indicator (**blue** while working, **green** on success, **red** on failure, **amber** on warning, **magenta** on attention) with automatic baseline save and restore.
+
+## When to use it
+
+- Signaling build, CI, or coding-agent status on a GravaStar CompX mouse from macOS Swift code, shell hooks, `//tools/pipeline-status`, Vitruvian Atrium, or an MCP client.
+
+## When not to use it
+
+- Non-macOS hosts or mice without the CompX `3554:F549` chipset; this package uses Apple's IOKit HID (`APPLE_TOOLCHAIN_ONLY`, macOS 14+).
+
+## Example
+
+From `tools/pipeline-status/src/mouse_daemon.rs:145-159`:
+
+```rust
+pub fn apply_signal(gravastar_bin: &str, signal: &LedSignal) -> i32 {
+    match signal {
+        LedSignal::PulsingRed => run_inherit(
+            gravastar_bin,
+            &["breathe", "red", "--speed", "7", "--brightness", "9"],
+        ),
+        LedSignal::SolidRed => run_inherit(gravastar_bin, &["color", "red", "--brightness", "7"]),
+        LedSignal::PulsingYellow => run_inherit(
+            gravastar_bin,
+            &["breathe", "yellow", "--speed", "5", "--brightness", "7"],
+        ),
+        LedSignal::SolidGreen => run_inherit(gravastar_bin, &["signal", "success"]),
+        LedSignal::Warning => run_inherit(gravastar_bin, &["signal", "warning"]),
+    }
+}
+```
+
+## Depend on it
+
+- Swift libraries: `//packages/peripherals:StatusSignals`, `//packages/peripherals:CompXHID`, `//packages/peripherals:CompXProtocol`
+- CLI / helper binary: `//packages/peripherals:gravastar-mouse`
+
+## Constraints
+
+- **macOS 14+ and `--config=macos-app` required** for every Swift target (`APPLE_TOOLCHAIN_ONLY`).
+- **`Package.swift` and `BUILD` must mirror each other** target for target.
+- **Zero third-party Swift dependencies** — talks directly to IOKit HID and speaks newline-delimited JSON-RPC 2.0 in `mcp` mode without an SDK.
+- Supported hardware: GravaStar Mercury, CompX chipset, USB `3554:F549`, over the 2.4 GHz dongle.
 
 ## Install
 

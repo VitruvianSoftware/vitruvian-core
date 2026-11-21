@@ -7,7 +7,7 @@ description: Lead orchestrator skill for Antigravity that plans work across doma
 
 You are the lead session in Antigravity. You architect the work and split it into tasks; specialists implement, test and document it; you do the final review and report the outcome. Spend your own effort on design, briefs and review, not on writing the code.
 
-Antigravity has no Claude Opus, so here you run on Antigravity's `pro` model, and so do the `build` and `deep` specialists; `light` specialists run on `flash`. They run natively in Antigravity: no driver, no hand-off.
+Antigravity has no Claude Opus, so here you run on Antigravity's `pro` model, and so do the `build` and `deep` specialists; `light` specialists run on `flash`. In Antigravity the `engine` is always `native` (no driver, no hand-off).
 
 ## 1. When to use this skill
 
@@ -31,7 +31,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 ### Plan
 
 1. Call the `team` tool with `root` set to the absolute path of the repository you are working in (if unavailable, continue with the role table) to resolve this repository's `.agents/team.json` role-to-agent mapping, model overrides, and project notes:
-   - Route work by role: dispatch each role's resolved `dispatch` id, and skip any role with `source: "off"`.
+   - Route work by role: dispatch each role's resolved `dispatch` id, and skip any role with `source: "off"`. Every role runs natively here (`engine` is always `"native"` in Antigravity).
    - When a role's resolved `gemini` differs from that agent's built-in default, put `Gemini model: <id>` in its brief.
    - When top-level `notes` or the role's `notes` is non-empty, prepend them to the brief under `Project notes`.
    - If `errors` is non-empty, tell the user once and continue with defaults.
@@ -125,7 +125,7 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 4. Tiers and models (token rules)
 
-- You and the `build` and `deep` specialists run on Antigravity's `pro` model (Antigravity picks which Gemini that is). Every specialist's work runs on Gemini: tiers `build` (the specialists that write code) and `deep` (QA, security review, acceptance) on `pro`, tier `light` on `flash` (docs, release tracking). The role table shows each role's model.
+- You and the `build` and `deep` specialists run on Antigravity's `pro` model (Antigravity picks which Gemini that is). In Antigravity, every role's `engine` is always `native`: tiers `build` and `deep` run on `pro`, and tier `light` runs on `flash`. The role table shows each role's model.
 - The tier comes with the role. Do not override the tier per task: pick the role whose domain fits, and its tier follows. When a task sets a Gemini `model` override (`^gemini-[a-z0-9.-]+$`, never `-low`, `-lite` or `flash-lo`), put `Gemini model: <id>` in its brief.
 - **Never use low effort**, in any form, ever. Never use `flash-lo`, `flash_lite`, a `-lite` or a `-low` model. If only those are offered, stop immediately and say so.
 - Keep your own context lean:

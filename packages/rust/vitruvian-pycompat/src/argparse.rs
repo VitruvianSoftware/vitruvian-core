@@ -19,10 +19,11 @@
 // SOFTWARE.
 
 //! Python 3.12's argparse, for a parser of optionals only (no positionals):
-//! `-h/--help`, flags (`store_true`) and options that take one value. It
-//! reads a command line the way argparse does (abbreviations, `--x=value`,
-//! `--`, glued short options, negative numbers) and prints the same help,
-//! usage and errors, wrapped to the same terminal width.
+//! `-h/--help`, flags (`store_true`) and options that take one value (`store`
+//! or `append`, with an optional `metavar`). It reads a command line the way
+//! argparse does (abbreviations, `--x=value`, `--`, glued short options,
+//! negative numbers) and prints the same help, usage and errors, wrapped to
+//! the same terminal width.
 
 use crate::pystr;
 
@@ -31,6 +32,8 @@ pub enum Kind {
     Help,
     Flag,
     Value,
+    /// Option that takes one value with an explicit `metavar=` instead of `dest.to_uppercase()`.
+    ValueMetavar(&'static str),
 }
 
 #[derive(Clone, Debug)]
@@ -53,25 +56,31 @@ impl Opt {
         }
     }
 
+    fn takes_value(&self) -> bool {
+        matches!(self.kind, Kind::Value | Kind::ValueMetavar(_))
+    }
+
     fn name(&self) -> String {
         self.strings.join("/")
     }
 
     fn metavar(&self) -> String {
-        self.dest.to_uppercase()
+        match self.kind {
+            Kind::ValueMetavar(m) => m.to_string(),
+            _ => self.dest.to_uppercase(),
+        }
     }
 
     fn invocation(&self) -> String {
-        match self.kind {
-            Kind::Value => {
-                let m = self.metavar();
-                self.strings
-                    .iter()
-                    .map(|s| format!("{} {}", s, m))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }
-            _ => self.strings.join(", "),
+        if self.takes_value() {
+            let m = self.metavar();
+            self.strings
+                .iter()
+                .map(|s| format!("{} {}", s, m))
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            self.strings.join(", ")
         }
     }
 }
@@ -100,6 +109,15 @@ impl Values {
             .rev()
             .find(|(d, _)| *d == dest)
             .map(|(_, v)| v.as_str())
+    }
+
+    /// Every value given for `dest`, in order: what `action="append"` keeps.
+    pub fn all(&self, dest: &str) -> Vec<String> {
+        self.values
+            .iter()
+            .filter(|(d, _)| *d == dest)
+            .map(|(_, v)| v.clone())
+            .collect()
     }
 }
 
@@ -197,16 +215,37 @@ impl Parser {
         result
     }
 
-    fn error(&self, msg: &str) -> Exit {
+    /// `parser.error(msg)`: the usage and the message on stderr, exit 2.
+    pub fn error(&self, msg: &str) -> Exit {
+        self.error_with_width(help_width(), msg)
+    }
+
+    /// `parser.error(msg)` wrapped to an explicit `width`.
+    pub fn error_with_width(&self, width: i64, msg: &str) -> Exit {
         Exit {
             code: 2,
             stdout: String::new(),
-            stderr: format!("{}{}: error: {}\n", self.format_usage(), self.prog, msg),
+            stderr: format!(
+                "{}{}: error: {}\n",
+                self.format_usage_with_width(width),
+                self.prog,
+                msg
+            ),
         }
     }
 
-    fn arg_error(&self, opt: usize, msg: &str) -> Exit {
-        self.error(&format!("argument {}: {}", self.opts[opt].name(), msg))
+    fn error_opt(&self, width: Option<i64>, msg: &str) -> Exit {
+        match width {
+            Some(w) => self.error_with_width(w, msg),
+            None => self.error(msg),
+        }
+    }
+
+    fn arg_error(&self, width: Option<i64>, opt: usize, msg: &str) -> Exit {
+        self.error_opt(
+            width,
+            &format!("argument {}: {}", self.opts[opt].name(), msg),
+        )
     }
 
     /// `parser.parse_args(args)`. `convert` is the option's `type=`: it
@@ -214,6 +253,26 @@ impl Parser {
     pub fn parse(
         &self,
         args: &[String],
+        convert: &dyn Fn(&str, &str) -> Result<(), &'static str>,
+    ) -> Result<Values, Exit> {
+        self.parse_inner(args, None, convert)
+    }
+
+    /// `parser.parse_args(args)` using an explicit terminal `width` for help and
+    /// usage wrapping.
+    pub fn parse_with_width(
+        &self,
+        args: &[String],
+        width: i64,
+        convert: &dyn Fn(&str, &str) -> Result<(), &'static str>,
+    ) -> Result<Values, Exit> {
+        self.parse_inner(args, Some(width), convert)
+    }
+
+    fn parse_inner(
+        &self,
+        args: &[String],
+        width: Option<i64>,
         convert: &dyn Fn(&str, &str) -> Result<(), &'static str>,
     ) -> Result<Values, Exit> {
         let mut pattern: Vec<char> = Vec::new();
@@ -261,6 +320,7 @@ impl Parser {
                     &mut extras,
                     &mut values,
                     &mut seen,
+                    width,
                     convert,
                 )?;
             }
@@ -275,13 +335,19 @@ impl Parser {
             .map(|(_, o)| o.name())
             .collect();
         if !required.is_empty() {
-            return Err(self.error(&format!(
-                "the following arguments are required: {}",
-                required.join(", ")
-            )));
+            return Err(self.error_opt(
+                width,
+                &format!(
+                    "the following arguments are required: {}",
+                    required.join(", ")
+                ),
+            ));
         }
         if !extras.is_empty() {
-            return Err(self.error(&format!("unrecognized arguments: {}", extras.join(" "))));
+            return Err(self.error_opt(
+                width,
+                &format!("unrecognized arguments: {}", extras.join(" ")),
+            ));
         }
         Ok(values)
     }
@@ -296,16 +362,20 @@ impl Parser {
         extras: &mut Vec<String>,
         values: &mut Values,
         seen: &mut [bool],
+        width: Option<i64>,
         convert: &dyn Fn(&str, &str) -> Result<(), &'static str>,
     ) -> Result<usize, Exit> {
         let tuples = indices[start].as_ref().unwrap();
         if tuples.len() > 1 {
             let options: Vec<&str> = tuples.iter().map(|t| t.1.as_str()).collect();
-            return Err(self.error(&format!(
-                "ambiguous option: {} could match {}",
-                args[start],
-                options.join(", ")
-            )));
+            return Err(self.error_opt(
+                width,
+                &format!(
+                    "ambiguous option: {} could match {}",
+                    args[start],
+                    options.join(", ")
+                ),
+            ));
         }
         let (mut action, mut option_string, mut sep, mut explicit) = tuples[0].clone();
         let mut todo: Vec<(usize, Vec<String>)> = Vec::new();
@@ -318,17 +388,14 @@ impl Parser {
                 }
                 Some(o) => o,
             };
-            let nargs = if self.opts[opt].kind == Kind::Value {
-                1
-            } else {
-                0
-            };
+            let nargs = if self.opts[opt].takes_value() { 1 } else { 0 };
             if let Some(exp) = explicit.clone() {
                 let second = option_string.chars().nth(1);
                 if nargs == 0 && second != Some('-') && !exp.is_empty() {
                     let sep_truthy = sep.as_deref().map_or(false, |s| !s.is_empty());
                     if sep_truthy || exp.starts_with('-') {
                         return Err(self.arg_error(
+                            width,
                             opt,
                             &format!("ignored explicit argument {}", pystr::repr_str(&exp)),
                         ));
@@ -361,6 +428,7 @@ impl Parser {
                     break;
                 } else {
                     return Err(self.arg_error(
+                        width,
                         opt,
                         &format!("ignored explicit argument {}", pystr::repr_str(&exp)),
                     ));
@@ -369,7 +437,7 @@ impl Parser {
                 let from = start + 1;
                 if nargs == 1 {
                     if pattern.get(from) != Some(&'A') {
-                        return Err(self.arg_error(opt, "expected one argument"));
+                        return Err(self.arg_error(width, opt, "expected one argument"));
                     }
                     todo.push((opt, vec![args[from].clone()]));
                     stop = from + 1;
@@ -387,14 +455,18 @@ impl Parser {
                 Kind::Help => {
                     return Err(Exit {
                         code: 0,
-                        stdout: self.format_help(),
+                        stdout: match width {
+                            Some(w) => self.format_help_with_width(w),
+                            None => self.format_help(),
+                        },
                         stderr: String::new(),
                     })
                 }
                 Kind::Flag => values.flags.push(o.dest),
-                Kind::Value => {
+                Kind::Value | Kind::ValueMetavar(_) => {
                     if let Err(type_name) = convert(o.dest, &vals[0]) {
                         return Err(self.arg_error(
+                            width,
                             opt,
                             &format!("invalid {} value: {}", type_name, pystr::repr_str(&vals[0])),
                         ));
@@ -410,9 +482,10 @@ impl Parser {
         self.opts
             .iter()
             .map(|o| {
-                let part = match o.kind {
-                    Kind::Value => format!("{} {}", o.strings[0], o.metavar()),
-                    _ => o.strings[0].to_string(),
+                let part = if o.takes_value() {
+                    format!("{} {}", o.strings[0], o.metavar())
+                } else {
+                    o.strings[0].to_string()
                 };
                 if o.required {
                     part
@@ -509,11 +582,18 @@ impl Parser {
     }
 
     pub fn format_usage(&self) -> String {
-        Self::finish(&self.usage_text(help_width()))
+        self.format_usage_with_width(help_width())
+    }
+
+    pub fn format_usage_with_width(&self, width: i64) -> String {
+        Self::finish(&self.usage_text(width))
     }
 
     pub fn format_help(&self) -> String {
-        let width = help_width();
+        self.format_help_with_width(help_width())
+    }
+
+    pub fn format_help_with_width(&self, width: i64) -> String {
         let max_help_position = 24i64.min((width - 20).max(4));
         let mut text = self.usage_text(width);
         if let Some(desc) = &self.description {
@@ -622,9 +702,10 @@ fn split_usage_parts(s: &str) -> Vec<String> {
     out
 }
 
-/// `int(text)` for an environment variable: whitespace around, a sign,
-/// digits with single underscores between them.
-fn py_int(text: &str) -> Option<i64> {
+/// `int(text)`, for an environment variable and for `type=int`: whitespace
+/// around, a sign, digits with single underscores between them. Values past
+/// i64 saturate, which callers treat as out of range.
+pub fn py_int(text: &str) -> Option<i64> {
     let t = pystr::strip(text);
     let (neg, body) = match t.chars().next() {
         Some('-') => (true, &t[1..]),
@@ -681,23 +762,31 @@ fn stdout_columns() -> Option<i64> {
     None
 }
 
-/// `shutil.get_terminal_size().columns - 2`, argparse's width.
-pub fn help_width() -> i64 {
-    let env_int = |name: &str| {
-        std::env::var(name)
-            .ok()
-            .and_then(|v| py_int(&v))
-            .unwrap_or(0)
-    };
-    let mut columns = env_int("COLUMNS");
-    let lines = env_int("LINES");
-    if columns <= 0 || lines <= 0 {
-        let size = stdout_columns().unwrap_or(80);
-        if columns <= 0 {
-            columns = if size == 0 { 80 } else { size };
-        }
+/// Pure `shutil.get_terminal_size().columns - 2` rule given an optional
+/// `COLUMNS` env string and an optional detected terminal width.
+fn help_width_from(columns_env: Option<&str>, terminal_columns: Option<i64>) -> i64 {
+    let mut columns = columns_env.and_then(py_int).unwrap_or(0);
+    if columns <= 0 {
+        let size = terminal_columns.unwrap_or(80);
+        columns = if size == 0 { 80 } else { size };
     }
     columns - 2
+}
+
+/// `shutil.get_terminal_size().columns - 2`, argparse's width.
+pub fn help_width() -> i64 {
+    let columns_env = std::env::var("COLUMNS").ok();
+    let columns = columns_env.as_deref().and_then(py_int).unwrap_or(0);
+    let lines = std::env::var("LINES")
+        .ok()
+        .and_then(|v| py_int(&v))
+        .unwrap_or(0);
+    let terminal = if columns <= 0 || lines <= 0 {
+        stdout_columns()
+    } else {
+        None
+    };
+    help_width_from(columns_env.as_deref(), terminal)
 }
 
 fn is_letter(c: char) -> bool {
@@ -895,5 +984,104 @@ mod tests {
         assert_eq!(wrap("abcdefghij", 4), vec!["abcd", "efgh", "ij"]);
         assert_eq!(py_int(" +1_0 "), Some(10));
         assert_eq!(py_int("1__0"), None);
+    }
+
+    #[test]
+    fn metavar_all_error_and_explicit_width() {
+        let p = Parser {
+            prog: "tool.py".into(),
+            description: Some("Do a thing".into()),
+            opts: vec![
+                Opt::help(),
+                Opt {
+                    strings: vec!["--delete-old"],
+                    dest: "delete_old",
+                    kind: Kind::ValueMetavar("ID"),
+                    help: Some("also delete this id".into()),
+                    required: false,
+                },
+                Opt {
+                    strings: vec!["--flag"],
+                    dest: "flag",
+                    kind: Kind::Flag,
+                    help: None,
+                    required: false,
+                },
+            ],
+        };
+        assert_eq!(
+            p.format_usage_with_width(78),
+            "usage: tool.py [-h] [--delete-old ID] [--flag]\n"
+        );
+        let help = p.format_help_with_width(78);
+        assert!(help.contains("--delete-old ID"), "{help}");
+        let args: Vec<String> = vec!["--delete-old".into(), "a".into(), "--delete-old=b".into()];
+        let v = p.parse_with_width(&args, 78, &|_, _| Ok(())).unwrap();
+        assert_eq!(v.all("delete_old"), vec!["a", "b"]);
+        assert_eq!(v.value("delete_old"), Some("b"));
+
+        let err = p.error_with_width(78, "bad combo");
+        assert_eq!(err.code, 2);
+        assert_eq!(
+            err.stderr,
+            "usage: tool.py [-h] [--delete-old ID] [--flag]\ntool.py: error: bad combo\n"
+        );
+
+        let e = p
+            .parse_with_width(&["-h-x".into()], 78, &|_, _| Ok(()))
+            .unwrap_err();
+        assert!(
+            e.stderr
+                .ends_with("tool.py: error: argument -h/--help: ignored explicit argument '-x'\n"),
+            "{}",
+            e.stderr
+        );
+        let e = p
+            .parse_with_width(
+                &["--delete-old".into(), "--flag".into()],
+                78,
+                &|_, _| Ok(()),
+            )
+            .unwrap_err();
+        assert!(
+            e.stderr
+                .ends_with("tool.py: error: argument --delete-old: expected one argument\n"),
+            "{}",
+            e.stderr
+        );
+        assert!(p.format_help_with_width(18).starts_with(
+            "usage: tool.py\n       [-h]\n       [--delete-old ID]\n       [--flag]\n"
+        ));
+    }
+
+    #[test]
+    fn help_width_matches_python_columns_edge_cases() {
+        assert_eq!(help_width_from(Some("+80"), Some(80)), 78);
+        assert_eq!(help_width_from(Some("+80"), Some(120)), 78);
+        assert_eq!(help_width_from(Some("1_0"), Some(80)), 8);
+        assert_eq!(help_width_from(Some("1_0"), Some(120)), 8);
+        assert_eq!(help_width_from(Some("2"), Some(80)), 0);
+        assert_eq!(help_width_from(Some("2"), Some(120)), 0);
+        assert_eq!(help_width_from(Some("1"), Some(80)), -1);
+        assert_eq!(help_width_from(Some("1"), Some(120)), -1);
+        assert_eq!(help_width_from(Some("0"), Some(80)), 78);
+        assert_eq!(help_width_from(Some("0"), Some(120)), 118);
+        assert_eq!(help_width_from(Some("0"), None), 78);
+        assert_eq!(help_width_from(Some("0"), Some(0)), 78);
+        assert_eq!(help_width_from(Some("abc"), Some(80)), 78);
+        assert_eq!(help_width_from(Some("abc"), Some(120)), 118);
+        assert_eq!(help_width_from(Some("abc"), None), 78);
+        assert_eq!(help_width_from(None, Some(80)), 78);
+        assert_eq!(help_width_from(None, Some(100)), 98);
+        assert_eq!(help_width_from(Some("-5"), Some(80)), 78);
+    }
+
+    #[test]
+    fn narrow_and_negative_widths_do_not_panic() {
+        let p = parser();
+        for w in [78, 8, 0, -1] {
+            assert!(p.format_help_with_width(w).contains("usage: tool.py"));
+            assert!(p.format_usage_with_width(w).contains("usage: tool.py"));
+        }
     }
 }

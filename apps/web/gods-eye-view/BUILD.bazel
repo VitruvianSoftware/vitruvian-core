@@ -27,7 +27,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//apps/web/gods-eye-view:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
 

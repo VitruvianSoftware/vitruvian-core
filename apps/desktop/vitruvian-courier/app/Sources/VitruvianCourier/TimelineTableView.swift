@@ -212,6 +212,7 @@ enum TimelineContentRevision {
         hasher.combine(actions.showMessageTimestamps)
         hasher.combine(actions.timeFormat.rawValue)
         hasher.combine(actions.loadExternalEmbedsAutomatically)
+        hasher.combine(actions.showLinkPreviews)
 
         switch item {
         case let .dateSeparator(day):
@@ -236,6 +237,7 @@ enum TimelineContentRevision {
             hasher.combine(message.rich)
             hasher.combine(message.isEdited)
             hasher.combine(message.editCount)
+            hasher.combine(message.changedEditCount)
             hasher.combine(message.failedEditID)
             hasher.combine(message.editFailed != nil)
             if message.startsGroup {
@@ -642,11 +644,22 @@ private struct SenderHoverPopoverContent: View {
     }
 }
 
+final class TimelineHostingView: NSHostingView<TimelineHostedRow> {
+    override func menu(for event: NSEvent) -> NSMenu? {
+        if let childMenu = super.menu(for: event) {
+            childMenu.allowsContextMenuPlugIns = false
+            return childMenu
+        }
+        guard case let .message(message) = rootView.item else { return nil }
+        return MessageContextMenuBuilder.buildNSMenu(for: message, actions: rootView.actions)
+    }
+}
+
 final class TimelineCell: NSTableCellView {
-    let hostingView: NSHostingView<TimelineHostedRow>
+    let hostingView: TimelineHostingView
 
     init(identifier: NSUserInterfaceItemIdentifier, rootView: TimelineHostedRow) {
-        self.hostingView = NSHostingView(rootView: rootView)
+        self.hostingView = TimelineHostingView(rootView: rootView)
         super.init(frame: .zero)
         self.identifier = identifier
         clipsToBounds = false
@@ -726,7 +739,13 @@ final class TimelineTableRowView: NSTableRowView {
     /// The selected message's action bar, in this row's coordinates, when it reaches outside the row (a wide
     /// continuation bubble's bar sits over its top corner). SwiftUI reports it; a click there goes to the row's
     /// hosting view, which a plain hit test would not do outside its bounds.
-    var overhangingBarFrame: CGRect?
+    var overhangingBarFrame: CGRect? {
+        didSet {
+            if (overhangingBarFrame != nil) != (oldValue != nil) {
+                updateZPosition()
+            }
+        }
+    }
 
     var isRaisedRow = false {
         didSet {
@@ -786,7 +805,7 @@ final class TimelineTableRowView: NSTableRowView {
     }
 
     private func updateZPosition() {
-        layer?.zPosition = isRaisedRow ? 10 : (isHoveredRow ? 5 : 0)
+        layer?.zPosition = isRaisedRow ? 10 : ((isHoveredRow || overhangingBarFrame != nil) ? 5 : 0)
     }
 
     override func drawSelection(in _: NSRect) {}
@@ -796,7 +815,9 @@ final class TimelineTableRowView: NSTableRowView {
         if let hit = super.hitTest(point) {
             return hit
         }
-        guard isRaisedRow, let bar = overhangingBarFrame, let superview else { return nil }
+        guard isRaisedRow || isHoveredRow || overhangingBarFrame != nil,
+              let bar = overhangingBarFrame,
+              let superview else { return nil }
         let local = convert(point, from: superview)
         guard bar.insetBy(dx: -2, dy: -2).contains(local) else { return nil }
         return subviews.lazy.compactMap { $0 as? TimelineCell }.first?.hostingView
@@ -838,9 +859,10 @@ final class TimelineNSTableView: NSTableView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Raised rows (with an action bar overhanging above their top edge) get first crack at overhanging clicks.
+        // Raised or hovered rows (with an action bar or hover pill overhanging above their top edge) get first crack at overhanging clicks.
         for subview in subviews {
-            guard let rowView = subview as? TimelineTableRowView, rowView.isRaisedRow else { continue }
+            guard let rowView = subview as? TimelineTableRowView,
+                  rowView.isRaisedRow || rowView.isHoveredRow || rowView.overhangingBarFrame != nil else { continue }
             let overhang = rowView.frame.insetBy(dx: 0, dy: -TimelineTableMetrics.raisedOverhangPadding)
             if overhang.contains(point), let hit = rowView.hitTest(point) {
                 return hit
@@ -889,7 +911,8 @@ final class TimelineNSTableView: NSTableView {
 
     private func overhangingBarTarget(at local: NSPoint) -> NSView? {
         for subview in subviews {
-            guard let rowView = subview as? TimelineTableRowView, rowView.isRaisedRow,
+            guard let rowView = subview as? TimelineTableRowView,
+                  rowView.isRaisedRow || rowView.isHoveredRow || rowView.overhangingBarFrame != nil,
                   rowView.overhangingBarFrame != nil,
                   let hit = rowView.hitTest(local) else { continue }
             return hit
@@ -1011,6 +1034,7 @@ struct TimelineTableView: NSViewRepresentable {
         private var hasPositionedInitially = false
         private var isApplyingProgrammaticUpdate = false
         private var lastAtBottom = true
+        private var lastObservedClipOriginY: CGFloat = 0
         private var topInView = false
         private var earlierTopInView = false
         private var restoreAnchor: String?
@@ -1037,6 +1061,7 @@ struct TimelineTableView: NSViewRepresentable {
         private var lastTranscriptsSignature = 0
 
         private var clipBoundsObserver: NSObjectProtocol?
+        private var liveScrollObserver: NSObjectProtocol?
         private var sizeLearnedObserver: NSObjectProtocol?
         private var lockObserver: NSObjectProtocol?
         private var transcriptCancellable: AnyCancellable?
@@ -1111,6 +1136,9 @@ struct TimelineTableView: NSViewRepresentable {
             if let clipBoundsObserver {
                 NotificationCenter.default.removeObserver(clipBoundsObserver)
             }
+            if let liveScrollObserver {
+                NotificationCenter.default.removeObserver(liveScrollObserver)
+            }
             if let sizeLearnedObserver {
                 NotificationCenter.default.removeObserver(sizeLearnedObserver)
             }
@@ -1148,6 +1176,19 @@ struct TimelineTableView: NSViewRepresentable {
                 }
             }
 
+            liveScrollObserver = NotificationCenter.default.addObserver(
+                forName: NSScrollView.willStartLiveScrollNotification,
+                object: containerView.scrollView,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.lastUserScroll = Date()
+                    self.lastScrollGesture = Date()
+                    self.stopPinningToBottom()
+                }
+            }
+
             sizeLearnedObserver = NotificationCenter.default.addObserver(
                 forName: ImagePixelSizeReader.didLearnSizeNotification,
                 object: nil,
@@ -1172,7 +1213,9 @@ struct TimelineTableView: NSViewRepresentable {
             transcriptCancellable = parent.conversation.voiceNoteTranscripts.$entries
                 .dropFirst()
                 .sink { [weak self] _ in
-                    self?.handleVoiceNoteTranscriptChange()
+                    DispatchQueue.main.async { [weak self] in
+                        self?.handleVoiceNoteTranscriptChange()
+                    }
                 }
 
             installUserScrollMonitor()
@@ -1463,6 +1506,7 @@ struct TimelineTableView: NSViewRepresentable {
             }
             hasPositionedInitially = true
             isApplyingProgrammaticUpdate = false
+            lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
             lastAtBottom = isScrolledToBottom()
             parent.conversation.scrolled(toBottom: lastAtBottom)
             evaluateScrollPosition()
@@ -1804,6 +1848,15 @@ struct TimelineTableView: NSViewRepresentable {
                 heightCache.invalidateItems(ids: removedIDs.subtracting(retainedIDs))
             }
 
+            let hasStructuralOrHeightChanges = !removedIndexes.isEmpty
+                || !insertedIndexes.isEmpty
+                || !heightChangedNewIndexes.isEmpty
+                || !reloadNewIndexes.isEmpty
+            let scrollAnchor: (id: String, screenMinY: CGFloat)? =
+                (prependAnchor == nil && !wasAtBottom && !isPinningToBottom && restoreAnchor == nil && hasStructuralOrHeightChanges)
+                ? visibleAnchor(preferMessage: false, allowedIDs: Set(newIDs))
+                : nil
+
             isApplyingProgrammaticUpdate = true
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0
@@ -1811,11 +1864,6 @@ struct TimelineTableView: NSViewRepresentable {
 
                 self.entries = newEntries
                 rebuildRowIndexMap()
-
-                let hasStructuralOrHeightChanges = !removedIndexes.isEmpty
-                    || !insertedIndexes.isEmpty
-                    || !heightChangedNewIndexes.isEmpty
-                    || !reloadNewIndexes.isEmpty
 
                 if hasStructuralOrHeightChanges {
                     tableView.beginUpdates()
@@ -1843,13 +1891,17 @@ struct TimelineTableView: NSViewRepresentable {
                 if let prependAnchor, let targetRow = rowByID[prependAnchor.id] {
                     let newRowRect = tableView.rect(ofRow: targetRow)
                     scrollClipView(toY: newRowRect.minY - prependAnchor.screenMinY)
-                } else if (wasAtBottom || conversation.isAtBottom || isPinningToBottom),
+                } else if (wasAtBottom || isPinningToBottom),
                           !conversation.isAwayFromLatest,
                           restoreAnchor == nil {
                     scrollToBottom(animated: false)
+                } else if let scrollAnchor, let targetRow = rowByID[scrollAnchor.id] {
+                    let newRowRect = tableView.rect(ofRow: targetRow)
+                    scrollClipView(toY: newRowRect.minY - scrollAnchor.screenMinY)
                 }
             }
             isApplyingProgrammaticUpdate = false
+            lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
             evaluateScrollPosition()
             heightPassGeneration += 1
             scheduleHeightPrewarm(generation: heightPassGeneration)
@@ -1923,6 +1975,7 @@ struct TimelineTableView: NSViewRepresentable {
 
             if !heightChanged.isEmpty {
                 let wasAtBottom = isScrolledToBottom()
+                let anchor = wasAtBottom ? nil : visibleAnchor(preferMessage: false)
                 isApplyingProgrammaticUpdate = true
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = 0
@@ -1932,11 +1985,10 @@ struct TimelineTableView: NSViewRepresentable {
                         reconfigureVisibleRow(at: row)
                     }
                     tableView.layoutSubtreeIfNeeded()
-                    if wasAtBottom, !view.conversation.isAwayFromLatest {
-                        scrollToBottom(animated: false)
-                    }
+                    restoreScrollAfterHeightChange(wasAtBottom: wasAtBottom, anchor: anchor)
                 }
                 isApplyingProgrammaticUpdate = false
+                lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
             } else {
                 for row in updatedRows {
                     reconfigureVisibleRow(at: row)
@@ -2007,7 +2059,10 @@ struct TimelineTableView: NSViewRepresentable {
             return (oldFirstMsgID, screenMinY)
         }
 
-        private func visibleAnchor(preferMessage: Bool) -> (id: String, screenMinY: CGFloat)? {
+        private func visibleAnchor(
+            preferMessage: Bool,
+            allowedIDs: Set<String>? = nil
+        ) -> (id: String, screenMinY: CGFloat)? {
             let visibleRange = tableView.rows(in: tableView.visibleRect)
             guard visibleRange.length > 0 else { return nil }
             let clipOriginY = containerView.scrollView.contentView.bounds.origin.y
@@ -2018,6 +2073,7 @@ struct TimelineTableView: NSViewRepresentable {
                 guard row >= 0, row < entries.count else { continue }
                 let entry = entries[row]
                 guard entry.kind != .topControl else { continue }
+                if let allowedIDs, !allowedIDs.contains(entry.id) { continue }
                 if preferMessage, case .message? = entry.item {} else if preferMessage { continue }
                 let screenMinY = tableView.rect(ofRow: row).minY - clipOriginY
                 if screenMinY >= topInset - 1 {
@@ -2085,15 +2141,24 @@ struct TimelineTableView: NSViewRepresentable {
 
             if view.bottomBarSignature != lastBottomBarSignature {
                 lastBottomBarSignature = view.bottomBarSignature
-                if hasPositionedInitially, conversation.isAtBottom, !conversation.isAwayFromLatest {
+                if hasPositionedInitially, isScrolledToBottom(), !conversation.isAwayFromLatest {
+                    let scrollStamp = lastUserScroll
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                        guard let self, !self.isShutDown, self.parent.conversation.isAtBottom,
+                        guard let self, !self.isShutDown,
+                              self.lastUserScroll == scrollStamp,
+                              self.lastAtBottom,
                               !self.parent.conversation.isAwayFromLatest else { return }
+                        self.isApplyingProgrammaticUpdate = true
                         self.scrollToBottom(animated: false)
+                        self.isApplyingProgrammaticUpdate = false
+                        self.lastObservedClipOriginY = self.containerView.scrollView.contentView.bounds.origin.y
                     }
                 }
-            } else if insetsChanged, hasPositionedInitially, conversation.isAtBottom, !conversation.isAwayFromLatest {
+            } else if insetsChanged, hasPositionedInitially, isScrolledToBottom(), !conversation.isAwayFromLatest {
+                isApplyingProgrammaticUpdate = true
                 scrollToBottom(animated: false)
+                isApplyingProgrammaticUpdate = false
+                lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
             }
 
             if !conversation.isLoadingOlder, topInView, !conversation.olderFailed {
@@ -2106,7 +2171,17 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         private func handleBoundsDidChange() {
-            guard !isApplyingProgrammaticUpdate, hasPositionedInitially else { return }
+            let currentOriginY = containerView.scrollView.contentView.bounds.origin.y
+            guard !isApplyingProgrammaticUpdate, hasPositionedInitially else {
+                lastObservedClipOriginY = currentOriginY
+                return
+            }
+            let movedUp = currentOriginY < lastObservedClipOriginY - 0.5
+            lastObservedClipOriginY = currentOriginY
+            if movedUp, !isScrolledToBottom() {
+                lastUserScroll = Date()
+                stopPinningToBottom()
+            }
             evaluateScrollPosition()
             reportVisibleProbes()
         }
@@ -2127,22 +2202,29 @@ struct TimelineTableView: NSViewRepresentable {
                 } else {
                     lastAtBottom = false
                     leavingBottomTask?.cancel()
-                    leavingBottomTask = Task { @MainActor [weak self] in
-                        try? await Task.sleep(nanoseconds: TimelineTableMetrics.leavingBottomConfirmDelayNanoseconds)
-                        guard let self, !Task.isCancelled else { return }
-                        let conv = self.parent.conversation
-                        if conv.isAtBottom, !conv.isAwayFromLatest,
-                           conv.scrollToMessageRequest == nil,
-                           self.restoreAnchor == nil,
-                           !self.topInView,
-                           Date().timeIntervalSince(self.lastUserScroll) > TimelineTableMetrics.userScrollGraceSeconds {
-                            self.isApplyingProgrammaticUpdate = true
-                            self.scrollToBottom(animated: false)
-                            self.isApplyingProgrammaticUpdate = false
-                            self.lastAtBottom = true
-                            return
+                    if Date().timeIntervalSince(lastUserScroll) <= TimelineTableMetrics.userScrollGraceSeconds {
+                        leavingBottomTask = nil
+                        conversation.scrolled(toBottom: false)
+                    } else {
+                        leavingBottomTask = Task { @MainActor [weak self] in
+                            try? await Task.sleep(nanoseconds: TimelineTableMetrics.leavingBottomConfirmDelayNanoseconds)
+                            guard let self, !Task.isCancelled else { return }
+                            let conv = self.parent.conversation
+                            if conv.isAtBottom, !conv.isAwayFromLatest,
+                               !self.isScrolledToBottom(),
+                               conv.scrollToMessageRequest == nil,
+                               self.restoreAnchor == nil,
+                               !self.topInView,
+                               Date().timeIntervalSince(self.lastUserScroll) > TimelineTableMetrics.userScrollGraceSeconds {
+                                self.isApplyingProgrammaticUpdate = true
+                                self.scrollToBottom(animated: false)
+                                self.isApplyingProgrammaticUpdate = false
+                                self.lastObservedClipOriginY = self.containerView.scrollView.contentView.bounds.origin.y
+                                self.lastAtBottom = true
+                                return
+                            }
+                            conv.scrolled(toBottom: false)
                         }
-                        conv.scrolled(toBottom: false)
                     }
                 }
             } else if atBottom {
@@ -2281,15 +2363,61 @@ struct TimelineTableView: NSViewRepresentable {
             return Date() < until
         }
 
+        private static func isScrollKeyEvent(_ event: NSEvent) -> Bool {
+            switch event.keyCode {
+            case 115, 116, 119, 121, 125, 126:
+                return true
+            default:
+                break
+            }
+            guard let chars = event.charactersIgnoringModifiers else { return false }
+            let scrollScalars: [Int] = [
+                NSPageUpFunctionKey,
+                NSPageDownFunctionKey,
+                NSHomeFunctionKey,
+                NSEndFunctionKey,
+                NSUpArrowFunctionKey,
+                NSDownArrowFunctionKey,
+            ]
+            return chars.unicodeScalars.contains { scalar in
+                scrollScalars.contains(Int(scalar.value))
+            }
+        }
+
         private func startPinningToBottom() {
             stopPinningToBottom()
             let conversation = parent.conversation
             guard !conversation.isHeldAwayFromLatest, !conversation.isAwayFromLatest,
                   conversation.scrollToMessageRequest == nil else { return }
             pinToBottomUntil = Date().addingTimeInterval(ConversationView.pinToBottomDuration)
-            pinScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-                if !event.phase.isEmpty || event.momentumPhase.isEmpty, event.scrollingDeltaY != 0 {
-                    MainActor.assumeIsolated { self?.stopPinningToBottom() }
+            pinScrollMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.scrollWheel, .keyDown, .leftMouseDown, .leftMouseDragged]
+            ) { [weak self] event in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    switch event.type {
+                    case .scrollWheel:
+                        if (!event.phase.isEmpty || event.momentumPhase.isEmpty), event.scrollingDeltaY != 0 {
+                            self.lastUserScroll = Date()
+                            self.stopPinningToBottom()
+                        }
+                    case .keyDown:
+                        if Self.isScrollKeyEvent(event) {
+                            self.lastUserScroll = Date()
+                            self.stopPinningToBottom()
+                        }
+                    case .leftMouseDown, .leftMouseDragged:
+                        if let scroller = self.containerView.scrollView.verticalScroller,
+                           event.window === scroller.window {
+                            let pt = scroller.convert(event.locationInWindow, from: nil)
+                            if scroller.bounds.contains(pt) {
+                                self.lastUserScroll = Date()
+                                self.stopPinningToBottom()
+                            }
+                        }
+                    default:
+                        break
+                    }
                 }
                 return event
             }
@@ -2305,6 +2433,7 @@ struct TimelineTableView: NSViewRepresentable {
                     self.isApplyingProgrammaticUpdate = true
                     self.scrollToBottom(animated: false)
                     self.isApplyingProgrammaticUpdate = false
+                    self.lastObservedClipOriginY = self.containerView.scrollView.contentView.bounds.origin.y
                     if delay >= ConversationView.pinToBottomDuration {
                         self.stopPinningToBottom()
                     }
@@ -2355,6 +2484,7 @@ struct TimelineTableView: NSViewRepresentable {
             }
             guard !affected.isEmpty else { return }
             let wasAtBottom = isScrolledToBottom()
+            let anchor = wasAtBottom ? nil : visibleAnchor(preferMessage: false)
             isApplyingProgrammaticUpdate = true
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0
@@ -2364,15 +2494,14 @@ struct TimelineTableView: NSViewRepresentable {
                     reconfigureVisibleRow(at: row)
                 }
                 tableView.layoutSubtreeIfNeeded()
-                if wasAtBottom, !parent.conversation.isAwayFromLatest {
-                    scrollToBottom(animated: false)
-                }
+                restoreScrollAfterHeightChange(wasAtBottom: wasAtBottom, anchor: anchor)
             }
             isApplyingProgrammaticUpdate = false
+            lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
         }
 
         private func handleVoiceNoteTranscriptChange() {
-            guard hasPositionedInitially else { return }
+            guard hasPositionedInitially, !isShutDown else { return }
             var affected = IndexSet()
             let items = parent.conversation.items
             let offset = entries.first?.kind == .topControl ? 1 : 0
@@ -2395,12 +2524,14 @@ struct TimelineTableView: NSViewRepresentable {
                     isPickingReaction: reactionPickerMessageID(parent.messageActions.request) == msg.id
                 )
                 if newEntry.contentRevision != oldEntry.contentRevision {
+                    heightCache.invalidateItem(id: msg.id)
                     entries[row] = newEntry
                     affected.insert(row)
                 }
             }
             guard !affected.isEmpty else { return }
             let wasAtBottom = isScrolledToBottom()
+            let anchor = wasAtBottom ? nil : visibleAnchor(preferMessage: false)
             isApplyingProgrammaticUpdate = true
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0
@@ -2410,11 +2541,10 @@ struct TimelineTableView: NSViewRepresentable {
                     reconfigureVisibleRow(at: row)
                 }
                 tableView.layoutSubtreeIfNeeded()
-                if wasAtBottom, !parent.conversation.isAwayFromLatest {
-                    scrollToBottom(animated: false)
-                }
+                restoreScrollAfterHeightChange(wasAtBottom: wasAtBottom, anchor: anchor)
             }
             isApplyingProgrammaticUpdate = false
+            lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
         }
 
         // MARK: - Sender Hover Card Popover
@@ -2561,6 +2691,7 @@ struct TimelineTableView: NSViewRepresentable {
             hasher.combine(view.preferences.showMessageTimestamps)
             hasher.combine(view.preferences.timeFormat.rawValue)
             hasher.combine(view.preferences.loadExternalEmbedsAutomatically)
+            hasher.combine(view.preferences.showLinkPreviews)
             hasher.combine(view.conversation.isDirectChat)
             hasher.combine(view.conversation.timerChoices.count)
             if let merged = view.conversation.mergedChat {

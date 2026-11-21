@@ -27,14 +27,18 @@ on, so neither can drift:
 
 | Constant | Value | Meaning |
 |---|---|---|
+| `PROTOCOL` | 2 | Protocol version spoken on `/connect` |
 | `MAX_FRAME_BYTES` | 4 MiB | Largest frame; bigger tool output is cut with a note |
 | `PING_SECS` | 20 | Ping interval when idle |
 | `IN_CALL_PING_SECS` | 2 | Ping interval while a call is in flight |
 | `MAX_MISSED_PINGS` | 3 | Missed pings (or silent intervals) that mean the link is gone |
 | `CALL_BUDGET_SECS` | 90 | Longest a call may take, dialog included (under the tunnel's ~100 s limit) |
+| `ACK_SECS` | 5 | How long the relay waits for `ack` after sending `call` |
+| `APPROVAL_REPLY_SECS` | 10 | How long the relay waits on `pending` before returning `check_request` |
+| `RECONNECT_GRACE_SECS` | 10 | How long calls and dialogs survive a dropped link |
 
-Frames: `hello`, `welcome` / `reject`, `call`, `result`, `cancel`,
-`tools_changed`, `ping` / `pong`. The `hello` is signed with the device
-key over the token's hash (`hello_message`).
+Frames: `hello`, `welcome` / `reject`, `call`, `ack`, `start`, `pending`,
+`result`, `result_ack`, `cancel`, `tools_changed`, `ping` / `pong`. The `hello`
+is signed with the device key over the token's hash (`hello_message`).
 
 `bazel test //apps/suites/vitruvian-relay/protocol:unit_tests`

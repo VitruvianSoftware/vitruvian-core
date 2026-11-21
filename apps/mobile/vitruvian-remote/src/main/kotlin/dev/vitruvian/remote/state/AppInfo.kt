@@ -72,8 +72,8 @@ public object AppInfo {
 
   /**
    * All runtime `@maven` libraries across `apps/mobile/vitruvian-remote/BUILD` and
-   * `packages/design-system-android/BUILD`, plus the bundled fonts from
-   * `packages/design-system-android/fonts`. Checked in `AppInfoTest` so adding a new runtime
+   * `packages/design-system/android/BUILD`, plus the bundled fonts from
+   * `packages/design-system/android/fonts`. Checked in `AppInfoTest` so adding a new runtime
    * dependency without an attribution fails tests immediately.
    */
   public val openSourceLicenses: List<OpenSourceLicense> =

@@ -860,3 +860,574 @@ fn sentry_apply_applies_a_delete_only_when_a_pushed_commit_approves_it() {
         assert_eq!(unapproved.calls, vec!["select", "preview:1"]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Zitadel applies: every `pulumi up` goes through guarded-up, and a delete or
+// replace applies only when a reviewed commit approves it. A replace of a
+// Zitadel OIDC app deletes the live client (hosted-login outage, 2026-06-26).
+// ---------------------------------------------------------------------------
+
+const ZITADEL_REUSABLE: &str = ".github/workflows/_zitadel-apps-apply.yaml";
+const ZITADEL_RELAY: &str = ".github/workflows/zitadel-apps-relay-apply.yaml";
+const ZITADEL_SLACK: &str = ".github/workflows/zitadel-apps-mcp-slack-apply.yaml";
+
+/// The OIDC app whose replace deletes the live client.
+fn zitadel_urn(env: &str) -> String {
+    format!("urn:pulumi:{env}::zitadel-apps::zitadel:index/applicationOidc:ApplicationOidc::oauth-user-inspector")
+}
+
+fn extract_plan_guard_block(workflow_text: &str, path: &str) -> String {
+    let lines: Vec<&str> = workflow_text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.trim() == "# plan-guard:begin")
+        .unwrap_or_else(|| panic!("{path} has no `# plan-guard:begin` marker"));
+    let end = start
+        + lines[start..]
+            .iter()
+            .position(|l| l.trim() == "# plan-guard:end")
+            .unwrap_or_else(|| panic!("{path} has no `# plan-guard:end` marker"));
+    lines[start..=end].join("\n")
+}
+
+#[test]
+fn zitadel_applies_never_run_pulumi_up_outside_the_plan_guard() {
+    let root = std::env::current_dir().unwrap();
+    for path in [ZITADEL_REUSABLE, ZITADEL_RELAY, ZITADEL_SLACK] {
+        let text = std::fs::read_to_string(root.join(path)).unwrap();
+        let bare: Vec<(usize, String)> = logical_lines(&text)
+            .into_iter()
+            .filter(|(_, l)| {
+                let t = l.trim();
+                !t.starts_with('#') && t.contains("pulumi up")
+            })
+            .collect();
+        assert!(
+            bare.is_empty(),
+            "{path} runs `pulumi up` without the plan guard (use guarded-up):\n{bare:?}"
+        );
+        let block = extract_plan_guard_block(&text, path);
+        assert!(
+            block.contains("\"$guarded_up\""),
+            "{path}: the plan-guard block does not call guarded-up"
+        );
+    }
+    // The manual-only stacks have exactly one stack, development, which exists:
+    // a missing one is a mistake to stop on, not to create empty.
+    for path in [ZITADEL_RELAY, ZITADEL_SLACK] {
+        let text = std::fs::read_to_string(root.join(path)).unwrap();
+        let bad = stack_select_violations(&text);
+        assert!(
+            bad.is_empty(),
+            "{path} must not auto-create a missing stack:\n{bad:?}"
+        );
+    }
+}
+
+/// What the stubbed GitHub API answers for a release's compare.
+#[derive(Clone, Copy)]
+enum Compare {
+    /// The range holds a commit approving the OIDC app's replace.
+    Approves,
+    /// The range holds commits, none approving anything.
+    NoApproval,
+    /// The compare call fails.
+    Fails,
+    /// total_commits is larger than what the pages return.
+    Truncated,
+    /// The range spans two pages; only the second holds the approval.
+    TwoPages,
+}
+
+struct ZitadelCase {
+    tag: &'static str,
+    workflow: &'static str,
+    deploy_env: &'static str,
+    /// ACTION input for the manual-only workflows; None for the reusable one.
+    action: Option<&'static str>,
+    event_name: &'static str,
+    /// The event payload; for a release, the release object.
+    event: String,
+    destructive: bool,
+    compare: Compare,
+}
+
+struct ZitadelOutcome {
+    rc: i32,
+    calls: Vec<String>,
+    stderr: String,
+}
+
+const RELEASE_TAG: &str = "oauth-user-inspector-v1.17.0";
+const PREV_TAG: &str = "oauth-user-inspector-v1.16.1";
+
+fn release_event() -> String {
+    format!(r#"{{"release":{{"tag_name":"{RELEASE_TAG}","published_at":"2026-11-21T10:00:00Z"}}}}"#)
+}
+
+fn push_event(messages: &[String]) -> String {
+    let commits: Vec<String> = messages
+        .iter()
+        .map(|m| format!(r#"{{"message":{}}}"#, serde_json_string(m)))
+        .collect();
+    format!(r#"{{"commits":[{}]}}"#, commits.join(","))
+}
+
+fn serde_json_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn run_zitadel_case(case: &ZitadelCase) -> ZitadelOutcome {
+    let root = std::env::current_dir().unwrap();
+    let wf = std::fs::read_to_string(root.join(case.workflow)).unwrap();
+    let block = extract_plan_guard_block(&wf, case.workflow);
+
+    let d = tmpdir(case.tag);
+    let runner_temp = d.join("runner_temp");
+    let stubs = d.join("stubs");
+    std::fs::create_dir_all(&runner_temp).unwrap();
+    std::fs::create_dir_all(&stubs).unwrap();
+    std::fs::copy(
+        runfiles_bin("RETRY_BIN"),
+        runner_temp.join("retry-concurrent-update"),
+    )
+    .unwrap();
+    std::fs::copy(
+        runfiles_bin("GUARDED_UP_BIN"),
+        runner_temp.join("guarded-up"),
+    )
+    .unwrap();
+    // The hermetic jq ($(JQ_BIN) is an execroot path, external/<repo>/jq; in
+    // runfiles that repository sits at ../<repo>).
+    let jq_raw = std::env::var("JQ_BIN").expect("JQ_BIN is not set");
+    let jq = match jq_raw.strip_prefix("external/") {
+        Some(rest) => format!("../{rest}"),
+        None => jq_raw.clone(),
+    };
+    let jq = std::fs::canonicalize(&jq).unwrap_or_else(|e| panic!("JQ_BIN={jq_raw}: {e}"));
+    std::fs::copy(&jq, stubs.join("jq")).unwrap();
+
+    let urn = zitadel_urn(case.deploy_env);
+    let plan = if case.destructive {
+        format!(
+            r#"{{"steps":[{{"op":"create-replacement","urn":"{urn}"}},{{"op":"replace","urn":"{urn}"}},{{"op":"delete-replaced","urn":"{urn}"}}],"changeSummary":{{"replace":1,"same":4}}}}"#
+        )
+    } else {
+        format!(r#"{{"steps":[{{"op":"same","urn":"{urn}"}}],"changeSummary":{{"same":5}}}}"#)
+    };
+    std::fs::write(d.join("plan.json"), &plan).unwrap();
+
+    // Releases: the newest earlier one of the same product is PREV_TAG; the
+    // -infra- release is newer but another product, and the draft is ignored.
+    std::fs::write(
+        d.join("releases.json"),
+        format!(
+            r#"[{{"tag_name":"{RELEASE_TAG}","draft":false,"published_at":"2026-11-21T10:00:00Z"}},
+               {{"tag_name":"oauth-user-inspector-infra-v1.8.0","draft":false,"published_at":"2026-11-20T12:00:00Z"}},
+               {{"tag_name":"oauth-user-inspector-v1.99.0","draft":true,"published_at":null}},
+               {{"tag_name":"{PREV_TAG}","draft":false,"published_at":"2026-11-14T23:04:22Z"}},
+               {{"tag_name":"oauth-user-inspector-v1.16.0","draft":false,"published_at":"2026-11-14T20:17:51Z"}}]"#
+        ),
+    )
+    .unwrap();
+    let approving = format!("fix(zitadel-apps): rotate the OIDC app\n\nAllow-destroy: {urn}\n");
+    let (total, msgs): (usize, Vec<String>) = match case.compare {
+        Compare::Approves | Compare::TwoPages => (2, vec!["chore: unrelated".into(), approving]),
+        Compare::NoApproval | Compare::Fails => (2, vec!["chore: one".into(), "chore: two".into()]),
+        Compare::Truncated => (150, vec!["chore: one".into(), approving]),
+    };
+    let commits: Vec<String> = msgs
+        .iter()
+        .map(|m| format!(r#"{{"commit":{{"message":{}}}}}"#, serde_json_string(m)))
+        .collect();
+    let (page1, page2): (Vec<String>, Vec<String>) = match case.compare {
+        Compare::TwoPages => (vec![commits[0].clone()], vec![commits[1].clone()]),
+        _ => (commits, Vec::new()),
+    };
+    std::fs::write(
+        d.join("compare-1.json"),
+        format!(
+            r#"{{"total_commits":{total},"commits":[{}]}}"#,
+            page1.join(",")
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        d.join("compare-2.json"),
+        format!(
+            r#"{{"total_commits":{total},"commits":[{}]}}"#,
+            page2.join(",")
+        ),
+    )
+    .unwrap();
+
+    write_exec(
+        &stubs.join("gh"),
+        &format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "gh $*" >> "$CALL_LOG"
+[ "${{1:-}}" = "api" ] || exit 64
+shift
+jqf=""; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --paginate) ;;
+    --jq) jqf="$2"; shift ;;
+    *) url="$1" ;;
+  esac
+  shift
+done
+case "$url" in
+  repos/VitruvianSoftware/vitruvian-core/releases\?per_page=100)
+    jq -r ".[]" "$FIXTURES/releases.json" | jq -s . | jq -r "$jqf" ;;
+  repos/VitruvianSoftware/vitruvian-core/compare/{PREV_TAG}...{RELEASE_TAG}\?per_page=100\&page=*)
+    [ "$COMPARE_FAILS" = "1" ] && {{ echo "HTTP 502" >&2; exit 1; }}
+    page="${{url##*page=}}"
+    cat "$FIXTURES/compare-$page.json" 2>/dev/null || echo '{{"total_commits":0,"commits":[]}}' ;;
+  *) echo "unexpected gh api $url" >&2; exit 65 ;;
+esac
+"#
+        ),
+    );
+    write_exec(
+        &stubs.join("pulumi"),
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "pulumi $*" >> "$CALL_LOG"
+case "${1:-}" in
+  stack|config|refresh) exit 0 ;;
+  preview)
+    if [ "${2:-}" = "--json" ]; then cat "$FIXTURES/plan.json"; fi
+    exit 0 ;;
+  up) echo "Updating"; exit 0 ;;
+  *) echo "unexpected pulumi $*" >&2; exit 99 ;;
+esac
+"#,
+    );
+
+    let event_path = d.join("event.json");
+    std::fs::write(&event_path, &case.event).unwrap();
+    let call_log = d.join("calls.log");
+    let script = format!(
+        "set -euo pipefail\n\
+         retry=\"${{RUNNER_TEMP}}/retry-concurrent-update\"\n\
+         guarded_up=\"${{RUNNER_TEMP}}/guarded-up\"\n\
+         {block}\n"
+    );
+    let o = Command::new("/bin/bash")
+        .arg("-c")
+        .arg(&script)
+        .env_clear()
+        .env("PATH", format!("{}:/usr/bin:/bin", stubs.display()))
+        .env("RUNNER_TEMP", &runner_temp)
+        .env("GITHUB_WORKSPACE", &root)
+        .env("GITHUB_REPOSITORY", "VitruvianSoftware/vitruvian-core")
+        .env("GITHUB_EVENT_PATH", &event_path)
+        .env("EVENT_NAME", case.event_name)
+        .env("DEPLOY_ENV", case.deploy_env)
+        .env("ACTION", case.action.unwrap_or(""))
+        .env("ZITADEL_MACHINE_KEY_JSON", "{}")
+        .env("FIXTURES", &d)
+        .env("CALL_LOG", &call_log)
+        .env(
+            "COMPARE_FAILS",
+            if matches!(case.compare, Compare::Fails) {
+                "1"
+            } else {
+                "0"
+            },
+        )
+        .env("PULUMI_CONFLICT_RETRY_DELAY", "1")
+        .env("PULUMI_CONFLICT_MAX_DELAY", "1")
+        .output()
+        .expect("run extracted plan-guard block");
+    let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+    assert!(
+        !stderr.contains("command not found") && !stderr.contains("unexpected"),
+        "{}: harness stderr: {stderr}",
+        case.tag
+    );
+    ZitadelOutcome {
+        rc: o.status.code().unwrap_or(-1),
+        calls: std::fs::read_to_string(&call_log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect(),
+        stderr,
+    }
+}
+
+fn applied(o: &ZitadelOutcome) -> bool {
+    o.calls.iter().any(|c| c.starts_with("pulumi up"))
+}
+
+fn reusable(
+    tag: &'static str,
+    env: &'static str,
+    event_name: &'static str,
+    event: String,
+    destructive: bool,
+    compare: Compare,
+) -> ZitadelOutcome {
+    run_zitadel_case(&ZitadelCase {
+        tag,
+        workflow: ZITADEL_REUSABLE,
+        deploy_env: env,
+        action: None,
+        event_name,
+        event,
+        destructive,
+        compare,
+    })
+}
+
+#[test]
+fn zitadel_push_applies_a_replace_only_when_a_pushed_commit_approves_it() {
+    let urn = zitadel_urn("development");
+    let ok = reusable(
+        "zpush-ok",
+        "development",
+        "push",
+        push_event(&[format!("fix: rotate\n\nAllow-destroy: {urn}\n")]),
+        true,
+        Compare::Fails,
+    );
+    assert_eq!(ok.rc, 0, "{}", ok.stderr);
+    assert!(
+        applied(&ok),
+        "approved replace was not applied: {:?}",
+        ok.calls
+    );
+    assert!(
+        !ok.calls.iter().any(|c| c.starts_with("gh ")),
+        "a push must not call the API: {:?}",
+        ok.calls
+    );
+
+    let other = zitadel_urn("production");
+    for (tag, msg) in [
+        ("zpush-none", "chore: nothing approved".to_string()),
+        (
+            "zpush-other-env",
+            format!("fix\n\nAllow-destroy: {other}\n"),
+        ),
+    ] {
+        let o = reusable(
+            tag,
+            "development",
+            "push",
+            push_event(&[msg]),
+            true,
+            Compare::Fails,
+        );
+        assert_ne!(o.rc, 0, "{tag}: an unapproved replace must fail the job");
+        assert!(
+            !applied(&o),
+            "{tag}: unapproved replace was applied: {:?}",
+            o.calls
+        );
+    }
+
+    let clean = reusable(
+        "zpush-clean",
+        "development",
+        "push",
+        push_event(&[]),
+        false,
+        Compare::Fails,
+    );
+    assert_eq!(clean.rc, 0, "{}", clean.stderr);
+    assert!(
+        applied(&clean),
+        "a clean plan must apply: {:?}",
+        clean.calls
+    );
+}
+
+#[test]
+fn zitadel_release_reads_approvals_from_the_commits_since_the_previous_release() {
+    let ok = reusable(
+        "zrel-ok",
+        "production",
+        "release",
+        release_event(),
+        true,
+        Compare::Approves,
+    );
+    assert_eq!(ok.rc, 0, "{}", ok.stderr);
+    assert!(
+        applied(&ok),
+        "approved replace was not applied: {:?}",
+        ok.calls
+    );
+    assert!(
+        ok.calls
+            .iter()
+            .any(|c| c.contains(&format!("compare/{PREV_TAG}...{RELEASE_TAG}"))),
+        "must compare against the previous release of the same product: {:?}",
+        ok.calls
+    );
+
+    // The approval sits on page 2: the helper must keep paging until it has
+    // total_commits, and stop there.
+    let paged = reusable(
+        "zrel-paged",
+        "production",
+        "release",
+        release_event(),
+        true,
+        Compare::TwoPages,
+    );
+    assert_eq!(paged.rc, 0, "{}", paged.stderr);
+    assert!(
+        applied(&paged),
+        "approval on page 2 was missed: {:?}",
+        paged.calls
+    );
+    let pages: Vec<&String> = paged
+        .calls
+        .iter()
+        .filter(|c| c.contains("/compare/"))
+        .collect();
+    assert_eq!(
+        pages.len(),
+        2,
+        "expected exactly two compare pages: {pages:?}"
+    );
+    assert!(pages[1].contains("page=2"), "{pages:?}");
+
+    for (tag, compare) in [
+        ("zrel-none", Compare::NoApproval),
+        ("zrel-fails", Compare::Fails),
+        ("zrel-truncated", Compare::Truncated),
+    ] {
+        let o = reusable(tag, "production", "release", release_event(), true, compare);
+        assert_ne!(o.rc, 0, "{tag}: an unapproved replace must fail the job");
+        assert!(
+            !applied(&o),
+            "{tag}: unapproved replace was applied: {:?}",
+            o.calls
+        );
+    }
+    let truncated = reusable(
+        "zrel-trunc-msg",
+        "production",
+        "release",
+        release_event(),
+        true,
+        Compare::Truncated,
+    );
+    assert!(
+        truncated.stderr.contains("read 2 of 150 commits"),
+        "a partial range must say so: {}",
+        truncated.stderr
+    );
+
+    // An unreadable range approves nothing but never blocks a safe plan.
+    let clean = reusable(
+        "zrel-clean",
+        "production",
+        "release",
+        release_event(),
+        false,
+        Compare::Fails,
+    );
+    assert_eq!(clean.rc, 0, "{}", clean.stderr);
+    assert!(
+        applied(&clean),
+        "a clean plan must apply: {:?}",
+        clean.calls
+    );
+    assert!(clean
+        .stderr
+        .contains("no Allow-destroy approvals were read for this release"));
+}
+
+#[test]
+fn zitadel_manual_runs_never_apply_a_replace() {
+    let urn = zitadel_urn("development");
+    // A dispatch payload has no commits; even one that did would not count.
+    let o = reusable(
+        "zdispatch",
+        "development",
+        "workflow_dispatch",
+        push_event(&[format!("fix\n\nAllow-destroy: {urn}\n")]),
+        true,
+        Compare::Approves,
+    );
+    assert_ne!(o.rc, 0);
+    assert!(
+        !applied(&o),
+        "a manual run applied a replace: {:?}",
+        o.calls
+    );
+
+    for (tag, wf) in [("zrelay", ZITADEL_RELAY), ("zslack", ZITADEL_SLACK)] {
+        let case = |t: &'static str, action: &'static str, destructive: bool| ZitadelCase {
+            tag: t,
+            workflow: wf,
+            deploy_env: "development",
+            action: Some(action),
+            event_name: "workflow_dispatch",
+            event: "{}".to_string(),
+            destructive,
+            compare: Compare::Fails,
+        };
+        let refused = run_zitadel_case(&case(tag, "up", true));
+        assert_ne!(
+            refused.rc, 0,
+            "{tag}: an unapproved replace must fail the job"
+        );
+        assert!(
+            !applied(&refused),
+            "{tag}: replace was applied: {:?}",
+            refused.calls
+        );
+        assert!(
+            refused
+                .calls
+                .iter()
+                .any(|c| c == "pulumi stack select development"),
+            "{tag}: must select the existing stack without --create: {:?}",
+            refused.calls
+        );
+
+        let clean = run_zitadel_case(&case(tag, "up", false));
+        assert_eq!(clean.rc, 0, "{tag}: {}", clean.stderr);
+        let order: Vec<&str> = clean
+            .calls
+            .iter()
+            .filter_map(|c| {
+                ["pulumi refresh", "pulumi preview --json", "pulumi up"]
+                    .into_iter()
+                    .find(|p| c.starts_with(p))
+            })
+            .collect();
+        assert_eq!(
+            order,
+            vec!["pulumi refresh", "pulumi preview --json", "pulumi up"],
+            "{tag}: refresh, then the guarded preview, then up"
+        );
+
+        let preview = run_zitadel_case(&case(tag, "preview", true));
+        assert_eq!(preview.rc, 0, "{tag}: {}", preview.stderr);
+        assert!(
+            !applied(&preview),
+            "{tag}: preview applied: {:?}",
+            preview.calls
+        );
+        assert!(preview.calls.iter().any(|c| c == "pulumi preview --diff"));
+    }
+}

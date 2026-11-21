@@ -2,14 +2,14 @@
   "kind": "vitruvian-android-update",
   "schema": 1,
   "packageName": "dev.vitruvian.remote",
-  "version": "0.1.55",
-  "versionCode": 155,
+  "version": "0.1.56",
+  "versionCode": 156,
   "minSdk": 26,
-  "published": "2026-11-19",
+  "published": "2026-11-20",
   "apk": {
-    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.55/VitruvianRemote-0.1.55.apk",
-    "size": 12810960,
-    "sha256": "85dd6b29f402dcab77b25a8f9aa758e06ebeec2306c494859f81d61a4036d20a"
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.56/VitruvianRemote-0.1.56.apk",
+    "size": 12819152,
+    "sha256": "b0bca41d97bfd4d10d4043745e0fdd673335fa863fa2ed5583b5f3e847924188"
   },
-  "notes": ["pick the announcement voice in Phone Bridge"]
+  "notes": ["reconnect to Google's speech engine after it restarts"]
 }

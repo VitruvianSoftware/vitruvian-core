@@ -21,6 +21,7 @@
 //! `vrelay` commands. Installing it is `scripts:install`.
 
 use vitruvian_relay_connector::auth::{fresh_token, login, register_device};
+use vitruvian_relay_connector::awake::Awake;
 use vitruvian_relay_connector::bridge::{Bridge, BridgeCommand};
 use vitruvian_relay_connector::config::Config;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
@@ -56,7 +57,9 @@ fn cmd_login(cfg: &Config) -> Result<()> {
 
 fn cmd_logout(cfg: &Config) -> Result<()> {
     if clear_sign_in(&cfg.dir)? {
-        println!("Signed out. The device key was kept; sign in again to reconnect.");
+        println!(
+            "Signed out. The sign-in and the device key are removed; sign in again to reconnect."
+        );
     } else {
         println!("Already signed out.");
     }
@@ -170,7 +173,7 @@ fn cmd_run(cfg: &Config) -> Result<()> {
     let mut rules = rules::load(&cfg.dir)
         .map_err(|e| format!("not starting: the rules file does not load: {e}"))?;
     // vrelay's own folders are off limits to remote calls (ruling R17).
-    rules.guard = rules::Guard::new(cfg);
+    rules.set_guard(rules::Guard::new(cfg));
     let key = Arc::new(load_or_create(&cfg.dir)?);
     let cmd = BridgeCommand::locate()?;
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -189,6 +192,13 @@ fn cmd_run(cfg: &Config) -> Result<()> {
     cap();
     let bridge = Arc::new(Bridge::start(&cmd)?);
     let log: vitruvian_relay_connector::bridge::Log = Arc::new(|s: &str| eprintln!("vrelay: {s}"));
+    // Keep the Mac awake while we run, if the rules say so (a reload that
+    // flips `keep_awake` starts or stops it; dropping it stops it).
+    let awake = Arc::new(Awake::system());
+    let awake_at_exit = awake.clone();
+    if let Err(e) = awake.set(rules.keep_awake) {
+        log(&e);
+    }
     let link = Link {
         dir: cfg.dir.clone(),
         log_dir: cfg.log_dir.clone(),
@@ -197,6 +207,7 @@ fn cmd_run(cfg: &Config) -> Result<()> {
         asker: Arc::new(Dialog),
         tokens: Arc::new(FileTokens::new(cfg.clone())),
         rules,
+        awake,
         key,
         timing: Timing::default(),
         clock: Arc::new(now_unix),
@@ -237,6 +248,8 @@ fn cmd_run(cfg: &Config) -> Result<()> {
     // Open dialogs were told to close; give their threads a moment, and drop
     // the call tasks (they hold the bridge).
     rt.shutdown_timeout(Duration::from_secs(2));
+    // (caffeinate also quits by itself when vrelay does.)
+    let _ = awake_at_exit.set(false);
     match Arc::try_unwrap(bridge) {
         Ok(b) => b.stop(),
         // Dropping the last handle kills desktop-commander at once.

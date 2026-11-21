@@ -1152,9 +1152,19 @@ public final class HotkeyDispatcher: ObservableObject {
         // The image viewer covers the whole window, so opening New Chat, Search or Settings (from a shortcut, the
         // menu, a button or the dock) closes it first rather than opening behind it.
         inbox.$startNewChatDraft
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak search] isOpen in search?.isOpenChatHidden = isOpen }
+            .store(in: &overlayDismissals)
+        inbox.$startNewChatDraft
             .dropFirst()
             .sink { [weak self] draft in
-                if draft != nil { self?.closeImageViewer() }
+                if draft != nil {
+                    self?.closeImageViewer()
+                    if self?.search.phase != .closed {
+                        self?.search.close()
+                    }
+                }
             }
             .store(in: &overlayDismissals)
         search.$phase
@@ -1433,7 +1443,8 @@ public final class HotkeyDispatcher: ObservableObject {
 
         case "Search: Room":
             _ = bringMainWindowForward()
-            search.show(in: inbox.selectedRoomID)
+            // New Chat hides the chat that is still selected: searching "in" it would search a chat nobody sees.
+            search.show(in: inbox.startNewChatDraft == nil ? inbox.selectedRoomID : nil)
             return true
 
         case "Keyboard Shortcuts":

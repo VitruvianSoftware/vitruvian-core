@@ -30,10 +30,10 @@
 //! Known gaps, all inputs no real manifest contains: `NaN`/`Infinity`
 //! literals, lone surrogate escapes and numbers beyond f64 range are rejected
 //! (Python accepts them); integers beyond 64 bits lose precision; `-0` reads
-//! as a float; nesting deeper than serde_json's 128 levels is rejected; and
-//! `repr()`'s "printable" test uses an approximation of Unicode's tables.
+//! as a float; and nesting deeper than serde_json's 128 levels is rejected.
 
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use std::collections::HashMap;
 use std::fmt;
 
 /// A JSON value with Python's semantics.
@@ -49,7 +49,23 @@ pub enum Py {
     Dict(Vec<(String, Py)>),
 }
 
+/// Alias for callers that name the JSON value type `Value`.
+pub type Value = Py;
+
 impl Py {
+    /// Python's name for the type, as its error messages use it.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Py::None => "NoneType",
+            Py::Bool(_) => "bool",
+            Py::Int(_) => "int",
+            Py::Float(_) => "float",
+            Py::Str(_) => "str",
+            Py::List(_) => "list",
+            Py::Dict(_) => "dict",
+        }
+    }
+
     /// `d.get(key)` on a dict; `None` for a missing key or a non-dict.
     pub fn get(&self, key: &str) -> Option<&Py> {
         match self {
@@ -149,106 +165,12 @@ pub fn open_error_traceback(e: &std::io::Error, path: &str, line: u32) -> String
 /// CPython's `repr(float)`: the shortest round-tripping digits, positional
 /// for decimal exponents in [-4, 16), scientific (`1e+16`, `1.5e-05`) outside.
 pub fn float_repr(f: f64) -> String {
-    if f.is_nan() {
-        return "nan".to_string();
-    }
-    if f.is_infinite() {
-        return if f > 0.0 { "inf" } else { "-inf" }.to_string();
-    }
-    if f == 0.0 {
-        return if f.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
-    }
-    // Rust's `{:e}` is the shortest round-trip form, e.g. "1.5e-7", "-1e20".
-    let sci = format!("{:e}", f);
-    let (mant, exp) = sci.split_once('e').expect("{:e} always has an exponent");
-    let exp: i32 = exp.parse().expect("exponent is an integer");
-    let (neg, mant) = match mant.strip_prefix('-') {
-        Some(m) => (true, m),
-        None => (false, mant),
-    };
-    let digits: String = mant.chars().filter(|c| *c != '.').collect();
-    let sign = if neg { "-" } else { "" };
-    if (-4..16).contains(&exp) {
-        let n = digits.len() as i32;
-        let body = if exp >= 0 {
-            let int_len = exp + 1;
-            if n <= int_len {
-                format!("{}{}.0", digits, "0".repeat((int_len - n) as usize))
-            } else {
-                format!(
-                    "{}.{}",
-                    &digits[..int_len as usize],
-                    &digits[int_len as usize..]
-                )
-            }
-        } else {
-            format!("0.{}{}", "0".repeat((-exp - 1) as usize), digits)
-        };
-        format!("{}{}", sign, body)
-    } else {
-        let m = if digits.len() == 1 {
-            digits.clone()
-        } else {
-            format!("{}.{}", &digits[..1], &digits[1..])
-        };
-        let es = if exp < 0 { "-" } else { "+" };
-        format!("{}{}e{}{:02}", sign, m, es, exp.abs())
-    }
-}
-
-/// Approximates `str.isprintable()` for one character: false for control,
-/// format, separator (other than ASCII space), private-use and noncharacter
-/// code points.
-fn is_printable(c: char) -> bool {
-    let u = c as u32;
-    if c == ' ' {
-        return true;
-    }
-    if u < 0x20 || (0x7f..=0xa0).contains(&u) || u == 0xad {
-        return false;
-    }
-    !matches!(u,
-        0x0600..=0x0605 | 0x061c | 0x06dd | 0x070f | 0x08e2 | 0x180e | 0x1680
-        | 0x2000..=0x200f | 0x2028..=0x202f | 0x205f..=0x2064 | 0x2066..=0x206f
-        | 0x3000 | 0xd800..=0xf8ff | 0xfeff | 0xfff9..=0xfffb | 0xfffe | 0xffff
-        | 0x110bd | 0x110cd | 0x13430..=0x1343f | 0x1bca0..=0x1bca3
-        | 0x1d173..=0x1d17a | 0xe0001 | 0xe0020..=0xe007f | 0xf0000..=0x10ffff)
+    vitruvian_pycompat::pystr::repr_float(f)
 }
 
 /// CPython's `repr(str)`.
 pub fn str_repr(s: &str) -> String {
-    let quote = if s.contains('\'') && !s.contains('"') {
-        '"'
-    } else {
-        '\''
-    };
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push(quote);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == quote => {
-                out.push('\\');
-                out.push(c);
-            }
-            c if !is_printable(c) => {
-                let u = c as u32;
-                if u < 0x100 {
-                    out.push_str(&format!("\\x{:02x}", u));
-                } else if u < 0x10000 {
-                    out.push_str(&format!("\\u{:04x}", u));
-                } else {
-                    out.push_str(&format!("\\U{:08x}", u));
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out.push(quote);
-    out
+    vitruvian_pycompat::pystr::repr_str(s)
 }
 
 impl<'de> Deserialize<'de> for Py {
@@ -295,13 +217,16 @@ impl<'de> Visitor<'de> for PyVisitor {
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Py, A::Error> {
         let mut items: Vec<(String, Py)> = Vec::new();
+        let mut seen: HashMap<String, usize> = HashMap::new();
         while let Some((k, v)) = map.next_entry::<String, Py>()? {
             // Python's dict: a repeated key keeps its first position and
             // takes the last value.
-            if let Some(slot) = items.iter_mut().find(|(ek, _)| *ek == k) {
-                slot.1 = v;
-            } else {
-                items.push((k, v));
+            match seen.get(&k) {
+                Some(&at) => items[at].1 = v,
+                None => {
+                    seen.insert(k.clone(), items.len());
+                    items.push((k, v));
+                }
             }
         }
         Ok(Py::Dict(items))
@@ -367,5 +292,26 @@ mod tests {
         ] {
             assert_eq!(loads(j).unwrap().truthy(), want, "{j}");
         }
+    }
+
+    #[test]
+    fn unicode15_floats_and_value_alias() {
+        assert_eq!(float_repr(-0.0), "-0.0");
+        assert_eq!(float_repr(0.0), "0.0");
+        assert_eq!(float_repr(1.5e300), "1.5e+300");
+        assert_eq!(str_repr("é✓\u{a0}\u{200b}"), "'é✓\\xa0\\u200b'");
+        assert_eq!(str_repr("\u{e0001}"), "'\\U000e0001'");
+        assert_eq!(str_repr("\u{0378}"), "'\\u0378'");
+
+        let v: Value =
+            loads(r#"{"n":null,"b":false,"i":1,"f":1.5,"s":"x","l":[],"d":{}}"#).unwrap();
+        assert_eq!(v.type_name(), "dict");
+        assert_eq!(v.get("n").unwrap().type_name(), "NoneType");
+        assert_eq!(v.get("b").unwrap().type_name(), "bool");
+        assert_eq!(v.get("i").unwrap().type_name(), "int");
+        assert_eq!(v.get("f").unwrap().type_name(), "float");
+        assert_eq!(v.get("s").unwrap().type_name(), "str");
+        assert_eq!(v.get("l").unwrap().type_name(), "list");
+        assert_eq!(Value::Int(7).type_name(), "int");
     }
 }

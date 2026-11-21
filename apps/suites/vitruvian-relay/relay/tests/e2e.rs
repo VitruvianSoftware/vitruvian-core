@@ -192,6 +192,7 @@ struct Relay {
     addr: SocketAddr,
     rsa: Arc<RsaKeyPair>,
     logs: Arc<Mutex<Vec<String>>>,
+    data_dir: PathBuf,
 }
 
 /// In-call pings every 2 s, as in production: three missed (6 s) is a drop
@@ -210,9 +211,18 @@ fn relay_timing() -> RelayTiming {
 }
 
 async fn start_relay() -> Relay {
+    start_relay_with(relay_timing()).await
+}
+
+async fn start_relay_with(timing: RelayTiming) -> Relay {
+    start_relay_in(timing, temp_dir("relay-data")).await
+}
+
+/// A relay keeping its devices in `data_dir`: a second one started on the
+/// same folder is the first one restarted, with none of its calls.
+async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
-    let data_dir = temp_dir("relay-data");
     let env: HashMap<&str, String> = [
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
         ("ISSUER", ISSUER.to_string()),
@@ -246,13 +256,18 @@ async fn start_relay() -> Relay {
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
         store,
-        relay_timing(),
+        timing,
         sink,
     );
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(serve(listener, app));
-    Relay { addr, rsa, logs }
+    Relay {
+        addr,
+        rsa,
+        logs,
+        data_dir,
+    }
 }
 
 struct Reply {
@@ -401,14 +416,18 @@ impl Mcp {
         assert_eq!(r.status, 202, "{}", r.body);
     }
 
+    /// The device's tools: what its connector listed, without the relay's
+    /// own `check_request` that every list ends with.
     async fn tool_names(&self) -> Vec<String> {
         let v = self.rpc("tools/list", json!({})).await;
-        v["result"]["tools"]
+        let mut names: Vec<String> = v["result"]["tools"]
             .as_array()
             .unwrap()
             .iter()
             .map(|t| t["name"].as_str().unwrap().to_string())
-            .collect()
+            .collect();
+        assert_eq!(names.pop().as_deref(), Some("check_request"), "{v}");
+        names
     }
 
     /// A tool's text and its error flag.
@@ -442,11 +461,14 @@ fn tool(name: &str) -> ToolDef {
 }
 
 /// `read_file` (runs without asking) answers `read <path>`, or `big_bytes`
-/// of text for `/big`; `start_process` (asks first) answers `ran <command>`.
+/// of text for `/big`, or, for `/gated`, `read /gated` once the test has
+/// called `gate.notify_one()`; `start_process` (asks first) answers
+/// `ran <command>`.
 #[derive(Default)]
 struct E2eTools {
     ran: Mutex<Vec<(String, Value)>>,
     big_bytes: AtomicUsize,
+    gate: tokio::sync::Notify,
 }
 
 impl E2eTools {
@@ -472,24 +494,28 @@ impl Tools for E2eTools {
         _deadline: Instant,
         wanted: StillWanted,
     ) -> impl std::future::Future<Output = Option<BridgeOutput>> + Send {
-        if !wanted() {
-            return std::future::ready(None);
+        let tool = tool.to_string();
+        async move {
+            if !wanted() {
+                return None;
+            }
+            self.ran.lock().unwrap().push((tool.clone(), args.clone()));
+            let path = args["path"].as_str();
+            let text = match (tool.as_str(), path, args["command"].as_str()) {
+                ("read_file", Some("/big"), _) => "b".repeat(self.big_bytes.load(Ordering::SeqCst)),
+                ("read_file", Some(p), _) => format!("read {p}"),
+                ("start_process", _, Some(c)) => format!("ran {c}"),
+                _ => "?".into(),
+            };
+            if path == Some("/gated") {
+                self.gate.notified().await;
+            }
+            Some(BridgeOutput {
+                content: json!([{"type": "text", "text": text}]),
+                is_error: false,
+                truncated: false,
+            })
         }
-        self.ran
-            .lock()
-            .unwrap()
-            .push((tool.to_string(), args.clone()));
-        let text = match (tool, args["path"].as_str(), args["command"].as_str()) {
-            ("read_file", Some("/big"), _) => "b".repeat(self.big_bytes.load(Ordering::SeqCst)),
-            ("read_file", Some(p), _) => format!("read {p}"),
-            ("start_process", _, Some(c)) => format!("ran {c}"),
-            _ => "?".into(),
-        };
-        std::future::ready(Some(BridgeOutput {
-            content: json!([{"type": "text", "text": text}]),
-            is_error: false,
-            truncated: false,
-        }))
     }
 }
 
@@ -590,6 +616,16 @@ impl Connector {
 /// Registers a fresh device key with the relay (as `vrelay login` does) and
 /// starts a `Link` for it, dialling `url` (the relay, or a proxy to it).
 async fn start_connector(relay: &Relay, name: &str, url: &str, short_tokens: usize) -> Connector {
+    start_connector_with(relay, name, url, short_tokens, link_timing()).await
+}
+
+async fn start_connector_with(
+    relay: &Relay,
+    name: &str,
+    url: &str,
+    short_tokens: usize,
+    timing: LinkTiming,
+) -> Connector {
     let dir = temp_dir(name);
     let key = load_or_create(&dir).unwrap();
     let device_id = relay.register(&public_key_b64(&key)).await;
@@ -620,8 +656,10 @@ async fn start_connector(relay: &Relay, name: &str, url: &str, short_tokens: usi
         asker: asker.clone(),
         tokens: tokens.clone(),
         rules: vitruvian_relay_connector::rules::load(&dir).unwrap(),
+        // Not started: the test must not hold the machine awake.
+        awake: Arc::new(vitruvian_relay_connector::awake::Awake::system()),
         key: Arc::new(key),
-        timing: link_timing(),
+        timing,
         clock: Arc::new(now_secs),
         rng: Arc::new(Mutex::new(|cap: u64| cap)),
         log: Arc::new(move |s: &str| {
@@ -699,6 +737,66 @@ async fn slow_uplink(to: SocketAddr, bytes_per_sec: usize) -> String {
         }
     });
     format!("http://{addr}")
+}
+
+/// A loopback proxy in front of the relay that can be cut: every open
+/// connection through it dies, and new ones are refused until it is reopened.
+/// A network reset between the two.
+struct CutProxy {
+    url: String,
+    down: Arc<AtomicBool>,
+    open: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
+    /// Where new connections go: changed to point the connector at a
+    /// restarted relay.
+    to: Arc<Mutex<SocketAddr>>,
+}
+
+impl CutProxy {
+    async fn start(to: SocketAddr) -> CutProxy {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let down = Arc::new(AtomicBool::new(false));
+        let open: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> = Arc::default();
+        let (d, o) = (down.clone(), open.clone());
+        let to = Arc::new(Mutex::new(to));
+        let target = to.clone();
+        tokio::spawn(async move {
+            while let Ok((mut from, _)) = listener.accept().await {
+                if d.load(Ordering::SeqCst) {
+                    continue; // dropped: refused
+                }
+                let to = *target.lock().unwrap();
+                let Ok(mut up) = TcpStream::connect(to).await else {
+                    continue;
+                };
+                o.lock().unwrap().push(tokio::spawn(async move {
+                    let _ = tokio::io::copy_bidirectional(&mut from, &mut up).await;
+                }));
+            }
+        });
+        CutProxy {
+            url,
+            down,
+            open,
+            to,
+        }
+    }
+
+    fn cut(&self) {
+        self.down.store(true, Ordering::SeqCst);
+        for h in self.open.lock().unwrap().drain(..) {
+            h.abort();
+        }
+    }
+
+    fn reopen(&self) {
+        self.down.store(false, Ordering::SeqCst);
+    }
+
+    /// New connections go to `to` (a restarted relay).
+    fn retarget(&self, to: SocketAddr) {
+        *self.to.lock().unwrap() = to;
+    }
 }
 
 // ------------------------------------------------------------------- tests
@@ -821,7 +919,12 @@ async fn registering_again_kicks_the_old_link_and_the_new_key_takes_over() {
 /// limit, while another call waits at its dialog, must not drop the link.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
-    let relay = start_relay().await;
+    // This is about the link, not the waiting reply: that comes much later.
+    let relay = start_relay_with(RelayTiming {
+        approval_reply: Duration::from_secs(120),
+        ..relay_timing()
+    })
+    .await;
     // 320 KiB/s: a 3 MiB result takes about 10 s, the silence limit is 6 s.
     let url = slow_uplink(relay.addr, 320 * 1024).await;
     let c = start_connector(&relay, "e-big", &url, 0).await;
@@ -855,4 +958,234 @@ async fn a_slow_large_result_during_a_dialog_keeps_the_link() {
     *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
     let (text, is_error) = waiting.await.unwrap();
     assert_eq!((text.as_str(), is_error), ("ran make", false));
+}
+
+/// The real connector tells the real relay when its dialog opens, so the AI
+/// app is answered "waiting" before it would give up (the relay's reply time
+/// is 400 ms here, 10 s in production). Its retry joins the open dialog, and
+/// `check_request` brings back the result once the person allows it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_approval_is_fetched_with_check_request() {
+    let relay = start_relay_with(RelayTiming {
+        approval_reply: Duration::from_millis(400),
+        ..relay_timing()
+    })
+    .await;
+    let c = start_connector(&relay, "e-approval", &relay.url(), 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let args = json!({"command": "ls"});
+
+    let started = Instant::now();
+    let (text, is_error) = mcp.call("start_process", args.clone()).await;
+    assert!(!is_error, "{text}");
+    assert!(started.elapsed() >= Duration::from_millis(400));
+    let id = text
+        .split("request_id \"")
+        .nth(1)
+        .and_then(|t| t.split('"').next())
+        .unwrap_or_else(|| panic!("no request id in {text}"))
+        .to_string();
+    assert!(
+        text.starts_with("Waiting for you to allow this on"),
+        "{text}"
+    );
+    assert_eq!(c.asker.opened.load(Ordering::SeqCst), 1);
+
+    // The AI app's retry of the same call: the same id, and no second dialog.
+    let (again, _) = mcp.call("start_process", args).await;
+    assert!(again.contains(&id), "{again}");
+    assert_eq!(c.asker.opened.load(Ordering::SeqCst), 1, "a second dialog");
+
+    // Still unanswered: `check_request` says so, with the same id.
+    let (still, is_error) = mcp.call("check_request", json!({"request_id": id})).await;
+    assert!(!is_error && still.contains(&id), "{still}");
+
+    // The person allows it; the command runs once and the result comes back.
+    *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
+    let (text, is_error) = mcp.call("check_request", json!({"request_id": id})).await;
+    assert_eq!((text.as_str(), is_error), ("ran ls", false));
+    assert_eq!(c.tools.ran("start_process"), 1);
+    assert_eq!(c.asker.opened.load(Ordering::SeqCst), 1);
+}
+
+/// Most drops are network resets that recover in about a second. A command
+/// that was running through one must still answer the AI, and not run twice.
+#[tokio::test(flavor = "multi_thread")]
+async fn result_after_a_one_second_drop_reaches_the_ai() {
+    let relay = start_relay().await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector(&relay, "e-drop", &proxy.url, 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let call = tokio::spawn(async move { m.call("read_file", json!({"path": "/gated"})).await });
+    until("the command to start", || c.tools.ran("read_file") == 1).await;
+    // The link is reset mid-call and stays down for about a second.
+    let dropped = Instant::now();
+    proxy.cut();
+    until("the connector to see the drop", || c.logged("link down")).await;
+    // The command finishes while there is no link to send its result on.
+    c.tools.gate.notify_one();
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    proxy.reopen();
+    let (text, is_error) = tokio::time::timeout(WAIT, call).await.unwrap().unwrap();
+    assert_eq!((text.as_str(), is_error), ("read /gated", false));
+    assert!(dropped.elapsed() < Duration::from_secs(10));
+    // Never run twice.
+    assert_eq!(c.tools.ran("read_file"), 1);
+    // And the link works again.
+    let (text, _) = mcp.call("read_file", json!({"path": "/after"})).await;
+    assert_eq!(text, "read /after");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn drop_longer_than_grace_fails_disconnected() {
+    let grace = Duration::from_millis(600);
+    let relay = start_relay_with(RelayTiming {
+        reconnect_grace: grace,
+        ..relay_timing()
+    })
+    .await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector(&relay, "e-gone", &proxy.url, 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let call = tokio::spawn(async move { m.call("read_file", json!({"path": "/gated"})).await });
+    until("the command to start", || c.tools.ran("read_file") == 1).await;
+    let dropped = Instant::now();
+    proxy.cut();
+    // The link does not come back.
+    let (text, is_error) = tokio::time::timeout(WAIT, call).await.unwrap().unwrap();
+    assert_eq!(
+        (text.as_str(), is_error),
+        ("Your computer disconnected. The command may already have run; check before trying again.", true)
+    );
+    assert!(
+        dropped.elapsed() >= grace,
+        "failed after {:?}, inside the {grace:?} grace",
+        dropped.elapsed()
+    );
+}
+
+/// The device comes back inside the grace period with its dialog still open.
+/// Long after the grace the call is still the AI's to cancel, and when it
+/// does the dialog closes on the new link: a late Allow runs nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dialog_kept_across_a_reset_is_closed_when_the_ai_cancels() {
+    let relay = start_relay_with(RelayTiming {
+        reconnect_grace: Duration::from_millis(300),
+        ..relay_timing()
+    })
+    .await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector(&relay, "e-dialog-reset", &proxy.url, 0).await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let call = async move {
+        m.rpc_id(
+            52,
+            "tools/call",
+            json!({"name": "start_process", "arguments": {"command": "rm -rf /tmp/x"}}),
+        )
+        .await
+    };
+    let (answer, ()) = tokio::join!(call, async {
+        until("the dialog to open", || {
+            c.asker.opened.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        proxy.cut();
+        until("the connector to see the drop", || c.logged("link down")).await;
+        proxy.reopen();
+        until("the link to be back", || {
+            relay.logs().matches("\"event\":\"connect\"").count() >= 2
+        })
+        .await;
+        // Past the relay's grace: a relay that failed the call here would
+        // have told the AI already, and left the dialog open.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert_eq!(c.asker.dismissed.load(Ordering::SeqCst), 0);
+        mcp.notify("notifications/cancelled", json!({"requestId": 52}))
+            .await;
+    });
+    assert_eq!(answer["error"]["code"], -32800, "{answer}");
+    until("the dialog to close", || {
+        c.asker.dismissed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
+    until("the calls log line", || {
+        c.calls_log().contains("cancelled at prompt")
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(c.tools.ran("start_process"), 0);
+}
+
+/// Final review, Important 2. The relay restarts while a dialog is open: its
+/// calls, and the `Cancel`s it owed, were only in memory, so the new relay
+/// knows nothing of the call and the AI was long since told it failed.
+/// Whatever is clicked at the old dialog after the connector is back, nothing
+/// may run: the new relay never says it holds the call.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_relay_restart_never_lets_an_old_dialog_run() {
+    let relay = start_relay().await;
+    let proxy = CutProxy::start(relay.addr).await;
+    let c = start_connector_with(
+        &relay,
+        "e-restart",
+        &proxy.url,
+        0,
+        LinkTiming {
+            // Not the production 10 s: the new relay's silence about the
+            // call is what is being waited for.
+            reconnect_grace: Duration::from_millis(600),
+            ..link_timing()
+        },
+    )
+    .await;
+    let mcp = Arc::new(relay.mcp(&c.device_id).await);
+    until_online(&mcp).await;
+    let m = mcp.clone();
+    let _call = tokio::spawn(async move {
+        m.rpc_id(
+            61,
+            "tools/call",
+            json!({"name": "start_process", "arguments": {"command": "rm -rf /tmp/x"}}),
+        )
+        .await
+    });
+    until("the dialog to open", || {
+        c.asker.opened.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    // The relay goes away and a new one, with the same devices and no calls,
+    // takes its place.
+    proxy.cut();
+    until("the connector to see the drop", || c.logged("link down")).await;
+    let restarted = start_relay_in(relay_timing(), relay.data_dir.clone()).await;
+    proxy.retarget(restarted.addr);
+    proxy.reopen();
+    until("the connector to be back", || {
+        c.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.contains("connected to the relay"))
+            .count()
+            >= 2
+    })
+    .await;
+    // The dialog is still open, and the person clicks Allow now.
+    assert_eq!(c.asker.dismissed.load(Ordering::SeqCst), 0);
+    *c.asker.answer.lock().unwrap() = Some(Waited::Allow);
+    until("the calls log line", || {
+        c.calls_log().contains("cancelled at prompt")
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(c.tools.ran("start_process"), 0, "an old dialog ran");
 }

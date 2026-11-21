@@ -632,12 +632,13 @@ public final class MessageActionsModel: ObservableObject {
         conversation.refresh()
     }
 
-    /// A message's versions, first as sent and then each edit, oldest first; [] (and a toast) when they can't be read.
+    /// A message's versions, first as sent and then each edit that changed it, oldest first (a silent edit with the same
+    /// words and formatting, such as a link preview added, is left out); [] (and a toast) when they can't be read.
     public func history(of messageID: String) async -> [Version] {
         guard !isLocked, let client = appModel.client else { return [] }
         do {
             let result: HistoryResult = try await client.call("message.history", EventParams(eventID: messageID))
-            return result.versions
+            return EditHistory.visibleVersions(result.versions)
         } catch {
             onToast(EngineErrorText.text(for: error, fallback: String(localized: "That didn’t work. Try again.")))
             return []

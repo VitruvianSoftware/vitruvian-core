@@ -1,7 +1,56 @@
 # android-crash-privacy
 
-Shared privacy-hardened Sentry initialization and crash-report scrubbing for
-Android apps in this monorepo (`//packages/android-crash-privacy`).
+## What it gives you
+
+Shared privacy-hardened Sentry initialization, device-field allowlisting (`DeviceField`, `PrivateSentryDevice`), cache clearing (`clearSentryCache`, `disableCrashReporting`), and crash-message address scrubbing (`scrubCrashMessage`) for Android apps in this monorepo.
+
+## When to use it
+
+- Initializing Sentry in any Android or Wear OS app (`vitruvian-remote`, `vitruvian-watch`, `vitruvian-wand`) so auto-breadcrumbs, ANR/NDK/tombstone dumps, screenshots, tracing, profiling, replay, and IP/hostname leaks are suppressed by default.
+
+## When not to use it
+
+- macOS Swift apps or extensions; use [`//packages/sentry-lite:SentryLite`](../sentry-lite/README.md) instead.
+- Rust or Node.js services; use the standard Sentry crates/packages (`sentry` or `@sentry/node`) directly.
+
+## Example
+
+From `apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/common/WatchSentry.kt:24-64`:
+
+```kotlin
+import dev.vitruvian.crashprivacy.DeviceField
+import dev.vitruvian.crashprivacy.configurePrivateSentry
+// …
+import io.sentry.android.core.SentryAndroidOptions
+import java.util.EnumSet
+
+public object WatchSentry {
+  // …
+  public val KEPT_DEVICE_FIELDS: Set<DeviceField> = EnumSet.of(DeviceField.APP_VERSION)
+  // …
+  public fun configureOptions(
+      options: SentryAndroidOptions,
+      appName: String = "vitruvian-watch",
+      dsn: String = DEFAULT_DSN,
+  ) {
+    configurePrivateSentry(
+        options = options,
+        dsn = dsn,
+        keepDeviceFields = KEPT_DEVICE_FIELDS,
+        release = "$appName@1.0",
+        environment = "production",
+    )
+  }
+}
+```
+
+## Depend on it
+
+`//packages/android-crash-privacy:android-crash-privacy`
+
+## Constraints
+
+- Android/Kotlin library depending on `@maven//:io_sentry_sentry` and `@maven//:io_sentry_sentry_android_core` (unit-tested on JVM with `@androidsdk//:platforms/android-35/android.jar`).
 
 ## What is here
 
@@ -17,4 +66,4 @@ Android apps in this monorepo (`//packages/android-crash-privacy`).
 ## Per-app field sets
 
 - **Vitruvian Remote** (`apps/mobile/vitruvian-remote`): keeps `MODEL`, `SCREEN`, `MEMORY`, `OS_VERSION`, and `APP_VERSION` (`vitruvian-remote@<version>`), matching its Privacy notice.
-- **Vitruvian Watch** (`apps/mobile/vitruvian-watch`) and **Vitruvian Wand** (`apps/suites/vitruvian-wand/android`): keep `APP_VERSION` only (`<app>@1.0` / `vitruvian-wand@0.1.0`), stripping all Android device and OS contexts and tags so events carry no more than plain Java `io.sentry:sentry:7.14.0` sent on `main`.
+- **Vitruvian Watch** (`apps/mobile/vitruvian-watch`) and **Vitruvian Wand** (`apps/suites/vitruvian-wand/android`): keep `APP_VERSION` only (`<app>@1.0` / `vitruvian-wand@0.1.0`), stripping all Android device and OS contexts and tags (`MODULE.bazel` currently pins `io.sentry:sentry:8.64.0`; `CrashPrivacyTest.kt:299-301` documents parity against the historical `io.sentry:sentry:7.14.0` baseline).

@@ -139,6 +139,16 @@ def validate_app_config(app):
                 if req not in preset["concerns"]:
                     problems.append("preset {!r}: concern {!r} requires {!r}, which the preset omits".format(name, c, req))
 
+    if "package" in app:
+        pkg = app["package"]
+        if type(pkg) != "dict":
+            problems.append("config.json: package must be an object, got {}".format(type(pkg)))
+        else:
+            _require_keys("package", pkg, ["template_dir", "default_language", "default_owner", "default_lifecycle"], problems)
+            for key in ["template_dir", "default_language", "default_owner", "default_lifecycle"]:
+                if key in pkg and (type(pkg[key]) != "string" or pkg[key] == ""):
+                    problems.append("package: {!r} must be a non-empty string".format(key))
+
     return problems
 
 def resolve_concerns(app, language, concerns):

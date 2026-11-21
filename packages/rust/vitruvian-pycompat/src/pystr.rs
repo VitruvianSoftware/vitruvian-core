@@ -305,4 +305,66 @@ mod tests {
         assert_eq!(format_fixed(0.35, 1), "0.3"); // 0.35 is below .35 in binary
         assert_eq!(format_fixed(10.0, 1), "10.0");
     }
+
+    #[test]
+    fn exhaustive_unicode_classification_and_repr() {
+        for cp in 0u32..=0x10FFFF {
+            let Some(c) = char::from_u32(cp) else {
+                continue;
+            };
+            let expect_space = in_ranges(crate::unicode_tables::SPACE, cp);
+            assert_eq!(is_space(c), expect_space, "is_space {cp:#x}");
+
+            let dec_idx = crate::unicode_tables::DECIMAL.partition_point(|&(lo, _)| lo <= cp);
+            let expect_dec = if dec_idx > 0 && cp <= crate::unicode_tables::DECIMAL[dec_idx - 1].1 {
+                Some((cp - crate::unicode_tables::DECIMAL[dec_idx - 1].0) % 10)
+            } else {
+                None
+            };
+            assert_eq!(decimal_value(c), expect_dec, "decimal_value {cp:#x}");
+
+            let p = format!(" {c}x{c} ");
+            let expect_strip = if expect_space {
+                "x"
+            } else {
+                p.trim_matches(' ')
+            };
+            assert_eq!(strip(&p), expect_strip, "strip {cp:#x}");
+
+            let s = c.to_string();
+            let expect_repr = match c {
+                '\\' => "'\\\\'".to_string(),
+                '\t' => "'\\t'".to_string(),
+                '\n' => "'\\n'".to_string(),
+                '\r' => "'\\r'".to_string(),
+                '\'' => "\"'\"".to_string(),
+                _ if in_ranges(crate::unicode_tables::PRINTABLE, cp) => format!("'{c}'"),
+                _ if cp < 0x100 => format!("'\\x{:02x}'", cp),
+                _ if cp < 0x10000 => format!("'\\u{:04x}'", cp),
+                _ => format!("'\\U{:08x}'", cp),
+            };
+            assert_eq!(repr_str(&s), expect_repr, "repr_str {cp:#x}");
+        }
+        // Unassigned characters like U+0378 must be escaped as Python does.
+        assert_eq!(repr_str("\u{0378}"), "'\\u0378'");
+    }
+
+    /// The printable table is Python's own (`str.isprintable()`), not an
+    /// approximation: these code points are not printable, so `repr()` escapes
+    /// them exactly as Python 3 does. Checked with `repr(chr(cp))` in Python 3.15.
+    #[test]
+    fn printable_table_matches_python_repr() {
+        for cp in [0x0378u32, 0x2028, 0xE0001, 0xF0000, 0x10FFFE] {
+            let c = char::from_u32(cp).expect("valid scalar");
+            assert!(!is_printable(c), "U+{cp:04X} must not be printable");
+        }
+        // Control: a printable non-ASCII letter must stay as it is.
+        assert!(is_printable('\u{e9}'));
+        assert_eq!(repr_str("\u{e9}"), "'\u{e9}'");
+        assert_eq!(repr_str("\u{0378}"), "'\\u0378'");
+        assert_eq!(repr_str("\u{2028}"), "'\\u2028'");
+        assert_eq!(repr_str("\u{e0001}"), "'\\U000e0001'");
+        assert_eq!(repr_str("\u{f0000}"), "'\\U000f0000'");
+        assert_eq!(repr_str("\u{10fffe}"), "'\\U0010fffe'");
+    }
 }

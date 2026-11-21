@@ -40,8 +40,6 @@ AI app ──MCP/HTTPS──▶ relay (homelab) ◀──WebSocket── vrelay 
   limits they share.
 - [connector](./connector/README.md): `vrelay`, the Mac agent, and its
   installer.
-- [spike](./spike/README.md): the throwaway spike the design was proved
-  with (retired once the relay is deployed).
 
 ## Build and test
 

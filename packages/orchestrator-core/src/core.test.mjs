@@ -28,32 +28,44 @@ import { fileURLToPath } from "node:url";
 
 import * as coreModule from "./core.mjs";
 import {
+  ANTIGRAVITY_MODELS,
   DEFAULT_QUIET_MS,
   DEFAULT_ROLE_TIERS,
   DEFAULT_STALL_MS,
   DEFAULT_WAITING_STALL_MS,
+  MAX_AGENT_FILE_BYTES,
   MAX_TEAM_NOTES,
   ROLES,
+  TEAM_AGENT_DIRS,
   TEAM_EFFORTS,
+  TEAM_ENGINES,
+  TEAM_SCHEMA_ID,
+  TEAM_SYNC_HARNESSES,
   TEAM_TIERS,
   VALID_PHASES,
   VALID_TIERS,
   agentRoleMap,
+  applyAgentModels,
   board,
   burnDown,
   formatAgentRoleLabel,
   initialFlow,
+  isValidAgentName,
   members,
   mentions,
   parseTeam,
   pendingWakes,
+  planTeamSync,
   reduce,
   remaining,
+  renderStarterTeam,
   resolveTeam,
   runCost,
   spend,
   stalls,
+  starterAgentFile,
   taskBoard,
+  validateStarterAgents,
 } from "./core.mjs";
 import { PRICES, PRICES_UPDATED } from "./prices.mjs";
 
@@ -4518,6 +4530,7 @@ test("parseTeam(null/undefined) and resolveTeam(null) return generic defaults in
     assert.equal(row.dispatch, `vitruvian-orchestrator:${row.role}`);
     assert.equal(row.source, "generic");
     assert.equal(row.tier, DEFAULT_ROLE_TIERS[row.role]);
+    assert.equal(row.engine, "native");
     assert.equal(row.notes, "");
     if (row.tier === "lead") {
       assert.equal(row.gemini, null);
@@ -4606,6 +4619,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     dispatch: "wren",
     source: "team",
     tier: "build",
+    engine: null,
     gemini: "gemini-4-argon-high",
     model: "haiku",
     effort: "medium",
@@ -4618,6 +4632,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     dispatch: "vitruvian-orchestrator:infrastructure",
     source: "generic",
     tier: "build",
+    engine: "native",
     gemini: "gemini-pro-orchestrator-neon",
     model: "haiku",
     effort: "medium",
@@ -4630,6 +4645,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
     dispatch: null,
     source: "off",
     tier: "light",
+    engine: null,
     gemini: null,
     model: null,
     effort: null,
@@ -4701,6 +4717,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
       dispatch: "beacon",
       source: "team",
       tier: "lead",
+      engine: "native",
       gemini: null,
       model: "opus",
       effort: "max",
@@ -4715,6 +4732,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
       dispatch: "scout",
       source: "team",
       tier: "deep",
+      engine: null,
       gemini: "gemini-4-argon-high",
       model: "opus",
       effort: "xhigh",
@@ -4730,6 +4748,7 @@ test("parseTeam and resolveTeam handle the full spec example and resolution prec
       dispatch: "vitruvian-orchestrator:security",
       source: "generic",
       tier: "lead",
+      engine: "native",
       gemini: null,
       model: "sonnet",
       effort: "xhigh",
@@ -4972,6 +4991,7 @@ test("resolveTeam handles unknown harness by setting model to null while preserv
       dispatch: "lead",
       source: "generic",
       tier: "lead",
+      engine: "native",
       gemini: null,
       model: null,
       effort: "high",
@@ -4986,6 +5006,7 @@ test("resolveTeam handles unknown harness by setting model to null while preserv
       dispatch: "wren",
       source: "team",
       tier: "build",
+      engine: null,
       gemini: "gemini-4-argon-high",
       model: null,
       effort: "max",
@@ -5040,6 +5061,31 @@ test("team.schema.json role and tier enums match ROLES and DEFAULT_ROLE_TIERS", 
   assert.deepEqual(schema.$defs.tier.enum, tierKeys);
   assert.deepEqual(Object.keys(schema.properties.tiers.properties), tierKeys);
   assert.deepEqual(schema.$defs.effort.enum, [...TEAM_EFFORTS]);
+  assert.equal(schema.$defs.engine.type, "string");
+  assert.deepEqual(schema.$defs.engine.enum, [...TEAM_ENGINES]);
+  assert.equal(typeof schema.$defs.engine.description, "string");
+  assert.ok(schema.$defs.engine.description.length > 0);
+  assert.equal(schema.properties.engine.$ref, "#/$defs/engine");
+  assert.equal(typeof schema.properties.engine.description, "string");
+  assert.ok(schema.properties.engine.description.length > 0);
+  assert.equal(
+    schema.$defs.tierConfig.properties.engine.$ref,
+    "#/$defs/engine",
+  );
+  assert.equal(
+    typeof schema.$defs.tierConfig.properties.engine.description,
+    "string",
+  );
+  assert.ok(schema.$defs.tierConfig.properties.engine.description.length > 0);
+  assert.equal(
+    schema.$defs.roleConfig.properties.engine.$ref,
+    "#/$defs/engine",
+  );
+  assert.equal(
+    typeof schema.$defs.roleConfig.properties.engine.description,
+    "string",
+  );
+  assert.ok(schema.$defs.roleConfig.properties.engine.description.length > 0);
   assert.deepEqual(schema.properties.roles.properties.lead, {
     $ref: "#/$defs/roleConfig",
   });
@@ -5179,6 +5225,12 @@ test("team.schema.json $defs.model and parseTeam agree on whitespace-only and in
       return false;
     }
     if (
+      typeof modelDef.maxLength === "number" &&
+      value.length > modelDef.maxLength
+    ) {
+      return false;
+    }
+    if (
       typeof modelDef.pattern === "string" &&
       !new RegExp(modelDef.pattern).test(value)
     ) {
@@ -5201,6 +5253,100 @@ test("team.schema.json $defs.model and parseTeam agree on whitespace-only and in
     { value: "haiku", valid: true },
     { value: "pro", valid: true },
     { value: "anthropic/claude-haiku-5-5", valid: true },
+  ];
+
+  for (const { value, valid } of cases) {
+    assert.equal(
+      schemaAcceptsModel(value),
+      valid,
+      `schema $defs.model mismatch for ${JSON.stringify(value)}`,
+    );
+    for (const harness of ["claude-code", "antigravity", "opencode"]) {
+      const tierRes = parseTeam(
+        JSON.stringify({ tiers: { build: { [harness]: value } } }),
+      );
+      const roleRes = parseTeam(
+        JSON.stringify({ roles: { developer: { [harness]: value } } }),
+      );
+      assert.equal(
+        tierRes.errors.length === 0,
+        valid,
+        `parseTeam tiers.build.${harness} mismatch for ${JSON.stringify(value)}`,
+      );
+      assert.equal(
+        roleRes.errors.length === 0,
+        valid,
+        `parseTeam roles.developer.${harness} mismatch for ${JSON.stringify(value)}`,
+      );
+    }
+  }
+});
+
+test("team.schema.json $defs.model and parseTeam agree on harness model charset and length", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const schema = JSON.parse(
+    readFileSync(join(here, "..", "schema", "team.schema.json"), "utf8"),
+  );
+  const modelDef = schema.$defs.model;
+  assert.equal(modelDef.maxLength, 128);
+  assert.equal(
+    modelDef.pattern,
+    "^[A-Za-z0-9](?:[A-Za-z0-9._/:-]{0,126}[A-Za-z0-9])?$",
+  );
+
+  const schemaAcceptsModel = (value) => {
+    if (typeof value !== "string") return false;
+    if (
+      typeof modelDef.minLength === "number" &&
+      value.length < modelDef.minLength
+    ) {
+      return false;
+    }
+    if (
+      typeof modelDef.maxLength === "number" &&
+      value.length > modelDef.maxLength
+    ) {
+      return false;
+    }
+    if (
+      typeof modelDef.pattern === "string" &&
+      !new RegExp(modelDef.pattern).test(value)
+    ) {
+      return false;
+    }
+    if (modelDef.not?.pattern && new RegExp(modelDef.not.pattern).test(value)) {
+      return false;
+    }
+    return true;
+  };
+
+  const cases = [
+    { value: "haiku fast", valid: false },
+    { value: " haiku", valid: false },
+    { value: "haiku ", valid: false },
+    { value: 'haiku"x', valid: false },
+    { value: "haiku'x", valid: false },
+    { value: "haiku\nfoo", valid: false },
+    { value: "haiku\r\n", valid: false },
+    { value: "-haiku", valid: false },
+    { value: "--model", valid: false },
+    { value: "a".repeat(129), valid: false },
+    { value: "model-low", valid: false },
+    { value: "MODEL-LITE", valid: false },
+    { value: "flash-lo", valid: false },
+    { value: "sonnet:", valid: false },
+    { value: "x.", valid: false },
+    { value: "y-", valid: false },
+    { value: "a/", valid: false },
+    { value: "a_", valid: false },
+    { value: "a".repeat(127) + ":", valid: false },
+    { value: "a", valid: true },
+    { value: "a".repeat(128), valid: true },
+    { value: "haiku", valid: true },
+    { value: "pro", valid: true },
+    { value: "anthropic/claude-haiku-5-5", valid: true },
+    { value: "openrouter/google/gemini_3.0:free", valid: true },
+    { value: "A0", valid: true },
   ];
 
   for (const { value, valid } of cases) {
@@ -5267,6 +5413,7 @@ test("sweep item 4: DEFAULT_ROLE_TIERS, parseTeam roles/tiers, and resolveTeam h
       dispatch: "constructor",
       source: "team",
       tier: "build",
+      engine: null,
       gemini: null,
       model: null,
       effort: "high",
@@ -5514,4 +5661,1531 @@ test("resolveTeam computes dispatch id per source and harness", () => {
     assert.equal(rel?.source, "off", harness);
     assert.equal(rel?.dispatch, null, harness);
   }
+});
+
+test("parseTeam validates engine at top level, tiers, and roles and rejects non-string/unknown values", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const schema = JSON.parse(
+    readFileSync(join(here, "..", "schema", "team.schema.json"), "utf8"),
+  );
+  assert.deepEqual(schema.$defs.engine.enum, ["native", "gemini"]);
+
+  for (const engine of TEAM_ENGINES) {
+    const res = parseTeam(
+      JSON.stringify({
+        engine,
+        tiers: { build: { engine } },
+        roles: { developer: { engine } },
+      }),
+    );
+    assert.deepEqual(res.errors, [], engine);
+    assert.equal(res.team?.engine, engine);
+    assert.equal(res.team?.tiers?.build?.engine, engine);
+    assert.equal(res.team?.roles?.developer?.engine, engine);
+  }
+
+  for (const bad of ["claude", "GEMINI", "", 123, null, true, {}]) {
+    const topRes = parseTeam(JSON.stringify({ engine: bad }));
+    assert.equal(topRes.team, null);
+    assert.match(topRes.errors.join("\n"), /^engine: invalid engine/m);
+
+    const tierRes = parseTeam(
+      JSON.stringify({ tiers: { build: { engine: bad } } }),
+    );
+    assert.equal(tierRes.team, null);
+    assert.match(
+      tierRes.errors.join("\n"),
+      /^tiers\.build\.engine: invalid engine/m,
+    );
+
+    const roleRes = parseTeam(
+      JSON.stringify({ roles: { developer: { engine: bad } } }),
+    );
+    assert.equal(roleRes.team, null);
+    assert.match(
+      roleRes.errors.join("\n"),
+      /^roles\.developer\.engine: invalid engine/m,
+    );
+  }
+});
+
+test("resolveTeam resolves engine precedence, ignores bad values, forces Antigravity/lead native, and selects driver vs native defaults", () => {
+  const fullDefaults = {
+    tiers: {
+      lead: {
+        "claude-code": "opus",
+        antigravity: "pro",
+        opencode: "anthropic/claude-opus-5-5",
+        effort: "high",
+      },
+      build: {
+        gemini: "gemini-pro-orchestrator-neon",
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        native: {
+          "claude-code": "sonnet",
+          opencode: null,
+          effort: "high",
+        },
+      },
+      deep: {
+        gemini: "gemini-4-carbon-high",
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        native: {
+          "claude-code": "sonnet",
+          opencode: null,
+          effort: "high",
+        },
+      },
+      light: {
+        gemini: "gemini-4-hydrogen-high",
+        "claude-code": "haiku",
+        antigravity: "flash",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        native: {
+          "claude-code": "sonnet",
+          opencode: null,
+          effort: "medium",
+        },
+      },
+    },
+  };
+
+  // 1. Absent engine defaults to "native" and picks native defaults (OpenCode model is null).
+  const ccAbsent = resolveTeam(null, "claude-code", fullDefaults);
+  assert.equal(
+    ccAbsent.roles.find((r) => r.role === "developer")?.engine,
+    "native",
+  );
+  assert.equal(
+    ccAbsent.roles.find((r) => r.role === "developer")?.model,
+    "sonnet",
+  );
+  assert.equal(
+    ccAbsent.roles.find((r) => r.role === "developer")?.effort,
+    "high",
+  );
+  assert.equal(ccAbsent.roles.find((r) => r.role === "docs")?.model, "sonnet");
+  assert.equal(ccAbsent.roles.find((r) => r.role === "docs")?.effort, "medium");
+
+  const ocAbsent = resolveTeam(null, "opencode", fullDefaults);
+  assert.equal(
+    ocAbsent.roles.find((r) => r.role === "developer")?.engine,
+    "native",
+  );
+  assert.equal(ocAbsent.roles.find((r) => r.role === "developer")?.model, null);
+  assert.equal(
+    ocAbsent.roles.find((r) => r.role === "developer")?.effort,
+    "high",
+  );
+  assert.equal(ocAbsent.roles.find((r) => r.role === "docs")?.model, null);
+  assert.equal(ocAbsent.roles.find((r) => r.role === "docs")?.effort, "medium");
+  assert.equal(
+    ocAbsent.roles.find((r) => r.role === "lead")?.model,
+    "anthropic/claude-opus-5-5",
+  );
+  assert.equal(ocAbsent.roles.find((r) => r.role === "lead")?.effort, "high");
+
+  // 2. Engine precedence: role > tier > top-level > "native"; lead always "native", off always null.
+  const precedenceTeam = {
+    engine: "gemini",
+    tiers: { light: { engine: "native" } },
+    roles: {
+      lead: { engine: "gemini" },
+      qa: { engine: "native" },
+      docs: { engine: "gemini" },
+      security: {
+        "claude-code": "opus",
+        opencode: "openai/gpt-5",
+        effort: "max",
+      },
+      product: { engine: "native", "claude-code": "opus", effort: "xhigh" },
+      build: { tier: "lead" },
+      release: "off",
+    },
+  };
+
+  const ccPrec = resolveTeam(precedenceTeam, "claude-code", fullDefaults);
+  const byRole = (res, role) => res.roles.find((r) => r.role === role);
+  // Lead stays "native", gemini null, lead model/effort unchanged.
+  assert.equal(byRole(ccPrec, "lead")?.engine, "native");
+  assert.equal(byRole(ccPrec, "lead")?.gemini, null);
+  assert.equal(byRole(ccPrec, "lead")?.model, "opus");
+  assert.equal(byRole(ccPrec, "lead")?.effort, "high");
+  // Role moved to tier: "lead" also stays "native" with lead defaults.
+  assert.equal(byRole(ccPrec, "build")?.engine, "native");
+  assert.equal(byRole(ccPrec, "build")?.gemini, null);
+  assert.equal(byRole(ccPrec, "build")?.model, "opus");
+  // Top-level "gemini" -> driver default haiku / medium.
+  assert.equal(byRole(ccPrec, "developer")?.engine, "gemini");
+  assert.equal(byRole(ccPrec, "developer")?.model, "haiku");
+  assert.equal(byRole(ccPrec, "developer")?.effort, "medium");
+  // Role override "native" beats top-level "gemini".
+  assert.equal(byRole(ccPrec, "qa")?.engine, "native");
+  assert.equal(byRole(ccPrec, "qa")?.model, "sonnet");
+  assert.equal(byRole(ccPrec, "qa")?.effort, "high");
+  // Role override "gemini" beats tier "native".
+  assert.equal(byRole(ccPrec, "docs")?.engine, "gemini");
+  assert.equal(byRole(ccPrec, "docs")?.model, "haiku");
+  assert.equal(byRole(ccPrec, "docs")?.effort, "medium");
+  // Explicit harness model + effort win in both engines.
+  assert.equal(byRole(ccPrec, "security")?.engine, "gemini");
+  assert.equal(byRole(ccPrec, "security")?.model, "opus");
+  assert.equal(byRole(ccPrec, "security")?.effort, "max");
+  assert.equal(byRole(ccPrec, "product")?.engine, "native");
+  assert.equal(byRole(ccPrec, "product")?.model, "opus");
+  assert.equal(byRole(ccPrec, "product")?.effort, "xhigh");
+  // Off row has engine: null, model: null, effort: null.
+  assert.equal(byRole(ccPrec, "release")?.engine, null);
+  assert.equal(byRole(ccPrec, "release")?.model, null);
+  assert.equal(byRole(ccPrec, "release")?.effort, null);
+
+  // Explicit tier-level harness model also wins in both engines on OpenCode.
+  const tierOverrideTeam = {
+    engine: "native",
+    tiers: {
+      build: { opencode: "anthropic/claude-sonnet-5-5" },
+      deep: { engine: "gemini", opencode: "anthropic/claude-sonnet-5-5" },
+    },
+  };
+  const ocTier = resolveTeam(tierOverrideTeam, "opencode", fullDefaults);
+  assert.equal(byRole(ocTier, "developer")?.engine, "native");
+  assert.equal(
+    byRole(ocTier, "developer")?.model,
+    "anthropic/claude-sonnet-5-5",
+  );
+  assert.equal(byRole(ocTier, "qa")?.engine, "gemini");
+  assert.equal(byRole(ocTier, "qa")?.model, "anthropic/claude-sonnet-5-5");
+
+  // 3. OpenCode driver default when engine === "gemini".
+  const ocPrec = resolveTeam(precedenceTeam, "opencode", fullDefaults);
+  assert.equal(byRole(ocPrec, "developer")?.engine, "gemini");
+  assert.equal(
+    byRole(ocPrec, "developer")?.model,
+    "anthropic/claude-haiku-5-5",
+  );
+  assert.equal(byRole(ocPrec, "developer")?.effort, "medium");
+  assert.equal(byRole(ocPrec, "qa")?.engine, "native");
+  assert.equal(byRole(ocPrec, "qa")?.model, null);
+  assert.equal(byRole(ocPrec, "qa")?.effort, "high");
+  assert.equal(byRole(ocPrec, "security")?.model, "openai/gpt-5");
+
+  // 4. Antigravity is ALWAYS "native" even if top, tier, and role say "gemini",
+  //    and preserves Antigravity models ("pro"/"flash") and effort (null when omitted).
+  const agyDefaults = {
+    tiers: {
+      lead: {
+        "claude-code": "opus",
+        antigravity: "pro",
+        opencode: "anthropic/claude-opus-5-5",
+      },
+      build: {
+        gemini: "gemini-pro-orchestrator-neon",
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        native: { "claude-code": "sonnet", opencode: null },
+      },
+      deep: {
+        gemini: "gemini-4-carbon-high",
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        native: { "claude-code": "sonnet", opencode: null },
+      },
+      light: {
+        gemini: "gemini-4-hydrogen-high",
+        "claude-code": "haiku",
+        antigravity: "flash",
+        opencode: "anthropic/claude-haiku-5-5",
+        native: { "claude-code": "sonnet", opencode: null },
+      },
+    },
+  };
+  const agyRes = resolveTeam(
+    {
+      engine: "gemini",
+      tiers: { build: { engine: "gemini" }, light: { engine: "gemini" } },
+      roles: {
+        developer: { engine: "gemini" },
+        release: "off",
+      },
+    },
+    "antigravity",
+    agyDefaults,
+  );
+  assert.equal(byRole(agyRes, "developer")?.engine, "native");
+  assert.equal(byRole(agyRes, "developer")?.model, "pro");
+  assert.equal(byRole(agyRes, "developer")?.effort, null);
+  assert.equal(byRole(agyRes, "docs")?.engine, "native");
+  assert.equal(byRole(agyRes, "docs")?.model, "flash");
+  assert.equal(byRole(agyRes, "docs")?.effort, null);
+  assert.equal(byRole(agyRes, "release")?.engine, null);
+
+  // 5. resolveTeam ignores non-string / unknown engine values and falls through.
+  const badValuesTeam = {
+    engine: 42,
+    tiers: {
+      build: { engine: "bogus" },
+      deep: { engine: "gemini" },
+      light: { engine: true },
+    },
+    roles: {
+      developer: { engine: null },
+      infrastructure: { engine: "unknown" },
+      qa: { engine: ["native"] },
+      docs: { engine: 99 },
+    },
+  };
+  const badFallthrough = resolveTeam(
+    badValuesTeam,
+    "claude-code",
+    fullDefaults,
+  );
+  // developer/infrastructure: bad role & bad tier & bad top -> falls through to "native"
+  assert.equal(byRole(badFallthrough, "developer")?.engine, "native");
+  assert.equal(byRole(badFallthrough, "developer")?.model, "sonnet");
+  assert.equal(byRole(badFallthrough, "infrastructure")?.engine, "native");
+  // qa: bad role falls through to valid tier "gemini"
+  assert.equal(byRole(badFallthrough, "qa")?.engine, "gemini");
+  assert.equal(byRole(badFallthrough, "qa")?.model, "haiku");
+
+  // Bad role & bad tier fall through to valid top-level "gemini"
+  const badToTop = resolveTeam(
+    {
+      engine: "gemini",
+      tiers: { build: { engine: 123 } },
+      roles: { developer: { engine: "invalid" } },
+    },
+    "claude-code",
+    fullDefaults,
+  );
+  assert.equal(byRole(badToTop, "developer")?.engine, "gemini");
+  assert.equal(byRole(badToTop, "developer")?.model, "haiku");
+
+  // 6. Mapped team rows (source: "team") on non-Antigravity harnesses:
+  //    - unset engine -> null ("agent file decides"), model/effort explicit-or-null;
+  //    - explicit engine (role > tier > top) is returned as-is, still explicit-or-null model/effort;
+  //    - bad/non-string engines on a team row fall through to null;
+  //    - mapped lead stays "native" with unchanged lead defaults;
+  //    - Antigravity keeps engine "native" and Antigravity tier defaults.
+  const teamNoEngine = {
+    roles: {
+      lead: { agent: "beacon" },
+      developer: { agent: "wren" },
+    },
+  };
+  for (const harness of ["claude-code", "opencode"]) {
+    const res = resolveTeam(teamNoEngine, harness, fullDefaults);
+    assert.deepEqual(byRole(res, "developer"), {
+      role: "developer",
+      agent: "wren",
+      dispatch: "wren",
+      source: "team",
+      tier: "build",
+      engine: null,
+      gemini: "gemini-pro-orchestrator-neon",
+      model: null,
+      effort: null,
+      notes: "",
+    });
+    assert.equal(byRole(res, "infrastructure")?.source, "generic");
+    assert.equal(byRole(res, "infrastructure")?.engine, "native");
+    assert.equal(
+      byRole(res, "infrastructure")?.model,
+      harness === "claude-code" ? "sonnet" : null,
+    );
+    assert.equal(byRole(res, "infrastructure")?.effort, "high");
+  }
+
+  const teamWithEngineLevels = {
+    engine: "gemini",
+    tiers: {
+      deep: { engine: "native" },
+      light: { "claude-code": "opus", effort: "xhigh" },
+    },
+    roles: {
+      lead: { agent: "beacon" },
+      developer: { agent: "wren" },
+      qa: { agent: "scout", engine: "gemini" },
+      product: { agent: "compass" },
+      security: { agent: "aegis", engine: "native" },
+      docs: { agent: "quill", "claude-code": "sonnet", effort: "max" },
+      release: { agent: "pace" },
+    },
+  };
+  const ccTeamLevels = resolveTeam(
+    teamWithEngineLevels,
+    "claude-code",
+    fullDefaults,
+  );
+  assert.equal(byRole(ccTeamLevels, "lead")?.source, "team");
+  assert.equal(byRole(ccTeamLevels, "lead")?.engine, "native");
+  assert.equal(byRole(ccTeamLevels, "lead")?.gemini, null);
+  assert.equal(byRole(ccTeamLevels, "lead")?.model, "opus");
+  assert.equal(byRole(ccTeamLevels, "lead")?.effort, "high");
+
+  assert.equal(byRole(ccTeamLevels, "developer")?.source, "team");
+  assert.equal(byRole(ccTeamLevels, "developer")?.engine, "gemini");
+  assert.equal(byRole(ccTeamLevels, "developer")?.model, null);
+  assert.equal(byRole(ccTeamLevels, "developer")?.effort, null);
+
+  assert.equal(byRole(ccTeamLevels, "qa")?.engine, "gemini");
+  assert.equal(byRole(ccTeamLevels, "qa")?.model, null);
+  assert.equal(byRole(ccTeamLevels, "qa")?.effort, null);
+
+  assert.equal(byRole(ccTeamLevels, "product")?.engine, "native");
+  assert.equal(byRole(ccTeamLevels, "product")?.model, null);
+  assert.equal(byRole(ccTeamLevels, "product")?.effort, null);
+
+  assert.equal(byRole(ccTeamLevels, "security")?.engine, "native");
+  assert.equal(byRole(ccTeamLevels, "security")?.model, null);
+  assert.equal(byRole(ccTeamLevels, "security")?.effort, null);
+
+  // Explicit team-file model/effort overrides win over null (role > team tier).
+  assert.equal(byRole(ccTeamLevels, "docs")?.engine, "gemini");
+  assert.equal(byRole(ccTeamLevels, "docs")?.model, "sonnet");
+  assert.equal(byRole(ccTeamLevels, "docs")?.effort, "max");
+  assert.equal(byRole(ccTeamLevels, "release")?.engine, "gemini");
+  assert.equal(byRole(ccTeamLevels, "release")?.model, "opus");
+  assert.equal(byRole(ccTeamLevels, "release")?.effort, "xhigh");
+
+  const ocTeamLevels = resolveTeam(
+    teamWithEngineLevels,
+    "opencode",
+    fullDefaults,
+  );
+  assert.equal(byRole(ocTeamLevels, "lead")?.engine, "native");
+  assert.equal(
+    byRole(ocTeamLevels, "lead")?.model,
+    "anthropic/claude-opus-5-5",
+  );
+  assert.equal(byRole(ocTeamLevels, "lead")?.effort, "high");
+  assert.equal(byRole(ocTeamLevels, "developer")?.engine, "gemini");
+  assert.equal(byRole(ocTeamLevels, "developer")?.model, null);
+  assert.equal(byRole(ocTeamLevels, "developer")?.effort, null);
+
+  // Invalid/non-string engine values on a mapped team row fall through to null.
+  const teamBadEngine = resolveTeam(
+    {
+      engine: 42,
+      tiers: { build: { engine: "bogus" } },
+      roles: { developer: { agent: "wren", engine: "unknown" } },
+    },
+    "claude-code",
+    fullDefaults,
+  );
+  assert.equal(byRole(teamBadEngine, "developer")?.engine, null);
+  assert.equal(byRole(teamBadEngine, "developer")?.model, null);
+  assert.equal(byRole(teamBadEngine, "developer")?.effort, null);
+  assert.equal(byRole(teamBadEngine, "infrastructure")?.engine, "native");
+
+  // Antigravity keeps engine "native" and Antigravity tier defaults for mapped team rows.
+  const agyTeam = resolveTeam(
+    {
+      engine: "gemini",
+      roles: {
+        developer: { agent: "wren" },
+        docs: { agent: "quill", engine: "gemini" },
+      },
+    },
+    "antigravity",
+    agyDefaults,
+  );
+  assert.equal(byRole(agyTeam, "developer")?.source, "team");
+  assert.equal(byRole(agyTeam, "developer")?.engine, "native");
+  assert.equal(byRole(agyTeam, "developer")?.model, "pro");
+  assert.equal(byRole(agyTeam, "developer")?.effort, null);
+  assert.equal(byRole(agyTeam, "docs")?.source, "team");
+  assert.equal(byRole(agyTeam, "docs")?.engine, "native");
+  assert.equal(byRole(agyTeam, "docs")?.model, "flash");
+  assert.equal(byRole(agyTeam, "docs")?.effort, null);
+});
+
+test("resolveTeam ignores invalid harness models and falls through to tier or default", () => {
+  const defaults = {
+    tiers: {
+      build: {
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        native: { "claude-code": "sonnet", opencode: null, effort: "high" },
+      },
+      deep: {
+        "claude-code": "haiku",
+        antigravity: "pro",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        native: { "claude-code": "sonnet", opencode: null, effort: "high" },
+      },
+      light: {
+        "claude-code": "haiku",
+        antigravity: "flash",
+        opencode: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        native: { "claude-code": "sonnet", opencode: null, effort: "medium" },
+      },
+    },
+  };
+
+  const maxLenModel = "a".repeat(128);
+  const badModels = [
+    "haiku fast",
+    'opus"x',
+    "opus'x",
+    "opus\nfoo",
+    "-opus",
+    "a".repeat(129),
+    "model-low",
+    "model-lite",
+    "flash-lo",
+    "sonnet:",
+    "x.",
+    "y-",
+  ];
+
+  for (const bad of badModels) {
+    // Bad role model falls through to valid tier model; bad tier model falls through to default.
+    const team = {
+      tiers: {
+        build: {
+          "claude-code": "opus",
+          antigravity: "pro",
+          opencode: "openai/gpt-5",
+        },
+        deep: {
+          "claude-code": bad,
+          antigravity: bad,
+          opencode: bad,
+        },
+      },
+      roles: {
+        developer: {
+          "claude-code": bad,
+          antigravity: bad,
+          opencode: bad,
+        },
+        qa: {
+          "claude-code": bad,
+          antigravity: bad,
+          opencode: bad,
+        },
+        product: {
+          agent: "compass",
+          "claude-code": bad,
+          antigravity: bad,
+          opencode: bad,
+        },
+      },
+    };
+
+    const cc = resolveTeam(team, "claude-code", defaults);
+    assert.equal(
+      cc.roles.find((r) => r.role === "developer")?.model,
+      "opus",
+      `claude-code bad role model ${JSON.stringify(bad)} must fall through to tier`,
+    );
+    assert.equal(
+      cc.roles.find((r) => r.role === "qa")?.model,
+      "sonnet",
+      `claude-code bad tier/role model ${JSON.stringify(bad)} must fall through to native default`,
+    );
+    assert.equal(
+      cc.roles.find((r) => r.role === "product")?.model,
+      null,
+      `claude-code bad mapped team model ${JSON.stringify(bad)} must fall through to null`,
+    );
+
+    const oc = resolveTeam(team, "opencode", defaults);
+    assert.equal(
+      oc.roles.find((r) => r.role === "developer")?.model,
+      "openai/gpt-5",
+      `opencode bad role model ${JSON.stringify(bad)} must fall through to tier`,
+    );
+    assert.equal(
+      oc.roles.find((r) => r.role === "qa")?.model,
+      null,
+      `opencode bad tier/role model ${JSON.stringify(bad)} must fall through to null`,
+    );
+    assert.equal(
+      oc.roles.find((r) => r.role === "product")?.model,
+      null,
+      `opencode bad mapped team model ${JSON.stringify(bad)} must fall through to null`,
+    );
+
+    const agy = resolveTeam(team, "antigravity", defaults);
+    assert.equal(
+      agy.roles.find((r) => r.role === "developer")?.model,
+      "pro",
+      `antigravity bad role model ${JSON.stringify(bad)} must fall through to tier`,
+    );
+    assert.equal(
+      agy.roles.find((r) => r.role === "qa")?.model,
+      "pro",
+      `antigravity bad tier/role model ${JSON.stringify(bad)} must fall through to default`,
+    );
+  }
+
+  // Boundary 128-char model is accepted in resolveTeam across harnesses.
+  const valid128 = resolveTeam(
+    {
+      roles: {
+        developer: {
+          "claude-code": maxLenModel,
+          antigravity: maxLenModel,
+          opencode: maxLenModel,
+        },
+      },
+    },
+    "claude-code",
+    defaults,
+  );
+  assert.equal(
+    valid128.roles.find((r) => r.role === "developer")?.model,
+    maxLenModel,
+  );
+});
+
+test("formatLeadWakes puts a post mentioning @lead and helpers in one message, one wake line per helper", () => {
+  const post = {
+    seq: 4,
+    at: 100,
+    from: "wren",
+    text: "Ready for review @lead @aegis @scout",
+    to: ["lead", "aegis", "scout"],
+    kind: "result",
+    replyTo: null,
+    channel: "main",
+  };
+  const wakes = [
+    { seq: 4, target: "lead", from: "wren", excerpt: "" },
+    { seq: 4, target: "aegis", runId: "aegis-1", from: "wren", excerpt: "" },
+    { seq: 4, target: "scout", from: "wren", excerpt: "" },
+    { seq: 4, target: "aegis", runId: "aegis-1", from: "wren", excerpt: "" },
+  ];
+  const msg = coreModule.formatLeadWakes(wakes, post, {
+    harness: "claude-code",
+  });
+  assert.equal(msg.split("[Orchestrator board] Post #4").length, 2);
+  assert.equal(msg.split("<board-post ").length, 2);
+  assert.ok(
+    msg.endsWith(
+      "</board-post>\nWake @aegis with SendMessage to agent id aegis-1 and pass it this post.\nWake @scout and pass it this post.",
+    ),
+  );
+
+  // Only @lead: the bare block, identical to a worker-mode formatWake.
+  assert.equal(
+    coreModule.formatLeadWakes([wakes[0]], post),
+    coreModule.formatWake(wakes[0], post, { mode: "worker" }),
+  );
+  // A single helper wake matches lead-mode formatWake exactly.
+  assert.equal(
+    coreModule.formatLeadWakes([wakes[1]], post, { harness: "claude-code" }),
+    coreModule.formatWake(wakes[1], post, {
+      mode: "lead",
+      harness: "claude-code",
+    }),
+  );
+  // Antigravity and OpenCode never get the SendMessage wording.
+  assert.ok(
+    coreModule
+      .formatLeadWakes([wakes[1]], post, { harness: "opencode" })
+      .endsWith("\nWake @aegis and pass it this post."),
+  );
+});
+test("renderStarterTeam and validateStarterAgents produce valid starter JSON and reject invalid roles", () => {
+  assert.equal(
+    TEAM_SCHEMA_ID,
+    "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+  );
+  assert.deepEqual(ANTIGRAVITY_MODELS, ["inherit", "flash", "pro"]);
+  assert.deepEqual(TEAM_SYNC_HARNESSES, [
+    "claude-code",
+    "opencode",
+    "antigravity",
+  ]);
+  assert.deepEqual(TEAM_AGENT_DIRS["claude-code"], [".claude", "agents"]);
+  assert.deepEqual(TEAM_AGENT_DIRS.opencode, [".opencode", "agents"]);
+  assert.deepEqual(TEAM_AGENT_DIRS.antigravity, [".agents", "agents"]);
+  assert.equal(MAX_AGENT_FILE_BYTES, 256 * 1024);
+
+  const empty = renderStarterTeam();
+  assert.equal(
+    empty,
+    [
+      "{",
+      '  "$schema": "https://vitruviansoftware.dev/schemas/orchestrator-team.json",',
+      '  "notes": "",',
+      '  "roles": {}',
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const parsedEmpty = parseTeam(empty);
+  assert.deepEqual(parsedEmpty.errors, []);
+
+  // Deduplicates and preserves order; maps each role to team-<role> + engine: "native".
+  const withAgents = renderStarterTeam(["developer", "qa", "developer"]);
+  const parsedAgents = parseTeam(withAgents);
+  assert.deepEqual(parsedAgents.errors, []);
+  assert.deepEqual(JSON.parse(withAgents), {
+    $schema: TEAM_SCHEMA_ID,
+    notes: "",
+    roles: {
+      developer: { agent: "team-developer", engine: "native" },
+      qa: { agent: "team-qa", engine: "native" },
+    },
+  });
+
+  // Rejects lead, unknown roles, prototype keys, and non-arrays.
+  assert.deepEqual(validateStarterAgents(undefined), { ok: true, roles: [] });
+  for (const bad of [
+    "developer",
+    null,
+    123,
+    {},
+    ["lead"],
+    ["developer", "lead"],
+    ["wizard"],
+    ["constructor"],
+    ["__proto__"],
+    [42],
+  ]) {
+    const check = validateStarterAgents(bad);
+    assert.equal(
+      check.ok,
+      false,
+      `expected invalid for ${JSON.stringify(bad)}`,
+    );
+    assert.throws(() => renderStarterTeam(bad));
+  }
+
+  assert.equal(isValidAgentName("team-developer"), true);
+  assert.equal(isValidAgentName("BadName"), false);
+  assert.equal(isValidAgentName("-lead"), false);
+});
+
+test("starterAgentFile rewrites name: to team-<role>, strips generic banner, and keeps rest byte-identical", () => {
+  const ccTemplate = [
+    "---",
+    "name: developer",
+    "description: Use this agent for application code.",
+    "model: sonnet",
+    "effort: high",
+    "tools: Bash, Read, Edit, Write",
+    "---",
+    "<!-- Generated from the orchestrator generic roster. Do not edit directly. -->",
+    "",
+    "You are developer. Keep developer references in body intact.",
+    "",
+  ].join("\n");
+
+  const ccStarter = starterAgentFile(ccTemplate, "developer");
+  assert.equal(
+    ccStarter,
+    [
+      "---",
+      "name: team-developer",
+      "description: Use this agent for application code.",
+      "model: sonnet",
+      "effort: high",
+      "tools: Bash, Read, Edit, Write",
+      "---",
+      "",
+      "You are developer. Keep developer references in body intact.",
+      "",
+    ].join("\n"),
+  );
+  // Editable after init: applyAgentModels does NOT skip starterAgentFile output.
+  const syncedStarter = applyAgentModels(ccStarter, "claude-code", {
+    model: "opus",
+    effort: "max",
+  });
+  assert.equal(syncedStarter.changed, true);
+  assert.equal(syncedStarter.reason, null);
+  assert.match(syncedStarter.text, /^name: team-developer$/m);
+  assert.match(syncedStarter.text, /^model: opus$/m);
+  assert.match(syncedStarter.text, /^effort: max$/m);
+
+  // Preserves CRLF and adds `name: team-<role>` when frontmatter omits `name:`.
+  const ocTemplate = [
+    "---",
+    "description: QA role.",
+    "mode: subagent",
+    "---",
+    "<!-- Generated from the orchestrator generic roster. Do not edit directly. -->",
+    "",
+    "You are qa.",
+    "",
+  ].join("\r\n");
+  const ocStarter = starterAgentFile(ocTemplate, "qa");
+  assert.equal(
+    ocStarter,
+    [
+      "---",
+      "description: QA role.",
+      "mode: subagent",
+      "name: team-qa",
+      "---",
+      "",
+      "You are qa.",
+      "",
+    ].join("\r\n"),
+  );
+
+  // LF template without `name:` and empty frontmatter also get `name: team-<role>`.
+  assert.equal(
+    starterAgentFile("---\ndescription: Docs role.\n---\nBody\n", "docs"),
+    "---\ndescription: Docs role.\nname: team-docs\n---\nBody\n",
+  );
+  assert.equal(
+    starterAgentFile("---\n---\nBody\n", "docs"),
+    "---\nname: team-docs\n---\nBody\n",
+  );
+
+  // Without generic banner, keeps body (including custom comments) byte-identical.
+  const customTemplate = [
+    "---",
+    "name: docs",
+    "description: Docs role.",
+    "---",
+    "<!-- Custom comment -->",
+    "",
+    "Body.",
+  ].join("\n");
+  assert.equal(
+    starterAgentFile(customTemplate, "docs"),
+    [
+      "---",
+      "name: team-docs",
+      "description: Docs role.",
+      "---",
+      "<!-- Custom comment -->",
+      "",
+      "Body.",
+    ].join("\n"),
+  );
+
+  // No frontmatter returns unchanged; invalid roles throw.
+  assert.equal(
+    starterAgentFile("No frontmatter\n", "developer"),
+    "No frontmatter\n",
+  );
+  assert.throws(() => starterAgentFile(ccTemplate, "lead"));
+  assert.throws(() => starterAgentFile(ccTemplate, "constructor"));
+  assert.throws(() => starterAgentFile(ccTemplate, "__proto__"));
+  assert.throws(() => starterAgentFile(ccTemplate, "unknown"));
+});
+
+test("applyAgentModels edits only frontmatter model/effort lines per harness and keeps rest byte-identical", () => {
+  // 1. Claude Code: replaces existing model & effort, keeps tools & body exact.
+  const ccDoc = [
+    "---",
+    "name: team-developer",
+    "description: Developer role.",
+    "model: sonnet",
+    "effort: high",
+    "tools: Bash, Read, Edit, Write",
+    "---",
+    "",
+    "Body with model: untouched and effort: untouched.",
+    "Trailing line without newline",
+  ].join("\n");
+  const ccUpdated = applyAgentModels(ccDoc, "claude-code", {
+    model: "opus",
+    effort: "max",
+  });
+  assert.deepEqual(ccUpdated, {
+    text: [
+      "---",
+      "name: team-developer",
+      "description: Developer role.",
+      "model: opus",
+      "effort: max",
+      "tools: Bash, Read, Edit, Write",
+      "---",
+      "",
+      "Body with model: untouched and effort: untouched.",
+      "Trailing line without newline",
+    ].join("\n"),
+    changed: true,
+    reason: null,
+  });
+
+  // Unchanged when values already match or when no explicit overrides are provided.
+  assert.deepEqual(
+    applyAgentModels(ccUpdated.text, "claude-code", {
+      model: "opus",
+      effort: "max",
+    }),
+    { text: ccUpdated.text, changed: false, reason: null },
+  );
+  assert.deepEqual(applyAgentModels(ccDoc, "claude-code", {}), {
+    text: ccDoc,
+    changed: false,
+    reason: null,
+  });
+  assert.deepEqual(
+    applyAgentModels(ccDoc, "claude-code", { model: null, effort: null }),
+    { text: ccDoc, changed: false, reason: null },
+  );
+
+  // Appends missing lines at end of frontmatter without touching existing order.
+  const ccMissing = [
+    "---",
+    "name: team-qa",
+    "description: QA role.",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(ccMissing, "claude-code", {
+      model: "haiku",
+      effort: "medium",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-qa",
+        "description: QA role.",
+        "model: haiku",
+        "effort: medium",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+
+  // 2. OpenCode: uses model and reasoningEffort, leaves indented nested keys alone.
+  const ocDoc = [
+    "---",
+    "description: OpenCode dev.",
+    "mode: subagent",
+    "tools:",
+    "  write: true",
+    "  model: nested-ignored",
+    "---",
+    "",
+    "OpenCode body.",
+    "",
+  ].join("\n");
+  const ocUpdated = applyAgentModels(ocDoc, "opencode", {
+    model: "anthropic/claude-opus-5-5",
+    effort: "xhigh",
+  });
+  assert.deepEqual(ocUpdated, {
+    text: [
+      "---",
+      "description: OpenCode dev.",
+      "mode: subagent",
+      "tools:",
+      "  write: true",
+      "  model: nested-ignored",
+      "model: anthropic/claude-opus-5-5",
+      "reasoningEffort: xhigh",
+      "---",
+      "",
+      "OpenCode body.",
+      "",
+    ].join("\n"),
+    changed: true,
+    reason: null,
+  });
+  const ocReapplied = applyAgentModels(ocUpdated.text, "opencode", {
+    model: "openai/gpt-5",
+    effort: "high",
+  });
+  assert.equal(ocReapplied.changed, true);
+  assert.match(ocReapplied.text, /^  model: nested-ignored$/m);
+  assert.match(ocReapplied.text, /^model: openai\/gpt-5$/m);
+  assert.match(ocReapplied.text, /^reasoningEffort: high$/m);
+
+  // 3. Antigravity: model only (inherit|flash|pro), ignores effort, skips invalid values.
+  const agDoc = [
+    "---",
+    "name: team-developer",
+    "description: Agy dev.",
+    "model: flash",
+    "subagent: true",
+    "---",
+    "",
+    "Agy body.",
+    "",
+  ].join("\n");
+  for (const okModel of ["inherit", "flash", "pro"]) {
+    const res = applyAgentModels(agDoc, "antigravity", {
+      model: okModel,
+      effort: "max",
+    });
+    assert.equal(res.reason, null);
+    assert.equal(res.changed, okModel !== "flash");
+    assert.match(res.text, new RegExp(`^model: ${okModel}$`, "m"));
+    assert.doesNotMatch(res.text, /^effort:/m);
+    assert.doesNotMatch(res.text, /^reasoningEffort:/m);
+  }
+  for (const badAgy of ["opus", "sonnet", "gemini-4-carbon-high"]) {
+    const res = applyAgentModels(agDoc, "antigravity", {
+      model: badAgy,
+      effort: "high",
+    });
+    assert.deepEqual(res, {
+      text: agDoc,
+      changed: false,
+      reason: "antigravity-model",
+    });
+  }
+
+  // 4. CRLF preservation & empty frontmatter & no-trailing-newline EOF.
+  const crlfDoc = [
+    "---",
+    "name: team-build",
+    "model: sonnet",
+    "---",
+    "",
+    "CRLF body line 1",
+    "CRLF body line 2",
+  ].join("\r\n");
+  const crlfRes = applyAgentModels(crlfDoc, "claude-code", {
+    model: "opus",
+    effort: "high",
+  });
+  assert.equal(
+    crlfRes.text,
+    [
+      "---",
+      "name: team-build",
+      "model: opus",
+      "effort: high",
+      "---",
+      "",
+      "CRLF body line 1",
+      "CRLF body line 2",
+    ].join("\r\n"),
+  );
+  assert.equal(crlfRes.changed, true);
+  assert.equal(crlfRes.reason, null);
+
+  const emptyFmRes = applyAgentModels("---\n---\nbody\n", "claude-code", {
+    model: "sonnet",
+  });
+  assert.deepEqual(emptyFmRes, {
+    text: "---\nmodel: sonnet\n---\nbody\n",
+    changed: true,
+    reason: null,
+  });
+
+  // 5. Missing or unclosed frontmatter -> reason "no-frontmatter".
+  for (const noFm of [
+    "",
+    "Just markdown\n",
+    "<!-- leading comment -->\n---\nname: x\n---\n",
+    "---\nname: unclosed\nmodel: sonnet\n",
+    "--- extra\nname: bad\n---\n",
+  ]) {
+    assert.deepEqual(
+      applyAgentModels(noFm, "claude-code", { model: "opus", effort: "high" }),
+      { text: noFm, changed: false, reason: "no-frontmatter" },
+    );
+  }
+
+  // 6. Generated comments in first 15 lines -> reason "generated" ONLY when one comment
+  //    line contains BOTH "Generated" and "Do not edit" (case-insensitive).
+  const genHtml = [
+    "---",
+    "name: wren",
+    "model: haiku",
+    "---",
+    "<!-- Generated by //tools/agent-roster from .agents/roster/. Do not edit: change the roster. -->",
+    "",
+    "Body.",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(genHtml, "claude-code", { model: "opus", effort: "max" }),
+    { text: genHtml, changed: false, reason: "generated" },
+  );
+
+  const genReversedCase = [
+    "---",
+    "name: custom",
+    "---",
+    "<!-- DO NOT EDIT: auto-generated -->",
+    "",
+    "Body.",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(genReversedCase, "claude-code", { model: "opus" }),
+    { text: genReversedCase, changed: false, reason: "generated" },
+  );
+
+  // Plain "do not edit" or plain "generated" alone must NOT be skipped.
+  for (const partialBanner of [
+    "---\nname: custom\n---\n<!-- Do not edit directly. -->\n\nBody.\n",
+    "---\nname: custom\n---\n<!-- Generated by script -->\n\nBody.\n",
+    "---\n# Do not edit\nname: custom\n---\nBody.\n",
+    "---\n# Generated by script\nname: custom\n---\nBody.\n",
+  ]) {
+    const partialRes = applyAgentModels(partialBanner, "claude-code", {
+      model: "opus",
+    });
+    assert.equal(
+      partialRes.reason,
+      null,
+      `unexpected skip for ${JSON.stringify(partialBanner)}`,
+    );
+    assert.equal(partialRes.changed, true);
+    assert.match(partialRes.text, /^model: opus$/m);
+  }
+
+  const genYamlComment = [
+    "---",
+    "# Generated by script. Do not edit.",
+    "name: custom",
+    "---",
+    "Body.",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(genYamlComment, "claude-code", { model: "opus" }),
+    { text: genYamlComment, changed: false, reason: "generated" },
+  );
+
+  const genMultiLineHtmlOneLine = [
+    "---",
+    "name: custom",
+    "---",
+    "<!--",
+    "  Generated by tool. Do not edit.",
+    "-->",
+    "Body.",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(genMultiLineHtmlOneLine, "claude-code", { model: "opus" }),
+    { text: genMultiLineHtmlOneLine, changed: false, reason: "generated" },
+  );
+
+  // Words split across two lines inside a comment must NOT be treated as generated.
+  const genSplitLinesHtml = [
+    "---",
+    "name: custom",
+    "---",
+    "<!--",
+    "  Generated by tool",
+    "  Do not edit",
+    "-->",
+    "Body.",
+  ].join("\n");
+  const splitRes = applyAgentModels(genSplitLinesHtml, "claude-code", {
+    model: "opus",
+  });
+  assert.equal(splitRes.reason, null);
+  assert.equal(splitRes.changed, true);
+
+  // Line 15 IS checked (generated), while line 16 is outside the first 15 lines.
+  const line15Comment = [
+    "---",
+    "name: custom",
+    "---",
+    "line 4",
+    "line 5",
+    "line 6",
+    "line 7",
+    "line 8",
+    "line 9",
+    "line 10",
+    "line 11",
+    "line 12",
+    "line 13",
+    "line 14",
+    "<!-- Generated by example. Do not edit. -->",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(line15Comment, "claude-code", { model: "opus" }),
+    { text: line15Comment, changed: false, reason: "generated" },
+  );
+
+  const line16Comment = [
+    "---",
+    "name: custom",
+    "---",
+    "line 4",
+    "line 5",
+    "line 6",
+    "line 7",
+    "line 8",
+    "line 9",
+    "line 10",
+    "line 11",
+    "line 12",
+    "line 13",
+    "line 14",
+    "line 15",
+    "<!-- Generated by example. Do not edit. -->",
+  ].join("\n");
+  const line16Res = applyAgentModels(line16Comment, "claude-code", {
+    model: "opus",
+  });
+  assert.equal(line16Res.reason, null);
+  assert.equal(line16Res.changed, true);
+
+  // YAML scalar or markdown heading/prose containing words must NOT false-positive.
+  const nonCommentMentions = [
+    "---",
+    "name: custom",
+    "description: Never touch generated by scripts or do not edit warnings.",
+    "---",
+    "# Do not edit blindly",
+    "Generated by humans; do not edit without testing.",
+  ].join("\n");
+  const nonCommentRes = applyAgentModels(nonCommentMentions, "claude-code", {
+    model: "opus",
+  });
+  assert.equal(nonCommentRes.reason, null);
+  assert.equal(nonCommentRes.changed, true);
+
+  // 7. Model charset & forbidden-substring validation + atomic rejection on invalid effort.
+  for (const badModel of [
+    "",
+    "haiku fast",
+    "opus\nevil: true",
+    "-opus",
+    "opus$x",
+    "a".repeat(129),
+    "claude-sonnet-low",
+    "claude-haiku-lite",
+    "gemini-flash-lo",
+    "MODEL-LOW",
+    "sonnet:",
+    "x.",
+    "y-",
+  ]) {
+    assert.deepEqual(
+      applyAgentModels(ccDoc, "claude-code", {
+        model: badModel,
+        effort: "high",
+      }),
+      { text: ccDoc, changed: false, reason: "invalid-model" },
+    );
+  }
+  for (const badEffort of ["low", "turbo", "-", "high\nevil", 42]) {
+    assert.deepEqual(
+      applyAgentModels(ccDoc, "claude-code", {
+        model: "opus",
+        effort: badEffort,
+      }),
+      { text: ccDoc, changed: false, reason: "invalid-effort" },
+    );
+  }
+  assert.deepEqual(
+    applyAgentModels(ccDoc, "unknown-harness", { model: "opus" }),
+    { text: ccDoc, changed: false, reason: "unknown-harness" },
+  );
+});
+
+test("applyAgentModels preserves multi-line quoted scalars containing model: and rewrites only top-level keys", () => {
+  const doubleQuotedWithTopKey = [
+    "---",
+    "name: team-dev",
+    'description: "First line with \\"escaped quote\\"',
+    "model: fake-quoted",
+    "effort: fake-quoted",
+    'end line"',
+    "model: sonnet",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(doubleQuotedWithTopKey, "claude-code", {
+      model: "opus",
+      effort: "max",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-dev",
+        'description: "First line with \\"escaped quote\\"',
+        "model: fake-quoted",
+        "effort: fake-quoted",
+        'end line"',
+        "model: opus",
+        "effort: max",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+
+  const singleQuotedWithoutTopKey = [
+    "---",
+    "name: team-dev",
+    "description: 'It''s a multi-line note",
+    "model: fake-single",
+    "reasoningEffort: fake-single",
+    "still inside single quotes'",
+    "mode: subagent",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(singleQuotedWithoutTopKey, "opencode", {
+      model: "openai/gpt-5",
+      effort: "high",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-dev",
+        "description: 'It''s a multi-line note",
+        "model: fake-single",
+        "reasoningEffort: fake-single",
+        "still inside single quotes'",
+        "mode: subagent",
+        "model: openai/gpt-5",
+        "reasoningEffort: high",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+});
+
+test("applyAgentModels preserves block scalars containing model: and rewrites only top-level keys", () => {
+  const literalBlockWithTopKey = [
+    "---",
+    "name: team-dev",
+    "description: |",
+    "  Line one",
+    "  model: fake-block",
+    "    effort: fake-block",
+    "",
+    "  Last block line",
+    "model: sonnet",
+    "---",
+    "",
+    "Body.",
+    "",
+  ].join("\n");
+  assert.deepEqual(
+    applyAgentModels(literalBlockWithTopKey, "claude-code", {
+      model: "opus",
+      effort: "high",
+    }),
+    {
+      text: [
+        "---",
+        "name: team-dev",
+        "description: |",
+        "  Line one",
+        "  model: fake-block",
+        "    effort: fake-block",
+        "",
+        "  Last block line",
+        "model: opus",
+        "effort: high",
+        "---",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+      changed: true,
+      reason: null,
+    },
+  );
+
+  for (const header of [">", "|-", ">+2"]) {
+    const blockWithoutTopKey = [
+      "---",
+      "name: team-dev",
+      `description: ${header}`,
+      "  model: fake-folded",
+      "  effort: fake-folded",
+      "---",
+      "",
+      "Body.",
+      "",
+    ].join("\n");
+    assert.deepEqual(
+      applyAgentModels(blockWithoutTopKey, "claude-code", {
+        model: "haiku",
+        effort: "medium",
+      }),
+      {
+        text: [
+          "---",
+          "name: team-dev",
+          `description: ${header}`,
+          "  model: fake-folded",
+          "  effort: fake-folded",
+          "model: haiku",
+          "effort: medium",
+          "---",
+          "",
+          "Body.",
+          "",
+        ].join("\n"),
+        changed: true,
+        reason: null,
+      },
+    );
+  }
+});
+
+test("applyAgentModels treats duplicate model key as complex-frontmatter and skips file", () => {
+  for (const dupDoc of [
+    [
+      "---",
+      "name: team-dev",
+      "model: sonnet",
+      "model: haiku",
+      "---",
+      "Body.",
+    ].join("\n"),
+    [
+      "---",
+      "name: team-dev",
+      "effort: high",
+      "effort: medium",
+      "---",
+      "Body.",
+    ].join("\n"),
+    [
+      "---",
+      "description: x",
+      "reasoningEffort: high",
+      "reasoningEffort: max",
+      "---",
+      "Body.",
+    ].join("\n"),
+  ]) {
+    assert.deepEqual(
+      applyAgentModels(dupDoc, "claude-code", { model: "opus", effort: "max" }),
+      { text: dupDoc, changed: false, reason: "complex-frontmatter" },
+    );
+  }
+});
+
+test("applyAgentModels skips continuations and ambiguous frontmatter with complex-frontmatter", () => {
+  for (const complexDoc of [
+    "---\nname: x\ndescription: first line\n  model: fake\n---\nBody.\n",
+    "---\nname: x\ndescription: first line\ncol0 continuation\n---\nBody.\n",
+    '---\nname: x\ndescription: "unclosed quote\n---\nBody.\n',
+    "---\nname: x\nmodel: |\n  sonnet\n---\nBody.\n",
+    '---\nname: x\nmodel: "son\nnet"\n---\nBody.\n',
+    "---\nname: x\nmodel:\n  sonnet\n---\nBody.\n",
+    "---\nname: x\ndescription: |\n    four\n  two\n---\nBody.\n",
+    '---\n"model": sonnet\n---\nBody.\n',
+    "---\n{ model: sonnet }\n---\nBody.\n",
+  ]) {
+    assert.deepEqual(
+      applyAgentModels(complexDoc, "claude-code", { model: "opus" }),
+      { text: complexDoc, changed: false, reason: "complex-frontmatter" },
+    );
+  }
+});
+
+test("planTeamSync deduplicates matching shared-agent roles and flags differing ones as conflict", () => {
+  const team = {
+    tiers: {
+      build: {
+        "claude-code": "sonnet",
+        opencode: "anthropic/claude-sonnet-5-5",
+        antigravity: "pro",
+        effort: "high",
+      },
+    },
+    roles: {
+      developer: { agent: "shared-same" },
+      build: { agent: "shared-same" },
+      qa: { agent: "shared-diff", "claude-code": "opus", effort: "max" },
+      security: {
+        agent: "shared-diff",
+        "claude-code": "sonnet",
+        effort: "max",
+      },
+      product: {
+        agent: "shared-effort",
+        "claude-code": "opus",
+        antigravity: "pro",
+        effort: "high",
+      },
+      docs: {
+        agent: "shared-effort",
+        "claude-code": "opus",
+        antigravity: "pro",
+        effort: "max",
+      },
+      operations: { agent: "shared-null-vs-set", "claude-code": "opus" },
+      release: { agent: "shared-null-vs-set" },
+    },
+  };
+
+  const targets = planTeamSync(team);
+  const byPath = new Map(targets.map((t) => [t.path, t]));
+
+  // Equal explicit values -> single target per harness, no conflict.
+  assert.equal(
+    targets.filter((t) => t.agent === "shared-same").length,
+    TEAM_SYNC_HARNESSES.length,
+  );
+  assert.deepEqual(byPath.get(".claude/agents/shared-same.md"), {
+    path: ".claude/agents/shared-same.md",
+    segments: [".claude", "agents", "shared-same.md"],
+    harness: "claude-code",
+    agent: "shared-same",
+    role: "developer",
+    roles: ["developer", "build"],
+    model: "sonnet",
+    effort: "high",
+    conflict: false,
+    reason: null,
+  });
+
+  // Differing claude-code model -> conflict naming both roles; opencode & antigravity match (null / effort:max).
+  const diffCc = byPath.get(".claude/agents/shared-diff.md");
+  assert.equal(diffCc?.conflict, true);
+  assert.equal(diffCc?.reason, "conflict: qa, security");
+  assert.deepEqual(diffCc?.roles, ["qa", "security"]);
+  assert.equal(byPath.get(".opencode/agents/shared-diff.md")?.conflict, false);
+  assert.equal(byPath.get(".agents/agents/shared-diff.md")?.conflict, false);
+
+  // Differing effort -> conflict on claude-code and opencode, no conflict on antigravity (ignores effort).
+  const effCc = byPath.get(".claude/agents/shared-effort.md");
+  assert.equal(effCc?.conflict, true);
+  assert.equal(effCc?.reason, "conflict: product, docs");
+  const effOc = byPath.get(".opencode/agents/shared-effort.md");
+  assert.equal(effOc?.conflict, true);
+  assert.equal(effOc?.reason, "conflict: product, docs");
+  const effAgy = byPath.get(".agents/agents/shared-effort.md");
+  assert.equal(effAgy?.conflict, false);
+  assert.equal(effAgy?.model, "pro");
+  assert.equal(effAgy?.effort, null);
+
+  // One explicit model vs one unset (null) -> conflict naming both roles.
+  const nullVsSet = byPath.get(".claude/agents/shared-null-vs-set.md");
+  assert.equal(nullVsSet?.conflict, true);
+  assert.equal(nullVsSet?.reason, "conflict: operations, release");
 });

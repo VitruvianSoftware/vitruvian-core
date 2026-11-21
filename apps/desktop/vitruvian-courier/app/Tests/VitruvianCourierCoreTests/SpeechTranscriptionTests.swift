@@ -871,8 +871,8 @@ final class SpeechTranscriptionTests: XCTestCase {
             includeDiagnostics: true,
             isAIAvailable: false
         )
-        let items = sections.flatMap { $0 }
-        let transcribeItem = items.first { $0.command == .transcribeVoiceNote }
+        let more = sections.flatMap { $0 }.first { $0.command == .more }
+        let transcribeItem = more?.children.first { $0.command == .transcribeVoiceNote }
         XCTAssertNotNil(transcribeItem)
         XCTAssertEqual(transcribeItem?.title, "Transcribe")
         XCTAssertEqual(transcribeItem?.isEnabled, true)

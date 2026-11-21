@@ -1067,13 +1067,14 @@ final class AIProvidersTests: XCTestCase {
             responseLanguage: prefs.responseLanguage,
             translationLanguages: prefs.translationLanguages
         )
-        let unavailableTranslate = unavailableSections.flatMap { $0 }.first { $0.title == "Translate" }
+        let unavailableMore = unavailableSections.flatMap { $0 }.first { $0.command == .more }
+        let unavailableTranslate = unavailableMore?.children.first { $0.title == "Translate" }
         XCTAssertNotNil(unavailableTranslate)
         XCTAssertEqual(unavailableTranslate?.isEnabled, false)
         XCTAssertEqual(unavailableTranslate?.help, "Set up AI in Settings")
         XCTAssertTrue(unavailableTranslate?.children.isEmpty ?? false)
 
-        // 2. MessageMenu when AI is available: primary Translate + "Translate Into…" submenu for other enabled languages
+        // 2. MessageMenu when AI is available: primary Translate + "Translate Into…" submenu under More
         let availableSections = MessageMenu.sections(
             for: msg,
             available: (actions: [.reply, .copy], unavailable: []),
@@ -1085,7 +1086,8 @@ final class AIProvidersTests: XCTestCase {
             responseLanguage: prefs.responseLanguage,
             translationLanguages: prefs.translationLanguages
         )
-        let availableItems = availableSections.flatMap { $0 }
+        let availableMore = availableSections.flatMap { $0 }.first { $0.command == .more }
+        let availableItems = availableMore?.children ?? []
         let primaryTranslate = availableItems.first { $0.title == "Translate" }
         let submenu = availableItems.first { $0.title == "Translate Into…" }
         XCTAssertEqual(primaryTranslate?.isEnabled, true)

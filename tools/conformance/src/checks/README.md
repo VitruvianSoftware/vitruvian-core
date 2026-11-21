@@ -14,10 +14,12 @@ Component package providing implementation for `tools/conformance/src/checks`.
 - `[catalog.rs:check_standalone_workspace_deps]`
 - `[catalog.rs:catalog_orphan_sweep]`
 - `[catalog.rs:advisory_catalog]`
+- `[catalog_entries.rs:check_catalog_entries]`
 - `[ci.rs:check_merge_queue]`
 - `[ci.rs:check_postsubmit_concurrency]`
 - `[ci.rs:check_job_timeouts]`
 - `[ci.rs:check_sweep_backstop]`
+- `[release_dequeue.rs:check_release_dequeue]`
 - `[ci.rs:cache_save_expr_guarded]`
 - `[ci.rs:yaml_value_of]`
 - `[ci.rs:uses_setup_bazel_directly]`

@@ -16,6 +16,34 @@ public struct RichText: Equatable, Hashable, Sendable {
     }
 }
 
+extension RichText {
+    /// The text and every entity except the links a chat network makes by itself: a link whose shown text is its own
+    /// address (or the address without its scheme, or a mail address without `mailto:`). A link with words of its own
+    /// is the writer's choice and stays.
+    var withoutAutoLinks: RichText {
+        let utf16 = Array(text.utf16)
+        let kept = entities.filter { entity in
+            guard entity.kind == .link, let url = entity.url, entity.offset >= 0, entity.length > 0,
+                  entity.offset + entity.length <= utf16.count else { return true }
+            let shown = String(decoding: utf16[entity.offset ..< entity.offset + entity.length], as: UTF16.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let address = url.trimmingCharacters(in: .whitespacesAndNewlines)
+            if shown == address { return false }
+            for scheme in ["https://", "http://", "mailto:"] where address.lowercased().hasPrefix(scheme) {
+                if shown == String(address.dropFirst(scheme.count)) { return false }
+            }
+            return true
+        }
+        return RichText(text: text, entities: kept)
+    }
+
+    /// Whether `other` reads and looks the same: the same text and the same formatting once the links a network made
+    /// by itself (a bare address that became clickable) are set aside. An edit like that changes nothing to read.
+    public func isSameApartFromAutoLinks(_ other: RichText) -> Bool {
+        text == other.text && withoutAutoLinks.entities == other.withoutAutoLinks.entities
+    }
+}
+
 /// Reads a message's Matrix HTML (`formatted_body`, org.matrix.custom.html) back into text and ranges.
 ///
 /// It is a small hand-written reader, not `NSAttributedString(html:)`, which loads WebKit and must run on the main

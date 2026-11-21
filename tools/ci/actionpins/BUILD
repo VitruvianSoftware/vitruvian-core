@@ -33,6 +33,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
+    deps = ["//packages/gocompat:vitruvian_gocompat"],
 )
 
 #   bazel run //tools/ci/actionpins:actionpins -- check

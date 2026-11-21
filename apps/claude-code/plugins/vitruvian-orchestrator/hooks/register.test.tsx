@@ -1161,6 +1161,83 @@ test("post tool records posts, wakes an ended mentioned run once via prompt.subm
   expect(prompts).toHaveLength(1);
 });
 
+test("a post mentioning @lead and a waiting helper reaches the lead once, with the wake line", async ($, on) => {
+  const clock = mock.clock(on, { now: 1_500_000 });
+  const prompts: string[] = [];
+  let f: Flow | null = null;
+  let spawnIdx = 0;
+
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => {
+    spawnIdx += 1;
+    return {
+      agentId: spawnIdx === 1 ? "wren-both-1" : "scout-both-1",
+      model: "claude-haiku-5-5",
+    };
+  });
+  on("agent.list", () => ({ value: [] }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+  on("prompt.submit", (_, e) => {
+    const text = String((e as { text?: string }).text ?? "");
+    prompts.push(text);
+    return { text };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Lead and helper mention",
+    phase: "delegate",
+    tasks: [{ title: "Build feature", specialist: "wren", tier: "core" }],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build feature",
+    prompt: "Build",
+  });
+  await clock.advance(1_000);
+  await $.turn.complete({
+    turnId: "wren-both-t1",
+    agentId: "wren-both-1",
+    reason: "answer",
+    answer: "DONE",
+    isAborted: false,
+    durationMs: 1_000,
+  } as never);
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "QA feature",
+    prompt: "Review",
+  });
+
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-both-1",
+    text: "Null guard missing in handler @wren @lead",
+    kind: "defect",
+  } as never);
+  expect(f?.posts?.[0]?.to).toEqual(["wren", "lead"]);
+
+  await clock.advance(30_000);
+  await clock.advance(30_000);
+  await clock.advance(30_000);
+
+  // One prompt for the post: the block once, plus the line telling the lead to wake wren.
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]?.split("[Orchestrator board] Post #1").length).toBe(2);
+  expect(prompts[0]).toContain(
+    '<board-post seq="1" from="scout">\nNull guard missing in handler @wren @lead\n</board-post>\nWake @wren with SendMessage to agent id wren-both-1 and pass it this post.',
+  );
+  // Both mentions are recorded as delivered, so nothing is re-sent later.
+  expect([...(f?.woken ?? [])].sort()).toEqual(["1:lead", "1:wren"]);
+});
+
 test("persisted flow.woken suppresses duplicate wakes after a plugin restart", async ($, on) => {
   const clock = mock.clock(on, { now: 9_000_000 });
   const prompts: string[] = [];
@@ -1789,7 +1866,8 @@ test("security item 2: Claude Code wakes fence untrusted post text inside <board
   } as never);
 
   await clock.advance(30_000);
-  expect(prompts).toHaveLength(2);
+  // @wren @lead in one post: one prompt to the lead, carrying the wake line.
+  expect(prompts).toHaveLength(1);
   const wrenWake = prompts.find((p) =>
     p.includes(
       "Wake @wren with SendMessage to agent id wren-fence-1 and pass it this post.",
@@ -1812,7 +1890,7 @@ test("security item 2: Claude Code wakes fence untrusted post text inside <board
 
 test(
   "security item 3 & 5: Claude Code post cannot spoof from='lead', helper @all wakes nobody, and Board shows older posts dropped notice",
-  { timeout: 25_000 },
+  { timeoutMs: 60_000 },
   async ($, on) => {
     const clock = mock.clock(on, { now: 13_000_000 });
     let f: Flow | null = null;
@@ -3749,6 +3827,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     dispatch: "vitruvian-orchestrator:lead",
     source: "generic",
     tier: "lead",
+    engine: "native",
     gemini: null,
     model: TIER_DEFAULTS.tiers.lead["claude-code"],
     effort: TIER_DEFAULTS.tiers.lead.effort,
@@ -3760,12 +3839,13 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     dispatch: "vitruvian-orchestrator:developer",
     source: "generic",
     tier: "build",
+    engine: "native",
     gemini: TIER_DEFAULTS.tiers.build.gemini,
-    model: TIER_DEFAULTS.tiers.build["claude-code"],
-    effort: TIER_DEFAULTS.tiers.build.effort,
+    model: TIER_DEFAULTS.tiers.build.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.native.effort,
   });
 
-  // 2. Valid file -> mapped roles, notes, and "off"
+  // 2. Valid file -> mapped roles, notes, engines, and "off"
   fileState = {
     mode: "present",
     content: JSON.stringify({
@@ -3792,6 +3872,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     dispatch: "wren",
     source: "team",
     tier: "build",
+    engine: null,
     model: "haiku",
     effort: "medium",
     notes: "Owns apps/.",
@@ -3801,13 +3882,133 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     agent: "infrastructure",
     dispatch: "vitruvian-orchestrator:infrastructure",
     source: "generic",
+    engine: "native",
   });
   expect(validJson.roles[9]).toMatchObject({
     role: "release",
     agent: null,
     dispatch: null,
     source: "off",
+    engine: null,
   });
+
+  // 2b. Engine precedence (role > tier > top-level): generic uses driver/native defaults,
+  //     mapped team rows keep explicit-or-null model/effort, lead stays "native"
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      engine: "gemini",
+      tiers: { light: { engine: "native" } },
+      roles: {
+        lead: { agent: "beacon", engine: "gemini" },
+        developer: { agent: "wren" },
+        qa: { engine: "native" },
+        security: { "claude-code": "opus" },
+        release: "off",
+      },
+    }),
+  };
+  const engineRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(engineRes.isError).toBeUndefined();
+  const engineJson = JSON.parse(String(engineRes.result ?? ""));
+  const byRole = (role: string) =>
+    engineJson.roles.find((r: { role: string }) => r.role === role);
+  expect(byRole("lead")).toMatchObject({
+    source: "team",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.lead["claude-code"],
+    effort: TIER_DEFAULTS.tiers.lead.effort,
+  });
+  expect(byRole("developer")).toMatchObject({
+    source: "team",
+    engine: "gemini",
+    model: null,
+    effort: null,
+  });
+  expect(byRole("infrastructure")).toMatchObject({
+    source: "generic",
+    engine: "gemini",
+    model: TIER_DEFAULTS.tiers.build["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.effort,
+  });
+  expect(byRole("qa")).toMatchObject({
+    source: "generic",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.deep.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.deep.native.effort,
+  });
+  expect(byRole("security")).toMatchObject({
+    source: "generic",
+    engine: "gemini",
+    model: "opus",
+    effort: TIER_DEFAULTS.tiers.deep.effort,
+  });
+  expect(byRole("docs")).toMatchObject({
+    source: "generic",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.light.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.light.native.effort,
+  });
+  expect(byRole("release")).toMatchObject({
+    source: "off",
+    engine: null,
+    model: null,
+    effort: null,
+  });
+
+  // 2c. Mapped team role with no engine anywhere gets engine: null and explicit-or-null model/effort
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      roles: {
+        developer: { agent: "wren" },
+        qa: { agent: "scout", engine: "native" },
+      },
+    }),
+  };
+  const teamNullRes = (await $.tool.call({ tool: TEAM_TOOL } as never)) as {
+    result?: string;
+    isError?: boolean;
+  };
+  expect(teamNullRes.isError).toBeUndefined();
+  const teamNullJson = JSON.parse(String(teamNullRes.result ?? ""));
+  const byRoleNull = (role: string) =>
+    teamNullJson.roles.find((r: { role: string }) => r.role === role);
+  expect(byRoleNull("developer")).toMatchObject({
+    source: "team",
+    engine: null,
+    model: null,
+    effort: null,
+  });
+  expect(byRoleNull("qa")).toMatchObject({
+    source: "team",
+    engine: "native",
+    model: null,
+    effort: null,
+  });
+  expect(byRoleNull("infrastructure")).toMatchObject({
+    source: "generic",
+    engine: "native",
+    model: TIER_DEFAULTS.tiers.build.native["claude-code"],
+    effort: TIER_DEFAULTS.tiers.build.native.effort,
+  });
+
+  // Restore mapped developer for panel label tests below
+  fileState = {
+    mode: "present",
+    content: JSON.stringify({
+      notes: "Run bazel test.",
+      tiers: { build: { "claude-code": "haiku", effort: "medium" } },
+      roles: {
+        developer: { agent: "wren", notes: "Owns apps/." },
+        release: "off",
+      },
+    }),
+  };
+  await $.tool.call({ tool: TEAM_TOOL } as never);
 
   // 3. Panel labels show "wren · developer" in terminal, desktop SVG, and /orchestrator-board
   await $.tool.call({
@@ -3935,6 +4136,7 @@ test("team tool handles absent, valid, invalid, and oversize .agents/team.json a
     "dispatch",
     "source",
     "tier",
+    "engine",
     "gemini",
     "model",
     "effort",
@@ -4371,9 +4573,14 @@ test("team tool optional root input (valid, invalid, outside-repo symlink, missi
   const missingRootJson = JSON.parse(String(missingRootRes.result ?? ""));
   expect(missingRootJson.notes).toBe("From cwdRepo");
   expect(
-    missingRootJson.roles.find((r: { role: string }) => r.role === "security")
-      ?.agent,
-  ).toBe("wren");
+    missingRootJson.roles.find((r: { role: string }) => r.role === "security"),
+  ).toMatchObject({
+    agent: "wren",
+    source: "team",
+    engine: null,
+    model: null,
+    effort: null,
+  });
 
   // 2. Invalid root errors with exact message.
   for (const badRoot of [
@@ -4606,4 +4813,1358 @@ test("panel falls back to file read when flow has no team event", async ($, on) 
     ).text ?? "",
   );
   expect(boardOut).toContain("wren · security");
+});
+
+const TEAM_SETUP_TOOL = "mcp__vitruvian-orchestrator__team_setup";
+
+test("team_setup tool handles init, Claude starter agents, all-or-nothing conflicts, sync across harnesses, symlinks, oversize, and check:true", async ($, on) => {
+  const cwdRepo = "/cwd-repo";
+  const emptyRepo = "/empty-repo";
+  const partialRepo = "/partial-repo";
+  const starterRepo = "/starter-repo";
+  const syncRepo = "/sync-repo";
+  const notADir = "/not-a-dir";
+
+  const dirs = new Set<string>([
+    cwdRepo,
+    emptyRepo,
+    partialRepo,
+    `${partialRepo}/.claude`,
+    `${partialRepo}/.claude/agents`,
+    starterRepo,
+    syncRepo,
+    `${syncRepo}/.agents`,
+    `${syncRepo}/.agents/agents`,
+    `${syncRepo}/.claude`,
+    `${syncRepo}/.claude/agents`,
+    `${syncRepo}/.opencode`,
+    `${syncRepo}/.opencode/agents`,
+    ".",
+    "rel/dir",
+  ]);
+  const files = new Map<string, string>([
+    [`${partialRepo}/.claude/agents/team-qa.md`, "existing qa\n"],
+    [
+      `${syncRepo}/.agents/team.json`,
+      JSON.stringify({
+        tiers: {
+          build: {
+            "claude-code": "sonnet",
+            opencode: "anthropic/claude-sonnet-5-5",
+            antigravity: "pro",
+            effort: "high",
+          },
+          deep: { antigravity: "opus" },
+        },
+        roles: {
+          lead: { agent: "boss" },
+          developer: { agent: "dev-a" },
+          qa: { agent: "qa-a" },
+          security: { agent: "sec-a" },
+          docs: { agent: "docs-a" },
+          build: { agent: "big-a" },
+          operations: { agent: "link-a" },
+          release: { agent: "out-a" },
+        },
+      }),
+    ],
+    [
+      `${syncRepo}/.claude/agents/boss.md`,
+      "---\nname: boss\nmodel: haiku\n---\nBoss\n",
+    ],
+    [
+      `${syncRepo}/.claude/agents/dev-a.md`,
+      "---\nname: dev-a\nmodel: haiku\n---\nDev\n",
+    ],
+    [
+      `${syncRepo}/.opencode/agents/dev-a.md`,
+      "---\ndescription: Dev\nmode: subagent\n---\nOC dev\n",
+    ],
+    [
+      `${syncRepo}/.agents/agents/dev-a.md`,
+      "---\nname: dev-a\nmodel: flash\n---\nAgy dev\n",
+    ],
+    [
+      `${syncRepo}/.agents/agents/qa-a.md`,
+      "---\nname: qa-a\nmodel: pro\n---\nQA\n",
+    ],
+    [`${syncRepo}/.claude/agents/sec-a.md`, "No frontmatter\n"],
+    [
+      `${syncRepo}/.claude/agents/docs-a.md`,
+      "---\nname: docs-a\n---\n<!-- Generated by //tools/agent-roster. Do not edit. -->\nDocs\n",
+    ],
+  ]);
+  const symlinks = new Map<
+    string,
+    { realPath?: string; kind?: "file" | "dir" | "other" }
+  >([
+    [
+      `${syncRepo}/.claude/agents/link-a.md`,
+      { realPath: `${syncRepo}/.claude/agents/dev-a.md`, kind: "file" },
+    ],
+  ]);
+  const outsideFiles = new Map<string, string>([
+    [`${syncRepo}/.claude/agents/out-a.md`, "/outside/out-a.md"],
+  ]);
+  const oversizePath = `${syncRepo}/.claude/agents/big-a.md`;
+
+  const isPluginTemplate = (p: string, role: string) =>
+    p.endsWith(`/agents/${role}.md`) &&
+    !p.startsWith(syncRepo) &&
+    !p.startsWith(starterRepo) &&
+    !p.startsWith(emptyRepo) &&
+    !p.startsWith(partialRepo) &&
+    !p.startsWith(cwdRepo);
+  const templatePaths: string[] = [];
+  const pluginDevTemplate = [
+    "---",
+    "name: developer",
+    "description: Dev role.",
+    "model: sonnet",
+    "effort: high",
+    "tools: Bash, Read, Edit, Write",
+    "---",
+    "<!-- Generated from the orchestrator generic roster. Do not edit directly. -->",
+    "",
+    "You are developer.",
+    "",
+  ].join("\n");
+  const pluginQaTemplate = [
+    "---",
+    "name: qa",
+    "description: QA role.",
+    "model: sonnet",
+    "effort: high",
+    "tools: Bash, Read, Edit, Write",
+    "---",
+    "<!-- Generated from the orchestrator generic roster. Do not edit directly. -->",
+    "",
+    "You are qa.",
+    "",
+  ].join("\n");
+
+  const readCounts = new Map<string, number>();
+  const writes: Array<{ path: string; text: string }> = [];
+
+  const ensureParentDirs = (filePath: string) => {
+    const parts = filePath.split("/").filter(Boolean);
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      cur += `/${parts[i]}`;
+      dirs.add(cur);
+    }
+  };
+
+  on("session.cwd", async () => ({ value: `${cwdRepo}/sub` }));
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "git" && argv.includes("--show-toplevel")) {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `${cwdRepo}\n`,
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "unexpected",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+
+  on("fs.stat", async (_, e) => {
+    if (isPluginTemplate(e.path, "developer")) {
+      templatePaths.push(e.path);
+      return {
+        value: {
+          kind: "file",
+          size: pluginDevTemplate.length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (isPluginTemplate(e.path, "qa")) {
+      templatePaths.push(e.path);
+      return {
+        value: {
+          kind: "file",
+          size: pluginQaTemplate.length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (e.path === notADir) {
+      return {
+        value: {
+          kind: "file",
+          size: 8,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (symlinks.has(e.path)) {
+      const sym = symlinks.get(e.path)!;
+      return {
+        value: {
+          kind: sym.kind ?? "file",
+          size: 32,
+          mtimeMs: 0,
+          isLink: true,
+          ...(e.resolve && sym.realPath ? { realPath: sym.realPath } : {}),
+        },
+      };
+    }
+    if (outsideFiles.has(e.path)) {
+      return {
+        value: {
+          kind: "file",
+          size: 32,
+          mtimeMs: 0,
+          isLink: false,
+          ...(e.resolve ? { realPath: outsideFiles.get(e.path)! } : {}),
+        },
+      };
+    }
+    if (e.path === oversizePath) {
+      return {
+        value: {
+          kind: "file",
+          size: 260 * 1024,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (dirs.has(e.path) || e.path.endsWith("/rel/dir")) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (files.has(e.path)) {
+      const content = files.get(e.path)!;
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(content).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+
+  on("fs.read", async (_, e) => {
+    readCounts.set(e.path, (readCounts.get(e.path) ?? 0) + 1);
+    if (isPluginTemplate(e.path, "developer")) {
+      return { value: pluginDevTemplate };
+    }
+    if (isPluginTemplate(e.path, "qa")) {
+      return { value: pluginQaTemplate };
+    }
+    if (files.has(e.path)) {
+      return { value: files.get(e.path)! };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  on("fs.write", async (_, e) => {
+    writes.push({ path: e.path, text: e.text });
+    ensureParentDirs(e.path);
+    files.set(e.path, e.text);
+    return { value: undefined };
+  });
+
+  // 1. Root validation matches team tool.
+  for (const badRoot of ["rel/dir", ".", notADir, "/missing", "", 123]) {
+    const errRes = (await $.tool.call({
+      tool: TEAM_SETUP_TOOL,
+      action: "init",
+      root: badRoot,
+    } as never)) as { result?: string; isError?: boolean };
+    expect(errRes.isError).toBe(true);
+    expect(errRes.result).toBe("root must be an absolute path to a directory");
+  }
+
+  // 2. Empty init creates team.json and refuses overwrite.
+  const initEmpty = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: emptyRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(initEmpty.isError).toBeUndefined();
+  expect(JSON.parse(String(initEmpty.result ?? ""))).toEqual({
+    action: "init",
+    root: emptyRepo,
+    check: false,
+    files: [{ path: ".agents/team.json", status: "created", reason: null }],
+  });
+  expect(JSON.parse(files.get(`${emptyRepo}/.agents/team.json`)!)).toEqual({
+    $schema: "https://vitruviansoftware.dev/schemas/orchestrator-team.json",
+    notes: "",
+    roles: {},
+  });
+
+  const initAgain = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: emptyRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(initAgain.isError).toBe(true);
+  expect(String(initAgain.result ?? "")).toContain("already exists");
+
+  // 3. Invalid agents & all-or-nothing on partial conflict.
+  for (const badAgents of [
+    ["lead"],
+    ["wizard"],
+    ["constructor"],
+    ["__proto__"],
+  ]) {
+    const badRes = (await $.tool.call({
+      tool: TEAM_SETUP_TOOL,
+      action: "init",
+      root: partialRepo,
+      agents: badAgents,
+    } as never)) as { result?: string; isError?: boolean };
+    expect(badRes.isError).toBe(true);
+  }
+  const writesBeforeConflict = writes.length;
+  const conflictRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: partialRepo,
+    agents: ["developer", "qa"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(conflictRes.isError).toBe(true);
+  expect(String(conflictRes.result ?? "")).toContain(
+    "team-qa.md already exists",
+  );
+  expect(writes.length).toBe(writesBeforeConflict);
+  expect(files.has(`${partialRepo}/.agents/team.json`)).toBe(false);
+  expect(files.has(`${partialRepo}/.claude/agents/team-developer.md`)).toBe(
+    false,
+  );
+
+  // 4. Starter init copies ONLY calling harness (.claude/agents/) files FIRST and team.json LAST, and sync edits them.
+  const writesBeforeStarter = writes.length;
+  const starterRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: starterRepo,
+    agents: ["developer", "qa"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(starterRes.isError).toBeUndefined();
+  expect(
+    templatePaths.some((p) =>
+      p.endsWith("/vitruvian-orchestrator/agents/developer.md"),
+    ),
+  ).toBe(true);
+  expect(
+    templatePaths.some((p) =>
+      p.endsWith("/vitruvian-orchestrator/agents/qa.md"),
+    ),
+  ).toBe(true);
+  expect(writes.slice(writesBeforeStarter).map((w) => w.path)).toEqual([
+    `${starterRepo}/.claude/agents/team-developer.md`,
+    `${starterRepo}/.claude/agents/team-qa.md`,
+    `${starterRepo}/.agents/team.json`,
+  ]);
+  const starterJson = JSON.parse(String(starterRes.result ?? ""));
+  expect(starterJson.files.map((f: { path: string }) => f.path)).toEqual([
+    ".claude/agents/team-developer.md",
+    ".claude/agents/team-qa.md",
+    ".agents/team.json",
+  ]);
+  expect(files.has(`${starterRepo}/.opencode/agents/team-developer.md`)).toBe(
+    false,
+  );
+  expect(files.has(`${starterRepo}/.agents/agents/team-developer.md`)).toBe(
+    false,
+  );
+  const starterDevText = files.get(
+    `${starterRepo}/.claude/agents/team-developer.md`,
+  )!;
+  expect(starterDevText).toContain("name: team-developer");
+  expect(starterDevText).not.toContain("Do not edit directly");
+
+  files.set(
+    `${starterRepo}/.agents/team.json`,
+    JSON.stringify({
+      roles: {
+        developer: {
+          agent: "team-developer",
+          engine: "native",
+          "claude-code": "opus",
+          effort: "max",
+        },
+      },
+    }),
+  );
+  const writesBeforeCheck = writes.length;
+  const starterCheckRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: starterRepo,
+    check: true,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(starterCheckRes.isError).toBeUndefined();
+  expect(writes.length).toBe(writesBeforeCheck);
+  expect(
+    JSON.parse(String(starterCheckRes.result ?? "")).files[0],
+  ).toMatchObject({
+    path: ".claude/agents/team-developer.md",
+    status: "changed",
+  });
+  expect(files.get(`${starterRepo}/.claude/agents/team-developer.md`)).toBe(
+    starterDevText,
+  );
+
+  const starterSyncRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: starterRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(starterSyncRes.isError).toBeUndefined();
+  expect(
+    files.get(`${starterRepo}/.claude/agents/team-developer.md`),
+  ).toContain("model: opus\neffort: max");
+
+  // 5. Sync across all 3 harnesses, oversize without fs.read, symlinks, outside-root, antigravity-model.
+  const syncRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: syncRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(syncRes.isError).toBeUndefined();
+  const syncPayload = JSON.parse(String(syncRes.result ?? ""));
+  const byPath = new Map<string, { status: string; reason: string | null }>(
+    syncPayload.files.map(
+      (f: { path: string; status: string; reason: string | null }) => [
+        f.path,
+        f,
+      ],
+    ),
+  );
+  expect(byPath.get(".claude/agents/boss.md")?.status).toBe("unchanged");
+  expect(byPath.get(".claude/agents/dev-a.md")?.status).toBe("changed");
+  expect(files.get(`${syncRepo}/.claude/agents/dev-a.md`)).toContain(
+    "model: sonnet\neffort: high",
+  );
+  expect(byPath.get(".opencode/agents/dev-a.md")?.status).toBe("changed");
+  expect(files.get(`${syncRepo}/.opencode/agents/dev-a.md`)).toContain(
+    "model: anthropic/claude-sonnet-5-5\nreasoningEffort: high",
+  );
+  expect(byPath.get(".agents/agents/dev-a.md")?.status).toBe("changed");
+  expect(files.get(`${syncRepo}/.agents/agents/dev-a.md`)).toContain(
+    "model: pro",
+  );
+  expect(byPath.get(".agents/agents/qa-a.md")?.reason).toBe(
+    "antigravity-model",
+  );
+  expect(byPath.get(".claude/agents/sec-a.md")?.reason).toBe("no-frontmatter");
+  expect(byPath.get(".claude/agents/docs-a.md")?.reason).toBe("generated");
+  expect(byPath.get(".claude/agents/big-a.md")?.reason).toBe("too-large");
+  expect(readCounts.get(oversizePath) ?? 0).toBe(0);
+  expect(byPath.get(".claude/agents/link-a.md")?.reason).toBe("symlink");
+  expect(byPath.get(".claude/agents/out-a.md")?.reason).toBe("outside-root");
+
+  // 6. Missing root falls back to cwd/git discovery.
+  const cwdInitRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(cwdInitRes.isError).toBeUndefined();
+  expect(files.has(`${cwdRepo}/.agents/team.json`)).toBe(true);
+});
+
+test("team_setup sync against a 30-file generated repository team.json and agent files changes nothing", async ($, on) => {
+  const repoRoot = "/generated-repo";
+  const rolesList = [
+    "lead",
+    "developer",
+    "qa",
+    "security",
+    "build",
+    "infrastructure",
+    "operations",
+    "docs",
+    "product",
+    "release",
+  ] as const;
+  const dirs = new Set<string>([
+    repoRoot,
+    `${repoRoot}/.agents`,
+    `${repoRoot}/.agents/agents`,
+    `${repoRoot}/.claude`,
+    `${repoRoot}/.claude/agents`,
+    `${repoRoot}/.opencode`,
+    `${repoRoot}/.opencode/agents`,
+  ]);
+  const files = new Map<string, string>();
+  const teamRoles: Record<string, { agent: string }> = {};
+  for (const role of rolesList) {
+    const agent = `agent-${role}`;
+    teamRoles[role] = { agent };
+    files.set(
+      `${repoRoot}/.claude/agents/${agent}.md`,
+      `---\nname: ${agent}\n---\n<!-- Generated by //tools/agent-roster from .agents/roster/. Do not edit. -->\nBody\n`,
+    );
+    files.set(
+      `${repoRoot}/.opencode/agents/${agent}.md`,
+      `---\ndescription: ${role}\nmode: subagent\n---\n<!-- Generated by //tools/agent-roster from .agents/roster/. Do not edit. -->\nBody\n`,
+    );
+    files.set(
+      `${repoRoot}/.agents/agents/${agent}.md`,
+      `---\nname: ${agent}\nsubagent: true\n---\n<!-- Generated by //tools/agent-roster from .agents/roster/. Do not edit. -->\nBody\n`,
+    );
+  }
+  files.set(
+    `${repoRoot}/.agents/team.json`,
+    JSON.stringify({ roles: teamRoles }),
+  );
+
+  on("fs.stat", async (_, e) => {
+    if (dirs.has(e.path)) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          ...(e.resolve ? { realPath: e.path } : {}),
+        },
+      };
+    }
+    const content = files.get(e.path);
+    if (content !== undefined) {
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(content).length,
+          mtimeMs: 0,
+          isLink: false,
+          ...(e.resolve ? { realPath: e.path } : {}),
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+  on("fs.read", async (_, e) => {
+    const content = files.get(e.path);
+    if (content !== undefined) {
+      return { value: content };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+  const writes: string[] = [];
+  on("fs.write", async (_, e) => {
+    writes.push(e.path);
+    return { deny: `unexpected write in generated-repo no-op test: ${e.path}` };
+  });
+
+  const syncRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: repoRoot,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(syncRes.isError).toBeUndefined();
+  const payload = JSON.parse(String(syncRes.result ?? ""));
+  expect(payload.files.length).toBe(30);
+  for (const entry of payload.files as Array<{
+    status: string;
+    reason: string | null;
+  }>) {
+    expect(entry.status).toBe("skipped");
+    expect(entry.reason).toBe("generated");
+  }
+  expect(writes).toEqual([]);
+});
+
+test("team_setup rulings: shared-agent conflicts, ENOTDIR/EACCES errors, init write-order rollback, and .claude/agents symlink refusal", async ($, on) => {
+  const sharedRepo = "/shared-repo";
+  const enotdirInitRepo = "/enotdir-init-repo";
+  const eaccesInitRepo = "/eacces-init-repo";
+  const fileParentInitRepo = "/file-parent-init-repo";
+  const enotdirSyncRepo = "/enotdir-sync-repo";
+  const rollbackAgentRepo = "/rollback-agent-repo";
+  const rollbackTeamRepo = "/rollback-team-repo";
+  const symDirInitRepo = "/sym-dir-init-repo";
+  const symDirSyncRepo = "/sym-dir-sync-repo";
+
+  const dirs = new Set<string>([
+    sharedRepo,
+    `${sharedRepo}/.agents`,
+    `${sharedRepo}/.claude`,
+    `${sharedRepo}/.claude/agents`,
+    enotdirInitRepo,
+    eaccesInitRepo,
+    fileParentInitRepo,
+    enotdirSyncRepo,
+    `${enotdirSyncRepo}/.agents`,
+    `${enotdirSyncRepo}/.claude`,
+    `${enotdirSyncRepo}/.claude/agents`,
+    rollbackAgentRepo,
+    rollbackTeamRepo,
+    symDirInitRepo,
+    `${symDirInitRepo}/.claude`,
+    symDirSyncRepo,
+    `${symDirSyncRepo}/.agents`,
+    `${symDirSyncRepo}/.claude`,
+  ]);
+  const files = new Map<string, string>([
+    [
+      `${sharedRepo}/.agents/team.json`,
+      JSON.stringify({
+        tiers: {
+          build: { "claude-code": "sonnet", effort: "high" },
+        },
+        roles: {
+          developer: { agent: "same-a" },
+          build: { agent: "same-a" },
+          qa: { agent: "diff-a", "claude-code": "opus", effort: "max" },
+          security: { agent: "diff-a", "claude-code": "haiku", effort: "max" },
+        },
+      }),
+    ],
+    [
+      `${sharedRepo}/.claude/agents/same-a.md`,
+      "---\nname: same-a\nmodel: haiku\n---\nSame\n",
+    ],
+    [
+      `${sharedRepo}/.claude/agents/diff-a.md`,
+      "---\nname: diff-a\nmodel: haiku\n---\nDiff\n",
+    ],
+    [`${fileParentInitRepo}/.agents`, "not a directory\n"],
+    [
+      `${enotdirSyncRepo}/.agents/team.json`,
+      JSON.stringify({
+        roles: {
+          developer: { agent: "ok-a", "claude-code": "opus" },
+          qa: { agent: "bad-a", "claude-code": "opus" },
+        },
+      }),
+    ],
+    [
+      `${enotdirSyncRepo}/.claude/agents/ok-a.md`,
+      "---\nname: ok-a\nmodel: haiku\n---\nOK\n",
+    ],
+    [
+      `${symDirSyncRepo}/.agents/team.json`,
+      JSON.stringify({
+        roles: {
+          developer: { agent: "sym-a", "claude-code": "opus" },
+        },
+      }),
+    ],
+  ]);
+
+  const symlinks = new Map<string, { kind: "dir" | "file"; realPath?: string }>(
+    [
+      [
+        `${symDirInitRepo}/.claude/agents`,
+        { kind: "dir", realPath: "/outside" },
+      ],
+      [
+        `${symDirSyncRepo}/.claude/agents`,
+        { kind: "dir", realPath: "/outside" },
+      ],
+    ],
+  );
+
+  const statErrors = new Map<string, { code: string; message: string }>([
+    [
+      `${enotdirInitRepo}/.agents`,
+      { code: "ENOTDIR", message: "ENOTDIR: not a directory, stat" },
+    ],
+    [
+      `${eaccesInitRepo}/.agents`,
+      { code: "EACCES", message: "EACCES: permission denied, stat" },
+    ],
+    [
+      `${enotdirSyncRepo}/.claude/agents/bad-a.md`,
+      { code: "ENOTDIR", message: "ENOTDIR: not a directory, stat" },
+    ],
+  ]);
+
+  const isPluginTemplate = (p: string) =>
+    (p.endsWith("/agents/developer.md") || p.endsWith("/agents/qa.md")) &&
+    p.includes("vitruvian-orchestrator");
+
+  const writes: Array<{ path: string; text: string }> = [];
+  const reads: string[] = [];
+  const removals: string[] = [];
+  const failWritePaths = new Set<string>([
+    `${rollbackAgentRepo}/.claude/agents/team-qa.md`,
+    `${rollbackTeamRepo}/.agents/team.json`,
+  ]);
+
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "rm" && argv[1] === "-f" && argv[2] === "--" && argv[3]) {
+      removals.push(argv[3]);
+      files.delete(argv[3]);
+      return {
+        value: {
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "unexpected",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+
+  on("fs.stat", async (_, e) => {
+    if (isPluginTemplate(e.path)) {
+      return {
+        value: {
+          kind: "file",
+          size: 64,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (statErrors.has(e.path)) {
+      const err = statErrors.get(e.path)!;
+      return { deny: err.message };
+    }
+    if (symlinks.has(e.path)) {
+      const sym = symlinks.get(e.path)!;
+      return {
+        value: {
+          kind: sym.kind,
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+          ...(e.resolve && sym.realPath ? { realPath: sym.realPath } : {}),
+        },
+      };
+    }
+    if (dirs.has(e.path)) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (files.has(e.path)) {
+      const text = files.get(e.path)!;
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(text).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+
+  on("fs.read", async (_, e) => {
+    reads.push(e.path);
+    if (e.path.endsWith("/agents/developer.md")) {
+      return { value: "---\nname: developer\n---\nDeveloper body\n" };
+    }
+    if (e.path.endsWith("/agents/qa.md")) {
+      return { value: "---\nname: qa\n---\nQA body\n" };
+    }
+    if (files.has(e.path)) {
+      return { value: files.get(e.path)! };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  on("fs.write", async (_, e) => {
+    writes.push({ path: e.path, text: e.text });
+    if (failWritePaths.has(e.path)) {
+      return { deny: `EIO: disk full writing ${e.path}` };
+    }
+    const parts = e.path.split("/").filter(Boolean);
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      cur += `/${parts[i]}`;
+      dirs.add(cur);
+    }
+    files.set(e.path, e.text);
+    return { value: undefined };
+  });
+
+  // Ruling #1: Shared agent file in sync — equal applied once, differing skipped with conflict naming both roles.
+  const sharedRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: sharedRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(sharedRes.isError).toBeUndefined();
+  const sharedPayload = JSON.parse(String(sharedRes.result ?? ""));
+  const sameEntries = sharedPayload.files.filter(
+    (f: { path: string }) => f.path === ".claude/agents/same-a.md",
+  );
+  expect(sameEntries).toHaveLength(1);
+  expect(sameEntries[0].status).toBe("changed");
+  expect(
+    writes.filter((w) => w.path === `${sharedRepo}/.claude/agents/same-a.md`),
+  ).toHaveLength(1);
+  expect(files.get(`${sharedRepo}/.claude/agents/same-a.md`)).toContain(
+    "model: sonnet\neffort: high",
+  );
+
+  const diffEntry = sharedPayload.files.find(
+    (f: { path: string }) => f.path === ".claude/agents/diff-a.md",
+  );
+  expect(diffEntry?.status).toBe("skipped");
+  expect(diffEntry?.reason).toContain("conflict");
+  expect(diffEntry?.reason).toContain("qa");
+  expect(diffEntry?.reason).toContain("security");
+  expect(files.get(`${sharedRepo}/.claude/agents/diff-a.md`)).toBe(
+    "---\nname: diff-a\nmodel: haiku\n---\nDiff\n",
+  );
+  expect(
+    writes.some((w) => w.path === `${sharedRepo}/.claude/agents/diff-a.md`),
+  ).toBe(false);
+
+  // Ruling #2: ENOTDIR / EACCES / parent-not-directory refuse the whole action (never "absent") with zero writes.
+  const writesBeforeErr = writes.length;
+  for (const errRepo of [enotdirInitRepo, eaccesInitRepo, fileParentInitRepo]) {
+    const errInit = (await $.tool.call({
+      tool: TEAM_SETUP_TOOL,
+      action: "init",
+      root: errRepo,
+    } as never)) as { result?: string; isError?: boolean };
+    expect(errInit.isError).toBe(true);
+  }
+  const errSync = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: enotdirSyncRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(errSync.isError).toBe(true);
+  expect(String(errSync.result ?? "")).toContain("ENOTDIR");
+  expect(writes.length).toBe(writesBeforeErr);
+  expect(files.get(`${enotdirSyncRepo}/.claude/agents/ok-a.md`)).toBe(
+    "---\nname: ok-a\nmodel: haiku\n---\nOK\n",
+  );
+
+  // Ruling #3: init writes starter agent files first and team.json last, rolling back created files on mid-run failure.
+  const writesBeforeRb1 = writes.length;
+  const rb1 = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: rollbackAgentRepo,
+    agents: ["developer", "qa"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(rb1.isError).toBe(true);
+  expect(writes.slice(writesBeforeRb1).map((w) => w.path)).toEqual([
+    `${rollbackAgentRepo}/.claude/agents/team-developer.md`,
+    `${rollbackAgentRepo}/.claude/agents/team-qa.md`,
+  ]);
+  expect(removals).toContain(
+    `${rollbackAgentRepo}/.claude/agents/team-developer.md`,
+  );
+  expect(
+    files.has(`${rollbackAgentRepo}/.claude/agents/team-developer.md`),
+  ).toBe(false);
+  expect(files.has(`${rollbackAgentRepo}/.agents/team.json`)).toBe(false);
+
+  const writesBeforeRb2 = writes.length;
+  const removalsBeforeRb2 = removals.length;
+  const rb2 = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: rollbackTeamRepo,
+    agents: ["developer", "qa"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(rb2.isError).toBe(true);
+  expect(writes.slice(writesBeforeRb2).map((w) => w.path)).toEqual([
+    `${rollbackTeamRepo}/.claude/agents/team-developer.md`,
+    `${rollbackTeamRepo}/.claude/agents/team-qa.md`,
+    `${rollbackTeamRepo}/.agents/team.json`,
+  ]);
+  expect(removals.slice(removalsBeforeRb2)).toEqual([
+    `${rollbackTeamRepo}/.claude/agents/team-qa.md`,
+    `${rollbackTeamRepo}/.claude/agents/team-developer.md`,
+  ]);
+  expect(
+    files.has(`${rollbackTeamRepo}/.claude/agents/team-developer.md`),
+  ).toBe(false);
+  expect(files.has(`${rollbackTeamRepo}/.claude/agents/team-qa.md`)).toBe(
+    false,
+  );
+  expect(files.has(`${rollbackTeamRepo}/.agents/team.json`)).toBe(false);
+
+  // Ruling #5: .claude/agents directory symlink refused in both init and sync.
+  const writesBeforeSym = writes.length;
+  const symInit = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: symDirInitRepo,
+    agents: ["developer"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(symInit.isError).toBe(true);
+  expect(String(symInit.result ?? "")).toContain(".claude/agents");
+  expect(String(symInit.result ?? "")).toContain("symlink");
+  expect(writes.length).toBe(writesBeforeSym);
+
+  const readsBeforeSymSync = reads.length;
+  const symSync = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: symDirSyncRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(symSync.isError).toBeUndefined();
+  const symSyncPayload = JSON.parse(String(symSync.result ?? ""));
+  expect(
+    symSyncPayload.files.find(
+      (f: { path: string }) => f.path === ".claude/agents/sym-a.md",
+    ),
+  ).toMatchObject({
+    status: "skipped",
+    reason: "symlink",
+  });
+  expect(
+    reads
+      .slice(readsBeforeSymSync)
+      .some((p) => p === `${symDirSyncRepo}/.claude/agents/sym-a.md`),
+  ).toBe(false);
+  expect(writes.length).toBe(writesBeforeSym);
+});
+
+test("team_setup rejects subagent callers (e.agentId set) without touching fs and permits lead calls", async ($, on) => {
+  const repoRoot = "/lead-only-repo";
+  const dirs = new Set<string>([repoRoot]);
+  const files = new Map<string, string>();
+  let fsCalls = 0;
+
+  on("fs.stat", async (_, e) => {
+    fsCalls += 1;
+    if (dirs.has(e.path)) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (files.has(e.path)) {
+      const content = files.get(e.path)!;
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(content).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+  on("fs.read", async (_, e) => {
+    fsCalls += 1;
+    if (files.has(e.path)) {
+      return { value: files.get(e.path)! };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+  on("fs.write", async (_, e) => {
+    fsCalls += 1;
+    const parts = e.path.split("/").filter(Boolean);
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      cur += `/${parts[i]}`;
+      dirs.add(cur);
+    }
+    files.set(e.path, e.text);
+    return { value: undefined };
+  });
+
+  for (const call of [
+    { action: "init", root: repoRoot },
+    { action: "sync", root: repoRoot, check: false },
+    { action: "sync", root: repoRoot, check: true },
+  ]) {
+    const subRes = (await $.tool.call({
+      tool: TEAM_SETUP_TOOL,
+      agentId: "wren-sub-1",
+      ...call,
+    } as never)) as { result?: string; isError?: boolean };
+    expect(subRes.isError).toBe(true);
+    expect(String(subRes.result ?? "")).toContain(
+      "team_setup is for the lead only",
+    );
+  }
+  expect(fsCalls).toBe(0);
+  expect(files.size).toBe(0);
+
+  const leadRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: repoRoot,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(leadRes.isError).toBeUndefined();
+  expect(files.has(`${repoRoot}/.agents/team.json`)).toBe(true);
+});
+
+test("team_setup TOCTOU pre-write recheck aborts sync and init if paths become symlinks or escape root before write", async ($, on) => {
+  const syncSymRaceRepo = "/sync-sym-race";
+  const syncOutsideRaceRepo = "/sync-outside-race";
+  const initRaceRepo = "/init-race";
+
+  const dirs = new Set<string>([
+    syncSymRaceRepo,
+    `${syncSymRaceRepo}/.agents`,
+    `${syncSymRaceRepo}/.claude`,
+    `${syncSymRaceRepo}/.claude/agents`,
+    syncOutsideRaceRepo,
+    `${syncOutsideRaceRepo}/.agents`,
+    `${syncOutsideRaceRepo}/.claude`,
+    `${syncOutsideRaceRepo}/.claude/agents`,
+    initRaceRepo,
+  ]);
+  const files = new Map<string, string>([
+    [
+      `${syncSymRaceRepo}/.agents/team.json`,
+      JSON.stringify({
+        roles: { developer: { agent: "dev-a", "claude-code": "opus" } },
+      }),
+    ],
+    [
+      `${syncSymRaceRepo}/.claude/agents/dev-a.md`,
+      "---\nname: dev-a\nmodel: sonnet\n---\nDev\n",
+    ],
+    [
+      `${syncOutsideRaceRepo}/.agents/team.json`,
+      JSON.stringify({
+        roles: { developer: { agent: "dev-b", "claude-code": "opus" } },
+      }),
+    ],
+    [
+      `${syncOutsideRaceRepo}/.claude/agents/dev-b.md`,
+      "---\nname: dev-b\nmodel: sonnet\n---\nDev\n",
+    ],
+  ]);
+  const symlinks = new Map<
+    string,
+    { kind: "dir" | "file"; realPath?: string }
+  >();
+  const realPathOverrides = new Map<string, string>();
+  const writes: string[] = [];
+  const removals: string[] = [];
+
+  on("process.run", async (_, e) => {
+    const argv = [...e.argv];
+    if (argv[0] === "rm" && argv[1] === "-f" && argv[2] === "--" && argv[3]) {
+      removals.push(argv[3]);
+      files.delete(argv[3]);
+      return {
+        value: {
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: "",
+        stderr: "unexpected",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+
+  on("fs.stat", async (_, e) => {
+    if (
+      e.path.endsWith("/agents/developer.md") &&
+      e.path.includes("vitruvian-orchestrator")
+    ) {
+      return {
+        value: {
+          kind: "file",
+          size: 64,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (symlinks.has(e.path)) {
+      const sym = symlinks.get(e.path)!;
+      return {
+        value: {
+          kind: sym.kind,
+          size: 0,
+          mtimeMs: 0,
+          isLink: true,
+          ...(e.resolve && sym.realPath ? { realPath: sym.realPath } : {}),
+        },
+      };
+    }
+    if (realPathOverrides.has(e.path)) {
+      return {
+        value: {
+          kind: "file",
+          size: 40,
+          mtimeMs: 0,
+          isLink: false,
+          ...(e.resolve ? { realPath: realPathOverrides.get(e.path)! } : {}),
+        },
+      };
+    }
+    if (dirs.has(e.path)) {
+      return {
+        value: {
+          kind: "dir",
+          size: 0,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    if (files.has(e.path)) {
+      const text = files.get(e.path)!;
+      return {
+        value: {
+          kind: "file",
+          size: new TextEncoder().encode(text).length,
+          mtimeMs: 0,
+          isLink: false,
+          realPath: e.path,
+        },
+      };
+    }
+    return { deny: `ENOENT: no such file or directory, stat '${e.path}'` };
+  });
+
+  on("fs.read", async (_, e) => {
+    if (
+      e.path.endsWith("/agents/developer.md") &&
+      e.path.includes("vitruvian-orchestrator")
+    ) {
+      return { value: "---\nname: developer\n---\nDeveloper\n" };
+    }
+    if (e.path === `${syncSymRaceRepo}/.claude/agents/dev-a.md`) {
+      const text = files.get(e.path)!;
+      symlinks.set(`${syncSymRaceRepo}/.claude/agents`, {
+        kind: "dir",
+        realPath: "/outside",
+      });
+      return { value: text };
+    }
+    if (e.path === `${syncOutsideRaceRepo}/.claude/agents/dev-b.md`) {
+      const text = files.get(e.path)!;
+      realPathOverrides.set(e.path, "/outside/dev-b.md");
+      return { value: text };
+    }
+    if (files.has(e.path)) {
+      return { value: files.get(e.path)! };
+    }
+    return { deny: `ENOENT: no such file or directory, open '${e.path}'` };
+  });
+
+  on("fs.write", async (_, e) => {
+    writes.push(e.path);
+    const parts = e.path.split("/").filter(Boolean);
+    let cur = "";
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      cur += `/${parts[i]}`;
+      dirs.add(cur);
+    }
+    files.set(e.path, e.text);
+    if (e.path === `${initRaceRepo}/.claude/agents/team-developer.md`) {
+      symlinks.set(`${initRaceRepo}/.agents`, {
+        kind: "dir",
+        realPath: "/outside",
+      });
+    }
+    return { value: undefined };
+  });
+
+  // 1. sync races: symlink parent swap and outside-root swap after read both abort with zero writes.
+  const symRaceRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: syncSymRaceRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(symRaceRes.isError).toBe(true);
+  expect(String(symRaceRes.result ?? "")).toContain("symlink");
+  expect(writes).toEqual([]);
+
+  const outRaceRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "sync",
+    root: syncOutsideRaceRepo,
+  } as never)) as { result?: string; isError?: boolean };
+  expect(outRaceRes.isError).toBe(true);
+  expect(String(outRaceRes.result ?? "")).toContain("outside root");
+  expect(writes).toEqual([]);
+
+  // 2. init race: .agents becomes a symlink after team-developer.md write; team.json is not written and team-developer.md rolls back.
+  const initRaceRes = (await $.tool.call({
+    tool: TEAM_SETUP_TOOL,
+    action: "init",
+    root: initRaceRepo,
+    agents: ["developer"],
+  } as never)) as { result?: string; isError?: boolean };
+  expect(initRaceRes.isError).toBe(true);
+  expect(String(initRaceRes.result ?? "")).toContain("symlink");
+  expect(writes).toEqual([`${initRaceRepo}/.claude/agents/team-developer.md`]);
+  expect(removals).toEqual([
+    `${initRaceRepo}/.claude/agents/team-developer.md`,
+  ]);
+  expect(files.has(`${initRaceRepo}/.claude/agents/team-developer.md`)).toBe(
+    false,
+  );
+  expect(files.has(`${initRaceRepo}/.agents/team.json`)).toBe(false);
+});
+
+// Regression (2026-11-20): pressing the band's ✕ while helpers were still
+// working set the whole flow to null, so every later board read came back
+// `[]` and every post came back `{"seq":0}` with no error.
+test("dismissing the band of an open flow hides it but keeps the board", async ($, on) => {
+  mock.clock(on, { now: 50_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>empty-band</Text>;
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Open flow",
+    phase: "delegate",
+    tasks: [
+      { title: "Build it", specialist: "wren", tier: "build", after: [] },
+    ],
+  } as never);
+  const posted = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "@scout defect list goes here",
+    kind: "defect",
+  } as never)) as { result?: string };
+  expect(JSON.parse(String(posted.result))).toEqual({ seq: 1 });
+
+  const band = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(await band.find({ type: "Text", text: /Open flow/ })).toBeDefined();
+  await band.press({ key: "orchestrator-dismiss" });
+  await band.unmount();
+
+  // The band is gone...
+  const hidden = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(
+    await hidden.find({ type: "Text", text: /Open flow/ }),
+  ).toBeUndefined();
+  await hidden.unmount();
+
+  // ...but the board still has the post, and new posts still land.
+  const read = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+    kind: "defect",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(read.isError).toBeUndefined();
+  expect(
+    JSON.parse(String(read.result)).map((p: { seq: number }) => p.seq),
+  ).toEqual([1]);
+  const second = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    text: "a second post",
+  } as never)) as { result?: string };
+  expect(JSON.parse(String(second.result))).toEqual({ seq: 2 });
+
+  // The lead's next progress call brings the band back.
+  await $.tool.call({ tool: PROGRESS_TOOL, phase: "review" } as never);
+  const back = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect(await back.find({ type: "Text", text: /Open flow/ })).toBeDefined();
+  await back.unmount();
+});
+
+test("dismissing the band of a closed flow clears it", async ($, on) => {
+  mock.clock(on, { now: 60_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>empty-band</Text>;
+  });
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Done flow",
+    tasks: [
+      { title: "Only task", specialist: "wren", tier: "build", after: [] },
+    ],
+    accept: 1,
+    finished: true,
+  } as never);
+  const band = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  await band.press({ key: "orchestrator-dismiss" });
+  await band.unmount();
+  const after = await $.ui.mount({ ...BAND_MOUNT, surface: "terminal" });
+  expect((await after.find({ type: "Text", text: /empty-band/ }))?.text).toBe(
+    "empty-band",
+  );
+  await after.unmount();
+});
+
+test("post and board report an error when there is no flow, instead of seq 0 and []", async ($, on) => {
+  mock.clock(on, { now: 70_000 });
+  const post = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-x",
+    text: "@wren defects",
+    kind: "defect",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(post.isError).toBe(true);
+  expect(String(post.result)).toMatch(/not saved/);
+  const read = (await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__board",
+  } as never)) as { result?: string; isError?: boolean };
+  expect(read.isError).toBe(true);
+  expect(String(read.result)).toMatch(/no orchestrator flow/i);
 });

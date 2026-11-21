@@ -324,6 +324,7 @@ _Auto-generated from the `devx` Cobra command tree (`go generate ./cmd`). Do not
 | `devx cluster init` | `--auto-install`, `--timeout <duration>` | Bootstrap a new cluster from the config file |
 | `devx cluster join` | `--timeout <duration>` | Add new node(s) to an existing cluster |
 | `devx cluster reconcile` | `--timeout <duration>` | Converge existing nodes to the current node baseline (e.g. required packages) |
+| `devx cluster relocate-kubelet --host <node>` | `--apply`, `--drain-timeout <duration>`, `--host <string>`, `--ready-timeout <duration>`, `--timeout <duration>` | One-time switch of a native node's kubelet back to /var/lib/kubelet |
 | `devx cluster remove <node-host>` | `--timeout <duration>` | Drain and remove a node from the cluster |
 | `devx cluster restore` | `-s, --snapshot <string>`, `--timeout <duration>` | Restore from an etcd snapshot |
 | `devx cluster status` | — | Show the current cluster state |

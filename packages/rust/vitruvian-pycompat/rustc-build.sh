@@ -10,19 +10,26 @@
 # goes through here, so :rustc_build_test proves on each PR what they run.
 #
 #   rustc-build.sh <out_dir> <crate> <lib.rs> <main.rs> [rustc flags for the lib...]
-#   rustc-build.sh --test <out_dir> <crate> <lib.rs>   # its unit tests, to <out_dir>/<crate>-test
+#   rustc-build.sh --test <out_dir> <crate> <lib.rs> [rustc flags...]  # its unit tests, to <out_dir>/<crate>-test
+#   rustc-build.sh --lib <out_dir> <crate> <lib.rs> [rustc flags...]   # rlib only, to <out_dir>/lib<crate>.rlib
 #
 # RUSTC names the compiler (default: rustc on PATH).
 set -euo pipefail
 
-test_only=
-if [ "${1:-}" = --test ]; then
-	test_only=1
+mode=
+case "${1:-}" in
+--test | --lib)
+	mode=$1
 	shift
+	if [ "$#" -lt 3 ]; then
+		echo "usage: rustc-build.sh [--test|--lib] <out_dir> <crate> <lib.rs> [<main.rs>] [rustc flags...]" >&2
+		exit 2
+	fi
 	set -- "$1" "$2" "$3" "-" "${@:4}"
-fi
+	;;
+esac
 if [ "$#" -lt 4 ]; then
-	echo "usage: rustc-build.sh <out_dir> <crate> <lib.rs> <main.rs> [rustc flags for the lib...]" >&2
+	echo "usage: rustc-build.sh [--test|--lib] <out_dir> <crate> <lib.rs> [<main.rs>] [rustc flags for the lib...]" >&2
 	exit 2
 fi
 out=$1 crate=$2 lib=$3 main=$4
@@ -33,17 +40,20 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 mkdir -p "$out"
 externs=()
 # find -L: under Bazel the sources are symlinks, which grep -r skips.
-if find -L "$(dirname "$lib")" -name '*.rs' -exec grep -l vitruvian_pycompat {} + 2>/dev/null | grep -q .; then
+if [ -n "$(find -L "$(dirname "$lib")" -name '*.rs' -exec grep -l vitruvian_pycompat {} + 2>/dev/null || true)" ]; then
 	"$rustc" --edition 2021 --crate-type lib --crate-name vitruvian_pycompat \
 		"$here/src/lib.rs" -o "$out/libvitruvian_pycompat.rlib"
 	externs=(--extern "vitruvian_pycompat=$out/libvitruvian_pycompat.rlib")
 fi
-if [ -n "$test_only" ]; then
+if [ "$mode" = --test ]; then
 	"$rustc" --edition 2021 --test --crate-name "$crate" "$@" "$lib" \
 		-L "$out" ${externs[@]+"${externs[@]}"} -o "$out/$crate-test"
 	exit 0
 fi
 "$rustc" --edition 2021 --crate-type lib --crate-name "$crate" "$@" "$lib" \
 	-L "$out" ${externs[@]+"${externs[@]}"} -o "$out/lib$crate.rlib"
+if [ "$mode" = --lib ]; then
+	exit 0
+fi
 "$rustc" --edition 2021 "$main" -L "$out" \
 	--extern "$crate=$out/lib$crate.rlib" -o "$out/$crate"

@@ -74,6 +74,7 @@ mindmap
 | `//tools/model-prices:update` | Refreshes `packages/orchestrator-core/src/prices.mjs` per-million-token USD estimates from `tools/model-prices/models.tsv` and OpenRouter's public `/api/v1/models` catalog; follow with `//tools/agent-roster -- --write` to sync the vendored plugin copies. `-- --check` (compare only, exit 1 if prices differ), `--offline <file>`, `--max-change <percent>` (default 50). See [tools/model-prices](../../tools/model-prices/README.md) |
 | `//tools/harness2 -- <command>` | **Harness²** (arXiv:2610.14224) for Antigravity: `install` puts a live plugin in `~/.gemini/config` whose hooks enforce the user's stated constraints (locked files, no image generator on pixel edits, no blind retries) and pin lessons from an improvement library; `distill <conversation> [--apply]` has Claude Opus edit that harness from a transcript, validated before adoption. Also `status`, `validate`, `library`, `probe`, `lock`/`unlock`, `apply`. See [tools/harness2](../../tools/harness2/README.md) |
 | `//tools/bazel-cache:gc` | Reclaims Bazel output bases whose workspace is gone, or that are stale, across the default root, the per-worktree roots in `~/.cache/bazel/worktrees/` and stray bases; never one with a live server or a live worktree. Dry run unless `--execute` |
+| `//tools/bazel-cache:status` | Read-only inventory of local developer caches (Bazel, Go, pnpm/npm/yarn/bun, Cargo, uv/pip, Maven/Gradle, Xcode, Homebrew) sorted by size, resolving symlinks and flagging broken links. Supports `--all`, `--json`, and `--paths-only` |
 | `//tools/remote:setup` | Opt-in build caching / RBE bootstrap — writes `user.bazelrc` for BuildBuddy or any REAPI provider. See [build cache](../guides/build-cache.md) / [remote build](../guides/remote-build.md) |
 
 ## Checks (run locally what CI gates)
@@ -81,7 +82,7 @@ mindmap
 | Target | Gate |
 |---|---|
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
-| `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
+| `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, `packages/README.md` index freshness, visibility firewall, nightly-sweep pairing |
 | `//tools/conformance:workflow-labels` | Every Bazel label a workflow or composite action runs resolves (runs in tidy-check) |
 | `//tools/secret-scan` | `secret-scan`: CI's gitleaks version and `.gitleaks.toml` over this branch's commits (`--staged`, `--range a..b`, `--unpushed`). Names file and line, never the secret |
 | `//tools/ci:actionlint` | `actionlint`: the pinned actionlint with shellcheck over `.github/workflows`, then the commit-SHA pin check |
@@ -89,7 +90,9 @@ mindmap
 | `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
 
 | `//tools/lint-naming` | Monorepo naming convention audit (`--check`, `--root <path>`). Validates file casing, test suffixes, and rule boundaries across all languages |
+| `//tools/dupcheck` | Detects added code duplicating `packages/` (`--diff <base>...<head> [--strict] [--allow <glob>]`) and reproduces the duplicated helper-family table (`--families [--ref <commit>]`) |
 | `//tools/owners` | Validates and compiles per-subtree `OWNERS` files into `.github/CODEOWNERS` (`--check`, `--validate-only`, `--coverage-check`) |
+| `//tools/packages-index` | Generates (`--write`) and drift-checks (`--check`, also enforced by `//tools/conformance:check`) the `packages/README.md` package index from `packages/**/catalog-info.yaml` |
 | `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
 | `//tools/npm-publish-audit:check` | Verifies against the npm registry that packages claimed published by CI actually exist |
 | `//tools/registry-trust:inventory` | Lists every package we publish, its registry, mirror, workflow and environment, read from release-please |

@@ -50,7 +50,9 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case transcribeVoiceNote
         /// Speaks the message aloud via Vitruvian Speaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
         case readAloud
-        /// A line that only says something ("Sent at 14:02"), always greyed.
+        /// Groups secondary message actions into a "More" submenu.
+        case more
+        /// A line that only says something ("Sent 14:02"), always greyed.
         case info
     }
 
@@ -81,16 +83,16 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
     public var id: String { "\(command)|\(title)" }
 }
 
-/// What a message's menu shows (02 §3.4.2, the 4.4 subset), in at most five sections a divider apart. Only what
-/// applies to the message is in it, and an empty section is left out:
+/// What a message's menu shows (02 §3.4.2, trimmed top level with secondary items in a "More" submenu), in at most
+/// five sections a divider apart. Only what applies to the message is in it, and an empty section is left out:
 ///   1. Reply… (⌘R) or Reply in Thread…; Reply Privately… (others' messages in a group); Show Replies (⌘↓, on a
 ///      thread's root); React…; Edit… (⌘T)
-///   2. Copy (⌘C), Copy with Timestamp; Insert as Draft (others' messages); Open Link (⌘⇧H); Forward… (⌘⇧F)
-///   3. Bookmark / Remove Bookmark; Mark as Unread ("From this message. On this Mac only."); Mark as played; Read
-///      Aloud; Transcribe (voice notes); Translate; Edit History (when edited)
-///   4. What can't be taken back or is about the message itself: Unsend; Delete for Me… (or "Delete from This Mac
-///      and Your Phone…"); Report a Problem…; Copy Message Details
-///   5. greyed lines: "Sent at …" or "Received at …", and "Disappears in …"
+///   2. Copy (⌘C); Forward… (⌘⇧F)
+///   3. Bookmark / Remove Bookmark; Mark as Unread ("From this message. On this Mac only."); Mark as played;
+///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Read Aloud, Transcribe, Translate, Translate Into…,
+///      Edit History, Report a Problem…, Copy Message Details)
+///   4. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
+///   5. greyed lines: "Sent …" or "Received …", and "Disappears in …"
 /// An action the chat shows greyed is there, off, with why (`Unavailable.reason`).
 public enum MessageMenu {
     /// - Parameters:
@@ -131,13 +133,13 @@ public enum MessageMenu {
         replying += [item(.react), item(.edit)].compactMap { $0 }
 
         // 2. Taking the message somewhere else.
-        let sharing = [item(.copy), item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink),
-                       item(.forward)].compactMap { $0 }
+        let sharing = [item(.copy), item(.forward)].compactMap { $0 }
 
-        // 3. Doing something with the message.
+        // 3. Doing something with the message (plus secondary actions tucked into "More").
         var using = [item(.bookmark), item(.removeBookmark), item(.markUnread), item(.markAsPlayed)].compactMap { $0 }
+        var moreItems = [item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink)].compactMap { $0 }
         if canReadAloud {
-            using.append(
+            moreItems.append(
                 MessageMenuItem(
                     command: .readAloud,
                     title: isReadingAloud ? String(localized: "Reading Aloud…") : String(localized: "Read Aloud"),
@@ -152,7 +154,7 @@ public enum MessageMenu {
            !message.showsMediaRemovedPlaceholder,
            message.statusLine?.hasGone ?? true
         {
-            using.append(
+            moreItems.append(
                 MessageMenuItem(
                     command: .transcribeVoiceNote,
                     title: String(localized: "Transcribe"),
@@ -168,7 +170,7 @@ public enum MessageMenu {
            !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, message.kind != .deleted
         {
             let translateHelp = isAIAvailable ? nil : String(localized: "Set up AI in Settings")
-            using.append(
+            moreItems.append(
                 MessageMenuItem(
                     command: .translate,
                     title: String(localized: "Translate"),
@@ -188,7 +190,7 @@ public enum MessageMenu {
                         help: translateHelp
                     )
                 }
-                using.append(
+                moreItems.append(
                     MessageMenuItem(
                         command: .translate,
                         title: String(localized: "Translate Into…"),
@@ -200,24 +202,36 @@ public enum MessageMenu {
                 )
             }
         }
-        using += [item(.showHistory)].compactMap { $0 }
-
-        // 4. Removing it, and reporting on it.
-        var removing = [item(.unsend), item(.deleteForMe)].compactMap { $0 }
+        moreItems += [item(.showHistory)].compactMap { $0 }
         if diagnosable {
-            removing.append(MessageMenuItem(command: .reportProblem, title: String(localized: "Report a Problem…"),
-                                            key: nil, isEnabled: true, help: nil))
-            removing.append(MessageMenuItem(command: .copyMessageDetails,
-                                            title: String(localized: "Copy Message Details"),
-                                            key: nil, isEnabled: true, help: nil))
+            moreItems.append(MessageMenuItem(command: .reportProblem, title: String(localized: "Report a Problem…"),
+                                             key: nil, isEnabled: true, help: nil))
+            moreItems.append(MessageMenuItem(command: .copyMessageDetails,
+                                             title: String(localized: "Copy Message Details"),
+                                             key: nil, isEnabled: true, help: nil))
         }
+        if !moreItems.isEmpty {
+            using.append(
+                MessageMenuItem(
+                    command: .more,
+                    title: String(localized: "More"),
+                    key: nil,
+                    isEnabled: true,
+                    help: nil,
+                    children: moreItems
+                )
+            )
+        }
+
+        // 4. Removing it.
+        let removing = [item(.unsend), item(.deleteForMe)].compactMap { $0 }
 
         // 5. Lines that only say something.
         var info: [MessageMenuItem] = []
         // A message not yet sent has no time it was sent at.
         if message.statusLine?.hasGone ?? true {
             let when = time(Date(timeIntervalSince1970: Double(message.ts) / 1000))
-            let line = message.mine ? String(localized: "Sent at \(when)") : String(localized: "Received at \(when)")
+            let line = message.mine ? String(localized: "Sent \(when)") : String(localized: "Received \(when)")
             info.append(MessageMenuItem(command: .info, title: line, key: nil, isEnabled: false, help: nil))
         }
         if let disappearsIn {

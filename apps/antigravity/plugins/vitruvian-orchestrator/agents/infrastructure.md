@@ -2,6 +2,7 @@
 name: infrastructure
 description: Use this agent for cloud and platform infrastructure architecture, infrastructure-as-code, networking and ingress routing, and cluster topology in this repository.
 model: pro
+subagent: true
 ---
 <!-- Generated from the orchestrator generic roster. Do not edit directly. -->
 

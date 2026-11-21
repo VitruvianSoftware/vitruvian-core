@@ -65,6 +65,17 @@ rust_test(
     visibility = ["//visibility:public"],
 )
 
+rust_test(
+    name = "cli_output_parity_test",
+    size = "small",
+    srcs = ["tests/cli_output_parity.rs"],
+    data = [":sdk-codegen"],
+    edition = "2021",
+    env = {"SDK_CODEGEN_BIN": "$(rootpath :sdk-codegen)"},
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
+
 test_suite(
     name = "in_sync_test",
     tests = [":sdk_codegen_lib_test"],
@@ -73,6 +84,9 @@ test_suite(
 
 test_suite(
     name = "sdk_codegen_test",
-    tests = [":sdk_codegen_lib_test"],
+    tests = [
+        ":cli_output_parity_test",
+        ":sdk_codegen_lib_test",
+    ],
     visibility = ["//visibility:public"],
 )

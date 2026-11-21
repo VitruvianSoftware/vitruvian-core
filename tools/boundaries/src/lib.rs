@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn layer_packages_prefix() {
         assert_eq!(
-            resolve_target_layer("packages/design-system", &[]),
+            resolve_target_layer("packages/design-system/web", &[]),
             (LAYER_SHARED_PACKAGES, String::new())
         );
     }

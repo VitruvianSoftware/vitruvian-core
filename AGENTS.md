@@ -127,6 +127,27 @@ your checkout. Previews are always fine; applies are not.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
 - macOS app (vitruvian-code): `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode`.
 
+## Reuse before writing
+Before writing a helper or library, look in this order:
+
+1. **Our own packages:** search Backstage through its MCP server if you have it, otherwise
+   read [`packages/README.md`](packages/README.md).
+2. **A third-party library the repo already depends on:** check `MODULE.bazel`, `Cargo.toml`,
+   the `package.json` files and `go.mod`.
+3. **A new third-party library:** pick one that is well known, actively maintained and widely
+   used, with a compatible license, that passes `bazel run //tools/osv-scan`. Add it as the
+   one version for its ecosystem (see "One Version Rule" and the dependency steps below).
+4. **New code:** write it only when none of those fits.
+
+Code used by two or more products goes in `packages/`: one folder per package named for what
+it does, with a `README.md` and `catalog-info.yaml` (see
+[the shared-packages design](docs/superpowers/specs/2026-11-20-shared-packages-convention.md)).
+Code shared inside one product stays in that product. No `utils`, `common`, `misc` or
+`shared` packages.
+
+Why our packages come first: a new dependency costs the one-version rule, license checks,
+vulnerability scans and lockfile upkeep, and our packages already passed those.
+
 ## Repo and dev operations go through Bazel targets
 **Use these targets for every git write.** Raw git writes (`git commit`, `git push`,
 `git rebase`, `git worktree add/remove`, `git stash`, …) are blocked by agent-guard
@@ -183,11 +204,19 @@ every checkout and worktree is guarded with nothing to install: `.claude/setting
 `.agents/hooks.json` run `tools/agent-guard/hook.sh`, which runs the guard **as it is on
 `origin/main`**. You may change the guard's source (`tools/agent-guard/src/`) and `policy.json` like
 any code (your edit takes effect once merged); you may not change those two hook files or `hook.sh`, which take effect
-before review: that is James's call. **A pull request that changes agent-guard's rules cannot
-merge until James approves it on GitHub:** anything under `tools/agent-guard/`, the hook wiring
-(`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`), or
-the ruleset that enforces this (`infrastructure/pulumi/platform/repo-config/guard_review.go`,
-its `main.go`, `Pulumi.yaml`, `Pulumi.dev.yaml`). Any later push makes his approval stale. Open the
+before review: that is James's call. **Some pull requests cannot merge until James approves them on GitHub.** That covers anything that
+changes agent-guard's rules, what CI runs with the repository's secrets, or the rule itself:
+`tools/agent-guard/**`; the hook wiring (`.claude/settings*.json`, `.claude/*.sh`,
+`.agents/hooks.json`); what a session runs at start (`tools/cloud-bootstrap/cloud-bootstrap.sh`,
+`tools/cloud-bootstrap/src/cloud_bootstrap/**`, `tools/cloud-bootstrap/profiles.tsv`,
+`tools/remote/src/**`); **every CI workflow and local action** (`.github/workflows/**`,
+`.github/actions/**`); the tailnet access policy (`gitops/argocd/platform/headscale/**`); and the
+ruleset that enforces this (`infrastructure/pulumi/platform/repo-config/guard_review.go`,
+`infrastructure/pulumi/platform/repo-config/main.go`,
+`infrastructure/pulumi/platform/repo-config/release_tags.go`,
+`infrastructure/pulumi/platform/repo-config/Pulumi*.yaml`). The list in `guard_review.go` is the
+source of truth, and `//tools/conformance` fails if this guide misses one. A scout or other agent
+approval does not count for these files. Any later push makes his approval stale. Open the
 PR, say why in its description, and wait; never approve it yourself as `ipv1337`. Other PRs are
 unaffected. See "Who may do what" in the agent-guard README. `bazel run //tools/agent-guard:install -- --check` shows
 whether the wiring works. Sessions started outside the repo are covered by a one-time per-user

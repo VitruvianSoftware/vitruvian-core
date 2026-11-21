@@ -62,20 +62,27 @@ import { fileURLToPath } from "node:url";
 
 import {
   agentRoleMap,
+  applyAgentModels,
   board as boardView,
   channels as channelsView,
   checkBoardChannel,
   initialFlow,
   isValidWorktree,
+  MAX_AGENT_FILE_BYTES,
   MAX_TEAM_FILE_BYTES,
   parseTeam,
+  planTeamSync,
   reduce,
   remaining,
+  renderStarterTeam,
   resolveTeam,
+  starterAgentFile,
+  TEAM_AGENT_DIRS,
   VALID_PHASES,
   VALID_TIERS,
   validateChannelAction,
   validatePostChannel,
+  validateStarterAgents,
   validateTeamEvent,
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
 import { TIER_DEFAULTS } from "../sidecars/panel/lib/tier-defaults.mjs";
@@ -305,7 +312,7 @@ export const TOOLS = Object.freeze([
   Object.freeze({
     name: "team",
     description:
-      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, model overrides, and project notes (read-only).",
+      "Read and resolve the repository's optional .agents/team.json role-to-agent mapping, engines (always native on Antigravity with Antigravity tier defaults), model overrides, and project notes (read-only).",
     inputSchema: {
       type: "object",
       properties: {
@@ -319,6 +326,39 @@ export const TOOLS = Object.freeze([
     },
     annotations: {
       readOnlyHint: true,
+    },
+  }),
+  Object.freeze({
+    name: "team_setup",
+    description:
+      "Initialize a starter .agents/team.json (and optional team-<role> starter agents) or sync explicit team.json harness model settings into repository agent files.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["init", "sync"],
+          description: "Setup action: init or sync.",
+        },
+        root: {
+          type: "string",
+          description:
+            "Optional absolute path to the repository root directory.",
+        },
+        agents: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional non-lead role names to copy as editable team-<role> starter agents during init.",
+        },
+        check: {
+          type: "boolean",
+          description:
+            "When true, check and report changes without writing any files.",
+        },
+      },
+      required: ["action"],
+      additionalProperties: false,
     },
   }),
 ]);
@@ -487,12 +527,1000 @@ export function resolveWorkspaceRoot(meta = {}, options = {}) {
 function isPathInsideRealRoot(realRoot, realTarget) {
   const rel = relative(realRoot, realTarget);
   return (
+    rel.length > 0 &&
     rel !== ".." &&
     !rel.startsWith(`..${sep}`) &&
     !rel.startsWith("../") &&
     !rel.startsWith("..\\") &&
     !isAbsolute(rel)
   );
+}
+
+const DEFAULT_PLUGIN_AGENTS_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "agents",
+);
+
+function inspectRepoPath(root, realRoot, segments) {
+  let cur = root;
+  const components = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    cur = join(cur, segments[i]);
+    const isLast = i === segments.length - 1;
+    let lst;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch (err) {
+      const code = err && typeof err === "object" ? err.code : undefined;
+      if (code === "ENOENT") {
+        return { status: "absent", existingComponents: components };
+      }
+      if (code === "ENOTDIR") {
+        const parentLabel =
+          i > 0 ? segments.slice(0, i).join("/") : segments[0];
+        return {
+          status: "error",
+          reason: "parent-not-directory",
+          error: `ENOTDIR: ${parentLabel} is not a directory`,
+        };
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      return { status: "error", reason: "stat-error", error: msg };
+    }
+
+    if (lst.isSymbolicLink()) {
+      return {
+        status: "symlink",
+        reason: "symlink",
+        error: `${segments.slice(0, i + 1).join("/")} is a symlink`,
+      };
+    }
+
+    let realCur;
+    try {
+      realCur = fs.realpathSync(cur);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { status: "error", reason: "realpath-error", error: msg };
+    }
+    if (!isPathInsideRealRoot(realRoot, realCur)) {
+      return {
+        status: "outside-root",
+        reason: "outside-root",
+        error: `${segments.slice(0, i + 1).join("/")} resolves outside root`,
+      };
+    }
+
+    components.push({
+      path: cur,
+      segment: segments[i],
+      relPath: segments.slice(0, i + 1).join("/"),
+      dev: lst.dev,
+      ino: lst.ino,
+      realPath: realCur,
+    });
+
+    if (!isLast) {
+      if (!lst.isDirectory()) {
+        return {
+          status: "error",
+          reason: "parent-not-directory",
+          error: `${segments.slice(0, i + 1).join("/")} is not a directory`,
+        };
+      }
+    } else {
+      if (!lst.isFile()) {
+        return {
+          status: "not-a-file",
+          reason: "not-a-file",
+          error: `${segments.join("/")} is not a regular file`,
+        };
+      }
+      if (lst.nlink > 1) {
+        return {
+          status: "hardlink",
+          reason: "hardlink",
+          error: `${segments.join("/")} is a hardlink`,
+        };
+      }
+      return {
+        status: "file",
+        path: cur,
+        realPath: realCur,
+        size: lst.size,
+        dev: lst.dev,
+        ino: lst.ino,
+        components,
+      };
+    }
+  }
+  return { status: "error", reason: "invalid-path", error: "empty path" };
+}
+
+function readBoundedFileNoFollow(filePath, maxBytes, label) {
+  const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
+  let fd;
+  try {
+    fd = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ELOOP") {
+      return { ok: false, reason: "symlink", error: `${label} is a symlink` };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: "read-error",
+      error: `failed to read ${label}: ${msg}`,
+    };
+  }
+
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) {
+      return {
+        ok: false,
+        reason: "not-a-file",
+        error: `${label} is not a regular file`,
+      };
+    }
+    if (st.nlink > 1) {
+      return {
+        ok: false,
+        reason: "hardlink",
+        error: `${label} is a hardlink`,
+      };
+    }
+    if (st.size > maxBytes) {
+      return {
+        ok: false,
+        reason: "too-large",
+        error: `${label} exceeds maximum size of ${maxBytes} bytes`,
+      };
+    }
+    const chunks = [];
+    let totalBytes = 0;
+    const buf = Buffer.allocUnsafe(8192);
+    while (true) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n === 0) break;
+      totalBytes += n;
+      if (totalBytes > maxBytes) {
+        return {
+          ok: false,
+          reason: "too-large",
+          error: `${label} exceeds maximum size of ${maxBytes} bytes`,
+        };
+      }
+      chunks.push(Buffer.from(buf.subarray(0, n)));
+    }
+    return {
+      ok: true,
+      text: Buffer.concat(chunks, totalBytes).toString("utf8"),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: "read-error",
+      error: `failed to read ${label}: ${msg}`,
+    };
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // Ignore close error.
+    }
+  }
+}
+
+function verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap) {
+  try {
+    const curRootLst = fs.lstatSync(root);
+    if (curRootLst.dev !== rootSnap.dev || curRootLst.ino !== rootSnap.ino) {
+      return false;
+    }
+    const curRealRoot = fs.realpathSync(root);
+    if (curRealRoot !== realRoot) {
+      return false;
+    }
+    const curRealRootLst = fs.lstatSync(realRoot);
+    return (
+      curRealRootLst.isDirectory() &&
+      curRealRootLst.dev === realRootSnap.dev &&
+      curRealRootLst.ino === realRootSnap.ino
+    );
+  } catch {
+    return false;
+  }
+}
+
+function recordInitDirSnapshot(expectedDirs, segments, existingComponents) {
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const relDir = segments.slice(0, i + 1).join("/");
+    if (i < existingComponents.length) {
+      const comp = existingComponents[i];
+      const prev = expectedDirs.get(relDir);
+      if (prev === null) {
+        return {
+          ok: false,
+          error: `${relDir} changed before write (changed-during-sync)`,
+        };
+      }
+      if (
+        prev &&
+        (prev.dev !== comp.dev ||
+          prev.ino !== comp.ino ||
+          prev.realPath !== comp.realPath)
+      ) {
+        return {
+          ok: false,
+          error: `${relDir} changed before write (changed-during-sync)`,
+        };
+      }
+      if (!prev) {
+        expectedDirs.set(relDir, {
+          dev: comp.dev,
+          ino: comp.ino,
+          realPath: comp.realPath,
+        });
+      }
+    } else {
+      if (expectedDirs.has(relDir) && expectedDirs.get(relDir) !== null) {
+        return {
+          ok: false,
+          error: `${relDir} changed before write (changed-during-sync)`,
+        };
+      }
+      expectedDirs.set(relDir, null);
+    }
+  }
+  return { ok: true };
+}
+
+function ensureDirInsideRootChecked(
+  root,
+  realRoot,
+  rootSnap,
+  realRootSnap,
+  dirSegments,
+  expectedDirs,
+) {
+  if (!verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap)) {
+    throw new Error("root changed before write (changed-during-sync)");
+  }
+  let cur = root;
+  for (let i = 0; i < dirSegments.length; i += 1) {
+    cur = join(cur, dirSegments[i]);
+    const relDir = dirSegments.slice(0, i + 1).join("/");
+    const expected = expectedDirs.get(relDir);
+    let lst;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch (err) {
+      const code = err && typeof err === "object" ? err.code : undefined;
+      if (code === "ENOENT") {
+        if (expected !== null && expected !== undefined) {
+          throw new Error(
+            `${relDir} disappeared before write (changed-during-sync)`,
+          );
+        }
+        fs.mkdirSync(cur);
+        lst = fs.lstatSync(cur);
+        if (lst.isSymbolicLink()) {
+          throw new Error(`${relDir} is a symlink (changed-during-sync)`);
+        }
+        if (!lst.isDirectory()) {
+          throw new Error(`${relDir} is not a directory (changed-during-sync)`);
+        }
+        const createdRealCur = fs.realpathSync(cur);
+        if (!isPathInsideRealRoot(realRoot, createdRealCur)) {
+          throw new Error(
+            `${relDir} resolves outside root (changed-during-sync)`,
+          );
+        }
+        expectedDirs.set(relDir, {
+          dev: lst.dev,
+          ino: lst.ino,
+          realPath: createdRealCur,
+        });
+        continue;
+      }
+      throw err;
+    }
+    if (lst.isSymbolicLink()) {
+      throw new Error(`${relDir} is a symlink (changed-during-sync)`);
+    }
+    if (!lst.isDirectory()) {
+      throw new Error(`${relDir} is not a directory (changed-during-sync)`);
+    }
+    const realCur = fs.realpathSync(cur);
+    if (!isPathInsideRealRoot(realRoot, realCur)) {
+      throw new Error(`${relDir} resolves outside root (changed-during-sync)`);
+    }
+    if (expected === null) {
+      throw new Error(`${relDir} appeared before write (changed-during-sync)`);
+    }
+    if (
+      expected &&
+      (lst.dev !== expected.dev ||
+        lst.ino !== expected.ino ||
+        realCur !== expected.realPath)
+    ) {
+      throw new Error(`${relDir} changed before write (changed-during-sync)`);
+    }
+  }
+}
+
+function verifyCreatedFileUnchanged(
+  root,
+  realRoot,
+  rootSnap,
+  realRootSnap,
+  expectedDirs,
+  item,
+) {
+  if (!verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap)) {
+    return false;
+  }
+  let cur = root;
+  for (let i = 0; i < item.segments.length - 1; i += 1) {
+    cur = join(cur, item.segments[i]);
+    const relDir = item.segments.slice(0, i + 1).join("/");
+    const expected = expectedDirs.get(relDir);
+    if (!expected) {
+      return false;
+    }
+    try {
+      const lst = fs.lstatSync(cur);
+      if (
+        lst.isSymbolicLink() ||
+        !lst.isDirectory() ||
+        lst.dev !== expected.dev ||
+        lst.ino !== expected.ino
+      ) {
+        return false;
+      }
+      const realCur = fs.realpathSync(cur);
+      if (
+        realCur !== expected.realPath ||
+        !isPathInsideRealRoot(realRoot, realCur)
+      ) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const fileLst = fs.lstatSync(item.path);
+    if (
+      fileLst.isSymbolicLink() ||
+      !fileLst.isFile() ||
+      fileLst.dev !== item.dev ||
+      fileLst.ino !== item.ino
+    ) {
+      return false;
+    }
+    const realFile = fs.realpathSync(item.path);
+    return isPathInsideRealRoot(realRoot, realFile);
+  } catch {
+    return false;
+  }
+}
+
+function writeNewFileNoFollow(
+  root,
+  realRoot,
+  rootSnap,
+  realRootSnap,
+  segments,
+  text,
+  expectedDirs,
+  beforeWriteHook = null,
+) {
+  if (beforeWriteHook) {
+    beforeWriteHook({
+      action: "init",
+      path: segments.join("/"),
+      segments: [...segments],
+      root,
+      realRoot,
+    });
+  }
+  ensureDirInsideRootChecked(
+    root,
+    realRoot,
+    rootSnap,
+    realRootSnap,
+    segments.slice(0, -1),
+    expectedDirs,
+  );
+  const targetPath = join(root, ...segments);
+  let preLst = null;
+  try {
+    preLst = fs.lstatSync(targetPath);
+  } catch (err) {
+    if (!err || typeof err !== "object" || err.code !== "ENOENT") {
+      throw err;
+    }
+  }
+  if (preLst !== null) {
+    const why =
+      preLst.nlink > 1
+        ? "is a hardlink"
+        : preLst.isSymbolicLink()
+          ? "is a symlink"
+          : "appeared before write";
+    throw new Error(`${segments.join("/")} ${why} (changed-during-sync)`);
+  }
+  const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
+  const fd = fs.openSync(
+    targetPath,
+    fs.constants.O_WRONLY |
+      fs.constants.O_CREAT |
+      fs.constants.O_EXCL |
+      noFollow,
+    0o644,
+  );
+  let completed = false;
+  let fdStat = null;
+  try {
+    fdStat = fs.fstatSync(fd);
+    if (!fdStat.isFile() || fdStat.nlink !== 1) {
+      throw new Error(
+        `${segments.join("/")} changed before write (changed-during-sync)`,
+      );
+    }
+    const buf = Buffer.from(text, "utf8");
+    let written = 0;
+    while (written < buf.length) {
+      written += fs.writeSync(fd, buf, written, buf.length - written);
+    }
+    completed = true;
+    return {
+      path: targetPath,
+      segments: [...segments],
+      dev: fdStat.dev,
+      ino: fdStat.ino,
+    };
+  } finally {
+    fs.closeSync(fd);
+    if (!completed) {
+      const canUnlink =
+        fdStat &&
+        verifyCreatedFileUnchanged(
+          root,
+          realRoot,
+          rootSnap,
+          realRootSnap,
+          expectedDirs,
+          {
+            path: targetPath,
+            segments: [...segments],
+            dev: fdStat.dev,
+            ino: fdStat.ino,
+          },
+        );
+      if (canUnlink) {
+        try {
+          fs.unlinkSync(targetPath);
+        } catch {
+          // Best-effort cleanup of partial new file.
+        }
+      }
+    }
+  }
+}
+
+function verifySyncTargetUnchanged(root, realRoot, rootSnap, realRootSnap, op) {
+  if (!verifyRootUnchanged(root, realRoot, rootSnap, realRootSnap)) {
+    return { ok: false, reason: "changed-during-sync" };
+  }
+  let cur = root;
+  for (let i = 0; i < op.segments.length; i += 1) {
+    cur = join(cur, op.segments[i]);
+    const isLast = i === op.segments.length - 1;
+    const expected = op.components[i];
+    if (!expected) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    let lst;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (lst.isSymbolicLink()) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (lst.dev !== expected.dev || lst.ino !== expected.ino) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    let realCur;
+    try {
+      realCur = fs.realpathSync(cur);
+    } catch {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (
+      realCur !== expected.realPath ||
+      !isPathInsideRealRoot(realRoot, realCur)
+    ) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (!isLast) {
+      if (!lst.isDirectory()) {
+        return { ok: false, reason: "changed-during-sync" };
+      }
+    } else {
+      if (!lst.isFile()) {
+        return { ok: false, reason: "changed-during-sync" };
+      }
+      if (lst.nlink > 1) {
+        return { ok: false, reason: "hardlink" };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+function overwriteFileNoFollow(filePath, text, expectedFileStat = null) {
+  const noFollow = fs.constants?.O_NOFOLLOW ?? 0;
+  let fd;
+  try {
+    fd = fs.openSync(filePath, fs.constants.O_WRONLY | noFollow);
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    throw err;
+  }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    if (st.nlink > 1) {
+      return { ok: false, reason: "hardlink" };
+    }
+    if (
+      expectedFileStat &&
+      (st.dev !== expectedFileStat.dev || st.ino !== expectedFileStat.ino)
+    ) {
+      return { ok: false, reason: "changed-during-sync" };
+    }
+    fs.ftruncateSync(fd, 0);
+    const buf = Buffer.from(text, "utf8");
+    let written = 0;
+    while (written < buf.length) {
+      written += fs.writeSync(fd, buf, written, buf.length - written, written);
+    }
+    return { ok: true };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Executes `team_setup` (`init` or `sync`) for Antigravity, enforcing explicit
+ * `root`, symlink and hardlink refusal, realpath containment, and TOCTOU rechecks.
+ *
+ * @param {Record<string, any>} args
+ * @param {{ meta?: Record<string, any>, cwd?: string, workspaceUri?: string, flowsDir?: string, brainRoots?: string[], pluginAgentsDir?: string, _beforeWrite?: (ctx: Record<string, any>) => void }} [options]
+ */
+export function runTeamSetup(args = {}, options = {}) {
+  const inp = args && typeof args === "object" ? args : {};
+  const action = typeof inp.action === "string" ? inp.action.trim() : "";
+  if (action !== "init" && action !== "sync") {
+    return { ok: false, error: 'action must be "init" or "sync"' };
+  }
+  if (inp.check !== undefined && typeof inp.check !== "boolean") {
+    return { ok: false, error: "check must be a boolean" };
+  }
+  const check = inp.check === true;
+  const beforeWriteHook =
+    typeof options._beforeWrite === "function" ? options._beforeWrite : null;
+
+  const hasRoot =
+    Object.prototype.hasOwnProperty.call(inp, "root") && inp.root !== undefined;
+  const rawRoot = hasRoot
+    ? inp.root
+    : resolveRepoRoot(resolveWorkspaceRoot(options.meta ?? {}, options));
+  const rootCheck = validateExplicitRoot(rawRoot);
+  if (!rootCheck.ok) {
+    return { ok: false, error: rootCheck.error };
+  }
+  const root = rootCheck.root.replace(/\/+$/, "") || "/";
+  let realRoot;
+  let rootSnap;
+  let realRootSnap;
+  try {
+    rootSnap = fs.lstatSync(root);
+    realRoot = fs.realpathSync(root);
+    realRootSnap = fs.lstatSync(realRoot);
+  } catch {
+    return { ok: false, error: INVALID_ROOT_ERROR };
+  }
+
+  if (action === "init") {
+    const starterCheck = validateStarterAgents(inp.agents);
+    if (!starterCheck.ok) {
+      return { ok: false, error: starterCheck.error };
+    }
+    const starterRoles = starterCheck.roles;
+
+    const expectedDirs = new Map();
+    const teamInspect = inspectRepoPath(root, realRoot, [
+      ".agents",
+      "team.json",
+    ]);
+    if (teamInspect.status !== "absent") {
+      return {
+        ok: false,
+        error:
+          teamInspect.status === "file"
+            ? ".agents/team.json already exists"
+            : teamInspect.error || ".agents/team.json cannot be created",
+      };
+    }
+    const teamSnap = recordInitDirSnapshot(
+      expectedDirs,
+      [".agents", "team.json"],
+      teamInspect.existingComponents,
+    );
+    if (!teamSnap.ok) {
+      return { ok: false, error: teamSnap.error };
+    }
+
+    const callingHarness = "antigravity";
+    const pluginAgentsDir =
+      options.pluginAgentsDir || DEFAULT_PLUGIN_AGENTS_DIR;
+    const agentDirs = TEAM_AGENT_DIRS[callingHarness];
+    /** @type {Array<{ segments: string[], relPath: string, text: string, role: string, agent: string }>} */
+    const plannedAgents = [];
+
+    for (const role of starterRoles) {
+      const agentName = `team-${role}`;
+      const segments = [...agentDirs, `${agentName}.md`];
+      const relPath = segments.join("/");
+      const targetInspect = inspectRepoPath(root, realRoot, segments);
+      if (targetInspect.status !== "absent") {
+        return {
+          ok: false,
+          error:
+            targetInspect.status === "file"
+              ? `${relPath} already exists`
+              : targetInspect.error || `${relPath} cannot be created`,
+        };
+      }
+      const targetSnap = recordInitDirSnapshot(
+        expectedDirs,
+        segments,
+        targetInspect.existingComponents,
+      );
+      if (!targetSnap.ok) {
+        return { ok: false, error: targetSnap.error };
+      }
+      const templatePath = join(pluginAgentsDir, `${role}.md`);
+      let templateText;
+      try {
+        const st = fs.statSync(templatePath);
+        if (!st.isFile() || st.size > MAX_AGENT_FILE_BYTES) {
+          return {
+            ok: false,
+            error: `plugin starter template agents/${role}.md is invalid`,
+          };
+        }
+        templateText = fs.readFileSync(templatePath, "utf8");
+        if (Buffer.byteLength(templateText, "utf8") > MAX_AGENT_FILE_BYTES) {
+          return {
+            ok: false,
+            error: `plugin starter template agents/${role}.md is invalid`,
+          };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `failed to read plugin template agents/${role}.md: ${msg}`,
+        };
+      }
+      plannedAgents.push({
+        segments,
+        relPath,
+        text: starterAgentFile(templateText, role),
+        role,
+        agent: agentName,
+      });
+    }
+
+    const teamText = renderStarterTeam(starterRoles);
+    if (!check) {
+      const createdFiles = [];
+      try {
+        for (const item of plannedAgents) {
+          createdFiles.push(
+            writeNewFileNoFollow(
+              root,
+              realRoot,
+              rootSnap,
+              realRootSnap,
+              item.segments,
+              item.text,
+              expectedDirs,
+              beforeWriteHook,
+            ),
+          );
+        }
+        createdFiles.push(
+          writeNewFileNoFollow(
+            root,
+            realRoot,
+            rootSnap,
+            realRootSnap,
+            [".agents", "team.json"],
+            teamText,
+            expectedDirs,
+            beforeWriteHook,
+          ),
+        );
+      } catch (err) {
+        const cleanupErrors = [];
+        for (let i = createdFiles.length - 1; i >= 0; i -= 1) {
+          const created = createdFiles[i];
+          if (!created) continue;
+          if (
+            !verifyCreatedFileUnchanged(
+              root,
+              realRoot,
+              rootSnap,
+              realRootSnap,
+              expectedDirs,
+              created,
+            )
+          ) {
+            cleanupErrors.push(`${created.path}: path changed before rollback`);
+            continue;
+          }
+          try {
+            fs.unlinkSync(created.path);
+          } catch (rmErr) {
+            const rmMsg =
+              rmErr instanceof Error ? rmErr.message : String(rmErr);
+            cleanupErrors.push(`${created.path}: ${rmMsg}`);
+          }
+        }
+        const rollbackNote =
+          cleanupErrors.length > 0
+            ? `; rollback errors: ${cleanupErrors.join("; ")}`
+            : "";
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `failed to write starter files: ${msg}${rollbackNote}`,
+        };
+      }
+    }
+
+    const files = [
+      ...plannedAgents.map((item) => ({
+        path: item.relPath,
+        harness: callingHarness,
+        role: item.role,
+        agent: item.agent,
+        status: "created",
+        reason: null,
+      })),
+      { path: ".agents/team.json", status: "created", reason: null },
+    ];
+    return {
+      ok: true,
+      result: { action: "init", root, check, files },
+    };
+  }
+
+  // action === "sync"
+  const teamInspect = inspectRepoPath(root, realRoot, [".agents", "team.json"]);
+  if (teamInspect.status === "absent") {
+    return { ok: false, error: ".agents/team.json does not exist" };
+  }
+  if (teamInspect.status !== "file") {
+    return {
+      ok: false,
+      error: teamInspect.error || ".agents/team.json cannot be read",
+    };
+  }
+  if (teamInspect.size > MAX_TEAM_FILE_BYTES) {
+    return {
+      ok: false,
+      error: `.agents/team.json exceeds maximum size of ${MAX_TEAM_FILE_BYTES} bytes (64 KiB)`,
+    };
+  }
+  const teamRead = readBoundedFileNoFollow(
+    teamInspect.realPath,
+    MAX_TEAM_FILE_BYTES,
+    ".agents/team.json",
+  );
+  if (!teamRead.ok) {
+    return { ok: false, error: teamRead.error };
+  }
+  const parsed = parseTeam(teamRead.text);
+  if (parsed.errors.length > 0 || !parsed.team) {
+    const firstErr = parsed.errors[0];
+    return {
+      ok: false,
+      error:
+        parsed.errors.length === 1 &&
+        typeof firstErr === "string" &&
+        firstErr.startsWith("invalid JSON:")
+          ? firstErr
+          : `invalid .agents/team.json: ${parsed.errors.join("; ")}`,
+    };
+  }
+
+  const targets = planTeamSync(parsed.team);
+  const files = [];
+  const plannedWrites = [];
+
+  for (const target of targets) {
+    const inspected = inspectRepoPath(root, realRoot, target.segments);
+    if (inspected.status === "error") {
+      return { ok: false, error: inspected.error };
+    }
+    if (inspected.status === "absent") {
+      continue;
+    }
+    if (inspected.status !== "file") {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: inspected.reason,
+      });
+      continue;
+    }
+    if (target.conflict) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: target.reason,
+      });
+      continue;
+    }
+    if (inspected.size > MAX_AGENT_FILE_BYTES) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: "too-large",
+      });
+      continue;
+    }
+
+    const fileRead = readBoundedFileNoFollow(
+      inspected.realPath,
+      MAX_AGENT_FILE_BYTES,
+      target.path,
+    );
+    if (!fileRead.ok) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: fileRead.reason,
+      });
+      continue;
+    }
+
+    const applied = applyAgentModels(fileRead.text, target.harness, {
+      model: target.model,
+      effort: target.effort,
+    });
+    if (applied.reason !== null) {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "skipped",
+        reason: applied.reason,
+      });
+      continue;
+    }
+    if (applied.changed) {
+      const fileIndex = files.length;
+      plannedWrites.push({
+        path: inspected.path,
+        realPath: inspected.realPath,
+        relPath: target.path,
+        segments: target.segments,
+        components: inspected.components,
+        fileStat: { dev: inspected.dev, ino: inspected.ino },
+        fileIndex,
+        text: applied.text,
+      });
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "changed",
+        reason: null,
+      });
+    } else {
+      files.push({
+        path: target.path,
+        harness: target.harness,
+        role: target.role,
+        agent: target.agent,
+        status: "unchanged",
+        reason: null,
+      });
+    }
+  }
+
+  if (!check) {
+    for (const op of plannedWrites) {
+      if (beforeWriteHook) {
+        beforeWriteHook({
+          action: "sync",
+          path: op.relPath,
+          segments: [...op.segments],
+          root,
+          realRoot,
+        });
+      }
+      const verified = verifySyncTargetUnchanged(
+        root,
+        realRoot,
+        rootSnap,
+        realRootSnap,
+        op,
+      );
+      if (!verified.ok) {
+        files[op.fileIndex] = {
+          ...files[op.fileIndex],
+          status: "skipped",
+          reason: verified.reason,
+        };
+        continue;
+      }
+      try {
+        const writeRes = overwriteFileNoFollow(op.path, op.text, op.fileStat);
+        if (!writeRes.ok) {
+          files[op.fileIndex] = {
+            ...files[op.fileIndex],
+            status: "skipped",
+            reason: writeRes.reason,
+          };
+          continue;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `failed to write ${op.relPath}: ${msg}`,
+        };
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    result: { action: "sync", root, check, files },
+  };
 }
 
 function resolveRealTeamPath(root) {
@@ -615,7 +1643,7 @@ function validateExplicitRoot(rawRoot) {
  * against Antigravity's tier defaults.
  *
  * @param {string} root
- * @param {{ tiers?: Record<string, Record<string, string | null | undefined>> }} [defaults]
+ * @param {{ tiers?: Record<string, Record<string, unknown>> }} [defaults]
  */
 function readTeamConfigAtRoot(root, defaults = TIER_DEFAULTS) {
   const checked = resolveRealTeamPath(root);
@@ -1268,6 +2296,11 @@ export function mapStepToEvent(
         : `step updated: ${validWorktree ? `worktree ${validWorktree}` : `delegate ${String(inp.delegate ?? "").trim() || "usage"}`}${note ? ` (${note})` : ""}`,
   };
 }
+
+const NO_FLOW_POST =
+  "no orchestrator flow is running, so this post was not saved. The lead starts one with the progress tool (title and tasks).";
+const NO_FLOW_BOARD =
+  "no orchestrator flow is running, so there is no board to read. The lead starts one with the progress tool (title and tasks).";
 
 /**
  * Maps `post` tool arguments and `_meta` to a `post` event.
@@ -2332,6 +3365,14 @@ export function handleJsonRpcMessage(message, options = {}) {
             },
           };
         }
+        const rawText = typeof toolArgs.text === "string" ? toolArgs.text : "";
+        if (rawText.trim().length > 0) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32602, message: NO_FLOW_POST },
+          };
+        }
         return {
           jsonrpc: "2.0",
           id,
@@ -2379,29 +3420,29 @@ export function handleJsonRpcMessage(message, options = {}) {
           },
         };
       }
+      // With no flow the reducer drops the post, so saving it would hand back
+      // a number for a post the board never shows.
+      if (!currentFlow) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: NO_FLOW_POST },
+        };
+      }
+      const prevSeq =
+        currentFlow.posts?.[currentFlow.posts.length - 1]?.seq ?? 0;
       appendFlowEvents(flowsDir, mapped.rootConversationId, [mapped.event]);
       const nextFlow = readFlowFromJsonlFile(filePath, loaderOpts);
-      let seq = nextFlow?.posts?.[nextFlow.posts.length - 1]?.seq ?? 0;
-      if (!seq && existsSync(filePath)) {
-        try {
-          seq = readFileSync(filePath, "utf8")
-            .split("\n")
-            .filter((line) => {
-              if (!line.trim()) return false;
-              try {
-                const parsed = JSON.parse(line);
-                return (
-                  parsed?.type === "post" &&
-                  typeof parsed.text === "string" &&
-                  parsed.text.trim().length > 0
-                );
-              } catch {
-                return false;
-              }
-            }).length;
-        } catch {
-          seq = 1;
-        }
+      const seq = nextFlow?.posts?.[nextFlow.posts.length - 1]?.seq ?? 0;
+      if (seq <= prevSeq) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: "the board did not accept this post, so it was not saved",
+          },
+        };
       }
       return {
         jsonrpc: "2.0",
@@ -2419,9 +3460,7 @@ export function handleJsonRpcMessage(message, options = {}) {
         return {
           jsonrpc: "2.0",
           id,
-          result: {
-            content: [{ type: "text", text: "[]" }],
-          },
+          error: { code: -32602, message: NO_FLOW_BOARD },
         };
       }
       const loaderOpts = {
@@ -2437,6 +3476,13 @@ export function handleJsonRpcMessage(message, options = {}) {
           : existsSync(filePath)
             ? readFlowFromJsonlFile(filePath, loaderOpts)
             : null;
+      if (!currentFlow) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: NO_FLOW_BOARD },
+        };
+      }
       const channelError = checkBoardChannel(currentFlow, toolArgs.channel);
       if (channelError) {
         return {
@@ -2688,6 +3734,34 @@ export function handleJsonRpcMessage(message, options = {}) {
         id,
         result: {
           content: [{ type: "text", text: JSON.stringify(teamResult) }],
+        },
+      };
+    }
+
+    if (toolName === "team_setup") {
+      const setupRes = runTeamSetup(toolArgs, {
+        cwd: options.cwd,
+        workspaceUri: options.workspaceUri,
+        flowsDir: options.flowsDir,
+        brainRoots: options.brainRoots,
+        pluginAgentsDir: options.pluginAgentsDir,
+        meta,
+      });
+      if (!setupRes.ok) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: setupRes.error,
+          },
+        };
+      }
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [{ type: "text", text: JSON.stringify(setupRes.result) }],
         },
       };
     }

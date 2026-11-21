@@ -43,7 +43,7 @@ go_sdk_go(
 )
 
 # Every tool's code, plus what it needs of Python carried by hand for
-# rotate-access-token: src/json.rs (json.loads/dumps), src/argparse.rs,
+# rotate-access-token: json, argparse, pyerr and pystr from //packages/rust/vitruvian-pycompat,
 # src/http.rs (urlopen: http:// over a socket, https:// through curl, since
 # std has no TLS). Optimised in every build mode. //tools/gcp-secrets and
 # //tools/saas-cli use its gcp-identities.tsv resolver.
@@ -197,3 +197,10 @@ rust_binary(
         "create-app",
     ]
 ]
+
+# Reads a release's Allow-destroy approvals for the plan guard; the Zitadel
+# apply workflows run it from the checkout (no Bazel on those runners).
+exports_files(
+    ["release_approvals.sh"],
+    visibility = ["//tools/ci:__pkg__"],
+)

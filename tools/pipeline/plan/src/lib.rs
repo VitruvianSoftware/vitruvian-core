@@ -37,8 +37,8 @@ pub use gates::{
 };
 pub use query::{
     build_test_rdeps_query, compute_rdeps_map, compute_unit_packages, earlier_map_base,
-    internal_query_errors, is_mac_runner, last_lines, load_rdeps_map, parse_graph_edges,
-    peek_rdeps_map_commit, RdepsMap, RDEPS_MAP_SCHEMA,
+    internal_query_errors, is_mac_runner, last_lines, load_rdeps_map, map_packages,
+    parse_graph_edges, peek_rdeps_map_commit, RdepsMap, RDEPS_MAP_SCHEMA,
 };
 
 use std::time::Instant;
@@ -397,13 +397,20 @@ impl<'a> Engine<'a> {
                     affected = true;
                 }
             }
-            let prefix = format!("//{}", u.package);
+            // A target is in this unit's package when its label is `//pkg:name` or
+            // `//pkg/sub:name`. A bare `//pkg` prefix would also match a sibling
+            // such as `//pkg-android:name`.
+            let own = format!("//{}:", u.package);
+            let below = format!("//{}/", u.package);
             for tt in &u.test_targets {
                 if target_set.contains(tt.as_str()) {
                     affected = true;
                     break;
                 }
-                if target_set.iter().any(|at| at.starts_with(&prefix)) {
+                if target_set
+                    .iter()
+                    .any(|at| at.starts_with(&own) || at.starts_with(&below))
+                {
                     affected = true;
                 }
             }

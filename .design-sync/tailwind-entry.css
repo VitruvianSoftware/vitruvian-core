@@ -32,10 +32,10 @@
  * so the vocabulary the system documents is the vocabulary that actually
  * ships -- and so a design handed to an engineer uses the same class names
  * their Tailwind-compiled app would. */
-@import "../packages/design-system/src/vitruvian.css";
+@import "../packages/design-system/web/src/vitruvian.css";
 
 /* Still scan the real source so anything the components use is kept. */
-@source "../packages/design-system/src";
+@source "../packages/design-system/web/src";
 
 /* The design language: grounds, ink, brand steel, sanguine, signal colours. */
 @source inline("{bg,text,border}-{ink,ink-2,ink-3,paper,paper-dim,hairline,rule,steel,steel-text,steel-quiet,sanguine,sanguine-text,ok,warn,crit}");

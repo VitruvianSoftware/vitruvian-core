@@ -49,8 +49,17 @@ js_test(
     data = [
         "sidecars/panel/testdata/sample-flow.jsonl",
         ":server_lib",
-    ],
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
+    ] + glob(
+        ["agents/*.md"],
+        allow_empty = True,
+    ),
     entry_point = "mcp/server.test.mjs",
+    no_copy_to_bin = [
+        "//:.agents/team.json",
+        "//:roster_generated_agents",
+    ],
 )
 
 js_library(
@@ -106,6 +115,7 @@ filegroup(
         [
             "agents/*.md",
             "skills/orchestrate/SKILL.md",
+            "skills/team-setup/SKILL.md",
         ],
         allow_empty = True,
     ),

@@ -167,10 +167,12 @@ fn caller_deps() -> BTreeSet<(String, String)> {
     deps
 }
 
-/// The std-only crates the action's `deps` input may name, at their paths.
+/// The crates the action's `deps` input may name, plus pycompat for plain rustc.
 const DEP_SOURCES: &[&str] = &[
     "tools/ci/src/transient_lib/lib.rs",
     "tools/gitops/appset-render/src",
+    "packages/rust/vitruvian-pycompat/rustc-build.sh",
+    "packages/rust/vitruvian-pycompat/src",
 ];
 
 /// A copy of the sources the step reads, laid out as in a checkout.

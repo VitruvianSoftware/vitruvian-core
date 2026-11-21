@@ -3,7 +3,7 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//apps/web/gods-eye-view:__subpackages__"])
 
 exports_files(glob(["src/**/*.rs"]))
 
