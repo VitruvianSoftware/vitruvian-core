@@ -176,8 +176,20 @@ pub async fn store_contract(store: &dyn Store) {
             .map(|d| d.revoked),
         Some(false)
     );
+    assert_eq!(
+        store.revoked_device(&d2.device_id).await,
+        Ok(None),
+        "a registered device is not a revoked one"
+    );
+    assert_eq!(store.revoked_device("nope").await, Ok(None));
     assert_eq!(store.revoke(&d2.device_id, &alice).await, Ok(true));
     assert_eq!(store.device(&d2.device_id).await, Ok(None));
+    let gone = store.revoked_device(&d2.device_id).await.unwrap().unwrap();
+    assert_eq!(
+        (gone.owner_sub.as_str(), gone.revoked),
+        (alice.as_str(), true),
+        "a revoked device can still be looked up, as revoked"
+    );
     assert_eq!(
         store.devices_of(&alice).await.unwrap().len(),
         1,

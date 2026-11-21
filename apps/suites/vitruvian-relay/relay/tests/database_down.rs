@@ -400,12 +400,18 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
 }
 
 /// The 5 s limit covers getting a connection AND the query together. Here each
-/// answer from the database is 4 s late, so getting a connection (the pool
-/// checks an idle one first) takes about 4 s and the query another 4 s: each is
-/// under 5 s alone, together they are not. The person must still hear within
-/// one limit (about 5 s), not after a limit per step (about 12 s with the
-/// three round trips a call makes). The bound is 8 s, so a loaded runner has
-/// three seconds of slack and a per-step limit is still caught.
+/// answer from the database is 4.6 s late, so getting a connection (the pool
+/// checks an idle one first) takes about 4.6 s and the query as long again:
+/// each is under 5 s alone, together they are not. The person must still hear
+/// within one limit (about 5 s), not after a limit per step (a connection
+/// that takes 4.6 s, then a query that gets its own 5 s: about 9.6 s). The
+/// bound sits in the middle, [`SLOW_BOUND`]: 2.3 s above the right answer and
+/// 2.3 s below the wrong one. A wider gap is not possible: the two differ by
+/// the delay, which must stay under the 5 s limit for each step to be fine
+/// alone.
+const SLOW_DELAY: Duration = Duration::from_millis(4600);
+const SLOW_BOUND: Duration = Duration::from_millis(7300);
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_database_is_given_one_limit_in_all_not_one_per_step() {
     let db = fresh_database().await;
@@ -417,13 +423,13 @@ async fn a_slow_database_is_given_one_limit_in_all_not_one_per_step() {
     // Warm: the pool now holds a connection through the proxy.
     assert_calls_work(&relay, &path, &session, 1).await;
 
-    proxy.set(Mode::Slow(Duration::from_secs(4)));
+    proxy.set(Mode::Slow(SLOW_DELAY));
     let started = Instant::now();
     let r = relay.tools_call(&path, &session, 2).await;
     let took = started.elapsed();
     assert_eq!(text_of(&r), MESSAGE, "{}", r.body);
     assert!(
-        took >= Duration::from_secs(4) && took < Duration::from_secs(8),
+        took >= Duration::from_secs(4) && took < SLOW_BOUND,
         "took {took:?}"
     );
 

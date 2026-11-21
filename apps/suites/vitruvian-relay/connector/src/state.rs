@@ -46,6 +46,11 @@ pub fn token_path(dir: &Path) -> PathBuf {
 pub fn device_path(dir: &Path) -> PathBuf {
     dir.join("device.json")
 }
+/// Where [`clear_sign_in`] keeps the device record it removes, so the next
+/// sign-in on this Mac is still this computer (same id, same URL).
+pub fn remembered_device_path(dir: &Path) -> PathBuf {
+    dir.join("last-device.json")
+}
 /// As [`token_path`]: the device key's file, read through `keys`.
 pub fn key_path(dir: &Path) -> PathBuf {
     dir.join("device.key")
@@ -247,11 +252,22 @@ pub fn save_device(dir: &Path, d: &DeviceInfo) -> Result<()> {
 }
 
 pub fn load_device(dir: &Path) -> Option<DeviceInfo> {
-    let v: Value = serde_json::from_slice(&std::fs::read(device_path(dir)).ok()?).ok()?;
+    read_device(&device_path(dir))
+}
+
+fn read_device(path: &Path) -> Option<DeviceInfo> {
+    let v: Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
     Some(DeviceInfo {
         device_id: str_field(&v, "device_id")?,
         mcp_url: str_field(&v, "mcp_url")?,
     })
+}
+
+/// The device this Mac is, for `vrelay login` to send: the current record if
+/// signed in, else the one kept when it signed out. "Signed in" is
+/// [`device_path`] existing; this is not.
+pub fn remembered_device(dir: &Path) -> Option<DeviceInfo> {
+    load_device(dir).or_else(|| read_device(&remembered_device_path(dir)))
 }
 
 /// `vrelay.log`, where launchd sends the agent's stdout and stderr. launchd
@@ -363,9 +379,10 @@ pub fn save_new_device(dir: &Path, d: &DeviceInfo) -> Result<()> {
     save_device(dir, d)
 }
 
-/// Signs out: removes the token, the device key and the device record.
-/// Signing in again makes a new key and registers a new computer (the old one
-/// stays in the person's list until they remove it). Under [`sign_in_lock`], so a refresh finishing at
+/// Signs out: removes the token, the device key and the device record. The
+/// device's id is kept apart ([`remembered_device_path`]), so signing in again
+/// makes a new key but is still the same computer: it keeps its id and URL and
+/// does not use up another of the person's places. Under [`sign_in_lock`], so a refresh finishing at
 /// the same moment cannot write the token back. Any `token.json` or
 /// `device.key` left from before the Keychain goes too.
 pub fn clear_sign_in(dir: &Path) -> Result<bool> {
@@ -382,6 +399,11 @@ pub fn clear_sign_in(dir: &Path) -> Result<bool> {
         files.delete(account)?;
     }
     let p = device_path(dir);
+    // Remember it first, so a failure here leaves the record where it was.
+    if let Some(device) = load_device(dir) {
+        let body = json!({"device_id": device.device_id, "mcp_url": device.mcp_url});
+        write_private(&remembered_device_path(dir), body.to_string().as_bytes())?;
+    }
     match std::fs::remove_file(&p) {
         Ok(()) => removed = true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -609,5 +631,27 @@ mod tests {
         assert!(load_device(&dir).is_none());
         assert!(!key_path(&dir).exists(), "the device key was kept");
         assert!(!clear_sign_in(&dir).unwrap());
+    }
+
+    /// Signing out is not leaving: the computer is still the same one.
+    #[test]
+    fn logout_keeps_the_device_id_to_sign_in_as_again() {
+        let dir = test_dir("logout-remembers");
+        ensure_dir(&dir).unwrap();
+        let device = DeviceInfo {
+            device_id: "d".into(),
+            mcp_url: "u".into(),
+        };
+        assert_eq!(remembered_device(&dir), None);
+        save_device(&dir, &device).unwrap();
+        assert_eq!(remembered_device(&dir), Some(device.clone()));
+        assert!(clear_sign_in(&dir).unwrap());
+        assert!(load_device(&dir).is_none(), "no longer signed in");
+        assert!(!device_path(&dir).exists());
+        assert_eq!(remembered_device(&dir), Some(device.clone()));
+        assert_eq!(mode(&remembered_device_path(&dir)), 0o600);
+        // Signing out again (nothing to sign out of) keeps what was kept.
+        assert!(!clear_sign_in(&dir).unwrap());
+        assert_eq!(remembered_device(&dir), Some(device));
     }
 }

@@ -356,14 +356,18 @@ pub fn fresh_token_checked_from(
 /// `POST /devices`: tells the relay this device's public key and learns the
 /// device id and the MCP URL. With `device_id` (the one this Mac was given
 /// when it first signed in) the relay keeps that id and replaces the key;
-/// without one it registers a new computer. `name` is what the person sees
-/// in their list; without one the relay keeps the old name (or "My Mac").
+/// without one, or if the relay does not know it any more, it registers a
+/// new computer. `name` is what the person sees in their list: the relay
+/// uses it whenever it makes a new computer, and on a computer it already
+/// has only if `rename` is set (the person asked for it with `--name`;
+/// otherwise a name they chose in the dashboard stays).
 pub fn register_device(
     cfg: &Config,
     access_token: &str,
     public_key_b64: &str,
     device_id: Option<&str>,
     name: Option<&str>,
+    rename: bool,
 ) -> Result<DeviceInfo> {
     let url = format!("{}/devices", cfg.relay_url);
     let mut body = json!({"public_key": public_key_b64});
@@ -372,6 +376,9 @@ pub fn register_device(
     }
     if let Some(name) = name {
         body["name"] = json!(name);
+        if rename {
+            body["rename"] = json!(true);
+        }
     }
     let resp = agent()
         .post(&url)
@@ -405,6 +412,33 @@ pub fn register_device(
         device_id: str_field(&body, "device_id").ok_or("the relay's answer has no device_id")?,
         mcp_url: str_field(&body, "mcp_url").ok_or("the relay's answer has no mcp_url")?,
     })
+}
+
+/// What `vrelay login` does after the sign-in: registers this Mac and saves
+/// the answer. A Mac that has been registered before (signed in now, or
+/// signed out since) sends its device id, so it stays the same computer: same
+/// id, same URL. The name sent is `--name` if given, else `default_name`
+/// (what System Settings calls it), always, so that if the relay no longer
+/// has that id the new computer still gets the right name. Only an explicit
+/// `--name` renames a computer the relay already has.
+pub fn register_this_mac(
+    cfg: &Config,
+    access_token: &str,
+    public_key_b64: &str,
+    name_arg: Option<&str>,
+    default_name: Option<&str>,
+) -> Result<DeviceInfo> {
+    let existing = crate::state::remembered_device(&cfg.dir);
+    let device = register_device(
+        cfg,
+        access_token,
+        public_key_b64,
+        existing.as_ref().map(|d| d.device_id.as_str()),
+        name_arg.or(default_name),
+        name_arg.is_some(),
+    )?;
+    crate::state::save_new_device(&cfg.dir, &device)?;
+    Ok(device)
 }
 
 /// What this Mac calls itself in System Settings (`scutil --get
@@ -864,7 +898,15 @@ mod tests {
                 json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
             )
         }));
-        let d = register_device(&cfg_for(&base, test_dir("reg")), "tok", "PK", None, None).unwrap();
+        let d = register_device(
+            &cfg_for(&base, test_dir("reg")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(d.device_id, "d1");
         assert_eq!(d.mcp_url, "https://r/mcp/d/d1");
     }
@@ -875,7 +917,7 @@ mod tests {
             let sent: Value = serde_json::from_str(body).unwrap();
             assert_eq!(
                 sent,
-                json!({"public_key": "PK", "device_id": "d1", "name": "Studio Mac"})
+                json!({"public_key": "PK", "device_id": "d1", "name": "Studio Mac", "rename": true})
             );
             (
                 200,
@@ -883,8 +925,82 @@ mod tests {
             )
         }));
         let cfg = cfg_for(&base, test_dir("reg-id"));
-        let d = register_device(&cfg, "tok", "PK", Some("d1"), Some("Studio Mac")).unwrap();
+        let d = register_device(&cfg, "tok", "PK", Some("d1"), Some("Studio Mac"), true).unwrap();
         assert_eq!(d.device_id, "d1");
+    }
+
+    /// Signing out and in again is the same computer: the id the relay gave
+    /// is sent, and the id and URL come back unchanged.
+    #[test]
+    fn logout_then_login_keeps_the_device() {
+        let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let log = seen.clone();
+        let base = fake_server(Box::new(move |_, _, _, body| {
+            let sent: Value = serde_json::from_str(body).unwrap();
+            let id = sent["device_id"].as_str().unwrap_or("d-first").to_string();
+            log.lock().unwrap().push(sent);
+            (
+                200,
+                json!({"device_id": id, "mcp_url": format!("https://r/mcp/d/{id}")}).to_string(),
+            )
+        }));
+        let cfg = cfg_for(&base, test_dir("logout-login"));
+        crate::state::ensure_dir(&cfg.dir).unwrap();
+
+        // The first sign-in on this Mac: a new computer, named for the Mac.
+        let first = register_this_mac(&cfg, "tok", "PK1", None, Some("Studio Mac")).unwrap();
+        assert_eq!(first.device_id, "d-first");
+        // Signing out, five times over with a sign-in between, never makes
+        // another computer.
+        for i in 0..5 {
+            assert!(crate::state::clear_sign_in(&cfg.dir).unwrap() || i > 0);
+            let again = register_this_mac(&cfg, "tok", &format!("PK{i}"), None, Some("Studio Mac"))
+                .unwrap();
+            assert_eq!(again, first, "round {i}");
+        }
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen[0], json!({"public_key": "PK1", "name": "Studio Mac"}));
+        for sent in &seen[1..] {
+            assert_eq!(sent["device_id"], "d-first");
+            assert!(sent.get("rename").is_none(), "{sent}");
+        }
+    }
+
+    /// A stale id loses nothing: the name still goes with it (the relay uses
+    /// it if it has to make a new computer), and only `--name` renames.
+    #[test]
+    fn the_name_always_goes_with_the_login() {
+        let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let log = seen.clone();
+        let base = fake_server(Box::new(move |_, _, _, body| {
+            log.lock()
+                .unwrap()
+                .push(serde_json::from_str(body).unwrap());
+            (
+                200,
+                json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
+            )
+        }));
+        let cfg = cfg_for(&base, test_dir("name-always"));
+        crate::state::ensure_dir(&cfg.dir).unwrap();
+        register_this_mac(&cfg, "tok", "PK", None, Some("Studio Mac")).unwrap();
+        // Has an id now; no --name: the Mac's own name goes, as a default.
+        register_this_mac(&cfg, "tok", "PK", None, Some("Studio Mac")).unwrap();
+        // --name: it goes, and asks for the rename.
+        register_this_mac(&cfg, "tok", "PK", Some("Desk"), Some("Studio Mac")).unwrap();
+        // No name from anywhere (no scutil): none is sent.
+        register_this_mac(&cfg, "tok", "PK", None, None).unwrap();
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen[0], json!({"public_key": "PK", "name": "Studio Mac"}));
+        assert_eq!(
+            seen[1],
+            json!({"public_key": "PK", "device_id": "d1", "name": "Studio Mac"})
+        );
+        assert_eq!(
+            seen[2],
+            json!({"public_key": "PK", "device_id": "d1", "name": "Desk", "rename": true})
+        );
+        assert_eq!(seen[3], json!({"public_key": "PK", "device_id": "d1"}));
     }
 
     #[test]
@@ -893,8 +1009,15 @@ mod tests {
         let base = fake_server(Box::new(move |_, _, _, _| {
             (409, json!({ "error": words }).to_string())
         }));
-        let err = register_device(&cfg_for(&base, test_dir("reg409")), "tok", "PK", None, None)
-            .unwrap_err();
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg409")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
         assert_eq!(err, words);
         // Anything else the relay says with a 409 stays out of the message.
         let base = fake_server(Box::new(|_, _, _, _| (409, "not json".into())));
@@ -904,6 +1027,7 @@ mod tests {
             "PK",
             None,
             None,
+            false,
         )
         .unwrap_err();
         assert!(err.contains("409") && !err.contains("not json"), "{err}");
@@ -912,8 +1036,15 @@ mod tests {
     #[test]
     fn someone_without_the_role_is_told_to_ask_for_access() {
         let base = fake_server(Box::new(|_, _, _, _| (403, "{\"error\":\"x\"}".into())));
-        let err = register_device(&cfg_for(&base, test_dir("reg403")), "tok", "PK", None, None)
-            .unwrap_err();
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg403")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
         assert!(
             err.contains("403") && err.contains("ask whoever runs it"),
             "{err}"
@@ -949,8 +1080,15 @@ mod tests {
     #[test]
     fn register_device_reports_a_refusal_without_the_body() {
         let base = fake_server(Box::new(|_, _, _, _| (401, "secret-ish body".into())));
-        let err = register_device(&cfg_for(&base, test_dir("reg401")), "tok", "PK", None, None)
-            .unwrap_err();
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg401")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
         assert!(err.contains("401") && !err.contains("secret-ish"), "{err}");
     }
 

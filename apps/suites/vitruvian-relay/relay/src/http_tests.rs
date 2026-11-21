@@ -3992,10 +3992,21 @@ async fn relogin_with_device_id_keeps_the_id() {
     );
     h.connect(ALICE, &device, &new_key, vec![]).await;
 
-    // A name sent with it renames the device.
+    // A name sent with it is only what a new computer would be called: this
+    // one keeps the name it has (the person may have changed it in the
+    // dashboard).
     let r = h
-        .register_with(ALICE, &new_key, Some("Desk Mac"), Some(&device))
+        .register_with(ALICE, &new_key, Some("Studio Mac"), Some(&device))
         .await;
+    assert_eq!(r.json()["device_id"], device.as_str());
+    assert_eq!(
+        names_of(&h, ALICE).await,
+        [(device.clone(), "My Mac".to_string())]
+    );
+    // Asking for the rename (`vrelay login --name`) changes it.
+    let body = json!({"public_key": b64(new_key.public_key().as_ref()),
+                      "name": "Desk Mac", "device_id": device, "rename": true});
+    let r = h.register_body(ALICE, &body.to_string()).await;
     assert_eq!(r.json()["device_id"], device.as_str());
     assert_eq!(
         names_of(&h, ALICE).await,
@@ -4011,12 +4022,18 @@ async fn relogin_with_device_id_keeps_the_id() {
     assert!(h.app.revoke(ALICE, &device).await.unwrap());
     let mut made = Vec::new();
     for not_hers in [&bobs, &nobody, &device] {
+        // The name sent is what the new computer is called: a stale id loses
+        // nothing.
         let r = h
-            .register_with(ALICE, &ed25519(), None, Some(not_hers))
+            .register_with(ALICE, &ed25519(), Some("Studio Mac"), Some(not_hers))
             .await;
         assert_eq!(r.status, StatusCode::OK, "{}", r.body);
         let id = r.json()["device_id"].as_str().unwrap().to_string();
         assert_ne!(&id, not_hers);
+        assert_eq!(
+            h.store.device(&id).await.unwrap().unwrap().name,
+            "Studio Mac"
+        );
         assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
         made.push(id);
     }
@@ -4119,19 +4136,34 @@ async fn name_is_trimmed_and_capped() {
 
     // The same cleaning when a name comes with a re-login.
     let (device, key) = h.new_device("person-rename").await;
-    let r = h
-        .register_with(
-            "person-rename",
-            &key,
-            Some("  New\u{7} name "),
-            Some(&device),
-        )
-        .await;
+    let body = json!({"public_key": b64(key.public_key().as_ref()),
+                      "name": "  New\u{7} name ", "device_id": device, "rename": true});
+    let r = h.register_body("person-rename", &body.to_string()).await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(
         names_of(&h, "person-rename").await,
         [(device, "New name".to_string())]
     );
+}
+
+/// What the relay says to a connector whose hello names `device`, signed with
+/// `key`, under `who`'s token.
+async fn reject_for(h: &Harness, who: &str, device: &str, key: &Ed25519KeyPair) -> String {
+    let token = h.connector_token(who);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        device,
+        key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => reason,
+        other => panic!("expected reject, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -4162,39 +4194,32 @@ async fn revoke_closes_live_link() {
     fake.wait_closed().await;
     assert!(h.app.registry.tools(&device).is_none());
 
-    // The next connect is refused, with the same words as for a device that
-    // never existed.
-    let token = h.connector_token(ALICE);
-    let mut ws = h.ws(&token).await.unwrap();
-    ws.send(Message::Text(hello(
-        &device,
-        &key,
-        &token,
-        now_secs(),
-        vec![],
-    )))
-    .await
-    .unwrap();
-    let revoked_reason = match next_frame(&mut ws).await {
-        Some(ToConnector::Reject { reason }) => reason,
-        other => panic!("expected reject, got {other:?}"),
-    };
-    let mut ws = h.ws(&token).await.unwrap();
+    // The removed computer, signing its hello with its own key, is told what
+    // happened and what to do.
+    let told = reject_for(&h, ALICE, &device, &key).await;
+    assert_eq!(told, REMOVED_DEVICE);
+    assert!(
+        told.contains("removed") && told.contains("vrelay login"),
+        "{told}"
+    );
+
+    // Anyone else asking about that id gets exactly what a device that never
+    // existed gets: a bad signature, or another person holding Alice's real
+    // key (and so signing correctly) under their own token.
     let never = "00000000-0000-4000-8000-000000000000";
-    ws.send(Message::Text(hello(
-        never,
-        &key,
-        &token,
-        now_secs(),
-        vec![],
-    )))
-    .await
-    .unwrap();
-    match next_frame(&mut ws).await {
-        Some(ToConnector::Reject { reason }) => assert_eq!(reason, revoked_reason),
-        other => panic!("expected reject, got {other:?}"),
-    }
-    assert!(revoked_reason.contains("vrelay login"), "{revoked_reason}");
+    let unknown = reject_for(&h, ALICE, never, &ed25519()).await;
+    assert_ne!(unknown, told);
+    assert!(unknown.contains("vrelay login"), "{unknown}");
+    assert_eq!(
+        reject_for(&h, ALICE, &device, &ed25519()).await,
+        unknown,
+        "a bad signature does not learn it was removed"
+    );
+    assert_eq!(
+        reject_for(&h, BOB, &device, &key).await,
+        unknown,
+        "someone else's removed device looks like one that never existed"
+    );
 
     // Her AI app's URL for it is gone too, session or not.
     let r = h
@@ -4242,7 +4267,7 @@ async fn connect_racing_a_revoke_cannot_register() {
     release.notify_one();
     match next_frame(&mut ws).await {
         Some(ToConnector::Reject { reason }) => {
-            assert_eq!(reason, "This computer was removed from your account.")
+            assert_eq!(reason, REMOVED_DEVICE)
         }
         other => panic!("expected reject, got {other:?}"),
     }

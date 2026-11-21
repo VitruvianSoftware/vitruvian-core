@@ -111,6 +111,10 @@ pub trait Store: Send + Sync {
     /// A device that is registered and not revoked. A revoked one is `None`,
     /// like one that never existed.
     async fn device(&self, id: &str) -> Result<Option<DeviceRecord>, StoreError>;
+    /// A device that was revoked (with `revoked` set); `None` for one that is
+    /// registered or that never existed. Only for telling a removed computer
+    /// that it was removed: never to let it do anything.
+    async fn revoked_device(&self, id: &str) -> Result<Option<DeviceRecord>, StoreError>;
     /// A person's devices (not revoked), oldest first.
     async fn devices_of(&self, owner_sub: &str) -> Result<Vec<DeviceRecord>, StoreError>;
     /// `StoreError::TooManyDevices` when the owner already has
@@ -218,6 +222,19 @@ impl Store for MemStore {
             .zip(&m.revoked)
             .find(|(d, revoked)| d.device_id == id && !**revoked)
             .map(|(d, _)| d.clone()))
+    }
+
+    async fn revoked_device(&self, id: &str) -> Result<Option<DeviceRecord>, StoreError> {
+        self.check()?;
+        let m = self.inner.lock().unwrap();
+        Ok(m.devices
+            .iter()
+            .zip(&m.revoked)
+            .find(|(d, revoked)| d.device_id == id && **revoked)
+            .map(|(d, _)| DeviceRecord {
+                revoked: true,
+                ..d.clone()
+            }))
     }
 
     async fn devices_of(&self, owner_sub: &str) -> Result<Vec<DeviceRecord>, StoreError> {
@@ -671,6 +688,28 @@ impl Store for PgStore {
             )
             .await?;
         row.map(|r| self.record("device", &r)).transpose()
+    }
+
+    async fn revoked_device(&self, id: &str) -> Result<Option<DeviceRecord>, StoreError> {
+        let c = self.client("revoked_device").await?;
+        let row = self
+            .timed(
+                "revoked_device",
+                c.deadline,
+                c.query_opt(
+                    &format!(
+                        "SELECT {DEVICE_COLUMNS} FROM devices \
+                         WHERE id = $1 AND revoked_at IS NOT NULL"
+                    ),
+                    &[&id],
+                ),
+            )
+            .await?;
+        row.map(|r| {
+            self.record("revoked_device", &r)
+                .map(|d| DeviceRecord { revoked: true, ..d })
+        })
+        .transpose()
     }
 
     async fn devices_of(&self, owner_sub: &str) -> Result<Vec<DeviceRecord>, StoreError> {

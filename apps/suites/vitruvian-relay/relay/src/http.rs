@@ -296,8 +296,10 @@ enum Change {
 const UNKNOWN_DEVICE: &str =
     "This computer is not registered with your account. Run `vrelay login` here to register it again.";
 
-/// What a connector is told when its computer was removed from the account.
-const REMOVED_DEVICE: &str = "This computer was removed from your account.";
+/// What a connector is told when its computer was removed from the account
+/// (and proves it is that computer, by its key).
+const REMOVED_DEVICE: &str =
+    "This computer was removed from your account. Run `vrelay login` to connect it again.";
 
 /// An MCP session: which device and person it was opened for.
 struct Session {
@@ -871,6 +873,19 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
             )
         }
     };
+    // Only a person who asked for a new name (`vrelay login --name`) renames
+    // a computer the relay already has; otherwise the name sent is only what
+    // a new computer is called.
+    let rename = match body.get("rename") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => {
+            return json_response(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "`rename` must be true or false."}),
+            )
+        }
+    };
     let wanted = match body.get("device_id") {
         None | Some(Value::Null) => None,
         Some(Value::String(id)) => Some(id.as_str()),
@@ -895,7 +910,7 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
             {
                 Ok(true) => {
                     app.key_changed(&rec.device_id);
-                    if let Some(name) = &name {
+                    if let Some(name) = name.as_ref().filter(|_| rename) {
                         if let Err(e) = app
                             .store
                             .rename(&rec.device_id, &caller.subject, name)
@@ -1081,7 +1096,7 @@ impl App {
         let generation = self.key_generation();
         let rec = match self.owned_device(&caller.subject, &hello.device_id).await {
             Ok(Some(r)) => r,
-            Ok(None) => return Err(UNKNOWN_DEVICE.into()),
+            Ok(None) => return Err(self.unknown_or_removed(hello, caller, token_hash).await),
             Err(e) => {
                 self.log(
                     "connect_store_failed",
@@ -1105,6 +1120,39 @@ impl App {
             .verify(message.as_bytes(), &sig)
             .map_err(|_| "bad signature".to_string())?;
         Ok(generation)
+    }
+}
+
+impl App {
+    /// What to tell a connector whose hello names a device that is not
+    /// registered to this person. Nearly always [`UNKNOWN_DEVICE`], the same
+    /// words for someone else's device and for one that never existed. The
+    /// one exception: the device was this person's and was removed, and the
+    /// hello is signed with that device's own key (for this token), so only
+    /// that computer can be hearing it. Then it is told it was removed. A bad
+    /// signature, someone else's id, or any failure of the lookup gets the
+    /// unknown answer.
+    async fn unknown_or_removed(&self, hello: &Hello, caller: &Caller, token_hash: &str) -> String {
+        let Ok(Some(rec)) = self.store.revoked_device(&hello.device_id).await else {
+            return UNKNOWN_DEVICE.into();
+        };
+        let signed = base64::engine::general_purpose::STANDARD
+            .decode(&hello.sig)
+            .ok()
+            .is_some_and(|sig| {
+                let message = hello_message(&hello.device_id, hello.ts, token_hash);
+                ring::signature::UnparsedPublicKey::new(
+                    &ring::signature::ED25519,
+                    rec.public_key_ed25519,
+                )
+                .verify(message.as_bytes(), &sig)
+                .is_ok()
+            });
+        if rec.owner_sub == caller.subject && signed {
+            REMOVED_DEVICE.into()
+        } else {
+            UNKNOWN_DEVICE.into()
+        }
     }
 }
 

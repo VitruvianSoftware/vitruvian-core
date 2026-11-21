@@ -1271,7 +1271,7 @@ async fn a_removed_computer_loses_its_link_and_is_told_why() {
     })
     .await;
     until("the removed computer to be refused", || {
-        gone.logged("not registered with your account")
+        gone.logged("was removed from your account")
     })
     .await;
     // Its URL is gone, and the other computer never noticed.
