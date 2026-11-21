@@ -458,6 +458,16 @@ struct MessageRowView: View {
             && !ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty
     }
 
+    /// Where the hover pill sits up and down: on a text bubble's last line, at the middle of anything else (a picture,
+    /// a video, a link card, a GIF, a file, code). Tall ones are centred whatever they hold (`MessageActionBarPlacement`).
+    private var hoverPillLevel: MessageActionBarPlacement.Level {
+        let isPlainText = contentIsText && (message.kind == .text || message.kind == .notice || message.kind == .emote)
+            && message.linkPreviews.isEmpty && ExternalEmbedDescriptor.first(in: message) == nil
+            && message.galleryItems.isEmpty
+            && !RichTextLayout.blocks(of: message.rich).contains { $0.kind == .code }
+        return isPlainText ? .lastLine : .centre
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if message.mine {
@@ -479,7 +489,6 @@ struct MessageRowView: View {
                     }
                     if !message.mine { bookmarkMark }
                 }
-                .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubble: $0) }
                 if let translated = actions.translation(message.id) {
                     MessageTranslationRowView(
                         targetLanguage: translated.targetLanguage,
@@ -555,9 +564,13 @@ struct MessageRowView: View {
             if ((showingSelectedBar || showingHoverPill) && anchors.bubble != nil) || (card != nil && anchors.openChip != nil) {
                 GeometryReader { proxy in
                     let bar: CGRect? = (showingSelectedBar || showingHoverPill) ? anchors.bubble.map { bubble in
-                        CGRect(origin: MessageActionBarPlacement.origin(bubble: proxy[bubble], row: proxy.size,
-                                                                        bar: barSize, mine: message.mine),
-                               size: barSize)
+                        // The bookmark mark sits on the bubble's outer side, where the bar goes: the bar clears it too.
+                        var frame = proxy[bubble]
+                        if let mark = anchors.bubbleMark { frame = frame.union(proxy[mark]) }
+                        return CGRect(origin: MessageActionBarPlacement.origin(
+                            bubble: frame, row: proxy.size, bar: barSize, mine: message.mine,
+                            level: showingHoverPill ? hoverPillLevel : .top
+                        ), size: barSize)
                     } : nil
                     if let bar {
                         Group {
@@ -971,6 +984,7 @@ struct MessageRowView: View {
                 .foregroundStyle(.orange)
                 .help(String(localized: "Bookmarked"))
                 .accessibilityLabel(String(localized: "Bookmarked"))
+                .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubbleMark: $0) }
         }
     }
 
@@ -1045,6 +1059,9 @@ struct MessageRowView: View {
         .opacity(message.statusLine == .queued ? 0.55 : 1)
         .help(message.statusLine == .queued && actions.undoHeld != nil ? String(localized: "Click to unsend") : "")
         .accessibilityElement(children: .contain)
+        // The bubble's own frame, for the hover pill and the action bar. Not its row's (a text bubble sits in a frame
+        // as wide as the text may go, and a pill placed by that is far from a short message).
+        .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubble: $0) }
     }
 
     /// The message's link cards (a page's picture, title and summary), each with its footer.
@@ -1821,13 +1838,39 @@ enum MessageActionBarPlacement {
     /// Over the corner: how far the bar reaches in over it, and how far down over the bubble's top edge.
     static let cornerInset: CGFloat = 28
     static let cornerOverlap: CGFloat = 8
+    /// From a bubble's bottom edge to the middle of its last line: the bubble's bottom padding (7) and half a line
+    /// of 13 pt text.
+    static let lastLineCentreInset: CGFloat = 15
 
-    static func origin(bubble: CGRect, row: CGSize, bar: CGSize, mine: Bool) -> CGPoint {
+    /// Where beside the bubble the bar sits up and down.
+    enum Level {
+        /// Level with the bubble's top (the selected message's wider bar).
+        case top
+        /// Centred on the bubble's last line (the compact hover pill on a text bubble). On a bubble taller than
+        /// `tallBubble` it is centred on the bubble instead: a last line that far down is out of the eye's reach.
+        case lastLine
+        /// Centred on the bubble: a picture, video, link card, GIF or any other bubble that is not just text.
+        case centre
+    }
+
+    /// A bubble taller than this takes the pill at its middle, whatever it holds.
+    static let tallBubble: CGFloat = 120
+
+    static func origin(bubble: CGRect, row: CGSize, bar: CGSize, mine: Bool, level: Level = .top) -> CGPoint {
         let beside = mine ? bubble.minX - gap - bar.width : bubble.maxX + gap
         let fits = mine ? beside >= edgeMargin : beside + bar.width <= row.width - edgeMargin
         if fits {
-            // Level with the bubble's top, or centred on a bubble shorter than the bar; never above the row.
-            let y = bubble.height >= bar.height ? bubble.minY : bubble.midY - bar.height / 2
+            let y: CGFloat
+            switch level {
+            case .top:
+                // Level with the bubble's top, or centred on a bubble shorter than the bar; never above the row.
+                y = bubble.height >= bar.height ? bubble.minY : bubble.midY - bar.height / 2
+            case .lastLine where bubble.height <= tallBubble:
+                // Centred on the last line; a bubble of one short line is centred as a whole.
+                y = max(bubble.midY, bubble.maxY - lastLineCentreInset) - bar.height / 2
+            case .lastLine, .centre:
+                y = bubble.midY - bar.height / 2
+            }
             return CGPoint(x: beside, y: max(0, y))
         }
         let inset = min(cornerInset, bubble.width / 2)
@@ -1860,6 +1903,8 @@ enum ReactionCardPlacement {
 /// Where a row's bubble is (for its action bar) and the reaction chip whose card is open (for the card).
 struct RowAnchors {
     var bubble: Anchor<CGRect>?
+    /// The bookmark mark beside the bubble, when it has one.
+    var bubbleMark: Anchor<CGRect>?
     var openChip: Anchor<CGRect>?
 }
 
@@ -1868,6 +1913,7 @@ struct RowAnchorsKey: PreferenceKey {
     static func reduce(value: inout RowAnchors, nextValue: () -> RowAnchors) {
         let next = nextValue()
         value.bubble = value.bubble ?? next.bubble
+        value.bubbleMark = value.bubbleMark ?? next.bubbleMark
         value.openChip = value.openChip ?? next.openChip
     }
 }

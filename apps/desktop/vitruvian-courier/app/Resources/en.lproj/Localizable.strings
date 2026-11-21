@@ -1935,6 +1935,15 @@
 /* Under a poll's question, once its creator ended it. */
 "Poll ended" = "Poll ended";
 
+/* The chat's header: clicking the name or picture opens Chat Info (VoiceOver and tooltip). */
+"Show chat info" = "Show chat info";
+/* The chat's header: clicking the name or picture closes Chat Info (VoiceOver and tooltip). */
+"Hide chat info" = "Hide chat info";
+/* VoiceOver hint on the chat's header while Chat Info is closed. */
+"Shows chat info" = "Shows chat info";
+/* VoiceOver hint on the chat's header while Chat Info is open. */
+"Hides chat info" = "Hides chat info";
+
 /* Under an edited message whose versions are open: closes them. */
 "Hide Edits" = "Hide Edits";
 /* The tooltip of "Edited": what the message first said. The argument is its first text. */

@@ -922,12 +922,25 @@ final class TimelineNSTableView: NSTableView {
     }
 }
 
+/// The timeline's scroll view. It tells the timeline when a wheel or trackpad event reaches it, so that only scrolling
+/// this timeline counts as the person scrolling it (a wheel event over the inbox, or any other pane, does not).
+final class TimelineScrollView: NSScrollView {
+    var onWheel: (() -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        onWheel?()
+        super.scrollWheel(with: event)
+    }
+}
+
 final class TimelineContainerView: NSView {
-    let scrollView = NSScrollView()
+    let scrollView = TimelineScrollView()
     var onLayout: ((CGSize) -> Void)?
     /// Told when the view enters a window (true) or leaves one (false); not for the first, windowless, state.
     var onWindowPresence: ((Bool) -> Void)?
     private var hadWindow = false
+    /// The date capsule that floats under the chat's header while the person scrolls (`FloatingDayController`).
+    let floatingDay = FloatingDayController()
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -955,6 +968,7 @@ final class TimelineContainerView: NSView {
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.translatesAutoresizingMaskIntoConstraints = true
         addSubview(scrollView)
+        addSubview(floatingDay.hostingView)
     }
 
     @available(*, unavailable)
@@ -964,6 +978,17 @@ final class TimelineContainerView: NSView {
         super.layout()
         if scrollView.frame != bounds {
             scrollView.frame = bounds
+        }
+        // Centred just under the chat's header: the scroll view's top inset is the header and the timeline's own
+        // padding, and the capsule sits that padding's width less than a gap below the header.
+        let capsuleFrame = NSRect(
+            x: 0,
+            y: max(0, scrollView.contentInsets.top - ConversationView.timelineVerticalPadding + 6),
+            width: bounds.width,
+            height: FloatingDayHostingView.height
+        )
+        if floatingDay.hostingView.frame != capsuleFrame {
+            floatingDay.hostingView.frame = capsuleFrame
         }
         onLayout?(bounds.size)
     }
@@ -1043,6 +1068,15 @@ struct TimelineTableView: NSViewRepresentable {
         private var pinToBottomUntil: Date?
         private var lastUserScroll = Date.distantPast
         private var lastScrollGesture = Date.distantPast
+        /// When the person last scrolled with the wheel, the trackpad or by dragging (not a key or a click): what
+        /// lets the floating date capsule show (`FloatingDay.showsForScroll`).
+        private var lastPointerScroll = Date.distantPast
+        /// The mouse button went down in this timeline and has not come up: its drags can scroll it.
+        private var dragBeganInTimeline = false
+        /// The row at the top when the floating date was last looked up, and the day found for it.
+        private var floatingDayRow = -1
+        private var floatingDayRowID: String?
+        private var floatingDayValue: Date?
         private var scrolledToMessageSerial: Int?
 
         private var lastHandledScrollSerial: Int?
@@ -1089,6 +1123,7 @@ struct TimelineTableView: NSViewRepresentable {
         func noteUserScrollForTesting() {
             lastUserScroll = Date()
             lastScrollGesture = Date()
+            lastPointerScroll = Date()
             stopPinningToBottom()
         }
         #endif
@@ -1113,6 +1148,7 @@ struct TimelineTableView: NSViewRepresentable {
             leavingBottomTask = nil
             stopPinningToBottom()
             pinToBottomUntil = nil
+            containerView.floatingDay.reset()
             dismissSenderPopover()
             if let userScrollMonitor {
                 NSEvent.removeMonitor(userScrollMonitor)
@@ -1186,6 +1222,7 @@ struct TimelineTableView: NSViewRepresentable {
                     guard let self else { return }
                     self.lastUserScroll = Date()
                     self.lastScrollGesture = Date()
+                    self.lastPointerScroll = Date()
                     self.stopPinningToBottom()
                 }
             }
@@ -1220,6 +1257,9 @@ struct TimelineTableView: NSViewRepresentable {
                 }
 
             installUserScrollMonitor()
+            containerView.scrollView.onWheel = { [weak self] in
+                MainActor.assumeIsolated { self?.lastPointerScroll = Date() }
+            }
 
             containerView.onLayout = { [weak self] size in
                 self?.handleContainerLayout(size: size)
@@ -1235,11 +1275,26 @@ struct TimelineTableView: NSViewRepresentable {
 
         private func installUserScrollMonitor() {
             userScrollMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.scrollWheel, .keyDown, .leftMouseDown, .leftMouseDragged]
+                matching: [.scrollWheel, .keyDown, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
             ) { [weak self] event in
                 MainActor.assumeIsolated {
                     guard let self else { return }
+                    if event.type == .leftMouseUp {
+                        self.dragBeganInTimeline = false
+                        return
+                    }
                     self.lastUserScroll = Date()
+                    if event.type == .leftMouseDown {
+                        // A drag that began in this timeline (its scroller, or a selection) can scroll it; a drag in
+                        // another pane cannot.
+                        let point = self.containerView.convert(event.locationInWindow, from: nil)
+                        self.dragBeganInTimeline = event.window != nil
+                            && event.window === self.containerView.window
+                            && self.containerView.bounds.contains(point)
+                    }
+                    if event.type == .leftMouseDragged, self.dragBeganInTimeline {
+                        self.lastPointerScroll = Date()
+                    }
                     if event.type != .leftMouseDown {
                         self.lastScrollGesture = Date()
                         if self.earlierTopInView, event.type != .scrollWheel || event.scrollingDeltaY > 0 {
@@ -2178,13 +2233,42 @@ struct TimelineTableView: NSViewRepresentable {
                 return
             }
             let movedUp = currentOriginY < lastObservedClipOriginY - 0.5
+            let moved = abs(currentOriginY - lastObservedClipOriginY) > 0.5
             lastObservedClipOriginY = currentOriginY
+            if moved { showFloatingDayIfScrolledByPerson() }
             if movedUp, !isScrolledToBottom() {
                 lastUserScroll = Date()
                 stopPinningToBottom()
             }
             evaluateScrollPosition()
             reportVisibleProbes()
+        }
+
+        /// The floating date: the day of the message at the top, while the person scrolls. Not for the app's own
+        /// moves (a new message, the jump to the newest one, a search result).
+        private func showFloatingDayIfScrolledByPerson() {
+            guard FloatingDay.showsForScroll(
+                isProgrammatic: isApplyingProgrammaticUpdate,
+                secondsSinceUserScroll: Date().timeIntervalSince(lastPointerScroll)
+            ) else { return }
+            floatingDayForTopRow()
+        }
+
+        /// Shows the capsule for the row at the top of the visible part of the timeline (under the header). Called on
+        /// every scroll event, so the day is looked up only when the row at the top is another one.
+        private func floatingDayForTopRow() {
+            let scrollView = containerView.scrollView
+            let probeY = scrollView.contentView.bounds.origin.y + scrollView.contentInsets.top + 1
+            let row = tableView.row(at: NSPoint(x: tableView.bounds.midX, y: probeY))
+            let rowID: String? = row >= 0 && row < entries.count ? entries[row].id : nil
+            if rowID == nil || rowID != floatingDayRowID || row != floatingDayRow {
+                floatingDayRow = row
+                floatingDayRowID = rowID
+                floatingDayValue = row >= 0
+                    ? FloatingDay.day(topRow: row, itemAt: { [entries] in $0 < entries.count ? entries[$0].item : nil })
+                    : nil
+            }
+            containerView.floatingDay.userScrolled(day: floatingDayValue)
         }
 
         private func evaluateScrollPosition() {
