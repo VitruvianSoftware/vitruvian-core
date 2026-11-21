@@ -141,6 +141,24 @@ final class CalendarBridgeTests: XCTestCase {
         }
     }
 
+    /// Words in other languages are never judged by the English day list: whatever the detector finds is kept, and a
+    /// message that happens to be in English around them changes nothing.
+    func testOtherLanguagesAreNotCaughtByTheBareDayFilter() {
+        for text in ["domingo", "dimanche", "Sonntag", "hoy", "demain", "mañana a las 7", "dimanche à 19h", "日曜日", "明日"] {
+            XCTAssertFalse(CalendarBridge.isBareDayReference(text), "\(text) is not English, so it is left as the detector found it")
+        }
+        // Not made only of day words: kept.
+        for text in ["Sunday dinner", "today at noon", "this weekend trip", "Monday 3", "May 5"] {
+            XCTAssertFalse(CalendarBridge.isBareDayReference(text), text)
+        }
+        // End to end with the real detector: a non-English message keeps whatever it matched before.
+        let long = Date(timeIntervalSince1970: 946_684_800)
+        for text in ["nos vemos el 5 de diciembre a las 19:00", "à demain 19h30", "Treffen am 30. November um 19 Uhr"] {
+            let before = CalendarBridge.detectDates(in: text, referenceDate: long)
+            XCTAssertFalse(before.isEmpty, "\(text) is a date the detector knows")
+        }
+    }
+
     func testDeniedCalendarAccessDoesNotPromptAndReportsDenied() async throws {
         let sampleEvent = CalendarEventItem(
             id: "ev-1",

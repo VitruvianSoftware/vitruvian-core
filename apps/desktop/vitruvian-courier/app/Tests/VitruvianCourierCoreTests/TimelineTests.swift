@@ -614,6 +614,36 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shown["$text"]?.isPhotoOnly, false)
     }
 
+    /// The other things that keep a picture's bubble: a quote, view-once, removed media, and a gallery of several.
+    func testPhotoKeepsItsBubbleWhenQuotingViewOnceRemovedOrInAGallery() {
+        let info = #","info":{"w":1600,"h":900,"mimetype":"image/jpeg"}"#
+        let viewOnce = Event(eventID: "$vo", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                             type: "m.room.message",
+                             content: json(#"{"msgtype":"m.image","body":"secret.jpg","info":{"mimetype":"image/jpeg","w":800,"h":600}}"#),
+                             ts: at(14, 10, 1), seq: 1, status: .sent, mediaPath: "/tmp/secret.jpg", viewOnce: true)
+        let removed = Event(eventID: "$rm", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                            type: "m.room.message",
+                            content: json(#"{"msgtype":"m.image","body":"photo.jpg","url":"","com.courier.media_removed":true}"#),
+                            ts: at(14, 10, 2), seq: 2, status: .sent)
+        let events = [
+            message("$quote", ts: at(14, 10, 0), body: "beach.jpg", msgtype: "m.image",
+                    extra: info + #","m.relates_to":{"m.in_reply_to":{"event_id":"$gone"}}"#, media: "/tmp/a.jpg"),
+            viewOnce, removed,
+        ]
+        let shown = Dictionary(uniqueKeysWithValues: messages(build(events)).map { ($0.id, $0) })
+        XCTAssertEqual(shown["$quote"]?.isPhotoOnly, false, "a quoting photo keeps its bubble")
+        XCTAssertEqual(shown["$vo"]?.isPhotoOnly, false, "a view-once photo keeps its own look")
+        XCTAssertEqual(shown["$rm"]?.isPhotoOnly, false, "the 'removed to free up space' note needs its bubble")
+
+        // Three photos in a row are one gallery, whose cell is not a bare photo.
+        let run = (0 ..< 3).map { i in
+            message("$g\(i)", ts: at(14, 11, 0, second: i), body: "p\(i).jpg", msgtype: "m.image", extra: info, media: "/tmp/p\(i).jpg")
+        }
+        let gallery = messages(build(run))
+        XCTAssertTrue(gallery.contains { !$0.galleryItems.isEmpty }, "the fixture makes a gallery")
+        for m in gallery where !m.galleryItems.isEmpty { XCTAssertFalse(m.isPhotoOnly, "a gallery keeps its bubble") }
+    }
+
     func testStickersEncryptedAndUnknownEvents() {
         let sticker = Event(eventID: "$s", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
                             type: "m.sticker", content: json(#"{"body":"wave","info":{"w":128,"h":128}}"#),
