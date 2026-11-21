@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"io"
 	"net"
@@ -24,9 +25,16 @@ import (
 )
 
 const (
-	linkPreviewTimeout       = 3 * time.Second
 	maxLinkPreviewHTMLBytes  = 256 * 1024
 	maxLinkPreviewImageBytes = 2 * 1024 * 1024
+)
+
+// A preview of a message I send has one time for the page and the picture together (linkPreviewTimeout), so a slow site
+// never holds a send up longer than that. A link card's picture (PreviewImageForURL) gets its own, after the page's
+// (variables so a test can shorten them).
+var (
+	linkPreviewTimeout      = 3 * time.Second
+	linkPreviewImageTimeout = 5 * time.Second
 )
 
 var (
@@ -80,8 +88,8 @@ func (a *Actions) getLinkPreviewClient() *http.Client {
 		resolver = net.DefaultResolver.LookupIPAddr
 	}
 	dialer := &net.Dialer{Timeout: linkPreviewTimeout}
+	// No Timeout of its own: the page and the picture each carry their own context deadline (fetchLinkPreviewDetail).
 	return &http.Client{
-		Timeout: linkPreviewTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxLinkPreviewRedirects {
 				return errors.New("too many redirects")
@@ -92,6 +100,9 @@ func (a *Actions) getLinkPreviewClient() *http.Client {
 			return nil
 		},
 		Transport: &http.Transport{
+			// One page and one picture per client: nothing is kept idle, so a client made for each fetch leaves no
+			// connection (or the goroutines that serve it) behind.
+			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				host, port, err := net.SplitHostPort(addr)
 				if err != nil {
@@ -124,6 +135,11 @@ func isPrivateOrLoopbackIP(ip net.IP) bool {
 		return true
 	}
 	addr = addr.Unmap()
+	// An IPv6 form that carries an IPv4 address (NAT64, 6to4, IPv4-compatible) is judged by that address: a gateway
+	// turns the connection into one to the IPv4 host, which may be on this Mac or its network.
+	if v4, ok := embeddedIPv4(addr); ok {
+		return isPrivateOrLoopbackIP(v4.AsSlice())
+	}
 	if !addr.IsGlobalUnicast() || addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() || addr.IsUnspecified() {
 		return true
 	}
@@ -133,6 +149,31 @@ func isPrivateOrLoopbackIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+var (
+	nat64Prefix      = netip.MustParsePrefix("64:ff9b::/96")   // RFC 6052 well-known prefix
+	nat64LocalPrefix = netip.MustParsePrefix("64:ff9b:1::/48") // RFC 8215 local-use prefix
+	ipv4CompatPrefix = netip.MustParsePrefix("::/96")          // deprecated IPv4-compatible
+	sixToFourPrefix  = netip.MustParsePrefix("2002::/16")      // 6to4
+)
+
+// embeddedIPv4 is the IPv4 address an IPv6 address carries, when it is one of the forms that do.
+func embeddedIPv4(addr netip.Addr) (netip.Addr, bool) {
+	if !addr.Is6() {
+		return netip.Addr{}, false
+	}
+	b := addr.As16()
+	switch {
+	case nat64Prefix.Contains(addr), ipv4CompatPrefix.Contains(addr):
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
+	case nat64LocalPrefix.Contains(addr):
+		// RFC 6052: a /48 prefix puts the IPv4 address in bytes 6-7 and 9-10 (byte 8 is zero).
+		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true
+	case sixToFourPrefix.Contains(addr):
+		return netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}), true
+	}
+	return netip.Addr{}, false
 }
 
 func firstURLInText(body string) string {
@@ -171,34 +212,54 @@ func (a *Actions) applyLinkPreviews(ctx context.Context, c *event.MessageEventCo
 }
 
 func (a *Actions) fetchLinkPreview(ctx context.Context, targetURL string) *event.BeeperLinkPreview {
+	lp, _ := a.fetchLinkPreviewDetail(ctx, targetURL, false)
+	return lp
+}
+
+// linkPreviewImageOutcome says what became of the page's picture, for a caller that remembers the answer (the picture
+// of a link card, PreviewImageForURL).
+type linkPreviewImageOutcome struct {
+	// Named is true when the page names an og:image at all.
+	Named bool
+	// Err is why that picture could not be had (it was refused, did not answer, was not 2xx, too big, or not a picture);
+	// nil when it was saved, or when the page names none.
+	Err error
+}
+
+// fetchLinkPreviewDetail is fetchLinkPreview and what became of the page's picture. The page and the picture share
+// linkPreviewTimeout, as for a message I send; with ownImageTime (a link card's picture, which holds nothing up) the
+// picture has linkPreviewImageTimeout of its own after the page's.
+func (a *Actions) fetchLinkPreviewDetail(ctx context.Context, targetURL string, ownImageTime bool) (*event.BeeperLinkPreview, linkPreviewImageOutcome) {
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	fetchCtx, cancel := context.WithTimeout(ctx, linkPreviewTimeout)
 	defer cancel()
 
 	client := a.getLinkPreviewClient()
+	// Whatever the client kept idle goes when the fetch ends (a client given by a test keeps connections alive).
+	defer client.CloseIdleConnections()
 	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, targetURL, nil)
 	if err != nil {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxLinkPreviewHTMLBytes))
 	if err != nil || len(bodyBytes) == 0 {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 
 	og := parseOpenGraphTags(string(bodyBytes))
 	if og["og:title"] == "" && og["og:description"] == "" && og["og:site_name"] == "" && og["og:image"] == "" {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 
 	canonical := og["og:url"]
@@ -216,38 +277,57 @@ func (a *Actions) fetchLinkPreview(ctx context.Context, targetURL string) *event
 		},
 	}
 
-	if rawImg := og["og:image"]; rawImg != "" && a.m != nil {
-		if imgURL, err := parsedURL.Parse(rawImg); err == nil && imgURL.Scheme == "https" {
-			a.populatePreviewImage(fetchCtx, client, imgURL.String(), preview)
+	var outcome linkPreviewImageOutcome
+	if rawImg := og["og:image"]; rawImg != "" {
+		outcome.Named = true
+		switch imgURL, err := parsedURL.Parse(rawImg); {
+		case a.m == nil:
+			outcome.Err = errors.New("no media store to keep the picture in")
+		case err != nil || imgURL.Scheme != "https":
+			outcome.Err = errors.New("the page's picture is not an https address")
+		default:
+			imgCtx := fetchCtx // the page's time, shared (a send)
+			if ownImageTime {
+				var imgCancel context.CancelFunc
+				imgCtx, imgCancel = context.WithTimeout(ctx, linkPreviewImageTimeout)
+				defer imgCancel()
+			}
+			outcome.Err = a.populatePreviewImage(imgCtx, client, imgURL.String(), preview)
 		}
 	}
-	return preview
+	return preview, outcome
 }
 
-func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client, imgURL string, preview *event.BeeperLinkPreview) {
+// populatePreviewImage fetches the picture at imgURL into the media store and sets it on preview. The error says why
+// it could not (the picture did not answer, was not 2xx, was empty or over 2 MiB, or was not a picture, or one too big
+// to decode: media.ErrImageTooLarge).
+func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client, imgURL string, preview *event.BeeperLinkPreview) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imgURL, nil)
 	if err != nil {
-		return
+		return err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return
+		return fmt.Errorf("the picture answered %d", resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxLinkPreviewImageBytes+1))
-	if err != nil || len(data) == 0 || len(data) > maxLinkPreviewImageBytes {
-		return
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 || len(data) > maxLinkPreviewImageBytes {
+		return errors.New("the picture is empty or over the size limit")
 	}
 	meta, err := media.InspectImage(bytes.NewReader(data))
 	if err != nil {
-		return
+		return err
 	}
 	hash, err := a.m.Put(data)
 	if err != nil {
-		return
+		return err
 	}
 	preview.ImageURL = ids.ContentURI(hash)
 	preview.ImageSize = event.IntOrString(len(data))
@@ -257,6 +337,7 @@ func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client,
 	if ct := baseType(resp.Header.Get("Content-Type")); strings.HasPrefix(ct, "image/") {
 		preview.ImageType = ct
 	}
+	return nil
 }
 
 func parseOpenGraphTags(doc string) map[string]string {

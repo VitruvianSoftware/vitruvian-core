@@ -2570,3 +2570,24 @@
 "Send Later works with text messages only" = "Send Later works with text messages only";
 "AI & Dictation" = "AI & Dictation";
 "Share Location" = "Share Location";
+
+/* Summarize on a link card (E1): the button, the menu item and the panel under the card. */
+"Summarize" = "Summarize";
+"Summarize this article with AI" = "Summarize this article with AI";
+"Summarize Link" = "Summarize Link";
+"Close summary" = "Close summary";
+"Open article" = "Open article";
+"%@ has this behind a paywall." = "%@ has this behind a paywall.";
+"Couldn’t read this article." = "Couldn’t read this article.";
+"Summary from %@:" = "Summary from %@:";
+"Couldn’t find this story outside the paywall." = "Couldn’t find this story outside the paywall.";
+"Couldn’t find the same story elsewhere." = "Couldn’t find the same story elsewhere.";
+"Reading the article…" = "Reading the article…";
+"Summarizing…" = "Summarizing…";
+"Looking for this story on a free site…" = "Looking for this story on a free site…";
+"Checking it’s the same story…" = "Checking it’s the same story…";
+"Summary by %@" = "Summary by %@";
+"AI summary" = "AI summary";
+"Source: %@" = "Source: %@";
+"Article summaries aren’t available." = "Article summaries aren’t available.";
+"Article summaries aren’t available yet in Vitruvian Courier." = "Article summaries aren’t available yet in Vitruvian Courier.";

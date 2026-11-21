@@ -2056,7 +2056,7 @@ final class ViewSnapshotTests: XCTestCase {
 
         // 6. Plain-words check: user-facing strings never expose API names.
         let strings = LocationCardView.userVisibleStrings
-            + LinkPreviewCardView.userVisibleStrings
+            + LinkPreviewCardView<EmptyView>.userVisibleStrings
             + EmbedConsentCard.userVisibleStrings
         for text in strings {
             XCTAssertFalse(text.contains("MKMapSnapshotter"), "no API names in text people read: \(text)")

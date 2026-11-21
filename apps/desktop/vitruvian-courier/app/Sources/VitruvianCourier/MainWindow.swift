@@ -210,6 +210,7 @@ struct MainWindow: View {
                 .sheet(isPresented: addingNetwork) {
                     AddNetworkView(login: login)
                 }
+                .chatRoomSheets(conversation)
                 .sheet(item: customReminderBinding) { request in
                     CustomReminderSheet(request: request, inbox: inbox)
                 }
@@ -328,6 +329,7 @@ struct MainWindow: View {
                         preferences: preferences,
                         composerPreferences: composerPreferences,
                         ui: ui,
+                        conversation: conversation,
                         openSearch: { search.show() }
                     )
                 }

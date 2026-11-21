@@ -79,6 +79,8 @@ struct MessageActions {
     var loadExternalEmbedsAutomatically = false
     /// Whether link cards may fetch their picture and title (`ComposerPreferences.showLinkPreviews`).
     var showLinkPreviews = true
+    /// Where link cards get the page's picture when the chat network's preview came without one; nil asks for nothing.
+    var linkPreviewImages: LinkPreviewImages? = nil
     /// Preferred time format (`ComposerPreferences.timeFormat`).
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
@@ -98,6 +100,8 @@ struct MessageActions {
     var openAISettings: (() -> Void)? = nil
     /// Dismisses an inline translation row for a message ID.
     var dismissTranslation: (String) -> Void = { _ in }
+    /// "Summarize" on a link card and the panel under it (`ArticleSummaryModel`); nothing offered by default.
+    var articleSummary = ArticleSummaryControls()
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -210,16 +214,7 @@ private struct DaySeparator: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    private var label: String {
-        switch DayLabel.of(day: day, now: Date()) {
-        case .today: return String(localized: "Today")
-        case .yesterday: return String(localized: "Yesterday")
-        case let .date(date):
-            let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
-            return sameYear ? date.formatted(.dateTime.weekday(.wide).month(.wide).day())
-                : date.formatted(.dateTime.year().month(.wide).day())
-        }
-    }
+    private var label: String { DayLabel.text(day: day, now: Date()) }
 }
 
 private struct NewDivider: View {
@@ -354,6 +349,27 @@ private struct CallNoteRow: View {
     }
 }
 
+/// Offers its one child no more width than `BubbleWidth` allows in the row it sits in: about 60% of the conversation.
+/// A child that fills what it is offered (a link card) grows to exactly that; text stops where its lines end.
+struct BubbleWidthCap: Layout {
+    let hasAvatarColumn: Bool
+
+    private func capped(_ proposal: ProposedViewSize) -> ProposedViewSize {
+        guard let width = proposal.width, width.isFinite else { return proposal }
+        let cap = BubbleWidth.maxWidth(offered: width, hasAvatarColumn: hasAvatarColumn)
+        return ProposedViewSize(width: min(width, cap), height: proposal.height)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(capped(proposal)) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: nil))
+    }
+}
+
 /// A message: the bubble with what it quotes, its reactions, its thread, and (for mine) how it went.
 struct MessageRowView: View {
     let message: TimelineMessage
@@ -397,9 +413,8 @@ struct MessageRowView: View {
     @State private var activeDetectedDate: DetectedMessageDate?
 
     private static let avatarSize: CGFloat = 28
-    /// Plain text stops at this width however wide the pane is (long lines are hard to read); code, pictures and
-    /// cards may use the whole row.
-    static let textBubbleMaxWidth: CGFloat = 640
+    /// Plain text and link cards stop at `BubbleWidth` (about 60% of the conversation, 640 to 960 pt) however wide the
+    /// pane is (long lines are hard to read); code and pictures may use the whole row.
     /// The time and "Edited" on a bubble. On macOS `.caption` and `.caption2` are both 10 pt, so this is 11 pt.
     static let metaFont = Font.system(size: metaPointSize)
     static let metaPointSize: CGFloat = 11
@@ -437,6 +452,14 @@ struct MessageRowView: View {
         return !RichTextLayout.blocks(of: message.rich).contains { $0.kind == .code }
     }
 
+    /// Whether the message carries a link card (a page's picture, title and summary) that draws above its text. A link
+    /// with an embed card (YouTube and the like) has that card instead, below the text.
+    private var hasLinkCard: Bool {
+        message.kind != .deleted && message.kind != .undecryptable
+            && ExternalEmbedDescriptor.first(in: message) == nil
+            && !ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty
+    }
+
     /// Where the hover pill sits up and down: on a text bubble's last line, at the middle of anything else (a picture,
     /// a video, a link card, a GIF, a file, code). Tall ones are centred whatever they hold (`MessageActionBarPlacement`).
     private var hoverPillLevel: MessageActionBarPlacement.Level {
@@ -458,8 +481,8 @@ struct MessageRowView: View {
                 if message.startsGroup { header }
                 HStack(alignment: .center, spacing: 4) {
                     if message.mine { bookmarkMark }
-                    if capsBubbleWidth {
-                        bubble.frame(maxWidth: Self.textBubbleMaxWidth, alignment: message.mine ? .trailing : .leading)
+                    if capsBubbleWidth || hasLinkCard {
+                        BubbleWidthCap(hasAvatarColumn: message.showsAvatarColumn) { bubble }
                     } else if ExternalEmbedDescriptor.first(in: message) != nil {
                         // A video card sets the bubble's width; the text above it wraps to the card, not to the row.
                         bubble.frame(maxWidth: EmbedConsentCard.maxWidth + 32, alignment: message.mine ? .trailing : .leading)
@@ -931,6 +954,7 @@ struct MessageRowView: View {
     }
 
     private var metaColor: Color {
+        if message.isPhotoOnly { return .white }
         if message.mine && !message.suppressesBubbleBackground { return Color.white.opacity(0.8) }
         return Color.secondary
     }
@@ -981,6 +1005,8 @@ struct MessageRowView: View {
                                 .fill(message.suppressesBubbleBackground ? Color.primary.opacity(0.08) : .clear)
                         )
                 }
+                // The page's card sits above the address it came from, as in Beeper.
+                if hasLinkCard { linkCards }
                 if contentIsText {
                     content
                 } else {
@@ -988,8 +1014,14 @@ struct MessageRowView: View {
                     content.takesOwnClick()
                 }
                 if message.kind != .deleted && message.kind != .undecryptable {
-                    ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
-                        LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
+                    if !hasLinkCard { linkCards }
+                    // A link with no card ("Summarize Link" from the menu): its summary shows under the message.
+                    if ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty, actions.articleSummary.hasAny(),
+                       let request = ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed),
+                       let state = actions.articleSummary.state(request.url) {
+                        ArticleSummaryPanel(url: request.url, state: state,
+                                            onBubble: message.mine && !message.suppressesBubbleBackground,
+                                            controls: actions.articleSummary)
                             .takesOwnClick()
                     }
                     if let embed = ExternalEmbedDescriptor.first(in: message) {
@@ -1013,18 +1045,27 @@ struct MessageRowView: View {
             .accessibilityLabel(accessibilityText)
             // Room for the time on a line of its own; the real one is laid over it below (a Spacer here would
             // stretch the bubble to the full row).
-            if hasMeta && !metaIsInline { metaView.hidden() }
+            if hasMeta && !metaIsInline && !message.isPhotoOnly { metaView.hidden() }
         }
         .overlay(alignment: .bottomTrailing) {
             if hasMeta {
-                metaView.padding(.horizontal, metaIsInline ? 0 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 0))
+                if message.isPhotoOnly {
+                    // A photo on its own has no bubble to hold its time: it rides in a small dark capsule on the picture.
+                    metaView
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.black.opacity(0.5)))
+                        .padding(6)
+                } else {
+                    metaView.padding(.horizontal, metaIsInline ? 0 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 0))
+                }
             }
         }
         .foregroundStyle(foreground)
-        .padding(.horizontal, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11))
-        .padding(.vertical, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7))
+        .padding(.horizontal, message.isPhotoOnly ? 0 : message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11))
+        .padding(.vertical, message.isPhotoOnly ? 0 : message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7))
         .background(RoundedRectangle(cornerRadius: 14).fill(fill))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isFailed ? Color.red : .clear, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: message.isPhotoOnly ? 12 : 14).strokeBorder(isFailed ? Color.red : .clear, lineWidth: 1))
         // Held for undo send: dimmed until it goes.
         .opacity(message.statusLine == .queued ? 0.55 : 1)
         .help(message.statusLine == .queued && actions.undoHeld != nil ? String(localized: "Click to unsend") : "")
@@ -1032,6 +1073,29 @@ struct MessageRowView: View {
         // The bubble's own frame, for the hover pill and the action bar. Not its row's (a text bubble sits in a frame
         // as wide as the text may go, and a pill placed by that is far from a short message).
         .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubble: $0) }
+    }
+
+    /// The message's link cards (a page's picture, title and summary), each with its footer.
+    @ViewBuilder
+    private var linkCards: some View {
+        ForEach(Array(ExternalEmbedDescriptor.cardPreviews(in: message).enumerated()), id: \.offset) { _, preview in
+            LinkPreviewCardView(
+                preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground,
+                images: actions.linkPreviewImages, allowsRemoteImage: actions.showLinkPreviews
+            ) {
+                linkCardFooter(preview)
+            }
+            .takesOwnClick()
+        }
+    }
+
+    /// What sits under a link card's text, inside the card: the "Summarize" button, or the summary that replaced it.
+    @ViewBuilder
+    private func linkCardFooter(_ preview: LinkPreviewItem) -> some View {
+        if let request = ArticleSummaryRequest(preview: preview) {
+            ArticleSummarySection(request: request, onBubble: message.mine && !message.suppressesBubbleBackground,
+                                  controls: actions.articleSummary, inCard: true)
+        }
     }
 
     /// "Edited": opens the versions below the bubble ("Hide Edits" closes them). Its tooltip says what it first was,
@@ -1043,7 +1107,7 @@ struct MessageRowView: View {
             Text(ui.historyOpen.contains(message.id) ? String(localized: "Hide Edits") : String(localized: "Edited"))
                 .font(Self.metaFont)
                 .underline(ui.historyOpen.contains(message.id))
-                .foregroundStyle(foreground.opacity(0.75))
+                .foregroundStyle(message.isPhotoOnly ? Color.white : foreground.opacity(0.75))
         }
         .buttonStyle(.plain)
         .onHover { if $0 { ui.loadHistory(message.id) } }

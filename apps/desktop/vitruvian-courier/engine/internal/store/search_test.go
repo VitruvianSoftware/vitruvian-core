@@ -811,6 +811,34 @@ func TestRoomSharedLinksCarryThePreviewTitle(t *testing.T) {
 	}, titles)
 }
 
+func TestRoomSharedLinksCarryThePreviewImage(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!imaged-links:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Imaged", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	mkMsg(t, s, roomID, "$with", me, "m.room.message",
+		`{"msgtype":"m.text","body":"https://news.test/a","com.beeper.linkpreviews":[{"matched_url":"https://news.test/a","og:url":"https://news.test/a?canon","og:image":"mxc://courier.local/abc"}]}`,
+		t0.Add(time.Minute))
+	mkMsg(t, s, roomID, "$without", me, "m.room.message",
+		`{"msgtype":"m.text","body":"https://news.test/b","com.beeper.linkpreviews":[{"matched_url":"https://news.test/b","og:title":"No picture"}]}`,
+		t0.Add(2*time.Minute))
+	mkMsg(t, s, roomID, "$bare", me, "m.room.message",
+		`{"msgtype":"m.text","body":"https://news.test/c"}`, t0.Add(3*time.Minute))
+
+	links, err := s.RoomSharedLinks(ctx, roomID, 10)
+	require.NoError(t, err)
+	images := map[string]string{}
+	for _, l := range links {
+		images[l.URL] = l.ImageURI
+	}
+	require.Equal(t, map[string]string{
+		"https://news.test/a": "mxc://courier.local/abc",
+		"https://news.test/b": "",
+		"https://news.test/c": "",
+	}, images)
+}
+
 // A Maps link counts as a link however it was written: with its scheme, without one (people paste
 // "maps.app.goo.gl/abc" and chat apps link it anyway), or as a dropped pin whose text holds no URL at all.
 func TestRoomSharedLinksCountMapsLinksInEveryForm(t *testing.T) {

@@ -323,7 +323,8 @@ enum TimelineContentRevision {
             hasher.combine(LocalFileFacts.cachedExists(message.mediaPath) ?? false)
             hasher.combine(InlinePDFDocumentCache.shared.hasDocument(atPath: message.mediaPath))
             for preview in message.linkPreviews {
-                if let path = preview.imagePath {
+                // The picture the network's preview saved, else the one fetched for the page (`linkPreview.image`).
+                if let path = preview.imagePath ?? preview.pageURL.flatMap({ actions.showLinkPreviews ? actions.linkPreviewImages?.cached(for: $0)?.path : nil }) {
                     hasher.combine(LocalFileFacts.cachedExists(path) ?? false)
                     if let size = ImagePixelSizeReader.cachedSize(ofFirstReadable: [path]) {
                         hasher.combine(Int(size.width.rounded()))
@@ -332,6 +333,9 @@ enum TimelineContentRevision {
                 }
             }
             hasher.combine(ui.loadedEmbeds.contains(message.id))
+            if !message.linkPreviews.isEmpty || actions.articleSummary.hasAny() {
+                hasher.combine(actions.articleSummary.heightSignature(for: message))
+            }
             hasher.combine(message.poll)
             hasher.combine(message.thread)
 
@@ -1092,6 +1096,7 @@ struct TimelineTableView: NSViewRepresentable {
         private var lastPickingReactionID: String?
         private var lastUIStateSignature = 0
         private var lastTranslationsSignature = 0
+        private var lastArticleSummariesSignature = 0
         private var lastTranscriptsSignature = 0
 
         private var clipBoundsObserver: NSObjectProtocol?
@@ -1726,6 +1731,7 @@ struct TimelineTableView: NSViewRepresentable {
             let pickingID = reactionPickerMessageID(view.messageActions.request)
             let uiSig = computeUISignature(view.ui)
             let translationsSig = computeTranslationsSignature(view.messageActions)
+            let summariesSig = computeArticleSummariesSignature(view.messageActions)
             let transcriptsSig = computeTranscriptsSignature(conversation.voiceNoteTranscripts)
 
             let insetsChanged = updateScrollInsets(adjustScrollPosition: hasPositionedInitially)
@@ -1736,6 +1742,7 @@ struct TimelineTableView: NSViewRepresentable {
                 || actionsHeightSig != lastActionsHeightSignature
                 || uiSig != lastUIStateSignature
                 || translationsSig != lastTranslationsSignature
+                || summariesSig != lastArticleSummariesSignature
                 || transcriptsSig != lastTranscriptsSignature
 
             let selectionOrVisualChanged = selectedID != lastSelectedID
@@ -1778,6 +1785,7 @@ struct TimelineTableView: NSViewRepresentable {
             lastPickingReactionID = pickingID
             lastUIStateSignature = uiSig
             lastTranslationsSignature = translationsSig
+            lastArticleSummariesSignature = summariesSig
             lastTranscriptsSignature = transcriptsSig
 
             handleRequests(view: view, insetsChanged: insetsChanged)
@@ -2544,7 +2552,11 @@ struct TimelineTableView: NSViewRepresentable {
             for (idx, item) in items.enumerated() {
                 guard case let .message(msg) = item else { continue }
                 let matches = msg.mediaPath == path
-                    || msg.linkPreviews.contains(where: { $0.imagePath == path })
+                    || msg.linkPreviews.contains(where: {
+                        $0.imagePath == path
+                            || ($0.imagePath == nil && parent.actions.showLinkPreviews
+                                && $0.pageURL.flatMap { parent.conversation.linkPreviewImages.cached(for: $0)?.path } == path)
+                    })
                     || msg.thumbnailPath == path
                     || msg.galleryItems.contains(where: { $0.mediaPath == path || $0.thumbnailPath == path })
                 guard matches else { continue }
@@ -2799,6 +2811,19 @@ struct TimelineTableView: NSViewRepresentable {
             for id in ui.loadedEmbeds.sorted() { hasher.combine(id) }
             hasher.combine(ui.revealed.count)
             for id in ui.revealed.sorted() { hasher.combine(id) }
+            return hasher.finalize()
+        }
+
+        /// The summaries under link cards ("Summarize"): any change in them, or in whether an AI service is ready,
+        /// re-measures the rows.
+        private func computeArticleSummariesSignature(_ model: MessageActionsModel) -> Int {
+            var hasher = Hasher()
+            hasher.combine(model.articleSummaries.aiProvider.isAvailable)
+            for key in model.articleSummaries.states.keys.sorted() {
+                hasher.combine(key)
+                hasher.combine(model.articleSummaries.states[key])
+                hasher.combine(model.articleSummaries.suggestionHeights[key])
+            }
             return hasher.finalize()
         }
 

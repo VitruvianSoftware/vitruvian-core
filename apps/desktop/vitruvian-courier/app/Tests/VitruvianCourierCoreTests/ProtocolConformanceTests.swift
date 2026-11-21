@@ -253,8 +253,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 13)
-        XCTAssertEqual(CourierProtocol.version, 13)
+        XCTAssertEqual(protocolVersion, 14)
+        XCTAssertEqual(CourierProtocol.version, 14)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """
@@ -413,7 +413,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol9BridgesSubAccountsAndDiagnosticsDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 13)
+        XCTAssertEqual(CourierProtocol.version, 14)
         XCTAssertNotNil(ProtocolMethods.all["bridges.list"])
         XCTAssertNotNil(ProtocolMethods.all["bridges.restart"])
         XCTAssertNotNil(ProtocolMethods.all["accounts.remove"])
@@ -483,7 +483,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol11StorageUsageAndCleanupDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 13)
+        XCTAssertEqual(CourierProtocol.version, 14)
         XCTAssertNotNil(ProtocolMethods.all["storage.usage"])
         XCTAssertNotNil(ProtocolMethods.all["storage.cleanup"])
         XCTAssertEqual(ProtocolMethods.classification(for: "storage.usage"), .userInitiatedMutation)
@@ -523,7 +523,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol12IntegrationsAndFocusDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 13)
+        XCTAssertEqual(CourierProtocol.version, 14)
         // Settings, all of it: refused while Vitruvian Courier is locked.
         for method in ["integrations.status", "integrations.tokens", "integrations.update", "integrations.createToken", "integrations.revokeToken",
                        "integrations.setCanSend", "integrations.answerPairing"] {

@@ -46,6 +46,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case translate
         /// Translates the message inline into a specific target language.
         case translateTo(String)
+        /// Summarizes the article behind the message's first link, in a panel under its card (`ArticleSummaryModel`).
+        case summarizeLink
         /// Transcribes a voice note inline below its waveform (`VoiceNoteTranscriptStore`).
         case transcribeVoiceNote
         /// Speaks the message aloud via Vitruvian Speaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
@@ -91,8 +93,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
 ///      thread's root); React…; Edit… (⌘T)
 ///   2. Copy (⌘C); Forward… (⌘⇧F)
 ///   3. Bookmark / Remove Bookmark; Mark as Unread ("From this message. On this Mac only."); Mark as played;
-///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Edit with AI… (on a photo, when AI is on), Read Aloud, Transcribe, Translate, Translate Into…,
-///      Edit History, Report a Problem…, Copy Message Details)
+///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Summarize Link, Edit with AI… (on a photo, when AI
+///      is on), Read Aloud, Transcribe, Translate, Translate Into…, Edit History, Report a Problem…, Copy Message Details)
 ///   4. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
 ///   5. greyed lines: "Sent …" or "Received …", and "Disappears in …"
 /// An action the chat shows greyed is there, off, with why (`Unavailable.reason`).
@@ -111,6 +113,7 @@ public enum MessageMenu {
                                 translationLanguages: [String] = [],
                                 canReadAloud: Bool = false,
                                 isReadingAloud: Bool = false,
+                                hasSummarizableLink: Bool = false,
                                 canEditPhoto: Bool = false) -> [[MessageMenuItem]] {
         let offered = Set(available.actions)
         let greyed = Dictionary(available.unavailable.map { ($0.action, $0.reason) }, uniquingKeysWith: { a, _ in a })
@@ -141,6 +144,19 @@ public enum MessageMenu {
         // 3. Doing something with the message (plus secondary actions tucked into "More").
         var using = [item(.bookmark), item(.removeBookmark), item(.markUnread), item(.markAsPlayed)].compactMap { $0 }
         var moreItems = [item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink)].compactMap { $0 }
+        // Summarize Link: only for a message with a link to an article, and with "Show link previews" on (the caller
+        // says both in `hasSummarizableLink`). Greyed, with why, until an AI service is set up, as Translate is.
+        if hasSummarizableLink {
+            moreItems.append(
+                MessageMenuItem(
+                    command: .summarizeLink,
+                    title: String(localized: "Summarize Link"),
+                    key: nil,
+                    isEnabled: isAIAvailable,
+                    help: isAIAvailable ? nil : String(localized: "Set up AI in Settings")
+                )
+            )
+        }
         if canEditPhoto {
             moreItems.append(
                 MessageMenuItem(

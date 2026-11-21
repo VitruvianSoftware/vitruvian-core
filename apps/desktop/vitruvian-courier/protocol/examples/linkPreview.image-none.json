@@ -1,0 +1,15 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 52,
+    "method": "linkPreview.image",
+    "params": {
+      "url": "https://www.example.com/plain-page"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 52,
+    "result": {}
+  }
+}

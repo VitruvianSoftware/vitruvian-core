@@ -228,4 +228,28 @@ final class StorageModelTests: XCTestCase {
     private func supervisorStop(_ app: AppModel) {
         app.supervisor.stop()
     }
+
+    /// Round 1: "Delete all media" is the app's clear-my-data, so it forgets the kept article summaries; a delete by age doesn't.
+    func testDeleteAllMediaForgetsKeptArticleSummariesButDeleteByAgeDoesNot() async throws {
+        let server = try TestEngineServer { method, _ in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "accounts.list": return .result(["accounts": [[String: Any]]()])
+            case "storage.cleanup": return .result(["freed_bytes": 1, "removed_blobs": 1])
+            default: return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+        let app = try await makeConnectedApp(server: server)
+        defer { supervisorStop(app) }
+        let model = StorageModel(appModel: app)
+        let summary = ArticleSummary(bullets: ["One."], provider: "", sourceURL: URL(string: "https://example.com/a")!,
+                                     sourceDomain: "example.com", linkDomain: "example.com", origin: .page)
+        ArticleSummaryCache.shared.removeAll()
+        ArticleSummaryCache.shared.store(summary, for: "k")
+        await model.deleteMedia(olderThan: .oneMonth)
+        XCTAssertNotNil(ArticleSummaryCache.shared.summary(for: "k"))
+        await model.deleteMedia()
+        XCTAssertNil(ArticleSummaryCache.shared.summary(for: "k"))
+    }
 }

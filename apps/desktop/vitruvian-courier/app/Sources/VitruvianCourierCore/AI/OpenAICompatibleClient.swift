@@ -3,7 +3,7 @@
 
 import Foundation
 
-public struct OpenAICompatibleClient: ChatModelClient, Sendable {
+public struct OpenAICompatibleClient: WebSearchingClient, Sendable {
     public let baseURL: URL
     public let isLocal: Bool
     private let apiKey: String?
@@ -98,6 +98,72 @@ public struct OpenAICompatibleClient: ChatModelClient, Sendable {
             throw AIClientError.badResponse
         }
         return trimmed
+    }
+
+    // MARK: - Web search
+
+    /// Web search is OpenAI's own Responses API tool: Ollama, LM Studio, Unsloth and custom servers don't have it.
+    public var supportsWebSearch: Bool {
+        baseURL.host?.lowercased() == "api.openai.com"
+    }
+
+    /// Responses API (`POST /v1/responses`) with the `web_search` tool, asking for the sources it consulted. The
+    /// pages are the answer's `url_citation` annotations first, then every source the search listed. The paywalled
+    /// site is left out here, on this side (the tool's `blocked_domains` filter isn't used). Docs: developers.openai.com/api/docs/guides/tools-web-search
+    public func searchWeb(prompt: String, excludingDomain: String?, model: String) async throws -> WebSearchFindings {
+        guard supportsWebSearch else { throw AIClientError.notConfigured }
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedModel.isEmpty else { throw AIClientError.notConfigured }
+
+        let url = AIClientHTTP.endpoint(baseURL: baseURL, path: "/responses")
+        var request = URLRequest(url: url, timeoutInterval: AIClientHTTP.cloudCompletionTimeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let apiKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        let body: [String: Any] = [
+            "model": trimmedModel,
+            "input": prompt,
+            "tools": [["type": "web_search"]],
+            "include": ["web_search_call.action.sources"],
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+
+        let (data, _) = try await AIClientHTTP.send(request, using: transport)
+        return WebSearchFindings(sources: WebSourceFilter.clean(try Self.parseWebSources(from: data), excludingDomain: excludingDomain))
+    }
+
+    public static func parseWebSources(from data: Data) throws -> [WebSource] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let output = json["output"] as? [[String: Any]]
+        else {
+            throw AIClientError.badResponse
+        }
+        var cited: [WebSource] = []
+        var listed: [WebSource] = []
+        for item in output {
+            switch item["type"] as? String {
+            case "message":
+                for part in (item["content"] as? [[String: Any]]) ?? [] {
+                    for note in (part["annotations"] as? [[String: Any]]) ?? [] where (note["type"] as? String) == "url_citation" {
+                        if let raw = note["url"] as? String, let url = URL(string: raw) {
+                            cited.append(WebSource(url: url, title: (note["title"] as? String) ?? ""))
+                        }
+                    }
+                }
+            case "web_search_call":
+                let action = item["action"] as? [String: Any]
+                for source in (action?["sources"] as? [[String: Any]]) ?? [] {
+                    if let raw = source["url"] as? String, let url = URL(string: raw) {
+                        listed.append(WebSource(url: url, title: ""))
+                    }
+                }
+            default:
+                break
+            }
+        }
+        return cited + listed
     }
 
     public static func parseModels(from data: Data) throws -> [String] {
