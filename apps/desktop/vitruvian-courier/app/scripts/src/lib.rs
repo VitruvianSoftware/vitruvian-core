@@ -26,8 +26,13 @@ mod tests {
 
     #[test]
     fn klipy_key_refuses_the_rest() {
-        for bad in ["", "   ", "a/b", "a?b=c", "a b c", "../x", "a#b", "$(KEY)", "ключ"] {
-            assert!(inject_app_credentials::validate_klipy_key(bad).is_err(), "{bad:?}");
+        for bad in [
+            "", "   ", "a/b", "a?b=c", "a b c", "../x", "a#b", "$(KEY)", "ключ",
+        ] {
+            assert!(
+                inject_app_credentials::validate_klipy_key(bad).is_err(),
+                "{bad:?}"
+            );
         }
         assert!(inject_app_credentials::validate_klipy_key(&"a".repeat(201)).is_err());
         assert!(inject_app_credentials::validate_klipy_key(&"a".repeat(200)).is_ok());
@@ -443,7 +448,9 @@ mod tests {
         std::fs::write(store.join("COURIER_KLIPY_API_KEY"), "from-the-store\n").unwrap();
         std::env::set_var("VITRUVIAN_COURIER_SECRETS_DIR", &store);
         assert_eq!(run_again(), 0);
-        assert!(std::fs::read_to_string(&klipy_plist).unwrap().contains("<string>from-the-store</string>"));
+        assert!(std::fs::read_to_string(&klipy_plist)
+            .unwrap()
+            .contains("<string>from-the-store</string>"));
 
         // A key that is there but wrong fails the injection, as Telegram's would.
         std::env::set_var("COURIER_KLIPY_API_KEY", "bad/key");

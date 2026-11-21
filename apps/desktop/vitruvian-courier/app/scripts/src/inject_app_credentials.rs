@@ -306,7 +306,10 @@ fn write_resource_plist(app: &Path, name: &str, content: &str) -> Result<(), Str
         .status();
     if !matches!(lint, Ok(s) if s.success()) {
         let _ = fs::remove_file(&staged);
-        return Err(format!("the property list it wrote for {} did not check out.", name));
+        return Err(format!(
+            "the property list it wrote for {} did not check out.",
+            name
+        ));
     }
     if fs::rename(&staged, resources.join(name)).is_err() {
         let _ = fs::remove_file(&staged);
@@ -527,13 +530,15 @@ pub fn run(args: &[String]) -> i32 {
     // The KLIPY key for GIF search. Unlike Telegram's, it is optional: with none the app hides online GIF search,
     // and a missing key never fails the injection. One that is there but wrong does, as Telegram's would.
     match resolve_klipy_key(&script_dir) {
-        Ok(Some((key, origin))) => match write_resource_plist(&app, "KlipyApp.plist", &generate_klipy_plist(&key)) {
-            Ok(()) => println!("Wrote Contents/Resources/KlipyApp.plist from {}.", origin),
-            Err(msg) => {
-                eprintln!("inject-app-credentials: {}", msg);
-                return 2;
+        Ok(Some((key, origin))) => {
+            match write_resource_plist(&app, "KlipyApp.plist", &generate_klipy_plist(&key)) {
+                Ok(()) => println!("Wrote Contents/Resources/KlipyApp.plist from {}.", origin),
+                Err(msg) => {
+                    eprintln!("inject-app-credentials: {}", msg);
+                    return 2;
+                }
             }
-        },
+        }
         Ok(None) => {
             let _ = fs::remove_file(app.join("Contents/Resources/KlipyApp.plist"));
             eprintln!(
