@@ -66,7 +66,7 @@ final class ChatHeaderInteractionTests: XCTestCase {
 
     func testTheSettingIsReadFromTheDefaults() {
         let name = "courier.titlebar.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         XCTAssertEqual(TitleBarDoubleClickAction.current(defaults: defaults), .zoom)
         defaults.set("Minimize", forKey: "AppleActionOnDoubleClick")
