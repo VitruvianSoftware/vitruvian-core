@@ -223,7 +223,7 @@ struct ChatMenuActions {
             if let onEditChat {
                 onEditChat(roomID)
             } else if let conversation {
-                Task { await ChatRoomActions.editChat(roomID: roomID, inbox: inbox, conversation: conversation) }
+                Task { await ChatRoomActions.editChat(roomID: roomID, conversation: conversation) }
             }
         case let .leaveGroup(roomID): onLeaveGroup?(roomID)
         case let .deleteChat(roomID):
@@ -232,7 +232,7 @@ struct ChatMenuActions {
             if let onReportSpam {
                 onReportSpam(roomID)
             } else if let conversation {
-                Task { await ChatRoomActions.reportSpam(roomID: roomID, inbox: inbox, conversation: conversation) }
+                Task { await ChatRoomActions.reportSpam(roomID: roomID, conversation: conversation) }
             }
         }
     }

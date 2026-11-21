@@ -1179,9 +1179,10 @@ public final class InboxModel: ObservableObject {
         return cachedFeatures(for: roomID)
     }
 
-    /// Deletes a chat: removed from this Mac and, where its network allows it, from the network (room.delete). The
-    /// chat that was open moves to a neighbour as it does when it is archived. A refusal is said in the toast, and the
-    /// chat stays. True once it is gone.
+    /// Deletes a chat (room.delete): it is hidden on this Mac and deleted for the person on the network; the others in
+    /// the chat keep their copy, and where deleting a group also leaves it (WhatsApp) the person leaves too. The chat
+    /// that was open moves to a neighbour as it does when it is archived. A refusal is said in the toast, and the chat
+    /// stays. True once it is gone.
     @discardableResult
     public func deleteChat(roomID: String) async -> Bool {
         guard !beginAction([roomID]).isEmpty, !roomID.hasPrefix("merge:"), let client = appModel.client else { return false }

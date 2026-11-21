@@ -246,20 +246,8 @@ struct ConversationView: View {
                                   close: { conversation.isCreatingPoll = false })
             }
         }
-        .sheet(item: $conversation.activeEditGroupDraft) { draft in
-            EditGroupSheet(
-                draft: draft,
-                onSave: { updated in
-                    Task { _ = await conversation.saveGroupEdit(updated) }
-                },
-                onResetLocalOverride: {
-                    Task { _ = await conversation.resetLocalOverride(roomID: draft.roomID, network: draft.network) }
-                },
-                onCancel: {
-                    conversation.activeEditGroupDraft = nil
-                }
-            )
-        }
+        // Edit Chat… and Report as Spam… are hosted by the window (`ChatRoomSheets`), so the inbox's menu can open them
+        // for a chat that isn't open.
         .sheet(
             isPresented: Binding(
                 get: { conversation.activeAddParticipantsRoom != nil },
@@ -296,17 +284,6 @@ struct ConversationView: View {
                     )
                 }
             }
-        }
-        .sheet(item: $conversation.activeReportSpamDraft) { draft in
-            ReportSpamSheet(
-                draft: draft,
-                onConfirm: { confirmed in
-                    Task { _ = await conversation.reportSpam(confirmed) }
-                },
-                onCancel: {
-                    conversation.activeReportSpamDraft = nil
-                }
-            )
         }
         .sheet(item: $conversation.activeViewOnceMessage) { msg in
             ViewOnceSheet(

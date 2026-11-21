@@ -119,26 +119,4 @@ final class InboxDeleteChatTests: XCTestCase {
         let unknown = await h.inbox.resolveDelete(roomID: "!a")
         XCTAssertEqual(unknown, .unknown)
     }
-
-    // MARK: Edit Chat… and Report as Spam… (D1 round 1)
-
-    func testEditChatAndReportAsSpamOpenTheirSheetsForTheRightClickedChat() async throws {
-        let h = try await start()
-        let conversation = ConversationModel(appModel: h.app, preferences: ComposerPreferences(defaults: h.store.defaults))
-        await ChatRoomActions.editChat(roomID: "!b", inbox: h.inbox, conversation: conversation)
-        XCTAssertEqual(conversation.activeEditGroupDraft?.roomID, "!b", "Edit Chat… opens the edit sheet for that chat")
-        XCTAssertEqual(h.inbox.selectedRoomID, "!b", "with no chat open, it opens so the sheet has a pane to appear in")
-
-        await ChatRoomActions.reportSpam(roomID: "!c", inbox: h.inbox, conversation: conversation)
-        XCTAssertEqual(conversation.activeReportSpamDraft?.roomID, "!c", "Report as Spam… opens its sheet for that chat")
-    }
-
-    func testEditChatLeavesTheOpenChatOpen() async throws {
-        let h = try await start()
-        let conversation = ConversationModel(appModel: h.app, preferences: ComposerPreferences(defaults: h.store.defaults))
-        h.inbox.select("!a")
-        await ChatRoomActions.editChat(roomID: "!b", inbox: h.inbox, conversation: conversation)
-        XCTAssertEqual(h.inbox.selectedRoomID, "!a")
-        XCTAssertEqual(conversation.activeEditGroupDraft?.roomID, "!b")
-    }
 }

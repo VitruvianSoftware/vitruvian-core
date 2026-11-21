@@ -322,22 +322,16 @@ public enum ChatDeleteConfirmation {
 }
 
 /// Edit Chat… and Report as Spam… from the inbox's menu: what Chat Info's buttons do for the open chat, for the chat
-/// that was right-clicked. Their sheets belong to the conversation pane, so when no chat is open the right-clicked one
-/// is opened first, so the sheet has a pane to appear in.
+/// that was right-clicked. Their sheets are hosted by the window (`ChatRoomSheets`), so neither opens the chat: opening
+/// it would mark it read, and that sends the people in it a read receipt, which Report as Spam on a stranger's chat
+/// must never do.
 @MainActor
 public enum ChatRoomActions {
-    public static func editChat(roomID: String, inbox: InboxModel, conversation: ConversationModel) async {
-        openIfNoneOpen(roomID, inbox, conversation)
+    public static func editChat(roomID: String, conversation: ConversationModel) async {
         await conversation.beginEditChat(roomID: roomID)
     }
 
-    public static func reportSpam(roomID: String, inbox: InboxModel, conversation: ConversationModel) async {
-        openIfNoneOpen(roomID, inbox, conversation)
+    public static func reportSpam(roomID: String, conversation: ConversationModel) async {
         await conversation.beginReportSpam(roomID: roomID)
-    }
-
-    private static func openIfNoneOpen(_ roomID: String, _ inbox: InboxModel, _ conversation: ConversationModel) {
-        guard inbox.selectedRoomID?.isEmpty ?? true, conversation.roomID == nil else { return }
-        inbox.select(roomID)
     }
 }

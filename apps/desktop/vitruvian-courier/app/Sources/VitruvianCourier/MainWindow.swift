@@ -205,6 +205,7 @@ struct MainWindow: View {
                 .sheet(isPresented: addingNetwork) {
                     AddNetworkView(login: login)
                 }
+                .chatRoomSheets(conversation)
                 .sheet(item: customReminderBinding) { request in
                     CustomReminderSheet(request: request, inbox: inbox)
                 }
