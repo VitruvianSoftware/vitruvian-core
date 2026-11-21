@@ -21,6 +21,7 @@
 """The vitruvian-orchestrator plugin: the files the site registry reads."""
 
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 # The mod (hooks/) runs inside Claude Code, not under Bazel; its tests run with
@@ -61,6 +62,18 @@ js_test(
     ],
 )
 
+js_test(
+    name = "version_test",
+    size = "small",
+    data = [
+        ".claude-plugin/plugin.json",
+        ".release-please-manifest.json",
+        "CHANGELOG.md",
+        "release-please-config.json",
+    ],
+    entry_point = "version.test.mjs",
+)
+
 filegroup(
     name = "generated_generic_files",
     srcs = glob(
@@ -85,4 +98,16 @@ filegroup(
         allow_empty = True,
     ),
     visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
+pipeline_unit(
+    name = "claude-code-vitruvian-orchestrator",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        ":drift_test",
+        ":version_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 15,
 )

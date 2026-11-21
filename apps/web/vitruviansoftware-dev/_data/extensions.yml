@@ -349,7 +349,7 @@ extensions:
     status: "in-development"
     summary: "Lead orchestrator skill and live orchestration sidecar panel for routing multi-domain work across specialist subagents in Antigravity."
     repo: ""
-    mirror_repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator"
+    mirror_repo: "https://github.com/VitruvianSoftware/vitruvian-orchestrator-antigravity"
     source: "apps/antigravity/plugins/vitruvian-orchestrator"
     needs: "Antigravity desktop or Claude Code CLI"
     ecosystems:
@@ -362,7 +362,7 @@ extensions:
       - tool: "Antigravity"
         ecosystem: "antigravity"
         label: "Install in Antigravity"
-        command: "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator"
+        command: "agy plugin install https://github.com/VitruvianSoftware/vitruvian-orchestrator-antigravity"
   - id: "vitruvian-orchestrator"
     name: "vitruvian-orchestrator"
     kind: "plugin"
