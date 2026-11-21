@@ -253,6 +253,36 @@ final class ComposerPickersTests: XCTestCase {
         XCTAssertEqual(composer.gifResultsState, .loaded)
     }
 
+    func testANewSearchNeverShowsTheLastQuerysGIFsWhileItLoads() async {
+        let made = make()
+        let composer = made.composer
+        await composer.refreshGIFResults()
+        XCTAssertEqual(composer.gifResults.map(\.id), ["t1", "t2"])
+        composer.gifSearchQuery = "slow"
+        let slow = Task { await composer.refreshGIFResults() }
+        while !made.provider.isWaiting { await Task.yield() }
+        XCTAssertEqual(composer.gifResults, [], "trending must not sit under \"Results for slow\" while the search runs")
+        XCTAssertEqual(composer.gifResultsState, .loading)
+        made.provider.release()
+        await slow.value
+        XCTAssertEqual(composer.gifResults.map(\.id), ["slow1"])
+    }
+
+    func testTheSameQueryAskedAgainKeepsItsGIFsWhileItReloads() async {
+        let made = make()
+        let composer = made.composer
+        composer.gifSearchQuery = "slow"
+        let first = Task { await composer.refreshGIFResults() }
+        while !made.provider.isWaiting { await Task.yield() }
+        made.provider.release()
+        await first.value
+        let again = Task { await composer.refreshGIFResults() }
+        while !made.provider.isWaiting { await Task.yield() }
+        XCTAssertEqual(composer.gifResults.map(\.id), ["slow1"], "the same query's GIFs stay while it reloads")
+        made.provider.release()
+        await again.value
+    }
+
     func testChoosingAnOnlineGIFAttachesItToTheDraftAndNeverSendsIt() async throws {
         let made = make()
         let composer = made.composer

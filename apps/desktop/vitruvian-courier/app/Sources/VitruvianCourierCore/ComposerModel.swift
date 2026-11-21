@@ -397,6 +397,9 @@ public final class ComposerModel: ObservableObject {
     /// The online GIF being downloaded to be attached, so its tile can say so.
     @Published public private(set) var downloadingGIFID: String?
     private var gifResultsSerial = 0
+    /// The query `gifResults` answers (trimmed; empty for trending), so results for one query are never shown under
+    /// another while its answer is on the way.
+    private var gifResultsQuery: String?
     /// A GIF staged in the composer when `preferences.autoSendGIFs == false`.
     @Published public var pendingGIF: StickerItemWire?
     /// My held (queued) messages in the open chat, newest last.
@@ -2155,11 +2158,18 @@ public final class ComposerModel: ObservableObject {
         let serial = gifResultsSerial
         let query = gifSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let provider = gifProvider
+        // A different query clears what the row shows, so it says "Finding GIFs…" rather than the last query's GIFs
+        // under this one's caption. The same query asked again (a setting change) keeps them while it reloads.
+        if query != gifResultsQuery {
+            gifResults = []
+            gifResultsQuery = nil
+        }
         gifResultsState = .loading
         do {
             let found = query.isEmpty ? try await provider.trending() : try await provider.search(query)
             guard serial == gifResultsSerial else { return }
             gifResults = found
+            gifResultsQuery = query
             gifResultsState = .loaded
         } catch is CancellationError {
             if serial == gifResultsSerial { gifResultsState = .idle }
@@ -2170,6 +2180,7 @@ public final class ComposerModel: ObservableObject {
                 return
             }
             gifResults = []
+            gifResultsQuery = nil
             gifResultsState = .failed(String(localized: "Couldn’t load GIFs. Check your connection and try again."))
         }
     }
