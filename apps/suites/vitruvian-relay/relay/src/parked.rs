@@ -438,6 +438,16 @@ impl ParkedCalls {
         Some(handle)
     }
 
+    /// Whether an identical request would join a call now: the same test as
+    /// [`ParkedCalls::rejoin`] and [`ParkedCalls::join_or_park`] make, but
+    /// nothing is attached. For deciding whether a request starts anything.
+    pub fn would_rejoin(&self, key: &RejoinKey) -> bool {
+        let mut t = self.table.lock().unwrap();
+        let now = Instant::now();
+        t.sweep(now, self.result_ttl);
+        t.rejoinable(key, now, self.rejoin_window).is_some()
+    }
+
     /// [`ParkedCalls::rejoin`], or else enter the call `start` makes, as one
     /// step: two identical requests at once start one call between them.
     pub fn join_or_park(

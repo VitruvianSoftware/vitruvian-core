@@ -169,6 +169,9 @@ pub trait Store: Send + Sync {
     /// `false` if that device is not this owner's, is already revoked, or is
     /// unknown.
     async fn revoke(&self, id: &str, owner_sub: &str) -> Result<bool, StoreError>;
+    /// Notes that the device was seen at `at`. Never moves "last seen"
+    /// backwards: writes made at once can land in any order, and an older
+    /// time arriving late must not win.
     async fn touch_seen(&self, id: &str, at: SystemTime) -> Result<(), StoreError>;
     async fn record_activity(&self, row: &ActivityRow) -> Result<(), StoreError>;
     /// A person's calls, newest first, at most `limit`; for one device or all.
@@ -204,6 +207,11 @@ pub struct MemStore {
     fail: Mutex<Option<StoreError>>,
     /// Only writing to the activity log fails (the rest of the store works).
     fail_activity: Mutex<Option<StoreError>>,
+    /// While `true`, writing to the activity log waits (a database that has
+    /// stopped answering) instead of finishing.
+    stall_activity: tokio::sync::watch::Sender<bool>,
+    /// While `true`, looking a device up waits.
+    stall_devices: tokio::sync::watch::Sender<bool>,
 }
 
 impl Default for MemStore {
@@ -222,6 +230,8 @@ impl MemStore {
             }),
             fail: Mutex::new(None),
             fail_activity: Mutex::new(None),
+            stall_activity: tokio::sync::watch::channel(false).0,
+            stall_devices: tokio::sync::watch::channel(false).0,
         }
     }
 
@@ -235,6 +245,17 @@ impl MemStore {
     /// failed by its own log line.
     pub fn fail_activity_writes_with(&self, error: Option<StoreError>) {
         *self.fail_activity.lock().unwrap() = error;
+    }
+
+    /// Writing a call to the activity log waits while `stalled` is true, and
+    /// goes on when it is set back to false.
+    pub fn stall_activity_writes(&self, stalled: bool) {
+        self.stall_activity.send_replace(stalled);
+    }
+
+    /// Looking a device up (`device`) waits while `stalled` is true.
+    pub fn stall_device_lookups(&self, stalled: bool) {
+        self.stall_devices.send_replace(stalled);
     }
 
     fn check(&self) -> Result<(), StoreError> {
@@ -260,6 +281,11 @@ fn to_record(d: &NewDevice) -> DeviceRecord {
 #[async_trait]
 impl Store for MemStore {
     async fn device(&self, id: &str) -> Result<Option<DeviceRecord>, StoreError> {
+        let _ = self
+            .stall_devices
+            .subscribe()
+            .wait_for(|stalled| !*stalled)
+            .await;
         self.check()?;
         let m = self.inner.lock().unwrap();
         Ok(m.devices
@@ -373,13 +399,18 @@ impl Store for MemStore {
         } = &mut *m;
         for (d, revoked) in devices.iter_mut().zip(revoked.iter()) {
             if d.device_id == id && !*revoked {
-                d.last_seen = Some(at);
+                d.last_seen = Some(d.last_seen.map_or(at, |old| old.max(at)));
             }
         }
         Ok(())
     }
 
     async fn record_activity(&self, row: &ActivityRow) -> Result<(), StoreError> {
+        let _ = self
+            .stall_activity
+            .subscribe()
+            .wait_for(|stalled| !*stalled)
+            .await;
         self.check()?;
         if let Some(e) = *self.fail_activity.lock().unwrap() {
             return Err(e);
@@ -886,7 +917,8 @@ impl Store for PgStore {
             "touch_seen",
             c.deadline,
             c.execute(
-                "UPDATE devices SET last_seen = $2 WHERE id = $1 AND revoked_at IS NULL",
+                "UPDATE devices SET last_seen = GREATEST(last_seen, $2) \
+                 WHERE id = $1 AND revoked_at IS NULL",
                 &[&id, &at],
             ),
         )

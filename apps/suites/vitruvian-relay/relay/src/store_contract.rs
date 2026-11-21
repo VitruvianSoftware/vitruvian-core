@@ -165,6 +165,34 @@ pub async fn store_contract(store: &dyn Store) {
         .as_millis();
     assert!(off < 5, "last_seen is the time given ({off} ms off)");
     store.touch_seen("nope", seen).await.unwrap();
+    // An older time arriving late (writes made at once land in any order)
+    // does not move "last seen" back; a newer one does.
+    store
+        .touch_seen(&d1.device_id, seen - Duration::from_secs(600))
+        .await
+        .unwrap();
+    let after_older = store
+        .device(&d1.device_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .last_seen
+        .expect("still set");
+    assert_eq!(after_older, got, "an older time moved last_seen back");
+    let newer = seen + Duration::from_secs(30);
+    store.touch_seen(&d1.device_id, newer).await.unwrap();
+    let after_newer = store
+        .device(&d1.device_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .last_seen
+        .unwrap();
+    let off = after_newer
+        .duration_since(newer)
+        .unwrap_or_else(|e| e.duration())
+        .as_millis();
+    assert!(off < 5, "a newer time is taken ({off} ms off)");
 
     // --- revoke: only by the owner, and then invisible
     assert_eq!(store.revoke(&d2.device_id, &bob).await, Ok(false));

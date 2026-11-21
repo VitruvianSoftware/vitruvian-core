@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::{json, Value};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Semaphore};
 use vitruvian_mcp_auth::Caller;
 use vitruvian_relay_protocol::{
     Call, ToolDef, APPROVAL_REPLY_SECS, PARKED_RESULT_SECS, REJOIN_WINDOW_SECS,
@@ -78,11 +78,20 @@ fn check_request_def() -> ToolDef {
     }
 }
 
-/// The reply that says a request is waiting for approval. `device` is the
-/// computer's id until devices have names.
-fn waiting_text(device: &str, id: &RequestId) -> String {
+/// Where a computer is named in a reply: its name in quotes, or "your
+/// computer" when the relay could not look the name up in time.
+fn place(device: Option<&DeviceRecord>) -> String {
+    match device {
+        Some(d) => format!("\"{}\"", d.name),
+        None => "your computer".into(),
+    }
+}
+
+/// The reply that says a request is waiting for approval; `place` is where
+/// the computer is named ([`place`]).
+fn waiting_text(place: &str, id: &RequestId) -> String {
     format!(
-        "Waiting for you to allow this on \"{device}\". Call {CHECK_REQUEST} with \
+        "Waiting for you to allow this on {place}. Call {CHECK_REQUEST} with \
          request_id \"{}\" to get the result. The request is cancelled if nobody \
          answers within 60 seconds.",
         id.as_str()
@@ -91,9 +100,9 @@ fn waiting_text(device: &str, id: &RequestId) -> String {
 
 /// The reply to a `check_request` for a call that has not reported a dialog:
 /// the computer is still on it, and nobody is being asked.
-fn still_working_text(device: &str, id: &RequestId) -> String {
+fn still_working_text(place: &str, id: &RequestId) -> String {
     format!(
-        "Still working on this on \"{device}\". Call {CHECK_REQUEST} with \
+        "Still working on this on {place}. Call {CHECK_REQUEST} with \
          request_id \"{}\" again to get the result.",
         id.as_str()
     )
@@ -211,6 +220,8 @@ pub struct Mcp {
     /// Where each call's activity row is written, and where the offline
     /// message finds the computer's name and when it was last seen.
     store: Arc<dyn Store>,
+    /// Places for activity writes in flight, shared by every call.
+    write_slots: Arc<Semaphore>,
     /// Calls per person per minute.
     limiter: RateLimit,
     in_flight: Mutex<HashMap<Key, InFlight>>,
@@ -276,6 +287,16 @@ pub fn offline_text(device: Option<&DeviceRecord>, now: SystemTime) -> String {
     }
 }
 
+/// Longest a reply waits to look up the computer's name. The database being
+/// slow must not make the person wait for the 5 s store limit just to be told
+/// the computer is offline: past this the reply uses "your computer".
+const DEVICE_LOOKUP_LIMIT: Duration = Duration::from_secs(1);
+
+/// Activity rows being written at once, at most. Past this a call's row is
+/// dropped (and logged) rather than queued without end behind a database
+/// that has stopped answering.
+const MAX_ACTIVITY_WRITES: usize = 64;
+
 /// A byte count as the activity log keeps it (a column of 32-bit integers).
 fn count(n: usize) -> Option<u32> {
     Some(u32::try_from(n).unwrap_or(u32::MAX))
@@ -288,6 +309,8 @@ fn count(n: usize) -> Option<u32> {
 struct CallLog {
     log: LogSink,
     store: Arc<dyn Store>,
+    /// Places for activity writes in flight ([`MAX_ACTIVITY_WRITES`]).
+    write_slots: Arc<Semaphore>,
     /// Who made the call: the person the activity row belongs to.
     owner_sub: String,
     /// When the call started.
@@ -333,7 +356,20 @@ impl Drop for CallLog {
         };
         let store = self.store.clone();
         let log = self.log.clone();
+        // No place free: the database is not keeping up. The call is not
+        // held up for it and nothing queues behind it.
+        let Ok(slot) = self.write_slots.clone().try_acquire_owned() else {
+            log_event(
+                &self.log,
+                "activity_write_dropped",
+                json!({"device_id": self.device_id, "outcome": self.outcome,
+                       "why": "too many activity writes are still waiting on the database"}),
+            );
+            return;
+        };
         let write = async move {
+            // Held until the write ends, however it ends.
+            let _slot = slot;
             if let Err(e) = store.record_activity(&row).await {
                 log_event(
                     &log,
@@ -379,6 +415,7 @@ impl Mcp {
             call_budget,
             log,
             store,
+            write_slots: Arc::new(Semaphore::new(MAX_ACTIVITY_WRITES)),
             limiter: RateLimit::new(
                 crate::ratelimit::CALLS_PER_MINUTE_PER_USER,
                 crate::ratelimit::RATE_BURST,
@@ -426,6 +463,7 @@ impl Mcp {
         CallLog {
             log: self.log.clone(),
             store: self.store.clone(),
+            write_slots: self.write_slots.clone(),
             owner_sub: caller.subject.clone(),
             at: SystemTime::now(),
             device_id: device_id.to_string(),
@@ -444,8 +482,24 @@ impl Mcp {
         if e != CallError::Offline {
             return e.user_message().to_string();
         }
-        let device = self.store.device(device_id).await.ok().flatten();
+        let device = self.device_record(device_id).await;
         offline_text(device.as_ref(), SystemTime::now())
+    }
+
+    /// The computer's record, for its name and when it was last seen: `None`
+    /// if the store has none or does not answer within
+    /// [`DEVICE_LOOKUP_LIMIT`].
+    async fn device_record(&self, device_id: &str) -> Option<DeviceRecord> {
+        tokio::time::timeout(DEVICE_LOOKUP_LIMIT, self.store.device(device_id))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .flatten()
+    }
+
+    /// How to name the computer in a reply ([`place`]).
+    async fn place_of(&self, device_id: &str) -> String {
+        place(self.device_record(device_id).await.as_ref())
     }
 
     /// Answers one JSON-RPC message for `device_id`, counting a result as
@@ -659,10 +713,15 @@ impl Mcp {
             arguments.to_string().len(),
             "parked",
         );
+        let rejoin_key = RejoinKey::new(&caller.subject, device_id, tool, &arguments);
         // Per person, whatever the computer or the AI app: a flood is stopped
-        // before it reaches the computer. A refusal is still a call that is
-        // recorded, and it spends nothing.
-        if self.limiter.check(&caller.subject).is_err() {
+        // before it reaches the computer. Asking again about a request that
+        // is already running does not start anything, so it spends nothing:
+        // `check_request` (an AI app polls it while a person decides) and a
+        // retry that joins the open call. Both are still recorded. A refusal
+        // is recorded too, and spends nothing.
+        let spends = tool != CHECK_REQUEST && !self.parked.would_rejoin(&rejoin_key);
+        if spends && self.limiter.check(&caller.subject).is_err() {
             log.outcome = RATE_LIMITED_OUTCOME;
             let result = text_result(RATE_LIMITED_MESSAGE, true);
             log.result_bytes = result["content"].to_string().len();
@@ -675,7 +734,6 @@ impl Mcp {
         }
         let (cancel_tx, mut cancel_rx) = oneshot::channel();
         let key = session.map(|s| (s.to_string(), id.to_string()));
-        let rejoin_key = RejoinKey::new(&caller.subject, device_id, tool, &arguments);
         let started = log.started;
         let call_id = random_id();
         if let Some(key) = &key {
@@ -714,6 +772,11 @@ impl Mcp {
                     },
                 )
             });
+        if spends && joined.rejoined {
+            // Another request opened this call between the check and the
+            // join: it did not start anything, so give the place back.
+            self.limiter.refund(&caller.subject);
+        }
         let mut waiting = Waiting {
             parked: &self.parked,
             id: joined.request_id.clone(),
@@ -753,9 +816,10 @@ impl Mcp {
                     "waiting_approval"
                 };
                 waiting.park();
+                let place = self.place_of(device_id).await;
                 rpc_result(
                     id,
-                    text_result(&waiting_text(device_id, &joined.request_id), false),
+                    text_result(&waiting_text(&place, &joined.request_id), false),
                 )
             }
             Ended::Finished(outcome_) => {
@@ -830,12 +894,13 @@ impl Mcp {
             Fetch::Waiting => {
                 // Only a call whose device reported a dialog is "waiting for
                 // you": one that never did is still being worked on.
+                let place = self.place_of(&owned.device_id).await;
                 let text = if owned.handle().approval_reported() {
                     log.outcome = "waiting_approval";
-                    waiting_text(&owned.device_id, &request_id)
+                    waiting_text(&place, &request_id)
                 } else {
                     log.outcome = "still_working";
-                    still_working_text(&owned.device_id, &request_id)
+                    still_working_text(&place, &request_id)
                 };
                 rpc_result(id, text_result(&text, false))
             }
@@ -902,6 +967,7 @@ impl Drop for Waiting<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::devices::NewDevice;
     use crate::store::MemStore;
     use tokio::sync::mpsc;
     use vitruvian_relay_protocol::{CallResult, ToConnector, ToolDef};
@@ -1084,13 +1150,17 @@ mod tests {
     async fn check_request_says_still_working_for_a_call_with_no_dialog() {
         let reg = Registry::new();
         let log: LogSink = Arc::new(|_| {});
-        let m = Mcp::new(
-            reg.clone(),
-            Duration::from_secs(60),
-            log,
-            Arc::new(MemStore::new()),
-        )
-        .with_parking(
+        let store = Arc::new(MemStore::new());
+        store
+            .insert_device(&NewDevice {
+                device_id: "d1".into(),
+                owner_sub: "alice".into(),
+                name: "Studio Mac".into(),
+                public_key_ed25519: [1; 32],
+            })
+            .await
+            .unwrap();
+        let m = Mcp::new(reg.clone(), Duration::from_secs(60), log, store).with_parking(
             Duration::from_millis(50),
             Duration::from_secs(30),
             Duration::from_secs(30),
@@ -1134,7 +1204,7 @@ mod tests {
         assert_eq!(
             r["result"]["content"][0]["text"],
             format!(
-                "Still working on this on \"d1\". Call check_request with request_id \"{}\" \
+                "Still working on this on \"Studio Mac\". Call check_request with request_id \"{}\" \
                  again to get the result.",
                 ids[0].as_str()
             )
@@ -1142,8 +1212,72 @@ mod tests {
         let r = ask(&m, check(&ids[1])).await;
         let text = r["result"]["content"][0]["text"].as_str().unwrap();
         assert!(
-            text.starts_with("Waiting for you to allow this on \"d1\"."),
+            text.starts_with("Waiting for you to allow this on \"Studio Mac\"."),
             "{text}"
+        );
+    }
+
+    /// A call to an offline computer is told so at once even when the
+    /// database is not answering the name lookup: the lookup has its own
+    /// 1 s limit, not the store's 5 s, and the words just leave the name out.
+    #[tokio::test]
+    async fn offline_message_does_not_wait_for_a_slow_database() {
+        let reg = Registry::new();
+        let store = Arc::new(MemStore::new());
+        store
+            .insert_device(&NewDevice {
+                device_id: "d1".into(),
+                owner_sub: "alice".into(),
+                name: "Studio Mac".into(),
+                public_key_ed25519: [1; 32],
+            })
+            .await
+            .unwrap();
+        let log: LogSink = Arc::new(|_| {});
+        let m = Mcp::new(
+            reg,
+            Duration::from_secs(60),
+            log,
+            store.clone() as Arc<dyn Store>,
+        );
+        let call = |id: u64| {
+            json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+                   "params": {"name": "read_file", "arguments": {"n": id}}})
+        };
+        // Healthy: the name is there.
+        let r = ask(&m, call(1)).await;
+        assert!(
+            r["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("Your computer \"Studio Mac\" is offline (last seen never)."),
+            "{r}"
+        );
+
+        store.stall_device_lookups(true);
+        let started = Instant::now();
+        let r = ask(&m, call(2)).await;
+        let took = started.elapsed();
+        assert_eq!(r["result"]["isError"], true);
+        assert_eq!(r["result"]["content"][0]["text"], OFFLINE_NO_NAME);
+        assert!(took < Duration::from_millis(2500), "took {took:?}");
+        assert!(took >= DEVICE_LOOKUP_LIMIT, "gave up early: {took:?}");
+        store.stall_device_lookups(false);
+    }
+
+    #[test]
+    fn a_computer_without_a_known_name_is_called_your_computer() {
+        let id = RequestId::parse("r_0000000000000001");
+        assert_eq!(
+            waiting_text(&place(None), &id),
+            "Waiting for you to allow this on your computer. Call check_request with \
+             request_id \"r_0000000000000001\" to get the result. The request is \
+             cancelled if nobody answers within 60 seconds."
+        );
+        assert_eq!(
+            still_working_text(&place(None), &id),
+            "Still working on this on your computer. Call check_request with \
+             request_id \"r_0000000000000001\" again to get the result."
         );
     }
 }

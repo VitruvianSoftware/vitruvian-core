@@ -116,6 +116,14 @@ impl RateLimit {
         }
     }
 
+    /// Gives back the place a call spent, for one that turned out not to
+    /// start anything (never above the burst).
+    pub fn refund(&self, subject: &str) {
+        if let Some(b) = self.buckets.lock().unwrap().get_mut(subject) {
+            b.tokens = (b.tokens + 1.0).min(f64::from(self.burst));
+        }
+    }
+
     /// People with a bucket right now (tests).
     #[cfg(test)]
     fn tracked(&self) -> usize {
@@ -178,6 +186,25 @@ mod tests {
             assert!(rl.check("alice").is_ok(), "full again, call {i}");
         }
         assert!(rl.check("alice").is_err(), "an hour away is not 3600 calls");
+    }
+
+    #[test]
+    fn a_refunded_place_can_be_used_again_but_never_above_the_burst() {
+        let (clock, _) = manual();
+        let rl = RateLimit::with_clock(60, 2, clock);
+        rl.check("alice").unwrap();
+        rl.check("alice").unwrap();
+        assert!(rl.check("alice").is_err());
+        rl.refund("alice");
+        assert!(rl.check("alice").is_ok());
+        assert!(rl.check("alice").is_err());
+        for _ in 0..5 {
+            rl.refund("alice");
+        }
+        assert!(rl.check("alice").is_ok());
+        assert!(rl.check("alice").is_ok());
+        assert!(rl.check("alice").is_err(), "refunds stop at the burst");
+        rl.refund("nobody"); // no bucket: nothing to give back to
     }
 
     #[test]

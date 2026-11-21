@@ -1504,7 +1504,9 @@ async fn offline_message_names_device_and_last_seen() {
         offline_said("Studio Mac", "never")
     );
 
-    // Seen at various times before now.
+    // Seen at various times before now. Each on a computer of its own:
+    // "last seen" never moves back, so one computer cannot be set to a
+    // later and then an earlier time.
     let now = SystemTime::now();
     for (secs, said) in [
         (5, "just now"),
@@ -1515,12 +1517,26 @@ async fn offline_message_names_device_and_last_seen() {
         (24 * 3600, "1 day ago"),
         (4 * 24 * 3600 + 3600, "4 days ago"),
     ] {
+        let who = format!("person-{secs}");
+        let r = h
+            .register_with(&who, &ed25519(), Some("Studio Mac"), None)
+            .await;
+        let dev = r.json()["device_id"].as_str().unwrap().to_string();
+        let sess = h.session(&dev, &who).await;
         h.store
-            .touch_seen(&device, now - Duration::from_secs(secs))
+            .touch_seen(&dev, now - Duration::from_secs(secs))
             .await
             .unwrap();
+        let r = h
+            .rpc(
+                &dev,
+                &who,
+                Some(&sess),
+                call_body(json!(1), "read_file", json!({})),
+            )
+            .await;
         assert_eq!(
-            error_text(&ask(2 + secs).await),
+            error_text(&r),
             offline_said("Studio Mac", said),
             "{secs} s ago"
         );
@@ -1647,6 +1663,167 @@ async fn twenty_first_burst_call_is_rate_limited() {
         )
         .await;
     assert!(error_text(&r).contains("is offline"), "{}", r.body);
+}
+
+/// An AI app polling `check_request` while a person decides must not use up
+/// its own allowance: polls are recorded but spend nothing.
+#[tokio::test]
+async fn polling_check_request_does_not_spend_the_allowance() {
+    let h = harness_with(Timing {
+        calls_per_minute: 1,
+        ..Timing::default()
+    })
+    .await;
+    let (device, _key) = h.new_device(ALICE).await;
+    for i in 1..=30u64 {
+        let r = mcp_call(&h, &device, ALICE, check_body(i, "r_000000000000000a")).await;
+        assert!(
+            !mcp_text(&r).contains("Too many requests"),
+            "poll {i} was refused: {r}"
+        );
+    }
+    // A fresh call afterwards still works: the 30 polls spent nothing.
+    let r = mcp_call(
+        &h,
+        &device,
+        ALICE,
+        call_body(json!(100), "read_file", json!({})),
+    )
+    .await;
+    assert!(mcp_text(&r).contains("is offline"), "{r}");
+    // Every poll is still a recorded call.
+    let rows = activity_when(&h, ALICE, 31).await;
+    assert_eq!(
+        rows.iter().filter(|r| r.tool == "check_request").count(),
+        30
+    );
+    assert!(rows.iter().all(|r| r.outcome != "rate_limited"));
+}
+
+/// Asks the MCP layer directly (no HTTP, no token to sign: for tests that
+/// make many calls).
+async fn mcp_call(h: &Harness, device: &str, sub: &str, body: Value) -> Value {
+    let caller = Caller {
+        subject: sub.to_string(),
+        client_id: MCP_CLIENT.to_string(),
+    };
+    h.app
+        .mcp
+        .handle(&body, device, &caller, None)
+        .await
+        .expect("an answer")
+}
+
+fn mcp_text(v: &Value) -> String {
+    v["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no text: {v}"))
+        .to_string()
+}
+
+/// A retry that joins a call that is already running starts nothing, so it
+/// spends nothing either (and is not refused when the allowance is used up);
+/// the call it joined spent one place when it began.
+#[tokio::test]
+async fn a_retry_that_rejoins_an_open_call_does_not_spend_the_allowance() {
+    let h = Arc::new(
+        harness_with(Timing {
+            calls_per_minute: 1,
+            rate_burst: 1,
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "ls"}));
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    let call = fake.next_call().await;
+    // Two retries while the first is open: the one place is already spent.
+    let second = spawn_rpc(&h, &device, ALICE, &s, body(2));
+    let third = spawn_rpc(&h, &device, ALICE, &s, body(3));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.reply(&call.call_id, "one answer");
+    for r in [
+        within(first).await.unwrap(),
+        within(second).await.unwrap(),
+        within(third).await.unwrap(),
+    ] {
+        assert_eq!(text_of(&r), "one answer", "{}", r.body);
+    }
+    // The one place was spent by the call that started, so a different call
+    // is refused: the retries did not hand anything back or take more.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(4), "start_process", json!({"command": "pwd"})),
+        )
+        .await;
+    assert!(error_text(&r).contains("Too many requests"), "{}", r.body);
+    // All three were recorded.
+    let rows = activity_when(&h, ALICE, 4).await;
+    assert_eq!(
+        rows.iter().filter(|r| r.outcome == "rate_limited").count(),
+        1
+    );
+}
+
+/// A database that has stopped answering must not let activity writes pile
+/// up: past 64 in flight a row is dropped and logged, calls are unaffected,
+/// and writing goes on once the database is back.
+#[tokio::test]
+async fn a_stalled_database_cannot_pile_up_activity_writes() {
+    let h = harness_with(Timing {
+        calls_per_minute: 6000,
+        rate_burst: 1000,
+        ..Timing::default()
+    })
+    .await;
+    let (device, _key) = h.new_device(ALICE).await;
+    h.store.stall_activity_writes(true);
+    for i in 1..=70u64 {
+        let r = mcp_call(
+            &h,
+            &device,
+            ALICE,
+            call_body(json!(i), "read_file", json!({"i": i})),
+        )
+        .await;
+        assert!(mcp_text(&r).contains("is offline"), "call {i}: {r}");
+    }
+    let dropped = || h.logs().matches("\"activity_write_dropped\"").count();
+    assert_eq!(dropped(), 6, "64 writes wait, the other 6 are dropped");
+    assert!(h
+        .store
+        .activity_of(ALICE, None, 100)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // The database answers again: the 64 that waited are written, no more.
+    h.store.stall_activity_writes(false);
+    activity_when(&h, ALICE, 64).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        h.store.activity_of(ALICE, None, 100).await.unwrap().len(),
+        64
+    );
+    // And the places came back: the next call is recorded.
+    let r = mcp_call(
+        &h,
+        &device,
+        ALICE,
+        call_body(json!(71), "read_file", json!({"i": 71})),
+    )
+    .await;
+    assert!(mcp_text(&r).contains("is offline"));
+    activity_when(&h, ALICE, 65).await;
+    assert_eq!(dropped(), 6);
 }
 
 /// "Last seen" is kept up to date: when the computer connects, while it stays
@@ -1979,8 +2156,13 @@ fn text_of(r: &Reply) -> String {
         .to_string()
 }
 
-/// The request id inside a waiting reply, checking the text around it.
-fn waiting_id(r: &Reply, device: &str) -> String {
+/// The request id inside a waiting reply, checking the text around it. The
+/// computer is named by its name, "My Mac" for one registered without one.
+fn waiting_id(r: &Reply, _device: &str) -> String {
+    waiting_id_named(r, "My Mac")
+}
+
+fn waiting_id_named(r: &Reply, name: &str) -> String {
     let v = r.json();
     assert_eq!(v["result"]["isError"], false, "{}", r.body);
     let text = text_of(r);
@@ -1993,7 +2175,7 @@ fn waiting_id(r: &Reply, device: &str) -> String {
     assert_eq!(
         text,
         format!(
-            "Waiting for you to allow this on \"{device}\". Call check_request with \
+            "Waiting for you to allow this on \"{name}\". Call check_request with \
              request_id \"{id}\" to get the result. The request is cancelled if nobody \
              answers within 60 seconds."
         )
