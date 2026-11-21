@@ -305,6 +305,22 @@ jobs:
             exit 1
           fi
 
+      # Site catalog freshness (#5273 fallout). apps/web/vitruviansoftware-dev
+      # carries generated extension/catalog files written by
+      # //tools/sync-site-tools:sync. Checking them here catches drift on
+      # agent-fast-lane PRs without waiting for the merge queue.
+      - name: Assert site catalog files are in sync
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          if ! bazel run "${cache[@]}" //tools/sync-site-tools:sync -- --check; then
+            echo "::error::site catalog files are out of sync. Run 'bazel run //tools/sync-site-tools:sync' and commit the result."
+            exit 1
+          fi
+
       # MODULE.bazel.lock freshness (#1267). The step above deliberately
       # EXCLUDES MODULE.bazel.lock from its clean-tree assertion (`bazel run
       # //:tidy` does not regenerate it), so until now nothing gated Bazel
