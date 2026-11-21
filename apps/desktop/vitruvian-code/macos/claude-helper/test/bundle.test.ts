@@ -191,6 +191,21 @@ describe("bundled claude-helper.mjs isolated load check", () => {
     expect(bad.stderr).toMatch(
       /bazel-out or execroot path is still in the bundle/,
     );
+
+    // A comment the pattern cannot finish on its own line must never run on
+    // into the code below it and delete it.
+    writeFileSync(
+      input,
+      '// ../bazel-out/x\nconst a = 1;\nconst b = "usr/bin/env";\n',
+      "utf8",
+    );
+    const crossLine = spawnSync(
+      resolveRealNodeBinary(),
+      [join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"), input, output],
+      { encoding: "utf8" },
+    );
+    expect(crossLine.status).not.toBe(0);
+    expect(readFileSync(input, "utf8")).toContain("const a = 1;");
   });
 
   test("loads in an empty temp folder with only node + claude-helper.mjs and completes ACP initialize", async () => {

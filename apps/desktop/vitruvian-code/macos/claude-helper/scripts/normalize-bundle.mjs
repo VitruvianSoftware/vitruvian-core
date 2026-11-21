@@ -32,10 +32,25 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const MODULE_COMMENT =
-  /^\/\/ (?:\.\.\/)*(?:execroot\/[^/]+\/)?bazel-out\/[^/]+\/bin\/(.+)$/gm;
+  /^\/\/ (?:\.\.\/)*(?:execroot\/[^/\r\n]+\/)?bazel-out\/[^/\r\n]+\/bin\/(.+)$/gm;
 
+// Only `// <path>` comment lines may change, one line for one line. Anything
+// else (a match running past a line end, a changed code line) is a bug in the
+// pattern, and the bundle must not ship: the staleness test regenerates through
+// this same script, so it cannot catch it.
 function normalizeBundle(source) {
-  return source.replace(MODULE_COMMENT, "// $1");
+  const normalized = source.replace(MODULE_COMMENT, "// $1");
+  const before = source.split("\n");
+  const after = normalized.split("\n");
+  if (before.length !== after.length) {
+    throw new Error("normalize-bundle: the line count changed");
+  }
+  for (let i = 0; i < before.length; i++) {
+    if (before[i] !== after[i] && !before[i].startsWith("// ")) {
+      throw new Error(`normalize-bundle: line ${i + 1} is not a path comment but changed`);
+    }
+  }
+  return normalized;
 }
 
 function main() {
