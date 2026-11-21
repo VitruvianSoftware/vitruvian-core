@@ -40,6 +40,10 @@ export const PLUGIN_AGENT_PREFIX = "vitruvian-orchestrator:";
 
 const AGENT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const AGENT_MODES = new Set(["primary", "subagent", "all"]);
+// `provider/model`, the form agent files use; same charset as the team file.
+const MODEL_RE =
+  /^([a-z0-9][a-z0-9._-]{0,63})\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
+const EFFORTS = new Set(["minimal", "low", "medium", "high", "xhigh", "max"]);
 const MAX_FILE_BYTES = 256 * 1024;
 
 /**
@@ -109,7 +113,12 @@ function listDir(dir) {
  * The plugin's agents, from `<pluginDir>/agents/<role>.md`.
  *
  * @param {string} pluginDir
- * @returns {Array<{ id: string, description: string, mode: string, system: string }>}
+ * `model` (`provider/model`) and `reasoningEffort` are kept in the shape
+ * OpenCode 2.3 gives an agent it read from a file: `model: { providerID, id }`
+ * and `request.body.reasoningEffort`. An unusable value is left out, so the
+ * session's own model applies.
+ *
+ * @returns {Array<{ id: string, description: string, mode: string, system: string, model?: { providerID: string, id: string }, reasoningEffort?: string }>}
  */
 export function pluginAgentDefinitions(pluginDir) {
   const dir = path.join(pluginDir, "agents");
@@ -124,12 +133,18 @@ export function pluginAgentDefinitions(pluginDir) {
     const mode = AGENT_MODES.has(parsed.data.mode)
       ? parsed.data.mode
       : "subagent";
-    defs.push({
+    /** @type {{ id: string, description: string, mode: string, system: string, model?: { providerID: string, id: string }, reasoningEffort?: string }} */
+    const def = {
       id: `${PLUGIN_AGENT_PREFIX}${role}`,
       description,
       mode,
       system: parsed.body,
-    });
+    };
+    const model = MODEL_RE.exec(parsed.data.model ?? "");
+    if (model) def.model = { providerID: model[1], id: model[2] };
+    const effort = parsed.data.reasoningEffort;
+    if (EFFORTS.has(effort)) def.reasoningEffort = effort;
+    defs.push(def);
   }
   return defs;
 }
@@ -190,11 +205,23 @@ export async function registerPluginAgentsAndSkills(ctx, pluginDir) {
             draft.description = def.description;
             draft.mode = def.mode;
             draft.system = def.system;
+            if (def.model) draft.model = { ...def.model };
+            if (def.reasoningEffort) {
+              const request = draft.request ?? {};
+              draft.request = {
+                ...request,
+                body: {
+                  ...(request.body ?? {}),
+                  reasoningEffort: def.reasoningEffort,
+                },
+              };
+            }
           });
           added.agents.push(def.id);
         }
       });
     } catch {
+      // Agents updated before the throw may stay; report none as added.
       added.agents = [];
     }
   }

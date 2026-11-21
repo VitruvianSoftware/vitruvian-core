@@ -32,13 +32,12 @@
 # so a re-run finishes a half-done release and never repeats one:
 #   1. publishes that version to npm with trusted publishing (OIDC: npm trusts
 #      this repository's release.yml, and there is no npm token anywhere);
-#   2. tags the commit v<version> and publishes a GitHub release whose notes
-#      are that version's section of CHANGELOG.md.
+#   2. once npm has it, tags the commit v<version> and publishes a GitHub
+#      release whose notes are that version's section of CHANGELOG.md.
 #
 # npm refuses a trusted publisher for a package that does not exist yet, so a
-# person publishes the very first version by hand
-# (docs/engineering/registry-trust.md). Until then the publish step says so
-# and skips, and the tag still happens.
+# person publishes the very first version by hand (Releasing in README.md).
+# Until then this workflow warns and does nothing else: the tag waits for npm.
 name: release
 
 on:
@@ -96,35 +95,31 @@ jobs:
           NAME: ${{ steps.version.outputs.name }}
           V: ${{ steps.version.outputs.version }}
         run: |
-          # `npm view` exits 0 with the version when it exists, and fails with
-          # E404 when the package or the version does not. Anything else is a
-          # failure to ask, and is not treated as "unpublished".
+          # The package's published versions, as JSON on stdout. A package
+          # npm does not have fails with E404 on stderr; any other failure is
+          # a failure to ask, never read as "unpublished". stderr is kept
+          # apart so a warning npm prints cannot spoil the answer.
           set +e
-          OUT="$(npm view "${NAME}@${V}" version 2>&1)"
+          OUT="$(npm view "${NAME}" versions --json 2>"$RUNNER_TEMP/npm-view.err")"
           RC=$?
           set -e
-          if [ "$RC" -eq 0 ] && [ "$OUT" = "$V" ]; then
-            echo "${NAME}@${V} is already on npm."
-            exit 0
-          fi
-          if [ "$RC" -ne 0 ] && ! printf '%s' "$OUT" | grep -q 'E404'; then
-            echo "::error::could not ask npm about ${NAME}@${V}: ${OUT}"
-            exit 1
-          fi
-          set +e
-          ANY="$(npm view "${NAME}" name 2>&1)"
-          ANY_RC=$?
-          set -e
-          if [ "$ANY_RC" -ne 0 ]; then
-            if printf '%s' "$ANY" | grep -q 'E404'; then
-              echo "::warning::${NAME} is not on npm yet. npm only trusts this workflow after the first version exists, so a person publishes it once by hand (docs/engineering/registry-trust.md in vitruvian-core). Skipping the publish."
+          if [ "$RC" -ne 0 ]; then
+            if grep -q 'E404' "$RUNNER_TEMP/npm-view.err"; then
+              echo "::warning::${NAME} is not on npm yet. npm only trusts this workflow after the first version exists, so a person publishes it once by hand: see Releasing in README.md. Skipping the publish and the tag."
               exit 0
             fi
-            echo "::error::could not ask npm about ${NAME}: ${ANY}"
+            echo "::error::could not ask npm about ${NAME}:"
+            cat "$RUNNER_TEMP/npm-view.err"
             exit 1
           fi
-          echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "${NAME}@${V} is not on npm yet: publishing."
+          # One version comes back as a string, several as a list.
+          if printf '%s' "$OUT" | jq -e --arg v "$V" '(if type == "array" then . else [.] end) | index($v) != null' >/dev/null; then
+            echo "${NAME}@${V} is already on npm."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "${NAME}@${V} is not on npm yet: publishing."
+          fi
+          echo "on_npm=true" >> "$GITHUB_OUTPUT"
 
       - name: Ensure npm can do trusted publishing
         if: steps.npm.outputs.publish == 'true'
@@ -133,7 +128,7 @@ jobs:
           # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1.
           # Upgrade and then ASSERT: an npm too old does not say so, it
           # quietly looks for a token that is not there.
-          npm install -g npm@latest >/dev/null
+          npm install -g npm@11 >/dev/null
           have="$(npm --version)"
           if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
             echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"
@@ -160,7 +155,10 @@ jobs:
           npm pack --dry-run
           npm publish --access public --provenance
 
+      # The tag and the GitHub release say "shipped", so they wait until
+      # npm has the version (published here or by hand).
       - name: Ask whether the tag exists
+        if: steps.npm.outputs.on_npm == 'true'
         id: tag
         env:
           V: ${{ steps.version.outputs.version }}

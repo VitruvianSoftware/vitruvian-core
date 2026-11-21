@@ -81,6 +81,22 @@ The package is published from the read-only mirror [VitruvianSoftware/vitruvian-
 
 To map roles to your own agents, see the [team file guide](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/guides/orchestrator-team-file.md), or run the `team-setup` skill.
 
+## Releasing
+
+Releases are cut in vitruvian-core: release-please opens a release pull request, and merging it exports the new version to the mirror. There, `.github/workflows/release.yml` publishes it to npm with trusted publishing (npm trusts that workflow; there is no npm token) and then tags `v<version>` with a GitHub release.
+
+**The very first version is published by hand, once.** npm will not trust a workflow for a package that does not exist yet. Until it exists, the mirror's workflow warns and does nothing. To publish it, with an npm account in the `@vitruviansoftware` organization:
+
+```sh
+git clone https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode
+cd vitruvian-orchestrator-opencode
+npm publish --dry-run   # check the file list
+npm login
+npm publish --access public
+```
+
+Then, in vitruvian-core, add the version's row to `tools/registry-trust/bootstrap.tsv` and run `bazel run //tools/registry-trust:setup` to make the mirror's `release.yml` the trusted publisher, and re-run the mirror's `release` workflow to tag it. Every later version is published by the workflow. See `docs/engineering/registry-trust.md`.
+
 ## Developing the plugin
 
 - **In vitruvian-core**: OpenCode loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.

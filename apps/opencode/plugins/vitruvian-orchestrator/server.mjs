@@ -573,7 +573,7 @@ export default {
         };
       }
       if (toolCtx?.agent && !meta.agent) {
-        meta.agent = toolCtx.agent;
+        meta.agent = bareAgentName(toolCtx.agent);
       }
       const workerEntry = findWorkerRunEntry(validID);
       const isHelper = Boolean(meta.parentID) || Boolean(workerEntry);

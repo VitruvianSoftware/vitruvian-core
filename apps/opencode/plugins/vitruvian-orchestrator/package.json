@@ -19,7 +19,8 @@
   ],
   "exports": {
     "./server": "./server.mjs",
-    "./tui": "./tui.tsx"
+    "./tui": "./tui.tsx",
+    "./package.json": "./package.json"
   },
   "files": [
     "server.mjs",

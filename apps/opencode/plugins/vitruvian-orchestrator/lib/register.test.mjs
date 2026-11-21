@@ -121,6 +121,13 @@ describe("pluginAgentDefinitions", () => {
     assert.deepEqual(defs.map((d) => d.id).sort(), shipped);
     // OpenCode has its own `build` agent; ours must not take its name.
     assert.ok(!defs.some((d) => d.id === "build"));
+    // The lead's file pins its model and effort; the others leave them to the session.
+    const lead = defs.find((d) => d.id === `${PLUGIN_AGENT_PREFIX}lead`);
+    assert.deepEqual(lead?.model, {
+      providerID: "anthropic",
+      id: "claude-opus-5-5",
+    });
+    assert.equal(lead?.reasoningEffort, "high");
     for (const d of defs) {
       assert.ok(d.description.length > 0, d.id);
       assert.equal(d.mode, "subagent", d.id);
@@ -144,7 +151,7 @@ describe("pluginAgentDefinitions", () => {
     fs.writeFileSync(path.join(dir, "agents", "notes.txt"), "ignored");
     fs.writeFileSync(
       path.join(dir, "agents", "ok.md"),
-      "---\ndescription: Fine\nmode: weird\n---\nBody",
+      "---\ndescription: Fine\nmode: weird\nmodel: no-slash\nreasoningEffort: huge\n---\nBody",
     );
     const defs = pluginAgentDefinitions(dir);
     assert.deepEqual(defs, [
@@ -186,6 +193,13 @@ describe("registerPluginAgentsAndSkills", () => {
     });
     const result = await registerPluginAgentsAndSkills(ctx, PLUGIN_DIR);
     const dev = agents.get(`${PLUGIN_AGENT_PREFIX}developer`);
+    assert.equal(dev?.model, undefined);
+    const lead = agents.get(`${PLUGIN_AGENT_PREFIX}lead`);
+    assert.deepEqual(lead?.model, {
+      providerID: "anthropic",
+      id: "claude-opus-5-5",
+    });
+    assert.deepEqual(lead?.request, { body: { reasoningEffort: "high" } });
     assert.equal(dev?.mode, "subagent");
     assert.ok(dev?.description);
     assert.ok(dev?.system);

@@ -49,6 +49,7 @@ test("the exports are the parts OpenCode loads, and they exist", () => {
   assert.deepEqual(pkg.exports, {
     "./server": "./server.mjs",
     "./tui": "./tui.tsx",
+    "./package.json": "./package.json",
   });
   for (const file of Object.values(pkg.exports)) {
     assert.ok(existsSync(join(here, file)), `${file} is missing`);
