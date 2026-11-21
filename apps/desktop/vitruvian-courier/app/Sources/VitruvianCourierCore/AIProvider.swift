@@ -148,6 +148,13 @@ public final class AIPreferences: ObservableObject {
             set(enableSlashCommands, "enableSlashCommands")
         }
     }
+    /// Which service edits photos ("Edit with AI…"). Never changes `selectedEngine`.
+    @Published public var photoEditingChoice: PhotoEditingChoice {
+        didSet {
+            guard canMutate({ photoEditingChoice = oldValue }) else { return }
+            set(photoEditingChoice.rawValue, "photoEditingChoice")
+        }
+    }
 
     public static let supportedTranslationLanguages: [String] = [
         "Arabic", "Chinese (Simplified)", "Chinese (Traditional)", "Dutch",
@@ -203,6 +210,8 @@ public final class AIPreferences: ObservableObject {
         autoTranscribeVoiceNotes = bool("autoTranscribeVoiceNotes", false)
         transcriptionLanguage = string("transcriptionLanguage", "Auto-Detect")
         enableSlashCommands = bool("enableSlashCommands", true)
+        photoEditingChoice = defaults.string(forKey: Self.key("photoEditingChoice"))
+            .flatMap(PhotoEditingChoice.init(rawValue:)) ?? .automatic
         isInitializing = false
     }
 

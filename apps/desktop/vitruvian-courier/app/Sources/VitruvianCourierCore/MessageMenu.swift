@@ -50,6 +50,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case transcribeVoiceNote
         /// Speaks the message aloud via Vitruvian Speaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
         case readAloud
+        /// Opens the "Edit with AI…" sheet for a photo (`PhotoEditSheet`). It never sends the result.
+        case editPhoto
         /// Groups secondary message actions into a "More" submenu.
         case more
         /// A line that only says something ("Sent 14:02"), always greyed.
@@ -89,7 +91,7 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
 ///      thread's root); React…; Edit… (⌘T)
 ///   2. Copy (⌘C); Forward… (⌘⇧F)
 ///   3. Bookmark / Remove Bookmark; Mark as Unread ("From this message. On this Mac only."); Mark as played;
-///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Read Aloud, Transcribe, Translate, Translate Into…,
+///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Edit with AI… (on a photo, when AI is on), Read Aloud, Transcribe, Translate, Translate Into…,
 ///      Edit History, Report a Problem…, Copy Message Details)
 ///   4. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
 ///   5. greyed lines: "Sent …" or "Received …", and "Disappears in …"
@@ -108,7 +110,8 @@ public enum MessageMenu {
                                 responseLanguage: String = "English",
                                 translationLanguages: [String] = [],
                                 canReadAloud: Bool = false,
-                                isReadingAloud: Bool = false) -> [[MessageMenuItem]] {
+                                isReadingAloud: Bool = false,
+                                canEditPhoto: Bool = false) -> [[MessageMenuItem]] {
         let offered = Set(available.actions)
         let greyed = Dictionary(available.unavailable.map { ($0.action, $0.reason) }, uniquingKeysWith: { a, _ in a })
 
@@ -138,6 +141,17 @@ public enum MessageMenu {
         // 3. Doing something with the message (plus secondary actions tucked into "More").
         var using = [item(.bookmark), item(.removeBookmark), item(.markUnread), item(.markAsPlayed)].compactMap { $0 }
         var moreItems = [item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink)].compactMap { $0 }
+        if canEditPhoto {
+            moreItems.append(
+                MessageMenuItem(
+                    command: .editPhoto,
+                    title: String(localized: "Edit with AI…"),
+                    key: nil,
+                    isEnabled: true,
+                    help: nil
+                )
+            )
+        }
         if canReadAloud {
             moreItems.append(
                 MessageMenuItem(
