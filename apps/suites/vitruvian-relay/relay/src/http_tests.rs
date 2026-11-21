@@ -135,7 +135,7 @@ pub(crate) fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
     mint_exp(pair, client_id, sub, now_secs() + 600)
 }
 
-fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
+pub(crate) fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
     mint_claims(pair, client_id, sub, Some(exp))
 }
 
@@ -205,9 +205,15 @@ pub(crate) struct TokenServer {
     pub(crate) url: String,
     requests: Arc<Mutex<Vec<String>>>,
     answer: Arc<Mutex<(u16, String)>>,
+    stalled: Arc<AtomicBool>,
 }
 
 impl TokenServer {
+    /// While stalled, the server reads each request and then says nothing.
+    pub(crate) fn stall(&self, stalled: bool) {
+        self.stalled.store(stalled, Ordering::SeqCst);
+    }
+
     /// Answers every exchange with this access token.
     pub(crate) fn give_token(&self, access_token: &str) {
         *self.answer.lock().unwrap() = (
@@ -236,7 +242,8 @@ fn start_token_server() -> TokenServer {
         400,
         json!({"error": "invalid_grant"}).to_string(),
     )));
-    let (seen, reply) = (requests.clone(), answer.clone());
+    let stalled = Arc::new(AtomicBool::new(false));
+    let (seen, reply, hold) = (requests.clone(), answer.clone(), stalled.clone());
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
@@ -256,6 +263,9 @@ fn start_token_server() -> TokenServer {
             seen.lock()
                 .unwrap()
                 .push(String::from_utf8_lossy(&body).into_owned());
+            while hold.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
             let (status, text) = reply.lock().unwrap().clone();
             let _ = write!(
                 stream,
@@ -268,6 +278,7 @@ fn start_token_server() -> TokenServer {
         url,
         requests,
         answer,
+        stalled,
     }
 }
 

@@ -38,7 +38,9 @@ Settings come from the environment (`src/config.rs`): `PUBLIC_URL`,
 `DASHBOARD_CLIENT_ID` (all three client id lists must be disjoint),
 `MCP_CLIENT_LABELS` (optional, `Claude=<id>,Gemini=<id>`: what the dashboard
 calls each AI app), `TOKEN_URI` (optional, overrides
-`{ISSUER}/oauth/v2/token` for local runs and tests), `REQUIRED_ROLE` (default `relay-user`), `DATABASE_URL` (Postgres; the
+`{ISSUER}/oauth/v2/token` for local runs and tests; it and `JWKS_URI` must be
+https, or http on localhost or 127.0.0.1, or the relay will not start),
+`REQUIRED_ROLE` (default `relay-user`), `DATABASE_URL` (Postgres; the
 connection is TLS checked against `DATABASE_CA_FILE`, or the system's
 certificates, unless the URL says `sslmode=disable`, which is for tests),
 `PORT`. It stops on SIGTERM.
@@ -63,8 +65,11 @@ PKCE (S256) against the `relay-dashboard` client; its token goes through a
 third verifier pinned to `DASHBOARD_CLIENT_ID` and the same role, so a
 dashboard token is refused at `/mcp`, `/devices` and `/connect`, and an AI
 app's or the connector's is refused at `/auth/callback`. A sign-in becomes an
-in-memory session (cookie `vr_session`, 12 hours; a restart signs everyone
-out). Every `POST` needs the session's CSRF token and an `Origin` equal to
+in-memory session (cookie `vr_session`; it ends at 12 hours or when the access
+token expires, whichever is sooner, so a role taken away stops working with
+the token; a restart signs everyone out). The sign-in always asks which
+account (`prompt=select_account`), and at most 8 code exchanges run at once
+(a ninth gets a plain 503 page). Every `POST` needs the session's CSRF token and an `Origin` equal to
 `PUBLIC_URL`, or it gets a 403. Every route that names a computer goes through
 `App::owned_device`. The activity page shows the tool, the time, the outcome
 and the duration, never arguments: the relay keeps none. To look at the pages

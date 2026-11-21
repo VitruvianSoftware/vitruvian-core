@@ -260,30 +260,40 @@ fn seen_html(d: &DeviceView, now: SystemTime) -> String {
 
 // -------------------------------------------------------------------- pages
 
-/// The front page for someone who is not signed in.
+/// The front page for someone who is not signed in. Just after signing out,
+/// the way to end the account sign-in too comes first: the relay's own
+/// session is over, but the identity service would sign the next person at
+/// this browser straight back in.
 pub fn sign_in_page(ctx: Ctx<'_>, signed_out: bool, end_session_url: &str) -> String {
-    let note = if signed_out {
+    let main = if signed_out {
         format!(
-            "<p class=\"note ok\" role=\"status\">You are signed out of Vitruvian Relay.</p>\
-             <p class=\"meta\">This does not sign you out of your account itself. \
-             To do that too, <a href=\"{}\">end your account sign-in</a>.</p>",
+            "<section class=\"hero\">\
+             <h1>You are signed out of Vitruvian Relay</h1>\
+             <p class=\"lead\">That ended your session here. It does not sign you out of your \
+             account itself, so the next person to open this page on this browser could still \
+             sign in as you. On a shared computer, end your account sign-in too.</p>\
+             <p><a class=\"button\" href=\"{}\">Also sign out of my account</a></p>\
+             <p class=\"meta\">Or <a href=\"/auth/login\">sign in again</a>.</p>\
+             </section>",
             esc(end_session_url)
         )
     } else {
-        String::new()
-    };
-    let main = format!(
         "<section class=\"hero\">\
          <h1>Use your AI app on your own Mac</h1>\
          <p class=\"lead\">Vitruvian Relay lets Claude or Gemini reach your Mac from anywhere, \
          including your phone. For anything beyond reading files, your Mac asks you first.</p>\
-         {note}\
          <p><a class=\"button\" href=\"/auth/login\">Sign in</a></p>\
          <p class=\"meta\">Vitruvian Relay is by invitation. Sign in with the account you were \
          invited with. If it does not work, ask the person who invited you.</p>\
          </section>"
-    );
-    layout(ctx, Nav::None, "Sign in", &main)
+            .to_string()
+    };
+    layout(
+        ctx,
+        Nav::None,
+        if signed_out { "Signed out" } else { "Sign in" },
+        &main,
+    )
 }
 
 /// A page that only says something: an error, or a dead end, with a way on.

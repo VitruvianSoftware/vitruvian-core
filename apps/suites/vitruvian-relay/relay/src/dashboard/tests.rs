@@ -86,8 +86,13 @@ async fn start_sign_in(h: &Harness) -> (String, String, Reply) {
 
 /// A full sign-in as `sub`, the way a browser does it.
 async fn sign_in(h: &Harness, sub: &str) -> Browser {
+    sign_in_with(h, &h.dashboard_token(sub)).await
+}
+
+/// A full sign-in in which the identity service hands back `token`.
+async fn sign_in_with(h: &Harness, token: &str) -> Browser {
     let (state, auth, _) = start_sign_in(h).await;
-    h.tokens.give_token(&h.dashboard_token(sub));
+    h.tokens.give_token(token);
     let r = h
         .send(
             "GET",
@@ -248,6 +253,12 @@ async fn signing_in_follows_the_flow_and_makes_a_safe_session() {
         query_of(&location, "code_challenge_method").as_deref(),
         Some("S256")
     );
+    // Always ask which account, so signing out here is not undone by the
+    // identity service signing the next person at this browser straight in.
+    assert_eq!(
+        query_of(&location, "prompt").as_deref(),
+        Some("select_account")
+    );
     let scope = query_of(&location, "scope").unwrap();
     assert!(
         scope.contains("openid") && scope.contains("project:id:123456789:aud"),
@@ -356,12 +367,108 @@ async fn callback_with_bad_state_is_refused() {
             r.body.contains("Sign in again"),
             "{why}: tells them what to do"
         );
+        // Only a callback whose state matched may end the sign-in in progress.
+        let cleared = set_cookie(&r, "vr_auth").is_some();
+        let matched =
+            headers.iter().any(|(_, v)| *v == auth) && query.contains(&format!("state={state}"));
+        assert_eq!(cleared, matched, "{why}: vr_auth cleared only on a match");
     }
     assert!(
         h.tokens.requests().is_empty(),
         "no code was ever traded: {:?}",
         h.tokens.requests()
     );
+}
+
+#[tokio::test]
+async fn a_stray_callback_does_not_cancel_a_sign_in_in_progress() {
+    let h = harness().await;
+    let (state, auth, _) = start_sign_in(&h).await;
+    // Someone else's page sends this browser to the callback with a made-up
+    // state. It is refused, and says nothing to the browser about its cookie.
+    let stray = h
+        .send(
+            "GET",
+            "/auth/callback?state=x&code=y",
+            &[("cookie", auth.clone())],
+            "",
+        )
+        .await;
+    assert_eq!(stray.status, StatusCode::BAD_REQUEST);
+    assert!(
+        set_cookie(&stray, "vr_auth").is_none(),
+        "the cookie is left alone"
+    );
+    // The sign-in that was under way still finishes.
+    h.tokens.give_token(&h.dashboard_token(ALICE));
+    let r = h
+        .send(
+            "GET",
+            &format!("/auth/callback?code=c&state={state}"),
+            &[("cookie", auth)],
+            "",
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    assert!(set_cookie(&r, "vr_session").is_some());
+}
+
+#[tokio::test]
+async fn only_so_many_code_exchanges_run_at_once() {
+    let h = Arc::new(harness().await);
+    assert_eq!(h.app.dashboard.free_exchange_slots(), 8);
+    h.tokens.stall(true);
+    let mut pending = Vec::new();
+    for _ in 0..8 {
+        let (state, auth, _) = start_sign_in(&h).await;
+        let h = h.clone();
+        pending.push(tokio::spawn(async move {
+            h.send(
+                "GET",
+                &format!("/auth/callback?code=c&state={state}"),
+                &[("cookie", auth)],
+                "",
+            )
+            .await
+        }));
+    }
+    within(async {
+        while h.app.dashboard.free_exchange_slots() > 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+
+    // The ninth is turned away at once, in plain words, with its sign-in
+    // left as it was so it can try the same address again.
+    let (state, auth, _) = start_sign_in(&h).await;
+    let again = format!("/auth/callback?code=c&state={state}");
+    let r = h.send("GET", &again, &[("cookie", auth.clone())], "").await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE, "{}", r.body);
+    assert!(
+        r.body
+            .contains("Signing in is busy right now; try again in a minute."),
+        "{}",
+        r.body
+    );
+    assert!(set_cookie(&r, "vr_auth").is_none());
+
+    // When the identity service answers again, the eight finish, their places
+    // come back, and the ninth gets in.
+    h.tokens.stall(false);
+    for p in pending {
+        let r = within(p).await.unwrap();
+        assert_eq!(r.status, StatusCode::BAD_GATEWAY, "{}", r.body);
+    }
+    within(async {
+        while h.app.dashboard.free_exchange_slots() < 8 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    h.tokens.give_token(&h.dashboard_token(ALICE));
+    let r = h.send("GET", &again, &[("cookie", auth)], "").await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
 }
 
 #[tokio::test]
@@ -882,9 +989,17 @@ async fn signing_out_ends_the_session() {
     assert_eq!(after.status, StatusCode::SEE_OTHER);
     let home = h.get("/?signed_out=1").await;
     assert!(home.body.contains("You are signed out"), "{}", home.body);
-    assert!(home
-        .body
-        .contains("/oidc/v1/end_session?client_id=dashboard-client"));
+    // Ending the account sign-in too is the main button; signing in again is
+    // the plain link beneath it.
+    assert!(
+        home.body.contains(
+            "class=\"button\" href=\"https://auth.example.test/oidc/v1/end_session?client_id=dashboard-client"
+        ),
+        "{}",
+        home.body
+    );
+    assert!(!home.body.contains("class=\"button\" href=\"/auth/login\""));
+    assert!(home.body.contains("href=\"/auth/login\">sign in again"));
 }
 
 /// Moves the clock the sessions use; only the test below reads it.
@@ -898,6 +1013,65 @@ fn skewed_clock() -> u64 {
         + SKEW_SECS.load(Ordering::SeqCst)
 }
 
+/// The same, for the test of a session ending with its token.
+static SKEW_TOKEN_SECS: AtomicU64 = AtomicU64::new(0);
+
+fn skewed_token_clock() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + SKEW_TOKEN_SECS.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn a_session_ends_with_its_token_if_that_is_sooner() {
+    let h = harness_with(Timing {
+        clock: skewed_token_clock,
+        ..Timing::default()
+    })
+    .await;
+    // A token that runs out in an hour: the session is gone after that hour,
+    // not 12 of them, so a role taken away stops working with the token.
+    let now = crate::http::tests::now_secs();
+    let token = crate::http::tests::mint_exp(&h.rsa, "dashboard-client", ALICE, now + 3600);
+    let b = sign_in_with(&h, &token).await;
+    SKEW_TOKEN_SECS.store(3600 - 60, Ordering::SeqCst);
+    assert_eq!(b.get(&h, "/devices").await.status, StatusCode::OK);
+    SKEW_TOKEN_SECS.store(3600 + 60, Ordering::SeqCst);
+    let r = b.get(&h, "/devices").await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert_eq!(r.header("location").as_deref(), Some("/"));
+    SKEW_TOKEN_SECS.store(0, Ordering::SeqCst);
+}
+
+#[tokio::test]
+async fn one_person_signed_in_on_nine_browsers_loses_the_oldest() {
+    let h = harness().await;
+    let bob = sign_in(&h, BOB).await;
+    let mut alice = Vec::new();
+    for _ in 0..9 {
+        alice.push(sign_in(&h, ALICE).await);
+    }
+    assert_eq!(
+        alice[0].get(&h, "/devices").await.status,
+        StatusCode::SEE_OTHER,
+        "the first browser's session made room"
+    );
+    for (n, b) in alice.iter().enumerate().skip(1) {
+        assert_eq!(
+            b.get(&h, "/devices").await.status,
+            StatusCode::OK,
+            "browser {n}"
+        );
+    }
+    assert_eq!(
+        bob.get(&h, "/devices").await.status,
+        StatusCode::OK,
+        "bob is untouched"
+    );
+}
+
 #[tokio::test]
 async fn a_session_ends_after_twelve_hours() {
     let h = harness_with(Timing {
@@ -905,7 +1079,10 @@ async fn a_session_ends_after_twelve_hours() {
         ..Timing::default()
     })
     .await;
-    let b = sign_in(&h, ALICE).await;
+    // A token that outlasts the session, so the 12 hours are what ends it.
+    let now = crate::http::tests::now_secs();
+    let token = crate::http::tests::mint_exp(&h.rsa, "dashboard-client", ALICE, now + 13 * 3600);
+    let b = sign_in_with(&h, &token).await;
     SKEW_SECS.store(12 * 3600 - 60, Ordering::SeqCst);
     assert_eq!(b.get(&h, "/devices").await.status, StatusCode::OK);
     SKEW_SECS.store(12 * 3600 + 60, Ordering::SeqCst);

@@ -22,8 +22,10 @@
 //! and the PKCE pair that starts a sign-in.
 //!
 //! A restart signs everyone out (accepted for P2: signing in again is one
-//! click). A session is not the token it came from: it lasts
-//! [`DASHBOARD_SESSION_HOURS`], and holds the person's subject and the token
+//! click). A session lasts [`DASHBOARD_SESSION_HOURS`] or until the access
+//! token it came from expires, whichever is sooner, so a person whose role
+//! is taken away is out when their token runs out, not half a day later. It
+//! holds the person's subject and the token
 //! every form on the pages must send back (the CSRF token).
 
 use std::collections::HashMap;
@@ -67,44 +69,61 @@ struct Entry {
     subject: String,
     csrf: String,
     expires_at: u64,
+    /// The order sessions were started in, for "oldest".
+    seq: u64,
+}
+
+#[derive(Default)]
+struct Held {
+    by_cookie: HashMap<String, Entry>,
+    next_seq: u64,
 }
 
 #[derive(Default)]
 pub struct Sessions {
-    inner: Mutex<HashMap<String, Entry>>,
+    inner: Mutex<Held>,
 }
 
 impl Sessions {
     /// Starts a session for `subject` at `now` (seconds since the epoch);
-    /// the value to put in the cookie.
-    pub fn start(&self, subject: &str, now: u64) -> String {
+    /// the value to put in the cookie. It ends after
+    /// [`DASHBOARD_SESSION_HOURS`], or at `token_exp` (the access token's
+    /// expiry, seconds since the epoch) if that comes first.
+    pub fn start(&self, subject: &str, now: u64, token_exp: Option<u64>) -> String {
         let id = random_token();
-        let mut sessions = self.inner.lock().unwrap();
+        let mut held = self.inner.lock().unwrap();
+        let Held {
+            by_cookie: sessions,
+            next_seq,
+        } = &mut *held;
         sessions.retain(|_, e| e.expires_at > now);
         let oldest = |sessions: &HashMap<String, Entry>, only: Option<&str>| {
             sessions
                 .iter()
                 .filter(|(_, e)| only.is_none_or(|sub| e.subject == sub))
-                .min_by_key(|(_, e)| e.expires_at)
+                .min_by_key(|(_, e)| e.seq)
                 .map(|(k, _)| k.clone())
         };
         let theirs = sessions.values().filter(|e| e.subject == subject).count();
         if theirs >= MAX_SESSIONS_PER_SUBJECT {
-            if let Some(k) = oldest(&sessions, Some(subject)) {
+            if let Some(k) = oldest(sessions, Some(subject)) {
                 sessions.remove(&k);
             }
         }
         if sessions.len() >= MAX_SESSIONS {
-            if let Some(k) = oldest(&sessions, None) {
+            if let Some(k) = oldest(sessions, None) {
                 sessions.remove(&k);
             }
         }
+        let cap = now + DASHBOARD_SESSION_HOURS * 3600;
+        *next_seq += 1;
         sessions.insert(
             id.clone(),
             Entry {
                 subject: subject.to_string(),
                 csrf: random_token(),
-                expires_at: now + DASHBOARD_SESSION_HOURS * 3600,
+                expires_at: token_exp.map_or(cap, |exp| exp.min(cap)),
+                seq: *next_seq,
             },
         );
         id
@@ -113,7 +132,8 @@ impl Sessions {
     /// The live session for a cookie value, or `None` (never started, ended,
     /// or past its hours).
     pub fn get(&self, id: &str, now: u64) -> Option<SessionView> {
-        let mut sessions = self.inner.lock().unwrap();
+        let mut held = self.inner.lock().unwrap();
+        let sessions = &mut held.by_cookie;
         match sessions.get(id) {
             Some(e) if e.expires_at > now => Some(SessionView {
                 subject: e.subject.clone(),
@@ -128,13 +148,13 @@ impl Sessions {
     }
 
     pub fn end(&self, id: &str) {
-        self.inner.lock().unwrap().remove(id);
+        self.inner.lock().unwrap().by_cookie.remove(id);
     }
 
     /// Sessions held (tests).
     #[cfg(test)]
     pub fn count(&self) -> usize {
-        self.inner.lock().unwrap().len()
+        self.inner.lock().unwrap().by_cookie.len()
     }
 }
 
@@ -259,7 +279,7 @@ mod tests {
     #[test]
     fn a_session_lasts_its_hours_and_then_is_gone() {
         let s = Sessions::default();
-        let id = s.start("alice", 1_000);
+        let id = s.start("alice", 1_000, None);
         assert_eq!(id.len(), 43, "32 bytes as base64url: {id}");
         let seen = s.get(&id, 1_000 + 3600 * 12 - 1).expect("still signed in");
         assert_eq!(seen.subject, "alice");
@@ -270,9 +290,23 @@ mod tests {
     }
 
     #[test]
+    fn a_session_ends_with_its_token_if_that_is_sooner() {
+        let s = Sessions::default();
+        let short = s.start("alice", 1_000, Some(1_000 + 3600));
+        let long = s.start("alice", 1_000, Some(1_000 + 13 * 3600));
+        assert!(s.get(&short, 1_000 + 3599).is_some());
+        assert!(s.get(&short, 1_000 + 3600).is_none(), "the token ran out");
+        assert!(s.get(&long, 1_000 + 12 * 3600 - 1).is_some());
+        assert!(
+            s.get(&long, 1_000 + 12 * 3600).is_none(),
+            "12 hours is the cap"
+        );
+    }
+
+    #[test]
     fn ending_a_session_ends_only_that_one() {
         let s = Sessions::default();
-        let (a, b) = (s.start("alice", 0), s.start("alice", 0));
+        let (a, b) = (s.start("alice", 0, None), s.start("alice", 0, None));
         assert_ne!(a, b);
         assert_ne!(s.get(&a, 1).unwrap().csrf, s.get(&b, 1).unwrap().csrf);
         s.end(&a);
@@ -283,10 +317,10 @@ mod tests {
     #[test]
     fn one_person_cannot_push_out_another() {
         let s = Sessions::default();
-        let bob = s.start("bob", 0);
-        let first = s.start("alice", 1);
+        let bob = s.start("bob", 0, None);
+        let first = s.start("alice", 1, None);
         for t in 2..(2 + MAX_SESSIONS_PER_SUBJECT as u64) {
-            s.start("alice", t);
+            s.start("alice", t, None);
         }
         assert!(s.get(&first, 2).is_none(), "alice's oldest made room");
         assert!(s.get(&bob, 2).is_some(), "bob's is untouched");

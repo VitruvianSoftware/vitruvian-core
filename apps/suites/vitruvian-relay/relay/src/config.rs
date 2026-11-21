@@ -87,30 +87,49 @@ fn csv(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// True for an https URL on any host, or an http one only on this machine
+/// (`localhost` or `127.0.0.1`, for local runs and tests), with no user part.
+/// `bare` also requires it to be an origin: no path, no query.
+fn safe_url(url: &str, bare: bool) -> bool {
+    let Ok(uri) = url.parse::<http::Uri>() else {
+        return false;
+    };
+    let (Some(scheme), Some(authority)) = (uri.scheme_str(), uri.authority()) else {
+        return false;
+    };
+    let host = authority.host();
+    let shaped = !authority.as_str().contains('@')
+        && !host.is_empty()
+        && (!bare || (matches!(uri.path(), "" | "/") && uri.query().is_none()));
+    shaped
+        && match scheme {
+            "https" => true,
+            "http" => matches!(host, "localhost" | "127.0.0.1"),
+            _ => false,
+        }
+}
+
 /// PUBLIC_URL is an origin: https on any host, or http only on this machine
 /// (`localhost` or `127.0.0.1`, for local runs). No user, path or query.
 fn check_public_url(url: &str) -> Result<(), String> {
-    let refuse = || {
-        Err(format!(
-            "PUBLIC_URL={url:?} must be an https origin (or http://localhost or http://127.0.0.1 for local runs), with no path or query"
-        ))
-    };
-    let Ok(uri) = url.parse::<http::Uri>() else {
-        return refuse();
-    };
-    let (Some(scheme), Some(authority)) = (uri.scheme_str(), uri.authority()) else {
-        return refuse();
-    };
-    let host = authority.host();
-    let bare = !authority.as_str().contains('@')
-        && !host.is_empty()
-        && matches!(uri.path(), "" | "/")
-        && uri.query().is_none();
-    match (bare, scheme, host) {
-        (true, "https", _) => Ok(()),
-        (true, "http", "localhost" | "127.0.0.1") => Ok(()),
-        _ => refuse(),
+    if safe_url(url, true) {
+        return Ok(());
     }
+    Err(format!(
+        "PUBLIC_URL={url:?} must be an https origin (or http://localhost or http://127.0.0.1 for local runs), with no path or query"
+    ))
+}
+
+/// JWKS_URI and TOKEN_URI point at the identity service, so a token or a
+/// sign-in code must never travel to them in plain text: the same rule as
+/// PUBLIC_URL, but they have a path.
+fn check_endpoint_url(name: &str, url: &str) -> Result<(), String> {
+    if safe_url(url, false) {
+        return Ok(());
+    }
+    Err(format!(
+        "{name}={url:?} must be an https URL (or http://localhost or http://127.0.0.1 for local runs), with no user name in it"
+    ))
 }
 
 impl Settings {
@@ -172,6 +191,13 @@ impl Settings {
                     .into(),
             );
         }
+        let jwks_uri = opt("JWKS_URI");
+        let token_uri = opt("TOKEN_URI");
+        for (name, value) in [("JWKS_URI", &jwks_uri), ("TOKEN_URI", &token_uri)] {
+            if let Some(url) = value {
+                check_endpoint_url(name, url)?;
+            }
+        }
         Ok(Settings {
             port,
             public_url,
@@ -187,8 +213,8 @@ impl Settings {
             legacy_devices_file: PathBuf::from(
                 opt("LEGACY_DEVICES_FILE").unwrap_or_else(|| "/data/devices.json".into()),
             ),
-            jwks_uri: opt("JWKS_URI"),
-            token_uri: opt("TOKEN_URI"),
+            jwks_uri,
+            token_uri,
         })
     }
 
@@ -434,6 +460,40 @@ mod tests {
         assert_eq!(s.mcp_client_label("other"), None);
         assert_eq!(s.mcp_client_id_of("claude"), Some("claude-id"));
         assert_eq!(s.token_url(), "http://127.0.0.1:9/token");
+    }
+
+    #[test]
+    fn identity_service_urls_are_https_or_local_http() {
+        for name in ["JWKS_URI", "TOKEN_URI"] {
+            for ok in [
+                "https://auth.example.dev/oauth/v2/keys",
+                "http://localhost:9000/keys",
+                "http://127.0.0.1:9000/oauth/v2/token",
+            ] {
+                let mut env = base();
+                env.insert(name, ok);
+                assert!(load(&env).is_ok(), "{name}={ok} must be accepted");
+            }
+            for (bad, why) in [
+                ("http://auth.example.dev/keys", "plain http to another host"),
+                ("ftp://auth.example.dev/keys", "another scheme"),
+                ("auth.example.dev/keys", "no scheme"),
+                (
+                    "http://localhost@evil.example/keys",
+                    "userinfo naming localhost",
+                ),
+                (
+                    "http://localhost.example.com/keys",
+                    "a host that starts with localhost",
+                ),
+                ("https://", "no host"),
+            ] {
+                let mut env = base();
+                env.insert(name, bad);
+                let err = load(&env).unwrap_err();
+                assert!(err.contains(name), "{why}: {err}");
+            }
+        }
     }
 
     #[test]

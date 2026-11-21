@@ -48,6 +48,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
 use hyper::body::Incoming;
 use serde_json::{json, Value};
+use tokio::sync::Semaphore;
 use vitruvian_mcp_auth::{audience_scope_for, AuthError};
 
 use crate::devices::{clean_device_name, DeviceRecord, DEVICE_NAME_MAX};
@@ -72,6 +73,8 @@ const MAX_FORM_BYTES: usize = 4 * 1024;
 
 /// How long the identity service has to answer the code exchange.
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Code exchanges that may be in flight at once, over the whole relay.
+const MAX_EXCHANGES: usize = 8;
 /// Most of the token answer read; a real one is under 5 KiB.
 const MAX_TOKEN_ANSWER_BYTES: u64 = 64 * 1024;
 
@@ -80,12 +83,17 @@ pub struct Dashboard {
     pub sessions: Sessions,
     /// Calls the identity service to exchange a sign-in code.
     agent: ureq::Agent,
+    /// Code exchanges in flight, at most [`MAX_EXCHANGES`]: each holds a
+    /// thread and a connection to the identity service for up to
+    /// [`EXCHANGE_TIMEOUT`], and anyone can start one.
+    exchanges: Arc<Semaphore>,
 }
 
 impl Dashboard {
     pub fn new(user_agent: &str) -> Dashboard {
         Dashboard {
             sessions: Sessions::default(),
+            exchanges: Arc::new(Semaphore::new(MAX_EXCHANGES)),
             agent: ureq::AgentBuilder::new()
                 .timeout(EXCHANGE_TIMEOUT)
                 .redirects(0)
@@ -93,6 +101,12 @@ impl Dashboard {
                 .user_agent(user_agent)
                 .build(),
         }
+    }
+
+    /// Exchanges that could start right now (tests).
+    #[cfg(test)]
+    pub fn free_exchange_slots(&self) -> usize {
+        self.exchanges.available_permits()
     }
 }
 
@@ -614,7 +628,7 @@ fn authorize_url(app: &App, pkce: &Pkce) -> String {
     let scope = format!("openid {}", audience_scope_for(&s.project_id));
     format!(
         "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}\
-         &code_challenge={}&code_challenge_method=S256",
+         &code_challenge={}&code_challenge_method=S256&prompt=select_account",
         s.authorize_url(),
         form_encode(&s.dashboard_client_id),
         form_encode(&s.dashboard_callback_url()),
@@ -662,9 +676,15 @@ fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<String, S
 async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
     let secure = secure_cookies(app);
     let start_again = ("/auth/login", "Sign in again");
+    // The sign-in cookie is cleared only once the state has matched, so
+    // that a stray or forged request to this URL cannot cancel a sign-in
+    // that is still in progress in the same browser.
+    let said = |status: StatusCode, title: &str, text: &str| {
+        say(app, None, status, title, text, start_again)
+    };
     let refused = |status: StatusCode, title: &str, text: &str| {
         with_cookie(
-            say(app, None, status, title, text, start_again),
+            said(status, title, text),
             &session::clear_auth_cookie(secure),
         )
     };
@@ -685,7 +705,7 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
     };
     let (true, Some(pkce)) = (state_ok, pkce) else {
         app.log("dashboard_signin_refused", json!({"why": "state"}));
-        return refused(
+        return said(
             StatusCode::BAD_REQUEST,
             "That sign-in did not start here",
             "The sign-in link expired or was not started on this page. Start again.",
@@ -701,6 +721,16 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
         );
     };
 
+    // Only so many exchanges at once. Asked while all are busy, the person
+    // can come back to this same address: the code is not used up.
+    let Ok(permit) = app.dashboard.exchanges.clone().try_acquire_owned() else {
+        app.log("dashboard_signin_refused", json!({"why": "busy"}));
+        return said(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Signing in is busy",
+            "Signing in is busy right now; try again in a minute.",
+        );
+    };
     let form = [
         ("grant_type", "authorization_code"),
         ("code", code.as_str()),
@@ -713,8 +743,15 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
     .collect::<Vec<_>>()
     .join("&");
     let (agent, url) = (app.dashboard.agent.clone(), app.settings.token_url());
-    let token = match tokio::task::spawn_blocking(move || exchange_code(&agent, &url, &form)).await
-    {
+    // The permit goes with the exchange, so it is given back when the
+    // exchange ends, even if this request was dropped meanwhile.
+    let exchanged = tokio::task::spawn_blocking(move || {
+        let result = exchange_code(&agent, &url, &form);
+        drop(permit);
+        result
+    })
+    .await;
+    let token = match exchanged {
         Ok(Ok(token)) => token,
         Ok(Err(why)) => {
             app.log("dashboard_signin_failed", json!({"why": why}));
@@ -734,6 +771,7 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
     };
 
     let verifier = app.dashboard_verifier.clone();
+    let token_exp = crate::http::token_exp(&token);
     let caller = match tokio::task::spawn_blocking(move || verifier.verify(&token)).await {
         Ok(Ok(caller)) => caller,
         Ok(Err(e)) => {
@@ -769,10 +807,12 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
         }
     };
 
+    // The session ends with the token, if that is sooner than its hours: a
+    // person whose role is taken away is out when their token runs out.
     let id = app
         .dashboard
         .sessions
-        .start(&caller.subject, (app.timing.clock)());
+        .start(&caller.subject, (app.timing.clock)(), token_exp);
     app.log("dashboard_signin", json!({}));
     with_cookie(
         with_cookie(redirect("/devices"), &session::session_cookie(&id, secure)),
