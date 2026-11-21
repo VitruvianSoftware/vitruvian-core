@@ -189,7 +189,7 @@ final class MarkdownConversionTests: XCTestCase {
     }
 
     func testMoreAddressShapesAndAMentionAlreadyMade() {
-        for typed in ["see www.example.com/_a_ ok", "mail me_a_b@example.com now", "**https://x.com/a**"] {
+        for typed in ["see www.example.com/_a_ ok", "mail me_a_b@example.com now"] {
             let composer = make().composer
             type(typed, into: composer)
             XCTAssertEqual(composer.text, typed, "typed: \(typed)")
@@ -257,6 +257,48 @@ final class MarkdownConversionTests: XCTestCase {
         let saved = try XCTUnwrap(made.sender.savedDrafts.last)
         XCTAssertNotEqual(saved, shown, "the kept draft carries escapes")
         XCTAssertEqual(MarkdownConverter.visibleDraft(saved), shown)
+    }
+
+    func testASpanThatEndsInAnAddressOrMentionConverts() {
+        for (typed, expected, kind) in [
+            ("**see https://x.com**", "see https://x.com", TextEntity.Kind.bold), ("_hi @bob_", "hi @bob", .italic),
+            ("**@bob**", "@bob", .bold), ("**https://x.com/a**", "https://x.com/a", .bold),
+            ("~~see www.x.com/a.~~", "see www.x.com/a.", .strikethrough),
+        ] {
+            let composer = make().composer
+            type(typed, into: composer)
+            XCTAssertEqual(composer.text, expected, typed)
+            XCTAssertEqual(composer.entities.map(\.kind), [kind], typed)
+        }
+        // The address inside the words is still one word: a marker inside it stays.
+        let composer = make().composer
+        type("**a** https://x.com/_b_", into: composer)
+        XCTAssertEqual(composer.text, "a https://x.com/_b_")
+        XCTAssertEqual(composer.entities.map(\.kind), [.bold])
+    }
+
+    /// A draft kept before this feature (or by another app) has backslashes of its own: only the doubled backslash
+    /// and a backslash before a marker character are escapes.
+    func testOldDraftsKeepTheirBackslashes() {
+        for old in ["C:\\Users\\(x)", "a\\b", "path\\to\\file_name", "what\\?"] {
+            let restored = MarkdownConverter.restoredDraft(old)
+            XCTAssertEqual(restored.text, old)
+            XCTAssertEqual(restored.entities, [])
+        }
+        // What this feature writes still reads back exactly, backslashes before other marks included.
+        for text in ["C:\\Users\\(x)", "a\\b", "x \\*y\\* z", "two \\\\ slashes", "tail\\"] {
+            let written = MarkdownConverter.markdown(text: text, entities: [])
+            XCTAssertEqual(MarkdownConverter.restoredDraft(written).text, text, written)
+        }
+    }
+
+    func testQAProbeStyledSentencesEndingInAnAddressOrMention() {
+        for (typed, expected) in [("**see https://x.com**", "see https://x.com"), ("_hi @bob_", "hi @bob"),
+                                  ("**@bob**", "@bob"), ("**a** https://x.com/_b_", "a https://x.com/_b_")] {
+            let composer = make().composer
+            type(typed, into: composer)
+            XCTAssertEqual(composer.text, expected, typed)
+        }
     }
 
     // MARK: What is sent

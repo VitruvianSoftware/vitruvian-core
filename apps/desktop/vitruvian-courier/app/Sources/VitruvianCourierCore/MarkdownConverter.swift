@@ -41,11 +41,15 @@ public enum MarkdownConverter {
         let code = entities.filter { $0.kind == .code || $0.kind == .pre }
         let parsed = MarkdownSpans.parse(text).filter(wanted)
         guard !parsed.isEmpty else { return nil }
-        // An address and a mention are one word: `https://x.com/_a_` and `@_john_` keep their characters.
+        // An address and a mention are one word: the markers of `https://x.com/_a_` and `@_john_` are inside it, so
+        // they stay. A span that only ends in an address (`**see https://x.com**`) has its markers outside, and converts.
         let guarded = protectedRanges(in: text, entities: entities)
         let chosen = parsed.filter { span in
             // Text inside code is just text, and so is a span that runs into code that is already there.
-            !code.contains { touches($0, span.whole) } && !guarded.contains { NSIntersectionRange($0, span.whole).length > 0 }
+            !code.contains { touches($0, span.whole) }
+                && !guarded.contains { word in
+                    NSIntersectionRange(word, span.open).length > 0 || NSIntersectionRange(word, span.close).length > 0
+                }
         }
         guard !chosen.isEmpty else { return nil }
 
@@ -111,9 +115,18 @@ public enum MarkdownConverter {
     private static func protectedRanges(in text: String, entities: [TextEntity]) -> [NSRange] {
         let whole = NSRange(location: 0, length: (text as NSString).length)
         var ranges = entities.filter { $0.kind == .link || $0.kind == .mention }.map(\.range)
-        ranges += linkDetector?.matches(in: text, options: [], range: whole).map(\.range) ?? []
-        ranges += addressWord?.matches(in: text, options: [], range: whole).map(\.range) ?? []
-        ranges += mentionWord?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        var words = linkDetector?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        words += addressWord?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        words += mentionWord?.matches(in: text, options: [], range: whole).map(\.range) ?? []
+        // What ends the word is not part of it: the closing marker of a span that ends in an address, and the
+        // punctuation after it ("see https://x.com.").
+        let string = text as NSString
+        let trailing: Set<unichar> = Set("*_~`.,;:!?)]}'\"".utf16)
+        for word in words {
+            var end = word.location + word.length
+            while end > word.location + 1, trailing.contains(string.character(at: end - 1)) { end -= 1 }
+            ranges.append(NSRange(location: word.location, length: end - word.location))
+        }
         return ranges
     }
 
@@ -142,7 +155,7 @@ public enum MarkdownConverter {
         // backslash would let the mark mean something.
         for position in 0 ..< string.length where string.character(at: position) == 0x5C {
             escaped.insert(position)
-            if position + 1 < string.length, isASCIIPunctuation(string.character(at: position + 1)) {
+            if position + 1 < string.length, isMarkerCharacter(string.character(at: position + 1)) {
                 escaped.insert(position + 1)
             }
         }
@@ -205,13 +218,14 @@ public enum MarkdownConverter {
         restoredDraft(kept).text
     }
 
-    /// Takes out the backslashes `markdown` put in: one before an ASCII punctuation mark goes. The ranges follow.
+    /// Takes out the backslashes `markdown` put in: the first of a doubled backslash, and one before `*`, `_`, `~` or a
+    /// backtick. Every other backslash is left alone (an older draft's `C:\Users\(x)` keeps its own). The ranges follow.
     public static func unescaped(text: String, entities: [TextEntity]) -> (text: String, entities: [TextEntity]) {
         let units = Array(text.utf16)
         var removed: [Int] = []
         var index = 0
         while index < units.count {
-            if units[index] == 0x5C, index + 1 < units.count, isASCIIPunctuation(units[index + 1]) {
+            if units[index] == 0x5C, index + 1 < units.count, isMarkerCharacter(units[index + 1]) || units[index + 1] == 0x5C {
                 removed.append(index)
                 index += 2
             } else {
@@ -229,8 +243,9 @@ public enum MarkdownConverter {
         return (out as String, ranges)
     }
 
-    private static func isASCIIPunctuation(_ unit: unichar) -> Bool {
-        (0x21...0x2F).contains(unit) || (0x3A...0x40).contains(unit) || (0x5B...0x60).contains(unit) || (0x7B...0x7E).contains(unit)
+    /// `*`, `_`, `~` and the backtick: the characters a draft escapes.
+    private static func isMarkerCharacter(_ unit: unichar) -> Bool {
+        unit == 0x2A || unit == 0x5F || unit == 0x7E || unit == 0x60
     }
 
     private static func isBlank(_ unit: unichar) -> Bool {
