@@ -47,7 +47,9 @@ function normalizeBundle(source) {
   }
   for (let i = 0; i < before.length; i++) {
     if (before[i] !== after[i] && !before[i].startsWith("// ")) {
-      throw new Error(`normalize-bundle: line ${i + 1} is not a path comment but changed`);
+      throw new Error(
+        `normalize-bundle: line ${i + 1} is not a path comment but changed`,
+      );
     }
   }
   return normalized;
