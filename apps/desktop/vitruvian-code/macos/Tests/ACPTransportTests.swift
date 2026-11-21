@@ -101,6 +101,17 @@ final class ACPTransportTests: XCTestCase {
             state.withLock { $0.failures.append(error) }
         }
 
+        /// Waits until at least `count` failures are recorded. The transport
+        /// resumes pending requests before it calls `onFailure`, so a test that
+        /// has just seen a request fail can still be ahead of the callback.
+        func waitFailures(atLeast count: Int) async -> Int {
+            while true {
+                let seen = state.withLock { $0.failures.count }
+                if seen >= count || Task.isCancelled { return seen }
+                try? await Task.sleep(nanoseconds: 5_000_000)
+            }
+        }
+
         func recordLog(_ line: String) {
             state.withLock { $0.logs.append(line) }
         }
@@ -283,6 +294,8 @@ final class ACPTransportTests: XCTestCase {
             XCTAssertEqual(count, 3)
         }
 
+        // The pending request fails before onFailure runs; wait for the callback.
+        _ = try await withACPTestTimeout(seconds: 2.0) { await recorder.waitFailures(atLeast: 1) }
         let snap = recorder.snapshot()
         XCTAssertEqual(snap.notifications.count, 1)
         XCTAssertEqual(snap.failures.count, 1)
