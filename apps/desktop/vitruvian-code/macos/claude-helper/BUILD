@@ -102,6 +102,7 @@ js_run_binary(
     args = [
         "built/esbuild/claude-helper.mjs",
         "built/claude-helper.mjs",
+        package_name(),
     ],
     chdir = package_name(),
     tool = ":normalize_bundle_bin",

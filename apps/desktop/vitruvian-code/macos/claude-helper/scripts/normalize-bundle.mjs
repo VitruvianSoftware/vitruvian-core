@@ -20,53 +20,60 @@
  * SOFTWARE.
  */
 
-// esbuild labels each inlined module with a `// <path>` comment. Under Bazel
-// that path is spelled from the sandbox: a run of `../`, then
-// `execroot/_main/bazel-out/<host config>/bin/`, then the module's
-// workspace-relative path. The run of `../` depends on how deep the sandbox
-// is, and the host config (`darwin_arm64-fastbuild`, `darwin_x86_64-opt`, ...)
-// on the machine and the build flags, so the same source would produce
-// different bytes on another Mac. Keep only the part after `bin/`, which is the
-// same everywhere.
+// esbuild labels each inlined module with a `// <path>` comment, relative to
+// the folder it ran in (this package, under bazel-bin). How that path is
+// spelled depends on the machine:
+//   - in a macOS sandbox, esbuild follows the inputs' symlinks out to the
+//     execroot: `../../…/execroot/_main/bazel-out/<config>/bin/<path>`;
+//   - where the inputs are real files (Linux remote execution), it stays
+//     relative to this package: `src/main.ts`, `../../../../../node_modules/…`.
+// Spell every one from the workspace root instead, which is the same
+// everywhere. A path comment in any other form fails the build rather than
+// shipping bytes another machine would not reproduce.
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { posix } from "node:path";
 
-const MODULE_COMMENT =
-  /^\/\/ (?:\.\.\/)*(?:execroot\/[^/\r\n]+\/)?bazel-out\/[^/\r\n]+\/bin\/(.+)$/gm;
+const PATH_COMMENT =
+  /^\/\/ ((?:\.\.\/)*)((?:execroot\/[^/\s]+\/)?bazel-out\/[^/\s]+\/bin\/)?(\S+\.(?:[cm]?[jt]s|json))$/;
 
-// Only `// <path>` comment lines may change, one line for one line. Anything
-// else (a match running past a line end, a changed code line) is a bug in the
-// pattern, and the bundle must not ship: the staleness test regenerates through
-// this same script, so it cannot catch it.
-function normalizeBundle(source) {
-  const normalized = source.replace(MODULE_COMMENT, "// $1");
-  const before = source.split("\n");
-  const after = normalized.split("\n");
-  if (before.length !== after.length) {
-    throw new Error("normalize-bundle: the line count changed");
-  }
-  for (let i = 0; i < before.length; i++) {
-    if (before[i] !== after[i] && !before[i].startsWith("// ")) {
+function normalizeBundle(source, packageDir) {
+  const lines = source.split("\n");
+  const out = lines.map((line, i) => {
+    const m = PATH_COMMENT.exec(line);
+    if (!m) return line;
+    const [, ups, binPrefix, rest] = m;
+    const fromRoot = binPrefix
+      ? rest
+      : posix.normalize(posix.join(packageDir, ups + rest));
+    if (fromRoot.startsWith("../") || fromRoot.startsWith("/")) {
       throw new Error(
-        `normalize-bundle: line ${i + 1} is not a path comment but changed`,
+        `normalize-bundle: line ${i + 1} names a path outside the workspace: ${line}`,
       );
     }
-  }
-  return normalized;
+    return `// ${fromRoot}`;
+  });
+  return out.join("\n");
 }
 
 function main() {
-  const [inputPath, outputPath] = process.argv.slice(2);
-  if (!inputPath || !outputPath) {
+  const [inputPath, outputPath, packageDir] = process.argv.slice(2);
+  if (!inputPath || !outputPath || !packageDir) {
     throw new Error(
-      "Usage: normalize-bundle.mjs <esbuild-output.mjs> <normalized-output.mjs>",
+      "Usage: normalize-bundle.mjs <esbuild-output.mjs> <normalized-output.mjs> <package dir>",
     );
   }
-  const normalized = normalizeBundle(readFileSync(inputPath, "utf8"));
+  const normalized = normalizeBundle(
+    readFileSync(inputPath, "utf8"),
+    packageDir,
+  );
   if (/bazel-out|execroot/.test(normalized)) {
     throw new Error(
       "normalize-bundle: a bazel-out or execroot path is still in the bundle",
     );
+  }
+  if (/^\/\/ \.\.\//m.test(normalized)) {
+    throw new Error("normalize-bundle: a `// ../` path is still in the bundle");
   }
   writeFileSync(outputPath, normalized, "utf8");
 }

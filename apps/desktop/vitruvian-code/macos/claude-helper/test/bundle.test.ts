@@ -171,6 +171,7 @@ describe("bundled claude-helper.mjs isolated load check", () => {
             join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"),
             input,
             output,
+            "apps/x",
           ],
           { encoding: "utf8" },
         );
@@ -180,11 +181,58 @@ describe("bundled claude-helper.mjs isolated load check", () => {
       }
     }
 
+    // Linux remote execution: real files, so esbuild spells paths relative to
+    // the package folder. They must come out the same as the macOS ones.
+    writeFileSync(
+      input,
+      [
+        "// src/main.ts",
+        "// ../../node_modules/.aspect_rules_js/zod@4.6.7/node_modules/zod/v4/core/util.js",
+        "// @__NO_SIDE_EFFECTS__",
+        "const a = 1;",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const linux = spawnSync(
+      resolveRealNodeBinary(),
+      [
+        join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"),
+        input,
+        output,
+        "apps/x",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(linux.stderr).toBe("");
+    expect(linux.status).toBe(0);
+    expect(readFileSync(output, "utf8")).toBe(expected);
+
+    // A relative path that climbs out of the workspace must fail the build.
+    writeFileSync(input, "// ../../../outside/thing.js\n", "utf8");
+    const outside = spawnSync(
+      resolveRealNodeBinary(),
+      [
+        join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"),
+        input,
+        output,
+        "apps/x",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(outside.status).not.toBe(0);
+    expect(outside.stderr).toMatch(/outside the workspace/);
+
     // A path it does not know how to shorten must fail the build, not ship.
     writeFileSync(input, "// /Users/someone/execroot/odd/layout.js\n", "utf8");
     const bad = spawnSync(
       resolveRealNodeBinary(),
-      [join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"), input, output],
+      [
+        join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"),
+        input,
+        output,
+        "apps/x",
+      ],
       { encoding: "utf8" },
     );
     expect(bad.status).not.toBe(0);
@@ -201,7 +249,12 @@ describe("bundled claude-helper.mjs isolated load check", () => {
     );
     const crossLine = spawnSync(
       resolveRealNodeBinary(),
-      [join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"), input, output],
+      [
+        join(PACKAGE_ROOT, "scripts", "normalize-bundle.mjs"),
+        input,
+        output,
+        "apps/x",
+      ],
       { encoding: "utf8" },
     );
     expect(crossLine.status).not.toBe(0);
