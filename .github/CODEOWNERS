@@ -45,6 +45,7 @@
 /apps/web/mini-party/ @VitruvianSoftware/platform-team
 /apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
 /apps/web/vitruviansoftware-dev/ @VitruvianSoftware/platform-team
+/packages/design-system/android/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/ext-marketplace/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/gh-watch/ @VitruvianSoftware/platform-team
 /apps/antigravity/plugins/hookify/ @VitruvianSoftware/platform-team

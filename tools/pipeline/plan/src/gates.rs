@@ -155,7 +155,6 @@ pub fn check_global_impact(files: &[String]) -> (bool, String) {
 
 const FRONTEND_PREFIXES: &[&str] = &[
     "packages/design-system/web/",
-    "packages/design-system/android/",
     "apps/suites/vitruvian-tabs/web/",
     "apps/suites/vitruvian-tabs/extension/",
     "backstage/packages/app/",

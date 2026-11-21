@@ -68,6 +68,7 @@ pub const REQUIRED_SUBTREES: &[&str] = &[
     "apps/web/oauth-user-inspector",
     "packages",
     "packages/design-system",
+    "packages/design-system/android",
     "packages/pulumi",
     "infrastructure",
     "gitops",

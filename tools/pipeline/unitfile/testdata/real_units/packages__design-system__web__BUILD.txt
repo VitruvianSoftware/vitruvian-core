@@ -49,7 +49,7 @@ package(default_visibility = ["//:__subpackages__"])
 npm_link_all_packages(name = "node_modules")
 
 # tokens.json is the single source of truth for the design language's values,
-# and //packages/design-system-android regenerates its Kotlin token layer from
+# and //packages/design-system/android regenerates its Kotlin token layer from
 # it. Exported so that drift check can read the file as a Bazel input rather
 # than reaching across the tree at runtime.
 exports_files([
@@ -172,7 +172,7 @@ py_test(
     ]),
 )
 
-# The Storybook devserver: `bazel run //packages/design-system:storybook`.
+# The Storybook devserver: `bazel run //packages/design-system/web:storybook`.
 # Not a build target -- Storybook is a dev tool, and its vite pipeline is not
 # modelled in Bazel. The static export (`build-storybook`) is deliberately left
 # to pnpm until someone needs it in CI; see the note in README.md.
@@ -203,7 +203,7 @@ js_binary(
     entry_point = ":node_modules/storybook/dir",
 )
 
-# Developer-environment check: `bazel run //packages/design-system:doctor`.
+# Developer-environment check: `bazel run //packages/design-system/web:doctor`.
 doctor(
     name = "doctor",
     label = "design-system (Vitruvian)",

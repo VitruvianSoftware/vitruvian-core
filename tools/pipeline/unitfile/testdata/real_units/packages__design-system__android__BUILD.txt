@@ -18,16 +18,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# //packages/design-system-android: Vitruvian for Jetpack Compose.
+# //packages/design-system/android: Vitruvian for Jetpack Compose.
 #
 # The Kotlin half of the design system. The web package next door
-# (//packages/design-system) is the source of truth for the language; this
+# (//packages/design-system/web) is the source of truth for the language; this
 # module is the Compose realisation of the mapping written down in that
 # package's ANDROID.md. It has no app dependencies, on purpose: an app
 # depends on the design system, never the other way round.
 #
 # Gazelle has no Kotlin/Android extension configured in this repo, so this
-# file is hand-authored like //packages/design-system's.
+# file is hand-authored like //packages/design-system/web's.
 # gazelle:ignore
 
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
@@ -131,19 +131,19 @@ sh_test(
     # tools/ is its own package (it has a BUILD), so these cross a package
     # boundary and need full labels -- a "tools/..." path label would resolve
     # into this package and fail to load. Both are exported by tools/BUILD.
-    srcs = ["//packages/design-system-android/tools:tokens_are_current.sh"],
+    srcs = ["//packages/design-system/android/tools:tokens_are_current.sh"],
     data = [
         "src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt",
-        "//packages/design-system:src/tokens.json",
-        "//packages/design-system-android/tools:gen_tokens",
-        "//packages/design-system-android/tools:kt_license_header.txt",
+        "//packages/design-system/web:src/tokens.json",
+        "//packages/design-system/android/tools:gen_tokens",
+        "//packages/design-system/android/tools:kt_license_header.txt",
         "//tools/format:ktfmt",
     ],
     env = {
-        "GENERATOR": "$(rlocationpath //packages/design-system-android/tools:gen_tokens)",
+        "GENERATOR": "$(rlocationpath //packages/design-system/android/tools:gen_tokens)",
         "KTFMT": "$(rlocationpath //tools/format:ktfmt)",
-        "TOKENS": "$(rlocationpath //packages/design-system:src/tokens.json)",
-        "HEADER": "$(rlocationpath //packages/design-system-android/tools:kt_license_header.txt)",
+        "TOKENS": "$(rlocationpath //packages/design-system/web:src/tokens.json)",
+        "HEADER": "$(rlocationpath //packages/design-system/android/tools:kt_license_header.txt)",
         "CHECKED_IN": "$(rlocationpath src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt)",
     },
     deps = ["@bazel_tools//tools/bash/runfiles"],
@@ -152,15 +152,15 @@ sh_test(
 py_test(
     name = "parity_test",
     size = "small",
-    srcs = ["//packages/design-system-android/tools:parity_test.py"],
+    srcs = ["//packages/design-system/android/tools:parity_test.py"],
     data = glob(["src/main/kotlin/**/*.kt"]) + [
-        "//packages/design-system:src/Icons.tsx",
-        "//packages/design-system:src/Illustrations.tsx",
+        "//packages/design-system/web:src/Icons.tsx",
+        "//packages/design-system/web:src/Illustrations.tsx",
     ],
-    main = "//packages/design-system-android/tools:parity_test.py",
+    main = "//packages/design-system/android/tools:parity_test.py",
 )
 
-# Developer-environment check: `bazel run //packages/design-system-android:doctor`.
+# Developer-environment check: `bazel run //packages/design-system/android:doctor`.
 doctor(
     name = "doctor",
     label = "design-system-android (Vitruvian for Compose)",
@@ -181,8 +181,8 @@ pipeline_unit(
         ":parity_test",
         ":safe_area_test",
         ":tokens_are_current",
-        "//packages/design-system-android/tools:gen_tokens_lib_test",
-        "//packages/design-system-android/tools:gen_tokens_rs_parity_test",
+        "//packages/design-system/android/tools:gen_tokens_lib_test",
+        "//packages/design-system/android/tools:gen_tokens_rs_parity_test",
     ],
     tier = "L1",
     timeout_minutes = 20,
