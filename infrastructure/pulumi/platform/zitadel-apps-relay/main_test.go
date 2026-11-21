@@ -243,8 +243,28 @@ func TestDashboardRedirectIsPinned(t *testing.T) {
 }
 
 func TestRoleClaimNamesTheProject(t *testing.T) {
-	if got, want := roleClaim("123"), "urn:zitadel:iam:org:project:123:roles"; got != want {
+	if got, want := roleClaim("378818267051999999"), "urn:zitadel:iam:org:project:378818267051999999:roles"; got != want {
 		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestInviteUserIDsRefuseDuplicates(t *testing.T) {
+	james := []string{"1"}
+	if _, err := resolveInviteUserIDs(james, "2, 1"); err == nil {
+		t.Error("an id in both grantUserIds and inviteUserIds must be refused")
+	}
+	if _, err := resolveInviteUserIDs(james, "2,3, 2"); err == nil {
+		t.Error("an id twice in inviteUserIds must be refused")
+	}
+	if _, err := resolveGrantUserIDs(true, "1, 1", "relay-user"); err == nil {
+		t.Error("an id twice in grantUserIds must be refused")
+	}
+	got, err := resolveInviteUserIDs(james, " 2 , 3 ")
+	if err != nil || !reflect.DeepEqual(got, []string{"2", "3"}) {
+		t.Errorf("got %v %v", got, err)
+	}
+	if got, err := resolveInviteUserIDs(james, ""); err != nil || len(got) != 0 {
+		t.Errorf("empty: got %v %v", got, err)
 	}
 }
 
@@ -285,6 +305,9 @@ func TestRoleAssertingSiblings(t *testing.T) {
 		}
 		if old.AccessTokenRoleAssertion {
 			t.Errorf("%s: the live client must stay as it is (role assertion off)", base)
+		}
+		if len(old.PostLogoutURIs) != 0 {
+			t.Errorf("%s: the live client must have no post-logout URIs, got %v", base, old.PostLogoutURIs)
 		}
 		if old.ExportKey != base || v2.ExportKey != base+"V2" {
 			t.Errorf("%s: export keys %q / %q", base, old.ExportKey, v2.ExportKey)

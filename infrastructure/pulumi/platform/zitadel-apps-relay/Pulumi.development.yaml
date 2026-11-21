@@ -36,8 +36,9 @@ config:
   # can log in (see zitadel-apps-mcp-slack's config for how that was confirmed).
   zitadel-apps-relay:projectRoleCheck: "true"
   zitadel-apps-relay:grantUserIds: "378818267051722263"
-  # Comma-separated Zitadel user ids of invited customers. Each user must
-  # already exist in the "Vitruvian Relay customers" org. Empty = nobody invited.
+  # Comma-separated Zitadel user ids of invited people. Each user must already
+  # exist in the same org as the project (orgId above), and must not also be in
+  # grantUserIds. Empty = nobody invited.
   zitadel-apps-relay:inviteUserIds: ""
   # ChatGPT's per-connector callback, copied from ChatGPT's "Add custom MCP
   # server" screen. Empty = no ChatGPT client yet (spike A, second half).

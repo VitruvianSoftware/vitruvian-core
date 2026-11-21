@@ -104,11 +104,18 @@ asserts roles and is not duplicated.
   relay now refuses tokens without the role, so James must hold it before the
   new relay image rolls out. After an apply, `roleClaim` and `projectId` show
   what the relay checks.
-- **Everyone else** lives in a separate org, "Vitruvian Relay customers"
-  (`customerOrgId` output). The `relay` project is granted to that org with the
-  one role, `relay-user`. Each id in `inviteUserIds` (comma-separated, in the
-  stack config) gets a user grant on that project grant. Merge the change and
-  CI applies it. Nobody is added by hand in the console.
+- **Everyone else** is listed in `inviteUserIds` (comma-separated, in the
+  stack config). Each id gets a plain user grant of `relay-user`, exactly like
+  James's. Their users live in the same org as the project (the "Vitruvian"
+  org). Merge the change and CI applies it. Nobody is granted by hand in the
+  console. A user id may appear once, and not in both lists: the stack refuses
+  to apply otherwise.
+- **There is no separate customer org in P2.** A separate org (with the
+  project granted to it) needs an instance-level `IAM_OWNER` machine user. The
+  CI machine user for this stack is only `ORG_OWNER`, and no stack with an
+  `IAM_OWNER` user exists yet. Until one does, invitees live in the project's
+  org. Access is still gated by the role, so someone who registers in that org
+  on their own holds no role and gets nothing.
 - The project asserts roles, so access tokens carry
   `urn:zitadel:iam:org:project:{projectId}:roles`, an object keyed by role key.
   That claim name is the `roleClaim` output. The relay checks it, and it still
@@ -119,7 +126,7 @@ asserts roles and is not duplicated.
 Findings from reading the repo on 2026-11-21:
 
 - **Open self-registration needs a login policy with `allowRegister`**, set on
-  the customer org (or the instance). This stack does not set one, so
+  the org (or the instance). This stack does not set one, so
   registration stays off. The instance's own default is not in GitOps and I
   could not read the live setting (there is no read-only Bazel target for
   Zitadel's management API; the API is reachable only from CI over the tailnet).
@@ -129,7 +136,7 @@ Findings from reading the repo on 2026-11-21:
   that open sign-up depends on.
 
 So, for P2, there is **no open sign-up**. An invited person is created in the
-customer org (their user is not made by this stack, because a password cannot
+project's org (their user is not made by this stack, because a password cannot
 live in git), James gives them the first password in person or over a private
 channel, and they set their own password at first sign-in. James then adds their
 user id to `inviteUserIds` and CI grants them the role. Open self-registration

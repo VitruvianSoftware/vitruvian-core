@@ -21,37 +21,36 @@
 // The Zitadel project and OIDC clients for the Vitruvian Relay
 // (docs/superpowers/specs/2026-11-07-vitruvian-relay-design.md §6).
 //
-// Five kinds of client, all issuing JWT access tokens so the relay can
-// validate them locally against JWKS. All but gemini are public (no secret)
-// with PKCE:
+// The clients all issue JWT access tokens, so the relay can validate them
+// locally against JWKS. All but gemini are public (no secret) with PKCE.
 //
-//   - connector: the program on the user's computer. It signs in with the OAuth
-//     device flow (RFC 8628), so it has no redirect URI at all.
+// The connector is the program on the user's computer. It signs in with the
+// OAuth device flow (RFC 8628), so it has no redirect URI at all.
 //
-//   - claude: Claude's "use your own OAuth client" option. Claude's hosted apps
-//     (web, desktop, mobile) use one fixed callback.
+// Claude's "use your own OAuth client" option is the claude client. Claude's
+// hosted apps (web, desktop, mobile) use one fixed callback.
 //
-//   - chatgpt: created only when chatgptRedirectUris is set. Our Zitadel does
-//     not advertise RFC 9207 issuer identification, so ChatGPT uses a
-//     per-connector callback (https://chatgpt.com/connector/oauth/{id}) that
-//     is only known after the connector is started in ChatGPT's UI.
+// The chatgpt client is created only when chatgptRedirectUris is set. Our
+// Zitadel does not advertise RFC 9207 issuer identification, so ChatGPT uses a
+// per-connector callback (https://chatgpt.com/connector/oauth/{id}) that is
+// only known after the connector is started in ChatGPT's UI.
 //
-//   - gemini: created only when geminiRedirectUris is set. The Gemini app's
-//     custom connector form asks for a client id AND secret and shows a
-//     per-user callback on oauth-redirect.googleusercontent.com. It is the one
-//     confidential client (client_secret_post), matching the sibling
-//     zitadel-apps-mcp-slack client that already works with Gemini.
+// The gemini client is created only when geminiRedirectUris is set. The Gemini
+// app's custom connector form asks for a client id AND secret and shows a
+// per-user callback on oauth-redirect.googleusercontent.com. It is the one
+// confidential client (client_secret_post), matching the sibling
+// zitadel-apps-mcp-slack client that already works with Gemini.
 //
-//   - every client above also has a "-v2" sibling that asserts the user's roles
-//     in its access tokens (see clientSpecs). The multi-user relay requires the
-//     role claim, but the live clients were made with that off and the provider
-//     can only change it by replacing (= deleting) them. The old set keeps the
-//     current relay working until it is replaced; a later change removes it.
+// Each of those four also has a "-v2" sibling that asserts the user's roles in
+// its access tokens (see clientSpecs). The multi-user relay requires the role
+// claim, but the live clients were made with that off and the provider can only
+// change it by replacing (= deleting) them. The old set keeps the current relay
+// working until it is replaced; a later change removes it.
 //
-//   - dashboard: the relay's own server-rendered web page, where signed-in
-//     people see their computers and activity. The relay does the sign-in
-//     (authorization code with PKCE, no secret) and checks the same role claim
-//     as the MCP endpoint. Its callback is on the relay's own host.
+// The dashboard client is the relay's own server-rendered web page, where
+// signed-in people see their computers and activity. The relay does the
+// sign-in (authorization code with PKCE, no secret) and checks the same role
+// claim as the MCP endpoint. Its callback is on the relay's own host.
 //
 // WHY ITS OWN PROJECT: Zitadel's audience scope is per project, so sharing a
 // project with another app would blur that boundary. But note what the sibling
@@ -62,11 +61,12 @@
 //
 // WHO MAY SIGN IN (P2, invite-only): projectRoleCheck is on, so a sign-in only
 // completes for someone holding the relay-user role through a user grant.
-// James holds it through grantUserIds. Other people hold it through
-// inviteUserIds, who live in the separate "Vitruvian Relay customers" org (the
-// project is granted to that org, with the one role). Grants are config, applied
-// by CI. There is no open sign-up: the customer org's login policy is left
-// alone (README: Sign-up and invites).
+// James holds it through grantUserIds; other people through inviteUserIds. All
+// are plain user grants in the project's own org, applied by CI. There is no
+// separate customer org in P2: creating one needs an instance-level (IAM_OWNER)
+// machine user, and this stack's is ORG_OWNER. A person who registers in that
+// org on their own holds no role, so they get nothing (README: Sign-up and
+// invites).
 //
 // ROLE CLAIM: the project asserts roles, so access tokens carry
 // urn:zitadel:iam:org:project:{projectId}:roles. The relay requires the role
@@ -326,6 +326,9 @@ func splitIDs(raw string) []string {
 // failure shows up later as a rejected login rather than as a config change.
 func resolveGrantUserIDs(projectRoleCheck bool, raw, roleKey string) ([]string, error) {
 	ids := splitIDs(raw)
+	if dup := firstDuplicate(ids); dup != "" {
+		return nil, fmt.Errorf("%s:grantUserIds lists %q more than once; refusing to apply", cfgNamespace, dup)
+	}
 	if projectRoleCheck && len(ids) == 0 {
 		return nil, fmt.Errorf(
 			"%s:projectRoleCheck is true but grantUserIds is empty; refusing to apply. "+
@@ -334,6 +337,38 @@ func resolveGrantUserIDs(projectRoleCheck bool, raw, roleKey string) ([]string, 
 		)
 	}
 	return ids, nil
+}
+
+// resolveInviteUserIDs reads inviteUserIds. Invitees are plain user grants like
+// James's, so an id in both lists (or twice in one) is a config mistake: it
+// would be two grants of the same role to one user.
+func resolveInviteUserIDs(grantIDs []string, raw string) ([]string, error) {
+	ids := splitIDs(raw)
+	if dup := firstDuplicate(ids); dup != "" {
+		return nil, fmt.Errorf("%s:inviteUserIds lists %q more than once; refusing to apply", cfgNamespace, dup)
+	}
+	have := map[string]bool{}
+	for _, id := range grantIDs {
+		have[id] = true
+	}
+	for _, id := range ids {
+		if have[id] {
+			return nil, fmt.Errorf("%s: user %q is in both grantUserIds and inviteUserIds; list each user once", cfgNamespace, id)
+		}
+	}
+	return ids, nil
+}
+
+// firstDuplicate returns the first id seen twice, or "".
+func firstDuplicate(ids []string) string {
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			return id
+		}
+		seen[id] = true
+	}
+	return ""
 }
 
 func main() {
@@ -356,7 +391,10 @@ func main() {
 		if err != nil {
 			return err
 		}
-		inviteIDs := splitIDs(cfg.Get("inviteUserIds"))
+		inviteIDs, err := resolveInviteUserIDs(grantIDs, cfg.Get("inviteUserIds"))
+		if err != nil {
+			return err
+		}
 		specs, err := clientSpecs(cfg.Get("chatgptRedirectUris"), cfg.Get("geminiRedirectUris"))
 		if err != nil {
 			return err
@@ -387,7 +425,10 @@ func main() {
 			return err
 		}
 
-		for _, userID := range grantIDs {
+		// James's grant and the invitees' grants are the same kind of thing, so
+		// one loop. The resource name "grant-<id>" is unchanged for James's
+		// existing grant, so it is not replaced.
+		for _, userID := range append(append([]string(nil), grantIDs...), inviteIDs...) {
 			grantArgs := &zitadel.UserGrantArgs{
 				ProjectId: project.ID(),
 				UserId:    pulumi.String(userID),
@@ -401,39 +442,6 @@ func main() {
 			// refuses the grant (Errors.Project.Role.NotFound, first apply
 			// 2026-11-09). DependsOn makes the grant wait for the role.
 			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs, ignoreOrg, pulumi.DependsOn([]pulumi.Resource{role})); err != nil {
-				return err
-			}
-		}
-
-		// Customers: their own org, the project granted to it with the one
-		// role, and one user grant per invited person. The invitee's user lives
-		// in the customer org; the grant ties them to the project grant.
-		customerOrg, err := zitadel.NewOrg(ctx, "customers", &zitadel.OrgArgs{
-			Name: pulumi.String("Vitruvian Relay customers"),
-		})
-		if err != nil {
-			return err
-		}
-		projectGrantArgs := &zitadel.ProjectGrantArgs{
-			ProjectId:    project.ID(),
-			GrantedOrgId: customerOrg.ID(),
-			RoleKeys:     pulumi.StringArray{pulumi.String(roleKey)},
-		}
-		if orgID != "" {
-			projectGrantArgs.OrgId = pulumi.String(orgID)
-		}
-		projectGrant, err := zitadel.NewProjectGrant(ctx, projectName+"-customers", projectGrantArgs, ignoreOrg, pulumi.DependsOn([]pulumi.Resource{role}))
-		if err != nil {
-			return err
-		}
-		for _, userID := range inviteIDs {
-			if _, err := zitadel.NewUserGrant(ctx, "invite-"+userID, &zitadel.UserGrantArgs{
-				OrgId:          customerOrg.ID(),
-				ProjectId:      project.ID(),
-				ProjectGrantId: projectGrant.ID(),
-				UserId:         pulumi.String(userID),
-				RoleKeys:       pulumi.StringArray{pulumi.String(roleKey)},
-			}); err != nil {
 				return err
 			}
 		}
@@ -487,7 +495,6 @@ func main() {
 		}
 
 		ctx.Export("projectId", project.ID())
-		ctx.Export("customerOrgId", customerOrg.ID())
 		ctx.Export("roleClaim", project.ID().ApplyT(func(id pulumi.ID) string {
 			return roleClaim(string(id))
 		}).(pulumi.StringOutput))
