@@ -2,6 +2,13 @@
 
 All notable changes to the vitruvian-orchestrator Antigravity plugin are recorded here.
 
+## [0.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-orchestrator-antigravity-v0.2.0...vitruvian-orchestrator-antigravity-v0.2.1) (2026-11-21)
+
+
+### Features
+
+* **vitruvian-orchestrator:** release the Claude Code and Antigravity plugins, and publish the Antigravity one to its own repository ([#5300](https://github.com/VitruvianSoftware/vitruvian-core/issues/5300)) ([4391e82](https://github.com/VitruvianSoftware/vitruvian-core/commit/4391e8298273362a5e3c15acec5895ec5818d070))
+
 ## 0.2.0
 
 First release published to its own repository. It includes the generic team that works
