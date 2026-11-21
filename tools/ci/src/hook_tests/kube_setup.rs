@@ -74,6 +74,11 @@ unreachable)
   echo 'E1008 17:21:17.548509 2127 memcache.go:381] "Couldn'"'"'t get current server API group list"' >&2
   echo 'Unable to connect to the server: socks connect tcp 127.0.0.1:1055->k8s-api.lab.ipv1337.dev:6443: unknown error general SOCKS server failure' >&2
   exit 1 ;;
+flaky)
+  if [ -e "${FAKE_KUBECTL_CALLS}.failed" ]; then echo '{"major": "1", "minor": "33"}'; exit 0; fi
+  : >"${FAKE_KUBECTL_CALLS}.failed"
+  echo 'Unable to connect to the server: socks connect tcp 127.0.0.1:1055->k8s-api.lab.ipv1337.dev:6443: unknown error general SOCKS server failure' >&2
+  exit 1 ;;
 esac
 "#;
 
@@ -126,7 +131,8 @@ impl Fixture {
             .env("TS_AUTHKEY", "tskey-fake")
             .env("FAKE_TS_STATE", &self.state_file)
             .env("FAKE_KUBECTL", answer)
-            .env("FAKE_KUBECTL_CALLS", &self.calls);
+            .env("FAKE_KUBECTL_CALLS", &self.calls)
+            .env("KUBE_SETUP_RETRY_SLEEP", "0");
         for (k, v) in extra {
             c.env(k, v);
         }
@@ -146,6 +152,7 @@ impl Fixture {
     fn run_on(&self, path: &str, state: &str, answer: &str, extra: &[(&str, &str)]) -> Ran {
         std::fs::write(&self.state_file, format!("{state}\n")).unwrap();
         std::fs::write(&self.calls, "").unwrap();
+        let _ = std::fs::remove_file(format!("{}.failed", self.calls.display()));
         let home = self.work.join("home");
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
@@ -294,6 +301,64 @@ fn apiserver_silent_not_reachable_with_kubectls_error() {
         false,
         "general SOCKS server failure",
     );
+}
+
+/// How many times the hook asked the apiserver for /version.
+fn probes(f: &Fixture) -> usize {
+    f.calls().matches("get --raw=/version").count()
+}
+
+#[test]
+fn a_first_socks_failure_is_retried_until_reachable() {
+    // 2026-11-19..21: session start said NOT reachable with this error several
+    // times while the same probe worked seconds later.
+    let f = Fixture::new();
+    let r = f.run("Running", "flaky", &[]);
+    verdict(&r, "SOCKS failure once, then answers: reachable", true, "");
+    assert_eq!(probes(&f), 2, "calls: {}", f.calls());
+}
+
+#[test]
+fn a_lasting_socks_failure_gives_up_after_three_probes() {
+    let f = Fixture::new();
+    let r = f.run("Running", "unreachable", &[]);
+    verdict(
+        &r,
+        "SOCKS failure every time: NOT reachable",
+        false,
+        "general SOCKS server failure",
+    );
+    assert_eq!(probes(&f), 3, "calls: {}", f.calls());
+}
+
+#[test]
+fn a_rejected_token_is_not_retried() {
+    let f = Fixture::new();
+    let r = f.run("Running", "unauthorized", &[]);
+    verdict(
+        &r,
+        "Unauthorized: NOT reachable, at once",
+        false,
+        "LAB_SA_TOKEN",
+    );
+    assert_eq!(probes(&f), 1, "calls: {}", f.calls());
+}
+
+#[test]
+fn the_env_file_names_the_lab_context() {
+    let f = Fixture::new();
+    let env_file = f.work.join("claude-env");
+    let r = f.run(
+        "Running",
+        "ok",
+        &[("CLAUDE_ENV_FILE", env_file.to_str().unwrap())],
+    );
+    verdict(&r, "env file written", true, "");
+    let env = ci_testkit::read(&env_file);
+    assert!(env.contains("export KUBE_CONTEXT=lab\n"), "env file: {env}");
+    // The context it names is the one the kubeconfig defines.
+    let cfg = ci_testkit::read(&f.work.join("home/.kube/config"));
+    assert!(cfg.contains("current-context: lab\n"), "kubeconfig: {cfg}");
 }
 
 #[test]
