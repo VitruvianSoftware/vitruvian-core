@@ -448,6 +448,34 @@ mod tests {
             }
         }
         assert!(imports > 0, "expected tokens.css to import its web fonts");
+
+        // A font file referenced directly (an @font-face src: url(https://...))
+        // must come from a host font-src allows.
+        let mut in_font_face = false;
+        for line in css.lines() {
+            if line.contains("@font-face") {
+                in_font_face = true;
+            }
+            if in_font_face {
+                for part in line.split("url(").skip(1) {
+                    let url = part
+                        .trim_start_matches(['\'', '"'])
+                        .split(['\'', '"', ')'])
+                        .next()
+                        .unwrap();
+                    if let Some(rest) = url.strip_prefix("https://") {
+                        let origin = format!("https://{}", rest.split('/').next().unwrap());
+                        assert!(
+                            font_src.contains(&origin),
+                            "tokens.css loads the font file {url}, but the CSP font-src {font_src:?} does not allow {origin}"
+                        );
+                    }
+                }
+            }
+            if line.contains('}') {
+                in_font_face = false;
+            }
+        }
     }
 
     #[test]
