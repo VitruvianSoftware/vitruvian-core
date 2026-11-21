@@ -14,7 +14,7 @@
 | Package | What it gives you | Languages | Depend on it | Owner |
 | --- | --- | --- | --- | --- |
 | [android-crash-privacy](./android-crash-privacy/README.md) | Privacy-hardened Sentry initialization, device-field allowlisting, and crash-message address scrubbing for Android apps. | kotlin | `//packages/android-crash-privacy:android-crash-privacy` | platform-team |
-| [design-system](./design-system/web/README.md) | Shared Vitruvian design tokens, self-hosted fonts, Tailwind v4 theme stylesheet, and React UI components with Storybook documentation. | typescript | `//packages/design-system/web:pkg` | platform-team |
+| [design-system](./design-system/README.md) | Shared Vitruvian design tokens, self-hosted fonts, Tailwind v4 theme stylesheet, and React UI components with Storybook documentation. | typescript | `//packages/design-system/web:pkg` | platform-team |
 | [design-system-android](./design-system/android/README.md) | Vitruvian for Jetpack Compose - tokens, primitives and the mobile shell | kotlin | `//packages/design-system/android:lib`, `//packages/design-system/android:compose_compiler` | platform-team |
 | [gocompat](./gocompat/README.md) | Go standard-library exec, path, UTF-8, error-text, and Unicode helpers for Rust ports of Go tools | rust | `//packages/gocompat:vitruvian_gocompat` | platform-team |
 | [orchestrator-core](./orchestrator-core/README.md) | Pure dependency-free JavaScript state machine, task board, burn-down, stall detection, and cost estimation for vitruvian-orchestrator panels. | javascript | `//packages/orchestrator-core:lib` | platform-team |
