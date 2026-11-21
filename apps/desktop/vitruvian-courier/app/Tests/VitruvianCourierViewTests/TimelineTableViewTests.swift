@@ -1101,4 +1101,94 @@ final class TimelineTableViewTests: XCTestCase {
             "PageUp keyDown during 1.5s open pin window must cancel pin-to-bottom timer"
         )
     }
+
+    // MARK: 13. The floating date while scrolling
+
+    /// Three days of messages, a dozen each, so the table scrolls through two dividers.
+    private func threeDays() -> [TimelineItem] {
+        var events: [Event] = []
+        for day in (0 ..< 3).reversed() {
+            for index in 0 ..< 12 {
+                events.append(Fixture.text("$d\(day)m\(index)", "Message \(index) of day \(day)", mine: index % 2 == 0,
+                                           ts: day * 1440 + (12 - index) * 5))
+            }
+        }
+        return Fixture.items(events)
+    }
+
+    /// The day of the message in the topmost row under the header, from its own time (not from the dividers).
+    private func topMessageDay(_ h: TableHarness, items: [TimelineItem]) -> Date? {
+        let probe = h.scrollView.contentView.bounds.origin.y + h.scrollView.contentInsets.top + 1
+        let row = h.tableView.row(at: NSPoint(x: h.tableView.bounds.midX, y: probe))
+        guard row >= 0, row < h.coordinator.entries.count, case let .message(message)? = h.coordinator.entries[row].item
+        else { return nil }
+        return Calendar.autoupdatingCurrent.startOfDay(for: Date(timeIntervalSince1970: Double(message.ts) / 1000))
+    }
+
+    /// Scrolls by a person (the wheel) in steps until a message from `after` days or later is at the top.
+    private func scrollByPersonUntilTopMessage(_ h: TableHarness, items: [TimelineItem], in days: ClosedRange<Int>) throws {
+        // The table opens at its newest message: start from the oldest and scroll down.
+        h.scrollToTop()
+        for _ in 0 ..< 60 {
+            h.scrollBy(40)
+            if let day = topMessageDay(h, items: items),
+               let first = items.compactMap({ item -> Date? in
+                   if case let .message(m) = item { return Calendar.autoupdatingCurrent.startOfDay(for: Date(timeIntervalSince1970: Double(m.ts) / 1000)) }
+                   return nil
+               }).min() {
+                let index = Calendar.autoupdatingCurrent.dateComponents([.day], from: first, to: day).day ?? 0
+                if days.contains(index) { return }
+            }
+        }
+        XCTFail("never scrolled a message of the wanted day to the top")
+    }
+
+    func testScrollingShowsTheTopMessagesDayAndItFadesAfterwards() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        XCTAssertFalse(capsule.model.isVisible, "nothing shows before anyone scrolls")
+
+        try scrollByPersonUntilTopMessage(h, items: items, in: 1 ... 2)
+        let day = try XCTUnwrap(topMessageDay(h, items: items))
+        XCTAssertTrue(capsule.model.isVisible, "scrolling shows the capsule")
+        XCTAssertEqual(capsule.model.text, FloatingDay.text(day: day, now: Date()), "with the day of the topmost message")
+
+        h.pump(for: FloatingDay.fadeOutDelay + 0.6, until: { !capsule.model.isVisible })
+        XCTAssertFalse(capsule.model.isVisible, "and fades about a second after the scrolling stops")
+    }
+
+    func testTheCapsuleIsHiddenWhileADateDividerIsAtTheTop() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        try scrollByPersonUntilTopMessage(h, items: items, in: 1 ... 2)
+        XCTAssertTrue(capsule.model.isVisible)
+
+        h.scrollToTop()
+        let probe = h.scrollView.contentView.bounds.origin.y + h.scrollView.contentInsets.top + 1
+        let row = h.tableView.row(at: NSPoint(x: h.tableView.bounds.midX, y: probe))
+        guard row >= 0, case .dateSeparator? = h.coordinator.entries[row].item else {
+            return XCTFail("expected the first day's divider at the top of the list")
+        }
+        XCTAssertFalse(capsule.model.isVisible, "the divider already says the day")
+    }
+
+    func testTheAppsOwnScrollingDoesNotShowTheCapsule() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        // No wheel, drag or gesture for longer than the grace: what moves the timeline now is the app's (a jump).
+        h.pump(for: 1.0)
+        let clip = h.scrollView.contentView
+        for target in [200.0, 400.0, 600.0, 120.0] {
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
+            h.scrollView.reflectScrolledClipView(clip)
+            h.pump(for: 0.05)
+        }
+        XCTAssertFalse(capsule.model.isVisible)
+    }
 }

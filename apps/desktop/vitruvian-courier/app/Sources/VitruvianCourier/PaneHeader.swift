@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import SwiftUI
 
 /// The headers of the window's columns (the chat list, the chat, the thread, Chat Info), drawn one way so they line
@@ -132,5 +133,25 @@ private struct PaneHeaderToolbarButtonStyle: ButtonStyle {
             .frame(width: 32, height: 32)
             .contentShape(Rectangle())
             .opacity(configuration.isPressed ? 0.5 : 1)
+    }
+}
+
+extension View {
+    /// The pointing-hand cursor while the pointer is over this view: what shows a header's name and picture can be
+    /// clicked.
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursor())
+    }
+}
+
+private struct PointingHandCursor: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.pointerStyle(.link)
+        } else {
+            content.onHover { inside in
+                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+        }
     }
 }

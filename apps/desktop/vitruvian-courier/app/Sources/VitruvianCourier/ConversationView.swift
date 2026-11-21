@@ -1284,7 +1284,7 @@ struct ConversationHeader: View {
         switch part {
         case .strip:
             HStack(spacing: 10) {
-                identity
+                identityButton(spacing: 10)
                 Spacer(minLength: 0)
                 actions
             }
@@ -1298,24 +1298,41 @@ struct ConversationHeader: View {
                     .fill(Color(nsColor: .separatorColor))
                     .frame(height: PaneHeaderMetrics.hairlineHeight)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isHeader)
         case .identity:
-            HStack(alignment: .center, spacing: 8) { identity }
+            identityButton(spacing: 8)
                 .frame(maxHeight: 34)
                 .clipped()
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
         case .actions:
             actions
         }
     }
 
+    /// The chat's picture, name and network as one button: it shows or hides Chat Info, as the ⓘ button does.
+    private func identityButton(spacing: CGFloat) -> some View {
+        let label = ChatInfoHeaderToggle.label(isShowing: conversation.isShowingChatInfo)
+        return Button(action: conversation.toggleChatInfo) {
+            HStack(alignment: .center, spacing: spacing) { identity }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help(label)
+        .accessibilityLabel(label)
+        .accessibilityValue(row.map(titleText(of:)) ?? "")
+        .disabled(row == nil)
+    }
+
+    private func titleText(of row: InboxRow) -> String {
+        let formatted = displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle
+        let title = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
+        return redactNamesAndPictures ? AppearancePreferences.redactedText(title, kind: .chatTitle) : title
+    }
+
     @ViewBuilder
     private var identity: some View {
         if let row {
-            let formatted = displayTitle.flatMap { $0.isEmpty ? nil : $0 } ?? row.displayTitle
-            let shownTitle = formatted.isEmpty ? String(localized: "Unnamed chat") : formatted
             // The inbox's picture: a group with none gets the group picture, not initials.
             // 28 pt with a square clip keeps multi-circle group avatars fully inside the header and above its hairline.
             ChatAvatar(row: row, size: 28)
@@ -1323,14 +1340,10 @@ struct ConversationHeader: View {
                 .blur(radius: redactNamesAndPictures ? 6 : 0)
                 .clipShape(Rectangle())
             VStack(alignment: .leading, spacing: 1) {
-                Text(
-                    redactNamesAndPictures
-                        ? AppearancePreferences.redactedText(shownTitle, kind: .chatTitle)
-                        : shownTitle
-                )
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+                Text(titleText(of: row))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                 let subtitle = subtitle(of: row)
                 if subtitle != nil || conversation.timerLine != nil {
                     HStack(spacing: 4) {
