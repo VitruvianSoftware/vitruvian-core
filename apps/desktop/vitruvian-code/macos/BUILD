@@ -134,10 +134,11 @@ swift_binary(
     ],
 )
 
-# The tool as a folder the app can add: the manifest, bin/tool, and the
-# copy of Mermaid the chat's diagram cards draw with beside the program,
-# where VitruvianCodeMermaidPage looks for an executable that is no bundle.
-# The mirror's release zips the same three.
+# The tool as a folder the app can add: the manifest, bin/tool, bundled Node,
+# the bundled Claude ACP helper, and the copy of Mermaid the chat's diagram
+# cards draw with beside the program, where VitruvianCodeMermaidPage /
+# BundledNode look for an executable that is no bundle.
+# The mirror's release zips the same files.
 #
 #   bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:tool-folder
 #
@@ -148,13 +149,17 @@ genrule(
         "atrium-extension/vitruvian-tool.json",
         "Sources/VitruvianCodeUI/Resources/mermaid.min.js",
         ":vitruvian-code-tool",
+        ":node_helper",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files",
     ],
     outs = [
         "built/vitruvian-code/vitruvian-tool.json",
         "built/vitruvian-code/bin/tool",
         "built/vitruvian-code/bin/mermaid.min.js",
+        "built/vitruvian-code/bin/node",
+        "built/vitruvian-code/bin/claude-helper/claude-helper.mjs",
     ],
-    cmd = "cp $(location atrium-extension/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-code/vitruvian-tool.json && cp $(location :vitruvian-code-tool) $(RULEDIR)/built/vitruvian-code/bin/tool && cp $(location Sources/VitruvianCodeUI/Resources/mermaid.min.js) $(RULEDIR)/built/vitruvian-code/bin/mermaid.min.js",
+    cmd = "mkdir -p $(RULEDIR)/built/vitruvian-code/bin/claude-helper && cp $(location atrium-extension/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-code/vitruvian-tool.json && cp $(location :vitruvian-code-tool) $(RULEDIR)/built/vitruvian-code/bin/tool && cp $(location Sources/VitruvianCodeUI/Resources/mermaid.min.js) $(RULEDIR)/built/vitruvian-code/bin/mermaid.min.js && cp $(location :node_helper) $(RULEDIR)/built/vitruvian-code/bin/node && chmod 755 $(RULEDIR)/built/vitruvian-code/bin/node && cp $(location //apps/desktop/vitruvian-code/macos/claude-helper:bundle_files) $(RULEDIR)/built/vitruvian-code/bin/claude-helper/claude-helper.mjs",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -298,10 +303,35 @@ genrule(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+genrule(
+    name = "node_helper",
+    srcs = [
+        "Resources/node.entitlements",
+        "@nodejs_darwin_amd64//:node_bin",
+        "@nodejs_darwin_arm64//:node_bin",
+    ],
+    outs = ["node"],
+    cmd = "/usr/bin/lipo -create $(location @nodejs_darwin_arm64//:node_bin) $(location @nodejs_darwin_amd64//:node_bin) -output $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.node --entitlements $(location Resources/node.entitlements) $@",
+    executable = True,
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+genrule(
+    name = "claude_helper_bundle",
+    srcs = ["//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files"],
+    outs = ["claude-helper.mjs"],
+    cmd = "cp $(location //apps/desktop/vitruvian-code/macos/claude-helper:bundle_files) $@",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 macos_application(
     name = "VitruvianCode",
     additional_contents = {
         ":bot_engine_helper": "Helpers",
+        ":claude_helper_bundle": "Resources/claude-helper",
+        ":node_helper": "Helpers",
     },
     bundle_id = "com.vitruviansoftware.code",
     bundle_name = "Vitruvian Code",
@@ -326,6 +356,8 @@ rust_test(
     data = [
         "Package.swift",
         ":bundle-app",
+        ":node_helper",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files",
         "//apps/desktop/vitruvian-code/src:bot-engine",
     ] + glob([
         "Resources/**",
@@ -336,6 +368,8 @@ rust_test(
     env = {
         "BOT_BIN": "$(rootpath //apps/desktop/vitruvian-code/src:bot-engine)",
         "BUNDLE_BIN": "$(rootpath :bundle-app)",
+        "HELPER_BUNDLE": "$(rootpath //apps/desktop/vitruvian-code/macos/claude-helper:bundle_files)",
+        "NODE_BIN": "$(rootpath :node_helper)",
     },
     env_inherit = ["DEVELOPER_DIR"],
     # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
@@ -393,6 +427,42 @@ rust_test(
     deps = [":vitruvian_code_scripts_lib"],
 )
 
+rust_test(
+    name = "app_holds_node_test",
+    size = "small",
+    srcs = ["scripts/src/app_holds_node_test.rs"],
+    data = [
+        ":VitruvianCode",
+        "//:.nvmrc",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files",
+    ],
+    edition = "2021",
+    env = {
+        "APP_NAME": "Vitruvian Code",
+        "ARCHIVE_PATHS": "$(rootpaths :VitruvianCode)",
+        "HELPER_BUNDLE_PATH": "$(rootpath //apps/desktop/vitruvian-code/macos/claude-helper:bundle_files)",
+        "NVMRC_PATH": "$(rootpath //:.nvmrc)",
+    },
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":vitruvian_code_scripts_lib"],
+)
+
+rust_binary(
+    name = "bazel-app-holds-node",
+    srcs = ["scripts/src/bin/bazel_app_holds_node.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+    deps = [":vitruvian_code_scripts_lib"],
+)
+
+alias(
+    name = "bazel_app_holds_node",
+    actual = ":bazel-app-holds-node",
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+)
+
 # --- Rust ports of vitruvian-code scripts -------------------------------------
 
 rust_library(
@@ -413,6 +483,10 @@ rust_test(
     name = "vitruvian_code_scripts_lib_test",
     size = "small",
     crate = ":vitruvian_code_scripts_lib",
+    # bundle.rs reads Resources/node.entitlements next to the program.
+    data = [
+        "Resources/node.entitlements",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
@@ -423,11 +497,13 @@ rust_test(
     srcs = ["scripts/src/sign_and_notarize_test.rs"],
     data = [
         "Resources/VitruvianCode.entitlements",
+        "Resources/node.entitlements",
         "//apps/desktop/vitruvian-code:sign_and_notarize_script",
     ],
     edition = "2021",
     env = {
         "ENTITLEMENTS_PATH": "$(rootpath Resources/VitruvianCode.entitlements)",
+        "NODE_ENTITLEMENTS_PATH": "$(rootpath Resources/node.entitlements)",
         "SIGN_SCRIPT": "$(rootpath //apps/desktop/vitruvian-code:sign_and_notarize_script)",
     },
     rustc_flags = ["-Copt-level=3"],
@@ -533,7 +609,12 @@ pipeline_unit(
         ":mirror_build_test",
         ":tool_conformance_test",
         ":vitruvian-code-tool",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:bundle_isolated_load_test",
         "//apps/desktop/vitruvian-code/macos/claude-helper:helper_test",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:node_lock_test",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:third_party_notices_test",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:update_bundle_0_test",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:update_bundle_1_test",
     ],
     tier = "L1",
     timeout_minutes = 30,
@@ -544,6 +625,7 @@ filegroup(
     srcs = [
         "README.md",
         "Resources/VitruvianCode.entitlements",
+        "Resources/node.entitlements",
     ],
     visibility = ["//apps/desktop/vitruvian-code:__pkg__"],
 )

@@ -56,6 +56,12 @@ apps/web/vitruviansoftware-dev/js/canvas-nest.min.js rules-lint-ignored=true
 # npm package they came from (apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md).
 apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/** rules-lint-ignored=true
 
+# The Claude helper's checked-in bundle is esbuild's output, written by
+# `bazel run //apps/desktop/vitruvian-code/macos/claude-helper:update_bundle`
+# and held byte-for-byte by the update_bundle diff test; a formatter would
+# make it stale.
+apps/desktop/vitruvian-code/macos/claude-helper/bundle/** rules-lint-ignored=true
+
 # The Vitruvian SDK kits' protocol types, written by tools/sdk-codegen and held
 # by //tools/sdk-codegen:in_sync_test. Collapsed in review, never reformatted.
 packages/vitruvian-sdk/go/toolkit/protocol_gen.go          linguist-generated=true

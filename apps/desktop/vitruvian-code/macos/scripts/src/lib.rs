@@ -20,6 +20,7 @@
 
 pub mod bazel_app_holds_bot;
 pub mod bazel_app_holds_mermaid;
+pub mod bazel_app_holds_node;
 pub mod bundle;
 pub mod check_packaged_app;
 pub mod record_acp_fixture;
@@ -323,6 +324,14 @@ mod tests {
         fs::write(&bot_bin, b"fake-bot-engine").unwrap();
         fs::set_permissions(&bot_bin, fs::Permissions::from_mode(0o755)).unwrap();
 
+        let node_bin = exe_dir.join("node");
+        fs::write(&node_bin, b"fake-node").unwrap();
+        fs::set_permissions(&node_bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let helper_dir = exe_dir.join("claude-helper");
+        fs::create_dir_all(&helper_dir).unwrap();
+        fs::write(helper_dir.join("claude-helper.mjs"), b"console.log(1);\n").unwrap();
+
         let output = dir.join("output");
         fs::create_dir_all(&output).unwrap();
 
@@ -344,6 +353,10 @@ mod tests {
         let app = output.join("Vitruvian Code.app");
         assert!(app.join("Contents/MacOS/VitruvianCode").exists());
         assert!(app.join("Contents/Helpers/bot-engine").exists());
+        assert!(app.join("Contents/Helpers/node").exists());
+        assert!(app
+            .join("Contents/Resources/claude-helper/claude-helper.mjs")
+            .exists());
         assert!(app.join("Contents/Resources").exists());
         assert!(app.join("Contents/Info.plist").exists());
         assert!(app.join("Contents/PkgInfo").exists());
@@ -427,7 +440,11 @@ mod tests {
         let fake_bin = dir.join("fake_bin");
         fs::create_dir_all(&fake_bin).unwrap();
         make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
-        make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
+        make_fake_tool(
+            &fake_bin,
+            "codesign",
+            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then\n  cat <<'PLIST'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n  <key>com.apple.security.cs.allow-jit</key><true/>\n  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>\n</dict></plist>\nPLIST\nfi\nexit 0\n",
+        );
         make_fake_tool(&fake_bin, "spctl", "#!/bin/sh\nexit 1\n");
 
         let app = dir.join("Vitruvian Code.app");
@@ -453,6 +470,14 @@ mod tests {
         let bot = app.join("Contents/Helpers/bot-engine");
         fs::write(&bot, b"fake-bot").unwrap();
         fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let node = app.join("Contents/Helpers/node");
+        fs::write(&node, b"fake-node").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let helper_dir = app.join("Contents/Resources/claude-helper");
+        fs::create_dir_all(&helper_dir).unwrap();
+        fs::write(helper_dir.join("claude-helper.mjs"), b"export {};\n").unwrap();
 
         let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let orig_path = std::env::var("PATH").unwrap_or_default();
@@ -515,6 +540,14 @@ mod tests {
         fs::write(&bot, b"fake-bot").unwrap();
         fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
 
+        let node = app.join("Contents/Helpers/node");
+        fs::write(&node, b"fake-node").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let helper_dir = app.join("Contents/Resources/claude-helper");
+        fs::create_dir_all(&helper_dir).unwrap();
+        fs::write(helper_dir.join("claude-helper.mjs"), b"export {};\n").unwrap();
+
         let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let orig_path = std::env::var("PATH").unwrap_or_default();
         std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
@@ -525,6 +558,196 @@ mod tests {
         assert!(bad_arch
             .unwrap_err()
             .contains("lacks app architecture(s) x86_64"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn entitlements_plist_parsing_checks_true_values() {
+        let valid = r#"<?xml version="1.0"?><plist version="1.0"><dict>
+            <key>com.apple.security.cs.allow-jit</key>
+            <true/>
+            <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+            <true/>
+        </dict></plist>"#;
+        assert!(check_packaged_app::entitlements_plist_has_true(
+            valid,
+            "com.apple.security.cs.allow-jit"
+        ));
+        assert!(check_packaged_app::entitlements_plist_has_true(
+            valid,
+            "com.apple.security.cs.allow-unsigned-executable-memory"
+        ));
+
+        let disabled = "<dict><key>com.apple.security.cs.allow-jit</key><false/></dict>";
+        assert!(!check_packaged_app::entitlements_plist_has_true(
+            disabled,
+            "com.apple.security.cs.allow-jit"
+        ));
+        assert!(!check_packaged_app::entitlements_plist_has_true(
+            disabled,
+            "com.apple.security.cs.allow-unsigned-executable-memory"
+        ));
+    }
+
+    #[test]
+    fn check_packaged_app_rejects_missing_bad_arch_unentitled_node_and_missing_helper() {
+        let dir = std::env::temp_dir().join("check_pkg_node_failures_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let fake_bin = dir.join("fake_bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
+        let full_codesign = "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then\n  cat <<'PLIST'\n<plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>\nPLIST\nfi\nexit 0\n";
+        make_fake_tool(&fake_bin, "codesign", full_codesign);
+
+        let app = dir.join("Vitruvian Code.app");
+        let ui_bundle = app.join("Contents/Resources/VitruvianCode_VitruvianCodeUI.bundle");
+        fs::create_dir_all(&ui_bundle).unwrap();
+        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
+        let helper_dir = app.join("Contents/Resources/claude-helper");
+        fs::create_dir_all(&helper_dir).unwrap();
+
+        let mermaid_content = b"mermaid-js-content";
+        fs::write(ui_bundle.join("mermaid.min.js"), mermaid_content).unwrap();
+        fs::write(ui_bundle.join("mermaid-LICENSE.txt"), b"licence").unwrap();
+        let sha = sha256_hex(mermaid_content);
+        fs::write(
+            dir.join("THIRD_PARTY_NOTICES.md"),
+            format!("| SHA-256 of the file | `{}` |\n", sha),
+        )
+        .unwrap();
+
+        let exe = app.join("Contents/MacOS/VitruvianCode");
+        fs::write(&exe, b"fake").unwrap();
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+        let bot = app.join("Contents/Helpers/bot-engine");
+        fs::write(&bot, b"fake-bot").unwrap();
+        fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
+        let helper_mjs = helper_dir.join("claude-helper.mjs");
+        fs::write(&helper_mjs, b"export {};\n").unwrap();
+
+        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        let orig_cwd = std::env::current_dir().unwrap();
+        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+        std::env::set_current_dir(&dir).unwrap();
+
+        let args: Vec<String> = vec![
+            "check-packaged-app".into(),
+            app.to_str().unwrap().into(),
+            "arm64".into(),
+            "x86_64".into(),
+        ];
+
+        // 1. Missing Contents/Helpers/node fails.
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 2. Add node, drop helper file -> fails.
+        let node = app.join("Contents/Helpers/node");
+        fs::write(&node, b"fake-node").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::remove_file(&helper_mjs).unwrap();
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 3. Restore helper, make codesign return only one entitlement -> fails.
+        fs::write(&helper_mjs, b"export {};\n").unwrap();
+        make_fake_tool(
+            &fake_bin,
+            "codesign",
+            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>'; fi\nexit 0\n",
+        );
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 4. Restore full entitlements, make lipo report wrong arch for node -> fails.
+        make_fake_tool(&fake_bin, "codesign", full_codesign);
+        make_fake_tool(
+            &fake_bin,
+            "lipo",
+            "#!/bin/sh\nif [ \"$(basename \"$2\")\" = \"node\" ]; then echo \"arm64\"; else echo \"arm64 x86_64\"; fi\n",
+        );
+        assert_eq!(check_packaged_app::run(&args), 1);
+
+        // 5. Restore matching lipo -> passes.
+        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
+        assert_eq!(check_packaged_app::run(&args), 0);
+
+        std::env::set_current_dir(&orig_cwd).unwrap();
+        std::env::set_var("PATH", &orig_path);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bazel_app_holds_node_rejects_missing_node_wrong_arch_and_bad_helper_hash() {
+        let dir = std::env::temp_dir().join("bazel_app_holds_node_unit_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let fake_bin = dir.join("fake_bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        make_fake_tool(
+            &fake_bin,
+            "lipo",
+            "#!/bin/sh\nif [ \"$(basename \"$2\")\" = \"VitruvianCode\" ]; then echo \"arm64 x86_64\"; else echo \"arm64\"; fi\n",
+        );
+        make_fake_tool(
+            &fake_bin,
+            "codesign",
+            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>'; fi\nexit 0\n",
+        );
+
+        let nvmrc = dir.join(".nvmrc");
+        fs::write(&nvmrc, "22.21.1\n").unwrap();
+        let expected_helper = dir.join("expected.mjs");
+        fs::write(&expected_helper, b"expected-bundle-bytes").unwrap();
+
+        let app = dir.join("Vitruvian Code.app");
+        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        let exe = app.join("Contents/MacOS/VitruvianCode");
+        fs::write(&exe, b"fake-app").unwrap();
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let missing =
+            bazel_app_holds_node::verify_unpacked_app(&app, &nvmrc, &expected_helper, &dir);
+        assert!(missing.is_err());
+        assert!(missing.unwrap_err().contains("Contents/Helpers/node"));
+
+        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
+        let node = app.join("Contents/Helpers/node");
+        fs::write(&node, b"fake-node").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+        let bad_arch =
+            bazel_app_holds_node::verify_unpacked_app(&app, &nvmrc, &expected_helper, &dir);
+        assert!(bad_arch.is_err());
+        assert!(bad_arch.unwrap_err().contains("universal architecture"));
+
+        // Fix lipo and make fake node report matching version, then mutate helper bytes.
+        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
+        make_fake_tool(
+            &app.join("Contents/Helpers"),
+            "node",
+            "#!/bin/sh\necho v22.21.1\n",
+        );
+        fs::create_dir_all(app.join("Contents/Resources/claude-helper")).unwrap();
+        fs::write(
+            app.join("Contents/Resources/claude-helper/claude-helper.mjs"),
+            b"tampered-bundle-bytes",
+        )
+        .unwrap();
+
+        let bad_hash =
+            bazel_app_holds_node::verify_unpacked_app(&app, &nvmrc, &expected_helper, &dir);
+        std::env::set_var("PATH", &orig_path);
+
+        assert!(bad_hash.is_err());
+        assert!(bad_hash
+            .unwrap_err()
+            .contains("does not match checked-in bundle"));
 
         let _ = fs::remove_dir_all(&dir);
     }

@@ -62,6 +62,8 @@ on:
       - 'apps/desktop/vitruvian-code/macos/Sources/**'
       - 'apps/desktop/vitruvian-code/macos/Tests/**'
       - 'apps/desktop/vitruvian-code/macos/Resources/**'
+      - 'apps/desktop/vitruvian-code/macos/claude-helper/bundle/**'
+      - 'apps/desktop/vitruvian-code/macos/claude-helper/node.lock'
       - 'apps/desktop/vitruvian-code/macos/scripts/**'
       - 'apps/desktop/vitruvian-code/scripts/**'
       - 'apps/desktop/vitruvian-code/src/**'
@@ -173,9 +175,41 @@ jobs:
           set -euo pipefail
           find /tmp/arm64 /tmp/x86_64 -maxdepth 4 -exec ls -ld {} +
 
+      - name: Fetch and verify bundled Node
+        run: |
+          set -euo pipefail
+          lock_file="apps/desktop/vitruvian-code/macos/claude-helper/node.lock"
+          NODE_VERSION="$(awk -F= '$1 == "version" { print $2; exit }' "$lock_file")"
+          ARM64_SHA="$(awk -F= '$1 == "darwin-arm64" { print $2; exit }' "$lock_file")"
+          X64_SHA="$(awk -F= '$1 == "darwin-x64" { print $2; exit }' "$lock_file")"
+          test -n "$NODE_VERSION" && test -n "$ARM64_SHA" && test -n "$X64_SHA"
+
+          fetch_dir="$RUNNER_TEMP/node-fetch"
+          rm -rf "$fetch_dir"
+          mkdir -p "$fetch_dir" /tmp/arm64/claude-helper /tmp/x86_64/claude-helper
+
+          for spec in "darwin-arm64:${ARM64_SHA}:arm64" "darwin-x64:${X64_SHA}:x86_64"; do
+            IFS=: read -r node_arch want_sha out_arch <<< "$spec"
+            name="node-v${NODE_VERSION}-${node_arch}"
+            tarball="${fetch_dir}/${name}.tar.gz"
+            curl -fsSL --retry 3 --retry-all-errors \
+              "https://nodejs.org/dist/v${NODE_VERSION}/${name}.tar.gz" \
+              -o "$tarball"
+            printf '%s  %s\n' "$want_sha" "$tarball" | shasum -a 256 -c -
+            tar -xzf "$tarball" -C "$fetch_dir" "${name}/bin/node"
+            cp "${fetch_dir}/${name}/bin/node" "/tmp/${out_arch}/node"
+            chmod 755 "/tmp/${out_arch}/node"
+            got_archs="$(lipo -archs "/tmp/${out_arch}/node")"
+            test "$got_archs" = "$out_arch"
+          done
+
+          cp apps/desktop/vitruvian-code/macos/claude-helper/bundle/claude-helper.mjs /tmp/arm64/claude-helper/claude-helper.mjs
+          cp apps/desktop/vitruvian-code/macos/claude-helper/bundle/claude-helper.mjs /tmp/x86_64/claude-helper/claude-helper.mjs
+          rm -rf "$fetch_dir"
+
       - name: Create universal binary
         run: |
-          mkdir -p /tmp/universal
+          mkdir -p /tmp/universal/claude-helper
           lipo -create \
             /tmp/arm64/VitruvianCode \
             /tmp/x86_64/VitruvianCode \
@@ -196,6 +230,14 @@ jobs:
             /tmp/x86_64/bot-engine \
             -output /tmp/universal/bot-engine
           lipo -info /tmp/universal/bot-engine
+          # The bundled Node runtime and Claude helper, universal binary + single JS file.
+          lipo -create \
+            /tmp/arm64/node \
+            /tmp/x86_64/node \
+            -output /tmp/universal/node
+          chmod 755 /tmp/universal/node
+          lipo -info /tmp/universal/node
+          cp /tmp/arm64/claude-helper/claude-helper.mjs /tmp/universal/claude-helper/claude-helper.mjs
 
       - name: Assemble .app bundles
         run: |
@@ -221,7 +263,8 @@ jobs:
             --entitlements-app "/tmp/dist-universal/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
-            --macho /tmp/universal/vitruvian-code-tool
+            --macho /tmp/universal/vitruvian-code-tool \
+            --node-macho /tmp/universal/node
 
       # Each app holds the copy of Mermaid where the chat view looks for it,
       # unchanged, with its licence, and is the signed executable for the
@@ -365,20 +408,23 @@ jobs:
           ls -lh *.zip
 
       # The tool as the Vitruvian app installs it: a zip of its folder with
-      # vitruvian-tool.json at the top, bin/tool, and the copy of Mermaid
-      # the chat's diagram cards draw with beside the program, where it
-      # looks for an executable that is no bundle. The zip is what the
-      # app's catalog (catalog/tools.json in vitruvian-core) pins by its
-      # size and checksum, which the sidecar and the release notes carry.
+      # vitruvian-tool.json at the top, bin/tool, bundled Node + Claude helper,
+      # and the copy of Mermaid the chat's diagram cards draw with beside the
+      # program, where it looks for an executable that is no bundle. The zip is
+      # what the app's catalog (catalog/tools.json in vitruvian-core) pins by
+      # its size and checksum, which the sidecar and the release notes carry.
       - name: Zip the tool's folder
         run: |
           VERSION="0.0.0-rehearsal"
           folder="/tmp/tool/vitruvian-code"
-          mkdir -p "$folder/bin"
+          mkdir -p "$folder/bin/claude-helper"
           cp apps/desktop/vitruvian-code/macos/atrium-extension/vitruvian-tool.json "$folder/"
           cp /tmp/universal/vitruvian-code-tool "$folder/bin/tool"
           chmod 755 "$folder/bin/tool"
           cp apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
+          cp /tmp/universal/node "$folder/bin/node"
+          chmod 755 "$folder/bin/node"
+          cp apps/desktop/vitruvian-code/macos/claude-helper/bundle/claude-helper.mjs "$folder/bin/claude-helper/claude-helper.mjs"
           asset="vitruvian-code-tool-${VERSION}.zip"
           (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
           cd "${GITHUB_WORKSPACE}"
@@ -404,7 +450,15 @@ jobs:
           test -f "$RUNNER_TEMP/tool/vitruvian-tool.json"
           test -x "$RUNNER_TEMP/tool/bin/tool"
           test -f "$RUNNER_TEMP/tool/bin/mermaid.min.js"
+          test -x "$RUNNER_TEMP/tool/bin/node"
+          test -s "$RUNNER_TEMP/tool/bin/claude-helper/claude-helper.mjs"
           lipo -archs "$RUNNER_TEMP/tool/bin/tool"
+          node_archs="$(lipo -archs "$RUNNER_TEMP/tool/bin/node")"
+          test "$node_archs" = "x86_64 arm64" -o "$node_archs" = "arm64 x86_64"
+          codesign --verify --strict "$RUNNER_TEMP/tool/bin/node"
+          node_ent="$(codesign -d --entitlements - --xml "$RUNNER_TEMP/tool/bin/node" 2>&1)"
+          grep -q "com.apple.security.cs.allow-jit" <<<"$node_ent"
+          grep -q "com.apple.security.cs.allow-unsigned-executable-memory" <<<"$node_ent"
           swift package resolve --package-path apps/desktop/vitruvian-code/macos
           sdk="$(find apps/desktop/vitruvian-code/macos/.build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
           test -n "$sdk"

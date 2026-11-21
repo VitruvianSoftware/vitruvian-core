@@ -108,6 +108,24 @@ fn test_mirror_build() {
     fs::copy(&bot_bin_src, &bot_bin_dst).expect("copy bot-engine beside built VitruvianCode");
     fs::set_permissions(&bot_bin_dst, fs::Permissions::from_mode(0o755)).expect("chmod bot-engine");
 
+    let node_bin_rel = std::env::var("NODE_BIN").expect("NODE_BIN not set");
+    let node_bin_src = PathBuf::from(&test_srcdir)
+        .join(&test_workspace)
+        .join(node_bin_rel);
+    let node_bin_dst = built.join("node");
+    fs::copy(&node_bin_src, &node_bin_dst).expect("copy node beside built VitruvianCode");
+    fs::set_permissions(&node_bin_dst, fs::Permissions::from_mode(0o755)).expect("chmod node");
+
+    let helper_rel = std::env::var("HELPER_BUNDLE").expect("HELPER_BUNDLE not set");
+    let helper_src = PathBuf::from(&test_srcdir)
+        .join(&test_workspace)
+        .join(helper_rel);
+    let helper_dst_dir = built.join("claude-helper");
+    fs::create_dir_all(&helper_dst_dir)
+        .expect("create claude-helper dir beside built VitruvianCode");
+    fs::copy(&helper_src, helper_dst_dir.join("claude-helper.mjs"))
+        .expect("copy claude-helper.mjs beside built VitruvianCode");
+
     let bundle_bin_rel = std::env::var("BUNDLE_BIN").expect("BUNDLE_BIN not set");
     let bundle_bin = PathBuf::from(&test_srcdir)
         .join(&test_workspace)
@@ -126,6 +144,33 @@ fn test_mirror_build() {
     assert!(
         packaged.join("Contents/Helpers/bot-engine").is_file(),
         "packaged app must bundle Contents/Helpers/bot-engine"
+    );
+    assert!(
+        packaged.join("Contents/Helpers/node").is_file(),
+        "packaged app must bundle Contents/Helpers/node"
+    );
+    assert!(
+        packaged
+            .join("Contents/Resources/claude-helper/claude-helper.mjs")
+            .is_file(),
+        "packaged app must bundle Contents/Resources/claude-helper/claude-helper.mjs"
+    );
+    let ent_out = Command::new("codesign")
+        .args(["-d", "--entitlements", "-", "--xml"])
+        .arg(packaged.join("Contents/Helpers/node"))
+        .output()
+        .expect("inspect node entitlements");
+    assert!(ent_out.status.success(), "codesign -d on node failed");
+    let ent_xml = format!(
+        "{}{}",
+        String::from_utf8_lossy(&ent_out.stdout),
+        String::from_utf8_lossy(&ent_out.stderr)
+    );
+    assert!(
+        ent_xml.contains("com.apple.security.cs.allow-jit")
+            && ent_xml.contains("com.apple.security.cs.allow-unsigned-executable-memory"),
+        "packaged node must carry JIT entitlements: {}",
+        ent_xml
     );
     let status = Command::new("codesign")
         .args(["--verify", "--deep", "--strict"])

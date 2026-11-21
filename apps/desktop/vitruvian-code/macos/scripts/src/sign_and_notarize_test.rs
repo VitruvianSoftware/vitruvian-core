@@ -34,6 +34,12 @@ fn entitlements_path() -> PathBuf {
     fs::canonicalize(rel).expect("canonicalize ENTITLEMENTS_PATH")
 }
 
+fn node_entitlements_path() -> PathBuf {
+    let rel =
+        std::env::var("NODE_ENTITLEMENTS_PATH").expect("NODE_ENTITLEMENTS_PATH env must be set");
+    fs::canonicalize(rel).expect("canonicalize NODE_ENTITLEMENTS_PATH")
+}
+
 fn scratch_dir(name: &str) -> PathBuf {
     let base = std::env::var("TEST_TMPDIR")
         .map(PathBuf::from)
@@ -93,6 +99,19 @@ fn create_fake_app(
 
     fs::write(contents.join("Resources/notes.txt"), b"plain text resource").unwrap();
     app
+}
+
+fn add_helpers(app: &Path) {
+    let helpers = app.join("Contents/Helpers");
+    fs::create_dir_all(&helpers).unwrap();
+    for (name, bytes) in [
+        ("bot-engine", b"FAKE_MACHO_BOT".as_slice()),
+        ("node", b"FAKE_MACHO_NODE".as_slice()),
+    ] {
+        let p = helpers.join(name);
+        fs::write(&p, bytes).unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    }
 }
 
 fn install_fake_signing_toolchain(fake_bin: &Path, slow_codesign: bool) {
@@ -546,20 +565,32 @@ fn real_script_resists_poisoned_path_and_signs_macho_bundle() {
     }
 
     let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", true);
+    add_helpers(&app);
     fs::copy("/usr/bin/true", app.join("Contents/MacOS/VitruvianCode")).unwrap();
     fs::copy("/usr/bin/true", app.join("Contents/MacOS/auxiliary-helper")).unwrap();
+    fs::copy("/usr/bin/true", app.join("Contents/Helpers/bot-engine")).unwrap();
+    fs::copy("/usr/bin/true", app.join("Contents/Helpers/node")).unwrap();
     fs::copy(
         "/usr/bin/true",
         app.join("Contents/Frameworks/Nested.dylib"),
     )
     .unwrap();
+    let standalone_node = dir.join("standalone-node");
+    fs::copy("/usr/bin/true", &standalone_node).unwrap();
 
     let out = Command::new(script_path())
-        .args(["apps", "--entitlements-app", app.to_str().unwrap()])
+        .args([
+            "apps",
+            "--entitlements-app",
+            app.to_str().unwrap(),
+            "--node-macho",
+            standalone_node.to_str().unwrap(),
+        ])
         .env("PATH", poisoned_bin.to_str().unwrap())
         .env("SIGNING", "adhoc")
         .env("RUNNER_TEMP", &runner_temp)
         .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
+        .env("VITRUVIAN_CODE_NODE_ENTITLEMENTS", node_entitlements_path())
         .output()
         .expect("run real sign-and-notarize.sh under poisoned PATH");
 
@@ -575,6 +606,26 @@ fn real_script_resists_poisoned_path_and_signs_macho_bundle() {
         "poisoned PATH tool was executed: {:?}",
         fs::read_to_string(&marker)
     );
+    for signed_node in [app.join("Contents/Helpers/node"), standalone_node] {
+        let ent = Command::new("/usr/bin/codesign")
+            .args(["-d", "--entitlements", "-", "--xml"])
+            .arg(&signed_node)
+            .output()
+            .expect("inspect entitlements on signed node");
+        assert!(ent.status.success());
+        let xml = format!(
+            "{}{}",
+            String::from_utf8_lossy(&ent.stdout),
+            String::from_utf8_lossy(&ent.stderr)
+        );
+        assert!(
+            xml.contains("com.apple.security.cs.allow-jit")
+                && xml.contains("com.apple.security.cs.allow-unsigned-executable-memory"),
+            "{} missing JIT entitlements: {}",
+            signed_node.display(),
+            xml
+        );
+    }
 }
 
 #[test]
@@ -776,4 +827,107 @@ fn sigterm_exits_143_and_cleans_up_keychain_and_scratch_dir() {
 #[test]
 fn sigint_exits_130_and_cleans_up_keychain_and_scratch_dir() {
     assert_signal_exits_and_cleans_up("-INT", 130, "sigint_cleanup");
+}
+
+#[test]
+fn signs_nested_helpers_node_and_node_macho_with_jit_entitlements_in_both_modes() {
+    for mode in ["developer-id", "adhoc"] {
+        let dir = scratch_dir(&format!("node_signing_{mode}"));
+        let fake_bin = dir.join("fake_bin");
+        let log_dir = dir.join("logs");
+        let runner_temp = dir.join("runner_temp");
+        fs::create_dir_all(&fake_bin).unwrap();
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::create_dir_all(&runner_temp).unwrap();
+
+        install_fake_signing_toolchain(&fake_bin, false);
+        let harness = create_mocked_harness_script(&dir, &fake_bin);
+
+        let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", true);
+        add_helpers(&app);
+        let standalone_node = dir.join("node");
+        fs::write(&standalone_node, b"FAKE_MACHO_NODE").unwrap();
+        fs::set_permissions(&standalone_node, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cmd = Command::new(&harness);
+        cmd.args([
+            "apps",
+            "--entitlements-app",
+            app.to_str().unwrap(),
+            "--node-macho",
+            standalone_node.to_str().unwrap(),
+        ])
+        .env("FAKE_LOG_DIR", &log_dir)
+        .env("RUNNER_TEMP", &runner_temp)
+        .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
+        .env("VITRUVIAN_CODE_NODE_ENTITLEMENTS", node_entitlements_path())
+        .env("SIGNING", mode);
+
+        if mode == "developer-id" {
+            cmd.env("VITRUVIAN_SIGNING_CERT_P12", "dGVzdC1wMTI=")
+                .env("VITRUVIAN_SIGNING_CERT_PASSWORD", "test-pass")
+                .env(
+                    "VITRUVIAN_NOTARY_API_KEY_P8",
+                    "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----",
+                )
+                .env("VITRUVIAN_NOTARY_KEY_ID", "KEYID12345")
+                .env(
+                    "VITRUVIAN_NOTARY_ISSUER_ID",
+                    "00000000-0000-0000-0000-000000000000",
+                );
+        }
+
+        let out = cmd.output().expect("run sign-and-notarize harness");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "mode {mode} stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let codesign_log = fs::read_to_string(log_dir.join("codesign.log")).unwrap();
+        let sign_lines: Vec<&str> = codesign_log
+            .lines()
+            .filter(|l| l.contains("--sign "))
+            .collect();
+
+        let node_ent = node_entitlements_path();
+        let node_ent_str = node_ent.to_string_lossy();
+        let nested_node_pos = sign_lines
+            .iter()
+            .position(|l| {
+                l.ends_with("Contents/Helpers/node")
+                    && l.contains("--identifier com.vitruviansoftware.code.node")
+                    && l.contains(&format!("--entitlements {}", node_ent_str))
+            })
+            .expect("Contents/Helpers/node must be signed with node.entitlements");
+        let bot_pos = sign_lines
+            .iter()
+            .position(|l| l.ends_with("Contents/Helpers/bot-engine"))
+            .expect("Contents/Helpers/bot-engine must be signed");
+        let bundle_pos = sign_lines
+            .iter()
+            .position(|l| l.ends_with("Vitruvian Code.app") && l.contains("--entitlements"))
+            .expect("app bundle must be signed");
+        let standalone_pos = sign_lines
+            .iter()
+            .position(|l| {
+                l.ends_with(&format!(" {}", standalone_node.display()))
+                    && l.contains("--identifier com.vitruviansoftware.code.node")
+                    && l.contains(&format!("--entitlements {}", node_ent_str))
+            })
+            .expect("--node-macho must be signed with node.entitlements");
+
+        assert!(nested_node_pos < bundle_pos && bot_pos < bundle_pos);
+        if mode == "developer-id" {
+            assert!(sign_lines[nested_node_pos].contains("--options runtime"));
+            assert!(sign_lines[standalone_pos].contains("--options runtime"));
+            let xcrun_log = fs::read_to_string(log_dir.join("xcrun.log")).unwrap();
+            assert!(xcrun_log.contains("notarytool submit"));
+        } else {
+            assert!(sign_lines[nested_node_pos].contains("--sign -"));
+            assert!(sign_lines[standalone_pos].contains("--sign -"));
+        }
+    }
 }

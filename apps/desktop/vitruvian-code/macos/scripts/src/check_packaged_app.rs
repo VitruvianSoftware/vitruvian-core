@@ -26,6 +26,57 @@ use std::process::Command;
 const SCRIPT_NAME: &str = "mermaid.min.js";
 const LICENCE_NAME: &str = "mermaid-LICENSE.txt";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
+const NODE_REL_PATH: &str = "Contents/Helpers/node";
+const HELPER_REL_PATH: &str = "Contents/Resources/claude-helper/claude-helper.mjs";
+const REQUIRED_NODE_ENTITLEMENTS: &[&str] = &[
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+];
+
+pub fn entitlements_plist_has_true(plist: &str, key: &str) -> bool {
+    let needle = format!("<key>{}</key>", key);
+    let Some(pos) = plist.find(&needle) else {
+        return false;
+    };
+    let rest = plist[pos + needle.len()..].trim_start();
+    rest.starts_with("<true/>")
+}
+
+pub fn check_node_entitlements(node_exe: &Path) -> Result<(), String> {
+    let out = Command::new("codesign")
+        .args(["-d", "--entitlements", "-", "--xml"])
+        .arg(node_exe)
+        .output()
+        .map_err(|e| {
+            format!(
+                "cannot inspect entitlements on {}: {}",
+                node_exe.display(),
+                e
+            )
+        })?;
+    if !out.status.success() {
+        return Err(format!(
+            "codesign -d --entitlements failed on {}: {}",
+            node_exe.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let xml = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    for key in REQUIRED_NODE_ENTITLEMENTS {
+        if !entitlements_plist_has_true(&xml, key) {
+            return Err(format!(
+                "{} is missing entitlement {} (<true/>)",
+                node_exe.display(),
+                key
+            ));
+        }
+    }
+    Ok(())
+}
 
 fn fail(app: &str, msg: &str) -> i32 {
     eprintln!("error: {}", msg);
@@ -345,6 +396,85 @@ fn check_program_and_signature(
             return fail(app, &format!("cannot run lipo on {}: {}", bot_rel, e));
         }
     }
+
+    // Bundled Node helper check (Mach-O executable in Contents/Helpers/node)
+    let node_exe = Path::new(app).join(NODE_REL_PATH);
+    if !node_exe.is_file() {
+        return fail(app, &format!("no executable at {}", NODE_REL_PATH));
+    }
+    let node_meta = fs::metadata(&node_exe).unwrap();
+    if node_meta.permissions().mode() & 0o111 == 0 {
+        return fail(app, &format!("{} is not executable", NODE_REL_PATH));
+    }
+    let node_lipo = Command::new("lipo")
+        .args(["-archs"])
+        .arg(&node_exe)
+        .output();
+    match node_lipo {
+        Ok(o) if o.status.success() => {
+            let raw = String::from_utf8_lossy(&o.stdout);
+            let mut got: Vec<&str> = raw.split_whitespace().filter(|s| !s.is_empty()).collect();
+            got.sort();
+            let got_str = format!("{} ", got.join(" "));
+            if got_str != want_archs {
+                return fail(
+                    app,
+                    &format!(
+                        "{} is built for '{}', expected '{}'",
+                        NODE_REL_PATH,
+                        got_str.trim(),
+                        want_archs.trim()
+                    ),
+                );
+            }
+            println!(
+                "    \u{2713} {}, built for {}",
+                NODE_REL_PATH,
+                got_str.trim()
+            );
+        }
+        Ok(o) => {
+            return fail(
+                app,
+                &format!(
+                    "lipo -archs on {} failed: {}",
+                    NODE_REL_PATH,
+                    String::from_utf8_lossy(&o.stderr)
+                ),
+            );
+        }
+        Err(e) => {
+            return fail(app, &format!("cannot run lipo on {}: {}", NODE_REL_PATH, e));
+        }
+    }
+    let node_cs = Command::new("codesign")
+        .args(["--verify", "--strict"])
+        .arg(&node_exe)
+        .status();
+    match node_cs {
+        Ok(s) if s.success() => {}
+        _ => {
+            return fail(app, &format!("{} signature does not verify", NODE_REL_PATH));
+        }
+    }
+    if let Err(msg) = check_node_entitlements(&node_exe) {
+        return fail(app, &msg);
+    }
+    println!(
+        "    \u{2713} {} signed with JIT entitlements",
+        NODE_REL_PATH
+    );
+
+    // Bundled Claude helper JS bundle check
+    let helper_mjs = Path::new(app).join(HELPER_REL_PATH);
+    if !helper_mjs.is_file()
+        || fs::metadata(&helper_mjs)
+            .map(|m| m.len() == 0)
+            .unwrap_or(true)
+    {
+        return fail(app, &format!("{} is missing or empty", HELPER_REL_PATH));
+    }
+    println!("    \u{2713} {} present", HELPER_REL_PATH);
 
     // Signature check
     let cs = Command::new("codesign")
