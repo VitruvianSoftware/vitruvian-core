@@ -89,5 +89,92 @@ func TestInsertEventsOneHundredEventsAcrossTwentyChats(t *testing.T) {
 			eventChanges++
 		}
 	}
-	require.Equal(t, totalEvents, eventChanges)
+	require.Equal(t, chats, eventChanges)
+}
+
+func TestInsertEventsBackfillBurstOverSubscriberBufferDoesNotForceResync(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const room = "!family:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: room, Network: "gmessages"}))
+
+	const burst = SubscriberBuffer + 30 // 286 events, like the Family chat burst
+	batch := make([]Event, 0, burst)
+	for i := range burst {
+		batch = append(batch, historyEvent(room, fmt.Sprintf("$b%d", i), int64(100+i), fmt.Sprintf("backfill %d", i)))
+	}
+
+	feed := s.Feed()
+	defer feed.Close()
+
+	n, err := s.InsertEvents(ctx, batch)
+	require.NoError(t, err)
+	require.Equal(t, burst, n)
+
+	eventChanges := 0
+	for len(feed.C) > 0 {
+		c := <-feed.C
+		require.NotEqual(t, ChangeResync, c.Kind, "backfill burst over SubscriberBuffer must not emit ChangeResync")
+		if c.Kind == "event" && c.RoomID == room {
+			eventChanges++
+		}
+	}
+	require.GreaterOrEqual(t, eventChanges, 1)
+	require.False(t, feed.TakeDropped(), "backfill burst over SubscriberBuffer must not overflow feed or force resync")
+}
+
+// What the one coalesced "event" change per room tells its readers: the room, the oldest event the batch inserted
+// (the app asks whether it already holds it to learn that older rows arrived), and the room's latest seq. Rooms go out
+// in the order the batch first names them, none is left out, and a room's "room" change follows its event change.
+// The events themselves are all stored (unread, search and the previews read the store, not the feed).
+func TestInsertEventsCoalescedChangeNamesOldestEventLatestSeqAndEveryRoom(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const a, b, c = "!a:courier.local", "!b:courier.local", "!c:courier.local"
+	for _, r := range []string{a, b, c} {
+		require.NoError(t, s.UpsertRoom(ctx, Room{ID: r, Network: "whatsapp"}))
+	}
+	// Not in time order, and rooms interleaved: b is named first, then a, then c.
+	batch := []Event{
+		historyEvent(b, "$b30", 30, "b30"),
+		historyEvent(a, "$a50", 50, "a50"),
+		historyEvent(b, "$b10", 10, "b10"), // the oldest of b
+		historyEvent(a, "$a20", 20, "a20"), // the oldest of a
+		historyEvent(c, "$c40", 40, "c40"),
+		historyEvent(a, "$a20", 20, "a20 again"), // already in this batch: not a second insert
+	}
+	feed := s.Feed()
+	defer feed.Close()
+
+	n, err := s.InsertEvents(ctx, batch)
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+
+	var got []Change
+	for len(feed.C) > 0 {
+		got = append(got, <-feed.C)
+	}
+	require.False(t, feed.TakeDropped())
+	require.Len(t, got, 3, "one event change per room, nothing else: %+v", got)
+	require.Equal(t, []string{b, a, c}, []string{got[0].RoomID, got[1].RoomID, got[2].RoomID}, "rooms in the order the batch names them")
+	require.Equal(t, []string{"$b10", "$a20", "$c40"}, []string{got[0].EventID, got[1].EventID, got[2].EventID}, "each names its oldest inserted event")
+	for _, ch := range got {
+		require.Equal(t, "event", ch.Kind)
+		evs, err := s.Events(ctx, ch.RoomID, 10)
+		require.NoError(t, err)
+		var maxSeq int64
+		for _, e := range evs {
+			maxSeq = max(maxSeq, e.Seq)
+		}
+		require.Equal(t, maxSeq, ch.Seq, "the change carries the room's latest seq: %s", ch.RoomID)
+	}
+	for room, want := range map[string]int{a: 2, b: 2, c: 1} {
+		evs, err := s.Events(ctx, room, 10)
+		require.NoError(t, err)
+		require.Len(t, evs, want, "every event of the batch is stored: %s", room)
+	}
+
+	// The same batch again inserts nothing and says nothing.
+	n, err = s.InsertEvents(ctx, batch)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.Empty(t, feed.C)
 }

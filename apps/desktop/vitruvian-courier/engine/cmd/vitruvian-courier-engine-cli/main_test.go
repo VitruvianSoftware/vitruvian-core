@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -555,4 +556,64 @@ func TestCLIStartupFailureScrubsHomeDirAndSecrets(t *testing.T) {
 	require.NotContains(t, out, "+14155550199")
 	require.NotContains(t, out, "14155550199")
 	require.NotContains(t, out, "xoxc-123-456")
+}
+
+// A backfill stores many events and publishes one change per chat: tail still shows every message of it, in the
+// order they arrived, and each later message once.
+func TestTailPrintsEveryMessageOfACoalescedBatch(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "whatsapp", Name: "Test"}))
+	msg := func(id string, sec int64, body string) store.Event {
+		return store.Event{
+			RoomID: room, EventID: id, Sender: "@x:courier.local", Type: "m.room.message", TS: time.Unix(sec, 0), Status: "sent",
+			Content: json.RawMessage(`{"msgtype":"m.text","body":"` + body + `"}`),
+		}
+	}
+	feed := s.Feed()
+	defer feed.Close()
+	shown := map[string]int64{}
+	var out bytes.Buffer
+	next := func() store.Change {
+		for {
+			select {
+			case c := <-feed.C:
+				if c.Kind == "event" {
+					return c
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no event change")
+			}
+		}
+	}
+
+	_, err = s.InsertEvent(ctx, msg("$live", 1000, "live"))
+	require.NoError(t, err)
+	require.NoError(t, printNewMessages(ctx, s, &out, shown, next()))
+	require.Contains(t, out.String(), "live")
+
+	out.Reset()
+	batch := []store.Event{}
+	for i, body := range []string{"one", "two", "three", "four", "five"} {
+		batch = append(batch, msg("$b"+body, int64(10+i), body)) // older than what was shown: a backfill
+	}
+	n, err := s.InsertEvents(ctx, batch)
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.NoError(t, printNewMessages(ctx, s, &out, shown, next()))
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	require.Len(t, lines, 5, "one change for five messages still prints five lines: %q", out.String())
+	for i, body := range []string{"one", "two", "three", "four", "five"} {
+		require.Contains(t, lines[i], ": "+body)
+	}
+
+	out.Reset()
+	_, err = s.InsertEvent(ctx, msg("$later", 2000, "later"))
+	require.NoError(t, err)
+	require.NoError(t, printNewMessages(ctx, s, &out, shown, next()))
+	require.Equal(t, 1, strings.Count(out.String(), "\n"), "a message already shown is not shown again: %q", out.String())
+	require.Contains(t, out.String(), "later")
 }
