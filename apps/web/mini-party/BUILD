@@ -158,8 +158,9 @@ typescript.tsc_test(
     ],
 )
 
-# Multiplayer room server (seating, the 4-player cap, seat reuse, relaying,
-# the internet-facing limits) and the client's share-link parsing.
+# Multiplayer room server (seating, the 4-player cap, seat reuse, holding a
+# dropped player's seat, relaying, the internet-facing limits), the client's
+# rejoin after a dropped connection, and the client's share-link parsing.
 vitest.vitest_test(
     name = "server_test",
     args = ["run"],
@@ -172,6 +173,9 @@ vitest.vitest_test(
         "src/kit/logic.test.ts",
         "src/analytics.ts",
         "src/analytics.test.ts",
+        "src/features.ts",
+        "src/services/socketService.ts",
+        "src/services/socketService.test.ts",
     ]) + [
         "package.json",
         "vitest.config.ts",

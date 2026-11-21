@@ -29,6 +29,9 @@ export interface Player {
   color: string;
   score: number;
   wins: number;
+  // Online only: false while this player's connection is down and the rooms
+  // server is holding their seat for them to come back.
+  connected?: boolean;
 }
 
 export interface GameResult {
