@@ -210,6 +210,9 @@ fn ci_yaml_heavy_jobs_skip_on_the_fast_lane_and_fast_checks_never_do() {
         "migration-safety",
         "actionlint",
         "osv-scan",
+        // Path-filtered Go lint checks; run on PRs so lint errors (e.g. #5285) fail before queuing.
+        "go-lint-devx",
+        "go-lint-homelab",
     ];
     let mut count = 0;
     let mut bad = Vec::new();

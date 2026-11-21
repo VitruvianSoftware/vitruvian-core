@@ -1341,8 +1341,8 @@ jobs:
   # queue would wedge. Keep the two jobs identical apart from the module.
   go-lint-devx:
     name: go-lint (devx)
-    needs: [queued, fast-lane, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -1367,8 +1367,8 @@ jobs:
 
   go-lint-homelab:
     name: go-lint (homelab)
-    needs: [queued, fast-lane, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
