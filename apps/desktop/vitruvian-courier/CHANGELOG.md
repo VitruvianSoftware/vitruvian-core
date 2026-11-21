@@ -6,6 +6,7 @@
 ### Bug Fixes
 
 * **vitruvian-courier:** every stored message reachable by scrolling up, no jumping forward while scrolling back ([#5279](https://github.com/VitruvianSoftware/vitruvian-core/issues/5279)) ([9b6a5d2](https://github.com/VitruvianSoftware/vitruvian-core/commit/9b6a5d20333fae0e1e5757d0f778f230de27d22b))
+* **vitruvian-courier:** no Edited label when only a link became clickable ([#5287](https://github.com/VitruvianSoftware/vitruvian-core/issues/5287)) ([ea09fa5](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea09fa5540727f6e6edb271595dadff0ca513b4a))
 
 ## [0.3.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.31...vitruvian-courier-v0.3.32) (2026-11-20)
 
@@ -14,6 +15,8 @@
 
 * **vitruvian-courier:** '+' opens an inline tool row, one home for tools, Tab moves focus ([#5261](https://github.com/VitruvianSoftware/vitruvian-core/issues/5261)) ([def4c62](https://github.com/VitruvianSoftware/vitruvian-core/commit/def4c62f2427deea6c1b45a1a9360ac21ed90695))
 * **vitruvian-courier:** search follows the open chat, New Chat lists each person once and opens in the chat pane ([#5265](https://github.com/VitruvianSoftware/vitruvian-core/issues/5265)) ([95d0102](https://github.com/VitruvianSoftware/vitruvian-core/commit/95d01029f3725281d548f7b8e56f29f4b5ccbaf4))
+* **vitruvian-courier:** real Edited labels, YouTube cards with a picture, Reply enabled, hover actions, a shorter menu ([#5268](https://github.com/VitruvianSoftware/vitruvian-core/issues/5268)) ([4d08d75](https://github.com/VitruvianSoftware/vitruvian-core/commit/4d08d759ed0955c630f812ae8a7f46d7f003ec86))
+* **vitruvian-courier:** a date above the first message, reactions in the photo viewer, plainer About ([#5264](https://github.com/VitruvianSoftware/vitruvian-core/issues/5264)) ([f72027e](https://github.com/VitruvianSoftware/vitruvian-core/commit/f72027e0f5f3cf0bafa36426eee40fd0cdac1423))
 
 ## [0.3.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.30...vitruvian-courier-v0.3.31) (2026-11-20)
 
@@ -121,6 +124,7 @@
 ### Bug Fixes
 
 * **vitruvian-courier:** fit the New Label window's colours and icons inside it ([#4730](https://github.com/VitruvianSoftware/vitruvian-core/issues/4730)) ([c0710df](https://github.com/VitruvianSoftware/vitruvian-core/commit/c0710df308ce72ed7f9118510d81ff961e81493d))
+* **deps:** upgrade rustix, fast-xml-parser and quinn-udp and drop their time-boxed exceptions ([#4696](https://github.com/VitruvianSoftware/vitruvian-core/issues/4696)) ([0681519](https://github.com/VitruvianSoftware/vitruvian-core/commit/06815199a770e97ba43c760de8ea14b3e8da86de))
 
 ## [0.3.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.18...vitruvian-courier-v0.3.19) (2026-11-13)
 
