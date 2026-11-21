@@ -29,6 +29,7 @@ import {
   applyPostCall,
   applyProgressCall,
   applyStepCall,
+  formatLeadWakes,
   formatWake,
   loadTeamConfig,
   loadTeamConfigForRoot,
@@ -759,6 +760,11 @@ export default {
       if (!initial || initial.closedAt) return;
 
       const wakes = pendingWakes(initial);
+      // Wakes for the root (lead) session are grouped by post, so a post that
+      // mentions @lead and a helper with no session of its own reaches the
+      // lead once (with the "Wake @helper" line), not once per mentioned name.
+      const sends = [];
+      const leadSendBySeq = new Map();
       for (const wake of wakes) {
         const current = flowsByRoot.get(rootID);
         if (!current || current.closedAt) break;
@@ -770,57 +776,73 @@ export default {
         ) {
           continue;
         }
+        const post = Array.isArray(current.posts)
+          ? current.posts.find((p) => p.seq === wake.seq)
+          : undefined;
 
-        wokenMentions.add(scopedKey);
-        try {
-          const post = Array.isArray(current.posts)
-            ? current.posts.find((p) => p.seq === wake.seq)
-            : undefined;
-
-          let targetSessionID = rootID;
-          let text;
-          if (wake.target === "lead") {
-            targetSessionID = rootID;
-            text = formatWake(wake, post, {
-              mode: "worker",
-              harness: "opencode",
+        if (wake.target !== "lead") {
+          const baseRunId = wake.runId ? String(wake.runId).split("#")[0] : "";
+          const candidateChildID = baseRunId || wake.runId || "";
+          let knownChild = false;
+          try {
+            knownChild = Boolean(
+              candidateChildID && (await isKnownChildSession(candidateChildID)),
+            );
+          } catch {
+            knownChild = false;
+          }
+          if (knownChild) {
+            sends.push({
+              sessionID: candidateChildID,
+              post,
+              wakes: [wake],
+              toLead: false,
             });
-          } else {
-            const baseRunId = wake.runId
-              ? String(wake.runId).split("#")[0]
-              : "";
-            const candidateChildID = baseRunId || wake.runId || "";
-            const knownChild =
-              candidateChildID && (await isKnownChildSession(candidateChildID));
-            if (knownChild) {
-              targetSessionID = candidateChildID;
-              text = formatWake(wake, post, {
+            continue;
+          }
+        }
+        const existing = leadSendBySeq.get(wake.seq);
+        if (existing) {
+          existing.wakes.push(wake);
+        } else {
+          const send = { sessionID: rootID, post, wakes: [wake], toLead: true };
+          leadSendBySeq.set(wake.seq, send);
+          sends.push(send);
+        }
+      }
+
+      for (const send of sends) {
+        const current = flowsByRoot.get(rootID);
+        if (!current || current.closedAt) break;
+        const scopedKeys = send.wakes.map(
+          (w) => `${rootID}:${current.startedAt}:${w.seq}:${w.target}`,
+        );
+        if (scopedKeys.some((k) => wokenMentions.has(k))) continue;
+        for (const k of scopedKeys) wokenMentions.add(k);
+        try {
+          const text = send.toLead
+            ? formatLeadWakes(send.wakes, send.post, { harness: "opencode" })
+            : formatWake(send.wakes[0], send.post, {
                 mode: "worker",
                 harness: "opencode",
               });
-            } else {
-              targetSessionID = rootID;
-              text = formatWake(wake, post, {
-                mode: "lead",
-                harness: "opencode",
-              });
-            }
-          }
-
-          await ctx.session.prompt({ sessionID: targetSessionID, text });
+          await ctx.session.prompt({ sessionID: send.sessionID, text });
           const latest = flowsByRoot.get(rootID);
           if (latest) {
-            const wokenFlow = reduce(latest, {
-              type: "wake",
-              at: Date.now(),
-              seq: wake.seq,
-              target: wake.target,
-            });
+            let wokenFlow = latest;
+            for (const w of send.wakes) {
+              wokenFlow = reduce(wokenFlow, {
+                type: "wake",
+                at: Date.now(),
+                seq: w.seq,
+                target: w.target,
+              });
+            }
             persistFlow(rootID, wokenFlow);
           }
         } catch {
-          // Swallow prompt errors; remove in-flight key so a later pass retries.
-          wokenMentions.delete(scopedKey);
+          // Swallow prompt errors; remove in-flight keys so a later pass retries.
+          for (const k of scopedKeys) wokenMentions.delete(k);
         }
       }
     }

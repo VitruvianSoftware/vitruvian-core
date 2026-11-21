@@ -6253,6 +6253,54 @@ test("resolveTeam ignores invalid harness models and falls through to tier or de
   );
 });
 
+test("formatLeadWakes puts a post mentioning @lead and helpers in one message, one wake line per helper", () => {
+  const post = {
+    seq: 4,
+    at: 100,
+    from: "wren",
+    text: "Ready for review @lead @aegis @scout",
+    to: ["lead", "aegis", "scout"],
+    kind: "result",
+    replyTo: null,
+    channel: "main",
+  };
+  const wakes = [
+    { seq: 4, target: "lead", from: "wren", excerpt: "" },
+    { seq: 4, target: "aegis", runId: "aegis-1", from: "wren", excerpt: "" },
+    { seq: 4, target: "scout", from: "wren", excerpt: "" },
+    { seq: 4, target: "aegis", runId: "aegis-1", from: "wren", excerpt: "" },
+  ];
+  const msg = coreModule.formatLeadWakes(wakes, post, {
+    harness: "claude-code",
+  });
+  assert.equal(msg.split("[Orchestrator board] Post #4").length, 2);
+  assert.equal(msg.split("<board-post ").length, 2);
+  assert.ok(
+    msg.endsWith(
+      "</board-post>\nWake @aegis with SendMessage to agent id aegis-1 and pass it this post.\nWake @scout and pass it this post.",
+    ),
+  );
+
+  // Only @lead: the bare block, identical to a worker-mode formatWake.
+  assert.equal(
+    coreModule.formatLeadWakes([wakes[0]], post),
+    coreModule.formatWake(wakes[0], post, { mode: "worker" }),
+  );
+  // A single helper wake matches lead-mode formatWake exactly.
+  assert.equal(
+    coreModule.formatLeadWakes([wakes[1]], post, { harness: "claude-code" }),
+    coreModule.formatWake(wakes[1], post, {
+      mode: "lead",
+      harness: "claude-code",
+    }),
+  );
+  // Antigravity and OpenCode never get the SendMessage wording.
+  assert.ok(
+    coreModule
+      .formatLeadWakes([wakes[1]], post, { harness: "opencode" })
+      .endsWith("\nWake @aegis and pass it this post."),
+  );
+});
 test("renderStarterTeam and validateStarterAgents produce valid starter JSON and reject invalid roles", () => {
   assert.equal(
     TEAM_SCHEMA_ID,

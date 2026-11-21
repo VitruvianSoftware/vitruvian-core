@@ -1161,6 +1161,83 @@ test("post tool records posts, wakes an ended mentioned run once via prompt.subm
   expect(prompts).toHaveLength(1);
 });
 
+test("a post mentioning @lead and a waiting helper reaches the lead once, with the wake line", async ($, on) => {
+  const clock = mock.clock(on, { now: 1_500_000 });
+  const prompts: string[] = [];
+  let f: Flow | null = null;
+  let spawnIdx = 0;
+
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => {
+    spawnIdx += 1;
+    return {
+      agentId: spawnIdx === 1 ? "wren-both-1" : "scout-both-1",
+      model: "claude-haiku-5-5",
+    };
+  });
+  on("agent.list", () => ({ value: [] }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+  on("prompt.submit", (_, e) => {
+    const text = String((e as { text?: string }).text ?? "");
+    prompts.push(text);
+    return { text };
+  });
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Lead and helper mention",
+    phase: "delegate",
+    tasks: [{ title: "Build feature", specialist: "wren", tier: "core" }],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build feature",
+    prompt: "Build",
+  });
+  await clock.advance(1_000);
+  await $.turn.complete({
+    turnId: "wren-both-t1",
+    agentId: "wren-both-1",
+    reason: "answer",
+    answer: "DONE",
+    isAborted: false,
+    durationMs: 1_000,
+  } as never);
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "QA feature",
+    prompt: "Review",
+  });
+
+  await $.tool.call({
+    tool: "mcp__vitruvian-orchestrator__post",
+    agentId: "scout-both-1",
+    text: "Null guard missing in handler @wren @lead",
+    kind: "defect",
+  } as never);
+  expect(f?.posts?.[0]?.to).toEqual(["wren", "lead"]);
+
+  await clock.advance(30_000);
+  await clock.advance(30_000);
+  await clock.advance(30_000);
+
+  // One prompt for the post: the block once, plus the line telling the lead to wake wren.
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]?.split("[Orchestrator board] Post #1").length).toBe(2);
+  expect(prompts[0]).toContain(
+    '<board-post seq="1" from="scout">\nNull guard missing in handler @wren @lead\n</board-post>\nWake @wren with SendMessage to agent id wren-both-1 and pass it this post.',
+  );
+  // Both mentions are recorded as delivered, so nothing is re-sent later.
+  expect([...(f?.woken ?? [])].sort()).toEqual(["1:lead", "1:wren"]);
+});
+
 test("persisted flow.woken suppresses duplicate wakes after a plugin restart", async ($, on) => {
   const clock = mock.clock(on, { now: 9_000_000 });
   const prompts: string[] = [];
@@ -1789,7 +1866,8 @@ test("security item 2: Claude Code wakes fence untrusted post text inside <board
   } as never);
 
   await clock.advance(30_000);
-  expect(prompts).toHaveLength(2);
+  // @wren @lead in one post: one prompt to the lead, carrying the wake line.
+  expect(prompts).toHaveLength(1);
   const wrenWake = prompts.find((p) =>
     p.includes(
       "Wake @wren with SendMessage to agent id wren-fence-1 and pass it this post.",
