@@ -19,8 +19,8 @@ final class TimelineEditAndSeenTests: XCTestCase {
     }
 
     private func event(_ id: String, ts: Int64, content: String, media: String = "",
-                       thumbnail: String? = nil) -> Event {
-        Event(eventID: id, roomID: "!room", sender: "@florian:example.test", senderName: "Florian", mine: false,
+                       thumbnail: String? = nil, mine: Bool = false) -> Event {
+        Event(eventID: id, roomID: "!room", sender: "@florian:example.test", senderName: "Florian", mine: mine,
               type: "m.room.message", content: json(content), ts: ts, seq: ts, status: .sent, mediaPath: media,
               thumbnailPath: thumbnail)
     }
@@ -142,6 +142,113 @@ final class TimelineEditAndSeenTests: XCTestCase {
         let jsonShown = messages([base, jsonPreviewEdit])[0]
         XCTAssertFalse(jsonShown.isEdited)
         XCTAssertEqual(jsonShown.linkPreviews.first?.title, "JSON Preview")
+    }
+
+    // MARK: - An address that only became clickable is not an edit
+
+    /// The edit a network sends when it makes a bare address clickable: the same words, plus a `formatted_body` whose
+    /// only markup is a link whose text is its own address.
+    private func linkifyEdit(_ id: String, of target: String, body: String, formatted: String, ts: Int64,
+                             mine: Bool = false) -> Event {
+        let bodyJSON = String(decoding: try! JSONEncoder().encode(body), as: UTF8.self)
+        let starJSON = String(decoding: try! JSONEncoder().encode("* " + body), as: UTF8.self)
+        let formattedJSON = String(decoding: try! JSONEncoder().encode(formatted), as: UTF8.self)
+        return event(id, ts: ts, content: """
+        {"msgtype":"m.text","body":\(starJSON),"format":"org.matrix.custom.html","formatted_body":\(formattedJSON),
+         "m.new_content":{"msgtype":"m.text","body":\(bodyJSON),"format":"org.matrix.custom.html",
+                          "formatted_body":\(formattedJSON)},
+         "m.relates_to":{"rel_type":"m.replace","event_id":"\(target)"}}
+        """, mine: mine)
+    }
+
+    private func isSilent(_ shown: TimelineMessage, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(shown.isEdited, "no Edited label", file: file, line: line)
+        XCTAssertEqual(shown.changedEditCount, 0, "no Edit History entry", file: file, line: line)
+        XCTAssertEqual(shown.editCount, 1, "still counts toward the network's edit limit", file: file, line: line)
+    }
+
+    func testAnEditThatOnlyMakesAYouTubeAddressClickableIsSilent() {
+        // The real payloads from the Eddie & Kent chat.
+        let url = "https://www.youtube.com/watch?v=HQlk9RGx2dk"
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"Haha https://www.youtube.com/watch?v=HQlk9RGx2dk"}"#,
+                         mine: true)
+        let edit = linkifyEdit("$2", of: "$1", body: "Haha \(url)",
+                               formatted: #"Haha <a href="\#(url)">\#(url)</a>"#, ts: 2, mine: true)
+        let shown = messages([base, edit])[0]
+        isSilent(shown)
+        XCTAssertEqual(shown.body, "Haha \(url)")
+        XCTAssertEqual(shown.rich.entities.first?.kind, .link, "the address is clickable now")
+
+        let features = ChatFeatures(reply: true, edit: true, editMaxCount: 1, unsend: true, source: .stored)
+        let result = MessageActions.available(for: shown, in: features, network: "gchat",
+                                              now: Date(timeIntervalSince1970: 1))
+        XCTAssertFalse(result.actions.contains(.showHistory), "no Edit History for it")
+        XCTAssertFalse(result.actions.contains(.edit), "the one edit it used is at the limit of 1")
+        XCTAssertNotNil(result.unavailable.first { $0.action == .edit }, "and Edit says why")
+    }
+
+    func testAnEntityEncodedTextWithAClickableAddressIsSilent() {
+        let url = "https://www.anthropic.com/news/claude-story"
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"Anthropic's own story https://www.anthropic.com/news/claude-story =)"}"#)
+        let edit = linkifyEdit("$2", of: "$1", body: "Anthropic's own story \(url) =)",
+                               formatted: #"Anthropic&#39;s own story <a href="\#(url)">\#(url)</a> =)"#, ts: 2)
+        let shown = messages([base, edit])[0]
+        isSilent(shown)
+        XCTAssertEqual(shown.rich.text, "Anthropic's own story \(url) =)")
+    }
+
+    func testALinkShownWithoutItsSchemeIsStillAnAddress() {
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"see example.test/a"}"#)
+        let edit = linkifyEdit("$2", of: "$1", body: "see example.test/a",
+                               formatted: #"see <a href="https://example.test/a">example.test/a</a>"#, ts: 2)
+        isSilent(messages([base, edit])[0])
+    }
+
+    func testRealEditsAroundAnAddressStillSayEdited() {
+        let url = "https://www.youtube.com/watch?v=HQlk9RGx2dk"
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"Haha https://www.youtube.com/watch?v=HQlk9RGx2dk"}"#)
+        func edited(_ edit: Event) -> TimelineMessage { messages([base, edit])[0] }
+
+        // Bold added on top of the link.
+        let bold = edited(linkifyEdit("$2", of: "$1", body: "Haha \(url)",
+                                      formatted: #"<b>Haha</b> <a href="\#(url)">\#(url)</a>"#, ts: 2))
+        XCTAssertTrue(bold.isEdited, "bold is a real change")
+        XCTAssertEqual(bold.changedEditCount, 1)
+
+        // Italics instead of a link.
+        let italic = edited(linkifyEdit("$2", of: "$1", body: "Haha \(url)", formatted: "<i>Haha</i> \(url)", ts: 2))
+        XCTAssertTrue(italic.isEdited)
+
+        // The words changed (and the address is a link).
+        let words = edited(linkifyEdit("$2", of: "$1", body: "Hehe \(url)",
+                                       formatted: #"Hehe <a href="\#(url)">\#(url)</a>"#, ts: 2))
+        XCTAssertTrue(words.isEdited, "different words are a real edit")
+
+        // A link with words of its own is the writer's choice, not the network's.
+        let named = edited(linkifyEdit("$2", of: "$1", body: "Haha \(url)",
+                                       formatted: #"Haha <a href="\#(url)">this video</a>"#, ts: 2))
+        XCTAssertTrue(named.isEdited, "a link that says something else is formatting")
+    }
+
+    func testASilentLinkEditAfterARealEditStaysOneChange() {
+        let url = "https://www.youtube.com/watch?v=HQlk9RGx2dk"
+        let base = event("$1", ts: 1, content: #"{"msgtype":"m.text","body":"Hah https://www.youtube.com/watch?v=HQlk9RGx2dk"}"#)
+        let real = linkifyEdit("$2", of: "$1", body: "Haha \(url)", formatted: "", ts: 2)
+        let silent = linkifyEdit("$3", of: "$1", body: "Haha \(url)",
+                                 formatted: #"Haha <a href="\#(url)">\#(url)</a>"#, ts: 3)
+        let shown = messages([base, real, silent])[0]
+        XCTAssertTrue(shown.isEdited)
+        XCTAssertEqual(shown.changedEditCount, 1)
+        XCTAssertEqual(shown.editCount, 2)
+    }
+
+    func testEditHistoryHidesTheVersionThatOnlyMadeAnAddressClickable() {
+        let url = "https://www.youtube.com/watch?v=HQlk9RGx2dk"
+        let sent = Version(body: "Haha \(url)", ts: 1)
+        let linked = Version(body: "Haha \(url)", formattedBody: #"Haha <a href="\#(url)">\#(url)</a>"#, ts: 2)
+        let bold = Version(body: "Haha \(url)", formattedBody: #"<b>Haha</b> <a href="\#(url)">\#(url)</a>"#, ts: 3)
+        XCTAssertEqual(EditHistory.visibleVersions([sent, linked]), [sent])
+        XCTAssertEqual(EditHistory.visibleVersions([sent, linked, bold]), [sent, bold])
     }
 
     func testFormattingOnlyEditCountsAsEdited() {
