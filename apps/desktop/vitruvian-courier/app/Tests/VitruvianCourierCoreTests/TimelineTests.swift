@@ -308,6 +308,130 @@ final class TimelineTests: XCTestCase {
         }
     }
 
+    func testDateDividerAboveFirstMessageAndWhenOlderPagesPrepend() {
+        let day13 = "day-\(at(13, 0, 0))"
+        let day14 = "day-\(at(14, 0, 0))"
+
+        // 1. A chat with a single loaded message has a date divider directly above it.
+        let single = build([message("$1", ts: at(14, 10, 0))])
+        XCTAssertEqual(single.map(\.id), [day14, "$1"])
+
+        // 2. Leading reactions/redactions for unseen events do not emit an empty divider or displace the first day divider.
+        let withLeadingMeta = build([
+            reaction("$r0", to: "$unloaded", key: "👍", ts: at(13, 9, 0)),
+            redaction("$del0", of: "$unloaded", ts: at(13, 9, 30)),
+            message("$1", ts: at(14, 10, 0)),
+        ])
+        XCTAssertEqual(withLeadingMeta.map(\.id), [day14, "$1"])
+
+        // 3. Prepending an older page on the same day keeps exactly one divider above the first message.
+        let newer = [message("$3", ts: at(14, 12, 0), seq: 3)]
+        let olderSameDay = [
+            message("$1", ts: at(14, 9, 0), seq: 1),
+            message("$2", ts: at(14, 9, 5), seq: 2),
+        ]
+        let mergedSameDay = build(olderSameDay + newer)
+        XCTAssertEqual(mergedSameDay.map(\.id), [day14, "$1", "$2", "$3"])
+        XCTAssertEqual(mergedSameDay.filter { $0.id == day14 }.count, 1)
+
+        // 4. Prepending an older page from an earlier day emits the earlier day divider above it and keeps the day boundary divider.
+        let olderPrevDay = [message("$0", ts: at(13, 22, 0), seq: 0)]
+        let mergedAcrossDays = build(olderPrevDay + olderSameDay + newer)
+        XCTAssertEqual(mergedAcrossDays.map(\.id), [day13, "$0", day14, "$1", "$2", "$3"])
+
+        // 5. Consecutive membership events spanning midnight get their own day dividers when updates are shown.
+        let joinDay13 = Event(
+            eventID: "$m1", roomID: "!room", sender: "@ann:example.test", senderName: "Ann",
+            mine: false, type: "m.room.member", content: json(#"{"membership":"join"}"#),
+            ts: at(13, 23, 55), seq: 1, status: .sent
+        )
+        let joinDay14 = Event(
+            eventID: "$m2", roomID: "!room", sender: "@bob:example.test", senderName: "Bob",
+            mine: false, type: "m.room.member", content: json(#"{"membership":"join"}"#),
+            ts: at(14, 0, 5), seq: 2, status: .sent
+        )
+        let memberItems = Timeline.build(
+            events: [joinDay13, joinDay14], me: me, now: now, showChatUpdates: true, calendar: utc
+        )
+        XCTAssertEqual(memberItems.count, 4)
+        XCTAssertEqual(memberItems[0].id, day13)
+        XCTAssertEqual(memberItems[2].id, day14)
+        if case let .membershipRun(_, events13, _) = memberItems[1] {
+            XCTAssertEqual(events13.map(\.eventID), ["$m1"])
+        } else {
+            XCTFail("Expected membership run after day13 divider, got \(memberItems)")
+        }
+        if case let .membershipRun(_, events14, _) = memberItems[3] {
+            XCTAssertEqual(events14.map(\.eventID), ["$m2"])
+        } else {
+            XCTFail("Expected membership run after day14 divider, got \(memberItems)")
+        }
+    }
+
+    /// The live Google Chat case (Courier 0.3.31): the oldest loaded message ("Sure", Saturday) had no divider above it
+    /// and the first divider was the next day's. Whatever the oldest loaded rows are, the first row is a day divider
+    /// and every row that starts a new day has its own divider directly above.
+    func testTheFirstLoadedRowIsAlwaysADayDividerWhateverTheOldestEventsAre() {
+        func member(_ id: String, ts: Int64, seq: Int64) -> Event {
+            Event(eventID: id, roomID: "!room", sender: "@\(id):example.test", senderName: id, mine: false,
+                  type: "m.room.member", content: json(#"{"membership":"join"}"#), ts: ts, seq: seq, status: .sent)
+        }
+        let sat = at(14, 16, 17)
+        let sure = message("$sure", ts: sat, seq: 10, body: "Sure")
+        let sunday = message("$sun", ts: at(15, 9, 0), seq: 11, body: "Morning")
+
+        let shapes: [(String, [Event])] = [
+            ("plain", [sure, sunday]),
+            ("older edit of an unloaded message first", [edit("$e", of: "$gone", to: "x", ts: at(14, 8, 0)), sure, sunday]),
+            ("reaction to an unloaded message first", [reaction("$r", to: "$gone", key: "👍", ts: at(13, 8, 0)), sure, sunday]),
+            ("a reaction on the oldest message", [sure, reaction("$r", to: "$sure", key: "👍", ts: at(14, 16, 18)), sunday]),
+            ("an edit of the oldest message", [sure, edit("$e", of: "$sure", to: "Sure!", ts: at(14, 16, 20)), sunday]),
+            ("the oldest message deleted (shown)", [sure, redaction("$d", of: "$sure", ts: at(14, 17, 0)), sunday]),
+            ("a member run first", [member("$m1", ts: at(14, 16, 0), seq: 1), sure, sunday]),
+            ("a member run on the day before", [member("$m1", ts: at(13, 16, 0), seq: 1), sure, sunday]),
+            ("a photo run first", [
+                message("$p1", ts: at(14, 16, 0), seq: 1, msgtype: "m.image", media: "/p1.jpg"),
+                message("$p2", ts: at(14, 16, 1), seq: 2, msgtype: "m.image", media: "/p2.jpg"),
+                sure, sunday,
+            ]),
+            ("a lone photo first", [message("$p1", ts: at(14, 16, 0), seq: 1, msgtype: "m.image", media: "/p1.jpg"), sure, sunday]),
+            ("a reply first", [sure, message("$rep", ts: at(14, 16, 30), seq: 12, extra: #","m.relates_to":{"m.in_reply_to":{"event_id":"$sure"}}"#), sunday]),
+            ("a failed message first", [message("$f", ts: at(14, 15, 0), seq: 1, status: "failed"), sure, sunday]),
+            ("a disappearing message first", [message("$x", ts: at(14, 15, 0), seq: 1, expiresAt: at(14, 15, 30)), sure, sunday]),
+        ]
+        for (name, events) in shapes {
+            for hideDeleted in [false, true] {
+                for showUpdates in [false, true] {
+                    for unread in [nil, "$sure", "$sun"] {
+                        let items = Timeline.build(events: events, me: me, firstUnreadID: unread, now: now,
+                                                   hideDeleted: hideDeleted, isDirect: false,
+                                                   showChatUpdates: showUpdates, calendar: utc)
+                        let label = "\(name) hideDeleted=\(hideDeleted) updates=\(showUpdates) unread=\(unread ?? "-")"
+                        guard let first = items.first else { continue }
+                        guard case .dateSeparator = first else {
+                            XCTFail("\(label): first row is not a day divider: \(items.map(\.id))")
+                            continue
+                        }
+                        // Each message / run sits under a divider for its own day.
+                        var day: Date?
+                        for item in items {
+                            switch item {
+                            case let .dateSeparator(d): day = d
+                            case let .message(m):
+                                XCTAssertEqual(day, utc.startOfDay(for: Date(timeIntervalSince1970: Double(m.ts) / 1000)),
+                                               "\(label): \(m.id) is under the wrong day: \(items.map(\.id))")
+                            case let .membershipRun(_, events, _):
+                                XCTAssertEqual(day, utc.startOfDay(for: Date(timeIntervalSince1970: Double(events[0].ts) / 1000)),
+                                               "\(label): member run is under the wrong day: \(items.map(\.id))")
+                            case .newDivider: break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func testMessagesWithTheSameTimeKeepTheEnginesArrivalOrder() {
         let events = [
             message("$b", ts: at(14, 10, 0), seq: 2),

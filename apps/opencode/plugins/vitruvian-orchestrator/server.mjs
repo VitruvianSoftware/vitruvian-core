@@ -38,6 +38,7 @@ import {
   parseModelAndEffort,
   pendingWakes,
   reduce,
+  runTeamSetup,
   validateTeamEvent,
 } from "./lib/adapter.mjs";
 import {
@@ -316,6 +317,34 @@ const TEAM_INPUT_SCHEMA = {
         "Optional absolute path to the repository root directory containing .agents/team.json.",
     },
   },
+  additionalProperties: false,
+};
+
+const TEAM_SETUP_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["init", "sync"],
+      description: "Setup action: init or sync.",
+    },
+    root: {
+      type: "string",
+      description: "Optional absolute path to the repository root directory.",
+    },
+    agents: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional non-lead role names to copy as editable team-<role> starter agents during init.",
+    },
+    check: {
+      type: "boolean",
+      description:
+        "When true, check and report changes without writing any files.",
+    },
+  },
+  required: ["action"],
   additionalProperties: false,
 };
 
@@ -1107,6 +1136,29 @@ export default {
 
             return {
               content: JSON.stringify(result),
+            };
+          },
+        });
+
+        registry.add({
+          name: "team_setup",
+          description:
+            "Initialize a starter .agents/team.json (and optional team-<role> starter agents) or sync explicit team.json harness model settings into repository agent files.",
+          options: { codemode: false },
+          input: TEAM_SETUP_INPUT_SCHEMA,
+          execute: async (args, toolCtx) => {
+            const rawCwd =
+              toolCtx?.cwd ||
+              toolCtx?.directory ||
+              ctx?.directory ||
+              ctx?.worktree ||
+              process.cwd();
+            const res = runTeamSetup(args || {}, { cwd: String(rawCwd) });
+            if (!res.ok) {
+              throw new Error(res.error);
+            }
+            return {
+              content: JSON.stringify(res.result),
             };
           },
         });

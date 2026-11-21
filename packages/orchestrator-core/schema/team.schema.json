@@ -85,7 +85,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128,
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._/:-]{0,126}[A-Za-z0-9])?$",
       "not": {
         "pattern": "-[lL][oO][wW]|-[lL][iI][tT][eE]|[fF][lL][aA][sS][hH]-[lL][oO]"
       }

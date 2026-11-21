@@ -579,6 +579,74 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testDateDividerStaysUniqueAboveFirstMessageAcrossLoadOlderPages() async throws {
+        // Local noon avoids any midnight crossings across 100 one-minute steps on Day B.
+        let noonDayB = Calendar.current.startOfDay(
+            for: Date(timeIntervalSince1970: Double(ConversationScript.timestamp(0)) / 1000.0)
+        ).addingTimeInterval(12 * 3600)
+        let noonDayA = noonDayB.addingTimeInterval(-48 * 3600)
+
+        var events: [[String: Any]] = []
+        for i in 1 ... 5 {
+            var ev = textEvent(id: "$\(i)", room: "!a", at: Int64(i), body: "Day A #\(i)")
+            ev["ts"] = Int64((noonDayA.timeIntervalSince1970 + Double(i) * 60.0) * 1000.0)
+            ev["seq"] = Int64(i)
+            events.append(ev)
+        }
+        for i in 6 ... 105 {
+            var ev = textEvent(id: "$\(i)", room: "!a", at: Int64(i), body: "Day B #\(i)")
+            ev["ts"] = Int64((noonDayB.timeIntervalSince1970 + Double(i - 5) * 60.0) * 1000.0)
+            ev["seq"] = Int64(i)
+            events.append(ev)
+        }
+
+        let h = try await start(["!a": events])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+
+        func daySeparators() -> [Date] {
+            h.conversation.items.compactMap {
+                if case let .dateSeparator(day) = $0 { return day }
+                return nil
+            }
+        }
+
+        let expectedDayB = Calendar.current.startOfDay(for: noonDayB)
+        let expectedDayA = Calendar.current.startOfDay(for: noonDayA)
+
+        // Initial page ($56...$105 on Day B): date divider sits above the first message.
+        XCTAssertEqual(h.messageIDs().first, "$56")
+        XCTAssertEqual(daySeparators(), [expectedDayB])
+        if case let .dateSeparator(firstDay) = h.conversation.items.first {
+            XCTAssertEqual(firstDay, expectedDayB)
+        } else {
+            XCTFail("Expected dateSeparator at index 0 above first message")
+        }
+
+        // Load older page still on Day B ($6...$55): still only one Day B divider, above $6.
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 100 }
+        XCTAssertEqual(h.messageIDs().first, "$6")
+        XCTAssertEqual(daySeparators(), [expectedDayB])
+        if case let .dateSeparator(firstDay) = h.conversation.items.first {
+            XCTAssertEqual(firstDay, expectedDayB)
+        } else {
+            XCTFail("Expected dateSeparator at index 0 after loading same-day older page")
+        }
+
+        // Load older page on Day A ($1...$5): Day A divider sits at index 0, Day B divider at the boundary before $6.
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 105 }
+        XCTAssertEqual(h.messageIDs().first, "$1")
+        XCTAssertEqual(daySeparators(), [expectedDayA, expectedDayB])
+        if let firstMsg = h.conversation.items.firstIndex(where: { $0.id == "$6" }) {
+            XCTAssertEqual(h.conversation.items[firstMsg - 1].id, "day-\(Int64(expectedDayB.timeIntervalSince1970 * 1000))")
+        } else {
+            XCTFail("Expected $6 after loading all pages")
+        }
+        await stop(h)
+    }
+
     // MARK: - Older history from the network (room.loadOlder)
 
     /// Opening a chat, even a short one whose top is in view at once, never asks the network for older history.

@@ -32,6 +32,11 @@
 //!   - `apps/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 //!   - `apps/opencode/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 //!   - `.opencode/skills/orchestrate/SKILL.md`
+//! - Generic team-setup skill (`skills/team-setup/<harness>.md`):
+//!   - `apps/claude-code/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md`
+//!   - `apps/antigravity/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md`
+//!   - `apps/opencode/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md`
+//!   - `.opencode/skills/team-setup/SKILL.md`
 //! - `.agents/team.json` (default team mapping + `team-notes.md` for vitruvian-core)
 //! - `apps/*/plugins/vitruvian-orchestrator/.../tier-defaults.mjs`
 
@@ -171,6 +176,21 @@ pub const SKILL_OUTPUTS: [(&str, &str); 4] = [
     ),
     ("opencode", ".opencode/skills/orchestrate/SKILL.md"),
 ];
+pub const TEAM_SETUP_SKILL_OUTPUTS: [(&str, &str); 4] = [
+    (
+        "claude-code",
+        "apps/claude-code/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md",
+    ),
+    (
+        "antigravity",
+        "apps/antigravity/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md",
+    ),
+    (
+        "opencode",
+        "apps/opencode/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md",
+    ),
+    ("opencode", ".opencode/skills/team-setup/SKILL.md"),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
@@ -245,6 +265,7 @@ pub struct Roster {
     pub generic_roles: Vec<RoleRow>,
     pub generic_prompts: BTreeMap<String, String>,
     pub skills: BTreeMap<String, String>,
+    pub team_setup_skills: BTreeMap<String, String>,
     pub team_notes: Option<String>,
 }
 
@@ -1065,6 +1086,7 @@ pub fn validate_roster(
         generic_roles: Vec::new(),
         generic_prompts: BTreeMap::new(),
         skills: BTreeMap::new(),
+        team_setup_skills: BTreeMap::new(),
         team_notes: None,
     })
 }
@@ -1105,12 +1127,17 @@ fn validate_description(agent_name: &str, desc: &str, errors: &mut Vec<String>) 
     }
 }
 
-/// Validate one harness's `orchestrate` skill template (`skills/orchestrate/<harness>.md`).
-pub fn validate_skill_template(harness: &str, raw: &str, errors: &mut Vec<String>) {
+fn validate_named_skill_template(
+    skill_name: &str,
+    harness: &str,
+    raw: &str,
+    require_table_marker: bool,
+    errors: &mut Vec<String>,
+) {
     let normalized = raw.replace("\r\n", "\n");
     if normalized.trim().is_empty() {
         errors.push(format!(
-            "skill 'orchestrate' ({harness}): empty skill template skills/orchestrate/{harness}.md (rule: skill template must exist and be non-empty)"
+            "skill '{skill_name}' ({harness}): empty skill template skills/{skill_name}/{harness}.md (rule: skill template must exist and be non-empty)"
         ));
         return;
     }
@@ -1118,7 +1145,7 @@ pub fn validate_skill_template(harness: &str, raw: &str, errors: &mut Vec<String
     let lines: Vec<&str> = normalized.lines().collect();
     if lines.first().copied() != Some("---") {
         errors.push(format!(
-            "skill 'orchestrate' ({harness}): missing YAML frontmatter (rule: skill template must start with '---' frontmatter)"
+            "skill '{skill_name}' ({harness}): missing YAML frontmatter (rule: skill template must start with '---' frontmatter)"
         ));
         return;
     }
@@ -1130,7 +1157,7 @@ pub fn validate_skill_template(harness: &str, raw: &str, errors: &mut Vec<String
         .map(|i| i + 1)
     else {
         errors.push(format!(
-            "skill 'orchestrate' ({harness}): unclosed YAML frontmatter (rule: skill frontmatter must close with '---')"
+            "skill '{skill_name}' ({harness}): unclosed YAML frontmatter (rule: skill frontmatter must close with '---')"
         ));
         return;
     };
@@ -1153,45 +1180,64 @@ pub fn validate_skill_template(harness: &str, raw: &str, errors: &mut Vec<String
 
     match name_val {
         None => errors.push(format!(
-            "skill 'orchestrate' ({harness}): missing 'name:' in frontmatter (rule: skill frontmatter must contain 'name: orchestrate')"
+            "skill '{skill_name}' ({harness}): missing 'name:' in frontmatter (rule: skill frontmatter must contain 'name: {skill_name}')"
         )),
-        Some("orchestrate") => {}
+        Some(found) if found == skill_name => {}
         Some(other) => errors.push(format!(
-            "skill 'orchestrate' ({harness}): invalid name '{other}' (rule: skill frontmatter must contain 'name: orchestrate')"
+            "skill '{skill_name}' ({harness}): invalid name '{other}' (rule: skill frontmatter must contain 'name: {skill_name}')"
         )),
     }
 
     match desc_val {
         None => errors.push(format!(
-            "skill 'orchestrate' ({harness}): missing 'description:' in frontmatter (rule: skill frontmatter must contain 'description:')"
+            "skill '{skill_name}' ({harness}): missing 'description:' in frontmatter (rule: skill frontmatter must contain 'description:')"
         )),
         Some(desc) => {
-            validate_description(&format!("orchestrate ({harness})"), &desc, errors);
+            validate_description(&format!("{skill_name} ({harness})"), &desc, errors);
         }
     }
 
-    let marker_count = lines[close_idx + 1..]
-        .iter()
-        .filter(|&&l| l == TABLE_MARKER)
-        .count();
-    if marker_count != 1 {
-        errors.push(format!(
-            "skill 'orchestrate' ({harness}): found {marker_count} '{TABLE_MARKER}' markers (rule: skill template must contain the line '{TABLE_MARKER}' exactly once)"
-        ));
+    if require_table_marker {
+        let marker_count = lines[close_idx + 1..]
+            .iter()
+            .filter(|&&l| l == TABLE_MARKER)
+            .count();
+        if marker_count != 1 {
+            errors.push(format!(
+                "skill '{skill_name}' ({harness}): found {marker_count} '{TABLE_MARKER}' markers (rule: skill template must contain the line '{TABLE_MARKER}' exactly once)"
+            ));
+        }
     }
 }
 
-/// Validate all three harness skill templates in `.agents/roster/skills/orchestrate/<harness>.md`.
-pub fn validate_skills(
+/// Validate one harness's `orchestrate` skill template (`skills/orchestrate/<harness>.md`).
+pub fn validate_skill_template(harness: &str, raw: &str, errors: &mut Vec<String>) {
+    validate_named_skill_template("orchestrate", harness, raw, true, errors);
+}
+
+/// Validate one harness's `team-setup` skill template (`skills/team-setup/<harness>.md`).
+pub fn validate_team_setup_skill_template(harness: &str, raw: &str, errors: &mut Vec<String>) {
+    validate_named_skill_template("team-setup", harness, raw, false, errors);
+}
+
+fn validate_named_skills(
+    skill_name: &str,
     skills: &BTreeMap<String, String>,
+    require_table_marker: bool,
 ) -> Result<BTreeMap<String, String>, Vec<String>> {
     let mut errors = Vec::new();
     for harness in REQUIRED_HARNESSES {
         match skills.get(harness) {
             None => errors.push(format!(
-                "skill 'orchestrate' ({harness}): missing template skills/orchestrate/{harness}.md (rule: skills/orchestrate/{harness}.md must exist)"
+                "skill '{skill_name}' ({harness}): missing template skills/{skill_name}/{harness}.md (rule: skills/{skill_name}/{harness}.md must exist)"
             )),
-            Some(raw) => validate_skill_template(harness, raw, &mut errors),
+            Some(raw) => validate_named_skill_template(
+                skill_name,
+                harness,
+                raw,
+                require_table_marker,
+                &mut errors,
+            ),
         }
     }
     if errors.is_empty() {
@@ -1199,6 +1245,20 @@ pub fn validate_skills(
     } else {
         Err(errors)
     }
+}
+
+/// Validate all three harness skill templates in `.agents/roster/skills/orchestrate/<harness>.md`.
+pub fn validate_skills(
+    skills: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, Vec<String>> {
+    validate_named_skills("orchestrate", skills, true)
+}
+
+/// Validate all three harness skill templates in `.agents/roster/skills/team-setup/<harness>.md`.
+pub fn validate_team_setup_skills(
+    skills: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, Vec<String>> {
+    validate_named_skills("team-setup", skills, false)
 }
 
 /// Parse TSV strings and validate the entire roster, collecting all errors.
@@ -1300,6 +1360,7 @@ pub fn load_and_validate_all(
             generic_roles: role_rows,
             generic_prompts: generic_prompts.clone(),
             skills: valid_skills,
+            team_setup_skills: BTreeMap::new(),
             team_notes: valid_notes,
         })
     } else {
@@ -2125,6 +2186,15 @@ pub fn render_all(roster: &Roster) -> BTreeMap<String, String> {
         }
     }
 
+    for &(harness, out_path) in &TEAM_SETUP_SKILL_OUTPUTS {
+        if let Some(template) = roster.team_setup_skills.get(harness) {
+            files.insert(
+                out_path.to_string(),
+                render_skill(roster, harness, template),
+            );
+        }
+    }
+
     files.insert(TEAM_OUTPUT.to_string(), render_team_json(roster));
     for &(harness, out_path) in &TIER_DEFAULTS_OUTPUTS {
         files.insert(out_path.to_string(), render_tier_defaults(roster, harness));
@@ -2215,6 +2285,7 @@ fn read_existing_outputs(repo_root: &Path) -> Result<BTreeMap<String, String>, S
     for rel_path in SKILL_OUTPUTS
         .iter()
         .map(|&(_, p)| p)
+        .chain(TEAM_SETUP_SKILL_OUTPUTS.iter().map(|&(_, p)| p))
         .chain(std::iter::once(TEAM_OUTPUT))
         .chain(TIER_DEFAULTS_OUTPUTS.iter().map(|&(_, p)| p))
         .chain(CORE_COPIES)
@@ -2298,6 +2369,7 @@ pub fn run_in_workspace(repo_root: &Path, mode: Mode) -> i32 {
     }
 
     let mut skills = BTreeMap::new();
+    let mut team_setup_skills = BTreeMap::new();
     for harness in REQUIRED_HARNESSES {
         let skill_path = roster_dir
             .join("skills")
@@ -2306,9 +2378,17 @@ pub fn run_in_workspace(repo_root: &Path, mode: Mode) -> i32 {
         if let Ok(content) = fs::read_to_string(&skill_path) {
             skills.insert(harness.to_string(), content);
         }
+        let setup_skill_path = roster_dir
+            .join("skills")
+            .join("team-setup")
+            .join(format!("{harness}.md"));
+        if let Ok(content) = fs::read_to_string(&setup_skill_path) {
+            team_setup_skills.insert(harness.to_string(), content);
+        }
     }
 
-    let roster = match load_and_validate_all(
+    let mut all_errors = Vec::new();
+    let roster_res = load_and_validate_all(
         &tiers_tsv,
         &agents_tsv,
         &prompts,
@@ -2317,10 +2397,24 @@ pub fn run_in_workspace(repo_root: &Path, mode: Mode) -> i32 {
         &generic_prompts,
         &skills,
         Some(&team_notes_raw),
-    ) {
-        Ok(r) => r,
-        Err(errors) => {
-            for err in errors {
+    );
+    if let Err(errs) = &roster_res {
+        all_errors.extend(errs.iter().cloned());
+    }
+    let valid_team_setup_skills = match validate_team_setup_skills(&team_setup_skills) {
+        Ok(s) => Some(s),
+        Err(errs) => {
+            all_errors.extend(errs);
+            None
+        }
+    };
+    let roster = match (roster_res, valid_team_setup_skills) {
+        (Ok(mut r), Some(ts)) if all_errors.is_empty() => {
+            r.team_setup_skills = ts;
+            r
+        }
+        _ => {
+            for err in all_errors {
                 eprintln!("error: {err}");
             }
             return 1;
@@ -2563,11 +2657,29 @@ release\tfast\tRelease role for this repository.
         m
     }
 
+    fn sample_team_setup_skills() -> BTreeMap<String, String> {
+        let mut m = BTreeMap::new();
+        for (harness, label) in [
+            ("claude-code", "Claude Code"),
+            ("antigravity", "Antigravity"),
+            ("opencode", "OpenCode"),
+        ] {
+            m.insert(
+                harness.to_string(),
+                format!(
+                    "---\nname: team-setup\ndescription: Set up or sync team files in {label}.\n---\n\n# Team Setup ({label})\n\nRun init or sync.\n"
+                ),
+            );
+        }
+        m
+    }
+
     fn write_full_temp_workspace(tmp: &Path) {
         let _ = fs::remove_dir_all(tmp);
         fs::create_dir_all(tmp.join(".agents/roster/prompts")).unwrap();
         fs::create_dir_all(tmp.join(".agents/roster/generic/prompts")).unwrap();
         fs::create_dir_all(tmp.join(".agents/roster/skills/orchestrate")).unwrap();
+        fs::create_dir_all(tmp.join(".agents/roster/skills/team-setup")).unwrap();
         fs::create_dir_all(tmp.join("packages/orchestrator-core/src")).unwrap();
 
         fs::write(tmp.join(".agents/roster/tiers.tsv"), SAMPLE_TIERS).unwrap();
@@ -2595,6 +2707,13 @@ release\tfast\tRelease role for this repository.
         for (harness, body) in sample_skills() {
             fs::write(
                 tmp.join(format!(".agents/roster/skills/orchestrate/{harness}.md")),
+                body,
+            )
+            .unwrap();
+        }
+        for (harness, body) in sample_team_setup_skills() {
+            fs::write(
+                tmp.join(format!(".agents/roster/skills/team-setup/{harness}.md")),
                 body,
             )
             .unwrap();
@@ -5117,14 +5236,20 @@ deep\topencode\t-\thigh
         }
 
         let mut skills = BTreeMap::new();
+        let mut team_setup_skills = BTreeMap::new();
         for harness in REQUIRED_HARNESSES {
             let path = format!(".agents/roster/skills/orchestrate/{harness}.md");
             let content =
                 fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
             skills.insert(harness.to_string(), content);
+
+            let setup_path = format!(".agents/roster/skills/team-setup/{harness}.md");
+            let setup_content = fs::read_to_string(&setup_path)
+                .unwrap_or_else(|e| panic!("failed to read {setup_path}: {e}"));
+            team_setup_skills.insert(harness.to_string(), setup_content);
         }
 
-        load_and_validate_all(
+        let mut roster = load_and_validate_all(
             &tiers_tsv,
             &agents_tsv,
             &dummy_project_prompts,
@@ -5134,7 +5259,10 @@ deep\topencode\t-\thigh
             &skills,
             Some(&team_notes),
         )
-        .expect("repo generic roster, skills, and team notes must be valid")
+        .expect("repo generic roster, skills, and team notes must be valid");
+        roster.team_setup_skills = validate_team_setup_skills(&team_setup_skills)
+            .expect("repo team-setup skills must be valid");
+        roster
     }
 
     #[test]
@@ -5177,12 +5305,25 @@ deep\topencode\t-\thigh
             generic_paths.push(format!(
                 "apps/{harness}/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md"
             ));
+            generic_paths.push(format!(
+                "apps/{harness}/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md"
+            ));
             for role in ROLES {
                 generic_paths.push(format!(
                     "apps/{harness}/plugins/vitruvian-orchestrator/agents/{role}.md"
                 ));
             }
         }
+        assert_eq!(
+            rendered.get(".opencode/skills/team-setup/SKILL.md"),
+            rendered.get("apps/opencode/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md"),
+            ".opencode/skills/team-setup/SKILL.md must match plugin copy"
+        );
+        assert!(
+            find_forbidden_generic_terms(&rendered[".opencode/skills/team-setup/SKILL.md"])
+                .is_empty(),
+            ".opencode/skills/team-setup/SKILL.md must contain no forbidden terms"
+        );
 
         for path in &generic_paths {
             let expected = rendered
@@ -5220,5 +5361,92 @@ deep\topencode\t-\thigh
                 );
             }
         }
+    }
+
+    #[test]
+    fn team_setup_skills_validate_render_and_detect_drift_and_forbidden_words() {
+        let valid = validate_team_setup_skills(&sample_team_setup_skills())
+            .expect("team-setup skills without roster:table marker must validate");
+        assert_eq!(valid.len(), 3);
+
+        let mut wrong_name = sample_team_setup_skills();
+        wrong_name.insert(
+            "claude-code".to_string(),
+            "---\nname: orchestrate\ndescription: Wrong name.\n---\n\nBody.\n".to_string(),
+        );
+        let err = validate_team_setup_skills(&wrong_name).expect_err("wrong name must fail");
+        assert!(
+            err.iter()
+                .any(|e| e.contains("skill frontmatter must contain 'name: team-setup'")),
+            "got: {err:?}"
+        );
+
+        let mut missing = sample_team_setup_skills();
+        missing.remove("antigravity");
+        let err = validate_team_setup_skills(&missing).expect_err("missing template must fail");
+        assert!(
+            err.iter()
+                .any(|e| e.contains("skills/team-setup/antigravity.md must exist")),
+            "got: {err:?}"
+        );
+
+        let mut roster = load_and_validate_all(
+            SAMPLE_TIERS,
+            SAMPLE_AGENTS,
+            &sample_prompts(),
+            SAMPLE_GENERIC_ROLES,
+            "tier\tharness\tmodel\teffort\n",
+            &sample_generic_prompts(),
+            &sample_skills(),
+            None,
+        )
+        .expect("valid sample roster");
+        roster.team_setup_skills = valid;
+        let files = render_all(&roster);
+        for &(_, out_path) in &TEAM_SETUP_SKILL_OUTPUTS {
+            let rendered = files
+                .get(out_path)
+                .unwrap_or_else(|| panic!("missing rendered {out_path}"));
+            assert!(rendered.contains("name: team-setup\n"), "{out_path}");
+            assert!(rendered.contains(GENERIC_GENERATED_COMMENT), "{out_path}");
+            assert!(
+                find_forbidden_generic_terms(rendered).is_empty(),
+                "{out_path}"
+            );
+        }
+        assert_eq!(
+            files[".opencode/skills/team-setup/SKILL.md"],
+            files["apps/opencode/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md"]
+        );
+
+        let mut leaky_roster = roster.clone();
+        leaky_roster.team_setup_skills.insert(
+            "claude-code".to_string(),
+            "---\nname: team-setup\ndescription: Set up team files.\n---\n\nAsk wren in vitruvian-core.\n"
+                .to_string(),
+        );
+        let leaky_files = render_all(&leaky_roster);
+        assert_eq!(
+            find_forbidden_generic_terms(
+                &leaky_files
+                    ["apps/claude-code/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md"]
+            ),
+            vec!["vitruvian-core", "wren"]
+        );
+
+        let tmp =
+            std::env::temp_dir().join(format!("agent-roster-team-setup-{}", std::process::id()));
+        write_full_temp_workspace(&tmp);
+        assert_eq!(run_in_workspace(&tmp, Mode::Write), 0);
+        assert_eq!(run_in_workspace(&tmp, Mode::Check), 0);
+
+        let drifted =
+            tmp.join("apps/claude-code/plugins/vitruvian-orchestrator/skills/team-setup/SKILL.md");
+        fs::write(&drifted, "drifted\n").unwrap();
+        assert_eq!(run_in_workspace(&tmp, Mode::Check), 1);
+        assert_eq!(run_in_workspace(&tmp, Mode::Write), 0);
+        assert_eq!(run_in_workspace(&tmp, Mode::Check), 0);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

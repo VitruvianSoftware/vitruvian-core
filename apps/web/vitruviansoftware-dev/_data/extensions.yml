@@ -356,7 +356,7 @@ extensions:
       - "antigravity"
     capabilities:
       - "Sidecar UI"
-      - "1 Skill"
+      - "2 Skills"
       - "Rules"
     installs:
       - tool: "Antigravity"
@@ -376,7 +376,7 @@ extensions:
     ecosystems:
       - "claude-code"
     capabilities:
-      - "1 Skill"
+      - "2 Skills"
     installs:
       - tool: "Claude Code"
         ecosystem: "claude-code"

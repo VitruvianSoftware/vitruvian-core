@@ -31,6 +31,8 @@
 use std::collections::BTreeMap;
 use std::io;
 
+pub use vitruvian_gocompat::gostd::{clean, decode_rune, errno_text, join, path_error as path_err};
+
 /// A decoded `interface{}` value from a delivery() JSON file — the element
 /// type of `workflow_inputs` / `changelog_inputs`.
 #[derive(Clone, Debug, PartialEq)]
@@ -46,42 +48,6 @@ pub enum Value {
 // ---------------------------------------------------------------------------
 // UTF-8 decoding with Go's error semantics.
 // ---------------------------------------------------------------------------
-
-/// utf8.DecodeRune: the rune at the start of `b` and its width, or
-/// (None, 1) for an invalid or truncated sequence — Go replaces EACH such
-/// byte with U+FFFD, where Rust's from_utf8_lossy replaces a maximal prefix.
-pub fn decode_rune(b: &[u8]) -> (Option<char>, usize) {
-    if b.is_empty() {
-        return (None, 0);
-    }
-    let b0 = b[0];
-    if b0 < 0x80 {
-        return (Some(b0 as char), 1);
-    }
-    let cont = |i: usize, lo: u8, hi: u8| -> bool { i < b.len() && b[i] >= lo && b[i] <= hi };
-    let (n, lo, hi) = match b0 {
-        0xC2..=0xDF => (2, 0x80, 0xBF),
-        0xE0 => (3, 0xA0, 0xBF),
-        0xE1..=0xEC | 0xEE..=0xEF => (3, 0x80, 0xBF),
-        0xED => (3, 0x80, 0x9F),
-        0xF0 => (4, 0x90, 0xBF),
-        0xF1..=0xF3 => (4, 0x80, 0xBF),
-        0xF4 => (4, 0x80, 0x8F),
-        _ => return (None, 1),
-    };
-    if !cont(1, lo, hi) {
-        return (None, 1);
-    }
-    for i in 2..n {
-        if !cont(i, 0x80, 0xBF) {
-            return (None, 1);
-        }
-    }
-    match std::str::from_utf8(&b[..n]) {
-        Ok(s) => (s.chars().next(), n),
-        Err(_) => (None, 1),
-    }
-}
 
 /// Bytes to a String the way a Go `string([]byte)` later ranged over as
 /// runes would read: each invalid byte becomes U+FFFD.
@@ -546,49 +512,6 @@ pub fn parse_int0(s: &str) -> Result<i64, NumErr> {
 // path/filepath (Unix).
 // ---------------------------------------------------------------------------
 
-/// filepath.Clean.
-pub fn clean(path: &str) -> String {
-    if path.is_empty() {
-        return ".".into();
-    }
-    let rooted = path.starts_with('/');
-    let mut out: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                if let Some(last) = out.last() {
-                    if *last != ".." {
-                        out.pop();
-                        continue;
-                    }
-                }
-                if !rooted {
-                    out.push("..");
-                }
-            }
-            p => out.push(p),
-        }
-    }
-    let body = out.join("/");
-    if rooted {
-        format!("/{}", body)
-    } else if body.is_empty() {
-        ".".into()
-    } else {
-        body
-    }
-}
-
-/// filepath.Join.
-pub fn join(parts: &[&str]) -> String {
-    let nonempty: Vec<&str> = parts.iter().copied().filter(|p| !p.is_empty()).collect();
-    if nonempty.is_empty() {
-        return String::new();
-    }
-    clean(&nonempty.join("/"))
-}
-
 /// filepath.Dir.
 pub fn dir(path: &str) -> String {
     let i = path.rfind('/').map(|i| i + 1).unwrap_or(0);
@@ -615,26 +538,6 @@ pub fn is_abs(path: &str) -> bool {
 // ---------------------------------------------------------------------------
 // os / syscall error text.
 // ---------------------------------------------------------------------------
-
-/// syscall.Errno.Error(): Go's per-OS tables are strerror(3) with the first
-/// letter lowered, which is what this derives from Rust's own strerror text.
-pub fn errno_text(e: &io::Error) -> String {
-    let s = e.to_string();
-    let s = match s.rfind(" (os error ") {
-        Some(i) => s[..i].to_string(),
-        None => s,
-    };
-    let mut c = s.chars();
-    match c.next() {
-        Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
-        None => s,
-    }
-}
-
-/// *os.PathError's text: "<op> <path>: <errno>".
-pub fn path_err(op: &str, path: &str, e: &io::Error) -> String {
-    format!("{} {}: {}", op, path, errno_text(e))
-}
 
 pub fn is_not_exist(e: &io::Error) -> bool {
     e.kind() == io::ErrorKind::NotFound
