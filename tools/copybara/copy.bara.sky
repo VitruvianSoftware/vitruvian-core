@@ -379,10 +379,10 @@ COMPONENTS = [
         # The shared token-checking crate lives outside the subtree, so the
         # mirror gets its own copy at mcp-auth/ and rs/Cargo.toml's path to it
         # is rewritten to match. Its image builds from mcp-auth/ too (Dockerfile).
-        "extra_exports": {"packages/rust/vitruvian-mcp-auth": "mcp-auth"},
+        "extra_exports": {"packages/mcp-auth": "mcp-auth"},
         "export_transformations": [
             core.replace(
-                before = 'path = "../../../../packages/rust/vitruvian-mcp-auth"',
+                before = 'path = "../../../../packages/mcp-auth"',
                 after = 'path = "../mcp-auth"',
                 paths = glob(["rs/Cargo.toml"]),
             ),
@@ -390,7 +390,7 @@ COMPONENTS = [
         "import_transformations": [
             core.replace(
                 before = 'path = "../mcp-auth"',
-                after = 'path = "../../../../packages/rust/vitruvian-mcp-auth"',
+                after = 'path = "../../../../packages/mcp-auth"',
                 paths = glob(["apps/mcp/vitruvian-slack-mcp/rs/Cargo.toml"]),
             ),
         ],

@@ -43,16 +43,16 @@
 # --- Build stage --------------------------------------------------------------
 # The shared token-checking crate, vitruvian-mcp-auth. The standalone repo
 # carries it at mcp-auth/, so a plain `docker build .` there uses this stage.
-# The monorepo keeps it at packages/rust/vitruvian-mcp-auth, outside this
+# The monorepo keeps it at packages/mcp-auth, outside this
 # folder, and its image workflow replaces this stage with
-# `--build-context mcpauth=packages/rust/vitruvian-mcp-auth` (a named build
+# `--build-context mcpauth=packages/mcp-auth` (a named build
 # context overrides a stage of the same name).
 FROM scratch AS mcpauth
 COPY mcp-auth/Cargo.toml /Cargo.toml
 COPY mcp-auth/src /src
 
 # The layout under /src mirrors the monorepo, so rs/Cargo.toml's path to the
-# crate (../../../../packages/rust/vitruvian-mcp-auth) resolves unchanged. The
+# crate (../../../../packages/mcp-auth) resolves unchanged. The
 # standalone repo's Cargo.toml says ../mcp-auth instead; the link makes that
 # resolve too.
 #
@@ -80,10 +80,10 @@ RUN set -eu; \
       echo "export CARGO_TARGET_${LINKER_SLUG}_LINKER=${TRIPLET}-gcc" >> /tmp/cross.env; \
     fi
 
-COPY --from=mcpauth /Cargo.toml /src/packages/rust/vitruvian-mcp-auth/Cargo.toml
-RUN mkdir -p /src/apps/mcp/vitruvian-slack-mcp /src/packages/rust/vitruvian-mcp-auth/src && \
-    ln -s /src/packages/rust/vitruvian-mcp-auth /src/apps/mcp/vitruvian-slack-mcp/mcp-auth && \
-    printf '// stub for dependency prebuild\n' > /src/packages/rust/vitruvian-mcp-auth/src/lib.rs
+COPY --from=mcpauth /Cargo.toml /src/packages/mcp-auth/Cargo.toml
+RUN mkdir -p /src/apps/mcp/vitruvian-slack-mcp /src/packages/mcp-auth/src && \
+    ln -s /src/packages/mcp-auth /src/apps/mcp/vitruvian-slack-mcp/mcp-auth && \
+    printf '// stub for dependency prebuild\n' > /src/packages/mcp-auth/src/lib.rs
 WORKDIR /src/apps/mcp/vitruvian-slack-mcp/rs
 COPY rs/Cargo.toml rs/Cargo.lock ./
 RUN set -eu; \
@@ -93,11 +93,11 @@ RUN set -eu; \
     printf 'fn main() { std::process::exit(97); }\n' > src/main.rs && \
     cargo build --release --locked --target "$RUST_TARGET" --bin vitruvian-slack-mcp
 
-COPY --from=mcpauth /src /src/packages/rust/vitruvian-mcp-auth/src
+COPY --from=mcpauth /src /src/packages/mcp-auth/src
 COPY rs/src ./src
 RUN set -eu; \
     . /tmp/cross.env; \
-    find /src/packages/rust/vitruvian-mcp-auth/src src -type f -name '*.rs' -exec touch {} + && \
+    find /src/packages/mcp-auth/src src -type f -name '*.rs' -exec touch {} + && \
     rm -rf target/"$RUST_TARGET"/release/vitruvian-slack-mcp* \
            target/"$RUST_TARGET"/release/deps/*vitruvian_slack_mcp* \
            target/"$RUST_TARGET"/release/deps/*vitruvian_mcp_auth* \

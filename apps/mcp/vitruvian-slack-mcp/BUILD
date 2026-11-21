@@ -50,7 +50,7 @@ rust_library(
     deps = _CRATES + [
         # Token checking, shared with the Vitruvian Relay; built against this
         # app's crate hub.
-        "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth_slack_mcp_hub",
+        "//packages/mcp-auth:vitruvian_mcp_auth_slack_mcp_hub",
     ],
 )
 

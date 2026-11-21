@@ -24,7 +24,7 @@
 # differences: the image name and paths; the build context is the relay
 # WORKSPACE (apps/suites/vitruvian-relay, where Cargo.lock lives) with the
 # Dockerfile named by -f; and the second named build context is `mcpauth`
-# (packages/rust/vitruvian-mcp-auth), the shared token checker the relay
+# (packages/mcp-auth), the shared token checker the relay
 # path-depends on.
 #
 # The first push creates a NEW GHCR package, and new packages start private.
@@ -55,12 +55,12 @@ on:
       - '!apps/suites/vitruvian-relay/**/OWNERS'
       - '!apps/suites/vitruvian-relay/**/*.md'
       # The relay builds the shared token checker in.
-      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
-      - 'packages/rust/vitruvian-mcp-auth/src/**'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
-      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
-      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - 'packages/mcp-auth/Cargo.toml'
+      - 'packages/mcp-auth/src/**'
+      - '!packages/mcp-auth/**/BUILD'
+      - '!packages/mcp-auth/**/BUILD.bazel'
+      - '!packages/mcp-auth/**/OWNERS'
+      - '!packages/mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-relay-image.yaml'
   # PR runs BUILD AND VERIFY BUT DO NOT PUSH. This is the only place the image
   # is exercised before it can reach a cluster, and it is deliberately not just
@@ -93,12 +93,12 @@ on:
       - '!apps/suites/vitruvian-relay/**/OWNERS'
       - '!apps/suites/vitruvian-relay/**/*.md'
       # The relay builds the shared token checker in.
-      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
-      - 'packages/rust/vitruvian-mcp-auth/src/**'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
-      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
-      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - 'packages/mcp-auth/Cargo.toml'
+      - 'packages/mcp-auth/src/**'
+      - '!packages/mcp-auth/**/BUILD'
+      - '!packages/mcp-auth/**/BUILD.bazel'
+      - '!packages/mcp-auth/**/OWNERS'
+      - '!packages/mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-relay-image.yaml'
 
 permissions:
@@ -148,7 +148,7 @@ jobs:
             --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             --tag vitruvian-relay:verify \
             -f apps/suites/vitruvian-relay/relay/Dockerfile \
-            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+            --build-context mcpauth=packages/mcp-auth \
             apps/suites/vitruvian-relay
 
       # ASSERTION 1 — the pod runs as UID/GID 10001 (deployment.yaml
@@ -224,7 +224,7 @@ jobs:
             --sbom=true \
             --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             -f apps/suites/vitruvian-relay/relay/Dockerfile \
-            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+            --build-context mcpauth=packages/mcp-auth \
             apps/suites/vitruvian-relay
 
       # Everything above runs on pull_request too. Everything below is the
@@ -254,7 +254,7 @@ jobs:
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
             -f apps/suites/vitruvian-relay/relay/Dockerfile \
-            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+            --build-context mcpauth=packages/mcp-auth \
             apps/suites/vitruvian-relay
           # Read the digest back FROM THE REGISTRY rather than from buildx's
           # --metadata-file, whose shape varies by driver. This @sha256 ref is
