@@ -274,3 +274,44 @@ A0kAMEYCIQDpSb4ugaMT4kxFHQSo+rV+86/e59EaDxJ4ETI3SOtBUgIhAMylImP3
         assert!(!logged.contains("postgres@"), "{logged}");
     }
 }
+
+/// The migration lock is held only while migrating: after the store is up,
+/// another session can take it at once (a lock kept by a pooled connection
+/// would block the next relay's start).
+#[tokio::test]
+async fn the_migration_lock_is_released_after_migrating() {
+    let db = fresh_database().await;
+    let _store = PgStore::connect(&db.url(), None, quiet()).await.unwrap();
+    let sql = db.client().await;
+    let got: bool = sql
+        .query_one("SELECT pg_try_advisory_lock(7313)", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert!(
+        got,
+        "the migration lock is still held after the store started"
+    );
+}
+
+/// A release that does not work cleanly is visible in the log, and the
+/// connection is closed, not handed back to the pool (the store carries on).
+#[tokio::test]
+async fn a_failed_lock_release_is_logged_and_the_connection_dropped() {
+    let db = fresh_database().await;
+    let (log, lines) = recording();
+    let store = PgStore::connect(&db.url(), None, log).await.unwrap();
+    assert!(
+        lines.lock().unwrap().is_empty(),
+        "a clean start logs no warning"
+    );
+
+    // A connection that does not hold the lock: unlocking says `false`.
+    assert!(!store.release_unheld_migration_lock().await);
+    let logged = lines.lock().unwrap().join("\n");
+    assert!(logged.contains("migration_lock_warning"), "{logged}");
+    assert!(logged.contains("not held"), "{logged}");
+
+    // The store still works (a fresh connection is made as needed).
+    assert_eq!(store.device("nobody").await, Ok(None));
+}

@@ -97,8 +97,13 @@ pub async fn store_contract(store: &dyn Store) {
         "oldest first"
     );
     assert_eq!(store.devices_of(&bob).await, Ok(vec![]));
-    // The same id twice is refused (and says unavailable, not a panic).
-    assert!(store.insert_device(&d1).await.is_err());
+    // The same id twice is its own error, not "unavailable" and not a panic.
+    assert_eq!(store.insert_device(&d1).await, Err(StoreError::DuplicateId));
+    assert_eq!(
+        store.devices_of(&alice).await.unwrap().len(),
+        2,
+        "the refused one added nothing"
+    );
 
     // --- rename, only by the owner
     assert_eq!(
@@ -182,6 +187,11 @@ pub async fn store_contract(store: &dyn Store) {
         store.revoke(&d2.device_id, &alice).await,
         Ok(false),
         "already revoked"
+    );
+    assert_eq!(
+        store.insert_device(&d2).await,
+        Err(StoreError::DuplicateId),
+        "a revoked device keeps its id"
     );
     assert_eq!(store.rename(&d2.device_id, &alice, "x").await, Ok(false));
     assert_eq!(

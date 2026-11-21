@@ -3777,4 +3777,38 @@ async fn registering_when_the_store_refuses_says_what_to_do() {
     let r = h.register(ALICE, &ed25519()).await;
     assert_eq!(r.status, StatusCode::CONFLICT);
     assert!(r.body.contains("Remove one"), "{}", r.body);
+    h.store.fail_with(Some(StoreError::DuplicateId));
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    assert!(r.body.contains("Register it again"), "{}", r.body);
+}
+
+/// The relay remembers a key change only as long as a `/connect` could still
+/// be in flight, so the map does not grow with every device ever changed.
+#[tokio::test]
+async fn key_changes_are_forgotten_after_their_memory() {
+    let h = harness_with(Timing {
+        key_change_memory: Duration::from_millis(50),
+        ..Timing::default()
+    })
+    .await;
+    let before = h.app.key_generation();
+    h.app.key_changed("a");
+    assert!(h.app.key_changed_since("a", before));
+    assert!(!h.app.key_changed_since("a", h.app.key_generation()));
+    assert!(!h.app.key_changed_since("other", before));
+
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    h.app.key_changed("b");
+    let remembered: Vec<String> = h.app.key_changes.lock().unwrap().keys().cloned().collect();
+    assert_eq!(remembered, ["b"], "a was forgotten, b is remembered");
+
+    // Many devices over a long time never accumulate.
+    for i in 0..200 {
+        h.app.key_changed(&format!("d{i}"));
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    h.app.key_changed("last");
+    assert_eq!(h.app.key_changes.lock().unwrap().len(), 1);
 }

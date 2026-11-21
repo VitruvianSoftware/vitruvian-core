@@ -38,7 +38,7 @@
 
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -233,6 +233,11 @@ pub struct Timing {
     pub body_timeout: Duration,
     /// Longest a `/connect` socket may stay open, whatever its token's `exp`.
     pub max_connection_lifetime: Duration,
+    /// How long the relay remembers that a device's key was replaced, so a
+    /// `/connect` that read the old key a moment earlier is turned away. Must
+    /// be longer than a `/connect` takes from reading the key to registering
+    /// (seconds); the rest is only memory.
+    pub key_change_memory: Duration,
     /// Seconds since the epoch.
     pub clock: fn() -> u64,
 }
@@ -265,6 +270,7 @@ impl Default for Timing {
             header_read_timeout: Duration::from_secs(75),
             body_timeout: Duration::from_secs(30),
             max_connection_lifetime: Duration::from_secs(12 * 60 * 60),
+            key_change_memory: Duration::from_secs(5 * 60),
             clock: unix_now,
         }
     }
@@ -283,11 +289,18 @@ pub struct App {
     mcp_verifier: Arc<Verifier>,
     connector_verifier: Arc<Verifier>,
     store: Arc<dyn Store>,
-    /// Bumped whenever a device's key is replaced (or the device is revoked),
-    /// before its connection is kicked. A `/connect` that read the device's
-    /// key before the change sees the number has moved and does not register
-    /// ([`App::key_changed`]). The relay is one process, so this is enough.
-    key_epochs: Mutex<HashMap<String, u64>>,
+    /// A counter that goes up each time a device's key is replaced
+    /// ([`App::key_changed`]). A `/connect` takes the number before it reads
+    /// the device's key, and registers only if that device has not changed
+    /// since ([`App::key_changed_since`]). The relay is one process, so this
+    /// is enough.
+    key_generation: AtomicU64,
+    /// Which generation each recently changed device changed at, and when.
+    /// Only a `/connect` still in flight needs this, and one is over within
+    /// [`Timing::key_change_memory`], so older entries are dropped: the map
+    /// holds only the changes of the last few minutes, never one per device
+    /// ever changed.
+    key_changes: Mutex<HashMap<String, (u64, Instant)>>,
     registry: Registry,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
@@ -326,7 +339,8 @@ impl App {
             mcp_verifier: Arc::new(mcp),
             connector_verifier: Arc::new(connector),
             store,
-            key_epochs: Mutex::new(HashMap::new()),
+            key_generation: AtomicU64::new(0),
+            key_changes: Mutex::new(HashMap::new()),
             registry,
             sessions: Mutex::new(HashMap::new()),
             registering: tokio::sync::Mutex::new(()),
@@ -343,25 +357,33 @@ impl App {
         log_event(&self.log, event, fields);
     }
 
-    fn key_epoch(&self, device_id: &str) -> u64 {
-        self.key_epochs
+    /// The key generation now: take it before reading a device's key.
+    fn key_generation(&self) -> u64 {
+        self.key_generation.load(Ordering::SeqCst)
+    }
+
+    /// True if the device's key was replaced after `generation` was taken.
+    fn key_changed_since(&self, device_id: &str, generation: u64) -> bool {
+        self.key_changes
             .lock()
             .unwrap()
             .get(device_id)
-            .copied()
-            .unwrap_or(0)
+            .is_some_and(|(at, _)| *at > generation)
     }
 
-    /// The device's key was replaced (or the device revoked): ends its
-    /// connection. The epoch moves first, so a connection that checked the old
-    /// key and has not registered yet cannot register after the kick.
+    /// The device's key was replaced: ends its connection. The generation
+    /// moves first, so a connection that checked the old key and has not
+    /// registered yet cannot register after the kick. (Revoking a device
+    /// needs the same; that is not wired yet.)
     fn key_changed(&self, device_id: &str) {
-        *self
-            .key_epochs
-            .lock()
-            .unwrap()
-            .entry(device_id.to_string())
-            .or_insert(0) += 1;
+        let generation = self.key_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let now = Instant::now();
+        let memory = self.timing.key_change_memory;
+        {
+            let mut changes = self.key_changes.lock().unwrap();
+            changes.retain(|_, (_, when)| now.duration_since(*when) < memory);
+            changes.insert(device_id.to_string(), (generation, now));
+        }
         self.registry.kick(device_id);
     }
 
@@ -800,7 +822,9 @@ fn store_failure(app: &App, event: &str, e: &StoreError) -> Response<Body> {
     app.log(event, json!({"error": e.to_string()}));
     match e {
         StoreError::Unavailable => text(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE),
-        StoreError::TooManyDevices => respond(StatusCode::CONFLICT, "text/plain", e.to_string()),
+        StoreError::TooManyDevices | StoreError::DuplicateId => {
+            respond(StatusCode::CONFLICT, "text/plain", e.to_string())
+        }
     }
 }
 
@@ -908,10 +932,10 @@ where
 
 impl App {
     /// Checks a `hello` against the device record and the token it came with.
-    /// The reason goes back to the connector in `reject`. Returns the device's key
-    /// epoch from before its key was read
-    /// (see [`App::key_changed`]): the session registers only if it has not
-    /// moved.
+    /// The reason goes back to the connector in `reject`. Returns the key
+    /// generation from before the device's key was read (see
+    /// [`App::key_changed`]): the session registers only if the device has
+    /// not changed since.
     async fn check_hello(
         &self,
         hello: &Hello,
@@ -924,7 +948,7 @@ impl App {
             ));
         }
         // Another person's device is "unknown", like one that does not exist.
-        let epoch = self.key_epoch(&hello.device_id);
+        let generation = self.key_generation();
         let rec = match self.store.device(&hello.device_id).await {
             Ok(Some(r)) if r.owner_sub == caller.subject => r,
             Ok(_) => return Err("unknown device; register it again".into()),
@@ -950,7 +974,7 @@ impl App {
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, rec.public_key_ed25519)
             .verify(message.as_bytes(), &sig)
             .map_err(|_| "bad signature".to_string())?;
-        Ok(epoch)
+        Ok(generation)
     }
 }
 
@@ -1189,11 +1213,11 @@ async fn run_connection<S>(
         };
         Some(match h {
             Ok(h) => match app.check_hello(&h, &caller, &token_hash).await {
-                Ok(epoch) => match token_exp {
+                Ok(generation) => match token_exp {
                     Some(exp) if exp <= (t.clock)() => {
                         Err("the token has expired; sign in again and reconnect".to_string())
                     }
-                    _ => Ok((h, epoch)),
+                    _ => Ok((h, generation)),
                 },
                 Err(reason) => Err(reason),
             },
@@ -1202,7 +1226,7 @@ async fn run_connection<S>(
     }
     .await;
     let Some(hello) = hello else { return };
-    let (hello, epoch) = match hello {
+    let (hello, generation) = match hello {
         Ok(hk) => hk,
         Err(reason) => {
             app.log("connect_rejected", json!({"reason": reason}));
@@ -1229,7 +1253,7 @@ async fn run_connection<S>(
     // Check the key has not changed since it was read, atomically with
     // registering: a connection checked with a key that has since been
     // replaced must not take the place of one made with the new key.
-    let key_still_current = || app.key_epoch(&device_id) == epoch;
+    let key_still_current = || !app.key_changed_since(&device_id, generation);
     // The closer is set when a cancel could not be queued: end at once,
     // sending nothing more, so the device treats it as a drop (and never runs
     // the call).

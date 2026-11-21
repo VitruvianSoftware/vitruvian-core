@@ -110,10 +110,15 @@ pub enum Mode {
     /// The road is there but nothing comes back: connections are accepted and
     /// held in silence (the open ones are cut).
     Silent,
+    /// Everything works, but each answer from Postgres reaches the client this
+    /// much late. Connections already open stay open.
+    Slow(std::time::Duration),
 }
 
 struct Shared {
     mode: Mode,
+    /// How late answers are (zero unless the mode is `Slow`).
+    delay: std::time::Duration,
     /// The tasks carrying (or holding) connections.
     open: Vec<AbortHandle>,
 }
@@ -131,6 +136,7 @@ impl Proxy {
         let port = listener.local_addr().unwrap().port();
         let shared = Arc::new(Mutex::new(Shared {
             mode: Mode::Open,
+            delay: std::time::Duration::ZERO,
             open: Vec::new(),
         }));
         let accept_shared = shared.clone();
@@ -146,15 +152,42 @@ impl Proxy {
                         let _held = client;
                         std::future::pending::<()>().await;
                     }),
-                    Mode::Open => tokio::spawn(async move {
-                        let mut client = client;
-                        let Ok(mut upstream) =
-                            TcpStream::connect(("127.0.0.1", upstream_port)).await
-                        else {
-                            return;
-                        };
-                        let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
-                    }),
+                    Mode::Open | Mode::Slow(_) => {
+                        let shared = accept_shared.clone();
+                        tokio::spawn(async move {
+                            let Ok(upstream) =
+                                TcpStream::connect(("127.0.0.1", upstream_port)).await
+                            else {
+                                return;
+                            };
+                            let (mut client_r, mut client_w) = tokio::io::split(client);
+                            let (mut up_r, mut up_w) = tokio::io::split(upstream);
+                            // Client to Postgres: straight through. Postgres to
+                            // client: held back by the current delay.
+                            let to_pg = tokio::io::copy(&mut client_r, &mut up_w);
+                            let to_client = async {
+                                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                                let mut buf = [0u8; 8192];
+                                loop {
+                                    let n = match up_r.read(&mut buf).await {
+                                        Ok(0) | Err(_) => break,
+                                        Ok(n) => n,
+                                    };
+                                    let delay = shared.lock().unwrap().delay;
+                                    if !delay.is_zero() {
+                                        tokio::time::sleep(delay).await;
+                                    }
+                                    if client_w.write_all(&buf[..n]).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            };
+                            tokio::select! {
+                                _ = to_pg => {}
+                                _ = to_client => {}
+                            }
+                        })
+                    }
                 };
                 sh.open.retain(|h| !h.is_finished());
                 sh.open.push(task.abort_handle());
@@ -166,10 +199,16 @@ impl Proxy {
     pub fn set(&self, mode: Mode) {
         let mut sh = self.shared.lock().unwrap();
         sh.mode = mode;
-        // Whatever the mode, what was open is cut: a database that went away
-        // takes its connections with it; one that came back starts afresh.
-        for h in sh.open.drain(..) {
-            h.abort();
+        sh.delay = match mode {
+            Mode::Slow(d) => d,
+            _ => std::time::Duration::ZERO,
+        };
+        // A database that went away takes its connections with it. Open and
+        // slow keep what is open (a slow link is the same connections, later).
+        if matches!(mode, Mode::Down | Mode::Silent) {
+            for h in sh.open.drain(..) {
+                h.abort();
+            }
         }
     }
 }

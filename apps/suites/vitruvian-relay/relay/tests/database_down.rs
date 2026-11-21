@@ -384,13 +384,45 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
     let r = relay.tools_call(&path, &session, 2).await;
     let took = started.elapsed();
     assert_eq!(text_of(&r), MESSAGE, "{}", r.body);
-    // It waited for the limit rather than answering at once, and not much
-    // longer than it.
+    // It waited for the limit rather than answering at once, and not longer
+    // than it (one limit for the whole step, with a second of slack for a
+    // loaded machine).
     assert!(
-        took >= Duration::from_secs(4) && took < Duration::from_secs(9),
+        took >= Duration::from_secs(4) && took < Duration::from_secs(6),
         "took {took:?}"
     );
 
+    proxy.set(Mode::Open);
+    assert_calls_work(&relay, &path, &session, 3).await;
+}
+
+/// The 5 s limit covers getting a connection AND the query together. Here each
+/// answer from the database is 3 s late, so getting a connection (the pool
+/// checks an idle one first) takes about 3 s and the query another 3 s: each is
+/// under 5 s alone, together they are not. The person must still hear within
+/// one limit, not after two.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_database_is_given_one_limit_in_all_not_one_per_step() {
+    let db = fresh_database().await;
+    let proxy = Proxy::start(postgres_port()).await;
+    let relay = start_relay(&db.url_at(proxy.port)).await;
+    let r = relay.register(1).await;
+    let device = r.json()["device_id"].as_str().unwrap().to_string();
+    let (path, session) = relay.open_session(&device).await;
+    // Warm: the pool now holds a connection through the proxy.
+    assert_calls_work(&relay, &path, &session, 1).await;
+
+    proxy.set(Mode::Slow(Duration::from_secs(3)));
+    let started = Instant::now();
+    let r = relay.tools_call(&path, &session, 2).await;
+    let took = started.elapsed();
+    assert_eq!(text_of(&r), MESSAGE, "{}", r.body);
+    assert!(
+        took >= Duration::from_secs(4) && took < Duration::from_secs(6),
+        "took {took:?}"
+    );
+
+    // Fast again: works.
     proxy.set(Mode::Open);
     assert_calls_work(&relay, &path, &session, 3).await;
 }

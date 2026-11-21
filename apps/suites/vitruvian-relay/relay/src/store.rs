@@ -35,6 +35,7 @@ use async_trait::async_trait;
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use serde_json::json;
 use tokio_postgres::config::SslMode;
+use tokio_postgres::error::SqlState;
 use tokio_postgres::{Client, NoTls};
 
 use crate::devices::{DeviceRecord, NewDevice};
@@ -65,6 +66,8 @@ pub const POOL_SIZE: usize = 8;
 pub enum StoreError {
     /// The person already has [`MAX_DEVICES_PER_USER`] devices.
     TooManyDevices,
+    /// A device with that id is already stored (revoked ones keep their id).
+    DuplicateId,
     /// The database did not answer, or answered with something unusable. The
     /// detail is logged where it happened ([`PgStore`]); the person is only
     /// told [`UNAVAILABLE_MESSAGE`].
@@ -78,6 +81,9 @@ impl fmt::Display for StoreError {
             StoreError::TooManyDevices => write!(
                 f,
                 "You already have {MAX_DEVICES_PER_USER} devices, the most the relay allows. Remove one you no longer use, then add this one again."
+            ),
+            StoreError::DuplicateId => f.write_str(
+                "That device is already registered. Register it again to get a new one.",
             ),
             StoreError::Unavailable => f.write_str(UNAVAILABLE_MESSAGE),
         }
@@ -239,7 +245,7 @@ impl Store for MemStore {
         }
         if m.devices.iter().any(|x| x.device_id == d.device_id) {
             // The database's primary key refuses a repeated id too.
-            return Err(StoreError::Unavailable);
+            return Err(StoreError::DuplicateId);
         }
         let rec = to_record(d);
         m.devices.push(rec.clone());
@@ -382,6 +388,26 @@ pub struct PgStore {
     log: LogSink,
 }
 
+/// A pooled connection and the time by which the operation using it must be
+/// over.
+struct Conn {
+    obj: deadpool_postgres::Object,
+    deadline: tokio::time::Instant,
+}
+
+impl std::ops::Deref for Conn {
+    type Target = deadpool_postgres::Object;
+    fn deref(&self) -> &Self::Target {
+        &self.obj
+    }
+}
+
+impl std::ops::DerefMut for Conn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.obj
+    }
+}
+
 /// TLS that checks the server: against `ca_file` (the CNPG cluster's CA) when
 /// given, else the system's certificates.
 fn tls_connector(
@@ -500,16 +526,56 @@ impl PgStore {
         })?;
         let why = |e: tokio_postgres::Error| format!("the database set-up failed: {e}");
         client
-            .batch_execute(&format!("SELECT pg_advisory_lock({MIGRATION_LOCK})"))
+            .execute("SELECT pg_advisory_lock($1)", &[&MIGRATION_LOCK])
             .await
             .map_err(why)?;
         let result = Self::apply_migrations(&mut client).await;
-        // Ends with the session anyway; say so now so a pooled connection
-        // does not keep it.
-        let _ = client
-            .batch_execute(&format!("SELECT pg_advisory_unlock({MIGRATION_LOCK})"))
-            .await;
+        self.release_migration_lock(client).await;
         result.map_err(why)
+    }
+
+    /// Lets go of the migration lock, which this connection holds for the
+    /// session. If that fails, or the lock was not held, say so in the log and
+    /// close the connection instead of returning it to the pool: closing it
+    /// ends the session, and with it any lock it still holds, so a stuck lock
+    /// cannot block the next relay's migrations. `true` if the lock was
+    /// released cleanly.
+    async fn release_migration_lock(&self, client: deadpool_postgres::Object) -> bool {
+        let released = match client
+            .query_one("SELECT pg_advisory_unlock($1)", &[&MIGRATION_LOCK])
+            .await
+        {
+            Ok(row) => row.get::<_, bool>(0),
+            Err(e) => {
+                log_event(
+                    &self.log,
+                    "migration_lock_warning",
+                    json!({"problem": "the unlock failed", "error": e.to_string()}),
+                );
+                drop(deadpool_postgres::Object::take(client));
+                return false;
+            }
+        };
+        if !released {
+            log_event(
+                &self.log,
+                "migration_lock_warning",
+                json!({"problem": "the migration lock was not held by this connection"}),
+            );
+            drop(deadpool_postgres::Object::take(client));
+        }
+        released
+    }
+
+    /// Test support: takes a connection that holds no lock and runs the
+    /// release on it, as a failed release would. `false` (and a log line,
+    /// and the connection closed) is the right answer.
+    #[doc(hidden)]
+    pub async fn release_unheld_migration_lock(&self) -> bool {
+        match self.pool.get().await {
+            Ok(client) => self.release_migration_lock(client).await,
+            Err(_) => false,
+        }
     }
 
     async fn apply_migrations(client: &mut Client) -> Result<(), tokio_postgres::Error> {
@@ -542,21 +608,27 @@ impl PgStore {
         StoreError::Unavailable
     }
 
-    async fn client(&self, op: &str) -> Result<deadpool_postgres::Object, StoreError> {
-        match tokio::time::timeout(STORE_TIMEOUT, self.pool.get()).await {
-            Ok(Ok(c)) => Ok(c),
+    /// A connection from the pool. The clock on the whole operation starts
+    /// here: getting the connection and running the query share one
+    /// [`STORE_TIMEOUT`] (`Conn::deadline`, used by [`PgStore::timed`]), so
+    /// the person waits at most that long, not twice it.
+    async fn client(&self, op: &str) -> Result<Conn, StoreError> {
+        let deadline = tokio::time::Instant::now() + STORE_TIMEOUT;
+        match tokio::time::timeout_at(deadline, self.pool.get()).await {
+            Ok(Ok(obj)) => Ok(Conn { obj, deadline }),
             Ok(Err(e)) => Err(self.failed(op, e)),
             Err(_) => Err(self.failed(op, "timed out getting a connection")),
         }
     }
 
-    /// Runs one step against the database within [`STORE_TIMEOUT`].
+    /// Runs one step against the database, up to the operation's deadline.
     async fn timed<T>(
         &self,
         op: &str,
+        deadline: tokio::time::Instant,
         step: impl std::future::Future<Output = Result<T, tokio_postgres::Error>>,
     ) -> Result<T, StoreError> {
-        match tokio::time::timeout(STORE_TIMEOUT, step).await {
+        match tokio::time::timeout_at(deadline, step).await {
             Ok(Ok(v)) => Ok(v),
             Ok(Err(e)) => Err(self.failed(op, e)),
             Err(_) => Err(self.failed(op, "timed out")),
@@ -589,6 +661,7 @@ impl Store for PgStore {
         let row = self
             .timed(
                 "device",
+                c.deadline,
                 c.query_opt(
                     &format!(
                         "SELECT {DEVICE_COLUMNS} FROM devices WHERE id = $1 AND revoked_at IS NULL"
@@ -605,6 +678,7 @@ impl Store for PgStore {
         let rows = self
             .timed(
                 "devices_of",
+                c.deadline,
                 c.query(
                     &format!(
                         "SELECT {DEVICE_COLUMNS} FROM devices \
@@ -621,7 +695,7 @@ impl Store for PgStore {
         let mut c = self.client("insert_device").await?;
         let key: &[u8] = &d.public_key_ed25519;
         let inserted = self
-            .timed("insert_device", async {
+            .timed("insert_device", c.deadline, async {
                 let tx = c.transaction().await?;
                 // One at a time per person, so the count below cannot be
                 // outrun by a second insert for the same person.
@@ -638,9 +712,9 @@ impl Store for PgStore {
                     .await?
                     .get(0);
                 if active >= MAX_DEVICES_PER_USER as i64 {
-                    return Ok(None);
+                    return Ok(Err(StoreError::TooManyDevices));
                 }
-                let row = tx
+                let row = match tx
                     .query_one(
                         &format!(
                             "INSERT INTO devices (id, owner_sub, name, public_key) \
@@ -648,15 +722,21 @@ impl Store for PgStore {
                         ),
                         &[&d.device_id, &d.owner_sub, &d.name, &key],
                     )
-                    .await?;
+                    .await
+                {
+                    Ok(row) => row,
+                    // The id is the primary key: this id is taken (the
+                    // transaction rolls back as `tx` drops).
+                    Err(e) if e.code() == Some(&SqlState::UNIQUE_VIOLATION) => {
+                        return Ok(Err(StoreError::DuplicateId));
+                    }
+                    Err(e) => return Err(e),
+                };
                 tx.commit().await?;
-                Ok(Some(row))
+                Ok(Ok(row))
             })
             .await?;
-        match inserted {
-            Some(row) => self.record("insert_device", &row),
-            None => Err(StoreError::TooManyDevices),
-        }
+        self.record("insert_device", &inserted?)
     }
 
     async fn replace_key(
@@ -670,6 +750,7 @@ impl Store for PgStore {
         let n = self
             .timed(
                 "replace_key",
+                c.deadline,
                 c.execute(
                     "UPDATE devices SET public_key = $3 \
                      WHERE id = $1 AND owner_sub = $2 AND revoked_at IS NULL",
@@ -685,6 +766,7 @@ impl Store for PgStore {
         let n = self
             .timed(
                 "rename",
+                c.deadline,
                 c.execute(
                     "UPDATE devices SET name = $3 \
                      WHERE id = $1 AND owner_sub = $2 AND revoked_at IS NULL",
@@ -700,6 +782,7 @@ impl Store for PgStore {
         let n = self
             .timed(
                 "revoke",
+                c.deadline,
                 c.execute(
                     "UPDATE devices SET revoked_at = now() \
                      WHERE id = $1 AND owner_sub = $2 AND revoked_at IS NULL",
@@ -714,6 +797,7 @@ impl Store for PgStore {
         let c = self.client("touch_seen").await?;
         self.timed(
             "touch_seen",
+            c.deadline,
             c.execute(
                 "UPDATE devices SET last_seen = $2 WHERE id = $1 AND revoked_at IS NULL",
                 &[&id, &at],
@@ -725,8 +809,7 @@ impl Store for PgStore {
 
     async fn record_activity(&self, row: &ActivityRow) -> Result<(), StoreError> {
         let c = self.client("record_activity").await?;
-        self.timed(
-            "record_activity",
+        self.timed("record_activity", c.deadline,
             c.execute(
                 "INSERT INTO activity \
                  (at, owner_sub, device_id, client_id, tool, arg_bytes, result_bytes, duration_ms, outcome) \
@@ -759,6 +842,7 @@ impl Store for PgStore {
         let rows = self
             .timed(
                 "activity_of",
+                c.deadline,
                 c.query(
                     "SELECT at, owner_sub, device_id, client_id, tool, arg_bytes, result_bytes, \
                             duration_ms, outcome \
@@ -789,6 +873,7 @@ impl Store for PgStore {
         let c = self.client("purge_activity_before").await?;
         self.timed(
             "purge_activity_before",
+            c.deadline,
             c.execute("DELETE FROM activity WHERE at < $1", &[&t]),
         )
         .await
@@ -796,7 +881,7 @@ impl Store for PgStore {
 
     async fn import_if_empty(&self, devices: &[NewDevice]) -> Result<u64, StoreError> {
         let mut c = self.client("import_if_empty").await?;
-        self.timed("import_if_empty", async {
+        self.timed("import_if_empty", c.deadline, async {
             let tx = c.transaction().await?;
             // The migrations' lock: an import never runs inside another
             // relay's migration.
