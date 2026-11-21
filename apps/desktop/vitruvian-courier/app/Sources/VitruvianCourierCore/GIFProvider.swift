@@ -110,21 +110,73 @@ public enum GIFSearchPolicy {
 public protocol GIFHTTPTransport: Sendable {
     /// The reply's body and status code.
     func send(_ request: URLRequest) async throws -> (body: Data, status: Int)
+    /// The same, but a body longer than `maximumBytes` is refused (`GIFProviderError.refusedFile`) while it arrives, not
+    /// after all of it is in memory.
+    func send(_ request: URLRequest, maximumBytes: Int) async throws -> (body: Data, status: Int)
 }
 
-/// The real network: URLSession, with no cookies sent.
+extension GIFHTTPTransport {
+    public func send(_ request: URLRequest, maximumBytes: Int) async throws -> (body: Data, status: Int) {
+        let reply = try await send(request)
+        guard reply.body.count <= maximumBytes else { throw GIFProviderError.refusedFile }
+        return reply
+    }
+}
+
+/// Follows a redirect only to an address KLIPY serves from, over https: the key is in the address, and a reply must
+/// never be able to send it, or the next request, anywhere else.
+final class KlipyRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(request.url.map(KlipyAPI.isMediaHost) == true ? request : nil)
+    }
+}
+
+/// The real network: its own URLSession, which keeps no cache (the key and what was typed sit in the address, and must
+/// not be written to the disk's URL cache), sends and keeps no cookies, follows redirects only within KLIPY, and stops
+/// a reply that takes more than a minute.
 public struct URLSessionGIFTransport: GIFHTTPTransport {
     private let session: URLSession
 
-    public init(session: URLSession = .shared) {
-        self.session = session
+    public static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.timeoutIntervalForResource = 60
+        return URLSession(configuration: configuration, delegate: KlipyRedirectGuard(), delegateQueue: nil)
+    }
+
+    private static let sharedSession = makeSession()
+
+    public init(session: URLSession? = nil) {
+        self.session = session ?? Self.sharedSession
     }
 
     public func send(_ request: URLRequest) async throws -> (body: Data, status: Int) {
+        try await send(request, maximumBytes: KlipyGIFProvider.maximumFileBytes)
+    }
+
+    public func send(_ request: URLRequest, maximumBytes: Int) async throws -> (body: Data, status: Int) {
         var request = request
         request.httpShouldHandleCookies = false
-        let (data, response) = try await session.data(for: request)
-        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+        let (bytes, response) = try await session.bytes(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        // An error reply's body is never read.
+        guard (200..<300).contains(status) else { return (Data(), status) }
+        if response.expectedContentLength > Int64(maximumBytes) { throw GIFProviderError.refusedFile }
+        var body = Data()
+        for try await byte in bytes {
+            body.append(byte)
+            if body.count > maximumBytes { throw GIFProviderError.refusedFile }
+        }
+        return (body, status)
     }
 }
 
@@ -315,6 +367,8 @@ public enum KlipyAPI {
 public struct KlipyGIFProvider: GIFProvider {
     /// The biggest file Courier downloads for one GIF.
     public static let maximumFileBytes = 30 * 1024 * 1024
+    /// The biggest page of results Courier reads: 24 GIFs come to well under 1 MB.
+    public static let maximumReplyBytes = 4 * 1024 * 1024
 
     private let apiKey: String?
     private let transport: any GIFHTTPTransport
@@ -378,7 +432,7 @@ public struct KlipyGIFProvider: GIFProvider {
     }
 
     private func fetchCandidates(_ request: URLRequest) async throws -> [GIFCandidate] {
-        let reply = try await transport.send(request)
+        let reply = try await transport.send(request, maximumBytes: Self.maximumReplyBytes)
         guard (200..<300).contains(reply.status) else { throw GIFProviderError.status(reply.status) }
         return try KlipyAPI.candidates(from: reply.body)
     }
@@ -400,7 +454,7 @@ public struct KlipyGIFProvider: GIFProvider {
         if let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size]) as? Int, size > 0 { return file }
         var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
         request.httpShouldHandleCookies = false
-        let reply = try await transport.send(request)
+        let reply = try await transport.send(request, maximumBytes: Self.maximumFileBytes)
         guard (200..<300).contains(reply.status) else { throw GIFProviderError.status(reply.status) }
         guard !reply.body.isEmpty, reply.body.count <= Self.maximumFileBytes else { throw GIFProviderError.refusedFile }
         try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)

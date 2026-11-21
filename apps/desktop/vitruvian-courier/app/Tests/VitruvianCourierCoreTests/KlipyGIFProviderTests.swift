@@ -386,4 +386,48 @@ final class KlipyGIFProviderTests: XCTestCase {
         let none = try await stub.fetchPreview(for: GIFCandidate(id: "a", title: "a", mediaURL: "x", mimeType: "image/gif"))
         XCTAssertNil(none)
     }
+
+    // MARK: The real transport's limits (no network is reached)
+
+    /// The key and what was typed are in the address, so the session must not keep them in a URL cache on disk.
+    func testTheRealSessionKeepsNoCacheOrCookies() {
+        let session = URLSessionGIFTransport.makeSession()
+        XCTAssertNil(session.configuration.urlCache)
+        XCTAssertNil(session.configuration.httpCookieStorage)
+        XCTAssertFalse(session.configuration.httpShouldSetCookies)
+        XCTAssertEqual(session.configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertLessThanOrEqual(session.configuration.timeoutIntervalForResource, 60)
+        session.invalidateAndCancel()
+    }
+
+    /// A redirect to anywhere but KLIPY over https is refused, so the key in the address cannot be sent on.
+    func testRedirectsStayWithinKlipy() throws {
+        let guardian = KlipyRedirectGuard()
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let task = session.dataTask(with: URL(string: "https://api.klipy.com/")!)
+        let response = try XCTUnwrap(HTTPURLResponse(url: URL(string: "https://api.klipy.com/")!, statusCode: 302,
+                                                     httpVersion: nil, headerFields: nil))
+        func followed(_ address: String) -> Bool {
+            var answered: URLRequest?
+            guardian.urlSession(session, task: task, willPerformHTTPRedirection: response,
+                                newRequest: URLRequest(url: URL(string: address)!)) { answered = $0 }
+            return answered != nil
+        }
+        XCTAssertTrue(followed("https://static.klipy.com/a.gif"))
+        XCTAssertFalse(followed("https://example.com/a.gif"))
+        XCTAssertFalse(followed("https://klipy.com.example.com/a.gif"))
+        XCTAssertFalse(followed("http://static.klipy.com/a.gif"))
+    }
+
+    /// A page of results is read only up to a cap, as a file is.
+    func testAnOversizeResultsPageIsRefused() async {
+        let big = FakeGIFTransport { _ in (Data(count: KlipyGIFProvider.maximumReplyBytes + 1), 200) }
+        do {
+            _ = try await provider(big).search("cats")
+            XCTFail("oversize page")
+        } catch {
+            XCTAssertEqual(error as? GIFProviderError, .refusedFile)
+        }
+    }
 }
