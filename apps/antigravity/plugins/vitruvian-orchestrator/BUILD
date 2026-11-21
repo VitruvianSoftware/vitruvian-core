@@ -24,6 +24,7 @@ and the files the site registry reads.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
@@ -171,4 +172,18 @@ rust_test(
         "@crates//:serde",
         "@crates//:serde_json",
     ],
+)
+
+pipeline_unit(
+    name = "antigravity-vitruvian-orchestrator",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        ":drift_test",
+        ":panel_test",
+        ":server_test",
+        ":version_rs_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 15,
 )

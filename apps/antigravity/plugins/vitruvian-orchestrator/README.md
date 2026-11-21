@@ -4,7 +4,7 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
 
 ## What is in this plugin
 
-- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), resolves roles via `team`, dispatches specialist helpers, reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
+- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), resolves roles via `team`, dispatches specialist helpers, reviews their work, and closes the flow. See [How the agent team works](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/concepts/agent-team.md).
 - **Specialist subagents (`agents/*.md`)**: Ships role-named generic agents (`lead`, `developer`, `infrastructure`, `build`, `operations`, `qa`, `security`, `product`, `docs`, `release`) generated from `.agents/roster/generic/` so Antigravity discovers them natively (`<plugin>/agents/*.md`) in any repository. Generic agents work out of the box without Antigravity in Claude Code and OpenCode (`engine: "native"` by default; Gemini is opt-in via `engine`), while in Antigravity every role always uses `engine: "native"` and `.agents/team.json` maps roles to your own agents (such as `.agents/agents/*.md`).
 - **Live Orchestrator panel (`sidecars/panel/`)**: Shows five **Flow** cards — **Header**, **Burn-down**, **Task Board**, **Agents**, and **Spend**. Flows with no board posts, no extra channels, and no pause, retire, or kill events stay on this single **Flow** view. Once any of those appear, a tab bar adds **Board**, **Members**, **Graph**, and **Overview**.
 - **Orchestration rule (`rules/AGENTS.md`)**: Reminds the lead and helpers to report progress and surfaces the `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` pill in chat.
@@ -86,7 +86,7 @@ ln -s "$(pwd)/apps/antigravity/plugins/vitruvian-orchestrator" ~/.gemini/config/
 
 ## Credits
 
-Adapted from [`savvy-fleet`](../savvy-fleet/README.md) (MIT, VitruvianSoftware) for the Antigravity sidecar layout and powered by [`packages/orchestrator-core`](../../../../packages/orchestrator-core/README.md).
+Adapted from [`savvy-fleet`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet) (MIT, VitruvianSoftware) for the Antigravity sidecar layout and powered by [`packages/orchestrator-core`](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/orchestrator-core).
 
 ## Subdirectories & Boundaries
 - [mcp](./mcp/README.md): MCP server exposing `progress`, `step`, `post`, `board`, `channel`, and `team`.
