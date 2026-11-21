@@ -31,6 +31,7 @@ import {
   type GameServerOptions,
   type RoomPlayer,
 } from "./gameServer";
+import { PROTOCOL, VERSION_REFUSED, type ServerInfo } from "../src/protocol";
 
 let httpServer: HttpServer;
 let url: string;
@@ -60,11 +61,12 @@ afterEach(async () => {
   await new Promise((resolve) => httpServer.close(resolve));
 });
 
-function client(origin?: string): Socket {
+function client(origin?: string, auth?: { protocol: unknown }): Socket {
   const c = connect(url, {
     transports: ["websocket"],
     forceNew: true,
     extraHeaders: origin ? { origin } : undefined,
+    auth,
   });
   clients.push(c);
   return c;
@@ -369,5 +371,32 @@ describe("a dropped connection", () => {
   it("ignores a malformed key and seats the player normally", async () => {
     const players = await join(client(), "A", "ROOM", "short");
     expect(players).toHaveLength(1);
+  });
+});
+
+describe("the version check", () => {
+  it("tells every connection which version the server speaks", async () => {
+    const info = await next<ServerInfo>(client(), "server-info");
+    expect(info).toEqual({ protocol: PROTOCOL, minClientProtocol: 1 });
+  });
+
+  it("still seats a page from before the check, which sends no version", async () => {
+    expect(await join(client(), "Old")).toHaveLength(1);
+  });
+
+  it("turns away a page older than it accepts and says why", async () => {
+    await start({ minClientProtocol: PROTOCOL + 1 });
+    const old = client(undefined, { protocol: PROTOCOL });
+    const err = await next<Error & { data?: ServerInfo }>(old, "connect_error");
+    expect(err.message).toBe(VERSION_REFUSED);
+    expect(err.data).toEqual({
+      protocol: PROTOCOL,
+      minClientProtocol: PROTOCOL + 1,
+    });
+    // A page that sends nothing counts as the oldest version.
+    expect(await outcome(client())).toBe("refused");
+    expect(await outcome(client(undefined, { protocol: PROTOCOL + 1 }))).toBe(
+      "connected",
+    );
   });
 });
