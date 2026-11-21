@@ -64,6 +64,16 @@ exports_files(
     visibility = ["//apps/web/mini-party:__pkg__"],
 )
 
+# The same file for the Claude helper's workspace test, which checks the
+# Agent SDK's optional platform binaries stay ignored. A jest_test can't take a
+# source file from another package as data (rules_js copies data to bin only
+# for its own package), so it gets a js_library instead of exports_files.
+js_library(
+    name = "pnpm_workspace_yaml",
+    srcs = ["pnpm-workspace.yaml"],
+    visibility = ["//apps/desktop/vitruvian-code/macos/claude-helper:__pkg__"],
+)
+
 exports_files(
     ["pnpm-lock.yaml"],
     visibility = ["//tools/ci:__pkg__"],

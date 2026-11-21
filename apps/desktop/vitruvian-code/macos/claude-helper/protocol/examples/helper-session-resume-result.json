@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "modes": {
+      "currentModeId": "default",
+      "availableModes": [
+        { "id": "default", "name": "Ask before acting" },
+        { "id": "acceptEdits", "name": "Auto-accept edits" },
+        { "id": "plan", "name": "Plan" },
+        { "id": "bypassPermissions", "name": "Full access" }
+      ]
+    },
+    "configOptions": [
+      {
+        "id": "mode",
+        "name": "Mode",
+        "category": "mode",
+        "type": "select",
+        "currentValue": "default",
+        "options": [
+          { "value": "default", "name": "Ask before acting" },
+          { "value": "acceptEdits", "name": "Auto-accept edits" },
+          { "value": "plan", "name": "Plan" },
+          { "value": "bypassPermissions", "name": "Full access" }
+        ]
+      }
+    ]
+  }
+}

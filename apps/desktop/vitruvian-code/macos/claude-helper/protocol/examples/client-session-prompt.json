@@ -1,0 +1,33 @@
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "session/prompt",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "prompt": [
+      {
+        "type": "text",
+        "text": "Review the screenshot and README changes."
+      },
+      {
+        "type": "image",
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "mimeType": "image/png"
+      },
+      {
+        "type": "resource_link",
+        "uri": "file:///Users/example/Workspace/project/README.md",
+        "name": "README.md",
+        "mimeType": "text/markdown"
+      },
+      {
+        "type": "resource",
+        "resource": {
+          "uri": "file:///Users/example/Workspace/project/package.json",
+          "mimeType": "application/json",
+          "text": "{\"name\":\"example\"}"
+        }
+      }
+    ]
+  }
+}

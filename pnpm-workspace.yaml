@@ -29,6 +29,7 @@ packages:
   # packages/design-system/android/. packages/* above stops one folder down.
   - packages/design-system/web
   - apps/desktop/vitruvian-code
+  - apps/desktop/vitruvian-code/macos/claude-helper
   - apps/web/oauth-user-inspector
   - apps/web/gods-eye-view
   - apps/web/mini-party
@@ -130,5 +131,18 @@ overrides:
   # the backend's copy (one version); the Backstage boot smoke checks it loads.
   "@pagerduty/backstage-plugin-backend>@backstage/backend-defaults": "^0.18.0"
 
+# The Claude Agent SDK declares platform-specific native binaries as optional
+# dependencies, but claude-helper always launches a user-provided Claude binary
+# via pathToClaudeCodeExecutable. Exclude them so pnpm never locks them and
+# Bazel never fetches them.
+ignoredOptionalDependencies:
+  - "@anthropic-ai/claude-agent-sdk-darwin-arm64"
+  - "@anthropic-ai/claude-agent-sdk-darwin-x64"
+  - "@anthropic-ai/claude-agent-sdk-linux-arm64"
+  - "@anthropic-ai/claude-agent-sdk-linux-arm64-musl"
+  - "@anthropic-ai/claude-agent-sdk-linux-x64"
+  - "@anthropic-ai/claude-agent-sdk-linux-x64-musl"
+  - "@anthropic-ai/claude-agent-sdk-win32-arm64"
+  - "@anthropic-ai/claude-agent-sdk-win32-x64"
 
 

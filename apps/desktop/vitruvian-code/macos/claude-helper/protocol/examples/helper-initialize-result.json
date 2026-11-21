@@ -1,0 +1,33 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "vitruvian-claude-helper",
+      "version": "0.1.0"
+    },
+    "agentCapabilities": {
+      "loadSession": false,
+      "promptCapabilities": {
+        "image": true,
+        "embeddedContext": true
+      },
+      "mcpCapabilities": {
+        "http": true,
+        "sse": false
+      },
+      "sessionCapabilities": {
+        "resume": {},
+        "close": {}
+      }
+    },
+    "authMethods": [],
+    "_meta": {
+      "vitruvian": {
+        "claudeVersion": "2.1.45",
+        "minClaudeVersionForMcpSecrets": "2.1.326"
+      }
+    }
+  }
+}

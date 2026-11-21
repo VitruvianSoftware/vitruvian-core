@@ -1,0 +1,33 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "update": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "toolu_01EditReadme",
+      "title": "Edit README.md",
+      "kind": "edit",
+      "status": "pending",
+      "rawInput": {
+        "file_path": "/Users/example/Workspace/project/README.md",
+        "old_string": "old line",
+        "new_string": "new line"
+      },
+      "locations": [
+        {
+          "path": "/Users/example/Workspace/project/README.md",
+          "line": 12
+        }
+      ],
+      "content": [
+        {
+          "type": "diff",
+          "path": "/Users/example/Workspace/project/README.md",
+          "oldText": "old line",
+          "newText": "new line"
+        }
+      ]
+    }
+  }
+}

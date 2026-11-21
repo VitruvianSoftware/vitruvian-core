@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "method": "_vitruvian/usageLimit",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "resetsAt": "2026-11-20T19:00:00Z",
+    "message": "Claude usage limit reached. Resets at 2026-11-20T19:00:00Z."
+  }
+}

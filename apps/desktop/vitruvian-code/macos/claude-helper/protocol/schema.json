@@ -1,0 +1,1410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vitruvian Code Claude helper ACP message contract",
+  "description": "Wire contract for JSON-RPC 2.0 messages exchanged over stdio between Vitruvian Code (client) and the Node Claude helper (agent). Covers ACP v1 methods/updates used by the helper, _vitruvian/* extensions, and _meta.vitruvian fields.",
+  "type": "object",
+  "required": ["jsonrpc"],
+  "properties": {
+    "jsonrpc": {
+      "description": "JSON-RPC protocol version, always 2.0.",
+      "const": "2.0"
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/notification" },
+    { "$ref": "#/$defs/responseResult" },
+    { "$ref": "#/$defs/responseError" }
+  ],
+  "$defs": {
+    "rpcId": {
+      "description": "JSON-RPC 2.0 request correlation identifier.",
+      "type": ["integer", "string"]
+    },
+    "request": {
+      "description": "A JSON-RPC 2.0 request requiring a result or error response with the same id.",
+      "type": "object",
+      "required": ["id", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/rpcId" },
+        "method": {
+          "description": "ACP or _vitruvian/* request method name.",
+          "type": "string",
+          "enum": [
+            "initialize",
+            "_vitruvian/secrets",
+            "session/new",
+            "session/resume",
+            "session/prompt",
+            "session/set_mode",
+            "session/set_config_option",
+            "session/close",
+            "_vitruvian/fork",
+            "_vitruvian/mcpStatus",
+            "session/request_permission",
+            "elicitation/create"
+          ]
+        },
+        "params": {
+          "description": "Method-specific request parameters.",
+          "type": "object"
+        }
+      },
+      "not": {
+        "anyOf": [{ "required": ["result"] }, { "required": ["error"] }]
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "method": { "const": "initialize" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/initializeParams" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "_vitruvian/secrets" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/vitruvianSecretsParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "session/new" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/sessionNewParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "session/resume" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionResumeParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "session/prompt" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionPromptParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "session/set_mode" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionSetModeParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "session/set_config_option" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionSetConfigOptionParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "session/close" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionCloseParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "_vitruvian/fork" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/vitruvianForkParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "_vitruvian/mcpStatus" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/vitruvianMcpStatusParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": { "const": "session/request_permission" }
+            }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/requestPermissionParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "elicitation/create" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/elicitationCreateParams" }
+            }
+          }
+        }
+      ]
+    },
+    "notification": {
+      "description": "A JSON-RPC 2.0 one-way notification with no id and no response.",
+      "type": "object",
+      "required": ["method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": {
+          "description": "ACP or _vitruvian/* notification method name.",
+          "type": "string",
+          "enum": ["session/cancel", "session/update", "_vitruvian/usageLimit"]
+        },
+        "params": {
+          "description": "Notification parameters.",
+          "type": "object"
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["id"] },
+          { "required": ["result"] },
+          { "required": ["error"] }
+        ]
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "method": { "const": "session/cancel" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionCancelParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "session/update" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/sessionUpdateParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "_vitruvian/usageLimit" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/vitruvianUsageLimitParams" }
+            }
+          }
+        }
+      ]
+    },
+    "responseResult": {
+      "description": "A JSON-RPC 2.0 success response carrying a result object.",
+      "type": "object",
+      "required": ["id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/rpcId" },
+        "result": {
+          "description": "Method-specific response payload.",
+          "anyOf": [
+            { "$ref": "#/$defs/emptyResult" },
+            { "$ref": "#/$defs/initializeResult" },
+            { "$ref": "#/$defs/sessionNewResult" },
+            { "$ref": "#/$defs/sessionResumeResult" },
+            { "$ref": "#/$defs/sessionPromptResult" },
+            { "$ref": "#/$defs/sessionSetConfigOptionResult" },
+            { "$ref": "#/$defs/vitruvianForkResult" },
+            { "$ref": "#/$defs/vitruvianMcpStatusResult" },
+            { "$ref": "#/$defs/requestPermissionResult" },
+            { "$ref": "#/$defs/elicitationCreateResult" }
+          ]
+        }
+      },
+      "not": {
+        "anyOf": [{ "required": ["method"] }, { "required": ["error"] }]
+      }
+    },
+    "responseError": {
+      "description": "A JSON-RPC 2.0 error response.",
+      "type": "object",
+      "required": ["id", "error"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": {
+          "description": "Correlated request id, or null when the request could not be parsed.",
+          "type": ["integer", "string", "null"]
+        },
+        "error": { "$ref": "#/$defs/rpcError" }
+      },
+      "not": {
+        "anyOf": [{ "required": ["method"] }, { "required": ["result"] }]
+      }
+    },
+    "rpcError": {
+      "description": "JSON-RPC 2.0 error object. ACP uses -32000 for auth_required.",
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "description": "Numeric JSON-RPC or ACP error code.",
+          "type": "integer"
+        },
+        "message": {
+          "description": "Concise human-readable error message.",
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {
+          "description": "Optional structured diagnostic error payload."
+        }
+      }
+    },
+    "emptyResult": {
+      "description": "Empty object result returned by commands that have no payload.",
+      "type": "object",
+      "additionalProperties": false
+    },
+    "implementation": {
+      "description": "Client or agent implementation metadata exchanged during initialize.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "title": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] }
+      }
+    },
+    "vitruvianInitializeMeta": {
+      "description": "Vitruvian metadata returned by initialize reporting the detected Claude CLI version.",
+      "type": "object",
+      "required": ["claudeVersion", "minClaudeVersionForMcpSecrets"],
+      "additionalProperties": false,
+      "properties": {
+        "claudeVersion": {
+          "description": "Parsed claude --version string, or null if detection failed.",
+          "type": ["string", "null"]
+        },
+        "minClaudeVersionForMcpSecrets": {
+          "description": "The oldest claude that takes MCP servers over stdin. With an older claude, a session whose MCP servers carry env or headers fails to open, so a secret never reaches the command line.",
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "initializeParams": {
+      "description": "Parameters sent by Vitruvian Code in the initialize request.",
+      "type": "object",
+      "required": ["protocolVersion", "clientCapabilities"],
+      "properties": {
+        "protocolVersion": {
+          "description": "ACP major protocol version requested by the client.",
+          "const": 1
+        },
+        "clientInfo": { "$ref": "#/$defs/implementation" },
+        "clientCapabilities": {
+          "description": "Client capabilities offered to the helper.",
+          "type": "object",
+          "properties": {
+            "fs": {
+              "type": "object",
+              "properties": {
+                "readTextFile": { "type": "boolean" },
+                "writeTextFile": { "type": "boolean" }
+              }
+            },
+            "terminal": { "type": "boolean" },
+            "elicitation": {
+              "type": "object",
+              "properties": {
+                "form": { "type": "object" },
+                "url": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "initializeResult": {
+      "description": "Helper initialize response advertising ACP v1 capabilities and detected Claude CLI version.",
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "agentInfo",
+        "agentCapabilities",
+        "authMethods",
+        "_meta"
+      ],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "agentInfo": { "$ref": "#/$defs/implementation" },
+        "agentCapabilities": {
+          "type": "object",
+          "required": [
+            "loadSession",
+            "promptCapabilities",
+            "sessionCapabilities"
+          ],
+          "properties": {
+            "loadSession": { "const": false },
+            "promptCapabilities": {
+              "type": "object",
+              "required": ["image", "embeddedContext"],
+              "properties": {
+                "image": { "const": true },
+                "audio": { "type": "boolean" },
+                "embeddedContext": { "const": true }
+              }
+            },
+            "mcpCapabilities": {
+              "type": "object",
+              "properties": {
+                "http": { "type": "boolean" },
+                "sse": { "type": "boolean" }
+              }
+            },
+            "sessionCapabilities": {
+              "type": "object",
+              "required": ["resume", "close"],
+              "properties": {
+                "resume": { "type": "object" },
+                "close": { "type": "object" }
+              }
+            }
+          }
+        },
+        "authMethods": {
+          "description": "Always empty because authentication stays in claude auth login.",
+          "type": "array",
+          "maxItems": 0
+        },
+        "_meta": {
+          "type": "object",
+          "required": ["vitruvian"],
+          "properties": {
+            "vitruvian": { "$ref": "#/$defs/vitruvianInitializeMeta" }
+          }
+        }
+      }
+    },
+    "vitruvianMcpServerSecrets": {
+      "description": "Secret env vars and HTTP headers for one named MCP server.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "vitruvianSecretsParams": {
+      "description": "Parameters for _vitruvian/secrets keeping environment and MCP secrets out of argv and env.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "env": {
+          "description": "Sensitive environment variables merged into the SDK env option in memory.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "mcpServers": {
+          "description": "Per-server secret env and header overrides keyed by server name.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/vitruvianMcpServerSecrets"
+          }
+        }
+      }
+    },
+    "envVariable": {
+      "description": "Environment variable name/value pair for a stdio MCP server.",
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" }
+      }
+    },
+    "httpHeader": {
+      "description": "HTTP header name/value pair for an HTTP or SSE MCP server.",
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" }
+      }
+    },
+    "mcpServer": {
+      "description": "ACP MCP server descriptor in stdio, http, or sse form.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["name", "command", "args", "env"],
+          "not": { "required": ["url"] },
+          "properties": {
+            "type": { "const": "stdio" },
+            "name": { "type": "string", "minLength": 1 },
+            "command": { "type": "string", "minLength": 1 },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "env": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/envVariable" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "name", "url", "headers"],
+          "properties": {
+            "type": { "enum": ["http", "sse"] },
+            "name": { "type": "string", "minLength": 1 },
+            "url": { "type": "string", "format": "uri" },
+            "headers": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/httpHeader" }
+            }
+          }
+        }
+      ]
+    },
+    "sessionNewParams": {
+      "description": "Parameters for ACP session/new.",
+      "type": "object",
+      "required": ["cwd", "mcpServers"],
+      "properties": {
+        "cwd": { "type": "string", "minLength": 1 },
+        "mcpServers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/mcpServer" }
+        },
+        "additionalDirectories": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "_meta": { "type": ["object", "null"] }
+      }
+    },
+    "sessionResumeParams": {
+      "description": "Parameters for ACP session/resume.",
+      "type": "object",
+      "required": ["sessionId", "cwd"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "cwd": { "type": "string", "minLength": 1 },
+        "mcpServers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/mcpServer" }
+        },
+        "additionalDirectories": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "_meta": { "type": ["object", "null"] }
+      }
+    },
+    "sessionMode": {
+      "description": "Session permission mode descriptor matching the Claude Agent SDK PermissionMode.",
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["default", "acceptEdits", "plan", "bypassPermissions"]
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] }
+      }
+    },
+    "sessionModeState": {
+      "description": "Current session mode and available session modes.",
+      "type": "object",
+      "required": ["currentModeId", "availableModes"],
+      "properties": {
+        "currentModeId": {
+          "type": "string",
+          "enum": ["default", "acceptEdits", "plan", "bypassPermissions"]
+        },
+        "availableModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/sessionMode" }
+        }
+      }
+    },
+    "sessionConfigSelectOption": {
+      "description": "Selectable choice inside a session configuration dropdown.",
+      "type": "object",
+      "required": ["value", "name"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] }
+      }
+    },
+    "sessionConfigOption": {
+      "description": "Live session configuration option such as mode or model.",
+      "type": "object",
+      "required": ["id", "name", "type", "currentValue", "options"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] },
+        "category": { "type": ["string", "null"] },
+        "type": { "const": "select" },
+        "currentValue": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionConfigSelectOption" }
+        }
+      }
+    },
+    "sessionNewResult": {
+      "description": "Result returned by session/new with generated sessionId, modes, and configOptions.",
+      "type": "object",
+      "required": ["sessionId", "modes", "configOptions"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "modes": { "$ref": "#/$defs/sessionModeState" },
+        "configOptions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionConfigOption" }
+        }
+      }
+    },
+    "sessionResumeResult": {
+      "description": "Result returned by session/resume.",
+      "type": "object",
+      "required": ["modes", "configOptions"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "modes": { "$ref": "#/$defs/sessionModeState" },
+        "configOptions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionConfigOption" }
+        }
+      }
+    },
+    "contentBlock": {
+      "description": "ACP content block in prompts, assistant chunks, or tool results.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "data", "mimeType"],
+          "properties": {
+            "type": { "const": "image" },
+            "data": { "type": "string" },
+            "mimeType": { "type": "string", "minLength": 1 },
+            "uri": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "uri", "name"],
+          "properties": {
+            "type": { "const": "resource_link" },
+            "uri": { "type": "string", "minLength": 1 },
+            "name": { "type": "string", "minLength": 1 },
+            "mimeType": { "type": ["string", "null"] },
+            "title": { "type": ["string", "null"] },
+            "description": { "type": ["string", "null"] },
+            "size": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "resource"],
+          "properties": {
+            "type": { "const": "resource" },
+            "resource": {
+              "type": "object",
+              "required": ["uri"],
+              "properties": {
+                "uri": { "type": "string", "minLength": 1 },
+                "mimeType": { "type": ["string", "null"] },
+                "text": { "type": "string" },
+                "blob": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sessionPromptParams": {
+      "description": "Parameters for ACP session/prompt.",
+      "type": "object",
+      "required": ["sessionId", "prompt"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "prompt": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/contentBlock" }
+        }
+      }
+    },
+    "sessionPromptResult": {
+      "description": "Result of an ACP session/prompt turn.",
+      "type": "object",
+      "required": ["stopReason"],
+      "properties": {
+        "stopReason": {
+          "type": "string",
+          "enum": [
+            "end_turn",
+            "max_tokens",
+            "max_turn_requests",
+            "refusal",
+            "cancelled"
+          ]
+        },
+        "_meta": { "type": ["object", "null"] }
+      }
+    },
+    "sessionCancelParams": {
+      "description": "Parameters for ACP session/cancel notification.",
+      "type": "object",
+      "required": ["sessionId"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sessionSetModeParams": {
+      "description": "Parameters for ACP session/set_mode.",
+      "type": "object",
+      "required": ["sessionId", "modeId"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "modeId": {
+          "type": "string",
+          "enum": ["default", "acceptEdits", "plan", "bypassPermissions"]
+        }
+      }
+    },
+    "sessionSetConfigOptionParams": {
+      "description": "Parameters for ACP session/set_config_option.",
+      "type": "object",
+      "required": ["sessionId", "configId", "value"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "configId": { "type": "string", "minLength": 1 },
+        "value": { "type": ["string", "boolean"] }
+      }
+    },
+    "sessionSetConfigOptionResult": {
+      "description": "Result returned by session/set_config_option with the full configOptions list.",
+      "type": "object",
+      "required": ["configOptions"],
+      "properties": {
+        "configOptions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionConfigOption" }
+        }
+      }
+    },
+    "sessionCloseParams": {
+      "description": "Parameters for ACP session/close.",
+      "type": "object",
+      "required": ["sessionId"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vitruvianForkParams": {
+      "description": "Parameters for _vitruvian/fork requesting a session fork via the SDK.",
+      "type": "object",
+      "required": ["sessionId"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vitruvianForkResult": {
+      "description": "Result of _vitruvian/fork containing the newly forked sessionId.",
+      "type": "object",
+      "required": ["sessionId"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vitruvianMcpStatusParams": {
+      "description": "Parameters for _vitruvian/mcpStatus.",
+      "type": "object",
+      "required": ["sessionId"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vitruvianMcpServerInfo": {
+      "description": "Connected MCP server name and version reported by the SDK.",
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "vitruvianMcpToolInfo": {
+      "description": "Tool exposed by a connected MCP server.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "annotations": {
+          "type": "object",
+          "properties": {
+            "readOnly": { "type": "boolean" },
+            "destructive": { "type": "boolean" },
+            "openWorld": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "vitruvianMcpServerStatus": {
+      "description": "Per-server status returned by the Claude Agent SDK mcpServerStatus().",
+      "type": "object",
+      "required": ["name", "status"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["connected", "failed", "needs-auth", "pending", "disabled"]
+        },
+        "serverInfo": { "$ref": "#/$defs/vitruvianMcpServerInfo" },
+        "error": { "type": "string" },
+        "scope": { "type": "string" },
+        "source": { "type": "string" },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vitruvianMcpToolInfo" }
+        }
+      }
+    },
+    "vitruvianMcpStatusResult": {
+      "description": "Result of _vitruvian/mcpStatus returning the SDK MCP server status list.",
+      "type": "object",
+      "required": ["servers"],
+      "additionalProperties": false,
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vitruvianMcpServerStatus" }
+        }
+      }
+    },
+    "vitruvianUsageLimitParams": {
+      "description": "Helper-to-app notification emitted when a Claude subscription usage limit is hit.",
+      "type": "object",
+      "required": ["sessionId", "resetsAt", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "resetsAt": {
+          "description": "ISO-8601 timestamp when the limit resets, or null if unknown.",
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "permissionOption": {
+      "description": "User choice presented for session/request_permission.",
+      "type": "object",
+      "required": ["optionId", "name", "kind"],
+      "properties": {
+        "optionId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
+        }
+      }
+    },
+    "requestPermissionParams": {
+      "description": "Parameters for helper-to-client session/request_permission.",
+      "type": "object",
+      "required": ["sessionId", "toolCall", "options"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "toolCall": {
+          "type": "object",
+          "required": ["toolCallId", "title", "kind"],
+          "properties": {
+            "toolCallId": { "type": "string", "minLength": 1 },
+            "title": { "type": "string" },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "read",
+                "edit",
+                "delete",
+                "move",
+                "search",
+                "execute",
+                "think",
+                "fetch",
+                "switch_mode",
+                "other"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": ["pending", "in_progress", "completed", "failed"]
+            },
+            "rawInput": {},
+            "locations": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/toolCallLocation" }
+            }
+          }
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/permissionOption" }
+        }
+      }
+    },
+    "requestPermissionResult": {
+      "description": "Client answer to session/request_permission.",
+      "type": "object",
+      "required": ["outcome"],
+      "properties": {
+        "outcome": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["outcome", "optionId"],
+              "additionalProperties": false,
+              "properties": {
+                "outcome": { "const": "selected" },
+                "optionId": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["outcome"],
+              "additionalProperties": false,
+              "properties": {
+                "outcome": { "const": "cancelled" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "elicitationEnumOption": {
+      "description": "Single selectable option inside AskUserQuestion elicitation form schemas.",
+      "type": "object",
+      "required": ["const", "title"],
+      "properties": {
+        "const": { "type": "string" },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] }
+      }
+    },
+    "elicitationCreateParams": {
+      "description": "Form-mode elicitation/create request sent by the helper for AskUserQuestion.",
+      "type": "object",
+      "required": ["sessionId", "mode", "message", "requestedSchema"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "toolCallId": { "type": ["string", "null"] },
+        "mode": { "const": "form" },
+        "title": { "type": ["string", "null"] },
+        "message": { "type": "string", "minLength": 1 },
+        "requestedSchema": {
+          "type": "object",
+          "required": ["type", "properties", "required"],
+          "properties": {
+            "type": { "const": "object" },
+            "properties": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["type", "oneOf"],
+                    "properties": {
+                      "type": { "const": "string" },
+                      "title": { "type": "string" },
+                      "description": { "type": "string" },
+                      "oneOf": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": { "$ref": "#/$defs/elicitationEnumOption" }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["type", "items"],
+                    "properties": {
+                      "type": { "const": "array" },
+                      "title": { "type": "string" },
+                      "description": { "type": "string" },
+                      "items": {
+                        "type": "object",
+                        "required": ["anyOf"],
+                        "not": { "required": ["type"] },
+                        "properties": {
+                          "anyOf": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": { "$ref": "#/$defs/elicitationEnumOption" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "required": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "elicitationCreateResult": {
+      "description": "Client response to elicitation/create.",
+      "type": "object",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["accept", "decline", "cancel"]
+        },
+        "content": {
+          "type": ["object", "null"],
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } },
+              { "type": "boolean" },
+              { "type": "number" }
+            ]
+          }
+        }
+      }
+    },
+    "vitruvianToolCallMeta": {
+      "description": "Vitruvian metadata attached to a tool_call or tool_call_update for subagent attribution.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subagent": { "type": "boolean" },
+        "parentToolCallId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vitruvianUpdateMeta": {
+      "description": "Vitruvian metadata attached to a session/update notification when emitted inside a subagent.",
+      "type": "object",
+      "required": ["parentToolCallId"],
+      "additionalProperties": false,
+      "properties": {
+        "parentToolCallId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vitruvianUsageMeta": {
+      "description": "Detailed Claude SDK token breakdown attached under usage_update._meta.vitruvian.",
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "cacheReadTokens": { "type": "integer", "minimum": 0 },
+        "cacheWriteTokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "toolCallLocation": {
+      "description": "File location touched or read by a tool call.",
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "toolCallContent": {
+      "description": "Content payload inside tool_call or tool_call_update (text content block or file diff).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "content"],
+          "properties": {
+            "type": { "const": "content" },
+            "content": { "$ref": "#/$defs/contentBlock" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "path", "newText"],
+          "properties": {
+            "type": { "const": "diff" },
+            "path": { "type": "string", "minLength": 1 },
+            "oldText": { "type": ["string", "null"] },
+            "newText": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "agentMessageChunkUpdate": {
+      "description": "Streamed assistant text chunk.",
+      "type": "object",
+      "required": ["sessionUpdate", "content"],
+      "properties": {
+        "sessionUpdate": { "const": "agent_message_chunk" },
+        "content": { "$ref": "#/$defs/contentBlock" }
+      }
+    },
+    "agentThoughtChunkUpdate": {
+      "description": "Streamed assistant thinking chunk.",
+      "type": "object",
+      "required": ["sessionUpdate", "content"],
+      "properties": {
+        "sessionUpdate": { "const": "agent_thought_chunk" },
+        "content": { "$ref": "#/$defs/contentBlock" }
+      }
+    },
+    "toolCallUpdate": {
+      "description": "Initial tool_call notification emitted from an assistant tool_use block.",
+      "type": "object",
+      "required": ["sessionUpdate", "toolCallId", "title", "kind", "status"],
+      "properties": {
+        "sessionUpdate": { "const": "tool_call" },
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "completed", "failed"]
+        },
+        "rawInput": {},
+        "locations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/toolCallLocation" }
+        },
+        "content": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/toolCallContent" }
+        },
+        "_meta": {
+          "type": ["object", "null"],
+          "properties": {
+            "vitruvian": { "$ref": "#/$defs/vitruvianToolCallMeta" }
+          }
+        }
+      }
+    },
+    "toolCallDeltaUpdate": {
+      "description": "Subsequent tool_call_update notification emitted from a user tool_result block.",
+      "type": "object",
+      "required": ["sessionUpdate", "toolCallId", "status"],
+      "properties": {
+        "sessionUpdate": { "const": "tool_call_update" },
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "completed", "failed"]
+        },
+        "content": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/toolCallContent" }
+        },
+        "rawOutput": {},
+        "_meta": {
+          "type": ["object", "null"],
+          "properties": {
+            "vitruvian": { "$ref": "#/$defs/vitruvianToolCallMeta" }
+          }
+        }
+      }
+    },
+    "planEntry": {
+      "description": "Single todo item in an ACP plan update.",
+      "type": "object",
+      "required": ["content", "priority", "status"],
+      "properties": {
+        "content": { "type": "string", "minLength": 1 },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "completed"]
+        }
+      }
+    },
+    "planUpdate": {
+      "description": "Full plan replacement mapped from top-level TodoWrite tool calls.",
+      "type": "object",
+      "required": ["sessionUpdate", "entries"],
+      "properties": {
+        "sessionUpdate": { "const": "plan" },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planEntry" }
+        }
+      }
+    },
+    "usageCost": {
+      "description": "Estimated monetary cost for a session or turn.",
+      "type": "object",
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    },
+    "usageUpdate": {
+      "description": "Context window and token/cost usage update mapped from SDK result messages.",
+      "type": "object",
+      "required": ["sessionUpdate", "used", "size"],
+      "properties": {
+        "sessionUpdate": { "const": "usage_update" },
+        "used": { "type": "integer", "minimum": 0 },
+        "size": { "type": "integer", "minimum": 0 },
+        "cost": {
+          "oneOf": [{ "$ref": "#/$defs/usageCost" }, { "type": "null" }]
+        },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "cachedTokens": { "type": "integer", "minimum": 0 },
+        "_meta": {
+          "type": ["object", "null"],
+          "properties": {
+            "vitruvian": { "$ref": "#/$defs/vitruvianUsageMeta" }
+          }
+        }
+      }
+    },
+    "availableCommand": {
+      "description": "Slash command entry exposed to the composer without a leading slash.",
+      "type": "object",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/]"
+        },
+        "description": { "type": "string" },
+        "input": {
+          "type": ["object", "null"],
+          "properties": {
+            "hint": { "type": "string" }
+          }
+        }
+      }
+    },
+    "availableCommandsUpdate": {
+      "description": "Merged SDK and disk slash commands sent after system/init.",
+      "type": "object",
+      "required": ["sessionUpdate", "availableCommands"],
+      "properties": {
+        "sessionUpdate": { "const": "available_commands_update" },
+        "availableCommands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/availableCommand" }
+        }
+      }
+    },
+    "currentModeUpdate": {
+      "description": "Mode confirmation update emitted after session/set_mode.",
+      "type": "object",
+      "required": ["sessionUpdate", "currentModeId"],
+      "properties": {
+        "sessionUpdate": { "const": "current_mode_update" },
+        "currentModeId": {
+          "type": "string",
+          "enum": ["default", "acceptEdits", "plan", "bypassPermissions"]
+        }
+      }
+    },
+    "configOptionUpdate": {
+      "description": "Config options update emitted after supportedModels() resolves or set_config_option changes.",
+      "type": "object",
+      "required": ["sessionUpdate", "configOptions"],
+      "properties": {
+        "sessionUpdate": { "const": "config_option_update" },
+        "configOptions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionConfigOption" }
+        }
+      }
+    },
+    "sessionUpdateParams": {
+      "description": "Parameters for helper-to-client session/update notification.",
+      "type": "object",
+      "required": ["sessionId", "update"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "update": {
+          "type": "object",
+          "required": ["sessionUpdate"],
+          "properties": {
+            "sessionUpdate": {
+              "type": "string",
+              "enum": [
+                "agent_message_chunk",
+                "agent_thought_chunk",
+                "tool_call",
+                "tool_call_update",
+                "plan",
+                "usage_update",
+                "available_commands_update",
+                "current_mode_update",
+                "config_option_update"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "sessionUpdate": { "const": "agent_message_chunk" }
+                }
+              },
+              "then": { "$ref": "#/$defs/agentMessageChunkUpdate" }
+            },
+            {
+              "if": {
+                "properties": {
+                  "sessionUpdate": { "const": "agent_thought_chunk" }
+                }
+              },
+              "then": { "$ref": "#/$defs/agentThoughtChunkUpdate" }
+            },
+            {
+              "if": {
+                "properties": { "sessionUpdate": { "const": "tool_call" } }
+              },
+              "then": { "$ref": "#/$defs/toolCallUpdate" }
+            },
+            {
+              "if": {
+                "properties": {
+                  "sessionUpdate": { "const": "tool_call_update" }
+                }
+              },
+              "then": { "$ref": "#/$defs/toolCallDeltaUpdate" }
+            },
+            {
+              "if": { "properties": { "sessionUpdate": { "const": "plan" } } },
+              "then": { "$ref": "#/$defs/planUpdate" }
+            },
+            {
+              "if": {
+                "properties": { "sessionUpdate": { "const": "usage_update" } }
+              },
+              "then": { "$ref": "#/$defs/usageUpdate" }
+            },
+            {
+              "if": {
+                "properties": {
+                  "sessionUpdate": { "const": "available_commands_update" }
+                }
+              },
+              "then": { "$ref": "#/$defs/availableCommandsUpdate" }
+            },
+            {
+              "if": {
+                "properties": {
+                  "sessionUpdate": { "const": "current_mode_update" }
+                }
+              },
+              "then": { "$ref": "#/$defs/currentModeUpdate" }
+            },
+            {
+              "if": {
+                "properties": {
+                  "sessionUpdate": { "const": "config_option_update" }
+                }
+              },
+              "then": { "$ref": "#/$defs/configOptionUpdate" }
+            }
+          ]
+        },
+        "_meta": {
+          "type": ["object", "null"],
+          "properties": {
+            "vitruvian": { "$ref": "#/$defs/vitruvianUpdateMeta" }
+          }
+        }
+      }
+    }
+  }
+}

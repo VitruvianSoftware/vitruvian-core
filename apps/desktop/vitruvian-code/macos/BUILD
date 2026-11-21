@@ -533,6 +533,7 @@ pipeline_unit(
         ":mirror_build_test",
         ":tool_conformance_test",
         ":vitruvian-code-tool",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:helper_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

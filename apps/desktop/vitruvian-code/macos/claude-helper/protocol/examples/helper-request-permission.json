@@ -1,0 +1,39 @@
+{
+  "jsonrpc": "2.0",
+  "id": "perm-1",
+  "method": "session/request_permission",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "toolCall": {
+      "toolCallId": "toolu_01PermBash",
+      "title": "Run Bash: git status",
+      "kind": "execute",
+      "status": "pending",
+      "rawInput": {
+        "command": "git status"
+      },
+      "locations": [
+        {
+          "path": "/Users/example/Workspace/project"
+        }
+      ]
+    },
+    "options": [
+      {
+        "optionId": "allow_once",
+        "name": "Allow",
+        "kind": "allow_once"
+      },
+      {
+        "optionId": "allow_always",
+        "name": "Always allow",
+        "kind": "allow_always"
+      },
+      {
+        "optionId": "reject_once",
+        "name": "Reject",
+        "kind": "reject_once"
+      }
+    ]
+  }
+}

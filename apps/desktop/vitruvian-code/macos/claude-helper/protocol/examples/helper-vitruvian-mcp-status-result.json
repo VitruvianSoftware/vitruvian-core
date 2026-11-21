@@ -1,0 +1,34 @@
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": {
+    "servers": [
+      {
+        "name": "local-docs",
+        "status": "connected",
+        "serverInfo": {
+          "name": "docs-mcp",
+          "version": "1.2.0"
+        },
+        "scope": "dynamic",
+        "source": "dynamic",
+        "tools": [
+          {
+            "name": "search_docs",
+            "description": "Search project markdown docs.",
+            "annotations": {
+              "readOnly": true,
+              "destructive": false,
+              "openWorld": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "remote-mcp",
+        "status": "failed",
+        "error": "Connection refused"
+      }
+    ]
+  }
+}

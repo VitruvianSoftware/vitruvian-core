@@ -378,6 +378,37 @@ fn override_change_or_unknown_section_or_bad_base_fails_open() {
 }
 
 #[test]
+fn ignored_optional_dependencies_parses_and_is_part_of_every_closure() {
+    // pnpm 10.20+ writes this section when pnpm-workspace.yaml sets
+    // `ignoredOptionalDependencies`. It is workspace-wide, so a change to it
+    // must change every importer's closure, the same as `overrides`.
+    let section = "\nignoredOptionalDependencies:\n  - '@scope/pkg-darwin-arm64'\n  - '@scope/pkg-linux-x64'\n";
+    let with = format!("{BASE_LOCK}{section}");
+    let changed = with.replace("pkg-linux-x64", "pkg-linux-arm64");
+
+    let base = parse_lockfile(BASE_LOCK).expect("parse base lock");
+    let lock_with = parse_lockfile(&with).expect("parse lock with ignoredOptionalDependencies");
+    let lock_changed = parse_lockfile(&changed).expect("parse changed lock");
+    assert!(
+        lock_with
+            .ignored_optional_dependencies
+            .contains("@scope/pkg-darwin-arm64"),
+        "section not captured: {:?}",
+        lock_with.ignored_optional_dependencies
+    );
+
+    let seeds = ["apps/web/demo"];
+    let c_base = extract_closure(&base, &seeds).expect("base closure");
+    let c_with = extract_closure(&lock_with, &seeds).expect("closure with section");
+    let c_changed = extract_closure(&lock_changed, &seeds).expect("changed closure");
+    assert_ne!(c_base, c_with, "adding the section must change the closure");
+    assert_ne!(
+        c_with, c_changed,
+        "editing the section must change the closure"
+    );
+}
+
+#[test]
 fn real_repo_lockfile_parses_and_extracts_backstage_and_gev_closures() {
     let raw = std::fs::read_to_string("pnpm-lock.yaml").expect("read repo pnpm-lock.yaml");
     let lock = parse_lockfile(&raw).expect("parse real repo pnpm-lock.yaml");

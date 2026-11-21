@@ -1,0 +1,32 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "session/new",
+  "params": {
+    "cwd": "/Users/example/Workspace/project",
+    "mcpServers": [
+      {
+        "name": "local-docs",
+        "command": "/usr/local/bin/docs-mcp",
+        "args": ["--stdio"],
+        "env": [
+          {
+            "name": "DOCS_ROOT",
+            "value": "/Users/example/Workspace/project/docs"
+          }
+        ]
+      },
+      {
+        "type": "http",
+        "name": "remote-mcp",
+        "url": "https://mcp.example.com/v1",
+        "headers": [
+          {
+            "name": "X-Workspace",
+            "value": "default"
+          }
+        ]
+      }
+    ]
+  }
+}

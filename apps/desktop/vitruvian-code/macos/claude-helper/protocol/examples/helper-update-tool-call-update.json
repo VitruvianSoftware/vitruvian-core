@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+    "update": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "toolu_01EditReadme",
+      "status": "completed",
+      "content": [
+        {
+          "type": "content",
+          "content": {
+            "type": "text",
+            "text": "The file /Users/example/Workspace/project/README.md has been updated."
+          }
+        }
+      ]
+    }
+  }
+}
