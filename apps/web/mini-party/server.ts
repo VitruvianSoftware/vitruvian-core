@@ -46,12 +46,17 @@ async function startServer() {
   app.disable("x-powered-by");
   const httpServer = createServer(app);
   // ALLOWED_ORIGINS lets the GitHub Pages game connect from its own site.
-  attachGameServer(httpServer, {
+  const { info } = attachGameServer(httpServer, {
     allowedOrigins: parseOrigins(process.env.ALLOWED_ORIGINS),
   });
 
   app.get("/healthz", (_req, res) => {
     res.type("text/plain").send("ok");
+  });
+
+  // Which rooms protocol this server speaks, to check a rollout from outside.
+  app.get("/version", (_req, res) => {
+    res.json(info);
   });
 
   const distPath = path.join(here, "dist");
