@@ -19,18 +19,25 @@
 # SOFTWARE.
 
 # One replica, replaced with Recreate rather than rolled: the relay holds each
-# device's /connect WebSocket in memory, so two relays at once would split the
-# devices between them. The devices themselves are in Postgres (relay-db, a
-# CloudNativePG cluster from gitops/argocd/platform/relay/).
+# device's /connect WebSocket in memory, so two relays at once would split
+# devices between them. The old relay also owned devices.json, so two would race
+# on the file; the new one keeps devices in Postgres (relay-db, a CloudNativePG
+# cluster from gitops/argocd/platform/relay/) and does not.
+#
+# Two modes, by value, so this chart can be deployed before the new image
+# exists: database.enabled and persistence.enabled (the old relay's file at
+# /data); see values.yaml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "vitruvian-relay.name" . }}
   labels: {{- include "vitruvian-relay.labels" . | nindent 4 }}
+  {{- if .Values.database.enabled }}
   annotations:
     # After the database cluster (wave 0) is healthy: the relay's first act is
     # to connect and migrate.
     argocd.argoproj.io/sync-wave: "2"
+  {{- end }}
 spec:
   replicas: 1
   strategy:
@@ -50,8 +57,8 @@ spec:
       {{- with .Values.affinity }}
       affinity: {{- toYaml . | nindent 8 }}
       {{- end }}
-      # fsGroup: the pod runs as UID 10001 and the NFS volume starts root-owned,
-      # so the group is what lets the relay read the old devices.json.
+      # fsGroup: the pod runs as UID 10001 and a fresh NFS volume starts
+      # root-owned, so the group is what lets the relay write devices.json.
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -80,11 +87,34 @@ spec:
             - name: PROJECT_ID
               value: {{ required "oidc.projectId is required (zitadel-apps-relay output projectId)" .Values.oidc.projectId | quote }}
             - name: MCP_CLIENT_IDS
-              value: {{ required "oidc.mcpClientIds is required: comma-separated zitadel-apps-relay outputs claudeClientId, geminiClientId, chatgptClientId (each one configured)" .Values.oidc.mcpClientIds | quote }}
+              value: {{ required "oidc.mcpClientIds is required: comma-separated zitadel-apps-relay outputs claudeV2ClientId, geminiV2ClientId, chatgptV2ClientId (each one configured)" .Values.oidc.mcpClientIds | quote }}
             - name: CONNECTOR_CLIENT_ID
-              value: {{ required "oidc.connectorClientId is required (zitadel-apps-relay output connectorClientId)" .Values.oidc.connectorClientId | quote }}
+              value: {{ required "oidc.connectorClientId is required (zitadel-apps-relay output connectorV2ClientId)" .Values.oidc.connectorClientId | quote }}
+            {{- include "vitruvian-relay.whoMaySignIn" . }}
+            {{- with .Values.oidc.allowedSubjects }}
+            {{- /* The old relay's check: a list of Zitadel user ids. */}}
             - name: ALLOWED_SUBJECTS
-              value: {{ required "oidc.allowedSubjects is required: an empty list would admit every account in the instance" .Values.oidc.allowedSubjects | quote }}
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.requiredRole }}
+            - name: REQUIRED_ROLE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.oidc.dashboardClientId }}
+            - name: DASHBOARD_CLIENT_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.mcpClientLabels }}
+            {{- /* What the dashboard calls each AI app: Label=<client id>, in label order. */}}
+            - name: MCP_CLIENT_LABELS
+              value: {{ include "vitruvian-relay.mcpClientLabels" . | quote }}
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
+            {{- /* The old relay's device file. */}}
+            - name: DATA_DIR
+              value: /data
+            {{- end }}
+            {{- if .Values.database.enabled }}
             # CloudNativePG writes the app user's connection string to the
             # relay-db-app secret (key `uri`) when it creates the cluster.
             - name: DATABASE_URL
@@ -96,21 +126,22 @@ spec:
             # database's certificate against it and refuses plain text.
             - name: DATABASE_CA_FILE
               value: /etc/relay-db-ca/ca.crt
-            # REMOVE IN TASK 13: the P1 device file, read once at start to copy
-            # its device into Postgres when the database has none.
-            - name: LEGACY_DEVICES_FILE
-              value: /data/devices.json
+            {{- end }}
           ports:
             - name: http
               containerPort: 3000
+          {{- if or .Values.persistence.enabled .Values.database.enabled }}
           volumeMounts:
-            # REMOVE IN TASK 13 (with the volume): read only, for the import.
+            {{- if .Values.persistence.enabled }}
             - name: data
               mountPath: /data
-              readOnly: true
+            {{- end }}
+            {{- if .Values.database.enabled }}
             - name: db-ca
               mountPath: /etc/relay-db-ca
               readOnly: true
+            {{- end }}
+          {{- end }}
           livenessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 20
@@ -118,13 +149,19 @@ spec:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 10
           resources: {{- toYaml .Values.resources | nindent 12 }}
+      {{- if or .Values.persistence.enabled .Values.database.enabled }}
       volumes:
+        {{- if .Values.persistence.enabled }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "vitruvian-relay.name" . }}-data
+        {{- end }}
+        {{- if .Values.database.enabled }}
         - name: db-ca
           secret:
             secretName: {{ .Values.database.caSecretName | quote }}
             items:
               - key: ca.crt
                 path: ca.crt
+        {{- end }}
+      {{- end }}

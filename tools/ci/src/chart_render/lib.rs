@@ -86,6 +86,16 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
         good: &["60s", "74s", "1m", "1m10s", "1m14s"],
         expect: "connectionIdleTimeout: \"{v}\"",
     },
+    // Who may sign in: with the role empty (and no user list in the CI values)
+    // there is no check at all, which must refuse (_helpers.tpl
+    // whoMaySignIn); a role renders as REQUIRED_ROLE's value.
+    ValueControl {
+        chart_dir: "apps/suites/vitruvian-relay/relay/deploy/chart",
+        path: "oidc.requiredRole",
+        bad: &[""],
+        good: &["relay-user", "relay-tester"],
+        expect: "value: \"{v}\"",
+    },
 ];
 
 /// Extract every `required "<message>" .Values.<path>` from a chart's

@@ -50,6 +50,27 @@ spec:
         - path:
             type: Exact
             value: "/connect"
+        {{- if .Values.oidc.dashboardClientId }}
+        # The dashboard, only when it is on (oidc.dashboardClientId): the front
+        # page, sign-in and sign-out (/auth/), the stylesheet (/static/), a
+        # computer's page, rename and remove (/devices/{id}...) and the activity
+        # list. /devices, above, is the connector's registration and the list.
+        - path:
+            type: Exact
+            value: "/"
+        - path:
+            type: PathPrefix
+            value: "/auth/"
+        - path:
+            type: PathPrefix
+            value: "/static/"
+        - path:
+            type: PathPrefix
+            value: "/devices/"
+        - path:
+            type: Exact
+            value: "/activity"
+        {{- end }}
       backendRefs:
         - group: ""
           kind: Service

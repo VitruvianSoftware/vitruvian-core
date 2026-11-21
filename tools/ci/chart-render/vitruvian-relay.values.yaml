@@ -23,12 +23,33 @@
 # this file so its templates are executed in CI. Live values are in
 # gitops/argocd/platform/relay/values.yaml.
 
+# The relay chart rendered in its NEW mode (relay.vitruviansoftware.dev, the
+# database, no volume, access by role, the dashboard), the one the digest PR
+# turns on in gitops/argocd/platform/relay/values.yaml. The ids are the real
+# zitadel-apps-relay outputs (they are not secrets), so the connector's
+# defaults_match_relay_stack test can compare its compiled-in defaults with
+# them. Only the digest is a placeholder: deliberately not a real image.
 image:
-  # A syntactically valid digest that is deliberately not a real image.
   digest: "main@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
+hostname: relay.vitruviansoftware.dev
+
 oidc:
-  projectId: "000000000000000000"
-  mcpClientIds: "000000000000000001@render-gate"
-  connectorClientId: "000000000000000002@render-gate"
-  allowedSubjects: "000000000000000003"
+  projectId: "398912441632687930"
+  # claudeV2ClientId, geminiV2ClientId
+  mcpClientIds: "400571151425734985,400571151492842651"
+  # connectorV2ClientId
+  connectorClientId: "400571151425800521"
+  # dashboardClientId
+  dashboardClientId: "400571151492909385"
+  requiredRole: "relay-user"
+
+mcpClientLabels:
+  Claude: "400571151425734985"
+  Gemini: "400571151492842651"
+
+database:
+  enabled: true
+
+persistence:
+  enabled: false

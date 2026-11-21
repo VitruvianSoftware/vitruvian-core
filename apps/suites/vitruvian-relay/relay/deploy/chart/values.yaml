@@ -27,8 +27,10 @@ image:
   digest: ""
   pullPolicy: IfNotPresent
 
-# Public hostname (must be under ipv1337.dev for external-dns). The DNS record
-# and PUBLIC_URL (https://<hostname>) both read it.
+# Public hostname (under ipv1337.dev or vitruviansoftware.dev, both of which
+# external-dns manages). The DNS record and PUBLIC_URL (https://<hostname>) both
+# read it. It stays relay.ipv1337.dev until the digest PR moves the relay to
+# relay.vitruviansoftware.dev together with the new image.
 hostname: relay.ipv1337.dev
 
 # The Cloudflare Tunnel the DNSEndpoint CNAMEs to. Same value as
@@ -40,32 +42,61 @@ oidc:
   issuer: https://auth.ipv1337.dev
   # All required, from the zitadel-apps-relay stack's outputs.
   projectId: ""
-  # Comma-separated client ids of the AI apps allowed on /mcp/d/{device}:
-  # relay-claude, relay-gemini (and relay-chatgpt once it exists).
+  # Comma-separated client ids of the AI apps allowed on /mcp/d/{device}: the
+  # "-v2" clients (claudeV2ClientId, geminiV2ClientId; chatgptV2ClientId once
+  # it exists), which put the user's roles in the access token.
   mcpClientIds: ""
   # The connector's client id, the only one allowed on /devices and /connect.
   # Must not also be in mcpClientIds (the relay refuses to start).
   connectorClientId: ""
-  # Comma-separated Zitadel user ids allowed in (the only identity check
-  # beyond the client pin; aud is caller-authored in this instance).
+  # WHO may sign in, one of the two (a render with neither fails: an empty
+  # check would admit every account in the instance).
+  #
+  # requiredRole: the Zitadel project role a person must hold (relay-user). The
+  # current relay, which checks it, takes it as REQUIRED_ROLE.
+  requiredRole: ""
+  # allowedSubjects: comma-separated Zitadel user ids. The OLD relay's check,
+  # and the only one it knows. Remove it, with the rest of the old mode (see
+  # database and persistence below), once the new image is live.
   allowedSubjects: ""
+  # The dashboard's client id (dashboardClientId output). Setting it turns the
+  # dashboard on: the relay gets DASHBOARD_CLIENT_ID and the HTTPRoute also
+  # publishes the dashboard's paths (/, /auth/, /static/, /devices/,
+  # /activity). Leave it empty for the old relay, which has no dashboard.
+  dashboardClientId: ""
+
+# What the dashboard calls each AI app, as label: client id (each id must be in
+# mcpClientIds). Becomes MCP_CLIENT_LABELS. Empty for the old relay.
+mcpClientLabels: {}
 
 # Where the relay keeps devices and call history: the CloudNativePG cluster
-# `relay-db` (gitops/argocd/platform/relay/cnpg-cluster.yaml). CloudNativePG
-# makes these two secrets itself when it creates the cluster: `<cluster>-app`
-# (the app user's connection string, key `uri`) and `<cluster>-ca` (the CA that
-# signed the server's certificate, key `ca.crt`).
+# `relay-db` (gitops/argocd/platform/relay/cnpg-cluster.yaml).
+#
+# Off by default, which is the OLD relay: it keeps devices in a file and
+# neither reads DATABASE_URL nor is allowed to reach the database. The cluster
+# itself is deployed either way. Turning this on gives the pod DATABASE_URL, the
+# database's CA and the network path to relay-db, so it must come with the
+# image that uses them (the digest PR).
+#
+# CloudNativePG makes these two secrets itself when it creates the cluster:
+# `<cluster>-app` (the app user's connection string, key `uri`) and
+# `<cluster>-ca` (the CA that signed the server's certificate, key `ca.crt`).
 database:
+  enabled: false
   clusterName: relay-db
   secretName: relay-db-app
   secretKey: uri
   caSecretName: relay-db-ca
 
-# REMOVE IN TASK 13. The P1 device records (devices.json), mounted read-only at
-# /data so the relay can copy that file's device into Postgres once.
+# The OLD relay's device file (devices.json), mounted read-write at /data (its
+# DATA_DIR). On by default for that image; the new relay keeps devices in
+# Postgres and does not touch the volume, so the digest PR turns this off. The
+# claim is then no longer rendered, and Argo CD leaves it (and its data) in
+# place: it is annotated Prune=false.
 # `nfs` (the NAS), not the default local-path: local-path pins the volume, and
 # so the pod, to one node, which would defeat the node allow list in affinity.
 persistence:
+  enabled: true
   storageClassName: nfs
   size: 1Gi
 

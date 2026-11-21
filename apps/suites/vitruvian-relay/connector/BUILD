@@ -111,6 +111,7 @@ rust_test(
         "//apps/suites/vitruvian-relay/connector/dc:pnpm-lock.yaml",
         "//apps/suites/vitruvian-relay/relay:deploy/chart/values.yaml",
         "//gitops/argocd/platform/relay:values.yaml",
+        "//tools/ci:chart-render/vitruvian-relay.values.yaml",
     ],
 )
 

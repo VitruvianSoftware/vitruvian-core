@@ -18,8 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# vitruvian-relay: the Vitruvian Relay server, public at relay.ipv1337.dev.
-# Plan: docs/superpowers/plans/2026-11-15-relay-p1-single-user-alpha.md.
+# vitruvian-relay: the Vitruvian Relay server, public at relay.ipv1337.dev until
+# the digest PR moves it to relay.vitruviansoftware.dev (chart README: "Two modes").
+# Plans: docs/superpowers/plans/2026-11-15-relay-p1-single-user-alpha.md and
+# docs/superpowers/plans/2026-11-20-relay-p2-multi-user.md.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

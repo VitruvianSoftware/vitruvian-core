@@ -714,8 +714,8 @@ fn production_values_are_pinned() {
 #[test]
 fn relay_url_becomes_the_connect_url() {
     assert_eq!(
-        connect_url("https://relay.ipv1337.dev").unwrap(),
-        "wss://relay.ipv1337.dev/connect"
+        connect_url("https://relay.vitruviansoftware.dev").unwrap(),
+        "wss://relay.vitruviansoftware.dev/connect"
     );
     assert_eq!(
         connect_url("http://127.0.0.1:9").unwrap(),
@@ -731,7 +731,7 @@ fn relay_url_becomes_the_connect_url() {
         assert!(connect_url(ok).is_ok(), "{ok}");
     }
     for bad in [
-        "http://relay.ipv1337.dev",
+        "http://relay.vitruviansoftware.dev",
         "http://127.0.0.1.evil.example",
         "http://localhost.evil.example:80",
         "http://10.0.0.1:9",
