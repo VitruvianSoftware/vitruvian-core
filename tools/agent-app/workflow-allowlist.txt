@@ -82,3 +82,11 @@ delivery-vitruvian-tabs.yaml unit environment
 # main, and with no SENTRY_TOKEN seeded yet the job emits a notice and applies
 # nothing.
 sentry-apply.yaml action
+
+# Delivers one oauth-user-inspector unit into one environment. Added 2026-11-20
+# at James's request ("Go and redeploy it"): the 1.16.0 and 1.16.1 release runs
+# used workflow code from before the Headscale fix (#4857), timed out reaching
+# Zitadel, and skipped nonproduction and production. No allow-unsoaked key.
+# The production Environment still holds every production run for James's
+# approval, and the Zitadel apply refuses a destructive plan on a manual run.
+delivery-oauth-user-inspector.yaml unit environment
