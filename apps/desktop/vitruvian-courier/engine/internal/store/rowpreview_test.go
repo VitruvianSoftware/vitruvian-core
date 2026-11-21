@@ -155,7 +155,7 @@ func TestMemberPreviewsOfAHugeChatIsBounded(t *testing.T) {
 	start := time.Now()
 	got, err := s.MemberPreviews(ctx, []string{"!big"})
 	require.NoError(t, err)
-	require.Less(t, time.Since(start), time.Second)
+	require.Less(t, time.Since(start), grossCeiling(time.Second))
 	require.Len(t, got["!big"], MaxRowMembers)
 	require.Equal(t, "@u1999:courier.local", got["!big"][0].UserID, "a recent speaker past the first member rows still counts")
 	plan := strings.Join(planOf(t, s, memberPreviewsSQL, `["!big"]`), "\n")

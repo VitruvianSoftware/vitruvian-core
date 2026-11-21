@@ -55,6 +55,7 @@ go_test(
         "edit_test.go",
         "features_test.go",
         "forward_test.go",
+        "linkpreview_deadline_test.go",
         "linkpreview_image_test.go",
         "older_test.go",
         "outbox_test.go",
