@@ -6,7 +6,11 @@ package actions
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -70,6 +74,26 @@ func servePage(t *testing.T, a *Actions, html string) *pageServer {
 			ps.images.Add(1)
 			rw.Header().Set("Content-Type", "image/png")
 			_, _ = rw.Write(append(solidPNG(16, 12), bytes.Repeat([]byte{0}, maxLinkPreviewImageBytes)...))
+		case "/missing.png":
+			ps.images.Add(1)
+			http.NotFound(rw, r)
+		case "/error.png":
+			ps.images.Add(1)
+			http.Error(rw, "broken", http.StatusInternalServerError)
+		case "/bomb.png":
+			// 20000 x 20000 pixels claimed by a header of a few dozen bytes.
+			ps.images.Add(1)
+			rw.Header().Set("Content-Type", "image/png")
+			ihdr := binary.BigEndian.AppendUint32(nil, 20000)
+			ihdr = binary.BigEndian.AppendUint32(ihdr, 20000)
+			ihdr = append(ihdr, 8, 0, 0, 0, 0)
+			_, _ = rw.Write(append(append([]byte("\x89PNG\r\n\x1a\n"), testPNGChunk("IHDR", ihdr)...), testPNGChunk("IEND", nil)...))
+		case "/slow.png":
+			ps.images.Add(1)
+			select {
+			case <-r.Context().Done():
+			case <-time.After(2 * time.Second):
+			}
 		case "/not-a-picture":
 			ps.images.Add(1)
 			rw.Header().Set("Content-Type", "image/png")
@@ -249,4 +273,119 @@ func TestPreviewImageKeepsTheLinkPreviewAddressGuard(t *testing.T) {
 		require.Empty(t, got.ImagePath, blocked)
 	}
 	require.Equal(t, int32(0), hits.Load())
+}
+
+func testPNGChunk(kind string, data []byte) []byte {
+	out := binary.BigEndian.AppendUint32(nil, uint32(len(data)))
+	out = append(out, kind...)
+	out = append(out, data...)
+	return binary.BigEndian.AppendUint32(out, crc32.ChecksumIEEE(append([]byte(kind), data...)))
+}
+
+// Only "the page was read and names no picture" is believed for a week. A picture that did not come (it was not found,
+// the server broke, it was too big, was not a picture, claimed an absurd size, or was too slow) is believed for an hour,
+// as is a page that did not answer.
+func TestPreviewImageFailuresAreRememberedForAnHourNotAWeek(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	previewImageNow = func() time.Time { return now }
+	oldTimeout := linkPreviewImageTimeout
+	linkPreviewImageTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { previewImageNow = time.Now; linkPreviewImageTimeout = oldTimeout })
+
+	for _, path := range []string{"/missing.png", "/error.png", "/big.png", "/not-a-picture", "/bomb.png", "/slow.png"} {
+		t.Run(path, func(t *testing.T) {
+			now = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+			a := previewActions(t)
+			ps := servePage(t, a, `<meta property="og:title" content="A story"><meta property="og:image" content="`+path+`">`)
+			got, err := a.PreviewImageForURL(ctx, ps.url+"/story")
+			require.NoError(t, err)
+			require.Empty(t, got.ImagePath)
+			require.Equal(t, int32(1), ps.pages.Load())
+			now = now.Add(59 * time.Minute)
+			_, _ = a.PreviewImageForURL(ctx, ps.url+"/story")
+			require.Equal(t, int32(1), ps.pages.Load(), "within the hour it is not asked again")
+			now = now.Add(2 * time.Minute)
+			_, _ = a.PreviewImageForURL(ctx, ps.url+"/story")
+			require.Equal(t, int32(2), ps.pages.Load(), "after the hour it is: a failed picture is not 'no picture for a week'")
+		})
+	}
+
+	// The one kept for a week: the page was read and names no picture.
+	now = time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	a := previewActions(t)
+	ps := servePage(t, a, `<meta property="og:title" content="A story">`)
+	_, _ = a.PreviewImageForURL(ctx, ps.url+"/story")
+	now = now.Add(6 * 24 * time.Hour)
+	_, _ = a.PreviewImageForURL(ctx, ps.url+"/story")
+	require.Equal(t, int32(1), ps.pages.Load())
+}
+
+// The picture has its own time: a page that took most of its own does not leave the picture none.
+func TestPreviewImageHasItsOwnTimeApartFromThePages(t *testing.T) {
+	ctx := context.Background()
+	oldPage, oldImage := linkPreviewTimeout, linkPreviewImageTimeout
+	linkPreviewTimeout, linkPreviewImageTimeout = 500*time.Millisecond, 2*time.Second
+	t.Cleanup(func() { linkPreviewTimeout, linkPreviewImageTimeout = oldPage, oldImage })
+
+	a := previewActions(t)
+	var base string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		time.Sleep(350 * time.Millisecond) // the page and the picture each take 350 ms: 700 ms in all, over the page's 500 ms
+		if r.URL.Path == "/og.png" {
+			rw.Header().Set("Content-Type", "image/png")
+			_, _ = rw.Write(solidPNG(16, 12))
+			return
+		}
+		rw.Header().Set("Content-Type", "text/html")
+		_, _ = fmt.Fprintf(rw, `<meta property="og:title" content="A story"><meta property="og:image" content="%s/og.png">`, base)
+	}))
+	defer srv.Close()
+	base = srv.URL
+	a.SetLinkPreviewHTTPClient(srv.Client())
+	got, err := a.PreviewImageForURL(ctx, srv.URL+"/story")
+	require.NoError(t, err)
+	require.NotEmpty(t, got.ImagePath, "the picture got its own time")
+}
+
+// The rows kept per address are capped and the expired ones go on each write.
+func TestPreviewImageRowsArePrunedOnWrite(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	previewImageNow = func() time.Time { return now }
+	previewImageRowsKept = 3
+	t.Cleanup(func() { previewImageNow = time.Now; previewImageRowsKept = store.LinkPreviewImageRowsKept })
+
+	a := previewActions(t)
+	var urls []string
+	// remembered is how many of the addresses seen so far still have a row.
+	remembered := func() int {
+		n := 0
+		for _, u := range urls {
+			canonical, err := canonicalPreviewURL(u)
+			require.NoError(t, err)
+			sum := sha256.Sum256([]byte(canonical))
+			if _, ok, err := a.s.Setting(ctx, previewImageKeyPrefix+hex.EncodeToString(sum[:])); err == nil && ok {
+				n++
+			}
+		}
+		return n
+	}
+	// Five pages with no picture, a minute apart: the cap keeps the newest three.
+	for i := 0; i < 5; i++ {
+		ps := servePage(t, a, `<meta property="og:title" content="A story">`)
+		urls = append(urls, ps.url+"/story")
+		_, err := a.PreviewImageForURL(ctx, ps.url+"/story")
+		require.NoError(t, err)
+		now = now.Add(time.Minute)
+	}
+	require.Equal(t, 3, remembered(), "only the newest three are kept")
+
+	// A week and a day later one more write drops the expired ones with it.
+	now = now.Add(8 * 24 * time.Hour)
+	ps := servePage(t, a, `<meta property="og:title" content="A story">`)
+	urls = append(urls, ps.url+"/story")
+	_, err := a.PreviewImageForURL(ctx, ps.url+"/story")
+	require.NoError(t, err)
+	require.Equal(t, 1, remembered(), "the expired rows went with the write")
 }

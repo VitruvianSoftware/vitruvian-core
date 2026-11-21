@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"io"
 	"net"
@@ -24,9 +25,15 @@ import (
 )
 
 const (
-	linkPreviewTimeout       = 3 * time.Second
 	maxLinkPreviewHTMLBytes  = 256 * 1024
 	maxLinkPreviewImageBytes = 2 * 1024 * 1024
+)
+
+// The page and the picture each have their own time (variables so a test can shorten them): a slow page does not use up
+// the picture's.
+var (
+	linkPreviewTimeout      = 3 * time.Second
+	linkPreviewImageTimeout = 5 * time.Second
 )
 
 var (
@@ -80,8 +87,8 @@ func (a *Actions) getLinkPreviewClient() *http.Client {
 		resolver = net.DefaultResolver.LookupIPAddr
 	}
 	dialer := &net.Dialer{Timeout: linkPreviewTimeout}
+	// No Timeout of its own: the page and the picture each carry their own context deadline (fetchLinkPreviewDetail).
 	return &http.Client{
-		Timeout: linkPreviewTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxLinkPreviewRedirects {
 				return errors.New("too many redirects")
@@ -171,9 +178,26 @@ func (a *Actions) applyLinkPreviews(ctx context.Context, c *event.MessageEventCo
 }
 
 func (a *Actions) fetchLinkPreview(ctx context.Context, targetURL string) *event.BeeperLinkPreview {
+	lp, _ := a.fetchLinkPreviewDetail(ctx, targetURL)
+	return lp
+}
+
+// linkPreviewImageOutcome says what became of the page's picture, for a caller that remembers the answer (the picture
+// of a link card, PreviewImageForURL).
+type linkPreviewImageOutcome struct {
+	// Named is true when the page names an og:image at all.
+	Named bool
+	// Err is why that picture could not be had (it was refused, did not answer, was not 2xx, too big, or not a picture);
+	// nil when it was saved, or when the page names none.
+	Err error
+}
+
+// fetchLinkPreviewDetail is fetchLinkPreview and what became of the page's picture. The page has its own time
+// (linkPreviewTimeout) and the picture its own (linkPreviewImageTimeout).
+func (a *Actions) fetchLinkPreviewDetail(ctx context.Context, targetURL string) (*event.BeeperLinkPreview, linkPreviewImageOutcome) {
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	fetchCtx, cancel := context.WithTimeout(ctx, linkPreviewTimeout)
 	defer cancel()
@@ -181,24 +205,24 @@ func (a *Actions) fetchLinkPreview(ctx context.Context, targetURL string) *event
 	client := a.getLinkPreviewClient()
 	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, targetURL, nil)
 	if err != nil {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxLinkPreviewHTMLBytes))
 	if err != nil || len(bodyBytes) == 0 {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 
 	og := parseOpenGraphTags(string(bodyBytes))
 	if og["og:title"] == "" && og["og:description"] == "" && og["og:site_name"] == "" && og["og:image"] == "" {
-		return nil
+		return nil, linkPreviewImageOutcome{}
 	}
 
 	canonical := og["og:url"]
@@ -216,38 +240,54 @@ func (a *Actions) fetchLinkPreview(ctx context.Context, targetURL string) *event
 		},
 	}
 
-	if rawImg := og["og:image"]; rawImg != "" && a.m != nil {
-		if imgURL, err := parsedURL.Parse(rawImg); err == nil && imgURL.Scheme == "https" {
-			a.populatePreviewImage(fetchCtx, client, imgURL.String(), preview)
+	var outcome linkPreviewImageOutcome
+	if rawImg := og["og:image"]; rawImg != "" {
+		outcome.Named = true
+		switch imgURL, err := parsedURL.Parse(rawImg); {
+		case a.m == nil:
+			outcome.Err = errors.New("no media store to keep the picture in")
+		case err != nil || imgURL.Scheme != "https":
+			outcome.Err = errors.New("the page's picture is not an https address")
+		default:
+			// The picture has its own time, apart from the page's.
+			imgCtx, imgCancel := context.WithTimeout(ctx, linkPreviewImageTimeout)
+			outcome.Err = a.populatePreviewImage(imgCtx, client, imgURL.String(), preview)
+			imgCancel()
 		}
 	}
-	return preview
+	return preview, outcome
 }
 
-func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client, imgURL string, preview *event.BeeperLinkPreview) {
+// populatePreviewImage fetches the picture at imgURL into the media store and sets it on preview. The error says why
+// it could not (the picture did not answer, was not 2xx, was empty or over 2 MiB, or was not a picture, or one too big
+// to decode: media.ErrImageTooLarge).
+func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client, imgURL string, preview *event.BeeperLinkPreview) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imgURL, nil)
 	if err != nil {
-		return
+		return err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return
+		return fmt.Errorf("the picture answered %d", resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxLinkPreviewImageBytes+1))
-	if err != nil || len(data) == 0 || len(data) > maxLinkPreviewImageBytes {
-		return
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 || len(data) > maxLinkPreviewImageBytes {
+		return errors.New("the picture is empty or over the size limit")
 	}
 	meta, err := media.InspectImage(bytes.NewReader(data))
 	if err != nil {
-		return
+		return err
 	}
 	hash, err := a.m.Put(data)
 	if err != nil {
-		return
+		return err
 	}
 	preview.ImageURL = ids.ContentURI(hash)
 	preview.ImageSize = event.IntOrString(len(data))
@@ -257,6 +297,7 @@ func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client,
 	if ct := baseType(resp.Header.Get("Content-Type")); strings.HasPrefix(ct, "image/") {
 		preview.ImageType = ct
 	}
+	return nil
 }
 
 func parseOpenGraphTags(doc string) map[string]string {

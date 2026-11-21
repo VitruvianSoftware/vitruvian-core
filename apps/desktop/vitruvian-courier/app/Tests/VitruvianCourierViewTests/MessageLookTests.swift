@@ -249,6 +249,38 @@ final class MessageLookTests: XCTestCase {
         XCTAssertNil(box(of: try bitmap("look-card-policy-off"), width: 520, where: isRed))
     }
 
+    /// A picture fetched for the page stops showing the moment Show link previews goes off, and comes back when on.
+    func testAFetchedPictureStopsShowingWhenShowLinkPreviewsGoesOff() throws {
+        let path = try picture(red: 1, green: 0, blue: 0, width: 1200, height: 630)
+        LocalFileFacts.warm(paths: [path])
+        let images = LinkPreviewImages { _ in LinkPreviewImage(path: path, width: 1200, height: 630) }
+        let page = try XCTUnwrap(noPictureCard().pageURL)
+        // Fetched before the cards are drawn. (A sync test, so the main actor is free for the cards' own tasks.)
+        let fetched = expectation(description: "fetched")
+        Task { @MainActor in
+            _ = await images.image(for: page, showLinkPreviews: true)
+            fetched.fulfill()
+        }
+        wait(for: [fetched], timeout: 5)
+        XCTAssertEqual(images.requestCount, 1)
+
+        _ = try Snapshot.render("look-card-pic-on", width: 520, prepare: settle(until: isRed)) {
+            LinkPreviewCardView(preview: noPictureCard(), images: images, allowsRemoteImage: true).padding(14)
+        }
+        XCTAssertNotNil(box(of: try bitmap("look-card-pic-on"), width: 520, where: isRed), "on: the fetched picture shows")
+
+        _ = try Snapshot.render("look-card-pic-off", width: 520, prepare: { view in
+            for _ in 0 ..< 60 {
+                RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))
+                view.layoutSubtreeIfNeeded()
+            }
+        }) {
+            LinkPreviewCardView(preview: noPictureCard(), images: images, allowsRemoteImage: false).padding(14)
+        }
+        XCTAssertNil(box(of: try bitmap("look-card-pic-off"), width: 520, where: isRed), "off: it is gone at once")
+        XCTAssertEqual(images.requestCount, 1, "and nothing was asked")
+    }
+
     func testACardWhoseNetworkPreviewHasAPictureAsksForNothing() throws {
         let path = try picture(red: 0, green: 0, blue: 1, width: 1200, height: 630)
         LocalFileFacts.warm(paths: [path])

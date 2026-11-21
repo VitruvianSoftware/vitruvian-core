@@ -20,6 +20,17 @@ import (
 // an oversized or corrupt file fails that one inspection rather than the engine.
 const MaxInspectBytes int64 = 32 * 1024 * 1024
 
+// MaxInspectPixels is the most pixels (width times height) InspectImage decodes: 50 megapixels, a big camera photo.
+// Decoding allocates every pixel, so a few hundred bytes of PNG header claiming 20000 x 20000 would take hundreds of
+// megabytes; the size is read from the header first and refused above this.
+const MaxInspectPixels int64 = 50_000_000
+
+// MaxInspectDimension is the longest side InspectImage decodes, in pixels: no picture is a strip this long.
+const MaxInspectDimension = 30000
+
+// ErrImageTooLarge means a picture's header claims more pixels than InspectImage decodes.
+var ErrImageTooLarge = errors.New("image is too large to decode")
+
 type Metadata struct {
 	Width      int
 	Height     int
@@ -41,6 +52,16 @@ func InspectImage(r io.Reader) (Metadata, error) {
 	}
 	if int64(len(data)) > MaxInspectBytes {
 		return Metadata{}, fmt.Errorf("image exceeds maximum inspection size (%d bytes)", MaxInspectBytes)
+	}
+
+	// The size comes from the header alone, before anything is allocated for the pixels.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return Metadata{}, err
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > MaxInspectDimension || cfg.Height > MaxInspectDimension ||
+		int64(cfg.Width)*int64(cfg.Height) > MaxInspectPixels {
+		return Metadata{}, fmt.Errorf("%w: %d x %d", ErrImageTooLarge, cfg.Width, cfg.Height)
 	}
 
 	if bytes.HasPrefix(data, []byte("GIF87a")) || bytes.HasPrefix(data, []byte("GIF89a")) {

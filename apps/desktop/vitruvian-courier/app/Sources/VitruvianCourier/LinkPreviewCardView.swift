@@ -101,7 +101,8 @@ public struct LinkPreviewCardView<Footer: View>: View {
         if let path = preview.imagePath, !path.isEmpty {
             return (path, preview.imageWidth, preview.imageHeight)
         }
-        if let url = targetURL, let fetched = images?.cached(for: url) {
+        // A picture fetched for the page shows only while Show link previews is on: off, it goes at once.
+        if allowsRemoteImage, let url = targetURL, let fetched = images?.cached(for: url) {
             return (fetched.path, fetched.width, fetched.height)
         }
         return nil
@@ -111,7 +112,7 @@ public struct LinkPreviewCardView<Footer: View>: View {
     /// and the address is one `LinkPreviewPolicy` lets Courier ask about.
     private var asksForPicture: URL? {
         guard images != nil, preview.imagePath?.isEmpty ?? true, let url = targetURL,
-              LinkPreviewPolicy.mayRequest(url, showLinkPreviews: allowsRemoteImage) else { return nil }
+              LinkPreviewPolicy.mayRequestPageImage(url, showLinkPreviews: allowsRemoteImage) else { return nil }
         return url
     }
 

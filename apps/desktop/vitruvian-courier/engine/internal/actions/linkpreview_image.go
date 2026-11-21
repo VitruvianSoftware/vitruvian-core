@@ -19,6 +19,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 )
 
 // ErrBadPreviewURL means the address isn't one a preview picture is fetched for: not an https address with a host.
@@ -26,14 +27,18 @@ var ErrBadPreviewURL = errors.New("a preview picture is fetched only for an http
 
 const (
 	maxPreviewImageURLBytes = 2048
-	// previewImageNoneLifetime is how long "this page has no picture" is believed: a page seldom gains one.
+	// previewImageNoneLifetime is how long "the page was read and names no picture" is believed: a page seldom gains
+	// one. Nothing else is believed this long.
 	previewImageNoneLifetime = 7 * 24 * time.Hour
-	// previewImageUnknownLifetime is how long a failed look-up (the page didn't answer, or was refused) is believed,
-	// so a link in a chat that scrolls past again and again is not asked for each time, and one that was only slow
-	// gets another go within the hour.
+	// previewImageUnknownLifetime is how long a failed look-up is believed (the page or its picture did not answer, was
+	// not 2xx, was refused, too big or not a picture), so a link in a chat that scrolls past again and again is not asked
+	// for each time, and one that was only slow gets another go within the hour.
 	previewImageUnknownLifetime = time.Hour
-	previewImageKeyPrefix       = "link_preview_image:"
+	previewImageKeyPrefix       = store.LinkPreviewImageKeyPrefix
 )
+
+// previewImageRowsKept is how many remembered addresses are kept; a test lowers it.
+var previewImageRowsKept = store.LinkPreviewImageRowsKept
 
 // previewImageNow is the clock the cache's lifetimes are read by; a test sets it.
 var previewImageNow = time.Now
@@ -121,25 +126,37 @@ func (a *Actions) fetchPreviewImage(ctx context.Context, canonical, key string) 
 	if res, ok := a.rememberedPreviewImage(ctx, key); ok {
 		return res, nil
 	}
+	// What is remembered: "found" for a saved picture; "none" only when the page was read and names no picture; and
+	// "unknown" for everything else (the page did not answer, or its picture was refused, did not answer, was not 2xx,
+	// was too big or was not a picture), which is believed for an hour only.
 	rec := previewImageRecord{State: "unknown", AtMilli: previewImageNow().UnixMilli()}
 	var res PreviewImage
-	if lp := a.fetchLinkPreview(ctx, canonical); lp != nil {
-		rec.State = "none"
-		if uri := string(lp.ImageURL); uri != "" {
-			if path := a.previewImagePath(uri); path != "" {
-				rec = previewImageRecord{
-					State: "found", URI: uri, Width: int(lp.ImageWidth), Height: int(lp.ImageHeight),
-					Blur: lp.ImageBlurhash, AtMilli: rec.AtMilli,
-				}
-				res = PreviewImage{ImagePath: path, ImageWidth: rec.Width, ImageHeight: rec.Height, BlurHash: rec.Blur}
+	if lp, outcome := a.fetchLinkPreviewDetail(ctx, canonical); lp != nil {
+		switch uri := string(lp.ImageURL); {
+		case uri != "" && a.previewImagePath(uri) != "":
+			rec = previewImageRecord{
+				State: "found", URI: uri, Width: int(lp.ImageWidth), Height: int(lp.ImageHeight),
+				Blur: lp.ImageBlurhash, AtMilli: rec.AtMilli,
 			}
+			res = PreviewImage{ImagePath: a.previewImagePath(uri), ImageWidth: rec.Width, ImageHeight: rec.Height, BlurHash: rec.Blur}
+		case !outcome.Named:
+			rec.State = "none"
 		}
 	}
 	// Remembered even when the caller has gone (ctx): the page was fetched, so it is not fetched again.
+	bg := context.WithoutCancel(ctx)
 	if raw, err := json.Marshal(rec); err == nil {
-		_ = a.s.SetSetting(context.WithoutCancel(ctx), key, string(raw))
+		_ = a.s.SetSetting(bg, key, string(raw))
+		a.prunePreviewImages(bg, rec.AtMilli)
 	}
 	return res, nil
+}
+
+// prunePreviewImages drops the remembered pictures that are over their lifetime, and all but the newest
+// store.LinkPreviewImageRowsKept, so the table does not grow with every link ever seen. It runs after each write.
+func (a *Actions) prunePreviewImages(ctx context.Context, nowMilli int64) {
+	_, _ = a.s.PruneLinkPreviewImages(ctx, nowMilli-previewImageNoneLifetime.Milliseconds(),
+		nowMilli-previewImageUnknownLifetime.Milliseconds(), previewImageRowsKept)
 }
 
 // rememberedPreviewImage is the remembered answer for key, and whether there is a current one.

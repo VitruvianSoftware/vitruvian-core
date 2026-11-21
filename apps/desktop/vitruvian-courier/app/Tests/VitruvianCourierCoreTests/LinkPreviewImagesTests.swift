@@ -11,6 +11,9 @@ import XCTest
 final class LinkPreviewImagesTests: XCTestCase {
     private let page = URL(string: "https://www.example.com/news/story")!
 
+    private final class Clock: @unchecked Sendable { var now = Date(timeIntervalSince1970: 1_800_000_000) }
+    private final class Allowed: @unchecked Sendable { var on = true }
+
     private final class Calls: @unchecked Sendable {
         var urls: [URL] = []
         var answer: LinkPreviewImage? = LinkPreviewImage(path: "/media/ab/abcd", width: 1200, height: 630)
@@ -40,7 +43,9 @@ final class LinkPreviewImagesTests: XCTestCase {
     func testOnlyHTTPAddressesAreAsked() async {
         let calls = Calls()
         let images = source(calls)
-        for bad in ["file:///etc/passwd", "ftp://example.com/a", "mailto:a@example.com", "javascript:alert(1)"] {
+        // The engine fetches https pages only, so http is not even asked about.
+        for bad in ["http://www.example.com/story", "file:///etc/passwd", "ftp://example.com/a", "mailto:a@example.com",
+                    "javascript:alert(1)"] {
             let result = await images.image(for: URL(string: bad)!, showLinkPreviews: true)
             XCTAssertNil(result, bad)
         }
@@ -83,16 +88,79 @@ final class LinkPreviewImagesTests: XCTestCase {
         XCTAssertEqual(calls.urls.count, 1)
     }
 
-    func testAQuestionThatCouldNotBeAskedIsAskedAgainLater() async {
+    /// A question that could not be asked yet (the engine is not up) is asked again, but only after a wait that grows.
+    func testATransientFailureIsRetriedWithBackoff() async {
         let calls = Calls()
         calls.fails = true
-        let images = source(calls)
+        let clock = Clock()
+        let images = LinkPreviewImages(now: { clock.now }) { url in
+            calls.urls.append(url)
+            if calls.fails { throw EngineError.notConnected }
+            return calls.answer
+        }
         let failed = await images.image(for: page, showLinkPreviews: true)
         XCTAssertNil(failed)
+        // Drawn again at once, and again: no storm of requests.
+        for _ in 0 ..< 5 { _ = await images.image(for: page, showLinkPreviews: true) }
+        XCTAssertEqual(calls.urls.count, 1, "not asked again during the wait")
+        clock.now.addTimeInterval(6) // past the first 5 s
+        _ = await images.image(for: page, showLinkPreviews: true)
+        XCTAssertEqual(calls.urls.count, 2)
+        clock.now.addTimeInterval(10) // the second wait is 15 s
+        _ = await images.image(for: page, showLinkPreviews: true)
+        XCTAssertEqual(calls.urls.count, 2, "the wait grew")
+        clock.now.addTimeInterval(6)
         calls.fails = false
         let later = await images.image(for: page, showLinkPreviews: true)
-        XCTAssertNotNil(later, "the engine was not up the first time: that is not remembered as 'no picture'")
-        XCTAssertEqual(calls.urls.count, 2)
+        XCTAssertNotNil(later, "the engine was not up before: that is not remembered as 'no picture'")
+        XCTAssertEqual(calls.urls.count, 3)
+        XCTAssertEqual([1, 2, 3, 4, 5, 6].map { LinkPreviewImages.retryDelay(afterFailures: $0) }, [5, 15, 45, 135, 300, 300])
+    }
+
+    /// An older engine without the method, or one that refuses the address, will never answer: "no picture" for the session.
+    func testAnEngineThatCannotAnswerIsNotAskedAgain() async {
+        for code in [RPCErrorCode.methodNotFound, .invalidParams] {
+            let calls = Calls()
+            let images = LinkPreviewImages { url in
+                calls.urls.append(url)
+                throw EngineError.rpc(code, message: "no", reason: nil)
+            }
+            for _ in 0 ..< 4 { _ = await images.image(for: page, showLinkPreviews: true) }
+            XCTAssertEqual(calls.urls.count, 1, "\(code): asked once, however often the card is drawn")
+            XCTAssertNil(images.cached(for: page))
+        }
+    }
+
+    /// Show link previews going off drops the requests waiting their turn, and a picture already got stops showing.
+    func testTurningShowLinkPreviewsOffDropsWaitingRequestsAndHidesPictures() async {
+        let calls = Calls()
+        let allowed = Allowed()
+        var release: CheckedContinuation<Void, Never>?
+        let images = LinkPreviewImages(allows: { allowed.on }, maxConcurrent: 1) { url in
+            calls.urls.append(url)
+            if url.path == "/first" { await withCheckedContinuation { release = $0 } }
+            return calls.answer
+        }
+        let first = URL(string: "https://www.example.com/first")!
+        let second = URL(string: "https://www.example.com/second")!
+        async let firstAnswer = images.image(for: first, showLinkPreviews: true)
+        try? await Task.sleep(for: .milliseconds(30))
+        async let secondAnswer = images.image(for: second, showLinkPreviews: true) // waits: one request at a time
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(calls.urls.map(\.path), ["/first"], "the second waits for the first")
+
+        allowed.on = false // Show link previews goes off while the second waits
+        release?.resume()
+        let results = await [firstAnswer, secondAnswer]
+        XCTAssertEqual(calls.urls.map(\.path), ["/first"], "the waiting request was dropped, not asked")
+        XCTAssertNil(results[1])
+        XCTAssertNil(images.cached(for: first), "a picture got earlier is not handed out while it is off")
+
+        allowed.on = true
+        XCTAssertNotNil(images.cached(for: first), "and is there again when it is back on")
+        let again = await images.image(for: second, showLinkPreviews: true)
+        XCTAssertNotNil(again, "a dropped request was not remembered as 'no picture'")
+        XCTAssertEqual(calls.urls.map(\.path), ["/first", "/second"])
     }
 
     func testThePageAddressOfAPreview() {
