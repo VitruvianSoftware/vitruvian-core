@@ -275,6 +275,52 @@ enum ArticleSummaryKey {
     }
 }
 
+/// A check made here, without the AI, before a page found by the search is even shown to the model as "the same
+/// story": the page's own title or opening has to share the distinctive words of the headline. A page can't talk its
+/// way past this the way it can past a yes/no question to a model: a different story, or a page that is nothing but
+/// "answer YES", has none of the headline's words. It only ever says no: a page that passes still has to get a clear
+/// YES from the model.
+enum StoryOverlap {
+    /// The share of the headline's distinctive words the page must have.
+    static let minimumShare = 0.4
+    /// How much of the page's text counts: its start says what it is about.
+    static let textCharacters = 2500
+
+    static func plausiblySameStory(headline: String, candidateTitle: String, candidateText: String) -> Bool {
+        let wanted = words(headline)
+        // A headline too short to judge (or in a language written without spaces) is left to the model.
+        guard wanted.count >= 3, !hasUnspacedScript(headline) else { return true }
+        let have = words(candidateTitle + " " + String(candidateText.prefix(textCharacters)))
+        let hits = wanted.intersection(have).count
+        return hits >= 2 && Double(hits) / Double(wanted.count) >= minimumShare
+    }
+
+    private static let filler: Set<String> = [
+        "that", "this", "with", "from", "have", "will", "were", "been", "after", "before", "about", "their", "they",
+        "says", "said", "over", "into", "what", "when", "your", "more", "than", "also", "amid", "news", "live",
+    ]
+
+    /// The lower-case, accent-free words of `text` that carry its meaning: four letters or more (or any with a digit),
+    /// without the commonest filler.
+    static func words(_ text: String) -> Set<String> {
+        let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+        var out = Set<String>()
+        for word in folded.components(separatedBy: CharacterSet.alphanumerics.inverted) where !word.isEmpty {
+            if (word.count >= 4 || word.contains { $0.isNumber }) && !filler.contains(word) { out.insert(word) }
+        }
+        return out
+    }
+
+    private static func hasUnspacedScript(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x0E00 ... 0x0E7F, 0x3040 ... 0x30FF, 0x3400 ... 0x4DBF, 0x4E00 ... 0x9FFF, 0xAC00 ... 0xD7AF: true
+            default: false
+            }
+        }
+    }
+}
+
 // MARK: - Cache
 
 private let articleSummaryLog = Logger(subsystem: "dev.vitruvian.courier", category: "ArticleSummaries")
@@ -292,6 +338,8 @@ public final class ArticleSummaryCache {
 
     public static let fileName = "article-summaries.json"
     public static let maxEntries = 300
+    /// A file bigger than this isn't read (300 summaries are far smaller): it is left alone and the cache stays in memory.
+    public static let maxFileBytes = 4 << 20
     public static let maxAge: TimeInterval = 30 * 24 * 60 * 60
 
     /// The app's cache. In memory until the app calls `enablePersistence(at:)`.
@@ -310,13 +358,22 @@ public final class ArticleSummaryCache {
     /// Keeps the cache in `url` from now on, reading what is there. A file that can't be read is left alone.
     public func enablePersistence(at url: URL) {
         fileURL = url
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        if size > Self.maxFileBytes {
+            articleSummaryLog.error("article-summaries.json is too big to read; it is left alone and kept in memory only")
+            fileURL = nil
+            return
+        }
         guard let data = try? Data(contentsOf: url) else { return }
         guard let stored = try? JSONDecoder().decode([String: Entry].self, from: data) else {
             articleSummaryLog.error("article-summaries.json couldn't be read; it is left alone and kept in memory only")
             fileURL = nil
             return
         }
-        for (key, entry) in stored where entries[key] == nil { entries[key] = entry }
+        // Only a summary whose source is an https page comes back: "Open article" opens it.
+        for (key, entry) in stored where entries[key] == nil && entry.summary.sourceURL.scheme?.lowercased() == "https" {
+            entries[key] = entry
+        }
         prune()
     }
 
@@ -354,8 +411,11 @@ public final class ArticleSummaryCache {
         guard let fileURL, let data = try? JSONEncoder().encode(entries) else { return }
         io.async {
             do {
-                try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                // Like the engine's own files: the folder is the person's alone (0700), and so is the file (0600).
+                try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                        attributes: [.posixPermissions: 0o700])
                 try data.write(to: fileURL, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             } catch {
                 articleSummaryLog.error("article-summaries.json couldn't be written")
             }
@@ -539,6 +599,8 @@ public final class ArticleSummaryModel: ObservableObject {
             // The search can lead back to the paywalled site (a redirect, a mirror): that isn't a way round it.
             let candidateDomain = ArticleSummaryKey.domain(of: landed)
             guard candidateDomain != linkDomain, !candidateDomain.hasSuffix("." + linkDomain) else { continue }
+            // A page with none of the headline's words isn't the story: it never reaches the model.
+            guard StoryOverlap.plausiblySameStory(headline: headline, candidateTitle: candidate.title, candidateText: candidate.text) else { continue }
             let verdict = await provider.isSameStory(
                 headline: headline, description: description,
                 candidateTitle: candidate.title, candidateText: candidate.text

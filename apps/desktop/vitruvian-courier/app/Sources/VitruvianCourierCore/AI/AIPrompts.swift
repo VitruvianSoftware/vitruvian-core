@@ -185,6 +185,14 @@ public enum AIPrompts {
         return out
     }
 
+    /// Makes the `<article>` and `<candidate>` tags the prompts fence untrusted text with unusable inside that text, so a
+    /// page can't close the fence early and write its own instructions outside it: a "<" that starts one of the two
+    /// tags (or the closing form) becomes "‹". Everything else is left as it is.
+    public static func neutralizingDelimiters(_ text: String) -> String {
+        text.replacingOccurrences(of: #"<(?=\s*/?\s*(?:article|candidate)\b)"#, with: "‹",
+                                  options: [.regularExpression, .caseInsensitive])
+    }
+
     /// "Summarize a link": 3 to 5 bullets, only what the article says.
     public static func summarizeArticle(
         title: String,
@@ -202,9 +210,9 @@ public enum AIPrompts {
         var header: [String] = []
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedSite = site.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedTitle.isEmpty { header.append("Title: \(trimmedTitle)") }
-        if !trimmedSite.isEmpty { header.append("Site: \(trimmedSite)") }
-        let body = clampArticleText(text, to: characterLimit)
+        if !trimmedTitle.isEmpty { header.append("Title: \(neutralizingDelimiters(trimmedTitle))") }
+        if !trimmedSite.isEmpty { header.append("Site: \(neutralizingDelimiters(trimmedSite))") }
+        let body = neutralizingDelimiters(clampArticleText(text, to: characterLimit))
         let user = (header + ["<article>\n\(body)\n</article>", articleSummaryInstruction]).joined(separator: "\n\n")
         return [
             AIChatTurn(role: .system, text: system),
@@ -243,7 +251,9 @@ public enum AIPrompts {
             "Original headline: \(String(headline.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxCheckHeadlineCharacters)))",
             "Original description: \(trimmedDescription.isEmpty ? "(none)" : String(trimmedDescription.prefix(maxCheckDescriptionCharacters)))",
         ].joined(separator: "\n")
-        let candidate = "<candidate>\nTitle: \(candidateTitle.trimmingCharacters(in: .whitespacesAndNewlines))\n\n\(clampArticleText(candidateText, to: maxCheckCandidateCharacters))\n</candidate>"
+        let titleLine = neutralizingDelimiters(candidateTitle.trimmingCharacters(in: .whitespacesAndNewlines))
+        let candidateBody = neutralizingDelimiters(clampArticleText(candidateText, to: maxCheckCandidateCharacters))
+        let candidate = "<candidate>\nTitle: \(titleLine)\n\n\(candidateBody)\n</candidate>"
         let question = "Is the candidate about the same story as the original: the same event, on the same date, with the same key facts (names, places, numbers)? A different outlet's report of the same event counts. A follow-up on a later day, a different event, or a general page on the topic does not. Reply with only YES or NO."
         return [
             AIChatTurn(role: .system, text: system),
@@ -251,13 +261,17 @@ public enum AIPrompts {
         ]
     }
 
-    /// Reads the model's answer to `sameStory`. Anything but a clear yes is nil or false: an unclear answer never
-    /// lets a summary through.
+    /// Reads the model's answer to `sameStory`: true only when its first word is exactly YES ("YES", "Yes.", "**Yes**",
+    /// "YES, same event"), so "Yesterday the..." means nothing. false for a first word NO, nil for anything
+    /// else. Anything but a clear yes never lets a summary through (`isSameStory` treats nil as different).
     public static func parseYesNo(_ raw: String) -> Bool? {
-        let letters = raw.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters).union(.symbols))
-            .uppercased()
-        if letters.hasPrefix("YES") { return true }
-        if letters.hasPrefix("NO") { return false }
-        return nil
+        let first = raw.uppercased()
+            .components(separatedBy: CharacterSet.letters.inverted)
+            .first { !$0.isEmpty }
+        switch first {
+        case "YES": return true
+        case "NO": return false
+        default: return nil
+        }
     }
 }

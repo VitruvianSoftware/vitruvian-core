@@ -76,7 +76,10 @@ func (a *Actions) ReadArticle(ctx context.Context, rawURL string) (*Article, err
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; VitruvianCourier)")
-	resp, err := a.getLinkPreviewClient().Do(req)
+	client := a.getLinkPreviewClient()
+	// The client is made for this one read (each hop is dialled and checked anew): don't leave its connection open.
+	defer client.CloseIdleConnections()
+	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
