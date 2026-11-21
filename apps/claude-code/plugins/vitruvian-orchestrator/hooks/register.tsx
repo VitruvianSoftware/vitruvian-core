@@ -61,7 +61,7 @@ import {
   delegateCost,
   flowAgentRoleMap,
   formatAgentRoleLabel,
-  formatWake,
+  formatLeadWakes,
   initialFlow,
   isValidChannel,
   isValidWorktree,
@@ -2617,36 +2617,47 @@ async function deliverPendingWakes(
   if (!f || f.closedAt !== null) return;
   const woken = getWokenSet(f.startedAt);
   const wakes = pendingWakes(f, woken) as PendingWake[];
+  // Every wake lands in the lead's session, so group them by post: a post that
+  // mentions @lead and a waiting helper must reach the lead once, carrying the
+  // "Wake @helper" line, not once per mentioned name.
+  const bySeq = new Map<number, PendingWake[]>();
   for (const w of wakes) {
-    const key = `${w.seq}:${w.target}`;
-    if (woken.has(key)) continue;
-    const fullPost = (f.posts ?? []).find((p) => p.seq === w.seq);
-    const text = formatWake(w, fullPost, {
-      mode: w.target === "lead" ? "worker" : "lead",
-      harness: "claude-code",
-    });
-    woken.add(key);
+    if (woken.has(`${w.seq}:${w.target}`)) continue;
+    const group = bySeq.get(w.seq);
+    if (group) group.push(w);
+    else bySeq.set(w.seq, [w]);
+  }
+  for (const [seq, group] of bySeq) {
+    const keys = group.map((w) => `${w.seq}:${w.target}`);
+    if (keys.some((k) => woken.has(k))) continue;
+    const fullPost = (f.posts ?? []).find((p) => p.seq === seq);
+    const text = formatLeadWakes(group, fullPost, { harness: "claude-code" });
+    for (const k of keys) woken.add(k);
     try {
       await $.prompt.submit({ text });
     } catch {
-      // Session busy or unavailable; remove in-flight key so the next turn.complete or stallTick retries.
-      woken.delete(key);
+      // Session busy or unavailable; remove in-flight keys so the next turn.complete or stallTick retries.
+      for (const k of keys) woken.delete(k);
       continue;
     }
     try {
       const wakeAt = await $.clock.now();
       await update($, flow, (prev) =>
         prev
-          ? reduce(prev, {
-              type: "wake",
-              at: wakeAt,
-              seq: w.seq,
-              target: w.target,
-            })
+          ? group.reduce(
+              (acc, w) =>
+                reduce(acc, {
+                  type: "wake",
+                  at: wakeAt,
+                  seq: w.seq,
+                  target: w.target,
+                }),
+              prev,
+            )
           : prev,
       );
     } catch {
-      // Prompt was already submitted; keep key in woken so we do not double-send.
+      // Prompt was already submitted; keep keys in woken so we do not double-send.
     }
   }
 }

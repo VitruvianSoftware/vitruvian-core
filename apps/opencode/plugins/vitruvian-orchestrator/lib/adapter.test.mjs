@@ -1727,11 +1727,14 @@ describe("security hardening (items 1, 2, 3, 5, 6)", () => {
           { sessionID: "ses_scout", agent: "scout" },
         );
 
-      assert.equal(promptCalls.length, 2);
+      // The post mentions @lead and @atlas (no session of its own): the lead
+      // gets it once, carrying the line to wake atlas.
+      assert.equal(promptCalls.length, 1);
       const leadWake = promptCalls.find((c) =>
         c.text.includes("Wake @atlas and pass it this post."),
       );
       assert.ok(leadWake, "expected lead-routed wake for @atlas");
+      assert.equal(leadWake.sessionID, "ses_root");
       const lines = leadWake.text.split("\n");
       assert.equal(
         lines[0],
