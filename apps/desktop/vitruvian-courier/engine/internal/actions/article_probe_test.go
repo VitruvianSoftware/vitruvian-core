@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -78,4 +79,30 @@ func TestReadArticleATypelessResponseThatIsNotHTMLIsNotAnArticle(t *testing.T) {
 	art, err := a.ReadArticle(context.Background(), srv.URL+"/x")
 	require.NoError(t, err)
 	require.True(t, art.NeedsBrowser)
+}
+
+// One deadline covers the headers and the body: a site that answers and then drips (or stops) can't hold a read up, and
+// the read leaves no connection open.
+func TestReadArticleHasAHardDeadlineOverTheBodyAndClosesItsConnection(t *testing.T) {
+	old := linkPreviewTimeout
+	linkPreviewTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { linkPreviewTimeout = old })
+	release := make(chan struct{})
+	a, srv := newArticleActions(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body><article><p>" + para1 + "</p>"))
+		w.(http.Flusher).Flush()
+		select { // the rest never comes (until the test ends)
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	defer close(release)
+	start := time.Now()
+	art, err := a.ReadArticle(context.Background(), srv.URL+"/slow")
+	require.NoError(t, err)
+	require.Less(t, time.Since(start), 2*time.Second, "the read gave up at its deadline")
+	require.False(t, art.Paywalled)
+	// What arrived before the deadline is all there is.
+	require.Contains(t, art.Text, para1)
 }

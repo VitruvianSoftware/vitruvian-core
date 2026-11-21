@@ -436,6 +436,7 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 			Bridges: []bridgeInfoJSON{}, ScrubbedStderr: []string{},
 			RoomDetails: &roomDiagnosticJSON{}, MessageDetails: &messageDiagnosticJSON{},
 		}},
+		{"LinkPreviewImageResult", linkPreviewImageResult{ImagePath: "/p", ImageWidth: 1, ImageHeight: 1, Blurhash: "b"}},
 		{"RoomStorageUsage", store.RoomStorageUsage{}},
 		{"StorageUsageResult", store.StorageUsage{Rooms: []store.RoomStorageUsage{}}},
 		{"StorageCleanupParams", store.StorageCleanupFilter{RoomIDs: []string{"!r:courier.local"}, OlderThanMS: 1, IncludeStickers: true}},
@@ -837,6 +838,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	}
 	switch name {
 	case "hello", "hello-protocol-mismatch", "hello-required", "login.wait-unknown", "inbox.list-bad-cursor",
+		"linkPreview.image-not-https",
 		"spaces.setLayout", "spaces.update", "labels.create", "reminder.clearAll", "inbox.markAllRead",
 		"accounts.list-starting":
 	case "inbox.list":
@@ -1223,6 +1225,8 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		path := filepath.Join(t.TempDir(), "thumbs-up.gif")
 		require.NoError(t, os.WriteFile(path, []byte("GIF89a\x02\x00\x02\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x02\x00\x02\x00\x00\x02\x02D\x01\x00;"), 0o600))
 		params["room_id"], params["path"] = w.room, path
+	case "linkPreview.image", "linkPreview.image-none":
+		params["url"] = servePreviewPage(t, w.deps.Actions, name == "linkPreview.image")
 	case "stickers.import":
 		pngData := []byte{
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

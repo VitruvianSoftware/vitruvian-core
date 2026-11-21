@@ -131,7 +131,12 @@ final class ArticleSummaryViewTests: XCTestCase {
         func height(_ name: String, _ controls: ArticleSummaryControls?) throws -> CGFloat {
             let sizes = try Snapshot.render("article-summary-card-\(name)", width: 360) {
                 if let controls {
-                    LinkPreviewCardView(preview: preview).withArticleSummary(controls).padding(14)
+                    // As the message row fills the card's footer slot.
+                    LinkPreviewCardView(preview: preview) {
+                        if let request = ArticleSummaryRequest(preview: preview) {
+                            ArticleSummarySection(request: request, onBubble: false, controls: controls, inCard: true)
+                        }
+                    }.padding(14)
                 } else {
                     LinkPreviewCardView(preview: preview).padding(14)
                 }

@@ -71,10 +71,11 @@ Adapted from [`savvy-progress`](https://github.com/johnnyvizz/claude-kit/tree/ma
 
 ## Install
 
-At the prompt of a Claude Code terminal session:
+At the prompt of a Claude Code session:
 
 ```text
-/plugin install vitruvian-orchestrator --marketplace VitruvianSoftware/vitruvian-core
+/plugin marketplace add VitruvianSoftware/vitruvian-core
+/plugin install vitruvian-orchestrator@vitruvian-core
 ```
 
 Or from a shell:
@@ -90,6 +91,10 @@ Or from a local checkout of `vitruvian-core`:
 claude plugin marketplace add .
 claude plugin install vitruvian-orchestrator@vitruvian-core
 ```
+
+Each release raises the version in `.claude-plugin/plugin.json`, which is what Claude Code
+compares to offer an update (`claude plugin update vitruvian-orchestrator@vitruvian-core`).
+Release notes are in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Subdirectories & Boundaries
 - [hooks](./hooks/README.md): Live pane, status band, and tool handlers for Claude Code.

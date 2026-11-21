@@ -551,6 +551,11 @@ public final class ConversationModel: ObservableObject {
     }
 
     private let appModel: AppModel
+    /// The pictures of the chat's link cards that came without one (`linkPreview.image`), asked of the engine at most once
+    /// per link while "Show link previews" is on.
+    public private(set) lazy var linkPreviewImages = LinkPreviewImages(
+        allows: { [weak self] in self?.preferences?.showLinkPreviews ?? true },
+        client: { [weak self] in self?.appModel.client })
     private let unreadCount: @MainActor (String) -> Int
     private let chat: @MainActor (String) -> InboxRow?
 

@@ -210,3 +210,11 @@ public enum ChatInfoPresentation {
         return []
     }
 }
+
+/// What clicking the chat's name, network or picture in the chat's header does, said for VoiceOver and the tooltip:
+/// it shows or hides Chat Info, as the ⓘ button does.
+public enum ChatInfoHeaderToggle {
+    public static func label(isShowing: Bool) -> String {
+        isShowing ? String(localized: "Hide chat info") : String(localized: "Show chat info")
+    }
+}

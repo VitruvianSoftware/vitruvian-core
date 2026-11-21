@@ -190,6 +190,8 @@ public final class CalendarBridge: ObservableObject {
             }
 
             let matchedText = String(text[range])
+            // "today", "Sunday", "this weekend" on their own are ordinary words, not something to put on a calendar.
+            if isBareDayReference(matchedText, duration: match.duration, hasTimeZone: match.timeZone != nil) { continue }
             let resolvedStart = resolveStartDate(
                 rawDate: rawDate,
                 matchedText: matchedText,
@@ -210,6 +212,40 @@ public final class CalendarBridge: ObservableObject {
             )
         }
         return results
+    }
+
+    /// Words that name a day without saying which date or what time.
+    private nonisolated static let bareDayWords: Set<String> = [
+        "today", "tonight", "tomorrow", "yesterday", "weekend", "weekday", "weekdays",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+        "mondays", "tuesdays", "wednesdays", "thursdays", "fridays", "saturdays", "sundays",
+    ]
+
+    /// Small words that may sit around a bare day word without making it a date ("this weekend", "on Sunday",
+    /// "tomorrow morning").
+    private nonisolated static let bareDayFiller: Set<String> = [
+        "this", "next", "last", "on", "the", "coming", "every", "morning", "afternoon", "evening", "night",
+    ]
+
+    /// Whether a detector match is only a relative day or a weekday ("today", "Sunday", "this weekend", "next Friday"):
+    /// no number, no time, no month. Those read as ordinary words, so they are not underlined. "Sunday at 7pm",
+    /// "Nov 30" and "7:30pm" are not bare.
+    ///
+    /// What the detector says comes first: a match that has a length (`duration` above 0, a range such as "2 to 3pm") or
+    /// its own time zone states a time and is never bare. Beyond that the detector gives no sign: probing
+    /// `NSDataDetector` shows `duration` 0 and no time zone for every match, and a date with no time ("Sunday", "Nov
+    /// 30") is given 12:00 exactly like an explicit "noon" or "12pm". So the rest is read from the matched words: any
+    /// digit is a date or time, and a match made only of day words (English) is bare. Another language's words are not
+    /// on the list, so its matches are kept as the detector found them.
+    nonisolated public static func isBareDayReference(_ matched: String, duration: TimeInterval = 0,
+                                                      hasTimeZone: Bool = false) -> Bool {
+        if duration > 0 || hasTimeZone { return false }
+        let words = matched.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        guard !words.isEmpty else { return false }
+        if words.contains(where: { $0.contains(where: \.isNumber) }) { return false }
+        guard words.contains(where: bareDayWords.contains) else { return false }
+        return words.allSatisfy { bareDayWords.contains($0) || bareDayFiller.contains($0) }
     }
 
     /// Detects future dates/times in a `RichText` value, excluding `.code`, `.pre`, `.link`, `.mention`, and `.spoiler` entities.

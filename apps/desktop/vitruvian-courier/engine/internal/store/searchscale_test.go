@@ -261,7 +261,7 @@ func TestSearchPlansWalkTheIndex(t *testing.T) {
 		require.NoError(t, err)
 		took := time.Since(start)
 		t.Logf("chats and in groups for a %d-letter word: %s", len(q), took)
-		require.Less(t, took, 2*time.Second)
+		require.Less(t, took, grossCeiling(2*time.Second))
 	}
 }
 

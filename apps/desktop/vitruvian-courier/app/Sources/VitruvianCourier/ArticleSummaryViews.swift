@@ -61,6 +61,8 @@ struct ArticleSummarySection: View {
     let request: ArticleSummaryRequest
     var onBubble: Bool
     let controls: ArticleSummaryControls
+    /// In the card's footer slot: padded to the card's text, and the panel has no box of its own.
+    var inCard = false
 
     /// "Summarize with Claude": names the service the article's text goes to.
     private var buttonHelp: String { Self.help(providerName: controls.providerName()) }
@@ -71,7 +73,7 @@ struct ArticleSummarySection: View {
 
     var body: some View {
         if let state = controls.state(request.url) {
-            ArticleSummaryPanel(url: request.url, state: state, onBubble: onBubble, controls: controls)
+            ArticleSummaryPanel(url: request.url, state: state, onBubble: onBubble, controls: controls, inCard: inCard)
         } else if controls.canSummarize(request.url) {
             Button {
                 controls.summarize(request)
@@ -89,6 +91,9 @@ struct ArticleSummarySection: View {
             .help(buttonHelp)
             .accessibilityLabel(String(localized: "Summarize"))
             .accessibilityIdentifier("article-summarize")
+            .padding(.horizontal, inCard ? 12 : 0)
+            .padding(.bottom, inCard ? 10 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -100,6 +105,8 @@ struct ArticleSummaryPanel: View {
     let state: ArticleSummaryState
     var onBubble: Bool
     let controls: ArticleSummaryControls
+    /// In a card's footer: a rule above it and the card's padding, with no box of its own.
+    var inCard = false
 
     private var primary: Color { onBubble ? .white : .primary }
     private var secondary: Color { onBubble ? Color.white.opacity(0.78) : .secondary }
@@ -125,17 +132,20 @@ struct ArticleSummaryPanel: View {
             .help(String(localized: "Close summary"))
             .accessibilityLabel(String(localized: "Close summary"))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 320, alignment: .leading)
+        .padding(.horizontal, inCard ? 12 : 10)
+        .padding(.vertical, inCard ? 10 : 8)
+        .frame(maxWidth: inCard ? .infinity : 320, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
+                .fill(inCard ? Color.clear : onBubble ? Color.black.opacity(0.18) : Color.primary.opacity(0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
+                .strokeBorder(inCard ? Color.clear : onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12), lineWidth: 1)
         )
+        .overlay(alignment: .top) {
+            if inCard { Rectangle().fill(onBubble ? Color.white.opacity(0.22) : Color.primary.opacity(0.12)).frame(height: 1) }
+        }
         .accessibilityElement(children: .contain)
     }
 

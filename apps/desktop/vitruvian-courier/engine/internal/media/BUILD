@@ -16,6 +16,7 @@ go_test(
     name = "media_test",
     srcs = [
         "blurhash_test.go",
+        "inspect_gifframe_test.go",
         "inspect_test.go",
         "media_test.go",
     ],
