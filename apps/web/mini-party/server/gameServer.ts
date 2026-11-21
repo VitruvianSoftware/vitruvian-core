@@ -36,6 +36,10 @@ export interface Limits {
   maxMessageBytes: number;
   // Events one socket may send per second before the rest are dropped.
   maxEventsPerSecond: number;
+  // How long a dropped player's seat is held, in milliseconds. A phone that
+  // locks its screen or loses Wi-Fi for a moment reconnects with a new socket;
+  // within this window it gets its old seat back instead of being dropped.
+  rejoinGraceMs: number;
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -43,6 +47,7 @@ export const DEFAULT_LIMITS: Limits = {
   maxConnections: 2000,
   maxMessageBytes: 16 * 1024,
   maxEventsPerSecond: 60,
+  rejoinGraceMs: 30_000,
 };
 
 export interface GameServerOptions {
@@ -57,11 +62,24 @@ export interface RoomPlayer {
   socketId: string;
   name: string;
   color: string;
+  // False while the player's connection is down and their seat is held.
+  connected: boolean;
+}
+
+// A seat as the server keeps it. `key` is the secret the player's device
+// sends to reclaim the seat after a reconnect; it is never sent to others.
+interface Seat extends RoomPlayer {
+  key: string | null;
+  dropTimer?: ReturnType<typeof setTimeout>;
 }
 
 interface Room {
-  players: RoomPlayer[];
+  players: Seat[];
 }
+
+// A device's seat key: long enough to be unguessable, short and plain enough
+// to store safely.
+const PLAYER_KEY = /^[A-Za-z0-9_-]{16,64}$/;
 
 const ROOM_ID = /^[A-Za-z0-9]{1,16}$/;
 const MAX_NAME = 24;
@@ -69,7 +87,7 @@ const MAX_COLOR = 16;
 
 // The lowest seat number nobody in the room holds. Seats are reused after a
 // player leaves, so two players can never share an id.
-export function nextFreeSeat(players: RoomPlayer[]): number {
+export function nextFreeSeat(players: Pick<RoomPlayer, "id">[]): number {
   const taken = new Set(players.map((p) => p.id));
   let seat = 0;
   while (taken.has(seat)) seat++;
@@ -93,8 +111,8 @@ export function parseOrigins(value: string | undefined): string[] {
 }
 
 // Attaches the multiplayer relay to an HTTP server. Rooms live in memory: they
-// exist only while at least one player is connected to them, and a restart
-// ends every game in progress.
+// exist while at least one player holds a seat in them (a dropped player's
+// seat is held for rejoinGraceMs), and a restart ends every game in progress.
 export function attachGameServer(
   httpServer: HttpServer,
   options: GameServerOptions = {},
@@ -140,24 +158,52 @@ export function attachGameServer(
 
   function broadcastRoom(roomId: string, room: Room) {
     io.to(roomId).emit("room-update", {
-      players: room.players,
+      players: room.players.map(
+        ({ id, socketId, name, color, connected }): RoomPlayer => ({
+          id,
+          socketId,
+          name,
+          color,
+          connected,
+        }),
+      ),
       maxPlayers: MAX_PLAYERS,
     });
   }
 
-  function leave(socket: Socket) {
-    const roomId = roomOf.get(socket.id);
-    if (roomId === undefined) return;
-    roomOf.delete(socket.id);
-    socket.leave(roomId);
-    const room = rooms.get(roomId);
-    if (!room) return;
-    room.players = room.players.filter((p) => p.socketId !== socket.id);
+  // Frees a seat for good and closes the room if it was the last one.
+  function removeSeat(roomId: string, room: Room, seat: Seat) {
+    clearTimeout(seat.dropTimer);
+    room.players = room.players.filter((p) => p !== seat);
     if (room.players.length === 0) {
       rooms.delete(roomId);
     } else {
       broadcastRoom(roomId, room);
     }
+  }
+
+  // Takes a socket out of its room. A player who chose to leave (`hold`
+  // false) loses the seat now; a dropped connection keeps it for the grace
+  // window so the same device can come back to it.
+  function leave(socket: Socket, hold: boolean) {
+    const roomId = roomOf.get(socket.id);
+    if (roomId === undefined) return;
+    roomOf.delete(socket.id);
+    socket.leave(roomId);
+    const room = rooms.get(roomId);
+    const seat = room?.players.find((p) => p.socketId === socket.id);
+    if (!room || !seat) return;
+    if (!hold || seat.key === null || limits.rejoinGraceMs <= 0) {
+      removeSeat(roomId, room, seat);
+      return;
+    }
+    seat.connected = false;
+    seat.dropTimer = setTimeout(
+      () => removeSeat(roomId, room, seat),
+      limits.rejoinGraceMs,
+    );
+    seat.dropTimer.unref?.();
+    broadcastRoom(roomId, room);
   }
 
   io.on("connection", (socket) => {
@@ -172,10 +218,37 @@ export function attachGameServer(
     });
 
     socket.on("join-room", (payload) => {
-      const { roomId, playerName, playerColor } = payload ?? {};
+      const { roomId, playerName, playerColor, playerKey } = payload ?? {};
       if (typeof roomId !== "string" || !ROOM_ID.test(roomId)) return;
       if (roomOf.get(socket.id) === roomId) return;
-      leave(socket);
+      leave(socket, false);
+      const key =
+        typeof playerKey === "string" && PLAYER_KEY.test(playerKey)
+          ? playerKey
+          : null;
+
+      // The same device coming back: give it its old seat, id and all.
+      const held =
+        key === null
+          ? undefined
+          : rooms.get(roomId)?.players.find((p) => p.key === key);
+      if (held) {
+        const room = rooms.get(roomId)!;
+        // A second tab or a socket the server has not yet noticed is gone:
+        // the newest connection wins the seat.
+        if (held.connected) {
+          roomOf.delete(held.socketId);
+          io.sockets.sockets.get(held.socketId)?.leave(roomId);
+        }
+        clearTimeout(held.dropTimer);
+        held.dropTimer = undefined;
+        held.socketId = socket.id;
+        held.connected = true;
+        roomOf.set(socket.id, roomId);
+        socket.join(roomId);
+        broadcastRoom(roomId, room);
+        return;
+      }
 
       let room = rooms.get(roomId);
       if (!room) {
@@ -198,6 +271,8 @@ export function attachGameServer(
         socketId: socket.id,
         name: String(playerName ?? "").slice(0, MAX_NAME),
         color: String(playerColor ?? "").slice(0, MAX_COLOR),
+        connected: true,
+        key,
       });
       room.players.sort((a, b) => a.id - b.id);
       broadcastRoom(roomId, room);
@@ -222,7 +297,7 @@ export function attachGameServer(
       });
     });
 
-    socket.on("disconnect", () => leave(socket));
+    socket.on("disconnect", () => leave(socket, true));
   });
 
   return { io, rooms };

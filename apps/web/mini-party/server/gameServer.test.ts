@@ -94,14 +94,27 @@ function next<T>(socket: Socket, event: string): Promise<T> {
 }
 
 // Joins and waits for the room-update that this join caused.
-async function join(socket: Socket, name: string, roomId = "ROOM") {
+async function join(
+  socket: Socket,
+  name: string,
+  roomId = "ROOM",
+  playerKey?: string,
+) {
   const update = next<{ players: RoomPlayer[] }>(socket, "room-update");
-  socket.emit("join-room", { roomId, playerName: name, playerColor: "#fff" });
+  socket.emit("join-room", {
+    roomId,
+    playerName: name,
+    playerColor: "#fff",
+    playerKey,
+  });
   return (await update).players;
 }
 
+const KEY_A = "a".repeat(32);
+const KEY_B = "b".repeat(32);
+
 describe("nextFreeSeat", () => {
-  const p = (id: number) => ({ id, socketId: `s${id}`, name: "", color: "" });
+  const p = (id: number) => ({ id });
   it("fills the lowest gap", () => {
     expect(nextFreeSeat([])).toBe(0);
     expect(nextFreeSeat([p(0), p(1)])).toBe(2);
@@ -249,5 +262,112 @@ describe("a server open to the internet", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(received).toBeGreaterThan(0);
     expect(received).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("a dropped connection", () => {
+  it("holds the seat, shows it as reconnecting, and gives it back", async () => {
+    const host = client();
+    const other = client();
+    await join(host, "Host", "ROOM", KEY_A);
+    await join(other, "Bo", "ROOM", KEY_B);
+
+    const dropped = next<{ players: RoomPlayer[] }>(other, "room-update");
+    host.disconnect();
+    const held = (await dropped).players;
+    expect(held.map((p) => [p.id, p.connected])).toEqual([
+      [0, false],
+      [1, true],
+    ]);
+
+    // The same device, now on a new socket, gets seat 0 back: still the host.
+    const back = client();
+    const players = await join(back, "Host", "ROOM", KEY_A);
+    expect(players.map((p) => [p.id, p.connected])).toEqual([
+      [0, true],
+      [1, true],
+    ]);
+    expect(players[0].socketId).toBe(back.id);
+
+    // And it is really back in the room: events reach it again.
+    const got = next<{ event: string }>(back, "remote-event");
+    other.emit("game-event", { event: "press", data: {} });
+    expect((await got).event).toBe("press");
+  });
+
+  it("never sends a seat key to the other players", async () => {
+    await join(client(), "A", "ROOM", KEY_A);
+    const players = await join(client(), "B", "ROOM", KEY_B);
+    expect(JSON.stringify(players)).not.toContain(KEY_A);
+    expect(JSON.stringify(players)).not.toContain("key");
+  });
+
+  it("frees the seat when the player does not come back in time", async () => {
+    await start({ limits: { rejoinGraceMs: 50 } });
+    const a = client();
+    const b = client();
+    await join(a, "A", "ROOM", KEY_A);
+    await join(b, "B", "ROOM", KEY_B);
+    a.disconnect();
+    await next(b, "room-update"); // A shown as reconnecting
+    const gone = await next<{ players: RoomPlayer[] }>(b, "room-update");
+    expect(gone.players.map((p) => p.name)).toEqual(["B"]);
+    // Coming back late is an ordinary join into the free seat.
+    const late = await join(client(), "A", "ROOM", KEY_A);
+    expect(late.map((p) => p.id)).toEqual([0, 1]);
+  });
+
+  it("counts a held seat, so the room stays full for the player who left", async () => {
+    const keys = ["1", "2", "3", "4"].map((c) => c.repeat(20));
+    const sockets = keys.map(() => client());
+    for (const [i, s] of sockets.entries())
+      await join(s, `P${i}`, "ROOM", keys[i]);
+    sockets[3].disconnect();
+    const stranger = client();
+    const error = next<string>(stranger, "error");
+    stranger.emit("join-room", { roomId: "ROOM", playerName: "X" });
+    expect(await error).toBe("Room is full");
+    const back = await join(client(), "P3", "ROOM", keys[3]);
+    expect(back).toHaveLength(4);
+  });
+
+  it("closes the room once the last held seat expires", async () => {
+    await start({ limits: { rejoinGraceMs: 30, maxRooms: 1 } });
+    const a = client();
+    await join(a, "A", "ONE", KEY_A);
+    a.disconnect();
+    await new Promise((r) => setTimeout(r, 80));
+    // The only room slot is free again.
+    expect(await join(client(), "B", "TWO")).toHaveLength(1);
+  });
+
+  it("moves the seat to the newest tab rather than seating the key twice", async () => {
+    const first = client();
+    await join(first, "A", "ROOM", KEY_A);
+    const second = client();
+    const players = await join(second, "A", "ROOM", KEY_A);
+    expect(players).toHaveLength(1);
+    expect(players[0].socketId).toBe(second.id);
+    // The old tab no longer speaks for the room.
+    const other = client();
+    await join(other, "B", "ROOM", KEY_B);
+    const leaked = arrives(other, "remote-event");
+    first.emit("game-event", { event: "press", data: {} });
+    expect(await leaked).toBe(false);
+  });
+
+  it("still frees the seat at once for a device that sends no key", async () => {
+    const a = client();
+    const b = client();
+    await join(a, "A");
+    await join(b, "B");
+    const update = next<{ players: RoomPlayer[] }>(b, "room-update");
+    a.disconnect();
+    expect((await update).players.map((p) => p.name)).toEqual(["B"]);
+  });
+
+  it("ignores a malformed key and seats the player normally", async () => {
+    const players = await join(client(), "A", "ROOM", "short");
+    expect(players).toHaveLength(1);
   });
 });

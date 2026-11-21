@@ -36,6 +36,7 @@ import {
   Users,
   Radio,
   Globe,
+  WifiOff,
 } from "lucide-react";
 import { socketService } from "./services/socketService";
 import { REMOTE_PLAY } from "./features";
@@ -44,6 +45,9 @@ import { analytics } from "./analytics";
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>("LOBBY");
+  // Online only: false while this device's connection to the rooms server is
+  // down. socket.io keeps retrying and the seat is held, so this is a pause.
+  const [online, setOnline] = useState(true);
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentGameIndex, setCurrentGameIndex] = useState(0);
   const [lastGameWinners, setLastGameWinners] = useState<number[]>([]);
@@ -102,6 +106,7 @@ export default function App() {
     window.history.replaceState({ path: newUrl }, "", newUrl);
 
     socketService.joinRoom(id, playerName, PLAYER_COLORS[0]); // Host or Joiner
+    socketService.onConnectionChange(setOnline);
 
     socketService.onRoomUpdate(({ players: remotePlayers }) => {
       setPlayers(remotePlayers);
@@ -259,9 +264,17 @@ export default function App() {
                     {players.map((p) => (
                       <div
                         key={p.id}
-                        className="w-10 h-10 rounded-full border-2 border-white/20 shadow-lg"
+                        className={`w-10 h-10 rounded-full border-2 border-white/20 shadow-lg transition-opacity ${
+                          p.connected === false
+                            ? "opacity-30 animate-pulse"
+                            : ""
+                        }`}
                         style={{ backgroundColor: p.color }}
-                        title={p.name}
+                        title={
+                          p.connected === false
+                            ? `${p.name} (reconnecting)`
+                            : p.name
+                        }
                       />
                     ))}
                     {[...Array(4 - players.length)].map((_, i) => (
@@ -460,6 +473,18 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {roomId && !online && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl bg-brand-card/95 border border-brand-accent/40 shadow-2xl backdrop-blur-xl"
+        >
+          <WifiOff className="w-5 h-5 text-brand-accent animate-pulse" />
+          <span className="text-xs font-black italic uppercase tracking-widest">
+            Reconnecting… your seat is saved
+          </span>
+        </div>
+      )}
     </div>
   );
 }
