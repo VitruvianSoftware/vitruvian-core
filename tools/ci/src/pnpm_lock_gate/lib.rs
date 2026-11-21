@@ -43,6 +43,7 @@ const ALLOWED_TOP_KEYS: &[&str] = &[
     "overrides",
     "packageExtensionsChecksum",
     "patchedDependencies",
+    "ignoredOptionalDependencies",
     "importers",
     "packages",
     "snapshots",
@@ -71,6 +72,9 @@ pub struct Lockfile {
     pub overrides: String,
     pub package_extensions_checksum: String,
     pub patched_dependencies: String,
+    /// pnpm 10.20+ `ignoredOptionalDependencies`: optional packages pnpm never
+    /// installs. Workspace-wide, so like `overrides` it is part of every closure.
+    pub ignored_optional_dependencies: String,
     pub importers: BTreeMap<String, Importer>,
     pub packages: BTreeMap<String, String>,
     pub snapshots: BTreeMap<String, Snapshot>,
@@ -82,6 +86,9 @@ pub struct LockClosure {
     pub overrides: String,
     pub package_extensions_checksum: String,
     pub patched_dependencies: String,
+    /// pnpm 10.20+ `ignoredOptionalDependencies`: optional packages pnpm never
+    /// installs. Workspace-wide, so like `overrides` it is part of every closure.
+    pub ignored_optional_dependencies: String,
     pub catalogs: BTreeMap<(String, String), String>,
     pub importers: BTreeMap<String, String>,
     pub snapshots: BTreeMap<String, String>,
@@ -597,6 +604,13 @@ pub fn parse_lockfile(text: &str) -> Result<Lockfile, String> {
                     parse_raw_block(&lines, &mut i, 0)?
                 };
             }
+            "ignoredOptionalDependencies" => {
+                lock.ignored_optional_dependencies = if !val.is_empty() {
+                    val.to_string()
+                } else {
+                    parse_raw_block(&lines, &mut i, 0)?
+                };
+            }
             "time" => {
                 if val.is_empty() {
                     let _ = parse_raw_block(&lines, &mut i, 0)?;
@@ -720,6 +734,7 @@ pub fn extract_closure(lock: &Lockfile, seed_importers: &[&str]) -> Result<LockC
         overrides: lock.overrides.clone(),
         package_extensions_checksum: lock.package_extensions_checksum.clone(),
         patched_dependencies: lock.patched_dependencies.clone(),
+        ignored_optional_dependencies: lock.ignored_optional_dependencies.clone(),
         catalogs: BTreeMap::new(),
         importers: BTreeMap::new(),
         snapshots: BTreeMap::new(),
