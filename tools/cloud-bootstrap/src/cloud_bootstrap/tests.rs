@@ -201,6 +201,12 @@ if [ "${{is_secret:-0}}" = 1 ]; then
     echo "ERROR: (gcloud.secrets) Reauthentication failed" >&2
     exit 0
   fi
+  # flaky: the first secret read of the run fails, as at a cold session start.
+  if [ "{mode}" = flaky ] && [ ! -e "{argv}.failed" ]; then
+    : >"{argv}.failed"
+    echo "ERROR: (gcloud.secrets.versions.access) There was a problem refreshing your current auth tokens" >&2
+    exit 1
+  fi
   cat "{value_file}"; echo
   exit 0
 fi
@@ -309,7 +315,11 @@ exit 1
         for f in ["gcloud.argv", "cache-setup.argv", "cache-setup.env"] {
             fs::write(self.p(f), "").unwrap();
         }
-        let mut all: Vec<(&str, String)> = vec![("VITRUVIAN_CLOUD_KEY", key.to_string())];
+        // No real sleep between retried reads; a test's own value still wins.
+        let mut all: Vec<(&str, String)> = vec![
+            ("VITRUVIAN_CLOUD_KEY", key.to_string()),
+            ("VITRUVIAN_ESC_RETRY_DELAY", "0".to_string()),
+        ];
         all.extend(envs.iter().map(|(k, v)| (*k, v.to_string())));
         self.exec(&["auth"], &all).0
     }
@@ -735,6 +745,56 @@ fn gcloud_exit_zero_auth_failure_is_a_failure() {
     assert!(
         !w.session_env().lines().any(|l| l == "export TOK=''"),
         "an empty credential was written as if it were real"
+    );
+}
+
+#[test]
+fn a_failed_first_read_is_retried_and_its_reason_kept() {
+    let w = World::new();
+    w.make_gcloud("flaky");
+    let out = w.auth(SA_KEY_GOOD, &[("VITRUVIAN_PROFILE", "pinned")]);
+    assert_contains(
+        "the retry is announced",
+        &out,
+        "tok-secret: read 1/3 failed; retrying",
+    );
+    assert_contains("…and the second read lands", &out, "TOK: from tok-secret");
+    assert!(
+        w.session_env()
+            .lines()
+            .any(|l| l.starts_with("export TOK=")),
+        "the value did not reach session.env"
+    );
+    let log = w.state("secret-read-errors");
+    assert_eq!(mode(&log), 0o600, "the read-error log is not 0600");
+    let text = fs::read_to_string(&log).unwrap();
+    assert_eq!(text.lines().count(), 1, "log: {text}");
+    assert_contains(
+        "the log keeps gcloud's reason",
+        &text,
+        "tok-secret: attempt 1/3: ERROR: (gcloud.secrets.versions.access)",
+    );
+    assert_not_contains("…and never a value", &text, SECRET_VALUE);
+}
+
+#[test]
+fn a_read_that_never_works_is_logged_each_time() {
+    let w = World::new();
+    w.make_gcloud("autherr");
+    w.auth(SA_KEY_GOOD, &[("VITRUVIAN_PROFILE", "pinned")]);
+    let text = fs::read_to_string(w.state("secret-read-errors")).unwrap();
+    let tok: Vec<&str> = text
+        .lines()
+        .filter(|l| l.starts_with("tok-secret:"))
+        .collect();
+    assert_eq!(tok.len(), 3, "log: {text}");
+    assert_contains("the last attempt is 3/3", tok[2], "attempt 3/3: ERROR:");
+    // The startup report, the one thing an agent sees, says why.
+    let (out, _) = w.exec(&["whoami"], &[("VITRUVIAN_PROFILE", "pinned".into())]);
+    assert_contains(
+        "whoami gives the reason for a missing credential",
+        &out,
+        "why: tok-secret: attempt 3/3: ERROR: (gcloud.secrets) Reauthentication failed",
     );
 }
 

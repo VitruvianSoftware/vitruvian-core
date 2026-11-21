@@ -193,6 +193,8 @@ impl Ctx {
     /// establish_credentials: authenticate and materialise EVERY listed
     /// profile, each with its own identity, in list order.
     fn establish_credentials(&mut self) {
+        // This run's failed reads only; see gcloud_secret.
+        let _ = std::fs::remove_file(self.state_dir.join(creds::SECRET_READ_ERRORS));
         for name in self.profile_list.clone() {
             let Some(p) = self.load(&name) else { continue };
             self.authenticate(&name, &p);
@@ -320,6 +322,17 @@ impl Ctx {
                     out(&format!(
                         "  creds      ✗ {var:<22} missing (secret {secret})\n"
                     ));
+                    // The reason the read failed, if this run logged one.
+                    let log = std::fs::read(self.state_dir.join(creds::SECRET_READ_ERRORS))
+                        .unwrap_or_default();
+                    let prefix = format!("{secret}: ");
+                    if let Some(why) = sh::lines(&log)
+                        .iter()
+                        .rev()
+                        .find(|l| l.starts_with(prefix.as_bytes()))
+                    {
+                        out(&format!("             why: {}\n", sh::lossy(why)));
+                    }
                     ok = false;
                 }
             }
