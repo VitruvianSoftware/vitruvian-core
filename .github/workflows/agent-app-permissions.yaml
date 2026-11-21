@@ -59,7 +59,7 @@ on:
       - "tools/agent-app/agents.tsv"
       - "tools/agent-app/permissions.tsv"
       - "tools/agent-app/src/**"
-      - "packages/rust/vitruvian-pycompat/**"
+      - "packages/pycompat/vitruvian-pycompat/**"
       - ".github/actions/mint-pulumi-app-token/**"
       - ".github/workflows/agent-app-permissions.yaml"
 
@@ -97,7 +97,7 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           set +e -u -o pipefail
-          bash packages/rust/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" permission_drift tools/agent-app/src/lib.rs tools/agent-app/src/main.rs --cfg 'feature="standalone_permission_drift"'
+          bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" permission_drift tools/agent-app/src/lib.rs tools/agent-app/src/main.rs --cfg 'feature="standalone_permission_drift"'
           BUILD_WORKSPACE_DIRECTORY="$PWD" "$RUNNER_TEMP/permission_drift" | tee "$RUNNER_TEMP/report.txt"
           rc=${PIPESTATUS[0]}
           {

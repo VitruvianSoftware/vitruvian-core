@@ -37,7 +37,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+        "//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat",
         "//tools/pipeline/unitfile:unitfile_lib",
         "@crates//:serde",
         "@crates//:serde_json",

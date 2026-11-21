@@ -68,7 +68,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
-          bash packages/rust/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" sync_downloads tools/sync-downloads/src/lib.rs tools/sync-downloads/src/main.rs
+          bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" sync_downloads tools/sync-downloads/src/lib.rs tools/sync-downloads/src/main.rs
           "$RUNNER_TEMP/sync_downloads"
 
       # The App's full token: arming auto-merge needs the right to merge

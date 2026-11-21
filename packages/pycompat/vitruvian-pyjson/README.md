@@ -10,7 +10,7 @@ A `serde_json`-backed JSON parser and Python-compatible formatter (`Py`, `loads`
 
 ## When not to use it
 
-- Standard-library-only Rust tools that cannot link `serde` / `serde_json` or build with plain `rustc`; use [`//packages/rust/vitruvian-pycompat`](../vitruvian-pycompat/README.md) (`vitruvian_pycompat::json`) instead.
+- Standard-library-only Rust tools that cannot link `serde` / `serde_json` or build with plain `rustc`; use [`//packages/pycompat/vitruvian-pycompat`](../vitruvian-pycompat/README.md) (`vitruvian_pycompat::json`) instead.
 - Normal Rust services that deserialize into typed structs; use `serde` and `serde_json` directly.
 
 ## Example
@@ -38,7 +38,7 @@ pub fn load_dict(mf: &str) -> Result<Py, String> {
 
 ## Depend on it
 
-`//packages/rust/vitruvian-pyjson:vitruvian_pyjson`
+`//packages/pycompat/vitruvian-pyjson:vitruvian_pyjson`
 
 ## Constraints
 

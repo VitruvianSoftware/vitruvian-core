@@ -93,7 +93,7 @@ rust_test(
         "//tools/shell-compat:src/lib.rs",
         # What the action's `deps` input may name (plus shared pycompat).
         "src/transient_lib/lib.rs",
-        "//packages/rust/vitruvian-pycompat:srcs",
+        "//packages/pycompat/vitruvian-pycompat:srcs",
         "//tools/gitops/appset-render:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rust_toolchain",

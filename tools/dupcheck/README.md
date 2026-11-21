@@ -29,7 +29,7 @@ bazel run //tools/dupcheck -- --families
 bazel run //tools/dupcheck -- --families --ref aaf841f83379bf1f75d7b12b39e897441e3336ac
 ```
 
-Default `--ref` is `origin/main`. Excludes shared helper package copies (`packages/rust/` and `packages/gocompat/`; `packages/pycompat/` is listed too, for after the planned move of the pycompat crates there) and one-line `pub use vitruvian_*` re-exports, cuts each file at the first top-level `#[cfg(test)]`, and prints a Markdown table of copies, code lines, and lines shared across at least two copies.
+Default `--ref` is `origin/main`. Excludes shared helper package copies (`packages/pycompat/`, `packages/gocompat/`, and `packages/rust/`) and one-line `pub use vitruvian_*` re-exports, cuts each file at the first top-level `#[cfg(test)]`, and prints a Markdown table of copies, code lines, and lines shared across at least two copies.
 
 ## Allow list
 
