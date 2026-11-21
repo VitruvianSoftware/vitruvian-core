@@ -1130,9 +1130,14 @@ impl App {
     /// one exception: the device was this person's and was removed, and the
     /// hello is signed with that device's own key (for this token), so only
     /// that computer can be hearing it. Then it is told it was removed. A bad
-    /// signature, someone else's id, or any failure of the lookup gets the
+    /// signature, someone else's id, a hello stamped too far from the relay's
+    /// clock (the check every hello gets, so an old one that was captured
+    /// cannot be replayed to ask), or any failure of the lookup gets the
     /// unknown answer.
     async fn unknown_or_removed(&self, hello: &Hello, caller: &Caller, token_hash: &str) -> String {
+        if (self.timing.clock)().abs_diff(hello.ts) > self.timing.max_clock_skew_secs {
+            return UNKNOWN_DEVICE.into();
+        }
         let Ok(Some(rec)) = self.store.revoked_device(&hello.device_id).await else {
             return UNKNOWN_DEVICE.into();
         };

@@ -238,6 +238,18 @@ impl FakeConn {
         }
     }
 
+    /// Nothing but pings for `d`: in particular no second `Pending`.
+    async fn no_pending_for(&mut self, d: Duration) {
+        let end = tokio::time::Instant::now() + d;
+        loop {
+            match tokio::time::timeout_at(end, self.from.recv()).await {
+                Err(_) => return,
+                Ok(Some(ToRelay::Ping { .. })) | Ok(Some(ToRelay::Pong { .. })) => {}
+                Ok(other) => panic!("expected nothing, got {other:?}"),
+            }
+        }
+    }
+
     fn call(&self, id: &str, tool: &str, args: Value) {
         self.send(ToConnector::Call(Call {
             call_id: id.into(),
@@ -796,16 +808,20 @@ async fn pending_sent_when_dialog_opens() {
         other => panic!("expected the result, got {other:?}"),
     }
 
-    // Ask first: `Pending` for that call, once its dialog is open.
+    // That call never asked: no dialog has opened.
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 0);
+
+    // Ask first: `Pending` for that call. The link sends it just before it
+    // hands the dialog to a blocking thread, so the dialog is counted open a
+    // moment after `Pending` arrives (not at the same instant): wait for the
+    // dialog itself rather than assume it is already open.
     c.call("c1", "start_process", json!({"command": "ls"}));
     assert_eq!(c.recv_pending().await, "c1");
-    assert_eq!(
-        asker.opened.load(Ordering::SeqCst),
-        1,
-        "Pending is sent as the dialog opens, not for a call that never asks"
-    );
-    // Once, not on every ping or tick.
-    c.quiet_for(Duration::from_millis(300)).await;
+    until("the dialog", || asker.opened.load(Ordering::SeqCst) == 1).await;
+    // Once, not on every ping or tick: no second `Pending` (and no other
+    // frame) while the dialog stays open, and still the one dialog.
+    c.no_pending_for(Duration::from_millis(300)).await;
+    assert_eq!(asker.opened.load(Ordering::SeqCst), 1);
 
     // Allowing it finishes the call; the result is the next thing said.
     asker.set(Waited::Allow);

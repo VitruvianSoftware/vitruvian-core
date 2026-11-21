@@ -4149,17 +4149,22 @@ async fn name_is_trimmed_and_capped() {
 /// What the relay says to a connector whose hello names `device`, signed with
 /// `key`, under `who`'s token.
 async fn reject_for(h: &Harness, who: &str, device: &str, key: &Ed25519KeyPair) -> String {
+    reject_for_at(h, who, device, key, now_secs()).await
+}
+
+/// The same, with the hello stamped `ts`.
+async fn reject_for_at(
+    h: &Harness,
+    who: &str,
+    device: &str,
+    key: &Ed25519KeyPair,
+    ts: u64,
+) -> String {
     let token = h.connector_token(who);
     let mut ws = h.ws(&token).await.unwrap();
-    ws.send(Message::Text(hello(
-        device,
-        key,
-        &token,
-        now_secs(),
-        vec![],
-    )))
-    .await
-    .unwrap();
+    ws.send(Message::Text(hello(device, key, &token, ts, vec![])))
+        .await
+        .unwrap();
     match next_frame(&mut ws).await {
         Some(ToConnector::Reject { reason }) => reason,
         other => panic!("expected reject, got {other:?}"),
@@ -4235,6 +4240,43 @@ async fn revoke_closes_live_link() {
     // Her other computer never noticed.
     assert!(!other_fake.is_closed.load(Ordering::SeqCst));
     assert!(h.app.registry.tools(&other).is_some());
+}
+
+/// Task 8 review: the word "removed" is for the computer itself, now. A hello
+/// signed with a removed computer's key but stamped far from the relay's clock
+/// is a replay (or a clock that is wrong), and is answered like any unknown
+/// computer, exactly as a hello for a computer that is still registered would
+/// be refused for its timestamp.
+#[tokio::test]
+async fn removed_is_not_told_to_a_stale_hello() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+
+    let now = now_secs();
+    let fresh = reject_for_at(&h, ALICE, &device, &key, now).await;
+    assert_eq!(fresh, REMOVED_DEVICE);
+
+    let never = "00000000-0000-4000-8000-000000000000";
+    let unknown = reject_for(&h, ALICE, never, &ed25519()).await;
+    assert_eq!(unknown, UNKNOWN_DEVICE);
+    let skew = h.app.timing.max_clock_skew_secs;
+    for (label, ts) in [
+        ("an hour old", now - 3600),
+        ("an hour ahead", now + 3600),
+        ("just past the limit", now - skew - 5),
+    ] {
+        assert_eq!(
+            reject_for_at(&h, ALICE, &device, &key, ts).await,
+            unknown,
+            "a correctly signed hello that is {label} must not learn it was removed"
+        );
+    }
+    // Just inside the limit still counts as now.
+    assert_eq!(
+        reject_for_at(&h, ALICE, &device, &key, now - skew + 5).await,
+        REMOVED_DEVICE
+    );
 }
 
 /// A `/connect` that read the device before it was removed must not register
