@@ -175,4 +175,22 @@ final class ComposerPickersViewTests: XCTestCase {
         let without = host.fittingSize.height
         XCTAssertGreaterThanOrEqual(withStrip - without, GIFPickerStrip.height, "the strip takes its room in the composer")
     }
+
+    func testAKeystrokeInAFiveThousandCharDraftIsQuickInTheTextView() throws {
+        for chunk in ["*a ", "**a *b _c "] {
+            let (composer, _, textView) = try hostedComposer()
+            let base = String(repeating: chunk, count: 5_000 / chunk.count)
+            textView.insertText(base, replacementRange: textView.selectedRange())
+            pump()
+            XCTAssertEqual(composer.text, base)
+            var worst: TimeInterval = 0
+            for character in "typing on and on, forty keys!" {
+                let started = Date()
+                textView.insertText(String(character), replacementRange: textView.selectedRange())
+                worst = max(worst, Date().timeIntervalSince(started))
+            }
+            print("QA-TIMING view keystroke at \((base as NSString).length) chars of \(chunk.debugDescription): worst \(Int(worst * 1000)) ms")
+            XCTAssertLessThan(worst, 0.1, "a keystroke in \(chunk.debugDescription)")
+        }
+    }
 }

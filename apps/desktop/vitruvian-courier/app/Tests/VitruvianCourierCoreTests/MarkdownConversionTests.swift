@@ -283,4 +283,40 @@ final class MarkdownConversionTests: XCTestCase {
         XCTAssertNil(MarkdownConverter.convert(text: "**a** b", entities: [], inserted: NSRange(location: 6, length: 1)),
                      "a span whose closing marker was not just typed stays as it is")
     }
+
+    // MARK: Where markers are not formatting
+
+    func testTheFormattingKeysGiveTheSameRangesAsTypedMarkers() async {
+        let cases: [(String, TextEntity.Kind)] = [("**", .bold), ("_", .italic), ("~~", .strikethrough), ("`", .code)]
+        for (marker, kind) in cases {
+            let typed = make()
+            type("say \(marker)word\(marker)", into: typed.composer)
+            let keyed = make()
+            type("say word", into: keyed.composer)
+            keyed.composer.toggle(kind, in: NSRange(location: 4, length: 4))
+            XCTAssertEqual(keyed.composer.text, typed.composer.text, marker)
+            XCTAssertEqual(keyed.composer.entities, typed.composer.entities, marker)
+            await typed.composer.submit()?.value
+            await keyed.composer.submit()?.value
+            XCTAssertNotNil(typed.sender.sends.last?.rich, marker)
+            XCTAssertEqual(keyed.sender.sends.last?.rich, typed.sender.sends.last?.rich, "what is sent for \(marker)")
+        }
+    }
+
+    func testTypingIntoAFiveThousandCharDraftStaysQuick() {
+        // A draft that is slow to scan: openers that never close, on one line.
+        for chunk in ["*a ", "_a ", "~~a ", "`a `` ", "**a *b _c "] {
+            let composer = make().composer
+            let base = String(repeating: chunk, count: 5_000 / chunk.count)
+            composer.textChanged(to: base, replacing: NSRange(location: 0, length: 0), with: (base as NSString).length)
+            var worst: TimeInterval = 0
+            for character in "typing on and on" {
+                let started = Date()
+                insert(String(character), into: composer, at: (composer.text as NSString).length)
+                worst = max(worst, Date().timeIntervalSince(started))
+            }
+            print("QA-TIMING model keystroke at \((base as NSString).length) chars of \(chunk.debugDescription): worst \(Int(worst * 1000)) ms")
+            XCTAssertLessThan(worst, 0.1, "a keystroke in \(chunk.debugDescription)")
+        }
+    }
 }

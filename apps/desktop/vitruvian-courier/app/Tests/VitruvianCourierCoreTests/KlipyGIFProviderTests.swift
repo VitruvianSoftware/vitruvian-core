@@ -196,7 +196,7 @@ final class KlipyGIFProviderTests: XCTestCase {
     }
 
     /// KLIPY can mix adverts into a page (the reply's meta carries `ad_max_resize_percent`): an item whose `type` is
-    /// not a GIF or clip is never offered, even when it carries files that would play.
+    /// not a GIF is never offered (adverts, and clips, which are videos with sound), even when it carries files that would play.
     func testAnAdvertInAPageIsNeverOffered() throws {
         let body = Data("""
         {"result": true, "data": {"data": [
@@ -208,7 +208,7 @@ final class KlipyGIFProviderTests: XCTestCase {
            "file": {"md": {"mp4": {"url": "https://static.klipy.com/ii/c/md.mp4", "width": 10, "height": 10}}}}
         ], "current_page": 1, "per_page": 24, "has_next": false}, "meta": {"ad_max_resize_percent": 50}}
         """.utf8)
-        XCTAssertEqual(try KlipyAPI.candidates(from: body).map(\.id), ["1", "3"])
+        XCTAssertEqual(try KlipyAPI.candidates(from: body).map(\.id), ["1"])
     }
 
     func testAnItemWithNoTypeOrAnUnknownOneIsSkippedToo() throws {

@@ -248,7 +248,7 @@ public enum KlipyAPI {
         var id: FlexibleID?
         var slug: String?
         var title: String?
-        /// "gif" for a GIF. KLIPY can mix adverts into a page (type "ad"); nothing but a GIF or a clip is offered.
+        /// "gif" for a GIF. KLIPY can mix adverts into a page (type "ad"); only a GIF is offered (a clip is a video with sound).
         var type: String?
         var file: [String: [String: Format]]?
     }
@@ -275,8 +275,8 @@ public enum KlipyAPI {
     }
 
     private static func candidate(_ item: Item) -> GIFCandidate? {
-        // Never an advert: only an item that says it is a GIF (or a clip) is shown. No type, or another one, is skipped.
-        guard let type = item.type?.lowercased(), type == "gif" || type == "clip" else { return nil }
+        // Never an advert or a clip (a video with sound): only an item that says it is a GIF is shown. No type, or another one, is skipped.
+        guard let type = item.type?.lowercased(), type == "gif" else { return nil }
         guard let id = item.id?.text ?? item.slug, !id.isEmpty, let file = item.file else { return nil }
         // To send: the GIF (medium, else small), or its MP4 loop where the chat takes one. To show: a small GIF.
         let sending = pick(file, sizes: ["md", "sm", "hd", "xs"], formats: ["gif", "mp4"])
