@@ -512,6 +512,12 @@ public final class ConversationModel: ObservableObject {
     private var summarizeToken = 0
     /// Active view-once message being viewed in `ViewOnceSheet`.
     @Published public var activeViewOnceMessage: TimelineMessage?
+    /// The open "Edit with AI…" sheet (`PhotoEditSheet`), see `ConversationModel+PhotoEdit.swift`.
+    @Published public var photoEdit: PhotoEditModel?
+    /// What photo editing reads from Settings ▸ AI; set by `bindAIProviderStore`. Nil where AI isn't bound.
+    public var photoEditBackend: PhotoEditBackend?
+    /// Opens Settings ▸ AI at the key a photo edit needs (Google AI Studio's, when no service can edit photos).
+    public var onOpenPhotoEditingSettings: @MainActor (AIProviderKind?) -> Void = { _ in }
     /// Whether the poll creator sheet (`PollCreatorWindow`) is presented.
     @Published public var isCreatingPoll = false
     /// Active message or gallery tile ID opened in the in-app lightbox.
@@ -619,6 +625,7 @@ public final class ConversationModel: ObservableObject {
     /// Dismisses every active sheet, popover, confirmation alert, and overlay owned by this conversation.
     public func dismissAllPresentations() {
         activeViewOnceMessage = nil
+        closePhotoEdit()
         activeEditGroupDraft = nil
         activeAddParticipantsRoom = nil
         activeReportSpamDraft = nil
@@ -2618,6 +2625,7 @@ public final class ConversationModel: ObservableObject {
     /// Binds this conversation's composers and voice-note transcript store to a shared `AIProviderStore`.
     public func bindAIProviderStore(_ store: AIProviderStore) {
         voiceNoteTranscripts = store.voiceNoteTranscripts
+        photoEditBackend = store.photoEditBackend()
         composer.bindAIProviderStore(store)
         thread.composer.bindAIProviderStore(store)
     }

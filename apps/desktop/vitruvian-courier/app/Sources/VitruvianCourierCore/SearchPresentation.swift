@@ -5,24 +5,13 @@ import Foundation
 
 // How a search result's row reads: its date, where its chat is, who sent it and the groups a person is in.
 
-/// A found message's date: the time today, the day and month this year, else the whole date.
+/// A found message's date, worded as the inbox words a chat's time (`RelativeTime`): the time today, "Yesterday", the
+/// weekday within the week, then the day and month this year, else the whole date.
 public enum SearchDate {
     public static func text(forMillis millis: Int64, now: Date = Date(), calendar: Calendar = .current,
                             locale: Locale = .current,
                             timeFormat: TimeFormatPreference = .system) -> String {
-        guard millis > 0 else { return "" }
-        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
-        let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
-        if calendar.isDate(date, inSameDayAs: now) {
-            if timeFormat != .system {
-                return timeFormat.formatTime(date, locale: locale, timeZone: calendar.timeZone)
-            }
-            return date.formatted(style.hour().minute())
-        }
-        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
-            return date.formatted(style.month(.abbreviated).day())
-        }
-        return date.formatted(style.year().month(.abbreviated).day())
+        RelativeTime.text(forMillis: millis, now: now, calendar: calendar, locale: locale, timeFormat: timeFormat)
     }
 }
 
@@ -67,7 +56,7 @@ extension MessageHit {
     /// Who sent it: "You" for mine, else their name (their ID when they have none).
     public var senderLine: String {
         if mine { return String(localized: "You") }
-        return senderName.isEmpty ? sender : senderName
+        return senderName.isEmpty ? sender : PhoneNumberFormat.display(senderName)
     }
 }
 
@@ -90,7 +79,7 @@ public enum SearchResultLocation {
         if scopedToSingleChat {
             return sender
         }
-        let title = chatTitle.isEmpty ? String(localized: "Unnamed chat") : chatTitle
+        let title = chatTitle.isEmpty ? String(localized: "Unnamed chat") : PhoneNumberFormat.display(chatTitle)
         switch (isDirect, networkName.isEmpty) {
         case (true, true):
             return sender

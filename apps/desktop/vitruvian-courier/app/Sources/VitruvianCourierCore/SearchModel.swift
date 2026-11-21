@@ -348,19 +348,10 @@ public final class SearchModel: ObservableObject {
         pendingOpen = nil
     }
 
-    /// Esc: inside a chat (⌘F) it closes the panel at once. Searching every chat clears the filters, then the text,
-    /// then closes. True once closed.
+    /// Esc closes the panel at once, whatever is typed or filtered. ⌘⌫ (`text = ""`) and ⌫ on empty text are what clear
+    /// the text and the scope step by step. Always true: the panel is closed.
+    @discardableResult
     public func escape() -> Bool {
-        if scopeRoomID == nil {
-            if !filters.isEmpty {
-                clearFilters()
-                return false
-            }
-            if !text.isEmpty {
-                text = ""
-                return false
-            }
-        }
         close()
         return true
     }

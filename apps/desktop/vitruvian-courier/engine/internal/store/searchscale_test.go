@@ -234,7 +234,7 @@ func TestSearchPlansWalkTheIndex(t *testing.T) {
 		require.NoError(t, err, tc.name)
 		require.NotEmpty(t, hits, tc.name)
 		t.Logf("%s: first page of %d in %s", tc.name, len(hits), took)
-		require.Less(t, took, 2*time.Second, tc.name)
+		require.Less(t, took, grossCeiling(2*time.Second), tc.name)
 	}
 
 	// Chats and In groups never scan rooms.

@@ -52,6 +52,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case transcribeVoiceNote
         /// Speaks the message aloud via Vitruvian Speaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
         case readAloud
+        /// Opens the "Edit with AI…" sheet for a photo (`PhotoEditSheet`). It never sends the result.
+        case editPhoto
         /// Groups secondary message actions into a "More" submenu.
         case more
         /// A line that only says something ("Sent 14:02"), always greyed.
@@ -91,8 +93,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
 ///      thread's root); React…; Edit… (⌘T)
 ///   2. Copy (⌘C); Forward… (⌘⇧F)
 ///   3. Bookmark / Remove Bookmark; Mark as Unread ("From this message. On this Mac only."); Mark as played;
-///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Summarize Link, Read Aloud, Transcribe, Translate,
-///      Translate Into…, Edit History, Report a Problem…, Copy Message Details)
+///      More ▸ (Copy with Timestamp, Insert as Draft, Open Link, Summarize Link, Edit with AI… (on a photo, when AI
+///      is on), Read Aloud, Transcribe, Translate, Translate Into…, Edit History, Report a Problem…, Copy Message Details)
 ///   4. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
 ///   5. greyed lines: "Sent …" or "Received …", and "Disappears in …"
 /// An action the chat shows greyed is there, off, with why (`Unavailable.reason`).
@@ -111,7 +113,8 @@ public enum MessageMenu {
                                 translationLanguages: [String] = [],
                                 canReadAloud: Bool = false,
                                 isReadingAloud: Bool = false,
-                                hasSummarizableLink: Bool = false) -> [[MessageMenuItem]] {
+                                hasSummarizableLink: Bool = false,
+                                canEditPhoto: Bool = false) -> [[MessageMenuItem]] {
         let offered = Set(available.actions)
         let greyed = Dictionary(available.unavailable.map { ($0.action, $0.reason) }, uniquingKeysWith: { a, _ in a })
 
@@ -151,6 +154,17 @@ public enum MessageMenu {
                     key: nil,
                     isEnabled: isAIAvailable,
                     help: isAIAvailable ? nil : String(localized: "Set up AI in Settings")
+                )
+            )
+        }
+        if canEditPhoto {
+            moreItems.append(
+                MessageMenuItem(
+                    command: .editPhoto,
+                    title: String(localized: "Edit with AI…"),
+                    key: nil,
+                    isEnabled: true,
+                    help: nil
                 )
             )
         }

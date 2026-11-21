@@ -300,6 +300,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuCoordinator.openSettings(pane: .ai)
         }
         conversation.onOpenAISettings = openAISettings
+        // "Open AI Settings" in Edit with AI: Settings ▸ AI at the key the edit needs, with the cursor in it.
+        conversation.onOpenPhotoEditingSettings = { [weak self] kind in
+            self?.menuCoordinator.openSettings(
+                pane: .ai,
+                highlightedSettingID: PhotoEditingChoice.settingID(forKeyOf: kind)
+            )
+        }
         conversation.onToggleMute = { [weak inbox] roomID in
             guard !roomID.isEmpty else { return }
             Task { await inbox?.toggleMute(ids: [roomID]) }
@@ -383,6 +390,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
+        // Edited photos left in the scratch folder by "Add to Message" for over a day go too.
+        Task.detached(priority: .utility) { PhotoEditScratch.sweep() }
         updates.startAutomaticChecks()
         PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in
             windowOpener.show()

@@ -4323,16 +4323,21 @@ public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
     public var host: String
     /// The page's title from the message's link preview; nil when the message had none (or an engine before this field).
     public var title: String?
+    /// The file of the link preview's picture, when the message's preview has one and it is on this Mac; nil otherwise
+    /// (or from an engine before this field).
+    public var imagePath: String?
 
     public var id: String { "\(eventID):\(url)" }
 
-    public init(eventID: String, sender: String, ts: Int64, url: String, host: String, title: String? = nil) {
+    public init(eventID: String, sender: String, ts: Int64, url: String, host: String, title: String? = nil,
+                imagePath: String? = nil) {
         self.eventID = eventID
         self.sender = sender
         self.ts = ts
         self.url = url
         self.host = host
         self.title = title
+        self.imagePath = imagePath
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -4342,6 +4347,7 @@ public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
         case url
         case host
         case title
+        case imagePath = "image_path"
     }
 }
 
@@ -4360,6 +4366,10 @@ public struct RoomInfoResult: ProtocolType, Equatable {
     public var isDirect: Bool
     public var encrypted: Bool
     public var disappearingMS: Int64
+    /// The network's own chat history setting where it has one (Google Chat): true is history off (messages disappear
+    /// after a day on the network), false is on. nil when the network has none or has not said (or an engine before
+    /// this field). Read only.
+    public var historyOff: Bool?
     public var pinnedEventIDs: [String]
     public var members: [Member]
     public var sharedMedia: [Event]
@@ -4372,7 +4382,8 @@ public struct RoomInfoResult: ProtocolType, Equatable {
 
     public init(roomID: String, name: String, remoteName: String, localName: String = "", topic: String = "",
                 avatarPath: String = "", localAvatarURI: String = "", network: String, accountID: String = "",
-                isDirect: Bool, encrypted: Bool = false, disappearingMS: Int64 = 0, pinnedEventIDs: [String] = [],
+                isDirect: Bool, encrypted: Bool = false, disappearingMS: Int64 = 0, historyOff: Bool? = nil,
+                pinnedEventIDs: [String] = [],
                 members: [Member] = [], sharedMedia: [Event] = [], sharedFiles: [Event] = [],
                 sharedLinks: [RoomLink] = [], sharedCapped: Bool? = nil, features: ChatFeatures) {
         self.roomID = roomID
@@ -4387,6 +4398,7 @@ public struct RoomInfoResult: ProtocolType, Equatable {
         self.isDirect = isDirect
         self.encrypted = encrypted
         self.disappearingMS = disappearingMS
+        self.historyOff = historyOff
         self.pinnedEventIDs = pinnedEventIDs
         self.members = members
         self.sharedMedia = sharedMedia
@@ -4409,6 +4421,7 @@ public struct RoomInfoResult: ProtocolType, Equatable {
         case isDirect = "is_direct"
         case encrypted
         case disappearingMS = "disappearing_ms"
+        case historyOff = "history_off"
         case pinnedEventIDs = "pinned_event_ids"
         case members
         case sharedMedia = "shared_media"
