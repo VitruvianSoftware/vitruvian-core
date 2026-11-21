@@ -56,6 +56,8 @@ const MCP_CLIENT: &str = "claude-client";
 const CONNECTOR_CLIENT: &str = "connector-client";
 const ALICE: &str = "alice";
 const BOB: &str = "bob";
+/// The Zitadel role that lets a person in.
+const ROLE: &str = "relay-user";
 const ACCEPT: &str = "application/json, text/event-stream";
 
 // A throwaway 2048-bit RSA key (PKCS#8 DER, base64url), the same test-only key
@@ -136,8 +138,19 @@ fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
     mint_claims(pair, client_id, sub, Some(exp))
 }
 
-/// `exp: None` leaves the claim out.
+/// `exp: None` leaves the claim out. The person holds the `relay-user` role.
 fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) -> String {
+    mint_with_role(pair, client_id, sub, exp, Some(ROLE))
+}
+
+/// `role: None` is a person who signed in but was never invited.
+fn mint_with_role(
+    pair: &RsaKeyPair,
+    client_id: &str,
+    sub: &str,
+    exp: Option<u64>,
+    role: Option<&str>,
+) -> String {
     let now = now_secs();
     let header = b64url(json!({"alg": "RS256", "kid": "k1"}).to_string().as_bytes());
     let mut claims = json!({
@@ -146,6 +159,10 @@ fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) 
     });
     if let Some(exp) = exp {
         claims["exp"] = json!(exp);
+    }
+    if let Some(role) = role {
+        claims[format!("urn:zitadel:iam:org:project:{PROJECT_ID}:roles")] =
+            json!({ role: { "org-1": "example.test" } });
     }
     let input = format!("{header}.{}", b64url(claims.to_string().as_bytes()));
     let mut sig = vec![0u8; pair.public().modulus_len()];
@@ -219,7 +236,6 @@ async fn harness_with(timing: Timing) -> Harness {
         ("PROJECT_ID", PROJECT_ID.to_string()),
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
-        ("ALLOWED_SUBJECTS", format!("{ALICE},{BOB}")),
         (
             "DATABASE_URL",
             "postgres://unused@localhost/unused".to_string(),
@@ -229,12 +245,14 @@ async fn harness_with(timing: Timing) -> Harness {
     .into_iter()
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
+    let required_role = settings.required_role.clone();
     let verifier_for = |ids: Vec<String>| {
         vitruvian_mcp_auth::verifier(VerifierConfig {
             issuer: ISSUER.into(),
             project_id: PROJECT_ID.into(),
             allowed_client_ids: ids,
-            allowed_subjects: vec![ALICE.into(), BOB.into()],
+            allowed_subjects: Vec::new(),
+            required_role: Some(required_role.clone()),
             jwks_uri: Some(jwks_uri.clone()),
             user_agent: "vitruvian-relay-test".into(),
         })
@@ -340,7 +358,31 @@ impl Harness {
         self.send("GET", path, &[], "").await
     }
 
+    /// A new device for `sub` (no name, no device id sent).
     async fn register(&self, sub: &str, key: &Ed25519KeyPair) -> Reply {
+        self.register_with(sub, key, None, None).await
+    }
+
+    /// What `vrelay login` sends: the key, and a name and the device id when
+    /// it has them.
+    async fn register_with(
+        &self,
+        sub: &str,
+        key: &Ed25519KeyPair,
+        name: Option<&str>,
+        device_id: Option<&str>,
+    ) -> Reply {
+        let mut body = json!({"public_key": b64(key.public_key().as_ref())});
+        if let Some(name) = name {
+            body["name"] = json!(name);
+        }
+        if let Some(id) = device_id {
+            body["device_id"] = json!(id);
+        }
+        self.register_body(sub, &body.to_string()).await
+    }
+
+    async fn register_body(&self, sub: &str, body: &str) -> Reply {
         self.send(
             "POST",
             "/devices",
@@ -351,9 +393,14 @@ impl Harness {
                 ),
                 ("content-type", "application/json".into()),
             ],
-            &json!({"public_key": b64(key.public_key().as_ref())}).to_string(),
+            body,
         )
         .await
+    }
+
+    /// Registers `key` as the new key of a device `sub` already has.
+    async fn reregister(&self, sub: &str, device: &str, key: &Ed25519KeyPair) -> Reply {
+        self.register_with(sub, key, None, Some(device)).await
     }
 
     /// Registers a device for `sub` and returns its id and key.
@@ -998,7 +1045,7 @@ async fn reregister_kicks_old_session() {
     let fake = h.connect(ALICE, &device, &old_key, vec![tool("a")]).await;
 
     let new_key = ed25519();
-    let r = h.register(ALICE, &new_key).await;
+    let r = h.reregister(ALICE, &device, &new_key).await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.json()["device_id"], device.as_str(), "same id, new key");
     fake.wait_closed().await;
@@ -1124,7 +1171,7 @@ async fn connect_rejects_bad_signature() {
     .unwrap();
     match next_frame(&mut ws).await {
         Some(ToConnector::Reject { reason }) => {
-            assert!(reason.contains("unknown device"), "{reason}")
+            assert!(reason.contains("not registered"), "{reason}")
         }
         other => panic!("expected reject, got {other:?}"),
     }
@@ -2560,7 +2607,10 @@ async fn reregister_during_hello_gap_ends_old_key_connection() {
     within(reached.notified()).await;
     // The key changes in the gap; there is nothing to kick yet.
     *h.app.after_hello.lock().unwrap() = None;
-    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+    assert_eq!(
+        h.reregister(ALICE, &device, &ed25519()).await.status,
+        StatusCode::OK
+    );
     release.notify_one();
     // The old-key connection must end, whatever it saw first.
     loop {
@@ -2898,7 +2948,10 @@ async fn stale_key_hello_in_the_gap_does_not_displace_the_new_connection() {
     *h.app.after_hello.lock().unwrap() = None;
     // Meanwhile the device is registered again and connects with its new key.
     let new_key = ed25519();
-    assert_eq!(h.register(ALICE, &new_key).await.status, StatusCode::OK);
+    assert_eq!(
+        h.reregister(ALICE, &device, &new_key).await.status,
+        StatusCode::OK
+    );
     let fresh = h.connect(ALICE, &device, &new_key, vec![tool("new")]).await;
     release.notify_one();
     // The stale connection ends without ever taking the device's place,
@@ -3259,7 +3312,10 @@ async fn a_reregistered_device_never_gets_the_calls_still_queued_for_its_old_con
     let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
     within(held.reached.notified()).await;
     // The device is registered again: the relay fails the call.
-    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+    assert_eq!(
+        h.reregister(ALICE, &device, &ed25519()).await.status,
+        StatusCode::OK
+    );
     let r = within(pending).await.unwrap();
     assert_eq!(
         error_text(&r),
@@ -3811,4 +3867,519 @@ async fn key_changes_are_forgotten_after_their_memory() {
     tokio::time::sleep(Duration::from_millis(120)).await;
     h.app.key_changed("last");
     assert_eq!(h.app.key_changes.lock().unwrap().len(), 1);
+}
+
+// ------------------------------------------- several computers, and the role
+
+const FIVE_COMPUTERS: &str =
+    "You already have 5 computers connected. Remove one in the dashboard first.";
+
+/// Everything about a reply that a caller could tell apart, except the
+/// `date` header (a second can tick over between two requests).
+fn fingerprint(r: &Reply) -> (StatusCode, String, Vec<(String, String)>) {
+    let mut headers: Vec<(String, String)> = r
+        .headers
+        .iter()
+        .filter(|(k, _)| *k != header::DATE)
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap().to_string()))
+        .collect();
+    headers.sort();
+    (r.status, r.body.clone(), headers)
+}
+
+async fn names_of(h: &Harness, sub: &str) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = h
+        .store
+        .devices_of(sub)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|d| (d.device_id, d.name))
+        .collect();
+    v.sort();
+    v
+}
+
+#[tokio::test]
+async fn second_device_gets_its_own_id_and_url() {
+    let h = Arc::new(harness().await);
+    let (first, first_key) = h.new_device(ALICE).await;
+    let second_key = ed25519();
+    let r = h
+        .register_with(ALICE, &second_key, Some("Studio Mac"), None)
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let second = r.json()["device_id"].as_str().unwrap().to_string();
+    assert_ne!(first, second, "a new computer is a new device");
+    assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{second}"));
+
+    // Both are hers, each with its own name and key.
+    let mut expected = vec![
+        (first.clone(), "My Mac".to_string()),
+        (second.clone(), "Studio Mac".to_string()),
+    ];
+    expected.sort();
+    assert_eq!(names_of(&h, ALICE).await, expected);
+    let stored = h.store.device(&second).await.unwrap().unwrap();
+    assert_eq!(
+        &stored.public_key_ed25519[..],
+        second_key.public_key().as_ref()
+    );
+
+    // Both can be connected at once, and each URL reaches its own computer.
+    let mut a = h
+        .connect(ALICE, &first, &first_key, vec![tool("one")])
+        .await;
+    let mut b = h
+        .connect(ALICE, &second, &second_key, vec![tool("two")])
+        .await;
+    let sa = h.session(&first, ALICE).await;
+    let sb = h.session(&second, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &second,
+        ALICE,
+        &sb,
+        call_body(json!(1), "two", json!({})),
+    );
+    let call = b.next_call().await;
+    b.reply(&call.call_id, "from the studio");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["content"][0]["text"], "from the studio");
+    let pending = spawn_rpc(
+        &h,
+        &first,
+        ALICE,
+        &sa,
+        call_body(json!(1), "one", json!({})),
+    );
+    let call = a.next_call().await;
+    a.reply(&call.call_id, "from the first");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["content"][0]["text"], "from the first");
+    assert!(a.frames.try_recv().is_err() && b.frames.try_recv().is_err());
+
+    // Another person's registrations are their own.
+    let (bobs, _) = h.new_device(BOB).await;
+    assert_eq!(names_of(&h, BOB).await.len(), 1);
+    assert_ne!(bobs, first);
+    assert_eq!(names_of(&h, ALICE).await.len(), 2);
+}
+
+#[tokio::test]
+async fn relogin_with_device_id_keeps_the_id() {
+    let h = harness().await;
+    let (device, old_key) = h.new_device(ALICE).await;
+    let fake = h.connect(ALICE, &device, &old_key, vec![tool("a")]).await;
+
+    // Signing in again on that computer: same id, same URL, the key is
+    // replaced, the old link ends, and nothing new is made.
+    let new_key = ed25519();
+    let r = h.reregister(ALICE, &device, &new_key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["device_id"], device.as_str());
+    assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{device}"));
+    fake.wait_closed().await;
+    assert_eq!(
+        names_of(&h, ALICE).await,
+        [(device.clone(), "My Mac".to_string())],
+        "no name sent, so the name stays"
+    );
+    let stored = h.store.device(&device).await.unwrap().unwrap();
+    assert_eq!(
+        &stored.public_key_ed25519[..],
+        new_key.public_key().as_ref()
+    );
+    h.connect(ALICE, &device, &new_key, vec![]).await;
+
+    // A name sent with it renames the device.
+    let r = h
+        .register_with(ALICE, &new_key, Some("Desk Mac"), Some(&device))
+        .await;
+    assert_eq!(r.json()["device_id"], device.as_str());
+    assert_eq!(
+        names_of(&h, ALICE).await,
+        [(device.clone(), "Desk Mac".to_string())]
+    );
+
+    // An id that is not hers (someone else's, one nobody has, or one she
+    // removed) gets her a new device. It never touches the other one, and
+    // the answer does not say which of those it was.
+    let (bobs, bobs_key) = h.new_device(BOB).await;
+    let bobs_fake = h.connect(BOB, &bobs, &bobs_key, vec![tool("b")]).await;
+    let nobody = "00000000-0000-4000-8000-000000000000".to_string();
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    let mut made = Vec::new();
+    for not_hers in [&bobs, &nobody, &device] {
+        let r = h
+            .register_with(ALICE, &ed25519(), None, Some(not_hers))
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let id = r.json()["device_id"].as_str().unwrap().to_string();
+        assert_ne!(&id, not_hers);
+        assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
+        made.push(id);
+    }
+    assert_eq!(names_of(&h, ALICE).await.len(), 3);
+    let bobs_record = h.store.device(&bobs).await.unwrap().unwrap();
+    assert_eq!(
+        (
+            &bobs_record.owner_sub[..],
+            &bobs_record.public_key_ed25519[..]
+        ),
+        (BOB, bobs_key.public_key().as_ref()),
+        "Bob's device is untouched"
+    );
+    assert!(
+        !bobs_fake.is_closed.load(Ordering::SeqCst),
+        "and still linked"
+    );
+
+    // Something that is not an id at all, or a name that is not text, is
+    // a request the person can fix.
+    for bad in [
+        json!({"public_key": b64(&[1u8; 32]), "device_id": 7}),
+        json!({"public_key": b64(&[1u8; 32]), "name": ["x"]}),
+    ] {
+        let r = h.register_body(ALICE, &bad.to_string()).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn sixth_device_is_refused() {
+    let h = harness().await;
+    for i in 0..5 {
+        let r = h
+            .register_with(ALICE, &ed25519(), Some(&format!("Mac {i}")), None)
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{i}: {}", r.body);
+    }
+    let r = h
+        .register_with(ALICE, &ed25519(), Some("One too many"), None)
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.body);
+    assert_eq!(r.header("content-type").unwrap(), "application/json");
+    assert_eq!(r.json(), json!({ "error": FIVE_COMPUTERS }));
+    assert_eq!(names_of(&h, ALICE).await.len(), 5, "nothing was added");
+
+    // The limit is per person.
+    assert_eq!(h.register(BOB, &ed25519()).await.status, StatusCode::OK);
+
+    // Signing in again on a computer she already has is not a sixth.
+    let ids: Vec<String> = names_of(&h, ALICE).await.into_iter().map(|d| d.0).collect();
+    let r = h.reregister(ALICE, &ids[0], &ed25519()).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["device_id"], ids[0].as_str());
+
+    // Removing one makes room.
+    assert!(h.app.revoke(ALICE, &ids[1]).await.unwrap());
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(names_of(&h, ALICE).await.len(), 5);
+}
+
+#[tokio::test]
+async fn name_is_trimmed_and_capped() {
+    let h = harness().await;
+    let long_with_space_at_the_cut = format!("{} tail", "b".repeat(63));
+    let cases: Vec<(String, String)> = vec![
+        ("  Work Mac  ".into(), "Work Mac".into()),
+        ("Home\u{7}\nMac\t\u{0}".into(), "HomeMac".into()),
+        ("a".repeat(100), "a".repeat(64)),
+        // Characters, not bytes: 70 two-byte letters are cut to 64 letters.
+        ("é".repeat(70), "é".repeat(64)),
+        // A cut that lands after a space leaves no trailing space.
+        (long_with_space_at_the_cut, "b".repeat(63)),
+        ("a".repeat(64), "a".repeat(64)),
+    ];
+    for (i, (sent, stored)) in cases.iter().enumerate() {
+        // A different person each time, so the five-computer limit is not
+        // what is being tried.
+        let sub = format!("person-{i}");
+        let r = h.register_with(&sub, &ed25519(), Some(sent), None).await;
+        assert_eq!(r.status, StatusCode::OK, "{sent:?}: {}", r.body);
+        let id = r.json()["device_id"].as_str().unwrap().to_string();
+        let name = h.store.device(&id).await.unwrap().unwrap().name;
+        assert_eq!(&name, stored, "sent {sent:?}");
+        assert!(name.chars().count() <= 64);
+    }
+
+    // A name that is nothing once cleaned is a request she can fix, and
+    // nothing is registered.
+    for blank in ["", "   ", "\u{7}\n"] {
+        let r = h
+            .register_with("person-blank", &ed25519(), Some(blank), None)
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{blank:?}");
+        let said = r.json()["error"].as_str().unwrap().to_string();
+        assert!(said.contains("name") && said.contains("64"), "{said}");
+    }
+    assert!(names_of(&h, "person-blank").await.is_empty());
+
+    // The same cleaning when a name comes with a re-login.
+    let (device, key) = h.new_device("person-rename").await;
+    let r = h
+        .register_with(
+            "person-rename",
+            &key,
+            Some("  New\u{7} name "),
+            Some(&device),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        names_of(&h, "person-rename").await,
+        [(device, "New name".to_string())]
+    );
+}
+
+#[tokio::test]
+async fn revoke_closes_live_link() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let (other, other_key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    let other_fake = h.connect(ALICE, &other, &other_key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    fake.next_call().await;
+
+    // Someone else cannot remove it, and removing twice is not an error.
+    assert!(!h.app.revoke(BOB, &device).await.unwrap());
+    assert!(h.store.device(&device).await.unwrap().is_some());
+    assert!(!fake.is_closed.load(Ordering::SeqCst));
+
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    assert!(!h.app.revoke(ALICE, &device).await.unwrap());
+
+    // The call in flight fails with the plain words, the link closes.
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        error_text(&r),
+        "This computer was removed from your account."
+    );
+    fake.wait_closed().await;
+    assert!(h.app.registry.tools(&device).is_none());
+
+    // The next connect is refused, with the same words as for a device that
+    // never existed.
+    let token = h.connector_token(ALICE);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    let revoked_reason = match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => reason,
+        other => panic!("expected reject, got {other:?}"),
+    };
+    let mut ws = h.ws(&token).await.unwrap();
+    let never = "00000000-0000-4000-8000-000000000000";
+    ws.send(Message::Text(hello(
+        never,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => assert_eq!(reason, revoked_reason),
+        other => panic!("expected reject, got {other:?}"),
+    }
+    assert!(revoked_reason.contains("vrelay login"), "{revoked_reason}");
+
+    // Her AI app's URL for it is gone too, session or not.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+
+    // Her other computer never noticed.
+    assert!(!other_fake.is_closed.load(Ordering::SeqCst));
+    assert!(h.app.registry.tools(&other).is_some());
+}
+
+/// A `/connect` that read the device before it was removed must not register
+/// after it (the same gap `reregister_during_hello_gap_ends_old_key_connection`
+/// covers for a new key).
+#[tokio::test]
+async fn connect_racing_a_revoke_cannot_register() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let (reached, release) = (
+        Arc::new(tokio::sync::Notify::new()),
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    *h.app.after_hello.lock().unwrap() = Some((reached.clone(), release.clone()));
+    let token = h.connector_token(ALICE);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![tool("a")],
+    )))
+    .await
+    .unwrap();
+    within(reached.notified()).await;
+    *h.app.after_hello.lock().unwrap() = None;
+    // Removed in the gap: there is no link to close yet.
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    release.notify_one();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => {
+            assert_eq!(reason, "This computer was removed from your account.")
+        }
+        other => panic!("expected reject, got {other:?}"),
+    }
+    assert!(next_frame(&mut ws).await.is_none(), "closed after reject");
+    assert!(h.app.registry.tools(&device).is_none(), "never registered");
+}
+
+#[tokio::test]
+async fn token_without_role_is_refused() {
+    let h = harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let uninvited =
+        |client: &str| mint_with_role(&h.rsa, client, ALICE, Some(now_secs() + 600), None);
+    let other_role = |client: &str| {
+        mint_with_role(
+            &h.rsa,
+            client,
+            ALICE,
+            Some(now_secs() + 600),
+            Some("someone-else"),
+        )
+    };
+
+    for (label, token) in [
+        ("no role", uninvited(CONNECTOR_CLIENT)),
+        ("another role", other_role(CONNECTOR_CLIENT)),
+    ] {
+        let r = h
+            .send(
+                "POST",
+                "/devices",
+                &[("authorization", format!("Bearer {token}"))],
+                &json!({"public_key": b64(&[1u8; 32])}).to_string(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{label}: {}", r.body);
+        let challenge = r.header("www-authenticate").unwrap();
+        assert!(challenge.contains("insufficient_scope"), "{challenge}");
+        assert!(challenge.contains("relay-user"), "{challenge}");
+        assert!(!challenge.contains("resource_metadata"), "{challenge}");
+    }
+    assert_eq!(names_of(&h, ALICE).await.len(), 1, "nothing was registered");
+
+    // On the AI app's side too.
+    for token in [uninvited(MCP_CLIENT), other_role(MCP_CLIENT)] {
+        let r = h
+            .send(
+                "POST",
+                &format!("/mcp/d/{device}"),
+                &[
+                    ("authorization", format!("Bearer {token}")),
+                    ("accept", ACCEPT.into()),
+                ],
+                &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"}).to_string(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{}", r.body);
+    }
+
+    // And on the connector's socket.
+    match h.ws(&uninvited(CONNECTOR_CLIENT)).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => {
+            assert_eq!(resp.status(), StatusCode::FORBIDDEN)
+        }
+        other => panic!("expected a 403, got {:?}", other.map(|_| "a socket")),
+    }
+
+    // Each refusal is logged with its reason, and never with who it was.
+    let logs = h.logs();
+    for route in ["devices", "mcp", "connect"] {
+        assert!(
+            logs.lines().any(|l| l.contains("auth_refused")
+                && l.contains(&format!("\"route\":\"{route}\""))
+                && l.contains("\"code\":\"role_missing\"")),
+            "{route}: {logs}"
+        );
+    }
+    assert!(!logs.contains(ALICE), "{logs}");
+
+    // A person who holds the role is let in with no list naming them.
+    let key = ed25519();
+    let r = h.register("a-person-nobody-listed", &key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn owned_device_is_the_one_ownership_check() {
+    let h = harness().await;
+    let (mine, _) = h.new_device(ALICE).await;
+    let (bobs, _) = h.new_device(BOB).await;
+    let own = h.app.owned_device(ALICE, &mine).await.unwrap();
+    assert_eq!(own.map(|d| d.device_id), Some(mine.clone()));
+    assert_eq!(h.app.owned_device(ALICE, &bobs).await, Ok(None));
+    assert_eq!(h.app.owned_device(ALICE, "no-such-device").await, Ok(None));
+    assert!(h.app.revoke(ALICE, &mine).await.unwrap());
+    assert_eq!(h.app.owned_device(ALICE, &mine).await, Ok(None));
+    h.store.fail_with(Some(StoreError::Unavailable));
+    assert_eq!(
+        h.app.owned_device(ALICE, &bobs).await,
+        Err(StoreError::Unavailable)
+    );
+}
+
+/// Every route that names a device answers for someone else's exactly as it
+/// does for one that does not exist: status, body and headers.
+#[tokio::test]
+async fn someone_elses_device_looks_like_a_missing_one() {
+    let h = harness().await;
+    let (bobs, bobs_key) = h.new_device(BOB).await;
+    let _bob_fake = h.connect(BOB, &bobs, &bobs_key, vec![tool("t")]).await;
+    let missing = "00000000-0000-4000-8000-000000000000";
+
+    for body in [
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+               "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                          "clientInfo": {"name": "test", "version": "0"}}}),
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        call_body(json!(3), "t", json!({})),
+    ] {
+        let theirs = h.rpc(&bobs, ALICE, None, body.clone()).await;
+        let nobodys = h.rpc(missing, ALICE, None, body.clone()).await;
+        assert_eq!(theirs.status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(fingerprint(&theirs), fingerprint(&nobodys), "{body}");
+    }
+
+    // The connector's socket: the same refusal.
+    let token = h.connector_token(ALICE);
+    let mut reasons = Vec::new();
+    for (id, key) in [(bobs.as_str(), &bobs_key), (missing, &ed25519())] {
+        let mut ws = h.ws(&token).await.unwrap();
+        ws.send(Message::Text(hello(id, key, &token, now_secs(), vec![])))
+            .await
+            .unwrap();
+        match next_frame(&mut ws).await {
+            Some(ToConnector::Reject { reason }) => reasons.push(reason),
+            other => panic!("expected reject, got {other:?}"),
+        }
+    }
+    assert_eq!(reasons[0], reasons[1]);
 }

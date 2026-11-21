@@ -32,9 +32,11 @@
 //!
 //! What it guards: an AI app's token only works on `/mcp`, the connector's
 //! only on `/devices` and `/connect` (one verifier per side, each pinned to
-//! its client ids, plus the subject allowlist). A device answers only its
-//! owner: anyone else gets the same 404 as for a device that does not exist.
-//! Nothing logged carries call arguments, output or a token.
+//! its client ids, and each asking for the Zitadel role that marks an invited
+//! person). A device answers only its owner, and
+//! [`App::owned_device`] is the one place that is decided: anyone else gets
+//! the same answer as for a device that does not exist. Nothing logged
+//! carries call arguments, output or a token.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -67,7 +69,9 @@ use vitruvian_relay_protocol::{
 };
 
 use crate::config::Settings;
-use crate::devices::{NewDevice, DEFAULT_DEVICE_NAME};
+use crate::devices::{
+    clean_device_name, DeviceRecord, NewDevice, DEFAULT_DEVICE_NAME, DEVICE_NAME_MAX,
+};
 use crate::mcp::{era, needs_session, Answer, Era, Mcp};
 use crate::parked::Delivery;
 use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
@@ -276,6 +280,25 @@ impl Default for Timing {
     }
 }
 
+/// What happened to a device that a `/connect` already in flight must not
+/// outlive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Change {
+    /// Its key was replaced (the person signed in again on that computer).
+    KeyReplaced,
+    /// It was removed from the person's account.
+    Revoked,
+}
+
+/// What a connector is told when it connects as a computer the account does
+/// not have. Said the same for someone else's device and for one that does
+/// not exist, so it never tells them apart.
+const UNKNOWN_DEVICE: &str =
+    "This computer is not registered with your account. Run `vrelay login` here to register it again.";
+
+/// What a connector is told when its computer was removed from the account.
+const REMOVED_DEVICE: &str = "This computer was removed from your account.";
+
 /// An MCP session: which device and person it was opened for.
 struct Session {
     device_id: String,
@@ -295,18 +318,15 @@ pub struct App {
     /// since ([`App::key_changed_since`]). The relay is one process, so this
     /// is enough.
     key_generation: AtomicU64,
-    /// Which generation each recently changed device changed at, and when.
-    /// Only a `/connect` still in flight needs this, and one is over within
-    /// [`Timing::key_change_memory`], so older entries are dropped: the map
-    /// holds only the changes of the last few minutes, never one per device
-    /// ever changed.
-    key_changes: Mutex<HashMap<String, (u64, Instant)>>,
+    /// Which generation each recently changed device changed at, how, and
+    /// when. Only a `/connect` still in flight needs this, and one is over
+    /// within [`Timing::key_change_memory`], so older entries are dropped:
+    /// the map holds only the changes of the last few minutes, never one per
+    /// device ever changed.
+    key_changes: Mutex<HashMap<String, (u64, Instant, Change)>>,
     registry: Registry,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
-    /// One registration at a time, so two at once for the same person cannot
-    /// both create a device.
-    registering: tokio::sync::Mutex<()>,
     timing: Timing,
     log: LogSink,
     /// Tests: pause a connection between checking its hello and registering
@@ -343,7 +363,6 @@ impl App {
             key_changes: Mutex::new(HashMap::new()),
             registry,
             sessions: Mutex::new(HashMap::new()),
-            registering: tokio::sync::Mutex::new(()),
             timing,
             log,
             #[cfg(test)]
@@ -362,29 +381,85 @@ impl App {
         self.key_generation.load(Ordering::SeqCst)
     }
 
-    /// True if the device's key was replaced after `generation` was taken.
-    fn key_changed_since(&self, device_id: &str, generation: u64) -> bool {
+    /// How the device changed after `generation` was taken: `None` if it
+    /// has not.
+    fn change_since(&self, device_id: &str, generation: u64) -> Option<Change> {
         self.key_changes
             .lock()
             .unwrap()
             .get(device_id)
-            .is_some_and(|(at, _)| *at > generation)
+            .filter(|(at, _, _)| *at > generation)
+            .map(|(_, _, change)| *change)
+    }
+
+    /// True if the device's key was replaced, or the device removed, after
+    /// `generation` was taken.
+    fn key_changed_since(&self, device_id: &str, generation: u64) -> bool {
+        self.change_since(device_id, generation).is_some()
+    }
+
+    /// Takes a new generation and remembers that `device_id` changed at it.
+    fn note_change(&self, device_id: &str, change: Change) {
+        let generation = self.key_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let now = Instant::now();
+        let memory = self.timing.key_change_memory;
+        let mut changes = self.key_changes.lock().unwrap();
+        changes.retain(|_, (_, when, _)| now.duration_since(*when) < memory);
+        changes.insert(device_id.to_string(), (generation, now, change));
     }
 
     /// The device's key was replaced: ends its connection. The generation
     /// moves first, so a connection that checked the old key and has not
-    /// registered yet cannot register after the kick. (Revoking a device
-    /// needs the same; that is not wired yet.)
+    /// registered yet cannot register after the kick.
     fn key_changed(&self, device_id: &str) {
-        let generation = self.key_generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let now = Instant::now();
-        let memory = self.timing.key_change_memory;
-        {
-            let mut changes = self.key_changes.lock().unwrap();
-            changes.retain(|_, (_, when)| now.duration_since(*when) < memory);
-            changes.insert(device_id.to_string(), (generation, now));
-        }
+        self.note_change(device_id, Change::KeyReplaced);
         self.registry.kick(device_id);
+    }
+
+    /// The device was removed from its owner's account: the same ordering as
+    /// [`App::key_changed`] (a `/connect` that read the device a moment
+    /// earlier cannot register after this), then its link ends, its calls in
+    /// flight fail with [`crate::registry::CallError::Revoked`], and its AI
+    /// app sessions are forgotten.
+    fn device_removed(&self, device_id: &str) {
+        self.note_change(device_id, Change::Revoked);
+        self.registry.revoke(device_id);
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|_, s| s.device_id != device_id);
+    }
+
+    /// The device `device_id` if `subject` owns it and it is not removed.
+    /// This is the only ownership check: every route that names a device
+    /// goes through it, so someone else's device and one that does not exist
+    /// are the same answer (`None`) everywhere.
+    pub async fn owned_device(
+        &self,
+        subject: &str,
+        device_id: &str,
+    ) -> Result<Option<DeviceRecord>, StoreError> {
+        Ok(self
+            .store
+            .device(device_id)
+            .await?
+            .filter(|rec| rec.owner_sub == subject))
+    }
+
+    /// Removes `device_id` from `subject`'s account: stored as revoked, its
+    /// link closed, and its calls in flight failed with "This computer was
+    /// removed from your account." `false` if `subject` has no such device
+    /// (someone else's, one that does not exist, or one already removed).
+    pub async fn revoke(&self, subject: &str, device_id: &str) -> Result<bool, StoreError> {
+        if self.owned_device(subject, device_id).await?.is_none() {
+            return Ok(false);
+        }
+        if !self.store.revoke(device_id, subject).await? {
+            return Ok(false);
+        }
+        self.device_removed(device_id);
+        self.log("device_revoked", json!({"device_id": device_id}));
+        Ok(true)
     }
 
     fn new_session(&self, device_id: &str, caller: &Caller) -> String {
@@ -553,8 +628,14 @@ fn refusal(app: &App, route: &str, metadata_url: &str, r: Refused) -> Response<B
             return text(StatusCode::INTERNAL_SERVER_ERROR, "token check failed");
         }
     };
-    // The code only: the checker's message can name the subject.
-    app.log("auth_refused", json!({"route": route, "code": code}));
+    // The code only: the checker's message can name the subject. A person
+    // who signed in but was never invited is logged as `role_missing`, which
+    // the client sees as the `insufficient_scope` every 403 carries.
+    let logged = match &r {
+        Refused::Token(e) => e.log_code(),
+        _ => code,
+    };
+    app.log("auth_refused", json!({"route": route, "code": logged}));
     let mut resp = json_response(status, &json!({"error": code}));
     if let Ok(v) = HeaderValue::from_str(&challenge) {
         resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
@@ -630,10 +711,10 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
             Err(r) => return refusal(&app, "mcp", &metadata_url, r),
         };
     // Someone else's device answers exactly like a missing one.
-    let found = app.store.device(&device_id).await;
+    let found = app.owned_device(&caller.subject, &device_id).await;
     match &found {
-        Ok(Some(rec)) if rec.owner_sub == caller.subject => {}
-        Ok(_) => return not_found(),
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found(),
         // The database is not answering: say so plainly (below, once the
         // request is read, so a call can be answered as a call).
         Err(StoreError::Unavailable) => {}
@@ -756,74 +837,123 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
         Ok(b) => b,
         Err(resp) => return *resp,
     };
-    let key = serde_json::from_slice::<Value>(&bytes)
-        .ok()
+    let body = serde_json::from_slice::<Value>(&bytes).ok();
+    let key = body
+        .as_ref()
         .and_then(|v| v.get("public_key")?.as_str().map(String::from))
         .and_then(|k| base64::engine::general_purpose::STANDARD.decode(k).ok())
         .and_then(|k| <[u8; 32]>::try_from(k).ok());
-    let Some(public_key_ed25519) = key else {
+    let (Some(body), Some(public_key_ed25519)) = (body, key) else {
         return text(
             StatusCode::BAD_REQUEST,
-            "body must be {\"public_key\": \"<base64 of a 32-byte Ed25519 key>\"}",
+            "body must be {\"public_key\": \"<base64 of a 32-byte Ed25519 key>\", \"name\": \"<optional>\", \"device_id\": \"<optional>\"}",
         );
     };
-
-    let _one_at_a_time = app.registering.lock().await;
-    // P1: one device per person. Registering again keeps the id, replaces
-    // the key, and ends any session signed with the old one.
-    let existing = match app.store.devices_of(&caller.subject).await {
-        Ok(devices) => devices.into_iter().next(),
-        Err(e) => return store_failure(&app, "device_store_failed", &e),
-    };
-    let mut replacing = false;
-    let mut device_id = String::new();
-    if let Some(rec) = existing {
-        match app
-            .store
-            .replace_key(&rec.device_id, &caller.subject, public_key_ed25519)
-            .await
-        {
-            Ok(true) => {
-                replacing = true;
-                device_id = rec.device_id;
-                app.key_changed(&device_id);
+    // The name is optional; one that is nothing once cleaned is a mistake
+    // the person can fix.
+    let name = match body.get("name") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(raw)) => match clean_device_name(raw) {
+            Some(name) => Some(name),
+            None => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({"error": format!(
+                        "Give this computer a name of 1 to {DEVICE_NAME_MAX} characters, then try again."
+                    )}),
+                )
             }
-            // Revoked since it was listed: register a new one instead.
-            Ok(false) => {}
+        },
+        Some(_) => {
+            return json_response(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "The computer's name must be text. Try again with a name."}),
+            )
+        }
+    };
+    let wanted = match body.get("device_id") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(id)) => Some(id.as_str()),
+        Some(_) => {
+            return json_response(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "The device id must be text. Run `vrelay login` again."}),
+            )
+        }
+    };
+
+    // Signing in again on a computer this person already has keeps its id and
+    // replaces its key (which ends the link made with the old one). An id that
+    // is not theirs (someone else's, unknown, or removed) is not told apart
+    // from one another: it just registers a new computer.
+    if let Some(id) = wanted {
+        match app.owned_device(&caller.subject, id).await {
+            Ok(Some(rec)) => match app
+                .store
+                .replace_key(&rec.device_id, &caller.subject, public_key_ed25519)
+                .await
+            {
+                Ok(true) => {
+                    app.key_changed(&rec.device_id);
+                    if let Some(name) = &name {
+                        if let Err(e) = app
+                            .store
+                            .rename(&rec.device_id, &caller.subject, name)
+                            .await
+                        {
+                            return store_failure(&app, "device_store_failed", &e);
+                        }
+                    }
+                    app.log(
+                        "device_registered",
+                        json!({"device_id": rec.device_id, "client_id": caller.client_id, "replaced_key": true}),
+                    );
+                    return registered(&app, &rec.device_id);
+                }
+                // Removed in the meantime: register a new one instead.
+                Ok(false) => {}
+                Err(e) => return store_failure(&app, "device_store_failed", &e),
+            },
+            Ok(None) => {}
             Err(e) => return store_failure(&app, "device_store_failed", &e),
         }
     }
-    if !replacing {
-        device_id = uuid_v4();
-        let new = NewDevice {
-            device_id: device_id.clone(),
-            owner_sub: caller.subject.clone(),
-            name: DEFAULT_DEVICE_NAME.to_string(),
-            public_key_ed25519,
-        };
-        if let Err(e) = app.store.insert_device(&new).await {
-            return store_failure(&app, "device_store_failed", &e);
-        }
+
+    // A new computer. The store counts this person's computers and refuses
+    // the sixth atomically, so concurrent registrations cannot outrun it.
+    let device_id = uuid_v4();
+    let new = NewDevice {
+        device_id: device_id.clone(),
+        owner_sub: caller.subject.clone(),
+        name: name.unwrap_or_else(|| DEFAULT_DEVICE_NAME.to_string()),
+        public_key_ed25519,
+    };
+    if let Err(e) = app.store.insert_device(&new).await {
+        return store_failure(&app, "device_store_failed", &e);
     }
     app.log(
         "device_registered",
-        json!({"device_id": device_id, "client_id": caller.client_id, "replaced_key": replacing}),
+        json!({"device_id": device_id, "client_id": caller.client_id, "replaced_key": false}),
     );
+    registered(&app, &device_id)
+}
+
+fn registered(app: &App, device_id: &str) -> Response<Body> {
     json_response(
         StatusCode::OK,
-        &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(&device_id)}),
+        &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(device_id)}),
     )
 }
 
 /// The answer when the store could not do what a request needed: the
 /// database being down is a 503 that says what to do; anything else (too many
-/// devices) is a 409 that says the same.
+/// computers) is a 409, `{"error": ...}`, that says the same.
 fn store_failure(app: &App, event: &str, e: &StoreError) -> Response<Body> {
     app.log(event, json!({"error": e.to_string()}));
     match e {
         StoreError::Unavailable => text(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE),
         StoreError::TooManyDevices | StoreError::DuplicateId => {
-            respond(StatusCode::CONFLICT, "text/plain", e.to_string())
+            json_response(StatusCode::CONFLICT, &json!({"error": e.to_string()}))
         }
     }
 }
@@ -949,9 +1079,9 @@ impl App {
         }
         // Another person's device is "unknown", like one that does not exist.
         let generation = self.key_generation();
-        let rec = match self.store.device(&hello.device_id).await {
-            Ok(Some(r)) if r.owner_sub == caller.subject => r,
-            Ok(_) => return Err("unknown device; register it again".into()),
+        let rec = match self.owned_device(&caller.subject, &hello.device_id).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err(UNKNOWN_DEVICE.into()),
             Err(e) => {
                 self.log(
                     "connect_store_failed",
@@ -1263,14 +1393,13 @@ async fn run_connection<S>(
     else {
         app.log(
             "connect_rejected",
-            json!({"device_id": device_id, "reason": "device registered again"}),
+            json!({"device_id": device_id, "reason": "device registered again or removed"}),
         );
-        let _ = send_frame(
-            &mut sink,
-            &reject("this device was registered again; reconnect with its new key".into()),
-            send_timeout,
-        )
-        .await;
+        let why = match app.change_since(&device_id, generation) {
+            Some(Change::Revoked) => REMOVED_DEVICE,
+            _ => "this device was registered again; reconnect with its new key",
+        };
+        let _ = send_frame(&mut sink, &reject(why.into()), send_timeout).await;
         let _ = tokio::time::timeout(send_timeout, sink.close()).await;
         return;
     };

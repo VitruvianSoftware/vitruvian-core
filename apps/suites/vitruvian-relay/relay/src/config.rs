@@ -33,7 +33,9 @@ pub struct Settings {
     pub mcp_client_ids: Vec<String>,
     /// Client id of the connector, the only one allowed on `/devices` and `/connect`.
     pub connector_client_id: String,
-    pub allowed_subjects: Vec<String>,
+    /// The Zitadel project role that marks an invited person. Being able to
+    /// sign in is not enough: a token without it is refused (`role_missing`).
+    pub required_role: String,
     /// The Postgres URL (`postgres://user:password@host:5432/dbname`). It
     /// carries the password, so it never prints.
     pub database_url: Secret,
@@ -48,6 +50,9 @@ pub struct Settings {
     /// from `{issuer}/oauth/v2/keys`); set for local runs against test keys.
     pub jwks_uri: Option<String>,
 }
+
+/// The role an invited person holds, unless `REQUIRED_ROLE` says otherwise.
+pub const DEFAULT_REQUIRED_ROLE: &str = "relay-user";
 
 /// A setting that must never reach a log or a test failure message.
 #[derive(Clone, PartialEq, Eq)]
@@ -101,8 +106,9 @@ fn check_public_url(url: &str) -> Result<(), String> {
 
 impl Settings {
     /// Reads settings from a key lookup (the environment in production).
-    /// Every id list is required: a missing client id or subject list would
-    /// otherwise widen who can get in.
+    /// Every client id list is required: a missing one would otherwise
+    /// widen who can get in. Who may sign in is not a list of people but the
+    /// role (`REQUIRED_ROLE`, default `relay-user`).
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Settings, String> {
         let opt = |k: &str| {
             get(k)
@@ -119,11 +125,8 @@ impl Settings {
         let public_url = req("PUBLIC_URL")?.trim_end_matches('/').to_string();
         check_public_url(&public_url)?;
         let mcp_client_ids = csv(&req("MCP_CLIENT_IDS")?);
-        let allowed_subjects = csv(&req("ALLOWED_SUBJECTS")?);
-        if mcp_client_ids.is_empty() || allowed_subjects.is_empty() {
-            return Err(
-                "MCP_CLIENT_IDS and ALLOWED_SUBJECTS must each name at least one id".into(),
-            );
+        if mcp_client_ids.is_empty() {
+            return Err("MCP_CLIENT_IDS must name at least one id".into());
         }
         let connector_client_id = req("CONNECTOR_CLIENT_ID")?;
         if mcp_client_ids.contains(&connector_client_id) {
@@ -138,7 +141,7 @@ impl Settings {
             project_id: req("PROJECT_ID")?,
             mcp_client_ids,
             connector_client_id,
-            allowed_subjects,
+            required_role: opt("REQUIRED_ROLE").unwrap_or_else(|| DEFAULT_REQUIRED_ROLE.into()),
             database_url: Secret(req("DATABASE_URL")?),
             database_ca_file: opt("DATABASE_CA_FILE").map(PathBuf::from),
             legacy_devices_file: PathBuf::from(
@@ -186,7 +189,6 @@ mod tests {
             ("PROJECT_ID", "123"),
             ("MCP_CLIENT_IDS", "claude-id, ,chatgpt-id"),
             ("CONNECTOR_CLIENT_ID", "conn-id"),
-            ("ALLOWED_SUBJECTS", "sub-1"),
             ("DATABASE_URL", "postgres://relay:pw@relay-db-rw:5432/relay"),
         ]
         .into_iter()
@@ -211,6 +213,7 @@ mod tests {
         assert_eq!(s.database_ca_file, None);
         assert_eq!(s.legacy_devices_file, PathBuf::from("/data/devices.json"));
         assert_eq!(s.jwks_uri, None);
+        assert_eq!(s.required_role, "relay-user");
         assert_eq!(
             s.device_mcp_url("d-1"),
             "https://relay.example.dev/mcp/d/d-1"
@@ -222,10 +225,12 @@ mod tests {
 
         let mut env = base();
         env.insert("PORT", "8080");
+        env.insert("REQUIRED_ROLE", " relay-tester ");
         env.insert("DATABASE_CA_FILE", "/etc/relay-db-ca/ca.crt");
         env.insert("LEGACY_DEVICES_FILE", "/var/relay/devices.json");
         let s = load(&env).unwrap();
         assert_eq!(s.port, 8080);
+        assert_eq!(s.required_role, "relay-tester");
         assert_eq!(
             s.database_ca_file,
             Some(PathBuf::from("/etc/relay-db-ca/ca.crt"))
@@ -234,6 +239,19 @@ mod tests {
             s.legacy_devices_file,
             PathBuf::from("/var/relay/devices.json")
         );
+    }
+
+    /// Access is by role now: the old list of people is not a setting any
+    /// more, and a blank role means the default, never "no role".
+    #[test]
+    fn access_is_by_role_not_a_list_of_people() {
+        let mut env = base();
+        env.insert("ALLOWED_SUBJECTS", "someone");
+        let s = load(&env).unwrap();
+        assert_eq!(s.required_role, "relay-user");
+        assert!(!format!("{s:?}").contains("someone"));
+        env.insert("REQUIRED_ROLE", "  ");
+        assert_eq!(load(&env).unwrap().required_role, "relay-user");
     }
 
     #[test]
@@ -251,7 +269,6 @@ mod tests {
             "PROJECT_ID",
             "MCP_CLIENT_IDS",
             "CONNECTOR_CLIENT_ID",
-            "ALLOWED_SUBJECTS",
             "DATABASE_URL",
         ] {
             let mut env = base();
@@ -259,7 +276,6 @@ mod tests {
             assert!(load(&env).is_err(), "missing {drop} must be refused");
         }
         for (k, v, why) in [
-            ("ALLOWED_SUBJECTS", " , ", "separators-only subject list"),
             ("MCP_CLIENT_IDS", ",", "separators-only client list"),
             (
                 "PUBLIC_URL",

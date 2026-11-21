@@ -41,7 +41,7 @@ and logs.
 
 | Command | What it does |
 |---|---|
-| `vrelay login` | Signs in (device flow) and registers this Mac; prints the URL to add in Claude |
+| `vrelay login [--name <name>]` | Signs in (device flow) and registers this Mac under `--name` (default: what System Settings calls it); prints the URL to add in Claude. A Mac that is already registered keeps its URL |
 | `vrelay status` | Sign-in, device, link state, whether the Mac is being kept awake, and which rules are in use |
 | `vrelay pause` | No tools visible, every call refused, at once |
 | `vrelay resume` | Undoes `pause` |

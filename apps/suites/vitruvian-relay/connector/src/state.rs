@@ -364,8 +364,8 @@ pub fn save_new_device(dir: &Path, d: &DeviceInfo) -> Result<()> {
 }
 
 /// Signs out: removes the token, the device key and the device record.
-/// Signing in again makes a new key and registers it (registering again
-/// keeps the device's id). Under [`sign_in_lock`], so a refresh finishing at
+/// Signing in again makes a new key and registers a new computer (the old one
+/// stays in the person's list until they remove it). Under [`sign_in_lock`], so a refresh finishing at
 /// the same moment cannot write the token back. Any `token.json` or
 /// `device.key` left from before the Keychain goes too.
 pub fn clear_sign_in(dir: &Path) -> Result<bool> {

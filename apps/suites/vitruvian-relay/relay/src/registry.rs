@@ -53,6 +53,9 @@ pub enum CallError {
     /// A call with this id is already in flight. Ids must be unique; the
     /// caller generates them, so this is a bug on the caller's side.
     Duplicate,
+    /// The device was removed from its owner's account while the call was in
+    /// flight.
+    Revoked,
 }
 
 impl CallError {
@@ -63,6 +66,7 @@ impl CallError {
             CallError::NotReceived => "Your computer didn't answer in time; try again.",
             CallError::Deadline => "The command took too long.",
             CallError::Duplicate => "That command is already running.",
+            CallError::Revoked => "This computer was removed from your account.",
         }
     }
 }
@@ -167,6 +171,18 @@ impl State {
         only: Option<ConnectionId>,
         hold: bool,
     ) -> Option<ConnectionId> {
+        self.drop_connection_because(device_id, only, hold, CallError::Disconnected)
+    }
+
+    /// [`State::drop_connection`], failing the calls it does not hold with
+    /// `why` rather than `Disconnected`.
+    fn drop_connection_because(
+        &mut self,
+        device_id: &str,
+        only: Option<ConnectionId>,
+        hold: bool,
+        why: CallError,
+    ) -> Option<ConnectionId> {
         match self.devices.get(device_id) {
             Some(c) if only.is_none_or(|id| id == c.id) => {}
             _ => return None,
@@ -183,7 +199,7 @@ impl State {
             if hold && self.pending.get(&id).is_some_and(|p| p.written.is_none()) {
                 held = true;
             } else if let Some(p) = self.pending.remove(&id) {
-                let _ = p.done.send(Err(CallError::Disconnected));
+                let _ = p.done.send(Err(why));
                 // The device may have it (it was written): the connection is
                 // gone, so the `Cancel` waits for the next one.
                 if p.written.is_none() {
@@ -690,6 +706,27 @@ impl Registry {
             .drop_connection(device_id, None, false);
     }
 
+    /// The device was removed from its owner's account: ends its connection
+    /// and fails every call for it now as [`CallError::Revoked`], including
+    /// ones held for a link that had already dropped, and forgets the
+    /// cancels it was owed (it will not connect again).
+    pub fn revoke(&self, device_id: &str) {
+        let mut st = self.state.lock().unwrap();
+        st.drop_connection_because(device_id, None, false, CallError::Revoked);
+        let held: Vec<String> = st
+            .pending
+            .iter()
+            .filter(|(_, p)| p.device_id == device_id)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for id in held {
+            if let Some(p) = st.pending.remove(&id) {
+                let _ = p.done.send(Err(CallError::Revoked));
+            }
+        }
+        st.owed.remove(device_id);
+    }
+
     /// The device's new tool list, from connection `conn`: only if that is
     /// still its current connection (a `tools_changed` read by a session
     /// that was just replaced must not overwrite its replacement's list).
@@ -1109,6 +1146,43 @@ mod tests {
         assert_eq!(within(h).await.unwrap(), Err(CallError::Disconnected));
         assert!(within(rx.recv()).await.is_none());
         assert_eq!(reg.tools("d1"), None);
+    }
+
+    #[tokio::test]
+    async fn revoke_fails_pending_calls_as_revoked() {
+        let reg = Registry::new();
+        let (tx, mut rx) = mpsc::channel(8);
+        reg.connect("d1", vec![], tx);
+        let h = spawn_call(&reg, "c1", BUDGET_MS);
+        expect_call(&mut rx).await;
+        reg.revoke("d1");
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Revoked));
+        assert!(within(rx.recv()).await.is_none());
+        assert_eq!(reg.tools("d1"), None);
+        // Nothing is owed to a device that cannot come back.
+        assert_eq!(
+            within(reg.call("d1", call("c2", BUDGET_MS))).await,
+            Err(CallError::Offline)
+        );
+    }
+
+    /// A call held for a link that had dropped (waiting for the device to
+    /// come back) is failed too: the device is not coming back.
+    #[tokio::test]
+    async fn revoke_fails_a_call_held_for_a_dropped_link() {
+        let reg = Registry::with_reconnect_grace(Duration::from_secs(30));
+        let (conn, _rx, h) = running_call(&reg, "c1", BUDGET_MS).await;
+        reg.disconnect("d1", conn);
+        reg.revoke("d1");
+        assert_eq!(within(h).await.unwrap(), Err(CallError::Revoked));
+    }
+
+    #[test]
+    fn revoked_says_what_happened() {
+        assert_eq!(
+            CallError::Revoked.user_message(),
+            "This computer was removed from your account."
+        );
     }
 
     #[test]

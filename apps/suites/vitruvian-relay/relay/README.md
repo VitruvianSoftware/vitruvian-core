@@ -27,16 +27,27 @@ names, sizes and outcomes are logged, as JSON lines on stdout.
 | Route | Who | What |
 |---|---|---|
 | `POST /mcp/d/{device}` | AI app (its own Zitadel client) | MCP over Streamable HTTP, answered as JSON |
-| `POST /devices` | `vrelay login` | Registers this person's device key (one device per person in P1) |
+| `POST /devices` | `vrelay login` | `{public_key, name, device_id?}`: with the `device_id` this person already has, replaces that computer's key; without one, adds a computer (up to 5 per person) |
 | `GET /connect` | `vrelay run` | The device's WebSocket |
 | `GET /.well-known/oauth-protected-resource[/mcp/d/{device}]` | anyone | Where to sign in |
 | `GET /healthz` | the cluster | Liveness |
 
 Settings come from the environment (`src/config.rs`): `PUBLIC_URL`,
 `ISSUER`, `PROJECT_ID`, `MCP_CLIENT_IDS`, `CONNECTOR_CLIENT_ID`,
-`ALLOWED_SUBJECTS`, `DATABASE_URL` (Postgres; the connection is TLS checked
-against `DATABASE_CA_FILE`, or the system's certificates, unless the URL says
-`sslmode=disable`, which is for tests), `PORT`. It stops on SIGTERM.
+`REQUIRED_ROLE` (default `relay-user`), `DATABASE_URL` (Postgres; the
+connection is TLS checked against `DATABASE_CA_FILE`, or the system's
+certificates, unless the URL says `sslmode=disable`, which is for tests),
+`PORT`. It stops on SIGTERM.
+
+Access is invite-only: being able to sign in is not enough, the token must
+carry the Zitadel project role `REQUIRED_ROLE`
+(`urn:zitadel:iam:org:project:{PROJECT_ID}:roles`). A token without it is
+refused with a 403 and logged as `auth_refused` code `role_missing`. There is
+no list of people any more: `ALLOWED_SUBJECTS` is ignored (the relay logs
+`setting_ignored` if it is still set). The relay still authorises on client id
+and subject, never on audience alone, and a device answers only its owner: one
+check (`App::owned_device`) decides it for every route, so someone else's
+device looks exactly like one that does not exist.
 
 It closes an HTTP connection idle for 75 s (the first request's headers must
 arrive within 10 s). A proxy in front must drop its idle upstream

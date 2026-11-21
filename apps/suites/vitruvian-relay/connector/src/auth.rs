@@ -354,20 +354,48 @@ pub fn fresh_token_checked_from(
 }
 
 /// `POST /devices`: tells the relay this device's public key and learns the
-/// device id and the MCP URL. Registering again keeps the id and replaces the key.
+/// device id and the MCP URL. With `device_id` (the one this Mac was given
+/// when it first signed in) the relay keeps that id and replaces the key;
+/// without one it registers a new computer. `name` is what the person sees
+/// in their list; without one the relay keeps the old name (or "My Mac").
 pub fn register_device(
     cfg: &Config,
     access_token: &str,
     public_key_b64: &str,
+    device_id: Option<&str>,
+    name: Option<&str>,
 ) -> Result<DeviceInfo> {
     let url = format!("{}/devices", cfg.relay_url);
+    let mut body = json!({"public_key": public_key_b64});
+    if let Some(id) = device_id {
+        body["device_id"] = json!(id);
+    }
+    if let Some(name) = name {
+        body["name"] = json!(name);
+    }
     let resp = agent()
         .post(&url)
         .set("Authorization", &format!("Bearer {access_token}"))
         .set("Content-Type", "application/json")
-        .send_string(&json!({"public_key": public_key_b64}).to_string());
+        .send_string(&body.to_string());
     let body = match resp {
         Ok(r) => read_json(r),
+        // The relay's own words for a full list (and only for that): they
+        // say what to do. Any other body stays out of the message.
+        Err(ureq::Error::Status(409, r)) => {
+            let said = read_json(r);
+            return Err(str_field(&said, "error")
+                .filter(|m| m.chars().count() <= 300)
+                .unwrap_or_else(|| "the relay refused the device (HTTP 409)".into()));
+        }
+        Err(ureq::Error::Status(403, _)) => {
+            return Err(
+                "the relay did not let this account in (HTTP 403). The relay is \
+                 invite-only: ask whoever runs it to give you access, then run \
+                 `vrelay login` again."
+                    .into(),
+            )
+        }
         Err(ureq::Error::Status(code, _)) => {
             return Err(format!("the relay refused the device (HTTP {code})"))
         }
@@ -377,6 +405,51 @@ pub fn register_device(
         device_id: str_field(&body, "device_id").ok_or("the relay's answer has no device_id")?,
         mcp_url: str_field(&body, "mcp_url").ok_or("the relay's answer has no mcp_url")?,
     })
+}
+
+/// What this Mac calls itself in System Settings (`scutil --get
+/// ComputerName`): the name `vrelay login` registers it under unless
+/// `--name` says otherwise. `None` where there is no `scutil` or it has no
+/// name, and the relay then says "My Mac".
+pub fn computer_name() -> Option<String> {
+    let out = std::process::Command::new("scutil")
+        .args(["--get", "ComputerName"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let name = String::from_utf8(out.stdout).ok()?;
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The arguments after `vrelay login`: `--name <name>` (or `--name=<name>`)
+/// is the only one. `Some(name)` if given.
+pub fn parse_login_args(args: &[String]) -> Result<Option<String>> {
+    const USAGE: &str = "usage: vrelay login [--name <name for this computer>]";
+    let mut name = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        let value = if arg == "--name" {
+            rest.next().ok_or(USAGE)?.as_str()
+        } else if let Some(v) = arg.strip_prefix("--name=") {
+            v
+        } else {
+            return Err(USAGE.into());
+        };
+        if value.trim().is_empty() {
+            return Err("the name for this computer cannot be empty. \
+                 Use `vrelay login --name \"Studio Mac\"`."
+                .into());
+        }
+        if name.replace(value.to_string()).is_some() {
+            return Err(USAGE.into());
+        }
+    }
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -791,15 +864,93 @@ mod tests {
                 json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
             )
         }));
-        let d = register_device(&cfg_for(&base, test_dir("reg")), "tok", "PK").unwrap();
+        let d = register_device(&cfg_for(&base, test_dir("reg")), "tok", "PK", None, None).unwrap();
         assert_eq!(d.device_id, "d1");
         assert_eq!(d.mcp_url, "https://r/mcp/d/d1");
     }
 
     #[test]
+    fn register_device_sends_the_device_id_it_has_and_the_name() {
+        let base = fake_server(Box::new(|_, _, _, body| {
+            let sent: Value = serde_json::from_str(body).unwrap();
+            assert_eq!(
+                sent,
+                json!({"public_key": "PK", "device_id": "d1", "name": "Studio Mac"})
+            );
+            (
+                200,
+                json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
+            )
+        }));
+        let cfg = cfg_for(&base, test_dir("reg-id"));
+        let d = register_device(&cfg, "tok", "PK", Some("d1"), Some("Studio Mac")).unwrap();
+        assert_eq!(d.device_id, "d1");
+    }
+
+    #[test]
+    fn a_full_list_is_reported_in_the_relays_words() {
+        let words = "You already have 5 computers connected. Remove one in the dashboard first.";
+        let base = fake_server(Box::new(move |_, _, _, _| {
+            (409, json!({ "error": words }).to_string())
+        }));
+        let err = register_device(&cfg_for(&base, test_dir("reg409")), "tok", "PK", None, None)
+            .unwrap_err();
+        assert_eq!(err, words);
+        // Anything else the relay says with a 409 stays out of the message.
+        let base = fake_server(Box::new(|_, _, _, _| (409, "not json".into())));
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg409b")),
+            "tok",
+            "PK",
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("409") && !err.contains("not json"), "{err}");
+    }
+
+    #[test]
+    fn someone_without_the_role_is_told_to_ask_for_access() {
+        let base = fake_server(Box::new(|_, _, _, _| (403, "{\"error\":\"x\"}".into())));
+        let err = register_device(&cfg_for(&base, test_dir("reg403")), "tok", "PK", None, None)
+            .unwrap_err();
+        assert!(
+            err.contains("403") && err.contains("ask whoever runs it"),
+            "{err}"
+        );
+        assert!(err.contains("vrelay login"), "{err}");
+    }
+
+    #[test]
+    fn login_takes_an_optional_name() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(parse_login_args(&args(&[])), Ok(None));
+        assert_eq!(
+            parse_login_args(&args(&["--name", "Studio Mac"])),
+            Ok(Some("Studio Mac".into()))
+        );
+        assert_eq!(
+            parse_login_args(&args(&["--name=Work"])),
+            Ok(Some("Work".into()))
+        );
+        for bad in [
+            args(&["--name"]),
+            args(&["--name", "  "]),
+            args(&["--name="]),
+            args(&["--nme", "x"]),
+            args(&["stray"]),
+            args(&["--name", "a", "--name", "b"]),
+        ] {
+            let err = parse_login_args(&bad).unwrap_err();
+            assert!(err.contains("vrelay login"), "{bad:?}: {err}");
+        }
+    }
+
+    #[test]
     fn register_device_reports_a_refusal_without_the_body() {
         let base = fake_server(Box::new(|_, _, _, _| (401, "secret-ish body".into())));
-        let err = register_device(&cfg_for(&base, test_dir("reg401")), "tok", "PK").unwrap_err();
+        let err = register_device(&cfg_for(&base, test_dir("reg401")), "tok", "PK", None, None)
+            .unwrap_err();
         assert!(err.contains("401") && !err.contains("secret-ish"), "{err}");
     }
 

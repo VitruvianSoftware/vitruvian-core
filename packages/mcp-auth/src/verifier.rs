@@ -77,6 +77,11 @@ pub enum AuthError {
     ClientNotAllowed {
         client_id: Option<String>,
     },
+    /// The token is good but its holder has not been given the role this
+    /// server requires (see [`VerifierConfig::required_role`]).
+    RoleMissing {
+        role: String,
+    },
 }
 
 impl AuthError {
@@ -89,7 +94,8 @@ impl AuthError {
             AuthError::AudienceMismatch { .. }
             | AuthError::SubjectNotAllowed { .. }
             | AuthError::AuthorizedPartyPresent { .. }
-            | AuthError::ClientNotAllowed { .. } => 403,
+            | AuthError::ClientNotAllowed { .. }
+            | AuthError::RoleMissing { .. } => 403,
         }
     }
 
@@ -101,7 +107,19 @@ impl AuthError {
             AuthError::AudienceMismatch { .. }
             | AuthError::SubjectNotAllowed { .. }
             | AuthError::AuthorizedPartyPresent { .. }
-            | AuthError::ClientNotAllowed { .. } => "insufficient_scope",
+            | AuthError::ClientNotAllowed { .. }
+            | AuthError::RoleMissing { .. } => "insufficient_scope",
+        }
+    }
+
+    /// The code for a server's own log line: [`AuthError::code`], except
+    /// that a missing role says so (`role_missing`), because to the client
+    /// it is the same `insufficient_scope` as the other 403s but to whoever
+    /// reads the log it is a person who has not been invited.
+    pub fn log_code(&self) -> &'static str {
+        match self {
+            AuthError::RoleMissing { .. } => "role_missing",
+            other => other.code(),
         }
     }
 
@@ -169,6 +187,10 @@ it out to keep this caller refused."
                 "Token carries an \"azp\" claim (\"{azp}\"), which this endpoint does \
 not accept. This looks like an id_token; only an access token \
 issued directly to one of this server's OIDC clients is accepted."
+            ),
+            AuthError::RoleMissing { role } => format!(
+                "This account has not been given access yet. Ask whoever runs this \
+service to give you the \"{role}\" role, then sign in again."
             ),
             AuthError::ClientNotAllowed { client_id } => match client_id.as_deref() {
                 None => "Token is valid but carries no \"client_id\" claim. This endpoint \
@@ -269,6 +291,17 @@ fn header_safe(message: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// Zitadel puts a person's project roles in
+/// `urn:zitadel:iam:org:project:{project_id}:roles`, an object keyed by role
+/// name (its values say which organisations granted it). Only that project's
+/// claim counts: the same role name in another project's is not this one's.
+fn has_role(payload: &Value, project_id: &str, role: &str) -> bool {
+    payload
+        .get(format!("urn:zitadel:iam:org:project:{project_id}:roles"))
+        .and_then(Value::as_object)
+        .is_some_and(|roles| roles.contains_key(role))
 }
 
 fn looks_like_jwt(token: &str) -> bool {
@@ -440,16 +473,24 @@ pub struct VerifierConfig {
     pub project_id: String,
     /// The OIDC clients whose access tokens are accepted (`client_id` claim).
     pub allowed_client_ids: Vec<String>,
-    /// The people allowed in (`sub` claim).
+    /// The people allowed in (`sub` claim). May be empty only when
+    /// `required_role` is set: then the role is the whole door.
     pub allowed_subjects: Vec<String>,
+    /// A Zitadel project role the token's holder must have been granted: the
+    /// token's `urn:zitadel:iam:org:project:{project_id}:roles` claim must
+    /// have it as a key. `None` asks for no role (the Slack MCP, which names
+    /// its people instead). When set, it is checked on top of
+    /// `allowed_subjects`, if that is not empty.
+    pub required_role: Option<String>,
     /// Where to fetch the key set; defaults to `{issuer}/oauth/v2/keys`.
     pub jwks_uri: Option<String>,
     /// Sent with every key-set fetch.
     pub user_agent: String,
 }
 
-/// Build a verifier. Refuses an empty client or subject list: either would
-/// let in everyone Zitadel is willing to issue a token to.
+/// Build a verifier. Refuses an empty client list, and an empty subject list
+/// unless a role is required: either would let in everyone Zitadel is willing
+/// to issue a token to.
 pub fn verifier(cfg: VerifierConfig) -> Result<Verifier, String> {
     Verifier::build(cfg, None, None)
 }
@@ -463,6 +504,7 @@ pub struct Verifier {
     issuer: String,
     project_id: String,
     allowed_subjects: HashSet<String>,
+    required_role: Option<String>,
     allowed_client_ids: HashSet<String>,
     jwks_uri: String,
     key_source: Option<KeySourceFn>,
@@ -490,7 +532,17 @@ impl Verifier {
             .jwks_uri
             .unwrap_or_else(|| format!("{issuer}/oauth/v2/keys"));
         let allowed_subjects: HashSet<String> = cfg.allowed_subjects.into_iter().collect();
-        if allowed_subjects.is_empty() {
+        // A blank role is not a requirement: it must not open the door a
+        // missing subject list would have kept shut.
+        let required_role = match cfg.required_role {
+            Some(role) if role.trim().is_empty() => {
+                return Err("verifier was given a blank required role. Name the role, \
+or leave it unset and list the allowed subjects."
+                    .to_string());
+            }
+            other => other,
+        };
+        if allowed_subjects.is_empty() && required_role.is_none() {
             return Err("verifier requires at least one allowed subject. An empty \
 list would authenticate every caller Zitadel is willing to issue a \
 token to, which is not the same set as the people this endpoint serves."
@@ -522,6 +574,7 @@ which defeats the pin this check exists to enforce."
             issuer,
             project_id: cfg.project_id,
             allowed_subjects,
+            required_role,
             allowed_client_ids,
             jwks_uri,
             key_source,
@@ -573,7 +626,11 @@ which defeats the pin this check exists to enforce."
             });
         }
 
-        if !self.allowed_subjects.contains(&subject) {
+        // With a role to hold, a list of subjects is optional: empty means
+        // anyone with the role.
+        if !(self.allowed_subjects.is_empty() && self.required_role.is_some())
+            && !self.allowed_subjects.contains(&subject)
+        {
             return Err(AuthError::SubjectNotAllowed { subject });
         }
 
@@ -602,6 +659,14 @@ which defeats the pin this check exists to enforce."
             return Err(AuthError::ClientNotAllowed {
                 client_id: Some(client_id),
             });
+        }
+
+        // Last, so a token from the wrong client or an id_token is refused
+        // for that, whoever holds it.
+        if let Some(role) = &self.required_role {
+            if !has_role(&payload, &self.project_id, role) {
+                return Err(AuthError::RoleMissing { role: role.clone() });
+            }
         }
 
         Ok(Caller { subject, client_id })
@@ -1248,9 +1313,33 @@ mod tests {
             project_id: PROJECT_ID.to_string(),
             allowed_client_ids: vec![CLIENT_ID.to_string()],
             allowed_subjects: vec!["user-42".to_string()],
+            required_role: None,
             jwks_uri,
             user_agent: "vitruvian-mcp-auth-test".to_string(),
         }
+    }
+
+    /// The relay's kind of config: anyone holding the role gets in, no list
+    /// of people.
+    fn role_config(role: &str) -> VerifierConfig {
+        VerifierConfig {
+            allowed_subjects: Vec::new(),
+            required_role: Some(role.to_string()),
+            ..config(None)
+        }
+    }
+
+    fn role_verifier(role: &str, set: Value) -> Verifier {
+        Verifier::build(
+            role_config(role),
+            Some(Arc::new(move || Ok(set.clone()))),
+            None,
+        )
+        .unwrap()
+    }
+
+    fn roles_claim_name() -> String {
+        format!("urn:zitadel:iam:org:project:{PROJECT_ID}:roles")
     }
 
     fn local_verifier(set: Value) -> Verifier {
@@ -1724,6 +1813,125 @@ mod tests {
                 client_id: Some("666".to_string())
             }
         );
+    }
+
+    #[test]
+    fn token_without_role_is_refused() {
+        let a = key_pair(TEST_KEY_A);
+        let verifier = role_verifier("relay-user", key_set(vec![jwk(&a, "a")]));
+        let check = |claims: Value| verifier.verify(&mint(&a, header("a"), &claims));
+        let granted = |role: &str| {
+            with(
+                claims(),
+                &roles_claim_name(),
+                json!({ role: { "org-1": "example.test" } }),
+            )
+        };
+
+        // Holding the role is enough: no list of people is consulted.
+        let caller = check(granted("relay-user")).unwrap();
+        assert_eq!(caller.subject, "user-42");
+        let caller = check(with(granted("relay-user"), "sub", json!("anyone-else"))).unwrap();
+        assert_eq!(caller.subject, "anyone-else");
+
+        let missing = AuthError::RoleMissing {
+            role: "relay-user".to_string(),
+        };
+        // No roles claim at all, a different role, the role under another
+        // project's claim, and a roles claim that is not an object holding
+        // the role as a key: all refused.
+        for refused in [
+            claims(),
+            granted("someone-else-s-role"),
+            with(
+                claims(),
+                "urn:zitadel:iam:org:project:999:roles",
+                json!({ "relay-user": { "org-1": "example.test" } }),
+            ),
+            with(claims(), &roles_claim_name(), json!(["relay-user"])),
+            with(claims(), &roles_claim_name(), json!("relay-user")),
+            with(claims(), &roles_claim_name(), Value::Null),
+            with(claims(), &roles_claim_name(), json!({})),
+        ] {
+            assert_eq!(check(refused.clone()).unwrap_err(), missing, "{refused}");
+        }
+
+        // It is a 403 (signing in again will not help), logged as
+        // `role_missing`, and the message says what to do.
+        assert_eq!(missing.status(), 403);
+        assert_eq!(missing.code(), "insufficient_scope");
+        assert_eq!(missing.log_code(), "role_missing");
+        assert!(missing.message().contains("relay-user"));
+        assert!(missing.message().contains("Ask"), "{}", missing.message());
+        let challenge = www_authenticate("https://relay.example.test/prm", Some(&missing));
+        assert!(challenge.starts_with("Bearer error=\"insufficient_scope\""));
+        assert!(!challenge.contains("resource_metadata"));
+        // The other refusals keep logging their OAuth code.
+        assert_eq!(AuthError::OpaqueToken.log_code(), "invalid_token");
+
+        // A refusal for another reason still comes first: an id_token (azp)
+        // from a person who holds the role is not let in.
+        assert!(matches!(
+            check(with(granted("relay-user"), "azp", json!("web"))),
+            Err(AuthError::AuthorizedPartyPresent { .. })
+        ));
+        assert!(matches!(
+            check(with(granted("relay-user"), "client_id", json!("666"))),
+            Err(AuthError::ClientNotAllowed { .. })
+        ));
+    }
+
+    #[test]
+    fn a_role_and_a_subject_list_both_apply() {
+        let a = key_pair(TEST_KEY_A);
+        let mut cfg = role_config("relay-user");
+        cfg.allowed_subjects = vec!["user-42".to_string()];
+        let set = key_set(vec![jwk(&a, "a")]);
+        let verifier = Verifier::build(cfg, Some(Arc::new(move || Ok(set.clone()))), None).unwrap();
+        let roles = json!({ "relay-user": { "org-1": "example.test" } });
+        let token = |sub: &str| {
+            let c = with(
+                with(claims(), &roles_claim_name(), roles.clone()),
+                "sub",
+                json!(sub),
+            );
+            mint(&a, header("a"), &c)
+        };
+        assert!(verifier.verify(&token("user-42")).is_ok());
+        assert_eq!(
+            verifier.verify(&token("user-7")).unwrap_err(),
+            AuthError::SubjectNotAllowed {
+                subject: "user-7".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn slack_mcp_config_still_needs_subjects() {
+        // No role requirement: an empty subject list is still refused, as
+        // the Slack MCP has always had it.
+        let mut no_subjects = config(None);
+        no_subjects.allowed_subjects.clear();
+        let err = verifier(no_subjects).err().expect("refused");
+        assert!(err.contains("at least one allowed subject"), "{err}");
+
+        // A blank role is not a requirement, so it does not open the door.
+        for blank in ["", "  "] {
+            let mut cfg = role_config(blank);
+            cfg.allowed_subjects.clear();
+            assert!(verifier(cfg).is_err(), "role {blank:?}");
+        }
+
+        // With a role, no subject list is fine; the client ids still are
+        // required.
+        assert!(verifier(role_config("relay-user")).is_ok());
+        let mut no_clients = role_config("relay-user");
+        no_clients.allowed_client_ids.clear();
+        assert!(verifier(no_clients).is_err());
+
+        // A role-less token passes where no role is required (Slack MCP).
+        let (a, slack_like) = verifier_a();
+        assert!(slack_like.verify(&mint(&a, header("a"), &claims())).is_ok());
     }
 
     #[test]

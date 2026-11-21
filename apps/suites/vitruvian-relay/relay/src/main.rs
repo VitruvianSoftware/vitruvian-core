@@ -59,7 +59,8 @@ async fn main() {
             issuer: settings.issuer.clone(),
             project_id: settings.project_id.clone(),
             allowed_client_ids: client_ids,
-            allowed_subjects: settings.allowed_subjects.clone(),
+            allowed_subjects: Vec::new(),
+            required_role: Some(settings.required_role.clone()),
             jwks_uri: settings.jwks_uri.clone(),
             user_agent: format!("vitruvian-relay/{}", env!("CARGO_PKG_VERSION")),
         })
@@ -75,8 +76,19 @@ async fn main() {
         serde_json::json!({
             "port": port,
             "public_url": settings.public_url,
+            "required_role": settings.required_role,
         }),
     );
+    if std::env::var_os("ALLOWED_SUBJECTS").is_some() {
+        log_event(
+            &log,
+            "setting_ignored",
+            serde_json::json!({
+                "setting": "ALLOWED_SUBJECTS",
+                "why": "access is by the Zitadel role now; remove it from the deployment",
+            }),
+        );
+    }
     let store = PgStore::connect(
         settings.database_url.expose(),
         settings.database_ca_file.as_deref(),

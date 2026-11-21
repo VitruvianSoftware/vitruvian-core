@@ -271,6 +271,7 @@ fn outcome(e: CallError) -> &'static str {
         CallError::NotReceived => "not_received",
         CallError::Deadline => "deadline",
         CallError::Duplicate => "duplicate",
+        CallError::Revoked => "revoked",
     }
 }
 

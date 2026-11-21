@@ -80,7 +80,7 @@ impl fmt::Display for StoreError {
         match self {
             StoreError::TooManyDevices => write!(
                 f,
-                "You already have {MAX_DEVICES_PER_USER} devices, the most the relay allows. Remove one you no longer use, then add this one again."
+                "You already have {MAX_DEVICES_PER_USER} computers connected. Remove one in the dashboard first."
             ),
             StoreError::DuplicateId => f.write_str(
                 "That device is already registered. Register it again to get a new one.",
@@ -929,7 +929,10 @@ mod tests {
             "The relay is having trouble right now; try again in a minute."
         );
         let full = StoreError::TooManyDevices.to_string();
-        assert!(full.contains('5') && full.contains("Remove one"), "{full}");
+        assert_eq!(
+            full,
+            "You already have 5 computers connected. Remove one in the dashboard first."
+        );
         assert_eq!(STORE_UNAVAILABLE_OUTCOME, "store_unavailable");
     }
 

@@ -50,3 +50,34 @@ pub struct NewDevice {
 
 /// What a device is called until its owner renames it.
 pub const DEFAULT_DEVICE_NAME: &str = "My Mac";
+
+/// The longest name a device can have, in characters.
+pub const DEVICE_NAME_MAX: usize = 64;
+
+/// A name as it is stored: control characters removed, spaces trimmed from
+/// both ends, cut to [`DEVICE_NAME_MAX`] characters (not bytes), and trimmed
+/// again if the cut left a space at the end. `None` if nothing is left.
+pub fn clean_device_name(raw: &str) -> Option<String> {
+    let kept: String = raw.chars().filter(|c| !c.is_control()).collect();
+    let cut: String = kept.trim().chars().take(DEVICE_NAME_MAX).collect();
+    let name = cut.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_are_cleaned_the_way_the_relay_stores_them() {
+        assert_eq!(clean_device_name("  Work Mac "), Some("Work Mac".into()));
+        assert_eq!(clean_device_name("a\u{7}b\nc"), Some("abc".into()));
+        assert_eq!(clean_device_name(&"é".repeat(70)), Some("é".repeat(64)));
+        assert_eq!(
+            clean_device_name(&format!("{} x", "b".repeat(63))),
+            Some("b".repeat(63))
+        );
+        assert_eq!(clean_device_name("  \u{7}\t "), None);
+        assert_eq!(clean_device_name(""), None);
+    }
+}

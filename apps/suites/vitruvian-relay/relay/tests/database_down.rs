@@ -55,6 +55,8 @@ const PROJECT_ID: &str = "123456789";
 const MCP_CLIENT: &str = "claude-client";
 const CONNECTOR_CLIENT: &str = "connector-client";
 const ALICE: &str = "alice";
+/// The Zitadel role that lets a person in.
+const ROLE: &str = "relay-user";
 
 /// What a person is told (spec: the store being down).
 const MESSAGE: &str = "The relay is having trouble right now; try again in a minute.";
@@ -114,6 +116,8 @@ fn mint(pair: &RsaKeyPair, client_id: &str) -> String {
     let claims = json!({
         "iss": ISSUER, "aud": [PROJECT_ID], "sub": ALICE, "client_id": client_id,
         "iat": now_secs(), "exp": now_secs() + 600,
+        format!("urn:zitadel:iam:org:project:{PROJECT_ID}:roles"):
+            { ROLE: { "org-1": "example.test" } },
     });
     let input = format!("{header}.{}", b64url(claims.to_string().as_bytes()));
     let mut sig = vec![0u8; pair.public().modulus_len()];
@@ -218,19 +222,20 @@ async fn start_relay(database_url: &str) -> Relay {
         ("PROJECT_ID", PROJECT_ID.to_string()),
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
-        ("ALLOWED_SUBJECTS", ALICE.to_string()),
         ("DATABASE_URL", database_url.to_string()),
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
+    let required_role = settings.required_role.clone();
     let verifier_for = |ids: Vec<String>| {
         verifier(VerifierConfig {
             issuer: ISSUER.into(),
             project_id: PROJECT_ID.into(),
             allowed_client_ids: ids,
-            allowed_subjects: vec![ALICE.into()],
+            allowed_subjects: Vec::new(),
+            required_role: Some(required_role.clone()),
             jwks_uri: Some(jwks_uri.clone()),
             user_agent: "vitruvian-relay-database-down".into(),
         })
@@ -261,18 +266,16 @@ impl Relay {
         self.logs.lock().unwrap().join("\n")
     }
 
-    /// `POST /devices` as the connector does.
-    async fn register(&self, key_byte: u8) -> Reply {
+    /// `POST /devices` as the connector does: with `existing`, that computer
+    /// signing in again (the id is kept), otherwise a new one.
+    async fn register(&self, key_byte: u8, existing: Option<&str>) -> Reply {
         let token = mint(&self.rsa, CONNECTOR_CLIENT);
         let key = base64::engine::general_purpose::STANDARD.encode([key_byte; 32]);
-        post(
-            self.addr,
-            "/devices",
-            &token,
-            None,
-            json!({"public_key": key}),
-        )
-        .await
+        let mut body = json!({"public_key": key});
+        if let Some(id) = existing {
+            body["device_id"] = json!(id);
+        }
+        post(self.addr, "/devices", &token, None, body).await
     }
 
     /// An AI app's session on `device`: its path and session id.
@@ -330,7 +333,7 @@ async fn database_down_fails_clearly_then_recovers() {
     let proxy = Proxy::start(postgres_port()).await;
     let relay = start_relay(&db.url_at(proxy.port)).await;
 
-    let r = relay.register(1).await;
+    let r = relay.register(1, None).await;
     assert_eq!(r.status, 200, "{}", r.body);
     let device = r.json()["device_id"].as_str().unwrap().to_string();
     let (path, session) = relay.open_session(&device).await;
@@ -347,7 +350,7 @@ async fn database_down_fails_clearly_then_recovers() {
     assert_eq!(text_of(&r), MESSAGE);
 
     let started = Instant::now();
-    let r = relay.register(2).await;
+    let r = relay.register(2, None).await;
     assert!(started.elapsed() < WITHIN, "took {:?}", started.elapsed());
     assert_eq!(r.status, 503, "{}", r.body);
     assert_eq!(r.body, MESSAGE);
@@ -359,7 +362,7 @@ async fn database_down_fails_clearly_then_recovers() {
     // The database is back: the very next call works, with the same session.
     proxy.set(Mode::Open);
     assert_calls_work(&relay, &path, &session, 3).await;
-    let r = relay.register(3).await;
+    let r = relay.register(3, Some(&device)).await;
     assert_eq!(r.status, 200, "{}", r.body);
     assert_eq!(
         r.json()["device_id"],
@@ -375,7 +378,7 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
     let db = fresh_database().await;
     let proxy = Proxy::start(postgres_port()).await;
     let relay = start_relay(&db.url_at(proxy.port)).await;
-    let r = relay.register(1).await;
+    let r = relay.register(1, None).await;
     let device = r.json()["device_id"].as_str().unwrap().to_string();
     let (path, session) = relay.open_session(&device).await;
 
@@ -385,10 +388,10 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
     let took = started.elapsed();
     assert_eq!(text_of(&r), MESSAGE, "{}", r.body);
     // It waited for the limit rather than answering at once, and not longer
-    // than it (one limit for the whole step, with a second of slack for a
-    // loaded machine).
+    // than it (one limit for the whole step; the upper bound leaves three
+    // seconds of slack for a loaded machine, and two limits would be 10 s).
     assert!(
-        took >= Duration::from_secs(4) && took < Duration::from_secs(6),
+        took >= Duration::from_secs(4) && took < Duration::from_secs(8),
         "took {took:?}"
     );
 
@@ -397,28 +400,30 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
 }
 
 /// The 5 s limit covers getting a connection AND the query together. Here each
-/// answer from the database is 3 s late, so getting a connection (the pool
-/// checks an idle one first) takes about 3 s and the query another 3 s: each is
+/// answer from the database is 4 s late, so getting a connection (the pool
+/// checks an idle one first) takes about 4 s and the query another 4 s: each is
 /// under 5 s alone, together they are not. The person must still hear within
-/// one limit, not after two.
+/// one limit (about 5 s), not after a limit per step (about 12 s with the
+/// three round trips a call makes). The bound is 8 s, so a loaded runner has
+/// three seconds of slack and a per-step limit is still caught.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_database_is_given_one_limit_in_all_not_one_per_step() {
     let db = fresh_database().await;
     let proxy = Proxy::start(postgres_port()).await;
     let relay = start_relay(&db.url_at(proxy.port)).await;
-    let r = relay.register(1).await;
+    let r = relay.register(1, None).await;
     let device = r.json()["device_id"].as_str().unwrap().to_string();
     let (path, session) = relay.open_session(&device).await;
     // Warm: the pool now holds a connection through the proxy.
     assert_calls_work(&relay, &path, &session, 1).await;
 
-    proxy.set(Mode::Slow(Duration::from_secs(3)));
+    proxy.set(Mode::Slow(Duration::from_secs(4)));
     let started = Instant::now();
     let r = relay.tools_call(&path, &session, 2).await;
     let took = started.elapsed();
     assert_eq!(text_of(&r), MESSAGE, "{}", r.body);
     assert!(
-        took >= Duration::from_secs(4) && took < Duration::from_secs(6),
+        took >= Duration::from_secs(4) && took < Duration::from_secs(8),
         "took {took:?}"
     );
 
