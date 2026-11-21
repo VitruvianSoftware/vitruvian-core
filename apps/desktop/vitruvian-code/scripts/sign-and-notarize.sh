@@ -42,6 +42,7 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEFAULT_ENTITLEMENTS="${VITRUVIAN_CODE_ENTITLEMENTS:-${REPO_ROOT}/macos/Resources/VitruvianCode.entitlements}"
+NODE_ENTITLEMENTS="${VITRUVIAN_CODE_NODE_ENTITLEMENTS:-${REPO_ROOT}/macos/Resources/node.entitlements}"
 
 SIGNING_MODE="${SIGNING:-developer-id}"
 WORK_DIR=""
@@ -91,7 +92,7 @@ trap on_term TERM
 usage() {
 	/bin/cat <<'EOF'
 Usage:
-  sign-and-notarize.sh apps [--entitlements-app <app.app>]... [--plain-app <app.app>]... [--macho <binary>]...
+  sign-and-notarize.sh apps [--entitlements-app <app.app>]... [--plain-app <app.app>]... [--macho <binary>]... [--node-macho <binary>]...
   sign-and-notarize.sh dmgs <dmg>...
 EOF
 }
@@ -275,23 +276,24 @@ setup_credentials() {
 codesign_leaf() {
 	local target="$1"
 	local identifier="${2:-}"
-	local id_args=()
+	local entitlements="${3:-}"
+	local args=(--force)
+	if [ "${SIGNING_MODE}" != "adhoc" ]; then
+		args+=(--options runtime --timestamp)
+	fi
 	if [ -n "${identifier}" ]; then
-		id_args=(--identifier "${identifier}")
+		args+=(--identifier "${identifier}")
+	fi
+	if [ -n "${entitlements}" ]; then
+		[ -f "${entitlements}" ] || fail_error "Entitlements file not found: ${entitlements}"
+		args+=(--entitlements "${entitlements}")
 	fi
 	if [ "${SIGNING_MODE}" = "adhoc" ]; then
-		if [ "${#id_args[@]}" -gt 0 ]; then
-			/usr/bin/codesign --force "${id_args[@]}" --sign - "${target}"
-		else
-			/usr/bin/codesign --force --sign - "${target}"
-		fi
+		args+=(--sign -)
 	else
-		if [ "${#id_args[@]}" -gt 0 ]; then
-			/usr/bin/codesign --force --options runtime --timestamp "${id_args[@]}" --sign "${SIGN_IDENTITY}" "${target}"
-		else
-			/usr/bin/codesign --force --options runtime --timestamp --sign "${SIGN_IDENTITY}" "${target}"
-		fi
+		args+=(--sign "${SIGN_IDENTITY}")
 	fi
+	/usr/bin/codesign "${args[@]}" "${target}"
 }
 
 clear_xattrs() {
@@ -332,6 +334,10 @@ sign_app_inside_out() {
 	if [ ! -d "${app}" ]; then
 		fail_error "App bundle not found: ${app}"
 	fi
+	# Everything below compares paths as text (the main executable, Helpers/node),
+	# so spell the app one way: no trailing or doubled slashes, no ./ or ../, no
+	# symlinks.
+	app="$(cd "${app}" && /bin/pwd -P)"
 	if [ -n "${entitlements}" ] && [ ! -f "${entitlements}" ]; then
 		fail_error "Entitlements file not found: ${entitlements}"
 	fi
@@ -355,8 +361,13 @@ sign_app_inside_out() {
 		file_desc="$(/usr/bin/file -b "${candidate}" 2>/dev/null || true)"
 		case "${file_desc}" in
 		*Mach-O*)
-			echo "    Signing nested Mach-O: ${candidate}"
-			codesign_leaf "${candidate}"
+			if [ "${candidate}" = "${app}/Contents/Helpers/node" ]; then
+				echo "    Signing nested Node helper with JIT entitlements: ${candidate}"
+				codesign_leaf "${candidate}" "com.vitruviansoftware.code.node" "${NODE_ENTITLEMENTS}"
+			else
+				echo "    Signing nested Mach-O: ${candidate}"
+				codesign_leaf "${candidate}"
+			fi
 			;;
 		esac
 	done < <(/usr/bin/find "${app}/Contents" -depth -type f)
@@ -439,6 +450,7 @@ run_apps() {
 	local entitled_apps=()
 	local plain_apps=()
 	local machos=()
+	local node_machos=()
 
 	if [ "$#" -eq 0 ]; then
 		usage_error
@@ -461,13 +473,18 @@ run_apps() {
 			machos+=("$2")
 			shift 2
 			;;
+		--node-macho)
+			[ "$#" -ge 2 ] || usage_error "--node-macho requires a path"
+			node_machos+=("$2")
+			shift 2
+			;;
 		*)
 			usage_error "Unknown apps argument: $1"
 			;;
 		esac
 	done
 
-	if [ "${#entitled_apps[@]}" -eq 0 ] && [ "${#plain_apps[@]}" -eq 0 ] && [ "${#machos[@]}" -eq 0 ]; then
+	if [ "${#entitled_apps[@]}" -eq 0 ] && [ "${#plain_apps[@]}" -eq 0 ] && [ "${#machos[@]}" -eq 0 ] && [ "${#node_machos[@]}" -eq 0 ]; then
 		usage_error
 	fi
 
@@ -498,6 +515,17 @@ run_apps() {
 		done
 	fi
 
+	if [ "${#node_machos[@]}" -gt 0 ]; then
+		for bin in "${node_machos[@]}"; do
+			[ -f "${bin}" ] || fail_error "Node Mach-O binary not found: ${bin}"
+			/bin/chmod u+w "${bin}"
+			/usr/bin/xattr -c "${bin}" 2>/dev/null || true
+			echo "==> Signing standalone Node Mach-O with JIT entitlements: ${bin}"
+			codesign_leaf "${bin}" "com.vitruviansoftware.code.node" "${NODE_ENTITLEMENTS}"
+			/usr/bin/codesign --verify --strict --verbose=2 "${bin}"
+		done
+	fi
+
 	if [ "${DO_NOTARIZE}" -eq 1 ]; then
 		local idx=0
 		if [ "${#entitled_apps[@]}" -gt 0 ]; then
@@ -521,6 +549,15 @@ run_apps() {
 				/bin/rm -f "${tool_zip}"
 			done
 		fi
+		if [ "${#node_machos[@]}" -gt 0 ]; then
+			for bin in "${node_machos[@]}"; do
+				idx=$((idx + 1))
+				local node_zip="${WORK_DIR}/node-macho-${idx}.zip"
+				/usr/bin/ditto -c -k "${bin}" "${node_zip}"
+				notarytool_submit_and_require_accepted "${node_zip}" "$(/usr/bin/basename "${bin}")"
+				/bin/rm -f "${node_zip}"
+			done
+		fi
 	fi
 
 	# Final verification on all signed (and, in release mode, stapled) bundles.
@@ -542,6 +579,11 @@ run_apps() {
 	fi
 	if [ "${#machos[@]}" -gt 0 ]; then
 		for bin in "${machos[@]}"; do
+			/usr/bin/codesign --verify --strict --verbose=2 "${bin}"
+		done
+	fi
+	if [ "${#node_machos[@]}" -gt 0 ]; then
+		for bin in "${node_machos[@]}"; do
 			/usr/bin/codesign --verify --strict --verbose=2 "${bin}"
 		done
 	fi

@@ -26,6 +26,163 @@ use std::process::Command;
 const SCRIPT_NAME: &str = "mermaid.min.js";
 const LICENCE_NAME: &str = "mermaid-LICENSE.txt";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
+const NODE_REL_PATH: &str = "Contents/Helpers/node";
+const HELPER_REL_PATH: &str = "Contents/Resources/claude-helper/claude-helper.mjs";
+const TOOL_NODE_REL_PATH: &str = "bin/node";
+const TOOL_HELPER_REL_PATH: &str = "bin/claude-helper/claude-helper.mjs";
+const REQUIRED_NODE_ENTITLEMENTS: &[&str] = &[
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+];
+
+pub fn entitlements_plist_has_true(plist: &str, key: &str) -> bool {
+    let needle = format!("<key>{}</key>", key);
+    let Some(pos) = plist.find(&needle) else {
+        return false;
+    };
+    let rest = plist[pos + needle.len()..].trim_start();
+    rest.starts_with("<true/>")
+}
+
+/// Every `<key>` in an entitlements plist that isn't one Node needs. Node is
+/// signed with `node.entitlements` alone, so anything else (for example
+/// `disable-library-validation`) means it was signed with the wrong file.
+pub fn unexpected_entitlement_keys(plist: &str) -> Vec<String> {
+    plist
+        .split("<key>")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("</key>").map(|(k, _)| k.trim().to_string()))
+        .filter(|k| !REQUIRED_NODE_ENTITLEMENTS.contains(&k.as_str()))
+        .collect()
+}
+
+pub fn check_node_entitlements(node_exe: &Path) -> Result<(), String> {
+    let out = Command::new("codesign")
+        .args(["-d", "--entitlements", "-", "--xml"])
+        .arg(node_exe)
+        .output()
+        .map_err(|e| {
+            format!(
+                "cannot inspect entitlements on {}: {}",
+                node_exe.display(),
+                e
+            )
+        })?;
+    if !out.status.success() {
+        return Err(format!(
+            "codesign -d --entitlements failed on {}: {}",
+            node_exe.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let xml = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    for key in REQUIRED_NODE_ENTITLEMENTS {
+        if !entitlements_plist_has_true(&xml, key) {
+            return Err(format!(
+                "{} is missing entitlement {} (<true/>)",
+                node_exe.display(),
+                key
+            ));
+        }
+    }
+    let extra = unexpected_entitlement_keys(&xml);
+    if !extra.is_empty() {
+        return Err(format!(
+            "{} carries entitlements beyond the JIT pair: {}",
+            node_exe.display(),
+            extra.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// The bundled Node at `node_exe` (called `label` in messages): present,
+/// executable, built for exactly `want_archs` ("arm64 x86_64 ": sorted, each
+/// followed by a space), its signature valid and carrying the JIT entitlements.
+pub fn check_node_binary(node_exe: &Path, label: &str, want_archs: &str) -> Result<(), String> {
+    if !node_exe.is_file() {
+        return Err(format!("no executable at {}", label));
+    }
+    let node_meta = fs::metadata(node_exe).map_err(|e| format!("cannot read {}: {}", label, e))?;
+    if node_meta.permissions().mode() & 0o111 == 0 {
+        return Err(format!("{} is not executable", label));
+    }
+    let out = Command::new("lipo")
+        .args(["-archs"])
+        .arg(node_exe)
+        .output()
+        .map_err(|e| format!("cannot run lipo on {}: {}", label, e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "lipo -archs on {} failed: {}",
+            label,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    let raw = String::from_utf8_lossy(&out.stdout);
+    let mut got: Vec<&str> = raw.split_whitespace().filter(|s| !s.is_empty()).collect();
+    got.sort();
+    let got_str = format!("{} ", got.join(" "));
+    if got_str != want_archs {
+        return Err(format!(
+            "{} is built for '{}', expected '{}'",
+            label,
+            got_str.trim(),
+            want_archs.trim()
+        ));
+    }
+    println!("    \u{2713} {}, built for {}", label, got_str.trim());
+    let verified = Command::new("codesign")
+        .args(["--verify", "--strict"])
+        .arg(node_exe)
+        .status();
+    if !matches!(verified, Ok(s) if s.success()) {
+        return Err(format!("{} signature does not verify", label));
+    }
+    check_node_entitlements(node_exe)
+}
+
+/// The Claude helper's bundle at `helper`: a file with something in it.
+pub fn check_helper_file(helper: &Path, label: &str) -> Result<(), String> {
+    match fs::metadata(helper) {
+        Ok(m) if m.is_file() && m.len() > 0 => Ok(()),
+        _ => Err(format!("{} is missing or empty", label)),
+    }
+}
+
+/// What the tool's folder (`vitruvian-tool.json`, `bin/tool`, `bin/node`,
+/// `bin/claude-helper/claude-helper.mjs`) must hold before it is zipped.
+pub fn check_tool_folder(folder: &str, archs: &[&String]) -> i32 {
+    let root = Path::new(folder);
+    let mut sorted: Vec<&str> = archs.iter().map(|s| s.as_str()).collect();
+    sorted.sort();
+    let want_archs = format!("{} ", sorted.join(" "));
+    for rel in ["vitruvian-tool.json", "bin/tool", "bin/mermaid.min.js"] {
+        if !root.join(rel).is_file() {
+            return fail(folder, &format!("no file at {}", rel));
+        }
+    }
+    if let Err(msg) = check_node_binary(
+        &root.join(TOOL_NODE_REL_PATH),
+        TOOL_NODE_REL_PATH,
+        &want_archs,
+    ) {
+        return fail(folder, &msg);
+    }
+    println!(
+        "    \u{2713} {} signed with JIT entitlements",
+        TOOL_NODE_REL_PATH
+    );
+    if let Err(msg) = check_helper_file(&root.join(TOOL_HELPER_REL_PATH), TOOL_HELPER_REL_PATH) {
+        return fail(folder, &msg);
+    }
+    println!("    \u{2713} {} present", TOOL_HELPER_REL_PATH);
+    0
+}
 
 fn fail(app: &str, msg: &str) -> i32 {
     eprintln!("error: {}", msg);
@@ -108,9 +265,19 @@ pub fn run(args: &[String]) -> i32 {
     let rest = if args.len() > 1 { &args[1..] } else { &[] };
     if rest.is_empty() {
         eprintln!(
-            "Usage: check-packaged-app [--notarized] <app folder, e.g. Vitruvian Code.app> <architecture>..."
+            "Usage: check-packaged-app [--notarized] <app folder, e.g. Vitruvian Code.app> <architecture>...\n       check-packaged-app --tool-folder <tool folder> <architecture>..."
         );
         return 2;
+    }
+
+    // check-packaged-app --tool-folder <folder> <architecture>...
+    if rest[0] == "--tool-folder" {
+        if rest.len() < 3 {
+            eprintln!("Usage: check-packaged-app --tool-folder <tool folder> <architecture>...");
+            return 2;
+        }
+        let archs: Vec<&String> = rest[2..].iter().collect();
+        return check_tool_folder(&rest[1], &archs);
     }
 
     let mut require_notarized = std::env::var("CHECK_NOTARIZED")
@@ -126,7 +293,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     if positional.is_empty() {
         eprintln!(
-            "Usage: check-packaged-app [--notarized] <app folder, e.g. Vitruvian Code.app> <architecture>..."
+            "Usage: check-packaged-app [--notarized] <app folder, e.g. Vitruvian Code.app> <architecture>...\n       check-packaged-app --tool-folder <tool folder> <architecture>..."
         );
         return 2;
     }
@@ -345,6 +512,24 @@ fn check_program_and_signature(
             return fail(app, &format!("cannot run lipo on {}: {}", bot_rel, e));
         }
     }
+
+    // Bundled Node helper check (Mach-O executable in Contents/Helpers/node)
+    // and the Claude helper's JavaScript.
+    if let Err(msg) = check_node_binary(
+        &Path::new(app).join(NODE_REL_PATH),
+        NODE_REL_PATH,
+        want_archs,
+    ) {
+        return fail(app, &msg);
+    }
+    println!(
+        "    \u{2713} {} signed with JIT entitlements",
+        NODE_REL_PATH
+    );
+    if let Err(msg) = check_helper_file(&Path::new(app).join(HELPER_REL_PATH), HELPER_REL_PATH) {
+        return fail(app, &msg);
+    }
+    println!("    \u{2713} {} present", HELPER_REL_PATH);
 
     // Signature check
     let cs = Command::new("codesign")

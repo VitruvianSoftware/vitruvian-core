@@ -28,7 +28,7 @@ module.exports = {
   testEnvironment: "node",
   extensionsToTreatAsEsm: [".ts"],
   testMatch: ["**/test/**/*.test.ts"],
-  testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  testPathIgnorePatterns: ["/node_modules/", "/dist/", "/bundle/"],
   // src/ writes its own relative imports with ".js", as Node's ESM wants;
   // strip it so ts-jest finds the .ts file.
   moduleNameMapper: {

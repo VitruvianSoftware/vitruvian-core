@@ -110,6 +110,9 @@ _IGNORE_GLOBS = [
     # header into either; apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md is
     # their notice.
     "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/**",
+    # Generated single-file Claude helper bundle + manifest (carries third-party
+    # dependencies); :add must never write a first-party header into it.
+    "apps/desktop/vitruvian-code/macos/claude-helper/bundle/**",
     # apps/desktop/vitruvian-atrium is an imported GPL-3.0-or-later fork (see its
     # UPSTREAM.md). Its upstream SPDX headers must stay verbatim and :add must
     # never write an MIT header into it.

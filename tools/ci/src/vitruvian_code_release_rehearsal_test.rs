@@ -120,6 +120,7 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
         "package" => &[
             "Download arm64 binary",
             "Download x86_64 binary",
+            "Fetch and verify bundled Node",
             "Create universal binary",
             "Assemble .app bundles",
             "Sign and notarize apps and tool",
@@ -557,6 +558,12 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             body(&step_name).iter().any(|l| l == &want_path),
         );
     }
+    let fetch_node = body("Fetch and verify bundled Node");
+    expect(
+        "Fetch and verify bundled Node reads node.lock and checks shasum -a 256",
+        fetch_node.iter().any(|l| l.contains("node.lock"))
+            && fetch_node.iter().any(|l| l.contains("shasum -a 256")),
+    );
     expect(
         "the `lipo -create` line",
         body("Create universal binary")
@@ -573,14 +580,15 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
     );
     let sign_apps = body("Sign and notarize apps and tool");
     expect(
-        "explicit --entitlements-app and --macho paths on `Sign and notarize apps and tool`",
+        "explicit --entitlements-app, --macho and --node-macho paths on `Sign and notarize apps and tool`",
         sign_apps
             .iter()
             .filter(|l| l.contains("--entitlements-app "))
             .count()
             == 3
             && !sign_apps.iter().any(|l| l.contains("--plain-app "))
-            && sign_apps.iter().any(|l| l.contains("--macho ")),
+            && sign_apps.iter().any(|l| l.contains("--macho "))
+            && sign_apps.iter().any(|l| l.contains("--node-macho ")),
     );
     let dmgs = body("Create DMGs");
     expect(
@@ -608,11 +616,19 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
         zips.iter()
             .any(|l| l.contains("> \"VitruvianCode-${VERSION}-macos.zip.sha256\"")),
     );
+    let tool_zip = body("Zip the tool's folder");
     expect(
-        "the tool's zip, with the manifest at its top",
-        body("Zip the tool's folder")
+        "the tool's zip, with the manifest at its top and bundled node + claude-helper",
+        tool_zip
             .iter()
-            .any(|l| l.starts_with("(cd \"$folder\" && zip -r -X")),
+            .any(|l| l.starts_with("(cd \"$folder\" && zip -r -X"))
+            && tool_zip.iter().any(|l| l.contains("$folder/bin/node"))
+            && tool_zip
+                .iter()
+                .any(|l| l.contains("check-packaged-app\" --tool-folder \"$folder\" arm64 x86_64"))
+            && tool_zip
+                .iter()
+                .any(|l| l.contains("$folder/bin/claude-helper/claude-helper.mjs")),
     );
     problems
 }
