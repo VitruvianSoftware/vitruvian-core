@@ -27,8 +27,9 @@
 //! no assertion depends on a tight wall-clock bound.
 
 use super::*;
-use crate::devices::{DeviceRecord, FileDeviceStore};
+use crate::devices::NewDevice;
 use crate::mcp::{LEGACY_VERSIONS, MODERN_VERSIONS, SERVER_NAME};
+use crate::store::{MemStore, StoreError};
 use futures_util::{SinkExt, StreamExt};
 use http::header;
 use http_body_util::BodyExt;
@@ -36,7 +37,6 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair, RsaKeyPair, RSA_PKCS1_SHA256};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -181,26 +181,12 @@ fn start_jwks_server(body: String) -> String {
     url
 }
 
-fn temp_dir(name: &str) -> PathBuf {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::var_os("TEST_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(format!(
-            "relay-http-{}-{}-{name}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::SeqCst)
-        ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 struct Harness {
     app: Arc<App>,
     addr: std::net::SocketAddr,
     rsa: RsaKeyPair,
     logs: Arc<Mutex<Vec<String>>>,
-    store: Arc<FileDeviceStore>,
+    store: Arc<MemStore>,
 }
 
 struct Reply {
@@ -227,7 +213,6 @@ async fn harness() -> Harness {
 async fn harness_with(timing: Timing) -> Harness {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
-    let data_dir = temp_dir("data");
     let env: std::collections::HashMap<&str, String> = [
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
         ("ISSUER", ISSUER.to_string()),
@@ -235,7 +220,10 @@ async fn harness_with(timing: Timing) -> Harness {
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
         ("ALLOWED_SUBJECTS", format!("{ALICE},{BOB}")),
-        ("DATA_DIR", data_dir.to_string_lossy().into_owned()),
+        (
+            "DATABASE_URL",
+            "postgres://unused@localhost/unused".to_string(),
+        ),
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
@@ -252,7 +240,7 @@ async fn harness_with(timing: Timing) -> Harness {
         })
         .unwrap()
     };
-    let store = Arc::new(FileDeviceStore::open(settings.devices_file()).unwrap());
+    let store = Arc::new(MemStore::new());
     let logs = Arc::new(Mutex::new(Vec::new()));
     let sink_logs = logs.clone();
     let sink: LogSink = Arc::new(move |line| sink_logs.lock().unwrap().push(line.to_string()));
@@ -826,11 +814,13 @@ async fn mcp_rejects_other_users_device_as_404() {
     // Nor on another device of the same person (P2 allows several; P1's
     // registration does not, so the record goes straight into the store).
     h.store
-        .put(DeviceRecord {
+        .insert_device(&NewDevice {
             device_id: "alices-second".into(),
             owner_sub: ALICE.into(),
+            name: "Second".into(),
             public_key_ed25519: [9; 32],
         })
+        .await
         .unwrap();
     let r = h
         .rpc(
@@ -960,13 +950,16 @@ async fn register_device_returns_mcp_url() {
     assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
     let mut expected_key = [0u8; 32];
     expected_key.copy_from_slice(key.public_key().as_ref());
+    let stored = h.store.device(&id).await.unwrap().expect("stored");
     assert_eq!(
-        h.store.get(&id),
-        Some(DeviceRecord {
-            device_id: id.clone(),
-            owner_sub: ALICE.into(),
-            public_key_ed25519: expected_key,
-        })
+        (
+            stored.device_id.as_str(),
+            stored.owner_sub.as_str(),
+            stored.name.as_str(),
+            stored.public_key_ed25519,
+            stored.revoked
+        ),
+        (id.as_str(), ALICE, "My Mac", expected_key, false)
     );
 
     // Bad bodies and the wrong client are refused.
@@ -3692,4 +3685,96 @@ async fn v1_hello_is_rejected_with_update_message() {
         })
     );
     assert!(next_frame(&mut ws).await.is_none());
+}
+
+/// The database not answering is said plainly, on every path that needs it,
+/// and the relay works again the moment it answers (with a unit-test store;
+/// the real database being cut is `tests/database_down.rs`).
+#[tokio::test]
+async fn a_database_that_is_down_gets_a_plain_message_then_recovers() {
+    const MESSAGE: &str = "The relay is having trouble right now; try again in a minute.";
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let s = h.session(&device, ALICE).await;
+    h.store.fail_with(Some(StoreError::Unavailable));
+
+    // A call: an ordinary tool result that says what to do, and logs why.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(5), "read_file", json!({"path": "/top/secret"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["id"], 5);
+    assert_eq!(r.json()["result"]["isError"], true);
+    assert_eq!(r.json()["result"]["content"][0]["text"], MESSAGE);
+    let logs = h.logs();
+    assert!(logs.contains("\"outcome\":\"store_unavailable\""), "{logs}");
+    assert!(logs.contains("\"tool\":\"read_file\""), "{logs}");
+    assert!(!logs.contains("/top/secret"), "arguments reached the log");
+
+    // Another method has no tool result to carry it: a 503 with the words.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 6, "method": "tools/list"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(r.body, MESSAGE);
+
+    // Registering: the same.
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(r.body, MESSAGE);
+
+    // A device connecting is told, in words the connector shows.
+    let token = h.connector_token(ALICE);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => assert_eq!(reason, MESSAGE),
+        other => panic!("expected reject, got {other:?}"),
+    }
+
+    // The database is back: the next call is an ordinary one (no computer
+    // is connected, so it says so).
+    h.store.fail_with(None);
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(7), "read_file", json!({})),
+        )
+        .await;
+    assert_eq!(r.json()["result"]["isError"], true);
+    assert_eq!(
+        r.json()["result"]["content"][0]["text"],
+        "Your computer is offline."
+    );
+    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+}
+
+/// A person who already has the most devices is told what to do.
+#[tokio::test]
+async fn registering_when_the_store_refuses_says_what_to_do() {
+    let h = harness().await;
+    h.store.fail_with(Some(StoreError::TooManyDevices));
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    assert!(r.body.contains("Remove one"), "{}", r.body);
 }

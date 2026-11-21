@@ -50,7 +50,19 @@ oidc:
   # beyond the client pin; aud is caller-authored in this instance).
   allowedSubjects: ""
 
-# The device records (devices.json), mounted at /data (the relay's DATA_DIR).
+# Where the relay keeps devices and call history: the CloudNativePG cluster
+# `relay-db` (gitops/argocd/platform/relay/cnpg-cluster.yaml). CloudNativePG
+# makes these two secrets itself when it creates the cluster: `<cluster>-app`
+# (the app user's connection string, key `uri`) and `<cluster>-ca` (the CA that
+# signed the server's certificate, key `ca.crt`).
+database:
+  clusterName: relay-db
+  secretName: relay-db-app
+  secretKey: uri
+  caSecretName: relay-db-ca
+
+# REMOVE IN TASK 13. The P1 device records (devices.json), mounted read-only at
+# /data so the relay can copy that file's device into Postgres once.
 # `nfs` (the NAS), not the default local-path: local-path pins the volume, and
 # so the pod, to one node, which would defeat the node allow list in affinity.
 persistence:

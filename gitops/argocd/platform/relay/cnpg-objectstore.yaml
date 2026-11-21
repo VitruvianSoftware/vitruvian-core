@@ -1,0 +1,50 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Where relay-db's Barman Cloud plugin writes WAL and base backups. Same shape
+# as umami-db-backups. The bucket, its policy and the relay-db-backup MinIO user
+# (which can reach only this bucket) are declared in minio-amd64's
+# applicationset.yaml; the credentials are the relay-db-backup-s3 SealedSecret
+# (sealed-secrets-manifests).
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: relay-db-backups
+  namespace: relay
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  retentionPolicy: 7d
+  configuration:
+    destinationPath: s3://relay-db-backup/
+    endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
+    s3Credentials:
+      accessKeyId:
+        name: relay-db-backup-s3
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: relay-db-backup-s3
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: gzip
+      maxParallel: 1
+    data:
+      compression: gzip
+      jobs: 2

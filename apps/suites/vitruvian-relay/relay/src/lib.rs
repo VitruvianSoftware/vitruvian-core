@@ -24,9 +24,13 @@
 pub mod config;
 pub mod devices;
 pub mod http;
+pub mod legacy_devices;
 pub mod mcp;
 pub mod parked;
 pub mod registry;
+pub mod store;
+#[doc(hidden)]
+pub mod store_contract;
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};

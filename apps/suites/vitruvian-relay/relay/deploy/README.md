@@ -33,8 +33,16 @@ The relay runs on the homelab cluster at `https://relay.ipv1337.dev`.
   image digest and the Zitadel ids. CI renders it with
   `tools/ci/chart-render/vitruvian-relay.values.yaml` (placeholders only):
   `bazel run //tools/ci:chart_render`.
-- **Device records** live on a 1 GiB `nfs` volume at `/data`. The pod runs as
-  UID 10001 with `fsGroup: 10001` so it can write there.
+- **Devices and call history** live in Postgres: the CloudNativePG cluster
+  `relay-db` in the `relay` namespace (3 instances, nightly backups to MinIO;
+  manifests in `gitops/argocd/platform/relay/`). The relay takes its connection
+  string from the `relay-db-app` secret and checks the server's certificate
+  against `relay-db-ca`. It creates its own tables at start. The relay keeps no
+  content: the tables hold names, sizes, times and outcomes, never arguments or
+  results.
+- **The old device file** (`/data/devices.json` on a 1 GiB `nfs` volume) is
+  mounted read-only and read once, at start, to copy the one P1 device into an
+  empty database. Task 13 of the P2 plan removes the volume and that code.
 - **Idle connections:** a `BackendTrafficPolicy` makes Envoy drop an idle
   upstream connection after 60 s, before the relay's own 75 s close.
   Cloudflare's tunnel talks to Envoy, not to the pod, so nothing else needs

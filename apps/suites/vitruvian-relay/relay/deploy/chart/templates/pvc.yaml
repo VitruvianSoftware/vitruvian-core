@@ -18,7 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# The device records (devices.json). Argo CD leaves the claim in place when the
+# The P1 device records (devices.json). The relay keeps devices in Postgres now
+# and mounts this read-only, only to copy the file's device in once at start
+# (an empty database); the claim and this file go in Task 13. Argo CD leaves the claim in place when the
 # Application is deleted (Delete=false) and does not prune it if it ever drops
 # out of the rendered manifests (Prune=false), because the `nfs` class deletes the
 # volume's data with its claim (reclaimPolicy: Delete), and losing the file

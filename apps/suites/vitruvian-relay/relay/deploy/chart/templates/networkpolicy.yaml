@@ -18,8 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Always on: the pod may resolve DNS and make HTTPS calls out (Zitadel's public
-# keys are fetched through Cloudflare), nothing else. "world", not CIDRs,
+# Always on: the pod may resolve DNS, make HTTPS calls out (Zitadel's public
+# keys are fetched through Cloudflare) and reach its own database (relay-db-rw,
+# port 5432), nothing else. "world", not CIDRs,
 # because the IdP resolves to Cloudflare IPv6. Same shape as vitruvian-slack-mcp's.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -39,6 +40,15 @@ spec:
             - port: "53"
               protocol: UDP
             - port: "53"
+              protocol: TCP
+    # relay-db: the CloudNativePG cluster in this namespace (pods labelled with
+    # the cluster name); its -rw Service is how the relay reaches it.
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: {{ .Values.database.clusterName | quote }}
+      toPorts:
+        - ports:
+            - port: "5432"
               protocol: TCP
     - toEntities:
         - world

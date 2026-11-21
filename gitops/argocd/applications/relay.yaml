@@ -39,6 +39,14 @@ spec:
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
       ref: values
+    # relay-db, the database cluster and its backups (sync-waves order them
+    # before the chart's Deployment). Only the cnpg-*.yaml files: the folder
+    # also holds the chart's values.
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      path: gitops/argocd/platform/relay
+      directory:
+        include: 'cnpg-*.yaml'
   destination:
     server: https://kubernetes.default.svc
     namespace: relay

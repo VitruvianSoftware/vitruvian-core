@@ -67,10 +67,11 @@ use vitruvian_relay_protocol::{
 };
 
 use crate::config::Settings;
-use crate::devices::{DeviceRecord, DeviceStore};
+use crate::devices::{NewDevice, DEFAULT_DEVICE_NAME};
 use crate::mcp::{era, needs_session, Answer, Era, Mcp};
 use crate::parked::Delivery;
 use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
+use crate::store::{Store, StoreError, UNAVAILABLE_MESSAGE};
 use crate::{hex, log_event, random_id, uuid_v4, LogSink};
 
 /// A response body: one buffer, and (for an MCP result) the delivery to
@@ -281,7 +282,12 @@ pub struct App {
     settings: Settings,
     mcp_verifier: Arc<Verifier>,
     connector_verifier: Arc<Verifier>,
-    store: Arc<dyn DeviceStore>,
+    store: Arc<dyn Store>,
+    /// Bumped whenever a device's key is replaced (or the device is revoked),
+    /// before its connection is kicked. A `/connect` that read the device's
+    /// key before the change sees the number has moved and does not register
+    /// ([`App::key_changed`]). The relay is one process, so this is enough.
+    key_epochs: Mutex<HashMap<String, u64>>,
     registry: Registry,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
@@ -305,7 +311,7 @@ impl App {
         settings: Settings,
         mcp: Verifier,
         connector: Verifier,
-        store: Arc<dyn DeviceStore>,
+        store: Arc<dyn Store>,
         timing: Timing,
         log: LogSink,
     ) -> Arc<App> {
@@ -320,6 +326,7 @@ impl App {
             mcp_verifier: Arc::new(mcp),
             connector_verifier: Arc::new(connector),
             store,
+            key_epochs: Mutex::new(HashMap::new()),
             registry,
             sessions: Mutex::new(HashMap::new()),
             registering: tokio::sync::Mutex::new(()),
@@ -334,6 +341,28 @@ impl App {
 
     fn log(&self, event: &str, fields: Value) {
         log_event(&self.log, event, fields);
+    }
+
+    fn key_epoch(&self, device_id: &str) -> u64 {
+        self.key_epochs
+            .lock()
+            .unwrap()
+            .get(device_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The device's key was replaced (or the device revoked): ends its
+    /// connection. The epoch moves first, so a connection that checked the old
+    /// key and has not registered yet cannot register after the kick.
+    fn key_changed(&self, device_id: &str) {
+        *self
+            .key_epochs
+            .lock()
+            .unwrap()
+            .entry(device_id.to_string())
+            .or_insert(0) += 1;
+        self.registry.kick(device_id);
     }
 
     fn new_session(&self, device_id: &str, caller: &Caller) -> String {
@@ -579,10 +608,16 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
             Err(r) => return refusal(&app, "mcp", &metadata_url, r),
         };
     // Someone else's device answers exactly like a missing one.
-    match app.store.get(&device_id) {
-        Some(rec) if rec.owner_sub == caller.subject => {}
-        _ => return not_found(),
+    let found = app.store.device(&device_id).await;
+    match &found {
+        Ok(Some(rec)) if rec.owner_sub == caller.subject => {}
+        Ok(_) => return not_found(),
+        // The database is not answering: say so plainly (below, once the
+        // request is read, so a call can be answered as a call).
+        Err(StoreError::Unavailable) => {}
+        Err(_) => return not_found(),
     }
+    let store_down = found.is_err();
     if !accepts_json(header_str(&req, header::ACCEPT)) {
         return text(
             StatusCode::NOT_ACCEPTABLE,
@@ -614,6 +649,16 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
         }
     };
     let method = msg.get("method").and_then(Value::as_str);
+    if store_down {
+        app.log(
+            "mcp_refused",
+            json!({"device_id": device_id, "reason": "store_unavailable"}),
+        );
+        return match app.mcp.store_unavailable_call(&msg, &device_id, &caller) {
+            Some(answer) => json_response(StatusCode::OK, &answer),
+            None => text(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE),
+        };
+    }
     let era = match era(&msg, protocol_header.as_deref()) {
         Ok(e) => e,
         Err(err) => return json_response(StatusCode::BAD_REQUEST, &err),
@@ -704,32 +749,39 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
     let _one_at_a_time = app.registering.lock().await;
     // P1: one device per person. Registering again keeps the id, replaces
     // the key, and ends any session signed with the old one.
-    let existing = app.store.find_by_owner(&caller.subject);
-    let replacing = existing.is_some();
-    let device_id = existing.map(|r| r.device_id).unwrap_or_else(uuid_v4);
-    let rec = DeviceRecord {
-        device_id: device_id.clone(),
-        owner_sub: caller.subject.clone(),
-        public_key_ed25519,
+    let existing = match app.store.devices_of(&caller.subject).await {
+        Ok(devices) => devices.into_iter().next(),
+        Err(e) => return store_failure(&app, "device_store_failed", &e),
     };
-    if let Err(e) = app.store.put(rec.clone()) {
-        // `put` can fail after the new file is in place (the directory sync
-        // failed): then the record is stored, just maybe not durable. Only a
-        // record that is not there is a failure.
-        if app.store.get(&device_id).as_ref() != Some(&rec) {
-            app.log("device_store_failed", json!({"error": e.to_string()}));
-            return text(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "could not store the device",
-            );
+    let mut replacing = false;
+    let mut device_id = String::new();
+    if let Some(rec) = existing {
+        match app
+            .store
+            .replace_key(&rec.device_id, &caller.subject, public_key_ed25519)
+            .await
+        {
+            Ok(true) => {
+                replacing = true;
+                device_id = rec.device_id;
+                app.key_changed(&device_id);
+            }
+            // Revoked since it was listed: register a new one instead.
+            Ok(false) => {}
+            Err(e) => return store_failure(&app, "device_store_failed", &e),
         }
-        app.log(
-            "device_store_not_durable",
-            json!({"device_id": device_id, "error": e.to_string()}),
-        );
     }
-    if replacing {
-        app.registry.kick(&device_id);
+    if !replacing {
+        device_id = uuid_v4();
+        let new = NewDevice {
+            device_id: device_id.clone(),
+            owner_sub: caller.subject.clone(),
+            name: DEFAULT_DEVICE_NAME.to_string(),
+            public_key_ed25519,
+        };
+        if let Err(e) = app.store.insert_device(&new).await {
+            return store_failure(&app, "device_store_failed", &e);
+        }
     }
     app.log(
         "device_registered",
@@ -739,6 +791,17 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
         StatusCode::OK,
         &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(&device_id)}),
     )
+}
+
+/// The answer when the store could not do what a request needed: the
+/// database being down is a 503 that says what to do; anything else (too many
+/// devices) is a 409 that says the same.
+fn store_failure(app: &App, event: &str, e: &StoreError) -> Response<Body> {
+    app.log(event, json!({"error": e.to_string()}));
+    match e {
+        StoreError::Unavailable => text(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE),
+        StoreError::TooManyDevices => respond(StatusCode::CONFLICT, "text/plain", e.to_string()),
+    }
 }
 
 // ------------------------------------------------------------------ /connect
@@ -845,22 +908,33 @@ where
 
 impl App {
     /// Checks a `hello` against the device record and the token it came with.
-    /// The reason goes back to the connector in `reject`.
-    fn check_hello(
+    /// The reason goes back to the connector in `reject`. Returns the device's key
+    /// epoch from before its key was read
+    /// (see [`App::key_changed`]): the session registers only if it has not
+    /// moved.
+    async fn check_hello(
         &self,
         hello: &Hello,
         caller: &Caller,
         token_hash: &str,
-    ) -> Result<[u8; 32], String> {
+    ) -> Result<u64, String> {
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "Update vrelay: this relay needs protocol {PROTOCOL}."
             ));
         }
         // Another person's device is "unknown", like one that does not exist.
-        let rec = match self.store.get(&hello.device_id) {
-            Some(r) if r.owner_sub == caller.subject => r,
-            _ => return Err("unknown device; register it again".into()),
+        let epoch = self.key_epoch(&hello.device_id);
+        let rec = match self.store.device(&hello.device_id).await {
+            Ok(Some(r)) if r.owner_sub == caller.subject => r,
+            Ok(_) => return Err("unknown device; register it again".into()),
+            Err(e) => {
+                self.log(
+                    "connect_store_failed",
+                    json!({"device_id": hello.device_id, "error": e.to_string()}),
+                );
+                return Err(e.to_string());
+            }
         };
         let now = (self.timing.clock)();
         if now.abs_diff(hello.ts) > self.timing.max_clock_skew_secs {
@@ -876,8 +950,7 @@ impl App {
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, rec.public_key_ed25519)
             .verify(message.as_bytes(), &sig)
             .map_err(|_| "bad signature".to_string())?;
-        // The key that verified it: the session re-checks it after registering.
-        Ok(rec.public_key_ed25519)
+        Ok(epoch)
     }
 }
 
@@ -1101,29 +1174,35 @@ async fn run_connection<S>(
 {
     let t = app.timing.clone();
     let reject = |reason: String| ToConnector::Reject { reason };
-    let hello = match tokio::time::timeout(t.hello_timeout, first_frame(&mut ws)).await {
-        Ok(First::Closed) => return,
-        Err(_) => Err(format!(
-            "no hello within {} s",
-            t.hello_timeout.as_secs_f32()
-        )),
-        Ok(First::Other) => Err("the first frame must be hello".to_string()),
-        Ok(First::Text(text)) => match decode_to_relay(&text) {
-            Ok(ToRelay::Hello(h)) => Ok(h),
-            _ => Err("the first frame must be hello".to_string()),
-        },
+    let hello = async {
+        let h = match tokio::time::timeout(t.hello_timeout, first_frame(&mut ws)).await {
+            Ok(First::Closed) => return None,
+            Err(_) => Err(format!(
+                "no hello within {} s",
+                t.hello_timeout.as_secs_f32()
+            )),
+            Ok(First::Other) => Err("the first frame must be hello".to_string()),
+            Ok(First::Text(text)) => match decode_to_relay(&text) {
+                Ok(ToRelay::Hello(h)) => Ok(h),
+                _ => Err("the first frame must be hello".to_string()),
+            },
+        };
+        Some(match h {
+            Ok(h) => match app.check_hello(&h, &caller, &token_hash).await {
+                Ok(epoch) => match token_exp {
+                    Some(exp) if exp <= (t.clock)() => {
+                        Err("the token has expired; sign in again and reconnect".to_string())
+                    }
+                    _ => Ok((h, epoch)),
+                },
+                Err(reason) => Err(reason),
+            },
+            Err(reason) => Err(reason),
+        })
     }
-    .and_then(|h| {
-        app.check_hello(&h, &caller, &token_hash)
-            .map(|key| (h, key))
-    })
-    .and_then(|hk| match token_exp {
-        Some(exp) if exp <= (t.clock)() => {
-            Err("the token has expired; sign in again and reconnect".to_string())
-        }
-        _ => Ok(hk),
-    });
-    let (hello, verified_key) = match hello {
+    .await;
+    let Some(hello) = hello else { return };
+    let (hello, epoch) = match hello {
         Ok(hk) => hk,
         Err(reason) => {
             app.log("connect_rejected", json!({"reason": reason}));
@@ -1147,14 +1226,10 @@ async fn run_connection<S>(
     let send_timeout = t.send_timeout;
     let (mut sink, mut stream) = ws.split();
     let (tx, mut rx) = mpsc::channel(CONNECTION_QUEUE);
-    // Check the key again before registering, atomically with it: a
-    // connection checked with a key that has since been replaced must not
-    // take the place of one made with the new key.
-    let key_still_current = || {
-        app.store
-            .get(&device_id)
-            .is_some_and(|r| r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key)
-    };
+    // Check the key has not changed since it was read, atomically with
+    // registering: a connection checked with a key that has since been
+    // replaced must not take the place of one made with the new key.
+    let key_still_current = || app.key_epoch(&device_id) == epoch;
     // The closer is set when a cancel could not be queued: end at once,
     // sending nothing more, so the device treats it as a drop (and never runs
     // the call).

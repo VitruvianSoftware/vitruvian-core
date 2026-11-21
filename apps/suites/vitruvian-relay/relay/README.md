@@ -34,8 +34,9 @@ names, sizes and outcomes are logged, as JSON lines on stdout.
 
 Settings come from the environment (`src/config.rs`): `PUBLIC_URL`,
 `ISSUER`, `PROJECT_ID`, `MCP_CLIENT_IDS`, `CONNECTOR_CLIENT_ID`,
-`ALLOWED_SUBJECTS`, `DATA_DIR` (the device records; must be a persistent
-volume), `PORT`. It stops on SIGTERM.
+`ALLOWED_SUBJECTS`, `DATABASE_URL` (Postgres; the connection is TLS checked
+against `DATABASE_CA_FILE`, or the system's certificates, unless the URL says
+`sslmode=disable`, which is for tests), `PORT`. It stops on SIGTERM.
 
 It closes an HTTP connection idle for 75 s (the first request's headers must
 arrive within 10 s). A proxy in front must drop its idle upstream

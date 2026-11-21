@@ -18,16 +18,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! The relay server binary: reads settings, opens the device store, and
-//! serves. All logic is in the library (`http.rs` and friends).
+//! The relay server binary: reads settings, opens the device store
+//! (Postgres), and serves. All logic is in the library (`http.rs` and friends).
 
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use vitruvian_mcp_auth::{verifier, VerifierConfig};
 use vitruvian_relay::config::{wants_version, Settings};
-use vitruvian_relay::devices::FileDeviceStore;
 use vitruvian_relay::http::{serve, App, Timing};
+use vitruvian_relay::legacy_devices::{import_legacy_devices, Imported};
+use vitruvian_relay::store::PgStore;
 use vitruvian_relay::{log_event, stdout_log, stop_signal};
 
 /// A problem with the system's certificates, as a log line like any other.
@@ -66,13 +67,6 @@ async fn main() {
     };
     let mcp = verifier_for(settings.mcp_client_ids.clone());
     let connector = verifier_for(vec![settings.connector_client_id.clone()]);
-    let devices_file = settings.devices_file();
-    let store = FileDeviceStore::open(&devices_file).unwrap_or_else(|e| {
-        fail(format!(
-            "cannot open the device store {}: {e}",
-            devices_file.display()
-        ))
-    });
     let port = settings.port;
     let log = stdout_log();
     log_event(
@@ -81,9 +75,29 @@ async fn main() {
         serde_json::json!({
             "port": port,
             "public_url": settings.public_url,
-            "devices_file": devices_file.display().to_string(),
         }),
     );
+    let store = PgStore::connect(
+        settings.database_url.expose(),
+        settings.database_ca_file.as_deref(),
+        log.clone(),
+    )
+    .await
+    .unwrap_or_else(|e| fail(format!("cannot open the device store: {e}")));
+    log_event(&log, "store_ready", serde_json::json!({}));
+    // REMOVE IN TASK 13: carry the P1 device file's devices over, once.
+    match import_legacy_devices(&store, &settings.legacy_devices_file).await {
+        Ok(Imported::NoFile) => {}
+        Ok(Imported::TableNotEmpty) => log_event(
+            &log,
+            "legacy_import_skipped",
+            serde_json::json!({"reason": "the database already has devices"}),
+        ),
+        Ok(Imported::Copied(n)) => {
+            log_event(&log, "legacy_import", serde_json::json!({"devices": n}))
+        }
+        Err(e) => fail(e),
+    }
     let app = App::new(
         settings,
         mcp,

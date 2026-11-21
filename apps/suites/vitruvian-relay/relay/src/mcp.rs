@@ -37,6 +37,7 @@ use crate::parked::{
     CallHandle, Delivery, Fetch, Outcome, Owned, ParkedCalls, RejoinKey, RequestId, UNKNOWN_REQUEST,
 };
 use crate::registry::{CallError, Registry};
+use crate::store::{STORE_UNAVAILABLE_OUTCOME, UNAVAILABLE_MESSAGE};
 use crate::{log_event, random_id, LogSink};
 
 /// The revisions `initialize` agrees to, newest first: the handshake-and-
@@ -417,6 +418,40 @@ impl Mcp {
             }
             _ => rpc_error(id, -32601, &format!("Method not found: {method}")),
         })
+    }
+
+    /// The answer to a request the relay could not even start because the
+    /// database is not answering. A `tools/call` gets a normal tool result,
+    /// marked as an error, that says what to do (the AI app shows it to the
+    /// person), and is logged like any call with the outcome
+    /// `store_unavailable`. Anything else gets `None`, and the HTTP layer
+    /// answers 503 with the same words.
+    pub fn store_unavailable_call(
+        &self,
+        req: &Value,
+        device_id: &str,
+        caller: &Caller,
+    ) -> Option<Value> {
+        if req.get("method").and_then(Value::as_str) != Some("tools/call") {
+            return None;
+        }
+        let id = req.get("id").cloned()?;
+        let params = req.get("params").cloned().unwrap_or(Value::Null);
+        let tool = params.get("name").and_then(Value::as_str).unwrap_or("");
+        let arg_bytes = params.get("arguments").map_or(0, |a| a.to_string().len());
+        let result = text_result(UNAVAILABLE_MESSAGE, true);
+        // Written when this drops, at the end of the function.
+        let _log = CallLog {
+            log: self.log.clone(),
+            device_id: device_id.to_string(),
+            client_id: caller.client_id.clone(),
+            tool: tool.chars().take(MAX_LOGGED_TOOL_CHARS).collect(),
+            arg_bytes,
+            result_bytes: result["content"].to_string().len(),
+            started: Instant::now(),
+            outcome: STORE_UNAVAILABLE_OUTCOME,
+        };
+        Some(rpc_result(id, result))
     }
 
     /// The device's tools with the relay's `check_request` after them. A

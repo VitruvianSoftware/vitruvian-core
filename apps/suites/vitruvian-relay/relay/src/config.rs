@@ -34,11 +34,35 @@ pub struct Settings {
     /// Client id of the connector, the only one allowed on `/devices` and `/connect`.
     pub connector_client_id: String,
     pub allowed_subjects: Vec<String>,
-    /// Where `devices.json` lives.
-    pub data_dir: PathBuf,
+    /// The Postgres URL (`postgres://user:password@host:5432/dbname`). It
+    /// carries the password, so it never prints.
+    pub database_url: Secret,
+    /// The PEM file of the CA that signed the database's certificate (the CNPG
+    /// cluster's `ca.crt`). Unset means the system's certificates. Not needed
+    /// when the URL says `sslmode=disable` (tests).
+    pub database_ca_file: Option<PathBuf>,
+    /// REMOVE IN TASK 13: the P1 device file, read once at start to copy its
+    /// devices into Postgres if the database has none.
+    pub legacy_devices_file: PathBuf,
     /// Overrides where signing keys are fetched. Unset in production (keys come
     /// from `{issuer}/oauth/v2/keys`); set for local runs against test keys.
     pub jwks_uri: Option<String>,
+}
+
+/// A setting that must never reach a log or a test failure message.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(<hidden>)")
+    }
 }
 
 fn csv(raw: &str) -> Vec<String> {
@@ -115,7 +139,11 @@ impl Settings {
             mcp_client_ids,
             connector_client_id,
             allowed_subjects,
-            data_dir: PathBuf::from(opt("DATA_DIR").unwrap_or_else(|| "/data".into())),
+            database_url: Secret(req("DATABASE_URL")?),
+            database_ca_file: opt("DATABASE_CA_FILE").map(PathBuf::from),
+            legacy_devices_file: PathBuf::from(
+                opt("LEGACY_DEVICES_FILE").unwrap_or_else(|| "/data/devices.json".into()),
+            ),
             jwks_uri: opt("JWKS_URI"),
         })
     }
@@ -136,10 +164,6 @@ impl Settings {
     /// The relay's own metadata, for clients that look at the bare path first.
     pub fn relay_metadata_url(&self) -> String {
         format!("{}/.well-known/oauth-protected-resource", self.public_url)
-    }
-
-    pub fn devices_file(&self) -> PathBuf {
-        self.data_dir.join("devices.json")
     }
 }
 
@@ -163,6 +187,7 @@ mod tests {
             ("MCP_CLIENT_IDS", "claude-id, ,chatgpt-id"),
             ("CONNECTOR_CLIENT_ID", "conn-id"),
             ("ALLOWED_SUBJECTS", "sub-1"),
+            ("DATABASE_URL", "postgres://relay:pw@relay-db-rw:5432/relay"),
         ]
         .into_iter()
         .collect()
@@ -179,8 +204,12 @@ mod tests {
         assert_eq!(s.public_url, "https://relay.example.dev");
         assert_eq!(s.issuer, "https://auth.example.dev");
         assert_eq!(s.mcp_client_ids, vec!["claude-id", "chatgpt-id"]);
-        assert_eq!(s.data_dir, PathBuf::from("/data"));
-        assert_eq!(s.devices_file(), PathBuf::from("/data/devices.json"));
+        assert_eq!(
+            s.database_url.expose(),
+            "postgres://relay:pw@relay-db-rw:5432/relay"
+        );
+        assert_eq!(s.database_ca_file, None);
+        assert_eq!(s.legacy_devices_file, PathBuf::from("/data/devices.json"));
         assert_eq!(s.jwks_uri, None);
         assert_eq!(
             s.device_mcp_url("d-1"),
@@ -193,9 +222,25 @@ mod tests {
 
         let mut env = base();
         env.insert("PORT", "8080");
-        env.insert("DATA_DIR", "/var/relay");
+        env.insert("DATABASE_CA_FILE", "/etc/relay-db-ca/ca.crt");
+        env.insert("LEGACY_DEVICES_FILE", "/var/relay/devices.json");
         let s = load(&env).unwrap();
-        assert_eq!((s.port, s.data_dir), (8080, PathBuf::from("/var/relay")));
+        assert_eq!(s.port, 8080);
+        assert_eq!(
+            s.database_ca_file,
+            Some(PathBuf::from("/etc/relay-db-ca/ca.crt"))
+        );
+        assert_eq!(
+            s.legacy_devices_file,
+            PathBuf::from("/var/relay/devices.json")
+        );
+    }
+
+    #[test]
+    fn the_database_password_never_prints() {
+        let shown = format!("{:?}", load(&base()).unwrap());
+        assert!(!shown.contains("relay:pw"), "{shown}");
+        assert!(!shown.contains("postgres://"), "{shown}");
     }
 
     #[test]
@@ -207,6 +252,7 @@ mod tests {
             "MCP_CLIENT_IDS",
             "CONNECTOR_CLIENT_ID",
             "ALLOWED_SUBJECTS",
+            "DATABASE_URL",
         ] {
             let mut env = base();
             env.remove(drop);

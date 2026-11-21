@@ -50,8 +50,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, watch};
 use vitruvian_mcp_auth::{verifier, VerifierConfig};
 use vitruvian_relay::config::Settings;
-use vitruvian_relay::devices::FileDeviceStore;
 use vitruvian_relay::http::{serve, App, Timing as RelayTiming};
+use vitruvian_relay::store::MemStore;
 use vitruvian_relay::LogSink;
 use vitruvian_relay_connector::bridge::BridgeOutput;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
@@ -192,7 +192,9 @@ struct Relay {
     addr: SocketAddr,
     rsa: Arc<RsaKeyPair>,
     logs: Arc<Mutex<Vec<String>>>,
-    data_dir: PathBuf,
+    /// Where this relay keeps its devices: a relay started over the same store
+    /// is this one restarted, with none of its calls.
+    store: Arc<MemStore>,
 }
 
 /// In-call pings every 2 s, as in production: three missed (6 s) is a drop
@@ -215,12 +217,12 @@ async fn start_relay() -> Relay {
 }
 
 async fn start_relay_with(timing: RelayTiming) -> Relay {
-    start_relay_in(timing, temp_dir("relay-data")).await
+    start_relay_in(timing, Arc::new(MemStore::new())).await
 }
 
-/// A relay keeping its devices in `data_dir`: a second one started on the
-/// same folder is the first one restarted, with none of its calls.
-async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
+/// A relay keeping its devices in `store`: a second one started over the
+/// same store is the first one restarted, with none of its calls.
+async fn start_relay_in(timing: RelayTiming, store: Arc<MemStore>) -> Relay {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
     let env: HashMap<&str, String> = [
@@ -230,7 +232,10 @@ async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
         ("ALLOWED_SUBJECTS", ALICE.to_string()),
-        ("DATA_DIR", data_dir.to_string_lossy().into_owned()),
+        (
+            "DATABASE_URL",
+            "postgres://unused@localhost/unused".to_string(),
+        ),
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
@@ -247,7 +252,6 @@ async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
         })
         .unwrap()
     };
-    let store = Arc::new(FileDeviceStore::open(settings.devices_file()).unwrap());
     let logs = Arc::new(Mutex::new(Vec::new()));
     let sink_logs = logs.clone();
     let sink: LogSink = Arc::new(move |line| sink_logs.lock().unwrap().push(line.to_string()));
@@ -255,7 +259,7 @@ async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
         settings,
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
-        store,
+        store.clone(),
         timing,
         sink,
     );
@@ -266,7 +270,7 @@ async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
         addr,
         rsa,
         logs,
-        data_dir,
+        store,
     }
 }
 
@@ -1166,7 +1170,7 @@ async fn a_relay_restart_never_lets_an_old_dialog_run() {
     // takes its place.
     proxy.cut();
     until("the connector to see the drop", || c.logged("link down")).await;
-    let restarted = start_relay_in(relay_timing(), relay.data_dir.clone()).await;
+    let restarted = start_relay_in(relay_timing(), relay.store.clone()).await;
     proxy.retarget(restarted.addr);
     proxy.reopen();
     until("the connector to be back", || {

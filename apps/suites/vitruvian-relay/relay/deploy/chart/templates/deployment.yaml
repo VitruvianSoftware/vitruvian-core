@@ -19,13 +19,18 @@
 # SOFTWARE.
 
 # One replica, replaced with Recreate rather than rolled: the relay holds each
-# device's /connect WebSocket in memory and owns devices.json, so two relays at
-# once would split devices between them and race on the file.
+# device's /connect WebSocket in memory, so two relays at once would split the
+# devices between them. The devices themselves are in Postgres (relay-db, a
+# CloudNativePG cluster from gitops/argocd/platform/relay/).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "vitruvian-relay.name" . }}
   labels: {{- include "vitruvian-relay.labels" . | nindent 4 }}
+  annotations:
+    # After the database cluster (wave 0) is healthy: the relay's first act is
+    # to connect and migrate.
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   replicas: 1
   strategy:
@@ -45,8 +50,8 @@ spec:
       {{- with .Values.affinity }}
       affinity: {{- toYaml . | nindent 8 }}
       {{- end }}
-      # fsGroup: the pod runs as UID 10001 and a fresh NFS volume starts
-      # root-owned, so the group is what lets the relay write devices.json.
+      # fsGroup: the pod runs as UID 10001 and the NFS volume starts root-owned,
+      # so the group is what lets the relay read the old devices.json.
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -80,14 +85,32 @@ spec:
               value: {{ required "oidc.connectorClientId is required (zitadel-apps-relay output connectorClientId)" .Values.oidc.connectorClientId | quote }}
             - name: ALLOWED_SUBJECTS
               value: {{ required "oidc.allowedSubjects is required: an empty list would admit every account in the instance" .Values.oidc.allowedSubjects | quote }}
-            - name: DATA_DIR
-              value: /data
+            # CloudNativePG writes the app user's connection string to the
+            # relay-db-app secret (key `uri`) when it creates the cluster.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.secretName | quote }}
+                  key: {{ .Values.database.secretKey | quote }}
+            # The cluster's CA (relay-db-ca, key ca.crt): the relay checks the
+            # database's certificate against it and refuses plain text.
+            - name: DATABASE_CA_FILE
+              value: /etc/relay-db-ca/ca.crt
+            # REMOVE IN TASK 13: the P1 device file, read once at start to copy
+            # its device into Postgres when the database has none.
+            - name: LEGACY_DEVICES_FILE
+              value: /data/devices.json
           ports:
             - name: http
               containerPort: 3000
           volumeMounts:
+            # REMOVE IN TASK 13 (with the volume): read only, for the import.
             - name: data
               mountPath: /data
+              readOnly: true
+            - name: db-ca
+              mountPath: /etc/relay-db-ca
+              readOnly: true
           livenessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 20
@@ -99,3 +122,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "vitruvian-relay.name" . }}-data
+        - name: db-ca
+          secret:
+            secretName: {{ .Values.database.caSecretName | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
