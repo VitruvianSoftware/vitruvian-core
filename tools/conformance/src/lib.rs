@@ -334,6 +334,7 @@ impl Context {
             ("CACHESAVE", "Actions cache saves (only GitHub-hosted jobs on main save; queue/PR refs and self-hosted runners restore only)"),
             ("GOPROXY", "CI Go module fetches (#4187: GOPROXY falls through on a proxy.golang.org timeout)"),
             ("IMGPATHS", "Container image triggers (*-image.yaml push/PR paths match and ignore BUILD/docs/charts)"),
+            ("RELEASEDEQ", "Release PR dequeue (every release-please job takes a stale queued release PR out of the merge queue first, and puts it back after)"),
             ("IAC", "IaC destructive-import guard (zitadel-apps must create, never import)"),
             ("PULUMI", "Pulumi program identity (unique project names · customDomain under its zone)"),
             ("COPYBARA", "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)"),

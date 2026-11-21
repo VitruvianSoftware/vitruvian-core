@@ -48,6 +48,7 @@ case "$1 $2" in
       *) echo "unexpected fake gh graphql call: $*" >&2; exit 99 ;;
     esac
     ;;
+  "pr merge") answer merge ;;
   api\ *)
     path="$2"
     case "$path" in
@@ -95,11 +96,17 @@ impl Ran {
             l.starts_with("api graphql -f id=PR_node42 ") && l.contains("dequeuePullRequest")
         })
     }
-    fn warned(&self) -> bool {
-        self.o
-            .stdout
+    /// `gh pr merge 42 -R owner/repo --squash --auto` was called.
+    fn armed(&self) -> bool {
+        self.flat
             .lines()
-            .any(|l| l.starts_with("::warning title=release PR left in the queue::"))
+            .any(|l| l.starts_with("pr merge 42 -R owner/repo --squash --auto"))
+    }
+    fn warned(&self) -> bool {
+        self.o.stdout.lines().any(|l| {
+            l.starts_with("::warning title=release PR left in the queue::")
+                || l.starts_with("::warning title=release PR not put back in the merge queue::")
+        })
     }
     fn code0(&self) {
         assert_eq!(
@@ -171,6 +178,14 @@ impl Dq {
 
     fn run(&self) -> Ran {
         let o = self.base().go();
+        self.finish(o)
+    }
+
+    /// `release_pr_dequeue rearm`: the step after release-please. Its PR row
+    /// is `number draft queued armed held`; the default is a PR that was left
+    /// out of the queue and is not armed (what a dequeue leaves behind).
+    fn run_rearm(&self) -> Ran {
+        let o = self.base().arg("rearm").go();
         self.finish(o)
     }
 }
@@ -378,6 +393,115 @@ fn missing_or_empty_required_env_fails_before_any_gh_call() {
             assert_eq!(read(d.dir.join("log.flat")), "", "{var}: no gh call");
         }
     }
+}
+
+// --- rearm: put a dequeued PR back when release-please did not push ----------
+
+const REARM_QUERY: &str = "query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){pullRequests(headRefName:$branch,states:OPEN,first:10){nodes{number isCrossRepository isDraft isInMergeQueue autoMergeRequest{enabledAt} labels(first:50){nodes{name}}}}}}";
+
+fn rearm_fresh() -> Dq {
+    let d = Dq::fresh();
+    d.fx("prs", "42\tfalse\tfalse\tfalse\tfalse");
+    d
+}
+
+#[test]
+fn rearm_arms_auto_merge_on_a_pr_left_out_of_the_queue() {
+    let d = rearm_fresh();
+    let r = d.run_rearm();
+    r.code0();
+    r.yes(
+        r.armed(),
+        "auto-merge armed (squash, as the queue requires)",
+    );
+    r.yes(!r.dequeued(), "never dequeues");
+    r.yes(
+        r.flat
+            .contains("-f branch=release-please--branches--main--components--vitruvian "),
+        "targets the component's release branch",
+    );
+    r.yes(
+        r.flat.contains(&format!("-f query={REARM_QUERY} ")),
+        "asks for draft, queue, auto-merge and label state",
+    );
+    r.yes(!r.warned(), "no warning on success");
+    assert_has(&r.o.stdout, "set to auto-merge again", "says so");
+    assert_eq!(r.calls.len(), 2, "one lookup, one merge\n{}", r.show());
+}
+
+#[test]
+fn rearm_leaves_a_pr_that_is_held_draft_queued_or_armed_alone() {
+    for (row, says) in [
+        ("42\tfalse\tfalse\tfalse\ttrue", "held (do-not-automerge)"),
+        ("42\ttrue\tfalse\tfalse\tfalse", "a draft"),
+        ("42\tfalse\ttrue\tfalse\tfalse", "in the merge queue"),
+        ("42\tfalse\tfalse\ttrue\tfalse", "set to auto-merge"),
+    ] {
+        let d = rearm_fresh();
+        d.fx("prs", row);
+        let r = d.run_rearm();
+        r.code0();
+        r.yes(!r.armed() && !r.warned(), &format!("{says}: untouched"));
+        assert_has(&r.o.stdout, says, "says why");
+        assert_eq!(r.calls.len(), 1, "{says}: one lookup\n{}", r.show());
+    }
+}
+
+#[test]
+fn rearm_with_no_open_release_pr_is_a_clean_no_op() {
+    let d = rearm_fresh();
+    d.fx("prs", "");
+    let r = d.run_rearm();
+    r.code0();
+    r.yes(!r.armed() && !r.warned(), "nothing to do");
+    assert_has(&r.o.stdout, "nothing to put back", "says so");
+}
+
+#[test]
+fn rearm_failures_warn_and_never_fail_the_release_run() {
+    for broken in ["prs", "merge"] {
+        let d = rearm_fresh();
+        d.fail(broken);
+        let r = d.run_rearm();
+        r.code0();
+        r.yes(r.warned(), &format!("failed '{broken}' warns"));
+        assert_has(&r.o.stdout, "gh: HTTP 502", "gh's error is shown");
+        assert_lacks(&r.o.stdout, "auto-merge again", "no success claim");
+    }
+    // A row that is cut short must not be armed.
+    let d = rearm_fresh();
+    d.fx("prs", "42\tfalse");
+    let r = d.run_rearm();
+    r.code0();
+    r.yes(!r.armed() && r.warned(), "short row: warned, not armed");
+}
+
+#[test]
+fn rearm_needs_repo_and_component_but_not_the_dequeue_env() {
+    for var in ["REPO", "COMPONENT"] {
+        let d = rearm_fresh();
+        let o = d.base().arg("rearm").env_remove(var).go();
+        assert_eq!(o.code, 1, "{var}: {o:?}");
+        assert_has(&o.stderr, &format!("{var} must be set"), var);
+        assert_eq!(read(d.dir.join("log.flat")), "", "{var}: no gh call");
+    }
+    let d = rearm_fresh();
+    let o = d
+        .base()
+        .arg("rearm")
+        .env_remove("CODE_PATH")
+        .env_remove("MAIN_SHA")
+        .go();
+    assert_eq!(o.code, 0, "{o:?}");
+}
+
+#[test]
+fn an_unknown_argument_is_refused_before_any_gh_call() {
+    let d = Dq::fresh();
+    let o = d.base().arg("rearn").go();
+    assert_eq!(o.code, 2, "{o:?}");
+    assert_has(&o.stderr, "unknown argument 'rearn'", "names it");
+    assert_eq!(read(d.dir.join("log.flat")), "", "no gh call");
 }
 
 // --- the release workflow runs it before release-please ---------------------
