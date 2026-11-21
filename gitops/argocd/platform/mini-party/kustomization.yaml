@@ -31,4 +31,4 @@ images:
   - name: ghcr.io/vitruviansoftware/mini-party
     newName: ghcr.io/vitruviansoftware/mini-party
     newTag: latest
-    digest: sha256:c3be0061fa89f83c96bb29eeaf9409f4ee203e30c4b25759df746359640ff46d
+    digest: sha256:6318a034662dadcc7beb3c3c091f17dbf3cd46903953ad9f86794fb80a91edd5
