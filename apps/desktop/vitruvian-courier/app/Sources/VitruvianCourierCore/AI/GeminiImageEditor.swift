@@ -120,8 +120,9 @@ public struct GeminiImageEditor: AIImageEditor, CustomStringConvertible, CustomD
             guard let inline, let encoded = inline["data"] as? String,
                   let bytes = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters), !bytes.isEmpty
             else { continue }
-            let mime = (inline["mimeType"] as? String) ?? (inline["mime_type"] as? String) ?? "image/png"
-            return .success(EditedImage(data: bytes, mimeType: mime))
+            // The type the service claims is ignored: the bytes must really be a picture of a safe size.
+            guard let edited = EditedImage.validated(bytes) else { continue }
+            return .success(edited)
         }
         if let reason = candidate["finishReason"] as? String, blockedFinishReasons.contains(reason) {
             return .failure(.refused)

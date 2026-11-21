@@ -36,12 +36,15 @@ public enum PhotoEditPreparer {
     public static let maxUploadBytes = 14 * 1024 * 1024
     /// The biggest original it will even try to decode.
     public static let maxInputBytes = 120 * 1024 * 1024
+    /// The biggest original it will decode, in pixels. A sender picks the picture, and a small file can hold a huge one.
+    public static let maxInputPixels = 150_000_000
     public static let jpegQuality = 0.9
 
     public static func prepare(
         _ data: Data,
         maxLongEdge: Int = PhotoEditPreparer.maxLongEdge,
-        maxBytes: Int = PhotoEditPreparer.maxUploadBytes
+        maxBytes: Int = PhotoEditPreparer.maxUploadBytes,
+        maxPixels: Int = PhotoEditPreparer.maxInputPixels
     ) throws -> PreparedPhoto {
         guard data.count <= maxInputBytes else { throw Failure.tooLarge }
         let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
@@ -52,6 +55,8 @@ public enum PhotoEditPreparer {
               let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
               width > 0, height > 0
         else { throw Failure.unreadable }
+        // Checked from the header, before any pixel is decoded.
+        guard width <= maxPixels / height else { throw Failure.tooLarge }
 
         let longest = max(width, height)
         let thumbnailOptions: [CFString: Any] = [

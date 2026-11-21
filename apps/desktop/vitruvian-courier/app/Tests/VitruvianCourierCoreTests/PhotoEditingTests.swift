@@ -959,6 +959,96 @@ final class PhotoEditingTests: XCTestCase {
         assertNoKey(failure, keys: [leakedGoogleKey, "sk-AnotherFixtureNotReal99999"])
     }
 
+    // MARK: - Nothing but pixels leaves the Mac, and only a real picture comes back
+
+    /// A picture with a marker string in its raw bytes in as many places as `type` has: EXIF comment, TIFF description,
+    /// IPTC caption, PNG text, and an XMP packet.
+    private func makeMarkedImage(type: UTType, marker: String) -> Data? {
+        guard (CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).contains(type.identifier) else { return nil }
+        let context = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 0.5))
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+        let image = context.makeImage()!
+        let output = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(output, type.identifier as CFString, 1, nil)!
+        var properties: [CFString: Any] = [
+            kCGImagePropertyGPSDictionary: [
+                kCGImagePropertyGPSLatitude: 51.5, kCGImagePropertyGPSLatitudeRef: "N",
+                kCGImagePropertyGPSLongitude: 0.12, kCGImagePropertyGPSLongitudeRef: "W",
+            ],
+            kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: marker],
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFImageDescription: marker, kCGImagePropertyTIFFMake: marker],
+            kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCCaptionAbstract: marker],
+        ]
+        if type == .png {
+            properties[kCGImagePropertyPNGDictionary] = [kCGImagePropertyPNGDescription: marker, kCGImagePropertyPNGAuthor: marker]
+        }
+        let metadata = CGImageMetadataCreateMutable()
+        CGImageMetadataSetValueWithPath(metadata, nil, "dc:description" as CFString, marker as CFString)
+        CGImageDestinationAddImageAndMetadata(destination, image, metadata, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    func testNoMetadataSurvivesInTheBytesThatAreSentIncludingXMPAndPNGText() throws {
+        let marker = "SECRETMARKER-4242"
+        for type in [UTType.jpeg, .png, .heic] {
+            guard let original = makeMarkedImage(type: type, marker: marker) else {
+                if type == .heic { continue } // This Mac has no HEIC encoder.
+                return XCTFail("couldn't make a \(type.identifier) fixture")
+            }
+            XCTAssertNotNil(original.range(of: Data(marker.utf8)), "the \(type.identifier) fixture carries the marker")
+            let prepared = try PhotoEditPreparer.prepare(original)
+            // ImageIO writes a bare Exif block holding only the pixel size and colour space; `assertNoLocationOrCamera`
+            // checks that it holds nothing else. Everything a person could have put in is looked for by its bytes here.
+            for needle in [marker, "SECRET", "xmp", "XMP", "GPS", "iTXt", "tEXt", "zTXt", "Example"] {
+                XCTAssertNil(prepared.data.range(of: Data(needle.utf8)), "\(needle) left in \(type.identifier)")
+            }
+            assertNoLocationOrCamera(prepared.data)
+        }
+    }
+
+    func testAPictureWithAHugeFrameFromASenderIsTurnedAwayBeforeItIsDecoded() throws {
+        let photo = makeImage(width: 100, height: 100)
+        XCTAssertThrowsError(try PhotoEditPreparer.prepare(photo, maxPixels: 9_999)) { error in
+            XCTAssertEqual(error as? PhotoEditPreparer.Failure, .tooLarge)
+        }
+        XCTAssertNoThrow(try PhotoEditPreparer.prepare(photo, maxPixels: 10_000))
+        XCTAssertGreaterThan(PhotoEditPreparer.maxInputPixels, 100_000_000, "real phone photos still fit")
+    }
+
+    func testOnlyARealPictureOfASafeSizeIsAcceptedBackAndItsTypeComesFromItsBytes() async throws {
+        let png = makeImage(width: 40, height: 30, type: .png)
+        let jpeg = makeImage(width: 40, height: 30, type: .jpeg)
+        XCTAssertEqual(EditedImage.validated(png)?.mimeType, "image/png")
+        XCTAssertEqual(EditedImage.validated(jpeg)?.mimeType, "image/jpeg")
+        XCTAssertNil(EditedImage.validated(Data("<svg xmlns='http://www.w3.org/2000/svg'><script>1</script></svg>".utf8)))
+        XCTAssertNil(EditedImage.validated(Data("%PDF-1.4 not a picture".utf8)))
+        XCTAssertNil(EditedImage.validated(Data()))
+        XCTAssertNil(EditedImage.validated(png, maxPixels: 1_199), "40 x 30 is over a 1,199-pixel limit")
+        XCTAssertNotNil(EditedImage.validated(png, maxPixels: 1_200))
+
+        // A service that calls a JPEG a PNG doesn't get to pick the file's type; one that sends words as a picture gets nothing.
+        let mislabelled = StubHTTPTransport()
+        mislabelled.enqueue(status: 200, json: geminiSuccessJSON(image: jpeg, mime: "image/png"))
+        let relabelled = await GeminiImageEditor(apiKey: leakedGoogleKey, transport: mislabelled)
+            .edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        XCTAssertEqual(relabelled, .success(EditedImage(data: jpeg, mimeType: "image/jpeg")))
+
+        let junk = StubHTTPTransport()
+        junk.enqueue(status: 200, json: geminiSuccessJSON(image: Data("<html>hi</html>".utf8), mime: "image/png"))
+        let junkResult = await GeminiImageEditor(apiKey: leakedGoogleKey, transport: junk)
+            .edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        XCTAssertEqual(junkResult, .failure(.noImageReturned(note: "Here you go.")))
+
+        let openAIJunk = StubHTTPTransport()
+        openAIJunk.enqueue(status: 200, json: openAISuccessJSON(image: Data("<svg/>".utf8)))
+        let openAIResult = await OpenAIImageEditor(apiKey: leakedOpenAIKey, transport: openAIJunk)
+            .edit(image: makeImage(width: 40, height: 30), mimeType: "image/jpeg", instruction: "x")
+        XCTAssertEqual(openAIResult, .failure(.noImageReturned(note: nil)))
+    }
+
     // MARK: - A sender's file name can't reach outside the scratch folder
 
     func testFileNameFromASenderIsReducedToASafeName() {

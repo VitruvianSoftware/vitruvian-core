@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// A picture an AI service sent back from a photo edit.
 public struct EditedImage: Equatable, Sendable {
@@ -21,6 +23,34 @@ public struct EditedImage: Equatable, Sendable {
         case "image/webp": "webp"
         default: "png"
         }
+    }
+}
+
+extension EditedImage {
+    /// The biggest picture accepted back from a service, in bytes and in pixels.
+    public static let maxBytes = 64 * 1024 * 1024
+    public static let maxPixels = 100_000_000
+
+    /// `data` as a picture, only if it really is a PNG, JPEG or WebP of a size that is safe to open. What a service
+    /// *says* the type is doesn't count: the bytes are read, and the type comes from them. Nothing is decoded in full.
+    static func validated(_ data: Data, maxPixels: Int = EditedImage.maxPixels) -> EditedImage? {
+        guard !data.isEmpty, data.count <= maxBytes,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(source) > 0,
+              let type = CGImageSourceGetType(source) as String?,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0, width <= maxPixels / height
+        else { return nil }
+        let mime: String
+        switch type {
+        case UTType.png.identifier: mime = "image/png"
+        case UTType.jpeg.identifier: mime = "image/jpeg"
+        case UTType.webP.identifier: mime = "image/webp"
+        default: return nil
+        }
+        return EditedImage(data: data, mimeType: mime)
     }
 }
 

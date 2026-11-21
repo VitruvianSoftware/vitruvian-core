@@ -97,14 +97,9 @@ public struct OpenAIImageEditor: AIImageEditor, CustomStringConvertible, CustomD
             guard let encoded = item["b64_json"] as? String,
                   let bytes = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters), !bytes.isEmpty
             else { continue }
-            let format = (json["output_format"] as? String)?.lowercased() ?? "png"
-            let mime: String
-            switch format {
-            case "jpeg", "jpg": mime = "image/jpeg"
-            case "webp": mime = "image/webp"
-            default: mime = "image/png"
-            }
-            return .success(EditedImage(data: bytes, mimeType: mime))
+            // The format the service claims is ignored: the bytes must really be a picture of a safe size.
+            guard let edited = EditedImage.validated(bytes) else { continue }
+            return .success(edited)
         }
         return .failure(.noImageReturned(note: nil))
     }
