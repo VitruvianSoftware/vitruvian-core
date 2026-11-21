@@ -25,6 +25,9 @@ packages:
   # The Vitruvian SDK's TypeScript kit, published as @vitruviansoftware/tool-kit
   # from the vitruvian-sdk mirror. packages/* above stops one folder down.
   - packages/vitruvian-sdk/kits/typescript
+  # The web design system (@vitruviansoftware/design-system) sits alongside
+  # packages/design-system/android/. packages/* above stops one folder down.
+  - packages/design-system/web
   - apps/desktop/vitruvian-code
   - apps/web/oauth-user-inspector
   - apps/web/gods-eye-view

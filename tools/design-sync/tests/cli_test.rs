@@ -98,7 +98,7 @@ fn calls(root: &Path) -> String {
 
 fn prepare_fixture(name: &str) -> PathBuf {
     let r = fixture(name);
-    write(&r.join("packages/design-system/tsconfig.json"), "{}");
+    write(&r.join("packages/design-system/web/tsconfig.json"), "{}");
     write(
         &r.join(".design-sync/tailwind-entry.css"),
         "@import \"tailwindcss\";",
@@ -125,16 +125,16 @@ fn prepare_builds_dist_then_stylesheet_from_the_package() {
     assert_eq!(o.rc, 0, "{}", o.stderr);
     assert_eq!(
         o.stdout,
-        "tsc cwd=design-system args=-p tsconfig.json\ntw out\nprepare: dist/ + dist/vitruvian.built.css ready\n"
+        "tsc cwd=web args=-p tsconfig.json\ntw out\nprepare: dist/ + dist/vitruvian.built.css ready\n"
     );
     assert_eq!(o.stderr, "");
     assert_eq!(
         calls(&r),
-        "tsc cwd=design-system args=-p tsconfig.json\n\
-         tw cwd=design-system args=-i ROOT/.design-sync/tailwind-entry.css -o ROOT/packages/design-system/dist/vitruvian.built.css\n"
+        "tsc cwd=web args=-p tsconfig.json\n\
+         tw cwd=web args=-i ROOT/.design-sync/tailwind-entry.css -o ROOT/packages/design-system/web/dist/vitruvian.built.css\n"
     );
     assert!(r
-        .join("packages/design-system/dist/vitruvian.built.css")
+        .join("packages/design-system/web/dist/vitruvian.built.css")
         .is_file());
 }
 
@@ -184,12 +184,12 @@ fn prepare_stops_with_the_failing_tools_status() {
     );
 
     let r = prepare_fixture("nopkg");
-    fs::remove_dir_all(r.join("packages/design-system")).unwrap();
+    fs::remove_dir_all(r.join("packages/design-system/web")).unwrap();
     let o = run("PREPARE_BIN", &r, &[]);
     assert_eq!(o.rc, 1);
     assert_eq!(
         o.stderr,
-        "cd: ROOT/packages/design-system: No such file or directory\n"
+        "cd: ROOT/packages/design-system/web: No such file or directory\n"
     );
     assert_eq!(calls(&r), "");
 }
@@ -203,7 +203,7 @@ fn prepare_treats_an_unwritten_stylesheet_as_the_script_did() {
     assert_eq!(o.rc, 0);
     assert_eq!(
         o.stderr,
-        "grep: ROOT/packages/design-system/dist/vitruvian.built.css: No such file or directory\n"
+        "grep: ROOT/packages/design-system/web/dist/vitruvian.built.css: No such file or directory\n"
     );
     assert!(o.stdout.ends_with("ready\n"));
 }

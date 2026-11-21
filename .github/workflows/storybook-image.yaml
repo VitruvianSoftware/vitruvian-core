@@ -28,25 +28,25 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packages/design-system/**'
-      - '!packages/design-system/**/BUILD'
-      - '!packages/design-system/**/BUILD.bazel'
-      - '!packages/design-system/**/OWNERS'
-      - '!packages/design-system/deploy/**'
-      - '!packages/design-system/mkdocs.yml'
-      - '!packages/design-system/tools/**'
-      - '!packages/design-system/**/*.md'
+      - 'packages/design-system/web/**'
+      - '!packages/design-system/web/**/BUILD'
+      - '!packages/design-system/web/**/BUILD.bazel'
+      - '!packages/design-system/web/**/OWNERS'
+      - '!packages/design-system/web/deploy/**'
+      - '!packages/design-system/web/mkdocs.yml'
+      - '!packages/design-system/web/tools/**'
+      - '!packages/design-system/web/**/*.md'
       - '.github/workflows/storybook-image.yaml'
   pull_request:
     paths:
-      - 'packages/design-system/**'
-      - '!packages/design-system/**/BUILD'
-      - '!packages/design-system/**/BUILD.bazel'
-      - '!packages/design-system/**/OWNERS'
-      - '!packages/design-system/deploy/**'
-      - '!packages/design-system/mkdocs.yml'
-      - '!packages/design-system/tools/**'
-      - '!packages/design-system/**/*.md'
+      - 'packages/design-system/web/**'
+      - '!packages/design-system/web/**/BUILD'
+      - '!packages/design-system/web/**/BUILD.bazel'
+      - '!packages/design-system/web/**/OWNERS'
+      - '!packages/design-system/web/deploy/**'
+      - '!packages/design-system/web/mkdocs.yml'
+      - '!packages/design-system/web/tools/**'
+      - '!packages/design-system/web/**/*.md'
       - '.github/workflows/storybook-image.yaml'
 
 permissions:
@@ -106,8 +106,8 @@ jobs:
       - name: Build and push container image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: packages/design-system
-          file: packages/design-system/Dockerfile
+          context: packages/design-system/web
+          file: packages/design-system/web/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |

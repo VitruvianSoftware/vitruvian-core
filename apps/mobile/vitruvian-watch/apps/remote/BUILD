@@ -31,11 +31,11 @@ kt_android_library(
     srcs = glob(["src/main/kotlin/**/*.kt"]),
     custom_package = "com.vitruviansoftware.watch.remote",
     manifest = "src/main/AndroidManifest.xml",
-    plugins = ["//packages/design-system-android:compose_compiler"],
+    plugins = ["//packages/design-system/android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
         "//apps/mobile/vitruvian-watch/apps/common",
-        "//packages/design-system-android:lib",
+        "//packages/design-system/android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_foundation_foundation",
         "@maven//:androidx_compose_foundation_foundation_layout",

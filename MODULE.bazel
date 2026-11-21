@@ -919,7 +919,7 @@ maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 # In the Maven support variation, the dependencies are conveniently listed here
 # in the MODULE.bazel file.
 #
-# The androidx/Compose block belongs to //packages/design-system-android and
+# The androidx/Compose block belongs to //packages/design-system/android and
 # //mobile/android/remote. Google Maven has to be listed explicitly: naming
 # `repositories` at all replaces rules_jvm_external's Maven Central default,
 # so Central is repeated here rather than inherited.
@@ -1130,7 +1130,7 @@ use_repo(android_ndk, "androidndk")
 
 register_toolchains("@androidndk//:all")
 
-# The Android SDK for //mobile/android/remote and //packages/design-system-android.
+# The Android SDK for //mobile/android/remote and //packages/design-system/android.
 #
 # Resolved from $ANDROID_HOME. This is the one toolchain in the repo that is
 # not hermetic: Google does not redistribute the SDK under a licence that

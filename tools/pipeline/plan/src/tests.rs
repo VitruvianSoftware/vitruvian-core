@@ -299,7 +299,7 @@ fn classify_persona_and_operation_cases() {
         (
             &[
                 "apps/suites/vitruvian-tabs/web/app/page.tsx",
-                "packages/design-system/src/Button.tsx",
+                "packages/design-system/web/src/Button.tsx",
             ],
             false,
             false,

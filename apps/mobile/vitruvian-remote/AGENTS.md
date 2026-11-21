@@ -12,7 +12,7 @@ A Kotlin / Jetpack Compose Android app: a remote control and observability conso
 shaped for a foldable (folded, unfolded and tabletop postures). Two transports: Bluetooth HID
 (nothing installed on the Mac) and [`macagent/`](macagent/README.md), a Rust daemon on the Mac
 reached over Tailscale. The app ↔ daemon contract is [`macagent/API.md`](macagent/API.md).
-Every colour, size and font comes from `//packages/design-system-android`; this app defines
+Every colour, size and font comes from `//packages/design-system/android`; this app defines
 no design value of its own.
 
 ## Build, test, run
@@ -43,10 +43,10 @@ no design value of its own.
 ## House rules
 
 - **Never hardcode a design value.** No `Color(...)`, no bare `.dp` spacing, no font size off
-  the ramp. Missing values go in `packages/design-system/src/tokens.json` and reach Kotlin
+  the ramp. Missing values go in `packages/design-system/web/src/tokens.json` and reach Kotlin
   through the generator. The Fibonacci scale (`Space.s1`…`s8`) is the only source of padding.
 - **Never edit `VitruvianTokens.kt`.** It is generated;
-  `//packages/design-system-android:tokens_are_current` fails the build if you do.
+  `//packages/design-system/android:tokens_are_current` fails the build if you do.
 - **New components belong in the design system, not here.** This app is screens, state and
   wiring (`state/`, `shell/`, `screens/`, `overlays/`).
 - **Check all three postures** before calling a UI change done.

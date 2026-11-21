@@ -298,7 +298,7 @@ pub fn run(ctx: &mut TestContext) {
     // =========================================================================
 
     // B016: Missing importer entry
-    let lockfile_content = "lockfileVersion: '9.0'\nimporters:\n  packages/design-system: {}\n";
+    let lockfile_content = "lockfileVersion: '9.0'\nimporters:\n  packages/design-system/web: {}\n";
     if !lockfile_content.contains("apps/web/gods-eye-view") {
         ctx.pass(
             "B016",
