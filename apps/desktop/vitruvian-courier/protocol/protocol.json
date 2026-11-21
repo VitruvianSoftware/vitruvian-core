@@ -2384,6 +2384,23 @@
         }
       }
     },
+    "LinkPreviewImageParams": {
+      "fields": {
+        "url": {
+          "type": "string",
+          "doc": "The link's address: an https address with a host, at most 2048 bytes. Anything else is -32602."
+        }
+      }
+    },
+    "LinkPreviewImageResult": {
+      "doc": "The picture a page names as its own (its og:image), saved on this Mac. Every field is left out when the page has no picture, or none could be had.",
+      "fields": {
+        "image_path": { "type": "string?", "doc": "The saved picture's file." },
+        "image_width": { "type": "int?" },
+        "image_height": { "type": "int?" },
+        "blurhash": { "type": "string?" }
+      }
+    },
     "ImportStickerParams": {
       "fields": {
         "path": {
@@ -3218,6 +3235,12 @@
       "params": "ImportStickerParams",
       "result": "StickerItem",
       "errors": [-32012, -32014]
+    },
+    "linkPreview.image": {
+      "doc": "The picture of the page at a link, for a link card whose chat network sent a preview with no picture (Beeper fetches it itself). The engine fetches the page the way a preview of a message I send is fetched (https only, no private addresses, a 256 KiB page and 2 MiB picture at most, a short time limit) and saves the picture; the answer is remembered per address, so a page is asked once: a picture for good, \"no picture\" for a week, a failed look-up for an hour. The app asks only while Show link previews is on. A page with no picture answers an empty result, not an error. An address that is not https is -32602.",
+      "params": "LinkPreviewImageParams",
+      "result": "LinkPreviewImageResult",
+      "errors": []
     },
     "bridges.list": {
       "doc": "List every network's embedded bridge, its module version, state, start time, and linked accounts.",

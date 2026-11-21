@@ -94,15 +94,15 @@ final class TimelineTableRound2DefectsQATests: XCTestCase {
         context.closePDF()
     }
 
-    // MARK: Defect 1 — LinkPreviewCardView hardcodes 148 pt picture height instead of keeping 120...148 pt image sizing
+    // MARK: Defect 1 — LinkPreviewCardView sizes its picture from the picture's proportions (up to 200 pt), not one fixed height
 
-    func testWideLinkPreviewBannerKeepsImageProportionalHeightBetween120And148() throws {
+    func testWideLinkPreviewBannerKeepsImageProportionalHeightUpTo200() throws {
         _ = NSApplication.shared
         let dir = try makeTempDir()
         let bannerURL = dir.appendingPathComponent("banner-640x240.png")
         let tallURL = dir.appendingPathComponent("tall-640x480.png")
         try writePNG(to: bannerURL, width: 640, height: 240) // 320 * 240 / 640 = 120 pt
-        try writePNG(to: tallURL, width: 640, height: 480)   // min(148, 320 * 480 / 640) = 148 pt
+        try writePNG(to: tallURL, width: 640, height: 480)   // min(200, 320 * 480 / 640) = 200 pt
 
         LocalFileFacts.warm(paths: [bannerURL.path, tallURL.path])
         _ = ImagePixelSizeReader.sizeNow(ofFirstReadable: [bannerURL.path])
@@ -134,8 +134,8 @@ final class TimelineTableRound2DefectsQATests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(
             tallHeight - bannerHeight,
-            24,
-            "640x240 banner link preview (120pt picture) must remain ~28pt shorter than 640x480 preview (148pt picture), got banner=\(bannerHeight) tall=\(tallHeight)"
+            70,
+            "640x240 banner link preview (120pt picture) must be ~80pt shorter than 640x480 preview (200pt picture), got banner=\(bannerHeight) tall=\(tallHeight)"
         )
     }
 

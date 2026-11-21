@@ -753,9 +753,16 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// this row draws one. A one-to-one chat keeps none: its bubbles start at the left margin.
     public var showsAvatarColumn: Bool { !mine && !isDirect }
 
-    /// Stickers render in a borderless container without the coloured text bubble background tint.
+    /// Stickers and photos on their own render in a borderless container without the coloured bubble background.
     public var suppressesBubbleBackground: Bool {
-        kind == .sticker && !viewOnce && !showsMediaRemovedPlaceholder && sticker != nil
+        (kind == .sticker && !viewOnce && !showsMediaRemovedPlaceholder && sticker != nil) || isPhotoOnly
+    }
+
+    /// A single picture with nothing else on it: no caption, no quote, not a GIF, a gallery, a view-once photo or one
+    /// that was removed. It is drawn with no bubble around it, its time over its corner.
+    public var isPhotoOnly: Bool {
+        kind == .image && gif == nil && !isGIF && !viewOnce && !showsMediaRemovedPlaceholder && galleryItems.isEmpty
+            && reply == nil && rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// A note of something that happened (a timer change, a call), not anyone's words: drawn as a line across the
@@ -804,18 +811,42 @@ public enum TimelineItem: Equatable, Identifiable, Sendable {
     }
 }
 
-/// How a day separator reads: the view gives "Today" and "Yesterday" their words and dates their format.
+/// How a day separator reads: "Today", "Yesterday", the weekday for the two to six days before that, then "Sat, Nov 14"
+/// (the year added when it isn't this one).
 public enum DayLabel: Equatable, Sendable {
     case today
     case yesterday
+    /// Two to six days ago: the weekday's name ("Sunday").
+    case weekday(Date)
     case date(Date)
 
     public static func of(day: Date, now: Date, calendar: Calendar = .current) -> DayLabel {
         if calendar.isDate(day, inSameDayAs: now) { return .today }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(day, inSameDayAs: yesterday) {
-            return .yesterday
-        }
+        let ago = calendar.dateComponents([.day], from: calendar.startOfDay(for: day), to: calendar.startOfDay(for: now)).day ?? 0
+        if ago == 1 { return .yesterday }
+        if (2 ... 6).contains(ago) { return .weekday(day) }
         return .date(day)
+    }
+
+    /// The separator's words. `now` is the clock, so a test can set it. Dates use the locale's own order and
+    /// separators ("Sat, Nov 14" in the US, "Sat 14 Nov" in the UK).
+    public static func text(day: Date, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
+        func format(_ template: String, _ date: Date) -> String {
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            formatter.setLocalizedDateFormatFromTemplate(template)
+            return formatter.string(from: date)
+        }
+        switch of(day: day, now: now, calendar: calendar) {
+        case .today: return String(localized: "Today")
+        case .yesterday: return String(localized: "Yesterday")
+        case let .weekday(date): return format("EEEE", date)
+        case let .date(date):
+            let sameYear = calendar.isDate(date, equalTo: now, toGranularity: .year)
+            return format(sameYear ? "EEEMMMd" : "EEEMMMdy", date)
+        }
     }
 }
 

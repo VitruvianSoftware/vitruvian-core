@@ -323,7 +323,8 @@ enum TimelineContentRevision {
             hasher.combine(LocalFileFacts.cachedExists(message.mediaPath) ?? false)
             hasher.combine(InlinePDFDocumentCache.shared.hasDocument(atPath: message.mediaPath))
             for preview in message.linkPreviews {
-                if let path = preview.imagePath {
+                // The picture the network's preview saved, else the one fetched for the page (`linkPreview.image`).
+                if let path = preview.imagePath ?? preview.pageURL.flatMap({ actions.showLinkPreviews ? actions.linkPreviewImages?.cached(for: $0)?.path : nil }) {
                     hasher.combine(LocalFileFacts.cachedExists(path) ?? false)
                     if let size = ImagePixelSizeReader.cachedSize(ofFirstReadable: [path]) {
                         hasher.combine(Int(size.width.rounded()))
@@ -2544,7 +2545,11 @@ struct TimelineTableView: NSViewRepresentable {
             for (idx, item) in items.enumerated() {
                 guard case let .message(msg) = item else { continue }
                 let matches = msg.mediaPath == path
-                    || msg.linkPreviews.contains(where: { $0.imagePath == path })
+                    || msg.linkPreviews.contains(where: {
+                        $0.imagePath == path
+                            || ($0.imagePath == nil && parent.actions.showLinkPreviews
+                                && $0.pageURL.flatMap { parent.conversation.linkPreviewImages.cached(for: $0)?.path } == path)
+                    })
                     || msg.thumbnailPath == path
                     || msg.galleryItems.contains(where: { $0.mediaPath == path || $0.thumbnailPath == path })
                 guard matches else { continue }
