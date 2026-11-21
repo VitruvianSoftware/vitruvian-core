@@ -651,50 +651,50 @@ func readyAfter(out, since string) bool {
 
 // Print writes the plan with the exact commands, as a dry run shows it.
 func (pl *RelocationPlan) Print(w io.Writer) {
-	fmt.Fprintf(w, "Switch %s (%s, unit %s) to the standard kubelet path\n", pl.Host, pl.Role, pl.Unit)
-	fmt.Fprintf(w, "  dataDir:       %s\n", pl.DataDir)
-	fmt.Fprintf(w, "  now:           %s\n", pl.Situation)
-	fmt.Fprintf(w, "  kubelet after: %s, a bind mount of %s (the files stay on the same volume)\n", kubeletStdPath, pl.Backing)
-	fmt.Fprintf(w, "  kubectl runs:  on %s\n", pl.ControlHost)
-	fmt.Fprintf(w, "  Each command runs as root over ssh (sudo sh -c '<command>').\n")
+	_, _ = fmt.Fprintf(w, "Switch %s (%s, unit %s) to the standard kubelet path\n", pl.Host, pl.Role, pl.Unit)
+	_, _ = fmt.Fprintf(w, "  dataDir:       %s\n", pl.DataDir)
+	_, _ = fmt.Fprintf(w, "  now:           %s\n", pl.Situation)
+	_, _ = fmt.Fprintf(w, "  kubelet after: %s, a bind mount of %s (the files stay on the same volume)\n", kubeletStdPath, pl.Backing)
+	_, _ = fmt.Fprintf(w, "  kubectl runs:  on %s\n", pl.ControlHost)
+	_, _ = fmt.Fprintf(w, "  Each command runs as root over ssh (sudo sh -c '<command>').\n")
 	if pl.preCordoned {
-		fmt.Fprintf(w, "  NOTE: %s is already cordoned and this command did not do it; it is left cordoned at the end.\n", pl.Host)
+		_, _ = fmt.Fprintf(w, "  NOTE: %s is already cordoned and this command did not do it; it is left cordoned at the end.\n", pl.Host)
 	}
 	if pl.Role == "server" && pl.unitActive {
-		fmt.Fprintf(w, "  %s\n", etcdCheckNote)
+		_, _ = fmt.Fprintf(w, "  %s\n", etcdCheckNote)
 	}
 	if len(pl.Evict) > 0 || len(pl.Stay) > 0 {
-		fmt.Fprintf(w, "\nThe drain would evict %d pod(s): %s\n", len(pl.Evict), strings.Join(pl.Evict, ", "))
+		_, _ = fmt.Fprintf(w, "\nThe drain would evict %d pod(s): %s\n", len(pl.Evict), strings.Join(pl.Evict, ", "))
 		if len(pl.Stay) > 0 {
-			fmt.Fprintf(w, "DaemonSet pods that stay (stopped with k3s, back after the start): %s\n", strings.Join(pl.Stay, ", "))
+			_, _ = fmt.Fprintf(w, "DaemonSet pods that stay (stopped with k3s, back after the start): %s\n", strings.Join(pl.Stay, ", "))
 		}
 	}
 	if len(pl.LocalPath) > 0 {
-		fmt.Fprintf(w, "WARNING: these local-path claims are pinned to %s, so their pods stay Pending while it is down: %s\n", pl.Host, strings.Join(pl.LocalPath, ", "))
+		_, _ = fmt.Fprintf(w, "WARNING: these local-path claims are pinned to %s, so their pods stay Pending while it is down: %s\n", pl.Host, strings.Join(pl.LocalPath, ", "))
 	}
 	if pl.ConfigDiff != "" {
-		fmt.Fprintf(w, "\nChange to %s:\n%s\n", k3sConfigPath, indentLines(pl.ConfigDiff, "    "))
+		_, _ = fmt.Fprintf(w, "\nChange to %s:\n%s\n", k3sConfigPath, indentLines(pl.ConfigDiff, "    "))
 	}
 	if pl.UnitDiff != "" {
-		fmt.Fprintf(w, "\nChange to /etc/systemd/system/%s:\n%s\n", pl.Unit, indentLines(pl.UnitDiff, "    "))
+		_, _ = fmt.Fprintf(w, "\nChange to /etc/systemd/system/%s:\n%s\n", pl.Unit, indentLines(pl.UnitDiff, "    "))
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 	for i, s := range pl.Steps {
 		where := pl.Host
 		if s.OnControl {
 			where = pl.ControlHost
 		}
-		fmt.Fprintf(w, "%2d. [%s] %s\n", i+1, where, s.Desc)
+		_, _ = fmt.Fprintf(w, "%2d. [%s] %s\n", i+1, where, s.Desc)
 		if len(s.Cmds) > 0 {
 			for _, c := range s.Cmds {
-				fmt.Fprintf(w, "      %s\n", c)
+				_, _ = fmt.Fprintf(w, "      %s\n", c)
 			}
 		} else {
-			fmt.Fprintf(w, "      %s\n", s.Cmd)
+			_, _ = fmt.Fprintf(w, "      %s\n", s.Cmd)
 		}
 	}
-	fmt.Fprintf(w, "%2d. [%s] final check: the bind mount is in place\n      %s\n", len(pl.Steps)+1, pl.Host, pl.verifyMount)
-	fmt.Fprintf(w, "    [%s] final check: the node still reports the big volume's size as ephemeral-storage\n      %s\n      %s (on %s)\n", pl.ControlHost, pl.verifyCapacity, pl.verifyDisk, pl.Host)
+	_, _ = fmt.Fprintf(w, "%2d. [%s] final check: the bind mount is in place\n      %s\n", len(pl.Steps)+1, pl.Host, pl.verifyMount)
+	_, _ = fmt.Fprintf(w, "    [%s] final check: the node still reports the big volume's size as ephemeral-storage\n      %s\n      %s (on %s)\n", pl.ControlHost, pl.verifyCapacity, pl.verifyDisk, pl.Host)
 }
 
 func indentLines(s, prefix string) string {
@@ -711,10 +711,10 @@ func (p *NativeProvider) RelocateKubelet(ctx context.Context, o RelocateOptions)
 	}
 	plan.Print(o.Out)
 	if !o.Apply {
-		fmt.Fprintf(o.Out, "\nDry run: only read-only checks were made. Nothing was changed.\nRe-run with --apply to switch %s.\n", plan.Host)
+		_, _ = fmt.Fprintf(o.Out, "\nDry run: only read-only checks were made. Nothing was changed.\nRe-run with --apply to switch %s.\n", plan.Host)
 		return nil
 	}
-	fmt.Fprintf(o.Out, "\nApplying...\n")
+	_, _ = fmt.Fprintf(o.Out, "\nApplying...\n")
 	return p.executeRelocation(ctx, plan, o)
 }
 
@@ -732,14 +732,14 @@ type RelocationError struct {
 
 func (e *RelocationError) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "relocating the kubelet on %s failed at step %d of %d (%s): %v\n", e.Host, e.Step, e.Total, e.StepDesc, e.Err)
+	_, _ = fmt.Fprintf(&b, "relocating the kubelet on %s failed at step %d of %d (%s): %v\n", e.Host, e.Step, e.Total, e.StepDesc, e.Err)
 	b.WriteString("\nState of " + e.Host + " now:\n")
 	for _, s := range e.State {
 		b.WriteString("  - " + s + "\n")
 	}
 	b.WriteString("\nHow to recover:\n")
 	for i, r := range e.Recovery {
-		fmt.Fprintf(&b, "  %d. %s\n", i+1, r)
+		_, _ = fmt.Fprintf(&b, "  %d. %s\n", i+1, r)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -750,7 +750,7 @@ func (p *NativeProvider) executeRelocation(ctx context.Context, plan *Relocation
 	done := map[string]bool{}
 	stopIdx := indexOf(plan.Steps, stepStop)
 	for i, s := range plan.Steps {
-		fmt.Fprintf(o.Out, "[%d/%d] %s\n", i+1, len(plan.Steps), s.Desc)
+		_, _ = fmt.Fprintf(o.Out, "[%d/%d] %s\n", i+1, len(plan.Steps), s.Desc)
 		run := p.run
 		if s.OnControl {
 			run = o.Control
@@ -772,7 +772,7 @@ func (p *NativeProvider) executeRelocation(ctx context.Context, plan *Relocation
 			s.Capture(out)
 		}
 		if err == nil && s.ShowOutput && strings.TrimSpace(out) != "" {
-			fmt.Fprintf(o.Out, "      %s\n", indent(strings.TrimSpace(out)))
+			_, _ = fmt.Fprintf(o.Out, "      %s\n", indent(strings.TrimSpace(out)))
 		}
 		if err != nil {
 			rerr := &RelocationError{Host: plan.Host, Step: i + 1, Total: len(plan.Steps), StepDesc: s.Desc, Err: err}
@@ -783,9 +783,9 @@ func (p *NativeProvider) executeRelocation(ctx context.Context, plan *Relocation
 	}
 	p.finalCheck(ctx, plan, o)
 	if plan.ownCordon {
-		fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s), served an NFS volume, and is schedulable again.\n", plan.Host, kubeletStdPath, plan.Backing)
+		_, _ = fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s), served an NFS volume, and is schedulable again.\n", plan.Host, kubeletStdPath, plan.Backing)
 	} else {
-		fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s) and served an NFS volume. It was already cordoned before this run, by something else, so it is still cordoned: uncordon it yourself when that reason is gone.\n", plan.Host, kubeletStdPath, plan.Backing)
+		_, _ = fmt.Fprintf(o.Out, "\n%s now runs its kubelet at %s (bind mount of %s) and served an NFS volume. It was already cordoned before this run, by something else, so it is still cordoned: uncordon it yourself when that reason is gone.\n", plan.Host, kubeletStdPath, plan.Backing)
 	}
 	return nil
 }
@@ -915,29 +915,29 @@ func pollUntil(ctx context.Context, run CommandRunner, cmd string, accept func(s
 // as warnings; by now the node is already back in service.
 func (p *NativeProvider) finalCheck(ctx context.Context, plan *RelocationPlan, o RelocateOptions) {
 	w := o.Out
-	fmt.Fprintf(w, "\nFinal check on %s:\n", plan.Host)
+	_, _ = fmt.Fprintf(w, "\nFinal check on %s:\n", plan.Host)
 	out, err := p.run(ctx, plan.verifyMount)
-	fmt.Fprintf(w, "  %s\n", indent(strings.TrimSpace(out)))
+	_, _ = fmt.Fprintf(w, "  %s\n", indent(strings.TrimSpace(out)))
 	if err != nil {
-		fmt.Fprintf(w, "  WARNING: mount check failed: %v\n", err)
+		_, _ = fmt.Fprintf(w, "  WARNING: mount check failed: %v\n", err)
 	}
 	capOut, cerr := o.Control(ctx, plan.verifyCapacity)
 	diskOut, derr := p.run(ctx, plan.verifyDisk)
 	if cerr != nil || derr != nil {
-		fmt.Fprintf(w, "  WARNING: could not compare ephemeral-storage (kubectl: %v, df: %v)\n", cerr, derr)
+		_, _ = fmt.Fprintf(w, "  WARNING: could not compare ephemeral-storage (kubectl: %v, df: %v)\n", cerr, derr)
 		return
 	}
 	capBytes, e1 := parseQuantityBytes(capOut)
 	diskBytes, e2 := strconv.ParseInt(strings.TrimSpace(diskOut), 10, 64)
 	if e1 != nil || e2 != nil {
-		fmt.Fprintf(w, "  WARNING: could not compare ephemeral-storage (reported %q, volume %q)\n", strings.TrimSpace(capOut), strings.TrimSpace(diskOut))
+		_, _ = fmt.Fprintf(w, "  WARNING: could not compare ephemeral-storage (reported %q, volume %q)\n", strings.TrimSpace(capOut), strings.TrimSpace(diskOut))
 		return
 	}
 	if withinPercent(capBytes, diskBytes, 1) {
-		fmt.Fprintf(w, "  ephemeral-storage OK: the node reports %s, the volume under %s is %s bytes\n", strings.TrimSpace(capOut), plan.Backing, strings.TrimSpace(diskOut))
+		_, _ = fmt.Fprintf(w, "  ephemeral-storage OK: the node reports %s, the volume under %s is %s bytes\n", strings.TrimSpace(capOut), plan.Backing, strings.TrimSpace(diskOut))
 		return
 	}
-	fmt.Fprintf(w, "  WARNING: the node reports ephemeral-storage %s (%d bytes) but the volume under %s is %d bytes; the kubelet may not be reporting the big volume\n",
+	_, _ = fmt.Fprintf(w, "  WARNING: the node reports ephemeral-storage %s (%d bytes) but the volume under %s is %d bytes; the kubelet may not be reporting the big volume\n",
 		strings.TrimSpace(capOut), capBytes, plan.Backing, diskBytes)
 }
 

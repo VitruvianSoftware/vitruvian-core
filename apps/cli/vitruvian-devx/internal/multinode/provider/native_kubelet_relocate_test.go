@@ -362,7 +362,7 @@ func realScan(t *testing.T, files map[string]string, unit string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(root) })
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	for path, content := range files {
 		full := filepath.Join(root, path)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -826,7 +826,7 @@ func TestRelocate_ApplyRunsEveryStepInOrderAndChecks(t *testing.T) {
 	idx := func(s string) int { return ctl.index(s) }
 	cordon, drain, uncordon := idx("kubectl cordon nuc9i5"), idx("kubectl drain nuc9i5"), idx("kubectl uncordon nuc9i5")
 	apply, logs := idx("kubectl apply -f -"), idx("kubectl logs")
-	if !(0 <= cordon && cordon < drain && drain < apply && apply < logs && logs < uncordon) {
+	if cordon < 0 || cordon >= drain || drain >= apply || apply >= logs || logs >= uncordon {
 		t.Errorf("control order wrong: cordon=%d drain=%d apply=%d logs=%d uncordon=%d\n%s", cordon, drain, apply, logs, uncordon, strings.Join(ctl.calls, "\n"))
 	}
 	// The etcd check runs at plan time and again before the stop.
@@ -1119,7 +1119,7 @@ func TestRelocate_VerificationFailuresKeepTheNodeCordoned(t *testing.T) {
 func TestRelocate_NFSCheckObjectsAreRemovedEvenWhenTheCheckFails(t *testing.T) {
 	node, ctl := nuc9i5Host(), controlHost()
 	ctl.prepend(reply{match: "kubectl wait", err: errors.New("timed out waiting for the condition")})
-	applyErr(t, node, ctl, 0)
+	_, _ = applyErr(t, node, ctl, 0)
 	if n := ctl.count("delete namespace devx-kubelet-check"); n != 2 {
 		t.Errorf("the namespace must be deleted before and after, even on failure; got %d", n)
 	}

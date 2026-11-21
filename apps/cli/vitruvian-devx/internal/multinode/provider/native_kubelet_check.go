@@ -259,9 +259,9 @@ func (p *NativeProvider) runNFSCheck(ctx context.Context, o RelocateOptions) err
 		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		if err := clean(cctx); err != nil {
-			fmt.Fprintf(o.Out, "  WARNING: could not delete the check objects: %v\n  Remove them by hand on %s:\n", err, o.ControlHost)
+			_, _ = fmt.Fprintf(o.Out, "  WARNING: could not delete the check objects: %v\n  Remove them by hand on %s:\n", err, o.ControlHost)
 			for _, c := range cleanup {
-				fmt.Fprintf(o.Out, "    %s\n", c)
+				_, _ = fmt.Fprintf(o.Out, "    %s\n", c)
 			}
 		}
 	}()

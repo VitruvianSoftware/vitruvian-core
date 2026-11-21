@@ -91,8 +91,8 @@ func TestEnsureKubeletBindMount_Agent(t *testing.T) {
 		}
 	}
 	// Order: symlink removal before the mount-point mkdir before enable.
-	if !(strings.Index(cmd, "rm -f /var/lib/kubelet") < strings.Index(cmd, "mkdir -p /var/lib/kubelet") &&
-		strings.Index(cmd, "mkdir -p /var/lib/kubelet") < strings.Index(cmd, "systemctl enable --now")) {
+	if strings.Index(cmd, "rm -f /var/lib/kubelet") >= strings.Index(cmd, "mkdir -p /var/lib/kubelet") ||
+		strings.Index(cmd, "mkdir -p /var/lib/kubelet") >= strings.Index(cmd, "systemctl enable --now") {
 		t.Errorf("steps out of order:\n%s", cmd)
 	}
 	// Never mount over real data.
@@ -466,7 +466,7 @@ func TestBindMountCmd_RunsForReal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.RemoveAll(root) })
+		t.Cleanup(func() { _ = os.RemoveAll(root) })
 		bp = bindPaths{std: filepath.Join(root, "var/lib/kubelet"), systemd: filepath.Join(root, "etc/systemd/system"), mountUnit: "var-lib-kubelet.mount"}
 		if err := os.MkdirAll(filepath.Dir(bp.std), 0o755); err != nil {
 			t.Fatal(err)

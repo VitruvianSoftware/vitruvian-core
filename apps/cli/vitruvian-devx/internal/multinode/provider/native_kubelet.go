@@ -77,12 +77,10 @@ type bindPaths struct {
 
 var stdBindPaths = bindPaths{std: kubeletStdPath, systemd: "/etc/systemd/system", mountUnit: kubeletMountUnitName}
 
-// kubeletMountUnit renders the systemd mount unit that bind-mounts the backing
-// directory at /var/lib/kubelet. It is ordered before both k3s units so the
+// kubeletMountUnitAt renders the systemd mount unit that bind-mounts the backing
+// directory at bp.std (/var/lib/kubelet). It is ordered before both k3s units so the
 // kubelet never starts against the bare mount point, and it requires the volume
 // that holds the backing directory (/home, say) to be mounted first.
-func kubeletMountUnit(dataDir string) string { return kubeletMountUnitAt(stdBindPaths, dataDir) }
-
 func kubeletMountUnitAt(bp bindPaths, dataDir string) string {
 	return "[Unit]\n" +
 		"Description=devx: bind " + kubeletBackingDir(dataDir) + " at " + bp.std + "\n" +

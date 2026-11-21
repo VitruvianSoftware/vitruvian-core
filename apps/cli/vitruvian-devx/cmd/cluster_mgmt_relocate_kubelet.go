@@ -97,8 +97,8 @@ with the bind mount from the start.`,
 			})
 			if errors.Is(err, provider.ErrKubeletAlreadyRelocated) {
 				// Idempotent: a node that is already switched is a success.
-				fmt.Fprintln(c.OutOrStdout(), err)
-				fmt.Fprintln(c.OutOrStdout(), "Nothing to do.")
+				_, _ = fmt.Fprintln(c.OutOrStdout(), err)
+				_, _ = fmt.Fprintln(c.OutOrStdout(), "Nothing to do.")
 				return nil
 			}
 			return err
