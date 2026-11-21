@@ -407,6 +407,19 @@ var syncedProjects = []syncedProject{
 		Description:    "Antigravity plugin: a lead agent plans the work, specialist agents do it, and a live panel shows the plan, the board and the spend",
 	},
 	{
+		// Export-only mirror of the vitruvian-orchestrator OpenCode plugin
+		// (apps/opencode/plugins/vitruvian-orchestrator becomes its root). Its
+		// release.yml publishes @vitruviansoftware/opencode-vitruvian-orchestrator
+		// to npm with trusted publishing. Name uppercase-snakes to
+		// VITRUVIAN_ORCHESTRATOR_OPENCODE_SYNC_SSH_KEY, consumed by
+		// copybara-export-vitruvian-orchestrator-opencode.yaml.
+		Name:           "vitruvian-orchestrator-opencode",
+		StandaloneRepo: "vitruvian-orchestrator-opencode",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "OpenCode plugin: a lead agent plans the work, specialist agents do it, and a live sidebar shows the plan, the board and the spend",
+	},
+	{
 		// Export-only mirror for the vitruviansoftware.dev website
 		// (apps/web/vitruviansoftware-dev). The repo already exists and stays the
 		// GitHub Pages publisher for the custom domain: the monorepo exports the

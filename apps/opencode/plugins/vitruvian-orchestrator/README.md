@@ -59,9 +59,31 @@ Posts belong to a channel (`main` by default; channel names match `[a-z0-9][a-z0
 
 The model, worktree, and channel are only ever read from the lead's brief, never from board posts, and are checked before use.
 
-## Setup and verification
+## Install
 
-- **In this repository**: OpenCode automatically loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.
-- **Outside this repository**: Run `./apps/opencode/plugins/vitruvian-orchestrator/install.sh` to install the loader files into `~/.config/opencode/plugins/vitruvian-orchestrator/`.
+Add the plugin to `opencode.json` (your project's, or `~/.config/opencode/opencode.json` for every project):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["@vitruviansoftware/opencode-vitruvian-orchestrator"]
+}
+```
+
+That one entry loads everything, on OpenCode 2.3 or later:
+
+- the tools (`progress`, `step`, `post`, `board`, `channel`, `team`, `team_setup`);
+- the **Orchestrator** sidebar;
+- the ten generic agents, registered as `vitruvian-orchestrator:<role>` (for example `vitruvian-orchestrator:developer`). The prefix keeps them clear of OpenCode's own `build` agent and of your agents. An agent you already define under one of these ids is kept as it is;
+- the `orchestrate` and `team-setup` skills. A skill your repository already has under the same name wins.
+
+The package is published from the read-only mirror [VitruvianSoftware/vitruvian-orchestrator-opencode](https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode). It is developed in [vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/opencode/plugins/vitruvian-orchestrator), where issues and changes go.
+
+To map roles to your own agents, see the [team file guide](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/guides/orchestrator-team-file.md), or run the `team-setup` skill.
+
+## Developing the plugin
+
+- **In vitruvian-core**: OpenCode loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.
+- **From a checkout, for every project**: run `./install.sh` to write loader files into `~/.config/opencode/plugins/vitruvian-orchestrator/` that import this folder. Do not also add the npm entry, or the plugin loads twice.
 - **Subdirectory**: [lib](./lib/README.md)
 - **Verification**: `bazel test //apps/opencode/plugins/vitruvian-orchestrator/...`

@@ -1,6 +1,40 @@
 {
-  "name": "vitruvian-orchestrator",
-  "version": "0.1.0",
+  "name": "@vitruviansoftware/opencode-vitruvian-orchestrator",
+  "version": "0.2.0",
+  "description": "OpenCode plugin: a lead agent plans the work, specialist agents do it, and a live sidebar shows the plan, the board and the spend.",
   "type": "module",
-  "private": true
+  "license": "MIT",
+  "author": "VitruvianSoftware",
+  "homepage": "https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode.git"
+  },
+  "bugs": "https://github.com/VitruvianSoftware/vitruvian-core/issues",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "agents",
+    "orchestration"
+  ],
+  "exports": {
+    "./server": "./server.mjs",
+    "./tui": "./tui.tsx"
+  },
+  "files": [
+    "server.mjs",
+    "tui.tsx",
+    "lib/*.mjs",
+    "!lib/*.test.mjs",
+    "agents/*.md",
+    "skills/*/SKILL.md",
+    "install.sh",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

@@ -27,8 +27,8 @@ The `vitruvian-orchestrator` plugin ships ten role-named agents (`lead`, `develo
 
 When a role has no mapping in `.agents/team.json` (`source: "generic"`), it uses its generic agent:
 
-- **Claude Code:** `vitruvian-orchestrator:<role>` (plugin agents are namespaced).
-- **Antigravity and OpenCode:** `<role>`.
+- **Claude Code and OpenCode:** `vitruvian-orchestrator:<role>`. Claude Code namespaces plugin agents; the OpenCode plugin registers its agents under the same prefix, which also keeps them clear of OpenCode's own `build` agent.
+- **Antigravity:** `<role>`.
 
 The `team` tool's `dispatch` field on each role row gives the exact agent id to start: `agent` when `source` is `"team"`, the generic agent id above when `source` is `"generic"`, and `null` when `source` is `"off"`.
 

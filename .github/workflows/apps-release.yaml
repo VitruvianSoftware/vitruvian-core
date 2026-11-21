@@ -49,6 +49,7 @@ on:
       - "apps/antigravity/plugins/vitruvian-orchestrator/**"
       - "apps/antigravity/plugins/worktree-band/**"
       - "apps/claude-code/plugins/vitruvian-orchestrator/**"
+      - "apps/opencode/plugins/vitruvian-orchestrator/**"
       - "apps/mcp/vitruvian-slack-mcp/**"
       - "apps/desktop/vitruvian-code/**"
       - "apps/web/oauth-user-inspector/**"
@@ -91,6 +92,7 @@ jobs:
             apps/antigravity/plugins/vitruvian-orchestrator
             apps/antigravity/plugins/worktree-band
             apps/claude-code/plugins/vitruvian-orchestrator
+            apps/opencode/plugins/vitruvian-orchestrator
             apps/mcp/vitruvian-slack-mcp
             apps/desktop/vitruvian-code
             apps/web/oauth-user-inspector

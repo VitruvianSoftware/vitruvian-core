@@ -134,6 +134,7 @@ jobs:
             VitruvianSoftware/vitruvian-roborock-mcp
             VitruvianSoftware/gh-watch
             VitruvianSoftware/vitruvian-orchestrator-antigravity
+            VitruvianSoftware/vitruvian-orchestrator-opencode
             VitruvianSoftware/vitruvian-code
             VitruvianSoftware/vitruvian-devx
             VitruvianSoftware/vitruvian-homelab

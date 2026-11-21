@@ -469,6 +469,19 @@ COMPONENTS = [
         "export_only": True,
     },
     {
+        # The vitruvian-orchestrator OpenCode plugin. Its folder becomes the
+        # mirror's root, and the mirror's release.yml publishes it to npm as
+        # @vitruviansoftware/opencode-vitruvian-orchestrator: npm's trusted
+        # publisher is the mirror, never this repository. Export-only.
+        "name": "vitruvian-orchestrator-opencode",
+        "repo": "vitruvian-orchestrator-opencode",
+        "subtree": "apps/opencode/plugins/vitruvian-orchestrator",
+        "standalone_rev_id": "VITRUVIAN_ORCHESTRATOR_OPENCODE_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        "export_only": True,
+    },
+    {
         "name": "site-vitruviansoftware-dev",
         "repo": "site-vitruviansoftware-dev",
         "subtree": "apps/web/vitruviansoftware-dev",

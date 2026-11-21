@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,9 +31,24 @@ js_library(
         "lib/adapter.mjs",
         "lib/orchestrator-core.mjs",
         "lib/prices.mjs",
+        "lib/register.mjs",
         "lib/tier-defaults.mjs",
         "server.mjs",
     ],
+)
+
+js_test(
+    name = "register_test",
+    size = "small",
+    data = [":adapter"] + glob(
+        [
+            "agents/*.md",
+            "skills/*/SKILL.md",
+        ],
+        allow_empty = True,
+    ),
+    entry_point = "lib/register.test.mjs",
+    node_options = ["--test"],
 )
 
 js_test(
@@ -66,4 +82,32 @@ filegroup(
         allow_empty = True,
     ),
     visibility = ["//tools/agent-roster:__pkg__"],
+)
+
+js_test(
+    name = "version_test",
+    size = "small",
+    data = [
+        ".release-please-manifest.json",
+        "CHANGELOG.md",
+        "LICENSE",
+        "package.json",
+        "release-please-config.json",
+        "server.mjs",
+        "tui.tsx",
+    ],
+    entry_point = "version.test.mjs",
+)
+
+pipeline_unit(
+    name = "opencode-vitruvian-orchestrator",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        ":adapter_test",
+        ":register_test",
+        ":version_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 15,
 )
