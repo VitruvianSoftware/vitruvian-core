@@ -1191,4 +1191,37 @@ final class TimelineTableViewTests: XCTestCase {
         }
         XCTAssertFalse(capsule.model.isVisible)
     }
+
+    /// The test seam (`noteUserScrollForTesting`) is not what the app listens to: a real wheel event is. With no wheel
+    /// event the timeline moving (a key, an app jump) shows no capsule; after one it does.
+    func testARealWheelEventLetsTheCapsuleShowButAKeyDoesNot() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        h.pump(for: 1.0) // the grace after the last gesture ends
+        let clip = h.scrollView.contentView
+        func moveTimeline(to y: CGFloat) {
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+            h.scrollView.reflectScrolledClipView(clip)
+            h.pump(for: 0.05)
+        }
+
+        let key = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: h.window.windowNumber, context: nil, characters: "x", charactersIgnoringModifiers: "x",
+            isARepeat: false, keyCode: 7))
+        NSApp.sendEvent(key)
+        moveTimeline(to: 300)
+        XCTAssertFalse(capsule.model.isVisible, "a key press is not a wheel, a drag or a scroller")
+
+        h.pump(for: 1.0)
+        let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -12,
+                                       wheel2: 0, wheel3: 0))
+        let wheel = try XCTUnwrap(NSEvent(cgEvent: cg))
+        XCTAssertEqual(wheel.type, .scrollWheel)
+        NSApp.sendEvent(wheel)
+        moveTimeline(to: 420)
+        XCTAssertTrue(capsule.model.isVisible, "a wheel event just before the move lets the capsule show")
+    }
 }

@@ -12,7 +12,7 @@ import XCTest
 /// ⓘ button. The clicks are real mouse events sent to a window holding the header (ordered in, off the screen's edge),
 /// as `MessageSelectionClickTests` does.
 @MainActor
-final class ChatHeaderClickTests: XCTestCase {
+class ChatHeaderClickTests: XCTestCase {
     private var window: NSWindow!
     private var host: NSView!
     private var conversation: ConversationModel!
@@ -22,6 +22,13 @@ final class ChatHeaderClickTests: XCTestCase {
     private final class Canary: ObservableObject { var clicks = 0 }
     private let canary = Canary()
     private static let canaryHeight: CGFloat = 24
+
+    /// Which header this runs against: the in-window strip (no Liquid Glass) or the identity the window's toolbar
+    /// holds (Liquid Glass, the one a person sees on macOS 26 and later).
+    var headerPart: ConversationHeader.Part { .strip }
+    /// Where the picture starts, and the gap after it.
+    var leadingInset: CGFloat { PaneHeaderMetrics.inset }
+    var pictureGap: CGFloat { 10 }
 
     override func setUp() async throws {
         _ = NSApplication.shared
@@ -38,11 +45,11 @@ final class ChatHeaderClickTests: XCTestCase {
         conversation.setSnapshotStateForTesting(roomID: "!hdr", items: [], row: row, features: Fixture.features)
 
         let header = ConversationHeader(row: row, displayTitle: nil, networkName: "Slack", conversation: conversation,
-                                        part: .strip)
+                                        part: headerPart)
         let canary = canary
         let height = PaneHeaderMetrics.stripHeight + Self.canaryHeight
         let hosting = NSHostingView(rootView: VStack(spacing: 0) {
-            header.frame(width: 700, height: PaneHeaderMetrics.stripHeight)
+            header.frame(width: 700, height: PaneHeaderMetrics.stripHeight, alignment: .leading)
             Button { canary.clicks += 1 } label: { Color.clear.frame(width: 700, height: Self.canaryHeight).contentShape(Rectangle()) }
                 .buttonStyle(.plain)
         })
@@ -86,10 +93,10 @@ final class ChatHeaderClickTests: XCTestCase {
 
     private let mid = PaneHeaderMetrics.stripHeight / 2
     /// The picture is 28 pt, after the header's inset.
-    private var picture: CGPoint { CGPoint(x: PaneHeaderMetrics.inset + 14, y: mid) }
+    private var picture: CGPoint { CGPoint(x: leadingInset + 14, y: mid) }
     /// The name starts after the picture and its 10 pt gap.
-    private var nameSpot: CGPoint { CGPoint(x: PaneHeaderMetrics.inset + 28 + 10 + 20, y: mid - 6) }
-    private var networkSpot: CGPoint { CGPoint(x: PaneHeaderMetrics.inset + 28 + 10 + 20, y: mid + 8) }
+    private var nameSpot: CGPoint { CGPoint(x: leadingInset + 28 + pictureGap + 20, y: mid - 6) }
+    private var networkSpot: CGPoint { CGPoint(x: leadingInset + 28 + pictureGap + 20, y: mid + 8) }
 
     /// Skips unless the window takes clicks at all (it does where there is a window server).
     private func requireClicksWork() throws {
@@ -120,4 +127,13 @@ final class ChatHeaderClickTests: XCTestCase {
         try click(CGPoint(x: 400, y: mid))
         XCTAssertFalse(conversation.isShowingChatInfo, "only the picture and the name are the button")
     }
+}
+
+/// The same clicks on the identity the window's toolbar holds under Liquid Glass (`part: .identity`), which is the
+/// header a person sees on macOS 26 and later: the strip above is the fallback without Liquid Glass.
+@MainActor
+final class ChatHeaderToolbarIdentityClickTests: ChatHeaderClickTests {
+    override var headerPart: ConversationHeader.Part { .identity }
+    override var leadingInset: CGFloat { 0 }
+    override var pictureGap: CGFloat { 8 }
 }
