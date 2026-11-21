@@ -43,7 +43,6 @@ pub const FAMILIES: &[&str] = &[
 const SHARED_HELPER_PACKAGE_PREFIXES: &[&str] = &[
     "packages/rust/",
     "packages/pycompat/",
-    "packages/jq/",
     "packages/gocompat/",
 ];
 

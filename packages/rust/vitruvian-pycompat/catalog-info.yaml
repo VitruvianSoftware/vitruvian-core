@@ -22,13 +22,15 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: vitruvian-pycompat
-  description: Standard-library-only Rust crate reproducing Python string, JSON, argparse, and Unicode character-table behavior for ported CLI tools.
+  description: Standard-library-only Rust crate reproducing Python string, error, JSON, argparse, and Unicode character-table behavior for ported CLI tools, plus an HTTP client that keeps tokens off the command line.
   tags:
     - rust
     - python-compat
     - json
     - argparse
     - unicode
+    - http
+    - curl
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/rust/vitruvian-pycompat
