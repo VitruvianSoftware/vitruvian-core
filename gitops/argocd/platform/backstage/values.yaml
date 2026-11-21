@@ -109,6 +109,16 @@ backstage:
         name: backstage-pagerduty
         key: api-token
         optional: true
+  # Static read-only MCP token for unattended agents, sealed with
+  # bazel run //tools/gitops:seal-backstage-mcp-token. optional, like
+  # PAGERDUTY_TOKEN and ARGOCD_TOKEN: a missing Secret must not block pod
+  # creation with CreateContainerConfigError.
+  - name: BACKSTAGE_MCP_AGENT_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: backstage-mcp-agent-token
+        key: token
+        optional: true
   - name: POSTGRES_PASSWORD
     valueFrom:
       secretKeyRef:
@@ -148,6 +158,20 @@ backstage:
       baseUrl: https://backstage.vitruviansoftware.dev
       listen:
         port: 7007
+      # Static service token for unattended agent read-only catalog access over
+      # MCP. Production-only on purpose (omitted from apps/web/backstage/app-config.yaml)
+      # so local/dev Backstage starts without BACKSTAGE_MCP_AGENT_TOKEN.
+      auth:
+        externalAccess:
+        - type: static
+          options:
+            token: ${BACKSTAGE_MCP_AGENT_TOKEN}
+            subject: mcp-catalog-readonly
+          accessRestrictions:
+          - plugin: mcp-actions
+          - plugin: catalog
+            permission:
+            - catalog.entity.read
       actions:
         pluginSources:
         - catalog

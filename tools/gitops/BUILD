@@ -306,11 +306,14 @@ TOOLS = {
     "cicd-telemetry-smoke": ("cicd_telemetry_smoke.sh", []),
     "seal-arc-github-app": ("seal_arc_github_app.sh", []),
     "seal-backstage-github-app": ("seal_backstage_github_app.sh", []),
+    "seal-backstage-mcp-token": ("seal_backstage_mcp_token.sh", []),
+    "backstage-mcp-probe": ("backstage_mcp_probe.sh", []),
 }
 
 # The Rust tool name for each tool (src/ops/mod.rs TOOLS).
 TOOL_OF = {
     "argocd-secret.sh": "argocd-secret",
+    "backstage_mcp_probe.sh": "backstage-mcp-probe",
     "cicd_telemetry_smoke.sh": "cicd-telemetry-smoke",
     "gitops-cmd.sh": "gitops-cmd",
     "headscale_ops.sh": "headscale-ops",
@@ -324,6 +327,7 @@ TOOL_OF = {
     "seal_pagerduty_readonly.sh": "seal-pagerduty-readonly",
     "seal_arc_github_app.sh": "seal-arc-github-app",
     "seal_backstage_github_app.sh": "seal-backstage-github-app",
+    "seal_backstage_mcp_token.sh": "seal-backstage-mcp-token",
     "seal_argocd_backstage_token.sh": "seal-argocd-backstage-token",
     "seal_headplane_secret.sh": "seal-headplane-secret",
     "seal_headscale_key_exporter.sh": "seal-headscale-key-exporter",

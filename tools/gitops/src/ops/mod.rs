@@ -27,6 +27,7 @@
 
 pub mod alert_test;
 pub mod backstage;
+pub mod backstage_mcp;
 pub mod bw_backup;
 pub mod cicd_smoke;
 pub mod common;
@@ -71,6 +72,8 @@ pub const TOOLS: &[(&str, &str)] = &[
     ("seal-backstage-github-app", "seal_backstage_github_app.sh"),
     ("seal-alert-pagerduty", "seal_alert_pagerduty.sh"),
     ("seal-pagerduty-readonly", "seal_pagerduty_readonly.sh"),
+    ("seal-backstage-mcp-token", "seal_backstage_mcp_token.sh"),
+    ("backstage-mcp-probe", "backstage_mcp_probe.sh"),
 ];
 
 /// Run tool `name` with the script's arguments; None for an unknown name.
@@ -95,6 +98,8 @@ pub fn run_tool(name: &[u8], args: &[Vec<u8>]) -> Option<i32> {
         b"seal-backstage-github-app" => seal::backstage_github_app(args),
         b"seal-alert-pagerduty" => seal::alert_pagerduty(args),
         b"seal-pagerduty-readonly" => seal::pagerduty_readonly(args),
+        b"seal-backstage-mcp-token" => backstage_mcp::seal_token(args),
+        b"backstage-mcp-probe" => backstage_mcp::probe(args),
         _ => return None,
     })
 }
@@ -196,7 +201,7 @@ mod tests {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-'));
             assert!(script.ends_with(".sh"));
         }
-        assert_eq!(TOOLS.len(), 19);
+        assert_eq!(TOOLS.len(), 21);
         assert!(run_tool(b"no-such-tool", &[]).is_none());
     }
 

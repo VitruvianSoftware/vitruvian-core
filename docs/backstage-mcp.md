@@ -180,6 +180,23 @@ claude mcp add --transport stdio backstage -- npx -y mcp-remote https://backstag
 
 ---
 
+## Unattended Agent Access (Static Service Token)
+
+**Status: parked.** Blocked upstream: Backstage 0.18.0 and 0.19.0 refuse to delegate a permission-restricted service token to the catalog (`DefaultAuthService`, error 'restricted and cannot be delegated'), so the approved read-only restriction breaks catalog reads. Do not use this token yet. Agents use the generated `packages/README.md` for package discovery meanwhile. Tracked by the linked issue (issue link added on merge).
+
+Unattended agent sessions that cannot complete an interactive browser OAuth flow authenticate with a static read-only service token (`subject: mcp-catalog-readonly`) configured under `backend.auth.externalAccess` in `gitops/argocd/platform/backstage/values.yaml`. It is omitted from `apps/web/backstage/app-config.yaml` on purpose so local/dev Backstage starts without `BACKSTAGE_MCP_AGENT_TOKEN`.
+
+- **Access restrictions**: Scoped to `plugin: mcp-actions` and `plugin: catalog` (`permission: [catalog.entity.read]`), with `BACKSTAGE_MCP_AGENT_TOKEN` injected from Secret `backstage-mcp-agent-token` (key `token`, `optional: true`).
+- **Token minting & storage**: `bazel run //tools/gitops:seal-backstage-mcp-token` generates a random 32-byte token (if none exists) in the gitignored local store at `tools/sync-env-secrets/secrets/agent-tokens/BACKSTAGE_MCP_AGENT_TOKEN` (mode `600`, kept under `agent-tokens/` so `//tools/sync-env-secrets:apply` never pushes it to GitHub Actions) and writes the SealedSecret to `gitops/argocd/platform/sealed-secrets-manifests/backstage-mcp-agent-token.sealedsecret.yaml`. Back up the plaintext token to Bitwarden from the main checkout with `bazel run //tools/sync-env-secrets:bw-push`.
+- **Repo-level client configs**:
+  - **Claude Code** (`.mcp.json`): Uses Streamable HTTP (`type: "http"`) with `Authorization: Bearer ${BACKSTAGE_MCP_AGENT_TOKEN}` ([docs](https://code.claude.com/docs/en/mcp)).
+  - **OpenCode** (`.opencode/opencode.json`, verified for `opencode v2.2.7`): Uses `type: "remote"` with `Authorization: Bearer {env:BACKSTAGE_MCP_AGENT_TOKEN}` ([docs](https://opencode.ai/docs/mcp-servers/)).
+  - **Antigravity**: No repo-level config is added because Antigravity does not document environment-variable interpolation in HTTP headers; interactive OAuth via `mcp-remote` stays in `~/.gemini/config/mcp_config.json`.
+- **Cloud sessions**: Wiring `BACKSTAGE_MCP_AGENT_TOKEN` into cloud-session bootstrap hooks (`.claude/settings*.json`, `.agents/hooks.json`, `tools/cloud-bootstrap/profiles.tsv`) is a separate follow-up requiring repository maintainer approval on GitHub.
+- **Verification**: the probe `bazel run //tools/gitops:backstage-mcp-probe` is kept for when the restriction is fixed upstream; it currently exits non-zero.
+
+---
+
 ## Configuration Reference (`apps/web/backstage/app-config.yaml`)
 
 ```yaml
