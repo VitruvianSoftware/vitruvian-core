@@ -24,6 +24,7 @@ go_library(
     visibility = ["//apps/desktop/vitruvian-courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/vitruvian-courier/engine/internal/gchat/pb",
+        "//apps/desktop/vitruvian-courier/engine/internal/media",
         "@com_github_rs_zerolog//:zerolog",
         "@fi_mau_go_util//configupgrade",
         "@net_maunium_go_mautrix//bridgev2",

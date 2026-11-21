@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -21,7 +22,13 @@ import (
 const (
 	// MaxMediaBytes is the 200 MiB attachment size limit enforced for Google Chat uploads and downloads.
 	MaxMediaBytes = 200 * 1024 * 1024
+	// maxLinkPreviewImageBytes matches actions.maxLinkPreviewImageBytes (2 MiB) for link-card thumbnails.
+	maxLinkPreviewImageBytes = 2 * 1024 * 1024
 )
+
+// linkPreviewImageTimeout bounds each Google Chat link-preview picture download
+// so a slow picture never stalls sync (variable so tests can shorten it).
+var linkPreviewImageTimeout = 10 * time.Second
 
 func encodeUploadMetadataAnnotation(uploadMetaProto []byte) ([]byte, error) {
 	var meta pb.UploadMetadata
@@ -97,6 +104,64 @@ func (c *Client) downloadAvatar(_ context.Context, avatarURL string) ([]byte, er
 		return nil, err
 	}
 	return ffi.DownloadMedia("avatar", "", "", avatarURL, false)
+}
+
+func (c *Client) downloadLinkPreviewImage(ctx context.Context, imageURL string) ([]byte, error) {
+	dlCtx, cancel := context.WithTimeout(ctx, linkPreviewImageTimeout)
+	defer cancel()
+	if err := dlCtx.Err(); err != nil {
+		return nil, err
+	}
+	release, err := c.acquireMediaSlot(dlCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	var dl func(context.Context, string) ([]byte, error)
+	if c != nil {
+		c.mu.Lock()
+		dl = c.linkPreviewImageDownloader
+		c.mu.Unlock()
+	}
+	if dl == nil {
+		if c == nil {
+			release()
+			return nil, errors.New("nil gchat client")
+		}
+		dl = func(_ context.Context, u string) ([]byte, error) {
+			ffi, err := c.ensureFFIClient()
+			if err != nil {
+				return nil, err
+			}
+			// FFI "external" with externalEnabled=true uses EndpointRole::ExternalPublicImage:
+			// HTTPS-only, *.googleusercontent.com and *.ggpht.com, no cookies, SSRF-guarded.
+			return ffi.DownloadMedia("external", "", "", u, true)
+		}
+	}
+
+	type result struct {
+		data []byte
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		defer release()
+		data, err := dl(dlCtx, imageURL)
+		done <- result{data: data, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			return nil, res.err
+		}
+		if len(res.data) == 0 || len(res.data) > maxLinkPreviewImageBytes {
+			return nil, errors.New("link preview image is empty or over the 2 MiB size limit")
+		}
+		return res.data, nil
+	case <-dlCtx.Done():
+		return nil, dlCtx.Err()
+	}
 }
 
 func (c *Client) prepareOutgoingMessageContent(

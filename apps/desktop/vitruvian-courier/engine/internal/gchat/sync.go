@@ -724,10 +724,15 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 		}
 		content.Mentions = mentions
 	}
-	// Google's own link cards (title, snippet, site), so a link arrives with a preview as in Google Chat itself.
+	// Google's own link cards (title, snippet, site, and picture fetched from Google's servers), so a link arrives with
+	// a preview as in Google Chat itself.
 	var rawMessage pb.Message
 	if err := pb.Unmarshal(pm.rawProto, &rawMessage); err == nil {
-		if previews := linkPreviewsFromMessage(&rawMessage); len(previews) > 0 {
+		var roomID id.RoomID
+		if messageHasLinkPreviewImage(&rawMessage) {
+			roomID = c.resolvePortalMXID(ctx, pm)
+		}
+		if previews := c.linkPreviewsFromMessage(ctx, roomID, &rawMessage); len(previews) > 0 {
 			content.BeeperLinkPreviews = previews
 		}
 	}
