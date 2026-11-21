@@ -714,6 +714,27 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// History that truly ends is not looked for again and again: an event change for an event the chat never lists
+    /// (so the app cannot tell it from older rows arriving) costs one look below the oldest message, which finds
+    /// nothing, and then the chat is quiet: no load loop, no rows added, nothing more to scroll to.
+    func testAnEventChangeForAnUnlistedEventProbesOnceAndLeavesTheEndOfHistoryAlone() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 60 && !h.conversation.hasOlder }
+
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$never-listed"])
+        try await Task.sleep(nanoseconds: 800_000_000)
+        let calls = h.server.receivedParams("room.events").count
+        try await Task.sleep(nanoseconds: 800_000_000)
+        XCTAssertEqual(h.server.receivedParams("room.events").count, calls, "the chat must go quiet, not keep reading")
+        XCTAssertFalse(h.conversation.hasOlder)
+        XCTAssertFalse(h.conversation.isLoadingOlder)
+        XCTAssertEqual(h.messageIDs().count, 60)
+        await stop(h)
+    }
+
     /// A network that answers later (WhatsApp's phone): the load says `loading`, the engine stores the answer on its
     /// own and publishes an event change for the chat, and the older messages show at the top without another scroll,
     /// with the message the person was on kept as the anchor.
