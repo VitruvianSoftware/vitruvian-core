@@ -91,8 +91,9 @@ rust_test(
         "//:composite_actions",
         "//:workflow_files",
         "//tools/shell-compat:src/lib.rs",
-        # What the action's `deps` input may name.
+        # What the action's `deps` input may name (plus shared pycompat).
         "src/transient_lib/lib.rs",
+        "//packages/rust/vitruvian-pycompat:srcs",
         "//tools/gitops/appset-render:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rust_toolchain",
@@ -2199,6 +2200,36 @@ rust_test(
     env = {"BIN": "$(rootpath :image_bump_changelog)"},
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
+)
+
+# macos-paths: generates ci.yaml's detect-macos path filter from the Bazel
+# dependency graph of macos-build's targets and fails on drift. Shells out to
+# `bazel query` itself, so build it and run `bazel-bin/tools/ci/macos_paths`
+# rather than `bazel run`.
+rust_library(
+    name = "macos_paths_lib",
+    srcs = ["src/macos_paths/lib.rs"],
+    crate_name = "macos_paths",
+    crate_root = "src/macos_paths/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "macos_paths",
+    srcs = ["src/macos_paths/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":macos_paths_lib"],
+)
+
+rust_test(
+    name = "macos_paths_test",
+    size = "small",
+    crate = ":macos_paths_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # agent-guard reads this file to check its refusal advice names a real target

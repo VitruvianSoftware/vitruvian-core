@@ -162,3 +162,144 @@ pub fn len(v: &Value) -> Result<usize, Crash> {
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::loads;
+
+    #[test]
+    fn traceback_and_attribute_match_cpython() {
+        let c = Crash::new("KeyError", pystr::repr_str("x"));
+        assert_eq!(
+            c.traceback(),
+            "Traceback (most recent call last):\n  File \"<rust port>\", line 0, in <module>\nKeyError: 'x'\n"
+        );
+        let cases = [
+            (Value::Null, "'NoneType' object has no attribute 'get'"),
+            (Value::Bool(true), "'bool' object has no attribute 'get'"),
+            (
+                Value::Int("1".into()),
+                "'int' object has no attribute 'get'",
+            ),
+            (Value::Float(1.5), "'float' object has no attribute 'get'"),
+            (
+                Value::Str("s".into()),
+                "'str' object has no attribute 'get'",
+            ),
+            (Value::Arr(vec![]), "'list' object has no attribute 'get'"),
+            (Value::Obj(vec![]), "'dict' object has no attribute 'get'"),
+        ];
+        for (val, expected) in cases {
+            let err = Crash::attribute(&val, "get");
+            assert_eq!(err.class, "AttributeError");
+            assert_eq!(err.msg, expected);
+        }
+    }
+
+    #[test]
+    fn os_errors_classify_and_format() {
+        let not_found = std::fs::read("/definitely/not/here").unwrap_err();
+        let c_named = Crash::os(&not_found, Some("/definitely/not/here"));
+        assert_eq!(c_named.class, "FileNotFoundError");
+        assert_eq!(
+            c_named.msg,
+            "[Errno 2] No such file or directory: '/definitely/not/here'"
+        );
+        let c_plain = Crash::os(&not_found, None);
+        assert_eq!(c_plain.class, "FileNotFoundError");
+        assert_eq!(c_plain.msg, "[Errno 2] No such file or directory");
+
+        let perm = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        assert_eq!(Crash::os(&perm, None).class, "PermissionError");
+
+        let is_dir = std::io::Error::from_raw_os_error(21);
+        assert_eq!(Crash::os(&is_dir, Some("dir")).class, "IsADirectoryError");
+
+        let not_dir = std::io::Error::from_raw_os_error(20);
+        assert_eq!(Crash::os(&not_dir, None).class, "NotADirectoryError");
+
+        let generic = std::io::Error::other("custom failure");
+        assert_eq!(
+            Crash::os(&generic, None),
+            Crash::new("OSError", "[Errno 0] custom failure")
+        );
+    }
+
+    #[test]
+    fn value_operations_and_errors_match_cpython() {
+        let obj = loads(r#"{"a": 1, "a": 2, "b": "hi"}"#).unwrap();
+        let arr = loads(r#"["x", 3]"#).unwrap();
+        let text = Value::Str("café".into());
+        let flag = Value::Bool(false);
+
+        assert_eq!(
+            get_or(&obj, "b", Value::Null).unwrap(),
+            Value::Str("hi".into())
+        );
+        assert_eq!(
+            get_or(&obj, "missing", Value::Bool(true)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            get_or(&arr, "a", Value::Null).unwrap_err(),
+            Crash::new("AttributeError", "'list' object has no attribute 'get'")
+        );
+
+        assert_eq!(as_str(&text, "strip").unwrap(), "café");
+        assert_eq!(
+            as_str(&flag, "strip").unwrap_err(),
+            Crash::new("AttributeError", "'bool' object has no attribute 'strip'")
+        );
+
+        assert!(contains(&text, "fé").unwrap());
+        assert!(contains(&arr, "x").unwrap());
+        assert!(!contains(&arr, "3").unwrap());
+        assert!(contains(&obj, "a").unwrap());
+        assert_eq!(
+            contains(&flag, "a").unwrap_err(),
+            Crash::new("TypeError", "argument of type 'bool' is not iterable")
+        );
+
+        assert_eq!(iterate(&arr).unwrap().len(), 2);
+        assert_eq!(
+            iterate(&obj).unwrap(),
+            vec![Value::Str("a".into()), Value::Str("b".into())]
+        );
+        assert_eq!(iterate(&text).unwrap().len(), 4);
+        assert_eq!(
+            iterate(&flag).unwrap_err(),
+            Crash::new("TypeError", "'bool' object is not iterable")
+        );
+
+        assert_eq!(index(&obj, "b").unwrap(), Value::Str("hi".into()));
+        assert_eq!(index(&obj, "k").unwrap_err(), Crash::new("KeyError", "'k'"));
+        assert_eq!(
+            index(&obj, "it's").unwrap_err(),
+            Crash::new("KeyError", "\"it's\"")
+        );
+        assert_eq!(
+            index(&arr, "a").unwrap_err(),
+            Crash::new(
+                "TypeError",
+                "list indices must be integers or slices, not str"
+            )
+        );
+        assert_eq!(
+            index(&text, "a").unwrap_err(),
+            Crash::new("TypeError", "string indices must be integers, not 'str'")
+        );
+        assert_eq!(
+            index(&flag, "a").unwrap_err(),
+            Crash::new("TypeError", "'bool' object is not subscriptable")
+        );
+
+        assert_eq!(len(&arr).unwrap(), 2);
+        assert_eq!(len(&obj).unwrap(), 2);
+        assert_eq!(len(&text).unwrap(), 4);
+        assert_eq!(
+            len(&flag).unwrap_err(),
+            Crash::new("TypeError", "object of type 'bool' has no len()")
+        );
+    }
+}

@@ -23,6 +23,7 @@
 mod app;
 mod brew;
 mod catalog;
+mod catalog_entries;
 mod ci;
 mod delivery;
 mod governance;
@@ -94,6 +95,7 @@ pub fn run_all(ctx: &Context) {
     governance::check_naming_conventions(ctx);
     governance::check_owners(ctx);
     governance::check_packages_index(ctx);
+    catalog_entries::check_catalog_entries(ctx);
     governance::check_root_directories(ctx);
     governance::check_preview_governance(ctx);
     governance::check_lab_hostnames_served(ctx);

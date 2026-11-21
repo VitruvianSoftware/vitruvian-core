@@ -22,6 +22,16 @@ rust_binary(
     deps = [":bazel_cache_lib"],
 )
 
+rust_binary(
+    name = "status",
+    srcs = ["src/main.rs"],
+    args = ["status"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":bazel_cache_lib"],
+)
+
 rust_test(
     name = "bazel_cache_lib_test",
     size = "small",

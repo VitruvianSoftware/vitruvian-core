@@ -5,6 +5,10 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
+# Inter-app boundary (#82): default targets to vitruvian-speaker-internal
+# visibility so other apps cannot depend on its internals.
+package(default_visibility = ["//apps/desktop/vitruvian-speaker:__subpackages__"])
+
 swift_library(
     name = "VitruvianSpeakerCore",
     srcs = glob(["Sources/VitruvianSpeakerCore/**/*.swift"]),
@@ -243,7 +247,6 @@ macos_application(
     minimum_os_version = "14.0",
     resources = ["Resources/AppIcon.icns"],
     tags = ["manual"],
-    visibility = ["//visibility:public"],
     deps = [":VitruvianSpeakerLib"],
 )
 

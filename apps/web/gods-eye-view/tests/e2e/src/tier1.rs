@@ -825,9 +825,9 @@ fn feature_06_bazel_build(ctx: &mut TestContext) {
     // F030
     build_check!(
         "F030",
-        "apps/web/gods-eye-view/BUILD configures default_visibility:public",
-        "default_visibility:public missing from apps/web/gods-eye-view/BUILD",
-        |c: &String| c.contains("default_visibility = [\"//visibility:public\"]")
+        "apps/web/gods-eye-view/BUILD scopes default_visibility to the app",
+        "apps/web/gods-eye-view/BUILD must set default_visibility to //apps/web/gods-eye-view:__subpackages__ (public targets are listed in public-targets.tsv instead)",
+        |c: &String| c.contains("default_visibility = [\"//apps/web/gods-eye-view:__subpackages__\"]")
     );
 }
 

@@ -2,12 +2,13 @@
 
 ## What it gives you
 
-A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's standard library differs—covering `pystr` (whitespace, decimal digits, `repr()`, float formatting, round-to-even), `json` (`json.loads` and `json.dumps` defaults), `argparse` (optionals parser with Python help/usage/errors), and `unicode_tables` (Unicode 15.0.0 character classes).
+A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's standard library differs—covering `pystr` (whitespace, decimal digits, `repr()`, float formatting, round-to-even), `pyerr` (Python-style exception values and tracebacks), `json` (`json.loads` and `json.dumps` defaults), `argparse` (optionals parser with Python help/usage/errors), `unicode_tables` (Unicode 15.0.0 character classes), and `http` (a standard-library-only HTTP client: plain `http://` over a TCP socket, `https://` through `curl`, with the URL, headers, tokens and body passed on curl's standard input, never on its command line).
 
 ## When to use it
 
 - Porting a Python CLI or monorepo script to Rust when output, exit codes, and edge-case parsing must stay byte-identical to the Python original under parity tests.
 - Building standard-library-only Rust tools that must compile with plain `rustc` outside Bazel.
+- Calling an HTTP API (for example GitHub's, with a bearer token) from a standard-library-only Rust tool: use `http::send`, which keeps the token out of the process list.
 
 ## When not to use it
 

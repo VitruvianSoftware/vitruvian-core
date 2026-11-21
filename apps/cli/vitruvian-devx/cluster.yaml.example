@@ -170,3 +170,10 @@ nodes:
     # sshUser: james           # optional: SSH user devx uses to provision the host
     # sshPort: "22"            # optional
     # sshKeyPath: ~/.ssh/id_ed25519  # optional
+    # dataDir: /home/k3s       # optional: keep k3s's data (containerd, etcd, pod
+    #                          # volumes, ephemeral storage) on a bigger volume when /
+    #                          # is small. /var/lib/kubelet stays the standard path and
+    #                          # is bind-mounted from <dataDir>/kubelet, so CSI drivers
+    #                          # (NFS, ...) keep working. A node set up by an older devx
+    #                          # (kubelet root-dir moved) is switched with
+    #                          # `devx cluster relocate-kubelet --host my-nuc --apply`.

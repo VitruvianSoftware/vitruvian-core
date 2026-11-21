@@ -1592,7 +1592,7 @@ public enum Timeline {
         let nextMedia = next.mediaPath ?? base.mediaPath
         return previous.kind != next.kind
             || previous.body != next.body
-            || previous.rich != next.rich
+            || !previous.rich.isSameApartFromAutoLinks(next.rich)
             || previous.fileName != next.fileName
             || prevMedia != nextMedia
             || previous.mimeType != next.mimeType

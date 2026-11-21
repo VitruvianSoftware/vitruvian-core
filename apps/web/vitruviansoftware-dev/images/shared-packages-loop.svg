@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1080 560" width="100%" height="auto" role="img" aria-labelledby="t1 d1" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t1">How an agent finds shared code before it writes its own</title>
+  <desc id="d1">An agent that needs a helper is told by AGENTS.md to look first. It reads packages/README.md, which is generated from each package's catalog-info.yaml, or searches Backstage, which discovers the same files. If it reuses the package, the pull request passes. If it copies twelve or more lines of a shared package instead, the duplicate check on the pull request names the package to use. A new package without a catalog entry fails the conformance check.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-hi { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-ok { fill: #14211b; stroke: #3f6b52; stroke-width: 1.5; }
+      .box-warn { fill: #221d12; stroke: #6b5a2f; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .ok { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .arrow { stroke: #5a7890; stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+      .arrow-ok { stroke: #5f9c7a; stroke-width: 1.5; fill: none; marker-end: url(#ah-ok); }
+      .arrow-warn { stroke: #b39350; stroke-width: 1.5; fill: none; marker-end: url(#ah-warn); stroke-dasharray: 5 4; }
+      .lbl { fill: #687f91; font-size: 10px; }
+    </style>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5a7890"/></marker>
+    <marker id="ah-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5f9c7a"/></marker>
+    <marker id="ah-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b39350"/></marker>
+  </defs>
+
+  <text x="40" y="44" class="title">Look first, then reuse: the loop that keeps shared code findable</text>
+  <text x="40" y="66" class="subtitle">Green is the path we want. Amber is what the checks catch when an agent skips it.</text>
+
+  <!-- 1. Agent -->
+  <rect x="40" y="100" width="200" height="92" rx="6" class="box-hi"/>
+  <text x="56" y="126" class="box-head">An agent needs a helper</text>
+  <text x="56" y="148" class="box-body">"parse --help like Python"</text>
+  <text x="56" y="166" class="box-body">"call an API with a token"</text>
+
+  <!-- 2. AGENTS.md -->
+  <rect x="300" y="100" width="220" height="92" rx="6" class="box-bg"/>
+  <text x="316" y="126" class="box-head">AGENTS.md: reuse first</text>
+  <text x="316" y="148" class="box-body">1 our packages</text>
+  <text x="316" y="164" class="box-body">2 a dependency we already have</text>
+  <text x="316" y="180" class="box-body">3 a new, well-known library  4 new code</text>
+
+  <!-- 3. Index / Backstage -->
+  <rect x="580" y="100" width="220" height="92" rx="6" class="box-bg"/>
+  <text x="596" y="126" class="box-head">Where to look</text>
+  <text x="596" y="148" class="code">packages/README.md</text>
+  <text x="596" y="164" class="box-body">or a Backstage search</text>
+  <text x="596" y="180" class="box-body">(both read the same files)</text>
+
+  <!-- 4. Reuse -->
+  <rect x="860" y="100" width="180" height="92" rx="6" class="box-ok"/>
+  <text x="876" y="126" class="box-head">Reuse it</text>
+  <text x="876" y="148" class="code">deps = [...]</text>
+  <text x="876" y="166" class="ok">PR passes</text>
+
+  <path d="M240 146 L296 146" class="arrow"/>
+  <path d="M520 146 L576 146" class="arrow"/>
+  <path d="M800 146 L856 146" class="arrow-ok"/>
+
+  <!-- Source of truth row -->
+  <rect x="580" y="250" width="220" height="104" rx="6" class="box-hi"/>
+  <text x="596" y="276" class="box-head">One file per package</text>
+  <text x="596" y="298" class="code">catalog-info.yaml</text>
+  <text x="596" y="316" class="box-body">plus a README: what it is for,</text>
+  <text x="596" y="332" class="box-body">what it is not for, how to depend</text>
+
+  <path d="M690 250 L690 196" class="arrow"/>
+  <text x="700" y="228" class="lbl">generated index + Backstage discovery</text>
+
+  <!-- Copy path -->
+  <rect x="40" y="250" width="240" height="104" rx="6" class="box-warn"/>
+  <text x="56" y="276" class="box-head">Agent copies instead</text>
+  <text x="56" y="298" class="box-body">12+ lines that match a</text>
+  <text x="56" y="314" class="box-body">shared package, pasted</text>
+  <text x="56" y="330" class="box-body">into a tool</text>
+  <path d="M140 192 L140 246" class="arrow-warn"/>
+
+  <rect x="40" y="410" width="240" height="104" rx="6" class="box-bg"/>
+  <text x="56" y="436" class="box-head">Duplicate check on the PR</text>
+  <text x="56" y="458" class="warn">names the package to use</text>
+  <text x="56" y="476" class="box-body">or a reasoned allow-list entry</text>
+  <text x="56" y="494" class="box-body">for a deliberate copy</text>
+  <path d="M160 354 L160 406" class="arrow-warn"/>
+
+  <!-- New package path -->
+  <rect x="320" y="410" width="240" height="104" rx="6" class="box-warn"/>
+  <text x="336" y="436" class="box-head">Someone adds a package</text>
+  <text x="336" y="458" class="box-body">with no catalog entry</text>
+
+  <rect x="620" y="410" width="240" height="104" rx="6" class="box-bg"/>
+  <text x="636" y="436" class="box-head">Conformance check</text>
+  <text x="636" y="458" class="warn">fails until the entry exists</text>
+  <text x="636" y="476" class="box-body">so the index and Backstage</text>
+  <text x="636" y="494" class="box-body">can never miss a package</text>
+  <path d="M560 462 L616 462" class="arrow-warn"/>
+  <path d="M740 410 L740 358" class="arrow"/>
+</svg>

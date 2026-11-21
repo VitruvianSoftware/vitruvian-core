@@ -28,8 +28,7 @@ Component package providing implementation for `tools/gitops/src`.
 - Subdirectory: [ops](./ops/README.md)
 
 ## Invariants
-- [pystr.rs:203]: `assert!(is_space('\u{1c}'));`
-- [pystr.rs:204]: `assert!(!is_space('\u{200b}'));`
+- None
 
 ## Side Effects
 - None

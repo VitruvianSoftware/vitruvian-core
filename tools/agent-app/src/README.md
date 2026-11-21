@@ -28,8 +28,6 @@ Component package providing implementation for `tools/agent-app/src`.
 - [json_test.rs:31]: `assert!(loads("{} x").is_err());`
 - [pyerr.rs:110]: `assert!(`
 - [pyerr.rs:115]: `assert!(decode_utf8(b"\xe2\x82")`
-- [pystr.rs:233]: `assert!(is_space('\u{1c}'));`
-- [pystr.rs:234]: `assert!(!is_space('\u{200b}'));`
 
 ## Side Effects
 - [github.rs:24]: `use crate::http;`

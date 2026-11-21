@@ -32,7 +32,7 @@
 pub use vitruvian_pycompat::argparse;
 pub mod json;
 pub mod ops;
-pub mod pystr;
+pub use vitruvian_pycompat::pystr;
 
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs};
