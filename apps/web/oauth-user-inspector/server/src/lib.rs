@@ -401,6 +401,83 @@ mod tests {
         assert!(addr.ip().is_unspecified(), "bind address {addr}");
     }
 
+    /// Every external stylesheet the design system imports must be allowed by
+    /// the CSP's style-src, and a Google Fonts stylesheet also needs its font
+    /// files' host in font-src. Otherwise the browser blocks them in production
+    /// and the site silently falls back to system fonts.
+    #[test]
+    fn csp_allows_every_stylesheet_import() {
+        let css = read_app_file("frontend/design-system/tokens.css");
+        let directive = |name: &str| -> Vec<String> {
+            CONTENT_SECURITY_POLICY
+                .split(';')
+                .map(str::trim)
+                .find_map(|d| d.strip_prefix(name).map(str::to_string))
+                .unwrap_or_else(|| panic!("CSP has no {name} directive"))
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
+        let style_src = directive("style-src");
+        let font_src = directive("font-src");
+        let mut imports = 0;
+        for line in css
+            .lines()
+            .filter(|l| l.trim_start().starts_with("@import"))
+        {
+            let start = line.find("url(").expect("@import without url()") + 4;
+            let url = line[start..]
+                .trim_start_matches(['\'', '"'])
+                .split(['\'', '"', ')'])
+                .next()
+                .unwrap();
+            let Some(rest) = url.strip_prefix("https://") else {
+                continue;
+            };
+            imports += 1;
+            let origin = format!("https://{}", rest.split('/').next().unwrap());
+            assert!(
+                style_src.contains(&origin),
+                "tokens.css imports {url}, but the CSP style-src {style_src:?} does not allow {origin}"
+            );
+            if origin == "https://fonts.googleapis.com" {
+                assert!(
+                    font_src.iter().any(|s| s == "https://fonts.gstatic.com"),
+                    "Google Fonts serves its font files from fonts.gstatic.com, which font-src {font_src:?} does not allow"
+                );
+            }
+        }
+        assert!(imports > 0, "expected tokens.css to import its web fonts");
+
+        // A font file referenced directly (an @font-face src: url(https://...))
+        // must come from a host font-src allows.
+        let mut in_font_face = false;
+        for line in css.lines() {
+            if line.contains("@font-face") {
+                in_font_face = true;
+            }
+            if in_font_face {
+                for part in line.split("url(").skip(1) {
+                    let url = part
+                        .trim_start_matches(['\'', '"'])
+                        .split(['\'', '"', ')'])
+                        .next()
+                        .unwrap();
+                    if let Some(rest) = url.strip_prefix("https://") {
+                        let origin = format!("https://{}", rest.split('/').next().unwrap());
+                        assert!(
+                            font_src.contains(&origin),
+                            "tokens.css loads the font file {url}, but the CSP font-src {font_src:?} does not allow {origin}"
+                        );
+                    }
+                }
+            }
+            if line.contains('}') {
+                in_font_face = false;
+            }
+        }
+    }
+
     #[test]
     fn hardening_emits_security_headers_and_no_store_on_api() {
         let app = App::with_backends(
