@@ -277,6 +277,8 @@ enum ArticleSummaryKey {
 
 // MARK: - Cache
 
+private let articleSummaryLog = Logger(subsystem: "dev.vitruvian.courier", category: "ArticleSummaries")
+
 /// Summaries kept per link, so opening a chat again, or the same link in another chat, doesn't send the article
 /// to the AI service again. Kept in memory; `enablePersistence(at:)` also keeps them in a file in the app's data
 /// folder (the app does that once at start-up; tests never do). A summary is kept 30 days and at most 300 are kept.
@@ -295,8 +297,6 @@ public final class ArticleSummaryCache {
     /// The app's cache. In memory until the app calls `enablePersistence(at:)`.
     public static let shared = ArticleSummaryCache()
 
-    private static let log = Logger(subsystem: "dev.vitruvian.courier", category: "ArticleSummaries")
-
     public private(set) var entries: [String: Entry] = [:]
     private var fileURL: URL?
     private let now: () -> Date
@@ -312,7 +312,7 @@ public final class ArticleSummaryCache {
         fileURL = url
         guard let data = try? Data(contentsOf: url) else { return }
         guard let stored = try? JSONDecoder().decode([String: Entry].self, from: data) else {
-            Self.log.error("article-summaries.json couldn't be read; it is left alone and kept in memory only")
+            articleSummaryLog.error("article-summaries.json couldn't be read; it is left alone and kept in memory only")
             fileURL = nil
             return
         }
@@ -357,7 +357,7 @@ public final class ArticleSummaryCache {
                 try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: fileURL, options: .atomic)
             } catch {
-                Self.log.error("article-summaries.json couldn't be written")
+                articleSummaryLog.error("article-summaries.json couldn't be written")
             }
         }
     }
