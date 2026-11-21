@@ -249,14 +249,20 @@ func (p *NativeProvider) installScript(role string, o JoinOpts) string {
 		flannel = " --flannel-iface=tailscale0"
 	}
 	common := fmt.Sprintf("%sINSTALL_K3S_SKIP_SELINUX_RPM=true K3S_TOKEN=%q", verEnv, o.Token)
-	// dataDir relocates k3s's data-dir (etcd/containerd/local-path storage) AND the
-	// kubelet root-dir (the node's reported ephemeral-storage) onto spec.DataDir. Used
-	// for native hosts whose / is too small for the cluster while the bulk of the disk
-	// sits on a separate volume (e.g. a repurposed Workstation with a large /home).
-	// Empty = k3s default (/var/lib/rancher/k3s + /var/lib/kubelet).
+	// dataDir relocates k3s's data-dir (etcd/containerd/local-path storage) onto
+	// spec.DataDir. Used for native hosts whose / is too small for the cluster while
+	// the bulk of the disk sits on a separate volume (e.g. a repurposed Workstation
+	// with a large /home). Empty = k3s default (/var/lib/rancher/k3s).
+	//
+	// The kubelet root-dir is deliberately NOT relocated (no --kubelet-arg=root-dir):
+	// CSI node plugins only mount the standard /var/lib/kubelet and receive absolute
+	// paths under the kubelet's root-dir, so a moved root-dir breaks every CSI volume
+	// (e.g. NFS) on the node. The kubelet stays at /var/lib/kubelet, which
+	// ensureKubeletBindMount makes a bind mount of <dataDir>/kubelet, so pod volumes
+	// and ephemeral storage still live on the big volume.
 	dataDir := ""
 	if p.spec.DataDir != "" {
-		dataDir = fmt.Sprintf(" --data-dir=%s --kubelet-arg=root-dir=%s/kubelet", p.spec.DataDir, p.spec.DataDir)
+		dataDir = fmt.Sprintf(" --data-dir=%s", p.spec.DataDir)
 	}
 	if role == "server" {
 		var sans string
@@ -283,25 +289,9 @@ func (p *NativeProvider) installScript(role string, o JoinOpts) string {
 	)
 }
 
-// ensureKubeletSymlink points the standard /var/lib/kubelet at the relocated
-// kubelet root (<dataDir>/kubelet) when a node uses a custom dataDir.
-// --kubelet-arg=root-dir moves the kubelet, but CSI drivers and other DaemonSets
-// hardcode hostPaths under /var/lib/kubelet (pods, plugins, plugins_registry); without
-// this symlink their mounts fail with "hostPath type check failed". No-op without a
-// dataDir; idempotent (re-points an existing symlink, replaces a stray real dir).
-func (p *NativeProvider) ensureKubeletSymlink(ctx context.Context) error {
-	if p.spec.DataDir == "" {
-		return nil
-	}
-	root := strings.TrimRight(p.spec.DataDir, "/") + "/kubelet"
-	cmd := fmt.Sprintf("mkdir -p %s && { [ -L /var/lib/kubelet ] || rm -rf /var/lib/kubelet; } && ln -sfn %s /var/lib/kubelet", root, root)
-	_, err := p.run(ctx, cmd)
-	return err
-}
-
 func (p *NativeProvider) InstallAgent(ctx context.Context, o JoinOpts) error {
 	if inst, _ := p.IsInstalled(ctx); !inst {
-		if err := p.ensureKubeletSymlink(ctx); err != nil {
+		if err := p.ensureKubeletBindMount(ctx); err != nil {
 			return err
 		}
 		if _, err := p.run(ctx, p.installScript("agent", o)); err != nil {
@@ -313,7 +303,7 @@ func (p *NativeProvider) InstallAgent(ctx context.Context, o JoinOpts) error {
 
 func (p *NativeProvider) InstallServer(ctx context.Context, o JoinOpts) error {
 	if inst, _ := p.IsInstalled(ctx); !inst {
-		if err := p.ensureKubeletSymlink(ctx); err != nil {
+		if err := p.ensureKubeletBindMount(ctx); err != nil {
 			return err
 		}
 		if _, err := p.run(ctx, p.installScript("server", o)); err != nil {

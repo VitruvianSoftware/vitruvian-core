@@ -169,7 +169,7 @@ type NodeConfig struct {
 	Pool       string   `yaml:"pool"`              //
 	Kind       string   `yaml:"kind,omitempty"`    // "lima" (default, macOS+VM) | "native" (Linux host, no VM)
 	NodeIP     string   `yaml:"nodeIP,omitempty"`  // native: override the auto-detected tailscale IP
-	DataDir    string   `yaml:"dataDir,omitempty"` // native: relocate k3s data-dir + kubelet root-dir onto this path (e.g. a large /home when / is small); empty = k3s default /var/lib/rancher/k3s
+	DataDir    string   `yaml:"dataDir,omitempty"` // native: relocate k3s data-dir onto this path (e.g. a large /home when / is small), with /var/lib/kubelet bind-mounted from <dataDir>/kubelet; empty = k3s default /var/lib/rancher/k3s
 	VM         VMConfig `yaml:"vm"`                // required for kind=lima; ignored for kind=native
 	VMName     string   `yaml:"vmName,omitempty"`
 	SSHUser    string   `yaml:"sshUser,omitempty"`
