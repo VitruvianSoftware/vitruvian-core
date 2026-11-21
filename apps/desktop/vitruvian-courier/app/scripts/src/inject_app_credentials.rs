@@ -10,6 +10,7 @@ use std::process::Command;
 const STORE_RELATIVE: &str = "tools/sync-env-secrets/secrets/vitruvian-courier-release";
 const ID_NAME: &str = "COURIER_TELEGRAM_API_ID";
 const HASH_NAME: &str = "COURIER_TELEGRAM_API_HASH";
+const KLIPY_NAME: &str = "COURIER_KLIPY_API_KEY";
 const ENGINE_ID: &str = "com.vitruviansoftware.courier.engine";
 
 fn strip_whitespace(s: &str) -> String {
@@ -47,6 +48,41 @@ pub fn validate_api_hash(raw: &str) -> Result<String, String> {
         return Err("api_hash must be 32 hexadecimal characters".into());
     }
     Ok(s)
+}
+
+/// A KLIPY key is letters, digits and `._~-`, up to 200 long: what is safe in the address the app builds from it.
+/// The app's `KlipyConfiguration.validKey` holds the same rule.
+pub fn validate_klipy_key(raw: &str) -> Result<String, String> {
+    // Whitespace around the key (a newline from a file) goes; whitespace inside it makes it not a key.
+    let s = raw.trim().to_string();
+    if s.is_empty() {
+        return Err("the KLIPY key is empty".into());
+    }
+    if s.len() > 200 {
+        return Err("the KLIPY key is longer than 200 characters".into());
+    }
+    if !s
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'-'))
+    {
+        return Err("the KLIPY key has a character other than letters, digits and . _ ~ -".into());
+    }
+    Ok(s)
+}
+
+/// `Contents/Resources/KlipyApp.plist`: one string, `api_key`.
+pub fn generate_klipy_plist(api_key: &str) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+         <plist version=\"1.0\">\n\
+         <dict>\n\
+         \t<key>api_key</key>\n\
+         \t<string>{}</string>\n\
+         </dict>\n\
+         </plist>\n",
+        api_key
+    )
 }
 
 pub fn generate_plist(api_id: &str, api_hash: &str) -> String {
@@ -215,6 +251,68 @@ fn sign_one(identity: &str, args: &[&str]) -> bool {
         }
     }
     false
+}
+
+/// The KLIPY key from the environment, else from the store; `Ok(None)` when there is none. The error names where a
+/// bad key came from, never the key.
+fn resolve_klipy_key(script_dir: &Path) -> Result<Option<(String, String)>, String> {
+    let mut found: Option<(String, String)> = None;
+    let in_env = env::var(KLIPY_NAME).unwrap_or_default();
+    if !in_env.trim().is_empty() {
+        found = Some((in_env, "the environment".to_string()));
+    } else {
+        for dir in store_dirs(script_dir) {
+            if let Some(value) = read_store_file(&dir, KLIPY_NAME) {
+                found = Some((value, format!("the store ({})", dir.display())));
+                break;
+            }
+        }
+    }
+    match found {
+        None => Ok(None),
+        Some((raw, origin)) => validate_klipy_key(&raw)
+            .map(|key| Some((key, origin.clone())))
+            .map_err(|msg| format!("{} (from {}).", msg, origin)),
+    }
+}
+
+/// Writes `content` as `Contents/Resources/<name>` through a staging file, checks it with plutil, and moves it in.
+fn write_resource_plist(app: &Path, name: &str, content: &str) -> Result<(), String> {
+    let resources = app.join("Contents/Resources");
+    let _ = fs::create_dir_all(&resources);
+    let staged = resources.join(format!(".{}.{}", name, std::process::id()));
+    {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&staged)
+            .map_err(|e| format!("cannot write staging file: {}", e))?;
+        if f.write_all(content.as_bytes()).is_err() {
+            let _ = fs::remove_file(&staged);
+            return Err("cannot write staging file".into());
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&staged, fs::Permissions::from_mode(0o644));
+    }
+    let lint = Command::new("plutil")
+        .args(["-lint", &staged.to_string_lossy()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if !matches!(lint, Ok(s) if s.success()) {
+        let _ = fs::remove_file(&staged);
+        return Err(format!("the property list it wrote for {} did not check out.", name));
+    }
+    if fs::rename(&staged, resources.join(name)).is_err() {
+        let _ = fs::remove_file(&staged);
+        return Err("cannot move staging file to target".into());
+    }
+    Ok(())
 }
 
 pub fn run(args: &[String]) -> i32 {
@@ -424,6 +522,29 @@ pub fn run(args: &[String]) -> i32 {
             "Wrote Contents/Resources/TelegramApp.plist from {}.",
             origin
         );
+    }
+
+    // The KLIPY key for GIF search. Unlike Telegram's, it is optional: with none the app hides online GIF search,
+    // and a missing key never fails the injection. One that is there but wrong does, as Telegram's would.
+    match resolve_klipy_key(&script_dir) {
+        Ok(Some((key, origin))) => match write_resource_plist(&app, "KlipyApp.plist", &generate_klipy_plist(&key)) {
+            Ok(()) => println!("Wrote Contents/Resources/KlipyApp.plist from {}.", origin),
+            Err(msg) => {
+                eprintln!("inject-app-credentials: {}", msg);
+                return 2;
+            }
+        },
+        Ok(None) => {
+            let _ = fs::remove_file(app.join("Contents/Resources/KlipyApp.plist"));
+            eprintln!(
+                "No KLIPY key found ({} in the environment or the store): leaving it out, so the app will hide online GIF search.",
+                KLIPY_NAME
+            );
+        }
+        Err(msg) => {
+            eprintln!("inject-app-credentials: {}", msg);
+            return 2;
+        }
     }
 
     // Signing

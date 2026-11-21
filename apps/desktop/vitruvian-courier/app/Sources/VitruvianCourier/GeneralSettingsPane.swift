@@ -1103,6 +1103,13 @@ struct AppearanceSettingsPane: View {
             )
             .settingAnchor("appearance.showLinkPreviews", highlighted: highlightedSettingID)
 
+            SettingsSwitchRow(
+                SettingsNavigationModel.title(for: "appearance.searchGIFsOnline"),
+                isOn: $composerPreferences.searchGIFsOnline,
+                footnote: GIFSearchPolicy.settingExplanation
+            )
+            .settingAnchor("appearance.searchGIFsOnline", highlighted: highlightedSettingID)
+
             Picker(
                 SettingsNavigationModel.title(for: "appearance.quickReaction"),
                 selection: $composerPreferences.quickReaction

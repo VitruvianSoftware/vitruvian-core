@@ -545,6 +545,13 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["link previews", "thumbnail", "picture", "title", "youtube", "privacy", "ip address", "links"]
         ),
         SettingDefinition(
+            id: "appearance.searchGIFsOnline",
+            pane: .appearance,
+            section: "Conversation",
+            title: "Search GIFs online",
+            keywords: ["gif", "gifs", "klipy", "search", "privacy", "ip address", "trending"]
+        ),
+        SettingDefinition(
             id: "appearance.quickReaction",
             pane: .appearance,
             section: "Conversation",
@@ -1006,6 +1013,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "appearance.showMembershipEvents",
         "appearance.loadExternalEmbeds",
         "appearance.showLinkPreviews",
+        "appearance.searchGIFsOnline",
         "appearance.quickReaction",
         "appearance.enableSpellcheck",
         "appearance.showFormattingMenu",

@@ -65,6 +65,12 @@ struct MessagesSettingsPane: View {
                     footnote: LinkPreviewPolicy.settingExplanation
                 )
                 SettingsSwitchRow(
+                    String(localized: "Search GIFs online"),
+                    isOn: $preferences.searchGIFsOnline,
+                    footnote: GIFSearchPolicy.settingExplanation,
+                    identifier: "settings.messages.searchGIFsOnline"
+                )
+                SettingsSwitchRow(
                     String(localized: "Automatically play the next voice note"),
                     isOn: $preferences.autoPlayNextVoiceNote
                 )

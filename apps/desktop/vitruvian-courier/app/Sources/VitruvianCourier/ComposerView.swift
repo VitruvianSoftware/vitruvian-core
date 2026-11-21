@@ -178,9 +178,20 @@ struct ComposerView: View {
     static var floatingSingleLineHeight: CGFloat { ComposerTextView.minimumHeight + 2 * floatingFieldPadding }
 
     var body: some View {
-        Group {
-            if drawsLiquidGlass { floating } else { bar }
+        // The GIF picker is a strip in the chat, just above the message box (with glass, the box's own side margins).
+        VStack(spacing: 0) {
+            if composer.isGIFPickerPresented {
+                GIFPickerStrip(composer: composer)
+                    .padding(.horizontal, drawsLiquidGlass ? 12 : 0)
+                    .padding(.top, drawsLiquidGlass ? 6 : 0)
+                    .transition(.opacity)
+            }
+            Group {
+                if drawsLiquidGlass { floating } else { bar }
+            }
         }
+        .onChange(of: composer.isGIFPickerPresented) { _, open in if !open { textFocusRequest += 1 } }
+        .onChange(of: composer.isEmojiPickerPresented) { _, open in if !open { textFocusRequest += 1 } }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -645,12 +656,6 @@ struct ComposerView: View {
                 height: floating ? Self.floatingSingleLineHeight : ComposerTextView.minimumHeight
             )
         )
-        .background(
-            Color.clear
-                .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-                    GIFPickerPopover(composer: composer)
-                }
-        )
         .overlay(
             Color.clear
                 .allowsHitTesting(false)
@@ -913,14 +918,16 @@ struct ComposerView: View {
     private var emojiToolbarButton: some View {
         ComposerToolbarIconButton(
             symbolName: "face.smiling",
-            tooltip: String(localized: "Emoji & Symbols (⌃⌘Space)"),
+            tooltip: String(localized: "Emoji (⌃⌘Space opens Emoji & Symbols)"),
             accessibilityTitle: String(localized: "Emoji and symbols"),
             accessibilityID: "composer.toolbar.emoji",
             isEnabled: true,
             height: ComposerTextView.minimumHeight
         ) {
-            composer.openEmojiAutocomplete()
-            NSApp.orderFrontCharacterPalette(nil)
+            composer.toggleEmojiPicker()
+        }
+        .popover(isPresented: $composer.isEmojiPickerPresented, arrowEdge: .top) {
+            EmojiPickerPopover(composer: composer)
         }
     }
 
@@ -1716,10 +1723,40 @@ final class PlainTextView: NSTextView {
                 storage.addAttribute(.backgroundColor, value: NSColor.tertiaryLabelColor, range: range)
             }
         }
+        applyLiveMarkdown(to: storage)
         storage.endEditing()
         typingAttributes = Self.baseAttributes
         decorations = entities.filter { [.blockquote, .bulletList, .orderedList].contains($0.kind) }
         needsDisplay = true
+    }
+
+    /// Markdown typed as text (`code`, **bold**, _italic_, ~~strike~~) takes on its look as it is typed, and its
+    /// marker characters are drawn faint. Only attributes change: the text, the caret, undo and what is sent do not.
+    private func applyLiveMarkdown(to storage: NSTextStorage) {
+        let length = storage.length
+        let manager = NSFontManager.shared
+        let faint = NSColor.labelColor.withAlphaComponent(0.25)
+        for span in MarkdownSpans.parse(storage.string) {
+            guard span.whole.location >= 0, span.whole.location + span.whole.length <= length else { continue }
+            for marker in [span.open, span.close] {
+                storage.addAttribute(.foregroundColor, value: faint, range: marker)
+            }
+            let range = span.content
+            switch span.kind {
+            case .bold, .italic:
+                let trait: NSFontTraitMask = span.kind == .bold ? .boldFontMask : .italicFontMask
+                storage.enumerateAttribute(.font, in: range) { value, part, _ in
+                    let font = value as? NSFont ?? Self.baseFont
+                    storage.addAttribute(.font, value: manager.convert(font, toHaveTrait: trait), range: part)
+                }
+            case .strikethrough:
+                storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            case .code:
+                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: Self.baseFont.pointSize,
+                                                                               weight: .regular), range: range)
+                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: range)
+            }
+        }
     }
 
     private static let indented: NSParagraphStyle = {
