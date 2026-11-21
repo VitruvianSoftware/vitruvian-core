@@ -25,7 +25,7 @@
 pub use vitruvian_pycompat::argparse;
 pub mod http;
 pub use vitruvian_pycompat::json;
-pub mod pyerr;
+pub use vitruvian_pycompat::pyerr;
 pub use vitruvian_pycompat::pystr;
 pub mod pytime;
 pub mod stats;

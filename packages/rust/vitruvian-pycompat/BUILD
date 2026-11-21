@@ -1,7 +1,7 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-"""Python's string, json and argparse behaviour for the Rust ports of Python tools.
+"""Python's string, error, json and argparse behaviour for the Rust ports of Python tools.
 
 No third-party crates, so any tool can link it whatever crate hub it uses.
 """
