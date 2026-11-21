@@ -445,6 +445,35 @@ fn compute_plan_hermetic() {
 }
 
 #[test]
+fn unit_prefix_does_not_match_a_sibling_package_with_a_longer_name() {
+    // `//packages/lib` must not claim `//packages/lib-android:test`: a unit is
+    // affected by targets in its own package or below it, not by a sibling
+    // whose name merely starts with the same characters.
+    let d = tmp("sibling-prefix");
+    write(
+        &d,
+        "packages/lib/BUILD",
+        "pipeline_unit(\n    name = \"lib\",\n    test_targets = [\":test\"],\n)\n",
+    );
+    write(
+        &d,
+        "packages/lib-android/BUILD",
+        "pipeline_unit(\n    name = \"lib-android\",\n    test_targets = [\":test\"],\n)\n",
+    );
+    let root = d.to_str().unwrap();
+    let runner = Mock::new(&[(
+        "//packages/lib-android:all",
+        &["//packages/lib-android:test"],
+    )]);
+    let e = Engine::new(root, &runner);
+    let p = e
+        .compute_plan(v(&["packages/lib-android/src/Foo.kt"]), "main", "HEAD")
+        .unwrap();
+    let names: Vec<&str> = p.matrix.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(names, vec!["lib-android"]);
+}
+
+#[test]
 fn degraded_query_is_distinguishable_from_real_global_impact() {
     let d = tmp("degraded");
     write(
