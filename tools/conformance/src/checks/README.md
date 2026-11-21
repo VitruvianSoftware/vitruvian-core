@@ -19,6 +19,7 @@ Component package providing implementation for `tools/conformance/src/checks`.
 - `[ci.rs:check_postsubmit_concurrency]`
 - `[ci.rs:check_job_timeouts]`
 - `[ci.rs:check_sweep_backstop]`
+- `[release_dequeue.rs:check_release_dequeue]`
 - `[ci.rs:cache_save_expr_guarded]`
 - `[ci.rs:yaml_value_of]`
 - `[ci.rs:uses_setup_bazel_directly]`

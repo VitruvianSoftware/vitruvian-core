@@ -30,6 +30,7 @@ mod governance;
 mod iac;
 mod labels;
 mod layout;
+mod release_dequeue;
 mod security;
 mod swift_tests;
 mod versions;
@@ -64,6 +65,7 @@ pub fn run_all(ctx: &Context) {
     ci::check_cache_save(ctx);
     ci::check_goproxy_fallback(ctx);
     ci::check_image_workflow_paths(ctx);
+    release_dequeue::check_release_dequeue(ctx);
 
     iac::check_zitadel_import(ctx);
     iac::check_pulumi_project_names(ctx);
