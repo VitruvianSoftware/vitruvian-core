@@ -21,7 +21,7 @@
 # //mobile/android/remote: Vitruvian Remote, the Android app.
 #
 # A remote control and observability console for a Mac, foldable-first. The
-# UI is built entirely from //packages/design-system-android; nothing in here
+# UI is built entirely from //packages/design-system/android; nothing in here
 # defines a colour, a size or a font.
 #
 # Inter-app boundary (#82): internals default to this app's own visibility so
@@ -78,7 +78,7 @@ kt_android_library(
     ),
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
-    plugins = ["//packages/design-system-android:compose_compiler"],
+    plugins = ["//packages/design-system/android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
         ":app_info",
@@ -92,7 +92,7 @@ kt_android_library(
         ":wake_on_lan",
         ":wire",
         "//packages/android-crash-privacy",
-        "//packages/design-system-android:lib",
+        "//packages/design-system/android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
         "@maven//:androidx_compose_foundation_foundation",
@@ -254,7 +254,7 @@ kt_jvm_test(
         ":wake_on_lan",
         ":wire",
         "//packages/android-crash-privacy",
-        "//packages/design-system-android:lib",
+        "//packages/design-system/android:lib",
         "@maven//:androidx_compose_runtime_runtime",
         "@maven//:junit_junit",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
@@ -289,7 +289,7 @@ kt_jvm_test(
         "LICENSE",
         "src/main/AndroidManifest.xml",
         "//packages/android-crash-privacy:BUILD",
-        "//packages/design-system-android:BUILD",
+        "//packages/design-system/android:BUILD",
     ] + glob([
         "src/main/kotlin/**/*.kt",
         "src/main/res/**",
@@ -349,7 +349,7 @@ kt_jvm_test(
         ":hid_codes",
         ":lib",
         ":wire",
-        "//packages/design-system-android:lib",
+        "//packages/design-system/android:lib",
         "@maven//:io_sentry_sentry",
         "@maven//:io_sentry_sentry_android_core",
         "@maven//:junit_junit",

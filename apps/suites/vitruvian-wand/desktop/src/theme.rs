@@ -20,7 +20,7 @@
 //! Vitruvian design system tokens mapped into [`egui::Style`] and [`egui::Visuals`].
 //!
 //! All colour, type-scale, radius, and spacing values come directly from
-//! `packages/design-system/src/tokens.json` (Codex Folium — Warm Parchment &
+//! `packages/design-system/web/src/tokens.json` (Codex Folium — Warm Parchment &
 //! Slate Ink). Note: `tokens.json` does not define separate radial-slot preset
 //! swatches beyond the semantic/brand palette (`accent`, `ok`, `warn`, `crit`,
 //! `sanguine`, `slate-400`, `slate-600`, `neutral-500`), so named radial slot
@@ -32,7 +32,7 @@ use egui::{
 
 use crate::config::ThemePreference;
 
-/// Spacing scale from `packages/design-system/src/tokens.json` (`spacing.1` .. `spacing.6`).
+/// Spacing scale from `packages/design-system/web/src/tokens.json` (`spacing.1` .. `spacing.6`).
 pub mod spacing {
     pub const S1: f32 = 3.0;
     pub const S2: f32 = 5.0;
@@ -42,7 +42,7 @@ pub mod spacing {
     pub const S6: f32 = 34.0;
 }
 
-/// Type scale from `packages/design-system/src/tokens.json` (`font.size.*`).
+/// Type scale from `packages/design-system/web/src/tokens.json` (`font.size.*`).
 pub mod type_scale {
     pub const H3: f32 = 22.0;
     pub const H4: f32 = 17.0;
@@ -74,7 +74,7 @@ pub struct Palette {
     pub neutral_500: Color32,
 }
 
-/// Dark theme tokens from `packages/design-system/src/tokens.json` (`color.dark` + `color.brand`).
+/// Dark theme tokens from `packages/design-system/web/src/tokens.json` (`color.dark` + `color.brand`).
 #[must_use]
 pub fn dark_palette() -> Palette {
     Palette {
@@ -96,7 +96,7 @@ pub fn dark_palette() -> Palette {
     }
 }
 
-/// Light theme tokens from `packages/design-system/src/tokens.json` (`color.light` + `color.brand`).
+/// Light theme tokens from `packages/design-system/web/src/tokens.json` (`color.light` + `color.brand`).
 #[must_use]
 pub fn light_palette() -> Palette {
     Palette {

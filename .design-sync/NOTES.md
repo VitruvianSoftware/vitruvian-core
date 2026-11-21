@@ -1,18 +1,18 @@
 # design-sync notes — @vitruviansoftware/design-system
 
-Source of truth for syncing `packages/design-system` to claude.ai/design.
+Source of truth for syncing `packages/design-system/web` to claude.ai/design.
 Read this **and** `config.json` before doing anything; both carry fixes that
 cost real debugging to find.
 
 ## Shape and layout
 
 - `shape: "storybook"` — the repo's own Storybook is the fidelity oracle.
-  `.storybook/` lives in the package (`packages/design-system/.storybook`),
+  `.storybook/` lives in the package (`packages/design-system/web/.storybook`),
   not at the repo root, so `storybookConfigDir` is pinned in config.
 - Build the DS with `tsc -p tsconfig.json` from the package (`buildCmd`), and
   the reference with
   `npx storybook build -c .storybook -o <repo-root>/.design-sync/sb-reference`
-  run **from `packages/design-system`**. Do not use the package's own
+  run **from `packages/design-system/web`**. Do not use the package's own
   `build-storybook` script — it writes to `dist-storybook/`, where nothing
   looks for it.
 - pnpm workspace with `hoist=false` (`.npmrc`, required by rules_js). Deps
@@ -90,7 +90,7 @@ cost real debugging to find.
   `@source inline(...)` safelists for the colour families, the Fibonacci
   spacing ramp on every axis, the grid/type utilities, fonts and shadows.
   `bazel run //tools/design-sync:prepare` (wired as `cfg.buildCmd`) emits it to
-  `packages/design-system/dist/vitruvian.built.css`, and `cfg.cssEntry` points
+  `packages/design-system/web/dist/vitruvian.built.css`, and `cfg.cssEntry` points
   there. Shipped CSS went **260 → 783 class selectors, 122 → 241 tokens**, and
   the `[CSS_FROM_STORYBOOK]` fallback no longer fires.
   Verified non-regressive: Button, Plate, Status, Field and Terminal were
@@ -106,7 +106,7 @@ cost real debugging to find.
   tokens), `rounded-xl`, `pr-9999` etc. shipped — contradicting
   conventions.md ("stock colours are not in this build") and bloating the
   design project's token/theme lists with Tailwind internals. → the CLI now
-  runs from `packages/design-system` (what the package's own Vite build scans),
+  runs from `packages/design-system/web` (what the package's own Vite build scans),
   neutral layout helpers (`hidden`, `text-center`, `md:grid-cols-*`...) are
   safelisted explicitly in `tailwind-entry.css`, and `:prepare` fails if a
   stock palette token appears. 813 → 597 classes, 64 → 39 `--tw-*` vars.
@@ -186,7 +186,7 @@ and its own `readme.md`/`demo.css`. The sync was merged in alongside them.
   resolves against `window.Industry_indust`.
 - `readme.md` (theirs) was edited once by hand on 2026-09-26, at James's
   request. It now says the tokens live in
-  `packages/design-system/src/tokens.css` and that `styles.css` is generated
+  `packages/design-system/web/src/tokens.css` and that `styles.css` is generated
   by the sync. If the token source ever moves, that line goes stale. The
   sync never writes `readme.md`; update it via a separate one-file plan.
   Claude Design's own agent wrongly treats it as sync output.
@@ -223,7 +223,7 @@ is what would bring them under the oracle for good.
   `node_modules`. `:prepare` calls `.ds-sync/node_modules/.bin/tailwindcss`,
   so the converter-deps install must include `@tailwindcss/cli` and
   `tailwindcss` at the package's version (4.3.3). `--entry` is resolved from
-  the repo root: `packages/design-system/dist/index.js`, not `dist/index.js`.
+  the repo root: `packages/design-system/web/dist/index.js`, not `dist/index.js`.
   Prior grades live in the main checkout's gitignored
   `.design-sync/.cache/compare/`; copying them into a worktree lets unchanged
   components carry forward instead of re-grading.
@@ -265,5 +265,5 @@ is what would bring them under the oracle for good.
 - **Upstream repo bug worth fixing separately:** the design system references
   two typefaces it does not ship, and its own Storybook renders on fallback
   fonts today. The right long-term fix is to vendor the woff2 into
-  `packages/design-system` and replace the CDN `@import` with local
+  `packages/design-system/web` and replace the CDN `@import` with local
   `@font-face`; this sync works around it without touching the package.

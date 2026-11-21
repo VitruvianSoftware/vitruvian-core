@@ -18,6 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# One package, two language halves (web and android), so one catalog file
+# with one entity per half, the same layout as packages/pulumi. The
+# conformance catalog rule expects the catalog at the package folder.
+
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
@@ -31,9 +35,36 @@ metadata:
     - css
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/design-system
-    vitruvian.dev/bazel-target: //packages/design-system:pkg
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/design-system/web
+    vitruvian.dev/bazel-target: //packages/design-system/web:pkg
 spec:
   type: library
   lifecycle: production
   owner: platform-team
+---
+
+# Machine-readable component metadata (#500). The Compose half of the
+# Vitruvian design language; the web package it is generated from is
+# //packages/design-system/web.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: design-system-android
+  description: Vitruvian for Jetpack Compose - tokens, primitives and the mobile shell
+  tags:
+    - kotlin
+    - ui
+    - design-system
+    - jetpack-compose
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/design-system/android
+    backstage.io/techdocs-ref: dir:./android
+    vitruvian.dev/bazel-target: //packages/design-system/android:lib, //packages/design-system/android:compose_compiler
+    vitruvian.dev/release-model: none
+spec:
+  type: library
+  lifecycle: experimental
+  owner: platform-team
+  dependsOn:
+    - component:design-system

@@ -21,7 +21,7 @@
 # //mobile/android/remote: Vitruvian Remote, the Android app.
 #
 # A remote control and observability console for a Mac, foldable-first. The
-# UI is built entirely from //packages/design-system-android; nothing in here
+# UI is built entirely from //packages/design-system/android; nothing in here
 # defines a colour, a size or a font.
 #
 # Inter-app boundary (#82): internals default to this app's own visibility so
@@ -70,7 +70,7 @@ kt_android_library(
     ),
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
-    plugins = ["//packages/design-system-android:compose_compiler"],
+    plugins = ["//packages/design-system/android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
         ":bridge_policy",
@@ -80,7 +80,7 @@ kt_android_library(
         ":tuning",
         ":wake_on_lan",
         ":wire",
-        "//packages/design-system-android:lib",
+        "//packages/design-system/android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
         "@maven//:androidx_compose_foundation_foundation",

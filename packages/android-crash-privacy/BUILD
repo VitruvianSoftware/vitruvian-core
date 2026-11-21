@@ -21,7 +21,7 @@
 # //packages/android-crash-privacy: Shared privacy-hardened Sentry helper for Android apps.
 #
 # Gazelle has no Kotlin/Android extension configured in this repo, so this
-# file is hand-authored like //packages/design-system-android's.
+# file is hand-authored like //packages/design-system/android's.
 # gazelle:ignore
 
 load("@rules_java//java:java_import.bzl", "java_import")

@@ -299,7 +299,7 @@ fn classify_persona_and_operation_cases() {
         (
             &[
                 "apps/suites/vitruvian-tabs/web/app/page.tsx",
-                "packages/design-system/src/Button.tsx",
+                "packages/design-system/web/src/Button.tsx",
             ],
             false,
             false,
@@ -361,6 +361,61 @@ fn classify_persona_and_operation_cases() {
             (*p, *o),
             "{files:?}"
         );
+    }
+}
+
+#[test]
+fn design_system_move_preserves_gate_classification() {
+    let web_tsx = "packages/design-system/web/src/Button.tsx";
+    let web_build = "packages/design-system/web/BUILD";
+    let android_new = "packages/design-system/android/src/main/kotlin/dev/vitruvian/design/Foo.kt";
+    let android_old = "packages/design-system-android/src/main/kotlin/dev/vitruvian/design/Foo.kt";
+
+    for f in [web_tsx, web_build] {
+        assert!(!is_docs_only(&v(&[f])), "{f}");
+        assert_eq!(check_global_impact(&v(&[f])), (false, String::new()), "{f}");
+        assert_eq!(
+            classify_persona_and_operation(&v(&[f]), false, false),
+            (Persona::FrontendDev, Operation::UiFeature),
+            "{f}"
+        );
+    }
+
+    for f in [android_new, android_old] {
+        assert!(!is_docs_only(&v(&[f])), "{f}");
+        assert_eq!(check_global_impact(&v(&[f])), (false, String::new()), "{f}");
+        assert_eq!(
+            classify_persona_and_operation(&v(&[f]), false, false),
+            (Persona::BackendDev, Operation::BackendApi),
+            "{f}"
+        );
+    }
+
+    let pairings: &[(&str, Persona, Operation)] = &[
+        (
+            "infrastructure/pulumi/platform/repo-config/main.go",
+            Persona::InfraEng,
+            Operation::InfraProvision,
+        ),
+        (
+            "apps/suites/vitruvian-tabs/api/src/server.ts",
+            Persona::BackendDev,
+            Operation::BackendApi,
+        ),
+        (web_tsx, Persona::FrontendDev, Operation::UiFeature),
+        (
+            "tools/ci/x.sh",
+            Persona::PlatformAdmin,
+            Operation::BackendApi,
+        ),
+    ];
+
+    for (peer, want_p, want_o) in pairings {
+        let got_new = classify_persona_and_operation(&v(&[android_new, peer]), false, false);
+        let got_old = classify_persona_and_operation(&v(&[android_old, peer]), false, false);
+        assert_eq!(got_new, (*want_p, *want_o), "new paired with {peer}");
+        assert_eq!(got_old, (*want_p, *want_o), "old paired with {peer}");
+        assert_eq!(got_new, got_old, "mismatch on {peer}");
     }
 }
 

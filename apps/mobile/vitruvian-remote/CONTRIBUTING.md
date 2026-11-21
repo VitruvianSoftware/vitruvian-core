@@ -25,12 +25,12 @@ bazel build //apps/mobile/vitruvian-remote:app
 
 **Never hardcode a design value.** No `Color(...)`, no bare `.dp` for spacing, no
 font size that is not from the ramp. If a value is missing, it belongs in
-`packages/design-system/src/tokens.json` and reaches Kotlin through the
-generator — see [the design system's README](../../../packages/design-system-android/README.md).
+`packages/design-system/web/src/tokens.json` and reaches Kotlin through the
+generator — see [the design system's README](../../../packages/design-system/android/README.md).
 The Fibonacci scale (`Space.s1`…`s8`) is the only source of padding and gaps.
 
 **Never edit `VitruvianTokens.kt`.** It is generated, and
-`//packages/design-system-android:tokens_are_current` will fail the build if you
+`//packages/design-system/android:tokens_are_current` will fail the build if you
 do.
 
 **Add components to the design system, not here.** If two screens want the same

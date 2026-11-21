@@ -89,7 +89,7 @@ Production builds with `actions/jekyll-build-pages`, which uses the
   rejects modern CSS;
 - no custom plugins (redirects are plain HTML pages for that reason);
 - colours, type and spacing come from
-  [`packages/design-system/src/tokens.css`](../../../packages/design-system/src/tokens.css).
+  [`packages/design-system/web/src/tokens.css`](../../../packages/design-system/web/src/tokens.css).
   Keep the copies in `main.css` in step when the tokens change.
 
 ## Subdirectories & Boundaries

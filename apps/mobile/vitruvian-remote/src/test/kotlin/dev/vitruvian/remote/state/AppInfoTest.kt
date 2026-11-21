@@ -232,7 +232,7 @@ public class AppInfoTest {
   @Test
   public fun `every runtime maven dependency in app and design system BUILD has an open source license entry`() {
     val appBuildText = resolvePath("apps/mobile/vitruvian-remote/BUILD").readText()
-    val dsBuildText = resolvePath("packages/design-system-android/BUILD").readText()
+    val dsBuildText = resolvePath("packages/design-system/android/BUILD").readText()
     val crashPrivacyBuildText = resolvePath("packages/android-crash-privacy/BUILD").readText()
     val runtimeMavenTargets =
         extractRuntimeMavenDeps(appBuildText) +
@@ -271,7 +271,7 @@ public class AppInfoTest {
     }
     assertEquals(
         "Every runtime @maven dep in apps/mobile/vitruvian-remote/BUILD and " +
-            "packages/design-system-android/BUILD must have an AppInfo.openSourceLicenses entry",
+            "packages/design-system/android/BUILD must have an AppInfo.openSourceLicenses entry",
         runtimeMavenTargets,
         coveredTargets,
     )

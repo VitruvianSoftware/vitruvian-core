@@ -40,7 +40,7 @@ metadata:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-remote
       title: Releases
       icon: card_giftcard
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/packages/design-system/ANDROID.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/packages/design-system/web/ANDROID.md
       title: Vitruvian on Android (Compose handoff)
       icon: docs
 spec:
