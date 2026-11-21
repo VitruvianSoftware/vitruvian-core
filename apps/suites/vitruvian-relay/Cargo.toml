@@ -22,7 +22,7 @@
 # workspace, like the spike's, because the relay's image builds with cargo from
 # this folder. Bazel reads the same lock through the @vitruvian_relay_crates hub
 # (MODULE.bazel). The shared token checker lives in
-# packages/rust/vitruvian-mcp-auth and comes in as a path dependency.
+# packages/mcp-auth and comes in as a path dependency.
 # Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay
 [workspace]
 resolver = "2"

@@ -27,7 +27,7 @@ The relay runs on the homelab cluster at `https://relay.ipv1337.dev`.
 - **Image:** `Dockerfile` here, built and pushed to
   `ghcr.io/vitruviansoftware/vitruvian-relay` by
   `.github/workflows/vitruvian-relay-image.yaml` on every push to `main` that
-  touches the relay workspace or `packages/rust/vitruvian-mcp-auth`. The run's
+  touches the relay workspace or `packages/mcp-auth`. The run's
   summary prints the digest to pin.
 - **Chart:** `chart/` (`vitruvian-relay`). It refuses to render without the
   image digest and the Zitadel ids. CI renders it with

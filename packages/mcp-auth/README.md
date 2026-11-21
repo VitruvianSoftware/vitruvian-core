@@ -34,8 +34,8 @@ pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardToke
 
 ## Depend on it
 
-- `//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth` (for consumers on `@vitruvian_relay_crates`)
-- `//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth_slack_mcp_hub` (for `vitruvian-slack-mcp` on `@vitruvian_slack_mcp_crates`)
+- `//packages/mcp-auth:vitruvian_mcp_auth` (for consumers on `@vitruvian_relay_crates`)
+- `//packages/mcp-auth:vitruvian_mcp_auth_slack_mcp_hub` (for `vitruvian-slack-mcp` on `@vitruvian_slack_mcp_crates`)
 
 ## Constraints
 
