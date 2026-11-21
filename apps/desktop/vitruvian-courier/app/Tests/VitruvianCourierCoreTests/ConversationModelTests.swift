@@ -273,12 +273,14 @@ final class ConversationModelTests: XCTestCase {
             [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 600_000),
              expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 900_000)],
             clock: clock, time: time, extra: ["!b": [textEvent(id: "$b1", room: "!b", at: 1)]])
+        try await waitUntil { time.pendingSleeps.count == 1 } // the wake registers its sleep a moment after the build
         XCTAssertEqual(time.pendingSleeps.count, 1, "one wake, however many messages are timed")
 
         // Every rebuild takes the old wake back before it makes its own.
         h.script.add("!a", textEvent(id: "$4", room: "!a", at: 4))
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$4"])
         try await waitUntil { h.messageIDs(h.conversation.items).contains("$4") }
+        try await waitUntil { time.pendingSleeps.count == 1 } // the wake registers its sleep a moment after the build
         XCTAssertEqual(time.pendingSleeps.count, 1)
 
         // Another chat open: nothing waits for the one that closed.
@@ -305,6 +307,7 @@ final class ConversationModelTests: XCTestCase {
              expiring(textEvent(id: "$4", room: "!a", at: 4), at: clock.millis + 3_600_000),
              textEvent(id: "$5", room: "!a", at: 5)], clock: clock, time: time)
         let reads = h.count("room.events")
+        try await waitUntil { time.pendingSleeps.count == 1 } // the wake registers its sleep a moment after the build
         XCTAssertEqual(time.pendingSleeps.count, 1)
 
         // The Mac slept for 20 minutes: when the one wake comes, all three are gone and the fourth still is there.
@@ -324,6 +327,7 @@ final class ConversationModelTests: XCTestCase {
         let message = try XCTUnwrap(h.message("$1"))
         XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 90 days")
         // It reads in days and hours, so it changes once an hour, not once a minute.
+        try await waitUntil { time.pendingSleeps.count == 1 } // the wake registers its sleep a moment after the build
         XCTAssertEqual(time.pendingSleeps.count, 1)
         XCTAssertEqual(try XCTUnwrap(time.pendingSleeps.first), 3600.05, accuracy: 0.001)
 
@@ -346,6 +350,7 @@ final class ConversationModelTests: XCTestCase {
         let time = FakeTime()
         let (h, _) = try await startTimed(
             [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 60_000)], clock: clock, time: time)
+        try await waitUntil { time.pendingSleeps.count == 1 } // the wake registers its sleep a moment after the build
         XCTAssertEqual(time.pendingSleeps.count, 1)
 
         // The wake comes, but the clock went back (set by hand, say): it is set again, not dropped.
