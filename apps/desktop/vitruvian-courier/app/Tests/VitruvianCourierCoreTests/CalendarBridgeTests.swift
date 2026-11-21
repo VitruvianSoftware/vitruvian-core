@@ -111,6 +111,32 @@ final class CalendarBridgeTests: XCTestCase {
         XCTAssertTrue(CalendarBridge.detectDates(in: codeRich, referenceDate: refDate).isEmpty)
     }
 
+    /// Ordinary day words are not dates; a date or a time is. Each row is (text, stays a detected date).
+    func testBareDayWordsAreNotDetectedAsDates() {
+        let table: [(String, Bool)] = [
+            ("today", false), ("Today", false), ("tonight", false), ("tomorrow", false), ("yesterday", false),
+            ("Sunday", false), ("Saturday", false), ("on Monday", false), ("this weekend", false),
+            ("next Friday", false), ("tomorrow morning", false), ("Sat", false),
+            ("Sunday at 7pm", true), ("tomorrow at 1pm", true), ("Nov 30", true), ("7:30pm", true),
+            ("Nov 30 at 7pm", true), ("2026-10-25", true), ("next Friday at 3", true),
+        ]
+        for (text, keeps) in table {
+            XCTAssertEqual(!CalendarBridge.isBareDayReference(text), keeps, "isBareDayReference(\(text))")
+        }
+        XCTAssertFalse(CalendarBridge.isBareDayReference(""))
+
+        // Through the real detector, from a date long ago so every match counts as upcoming.
+        let long = Date(timeIntervalSince1970: 946_684_800)
+        for (text, keeps) in table {
+            let found = CalendarBridge.detectDates(in: "see you \(text) ok", referenceDate: long)
+            if !keeps {
+                XCTAssertTrue(found.isEmpty, "\"\(text)\" must stay ordinary, got \(found.map(\.matchedText))")
+            } else if text != "next Friday at 3" {
+                XCTAssertFalse(found.isEmpty, "\"\(text)\" must stay a date")
+            }
+        }
+    }
+
     func testDeniedCalendarAccessDoesNotPromptAndReportsDenied() async throws {
         let sampleEvent = CalendarEventItem(
             id: "ev-1",

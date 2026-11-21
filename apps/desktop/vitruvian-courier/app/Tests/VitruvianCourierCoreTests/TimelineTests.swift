@@ -592,6 +592,28 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shown["$note"]?.kind, .notice)
     }
 
+    /// A picture with nothing else on it has no bubble; anything else on the message keeps the bubble.
+    func testPhotoOnlyMessagesHaveNoBubble() {
+        let events = [
+            message("$photo", ts: at(14, 10, 0), body: "beach.jpg", msgtype: "m.image",
+                    extra: #","info":{"w":1600,"h":900,"mimetype":"image/jpeg"}"#, media: "/tmp/beach.jpg"),
+            message("$cap", ts: at(14, 10, 1), body: "Look at this", msgtype: "m.image",
+                    extra: #","filename":"dog.png","info":{"w":10,"h":10}"#, media: "/tmp/dog.png"),
+            message("$gif", ts: at(14, 10, 2), body: "dance.gif", msgtype: "m.image",
+                    extra: #","info":{"mimetype":"image/gif","fi.mau.gif":true}"#, media: "/tmp/dance.gif"),
+            message("$vid", ts: at(14, 10, 3), body: "clip.mp4", msgtype: "m.video", media: "/tmp/clip.mp4"),
+            message("$text", ts: at(14, 10, 4), body: "Hello"),
+        ]
+        let shown = Dictionary(uniqueKeysWithValues: messages(build(events)).map { ($0.id, $0) })
+        XCTAssertEqual(shown["$photo"]?.isPhotoOnly, true)
+        XCTAssertEqual(shown["$photo"]?.suppressesBubbleBackground, true)
+        XCTAssertEqual(shown["$cap"]?.isPhotoOnly, false, "a caption keeps the bubble")
+        XCTAssertEqual(shown["$cap"]?.suppressesBubbleBackground, false)
+        XCTAssertEqual(shown["$gif"]?.isPhotoOnly, false, "a GIF keeps its own look")
+        XCTAssertEqual(shown["$vid"]?.isPhotoOnly, false)
+        XCTAssertEqual(shown["$text"]?.isPhotoOnly, false)
+    }
+
     func testStickersEncryptedAndUnknownEvents() {
         let sticker = Event(eventID: "$s", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
                             type: "m.sticker", content: json(#"{"body":"wave","info":{"w":128,"h":128}}"#),
@@ -1044,7 +1066,31 @@ final class TimelineTests: XCTestCase {
         }
         XCTAssertEqual(label(14), .today)
         XCTAssertEqual(label(13), .yesterday)
-        if case .date = label(11) {} else { XCTFail("older days are dated") }
+        if case .weekday = label(12) {} else { XCTFail("two days ago is a weekday") }
+        if case .weekday = label(8) {} else { XCTFail("six days ago is a weekday") }
+        if case .date = label(7) {} else { XCTFail("a week ago is dated") }
+    }
+
+    /// The words on a day divider, with the clock set to Saturday 14 Nov 2026 noon UTC.
+    func testDayDividerText() {
+        func text(_ year: Int, _ month: Int, _ day: Int, locale: String = "en_US") -> String {
+            var parts = DateComponents()
+            parts.year = year; parts.month = month; parts.day = day; parts.hour = 9
+            var now = DateComponents()
+            now.year = 2026; now.month = 11; now.day = 14; now.hour = 12
+            return DayLabel.text(day: utc.date(from: parts)!, now: utc.date(from: now)!, calendar: utc,
+                                 locale: Locale(identifier: locale))
+        }
+        XCTAssertEqual(text(2026, 11, 14), "Today")
+        XCTAssertEqual(text(2026, 11, 13), "Yesterday")
+        XCTAssertEqual(text(2026, 11, 12), "Thursday")
+        XCTAssertEqual(text(2026, 11, 8), "Sunday", "six days ago is still a weekday")
+        XCTAssertEqual(text(2026, 11, 7), "Sat, Nov 7", "a week ago is a date")
+        XCTAssertEqual(text(2026, 1, 3), "Sat, Jan 3")
+        XCTAssertEqual(text(2025, 11, 14), "Fri, Nov 14, 2025", "another year adds the year")
+        // Locale-aware: the order and separators come from the locale, not a fixed pattern.
+        XCTAssertNotEqual(text(2026, 11, 7, locale: "en_GB"), text(2026, 11, 7, locale: "en_US"))
+        XCTAssertTrue(text(2026, 11, 7, locale: "en_GB").contains("7"))
     }
 
     func testConsecutiveMembershipEventsCollapseAndRespectToggle() {

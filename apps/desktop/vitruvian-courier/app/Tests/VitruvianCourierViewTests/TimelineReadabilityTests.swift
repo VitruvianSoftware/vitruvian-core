@@ -221,7 +221,7 @@ final class TimelineReadabilityTests: XCTestCase {
         let long = String(repeating: "A long line of chat text that would stretch across a very wide window. ", count: 20)
         let wide = try bubbleWidth(Fixture.text("$w", long, mine: false, ts: 2), window: 1400)
         XCTAssertGreaterThan(wide, 300)
-        XCTAssertLessThanOrEqual(wide, MessageRowView.textBubbleMaxWidth + 1, "capped at the text width")
+        XCTAssertLessThanOrEqual(wide, BubbleWidth.maxWidth(rowWidth: 1400) + 1, "capped at the text width")
         let narrow = try bubbleWidth(Fixture.text("$n", long, mine: false, ts: 2), window: 320)
         XCTAssertLessThanOrEqual(narrow, 320, "a narrow window still fits")
         XCTAssertGreaterThan(narrow, 150)
@@ -232,7 +232,7 @@ final class TimelineReadabilityTests: XCTestCase {
     func testAVeryLongWordStaysInsideTheBubble() throws {
         let word = String(repeating: "W", count: 400)
         let wide = try bubbleWidth(Fixture.text("$lw1", word, mine: false, ts: 2), window: 1400, snapshot: "timeline-long-word")
-        XCTAssertLessThanOrEqual(wide, MessageRowView.textBubbleMaxWidth + 1)
+        XCTAssertLessThanOrEqual(wide, BubbleWidth.maxWidth(rowWidth: 1400) + 1)
         let narrow = try bubbleWidth(Fixture.text("$lw2", word, mine: false, ts: 2), window: 320, snapshot: "timeline-long-word")
         XCTAssertLessThanOrEqual(narrow, 320)
         let oneLine = fittingHeight(Fixture.text("$lw3", "W", mine: false, ts: 2), showTimes: false, width: 320)

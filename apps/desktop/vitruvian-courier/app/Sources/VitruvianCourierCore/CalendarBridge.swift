@@ -190,6 +190,8 @@ public final class CalendarBridge: ObservableObject {
             }
 
             let matchedText = String(text[range])
+            // "today", "Sunday", "this weekend" on their own are ordinary words, not something to put on a calendar.
+            if isBareDayReference(matchedText) { continue }
             let resolvedStart = resolveStartDate(
                 rawDate: rawDate,
                 matchedText: matchedText,
@@ -210,6 +212,31 @@ public final class CalendarBridge: ObservableObject {
             )
         }
         return results
+    }
+
+    /// Words that name a day without saying which date or what time.
+    private nonisolated static let bareDayWords: Set<String> = [
+        "today", "tonight", "tomorrow", "yesterday", "weekend", "weekday", "weekdays",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+        "mondays", "tuesdays", "wednesdays", "thursdays", "fridays", "saturdays", "sundays",
+    ]
+
+    /// Small words that may sit around a bare day word without making it a date ("this weekend", "on Sunday",
+    /// "tomorrow morning").
+    private nonisolated static let bareDayFiller: Set<String> = [
+        "this", "next", "last", "on", "the", "coming", "every", "morning", "afternoon", "evening", "night",
+    ]
+
+    /// The matched text is only a relative day or a weekday ("today", "Sunday", "this weekend", "next Friday"):
+    /// no number, no time, no month. Those read as ordinary words, so they are not underlined. "Sunday at 7pm",
+    /// "Nov 30" and "7:30pm" are not bare. English words only: other languages keep what the detector found.
+    nonisolated public static func isBareDayReference(_ matched: String) -> Bool {
+        let words = matched.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        guard !words.isEmpty else { return false }
+        if words.contains(where: { $0.contains(where: \.isNumber) }) { return false }
+        guard words.contains(where: bareDayWords.contains) else { return false }
+        return words.allSatisfy { bareDayWords.contains($0) || bareDayFiller.contains($0) }
     }
 
     /// Detects future dates/times in a `RichText` value, excluding `.code`, `.pre`, `.link`, `.mention`, and `.spoiler` entities.
