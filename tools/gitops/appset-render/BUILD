@@ -4,12 +4,12 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # What CI jobs without Bazel compile with plain rustc
 # (//tools/ci:build_ci_tool_test and
-# //packages/rust/vitruvian-pycompat:rustc_build_test run those lines).
+# //packages/pycompat/vitruvian-pycompat:rustc_build_test run those lines).
 filegroup(
     name = "srcs",
     srcs = glob(["src/**/*.rs"]),
     visibility = [
-        "//packages/rust/vitruvian-pycompat:__pkg__",
+        "//packages/pycompat/vitruvian-pycompat:__pkg__",
         "//tools/ci:__pkg__",
     ],
 )
@@ -25,7 +25,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
-    deps = ["//packages/rust/vitruvian-pycompat:vitruvian_pycompat"],
+    deps = ["//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 # `bazel run //tools/gitops/appset-render` — check every ApplicationSet under

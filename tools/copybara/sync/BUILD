@@ -14,7 +14,7 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
     deps = [
         "//packages/gocompat:vitruvian_gocompat",
-        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+        "//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat",
     ],
 )
 

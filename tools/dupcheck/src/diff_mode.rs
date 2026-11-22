@@ -591,13 +591,13 @@ metadata:
   name: pycompat
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    vitruvian.dev/bazel-target: \"//packages/rust/vitruvian-pycompat:vitruvian_pycompat\"
+    vitruvian.dev/bazel-target: \"//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat\"
 spec:
   type: library
 ";
         assert_eq!(
             parse_bazel_target_from_catalog(single, None),
-            Some("//packages/rust/vitruvian-pycompat:vitruvian_pycompat".to_string())
+            Some("//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat".to_string())
         );
 
         let multi = "\

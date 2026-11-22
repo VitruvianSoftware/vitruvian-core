@@ -1169,7 +1169,8 @@ impl Driver {
         }
         let src = format!("{repo_root}/tools/sync-downloads/src");
         let (lib, main) = (format!("{src}/lib.rs"), format!("{src}/main.rs"));
-        let build_script = format!("{repo_root}/packages/rust/vitruvian-pycompat/rustc-build.sh");
+        let build_script =
+            format!("{repo_root}/packages/pycompat/vitruvian-pycompat/rustc-build.sh");
         if !is_file(&lib) || !is_file(&main) || !is_file(&build_script) || !has("rustc") {
             return Ok(None);
         }

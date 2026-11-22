@@ -13,7 +13,7 @@ A standard-library-only Rust crate reproducing Python 3.12 behavior where Rust's
 ## When not to use it
 
 - General-purpose Rust CLIs or services with no Python parity requirement; use a general-purpose CLI crate (none is in the repo yet; follow AGENTS.md's "Reuse before writing") and `serde_json` from `@crates` instead.
-- Preserving JSON object key insertion order and duplicate-key overwrite semantics via `serde_json`; use [`//packages/rust/vitruvian-pyjson`](../vitruvian-pyjson/README.md) instead.
+- Preserving JSON object key insertion order and duplicate-key overwrite semantics via `serde_json`; use [`//packages/pycompat/vitruvian-pyjson`](../vitruvian-pyjson/README.md) instead.
 
 ## Example
 
@@ -54,10 +54,10 @@ fn parser(prog: String) -> Parser {
 
 ## Depend on it
 
-`//packages/rust/vitruvian-pycompat:vitruvian_pycompat`
+`//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat`
 
 ## Constraints
 
-- Standard library only (zero external crates), because tools using it also build with plain `rustc` outside Bazel via `rustc-build.sh` (verified by `//packages/rust/vitruvian-pycompat:rustc_build_test`).
+- Standard library only (zero external crates), because tools using it also build with plain `rustc` outside Bazel via `rustc-build.sh` (verified by `//packages/pycompat/vitruvian-pycompat:rustc_build_test`).
 - Before changing behavior, run the tests of every dependent tool:
-  `bazel test $(bazel query 'rdeps(//..., //packages/rust/vitruvian-pycompat)' --output=label 2>/dev/null | grep _test)`
+  `bazel test $(bazel query 'rdeps(//..., //packages/pycompat/vitruvian-pycompat)' --output=label 2>/dev/null | grep _test)`

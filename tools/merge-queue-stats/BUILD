@@ -24,7 +24,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+        "//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat",
     ],
 )
 

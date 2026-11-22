@@ -61,7 +61,7 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//packages/rust/vitruvian-pycompat:vitruvian_pycompat"],
+    deps = ["//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 rust_binary(

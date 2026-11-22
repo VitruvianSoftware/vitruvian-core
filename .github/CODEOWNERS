@@ -29,6 +29,7 @@
 /packages/design-system/ @VitruvianSoftware/platform-team
 /packages/orchestrator-core/ @VitruvianSoftware/platform-team
 /packages/pulumi/ @VitruvianSoftware/platform-team
+/packages/pycompat/ @VitruvianSoftware/platform-team
 /tools/agent-guard/ @VitruvianSoftware/platform-team
 /apps/cli/vitruvian-devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
 /apps/cli/vitruvian-homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team

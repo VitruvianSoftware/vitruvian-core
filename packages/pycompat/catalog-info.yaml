@@ -18,6 +18,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# One package, two Rust crates (vitruvian-pycompat and vitruvian-pyjson), so
+# one catalog file with one entity per crate, matching packages/design-system.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vitruvian-pycompat
+  description: Standard-library-only Rust crate reproducing Python string, error, JSON, argparse, and Unicode character-table behavior for ported CLI tools, plus an HTTP client that keeps tokens off the command line.
+  tags:
+    - rust
+    - python-compat
+    - json
+    - argparse
+    - unicode
+    - http
+    - curl
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pycompat/vitruvian-pycompat
+    vitruvian.dev/bazel-target: //packages/pycompat/vitruvian-pycompat:vitruvian_pycompat
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team
+---
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
@@ -30,8 +55,8 @@ metadata:
     - serde
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/rust/vitruvian-pyjson
-    vitruvian.dev/bazel-target: //packages/rust/vitruvian-pyjson:vitruvian_pyjson
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pycompat/vitruvian-pyjson
+    vitruvian.dev/bazel-target: //packages/pycompat/vitruvian-pyjson:vitruvian_pyjson
 spec:
   type: library
   lifecycle: production

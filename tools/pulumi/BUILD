@@ -43,7 +43,7 @@ go_sdk_go(
 )
 
 # Every tool's code, plus what it needs of Python carried by hand for
-# rotate-access-token: json, argparse, pyerr and pystr from //packages/rust/vitruvian-pycompat,
+# rotate-access-token: json, argparse, pyerr and pystr from //packages/pycompat/vitruvian-pycompat,
 # src/http.rs (urlopen: http:// over a socket, https:// through curl, since
 # std has no TLS). Optimised in every build mode. //tools/gcp-secrets and
 # //tools/saas-cli use its gcp-identities.tsv resolver.
@@ -64,7 +64,7 @@ rust_library(
         "//tools/saas-cli:__pkg__",
     ],
     deps = [
-        "//packages/rust/vitruvian-pycompat:vitruvian_pycompat",
+        "//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat",
     ],
 )
 

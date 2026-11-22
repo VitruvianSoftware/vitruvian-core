@@ -412,7 +412,7 @@ mod tests {
     fn e2e_families_counts_and_exclusions() {
         let repo = TempRepo::new("families");
         repo.write(
-            "packages/rust/vitruvian-pycompat/src/json.rs",
+            "packages/pycompat/vitruvian-pycompat/src/json.rs",
             "pub fn canonical() {}\n",
         );
         repo.write(
