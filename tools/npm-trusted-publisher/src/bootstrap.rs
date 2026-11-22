@@ -117,8 +117,6 @@ fn run(args: &[String], cleanup: &mut Option<String>) -> End {
     }
     let npm = sh::env_or("NPM", "npm");
     let mirror_repo = sh::env_or("MIRROR_REPO", "VitruvianSoftware/pulumi-library");
-    let otp_wait = sh::env_or("OTP_WAIT_SECONDS", "900");
-    let otp_poll = sh::env_or("OTP_POLL_SECONDS", "5");
     let (mut dry_run, mut no_login) = (false, false);
     for a in args {
         match a.as_str() {
@@ -317,7 +315,7 @@ fn run(args: &[String], cleanup: &mut Option<String>) -> End {
                 return End::Exit(1);
             }
         };
-        if publish_with_otp_wait(&npm, &dir, &otp_wait, &otp_poll) {
+        if publish_interactive(&npm, &dir) {
             outln(&format!("  + published {}", name));
             published += 1;
         } else {
@@ -401,45 +399,24 @@ fn publish_command(npm: &str) -> Command {
     c
 }
 
-/// `publish_with_otp_wait`: retry the SAME publish through an EOTP until the
-/// browser authentication lands or the budget runs out, never swallowing
-/// npm's output (its URL is the only way forward).
-fn publish_with_otp_wait(npm: &str, dir: &str, otp_wait: &str, otp_poll: &str) -> bool {
-    let mut waited: i64 = 0;
-    let mut shown = false;
-    loop {
-        let mut c = publish_command(npm);
-        let (rc, out) = match sh::in_dir(&mut c, dir) {
-            Ok(()) => sh::capture_merged(&mut c),
-            Err(m) => (1, format!("{}: {}", P, m).into_bytes()),
-        };
-        if rc == 0 {
-            sh::out(&out);
-            sh::out(b"\n");
-            return true;
-        }
-        if !sh::grep_fixed(&out, "EOTP") || !sh::test_lt(P, &waited.to_string(), otp_wait) {
-            sh::err(&out);
-            sh::err(b"\n");
-            return false;
-        }
-        if !shown {
-            shown = true;
-            outln("");
-            outln("npm-trusted-publisher-bootstrap: npm needs a one-time authentication");
-            outln("  before it will accept a publish. Open the URL below, authenticate,");
-            outln("  and CHOOSE \"skip for the next 5 minutes\" -- that covers every");
-            outln("  package in this run.");
-            sh::out(&out);
-            sh::out(b"\n");
-            outln(&format!(
-                "  waiting for that authentication to complete (up to {}s)...",
-                otp_wait
-            ));
-        }
-        sh::sleep(otp_poll);
-        waited += sh::parse_int(otp_poll).unwrap_or(0);
+/// Publish with npm attached straight to the terminal.
+///
+/// npm only runs its browser sign-in for a two-factor prompt itself when both
+/// stdin and stdout are a terminal (`otplease` in npm's `lib/utils/auth.js`).
+/// Then it prints a working "Authenticate your account at" link, waits for the
+/// approval and retries on its own. With its output captured, npm instead
+/// fails with EOTP and prints the link masked as `***`, which 404s. So this
+/// must never capture npm's output.
+fn publish_interactive(npm: &str, dir: &str) -> bool {
+    let mut c = publish_command(npm);
+    if let Err(m) = sh::in_dir(&mut c, dir) {
+        errln(&format!("{}: {}", P, m));
+        return false;
     }
+    outln("npm-trusted-publisher-bootstrap: if npm asks you to authenticate, open its");
+    outln("  link and CHOOSE \"skip for the next 5 minutes\" -- that also covers the");
+    outln("  trusted-publisher setup that runs next.");
+    sh::run_inherit(&mut c) == 0
 }
 
 #[cfg(test)]
