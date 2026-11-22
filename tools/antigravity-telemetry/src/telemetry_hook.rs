@@ -28,7 +28,7 @@
 //! what the collector has been receiving.
 
 use crate::http_client::{Flavor, TelemetryHttpClient};
-use crate::json::J;
+use crate::json::{ValueExt, J};
 use crate::otlp_builder::{
     compute_histogram_buckets, otel_attrs, scutil_local_host_name, time_or_now,
     DEFAULT_LATENCY_BOUNDS,
@@ -93,7 +93,7 @@ pub fn build_sum_metric(name: &str, description: &str, unit: &str, datapoints: V
         (
             "sum",
             J::obj(vec![
-                ("aggregationTemporality", J::Int(2)),
+                ("aggregationTemporality", J::int(2)),
                 ("isMonotonic", J::Bool(true)),
                 ("dataPoints", J::Arr(datapoints)),
             ]),
@@ -136,7 +136,7 @@ pub fn build_hist_metric(name: &str, description: &str, unit: &str, datapoints: 
         (
             "histogram",
             J::obj(vec![
-                ("aggregationTemporality", J::Int(2)),
+                ("aggregationTemporality", J::int(2)),
                 ("dataPoints", J::Arr(datapoints)),
             ]),
         ),
@@ -162,7 +162,7 @@ pub fn build_token_usage_metric(
     .iter()
     .map(|(token_type, val)| {
         build_sum_dp(
-            &J::Int(*val),
+            &J::int(*val),
             &[
                 ("host", h.clone()),
                 ("model", model.clone()),
@@ -182,7 +182,7 @@ pub fn build_token_usage_metric(
 
 pub fn build_api_request_metric(model: &J, status_code: &str, count: i64, host: &str) -> J {
     let dp = build_sum_dp(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[
             ("host", J::str(host)),
             ("model", model.clone()),
@@ -200,7 +200,7 @@ pub fn build_api_request_metric(model: &J, status_code: &str, count: i64, host: 
 
 pub fn build_turn_count_metric(model: &J, count: i64, host: &str) -> J {
     let dp = build_sum_dp(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[("host", J::str(host)), ("model", model.clone())],
         None,
     );
@@ -214,7 +214,7 @@ pub fn build_turn_count_metric(model: &J, count: i64, host: &str) -> J {
 
 pub fn build_subagent_spawn_metric(subagent_type: &str, count: i64, host: &str) -> J {
     let dp = build_sum_dp(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[
             ("host", J::str(host)),
             ("subagent_type", J::str(subagent_type)),
@@ -231,7 +231,7 @@ pub fn build_subagent_spawn_metric(subagent_type: &str, count: i64, host: &str) 
 
 pub fn build_tool_call_count_metric(tool_name: &J, status: &str, count: i64, host: &str) -> J {
     let dp = build_sum_dp(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[
             ("host", J::str(host)),
             ("tool_name", tool_name.clone()),
@@ -272,7 +272,7 @@ pub fn build_tool_call_latency_metric(
 
 pub fn build_session_count_metric(status: &J, count: i64, host: &str) -> J {
     let dp = build_sum_dp(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[("host", J::str(host)), ("status", status.clone())],
         None,
     );
@@ -368,7 +368,7 @@ pub fn process_event(data: &J, host: Option<&str>, timers: &mut ToolTimers) -> P
         let count = |snake: &str, camel: &str| -> PyResult<i128> {
             let v = match get(&usage, snake)? {
                 Some(v) => v.clone(),
-                None => get_or(&usage, camel, J::Int(0))?,
+                None => get_or(&usage, camel, J::int(0))?,
             };
             py_int(&v)
         };

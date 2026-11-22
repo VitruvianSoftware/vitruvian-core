@@ -27,7 +27,7 @@
 //! lands decides what was already counted, so these helpers return `Err` at
 //! exactly the points Python would raise, with a message in Python's words.
 
-use crate::json::{float_repr, J};
+use crate::json::{float_repr, int_as_f64, ValueExt, J};
 
 pub type PyResult<T> = Result<T, String>;
 
@@ -48,7 +48,7 @@ pub fn truthy(v: &J) -> bool {
     match v {
         J::Null => false,
         J::Bool(b) => *b,
-        J::Int(i) => *i != 0,
+        J::Int(_) => v.truthy(),
         J::Float(f) => *f != 0.0,
         J::Str(s) => !s.is_empty(),
         J::Arr(a) => !a.is_empty(),
@@ -173,7 +173,7 @@ pub fn py_repr(v: &J) -> String {
     match v {
         J::Null => "None".to_string(),
         J::Bool(b) => if *b { "True" } else { "False" }.to_string(),
-        J::Int(i) => i.to_string(),
+        J::Int(_) => v.py_repr(),
         J::Float(f) => float_repr(*f),
         J::Str(s) => repr_str(s),
         J::Arr(items) => {
@@ -217,7 +217,19 @@ fn strip_digit_underscores(s: &str) -> Option<String> {
 pub fn py_int(v: &J) -> PyResult<i128> {
     match v {
         J::Bool(b) => Ok(*b as i128),
-        J::Int(i) => Ok(*i),
+        J::Int(s) => match s.parse::<i128>() {
+            Ok(i) => Ok(i),
+            Err(_) => {
+                let f = int_as_f64(s);
+                if f.is_nan() {
+                    Err("cannot convert float NaN to integer".to_string())
+                } else if f.is_infinite() {
+                    Err("cannot convert float infinity to integer".to_string())
+                } else {
+                    Ok(f.trunc() as i128)
+                }
+            }
+        },
         J::Float(f) => {
             if f.is_nan() {
                 Err("cannot convert float NaN to integer".to_string())
@@ -252,7 +264,7 @@ pub fn py_int(v: &J) -> PyResult<i128> {
 pub fn py_float(v: &J) -> PyResult<f64> {
     match v {
         J::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
-        J::Int(i) => Ok(*i as f64),
+        J::Int(s) => Ok(int_as_f64(s)),
         J::Float(f) => Ok(*f),
         J::Str(s) => parse_py_float(s)
             .ok_or_else(|| format!("could not convert string to float: {}", repr_str(s))),
@@ -286,15 +298,17 @@ pub fn parse_py_float(s: &str) -> Option<f64> {
 pub fn num_add(a: &J, b: &J) -> PyResult<J> {
     let as_int = |v: &J| match v {
         J::Bool(b) => Some(*b as i128),
-        J::Int(i) => Some(*i),
+        J::Int(s) => s.parse::<i128>().ok(),
         _ => None,
     };
     let as_float = |v: &J| match v {
         J::Float(f) => Some(*f),
-        other => as_int(other).map(|i| i as f64),
+        J::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        J::Int(s) => Some(int_as_f64(s)),
+        _ => None,
     };
     if let (Some(x), Some(y)) = (as_int(a), as_int(b)) {
-        return Ok(J::Int(x + y));
+        return Ok(J::int(x + y));
     }
     if let (Some(x), Some(y)) = (as_float(a), as_float(b)) {
         return Ok(J::Float(x + y));
@@ -321,7 +335,7 @@ pub fn add_assign(target: &mut J, inc: &J) -> PyResult<()> {
 pub fn as_number(v: &J) -> Option<f64> {
     match v {
         J::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
-        J::Int(i) => Some(*i as f64),
+        J::Int(s) => Some(int_as_f64(s)),
         J::Float(f) => Some(*f),
         _ => None,
     }
@@ -365,9 +379,9 @@ mod tests {
 
     #[test]
     fn numeric_add() {
-        assert_eq!(num_add(&J::Int(1), &J::Bool(true)).unwrap(), J::Int(2));
-        assert_eq!(num_add(&J::Int(1), &J::Float(0.5)).unwrap(), J::Float(1.5));
-        assert!(num_add(&J::Int(1), &J::Null).is_err());
+        assert_eq!(num_add(&J::int(1), &J::Bool(true)).unwrap(), J::int(2));
+        assert_eq!(num_add(&J::int(1), &J::Float(0.5)).unwrap(), J::Float(1.5));
+        assert!(num_add(&J::int(1), &J::Null).is_err());
     }
 
     #[test]

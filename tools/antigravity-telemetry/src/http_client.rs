@@ -33,7 +33,7 @@
 //! structured and [`Flavor`] renders it.
 
 use crate::gzip;
-use crate::json::{dumps, float_repr, J};
+use crate::json::{dumps, float_repr, ValueExt, J};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
@@ -681,7 +681,7 @@ mod tests {
         });
         let c = TelemetryHttpClient::new(&format!("http://127.0.0.1:{}", port), 2.0, Flavor::Hook);
         let (ok, code, msg) =
-            c.post_json("v1/metrics", &J::obj(vec![("a", J::Int(1))]), true, true);
+            c.post_json("v1/metrics", &J::obj(vec![("a", J::int(1))]), true, true);
         let req = server.join().unwrap();
         assert_eq!(
             (ok, code, msg.as_str()),

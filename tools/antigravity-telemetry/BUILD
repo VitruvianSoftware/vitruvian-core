@@ -26,10 +26,8 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # ----------------------------------------------------------------------------
 # Native Rust implementation (src/) — primary binary (`:antigravity-telemetry`).
-# Hand-written: Gazelle has no Rust here. std only:
-# it does its own JSON (src/json.rs says why serde_json, with the features
-# @crates enables, sorts keys and misparses some floats), so Cargo.toml,
-# Cargo.lock and MODULE.bazel stay as they are.
+# Hand-written: Gazelle has no Rust here. std + //packages/pycompat only (no
+# external crates, so Cargo.toml, Cargo.lock and MODULE.bazel stay as they are).
 # ----------------------------------------------------------------------------
 
 rust_library(
@@ -42,6 +40,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
+    deps = ["//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 # One binary for every entry point: `setup`, `status`, `emit`, `export`,
