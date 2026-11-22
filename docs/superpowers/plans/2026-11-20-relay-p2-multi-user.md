@@ -161,7 +161,7 @@ apps/suites/vitruvian-relay/
     settings.rs      (new)       `vrelay settings get|set`, `vrelay log`
   macmenu/           (new)       SwiftUI menu bar app "Vitruvian Relay" (model: apps/mobile/vitruvian-remote/macmenu)
 gitops/argocd/platform/relay/    values.yaml, cnpg-cluster.yaml, cnpg-objectstore.yaml, cnpg-scheduledbackup.yaml (new)
-gitops/argocd/projects/relay-project.yaml   whitelist CNPG kinds, Secret, SealedSecret
+gitops/argocd/projects/relay-project.yaml   whitelist CNPG kinds (Secrets come from sealed-secrets-manifests and CNPG, not this app)
 gitops/argocd/platform/sealed-secrets-manifests/relay-db-backup-s3.sealedsecret.yaml (new)
 infrastructure/pulumi/platform/zitadel-apps-relay/   customer org, project grant, role assertion, dashboard app, invites
 ```
@@ -381,7 +381,7 @@ asks for.
   - `gitops/argocd/platform/sealed-secrets-manifests/relay-db-backup-s3.sealedsecret.yaml`, sealed with `bazel run //tools/gitops:kubeseal`.
 - Modify:
   - The MinIO bucket and user in `gitops/argocd/platform/minio-amd64/applicationset.yaml`, as umami's.
-  - `gitops/argocd/projects/relay-project.yaml`: whitelist CNPG `Cluster`, `ObjectStore` and `ScheduledBackup`, plus `Secret` and `SealedSecret`, as `buzz-project.yaml:75-82` does.
+  - `gitops/argocd/projects/relay-project.yaml`: whitelist CNPG `Cluster`, `ObjectStore` and `ScheduledBackup`. Not `Secret` or `SealedSecret`: the sealed secret is applied by `sealed-secrets-manifests` and CNPG creates its own Secrets, so this app renders none.
   - The relay chart: `DATABASE_URL` from the CNPG-generated `relay-db-app` secret (key `uri`), the CA from `relay-db-ca`, and a CiliumNetworkPolicy egress rule to `relay-db-rw:5432`.
   - `relay/src/config.rs` (`DATABASE_URL` required, `DATA_DIR` removed), `relay/src/main.rs`, `relay/Cargo.toml`.
   - `relay/BUILD`: an `itest_service` named `postgres`, copied from `apps/suites/vitruvian-tabs/api/BUILD:196-221`, and `service_test` targets for the Postgres tests.
