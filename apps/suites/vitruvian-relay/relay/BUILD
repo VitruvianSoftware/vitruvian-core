@@ -78,8 +78,13 @@ _LIB_SRCS = [
 ]
 
 # The schema (src/store.rs include_str!s it) and the dashboard's stylesheet
-# (src/dashboard/mod.rs), compiled into the binary.
-_LIB_COMPILE_DATA = glob(["migrations/*.sql"]) + ["src/dashboard/relay.css"]
+# (src/dashboard/mod.rs), compiled into the binary. Plus the throwaway signing
+# key the tests mint tokens with: one file, read by src/http_tests.rs (in the
+# library), tests/relay_support.rs and tests/e2e.rs (include_str!). Only
+# `cfg(test)` code reads it; the image builds with cargo and never does.
+_TEST_KEY = ["tests/testdata/test_rsa_key.b64"]
+
+_LIB_COMPILE_DATA = glob(["migrations/*.sql"]) + ["src/dashboard/relay.css"] + _TEST_KEY
 
 rust_library(
     name = "vitruvian_relay",
@@ -244,6 +249,7 @@ rust_test(
         "tests/pg_support.rs",
         "tests/relay_support.rs",
     ],
+    compile_data = _TEST_KEY,
     crate_root = "tests/database_down.rs",
     edition = "2021",
     tags = ["manual"],
@@ -280,6 +286,7 @@ rust_test(
     name = "isolation_itest_bin",
     size = "small",
     srcs = _ISOLATION_SRCS,
+    compile_data = _TEST_KEY,
     crate_root = "tests/isolation.rs",
     edition = "2021",
     tags = ["manual"],
@@ -290,6 +297,7 @@ rust_test(
     name = "isolation_canary_itest_bin",
     size = "small",
     srcs = _ISOLATION_SRCS,
+    compile_data = _TEST_KEY,
     crate_root = "tests/isolation.rs",
     edition = "2021",
     tags = ["manual"],
@@ -315,6 +323,7 @@ rust_test(
     name = "isolation_request_canary_itest_bin",
     size = "small",
     srcs = _ISOLATION_SRCS,
+    compile_data = _TEST_KEY,
     crate_root = "tests/isolation.rs",
     edition = "2021",
     tags = ["manual"],
@@ -398,6 +407,7 @@ rust_test(
     name = "vitruvian_relay_e2e_test",
     size = "medium",
     srcs = ["tests/e2e.rs"],
+    compile_data = _TEST_KEY,
     edition = "2021",
     env = {"VRELAY_SECRETS": "file"},
     deps = [
