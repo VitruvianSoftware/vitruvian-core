@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.33...vitruvian-courier-v0.3.34) (2026-11-22)
+
+
+### Features
+
+* **vitruvian-courier:** a cleaner inbox menu, shared links with pictures, Google Chat history state, formatted phone numbers ([#5322](https://github.com/VitruvianSoftware/vitruvian-core/issues/5322)) ([28800db](https://github.com/VitruvianSoftware/vitruvian-core/commit/28800db9c8b74add3fb092a2c4d1cccc761cb9b4))
+* **vitruvian-courier:** edit a photo with AI, then decide whether to post it ([#5319](https://github.com/VitruvianSoftware/vitruvian-core/issues/5319)) ([83a1332](https://github.com/VitruvianSoftware/vitruvian-core/commit/83a13326085e55f910d6f7798362242ed38e99ec))
+* **vitruvian-courier:** real formatting as you type, a built-in emoji picker, GIF search ([#5325](https://github.com/VitruvianSoftware/vitruvian-core/issues/5325)) ([31a86c3](https://github.com/VitruvianSoftware/vitruvian-core/commit/31a86c353283b1ebe6f60c4d4052a869d528ab15))
+* **vitruvian-courier:** summarize an article from its link card, even behind a paywall ([#5324](https://github.com/VitruvianSoftware/vitruvian-core/issues/5324)) ([06f2410](https://github.com/VitruvianSoftware/vitruvian-core/commit/06f241055f17deadab4e2c4c30c4b84ba09adf85))
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** a floating date while scrolling, hover buttons beside the message, the header opens chat info ([#5320](https://github.com/VitruvianSoftware/vitruvian-core/issues/5320)) ([41171fa](https://github.com/VitruvianSoftware/vitruvian-core/commit/41171fa8916c80bafe323d432404da3c9548bb35))
+* **vitruvian-courier:** a new GIF search no longer shows the last search's GIFs while it loads ([#5336](https://github.com/VitruvianSoftware/vitruvian-core/issues/5336)) ([e50fd0f](https://github.com/VitruvianSoftware/vitruvian-core/commit/e50fd0fe825f70c7ebed3dcd534ea179f1f03c18))
+* **vitruvian-courier:** article cards from Google Chat show their picture ([#5335](https://github.com/VitruvianSoftware/vitruvian-core/issues/5335)) ([baf77cb](https://github.com/VitruvianSoftware/vitruvian-core/commit/baf77cb7198746f07346bf6bbc6c10b7a0fbd74c))
+* **vitruvian-courier:** article cards with their picture, photos without a bubble, wider bubbles, real inline code, quieter date links ([#5323](https://github.com/VitruvianSoftware/vitruvian-core/issues/5323)) ([5fee340](https://github.com/VitruvianSoftware/vitruvian-core/commit/5fee340f6885a87ac5fa72926548cf9ef9a1566c))
+
 ## [0.3.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.32...vitruvian-courier-v0.3.33) (2026-11-21)
 
 
