@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-homelab-v1.7.0...vitruvian-homelab-v1.7.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update url crate to 2.5.9 for RUSTSEC-2026-0592 ([#5377](https://github.com/VitruvianSoftware/vitruvian-core/issues/5377)) ([4bb66d8](https://github.com/VitruvianSoftware/vitruvian-core/commit/4bb66d886771125b7447a6860941871ce4b389dd))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-homelab-v1.6.1...vitruvian-homelab-v1.7.0) (2026-11-17)
 
 
