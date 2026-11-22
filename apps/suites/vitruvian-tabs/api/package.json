@@ -1,6 +1,6 @@
 {
   "name": "@vitruvian-tabs/api",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "private": true,
   "description": "Vitruvian Tabs API backend service",
   "license": "MIT",
