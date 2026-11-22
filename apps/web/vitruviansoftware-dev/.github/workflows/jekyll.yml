@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Ruby and Bundler
-        uses: ruby/setup-ruby@20eb24b0d509e2b9ed9b6d42ddfeb992915e0564 # v1
+        uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1
         with:
           ruby-version: '3.2' # Specify Ruby version consistent with local setup if possible
           bundler-cache: true # Automatically runs bundle install and caches gems
