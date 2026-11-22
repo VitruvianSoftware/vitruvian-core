@@ -194,13 +194,14 @@ public enum MarkdownConverter {
             let to = min(string.length, entity.offset + entity.length)
             if from < to { for position in from ..< to { inCode[position] = true } }
         }
-        if hasStyles || !MarkdownSpans.parse(text).isEmpty {
+        let spans = MarkdownSpans.parse(text)
+        if hasStyles || !spans.isEmpty {
             for position in 0 ..< string.length where isMarkerCharacter(string.character(at: position)) {
                 if !inCode[position] { escaped.insert(position) }
             }
         }
         // Inside code, the markers of what would be a span are escaped, as before (the code itself is not read).
-        for span in MarkdownSpans.parse(text) {
+        for span in spans {
             for marker in [span.open, span.close] {
                 for position in marker.location ..< marker.location + marker.length { escaped.insert(position) }
             }
