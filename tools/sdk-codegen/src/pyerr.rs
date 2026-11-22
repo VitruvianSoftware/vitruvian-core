@@ -23,7 +23,7 @@
 //! message, which it prints alone. Each is built here with the words Python
 //! would use, from the operation on a JSON value that raised it.
 
-use crate::json::Value;
+use crate::json::{Value, ValueExt};
 use crate::pystr;
 
 /// An exception: its class as the traceback names it, and `str()` of it.

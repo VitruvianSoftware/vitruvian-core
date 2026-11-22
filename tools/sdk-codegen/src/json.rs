@@ -18,133 +18,63 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! What Python's `json.loads` reads, as CPython 3.12's C scanner reads it:
-//! NaN and Infinity, integers of any size, an object's keys in the order they
-//! came with the last of two equal keys winning, and the same JSONDecodeError
-//! message at the same place for a document that does not parse. A value then
-//! answers `repr`, `str`, `==` and truthiness the way the Python object would.
-//!
-//! One thing cannot be carried: a lone surrogate (`"\ud800"`), which a Rust
-//! string cannot hold, is read as U+FFFD.
+//! Thin adapter over `vitruvian_pycompat::json` preserving `tools/sdk-codegen`'s
+//! `PyErr` error reporting (`json.decoder.JSONDecodeError`), `ValueExt` helpers,
+//! and `schema_eq`.
 
 use crate::pyerr::PyErr;
-use crate::pystr;
 
-#[derive(Clone, Debug)]
-pub enum Value {
-    Null,
-    Bool(bool),
-    /// An integer, kept as its text: Python's ints have no size limit.
-    Int(String),
-    Float(f64),
-    Str(String),
-    Arr(Vec<Value>),
-    /// Keys in the order the dict holds them.
-    Obj(Vec<(String, Value)>),
+pub use vitruvian_pycompat::json::{py_eq, Value};
+
+/// Extension helpers on [`Value`] expected by `tools/sdk-codegen`.
+pub trait ValueExt {
+    /// `key in d` for a dict.
+    fn has(&self, key: &str) -> bool;
+    fn as_str(&self) -> Option<&str>;
+    fn as_obj(&self) -> Option<&Vec<(String, Value)>>;
+    /// Whether this is a JSON number that is not a bool.
+    fn is_number(&self) -> bool;
+    /// The sign of a number: -1, 0 or 1; None for NaN or a non-number.
+    fn sign(&self) -> Option<i32>;
 }
 
-impl Value {
-    /// `d.get(key)` on a dict; None for a missing key or another type.
-    pub fn get(&self, key: &str) -> Option<&Value> {
-        match self {
-            Value::Obj(items) => items.iter().find(|(k, _)| k == key).map(|(_, v)| v),
-            _ => None,
-        }
-    }
-
-    /// `key in d` for a dict.
-    pub fn has(&self, key: &str) -> bool {
+impl ValueExt for Value {
+    fn has(&self, key: &str) -> bool {
         self.get(key).is_some()
     }
 
-    pub fn as_str(&self) -> Option<&str> {
+    fn as_str(&self) -> Option<&str> {
         match self {
             Value::Str(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn as_obj(&self) -> Option<&Vec<(String, Value)>> {
+    fn as_obj(&self) -> Option<&Vec<(String, Value)>> {
         match self {
             Value::Obj(items) => Some(items),
             _ => None,
         }
     }
 
-    /// Python truthiness.
-    pub fn truthy(&self) -> bool {
-        match self {
-            Value::Null => false,
-            Value::Bool(b) => *b,
-            Value::Int(s) => s.trim_start_matches('-').chars().any(|c| c != '0'),
-            Value::Float(f) => *f != 0.0,
-            Value::Str(s) => !s.is_empty(),
-            Value::Arr(a) => !a.is_empty(),
-            Value::Obj(o) => !o.is_empty(),
-        }
-    }
-
-    /// The Python type's name, as error messages give it.
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Value::Null => "NoneType",
-            Value::Bool(_) => "bool",
-            Value::Int(_) => "int",
-            Value::Float(_) => "float",
-            Value::Str(_) => "str",
-            Value::Arr(_) => "list",
-            Value::Obj(_) => "dict",
-        }
-    }
-
-    /// `str(value)`, as an f-string formats it.
-    pub fn py_str(&self) -> String {
-        match self {
-            Value::Str(s) => s.clone(),
-            other => other.py_repr(),
-        }
-    }
-
-    /// `repr(value)`.
-    pub fn py_repr(&self) -> String {
-        match self {
-            Value::Null => "None".into(),
-            Value::Bool(true) => "True".into(),
-            Value::Bool(false) => "False".into(),
-            Value::Int(s) => normalize_int(s),
-            Value::Float(f) => pystr::repr_float(*f),
-            Value::Str(s) => pystr::repr_str(s),
-            Value::Arr(items) => {
-                let parts: Vec<String> = items.iter().map(|v| v.py_repr()).collect();
-                format!("[{}]", parts.join(", "))
-            }
-            Value::Obj(items) => {
-                let parts: Vec<String> = items
-                    .iter()
-                    .map(|(k, v)| format!("{}: {}", pystr::repr_str(k), v.py_repr()))
-                    .collect();
-                format!("{{{}}}", parts.join(", "))
-            }
-        }
-    }
-
-    /// Whether this is a JSON number that is not a bool.
-    pub fn is_number(&self) -> bool {
+    fn is_number(&self) -> bool {
         matches!(self, Value::Int(_) | Value::Float(_))
     }
 
-    /// The sign of a number: -1, 0 or 1; None for NaN or a non-number.
-    pub fn sign(&self) -> Option<i32> {
+    fn sign(&self) -> Option<i32> {
         match self {
             Value::Int(s) => {
-                let n = normalize_int(s);
-                Some(if n == "0" {
-                    0
-                } else if n.starts_with('-') {
-                    -1
+                let (neg, digits) = match s.strip_prefix('-') {
+                    Some(d) => (true, d),
+                    None => (false, s.as_str()),
+                };
+                if digits.bytes().all(|b| b == b'0') {
+                    Some(0)
+                } else if neg {
+                    Some(-1)
                 } else {
-                    1
-                })
+                    Some(1)
+                }
             }
             Value::Float(f) => {
                 if f.is_nan() {
@@ -160,71 +90,6 @@ impl Value {
             Value::Bool(b) => Some(if *b { 1 } else { 0 }),
             _ => None,
         }
-    }
-}
-
-pub fn normalize_int(s: &str) -> String {
-    let (neg, digits) = match s.strip_prefix('-') {
-        Some(d) => (true, d),
-        None => (false, s),
-    };
-    let trimmed = digits.trim_start_matches('0');
-    if trimmed.is_empty() {
-        "0".into()
-    } else if neg {
-        format!("-{}", trimmed)
-    } else {
-        trimmed.into()
-    }
-}
-
-/// An integral float as the exact integer text it is, for comparing with an int.
-fn float_as_int(f: f64) -> Option<String> {
-    if !f.is_finite() || f.fract() != 0.0 {
-        return None;
-    }
-    Some(normalize_int(&format!("{:.0}", f)))
-}
-
-/// Python's `a == b` on two numbers (bools are 0 and 1).
-fn number_eq(a: &Value, b: &Value) -> bool {
-    let int_text = |v: &Value| -> Option<String> {
-        match v {
-            Value::Bool(x) => Some(if *x { "1".into() } else { "0".into() }),
-            Value::Int(s) => Some(normalize_int(s)),
-            _ => None,
-        }
-    };
-    match (a, b) {
-        (Value::Float(x), Value::Float(y)) => x == y,
-        (Value::Float(x), other) | (other, Value::Float(x)) => {
-            match (float_as_int(*x), int_text(other)) {
-                (Some(l), Some(r)) => l == r,
-                _ => false,
-            }
-        }
-        _ => int_text(a) == int_text(b),
-    }
-}
-
-/// Python's `a == b`: True == 1 == 1.0, a dict equal whatever its order.
-pub fn py_eq(a: &Value, b: &Value) -> bool {
-    let numeric = |v: &Value| matches!(v, Value::Bool(_) | Value::Int(_) | Value::Float(_));
-    match (a, b) {
-        (Value::Null, Value::Null) => true,
-        (Value::Str(x), Value::Str(y)) => x == y,
-        (Value::Arr(x), Value::Arr(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(l, r)| py_eq(l, r))
-        }
-        (Value::Obj(x), Value::Obj(y)) => {
-            x.len() == y.len()
-                && x.iter().all(|(k, v)| match b.get(k) {
-                    Some(w) => py_eq(v, w),
-                    None => false,
-                })
-        }
-        _ if numeric(a) && numeric(b) => number_eq(a, b),
-        _ => false,
     }
 }
 
@@ -246,280 +111,15 @@ pub fn schema_eq(a: &Value, b: &Value) -> bool {
         (Value::Bool(x), Value::Bool(y)) => x == y,
         (Value::Bool(_), _) | (_, Value::Bool(_)) => false,
         (Value::Null, Value::Null) => true,
-        (Value::Int(_) | Value::Float(_), Value::Int(_) | Value::Float(_)) => number_eq(a, b),
+        (Value::Int(_) | Value::Float(_), Value::Int(_) | Value::Float(_)) => py_eq(a, b),
         _ => false,
     }
 }
 
 /// `json.loads(text)`, or the JSONDecodeError it raises.
 pub fn loads(text: &str) -> Result<Value, PyErr> {
-    let chars: Vec<char> = text.chars().collect();
-    let fail = |msg: &str, pos: usize| decode_error(&chars, msg, pos);
-    if chars.first() == Some(&'\u{feff}') {
-        return Err(fail("Unexpected UTF-8 BOM (decode using utf-8-sig)", 0));
-    }
-    let mut p = Parser { s: &chars };
-    let start = p.ws(0);
-    let (value, end) = match p.scan(start) {
-        Ok(found) => found,
-        Err(Stop::At(pos)) => return Err(fail("Expecting value", pos)),
-        Err(Stop::Error(msg, pos)) => return Err(fail(&msg, pos)),
-    };
-    let end = p.ws(end);
-    if end != chars.len() {
-        return Err(fail("Extra data", end));
-    }
-    Ok(value)
-}
-
-fn decode_error(doc: &[char], msg: &str, pos: usize) -> PyErr {
-    let before = &doc[..pos.min(doc.len())];
-    let lineno = before.iter().filter(|&&c| c == '\n').count() + 1;
-    let colno = match before.iter().rposition(|&c| c == '\n') {
-        Some(nl) => pos - nl,
-        None => pos + 1,
-    };
-    PyErr::new(
-        "json.decoder.JSONDecodeError",
-        format!("{}: line {} column {} (char {})", msg, lineno, colno, pos),
-    )
-}
-
-enum Stop {
-    /// StopIteration: no value starts here.
-    At(usize),
-    /// A JSONDecodeError raised inside.
-    Error(String, usize),
-}
-
-struct Parser<'a> {
-    s: &'a [char],
-}
-
-fn is_ws(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\n' | '\r')
-}
-
-impl<'a> Parser<'a> {
-    fn ws(&self, mut i: usize) -> usize {
-        while i < self.s.len() && is_ws(self.s[i]) {
-            i += 1;
-        }
-        i
-    }
-
-    fn at(&self, i: usize) -> Option<char> {
-        self.s.get(i).copied()
-    }
-
-    fn word(&self, i: usize, w: &str) -> bool {
-        let w: Vec<char> = w.chars().collect();
-        self.s.len() >= i + w.len() && self.s[i..i + w.len()] == w[..]
-    }
-
-    fn scan(&mut self, i: usize) -> Result<(Value, usize), Stop> {
-        let c = match self.at(i) {
-            None => return Err(Stop::At(i)),
-            Some(c) => c,
-        };
-        match c {
-            '"' => {
-                let (s, end) = self.string(i + 1)?;
-                Ok((Value::Str(s), end))
-            }
-            '{' => self.object(i + 1),
-            '[' => self.array(i + 1),
-            'n' if self.word(i, "null") => Ok((Value::Null, i + 4)),
-            't' if self.word(i, "true") => Ok((Value::Bool(true), i + 4)),
-            'f' if self.word(i, "false") => Ok((Value::Bool(false), i + 5)),
-            'N' if self.word(i, "NaN") => Ok((Value::Float(f64::NAN), i + 3)),
-            'I' if self.word(i, "Infinity") => Ok((Value::Float(f64::INFINITY), i + 8)),
-            '-' if self.word(i, "-Infinity") => Ok((Value::Float(f64::NEG_INFINITY), i + 9)),
-            _ => self.number(i),
-        }
-    }
-
-    fn number(&self, start: usize) -> Result<(Value, usize), Stop> {
-        let digit = |i: usize| matches!(self.at(i), Some(c) if c.is_ascii_digit());
-        let mut i = start;
-        if self.at(i) == Some('-') {
-            i += 1;
-        }
-        match self.at(i) {
-            Some('0') => i += 1,
-            Some(c) if c.is_ascii_digit() => {
-                while digit(i) {
-                    i += 1;
-                }
-            }
-            _ => return Err(Stop::At(start)),
-        }
-        let mut is_float = false;
-        if self.at(i) == Some('.') && digit(i + 1) {
-            is_float = true;
-            i += 2;
-            while digit(i) {
-                i += 1;
-            }
-        }
-        if matches!(self.at(i), Some('e' | 'E')) && i + 1 < self.s.len() {
-            let e_start = i;
-            i += 1;
-            if matches!(self.at(i), Some('-' | '+')) && i + 1 < self.s.len() {
-                i += 1;
-            }
-            while digit(i) {
-                i += 1;
-            }
-            if digit(i - 1) {
-                is_float = true;
-            } else {
-                i = e_start;
-            }
-        }
-        let text: String = self.s[start..i].iter().collect();
-        if is_float {
-            Ok((Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)), i))
-        } else {
-            Ok((Value::Int(text), i))
-        }
-    }
-
-    fn hex(&self, from: usize, to: usize) -> Option<u32> {
-        let mut c = 0u32;
-        for i in from..to {
-            c = (c << 4) | self.at(i)?.to_digit(16)?;
-        }
-        Some(c)
-    }
-
-    /// CPython's scanstring_unicode, from just after the opening quote.
-    fn string(&self, mut end: usize) -> Result<(String, usize), Stop> {
-        let len = self.s.len();
-        let begin = end - 1;
-        let err = |msg: &str, pos: usize| Stop::Error(msg.to_string(), pos);
-        let mut out = String::new();
-        loop {
-            let mut next = end;
-            while next < len {
-                let d = self.s[next];
-                if d == '"' || d == '\\' {
-                    break;
-                }
-                if (d as u32) <= 0x1f {
-                    return Err(err("Invalid control character at", next));
-                }
-                next += 1;
-            }
-            if next == len {
-                return Err(err("Unterminated string starting at", begin));
-            }
-            let c = self.s[next];
-            out.extend(&self.s[end..next]);
-            next += 1;
-            if c == '"' {
-                return Ok((out, next));
-            }
-            if next == len {
-                return Err(err("Unterminated string starting at", begin));
-            }
-            let e = self.s[next];
-            if e != 'u' {
-                end = next + 1;
-                let ch = match e {
-                    '"' => '"',
-                    '\\' => '\\',
-                    '/' => '/',
-                    'b' => '\u{8}',
-                    'f' => '\u{c}',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    _ => return Err(err("Invalid \\escape", end - 2)),
-                };
-                out.push(ch);
-            } else {
-                next += 1;
-                end = next + 4;
-                if end >= len {
-                    return Err(err("Invalid \\uXXXX escape", next - 1));
-                }
-                let mut cp = match self.hex(next, end) {
-                    Some(v) => v,
-                    None => return Err(err("Invalid \\uXXXX escape", end - 5)),
-                };
-                if (0xD800..0xDC00).contains(&cp)
-                    && end + 6 < len
-                    && self.s[end] == '\\'
-                    && self.s[end + 1] == 'u'
-                {
-                    let lo = match self.hex(end + 2, end + 6) {
-                        Some(v) => v,
-                        None => return Err(err("Invalid \\uXXXX escape", end + 1)),
-                    };
-                    if (0xDC00..0xE000).contains(&lo) {
-                        cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                        end += 6;
-                    }
-                }
-                out.push(char::from_u32(cp).unwrap_or('\u{fffd}'));
-            }
-        }
-    }
-
-    fn object(&mut self, start: usize) -> Result<(Value, usize), Stop> {
-        let err = |msg: &str, pos: usize| Stop::Error(msg.to_string(), pos);
-        let mut items: Vec<(String, Value)> = Vec::new();
-        let mut i = self.ws(start);
-        if self.at(i) == Some('}') {
-            return Ok((Value::Obj(items), i + 1));
-        }
-        loop {
-            if self.at(i) != Some('"') {
-                return Err(err("Expecting property name enclosed in double quotes", i));
-            }
-            let (key, next) = self.string(i + 1)?;
-            i = self.ws(next);
-            if self.at(i) != Some(':') {
-                return Err(err("Expecting ':' delimiter", i));
-            }
-            i = self.ws(i + 1);
-            let (value, next) = self.scan(i)?;
-            if let Some(slot) = items.iter_mut().find(|(k, _)| *k == key) {
-                slot.1 = value;
-            } else {
-                items.push((key, value));
-            }
-            i = self.ws(next);
-            if self.at(i) == Some('}') {
-                return Ok((Value::Obj(items), i + 1));
-            }
-            if self.at(i) != Some(',') {
-                return Err(err("Expecting ',' delimiter", i));
-            }
-            i = self.ws(i + 1);
-        }
-    }
-
-    fn array(&mut self, start: usize) -> Result<(Value, usize), Stop> {
-        let mut items = Vec::new();
-        let mut i = self.ws(start);
-        if self.at(i) == Some(']') {
-            return Ok((Value::Arr(items), i + 1));
-        }
-        loop {
-            let (value, next) = self.scan(i)?;
-            items.push(value);
-            i = self.ws(next);
-            if self.at(i) == Some(']') {
-                return Ok((Value::Arr(items), i + 1));
-            }
-            if self.at(i) != Some(',') {
-                return Err(Stop::Error("Expecting ',' delimiter".into(), i));
-            }
-            i = self.ws(i + 1);
-        }
-    }
+    vitruvian_pycompat::json::loads(text)
+        .map_err(|e| PyErr::new("json.decoder.JSONDecodeError", e.python_str()))
 }
 
 #[cfg(test)]
@@ -528,6 +128,11 @@ mod tests {
 
     fn msg(text: &str) -> String {
         loads(text).unwrap_err().message
+    }
+
+    fn bs(template: &str) -> String {
+        const BS: char = '\\';
+        template.replace('|', &BS.to_string())
     }
 
     #[test]
@@ -563,12 +168,12 @@ mod tests {
             "Unterminated string starting at: line 2 column 1 (char 1)"
         );
         assert_eq!(
-            msg("\"a\\q\""),
-            "Invalid \\escape: line 1 column 3 (char 2)"
+            msg(&bs("\"a|q\"")),
+            bs("Invalid |escape: line 1 column 3 (char 2)")
         );
         assert_eq!(
-            msg("\"\\u12\""),
-            "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+            msg(&bs("\"|u12\"")),
+            bs("Invalid |uXXXX escape: line 1 column 3 (char 2)")
         );
         assert_eq!(
             msg("\"a\nb\""),
@@ -596,7 +201,7 @@ mod tests {
         assert_eq!(loads("-0").unwrap().py_repr(), "0");
         assert_eq!(loads("1.5E-7").unwrap().py_repr(), "1.5e-07");
         assert!(loads("1e").is_err());
-        let v = loads(r#""\ud83d\ude00 \u00e9 \/""#).unwrap();
+        let v = loads(&bs(r#""|ud83d|ude00 |u00e9 |/""#)).unwrap();
         assert_eq!(v.py_str(), "\u{1F600} \u{e9} /");
     }
 
@@ -618,6 +223,374 @@ mod tests {
         assert_eq!(
             loads("[1, \"it's\", null, {}]").unwrap().py_repr(),
             "[1, \"it's\", None, {}]"
+        );
+    }
+
+    #[test]
+    fn schema_eq_and_value_ext() {
+        let obj = loads(r#"{"a": "hi", "b": 0}"#).unwrap();
+        assert!(obj.has("a"));
+        assert!(!obj.has("missing"));
+        assert_eq!(obj.get("a").unwrap().as_str(), Some("hi"));
+        assert_eq!(obj.get("b").unwrap().as_str(), None);
+        assert_eq!(obj.as_obj().map(Vec::len), Some(2));
+        assert_eq!(Value::Null.as_obj(), None);
+
+        assert!(Value::Int("0".into()).is_number());
+        assert!(Value::Float(1.5).is_number());
+        assert!(!Value::Bool(true).is_number());
+        assert!(!Value::Str("1".into()).is_number());
+
+        assert_eq!(Value::Int("0".into()).sign(), Some(0));
+        assert_eq!(Value::Int("-0".into()).sign(), Some(0));
+        assert_eq!(Value::Int("-000".into()).sign(), Some(0));
+        assert_eq!(Value::Int("-42".into()).sign(), Some(-1));
+        assert_eq!(Value::Int("42".into()).sign(), Some(1));
+        assert_eq!(Value::Float(0.0).sign(), Some(0));
+        assert_eq!(Value::Float(-0.0).sign(), Some(0));
+        assert_eq!(Value::Float(-1.5).sign(), Some(-1));
+        assert_eq!(Value::Float(1.5).sign(), Some(1));
+        assert_eq!(Value::Float(f64::NAN).sign(), None);
+        assert_eq!(Value::Bool(true).sign(), Some(1));
+        assert_eq!(Value::Bool(false).sign(), Some(0));
+        assert_eq!(Value::Null.sign(), None);
+
+        assert!(schema_eq(&Value::Null, &Value::Null));
+        assert!(schema_eq(&Value::Bool(true), &Value::Bool(true)));
+        assert!(!schema_eq(&Value::Bool(true), &Value::Bool(false)));
+        assert!(!schema_eq(&Value::Bool(false), &Value::Int("0".into())));
+        assert!(!schema_eq(&Value::Bool(false), &Value::Float(0.0)));
+        assert!(schema_eq(&Value::Int("-0".into()), &Value::Float(0.0)));
+        assert!(!schema_eq(&Value::Float(f64::NAN), &Value::Float(f64::NAN)));
+    }
+
+    #[test]
+    fn malformed_inputs_match_cpython_312() {
+        let cases: &[(&str, &str)] = &[
+            ("", "Expecting value: line 1 column 1 (char 0)"),
+            ("   \n\t\r  ", "Expecting value: line 2 column 5 (char 8)"),
+            ("\n", "Expecting value: line 2 column 1 (char 1)"),
+            (
+                "\u{feff}{}",
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+            ),
+            (
+                "\u{feff}1",
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+            ),
+            (
+                "\u{feff}",
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+            ),
+            ("\"a|q\"", "Invalid \\escape: line 1 column 3 (char 2)"),
+            ("\"|x\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|a\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|1\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|'\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|0\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|v\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            (
+                "\"|u12\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|u123g\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|uZZZZ\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|u 123\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|ud800|u12\"",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u123g\"",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u123\"",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            ("\"|u", "Invalid \\uXXXX escape: line 1 column 3 (char 2)"),
+            ("\"|u1", "Invalid \\uXXXX escape: line 1 column 3 (char 2)"),
+            ("\"|u12", "Invalid \\uXXXX escape: line 1 column 3 (char 2)"),
+            (
+                "\"|u123",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|ud800|u",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u1",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u12",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u123",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            // Complete \uXXXX right at EOF: CPython 3.12 reports "Invalid \uXXXX escape".
+            (
+                "\"|u0041",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"ab|u0041",
+                "Invalid \\uXXXX escape: line 1 column 5 (char 4)",
+            ),
+            (
+                "\"|ud800|u0041",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|udc00",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "[\"|u0041",
+                "Invalid \\uXXXX escape: line 1 column 4 (char 3)",
+            ),
+            (
+                "\"|u0041x",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"||u0041",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\n\"ab",
+                "Unterminated string starting at: line 2 column 1 (char 1)",
+            ),
+            (
+                "\"abc",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "[\"abc",
+                "Unterminated string starting at: line 1 column 2 (char 1)",
+            ),
+            (
+                "\"ab|",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"|",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"|\"",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "{\"k\": \"v",
+                "Unterminated string starting at: line 1 column 7 (char 6)",
+            ),
+            (
+                "\"a\nb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\tb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\rb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x00b\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x01b\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x08b\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x0cb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x1fb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "{",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{\"a\" 1}",
+                "Expecting ':' delimiter: line 1 column 6 (char 5)",
+            ),
+            (
+                "{\"a\"}",
+                "Expecting ':' delimiter: line 1 column 5 (char 4)",
+            ),
+            ("{\"a\":}", "Expecting value: line 1 column 6 (char 5)"),
+            (
+                "{1: 2}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{a: 1}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{\"a\": 1",
+                "Expecting ',' delimiter: line 1 column 8 (char 7)",
+            ),
+            (
+                "{\"a\": \"b\", \"c\" 3}",
+                "Expecting ':' delimiter: line 1 column 16 (char 15)",
+            ),
+            (
+                "{\"a\": [1, 2], \"b\": {\"c\":}}",
+                "Expecting value: line 1 column 25 (char 24)",
+            ),
+            ("[1 2]", "Expecting ',' delimiter: line 1 column 4 (char 3)"),
+            (
+                "{\"a\": 1 \"b\": 2}",
+                "Expecting ',' delimiter: line 1 column 9 (char 8)",
+            ),
+            (
+                "[1, 2 3]",
+                "Expecting ',' delimiter: line 1 column 7 (char 6)",
+            ),
+            ("[", "Expecting value: line 1 column 2 (char 1)"),
+            ("[1", "Expecting ',' delimiter: line 1 column 3 (char 2)"),
+            ("[[[", "Expecting value: line 1 column 4 (char 3)"),
+            ("[1,]", "Expecting value: line 1 column 4 (char 3)"),
+            (
+                "{\"a\":1,}",
+                "Expecting property name enclosed in double quotes: line 1 column 8 (char 7)",
+            ),
+            (
+                "{\"a\": 1,}",
+                "Expecting property name enclosed in double quotes: line 1 column 9 (char 8)",
+            ),
+            ("[,]", "Expecting value: line 1 column 2 (char 1)"),
+            (
+                "{,}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            ("{} x", "Extra data: line 1 column 4 (char 3)"),
+            ("1 2", "Extra data: line 1 column 3 (char 2)"),
+            ("true false", "Extra data: line 1 column 6 (char 5)"),
+            ("[] []", "Extra data: line 1 column 4 (char 3)"),
+            ("\"a\"\"b\"", "Extra data: line 1 column 4 (char 3)"),
+            ("\"ok\"|", "Extra data: line 1 column 5 (char 4)"),
+            ("-", "Expecting value: line 1 column 1 (char 0)"),
+            ("-a", "Expecting value: line 1 column 1 (char 0)"),
+            ("-I", "Expecting value: line 1 column 1 (char 0)"),
+            ("-Inf", "Expecting value: line 1 column 1 (char 0)"),
+            ("Na", "Expecting value: line 1 column 1 (char 0)"),
+            ("Inf", "Expecting value: line 1 column 1 (char 0)"),
+            ("nan", "Expecting value: line 1 column 1 (char 0)"),
+            ("infinity", "Expecting value: line 1 column 1 (char 0)"),
+            ("True", "Expecting value: line 1 column 1 (char 0)"),
+            ("False", "Expecting value: line 1 column 1 (char 0)"),
+            ("Null", "Expecting value: line 1 column 1 (char 0)"),
+            ("[01]", "Expecting ',' delimiter: line 1 column 3 (char 2)"),
+            ("01", "Extra data: line 1 column 2 (char 1)"),
+            ("00", "Extra data: line 1 column 2 (char 1)"),
+            ("-01", "Extra data: line 1 column 3 (char 2)"),
+            (".5", "Expecting value: line 1 column 1 (char 0)"),
+            ("+1", "Expecting value: line 1 column 1 (char 0)"),
+            ("1.", "Extra data: line 1 column 2 (char 1)"),
+            ("1..2", "Extra data: line 1 column 2 (char 1)"),
+            ("--1", "Expecting value: line 1 column 1 (char 0)"),
+            ("1e", "Extra data: line 1 column 2 (char 1)"),
+            ("1e+", "Extra data: line 1 column 2 (char 1)"),
+            ("1e-", "Extra data: line 1 column 2 (char 1)"),
+            ("1e+a", "Extra data: line 1 column 2 (char 1)"),
+            ("1e-a", "Extra data: line 1 column 2 (char 1)"),
+            ("1e1e1", "Extra data: line 1 column 4 (char 3)"),
+            ("1.2.3", "Extra data: line 1 column 4 (char 3)"),
+            ("tru", "Expecting value: line 1 column 1 (char 0)"),
+            ("nul", "Expecting value: line 1 column 1 (char 0)"),
+            ("fals", "Expecting value: line 1 column 1 (char 0)"),
+            ("}}}", "Expecting value: line 1 column 1 (char 0)"),
+            ("]]]", "Expecting value: line 1 column 1 (char 0)"),
+            (":", "Expecting value: line 1 column 1 (char 0)"),
+            (",", "Expecting value: line 1 column 1 (char 0)"),
+            (
+                "{\"a\":\n tru}",
+                "Expecting value: line 2 column 2 (char 7)",
+            ),
+            (
+                "[\n1,\n\"x\" 2]",
+                "Expecting ',' delimiter: line 3 column 5 (char 9)",
+            ),
+            (
+                "[\r\n1,\r\n\"é\" 2]",
+                "Expecting ',' delimiter: line 3 column 5 (char 11)",
+            ),
+            (
+                "[\"😀\" 2]",
+                "Expecting ',' delimiter: line 1 column 6 (char 5)",
+            ),
+            (
+                "{\n  \"a\": 1,\n  \"b\": [1, 2,\n    \"ok\", tru]\n}",
+                "Expecting value: line 4 column 11 (char 36)",
+            ),
+        ];
+
+        assert!(cases.len() >= 80, "need at least 80 malformed inputs");
+        for &(tmpl, want) in cases {
+            let input = bs(tmpl);
+            let err = loads(&input).unwrap_err();
+            assert_eq!(err.class, "json.decoder.JSONDecodeError", "{input:?}");
+            assert_eq!(err.message, want, "{input:?}");
+            assert_eq!(
+                err.render(),
+                format!("json.decoder.JSONDecodeError: {want}"),
+                "{input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_traceback_for_malformed_json() {
+        let dir = std::env::temp_dir().join(format!("sdk-codegen-json-err-{}", std::process::id()));
+        let proto = dir.join("protocol");
+        std::fs::create_dir_all(&proto).unwrap();
+        std::fs::write(proto.join("messages.schema.json"), "{\"a\": 1").unwrap();
+
+        let args = vec![
+            "sdk-codegen".to_string(),
+            "--check".to_string(),
+            "--package".to_string(),
+            dir.to_string_lossy().to_string(),
+        ];
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = crate::cli::run(&args, &mut out, &mut err);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(code, 1);
+        assert!(out.is_empty());
+        assert_eq!(
+            String::from_utf8_lossy(&err),
+            "Traceback (most recent call last):\n  (sdk-codegen-rs: Python's stack frames are not reproduced)\njson.decoder.JSONDecodeError: Expecting ',' delimiter: line 1 column 8 (char 7)\n"
         );
     }
 }
