@@ -452,9 +452,9 @@ final class MarkdownConversionTests: XCTestCase {
         // Drafts that are slow to scan: openers that never close, on one line, or hundreds of code spans. A keystroke
         // must cost about as much more as the draft is longer, not that squared: eight times the draft, about eight
         // times the time (a save that grows with the square would take about sixty-four). A ratio, not a fixed number
-        // of milliseconds, because the CI machines run this about ten times slower than a Mac on a desk. The limit sits
-        // between the two: CI's smaller caches have pushed a sound draft to 14 at 1,000 against 8,000 characters, so the
-        // drafts start at 2,000, where fixed costs no longer hide the square, and the limit is 24.
+        // of milliseconds, because the CI machines run this two to ten times slower than a Mac on a desk. The limit sits
+        // between the two: CI once measured a sound draft at 14 for 1,000 against 8,000 characters, so the drafts start at
+        // 2,000, where fixed costs no longer hide the square, and the limit is 24.
         for chunk in ["*a ", "_a ", "~~a ", "`a `` ", "**a *b _c "] {
             let small = keystrokeTime(chunk, size: 2_000)
             let large = keystrokeTime(chunk, size: 16_000)
