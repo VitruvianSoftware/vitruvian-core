@@ -19,20 +19,24 @@
 // SOFTWARE.
 
 import Foundation
+import VitruvianToolKit
 import VitruvianToolProtocol
 
-/// How a panel the app opens is answered.
+/// How a panel the app opens, sends events to, or closes is answered.
 ///
 /// The app fails a request not answered within two seconds (three in a row
 /// and the tool is treated as crashed). A panel's page is made on the main
 /// thread, and the main thread can be busy for longer than that: building
 /// the chat window the first time, which a Quick Prompt just before does,
-/// takes over two seconds on a loaded Mac (#4813). So the main thread gets
-/// `waitSeconds` to make the page; past that, the panel is answered with the last
-/// page it showed, and the page the main thread then makes is sent after it,
-/// unprompted. With no page yet to fall back on, it waits as long as it takes.
+/// takes over two seconds on a loaded Mac (#4813, #5357). So the main thread
+/// gets `waitSeconds` to answer an open (falling back to the last page it
+/// showed) or an event (falling back to `.keep`), and the page the main
+/// thread then makes is sent after it, unprompted. With no page yet to fall
+/// back on, an open waits as long as it takes. A close notice never waits
+/// on the main thread, so it cannot block the next request behind it.
 ///
-/// Only the kit's thread calls `open`; any thread may call `remember`.
+/// Only the kit's thread calls `open`, `event`, and `close`; any thread
+/// may call `remember`.
 public final class PanelOpen: @unchecked Sendable {
     /// How long the main thread gets to make the page before the last one
     /// is sent instead: well inside the app's two seconds.
@@ -68,44 +72,75 @@ public final class PanelOpen: @unchecked Sendable {
         make: @escaping @Sendable @MainActor () -> UITree,
         render: @escaping @Sendable (UITree) -> Void
     ) -> UITree {
-        let attempt = Attempt()
+        let attempt = Attempt<UITree>()
         main.async {
             let tree = MainActor.assumeIsolated { make() }
             self.remember(tree, for: panel)
             if !attempt.finish(tree) { render(tree) }
         }
-        if attempt.done.wait(timeout: .now() + wait) == .success, let tree = attempt.tree { return tree }
+        if attempt.done.wait(timeout: .now() + wait) == .success, let tree = attempt.value { return tree }
         if let fallback = page(for: panel), attempt.giveUp() { return fallback }
         // Nothing to fall back on, or the page came as it was given up on.
         attempt.done.wait()
-        return attempt.tree!
+        return attempt.value!
     }
 
-    /// One open: the page, if the main thread made it in time.
-    private final class Attempt: @unchecked Sendable {
+    /// Answers a panel event from the kit's thread. `handle` runs on `main`,
+    /// once; if `main` does not finish within `wait`, answers `.keep` and
+    /// sends any resulting `.page` later via `render`.
+    public func event(
+        _ panel: String,
+        main: DispatchQueue = .main,
+        wait: Double = PanelOpen.waitSeconds,
+        handle: @escaping @Sendable @MainActor () -> PanelAnswer,
+        render: @escaping @Sendable (UITree) -> Void
+    ) -> PanelAnswer {
+        let attempt = Attempt<PanelAnswer>()
+        main.async {
+            let answer = MainActor.assumeIsolated { handle() }
+            if case .page(let tree) = answer { self.remember(tree, for: panel) }
+            if !attempt.finish(answer), case .page(let tree) = answer { render(tree) }
+        }
+        if attempt.done.wait(timeout: .now() + wait) == .success, let answer = attempt.value { return answer }
+        if attempt.giveUp() { return .keep }
+        // The answer arrived just as we tried to give up.
+        attempt.done.wait()
+        return attempt.value!
+    }
+
+    /// Runs a panel close notice on `main` without blocking the kit's thread.
+    public func close(
+        main: DispatchQueue = .main,
+        run: @escaping @Sendable @MainActor () -> Void
+    ) {
+        main.async { MainActor.assumeIsolated { run() } }
+    }
+
+    /// One main-thread round-trip: the result, if the main thread made it in time.
+    private final class Attempt<Value: Sendable>: @unchecked Sendable {
         let done = DispatchSemaphore(value: 0)
         private let lock = NSLock()
-        private var made: UITree?
+        private var made: Value?
         private var late = false
 
-        var tree: UITree? {
+        var value: Value? {
             lock.lock()
             defer { lock.unlock() }
             return made
         }
 
-        /// The main thread's page. False when the open was already answered
-        /// without it, and the page must be sent unprompted.
-        func finish(_ tree: UITree) -> Bool {
+        /// The main thread's result. False when the request was already answered
+        /// without it, so any follow-up page must be sent unprompted.
+        func finish(_ value: Value) -> Bool {
             lock.lock()
             defer { lock.unlock() }
             guard !late else { return false }
-            made = tree
+            made = value
             done.signal()
             return true
         }
 
-        /// The kit's thread stops waiting. False when the page came in the
+        /// The kit's thread stops waiting. False when the result came in the
         /// meantime, and is the answer after all.
         func giveUp() -> Bool {
             lock.lock()

@@ -149,21 +149,24 @@ func opened(_ id: String, _ make: @escaping @Sendable @MainActor () -> UITree) -
     })
 }
 
-/// What a panel's event answered; a new page is kept for the next open.
-func answered(_ id: String, _ answer: PanelAnswer) -> PanelAnswer {
-    if case .page(let tree) = answer { kit.opener.remember(tree, for: id) }
-    return answer
+/// Handles a panel event without holding the app's answer for a busy main
+/// thread: see `PanelOpen.event`. A page made too late is sent once the kit's
+/// thread is free, if the panel is still open.
+func handled(_ id: String, _ handle: @escaping @Sendable @MainActor () -> PanelAnswer) -> PanelAnswer {
+    kit.opener.event(id, handle: handle, render: { tree in
+        kit.tool.waker.later { [kit] _ in _ = kit.panels[id]?.render(tree) }
+    })
 }
 
 kit.panels[VitruvianCodeTool.islandPanel] = tool.panel(VitruvianCodeTool.islandPanel, onOpen: { _, _ in
     opened(VitruvianCodeTool.islandPanel) { codeTool.islandPage() }
 }, onEvent: { _, _, event in
-    answered(VitruvianCodeTool.islandPanel, onMain { codeTool.islandEvent(event) })
+    handled(VitruvianCodeTool.islandPanel) { codeTool.islandEvent(event) }
 })
 kit.panels[VitruvianCodeTool.settingsPanel] = tool.panel(VitruvianCodeTool.settingsPanel, onOpen: { _, _ in
     opened(VitruvianCodeTool.settingsPanel) { codeTool.settingsPage() }
 }, onEvent: { _, _, event in
-    answered(VitruvianCodeTool.settingsPanel, onMain { codeTool.settingsEvent(event) })
+    handled(VitruvianCodeTool.settingsPanel) { codeTool.settingsEvent(event) }
 })
 
 /// Keeps each panel's page as it would open now, for PanelOpen to fall back on.
@@ -175,7 +178,7 @@ func rememberPages() {
 }
 // A panel the app closed: the tool stops drawing it.
 for id in [VitruvianCodeTool.islandPanel, VitruvianCodeTool.settingsPanel] {
-    kit.panels[id]?.onClose = { _ in onMain { codeTool.panelClosed(id) } }
+    kit.panels[id]?.onClose = { _ in kit.opener.close { codeTool.panelClosed(id) } }
 }
 for command in VitruvianCodeTool.Command.all + VitruvianCodeTool.Command.ade {
     tool.command(command) { _ in try CommandAnswer.handle(command) { try codeTool.run(command: $0) } }
