@@ -195,7 +195,7 @@ _PG_TEST_DEPS = [
 # use besides the library itself.
 _RELAY_OVER_HTTP_TEST_DEPS = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
-    "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+    "//packages/mcp-auth:vitruvian_mcp_auth",
     "@vitruvian_relay_crates//:base64",
     "@vitruvian_relay_crates//:bytes",
     "@vitruvian_relay_crates//:futures-util",
