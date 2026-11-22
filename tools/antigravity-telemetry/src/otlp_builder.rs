@@ -20,7 +20,7 @@
 
 //! OTLP/HTTP JSON payload builder (`otlp_builder.py`).
 
-use crate::json::J;
+use crate::json::{ValueExt, J};
 use crate::pyutil::{py_str, strip};
 use crate::sys;
 
@@ -102,7 +102,7 @@ pub fn host_or_default(host: Option<&str>) -> String {
 pub fn otel_attr(key: &str, value: &J) -> J {
     let typed = match value {
         J::Bool(b) => J::obj(vec![("boolValue", J::Bool(*b))]),
-        J::Int(i) => J::obj(vec![("intValue", J::Str(i.to_string()))]),
+        J::Int(_) => J::obj(vec![("intValue", J::Str(value.py_repr()))]),
         J::Float(f) => J::obj(vec![("doubleValue", J::Float(*f))]),
         other => J::obj(vec![("stringValue", J::Str(py_str(other)))]),
     };
@@ -226,7 +226,10 @@ pub fn build_sum_metric(
         (
             "sum",
             J::obj(vec![
-                ("aggregationTemporality", J::from(aggregation_temporality)),
+                (
+                    "aggregationTemporality",
+                    J::int(i128::from(aggregation_temporality)),
+                ),
                 ("isMonotonic", J::Bool(is_monotonic)),
                 ("dataPoints", J::Arr(datapoints)),
             ]),
@@ -248,7 +251,10 @@ pub fn build_histogram_metric(
         (
             "histogram",
             J::obj(vec![
-                ("aggregationTemporality", J::from(aggregation_temporality)),
+                (
+                    "aggregationTemporality",
+                    J::int(i128::from(aggregation_temporality)),
+                ),
                 ("dataPoints", J::Arr(datapoints)),
             ]),
         ),
@@ -308,7 +314,7 @@ pub fn build_api_request_metric(
 ) -> J {
     let h = J::Str(host_or_default(host));
     let dp = build_sum_datapoint(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[
             ("host", h),
             ("model", model.clone()),
@@ -336,7 +342,7 @@ pub fn build_tool_call_count_metric(
 ) -> J {
     let h = J::Str(host_or_default(host));
     let dp = build_sum_datapoint(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[
             ("host", h),
             ("tool_name", tool_name.clone()),
@@ -391,7 +397,7 @@ pub fn build_session_count_metric(
 ) -> J {
     let h = J::Str(host_or_default(host));
     let dp = build_sum_datapoint(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[("host", h), ("status", status.clone())],
         time_unix_nano,
         None,
@@ -414,7 +420,7 @@ pub fn build_turn_count_metric(
 ) -> J {
     let h = J::Str(host_or_default(host));
     let dp = build_sum_datapoint(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[("host", h), ("model", model.clone())],
         time_unix_nano,
         None,
@@ -437,7 +443,7 @@ pub fn build_subagent_spawn_metric(
 ) -> J {
     let h = J::Str(host_or_default(host));
     let dp = build_sum_datapoint(
-        &J::from(count),
+        &J::int(i128::from(count)),
         &[("host", h), ("subagent_type", subagent_type.clone())],
         time_unix_nano,
         None,
@@ -533,12 +539,12 @@ pub fn build_span(args: &SpanArgs) -> J {
     let span_id = non_empty(&args.span_id)
         .map(str::to_string)
         .unwrap_or_else(|| sys::token_hex(8));
-    let mut status = J::obj(vec![("code", J::from(args.status_code))]);
+    let mut status = J::obj(vec![("code", J::int(i128::from(args.status_code)))]);
     let mut span = J::obj(vec![
         ("traceId", J::Str(trace_id)),
         ("spanId", J::Str(span_id)),
         ("name", J::str(args.name)),
-        ("kind", J::from(args.kind)),
+        ("kind", J::int(i128::from(args.kind))),
         ("startTimeUnixNano", J::Str(args.start_time_ns.to_string())),
         ("endTimeUnixNano", J::Str(args.end_time_ns.to_string())),
         ("attributes", otel_attrs(&args.attributes)),
@@ -596,7 +602,7 @@ mod tests {
     fn attrs_typed_like_python() {
         let a = otel_attrs(&[
             ("b", J::Bool(true)),
-            ("i", J::Int(3)),
+            ("i", J::int(3)),
             ("f", J::Float(1.5)),
             ("n", J::Null),
             ("s", J::str("x")),
@@ -643,10 +649,10 @@ mod tests {
     #[test]
     fn token_metric_shape() {
         let m = build_token_usage_metric(
-            &J::Int(1),
-            &J::Int(2),
-            &J::Int(3),
-            &J::Int(4),
+            &J::int(1),
+            &J::int(2),
+            &J::int(3),
+            &J::int(4),
             &J::str("m"),
             Some("h"),
             Some(7),

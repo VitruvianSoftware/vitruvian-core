@@ -29,7 +29,7 @@
 //! running the Rust `setup` replaces a Python-installed exporter in place.
 
 use crate::http_client::{Flavor, TelemetryHttpClient};
-use crate::json::{dumps, float_repr, J};
+use crate::json::{dumps, float_repr, int_as_f64, ValueExt, J};
 use crate::otlp_builder::{self as ob, get_hostname, SpanArgs, DEFAULT_LATENCY_BOUNDS};
 use crate::pyutil::{parse_py_float, py_int, py_str, strip};
 use crate::session_exporter::glob_brain_transcripts;
@@ -113,14 +113,14 @@ impl Namespace {
     pub fn float(&self, name: &str) -> Option<f64> {
         match self.get(name) {
             J::Float(f) => Some(*f),
-            J::Int(i) => Some(*i as f64),
+            J::Int(s) => Some(int_as_f64(s)),
             _ => None,
         }
     }
 
     pub fn int(&self, name: &str) -> Option<i128> {
         match self.get(name) {
-            J::Int(i) => Some(*i),
+            J::Int(s) => s.parse::<i128>().ok(),
             _ => None,
         }
     }
@@ -222,7 +222,7 @@ impl ArgParser {
         match spec.kind {
             Kind::Str => Ok(J::str(raw)),
             Kind::Int => py_int(&J::str(raw))
-                .map(J::Int)
+                .map(J::int)
                 .map_err(|_| format!("argument {}: invalid int value: '{}'", spec.name, raw)),
             Kind::Float => parse_py_float(raw)
                 .map(J::Float)
@@ -659,7 +659,7 @@ fn probe(client: &TelemetryHttpClient, path: &str, payload: &J) -> (J, bool) {
     (
         J::obj(vec![
             ("passed", J::Bool(passed)),
-            ("http_status", J::Int(code as i128)),
+            ("http_status", J::int(code as i128)),
             ("latency_ms", J::Float(lat)),
             ("message", J::Str(message)),
         ]),
@@ -724,7 +724,7 @@ pub fn cmd_status(ns: &Namespace) -> i32 {
     for (name, dir) in &brain_dirs {
         let n = glob_brain_transcripts(dir).len();
         total += n;
-        counts.set(name, J::Int(n as i128));
+        counts.set(name, J::int(n as i128));
         parts.push(format!("{}: {}", name, n));
     }
     checks.set(
@@ -915,7 +915,7 @@ pub fn cmd_emit(ns: &Namespace) -> i32 {
 
     let mut metrics = Vec::new();
     if !ns.flag("--traces-only") {
-        let tok = |name: &str| J::Int(ns.int(name).unwrap_or(0));
+        let tok = |name: &str| J::int(ns.int(name).unwrap_or(0));
         metrics.push(ob::build_token_usage_metric(
             &tok("--tokens-input"),
             &tok("--tokens-output"),
@@ -1054,9 +1054,9 @@ pub fn cmd_emit(ns: &Namespace) -> i32 {
             ("status", J::str(if success { "success" } else { "error" })),
             ("host", J::str(host.clone())),
             ("endpoint", J::str(endpoint.clone())),
-            ("metrics_emitted", J::Int(metrics_emitted as i128)),
-            ("traces_emitted", J::Int(traces_emitted as i128)),
-            ("iterations", J::Int(count)),
+            ("metrics_emitted", J::int(metrics_emitted as i128)),
+            ("traces_emitted", J::int(traces_emitted as i128)),
+            ("iterations", J::int(count)),
         ]);
         println!("{}", dumps(&out, Some(2), true));
     } else if success {
@@ -1263,25 +1263,25 @@ fn subparser(name: &str) -> ArgParser {
             .opt(
                 "--tokens-input",
                 Kind::Int,
-                Some(J::Int(1250)),
+                Some(J::int(1250)),
                 "Input token count",
             )
             .opt(
                 "--tokens-output",
                 Kind::Int,
-                Some(J::Int(320)),
+                Some(J::int(320)),
                 "Output token count",
             )
             .opt(
                 "--tokens-thinking",
                 Kind::Int,
-                Some(J::Int(450)),
+                Some(J::int(450)),
                 "Thinking token count",
             )
             .opt(
                 "--tokens-cached",
                 Kind::Int,
-                Some(J::Int(800)),
+                Some(J::int(800)),
                 "Cached token count",
             )
             .opt(
@@ -1293,7 +1293,7 @@ fn subparser(name: &str) -> ArgParser {
             .opt(
                 "--count",
                 Kind::Int,
-                Some(J::Int(1)),
+                Some(J::int(1)),
                 "Number of iterations",
             )
             .opt(

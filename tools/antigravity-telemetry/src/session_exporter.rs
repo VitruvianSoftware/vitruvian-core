@@ -31,7 +31,7 @@
 //! the error stays incremented, exactly as in Python.
 
 use crate::http_client::send_exporter_payload;
-use crate::json::{dumps, J};
+use crate::json::{dumps, ValueExt, J};
 use crate::pyutil::{
     add_assign, as_number, get, get_or, gt_zero, index_mut, py_iter, py_len, py_str,
     require_hashable, strip, truthy, PyResult,
@@ -324,10 +324,10 @@ fn read_from(path: &str, offset: u64) -> std::io::Result<(Vec<String>, u64)> {
 
 fn zero_tokens() -> J {
     J::obj(vec![
-        ("input", J::Int(0)),
-        ("output", J::Int(0)),
-        ("cached", J::Int(0)),
-        ("thinking", J::Int(0)),
+        ("input", J::int(0)),
+        ("output", J::int(0)),
+        ("cached", J::int(0)),
+        ("thinking", J::int(0)),
     ])
 }
 
@@ -335,19 +335,19 @@ fn new_session(service: &str, model: J) -> J {
     J::obj(vec![
         ("service", J::str(service)),
         ("model", model),
-        ("offset", J::Int(0)),
-        ("turns", J::Int(0)),
+        ("offset", J::int(0)),
+        ("turns", J::int(0)),
         ("tools", J::empty_obj()),
-        ("subagents", J::Int(0)),
+        ("subagents", J::int(0)),
         ("tokens", zero_tokens()),
-        ("mtime", J::Int(0)),
+        ("mtime", J::int(0)),
     ])
 }
 
 fn reset_counts(st: &mut J) {
-    st.set("turns", J::Int(0));
+    st.set("turns", J::int(0));
     st.set("tools", J::empty_obj());
-    st.set("subagents", J::Int(0));
+    st.set("subagents", J::int(0));
     st.set("tokens", zero_tokens());
 }
 
@@ -355,7 +355,7 @@ fn reset_counts(st: &mut J) {
 fn bump2(st: &mut J, a: &str, b: &str, inc: i128) -> PyResult<()> {
     let inner = index_mut(st, a)?;
     let slot = index_mut(inner, b)?;
-    add_assign(slot, &J::Int(inc))
+    add_assign(slot, &J::int(inc))
 }
 
 /// `st[a] += inc`.
@@ -368,8 +368,8 @@ fn bump_tool(st: &mut J, tname: &J) -> PyResult<()> {
     let tools = index_mut(st, "tools")?;
     require_hashable(tname)?;
     let key = py_str(tname);
-    let current = get(tools, &key)?.cloned().unwrap_or(J::Int(0));
-    let next = crate::pyutil::num_add(&current, &J::Int(1))?;
+    let current = get(tools, &key)?.cloned().unwrap_or(J::int(0));
+    let next = crate::pyutil::num_add(&current, &J::int(1))?;
     // `tools` is a dict here, or `get` above would have failed.
     tools.set(&key, next);
     Ok(())
@@ -454,7 +454,7 @@ fn process_antigravity_step(step: &J, st: &mut J, ctx: &mut AgCtx) -> PyResult<(
     }
 
     if stype == J::str("PLANNER_RESPONSE") {
-        bump(st, "turns", &J::Int(1))?;
+        bump(st, "turns", &J::int(1))?;
         *ctx.new_events += 1;
         bump2(st, "tokens", "input", 4500)?;
         bump2(st, "tokens", "output", 350)?;
@@ -467,7 +467,7 @@ fn process_antigravity_step(step: &J, st: &mut J, ctx: &mut AgCtx) -> PyResult<(
                 Some("run_command") => 450.0,
                 Some("replace_file_content") | Some("write_to_file") => 120.0,
                 Some("invoke_subagent") => {
-                    bump(st, "subagents", &J::Int(1))?;
+                    bump(st, "subagents", &J::int(1))?;
                     2500.0
                 }
                 _ => 180.0,
@@ -516,17 +516,17 @@ fn process_claude_line(obj: &J, st: &mut J, ctx: &mut CcCtx) -> PyResult<()> {
     *ctx.new_events += 1;
     let model = get_or(&msg, "model", J::str(CLAUDE_DEFAULT_MODEL))?;
     st.set("model", model.clone());
-    bump(st, "turns", &J::Int(1))?;
+    bump(st, "turns", &J::int(1))?;
 
     let usage = get_or(&msg, "usage", J::empty_obj())?;
     if truthy(&usage) {
-        let input = get_or(&usage, "input_tokens", J::Int(0))?;
+        let input = get_or(&usage, "input_tokens", J::int(0))?;
         add_assign(index_mut(index_mut(st, "tokens")?, "input")?, &input)?;
-        let output = get_or(&usage, "output_tokens", J::Int(0))?;
+        let output = get_or(&usage, "output_tokens", J::int(0))?;
         add_assign(index_mut(index_mut(st, "tokens")?, "output")?, &output)?;
         let cached = crate::pyutil::num_add(
-            &get_or(&usage, "cache_read_input_tokens", J::Int(0))?,
-            &get_or(&usage, "cache_creation_input_tokens", J::Int(0))?,
+            &get_or(&usage, "cache_read_input_tokens", J::int(0))?,
+            &get_or(&usage, "cache_creation_input_tokens", J::int(0))?,
         )?;
         add_assign(index_mut(index_mut(st, "tokens")?, "cached")?, &cached)?;
         if let Some(thinking) = usage.get("thinking_tokens") {
@@ -551,7 +551,7 @@ fn process_claude_line(obj: &J, st: &mut J, ctx: &mut CcCtx) -> PyResult<()> {
                 Some("Bash") => 600.0,
                 Some("Edit") | Some("Write") => 150.0,
                 Some("Agent") | Some("Subagent") => {
-                    bump(st, "subagents", &J::Int(1))?;
+                    bump(st, "subagents", &J::int(1))?;
                     3500.0
                 }
                 _ => 220.0,
@@ -572,7 +572,10 @@ fn process_claude_line(obj: &J, st: &mut J, ctx: &mut CcCtx) -> PyResult<()> {
 /// `st.get("offset", 0)` as a seek position.
 fn offset_of(st: &J) -> u64 {
     match st.get("offset") {
-        Some(J::Int(i)) if *i > 0 => *i as u64,
+        Some(J::Int(s)) => match s.parse::<i128>() {
+            Ok(i) if i > 0 => i as u64,
+            _ => 0,
+        },
         Some(J::Bool(true)) => 1,
         _ => 0,
     }
@@ -598,7 +601,7 @@ impl<K: PartialEq + Clone> Tally<K> {
                 }
             }
             None => {
-                let start = crate::pyutil::num_add(&J::Int(0), inc).unwrap_or(J::Int(0));
+                let start = crate::pyutil::num_add(&J::int(0), inc).unwrap_or(J::int(0));
                 self.entries.push((key, start));
             }
         }
@@ -656,7 +659,7 @@ impl TranscriptScanner {
         match &self.sessions {
             J::Obj(pairs) => pairs
                 .iter()
-                .map(|(k, v)| (k.clone(), v.get("offset").cloned().unwrap_or(J::Int(0))))
+                .map(|(k, v)| (k.clone(), v.get("offset").cloned().unwrap_or(J::int(0))))
                 .collect(),
             _ => Vec::new(),
         }
@@ -768,7 +771,7 @@ impl TranscriptScanner {
 
             st.set(
                 "mtime",
-                sys::mtime(&path).map(J::Float).unwrap_or(J::Int(0)),
+                sys::mtime(&path).map(J::Float).unwrap_or(J::int(0)),
             );
             match read_from(&path, last_offset) {
                 Ok((lines, end)) => {
@@ -788,7 +791,7 @@ impl TranscriptScanner {
                             let _ = process_antigravity_step(&step, st, &mut ctx);
                         }
                     }
-                    st.set("offset", J::Int(end as i128));
+                    st.set("offset", J::int(end as i128));
                 }
                 Err(e) => {
                     eprintln!(
@@ -835,7 +838,7 @@ impl TranscriptScanner {
 
             st.set(
                 "mtime",
-                sys::mtime(&path).map(J::Float).unwrap_or(J::Int(0)),
+                sys::mtime(&path).map(J::Float).unwrap_or(J::int(0)),
             );
             match read_from(&path, last_offset) {
                 Ok((lines, end)) => {
@@ -852,7 +855,7 @@ impl TranscriptScanner {
                             let _ = process_claude_line(&obj, st, &mut ctx);
                         }
                     }
-                    st.set("offset", J::Int(end as i128));
+                    st.set("offset", J::int(end as i128));
                 }
                 Err(e) => {
                     eprintln!(
@@ -917,19 +920,19 @@ impl TranscriptScanner {
                 if !services_seen.contains(&srv) {
                     services_seen.push(srv.clone());
                 }
-                sessions_by_service.add(srv.clone(), &J::Int(1));
+                sessions_by_service.add(srv.clone(), &J::int(1));
 
                 let mtime = st.get("mtime").and_then(as_number).unwrap_or(0.0);
                 if mtime > now - 900.0 {
-                    active_by_service.add(srv.clone(), &J::Int(1));
-                    active_by_model.add((srv.clone(), mdl.clone()), &J::Int(1));
+                    active_by_service.add(srv.clone(), &J::int(1));
+                    active_by_model.add((srv.clone(), mdl.clone()), &J::int(1));
                 }
 
-                let turns = st.get("turns").cloned().unwrap_or(J::Int(0));
+                let turns = st.get("turns").cloned().unwrap_or(J::int(0));
                 if gt_zero(&turns) {
                     turns_by_key.add((srv.clone(), mdl.clone()), &turns);
                 }
-                let subagents = st.get("subagents").cloned().unwrap_or(J::Int(0));
+                let subagents = st.get("subagents").cloned().unwrap_or(J::int(0));
                 if gt_zero(&subagents) {
                     subagents_by_service.add(srv.clone(), &subagents);
                 }
@@ -973,7 +976,7 @@ impl TranscriptScanner {
                 (
                     "sum",
                     J::obj(vec![
-                        ("aggregationTemporality", J::Int(2)),
+                        ("aggregationTemporality", J::int(2)),
                         ("isMonotonic", J::Bool(true)),
                         ("dataPoints", J::Arr(dps)),
                     ]),
@@ -1004,7 +1007,7 @@ impl TranscriptScanner {
                                 sattr("service", srv_j.clone()),
                                 sattr("status", J::str("active")),
                             ],
-                            active_by_service.get(&srv).unwrap_or(&J::Int(0)),
+                            active_by_service.get(&srv).unwrap_or(&J::int(0)),
                         )]),
                     )]),
                 ),
@@ -1049,7 +1052,7 @@ impl TranscriptScanner {
                         sattr("service", srv_j.clone()),
                         sattr("status", J::str("completed")),
                     ],
-                    sessions_by_service.get(&srv).unwrap_or(&J::Int(0)),
+                    sessions_by_service.get(&srv).unwrap_or(&J::int(0)),
                 )],
             ));
 
@@ -1131,7 +1134,7 @@ impl TranscriptScanner {
                     "Edit" | "replace_file_content" | "Write" => 150.0,
                     _ => 180.0,
                 };
-                let mut buckets: Vec<J> = vec![J::Int(0); HISTOGRAM_BOUNDS.len() + 1];
+                let mut buckets: Vec<J> = vec![J::int(0); HISTOGRAM_BOUNDS.len() + 1];
                 match HISTOGRAM_BOUNDS.iter().position(|b| dur_ms <= *b) {
                     Some(i) => buckets[i] = count.clone(),
                     None => *buckets.last_mut().expect("non-empty") = count.clone(),
@@ -1170,7 +1173,7 @@ impl TranscriptScanner {
                     (
                         "histogram",
                         J::obj(vec![
-                            ("aggregationTemporality", J::Int(2)),
+                            ("aggregationTemporality", J::int(2)),
                             ("dataPoints", J::Arr(latency_dps)),
                         ]),
                     ),
@@ -1247,7 +1250,7 @@ impl TranscriptScanner {
                     ("traceId", J::Str(sys::uuid4_hex())),
                     ("spanId", J::Str(span_id)),
                     ("name", J::str(s.name.clone())),
-                    ("kind", J::Int(1)),
+                    ("kind", J::int(1)),
                     ("startTimeUnixNano", J::Str((t_now - dur_ns).to_string())),
                     ("endTimeUnixNano", J::Str(t_now.to_string())),
                     (
@@ -1259,7 +1262,7 @@ impl TranscriptScanner {
                             sattr("model", s.model.clone()),
                         ]),
                     ),
-                    ("status", J::obj(vec![("code", J::Int(1))])),
+                    ("status", J::obj(vec![("code", J::int(1))])),
                 ])
             })
             .collect();
@@ -1475,17 +1478,17 @@ mod tests {
         );
         assert_eq!(s.scan_antigravity(false), 1);
         let st = s.sessions.get(&path).unwrap().clone();
-        assert_eq!(st.get("turns"), Some(&J::Int(1)));
+        assert_eq!(st.get("turns"), Some(&J::int(1)));
         assert_eq!(
             st.get("tools").unwrap().get("run_command"),
-            Some(&J::Int(1))
+            Some(&J::int(1))
         );
         assert_eq!(
             st.get("tokens").unwrap().get("cached"),
-            Some(&J::Int(32000))
+            Some(&J::int(32000))
         );
         let offset = st.get("offset").cloned().unwrap();
-        assert!(matches!(offset, J::Int(n) if n > 0));
+        assert!(offset.as_i128().is_some_and(|n| n > 0));
 
         // Nothing new: no events, offset unchanged.
         assert_eq!(s.scan_antigravity(false), 0);
@@ -1500,7 +1503,7 @@ mod tests {
         assert_eq!(s.scan_antigravity(false), 1);
         assert_eq!(
             s.sessions.get(&path).unwrap().get("subagents"),
-            Some(&J::Int(1))
+            Some(&J::int(1))
         );
 
         s.save_state();

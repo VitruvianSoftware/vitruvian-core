@@ -18,91 +18,131 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! An order-preserving JSON value with Python `json` semantics.
-//!
-//! The Python tool builds payloads from dicts, which keep insertion order, and
-//! serialises them with `json.dumps`. `J` keeps document order and [`dumps`]
-//! reproduces `json.dumps` byte for byte: separators, `indent`,
-//! `ensure_ascii` and `repr(float)`.
-//!
-//! [`J::parse`] is a port of `json.loads` rather than `serde_json`, because
-//! with the features this repository's crate universe enables, `serde_json`
-//! gets two things visibly wrong:
-//!
-//! * Without `preserve_order`, `serde_json::Value` sorts keys.
-//! * Without `float_roundtrip`, it parses some floats one ULP off. The
-//!   session exporter re-reads the floats it wrote (file mtimes in its state
-//!   file), so a value drifted on every scan. Python's parser is exact, and so
-//!   is `str::parse::<f64>`.
-//!
-//! Enabling either feature would mean changing the shared `Cargo.toml`. This
-//! parser needs neither, and its errors read like Python's
-//! (`Expecting value: line 1 column 1 (char 0)`), which the hook prints.
+//! Thin adapter over `vitruvian_pycompat::json` preserving `tools/antigravity-telemetry`'s
+//! [`J`] alias, `MAX_DEPTH = 900` nesting limit, `String` errors via
+//! `JsonError::python_str`, [`ValueExt`] helpers/mutators, and [`dumps`].
 
-/// A JSON value. Objects keep insertion order, like a Python dict.
-#[derive(Clone, Debug, PartialEq)]
-pub enum J {
-    Null,
-    Bool(bool),
-    Int(i128),
-    Float(f64),
-    Str(String),
-    Arr(Vec<J>),
-    Obj(Vec<(String, J)>),
+pub use vitruvian_pycompat::json::{
+    dumps_with, loads_with, py_eq, DumpOptions, LoadOptions, Value,
+};
+pub use vitruvian_pycompat::pystr::repr_float as float_repr;
+
+/// Alias preserving telemetry's historical value type name.
+pub type J = Value;
+
+/// Nesting limit kept from telemetry's original parser.
+pub const MAX_DEPTH: usize = 900;
+
+/// `json.loads(text)`, keeping key order and enforcing [`MAX_DEPTH`].
+/// The error is `JSONDecodeError`'s message (`"{msg}: line {line} column {col} (char {pos})"`).
+pub fn loads(text: &str) -> Result<J, String> {
+    loads_with(
+        text,
+        &LoadOptions {
+            max_depth: Some(MAX_DEPTH),
+        },
+    )
+    .map_err(|e| e.python_str())
 }
 
-impl J {
+/// `json.dumps(v, indent=indent, ensure_ascii=ensure_ascii)`.
+pub fn dumps(v: &J, indent: Option<usize>, ensure_ascii: bool) -> String {
+    dumps_with(
+        v,
+        &DumpOptions {
+            indent,
+            ensure_ascii,
+            ..DumpOptions::default()
+        },
+    )
+}
+
+/// Convert `Value::Int`'s decimal text to `f64`, matching `i as f64` for every
+/// integer that fits in `i128` (so `"-0"` yields `+0.0`) and falling back to
+/// `f64::from_str` for larger integers.
+pub fn int_as_f64(s: &str) -> f64 {
+    if let Ok(i) = s.parse::<i128>() {
+        i as f64
+    } else {
+        s.parse::<f64>().unwrap_or(f64::NAN)
+    }
+}
+
+/// Telemetry-specific constructors and object mutators over [`Value`].
+pub trait ValueExt: Sized {
+    fn int(n: i128) -> Self;
+    fn obj<K: Into<String>>(pairs: Vec<(K, Value)>) -> Self;
+    fn empty_obj() -> Self;
+    fn str<S: Into<String>>(s: S) -> Self;
+    fn parse(text: &str) -> Result<Self, String>;
+    fn as_str(&self) -> Option<&str>;
+    fn as_i128(&self) -> Option<i128>;
+    fn is_null(&self) -> bool;
+    fn get_mut(&mut self, key: &str) -> Option<&mut Value>;
+    fn contains_key(&self, key: &str) -> bool;
+    fn set(&mut self, key: &str, value: Value);
+    fn remove(&mut self, key: &str) -> Option<Value>;
+}
+
+impl ValueExt for Value {
+    fn int(n: i128) -> Self {
+        Value::Int(n.to_string())
+    }
+
     /// An object from `(key, value)` pairs, in order.
-    pub fn obj<K: Into<String>>(pairs: Vec<(K, J)>) -> J {
-        let mut out = J::Obj(Vec::with_capacity(pairs.len()));
+    fn obj<K: Into<String>>(pairs: Vec<(K, Value)>) -> Self {
+        let mut out = Value::Obj(Vec::with_capacity(pairs.len()));
         for (k, v) in pairs {
             out.set(&k.into(), v);
         }
         out
     }
 
-    pub fn empty_obj() -> J {
-        J::Obj(Vec::new())
+    fn empty_obj() -> Self {
+        Value::Obj(Vec::new())
     }
 
-    pub fn str<S: Into<String>>(s: S) -> J {
-        J::Str(s.into())
+    fn str<S: Into<String>>(s: S) -> Self {
+        Value::Str(s.into())
     }
 
-    pub fn as_str(&self) -> Option<&str> {
+    fn parse(text: &str) -> Result<Self, String> {
+        loads(text)
+    }
+
+    fn as_str(&self) -> Option<&str> {
         match self {
-            J::Str(s) => Some(s),
+            Value::Str(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn is_null(&self) -> bool {
-        matches!(self, J::Null)
-    }
-
-    /// `d.get(key)` for an object; `None` for a missing key or a non-object.
-    pub fn get(&self, key: &str) -> Option<&J> {
+    fn as_i128(&self) -> Option<i128> {
         match self {
-            J::Obj(pairs) => pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            Value::Int(s) => s.parse::<i128>().ok(),
             _ => None,
         }
     }
 
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut J> {
+    fn is_null(&self) -> bool {
+        matches!(self, Value::Null)
+    }
+
+    fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
         match self {
-            J::Obj(pairs) => pairs.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v),
+            Value::Obj(pairs) => pairs.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v),
             _ => None,
         }
     }
 
-    pub fn contains_key(&self, key: &str) -> bool {
+    fn contains_key(&self, key: &str) -> bool {
         self.get(key).is_some()
     }
 
     /// `d[key] = value`: replaces in place (keeping position) or appends.
     /// A no-op on a non-object.
-    pub fn set(&mut self, key: &str, value: J) {
-        if let J::Obj(pairs) = self {
+    fn set(&mut self, key: &str, value: Value) {
+        if let Value::Obj(pairs) = self {
             if let Some(slot) = pairs.iter_mut().find(|(k, _)| k == key) {
                 slot.1 = value;
             } else {
@@ -112,508 +152,28 @@ impl J {
     }
 
     /// `d.pop(key, None)`.
-    pub fn remove(&mut self, key: &str) -> Option<J> {
-        if let J::Obj(pairs) = self {
+    fn remove(&mut self, key: &str) -> Option<Value> {
+        if let Value::Obj(pairs) = self {
             if let Some(i) = pairs.iter().position(|(k, _)| k == key) {
                 return Some(pairs.remove(i).1);
             }
         }
         None
     }
-
-    /// `json.loads(text)`, keeping key order. The error is
-    /// `JSONDecodeError`'s message.
-    pub fn parse(text: &str) -> Result<J, String> {
-        Parser::new(text).document()
-    }
-}
-
-impl From<&str> for J {
-    fn from(s: &str) -> J {
-        J::Str(s.to_string())
-    }
-}
-
-impl From<String> for J {
-    fn from(s: String) -> J {
-        J::Str(s)
-    }
-}
-
-impl From<bool> for J {
-    fn from(b: bool) -> J {
-        J::Bool(b)
-    }
-}
-
-impl From<i64> for J {
-    fn from(i: i64) -> J {
-        J::Int(i as i128)
-    }
-}
-
-impl From<f64> for J {
-    fn from(f: f64) -> J {
-        J::Float(f)
-    }
-}
-
-const MAX_DEPTH: usize = 900;
-
-/// A port of CPython's `json.decoder`/`json.scanner`, with positions in code
-/// points, as Python reports them.
-struct Parser {
-    c: Vec<char>,
-    depth: usize,
-}
-
-fn is_ws(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\n' | '\r')
-}
-
-impl Parser {
-    fn new(text: &str) -> Self {
-        Parser {
-            c: text.chars().collect(),
-            depth: 0,
-        }
-    }
-
-    /// `JSONDecodeError`'s message.
-    fn err(&self, msg: &str, pos: usize) -> String {
-        let before = &self.c[..pos.min(self.c.len())];
-        let lineno = before.iter().filter(|c| **c == '\n').count() + 1;
-        let colno = match before.iter().rposition(|c| *c == '\n') {
-            Some(nl) => pos - nl,
-            None => pos + 1,
-        };
-        format!("{}: line {} column {} (char {})", msg, lineno, colno, pos)
-    }
-
-    fn at(&self, i: usize) -> Option<char> {
-        self.c.get(i).copied()
-    }
-
-    fn skip_ws(&self, mut i: usize) -> usize {
-        while self.at(i).map(is_ws).unwrap_or(false) {
-            i += 1;
-        }
-        i
-    }
-
-    fn lit(&self, i: usize, word: &str) -> bool {
-        let w: Vec<char> = word.chars().collect();
-        i + w.len() <= self.c.len() && self.c[i..i + w.len()] == w[..]
-    }
-
-    fn document(&mut self) -> Result<J, String> {
-        let start = self.skip_ws(0);
-        let Some((value, end)) = self.value(start)? else {
-            return Err(self.err("Expecting value", start));
-        };
-        let end = self.skip_ws(end);
-        if end != self.c.len() {
-            return Err(self.err("Extra data", end));
-        }
-        Ok(value)
-    }
-
-    /// `scan_once`: `Ok(None)` is Python's `StopIteration` (no value here).
-    fn value(&mut self, i: usize) -> Result<Option<(J, usize)>, String> {
-        let Some(ch) = self.at(i) else {
-            return Ok(None);
-        };
-        match ch {
-            '"' => self.string(i + 1).map(|(s, e)| Some((J::Str(s), e))),
-            '{' => {
-                self.enter(i)?;
-                let r = self.object(i + 1).map(Some);
-                self.depth -= 1;
-                r
-            }
-            '[' => {
-                self.enter(i)?;
-                let r = self.array(i + 1).map(Some);
-                self.depth -= 1;
-                r
-            }
-            'n' if self.lit(i, "null") => Ok(Some((J::Null, i + 4))),
-            't' if self.lit(i, "true") => Ok(Some((J::Bool(true), i + 4))),
-            'f' if self.lit(i, "false") => Ok(Some((J::Bool(false), i + 5))),
-            'N' if self.lit(i, "NaN") => Ok(Some((J::Float(f64::NAN), i + 3))),
-            'I' if self.lit(i, "Infinity") => Ok(Some((J::Float(f64::INFINITY), i + 8))),
-            '-' if self.lit(i, "-Infinity") => Ok(Some((J::Float(f64::NEG_INFINITY), i + 9))),
-            '-' | '0'..='9' => Ok(self.number(i)),
-            _ => Ok(None),
-        }
-    }
-
-    fn enter(&mut self, i: usize) -> Result<(), String> {
-        if self.depth >= MAX_DEPTH {
-            return Err(self.err("maximum recursion depth exceeded", i));
-        }
-        self.depth += 1;
-        Ok(())
-    }
-
-    /// `-?(0|[1-9]\d*)(\.\d+)?([eE][-+]?\d+)?`: an int unless it has a
-    /// fraction or an exponent.
-    fn number(&self, i: usize) -> Option<(J, usize)> {
-        let digit = |k: usize| self.at(k).map(|c| c.is_ascii_digit()).unwrap_or(false);
-        let mut j = i;
-        if self.at(j) == Some('-') {
-            j += 1;
-        }
-        match self.at(j) {
-            Some('0') => j += 1,
-            Some('1'..='9') => {
-                while digit(j) {
-                    j += 1;
-                }
-            }
-            _ => return None,
-        }
-        let mut is_float = false;
-        if self.at(j) == Some('.') && digit(j + 1) {
-            j += 1;
-            while digit(j) {
-                j += 1;
-            }
-            is_float = true;
-        }
-        if matches!(self.at(j), Some('e') | Some('E')) {
-            let mut k = j + 1;
-            if matches!(self.at(k), Some('+') | Some('-')) {
-                k += 1;
-            }
-            if digit(k) {
-                while digit(k) {
-                    k += 1;
-                }
-                j = k;
-                is_float = true;
-            }
-        }
-        let text: String = self.c[i..j].iter().collect();
-        if !is_float {
-            if let Ok(n) = text.parse::<i128>() {
-                return Some((J::Int(n), j));
-            }
-        }
-        // Correctly rounded, as CPython's float() is; overflow gives inf.
-        text.parse::<f64>().ok().map(|f| (J::Float(f), j))
-    }
-
-    fn hex4(&self, i: usize) -> Option<u32> {
-        if i + 4 > self.c.len() {
-            return None;
-        }
-        let s: String = self.c[i..i + 4].iter().collect();
-        if s.chars().all(|c| c.is_ascii_hexdigit()) {
-            u32::from_str_radix(&s, 16).ok()
-        } else {
-            None
-        }
-    }
-
-    /// `scanstring`, from just after the opening quote.
-    fn string(&self, start: usize) -> Result<(String, usize), String> {
-        let mut out = String::new();
-        let mut i = start;
-        loop {
-            let Some(ch) = self.at(i) else {
-                return Err(self.err("Unterminated string starting at", start - 1));
-            };
-            match ch {
-                '"' => return Ok((out, i + 1)),
-                '\\' => {
-                    let Some(esc) = self.at(i + 1) else {
-                        return Err(self.err("Unterminated string starting at", start - 1));
-                    };
-                    let simple = match esc {
-                        '"' => Some('"'),
-                        '\\' => Some('\\'),
-                        '/' => Some('/'),
-                        'b' => Some('\u{08}'),
-                        'f' => Some('\u{0c}'),
-                        'n' => Some('\n'),
-                        'r' => Some('\r'),
-                        't' => Some('\t'),
-                        _ => None,
-                    };
-                    if let Some(c) = simple {
-                        out.push(c);
-                        i += 2;
-                        continue;
-                    }
-                    if esc != 'u' {
-                        // CPython's C scanner names no character here.
-                        return Err(self.err("Invalid \\escape", i));
-                    }
-                    let Some(mut cp) = self.hex4(i + 2) else {
-                        return Err(self.err("Invalid \\uXXXX escape", i + 1));
-                    };
-                    let mut next = i + 6;
-                    if (0xD800..0xDC00).contains(&cp)
-                        && self.at(next) == Some('\\')
-                        && self.at(next + 1) == Some('u')
-                    {
-                        if let Some(lo) = self.hex4(next + 2) {
-                            if (0xDC00..0xE000).contains(&lo) {
-                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                                next += 6;
-                            }
-                        }
-                    }
-                    // A lone surrogate is legal in a Python str, not a Rust one.
-                    out.push(char::from_u32(cp).unwrap_or('\u{FFFD}'));
-                    i = next;
-                }
-                c if (c as u32) < 0x20 => return Err(self.err("Invalid control character at", i)),
-                c => {
-                    out.push(c);
-                    i += 1;
-                }
-            }
-        }
-    }
-
-    /// `JSONObject`, from just after `{`.
-    fn object(&mut self, mut end: usize) -> Result<(J, usize), String> {
-        let mut out = J::Obj(Vec::new());
-        let mut next = self.at(end);
-        if next != Some('"') {
-            if next.map(is_ws).unwrap_or(false) {
-                end = self.skip_ws(end);
-                next = self.at(end);
-            }
-            if next == Some('}') {
-                return Ok((out, end + 1));
-            } else if next != Some('"') {
-                return Err(self.err("Expecting property name enclosed in double quotes", end));
-            }
-        }
-        end += 1;
-        loop {
-            let (key, e) = self.string(end)?;
-            end = e;
-            if self.at(end) != Some(':') {
-                end = self.skip_ws(end);
-                if self.at(end) != Some(':') {
-                    return Err(self.err("Expecting ':' delimiter", end));
-                }
-            }
-            end = self.skip_ws(end + 1);
-            let Some((value, e)) = self.value(end)? else {
-                return Err(self.err("Expecting value", end));
-            };
-            // Python dict semantics: the last value wins, the first position
-            // is kept.
-            out.set(&key, value);
-            end = self.skip_ws(e);
-            let next = self.at(end);
-            end += 1;
-            match next {
-                Some('}') => return Ok((out, end)),
-                Some(',') => {}
-                _ => return Err(self.err("Expecting ',' delimiter", end - 1)),
-            }
-            end = self.skip_ws(end);
-            let next = self.at(end);
-            end += 1;
-            if next != Some('"') {
-                return Err(self.err("Expecting property name enclosed in double quotes", end - 1));
-            }
-        }
-    }
-
-    /// `JSONArray`, from just after `[`.
-    fn array(&mut self, mut end: usize) -> Result<(J, usize), String> {
-        let mut items = Vec::new();
-        end = self.skip_ws(end);
-        if self.at(end) == Some(']') {
-            return Ok((J::Arr(items), end + 1));
-        }
-        loop {
-            let Some((value, e)) = self.value(end)? else {
-                return Err(self.err("Expecting value", end));
-            };
-            items.push(value);
-            end = self.skip_ws(e);
-            let next = self.at(end);
-            end += 1;
-            match next {
-                Some(']') => return Ok((J::Arr(items), end)),
-                Some(',') => {}
-                _ => return Err(self.err("Expecting ',' delimiter", end - 1)),
-            }
-            end = self.skip_ws(end);
-        }
-    }
-}
-
-/// `repr(float)` for a finite value: the shortest round-trip digits, laid out
-/// the way CPython does (scientific below 1e-4 and from 1e16).
-pub fn float_repr(f: f64) -> String {
-    if f.is_nan() {
-        return "nan".to_string();
-    }
-    if f.is_infinite() {
-        return if f > 0.0 { "inf" } else { "-inf" }.to_string();
-    }
-    // `{:e}` yields the shortest round-trip digits, e.g. "-1.45e2", "1e-5".
-    let sci = format!("{:e}", f);
-    let (mantissa, exp) = sci
-        .split_once('e')
-        .expect("LowerExp always has an exponent");
-    let exp: i32 = exp.parse().expect("LowerExp exponent is an integer");
-    let (neg, mantissa) = match mantissa.strip_prefix('-') {
-        Some(m) => (true, m),
-        None => (false, mantissa),
-    };
-    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
-    let mut out = String::new();
-    if neg {
-        out.push('-');
-    }
-    if (-4..16).contains(&exp) {
-        if exp >= 0 {
-            let int_len = (exp + 1) as usize;
-            if digits.len() <= int_len {
-                out.push_str(&digits);
-                out.push_str(&"0".repeat(int_len - digits.len()));
-                out.push_str(".0");
-            } else {
-                out.push_str(&digits[..int_len]);
-                out.push('.');
-                out.push_str(&digits[int_len..]);
-            }
-        } else {
-            out.push_str("0.");
-            out.push_str(&"0".repeat((-exp - 1) as usize));
-            out.push_str(&digits);
-        }
-    } else {
-        out.push_str(&digits[..1]);
-        if digits.len() > 1 {
-            out.push('.');
-            out.push_str(&digits[1..]);
-        }
-        out.push('e');
-        out.push(if exp < 0 { '-' } else { '+' });
-        out.push_str(&format!("{:02}", exp.abs()));
-    }
-    out
-}
-
-/// How `json.dumps` writes a float (`NaN`/`Infinity` rather than `nan`/`inf`).
-fn float_json(f: f64) -> String {
-    if f.is_nan() {
-        "NaN".to_string()
-    } else if f.is_infinite() {
-        if f > 0.0 { "Infinity" } else { "-Infinity" }.to_string()
-    } else {
-        float_repr(f)
-    }
-}
-
-fn write_str(out: &mut String, s: &str, ensure_ascii: bool) {
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{0c}' => out.push_str("\\f"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c if ensure_ascii && (c as u32) > 0x7e => {
-                let mut buf = [0u16; 2];
-                for unit in c.encode_utf16(&mut buf) {
-                    out.push_str(&format!("\\u{:04x}", unit));
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-}
-
-fn newline_indent(out: &mut String, indent: usize, level: usize) {
-    out.push('\n');
-    out.push_str(&" ".repeat(indent * level));
-}
-
-fn write_value(out: &mut String, v: &J, indent: Option<usize>, ensure_ascii: bool, level: usize) {
-    match v {
-        J::Null => out.push_str("null"),
-        J::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        J::Int(i) => out.push_str(&i.to_string()),
-        J::Float(f) => out.push_str(&float_json(*f)),
-        J::Str(s) => write_str(out, s, ensure_ascii),
-        J::Arr(items) => {
-            if items.is_empty() {
-                out.push_str("[]");
-                return;
-            }
-            out.push('[');
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                    if indent.is_none() {
-                        out.push(' ');
-                    }
-                }
-                if let Some(n) = indent {
-                    newline_indent(out, n, level + 1);
-                }
-                write_value(out, item, indent, ensure_ascii, level + 1);
-            }
-            if let Some(n) = indent {
-                newline_indent(out, n, level);
-            }
-            out.push(']');
-        }
-        J::Obj(pairs) => {
-            if pairs.is_empty() {
-                out.push_str("{}");
-                return;
-            }
-            out.push('{');
-            for (i, (k, item)) in pairs.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                    if indent.is_none() {
-                        out.push(' ');
-                    }
-                }
-                if let Some(n) = indent {
-                    newline_indent(out, n, level + 1);
-                }
-                write_str(out, k, ensure_ascii);
-                out.push_str(": ");
-                write_value(out, item, indent, ensure_ascii, level + 1);
-            }
-            if let Some(n) = indent {
-                newline_indent(out, n, level);
-            }
-            out.push('}');
-        }
-    }
-}
-
-/// `json.dumps(v, indent=indent, ensure_ascii=ensure_ascii)`.
-pub fn dumps(v: &J, indent: Option<usize>, ensure_ascii: bool) -> String {
-    let mut out = String::new();
-    write_value(&mut out, v, indent, ensure_ascii, 0);
-    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bs(template: &str) -> String {
+        const BS: char = '\\';
+        assert!(
+            !template.contains(BS),
+            "build escapes in code with '|' instead of literal backslashes: {template:?}"
+        );
+        template.replace('|', &BS.to_string())
+    }
 
     #[test]
     fn float_repr_matches_python() {
@@ -626,12 +186,18 @@ mod tests {
             (123456789012345678.0, "1.2345678901234568e+17"),
             (1e15, "1000000000000000.0"),
             (-0.0, "-0.0"),
+            (0.0, "0.0"),
             (2.5e-7, "2.5e-07"),
             (12.5, "12.5"),
+            (1792885118.2732465, "1792885118.2732465"),
+            (1792712318.3030279, "1792712318.3030279"),
         ];
         for (f, want) in cases {
             assert_eq!(float_repr(f), want, "{f}");
         }
+        assert_eq!(float_repr(f64::NAN), "nan");
+        assert_eq!(float_repr(f64::INFINITY), "inf");
+        assert_eq!(float_repr(f64::NEG_INFINITY), "-inf");
     }
 
     #[test]
@@ -675,49 +241,689 @@ mod tests {
                 text
             );
         }
-        assert_eq!(J::parse("12").unwrap(), J::Int(12));
-        assert_eq!(J::parse("-0").unwrap(), J::Int(0));
+        assert_eq!(J::parse("12").unwrap(), J::int(12));
+        let neg_zero = J::parse("-0").unwrap();
+        assert_eq!(neg_zero.as_i128(), Some(0));
+        assert_eq!(neg_zero.py_repr(), "0");
+        assert_eq!(dumps(&neg_zero, None, true), "0");
+        assert!(py_eq(&neg_zero, &J::int(0)));
+        assert_eq!(
+            int_as_f64(match &neg_zero {
+                J::Int(s) => s,
+                other => panic!("{other:?}"),
+            })
+            .to_bits(),
+            0.0_f64.to_bits()
+        );
         assert_eq!(J::parse("1E2").unwrap(), J::Float(100.0));
         assert!(matches!(J::parse("NaN").unwrap(), J::Float(f) if f.is_nan()));
         assert_eq!(
-            J::parse(" [1, \"a\\u00e9\\ud83d\\ude00\\n\"] ").unwrap(),
-            J::Arr(vec![J::Int(1), J::str("a\u{e9}\u{1F600}\n")])
+            J::parse(&bs(" [1, \"a|u00e9|ud83d|ude00|n\"] ")).unwrap(),
+            J::Arr(vec![J::int(1), J::str("a\u{e9}\u{1F600}\n")])
         );
-        let errors = [
-            ("", "Expecting value: line 1 column 1 (char 0)"),
-            ("not json", "Expecting value: line 1 column 1 (char 0)"),
-            ("{\"a\": ", "Expecting value: line 1 column 7 (char 6)"),
-            (
-                "{\"a\" 1}",
-                "Expecting ':' delimiter: line 1 column 6 (char 5)",
-            ),
-            ("[1 2]", "Expecting ',' delimiter: line 1 column 4 (char 3)"),
-            (
-                "{1: 2}",
-                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
-            ),
-            (
-                "\"abc",
-                "Unterminated string starting at: line 1 column 1 (char 0)",
-            ),
-            ("[1]\n x", "Extra data: line 2 column 2 (char 5)"),
-            ("\"\\q\"", "Invalid \\escape: line 1 column 2 (char 1)"),
-            (
-                "\"\\u12\"",
-                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
-            ),
-            (
-                "\"a\tb\"",
-                "Invalid control character at: line 1 column 3 (char 2)",
-            ),
-        ];
-        for (text, want) in errors {
-            assert_eq!(J::parse(text).unwrap_err(), want, "{:?}", text);
-        }
     }
 
     #[test]
     fn astral_escapes_as_surrogate_pair() {
         assert_eq!(dumps(&J::str("😀"), None, true), r#""\ud83d\ude00""#);
+    }
+
+    #[test]
+    fn value_ext_constructors_and_mutators() {
+        let mut obj = J::obj(vec![("a", J::int(1)), ("b", J::str("x")), ("a", J::int(2))]);
+        assert_eq!(dumps(&obj, None, true), r#"{"a": 2, "b": "x"}"#);
+        assert!(obj.contains_key("a"));
+        assert!(!obj.contains_key("c"));
+        assert_eq!(obj.get("a").and_then(J::as_i128), Some(2));
+        assert_eq!(obj.get("b").and_then(J::as_str), Some("x"));
+        assert!(!obj.is_null());
+        assert!(J::Null.is_null());
+
+        *obj.get_mut("a").unwrap() = J::int(9);
+        obj.set("c", J::Bool(true));
+        assert_eq!(obj.remove("b"), Some(J::str("x")));
+        assert_eq!(obj.remove("missing"), None);
+        assert_eq!(dumps(&obj, None, true), r#"{"a": 9, "c": true}"#);
+
+        let mut empty = J::empty_obj();
+        empty.set("k", J::Null);
+        assert_eq!(dumps(&empty, None, true), r#"{"k": null}"#);
+
+        // Non-object mutators are no-ops / None, matching legacy J.
+        let mut arr = J::Arr(vec![]);
+        arr.set("k", J::int(1));
+        assert_eq!(arr.get_mut("k"), None);
+        assert_eq!(arr.remove("k"), None);
+        assert_eq!(arr, J::Arr(vec![]));
+    }
+
+    #[test]
+    fn behaviour_changes_match_cpython_312() {
+        // 1. UTF-8 BOM: CPython 3.12 rejects with Unexpected UTF-8 BOM.
+        for bom_input in ["\u{feff}{}", "\u{feff}1", "\u{feff}"] {
+            assert_eq!(
+                J::parse(bom_input).unwrap_err(),
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+                "{bom_input:?}"
+            );
+        }
+
+        // 2. Complete \uXXXX right at EOF: CPython 3.12 reports "Invalid \uXXXX escape".
+        for (tmpl, want) in [
+            (
+                "\"|u0041",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"ab|u0041",
+                "Invalid \\uXXXX escape: line 1 column 5 (char 4)",
+            ),
+            (
+                "\"|ud800|u0041",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|udc00",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "[\"|u0041",
+                "Invalid \\uXXXX escape: line 1 column 4 (char 3)",
+            ),
+        ] {
+            let input = bs(tmpl);
+            assert_eq!(J::parse(&input).unwrap_err(), want, "{input:?}");
+        }
+
+        // 3. Integers > i128 preserve exact digits.
+        for big in [
+            "170141183460469231731687303715884105728",
+            "-170141183460469231731687303715884105729",
+            "10000000000000000000000000000000000000000",
+            "-10000000000000000000000000000000000000000",
+        ] {
+            let v = J::parse(big).unwrap();
+            assert_eq!(v, J::Int(big.to_string()), "{big:?}");
+            assert_eq!(dumps(&v, None, true), big, "{big:?}");
+            assert_eq!(crate::pyutil::py_repr(&v), big, "{big:?}");
+        }
+    }
+
+    #[test]
+    fn malformed_inputs_match_cpython_312() {
+        let cases: &[(&str, &str)] = &[
+            // Empty / whitespace
+            ("", "Expecting value: line 1 column 1 (char 0)"),
+            (" ", "Expecting value: line 1 column 2 (char 1)"),
+            ("   \n\t\r  ", "Expecting value: line 2 column 5 (char 8)"),
+            ("\n", "Expecting value: line 2 column 1 (char 1)"),
+            ("not json", "Expecting value: line 1 column 1 (char 0)"),
+            // BOM
+            (
+                "\u{feff}{}",
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+            ),
+            (
+                "\u{feff}1",
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+            ),
+            (
+                "\u{feff}",
+                "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
+            ),
+            // Invalid simple escapes
+            ("\"a|qb\"", "Invalid \\escape: line 1 column 3 (char 2)"),
+            ("\"|q\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|x\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|a\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|1\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|'\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|0\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            ("\"|v\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            // Invalid \uXXXX inside string or after high surrogate
+            (
+                "\"|u12\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|u123g\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|uZZZZ\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|u 123\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|ud800|u12\"",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u123g\"",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u123\"",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            // Truncated \u at EOF
+            ("\"|u", "Invalid \\uXXXX escape: line 1 column 3 (char 2)"),
+            ("\"|u1", "Invalid \\uXXXX escape: line 1 column 3 (char 2)"),
+            ("\"|u12", "Invalid \\uXXXX escape: line 1 column 3 (char 2)"),
+            (
+                "\"|u123",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"|ud800|u",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u1",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u12",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|u123",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            // Complete \uXXXX right at EOF (CPython 3.12)
+            (
+                "\"|u0041",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"ab|u0041",
+                "Invalid \\uXXXX escape: line 1 column 5 (char 4)",
+            ),
+            (
+                "\"|ud800|u0041",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800|udc00",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"|ud800",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "[\"|u0041",
+                "Invalid \\uXXXX escape: line 1 column 4 (char 3)",
+            ),
+            // Controls around \uXXXX + EOF
+            (
+                "\"|u0041x",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"||u0041",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"|u0041|",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            // Unterminated strings
+            (
+                "\"abc",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "[\"abc",
+                "Unterminated string starting at: line 1 column 2 (char 1)",
+            ),
+            (
+                "\n\"ab",
+                "Unterminated string starting at: line 2 column 1 (char 1)",
+            ),
+            (
+                "\"ab|",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"|",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"|\"",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "{\"k\": \"v",
+                "Unterminated string starting at: line 1 column 7 (char 6)",
+            ),
+            // Unescaped control characters
+            (
+                "\"a\nb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\tb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\rb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x00b\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x01b\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x08b\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x0cb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"a\x1fb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            // Object syntax errors
+            (
+                "{",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{   ",
+                "Expecting property name enclosed in double quotes: line 1 column 5 (char 4)",
+            ),
+            ("{\"a\": ", "Expecting value: line 1 column 7 (char 6)"),
+            ("{\"a\":}", "Expecting value: line 1 column 6 (char 5)"),
+            (
+                "{\"a\" 1}",
+                "Expecting ':' delimiter: line 1 column 6 (char 5)",
+            ),
+            (
+                "{\"a\"   1}",
+                "Expecting ':' delimiter: line 1 column 8 (char 7)",
+            ),
+            (
+                "{\"a\"}",
+                "Expecting ':' delimiter: line 1 column 5 (char 4)",
+            ),
+            (
+                "{1: 2}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{a: 1}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{\"a\": 1",
+                "Expecting ',' delimiter: line 1 column 8 (char 7)",
+            ),
+            (
+                "{\"a\": 1 \"b\": 2}",
+                "Expecting ',' delimiter: line 1 column 9 (char 8)",
+            ),
+            (
+                "{\"a\": \"b\", \"c\" 3}",
+                "Expecting ':' delimiter: line 1 column 16 (char 15)",
+            ),
+            (
+                "{\"a\": [1, 2], \"b\": {\"c\":}}",
+                "Expecting value: line 1 column 25 (char 24)",
+            ),
+            (
+                "{\"a\": 1,}",
+                "Expecting property name enclosed in double quotes: line 1 column 9 (char 8)",
+            ),
+            (
+                "{\"a\":1,}",
+                "Expecting property name enclosed in double quotes: line 1 column 8 (char 7)",
+            ),
+            (
+                "{\"a\": 1, ",
+                "Expecting property name enclosed in double quotes: line 1 column 10 (char 9)",
+            ),
+            (
+                "{,}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            // Array syntax errors
+            ("[", "Expecting value: line 1 column 2 (char 1)"),
+            ("[  ", "Expecting value: line 1 column 4 (char 3)"),
+            ("[[[", "Expecting value: line 1 column 4 (char 3)"),
+            ("[1", "Expecting ',' delimiter: line 1 column 3 (char 2)"),
+            ("[1 2]", "Expecting ',' delimiter: line 1 column 4 (char 3)"),
+            (
+                "[1, 2 3]",
+                "Expecting ',' delimiter: line 1 column 7 (char 6)",
+            ),
+            ("[1,]", "Expecting value: line 1 column 4 (char 3)"),
+            ("[,]", "Expecting value: line 1 column 2 (char 1)"),
+            // Extra data
+            ("{} x", "Extra data: line 1 column 4 (char 3)"),
+            ("[1]\n x", "Extra data: line 2 column 2 (char 5)"),
+            ("1 2", "Extra data: line 1 column 3 (char 2)"),
+            ("true false", "Extra data: line 1 column 6 (char 5)"),
+            ("[] []", "Extra data: line 1 column 4 (char 3)"),
+            ("\"a\"\"b\"", "Extra data: line 1 column 4 (char 3)"),
+            ("\"ok\"|", "Extra data: line 1 column 5 (char 4)"),
+            // Invalid numbers and literals
+            ("-", "Expecting value: line 1 column 1 (char 0)"),
+            ("-a", "Expecting value: line 1 column 1 (char 0)"),
+            ("-I", "Expecting value: line 1 column 1 (char 0)"),
+            ("-Inf", "Expecting value: line 1 column 1 (char 0)"),
+            ("-Infin", "Expecting value: line 1 column 1 (char 0)"),
+            ("Na", "Expecting value: line 1 column 1 (char 0)"),
+            ("Inf", "Expecting value: line 1 column 1 (char 0)"),
+            ("nan", "Expecting value: line 1 column 1 (char 0)"),
+            ("infinity", "Expecting value: line 1 column 1 (char 0)"),
+            ("True", "Expecting value: line 1 column 1 (char 0)"),
+            ("False", "Expecting value: line 1 column 1 (char 0)"),
+            ("Null", "Expecting value: line 1 column 1 (char 0)"),
+            ("[01]", "Expecting ',' delimiter: line 1 column 3 (char 2)"),
+            ("01", "Extra data: line 1 column 2 (char 1)"),
+            ("00", "Extra data: line 1 column 2 (char 1)"),
+            ("-01", "Extra data: line 1 column 3 (char 2)"),
+            (".5", "Expecting value: line 1 column 1 (char 0)"),
+            ("+1", "Expecting value: line 1 column 1 (char 0)"),
+            ("--1", "Expecting value: line 1 column 1 (char 0)"),
+            ("1.", "Extra data: line 1 column 2 (char 1)"),
+            ("1..2", "Extra data: line 1 column 2 (char 1)"),
+            ("1e", "Extra data: line 1 column 2 (char 1)"),
+            ("1e+", "Extra data: line 1 column 2 (char 1)"),
+            ("1e-", "Extra data: line 1 column 2 (char 1)"),
+            ("1e+a", "Extra data: line 1 column 2 (char 1)"),
+            ("1e-a", "Extra data: line 1 column 2 (char 1)"),
+            ("1e1e1", "Extra data: line 1 column 4 (char 3)"),
+            ("1.2.3", "Extra data: line 1 column 4 (char 3)"),
+            ("tru", "Expecting value: line 1 column 1 (char 0)"),
+            ("nul", "Expecting value: line 1 column 1 (char 0)"),
+            ("fals", "Expecting value: line 1 column 1 (char 0)"),
+            ("}}}", "Expecting value: line 1 column 1 (char 0)"),
+            ("]]]", "Expecting value: line 1 column 1 (char 0)"),
+            (":", "Expecting value: line 1 column 1 (char 0)"),
+            (",", "Expecting value: line 1 column 1 (char 0)"),
+            // Multiline, CRLF, multibyte & astral positions
+            (
+                "{\"a\":\n tru}",
+                "Expecting value: line 2 column 2 (char 7)",
+            ),
+            (
+                "[\n1,\n\"x\" 2]",
+                "Expecting ',' delimiter: line 3 column 5 (char 9)",
+            ),
+            (
+                "[\r\n1,\r\n\"é\" 2]",
+                "Expecting ',' delimiter: line 3 column 5 (char 11)",
+            ),
+            (
+                "[\"😀\" 2]",
+                "Expecting ',' delimiter: line 1 column 6 (char 5)",
+            ),
+            (
+                "{\n  \"a\": 1,\n  \"b\": [1, 2,\n    \"ok\", tru]\n}",
+                "Expecting value: line 4 column 11 (char 36)",
+            ),
+        ];
+
+        assert!(
+            cases.len() >= 80,
+            "need >= 80 malformed inputs, got {}",
+            cases.len()
+        );
+        for &(tmpl, want) in cases {
+            let input = bs(tmpl);
+            assert_eq!(J::parse(&input).unwrap_err(), want, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn depth_limit_900_on_32mib_thread() {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 << 20)
+            .spawn(|| {
+                fn obj_chain(depth: usize, leaf: &str) -> String {
+                    let mut out = String::new();
+                    for _ in 0..depth {
+                        out.push_str(r#"{"a":"#);
+                    }
+                    out.push_str(leaf);
+                    for _ in 0..depth {
+                        out.push('}');
+                    }
+                    out
+                }
+                fn mixed_chain(depth: usize, start_obj: bool, leaf: &str) -> String {
+                    let mut out = String::new();
+                    for k in 0..depth {
+                        if (k % 2 == 0) == start_obj {
+                            out.push_str(r#"{"a":"#);
+                        } else {
+                            out.push('[');
+                        }
+                    }
+                    out.push_str(leaf);
+                    for k in (0..depth).rev() {
+                        if (k % 2 == 0) == start_obj {
+                            out.push('}');
+                        } else {
+                            out.push(']');
+                        }
+                    }
+                    out
+                }
+
+                let mut depth_cases: Vec<(String, Option<&str>)> = Vec::new();
+                for d in [899usize, 900] {
+                    depth_cases.push((format!("{}{}", "[".repeat(d), "]".repeat(d)), None));
+                    depth_cases.push((format!("{}1{}", "[".repeat(d), "]".repeat(d)), None));
+                    depth_cases.push((obj_chain(d, "1"), None));
+                    depth_cases.push((mixed_chain(d, false, "0"), None));
+                    depth_cases.push((mixed_chain(d, true, "\"ok\""), None));
+                }
+                depth_cases.push((obj_chain(899, "{}"), None));
+                depth_cases.push((
+                    obj_chain(900, "{}"),
+                    Some("maximum recursion depth exceeded: line 1 column 4501 (char 4500)"),
+                ));
+                depth_cases.push((
+                    format!("{}[],{}{}", "[".repeat(899), "{}", "]".repeat(899)),
+                    None,
+                ));
+                depth_cases.push((
+                    format!("{}[],{}{}", "[".repeat(900), "{}", "]".repeat(900)),
+                    Some("maximum recursion depth exceeded: line 1 column 901 (char 900)"),
+                ));
+                depth_cases.push((
+                    format!("{}[],[{{}}]{}", "[".repeat(899), "]".repeat(899)),
+                    Some("maximum recursion depth exceeded: line 1 column 904 (char 903)"),
+                ));
+                depth_cases.push((
+                    format!("{}{}", "[".repeat(901), "]".repeat(901)),
+                    Some("maximum recursion depth exceeded: line 1 column 901 (char 900)"),
+                ));
+                depth_cases.push((
+                    "[".repeat(901),
+                    Some("maximum recursion depth exceeded: line 1 column 901 (char 900)"),
+                ));
+                depth_cases.push((
+                    obj_chain(901, "1"),
+                    Some("maximum recursion depth exceeded: line 1 column 4501 (char 4500)"),
+                ));
+                depth_cases.push((
+                    mixed_chain(901, false, "0"),
+                    Some("maximum recursion depth exceeded: line 1 column 2701 (char 2700)"),
+                ));
+                depth_cases.push((
+                    mixed_chain(901, true, "0"),
+                    Some("maximum recursion depth exceeded: line 1 column 2701 (char 2700)"),
+                ));
+                depth_cases.push((
+                    format!("{{\"é\":\n  {}{}}}", "[".repeat(899), "\n  ["),
+                    Some("maximum recursion depth exceeded: line 3 column 3 (char 910)"),
+                ));
+
+                assert!(depth_cases.len() >= 20);
+                for (doc, want_err) in &depth_cases {
+                    match want_err {
+                        None => assert!(J::parse(doc).is_ok()),
+                        Some(want) => assert_eq!(J::parse(doc).unwrap_err(), *want),
+                    }
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn pinned_telemetry_file_and_payload_dumps() {
+        // 1. Cleaned Gemini CLI settings.json (written by cli::cmd_setup)
+        let settings = J::parse(
+            r#"{"theme": "dark", "hooks": {
+                "AfterModel": [{"matcher": "*", "hooks": [
+                    {"name": "telemetry-hook", "command": "python3 x"},
+                    {"name": "mine", "command": "echo hi"}]}],
+                "BeforeTool": [{"hooks": [{"command": "/x/stream_hook.sh"}]}],
+                "Stop": [{"hooks": "not-a-list"}, 3]}}"#,
+        )
+        .unwrap();
+        let (cleaned, _) = crate::cli::strip_legacy_hooks(&settings).unwrap();
+        assert_eq!(
+            format!("{}\n", dumps(&cleaned, Some(2), true)),
+            "{\n  \"theme\": \"dark\",\n  \"hooks\": {\n    \"AfterModel\": [\n      {\n        \"matcher\": \"*\",\n        \"hooks\": [\n          {\n            \"name\": \"mine\",\n            \"command\": \"echo hi\"\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": \"not-a-list\"\n      },\n      3\n    ]\n  }\n}\n"
+        );
+
+        // 2. Saved .telemetry_state.json written via TranscriptScanner::save_state
+        let state_dir = std::env::temp_dir().join(format!("agt-json-pin-{}", std::process::id()));
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let state_path = state_dir.join("state.json");
+        let mut scanner = crate::session_exporter::TranscriptScanner::new(
+            Some(vec![]),
+            Some("/nonexistent"),
+            Some(state_path.to_str().unwrap()),
+            "http://127.0.0.1:9",
+            Some("mbp"),
+        );
+        scanner.sessions = J::obj(vec![(
+            "/Users/james/.gemini/antigravity/brain/é/transcript.jsonl",
+            J::obj(vec![
+                ("service", J::str("antigravity")),
+                ("model", J::str("gemini-3.8-flash")),
+                ("offset", J::int(1234)),
+                ("turns", J::int(3)),
+                ("tools", J::obj(vec![("run_command", J::int(2))])),
+                ("subagents", J::int(1)),
+                (
+                    "tokens",
+                    J::obj(vec![
+                        ("input", J::int(13500)),
+                        ("output", J::int(1050)),
+                        ("cached", J::int(96000)),
+                        ("thinking", J::int(42)),
+                    ]),
+                ),
+                ("mtime", J::Float(1792885118.2732465)),
+            ]),
+        )]);
+        scanner.save_state();
+        let state_bytes = std::fs::read_to_string(&state_path).unwrap();
+        let _ = std::fs::remove_dir_all(&state_dir);
+        assert_eq!(
+            state_bytes,
+            "{\n  \"/Users/james/.gemini/antigravity/brain/\\u00e9/transcript.jsonl\": {\n    \"service\": \"antigravity\",\n    \"model\": \"gemini-3.8-flash\",\n    \"offset\": 1234,\n    \"turns\": 3,\n    \"tools\": {\n      \"run_command\": 2\n    },\n    \"subagents\": 1,\n    \"tokens\": {\n      \"input\": 13500,\n      \"output\": 1050,\n      \"cached\": 96000,\n      \"thinking\": 42\n    },\n    \"mtime\": 1792885118.2732465\n  }\n}"
+        );
+
+        // 3. OTLP metrics payload (http_client wire JSON: None, false)
+        let otlp_m = crate::otlp_builder::build_metrics_payload(
+            vec![crate::otlp_builder::build_token_usage_metric(
+                &J::int(10),
+                &J::int(20),
+                &J::int(5),
+                &J::int(0),
+                &J::str("gemini-x"),
+                Some("mbp"),
+                Some(1700000000000000000),
+            )],
+            "antigravity",
+            Some("mbp"),
+            crate::otlp_builder::SCOPE_NAME,
+            crate::otlp_builder::SCOPE_VERSION,
+        );
+        assert_eq!(
+            dumps(&otlp_m, None, false),
+            r#"{"resourceMetrics": [{"resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "antigravity"}}, {"key": "service.version", "value": {"stringValue": "1.0.0"}}, {"key": "host.name", "value": {"stringValue": "mbp"}}]}, "scopeMetrics": [{"scope": {"name": "tools/antigravity-telemetry", "version": "1.0.0"}, "metrics": [{"name": "antigravity_token_usage_total", "description": "Total tokens consumed by Antigravity and AGY CLI", "unit": "{tokens}", "sum": {"aggregationTemporality": 2, "isMonotonic": true, "dataPoints": [{"attributes": [{"key": "host", "value": {"stringValue": "mbp"}}, {"key": "token_type", "value": {"stringValue": "input"}}, {"key": "model", "value": {"stringValue": "gemini-x"}}], "timeUnixNano": "1700000000000000000", "asInt": "10"}, {"attributes": [{"key": "host", "value": {"stringValue": "mbp"}}, {"key": "token_type", "value": {"stringValue": "output"}}, {"key": "model", "value": {"stringValue": "gemini-x"}}], "timeUnixNano": "1700000000000000000", "asInt": "20"}, {"attributes": [{"key": "host", "value": {"stringValue": "mbp"}}, {"key": "token_type", "value": {"stringValue": "thinking"}}, {"key": "model", "value": {"stringValue": "gemini-x"}}], "timeUnixNano": "1700000000000000000", "asInt": "5"}, {"attributes": [{"key": "host", "value": {"stringValue": "mbp"}}, {"key": "token_type", "value": {"stringValue": "cached"}}, {"key": "model", "value": {"stringValue": "gemini-x"}}], "timeUnixNano": "1700000000000000000", "asInt": "0"}]}}]}]}]}"#
+        );
+
+        // 4. OTLP traces payload (fixed trace/span IDs)
+        let mut span_args = crate::otlp_builder::SpanArgs::new("op", 100, 250);
+        span_args.trace_id = Some("0123456789abcdef0123456789abcdef".into());
+        span_args.span_id = Some("0123456789abcdef".into());
+        span_args.attributes = vec![("tool.name", J::str("é"))];
+        let otlp_t = crate::otlp_builder::build_traces_payload(
+            vec![crate::otlp_builder::build_span(&span_args)],
+            "antigravity",
+            Some("mbp"),
+            crate::otlp_builder::SCOPE_NAME,
+            crate::otlp_builder::SCOPE_VERSION,
+        );
+        assert_eq!(
+            dumps(&otlp_t, None, false),
+            r#"{"resourceSpans": [{"resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "antigravity"}}, {"key": "service.version", "value": {"stringValue": "1.0.0"}}, {"key": "host.name", "value": {"stringValue": "mbp"}}]}, "scopeSpans": [{"scope": {"name": "tools/antigravity-telemetry", "version": "1.0.0"}, "spans": [{"traceId": "0123456789abcdef0123456789abcdef", "spanId": "0123456789abcdef", "name": "op", "kind": 1, "startTimeUnixNano": "100", "endTimeUnixNano": "250", "attributes": [{"key": "tool.name", "value": {"stringValue": "é"}}], "status": {"code": 1}}]}]}]}"#
+        );
+
+        // 5. telemetry_hook payload (None, false)
+        let hook_ev = J::parse(r#"{"hook_event": "AfterAgent", "status": "completed"}"#).unwrap();
+        let hook_metrics = crate::telemetry_hook::process_event(
+            &hook_ev,
+            Some("mbp"),
+            &mut crate::telemetry_hook::ToolTimers::default(),
+        )
+        .unwrap();
+        let hook_payload =
+            crate::telemetry_hook::build_metrics_payload(hook_metrics, "antigravity", "mbp");
+        let hook_dump = dumps(&hook_payload, None, false);
+        assert!(
+            hook_dump.starts_with(
+                r#"{"resourceMetrics": [{"resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "antigravity"}}, {"key": "host.name", "value": {"stringValue": "mbp"}}]}, "scopeMetrics": [{"scope": {"name": "antigravity-telemetry", "version": "1.0.0"}, "metrics": [{"name": "antigravity_session_count_total", "description": "Total count of Antigravity / agy interactive sessions", "unit": "{sessions}", "sum": {"aggregationTemporality": 2, "isMonotonic": true, "dataPoints": [{"attributes": [{"key": "host", "value": {"stringValue": "mbp"}}, {"key": "status", "value": {"stringValue": "completed"}}], "timeUnixNano": "#
+            ),
+            "{hook_dump}"
+        );
+
+        // 6. session_exporter wire payload (None, true via send_exporter_payload)
+        let exp_wire = J::obj(vec![
+            ("host", J::str("mbp")),
+            ("tool", J::str("é")),
+            ("latency", J::Float(145.0)),
+        ]);
+        assert_eq!(
+            dumps(&exp_wire, None, true),
+            r#"{"host": "mbp", "tool": "\u00e9", "latency": 145.0}"#
+        );
+
+        // 7. cli --json summary output (Some(2), true)
+        let cli_json = J::obj(vec![
+            ("status", J::str("success")),
+            ("host", J::str("mbp")),
+            ("metrics_emitted", J::int(7)),
+            ("traces_emitted", J::int(1)),
+            ("iterations", J::int(1)),
+        ]);
+        assert_eq!(
+            dumps(&cli_json, Some(2), true),
+            "{\n  \"status\": \"success\",\n  \"host\": \"mbp\",\n  \"metrics_emitted\": 7,\n  \"traces_emitted\": 1,\n  \"iterations\": 1\n}"
+        );
     }
 }
