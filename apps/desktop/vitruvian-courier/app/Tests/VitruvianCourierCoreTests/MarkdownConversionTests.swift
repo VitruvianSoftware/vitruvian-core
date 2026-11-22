@@ -429,20 +429,37 @@ final class MarkdownConversionTests: XCTestCase {
         }
     }
 
-    func testTypingIntoAFiveThousandCharDraftStaysQuick() {
-        // A draft that is slow to scan: openers that never close, on one line.
-        for chunk in ["*a ", "_a ", "~~a ", "`a `` ", "**a *b _c "] {
+    /// The typical time of a keystroke at the end of a draft made of `chunk` repeated to about `size` characters: the
+    /// median of 16 keystrokes, the best of 3 tries, so one slow moment on a busy machine does not decide it.
+    private func keystrokeTime(_ chunk: String, size: Int) -> TimeInterval {
+        var best = TimeInterval.infinity
+        for _ in 0 ..< 3 {
             let composer = make().composer
-            let base = String(repeating: chunk, count: 5_000 / chunk.count)
+            let base = String(repeating: chunk, count: size / chunk.count)
             composer.textChanged(to: base, replacing: NSRange(location: 0, length: 0), with: (base as NSString).length)
-            var worst: TimeInterval = 0
+            var times: [TimeInterval] = []
             for character in "typing on and on" {
                 let started = Date()
                 insert(String(character), into: composer, at: (composer.text as NSString).length)
-                worst = max(worst, Date().timeIntervalSince(started))
+                times.append(Date().timeIntervalSince(started))
             }
-            print("QA-TIMING model keystroke at \((base as NSString).length) chars of \(chunk.debugDescription): worst \(Int(worst * 1000)) ms")
-            XCTAssertLessThan(worst, 0.1, "a keystroke in \(chunk.debugDescription)")
+            best = min(best, times.sorted()[times.count / 2])
+        }
+        return best
+    }
+
+    func testTypingIntoALongDraftGrowsNoFasterThanTheDraft() {
+        // Drafts that are slow to scan: openers that never close, on one line, or hundreds of code spans. A keystroke
+        // must cost about as much more as the draft is longer, not that squared: eight times the draft, about eight
+        // times the time (a save that grows with the square would take about sixty-four). A ratio, not a fixed number
+        // of milliseconds, because the CI machines run this about ten times slower than a Mac on a desk.
+        for chunk in ["*a ", "_a ", "~~a ", "`a `` ", "**a *b _c "] {
+            let small = keystrokeTime(chunk, size: 1_000)
+            let large = keystrokeTime(chunk, size: 8_000)
+            let ratio = large / max(small, 0.000_05)
+            print("QA-TIMING model keystroke in \(chunk.debugDescription): 1000 chars \(String(format: "%.2f", small * 1000)) ms, 8000 chars \(String(format: "%.2f", large * 1000)) ms, ratio \(String(format: "%.1f", ratio))")
+            XCTAssertLessThan(ratio, 14, "a keystroke in \(chunk.debugDescription) grows faster than the draft")
+            XCTAssertLessThan(large, 0.5, "a keystroke in an 8000-char draft of \(chunk.debugDescription)")
         }
     }
 
