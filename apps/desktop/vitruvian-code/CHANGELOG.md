@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.41.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.41.0...vitruvian-code-v1.41.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** explain a Gatekeeper rejection in the release, and free disk before the DMGs ([#5355](https://github.com/VitruvianSoftware/vitruvian-core/issues/5355)) ([0322d13](https://github.com/VitruvianSoftware/vitruvian-core/commit/0322d130fdefb0a85a4bd656cd13ecbc78bc270d))
+
 ## [1.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.40.0...vitruvian-code-v1.41.0) (2026-11-22)
 
 
