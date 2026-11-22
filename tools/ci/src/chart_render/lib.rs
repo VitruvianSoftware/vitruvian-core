@@ -96,6 +96,16 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
         good: &["relay-user", "relay-tester"],
         expect: "value: \"{v}\"",
     },
+    // Both checks at once must refuse too: the new relay would ignore the user
+    // list without saying so. The CI values already set requiredRole, so any
+    // user list is "both". No good value: no list renders alongside a role.
+    ValueControl {
+        chart_dir: "apps/suites/vitruvian-relay/relay/deploy/chart",
+        path: "oidc.allowedSubjects",
+        bad: &["378818267051722263"],
+        good: &[],
+        expect: "",
+    },
 ];
 
 /// Extract every `required "<message>" .Values.<path>` from a chart's

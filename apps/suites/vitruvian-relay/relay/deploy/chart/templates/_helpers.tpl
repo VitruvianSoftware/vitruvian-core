@@ -48,12 +48,16 @@ unset client id or subject list must never mean "let everyone in".
 
 {{/*
 Who may sign in: a role (oidc.requiredRole, for the current relay) or a list of
-users (oidc.allowedSubjects, the only check the old relay has). Both empty fails
-the render: a missing check must never mean "let everyone in".
+users (oidc.allowedSubjects, the only check the old relay has), exactly one.
+Neither fails the render (a missing check must never mean "let everyone in"),
+and so does both (the current relay ignores the list without a word).
 */}}
 {{- define "vitruvian-relay.whoMaySignIn" -}}
 {{- if not (or .Values.oidc.requiredRole .Values.oidc.allowedSubjects) -}}
 {{- fail "oidc.requiredRole or oidc.allowedSubjects is required: with neither, every account in the instance would be admitted" -}}
+{{- end -}}
+{{- if and .Values.oidc.requiredRole .Values.oidc.allowedSubjects -}}
+{{- fail "oidc.allowedSubjects and oidc.requiredRole are both set: the new relay checks only the role and silently ignores the user list, so people on the list would be let in or kept out by the role alone. Set one: requiredRole for the new relay, allowedSubjects for the old" -}}
 {{- end -}}
 {{- end -}}
 
