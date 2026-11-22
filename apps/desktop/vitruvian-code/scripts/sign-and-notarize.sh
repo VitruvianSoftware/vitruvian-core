@@ -52,6 +52,9 @@ KEYCHAIN_RESTORE_NEEDED=""
 ORIG_KEYCHAINS=()
 SIGN_IDENTITY=""
 DO_NOTARIZE=0
+# Apps Gatekeeper (spctl) refused after notarization and stapling. Filled by
+# verify_app_gatekeeper; run_apps fails once, at the end, naming all of them.
+GATEKEEPER_REJECTED=()
 
 cleanup() {
 	set +e
@@ -398,9 +401,15 @@ sign_app_inside_out() {
 	/usr/bin/codesign --verify --deep --strict --verbose=2 "${app}"
 }
 
+# Submits one file to the notary service and fails unless Apple accepts it.
+# $3 (optional) is the path the submission is FOR when that is not the file
+# uploaded (an app is zipped first). An accepted submission's ID is kept in
+# ${WORK_DIR}/submissions.tsv as "<id><TAB><path>" so that a later Gatekeeper
+# rejection can ask Apple for that submission's log.
 notarytool_submit_and_require_accepted() {
 	local submit_path="$1"
 	local label="$2"
+	local for_path="${3:-${submit_path}}"
 	local out_file="${WORK_DIR}/notary-$(/bin/date +%s)-$$.log"
 
 	echo "==> Submitting ${label} to Apple notary service..."
@@ -411,8 +420,12 @@ notarytool_submit_and_require_accepted() {
 		--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" \
 		--wait 2>&1 | /usr/bin/tee "${out_file}" || rc=$?
 
+	# notarytool prints the submission as an indented "id: <uuid>" line (the same
+	# id again with "path:" and "status:" at the end), so the first such line is
+	# the submission ID. Anchoring on the line start keeps a stray "id:" inside
+	# other text from being taken for it.
 	local sub_id
-	sub_id="$(/usr/bin/awk '/id:/ { print $2; exit }' "${out_file}" || true)"
+	sub_id="$(/usr/bin/awk '/^[[:space:]]*id:[[:space:]]/ { print $2; exit }' "${out_file}" || true)"
 
 	if [ "${rc}" -ne 0 ] || ! /usr/bin/grep -q "status: Accepted" "${out_file}"; then
 		if [ -n "${sub_id}" ]; then
@@ -425,7 +438,17 @@ notarytool_submit_and_require_accepted() {
 		/bin/rm -f "${out_file}"
 		fail_error "Notarization failed for ${label}."
 	fi
+	if [ -n "${sub_id}" ]; then
+		printf '%s\t%s\n' "${sub_id}" "${for_path}" >>"${WORK_DIR}/submissions.tsv"
+	fi
 	/bin/rm -f "${out_file}"
+}
+
+# Prints the accepted notary submission ID recorded for a path (the last one,
+# if it was submitted twice), or nothing.
+submission_id_for() {
+	[ -f "${WORK_DIR}/submissions.tsv" ] || return 0
+	WANT_PATH="$1" /usr/bin/awk -F '\t' '$2 == ENVIRON["WANT_PATH"] { id = $1 } END { if (id != "") print id }' "${WORK_DIR}/submissions.tsv"
 }
 
 notarize_and_staple_app() {
@@ -438,12 +461,93 @@ notarize_and_staple_app() {
 	clear_xattrs "${app}"
 	/usr/bin/codesign --verify --deep --strict "${app}"
 	/usr/bin/ditto -c -k --keepParent "${app}" "${zip_path}"
-	notarytool_submit_and_require_accepted "${zip_path}" "${base}"
+	notarytool_submit_and_require_accepted "${zip_path}" "${base}" "${app}"
 	/bin/rm -f "${zip_path}"
 
 	echo "==> Stapling notarization ticket to ${app}..."
 	/usr/bin/xcrun stapler staple "${app}"
 	/usr/bin/xcrun stapler validate "${app}"
+}
+
+# Prints the code signature, the cdhash of each architecture slice (the notary
+# ticket lists the cdhashes Apple notarized, so these can be compared with it)
+# and the entitlements of one signed file. Every command is allowed to fail.
+describe_signed_file() {
+	local signed="$1"
+	local arch
+	echo "--- ${signed}"
+	/usr/bin/codesign -dvvv --entitlements - "${signed}" 2>&1 || true
+	for arch in arm64 x86_64; do
+		echo "    cdhash (${arch} slice):"
+		/usr/bin/codesign -dvvv -a "${arch}" "${signed}" 2>&1 | /usr/bin/grep -E '^(CDHash|CandidateCDHash)' || true
+	done
+}
+
+# Explains why Gatekeeper rejected an app that was signed, notarized and
+# stapled. Gatekeeper only says "Unnotarized Developer ID", not which part it
+# objects to, so this gathers what is needed to tell: macOS's own verdict per
+# component, the stapled ticket, the signature of the main executable and every
+# helper, and Apple's list of notarized cdhashes. It never prints credentials.
+# Nothing here may fail the script; the caller fails on the rejection itself.
+print_gatekeeper_diagnostics() {
+	local app="$1"
+	local sub_id
+	sub_id="$(submission_id_for "${app}" || true)"
+
+	echo "::group::Gatekeeper diagnostics for ${app}"
+	if [ -x /usr/bin/syspolicy_check ]; then
+		echo "--- syspolicy_check distribution (names the component Gatekeeper objects to)"
+		/usr/bin/syspolicy_check distribution "${app}" 2>&1 || true
+	else
+		echo "--- syspolicy_check is not installed on this runner; skipped"
+	fi
+	echo "--- spctl --raw"
+	/usr/sbin/spctl -a -vvvv -t exec --raw "${app}" 2>&1 || true
+	echo "--- stapler validate"
+	/usr/bin/xcrun stapler validate -v "${app}" 2>&1 || true
+	echo "--- codesign on the app bundle"
+	/usr/bin/codesign -d --verbose=4 "${app}" 2>&1 || true
+
+	local plist="${app}/Contents/Info.plist"
+	local main_exec=""
+	if [ -f "${plist}" ]; then
+		main_exec="$(read_bundle_executable "${plist}" 2>/dev/null || true)"
+	fi
+	if [ -n "${main_exec}" ] && [ -f "${app}/Contents/MacOS/${main_exec}" ]; then
+		describe_signed_file "${app}/Contents/MacOS/${main_exec}"
+	fi
+	if [ -d "${app}/Contents/Helpers" ]; then
+		local helper
+		while IFS= read -r helper; do
+			[ -n "${helper}" ] || continue
+			case "$(/usr/bin/file -b "${helper}" 2>/dev/null || true)" in
+			*Mach-O*) describe_signed_file "${helper}" ;;
+			esac
+		done < <(/usr/bin/find "${app}/Contents/Helpers" -type f 2>/dev/null || true)
+	fi
+
+	if [ -n "${sub_id}" ]; then
+		echo "--- Apple notary log for submission ${sub_id} (ticketContents lists every notarized cdhash)"
+		/usr/bin/xcrun notarytool log "${sub_id}" \
+			--key "${NOTARY_KEY_FILE}" \
+			--key-id "${VITRUVIAN_NOTARY_KEY_ID}" \
+			--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" 2>&1 || true
+	else
+		echo "--- no accepted notary submission ID was recorded for ${app}"
+	fi
+	echo "::endgroup::"
+}
+
+# Asks Gatekeeper about one notarized app. A rejection prints the diagnostics
+# and is recorded; it does not stop the script, so every app gets checked.
+verify_app_gatekeeper() {
+	local app="$1"
+	if /usr/sbin/spctl -a -vv -t exec "${app}"; then
+		return 0
+	fi
+	echo "==> Gatekeeper REJECTED ${app}"
+	GATEKEEPER_REJECTED+=("${app}")
+	print_gatekeeper_diagnostics "${app}"
 }
 
 run_apps() {
@@ -545,7 +649,7 @@ run_apps() {
 				idx=$((idx + 1))
 				local tool_zip="${WORK_DIR}/macho-${idx}.zip"
 				/usr/bin/ditto -c -k "${bin}" "${tool_zip}"
-				notarytool_submit_and_require_accepted "${tool_zip}" "$(/usr/bin/basename "${bin}")"
+				notarytool_submit_and_require_accepted "${tool_zip}" "$(/usr/bin/basename "${bin}")" "${bin}"
 				/bin/rm -f "${tool_zip}"
 			done
 		fi
@@ -554,7 +658,7 @@ run_apps() {
 				idx=$((idx + 1))
 				local node_zip="${WORK_DIR}/node-macho-${idx}.zip"
 				/usr/bin/ditto -c -k "${bin}" "${node_zip}"
-				notarytool_submit_and_require_accepted "${node_zip}" "$(/usr/bin/basename "${bin}")"
+				notarytool_submit_and_require_accepted "${node_zip}" "$(/usr/bin/basename "${bin}")" "${bin}"
 				/bin/rm -f "${node_zip}"
 			done
 		fi
@@ -565,7 +669,7 @@ run_apps() {
 		for app in "${entitled_apps[@]}"; do
 			/usr/bin/codesign --verify --deep --strict --verbose=2 "${app}"
 			if [ "${DO_NOTARIZE}" -eq 1 ]; then
-				/usr/sbin/spctl -a -vv -t exec "${app}"
+				verify_app_gatekeeper "${app}"
 			fi
 		done
 	fi
@@ -573,7 +677,7 @@ run_apps() {
 		for app in "${plain_apps[@]}"; do
 			/usr/bin/codesign --verify --deep --strict --verbose=2 "${app}"
 			if [ "${DO_NOTARIZE}" -eq 1 ]; then
-				/usr/sbin/spctl -a -vv -t exec "${app}"
+				verify_app_gatekeeper "${app}"
 			fi
 		done
 	fi
@@ -586,6 +690,14 @@ run_apps() {
 		for bin in "${node_machos[@]}"; do
 			/usr/bin/codesign --verify --strict --verbose=2 "${bin}"
 		done
+	fi
+
+	if [ "${#GATEKEEPER_REJECTED[@]}" -gt 0 ]; then
+		local rejected_list="" rejected
+		for rejected in "${GATEKEEPER_REJECTED[@]}"; do
+			rejected_list="${rejected_list:+${rejected_list}, }${rejected}"
+		done
+		fail_error "Gatekeeper rejected ${#GATEKEEPER_REJECTED[@]} app(s) after notarization: ${rejected_list}. See the Gatekeeper diagnostics groups above."
 	fi
 }
 

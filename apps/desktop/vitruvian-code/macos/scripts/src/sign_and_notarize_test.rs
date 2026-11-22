@@ -150,6 +150,14 @@ esac
         r#"#!/bin/bash
 set -euo pipefail
 echo "codesign $*" >> "${FAKE_LOG_DIR}/codesign.log"
+case "${1:-}" in
+  -d*)
+    # `codesign -d...` describes a signature (stderr, like the real tool).
+    last="${!#}"
+    echo "CDHash=fakecdhash-${last##*/}" >&2
+    exit 0
+    ;;
+esac
 if [ -n "${READY_FILE:-}" ] && [ ! -f "${READY_FILE}" ]; then
   kc_found="$(find "${RUNNER_TEMP}" -name 'vitruvian-code-signing.keychain-db' -print -quit)"
   wd_found="$(find "${RUNNER_TEMP}" -maxdepth 1 -type d -name 'vc-sign.*' -print -quit)"
@@ -162,6 +170,14 @@ fi
         r#"#!/bin/bash
 set -euo pipefail
 echo "codesign $*" >> "${FAKE_LOG_DIR}/codesign.log"
+case "${1:-}" in
+  -d*)
+    # `codesign -d...` describes a signature (stderr, like the real tool).
+    last="${!#}"
+    echo "CDHash=fakecdhash-${last##*/}" >&2
+    exit 0
+    ;;
+esac
 "#
     };
     write_exec(fake_bin, "codesign", codesign_body);
@@ -194,6 +210,8 @@ dest="${!#}"
 "#,
     );
 
+    // Each notarytool submission gets its own id (00000001-..., 00000002-...), so
+    // a test can tell which app's submission a later `notarytool log` asked for.
     write_exec(
         fake_bin,
         "xcrun",
@@ -201,18 +219,51 @@ dest="${!#}"
 set -euo pipefail
 echo "xcrun $*" >> "${FAKE_LOG_DIR}/xcrun.log"
 if [ "${1:-}" = "notarytool" ] && [ "${2:-}" = "submit" ]; then
-  echo "  id: 00000000-1111-2222-3333-444444444444"
+  n=$(( $(cat "${FAKE_LOG_DIR}/notary-count" 2>/dev/null || echo 0) + 1 ))
+  echo "${n}" > "${FAKE_LOG_DIR}/notary-count"
+  id="$(printf '%08d' "${n}")-1111-2222-3333-444444444444"
+  echo "Conducting pre-submission checks for x.zip and initiating connection to the Apple notary service..."
+  echo "Submission ID received"
+  echo "  id: ${id}"
+  echo "Successfully uploaded file"
+  echo "  id: ${id}"
+  echo "  path: ${2}"
+  echo "Processing complete"
+  echo "  id: ${id}"
   echo "  status: Accepted"
+fi
+if [ "${1:-}" = "notarytool" ] && [ "${2:-}" = "log" ]; then
+  echo "{\"ticketContents\": [{\"cdhash\": \"fake-notarized-cdhash\"}], \"jobId\": \"${3:-}\"}"
 fi
 "#,
     );
 
+    // A path containing FAKE_SPCTL_REJECT is refused, the way Gatekeeper refused
+    // the apps in the failing releases. Every call is logged.
     write_exec(
         fake_bin,
         "spctl",
         r#"#!/bin/bash
 set -euo pipefail
 echo "spctl $*" >> "${FAKE_LOG_DIR}/spctl.log"
+target="${!#}"
+if [ -n "${FAKE_SPCTL_REJECT:-}" ] && [[ "${target}" == *"${FAKE_SPCTL_REJECT}"* ]]; then
+  echo "${target}: rejected" >&2
+  echo "source=Unnotarized Developer ID" >&2
+  exit 3
+fi
+echo "${target}: accepted" >&2
+echo "source=Notarized Developer ID" >&2
+"#,
+    );
+
+    write_exec(
+        fake_bin,
+        "syspolicy_check",
+        r#"#!/bin/bash
+set -euo pipefail
+echo "syspolicy_check $*" >> "${FAKE_LOG_DIR}/syspolicy_check.log"
+echo "fake syspolicy_check: ${!#} has a problem"
 "#,
     );
 
@@ -228,7 +279,7 @@ exit 0
 /// Because `sign-and-notarize.sh` hardcodes absolute `/usr/bin/...` and
 /// `/usr/sbin/...` paths with no environment overrides (to prevent PATH and env
 /// hijacking in production), tests that mock macOS signing/notary tools rewrite
-/// only those 7 absolute paths in a test-only copy of the script.
+/// only those 8 absolute paths in a test-only copy of the script.
 fn create_mocked_harness_script(dir: &Path, fake_bin: &Path) -> PathBuf {
     let mut src = fs::read_to_string(script_path()).expect("read sign-and-notarize.sh");
     for (abs_tool, fake_name) in [
@@ -238,6 +289,7 @@ fn create_mocked_harness_script(dir: &Path, fake_bin: &Path) -> PathBuf {
         ("/usr/bin/ditto", "ditto"),
         ("/usr/bin/xcrun", "xcrun"),
         ("/usr/sbin/spctl", "spctl"),
+        ("/usr/bin/syspolicy_check", "syspolicy_check"),
         ("/usr/bin/xattr", "xattr"),
     ] {
         let replacement = fake_bin.join(fake_name).to_string_lossy().into_owned();
@@ -452,6 +504,23 @@ fn script_locks_path_and_calls_no_bare_system_tools() {
         "sign-and-notarize.sh must create a private vc-sign.XXXXXX work dir"
     );
 
+    // The Gatekeeper diagnostics block runs these; each must be spelled with its
+    // absolute path (the scan below then catches a bare spelling on any line).
+    for required in [
+        "/usr/bin/syspolicy_check distribution",
+        "/usr/sbin/spctl -a -vvvv -t exec --raw",
+        "/usr/bin/xcrun stapler validate -v",
+        "/usr/bin/codesign -dvvv --entitlements -",
+        "/usr/bin/codesign -dvvv -a ",
+        "/usr/bin/codesign -d --verbose=4",
+        "/usr/bin/xcrun notarytool log",
+    ] {
+        assert!(
+            src.contains(required),
+            "sign-and-notarize.sh must run `{required}` with its absolute path"
+        );
+    }
+
     let forbidden_bare = [
         "codesign",
         "security",
@@ -476,6 +545,8 @@ fn script_locks_path_and_calls_no_bare_system_tools() {
         "date",
         "stapler",
         "spctl",
+        "syspolicy_check",
+        "notarytool",
         "dirname",
         "basename",
         "cat",
@@ -521,6 +592,9 @@ fn script_locks_path_and_calls_no_bare_system_tools() {
                 continue;
             }
             if token == "stapler" && trimmed.contains("/usr/bin/xcrun stapler") {
+                continue;
+            }
+            if token == "notarytool" && trimmed.contains("/usr/bin/xcrun notarytool") {
                 continue;
             }
             if token.ends_with(':') {
@@ -994,4 +1068,356 @@ fn signs_node_with_jit_entitlements_however_the_app_path_is_spelled() {
             "spelling {spelling:?}: node was not signed with node.entitlements:\n{codesign_log}"
         );
     }
+}
+
+/// Runs the mocked release over three apps (two with the app entitlements, one
+/// plain), each holding the helpers a real release has. `reject` is a substring
+/// of the app path that the fake `spctl` refuses.
+struct GatekeeperRun {
+    out: std::process::Output,
+    log_dir: PathBuf,
+    runner_temp: PathBuf,
+    apps: Vec<PathBuf>,
+}
+
+const NOTARY_KEY_BODY: &str = "SECRETKEYBODY-must-never-be-printed";
+const CERT_PASSWORD: &str = "cert-pass-must-never-be-printed";
+
+fn run_three_app_release(name: &str, reject: Option<&str>) -> GatekeeperRun {
+    let dir = scratch_dir(name);
+    let fake_bin = dir.join("fake_bin");
+    let log_dir = dir.join("logs");
+    let runner_temp = dir.join("runner_temp");
+    fs::create_dir_all(&fake_bin).unwrap();
+    fs::create_dir_all(&log_dir).unwrap();
+    fs::create_dir_all(&runner_temp).unwrap();
+    install_fake_signing_toolchain(&fake_bin, false);
+    let harness = create_mocked_harness_script(&dir, &fake_bin);
+
+    let apps: Vec<PathBuf> = [
+        ("Vitruvian Code.app", "VitruvianCode"),
+        ("Vitruvian Speaker.app", "VitruvianSpeaker"),
+        ("Vitruvian Atrium.app", "VitruvianAtrium"),
+    ]
+    .iter()
+    .map(|(bundle, exec)| {
+        let app = create_fake_app(&dir, bundle, exec, false);
+        add_helpers(&app);
+        app
+    })
+    .collect();
+
+    let mut cmd = Command::new(&harness);
+    cmd.args([
+        "apps",
+        "--entitlements-app",
+        apps[0].to_str().unwrap(),
+        "--entitlements-app",
+        apps[1].to_str().unwrap(),
+        "--plain-app",
+        apps[2].to_str().unwrap(),
+    ])
+    .env("FAKE_LOG_DIR", &log_dir)
+    .env("RUNNER_TEMP", &runner_temp)
+    .env("GITHUB_ACTIONS", "true")
+    .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
+    .env("VITRUVIAN_CODE_NODE_ENTITLEMENTS", node_entitlements_path())
+    .env("SIGNING", "developer-id")
+    .env("VITRUVIAN_SIGNING_CERT_P12", "dGVzdC1wMTI=")
+    .env("VITRUVIAN_SIGNING_CERT_PASSWORD", CERT_PASSWORD)
+    .env(
+        "VITRUVIAN_NOTARY_API_KEY_P8",
+        format!("-----BEGIN PRIVATE KEY-----\n{NOTARY_KEY_BODY}\n-----END PRIVATE KEY-----"),
+    )
+    .env("VITRUVIAN_NOTARY_KEY_ID", "KEYID12345")
+    .env(
+        "VITRUVIAN_NOTARY_ISSUER_ID",
+        "00000000-0000-0000-0000-000000000000",
+    );
+    if let Some(r) = reject {
+        cmd.env("FAKE_SPCTL_REJECT", r);
+    }
+    let out = cmd.output().expect("run sign-and-notarize harness");
+    GatekeeperRun {
+        out,
+        log_dir,
+        runner_temp,
+        apps,
+    }
+}
+
+fn read_log(run: &GatekeeperRun, name: &str) -> String {
+    fs::read_to_string(run.log_dir.join(name)).unwrap_or_default()
+}
+
+fn all_output(run: &GatekeeperRun) -> String {
+    format!(
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&run.out.stdout),
+        String::from_utf8_lossy(&run.out.stderr)
+    )
+}
+
+#[test]
+fn gatekeeper_rejection_explains_itself_for_the_rejected_app_only_and_fails_the_release() {
+    // Rejecting the first app and the last one proves the submission ID comes
+    // from the rejected app, not from whichever app was submitted first or last.
+    for (reject, rejected_idx, expected_id) in [
+        (
+            "Vitruvian Code.app",
+            0usize,
+            "00000001-1111-2222-3333-444444444444",
+        ),
+        (
+            "Vitruvian Atrium.app",
+            2usize,
+            "00000003-1111-2222-3333-444444444444",
+        ),
+    ] {
+        let run =
+            run_three_app_release(&format!("gatekeeper_rejects_{rejected_idx}"), Some(reject));
+        let everything = all_output(&run);
+        let stdout = String::from_utf8_lossy(&run.out.stdout).into_owned();
+        assert_eq!(run.out.status.code(), Some(1), "{everything}");
+
+        // Every app was asked, not only up to the first rejection.
+        let spctl = read_log(&run, "spctl.log");
+        assert_eq!(
+            spctl
+                .lines()
+                .filter(|l| l.contains(" -a -vv -t exec "))
+                .count(),
+            3,
+            "spctl must run on every app:\n{spctl}"
+        );
+        for app in &run.apps {
+            assert!(
+                spctl
+                    .lines()
+                    .any(|l| l.contains(" -a -vv -t exec ") && l.ends_with(app.to_str().unwrap())),
+                "no spctl call for {}:\n{spctl}",
+                app.display()
+            );
+        }
+
+        // One summary line, naming only the rejected app.
+        let rejected = run.apps[rejected_idx].to_str().unwrap();
+        let summary: Vec<&str> = stdout
+            .lines()
+            .filter(|l| l.starts_with("::error::Gatekeeper rejected"))
+            .collect();
+        assert_eq!(summary.len(), 1, "{everything}");
+        assert!(summary[0].contains("rejected 1 app(s)"), "{}", summary[0]);
+        assert!(summary[0].contains(rejected), "{}", summary[0]);
+        for (i, app) in run.apps.iter().enumerate() {
+            if i != rejected_idx {
+                assert!(
+                    !summary[0].contains(app.to_str().unwrap()),
+                    "summary names an accepted app: {}",
+                    summary[0]
+                );
+            }
+        }
+
+        // The diagnostics block: grouped, for the rejected app only.
+        assert_eq!(
+            stdout
+                .lines()
+                .filter(|l| l.starts_with("::group::Gatekeeper diagnostics for "))
+                .count(),
+            1,
+            "{everything}"
+        );
+        assert!(
+            stdout.contains(&format!("::group::Gatekeeper diagnostics for {rejected}")),
+            "{everything}"
+        );
+        assert_eq!(
+            stdout.lines().filter(|l| *l == "::endgroup::").count(),
+            1,
+            "{everything}"
+        );
+        let group_at = stdout.find("::group::Gatekeeper diagnostics").unwrap();
+        let end_at = stdout.find("::endgroup::").unwrap();
+        assert!(group_at < end_at);
+        let block = &stdout[group_at..end_at];
+        assert!(block.contains("fake syspolicy_check:"), "{block}");
+        assert!(
+            block.contains("CDHash=fakecdhash-VitruvianCode")
+                || block.contains("CDHash=fakecdhash-Vitruvian"),
+            "{block}"
+        );
+        assert!(block.contains("CDHash=fakecdhash-node"), "{block}");
+        assert!(block.contains("CDHash=fakecdhash-bot-engine"), "{block}");
+        assert!(block.contains("fake-notarized-cdhash"), "{block}");
+
+        let syspolicy = read_log(&run, "syspolicy_check.log");
+        assert_eq!(syspolicy.lines().count(), 1, "{syspolicy}");
+        assert_eq!(
+            syspolicy.trim(),
+            format!("syspolicy_check distribution {rejected}")
+        );
+        assert_eq!(
+            spctl
+                .lines()
+                .filter(|l| l.contains(" -a -vvvv -t exec --raw "))
+                .collect::<Vec<_>>(),
+            vec![format!("spctl -a -vvvv -t exec --raw {rejected}")]
+        );
+
+        let xcrun = read_log(&run, "xcrun.log");
+        assert_eq!(
+            xcrun
+                .lines()
+                .filter(|l| l.starts_with("xcrun stapler validate -v "))
+                .collect::<Vec<_>>(),
+            vec![format!("xcrun stapler validate -v {rejected}")]
+        );
+        let logs: Vec<&str> = xcrun
+            .lines()
+            .filter(|l| l.starts_with("xcrun notarytool log "))
+            .collect();
+        assert_eq!(logs.len(), 1, "one notarytool log call expected:\n{xcrun}");
+        assert!(
+            logs[0].starts_with(&format!("xcrun notarytool log {expected_id} --key ")),
+            "wrong submission id for {reject}: {}",
+            logs[0]
+        );
+        assert!(
+            logs[0].contains("--key-id KEYID12345 --issuer 00000000-0000-0000-0000-000000000000")
+        );
+
+        // The rejected app's main executable and each helper were described, with
+        // entitlements, and each slice's cdhash was read; the accepted apps were
+        // not described at all.
+        let codesign = read_log(&run, "codesign.log");
+        let describe: Vec<&str> = codesign
+            .lines()
+            .filter(|l| l.starts_with("codesign -d"))
+            .collect();
+        let rejected_exec = format!(
+            "{rejected}/Contents/MacOS/{}",
+            ["VitruvianCode", "VitruvianSpeaker", "VitruvianAtrium"][rejected_idx]
+        );
+        for file in [
+            rejected_exec,
+            format!("{rejected}/Contents/Helpers/bot-engine"),
+            format!("{rejected}/Contents/Helpers/node"),
+        ] {
+            assert!(
+                describe
+                    .iter()
+                    .any(|l| *l == format!("codesign -dvvv --entitlements - {file}")),
+                "no entitlements dump for {file}:\n{}",
+                describe.join("\n")
+            );
+            for arch in ["arm64", "x86_64"] {
+                assert!(
+                    describe
+                        .iter()
+                        .any(|l| *l == format!("codesign -dvvv -a {arch} {file}")),
+                    "no {arch} cdhash read for {file}:\n{}",
+                    describe.join("\n")
+                );
+            }
+        }
+        assert!(
+            describe
+                .iter()
+                .any(|l| *l == format!("codesign -d --verbose=4 {rejected}")),
+            "{}",
+            describe.join("\n")
+        );
+        for (i, app) in run.apps.iter().enumerate() {
+            if i != rejected_idx {
+                assert!(
+                    !describe.iter().any(|l| l.contains(app.to_str().unwrap())),
+                    "accepted app {} was described:\n{}",
+                    app.display(),
+                    describe.join("\n")
+                );
+            }
+        }
+
+        // No secret reaches the log, and the work dir is still removed.
+        for secret in [NOTARY_KEY_BODY, CERT_PASSWORD] {
+            assert!(!everything.contains(secret), "secret printed: {secret}");
+        }
+        let leftovers: Vec<_> = fs::read_dir(&run.runner_temp)
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert!(leftovers.is_empty(), "work dir left behind: {leftovers:?}");
+    }
+}
+
+#[test]
+fn gatekeeper_rejection_names_every_rejected_app_after_checking_them_all() {
+    let run = run_three_app_release("gatekeeper_rejects_all", Some("Vitruvian "));
+    let everything = all_output(&run);
+    let stdout = String::from_utf8_lossy(&run.out.stdout).into_owned();
+    assert_eq!(run.out.status.code(), Some(1), "{everything}");
+    let spctl = read_log(&run, "spctl.log");
+    assert_eq!(
+        spctl
+            .lines()
+            .filter(|l| l.contains(" -a -vv -t exec "))
+            .count(),
+        3,
+        "{spctl}"
+    );
+    let summary: Vec<&str> = stdout
+        .lines()
+        .filter(|l| l.starts_with("::error::Gatekeeper rejected"))
+        .collect();
+    assert_eq!(summary.len(), 1, "{everything}");
+    assert!(summary[0].contains("rejected 3 app(s)"), "{}", summary[0]);
+    for app in &run.apps {
+        assert!(summary[0].contains(app.to_str().unwrap()), "{}", summary[0]);
+    }
+    let xcrun = read_log(&run, "xcrun.log");
+    let ids: Vec<&str> = xcrun
+        .lines()
+        .filter(|l| l.starts_with("xcrun notarytool log "))
+        .map(|l| l.split_whitespace().nth(3).unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "00000001-1111-2222-3333-444444444444",
+            "00000002-1111-2222-3333-444444444444",
+            "00000003-1111-2222-3333-444444444444"
+        ],
+        "each app must ask for its own submission:\n{xcrun}"
+    );
+}
+
+#[test]
+fn gatekeeper_accepting_every_app_prints_no_diagnostics_and_succeeds() {
+    let run = run_three_app_release("gatekeeper_accepts_all", None);
+    let everything = all_output(&run);
+    let stdout = String::from_utf8_lossy(&run.out.stdout).into_owned();
+    assert_eq!(run.out.status.code(), Some(0), "{everything}");
+    let spctl = read_log(&run, "spctl.log");
+    assert_eq!(spctl.lines().count(), 3, "{spctl}");
+    assert!(
+        spctl.lines().all(|l| l.contains(" -a -vv -t exec ")),
+        "{spctl}"
+    );
+    assert!(!stdout.contains("::group::"), "{everything}");
+    assert!(!stdout.contains("Gatekeeper"), "{everything}");
+    assert!(!everything.contains("::error::"), "{everything}");
+    assert!(
+        !run.log_dir.join("syspolicy_check.log").exists(),
+        "syspolicy_check must not run when every app is accepted"
+    );
+    let xcrun = read_log(&run, "xcrun.log");
+    assert!(!xcrun.contains("notarytool log"), "{xcrun}");
+    assert!(!xcrun.contains("stapler validate -v"), "{xcrun}");
+    assert!(
+        !read_log(&run, "codesign.log")
+            .lines()
+            .any(|l| l.starts_with("codesign -d")),
+        "no describe calls when every app is accepted"
+    );
 }
