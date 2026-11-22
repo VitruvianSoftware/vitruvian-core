@@ -1,17 +1,19 @@
 {%- comment -%}
   Shared checkout attribution and analytics script for /donate/ and
   /donate/<key>/. Resolves click source (?src=, ?source=, ?utm_source=, or
-  sanitized document.referrer), appends ?client_reference_id=<source> to
-  #donate-checkout-btn, and sets data-umami-event-source=<source> so both
-  Stripe Checkout Sessions and Umami click events record where the donor
-  came from. Fires a "donate-view" Umami event on load and never
-  auto-redirects; without JavaScript, the button keeps its plain Stripe
-  Payment Link href.
+  sanitized document.referrer), sets data-umami-event-source=<source> on
+  #donate-checkout-btn, and splits the Stripe Payment Link into host + slug in
+  Liquid so no verbatim donate.stripe.com URL appears in static HTML or JS.
+  Navigates with ?client_reference_id=<source> only on a trusted button click,
+  preventing passive crawlers and link-previewers from spawning Stripe sessions.
 {%- endcomment -%}
+{%- assign stripped = include.link | remove: "https://" -%}
+{%- assign link_parts = stripped | split: "/" -%}
 <script>
   (function () {
     var key = {{ include.key | jsonify }};
-    var baseLink = {{ include.link | jsonify }};
+    var host = {{ link_parts[0] | jsonify }};
+    var slug = {{ link_parts[1] | jsonify }};
 
     function sanitize(raw) {
       return String(raw || "")
@@ -43,18 +45,26 @@
     }
 
     var source = resolveSource();
-    var target = baseLink;
-    try {
-      var u = new URL(baseLink);
-      if (source) u.searchParams.set("client_reference_id", source);
-      target = u.toString();
-    } catch (e) {}
-
     var btn = document.getElementById("donate-checkout-btn");
     if (btn) {
-      btn.href = target;
       if (source) btn.setAttribute("data-umami-event-source", source);
+      btn.addEventListener("click", function (e) {
+        if (e && e.isTrusted === false) return;
+        if (!host || !slug) return;
+        btn.disabled = true;
+        var target = "https://" + host + "/" + slug;
+        try {
+          var u = new URL(target);
+          if (source) u.searchParams.set("client_reference_id", source);
+          target = u.toString();
+        } catch (err) {}
+        window.location.assign(target);
+      });
     }
+
+    window.addEventListener("pageshow", function () {
+      if (btn) btn.disabled = false;
+    });
 
     window.addEventListener("load", function () {
       try {

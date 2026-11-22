@@ -59,6 +59,10 @@ defaults:
       path: ""
     values:
       image: /assets/img/social-card.png
+  - scope:
+      path: "donate"
+    values:
+      sitemap: false
 
 markdown: kramdown
 kramdown:

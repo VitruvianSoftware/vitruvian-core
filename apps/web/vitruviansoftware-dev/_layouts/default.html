@@ -15,6 +15,9 @@
       })();
     </script>
     {%- seo -%}
+    {%- if page.url contains '/donate/' %}
+    <meta name="robots" content="noindex, nofollow">
+    {%- endif %}
     {%- include sentry.html -%}
     <meta name="theme-color" content="#0e1317">
     <link rel="icon" href="{{ '/assets/img/favicon.svg' | relative_url }}" type="image/svg+xml">
