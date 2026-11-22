@@ -243,7 +243,30 @@ fn locate(chars: &[char], mut e: JsonError) -> JsonError {
     e
 }
 
+/// Options for [`loads_with`].
+///
+/// By default `max_depth` is `None` (no nesting limit, matching [`loads`]).
+/// Setting `max_depth: Some(n)` allows up to `n` nested objects/arrays and
+/// fails on the `(n + 1)`-th opening `{` or `[` with
+/// `"maximum recursion depth exceeded"`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct LoadOptions {
+    pub max_depth: Option<usize>,
+}
+
+/// Parse JSON with Python's `json.loads` semantics and no nesting limit.
+///
+/// Known limitation: the default unlimited path is recursive, so very deeply
+/// nested input can overflow the stack. Use [`loads_with`] with
+/// [`LoadOptions::max_depth`] when parsing untrusted or unboundedly nested
+/// input.
 pub fn loads(text: &str) -> Result<Value, JsonError> {
+    loads_with(text, &LoadOptions::default())
+}
+
+/// Parse JSON with Python's `json.loads` semantics and the given
+/// [`LoadOptions`].
+pub fn loads_with(text: &str, opts: &LoadOptions) -> Result<Value, JsonError> {
     let chars: Vec<char> = text.chars().collect();
     if text.starts_with('\u{feff}') {
         let msg = "Unexpected UTF-8 BOM (decode using utf-8-sig)";
@@ -259,38 +282,69 @@ pub fn loads(text: &str) -> Result<Value, JsonError> {
             },
         ));
     }
-    let mut p = Parser { s: &chars, i: 0 };
+    let mut p = Parser {
+        s: &chars,
+        i: 0,
+        max_depth: opts.max_depth,
+        depth: 0,
+        err: None,
+    };
     let parsed = (|| {
         p.ws();
         let v = p.value()?;
         p.ws();
         if p.i != chars.len() {
-            return Err(p.err("Extra data"));
+            return p.fail("Extra data");
         }
-        Ok(v)
+        Some(v)
     })();
-    parsed.map_err(|e| locate(&chars, e))
+    match parsed {
+        Some(v) => Ok(v),
+        None => Err(locate(
+            &chars,
+            p.err.expect("parser must record an error on failure"),
+        )),
+    }
 }
 
 struct Parser<'a> {
     s: &'a [char],
     i: usize,
+    max_depth: Option<usize>,
+    depth: usize,
+    err: Option<JsonError>,
 }
 
 impl<'a> Parser<'a> {
-    fn err(&self, msg: &str) -> JsonError {
-        self.err_with_py(msg, self.i, msg, self.i)
+    fn fail<T>(&mut self, msg: &str) -> Option<T> {
+        self.fail_with_py(msg, self.i, msg, self.i)
     }
 
-    fn err_with_py(&self, msg: &str, pos: usize, py_msg: &str, py_pos: usize) -> JsonError {
-        JsonError {
+    fn fail_with_py<T>(&mut self, msg: &str, pos: usize, py_msg: &str, py_pos: usize) -> Option<T> {
+        self.err = Some(JsonError {
             msg: msg.into(),
             pos,
             line: 0,
             col: 0,
             py_msg: py_msg.into(),
             py_pos,
+        });
+        None
+    }
+
+    fn enter(&mut self) -> Option<()> {
+        if let Some(max) = self.max_depth {
+            if self.depth >= max {
+                return self.fail_with_py(
+                    "maximum recursion depth exceeded",
+                    self.i,
+                    "maximum recursion depth exceeded",
+                    self.i,
+                );
+            }
         }
+        self.depth += 1;
+        Some(())
     }
 
     fn peek(&self) -> Option<char> {
@@ -313,28 +367,42 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn value(&mut self) -> Result<Value, JsonError> {
+    fn value(&mut self) -> Option<Value> {
         match self.peek() {
-            Some('{') => self.object(),
-            Some('[') => self.array(),
-            Some('"') => {
-                self.i += 1;
-                Ok(Value::Str(self.string()?))
+            Some(c @ ('{' | '[')) => {
+                self.enter()?;
+                let r = if c == '{' {
+                    self.object()
+                } else {
+                    self.array()
+                };
+                self.depth -= 1;
+                r
             }
-            Some('n') if self.lit("null") => Ok(Value::Null),
-            Some('t') if self.lit("true") => Ok(Value::Bool(true)),
-            Some('f') if self.lit("false") => Ok(Value::Bool(false)),
-            Some('N') if self.lit("NaN") => Ok(Value::Float(f64::NAN)),
-            Some('I') if self.lit("Infinity") => Ok(Value::Float(f64::INFINITY)),
-            Some('-') if self.s.get(self.i + 1) == Some(&'I') && self.lit("-Infinity") => {
-                Ok(Value::Float(f64::NEG_INFINITY))
-            }
-            Some(c) if c == '-' || c.is_ascii_digit() => self.number(),
-            _ => Err(self.err("Expecting value")),
+            _ => self.scalar(),
         }
     }
 
-    fn number(&mut self) -> Result<Value, JsonError> {
+    fn scalar(&mut self) -> Option<Value> {
+        match self.peek() {
+            Some('"') => {
+                self.i += 1;
+                Some(Value::Str(self.string()?))
+            }
+            Some('n') if self.lit("null") => Some(Value::Null),
+            Some('t') if self.lit("true") => Some(Value::Bool(true)),
+            Some('f') if self.lit("false") => Some(Value::Bool(false)),
+            Some('N') if self.lit("NaN") => Some(Value::Float(f64::NAN)),
+            Some('I') if self.lit("Infinity") => Some(Value::Float(f64::INFINITY)),
+            Some('-') if self.s.get(self.i + 1) == Some(&'I') && self.lit("-Infinity") => {
+                Some(Value::Float(f64::NEG_INFINITY))
+            }
+            Some(c) if c == '-' || c.is_ascii_digit() => self.number(),
+            _ => self.fail("Expecting value"),
+        }
+    }
+
+    fn number(&mut self) -> Option<Value> {
         let start = self.i;
         if self.peek() == Some('-') {
             self.i += 1;
@@ -348,7 +416,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 self.i = start;
-                return Err(self.err("Expecting value"));
+                return self.fail("Expecting value");
             }
         }
         let mut is_float = false;
@@ -378,37 +446,37 @@ impl<'a> Parser<'a> {
         }
         let text: String = self.s[start..self.i].iter().collect();
         if is_float {
-            Ok(Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)))
+            Some(Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)))
         } else {
-            Ok(Value::Int(text))
+            Some(Value::Int(text))
         }
     }
 
-    fn hex4(&mut self) -> Result<u32, JsonError> {
+    fn hex4(&mut self) -> Option<u32> {
         // JSONDecodeError points at the `u`, just before the digits; preserve
         // `self.i` in `pos` so `Display` matches origin/main.
         if self.i + 4 > self.s.len() {
-            return Err(self.err_with_py(
+            return self.fail_with_py(
                 "Invalid \\uXXXX escape",
                 self.i,
                 "Invalid \\uXXXX escape",
                 self.i - 1,
-            ));
+            );
         }
         let h: String = self.s[self.i..self.i + 4].iter().collect();
         if !h.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(self.err_with_py(
+            return self.fail_with_py(
                 "Invalid \\uXXXX escape",
                 self.i,
                 "Invalid \\uXXXX escape",
                 self.i - 1,
-            ));
+            );
         }
         self.i += 4;
-        Ok(u32::from_str_radix(&h, 16).unwrap())
+        Some(u32::from_str_radix(&h, 16).unwrap())
     }
 
-    fn string(&mut self) -> Result<String, JsonError> {
+    fn string(&mut self) -> Option<String> {
         let start = self.i - 1;
         let mut out = String::new();
         let mut last_u_pos: Option<usize> = None;
@@ -423,28 +491,31 @@ impl<'a> Parser<'a> {
                         Some(u_pos) => ("Invalid \\uXXXX escape", u_pos),
                         None => ("Unterminated string starting at", start),
                     };
-                    return Err(self.err_with_py(
+                    return self.fail_with_py(
                         "Unterminated string starting at",
                         self.i,
                         py_msg,
                         py_pos,
-                    ));
+                    );
                 }
                 Some(c) => c,
             };
             last_u_pos = None;
             self.i += 1;
             match c {
-                '"' => return Ok(out),
+                '"' => return Some(out),
                 '\\' => {
-                    let e = self.peek().ok_or_else(|| {
-                        self.err_with_py(
-                            "Unterminated string",
-                            self.i,
-                            "Unterminated string starting at",
-                            start,
-                        )
-                    })?;
+                    let e = match self.peek() {
+                        Some(e) => e,
+                        None => {
+                            return self.fail_with_py(
+                                "Unterminated string",
+                                self.i,
+                                "Unterminated string starting at",
+                                start,
+                            );
+                        }
+                    };
                     self.i += 1;
                     match e {
                         '"' => out.push('"'),
@@ -476,31 +547,31 @@ impl<'a> Parser<'a> {
                         }
                         _ => {
                             self.i -= 1;
-                            return Err(self.err_with_py(
+                            return self.fail_with_py(
                                 "Invalid \\escape",
                                 self.i,
                                 "Invalid \\escape",
                                 self.i - 1,
-                            ));
+                            );
                         }
                     }
                 }
                 c if (c as u32) < 0x20 => {
                     self.i -= 1;
-                    return Err(self.err("Invalid control character at"));
+                    return self.fail("Invalid control character at");
                 }
                 c => out.push(c),
             }
         }
     }
 
-    fn array(&mut self) -> Result<Value, JsonError> {
+    fn array(&mut self) -> Option<Value> {
         self.i += 1;
         let mut items = Vec::new();
         self.ws();
         if self.peek() == Some(']') {
             self.i += 1;
-            return Ok(Value::Arr(items));
+            return Some(Value::Arr(items));
         }
         loop {
             self.ws();
@@ -510,31 +581,31 @@ impl<'a> Parser<'a> {
                 Some(',') => self.i += 1,
                 Some(']') => {
                     self.i += 1;
-                    return Ok(Value::Arr(items));
+                    return Some(Value::Arr(items));
                 }
-                _ => return Err(self.err("Expecting ',' delimiter")),
+                _ => return self.fail("Expecting ',' delimiter"),
             }
         }
     }
 
-    fn object(&mut self) -> Result<Value, JsonError> {
+    fn object(&mut self) -> Option<Value> {
         self.i += 1;
         let mut items: Vec<(String, Value)> = Vec::new();
         self.ws();
         if self.peek() == Some('}') {
             self.i += 1;
-            return Ok(Value::Obj(items));
+            return Some(Value::Obj(items));
         }
         loop {
             self.ws();
             if self.peek() != Some('"') {
-                return Err(self.err("Expecting property name enclosed in double quotes"));
+                return self.fail("Expecting property name enclosed in double quotes");
             }
             self.i += 1;
             let key = self.string()?;
             self.ws();
             if self.peek() != Some(':') {
-                return Err(self.err("Expecting ':' delimiter"));
+                return self.fail("Expecting ':' delimiter");
             }
             self.i += 1;
             self.ws();
@@ -549,9 +620,9 @@ impl<'a> Parser<'a> {
                 Some(',') => self.i += 1,
                 Some('}') => {
                     self.i += 1;
-                    return Ok(Value::Obj(items));
+                    return Some(Value::Obj(items));
                 }
-                _ => return Err(self.err("Expecting ',' delimiter")),
+                _ => return self.fail("Expecting ',' delimiter"),
             }
         }
     }
@@ -1146,5 +1217,159 @@ mod tests {
         let pinned = r#"{"z": "last", "a": [null, true, false, 123456789012345678901234567890, 1.0, -0.0, 1e+16, 1.5e-07, NaN, Infinity, -Infinity, "\u00e9\ud83d\ude00\t\n\"\\", {}, []]}"#;
         assert_eq!(dumps(&v), pinned);
         assert_eq!(dumps_with(&v, &DumpOptions::default()), pinned);
+    }
+
+    #[test]
+    fn loads_with_max_depth_boundary_900() {
+        let opts = LoadOptions {
+            max_depth: Some(900),
+        };
+        let ok_empty = format!("{}{}", "[".repeat(900), "]".repeat(900));
+        assert!(loads_with(&ok_empty, &opts).is_ok());
+
+        let ok_scalar = format!("{}1{}", "[".repeat(900), "]".repeat(900));
+        assert!(loads_with(&ok_scalar, &opts).is_ok());
+
+        let ok_siblings = format!("{}[],{}{}", "[".repeat(899), "{}", "]".repeat(899));
+        assert!(loads_with(&ok_siblings, &opts).is_ok());
+
+        let fail_unclosed = "[".repeat(901);
+        let err = loads_with(&fail_unclosed, &opts).unwrap_err();
+        assert_eq!(
+            err.python_str(),
+            "maximum recursion depth exceeded: line 1 column 901 (char 900)"
+        );
+        assert_eq!(
+            err.to_string(),
+            "maximum recursion depth exceeded (char 900)"
+        );
+        assert_eq!((err.line, err.col, err.pos), (1, 901, 900));
+
+        let fail_empty = format!("{}{}", "[".repeat(901), "]".repeat(901));
+        let err_closed = loads_with(&fail_empty, &opts).unwrap_err();
+        assert_eq!(
+            err_closed.python_str(),
+            "maximum recursion depth exceeded: line 1 column 901 (char 900)"
+        );
+
+        let zero_opts = LoadOptions { max_depth: Some(0) };
+        assert!(loads_with("1", &zero_opts).is_ok());
+        assert!(loads_with(r#""hi""#, &zero_opts).is_ok());
+        assert!(loads_with("null", &zero_opts).is_ok());
+        for container in ["[]", "{}"] {
+            let err_zero = loads_with(container, &zero_opts).unwrap_err();
+            assert_eq!(
+                err_zero.python_str(),
+                "maximum recursion depth exceeded: line 1 column 1 (char 0)"
+            );
+        }
+    }
+
+    #[test]
+    fn loads_with_max_depth_mixed_containers() {
+        fn mixed_chain(depth: usize, start_obj: bool) -> String {
+            let mut out = String::new();
+            for k in 0..depth {
+                if (k % 2 == 0) == start_obj {
+                    out.push_str(r#"{"a":"#);
+                } else {
+                    out.push('[');
+                }
+            }
+            out.push('0');
+            for k in (0..depth).rev() {
+                if (k % 2 == 0) == start_obj {
+                    out.push('}');
+                } else {
+                    out.push(']');
+                }
+            }
+            out
+        }
+
+        let opts = LoadOptions {
+            max_depth: Some(900),
+        };
+        for start_obj in [false, true] {
+            let ok_doc = mixed_chain(900, start_obj);
+            assert!(loads_with(&ok_doc, &opts).is_ok());
+
+            let fail_doc = mixed_chain(901, start_obj);
+            let err = loads_with(&fail_doc, &opts).unwrap_err();
+            assert_eq!(err.msg, "maximum recursion depth exceeded");
+        }
+
+        let err_small =
+            loads_with(r#"[{"a":{}}]"#, &LoadOptions { max_depth: Some(2) }).unwrap_err();
+        assert_eq!(
+            err_small.python_str(),
+            "maximum recursion depth exceeded: line 1 column 7 (char 6)"
+        );
+    }
+
+    #[test]
+    fn loads_with_max_depth_error_line_and_column() {
+        let doc = format!("{}\n[", "[".repeat(900));
+        let err = loads_with(
+            &doc,
+            &LoadOptions {
+                max_depth: Some(900),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.python_str(),
+            "maximum recursion depth exceeded: line 2 column 1 (char 901)"
+        );
+        assert_eq!((err.line, err.col, err.pos), (2, 1, 901));
+
+        let mb_err =
+            loads_with("{\"é\":\n  [[]]}", &LoadOptions { max_depth: Some(2) }).unwrap_err();
+        assert_eq!(
+            mb_err.python_str(),
+            "maximum recursion depth exceeded: line 2 column 4 (char 9)"
+        );
+        assert_eq!((mb_err.line, mb_err.col, mb_err.pos), (2, 4, 9));
+    }
+
+    #[test]
+    fn loads_default_accepts_depth_5000() {
+        assert_eq!(LoadOptions::default(), LoadOptions { max_depth: None });
+        // Unoptimized test threads default to a 2 MiB stack; give the recursive
+        // parser and Value::drop enough stack to walk 5,000 levels.
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let doc = format!("{}{}", "[".repeat(5_000), "]".repeat(5_000));
+                let v = loads(&doc);
+                assert!(matches!(v, Ok(Value::Arr(_))));
+                drop(v);
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn existing_display_python_str_and_dumps_pinned() {
+        let e1 = loads("[1 2]").unwrap_err();
+        assert_eq!(e1.to_string(), "Expecting ',' delimiter (char 3)");
+        assert_eq!(
+            e1.python_str(),
+            "Expecting ',' delimiter: line 1 column 4 (char 3)"
+        );
+
+        let e2 = loads("").unwrap_err();
+        assert_eq!(e2.to_string(), "Expecting value (char 0)");
+        assert_eq!(e2.python_str(), "Expecting value: line 1 column 1 (char 0)");
+
+        let e3 = loads(r#""\x""#).unwrap_err();
+        assert_eq!(e3.to_string(), "Invalid \\escape (char 2)");
+        assert_eq!(
+            e3.python_str(),
+            "Invalid \\escape: line 1 column 2 (char 1)"
+        );
+
+        let v = loads(r#"{"b": [1, 2.0, "é"], "a": null}"#).unwrap();
+        assert_eq!(dumps(&v), r#"{"b": [1, 2.0, "\u00e9"], "a": null}"#);
     }
 }
