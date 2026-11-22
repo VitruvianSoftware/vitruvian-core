@@ -32,7 +32,7 @@
 //! changes from run to run, so when two of them are wrong Python may report
 //! either; this reports the first in the document.
 
-use crate::json::{schema_eq, Value};
+use crate::json::{schema_eq, Value, ValueExt};
 use crate::metaschema::DOCUMENTS;
 use crate::pprint::pformat;
 use crate::pyerr::PyErr;

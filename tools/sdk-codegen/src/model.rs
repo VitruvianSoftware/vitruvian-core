@@ -23,7 +23,7 @@
 //! cannot read stops this at the same place, with the same exception.
 
 use crate::fsio;
-use crate::json::{self, py_eq, Value};
+use crate::json::{self, py_eq, Value, ValueExt};
 use crate::pyerr::{self, schema_problem, PyErr, PyResult};
 use crate::pystr;
 use crate::schema;
