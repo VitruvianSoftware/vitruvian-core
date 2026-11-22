@@ -825,9 +825,10 @@ jobs:
   dupcheck:
     # Flags code added in a PR or merge-queue commit that duplicates 12+
     # meaningful lines from a shared package under packages/ (Decision 7 of
-    # docs/superpowers/specs/2026-11-20-shared-packages-convention.md). Not a
-    # required merge-queue check yet (step 8 -> step 11 after the existing helper
-    # backlog clears): findings fail this job without blocking the queue.
+    # docs/superpowers/specs/2026-11-20-shared-packages-convention.md). A
+    # required merge-queue check (the job name is the ruleset context in
+    # infrastructure/pulumi/platform/repo-config/main.go), so findings block
+    # the merge. Rename both together.
     needs: queued
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-26.04

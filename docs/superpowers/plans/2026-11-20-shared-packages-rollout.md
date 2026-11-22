@@ -67,10 +67,10 @@ Speaker being built on a Mac. Fixed by hand in #5244, until step 11 generates th
 | 5 | Generated `packages/README.md` with drift test | #5260 | merged |
 | 6 | Reuse-first rule in `AGENTS.md` | #5247 | merged |
 | 7 | Backstage MCP for every agent tool | #5269 (draft), #5270 | parked: Backstage cannot delegate a read-only restricted token |
-| 8 | Duplicate-code check (warning) | #5252, #5281 | merged; runs on every PR, not yet required |
+| 8 | Duplicate-code check (warning) | #5252, #5281 | merged; runs on every PR; required since step 11 |
 | 9 | Helpers moved into shared packages, one family per PR | #5251, #5255, #5258, #5280, #5282, #5283, #5284, #5267 | eight merged; jq ruled out |
-| 10 | Package renames, one per PR, then retire the `packages/rust/` and `packages/swift/` language folders | #5274, #5294, #5314, #5316, this PR | all four renames merged; both language folders gone |
-| 11 | Blocking duplicate check, generated Mac filter | #5281 | generated Mac filter merged; making the check required is a later repo-config change |
+| 10 | Package renames, one per PR, then retire the `packages/rust/` and `packages/swift/` language folders | #5274, #5294, #5314, #5316, #5348 | all four renames merged; both language folders gone |
+| 11 | Blocking duplicate check, generated Mac filter | #5281, this PR | generated Mac filter merged; check required by this PR (repo-config ruleset) |
 
 ## After
 

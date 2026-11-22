@@ -348,6 +348,17 @@ func program(ctx *pulumi.Context) error {
 				// judged before it could be queued), so it always reports --
 				// safe to require.
 				"release-scope",
+				// dupcheck (ci.yaml) fails a pull request that adds 12+
+				// meaningful lines copied from a shared package under
+				// packages/, instead of using the package (Decision 7 of
+				// docs/superpowers/specs/2026-11-20-shared-packages-convention.md).
+				// It ran advisory first: 172 PR and merge-queue runs from
+				// 2026-11-21 to 2026-11-22 had no failures. It only skips
+				// when the queue already tested the same tree (a skipped
+				// job counts as passing) and runs on merge_group, so it
+				// always reports -- safe to require. A deliberate copy goes
+				// in tools/dupcheck/allow.txt with a reason.
+				"dupcheck",
 			}
 		}
 		requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
