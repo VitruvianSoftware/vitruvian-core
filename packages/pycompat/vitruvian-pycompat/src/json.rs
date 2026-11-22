@@ -206,8 +206,14 @@ pub struct JsonError {
 }
 
 impl JsonError {
-    /// CPython's `str(json.JSONDecodeError)`:
+    /// Matches CPython 3.12's `json` module `str(json.JSONDecodeError)`:
     /// `"{msg}: line {line} column {col} (char {pos})"`.
+    ///
+    /// Known version differences vs. CPython 3.13 and later:
+    /// 1. For a `\uXXXX` escape that ends at end of input, CPython 3.13 and
+    ///    later say `"Unterminated string starting at"`.
+    /// 2. For a trailing comma, CPython 3.13 and later say
+    ///    `"Illegal trailing comma before end of array/object"`.
     pub fn python_str(&self) -> String {
         format!(
             "{}: line {} column {} (char {})",
@@ -401,18 +407,28 @@ impl<'a> Parser<'a> {
     fn string(&mut self) -> Result<String, JsonError> {
         let start = self.i - 1;
         let mut out = String::new();
+        let mut last_u_pos: Option<usize> = None;
         loop {
             let c = match self.peek() {
                 None => {
+                    // CPython 3.12's `_json.c` rejects a `\uXXXX` escape that ends
+                    // right at EOF as `"Invalid \uXXXX escape"` at `u` (3.13+
+                    // reports `"Unterminated string starting at"`). Preserve the
+                    // legacy `msg`/`pos` so `Display` stays unchanged.
+                    let (py_msg, py_pos) = match last_u_pos {
+                        Some(u_pos) => ("Invalid \\uXXXX escape", u_pos),
+                        None => ("Unterminated string starting at", start),
+                    };
                     return Err(self.err_with_py(
                         "Unterminated string starting at",
                         self.i,
-                        "Unterminated string starting at",
-                        start,
+                        py_msg,
+                        py_pos,
                     ));
                 }
                 Some(c) => c,
             };
+            last_u_pos = None;
             self.i += 1;
             match c {
                 '"' => return Ok(out),
@@ -450,6 +466,7 @@ impl<'a> Parser<'a> {
                                     self.i = save;
                                 }
                             }
+                            last_u_pos = Some(self.i - 5);
                             // A lone surrogate cannot live in a Rust string.
                             out.push(char::from_u32(cp).unwrap_or('\u{fffd}'));
                         }
@@ -867,6 +884,31 @@ mod tests {
                 "{\"a\":\n tru}",
                 "Expecting value: line 2 column 2 (char 7)",
             ),
+            // python3.12: json.loads('"\\u0041') -> Invalid \uXXXX escape: line 1 column 3 (char 2)
+            (
+                "\"\\u0041",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            // python3.12: json.loads('"ab\\u0041') -> Invalid \uXXXX escape: line 1 column 5 (char 4)
+            (
+                "\"ab\\u0041",
+                "Invalid \\uXXXX escape: line 1 column 5 (char 4)",
+            ),
+            // python3.12: json.loads('"\\ud800\\u0041') -> Invalid \uXXXX escape: line 1 column 9 (char 8)
+            (
+                "\"\\ud800\\u0041",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            // python3.12: json.loads('"\\ud800\\udc00') -> Invalid \uXXXX escape: line 1 column 9 (char 8)
+            (
+                "\"\\ud800\\udc00",
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            // python3.12: json.loads('"\\\\u0041') -> Unterminated string starting at: line 1 column 1 (char 0)
+            (
+                "\"\\\\u0041",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
         ];
         for (input, want) in cases {
             let err = loads(input).unwrap_err();
@@ -925,6 +967,38 @@ mod tests {
                 "Unterminated string starting at (char 5)",
                 (1, 2),
                 "Unterminated string starting at: line 1 column 2 (char 1)",
+            ),
+            (
+                "\"\\u0041",
+                "Unterminated string starting at",
+                7,
+                "Unterminated string starting at (char 7)",
+                (1, 3),
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+            (
+                "\"ab\\u0041",
+                "Unterminated string starting at",
+                9,
+                "Unterminated string starting at (char 9)",
+                (1, 5),
+                "Invalid \\uXXXX escape: line 1 column 5 (char 4)",
+            ),
+            (
+                "\"\\ud800\\u0041",
+                "Unterminated string starting at",
+                13,
+                "Unterminated string starting at (char 13)",
+                (1, 9),
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
+            ),
+            (
+                "\"\\ud800\\udc00",
+                "Unterminated string starting at",
+                13,
+                "Unterminated string starting at (char 13)",
+                (1, 9),
+                "Invalid \\uXXXX escape: line 1 column 9 (char 8)",
             ),
         ];
         for (input, old_msg, old_pos, old_display, (py_line, py_col), py_str) in cases {
