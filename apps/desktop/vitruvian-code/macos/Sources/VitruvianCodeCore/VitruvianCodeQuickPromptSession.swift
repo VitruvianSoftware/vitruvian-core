@@ -544,6 +544,13 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     ) {
         if let provider { self.activeProvider = provider }
         let effectiveProvider = provider ?? activeProvider ?? engine?.configuration.activeProvider ?? .antigravity
+        // Claude on the Agent SDK sends everything as events, so its transcript is not followed:
+        // following it too would show each message twice (docs/designs/vitruvian-code-acp.md,
+        // "Transcript follower in live chats").
+        if effectiveProvider.route == .claude && effectiveProvider.connection == .claudeSDK {
+            stopTranscriptFollower()
+            return
+        }
         transcriptFollowerMode = mode ?? (
             (effectiveProvider.route == .antigravity && effectiveProvider.connection == .acp)
                 ? .subagentsOnly

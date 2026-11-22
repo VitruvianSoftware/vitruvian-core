@@ -66,6 +66,13 @@ public struct ACPClientPolicy: Equatable, Sendable {
     public var elicitation: Bool
     public var sandbox: Sandbox?
     public var approvalPolicy: ApprovalPolicy?
+    /// True when the agent has already decided a request needs the user (the Claude helper
+    /// forwards the SDK's `canUseTool`, which fires only when Claude's own mode asks), so the
+    /// app never answers a permission request itself, whatever the tool kind.
+    public var alwaysAsk: Bool
+    /// Whether the form capability is joined by URL mode when `elicitation` is on. The Claude
+    /// helper takes forms only (`protocol/examples/client-initialize.json`).
+    public var elicitationURLMode: Bool
 
     public init(
         readTextFile: Bool = false,
@@ -73,7 +80,9 @@ public struct ACPClientPolicy: Equatable, Sendable {
         terminal: Bool = false,
         elicitation: Bool = false,
         sandbox: Sandbox? = nil,
-        approvalPolicy: ApprovalPolicy? = nil
+        approvalPolicy: ApprovalPolicy? = nil,
+        alwaysAsk: Bool = false,
+        elicitationURLMode: Bool = true
     ) {
         self.readTextFile = readTextFile
         self.writeTextFile = writeTextFile
@@ -81,6 +90,8 @@ public struct ACPClientPolicy: Equatable, Sendable {
         self.elicitation = elicitation
         self.sandbox = sandbox
         self.approvalPolicy = approvalPolicy
+        self.alwaysAsk = alwaysAsk
+        self.elicitationURLMode = elicitationURLMode
     }
 
     /// All client features disabled and no sandbox (`AcpSessionRuntime.ts:1790-1804`).
@@ -102,6 +113,21 @@ public struct ACPClientPolicy: Equatable, Sendable {
         )
     }
 
+    /// The Claude helper's preset (`protocol/examples/client-initialize.json`): no file or terminal
+    /// features, forms on (`AskUserQuestion` arrives as `elicitation/create`), and every
+    /// `session/request_permission` goes to the user, because the SDK asks only when Claude's own
+    /// permission mode says to.
+    public static let claudeSDK = ACPClientPolicy(
+        readTextFile: false,
+        writeTextFile: false,
+        terminal: false,
+        elicitation: true,
+        sandbox: nil,
+        approvalPolicy: nil,
+        alwaysAsk: true,
+        elicitationURLMode: false
+    )
+
     /// Exact port of `isQualifiedAntigravityRelease` (`AntigravityAcpSupport.ts:84-86`).
     public static func isQualifiedAntigravityRelease(_ version: String?) -> Bool {
         version?.trimmingCharacters(in: .whitespacesAndNewlines) == qualifiedAntigravityReleaseVersion
@@ -115,7 +141,9 @@ public struct ACPClientPolicy: Equatable, Sendable {
                 writeTextFile: writeTextFile
             ),
             terminal: terminal,
-            elicitation: elicitation ? ACPElicitationCapabilities() : nil
+            elicitation: elicitation
+                ? ACPElicitationCapabilities(form: ACPEmptyObject(), url: elicitationURLMode ? ACPEmptyObject() : nil)
+                : nil
         )
     }
 
@@ -151,6 +179,9 @@ public struct ACPClientPolicy: Equatable, Sendable {
         cwd: String? = nil,
         approvalPolicy: ApprovalPolicy? = nil
     ) -> Decision {
+        if alwaysAsk {
+            return .ask
+        }
         let effectiveSandbox = sandbox ?? self.sandbox
         let effectiveApprovalPolicy = approvalPolicy ?? self.approvalPolicy
         let normalizedKind = (toolKind?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap {

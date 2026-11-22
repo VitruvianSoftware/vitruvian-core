@@ -79,3 +79,28 @@ bazel test --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCodeT
 ```
 
 Every file has the same shape: `{ "rule": "<one sentence>", "cases": [ { "name": "<plain words>", ... } ] }`.
+
+## The fake `claude` for the Claude helper tests
+
+`claude-sdk/` holds a stand-in for the user's `claude` and the turns it replays.
+`../macos/Tests/ClaudeSDKConnectionTests.swift` runs the real bundled Claude
+helper on the bundled Node against it, so the Swift connection, the helper and the
+Agent SDK all run for real; only Claude itself is pretended.
+
+| File | What it is |
+|---|---|
+| `fake-claude.mjs` | speaks the part of Claude Code's stream-json protocol the SDK uses: `--version`, `control_request`s (`initialize`, `interrupt`, `mcp_status`), `can_use_tool` questions, and one scripted turn for each `user` message. The header comment lists its settings and the script steps |
+| `full-turn.json` | text, a tool call, its result, more text, `end_turn`; a second turn for a resumed chat |
+| `approval.json` | a `Bash` permission request, with a branch for allow and one for deny |
+| `question.json` | an `AskUserQuestion` form |
+| `cancel.json` | text, then a turn that waits for the interrupt |
+| `hang.json` | a turn that never ends, for the stop test |
+| `subagent.json` | a `Task` launch and its result |
+| `usage-limit.json` | a rejected `rate_limit_event`, then a normal end |
+
+Each script is a list of the messages Claude Code writes (shapes as the Agent SDK
+reads them), so a new case is a new file: no code changes. Bazel gives the tests
+Node and the helper bundle as data; the mirror build gives them the packaged app.
+With neither, the live tests skip and say so. The contract tests
+(`ClaudeHelperContractTests.swift`) read `../macos/claude-helper/protocol/examples`
+instead and need no process.

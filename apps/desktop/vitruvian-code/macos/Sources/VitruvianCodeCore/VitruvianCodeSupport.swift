@@ -100,19 +100,24 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
     public var commandTemplate: String
     public var isBuiltIn: Bool
     public var connection: AgentConnectionKind?
+    /// A Claude config folder (`CLAUDE_CONFIG_DIR`) for the Claude SDK connection, or nil for
+    /// Claude Code's own default. Settings have no control for it yet.
+    public var claudeConfigDirectory: String?
 
     public init(
         id: UUID,
         name: String,
         commandTemplate: String,
         isBuiltIn: Bool = true,
-        connection: AgentConnectionKind? = nil
+        connection: AgentConnectionKind? = nil,
+        claudeConfigDirectory: String? = nil
     ) {
         self.id = id
         self.name = name
         self.commandTemplate = commandTemplate
         self.isBuiltIn = isBuiltIn
         self.connection = connection
+        self.claudeConfigDirectory = claudeConfigDirectory
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -121,6 +126,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         case commandTemplate
         case isBuiltIn
         case connection
+        case claudeConfigDirectory
     }
 
     public init(from decoder: any Decoder) throws {
@@ -131,6 +137,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         self.isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)
         let rawConnection = try container.decodeIfPresent(String.self, forKey: .connection)
         self.connection = rawConnection.flatMap(AgentConnectionKind.init(rawValue:))
+        self.claudeConfigDirectory = try container.decodeIfPresent(String.self, forKey: .claudeConfigDirectory)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -140,6 +147,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         try container.encode(commandTemplate, forKey: .commandTemplate)
         try container.encode(isBuiltIn, forKey: .isBuiltIn)
         try container.encodeIfPresent(connection, forKey: .connection)
+        try container.encodeIfPresent(claudeConfigDirectory, forKey: .claudeConfigDirectory)
     }
 
     public static let antigravity = VitruvianCodeCLIProvider(
@@ -186,6 +194,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
             if let copy = saved.last(where: { $0.id == builtIn.id && $0.isBuiltIn }) {
                 provider.commandTemplate = copy.commandTemplate
                 provider.connection = copy.connection
+                provider.claudeConfigDirectory = copy.claudeConfigDirectory
             }
             return provider
         }

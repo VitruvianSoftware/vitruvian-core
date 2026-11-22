@@ -123,6 +123,12 @@ public final class ACPConnection: PersistentAgentConnection {
         public var promptContextUsageProvider: (@MainActor @Sendable (_ initResult: ACPInitializeResult?, _ usage: ACPUsage?, _ contextWindow: Int) -> VitruvianCodeContextUsage?)?
         public var promptInactivityTimeout: TimeInterval?
         public var cancelGraceTimeout: TimeInterval
+        /// Extra requests sent right after `initialize` succeeds and before the session opens
+        /// (the Claude helper's `_vitruvian/secrets`). Each one waits for its reply.
+        public var postInitializeRequests: (@MainActor @Sendable (ACPInitializeResult) -> [(method: String, params: ACPJSONValue)])?
+        /// Notifications other than `session/update` (the helper's `_vitruvian/usageLimit`),
+        /// turned into events. Returns nothing for a notification it does not know.
+        public var onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])?
 
         public init(
             initializeMeta: [String: ACPJSONValue]? = nil,
@@ -140,8 +146,12 @@ public final class ACPConnection: PersistentAgentConnection {
             promptOutcomeWatcher: (@Sendable (_ sessionID: String) async -> (@Sendable (_ stopReason: String) async -> String?)?)? = nil,
             promptContextUsageProvider: (@MainActor @Sendable (_ initResult: ACPInitializeResult?, _ usage: ACPUsage?, _ contextWindow: Int) -> VitruvianCodeContextUsage?)? = nil,
             promptInactivityTimeout: TimeInterval? = nil,
-            cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout
+            cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
+            postInitializeRequests: (@MainActor @Sendable (ACPInitializeResult) -> [(method: String, params: ACPJSONValue)])? = nil,
+            onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil
         ) {
+            self.postInitializeRequests = postInitializeRequests
+            self.onExtensionNotification = onExtensionNotification
             self.initializeMeta = initializeMeta
             self.prepareInitialize = prepareInitialize
             self.onInitialized = onInitialized
@@ -181,7 +191,7 @@ public final class ACPConnection: PersistentAgentConnection {
     private let processFactory: ProcessFactory
     private let modeProvider: ModeProvider
     private let hooks: Hooks
-    private let redactions: [String]
+    private var redactions: [String]
     private let statePaths: VitruvianCodeStatePaths?
     private let sessionSetupTimeout: TimeInterval
     private let terminationGrace: TimeInterval
@@ -398,6 +408,14 @@ public final class ACPConnection: PersistentAgentConnection {
                 authMethods: !advertisedAuthMethods.isEmpty
             )
             self.capabilities = resolvedCapabilities
+
+            for request in hooks.postInitializeRequests?(initResult) ?? [] {
+                let _: ACPJSONValue = try await acpTransport.request(
+                    method: request.method,
+                    params: request.params,
+                    timeout: sessionSetupTimeout
+                )
+            }
 
             let mcpServers = Self.encodeMCPServers(request.mcpServers, allowHTTP: resolvedCapabilities.mcpHTTP)
             let supportsAdditionalDirs = agentCaps?.sessionCapabilities?.supportsAdditionalDirectories == true
@@ -931,9 +949,55 @@ public final class ACPConnection: PersistentAgentConnection {
         eventsContinuation.finish()
     }
 
+    // MARK: - Host extensions
+
+    /// Sends an `_vitruvian/` extension request (`_vitruvian/fork`, `_vitruvian/mcpStatus`) and
+    /// returns its raw result. Any other method is refused, so this is not a way to reach
+    /// methods the app does not use.
+    public func sendExtensionRequest(method: String, params: ACPJSONValue) async throws -> ACPJSONValue {
+        guard method.hasPrefix("_vitruvian/") else {
+            throw ACPRPCError(code: ACPRPCError.methodNotFound, message: "Not an extension method: \(method)")
+        }
+        guard let acpTransport = transport, !sessionID.isEmpty, !isStopped else {
+            throw ACPConnectionError.notStarted
+        }
+        return try await acpTransport.request(
+            method: method,
+            params: params,
+            timeout: sessionSetupTimeout
+        )
+    }
+
+    /// The open session's ID, or nil before `start` returns.
+    public var openSessionID: String? { sessionID.isEmpty ? nil : sessionID }
+
+    /// Values (secrets) the chat log and stderr lines must never show, replaced with `***`.
+    public func addRedactions(_ values: [String]) {
+        let merged = Set(redactions).union(values.filter { !$0.isEmpty })
+        redactions = merged.sorted { $0.count > $1.count }
+    }
+
+    /// Writes one line the host wants in the chat's log, redacted like the rest.
+    public func recordHostLog(_ line: String) {
+        recordLogLine("[host] \(line)")
+    }
+
+    /// Puts an event of the host's own on this connection's stream (a notice raised before the
+    /// session opens). Dropped once the connection has stopped.
+    public func emitHostEvent(_ event: AgentEvent) {
+        emit(event)
+    }
+
     // MARK: - Incoming Notifications (`session/update`)
 
     private func handleIncomingNotification(method: String, params: ACPJSONValue?) async {
+        if method != "session/update", let hook = hooks.onExtensionNotification {
+            let events = hook(method, params)
+            if !events.isEmpty {
+                for event in events { emit(event) }
+                return
+            }
+        }
         guard method == "session/update", let params else {
             recordLogLine("[acp] ignored notification \(method)")
             return

@@ -21,6 +21,9 @@ filegroup(
     srcs = glob([
         "testdata/*.json",
         "testdata/acp/*.ndjson",
+        # The fake `claude` and the recorded turns it replays (ClaudeSDKConnectionTests).
+        "testdata/claude-sdk/*.json",
+        "testdata/claude-sdk/*.mjs",
     ]),
 )
 

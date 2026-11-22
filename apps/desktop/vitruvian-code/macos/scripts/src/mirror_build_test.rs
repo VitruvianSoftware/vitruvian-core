@@ -47,6 +47,17 @@ fn test_mirror_build() {
         .expect("cp macos sources");
     assert!(status.success(), "cp macos sources failed");
 
+    // The contract tests read the helper's protocol examples from beside the tests.
+    let protocol_dst = work.join("claude-helper");
+    fs::create_dir_all(&protocol_dst).expect("create claude-helper dir");
+    let status = Command::new("cp")
+        .arg("-RL")
+        .arg(app.join("macos/claude-helper/protocol"))
+        .arg(&protocol_dst)
+        .status()
+        .expect("cp claude-helper protocol");
+    assert!(status.success(), "cp claude-helper protocol failed");
+
     let status = Command::new("cp")
         .arg("-RL")
         .arg(app.join("testdata"))

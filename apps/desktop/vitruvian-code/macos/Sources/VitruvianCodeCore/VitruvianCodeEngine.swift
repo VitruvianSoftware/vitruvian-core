@@ -83,7 +83,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         private var customMakeConnection: ((AgentConnectionSpec) -> any AgentConnection)?
         internal var hasCustomMakeConnection: Bool { customMakeConnection != nil }
         /// Builds the `AgentConnection` for a turn. Defaults to `AntigravityACPConnection` when
-        /// `spec.provider` is Antigravity with `.acp` selected, and `CommandLineConnection` otherwise.
+        /// `spec.provider` is Antigravity with `.acp` selected, `ClaudeSDKConnection` when it is
+        /// Claude with `.claudeSDK` selected, and `CommandLineConnection` otherwise.
         public var makeConnection: (AgentConnectionSpec) -> any AgentConnection {
             get {
                 if let customMakeConnection { return customMakeConnection }
@@ -91,6 +92,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 return { spec in
                     if spec.provider.route == .antigravity && spec.provider.connection == .acp {
                         return AntigravityACPConnection(spec: spec, environment: current)
+                    }
+                    if spec.provider.route == .claude && spec.provider.connection == .claudeSDK {
+                        return ClaudeSDKConnection(spec: spec, environment: current)
                     }
                     return CommandLineConnection(spec: spec, environment: current)
                 }
@@ -575,6 +579,26 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     private func syncAvailableModels() {
         let route = configuration.activeProvider.route
         availableModels = discoveredModelsByRoute[route] ?? VitruvianCodeSupport.defaultModels(for: route)
+        hideClaudeModelsTheInstalledVersionCannotRun()
+    }
+
+    /// With Claude on the Agent SDK, drops the listed models the installed `claude` is too old
+    /// for (T3 Code's `resolveClaudeModelsForVersion`). It asks `claude --version` once for each
+    /// time the list is rebuilt; a version that cannot be read hides nothing.
+    private func hideClaudeModelsTheInstalledVersionCannotRun() {
+        let provider = configuration.activeProvider
+        guard provider.route == .claude, provider.connection == .claudeSDK,
+              let path = agentPath else { return }
+        modelFetchGeneration += 1
+        let generation = modelFetchGeneration
+        let runProgram = environment.runProgram
+        Task { @MainActor [weak self] in
+            let output = await runProgram(path, ["--version"])
+            guard let self, self.modelFetchGeneration == generation,
+                  let version = ClaudeSDKSupport.parseVersion(output),
+                  self.configuration.activeProvider.route == .claude else { return }
+            self.availableModels = ClaudeSDKSupport.visibleModels(self.availableModels, version: version)
+        }
     }
 
     /// Queries the active provider's CLI (for example `agy models`, `opencode models`,
@@ -603,6 +627,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         }
         guard let query else {
             isLoadingModels = false
+            hideClaudeModelsTheInstalledVersionCannotRun()
             return
         }
         isLoadingModels = true
