@@ -214,6 +214,10 @@ impl JsonError {
     ///    later say `"Unterminated string starting at"`.
     /// 2. For a trailing comma, CPython 3.13 and later say
     ///    `"Illegal trailing comma before end of array/object"`.
+    ///
+    /// Not an error-text difference, but worth knowing: a lone surrogate
+    /// escape (`\ud800` with no low half) decodes to U+FFFD here, where
+    /// CPython keeps the surrogate in the string (a Rust `String` cannot).
     pub fn python_str(&self) -> String {
         format!(
             "{}: line {} column {} (char {})",
