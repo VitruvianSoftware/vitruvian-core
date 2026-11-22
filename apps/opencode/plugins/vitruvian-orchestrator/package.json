@@ -1,6 +1,6 @@
 {
   "name": "@vitruviansoftware/opencode-vitruvian-orchestrator",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenCode plugin: a lead agent plans the work, specialist agents do it, and a live sidebar shows the plan, the board and the spend.",
   "type": "module",
   "license": "MIT",
