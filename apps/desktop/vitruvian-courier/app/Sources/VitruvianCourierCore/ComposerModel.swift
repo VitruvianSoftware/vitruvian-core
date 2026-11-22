@@ -390,7 +390,9 @@ public final class ComposerModel: ObservableObject {
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
     @Published public var isToolRowOpen: Bool = false
-    @Published public var gifSearchQuery: String = ""
+    @Published public var gifSearchQuery: String = "" {
+        didSet { clearGIFResultsIfStale() }
+    }
     /// What the online GIF search last found for `gifSearchQuery`: trending GIFs with it empty. Empty while search is off.
     @Published public private(set) var gifResults: [GIFCandidate] = []
     @Published public private(set) var gifResultsState: GIFResultsState = .idle
@@ -2148,8 +2150,21 @@ public final class ComposerModel: ObservableObject {
     /// Fills `gifResults` for `gifSearchQuery`: the trending GIFs with it empty, else what it finds. Asks nothing, and
     /// leaves the results empty, while `canSearchGIFsOnline` is false. A slow answer for a query that has since
     /// changed is dropped.
+    /// Typing a different query clears the row at once, so the previous query's GIFs never sit under this one's caption
+    /// while the search waits for a pause in typing and then for its answer.
+    private func clearGIFResultsIfStale() {
+        let query = gifSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canSearchGIFsOnline, query != gifResultsQuery, gifResultsQuery != nil || !gifResults.isEmpty else { return }
+        gifResults = []
+        gifResultsQuery = nil
+        gifResultsState = .loading
+    }
+
     public func refreshGIFResults() async {
         guard canSearchGIFsOnline else {
+            // Any answer still on its way is dropped: search is off now.
+            gifResultsSerial += 1
+            gifResultsQuery = nil
             gifResults = []
             gifResultsState = .idle
             return

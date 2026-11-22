@@ -268,6 +268,34 @@ final class ComposerPickersTests: XCTestCase {
         XCTAssertEqual(composer.gifResults.map(\.id), ["slow1"])
     }
 
+    func testTypingANewQueryClearsTheLastQuerysGIFsBeforeTheSearchStarts() async {
+        let made = make()
+        let composer = made.composer
+        await composer.refreshGIFResults()
+        XCTAssertEqual(composer.gifResults.map(\.id), ["t1", "t2"])
+        composer.gifSearchQuery = "cat"
+        XCTAssertEqual(composer.gifResults, [], "cleared while the search waits for a pause in typing")
+        XCTAssertEqual(composer.gifResultsState, .loading, "so the row says Finding GIFs, not No matching GIFs")
+        composer.gifSearchQuery = "cat "
+        XCTAssertEqual(composer.gifResultsState, .loading)
+        await composer.refreshGIFResults()
+        XCTAssertEqual(composer.gifResults.map(\.id), ["found-cat"])
+    }
+
+    func testAnAnswerOnItsWayWhenSearchIsTurnedOffIsDropped() async {
+        let made = make()
+        let composer = made.composer
+        composer.gifSearchQuery = "slow"
+        let slow = Task { await composer.refreshGIFResults() }
+        while !made.provider.isWaiting { await Task.yield() }
+        made.preferences.searchGIFsOnline = false
+        await composer.refreshGIFResults()
+        made.preferences.searchGIFsOnline = true
+        made.provider.release()
+        await slow.value
+        XCTAssertEqual(composer.gifResults, [], "the answer for a search made before it was turned off is not shown")
+    }
+
     func testTheSameQueryAskedAgainKeepsItsGIFsWhileItReloads() async {
         let made = make()
         let composer = made.composer
