@@ -202,19 +202,28 @@ jobs:
             /tmp/x86_64/vitruvian-code-tool \
             -output /tmp/universal/vitruvian-code-tool
           lipo -info /tmp/universal/vitruvian-code-tool
-          # The bundled Rust bot helper, one binary for both as well.
-          lipo -create \
-            /tmp/arm64/bot-engine \
-            /tmp/x86_64/bot-engine \
-            -output /tmp/universal/bot-engine
-          lipo -info /tmp/universal/bot-engine
-          # The bundled Node runtime and Claude helper, universal binary + single JS file.
+          # The bundled Rust bot helper and Node runtime. XProtect refuses a
+          # universal app that holds a fat helper ("Internal Xprotect Error" from
+          # syspolicy_check), so the universal app holds one thin copy of each
+          # per architecture, side by side, and the program picks the one for
+          # the architecture it runs as. The bundler takes both when they sit
+          # beside the executable.
+          cp /tmp/arm64/bot-engine /tmp/universal/bot-engine-arm64
+          cp /tmp/x86_64/bot-engine /tmp/universal/bot-engine-x86_64
+          cp /tmp/arm64/node /tmp/universal/node-arm64
+          cp /tmp/x86_64/node /tmp/universal/node-x86_64
+          chmod 755 /tmp/universal/bot-engine-arm64 /tmp/universal/bot-engine-x86_64 /tmp/universal/node-arm64 /tmp/universal/node-x86_64
+          lipo -info /tmp/universal/bot-engine-arm64 /tmp/universal/bot-engine-x86_64 /tmp/universal/node-arm64 /tmp/universal/node-x86_64
+          # The tool's folder is not assessed as an app and holds one Node for
+          # both architectures: a fat copy, under a name the bundler does not
+          # pick up, for that folder only.
           lipo -create \
             /tmp/arm64/node \
             /tmp/x86_64/node \
-            -output /tmp/universal/node
-          chmod 755 /tmp/universal/node
-          lipo -info /tmp/universal/node
+            -output /tmp/universal/tool-node
+          chmod 755 /tmp/universal/tool-node
+          lipo -info /tmp/universal/tool-node
+          # The Claude helper is one JS file for both.
           cp /tmp/arm64/claude-helper/claude-helper.mjs /tmp/universal/claude-helper/claude-helper.mjs
 
       - name: Assemble .app bundles
@@ -248,7 +257,7 @@ jobs:
             --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
             --macho /tmp/universal/vitruvian-code-tool \
-            --node-macho /tmp/universal/node
+            --node-macho /tmp/universal/tool-node
 
       - name: Check the apps
         run: |
@@ -266,9 +275,10 @@ jobs:
       # Each app now holds about 227 MB of Node, and a runner's disk no longer
       # fits the three apps, the per-architecture inputs they were made from and
       # the disk images (`hdiutil create` stopped with "No space left on
-      # device"). Nothing after this step reads the per-architecture folders
-      # (the universal ones are read by the ZIP and the tool's folder) or the
-      # Node download. There is no SwiftPM `.build` folder to remove in this
+      # device"). Nothing after this step reads the per-architecture folders,
+      # the thin helper copies in /tmp/universal (the universal app holds them
+      # already; the ZIP reads that app and the tool's folder reads tool-node)
+      # or the Node download. There is no SwiftPM `.build` folder to remove in this
       # job before this step; the rehearsal's later check fetches one.
       - name: Free disk space before the DMGs
         run: |
@@ -276,6 +286,8 @@ jobs:
           echo "==> Disk before:"
           df -h /
           rm -rf /tmp/arm64 /tmp/x86_64 "$RUNNER_TEMP/node-fetch"
+          # The thin helper copies are inside the universal app already.
+          rm -f /tmp/universal/bot-engine-arm64 /tmp/universal/bot-engine-x86_64 /tmp/universal/node-arm64 /tmp/universal/node-x86_64
           echo "==> Disk after:"
           df -h /
 
@@ -344,7 +356,7 @@ jobs:
           cp /tmp/universal/vitruvian-code-tool "$folder/bin/tool"
           chmod 755 "$folder/bin/tool"
           cp macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
-          cp /tmp/universal/node "$folder/bin/node"
+          cp /tmp/universal/tool-node "$folder/bin/node"
           chmod 755 "$folder/bin/node"
           cp macos/claude-helper/bundle/claude-helper.mjs "$folder/bin/claude-helper/claude-helper.mjs"
           # Node and the helper are in the folder, Node holds both architectures

@@ -24,154 +24,33 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::check_packaged_app::check_node_entitlements;
+use crate::check_packaged_app::{
+    can_run_arch, check_helper_set, Helper, HelperFile, UNIVERSAL_ARCHS,
+};
 
-const NODE_REL_PATH: &str = "Contents/Helpers/node";
 const HELPER_REL_PATH: &str = "Contents/Resources/claude-helper/claude-helper.mjs";
 const MAIN_EXE_NAME: &str = "VitruvianCode";
 
-fn lipo_archs(binary: &Path) -> Result<Vec<String>, String> {
-    let out = Command::new("lipo")
-        .args(["-archs", &binary.to_string_lossy()])
-        .output()
-        .map_err(|e| format!("cannot run lipo on {}: {}", binary.display(), e))?;
-    if !out.status.success() {
-        return Err(format!(
-            "lipo -archs on {} failed: {}",
-            binary.display(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    let mut archs: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .split_whitespace()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect();
-    archs.sort();
-    archs.dedup();
-    if archs.is_empty() {
-        return Err(format!(
-            "lipo -archs reported no architectures for {}",
-            binary.display()
-        ));
-    }
-    Ok(archs)
-}
-
-pub fn verify_unpacked_app(
-    app: &Path,
-    nvmrc_path: &Path,
-    expected_bundle_path: &Path,
-    work_root: &Path,
+/// `node --version` of one bundled Node, run in an empty environment, must be
+/// the version `.nvmrc` names.
+fn check_node_version(
+    node: &HelperFile,
+    want_version_tag: &str,
+    isolated_root: &Path,
+    isolated_home: &Path,
 ) -> Result<(), String> {
-    let main_exe = app.join("Contents/MacOS").join(MAIN_EXE_NAME);
-    if !main_exe.is_file() {
-        return Err(format!("missing main executable at {}", main_exe.display()));
-    }
-
-    let node_exe = app.join(NODE_REL_PATH);
-    if !node_exe.is_file() {
-        return Err(format!(
-            "missing {} inside {}",
-            NODE_REL_PATH,
-            app.display()
-        ));
-    }
-    let meta = fs::metadata(&node_exe)
-        .map_err(|e| format!("cannot stat {}: {}", node_exe.display(), e))?;
-    if meta.permissions().mode() & 0o111 == 0 {
-        return Err(format!("{} is not executable", NODE_REL_PATH));
-    }
-
-    let app_archs = lipo_archs(&main_exe)?;
-    let node_archs = lipo_archs(&node_exe)?;
-    for required in ["arm64", "x86_64"] {
-        if !node_archs.iter().any(|a| a == required) {
-            return Err(format!(
-                "{} lacks universal architecture {} (node: {})",
-                NODE_REL_PATH,
-                required,
-                node_archs.join(" ")
-            ));
-        }
-    }
-    let missing_app_archs: Vec<&str> = app_archs
-        .iter()
-        .filter(|a| !node_archs.contains(a))
-        .map(|s| s.as_str())
-        .collect();
-    if !missing_app_archs.is_empty() {
-        return Err(format!(
-            "{} lacks app architecture(s) {} (app: {}, node: {})",
-            NODE_REL_PATH,
-            missing_app_archs.join(" "),
-            app_archs.join(" "),
-            node_archs.join(" ")
-        ));
-    }
-    println!(
-        "ok: {} holds universal architectures [{}]",
-        NODE_REL_PATH,
-        node_archs.join(" ")
-    );
-
-    let node_cs = Command::new("codesign")
-        .args(["--verify", "--strict"])
-        .arg(&node_exe)
-        .output()
-        .map_err(|e| format!("cannot run codesign --verify on {}: {}", NODE_REL_PATH, e))?;
-    if !node_cs.status.success() {
-        return Err(format!(
-            "codesign --verify --strict failed on {}: {}",
-            NODE_REL_PATH,
-            String::from_utf8_lossy(&node_cs.stderr).trim()
-        ));
-    }
-
-    let app_cs = Command::new("codesign")
-        .args(["--verify", "--deep", "--strict"])
-        .arg(app)
-        .output()
-        .map_err(|e| format!("cannot run codesign --verify: {}", e))?;
-    if !app_cs.status.success() {
-        return Err(format!(
-            "codesign --verify --deep --strict failed on {}: {}",
-            app.display(),
-            String::from_utf8_lossy(&app_cs.stderr).trim()
-        ));
-    }
-    println!("ok: codesign --verify passed on node and app");
-
-    check_node_entitlements(&node_exe)?;
-    println!("ok: {} carries JIT entitlements", NODE_REL_PATH);
-
-    let want_version = fs::read_to_string(nvmrc_path)
-        .map_err(|e| format!("cannot read {}: {}", nvmrc_path.display(), e))?;
-    let want_version_tag = format!("v{}", want_version.trim());
-
-    let isolated_root = work_root.join("node_isolated_run");
-    let _ = fs::remove_dir_all(&isolated_root);
-    let isolated_home = isolated_root.join("home");
-    fs::create_dir_all(&isolated_home).map_err(|e| {
-        format!(
-            "cannot create isolated HOME {}: {}",
-            isolated_home.display(),
-            e
-        )
-    })?;
-
-    let ver_out = Command::new(&node_exe)
+    let ver_out = Command::new(&node.path)
         .arg("--version")
-        .current_dir(&isolated_root)
+        .current_dir(isolated_root)
         .env_clear()
-        .env("HOME", &isolated_home)
+        .env("HOME", isolated_home)
         .env("PATH", "/usr/bin:/bin")
         .output()
-        .map_err(|e| format!("cannot run {} --version: {}", node_exe.display(), e))?;
+        .map_err(|e| format!("cannot run {} --version: {}", node.path.display(), e))?;
     if !ver_out.status.success() {
         return Err(format!(
             "{} --version exited {:?}: {}",
-            NODE_REL_PATH,
+            node.rel,
             ver_out.status.code(),
             String::from_utf8_lossy(&ver_out.stderr).trim()
         ));
@@ -180,54 +59,30 @@ pub fn verify_unpacked_app(
     if got_version_tag != want_version_tag {
         return Err(format!(
             "{} --version reported '{}', expected '{}' from .nvmrc",
-            NODE_REL_PATH, got_version_tag, want_version_tag
+            node.rel, got_version_tag, want_version_tag
         ));
     }
-    println!("ok: {} --version == {}", NODE_REL_PATH, got_version_tag);
+    println!("ok: {} --version == {}", node.rel, got_version_tag);
+    Ok(())
+}
 
-    let helper_mjs = app.join(HELPER_REL_PATH);
-    if !helper_mjs.is_file() {
-        return Err(format!(
-            "missing {} inside {}",
-            HELPER_REL_PATH,
-            app.display()
-        ));
-    }
-    let want_sha = crate::sha256_hex_file(expected_bundle_path).map_err(|e| {
-        format!(
-            "cannot hash checked-in helper bundle {}: {}",
-            expected_bundle_path.display(),
-            e
-        )
-    })?;
-    let got_sha = crate::sha256_hex_file(&helper_mjs)
-        .map_err(|e| format!("cannot hash bundled helper {}: {}", helper_mjs.display(), e))?;
-    if got_sha != want_sha {
-        return Err(format!(
-            "{} SHA-256 {} does not match checked-in bundle {}",
-            HELPER_REL_PATH, got_sha, want_sha
-        ));
-    }
-    println!(
-        "ok: {} matches checked-in bundle (SHA-256 {})",
-        HELPER_REL_PATH, got_sha
-    );
-
-    // Run bundled node + bundled claude-helper.mjs against a fake claude script
-    // in an empty isolated environment and verify ACP initialize response.
-    let fake_claude = isolated_root.join("fake-claude.sh");
-    fs::write(&fake_claude, "#!/bin/sh\necho '2.1.326 (Claude Code)'\n")
-        .map_err(|e| format!("cannot write fake claude: {}", e))?;
-    fs::set_permissions(&fake_claude, fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("cannot chmod fake claude: {}", e))?;
-
-    let mut child = Command::new(&node_exe)
-        .arg(&helper_mjs)
+/// Runs one bundled Node with the bundled `claude-helper.mjs` against a fake
+/// claude script in an empty isolated environment and verifies the ACP
+/// `initialize` response.
+fn check_acp_initialize(
+    node: &HelperFile,
+    helper_mjs: &Path,
+    fake_claude: &Path,
+    isolated_root: &Path,
+    isolated_home: &Path,
+) -> Result<(), String> {
+    let mut child = Command::new(&node.path)
+        .arg(helper_mjs)
         .arg("--claude-path")
-        .arg(&fake_claude)
-        .current_dir(&isolated_root)
+        .arg(fake_claude)
+        .current_dir(isolated_root)
         .env_clear()
-        .env("HOME", &isolated_home)
+        .env("HOME", isolated_home)
         .env("PATH", "/usr/bin:/bin")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -304,7 +159,123 @@ pub fn verify_unpacked_app(
             ));
         }
     }
-    println!("ok: bundled node + claude-helper.mjs completed ACP initialize");
+    println!(
+        "ok: {} + claude-helper.mjs completed ACP initialize",
+        node.rel
+    );
+    Ok(())
+}
+
+/// The Bazel-built app holds the release's universal layout whatever
+/// architectures its main program is built for: a thin `node-arm64` and
+/// `node-x86_64` and no fat `node` (XProtect refuses a universal app with a fat
+/// helper). Each is signed with the JIT entitlements; each one this Mac can run
+/// reports the `.nvmrc` version and completes the helper's ACP `initialize`.
+pub fn verify_unpacked_app(
+    app: &Path,
+    nvmrc_path: &Path,
+    expected_bundle_path: &Path,
+    work_root: &Path,
+) -> Result<(), String> {
+    let main_exe = app.join("Contents/MacOS").join(MAIN_EXE_NAME);
+    if !main_exe.is_file() {
+        return Err(format!("missing main executable at {}", main_exe.display()));
+    }
+
+    // Present, executable, thin for its own architecture, signed, JIT
+    // entitlements and nothing else.
+    let nodes = check_helper_set(app, UNIVERSAL_ARCHS, Helper::Node)?;
+    for node in &nodes {
+        println!(
+            "ok: {} is thin for {} and signed with JIT entitlements",
+            node.rel, node.arch
+        );
+    }
+
+    let app_cs = Command::new("codesign")
+        .args(["--verify", "--deep", "--strict"])
+        .arg(app)
+        .output()
+        .map_err(|e| format!("cannot run codesign --verify: {}", e))?;
+    if !app_cs.status.success() {
+        return Err(format!(
+            "codesign --verify --deep --strict failed on {}: {}",
+            app.display(),
+            String::from_utf8_lossy(&app_cs.stderr).trim()
+        ));
+    }
+    println!("ok: codesign --verify passed on the app");
+
+    let want_version = fs::read_to_string(nvmrc_path)
+        .map_err(|e| format!("cannot read {}: {}", nvmrc_path.display(), e))?;
+    let want_version_tag = format!("v{}", want_version.trim());
+
+    let helper_mjs = app.join(HELPER_REL_PATH);
+    if !helper_mjs.is_file() {
+        return Err(format!(
+            "missing {} inside {}",
+            HELPER_REL_PATH,
+            app.display()
+        ));
+    }
+    let want_sha = crate::sha256_hex_file(expected_bundle_path).map_err(|e| {
+        format!(
+            "cannot hash checked-in helper bundle {}: {}",
+            expected_bundle_path.display(),
+            e
+        )
+    })?;
+    let got_sha = crate::sha256_hex_file(&helper_mjs)
+        .map_err(|e| format!("cannot hash bundled helper {}: {}", helper_mjs.display(), e))?;
+    if got_sha != want_sha {
+        return Err(format!(
+            "{} SHA-256 {} does not match checked-in bundle {}",
+            HELPER_REL_PATH, got_sha, want_sha
+        ));
+    }
+    println!(
+        "ok: {} matches checked-in bundle (SHA-256 {})",
+        HELPER_REL_PATH, got_sha
+    );
+
+    let mut ran = 0;
+    for node in &nodes {
+        if !can_run_arch(&node.arch) {
+            println!(
+                "skip: {} is for {}, which this Mac cannot run",
+                node.rel, node.arch
+            );
+            continue;
+        }
+        let isolated_root = work_root.join("node_isolated_run").join(&node.arch);
+        let _ = fs::remove_dir_all(&isolated_root);
+        let isolated_home = isolated_root.join("home");
+        fs::create_dir_all(&isolated_home).map_err(|e| {
+            format!(
+                "cannot create isolated HOME {}: {}",
+                isolated_home.display(),
+                e
+            )
+        })?;
+        check_node_version(node, &want_version_tag, &isolated_root, &isolated_home)?;
+
+        let fake_claude = isolated_root.join("fake-claude.sh");
+        fs::write(&fake_claude, "#!/bin/sh\necho '2.1.326 (Claude Code)'\n")
+            .map_err(|e| format!("cannot write fake claude: {}", e))?;
+        fs::set_permissions(&fake_claude, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("cannot chmod fake claude: {}", e))?;
+        check_acp_initialize(
+            node,
+            &helper_mjs,
+            &fake_claude,
+            &isolated_root,
+            &isolated_home,
+        )?;
+        ran += 1;
+    }
+    if ran == 0 {
+        return Err("no bundled node could be run on this Mac".to_string());
+    }
 
     Ok(())
 }

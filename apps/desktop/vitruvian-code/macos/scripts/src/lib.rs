@@ -372,6 +372,281 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// The recorded `codesign` calls of a bundle run: a fake that logs its arguments.
+    fn bundle_fixture(name: &str, helpers: &[&str]) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let fake_bin = dir.join("fake_bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        let log = dir.join("codesign.log");
+        make_fake_tool(
+            &fake_bin,
+            "codesign",
+            &format!("#!/bin/sh\necho \"$@\" >> \"{}\"\nexit 0\n", log.display()),
+        );
+        let exe_dir = dir.join("exe_dir");
+        fs::create_dir_all(&exe_dir).unwrap();
+        let exe = exe_dir.join("VitruvianCode");
+        fs::write(&exe, b"fake-executable").unwrap();
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+        let ui_bundle = exe_dir.join("VitruvianCode_VitruvianCodeUI.bundle");
+        fs::create_dir_all(&ui_bundle).unwrap();
+        fs::write(ui_bundle.join("mermaid.min.js"), b"mermaid").unwrap();
+        for h in helpers {
+            fs::write(exe_dir.join(h), format!("fake {}", h)).unwrap();
+            fs::set_permissions(exe_dir.join(h), fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        fs::create_dir_all(exe_dir.join("claude-helper")).unwrap();
+        fs::write(
+            exe_dir.join("claude-helper/claude-helper.mjs"),
+            b"console.log(1);\n",
+        )
+        .unwrap();
+        let output = dir.join("output");
+        fs::create_dir_all(&output).unwrap();
+        (dir, fake_bin, exe, output)
+    }
+
+    fn run_bundle(
+        fake_bin: &std::path::Path,
+        exe: &std::path::Path,
+        output: &std::path::Path,
+    ) -> i32 {
+        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+        let rc = bundle::run(&[
+            "bundle-app".into(),
+            exe.to_str().unwrap().into(),
+            "1.2.3".into(),
+            output.to_str().unwrap().into(),
+        ]);
+        std::env::set_var("PATH", &orig_path);
+        rc
+    }
+
+    #[test]
+    fn bundle_copies_thin_helpers_per_architecture_when_they_sit_beside_the_executable() {
+        // The universal app: a thin bot-engine and node per architecture, and
+        // no fat file (XProtect refuses one).
+        let (dir, fake_bin, exe, output) = bundle_fixture(
+            "bundle_universal_test",
+            &[
+                "bot-engine-arm64",
+                "bot-engine-x86_64",
+                "node-arm64",
+                "node-x86_64",
+            ],
+        );
+        assert_eq!(run_bundle(&fake_bin, &exe, &output), 0);
+        let helpers = output.join("Vitruvian Code.app/Contents/Helpers");
+        let mut names: Vec<String> = fs::read_dir(&helpers)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "bot-engine-arm64",
+                "bot-engine-x86_64",
+                "node-arm64",
+                "node-x86_64"
+            ]
+        );
+        for n in &names {
+            let mode = fs::metadata(helpers.join(n)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o755, 0o755, "{n} is executable");
+        }
+        // Each is signed ad hoc, inside-out before the app: Node with the JIT
+        // entitlements and its identifier, the bot engine with its own identifier.
+        let log = fs::read_to_string(dir.join("codesign.log")).unwrap();
+        for arch in ["arm64", "x86_64"] {
+            let node = log
+                .lines()
+                .find(|l| l.ends_with(&format!("Contents/Helpers/node-{arch}")))
+                .unwrap_or_else(|| panic!("node-{arch} is signed: {log}"));
+            assert!(
+                node.contains("--identifier com.vitruviansoftware.code.node"),
+                "{node}"
+            );
+            assert!(
+                node.contains("--entitlements") && node.contains("node.entitlements"),
+                "{node}"
+            );
+            let bot = log
+                .lines()
+                .find(|l| l.ends_with(&format!("Contents/Helpers/bot-engine-{arch}")))
+                .unwrap_or_else(|| panic!("bot-engine-{arch} is signed: {log}"));
+            assert!(
+                bot.contains("--identifier com.vitruviansoftware.code.bot-engine"),
+                "{bot}"
+            );
+            assert!(!bot.contains("--entitlements"), "{bot}");
+        }
+        let _ = fs::remove_dir_all(&dir);
+
+        // Both the plain and the per-architecture files beside the executable:
+        // the per-architecture ones go in, the plain one stays out.
+        let (dir, fake_bin, exe, output) = bundle_fixture(
+            "bundle_universal_over_plain_test",
+            &[
+                "bot-engine",
+                "bot-engine-arm64",
+                "bot-engine-x86_64",
+                "node",
+                "node-arm64",
+                "node-x86_64",
+            ],
+        );
+        assert_eq!(run_bundle(&fake_bin, &exe, &output), 0);
+        let helpers = output.join("Vitruvian Code.app/Contents/Helpers");
+        assert!(!helpers.join("node").exists() && !helpers.join("bot-engine").exists());
+        assert!(
+            helpers.join("node-arm64").is_file() && helpers.join("bot-engine-x86_64").is_file()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bundle_errors_when_a_helper_is_in_neither_form() {
+        // No Node at all.
+        let (dir, fake_bin, exe, output) = bundle_fixture(
+            "bundle_no_node_test",
+            &["bot-engine-arm64", "bot-engine-x86_64"],
+        );
+        assert_eq!(run_bundle(&fake_bin, &exe, &output), 1);
+        let _ = fs::remove_dir_all(&dir);
+
+        // No bot engine at all.
+        let (dir, fake_bin, exe, output) = bundle_fixture("bundle_no_bot_test", &["node"]);
+        assert_eq!(run_bundle(&fake_bin, &exe, &output), 1);
+        let _ = fs::remove_dir_all(&dir);
+
+        // Only one architecture's thin copy: neither the pair nor the plain file.
+        let (dir, fake_bin, exe, output) =
+            bundle_fixture("bundle_half_pair_test", &["bot-engine", "node-arm64"]);
+        assert_eq!(run_bundle(&fake_bin, &exe, &output), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // --- packaged-app fixtures ---------------------------------------------------
+
+    const JIT_PAIR_PLIST: &str = "<plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>";
+
+    /// A `codesign` that verifies everything and reports the JIT pair, except for
+    /// a file that has a marker beside the fake: `weak-<file>` gives it one
+    /// entitlement, `unsigned-<file>` makes `--verify` fail on it.
+    fn fake_codesign() -> String {
+        format!(
+            "#!/bin/sh\nfor last; do :; done\nd=\"$(dirname \"$0\")\"\nb=\"$(basename \"$last\")\"\nif [ \"$1\" = \"-d\" ]; then\n  if [ -f \"$d/weak-$b\" ]; then echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>'; else echo '{}'; fi\nfi\nif [ \"$1\" = \"--verify\" ] && [ -f \"$d/unsigned-$b\" ]; then exit 1; fi\nexit 0\n",
+            JIT_PAIR_PLIST
+        )
+    }
+
+    /// A `lipo -archs` that answers from `archs/<file name>` beside it, and says
+    /// "arm64 x86_64" (a fat file) for a file it has no answer for.
+    const FAKE_LIPO: &str = "#!/bin/sh\nf=\"$(dirname \"$0\")/archs/$(basename \"$2\")\"\nif [ -f \"$f\" ]; then cat \"$f\"; else echo \"arm64 x86_64\"; fi\n";
+
+    struct AppFixture {
+        dir: PathBuf,
+        fake_bin: PathBuf,
+        app: PathBuf,
+    }
+
+    impl AppFixture {
+        fn set_archs(&self, file_name: &str, archs: &str) {
+            let d = self.fake_bin.join("archs");
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join(file_name), format!("{}\n", archs)).unwrap();
+        }
+
+        fn add_executable(&self, rel: &str, archs: Option<&str>) {
+            let p = self.app.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, b"fake-macho").unwrap();
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+            if let Some(a) = archs {
+                self.set_archs(p.file_name().unwrap().to_str().unwrap(), a);
+            }
+        }
+
+        fn remove(&self, rel: &str) {
+            fs::remove_file(self.app.join(rel)).unwrap();
+        }
+
+        fn marker(&self, name: &str) {
+            fs::write(self.fake_bin.join(name), b"").unwrap();
+        }
+
+        /// Runs check-packaged-app on the app, with the fakes first on PATH.
+        fn check(&self, archs: &[&str]) -> i32 {
+            let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let orig_path = std::env::var("PATH").unwrap_or_default();
+            let orig_cwd = std::env::current_dir().unwrap();
+            std::env::set_var("PATH", format!("{}:{}", self.fake_bin.display(), orig_path));
+            std::env::set_current_dir(&self.dir).unwrap();
+            let mut args: Vec<String> = vec![
+                "check-packaged-app".into(),
+                self.app.to_str().unwrap().into(),
+            ];
+            args.extend(archs.iter().map(|a| a.to_string()));
+            let rc = check_packaged_app::run(&args);
+            std::env::set_current_dir(&orig_cwd).unwrap();
+            std::env::set_var("PATH", &orig_path);
+            rc
+        }
+    }
+
+    /// A packaged app, complete: mermaid and its notices, the program, both
+    /// helpers and the Claude helper. `universal` gives it the release's
+    /// universal layout (a thin bot-engine and node per architecture); otherwise
+    /// it is the arm64 app with one thin `bot-engine` and `node`.
+    fn app_fixture(test_name: &str, universal: bool) -> AppFixture {
+        let dir = std::env::temp_dir().join(test_name);
+        let _ = fs::remove_dir_all(&dir);
+        let fake_bin = dir.join("fake_bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        make_fake_tool(&fake_bin, "lipo", FAKE_LIPO);
+        make_fake_tool(&fake_bin, "codesign", &fake_codesign());
+
+        let app = dir.join("Vitruvian Code.app");
+        let ui_bundle = app.join("Contents/Resources/VitruvianCode_VitruvianCodeUI.bundle");
+        fs::create_dir_all(&ui_bundle).unwrap();
+        let mermaid_content = b"mermaid-js-content";
+        fs::write(ui_bundle.join("mermaid.min.js"), mermaid_content).unwrap();
+        fs::write(ui_bundle.join("mermaid-LICENSE.txt"), b"licence").unwrap();
+        fs::write(
+            dir.join("THIRD_PARTY_NOTICES.md"),
+            format!(
+                "| SHA-256 of the file | `{}` |\n",
+                sha256_hex(mermaid_content)
+            ),
+        )
+        .unwrap();
+        fs::create_dir_all(app.join("Contents/Resources/claude-helper")).unwrap();
+        fs::write(
+            app.join("Contents/Resources/claude-helper/claude-helper.mjs"),
+            b"export {};\n",
+        )
+        .unwrap();
+
+        let fx = AppFixture { dir, fake_bin, app };
+        if universal {
+            fx.add_executable("Contents/MacOS/VitruvianCode", Some("arm64 x86_64"));
+            for arch in ["arm64", "x86_64"] {
+                fx.add_executable(&format!("Contents/Helpers/bot-engine-{arch}"), Some(arch));
+                fx.add_executable(&format!("Contents/Helpers/node-{arch}"), Some(arch));
+            }
+        } else {
+            fx.add_executable("Contents/MacOS/VitruvianCode", Some("arm64"));
+            fx.add_executable("Contents/Helpers/bot-engine", Some("arm64"));
+            fx.add_executable("Contents/Helpers/node", Some("arm64"));
+        }
+        fx
+    }
+
     // --- check_packaged_app ------------------------------------------------------
 
     #[test]
@@ -434,134 +709,84 @@ mod tests {
 
     #[test]
     fn check_packaged_app_notarized_runs_spctl() {
-        let dir = std::env::temp_dir().join("check_notarized_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let fake_bin = dir.join("fake_bin");
-        fs::create_dir_all(&fake_bin).unwrap();
-        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
-        make_fake_tool(
-            &fake_bin,
-            "codesign",
-            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then\n  cat <<'PLIST'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n  <key>com.apple.security.cs.allow-jit</key><true/>\n  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>\n</dict></plist>\nPLIST\nfi\nexit 0\n",
-        );
-        make_fake_tool(&fake_bin, "spctl", "#!/bin/sh\nexit 1\n");
+        let fx = app_fixture("check_notarized_test", true);
+        make_fake_tool(&fx.fake_bin, "spctl", "#!/bin/sh\nexit 1\n");
 
-        let app = dir.join("Vitruvian Code.app");
-        let ui_bundle = app.join("Contents/Resources/VitruvianCode_VitruvianCodeUI.bundle");
-        fs::create_dir_all(&ui_bundle).unwrap();
-        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
-
-        let mermaid_content = b"mermaid-js-content";
-        fs::write(ui_bundle.join("mermaid.min.js"), mermaid_content).unwrap();
-        fs::write(ui_bundle.join("mermaid-LICENSE.txt"), b"licence").unwrap();
-        let sha = sha256_hex(mermaid_content);
-        fs::write(
-            dir.join("THIRD_PARTY_NOTICES.md"),
-            format!("| SHA-256 of the file | `{}` |\n", sha),
-        )
-        .unwrap();
-
-        let exe = app.join("Contents/MacOS/VitruvianCode");
-        fs::write(&exe, b"fake").unwrap();
-        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
-
-        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
-        let bot = app.join("Contents/Helpers/bot-engine");
-        fs::write(&bot, b"fake-bot").unwrap();
-        fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let node = app.join("Contents/Helpers/node");
-        fs::write(&node, b"fake-node").unwrap();
-        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let helper_dir = app.join("Contents/Resources/claude-helper");
-        fs::create_dir_all(&helper_dir).unwrap();
-        fs::write(helper_dir.join("claude-helper.mjs"), b"export {};\n").unwrap();
-
-        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let orig_path = std::env::var("PATH").unwrap_or_default();
-        let orig_cwd = std::env::current_dir().unwrap();
-        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
-        std::env::set_current_dir(&dir).unwrap();
-
-        let rejected = check_packaged_app::run(&[
-            "check-packaged-app".into(),
-            "--notarized".into(),
-            app.to_str().unwrap().into(),
-            "arm64".into(),
-            "x86_64".into(),
-        ]);
-
-        make_fake_tool(&fake_bin, "spctl", "#!/bin/sh\nexit 0\n");
-        let accepted = check_packaged_app::run(&[
-            "check-packaged-app".into(),
-            "--notarized".into(),
-            app.to_str().unwrap().into(),
-            "arm64".into(),
-            "x86_64".into(),
-        ]);
-
-        std::env::set_current_dir(&orig_cwd).unwrap();
-        std::env::set_var("PATH", &orig_path);
+        let run = |fx: &AppFixture| {
+            let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let orig_path = std::env::var("PATH").unwrap_or_default();
+            let orig_cwd = std::env::current_dir().unwrap();
+            std::env::set_var("PATH", format!("{}:{}", fx.fake_bin.display(), orig_path));
+            std::env::set_current_dir(&fx.dir).unwrap();
+            let rc = check_packaged_app::run(&[
+                "check-packaged-app".into(),
+                "--notarized".into(),
+                fx.app.to_str().unwrap().into(),
+                "arm64".into(),
+                "x86_64".into(),
+            ]);
+            std::env::set_current_dir(&orig_cwd).unwrap();
+            std::env::set_var("PATH", &orig_path);
+            rc
+        };
+        let rejected = run(&fx);
+        make_fake_tool(&fx.fake_bin, "spctl", "#!/bin/sh\nexit 0\n");
+        let accepted = run(&fx);
 
         assert_eq!(rejected, 1, "--notarized must fail when spctl rejects");
         assert_eq!(accepted, 0, "--notarized must pass when spctl accepts");
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&fx.dir);
     }
-
     #[test]
-    fn bazel_app_holds_bot_rejects_missing_helper_and_missing_arch() {
-        let dir = std::env::temp_dir().join("bazel_app_holds_bot_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+    fn bazel_app_holds_bot_wants_the_universal_layout_with_thin_helpers() {
+        let fx = app_fixture("bazel_app_holds_bot_test", true);
+        // The Bazel app's program may be one architecture; its helpers are
+        // universal all the same.
+        fx.set_archs("VitruvianCode", "arm64");
+        let verify = |fx: &AppFixture| {
+            let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let orig_path = std::env::var("PATH").unwrap_or_default();
+            std::env::set_var("PATH", format!("{}:{}", fx.fake_bin.display(), orig_path));
+            let r = bazel_app_holds_bot::verify_unpacked_app(&fx.app, &fx.dir);
+            std::env::set_var("PATH", &orig_path);
+            r
+        };
 
-        let fake_bin = dir.join("fake_bin");
-        fs::create_dir_all(&fake_bin).unwrap();
-        make_fake_tool(
-            &fake_bin,
-            "lipo",
-            "#!/bin/sh\nif [ \"$(basename \"$2\")\" = \"VitruvianCode\" ]; then echo \"arm64 x86_64\"; else echo \"arm64\"; fi\n",
+        // 1. A thin bot-engine missing for one architecture.
+        fx.remove("Contents/Helpers/bot-engine-x86_64");
+        let missing = verify(&fx).unwrap_err();
+        assert!(
+            missing.contains("Contents/Helpers/bot-engine-x86_64"),
+            "{missing}"
         );
-        make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
 
-        let app = dir.join("Vitruvian Code.app");
-        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
-        let exe = app.join("Contents/MacOS/VitruvianCode");
-        fs::write(&exe, b"fake-app").unwrap();
-        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+        // 2. The copy for an architecture holds the other one.
+        fx.add_executable("Contents/Helpers/bot-engine-x86_64", Some("arm64"));
+        let wrong = verify(&fx).unwrap_err();
+        assert!(
+            wrong.contains("bot-engine-x86_64 is built for 'arm64', expected 'x86_64'"),
+            "{wrong}"
+        );
 
-        let missing = bazel_app_holds_bot::verify_unpacked_app(&app, &dir);
-        assert!(missing.is_err());
-        assert!(missing.unwrap_err().contains("Contents/Helpers/bot-engine"));
+        // 3. A copy that is fat.
+        fx.add_executable("Contents/Helpers/bot-engine-x86_64", Some("arm64 x86_64"));
+        let fat = verify(&fx).unwrap_err();
+        assert!(
+            fat.contains("bot-engine-x86_64 is built for 'arm64 x86_64'"),
+            "{fat}"
+        );
 
-        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
-        let bot = app.join("Contents/Helpers/bot-engine");
-        fs::write(&bot, b"fake-bot").unwrap();
-        fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
+        // 4. A plain bot-engine in the universal app, even a thin one.
+        fx.add_executable("Contents/Helpers/bot-engine-x86_64", Some("x86_64"));
+        fx.add_executable("Contents/Helpers/bot-engine", Some("arm64"));
+        let plain = verify(&fx).unwrap_err();
+        assert!(
+            plain.contains("Contents/Helpers/bot-engine is in the universal app"),
+            "{plain}"
+        );
 
-        let node = app.join("Contents/Helpers/node");
-        fs::write(&node, b"fake-node").unwrap();
-        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let helper_dir = app.join("Contents/Resources/claude-helper");
-        fs::create_dir_all(&helper_dir).unwrap();
-        fs::write(helper_dir.join("claude-helper.mjs"), b"export {};\n").unwrap();
-
-        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let orig_path = std::env::var("PATH").unwrap_or_default();
-        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
-        let bad_arch = bazel_app_holds_bot::verify_unpacked_app(&app, &dir);
-        std::env::set_var("PATH", &orig_path);
-
-        assert!(bad_arch.is_err());
-        assert!(bad_arch
-            .unwrap_err()
-            .contains("lacks app architecture(s) x86_64"));
-
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&fx.dir);
     }
-
     #[test]
     fn entitlements_plist_parsing_checks_true_values() {
         let valid = r#"<?xml version="1.0"?><plist version="1.0"><dict>
@@ -603,92 +828,151 @@ mod tests {
 
     #[test]
     fn check_packaged_app_rejects_missing_bad_arch_unentitled_node_and_missing_helper() {
-        let dir = std::env::temp_dir().join("check_pkg_node_failures_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let fake_bin = dir.join("fake_bin");
-        fs::create_dir_all(&fake_bin).unwrap();
-        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
-        let full_codesign = "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then\n  cat <<'PLIST'\n<plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>\nPLIST\nfi\nexit 0\n";
-        make_fake_tool(&fake_bin, "codesign", full_codesign);
+        let fx = app_fixture("check_pkg_node_failures_test", true);
+        let both = ["arm64", "x86_64"];
+        assert_eq!(fx.check(&both), 0, "the complete universal app passes");
 
-        let app = dir.join("Vitruvian Code.app");
-        let ui_bundle = app.join("Contents/Resources/VitruvianCode_VitruvianCodeUI.bundle");
-        fs::create_dir_all(&ui_bundle).unwrap();
-        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
-        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
-        let helper_dir = app.join("Contents/Resources/claude-helper");
-        fs::create_dir_all(&helper_dir).unwrap();
+        // 1. A thin Node missing for one architecture fails.
+        fx.remove("Contents/Helpers/node-x86_64");
+        assert_eq!(fx.check(&both), 1);
+        fx.add_executable("Contents/Helpers/node-x86_64", Some("x86_64"));
+        assert_eq!(fx.check(&both), 0);
 
-        let mermaid_content = b"mermaid-js-content";
-        fs::write(ui_bundle.join("mermaid.min.js"), mermaid_content).unwrap();
-        fs::write(ui_bundle.join("mermaid-LICENSE.txt"), b"licence").unwrap();
-        let sha = sha256_hex(mermaid_content);
-        fs::write(
-            dir.join("THIRD_PARTY_NOTICES.md"),
-            format!("| SHA-256 of the file | `{}` |\n", sha),
-        )
-        .unwrap();
+        // 2. A thin bot-engine missing for one architecture fails.
+        fx.remove("Contents/Helpers/bot-engine-arm64");
+        assert_eq!(fx.check(&both), 1);
+        fx.add_executable("Contents/Helpers/bot-engine-arm64", Some("arm64"));
+        assert_eq!(fx.check(&both), 0);
 
-        let exe = app.join("Contents/MacOS/VitruvianCode");
-        fs::write(&exe, b"fake").unwrap();
-        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
-        let bot = app.join("Contents/Helpers/bot-engine");
-        fs::write(&bot, b"fake-bot").unwrap();
-        fs::set_permissions(&bot, fs::Permissions::from_mode(0o755)).unwrap();
-        let helper_mjs = helper_dir.join("claude-helper.mjs");
-        fs::write(&helper_mjs, b"export {};\n").unwrap();
-
-        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let orig_path = std::env::var("PATH").unwrap_or_default();
-        let orig_cwd = std::env::current_dir().unwrap();
-        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
-        std::env::set_current_dir(&dir).unwrap();
-
-        let args: Vec<String> = vec![
-            "check-packaged-app".into(),
-            app.to_str().unwrap().into(),
-            "arm64".into(),
-            "x86_64".into(),
-        ];
-
-        // 1. Missing Contents/Helpers/node fails.
-        assert_eq!(check_packaged_app::run(&args), 1);
-
-        // 2. Add node, drop helper file -> fails.
-        let node = app.join("Contents/Helpers/node");
-        fs::write(&node, b"fake-node").unwrap();
-        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
+        // 3. The Claude helper's file gone fails.
+        let helper_mjs = fx
+            .app
+            .join("Contents/Resources/claude-helper/claude-helper.mjs");
         fs::remove_file(&helper_mjs).unwrap();
-        assert_eq!(check_packaged_app::run(&args), 1);
-
-        // 3. Restore helper, make codesign return only one entitlement -> fails.
+        assert_eq!(fx.check(&both), 1);
         fs::write(&helper_mjs, b"export {};\n").unwrap();
-        make_fake_tool(
-            &fake_bin,
-            "codesign",
-            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>'; fi\nexit 0\n",
-        );
-        assert_eq!(check_packaged_app::run(&args), 1);
+        assert_eq!(fx.check(&both), 0);
 
-        // 4. Restore full entitlements, make lipo report wrong arch for node -> fails.
-        make_fake_tool(&fake_bin, "codesign", full_codesign);
-        make_fake_tool(
-            &fake_bin,
-            "lipo",
-            "#!/bin/sh\nif [ \"$(basename \"$2\")\" = \"node\" ]; then echo \"arm64\"; else echo \"arm64 x86_64\"; fi\n",
-        );
-        assert_eq!(check_packaged_app::run(&args), 1);
+        // 4. One Node with a single entitlement fails, and so does a Node whose
+        //    signature does not verify.
+        fx.marker("weak-node-x86_64");
+        assert_eq!(fx.check(&both), 1);
+        fs::remove_file(fx.fake_bin.join("weak-node-x86_64")).unwrap();
+        fx.marker("unsigned-node-arm64");
+        assert_eq!(fx.check(&both), 1);
+        fs::remove_file(fx.fake_bin.join("unsigned-node-arm64")).unwrap();
+        fx.marker("unsigned-bot-engine-arm64");
+        assert_eq!(fx.check(&both), 1);
+        fs::remove_file(fx.fake_bin.join("unsigned-bot-engine-arm64")).unwrap();
 
-        // 5. Restore matching lipo -> passes.
-        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
-        assert_eq!(check_packaged_app::run(&args), 0);
+        // 5. The thin copy for an architecture holds the other one fails.
+        fx.set_archs("node-arm64", "x86_64");
+        assert_eq!(fx.check(&both), 1);
+        fx.set_archs("node-arm64", "arm64");
+        assert_eq!(fx.check(&both), 0);
 
-        std::env::set_current_dir(&orig_cwd).unwrap();
-        std::env::set_var("PATH", &orig_path);
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&fx.dir);
     }
 
+    #[test]
+    fn check_packaged_app_refuses_a_fat_helper_in_the_universal_app() {
+        let both = ["arm64", "x86_64"];
+
+        // A fat `node` (the layout that XProtect refuses): there is no `node-<arch>`
+        // for it to be, so it is a stray fat file.
+        let fx = app_fixture("check_pkg_fat_node_test", true);
+        fx.add_executable("Contents/Helpers/node", Some("arm64 x86_64"));
+        assert_eq!(
+            fx.check(&both),
+            1,
+            "a fat node in the universal app is refused"
+        );
+        let _ = fs::remove_dir_all(&fx.dir);
+
+        // A fat `bot-engine`, the Rust helper that the first refused app held.
+        let fx = app_fixture("check_pkg_fat_bot_test", true);
+        fx.add_executable("Contents/Helpers/bot-engine", Some("arm64 x86_64"));
+        assert_eq!(
+            fx.check(&both),
+            1,
+            "a fat bot-engine in the universal app is refused"
+        );
+        let _ = fs::remove_dir_all(&fx.dir);
+
+        // A plain helper is refused even when it is thin: the universal app
+        // ships `<name>-<arch>`, and a lone `node` would be run on the wrong one.
+        for plain in ["node", "bot-engine"] {
+            let fx = app_fixture("check_pkg_plain_thin_test", true);
+            fx.add_executable(&format!("Contents/Helpers/{plain}"), Some("arm64"));
+            assert_eq!(
+                fx.check(&both),
+                1,
+                "a plain {plain} in the universal app is refused"
+            );
+            let _ = fs::remove_dir_all(&fx.dir);
+        }
+
+        // A thin copy that is fat.
+        for (name, archs) in [
+            ("node-arm64", "arm64 x86_64"),
+            ("bot-engine-x86_64", "arm64 x86_64"),
+        ] {
+            let fx = app_fixture("check_pkg_fat_copy_test", true);
+            fx.set_archs(name, archs);
+            assert_eq!(fx.check(&both), 1, "a fat {name} is refused");
+            let _ = fs::remove_dir_all(&fx.dir);
+        }
+
+        // Any other fat Mach-O in Contents/Helpers.
+        let fx = app_fixture("check_pkg_fat_other_test", true);
+        fx.add_executable("Contents/Helpers/another-helper", None);
+        assert_eq!(
+            fx.check(&both),
+            1,
+            "any fat file in Contents/Helpers is refused"
+        );
+        fx.add_executable("Contents/Helpers/another-helper", Some("arm64"));
+        assert_eq!(fx.check(&both), 0, "a thin file there is not");
+        let _ = fs::remove_dir_all(&fx.dir);
+    }
+
+    #[test]
+    fn check_packaged_app_single_architecture_app_keeps_todays_layout() {
+        // One thin `bot-engine` and `node`: passes.
+        let fx = app_fixture("check_pkg_single_arch_test", false);
+        assert_eq!(fx.check(&["arm64"]), 0);
+
+        // The per-architecture names are the universal app's: not accepted here.
+        fx.remove("Contents/Helpers/node");
+        fx.add_executable("Contents/Helpers/node-arm64", Some("arm64"));
+        assert_eq!(
+            fx.check(&["arm64"]),
+            1,
+            "a single-architecture app holds `node`"
+        );
+        fx.remove("Contents/Helpers/node-arm64");
+        fx.add_executable("Contents/Helpers/node", Some("arm64"));
+        fx.remove("Contents/Helpers/bot-engine");
+        fx.add_executable("Contents/Helpers/bot-engine-arm64", Some("arm64"));
+        assert_eq!(
+            fx.check(&["arm64"]),
+            1,
+            "a single-architecture app holds `bot-engine`"
+        );
+        fx.remove("Contents/Helpers/bot-engine-arm64");
+        fx.add_executable("Contents/Helpers/bot-engine", Some("arm64"));
+        assert_eq!(fx.check(&["arm64"]), 0);
+
+        // Thin for the wrong architecture fails.
+        fx.set_archs("node", "x86_64");
+        assert_eq!(fx.check(&["arm64"]), 1);
+        fx.set_archs("node", "arm64");
+
+        // An app whose helpers are fat is not the single-architecture app either.
+        fx.set_archs("bot-engine", "arm64 x86_64");
+        assert_eq!(fx.check(&["arm64"]), 1);
+        let _ = fs::remove_dir_all(&fx.dir);
+    }
     #[test]
     fn check_packaged_app_tool_folder_rejects_missing_thin_unentitled_node_and_missing_helper() {
         let dir = std::env::temp_dir().join("check_pkg_tool_folder_test");
@@ -784,75 +1068,59 @@ mod tests {
 
     #[test]
     fn bazel_app_holds_node_rejects_missing_node_wrong_arch_and_bad_helper_hash() {
-        let dir = std::env::temp_dir().join("bazel_app_holds_node_unit_test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-
-        let fake_bin = dir.join("fake_bin");
-        fs::create_dir_all(&fake_bin).unwrap();
-        make_fake_tool(
-            &fake_bin,
-            "lipo",
-            "#!/bin/sh\nif [ \"$(basename \"$2\")\" = \"VitruvianCode\" ]; then echo \"arm64 x86_64\"; else echo \"arm64\"; fi\n",
-        );
-        make_fake_tool(
-            &fake_bin,
-            "codesign",
-            "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>'; fi\nexit 0\n",
-        );
-
-        let nvmrc = dir.join(".nvmrc");
+        let fx = app_fixture("bazel_app_holds_node_unit_test", true);
+        let nvmrc = fx.dir.join(".nvmrc");
         fs::write(&nvmrc, "22.21.1\n").unwrap();
-        let expected_helper = dir.join("expected.mjs");
+        let expected_helper = fx.dir.join("expected.mjs");
         fs::write(&expected_helper, b"expected-bundle-bytes").unwrap();
+        let verify = |fx: &AppFixture| {
+            let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let orig_path = std::env::var("PATH").unwrap_or_default();
+            std::env::set_var("PATH", format!("{}:{}", fx.fake_bin.display(), orig_path));
+            let r = bazel_app_holds_node::verify_unpacked_app(
+                &fx.app,
+                &nvmrc,
+                &expected_helper,
+                &fx.dir,
+            );
+            std::env::set_var("PATH", &orig_path);
+            r
+        };
 
-        let app = dir.join("Vitruvian Code.app");
-        fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
-        let exe = app.join("Contents/MacOS/VitruvianCode");
-        fs::write(&exe, b"fake-app").unwrap();
-        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let missing =
-            bazel_app_holds_node::verify_unpacked_app(&app, &nvmrc, &expected_helper, &dir);
-        assert!(missing.is_err());
-        assert!(missing.unwrap_err().contains("Contents/Helpers/node"));
-
-        fs::create_dir_all(app.join("Contents/Helpers")).unwrap();
-        let node = app.join("Contents/Helpers/node");
-        fs::write(&node, b"fake-node").unwrap();
-        fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let orig_path = std::env::var("PATH").unwrap_or_default();
-        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
-        let bad_arch =
-            bazel_app_holds_node::verify_unpacked_app(&app, &nvmrc, &expected_helper, &dir);
-        assert!(bad_arch.is_err());
-        assert!(bad_arch.unwrap_err().contains("universal architecture"));
-
-        // Fix lipo and make fake node report matching version, then mutate helper bytes.
-        make_fake_tool(&fake_bin, "lipo", "#!/bin/sh\necho \"arm64 x86_64\"\n");
-        make_fake_tool(
-            &app.join("Contents/Helpers"),
-            "node",
-            "#!/bin/sh\necho v22.21.1\n",
+        // 1. A thin Node missing.
+        fx.remove("Contents/Helpers/node-x86_64");
+        let missing = verify(&fx).unwrap_err();
+        assert!(
+            missing.contains("Contents/Helpers/node-x86_64"),
+            "{missing}"
         );
-        fs::create_dir_all(app.join("Contents/Resources/claude-helper")).unwrap();
-        fs::write(
-            app.join("Contents/Resources/claude-helper/claude-helper.mjs"),
-            b"tampered-bundle-bytes",
-        )
-        .unwrap();
 
-        let bad_hash =
-            bazel_app_holds_node::verify_unpacked_app(&app, &nvmrc, &expected_helper, &dir);
-        std::env::set_var("PATH", &orig_path);
+        // 2. The copy for an architecture holds the other one.
+        fx.add_executable("Contents/Helpers/node-x86_64", Some("arm64"));
+        let wrong = verify(&fx).unwrap_err();
+        assert!(
+            wrong.contains("node-x86_64 is built for 'arm64', expected 'x86_64'"),
+            "{wrong}"
+        );
 
-        assert!(bad_hash.is_err());
-        assert!(bad_hash
-            .unwrap_err()
-            .contains("does not match checked-in bundle"));
+        // 3. A single fat `node` in place of the two thin ones.
+        fx.add_executable("Contents/Helpers/node-x86_64", Some("x86_64"));
+        fx.add_executable("Contents/Helpers/node", Some("arm64 x86_64"));
+        let fat = verify(&fx).unwrap_err();
+        assert!(
+            fat.contains("Contents/Helpers/node is in the universal app"),
+            "{fat}"
+        );
+        fx.remove("Contents/Helpers/node");
 
-        let _ = fs::remove_dir_all(&dir);
+        // 4. The Claude helper's bytes differ from the checked-in bundle: the
+        //    Node files pass, then this fails before anything is run.
+        let bad_hash = verify(&fx).unwrap_err();
+        assert!(
+            bad_hash.contains("does not match checked-in bundle"),
+            "{bad_hash}"
+        );
+
+        let _ = fs::remove_dir_all(&fx.dir);
     }
 }

@@ -3135,6 +3135,13 @@ final class EngineHostTests: XCTestCase {
         XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node src/bot.js"))
         XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node /Applications/Vitruvian Code.app/Contents/Helpers/bot-engine"))
         XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-helper --dry-run"))
+        // The universal app runs the thin copy for its architecture.
+        for arch in ["arm64", "x86_64"] {
+            XCTAssertTrue(VitruvianCodeEngine.isBotEngineProcess("/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-\(arch) --dry-run"))
+            XCTAssertTrue(VitruvianCodeEngine.isBotEngineProcess("\"/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-\(arch)\" --dry-run"))
+            XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node /Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-\(arch)"))
+        }
+        XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-ppc64 --dry-run"))
     }
 
     /// Claude on the Agent SDK hides the listed models the installed `claude` is too old for

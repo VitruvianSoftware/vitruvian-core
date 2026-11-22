@@ -337,7 +337,7 @@ sign_app_inside_out() {
 	if [ ! -d "${app}" ]; then
 		fail_error "App bundle not found: ${app}"
 	fi
-	# Everything below compares paths as text (the main executable, Helpers/node),
+	# Everything below compares paths as text (the main executable, the Node helpers),
 	# so spell the app one way: no trailing or doubled slashes, no ./ or ../, no
 	# symlinks.
 	app="$(cd "${app}" && /bin/pwd -P)"
@@ -364,7 +364,12 @@ sign_app_inside_out() {
 		file_desc="$(/usr/bin/file -b "${candidate}" 2>/dev/null || true)"
 		case "${file_desc}" in
 		*Mach-O*)
-			if [ "${candidate}" = "${app}/Contents/Helpers/node" ]; then
+			# Every Node helper gets the JIT entitlements: the single `node` of a
+			# per-architecture app, and the two thin copies (`node-arm64`,
+			# `node-x86_64`) the universal app ships in place of one fat `node`.
+			if [ "${candidate}" = "${app}/Contents/Helpers/node" ] ||
+				[ "${candidate}" = "${app}/Contents/Helpers/node-arm64" ] ||
+				[ "${candidate}" = "${app}/Contents/Helpers/node-x86_64" ]; then
 				echo "    Signing nested Node helper with JIT entitlements: ${candidate}"
 				codesign_leaf "${candidate}" "com.vitruviansoftware.code.node" "${NODE_ENTITLEMENTS}"
 			else
