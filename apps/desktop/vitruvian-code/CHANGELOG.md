@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.41.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.41.1...vitruvian-code-v1.41.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** answer panel events and closes while the main thread is busy ([#5365](https://github.com/VitruvianSoftware/vitruvian-core/issues/5365)) ([907ceda](https://github.com/VitruvianSoftware/vitruvian-core/commit/907cedad571434ebdb92237c905dc6d975d95df8)), closes [#5357](https://github.com/VitruvianSoftware/vitruvian-core/issues/5357)
+* **vitruvian-code:** ship single-architecture helpers so XProtect accepts the universal app ([#5359](https://github.com/VitruvianSoftware/vitruvian-core/issues/5359)) ([6e0d810](https://github.com/VitruvianSoftware/vitruvian-core/commit/6e0d8101c00f357fbbcdac4c1f3cf7116708afd8))
+
 ## [1.41.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.41.0...vitruvian-code-v1.41.1) (2026-11-22)
 
 
