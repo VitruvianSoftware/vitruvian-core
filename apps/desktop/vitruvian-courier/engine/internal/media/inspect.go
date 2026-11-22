@@ -28,6 +28,11 @@ const MaxInspectPixels int64 = 50_000_000
 // MaxInspectDimension is the longest side InspectImage decodes, in pixels: no picture is a strip this long.
 const MaxInspectDimension = 30000
 
+// MaxLinkPreviewPixels is the most pixels a link card's picture may claim: 16 megapixels. Pages and chat networks size
+// these pictures for a card (a typical one is about 1200 x 630), so a bigger one is refused before it is decoded rather
+// than spending the hundreds of megabytes a picture near MaxInspectPixels takes.
+const MaxLinkPreviewPixels int64 = 16_000_000
+
 // ErrImageTooLarge means a picture's header claims more pixels than InspectImage decodes.
 var ErrImageTooLarge = errors.New("image is too large to decode")
 
@@ -100,4 +105,17 @@ func InspectImage(r io.Reader) (Metadata, error) {
 		BlurHash:   EncodeBlurHash(img),
 		IsAnimated: isAnimated,
 	}, nil
+}
+
+// InspectLinkPreviewImage is InspectImage for a link card's picture: it refuses one whose header claims more than
+// MaxLinkPreviewPixels, before anything is allocated for the pixels.
+func InspectLinkPreviewImage(data []byte) (Metadata, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return Metadata{}, err
+	}
+	if int64(cfg.Width)*int64(cfg.Height) > MaxLinkPreviewPixels {
+		return Metadata{}, fmt.Errorf("%w: %d x %d", ErrImageTooLarge, cfg.Width, cfg.Height)
+	}
+	return InspectImage(bytes.NewReader(data))
 }

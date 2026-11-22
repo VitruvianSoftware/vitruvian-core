@@ -4,7 +4,6 @@
 package gchat
 
 import (
-	"bytes"
 	"context"
 	"mime"
 	"net/http"
@@ -157,7 +156,7 @@ func (c *Client) populateLinkPreviewImage(
 		logLinkPreviewImageSkipped(ctx, imageURL, "download")
 		return
 	}
-	meta, err := media.InspectImage(bytes.NewReader(data))
+	meta, err := media.InspectLinkPreviewImage(data)
 	if err != nil {
 		logLinkPreviewImageSkipped(ctx, imageURL, "not_image")
 		return

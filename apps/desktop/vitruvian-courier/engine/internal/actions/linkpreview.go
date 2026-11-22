@@ -4,7 +4,6 @@
 package actions
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -321,7 +320,7 @@ func (a *Actions) populatePreviewImage(ctx context.Context, client *http.Client,
 	if len(data) == 0 || len(data) > maxLinkPreviewImageBytes {
 		return errors.New("the picture is empty or over the size limit")
 	}
-	meta, err := media.InspectImage(bytes.NewReader(data))
+	meta, err := media.InspectLinkPreviewImage(data)
 	if err != nil {
 		return err
 	}
