@@ -1051,8 +1051,14 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		params["event_id"] = w.events[0]
 	case "room.features":
 		w.can(t, everything())
-		_, err := w.s.SetState(ctx, w.room, "com.beeper.disappearing_timer", "", json.RawMessage(`{"type":"after_send","timer":604800000}`))
-		require.NoError(t, err)
+		// Through the bridge, as the app does, not straight into the store: the bridge keeps the chat's timer in memory
+		// and writes it back when it learns the network can now set one, which would put "off" over a stored-only value.
+		require.NoError(t, w.deps.Actions.SetDisappearing(ctx, w.room, "after_send", 7*24*time.Hour))
+		received(t, w.wa.Timers)
+		require.Eventually(t, func() bool {
+			raw, ok, err := w.s.GetState(ctx, w.room, "com.beeper.disappearing_timer", "")
+			return err == nil && ok && strings.Contains(string(raw), `"timer":604800000`)
+		}, 10*time.Second, 10*time.Millisecond, "the bridge never stored the week-long timer")
 		params["room_id"] = w.room
 	case "room.members":
 		require.NoError(t, w.s.SetMember(ctx, w.room, "@whatsapp_ana:courier.local", json.RawMessage(`{"membership":"join","displayname":"Ana Example"}`)))

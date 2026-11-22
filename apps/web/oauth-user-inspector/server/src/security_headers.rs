@@ -20,7 +20,15 @@
 // SOFTWARE.
 
 /// Content-Security-Policy for the OAuth User Inspector SPA.
-pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+///
+/// The design system's stylesheet (`frontend/design-system/tokens.css`) loads
+/// IBM Plex Sans and JetBrains Mono from Google Fonts: the stylesheet comes
+/// from fonts.googleapis.com and the font files from fonts.gstatic.com. Both
+/// hosts are allowed here, and nothing else is. Without them the browser
+/// blocks the fonts and the site falls back to system fonts. The
+/// `csp_allows_every_stylesheet_import` test fails if the stylesheet imports
+/// from a host this policy does not allow.
+pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
 
 pub const STRICT_TRANSPORT_SECURITY: &str = "max-age=31536000; includeSubDomains";
 pub const X_CONTENT_TYPE_OPTIONS: &str = "nosniff";

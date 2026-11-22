@@ -61,12 +61,12 @@ on:
       - '!apps/mcp/vitruvian-slack-mcp/rs/**/*.md'
       - '!apps/mcp/vitruvian-slack-mcp/rs/rustfmt.toml'
       # The shared token-checking crate, built in as a named context.
-      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
-      - 'packages/rust/vitruvian-mcp-auth/src/**'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
-      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
-      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - 'packages/mcp-auth/Cargo.toml'
+      - 'packages/mcp-auth/src/**'
+      - '!packages/mcp-auth/**/BUILD'
+      - '!packages/mcp-auth/**/BUILD.bazel'
+      - '!packages/mcp-auth/**/OWNERS'
+      - '!packages/mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-slack-mcp-image.yaml'
   # PR runs BUILD AND VERIFY BUT DO NOT PUSH. This is the only place the image
   # is exercised before it can reach a cluster, and it is deliberately not just
@@ -93,12 +93,12 @@ on:
       - '!apps/mcp/vitruvian-slack-mcp/rs/**/*.md'
       - '!apps/mcp/vitruvian-slack-mcp/rs/rustfmt.toml'
       # The shared token-checking crate, built in as a named context.
-      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
-      - 'packages/rust/vitruvian-mcp-auth/src/**'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
-      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
-      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - 'packages/mcp-auth/Cargo.toml'
+      - 'packages/mcp-auth/src/**'
+      - '!packages/mcp-auth/**/BUILD'
+      - '!packages/mcp-auth/**/BUILD.bazel'
+      - '!packages/mcp-auth/**/OWNERS'
+      - '!packages/mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-slack-mcp-image.yaml'
 
 permissions:
@@ -147,7 +147,7 @@ jobs:
             --platform linux/amd64 \
             --cache-from "type=registry,ref=${IMAGE}:buildcache" \
             --tag vitruvian-slack-mcp:verify \
-            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+            --build-context mcpauth=packages/mcp-auth \
             apps/mcp/vitruvian-slack-mcp/
 
       # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
@@ -209,7 +209,7 @@ jobs:
             --platform "${PLATFORMS}" \
             --sbom=true \
             --cache-from "type=registry,ref=${IMAGE}:buildcache" \
-            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+            --build-context mcpauth=packages/mcp-auth \
             apps/mcp/vitruvian-slack-mcp/
 
       # Everything above runs on pull_request too. Everything below is the
@@ -238,7 +238,7 @@ jobs:
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
-            --build-context mcpauth=packages/rust/vitruvian-mcp-auth \
+            --build-context mcpauth=packages/mcp-auth \
             apps/mcp/vitruvian-slack-mcp/
           # Read the digest back FROM THE REGISTRY rather than from buildx's
           # --metadata-file, whose shape varies by driver. This @sha256 ref is

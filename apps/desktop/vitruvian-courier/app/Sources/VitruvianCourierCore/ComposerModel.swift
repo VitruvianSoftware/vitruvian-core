@@ -48,6 +48,25 @@ public struct ComposerAttachment: Equatable, Identifiable, Sendable {
     }
 }
 
+/// What typed markdown became when its closing marker was typed, so Undo can put the markers back: the text and ranges
+/// as they were (and the caret), and as they are now. It undoes only while the box still holds `after`.
+public struct MarkdownConversionRecord: Equatable, Sendable {
+    public let serial: Int
+    public let beforeText: String
+    public let beforeEntities: [TextEntity]
+    public let beforeCaret: Int
+    public let afterText: String
+    public let afterEntities: [TextEntity]
+}
+
+/// Where the GIF picker's online results are.
+public enum GIFResultsState: Equatable, Sendable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+}
+
 /// Something the person should be told about the composer, under it.
 public enum ComposerNotice: Equatable, Sendable {
     /// Adding the file would take the attachments past 90 MB.
@@ -311,6 +330,8 @@ public final class ComposerModel: ObservableObject {
     }
     /// The formatting of `text`. Kept with the in-memory draft; room.setDraft still keeps the text only.
     @Published public var entities: [TextEntity] = []
+    /// The last typed markdown that was turned into formatting, while Undo can still put its markers back.
+    @Published public private(set) var lastMarkdownConversion: MarkdownConversionRecord?
     /// A key with no selection: applies to what is typed next, there.
     @Published public private(set) var pendingKinds: Set<TextEntity.Kind> = []
     @Published public private(set) var mode: ComposerMode = .new
@@ -358,11 +379,24 @@ public final class ComposerModel: ObservableObject {
     public var onSummarizeChat: @MainActor () -> Void = {}
     /// Opens Settings ▸ AI.
     public var onOpenAISettings: @MainActor () -> Void = {}
+    /// The emoji picker's popover, open from the emoji button.
     @Published public var isEmojiPickerPresented: Bool = false
+    /// What the emoji picker remembers: how often each emoji was chosen, and the skin tone.
+    public var emojiUsage = EmojiUsageStore()
+    /// The skin tone the emoji picker puts on hands and people. Kept across launches.
+    @Published public var emojiSkinTone: EmojiSkinTone = .none {
+        didSet { if emojiSkinTone != oldValue { emojiUsage.skinTone = emojiSkinTone } }
+    }
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
     @Published public var isToolRowOpen: Bool = false
     @Published public var gifSearchQuery: String = ""
+    /// What the online GIF search last found for `gifSearchQuery`: trending GIFs with it empty. Empty while search is off.
+    @Published public private(set) var gifResults: [GIFCandidate] = []
+    @Published public private(set) var gifResultsState: GIFResultsState = .idle
+    /// The online GIF being downloaded to be attached, so its tile can say so.
+    @Published public private(set) var downloadingGIFID: String?
+    private var gifResultsSerial = 0
     /// A GIF staged in the composer when `preferences.autoSendGIFs == false`.
     @Published public var pendingGIF: StickerItemWire?
     /// My held (queued) messages in the open chat, newest last.
@@ -613,6 +647,7 @@ public final class ComposerModel: ObservableObject {
         self.now = now
         self.voiceRecorder = voiceRecorder ?? VoiceRecorderModel()
         self.talkToType = talkToType ?? TalkToTypeModel()
+        self.emojiSkinTone = emojiUsage.skinTone
         self.talkToType.onInsertText = { [weak self] spoken in
             self?.insertDictatedText(spoken)
         }
@@ -745,6 +780,10 @@ public final class ComposerModel: ObservableObject {
             dismissEmojiAutocomplete()
             return true
         }
+        if isEmojiPickerPresented {
+            isEmojiPickerPresented = false
+            return true
+        }
         if isStickerPickerPresented {
             isStickerPickerPresented = false
             return true
@@ -827,7 +866,8 @@ public final class ComposerModel: ObservableObject {
         network = ""
         otherPerson = nil
         if let roomID {
-            if !unknownDrafts.contains(roomID), text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
+            let body = Self.draftText(text, entities)
+            if !unknownDrafts.contains(roomID), body != (savedTexts[roomID] ?? "") { saveDraft(body, in: roomID) }
             drafts[roomID] = currentContents.isEmpty ? nil : currentContents
         }
         draftToken += 1 // a wait for the chat left behind saves nothing
@@ -838,7 +878,8 @@ public final class ComposerModel: ObservableObject {
         if let room, draft.text.isEmpty {
             if let kept = savedTexts[room] ?? savedDraft(room) {
                 savedTexts[room] = kept
-                setContents(kept, [])
+                let restored = Self.restoredDraft(kept)
+                setContents(restored.text, restored.entities)
             } else {
                 // Not in the rows loaded: look it up, and save nothing for it until the answer says what it is.
                 setContents("", [])
@@ -923,8 +964,9 @@ public final class ComposerModel: ObservableObject {
             var open = openContents
             if open.text.isEmpty {
                 openingChat = true
-                open.text = kept
-                open.entities = []
+                let restored = Self.restoredDraft(kept)
+                open.text = restored.text
+                open.entities = restored.entities
                 openContents = open
                 openingChat = false
             } else if !kept.isEmpty {
@@ -941,7 +983,21 @@ public final class ComposerModel: ObservableObject {
     }
 
     /// The text the chat's draft is: while editing, what was in the composer before, never the edit.
-    private var draftBody: String { isEditing ? stash.text : text }
+    private var draftBody: String {
+        isEditing ? Self.draftText(stash.text, stash.entities) : Self.draftText(text, entities)
+    }
+
+    /// What the engine keeps of a draft (text only): the styles written as markers, which open as styles again
+    /// (`restoredDraft`). A chat network's own formatting, a link or a mention is plain in a saved draft, as before.
+    private static func draftText(_ text: String, _ entities: [TextEntity]) -> String {
+        MarkdownConverter.markdown(text: text, entities: entities)
+    }
+
+    /// A draft the engine kept, with its markers turned back into styles and its escapes (`\*` for a `*` that was left
+    /// as typed) taken out.
+    private static func restoredDraft(_ kept: String) -> (text: String, entities: [TextEntity]) {
+        MarkdownConverter.restoredDraft(kept)
+    }
 
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
     private func draftTextChanged() {
@@ -974,12 +1030,13 @@ public final class ComposerModel: ObservableObject {
     /// The text view's edit: `range` of the old text was replaced by `length` UTF-16 units, giving `text`. The ranges
     /// follow it (EntityEditing.replacing); typed where a formatting key was pressed with no selection, it takes that
     /// formatting; and "@" or ";" with letters at the caret is looked up.
-    public func textChanged(to text: String, replacing range: NSRange, with length: Int) {
+    /// `composing` is an input method still composing text (the view has marked text): nothing converts until it commits.
+    public func textChanged(to text: String, replacing range: NSRange, with length: Int, composing: Bool = false) {
         guard !isLocked else { return }
         settingContents = true
         self.text = text
         settingContents = false
-        applyEdit(range: range, length: length)
+        applyEdit(range: range, length: length, composing: composing)
         typingChanged()
     }
 
@@ -1017,6 +1074,24 @@ public final class ComposerModel: ObservableObject {
             return
         }
         entities = EntityEditing.toggle(kind, in: range, of: string, entities: entities)
+    }
+
+    /// Undo right after typed markdown became formatting: the literal markers come back. Does nothing once the box
+    /// holds anything but what the conversion made. True when it put them back.
+    @discardableResult
+    public func undoMarkdownConversion(_ record: MarkdownConversionRecord) -> Bool {
+        guard !isLocked, text == record.afterText, entities == record.afterEntities else { return false }
+        settingContents = true
+        text = record.beforeText
+        settingContents = false
+        entities = record.beforeEntities
+        pendingKinds = []
+        selection = NSRange(location: record.beforeCaret, length: 0)
+        caretSerial += 1
+        caretRequest = CaretRequest(location: record.beforeCaret, serial: caretSerial)
+        lastMarkdownConversion = nil
+        updateQueries(caret: record.beforeCaret)
+        return true
     }
 
     /// A formatting key, or the Message menu's item, on `range`: the link key asks for the link dialog, the others
@@ -1248,7 +1323,7 @@ public final class ComposerModel: ObservableObject {
         draftTextChanged()
     }
 
-    private func applyEdit(range: NSRange, length: Int) {
+    private func applyEdit(range: NSRange, length: Int, composing: Bool = false) {
         dismissedEmojiRange = nil
         var updated = EntityEditing.replacing(entities, range: range, with: length)
         let caret = range.location + length
@@ -1271,6 +1346,7 @@ public final class ComposerModel: ObservableObject {
             && preEditString.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n")
         var currentEntities = EntityEditing.fitted(updated, to: preEditString)
         var effectiveCaret = caret
+        var replacedEmoticon = false
 
         if !openingChat,
            length > 0,
@@ -1281,6 +1357,7 @@ public final class ComposerModel: ObservableObject {
                !currentEntities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, match.range) }) {
                 let replaced = preEditString.replacingCharacters(in: match.range, with: match.replacement)
                 let glyphLength = (match.replacement as NSString).length
+                replacedEmoticon = true
                 settingContents = true
                 text = replaced
                 settingContents = false
@@ -1298,6 +1375,30 @@ public final class ComposerModel: ObservableObject {
                 caretSerial += 1
                 caretRequest = CaretRequest(location: effectiveCaret, serial: caretSerial)
             }
+        }
+
+        // `**bold**`, `_italic_`, `~~strike~~` and `code`, just closed or pasted, become the formatting itself.
+        if !openingChat, !composing, length > 0, !replacedEmoticon, effectiveCaret <= (text as NSString).length,
+           let converted = MarkdownConverter.convert(
+               text: text, entities: currentEntities, inserted: NSRange(location: range.location, length: length)
+           ) {
+            let record = MarkdownConversionRecord(
+                serial: caretSerial + 1,
+                beforeText: text,
+                beforeEntities: currentEntities,
+                beforeCaret: effectiveCaret,
+                afterText: converted.text,
+                afterEntities: converted.entities
+            )
+            settingContents = true
+            text = converted.text
+            settingContents = false
+            currentEntities = converted.entities
+            effectiveCaret = converted.map(effectiveCaret)
+            pendingKinds = []
+            caretSerial += 1
+            caretRequest = CaretRequest(location: effectiveCaret, serial: caretSerial)
+            lastMarkdownConversion = record
         }
 
         entities = currentEntities
@@ -2001,6 +2102,120 @@ public final class ComposerModel: ObservableObject {
         }
         isGIFPickerPresented = true
         return true
+    }
+
+    /// Opens or closes the emoji picker, closing the other pickers.
+    public func toggleEmojiPicker() {
+        guard isEmojiPickerPresented || (!isLocked && roomID != nil) else { return }
+        if isEmojiPickerPresented {
+            isEmojiPickerPresented = false
+            return
+        }
+        isToolRowOpen = false
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        dismissEmojiAutocomplete()
+        isEmojiPickerPresented = true
+    }
+
+    /// Puts `glyph` where the caret is (over the selection, if there is one) and counts the use for "Frequently
+    /// used". The picker closes unless `keepOpen`, so several can be added in a row.
+    public func insertEmoji(_ glyph: String, keepOpen: Bool = false) {
+        guard !isLocked, !glyph.isEmpty else { return }
+        let string = text as NSString
+        let target: NSRange
+        if selection.location >= 0, selection.location + selection.length <= string.length {
+            target = selection
+        } else {
+            target = NSRange(location: string.length, length: 0)
+        }
+        replaceText(in: target, with: glyph)
+        emojiUsage.record(glyph)
+        if !keepOpen { isEmojiPickerPresented = false }
+    }
+
+    /// Whether Courier may ask the GIF service for anything: "Search GIFs online" is on and this build has a key.
+    public var canSearchGIFsOnline: Bool {
+        GIFSearchPolicy.mayRequest(
+            searchGIFsOnline: preferences?.searchGIFsOnline ?? false,
+            providerAvailable: gifProvider.isAvailable
+        )
+    }
+
+    /// Fills `gifResults` for `gifSearchQuery`: the trending GIFs with it empty, else what it finds. Asks nothing, and
+    /// leaves the results empty, while `canSearchGIFsOnline` is false. A slow answer for a query that has since
+    /// changed is dropped.
+    public func refreshGIFResults() async {
+        guard canSearchGIFsOnline else {
+            gifResults = []
+            gifResultsState = .idle
+            return
+        }
+        gifResultsSerial += 1
+        let serial = gifResultsSerial
+        let query = gifSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let provider = gifProvider
+        gifResultsState = .loading
+        do {
+            let found = query.isEmpty ? try await provider.trending() : try await provider.search(query)
+            guard serial == gifResultsSerial else { return }
+            gifResults = found
+            gifResultsState = .loaded
+        } catch is CancellationError {
+            if serial == gifResultsSerial { gifResultsState = .idle }
+        } catch {
+            guard serial == gifResultsSerial else { return }
+            if (error as? URLError)?.code == .cancelled {
+                gifResultsState = .idle
+                return
+            }
+            gifResults = []
+            gifResultsState = .failed(String(localized: "Couldn’t load GIFs. Check your connection and try again."))
+        }
+    }
+
+    /// The small animated preview of an online GIF, downloaded for its tile; nil when search is off or it has none.
+    public func gifPreviewFile(for candidate: GIFCandidate) async -> URL? {
+        guard canSearchGIFsOnline else { return nil }
+        return try? await gifProvider.fetchPreview(for: candidate)
+    }
+
+    /// Chooses an online GIF: downloads the file and attaches it to the draft as `selectGIF` does for any GIF (it is
+    /// sent at once only when "Automatically send GIFs after selection" is on).
+    public func selectGIFCandidate(_ candidate: GIFCandidate) async {
+        guard !isLocked, roomID != nil, sender != nil, canSearchGIFsOnline else { return }
+        guard canSendGIF else {
+            await selectGIF(StickerItemWire(id: "klipy:\(candidate.id)", packID: "online_gif", name: candidate.title,
+                                            mediaURL: candidate.mediaURL, mimeType: candidate.mimeType, usage: ["gif"]))
+            return
+        }
+        downloadingGIFID = candidate.id
+        defer { downloadingGIFID = nil }
+        // The MP4 loop only where the chat's network says it takes MP4 as a GIF; everywhere else, the GIF.
+        let asMP4 = candidate.mp4URL != nil && Self.takesMP4(features)
+        let file: URL
+        do {
+            file = try await gifProvider.fetchFile(for: candidate, asMP4: asMP4)
+        } catch {
+            notices = [.sendFailed(reason: String(localized: "Couldn’t download that GIF. Check your connection and try again."))]
+            return
+        }
+        guard !isLocked, roomID != nil else { return }
+        await selectGIF(StickerItemWire(
+            id: "klipy:\(candidate.id)",
+            packID: "online_gif",
+            name: candidate.title,
+            mediaURL: file.path,
+            mimeType: asMP4 ? "video/mp4" : candidate.mimeType,
+            width: candidate.width,
+            height: candidate.height,
+            usage: ["gif"]
+        ))
+    }
+
+    /// Whether the chat's network lists `video/mp4` among the types it takes for a GIF.
+    static func takesMP4(_ features: ChatFeatures) -> Bool {
+        features.gifFeatures?.mimeTypes?.contains { $0.lowercased() == "video/mp4" } ?? false
     }
 
     /// Clears a staged pending GIF from the composer.

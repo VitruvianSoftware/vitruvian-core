@@ -2107,9 +2107,9 @@ var (
             "!apps/mcp/vitruvian-slack-mcp/rs/**/OWNERS",
             "!apps/mcp/vitruvian-slack-mcp/rs/**/*.md",
             "!apps/mcp/vitruvian-slack-mcp/rs/rustfmt.toml",
-            "packages/rust/vitruvian-mcp-auth/Cargo.toml",
-            "packages/rust/vitruvian-mcp-auth/src/**",
-            "!packages/rust/vitruvian-mcp-auth/**/*.md",
+            "packages/mcp-auth/Cargo.toml",
+            "packages/mcp-auth/src/**",
+            "!packages/mcp-auth/**/*.md",
             ".github/workflows/vitruvian-slack-mcp-image.yaml",
         ]
         .iter()
@@ -2124,10 +2124,7 @@ var (
             &pats,
             "apps/mcp/vitruvian-slack-mcp/Dockerfile"
         ));
-        assert!(workflow_paths_match(
-            &pats,
-            "packages/rust/vitruvian-mcp-auth/src/lib.rs"
-        ));
+        assert!(workflow_paths_match(&pats, "packages/mcp-auth/src/lib.rs"));
         assert!(workflow_paths_match(
             &pats,
             ".github/workflows/vitruvian-slack-mcp-image.yaml"
@@ -2137,10 +2134,7 @@ var (
             &pats,
             "apps/mcp/vitruvian-slack-mcp/BUILD"
         ));
-        assert!(!workflow_paths_match(
-            &pats,
-            "packages/rust/vitruvian-mcp-auth/BUILD"
-        ));
+        assert!(!workflow_paths_match(&pats, "packages/mcp-auth/BUILD"));
         assert!(!workflow_paths_match(
             &pats,
             "apps/mcp/vitruvian-slack-mcp/deploy/chart/values.yaml"
@@ -2164,12 +2158,12 @@ on:
     branches: [main]
     paths:
       - 'apps/mcp/vitruvian-slack-mcp/**'
-      - 'packages/rust/vitruvian-mcp-auth/**'
+      - 'packages/mcp-auth/**'
       - '.github/workflows/vitruvian-slack-mcp-image.yaml'
   pull_request:
     paths:
       - 'apps/mcp/vitruvian-slack-mcp/**'
-      - 'packages/rust/vitruvian-mcp-auth/**'
+      - 'packages/mcp-auth/**'
       - '.github/workflows/vitruvian-slack-mcp-image.yaml'
 "#;
         let probs =
@@ -2179,10 +2173,7 @@ on:
             found.contains(&"apps/mcp/vitruvian-slack-mcp/BUILD"),
             "{found:?}"
         );
-        assert!(
-            found.contains(&"packages/rust/vitruvian-mcp-auth/BUILD"),
-            "{found:?}"
-        );
+        assert!(found.contains(&"packages/mcp-auth/BUILD"), "{found:?}");
         assert!(
             found.contains(&"apps/mcp/vitruvian-slack-mcp/deploy/chart/Chart.yaml"),
             "{found:?}"
@@ -2229,12 +2220,12 @@ on:
       - '!apps/mcp/vitruvian-slack-mcp/rs/deploy/**'
       - '!apps/mcp/vitruvian-slack-mcp/rs/mkdocs.yml'
       - '!apps/mcp/vitruvian-slack-mcp/rs/**/*.md'
-      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
-      - 'packages/rust/vitruvian-mcp-auth/src/**'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
-      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
-      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - 'packages/mcp-auth/Cargo.toml'
+      - 'packages/mcp-auth/src/**'
+      - '!packages/mcp-auth/**/BUILD'
+      - '!packages/mcp-auth/**/BUILD.bazel'
+      - '!packages/mcp-auth/**/OWNERS'
+      - '!packages/mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-slack-mcp-image.yaml'
   pull_request:
     paths:
@@ -2247,12 +2238,12 @@ on:
       - '!apps/mcp/vitruvian-slack-mcp/rs/deploy/**'
       - '!apps/mcp/vitruvian-slack-mcp/rs/mkdocs.yml'
       - '!apps/mcp/vitruvian-slack-mcp/rs/**/*.md'
-      - 'packages/rust/vitruvian-mcp-auth/Cargo.toml'
-      - 'packages/rust/vitruvian-mcp-auth/src/**'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD'
-      - '!packages/rust/vitruvian-mcp-auth/**/BUILD.bazel'
-      - '!packages/rust/vitruvian-mcp-auth/**/OWNERS'
-      - '!packages/rust/vitruvian-mcp-auth/**/*.md'
+      - 'packages/mcp-auth/Cargo.toml'
+      - 'packages/mcp-auth/src/**'
+      - '!packages/mcp-auth/**/BUILD'
+      - '!packages/mcp-auth/**/BUILD.bazel'
+      - '!packages/mcp-auth/**/OWNERS'
+      - '!packages/mcp-auth/**/*.md'
       - '.github/workflows/vitruvian-slack-mcp-image.yaml'
 "#;
         assert_eq!(
