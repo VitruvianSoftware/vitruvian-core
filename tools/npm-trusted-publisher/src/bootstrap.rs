@@ -510,6 +510,9 @@ mod tests {
         let c = publish_command("npm");
         let args: Vec<_> = c.get_args().map(|a| a.to_str().unwrap()).collect();
         assert_eq!(c.get_program(), "npm");
-        assert_eq!(args, ["publish", "--access", "public", "--provenance=false"]);
+        assert_eq!(
+            args,
+            ["publish", "--access", "public", "--provenance=false"]
+        );
     }
 }
