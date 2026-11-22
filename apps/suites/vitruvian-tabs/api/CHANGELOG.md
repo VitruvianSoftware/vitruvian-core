@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tabs-api-v0.1.34...vitruvian-tabs-api-v0.1.35) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update url crate to 2.5.9 for RUSTSEC-2026-0592 ([#5377](https://github.com/VitruvianSoftware/vitruvian-core/issues/5377)) ([4bb66d8](https://github.com/VitruvianSoftware/vitruvian-core/commit/4bb66d886771125b7447a6860941871ce4b389dd))
+
 ## [0.1.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tabs-api-v0.1.33...vitruvian-tabs-api-v0.1.34) (2026-11-14)
 
 
