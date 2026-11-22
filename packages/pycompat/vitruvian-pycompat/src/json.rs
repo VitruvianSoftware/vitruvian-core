@@ -243,7 +243,25 @@ fn locate(chars: &[char], mut e: JsonError) -> JsonError {
     e
 }
 
+/// Options for [`loads_with`].
+///
+/// `Default` (`None`) imposes no nesting limit, matching [`loads`].
+/// Setting `max_depth: Some(n)` allows up to `n` nested objects/arrays and
+/// fails on the `(n + 1)`-th opening `{` or `[` with
+/// `"maximum recursion depth exceeded"`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct LoadOptions {
+    pub max_depth: Option<usize>,
+}
+
+/// Parse JSON with Python's `json.loads` semantics and no nesting limit.
 pub fn loads(text: &str) -> Result<Value, JsonError> {
+    loads_with(text, &LoadOptions::default())
+}
+
+/// Parse JSON with Python's `json.loads` semantics and the given
+/// [`LoadOptions`].
+pub fn loads_with(text: &str, opts: &LoadOptions) -> Result<Value, JsonError> {
     let chars: Vec<char> = text.chars().collect();
     if text.starts_with('\u{feff}') {
         let msg = "Unexpected UTF-8 BOM (decode using utf-8-sig)";
@@ -259,7 +277,12 @@ pub fn loads(text: &str) -> Result<Value, JsonError> {
             },
         ));
     }
-    let mut p = Parser { s: &chars, i: 0 };
+    let mut p = Parser {
+        s: &chars,
+        i: 0,
+        max_depth: opts.max_depth,
+        depth: 0,
+    };
     let parsed = (|| {
         p.ws();
         let v = p.value()?;
@@ -275,6 +298,8 @@ pub fn loads(text: &str) -> Result<Value, JsonError> {
 struct Parser<'a> {
     s: &'a [char],
     i: usize,
+    max_depth: Option<usize>,
+    depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -291,6 +316,21 @@ impl<'a> Parser<'a> {
             py_msg: py_msg.into(),
             py_pos,
         }
+    }
+
+    fn enter(&mut self) -> Result<(), JsonError> {
+        if let Some(max) = self.max_depth {
+            if self.depth >= max {
+                return Err(self.err_with_py(
+                    "maximum recursion depth exceeded",
+                    self.i,
+                    "maximum recursion depth exceeded",
+                    self.i,
+                ));
+            }
+        }
+        self.depth += 1;
+        Ok(())
     }
 
     fn peek(&self) -> Option<char> {
@@ -315,8 +355,18 @@ impl<'a> Parser<'a> {
 
     fn value(&mut self) -> Result<Value, JsonError> {
         match self.peek() {
-            Some('{') => self.object(),
-            Some('[') => self.array(),
+            Some('{') => {
+                self.enter()?;
+                let r = self.object();
+                self.depth -= 1;
+                r
+            }
+            Some('[') => {
+                self.enter()?;
+                let r = self.array();
+                self.depth -= 1;
+                r
+            }
             Some('"') => {
                 self.i += 1;
                 Ok(Value::Str(self.string()?))
@@ -1146,5 +1196,177 @@ mod tests {
         let pinned = r#"{"z": "last", "a": [null, true, false, 123456789012345678901234567890, 1.0, -0.0, 1e+16, 1.5e-07, NaN, Infinity, -Infinity, "\u00e9\ud83d\ude00\t\n\"\\", {}, []]}"#;
         assert_eq!(dumps(&v), pinned);
         assert_eq!(dumps_with(&v, &DumpOptions::default()), pinned);
+    }
+
+    #[test]
+    fn loads_with_max_depth_boundary_900() {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let opts = LoadOptions {
+                    max_depth: Some(900),
+                };
+                let ok_empty = format!("{}{}", "[".repeat(900), "]".repeat(900));
+                assert!(loads_with(&ok_empty, &opts).is_ok());
+
+                let ok_scalar = format!("{}1{}", "[".repeat(900), "]".repeat(900));
+                assert!(loads_with(&ok_scalar, &opts).is_ok());
+
+                let ok_siblings = format!("{}[],{}{}", "[".repeat(899), "{}", "]".repeat(899));
+                assert!(loads_with(&ok_siblings, &opts).is_ok());
+
+                let fail_unclosed = "[".repeat(901);
+                let err = loads_with(&fail_unclosed, &opts).unwrap_err();
+                assert_eq!(
+                    err.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 901 (char 900)"
+                );
+                assert_eq!(
+                    err.to_string(),
+                    "maximum recursion depth exceeded (char 900)"
+                );
+                assert_eq!((err.line, err.col, err.pos), (1, 901, 900));
+
+                let fail_empty = format!("{}{}", "[".repeat(901), "]".repeat(901));
+                let err_closed = loads_with(&fail_empty, &opts).unwrap_err();
+                assert_eq!(
+                    err_closed.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 901 (char 900)"
+                );
+
+                let zero_opts = LoadOptions { max_depth: Some(0) };
+                assert!(loads_with("1", &zero_opts).is_ok());
+                assert!(loads_with(r#""hi""#, &zero_opts).is_ok());
+                assert!(loads_with("null", &zero_opts).is_ok());
+                for container in ["[]", "{}"] {
+                    let err_zero = loads_with(container, &zero_opts).unwrap_err();
+                    assert_eq!(
+                        err_zero.python_str(),
+                        "maximum recursion depth exceeded: line 1 column 1 (char 0)"
+                    );
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn loads_with_max_depth_mixed_containers() {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                fn mixed_chain(depth: usize, start_obj: bool) -> String {
+                    let mut out = String::new();
+                    for k in 0..depth {
+                        if (k % 2 == 0) == start_obj {
+                            out.push_str(r#"{"a":"#);
+                        } else {
+                            out.push('[');
+                        }
+                    }
+                    out.push('0');
+                    for k in (0..depth).rev() {
+                        if (k % 2 == 0) == start_obj {
+                            out.push('}');
+                        } else {
+                            out.push(']');
+                        }
+                    }
+                    out
+                }
+
+                let opts = LoadOptions {
+                    max_depth: Some(900),
+                };
+                for start_obj in [false, true] {
+                    let ok_doc = mixed_chain(900, start_obj);
+                    assert!(loads_with(&ok_doc, &opts).is_ok());
+
+                    let fail_doc = mixed_chain(901, start_obj);
+                    let err = loads_with(&fail_doc, &opts).unwrap_err();
+                    assert_eq!(err.msg, "maximum recursion depth exceeded");
+                }
+
+                let err_small =
+                    loads_with(r#"[{"a":{}}]"#, &LoadOptions { max_depth: Some(2) }).unwrap_err();
+                assert_eq!(
+                    err_small.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 7 (char 6)"
+                );
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn loads_with_max_depth_error_line_and_column() {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let doc = format!("{}\n[", "[".repeat(900));
+                let err = loads_with(
+                    &doc,
+                    &LoadOptions {
+                        max_depth: Some(900),
+                    },
+                )
+                .unwrap_err();
+                assert_eq!(
+                    err.python_str(),
+                    "maximum recursion depth exceeded: line 2 column 1 (char 901)"
+                );
+                assert_eq!((err.line, err.col, err.pos), (2, 1, 901));
+
+                let mb_err = loads_with("{\"é\":\n  [[]]}", &LoadOptions { max_depth: Some(2) })
+                    .unwrap_err();
+                assert_eq!(
+                    mb_err.python_str(),
+                    "maximum recursion depth exceeded: line 2 column 4 (char 9)"
+                );
+                assert_eq!((mb_err.line, mb_err.col, mb_err.pos), (2, 4, 9));
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn loads_default_accepts_depth_5000() {
+        assert_eq!(LoadOptions::default(), LoadOptions { max_depth: None });
+        // Unoptimized test threads default to a 2 MiB stack; give the recursive
+        // parser and Value::drop enough stack to walk 5,000 levels.
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let doc = format!("{}{}", "[".repeat(5_000), "]".repeat(5_000));
+                let v = loads(&doc);
+                assert!(matches!(v, Ok(Value::Arr(_))));
+                drop(v);
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn existing_display_python_str_and_dumps_pinned() {
+        let e1 = loads("[1 2]").unwrap_err();
+        assert_eq!(e1.to_string(), "Expecting ',' delimiter (char 3)");
+        assert_eq!(
+            e1.python_str(),
+            "Expecting ',' delimiter: line 1 column 4 (char 3)"
+        );
+
+        let e2 = loads("").unwrap_err();
+        assert_eq!(e2.to_string(), "Expecting value (char 0)");
+        assert_eq!(e2.python_str(), "Expecting value: line 1 column 1 (char 0)");
+
+        let e3 = loads(r#""\x""#).unwrap_err();
+        assert_eq!(e3.to_string(), "Invalid \\escape (char 2)");
+        assert_eq!(
+            e3.python_str(),
+            "Invalid \\escape: line 1 column 2 (char 1)"
+        );
+
+        let v = loads(r#"{"b": [1, 2.0, "é"], "a": null}"#).unwrap();
+        assert_eq!(dumps(&v), r#"{"b": [1, 2.0, "\u00e9"], "a": null}"#);
     }
 }
