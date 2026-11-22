@@ -59,10 +59,12 @@ type Client struct {
 	prewarmedUsers map[networkid.UserID]struct{}
 	// ghostMu serializes every bridgev2 ghost access we cause: QueueRemoteEvent
 	// runs synchronously, and bridgev2 shares ghosts across portals unlocked.
-	ghostMu            sync.Mutex
-	userInfoCache      map[networkid.UserID]*bridgev2.UserInfo
-	prewarmWG          sync.WaitGroup
-	mediaSem           chan struct{}
+	ghostMu       sync.Mutex
+	userInfoCache map[networkid.UserID]*bridgev2.UserInfo
+	prewarmWG     sync.WaitGroup
+	mediaSem      chan struct{}
+	// mediaFFI overrides ensureFFIClient for media downloads in tests so the production download wiring runs.
+	mediaFFI           ffiMediaDownloader
 	initialSyncDone    bool
 	dispatchedMsgIDs   map[string]struct{}
 	dispatchedMsgOrder []string

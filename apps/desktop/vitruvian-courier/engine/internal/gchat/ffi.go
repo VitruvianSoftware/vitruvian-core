@@ -20,6 +20,7 @@ static inline GChatStatus call_gchat_start_stream(GChatClient* client, uintptr_t
 import "C"
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -201,8 +202,32 @@ func (c *FFIClient) UploadMedia(groupID, filename, contentType string, data []by
 	return takeByteSlice(protoOut), nil
 }
 
+type mediaDownloadRequest struct {
+	Kind            string `json:"kind"`
+	AttachmentToken string `json:"attachment_token,omitempty"`
+	ContentType     string `json:"content_type,omitempty"`
+	URL             string `json:"url,omitempty"`
+	ExternalEnabled bool   `json:"external_enabled,omitempty"`
+	MaxBytes        int    `json:"max_bytes,omitempty"`
+	TimeoutMS       int64  `json:"timeout_ms,omitempty"`
+}
+
+type ffiMediaDownloader interface {
+	downloadMedia(ctx context.Context, req mediaDownloadRequest) ([]byte, error)
+}
+
 // DownloadMedia invokes gchat_download_media on the Rust FFI client.
 func (c *FFIClient) DownloadMedia(kind, attachmentToken, contentType, rawURL string, externalEnabled bool) ([]byte, error) {
+	return c.downloadMedia(context.Background(), mediaDownloadRequest{
+		Kind:            kind,
+		AttachmentToken: attachmentToken,
+		ContentType:     contentType,
+		URL:             rawURL,
+		ExternalEnabled: externalEnabled,
+	})
+}
+
+func (c *FFIClient) downloadMedia(_ context.Context, req mediaDownloadRequest) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("nil gchat ffi client")
 	}
@@ -211,20 +236,7 @@ func (c *FFIClient) DownloadMedia(kind, attachmentToken, contentType, rawURL str
 	if c.ptr == nil {
 		return nil, errors.New("closed gchat ffi client")
 	}
-	reqObj := struct {
-		Kind            string `json:"kind"`
-		AttachmentToken string `json:"attachment_token,omitempty"`
-		ContentType     string `json:"content_type,omitempty"`
-		URL             string `json:"url,omitempty"`
-		ExternalEnabled bool   `json:"external_enabled,omitempty"`
-	}{
-		Kind:            kind,
-		AttachmentToken: attachmentToken,
-		ContentType:     contentType,
-		URL:             rawURL,
-		ExternalEnabled: externalEnabled,
-	}
-	reqJSON, err := json.Marshal(reqObj)
+	reqJSON, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal download_media request: %w", err)
 	}

@@ -156,3 +156,20 @@ func TestInspectImageRefusesAPictureThatClaimsTooManyPixels(t *testing.T) {
 	require.Equal(t, 2000, meta.Width)
 	require.Equal(t, 1500, meta.Height)
 }
+
+func TestInspectLinkPreviewImageRefusesAPictureOverSixteenMegapixels(t *testing.T) {
+	encode := func(w, h int) []byte {
+		var buf bytes.Buffer
+		require.NoError(t, png.Encode(&buf, image.NewGray(image.Rect(0, 0, w, h))))
+		return buf.Bytes()
+	}
+	big := encode(5000, 4000) // 20 megapixels: fine for InspectImage, too big for a link card.
+	require.Less(t, len(big), 2*1024*1024, "small enough to pass the 2 MiB download cap")
+	_, err := InspectLinkPreviewImage(big)
+	require.ErrorIs(t, err, ErrImageTooLarge)
+
+	meta, err := InspectLinkPreviewImage(encode(1200, 630))
+	require.NoError(t, err)
+	require.Equal(t, 1200, meta.Width)
+	require.Equal(t, 630, meta.Height)
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -21,7 +22,13 @@ import (
 const (
 	// MaxMediaBytes is the 200 MiB attachment size limit enforced for Google Chat uploads and downloads.
 	MaxMediaBytes = 200 * 1024 * 1024
+	// maxLinkPreviewImageBytes matches actions.maxLinkPreviewImageBytes (2 MiB) for link-card thumbnails.
+	maxLinkPreviewImageBytes = 2 * 1024 * 1024
 )
+
+// linkPreviewImageTimeout bounds each Google Chat link-preview picture download
+// so a slow picture never stalls sync (variable so tests can shorten it).
+var linkPreviewImageTimeout = 10 * time.Second
 
 func encodeUploadMetadataAnnotation(uploadMetaProto []byte) ([]byte, error) {
 	var meta pb.UploadMetadata
@@ -97,6 +104,109 @@ func (c *Client) downloadAvatar(_ context.Context, avatarURL string) ([]byte, er
 		return nil, err
 	}
 	return ffi.DownloadMedia("avatar", "", "", avatarURL, false)
+}
+
+var errLinkPreviewImageTooBig = errors.New("link preview image exceeds 2 MiB size limit")
+
+func isLinkPreviewTooBigError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errLinkPreviewImageTooBig) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "exceeds maximum allowed") ||
+		strings.Contains(msg, "exceeded maximum allowed")
+}
+
+func (c *Client) ensureMediaDownloader() (ffiMediaDownloader, error) {
+	if c == nil {
+		return nil, errors.New("nil gchat client")
+	}
+	c.mu.Lock()
+	override := c.mediaFFI
+	c.mu.Unlock()
+	if override != nil {
+		return override, nil
+	}
+	return c.ensureFFIClient()
+}
+
+func (c *Client) downloadLinkPreviewImage(ctx context.Context, imageURL string) ([]byte, error) {
+	dlCtx, cancel := context.WithTimeout(ctx, linkPreviewImageTimeout)
+	defer cancel()
+	if err := dlCtx.Err(); err != nil {
+		return nil, err
+	}
+	release, err := c.acquireMediaSlot(dlCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	ffi, err := c.ensureMediaDownloader()
+	if err != nil {
+		release()
+		return nil, err
+	}
+	timeout := linkPreviewImageTimeout
+	if deadline, ok := dlCtx.Deadline(); ok {
+		rem := time.Until(deadline)
+		if rem <= 0 {
+			release()
+			return nil, context.DeadlineExceeded
+		}
+		if rem < timeout {
+			timeout = rem
+		}
+	}
+	timeoutMS := timeout.Milliseconds()
+	if timeoutMS <= 0 {
+		timeoutMS = 1
+	}
+	req := mediaDownloadRequest{
+		Kind:            "external",
+		URL:             imageURL,
+		ExternalEnabled: true,
+		MaxBytes:        maxLinkPreviewImageBytes,
+		TimeoutMS:       timeoutMS,
+	}
+
+	type result struct {
+		data []byte
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var data []byte
+		var err error
+		defer func() {
+			release()
+			done <- result{data: data, err: err}
+		}()
+		// FFI "external" with externalEnabled=true uses EndpointRole::ExternalPublicImage:
+		// HTTPS-only, *.googleusercontent.com and *.ggpht.com, no cookies, SSRF-guarded.
+		data, err = ffi.downloadMedia(dlCtx, req)
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			if isLinkPreviewTooBigError(res.err) {
+				return nil, errLinkPreviewImageTooBig
+			}
+			return nil, res.err
+		}
+		if len(res.data) > maxLinkPreviewImageBytes {
+			return nil, errLinkPreviewImageTooBig
+		}
+		if len(res.data) == 0 {
+			return nil, errors.New("link preview image is empty")
+		}
+		return res.data, nil
+	case <-dlCtx.Done():
+		return nil, dlCtx.Err()
+	}
 }
 
 func (c *Client) prepareOutgoingMessageContent(
