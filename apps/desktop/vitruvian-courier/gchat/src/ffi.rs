@@ -784,6 +784,10 @@ struct DownloadMediaReqInput {
     url: String,
     #[serde(default)]
     external_enabled: bool,
+    #[serde(default)]
+    max_bytes: Option<usize>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
 }
 
 #[no_mangle]
@@ -890,11 +894,22 @@ pub unsafe extern "C" fn gchat_download_media(
                     .runtime
                     .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),
                 "external" => {
+                    let max_bytes = match req.max_bytes {
+                        Some(n) if n > 0 => n.min(crate::media::MAX_EXTERNAL_IMAGE_BYTES),
+                        _ => crate::media::MAX_EXTERNAL_IMAGE_BYTES,
+                    };
+                    let timeout = match req.timeout_ms {
+                        Some(ms) if ms > 0 => std::time::Duration::from_millis(ms)
+                            .min(crate::media::EXTERNAL_IMAGE_TIMEOUT),
+                        _ => crate::media::EXTERNAL_IMAGE_TIMEOUT,
+                    };
                     match client_ref.runtime.block_on(
-                        crate::media::download_external_image_if_enabled(
+                        crate::media::download_external_image_with_limits(
                             &client_ref.guard,
                             &req.url,
                             req.external_enabled,
+                            max_bytes,
+                            timeout,
                         ),
                     ) {
                         Ok(Some(pair)) => Ok(pair),

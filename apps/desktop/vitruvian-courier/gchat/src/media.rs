@@ -13,9 +13,11 @@ use url::Url;
 pub const MAX_MEDIA_BYTES: usize = 200 * 1024 * 1024;
 pub const MAX_AVATAR_OR_EXTERNAL_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_AVATAR_BYTES: usize = 10 * 1024 * 1024;
-pub const MAX_EXTERNAL_IMAGE_BYTES: usize = MAX_AVATAR_OR_EXTERNAL_BYTES;
+pub const MAX_EXTERNAL_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_ATTACHMENT_REDIRECT_HOPS: usize = 10;
 pub const MAX_AVATAR_REDIRECT_HOPS: usize = 5;
+pub const DEFAULT_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60);
+pub const EXTERNAL_IMAGE_TIMEOUT: Duration = Duration::from_secs(10);
 
 const FIFE_IMAGE_SIZE: &str = "w10000-h10000";
 const MAX_UPLOAD_METADATA_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -119,15 +121,73 @@ crate::edition2021! {
         user_agent: &str,
         max_bytes: usize,
         max_redirect_hops: usize,
+        total_timeout: Option<Duration>,
+        label: &str,
+    ) -> Result<(Vec<u8>, String), GChatError> {
+        let Some(budget) = total_timeout else {
+            return download_with_redirects_inner(
+                http,
+                guard,
+                initial_url,
+                role,
+                cookies,
+                user_agent,
+                max_bytes,
+                max_redirect_hops,
+                None,
+                label,
+            )
+            .await;
+        };
+        let deadline = tokio::time::Instant::now() + budget;
+        tokio::time::timeout(
+            budget,
+            download_with_redirects_inner(
+                http,
+                guard,
+                initial_url,
+                role,
+                cookies,
+                user_agent,
+                max_bytes,
+                max_redirect_hops,
+                Some(deadline),
+                label,
+            ),
+        )
+        .await
+        .map_err(|_| GChatError::Network(format!("{label} timed out")))?
+    }
+
+    async fn download_with_redirects_inner(
+        http: &reqwest::Client,
+        guard: &NetGuard,
+        initial_url: Url,
+        role: EndpointRole,
+        cookies: Option<&DomainCookieJar>,
+        user_agent: &str,
+        max_bytes: usize,
+        max_redirect_hops: usize,
+        deadline: Option<tokio::time::Instant>,
         label: &str,
     ) -> Result<(Vec<u8>, String), GChatError> {
         let mut current_url = initial_url;
         for hop in 0..=max_redirect_hops {
+            let hop_timeout = match deadline {
+                Some(dl) => {
+                    let rem = dl.saturating_duration_since(tokio::time::Instant::now());
+                    if rem.is_zero() {
+                        return Err(GChatError::Network(format!("{label} timed out")));
+                    }
+                    rem
+                }
+                None => DEFAULT_DOWNLOAD_TIMEOUT,
+            };
             guard.validate_url_with_role(&current_url, role).await?;
 
             let mut req = http
                 .get(current_url.clone())
-                .timeout(Duration::from_secs(60))
+                .timeout(hop_timeout)
                 .header("User-Agent", user_agent);
 
             if role == EndpointRole::AuthenticatedAttachment {
@@ -422,6 +482,7 @@ crate::edition2021! {
             &client.user_agent,
             MAX_MEDIA_BYTES,
             MAX_ATTACHMENT_REDIRECT_HOPS,
+            None,
             "attachment download",
         )
         .await?;
@@ -449,15 +510,18 @@ crate::edition2021! {
             DEFAULT_MACOS_SAFARI_UA,
             MAX_AVATAR_BYTES,
             MAX_AVATAR_REDIRECT_HOPS,
+            None,
             "avatar download",
         )
         .await
     }
 
-    pub async fn download_external_image_if_enabled(
+    pub async fn download_external_image_with_limits(
         guard: &NetGuard,
         url_str: &str,
         enabled: bool,
+        max_bytes: usize,
+        timeout: Duration,
     ) -> Result<Option<(Vec<u8>, String)>, GChatError> {
         if !enabled {
             return Ok(None);
@@ -465,6 +529,16 @@ crate::edition2021! {
         let url = Url::parse(url_str.trim())
             .map_err(|e| GChatError::SsrfBlocked(format!("invalid external image URL: {e}")))?;
         let http = guard.http_client()?;
+        let effective_max_bytes = if max_bytes == 0 {
+            MAX_EXTERNAL_IMAGE_BYTES
+        } else {
+            max_bytes.min(MAX_EXTERNAL_IMAGE_BYTES)
+        };
+        let effective_timeout = if timeout.is_zero() {
+            EXTERNAL_IMAGE_TIMEOUT
+        } else {
+            timeout.min(EXTERNAL_IMAGE_TIMEOUT)
+        };
         let res = download_with_redirects(
             http,
             guard,
@@ -472,12 +546,28 @@ crate::edition2021! {
             EndpointRole::ExternalPublicImage,
             None,
             DEFAULT_MACOS_SAFARI_UA,
-            MAX_EXTERNAL_IMAGE_BYTES,
+            effective_max_bytes,
             MAX_AVATAR_REDIRECT_HOPS,
+            Some(effective_timeout),
             "external image download",
         )
         .await?;
         Ok(Some(res))
+    }
+
+    pub async fn download_external_image_if_enabled(
+        guard: &NetGuard,
+        url_str: &str,
+        enabled: bool,
+    ) -> Result<Option<(Vec<u8>, String)>, GChatError> {
+        download_external_image_with_limits(
+            guard,
+            url_str,
+            enabled,
+            MAX_EXTERNAL_IMAGE_BYTES,
+            EXTERNAL_IMAGE_TIMEOUT,
+        )
+        .await
     }
 }
 
@@ -1133,6 +1223,174 @@ mod tests {
             "build_loopback_client must not leave global TEST_LOOPBACK_OVERRIDE set to true"
         );
         drop(client);
+    }
+
+    #[test]
+    fn test_external_image_enforces_2mib_cap_without_reading_full_body() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let guard = NetGuard::allow_loopback_for_test();
+
+            let stream_bytes_sent = Arc::new(AtomicUsize::new(0));
+            let stream_done = Arc::new(tokio::sync::Notify::new());
+            let sent_srv = Arc::clone(&stream_bytes_sent);
+            let done_srv = Arc::clone(&stream_done);
+
+            let server_task = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let sent = Arc::clone(&sent_srv);
+                    let done = Arc::clone(&done_srv);
+                    tokio::spawn(async move {
+                        let (req_line, _, _) = read_http_request(&mut stream).await;
+                        if req_line.starts_with("GET /over-cl ") {
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                3 * 1024 * 1024
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /over-stream ") {
+                            let hdr = "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nConnection: close\r\n\r\n";
+                            if stream.write_all(hdr.as_bytes()).await.is_ok() {
+                                let chunk = vec![b'x'; 32 * 1024];
+                                for _ in 0..576 {
+                                    if stream.write_all(&chunk).await.is_err() {
+                                        break;
+                                    }
+                                    if stream.flush().await.is_err() {
+                                        break;
+                                    }
+                                    sent.fetch_add(chunk.len(), Ordering::SeqCst);
+                                    tokio::task::yield_now().await;
+                                }
+                            }
+                            done.notify_one();
+                        } else if req_line.starts_with("GET /avatar-3mib ") {
+                            let size = 3 * 1024 * 1024;
+                            let hdr = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {size}\r\nConnection: close\r\n\r\n"
+                            );
+                            if stream.write_all(hdr.as_bytes()).await.is_ok() {
+                                let body = vec![b'a'; size];
+                                let _ = stream.write_all(&body).await;
+                            }
+                        }
+                    });
+                }
+            });
+
+            let cl_url = format!("http://{addr}/over-cl");
+            let cl_res = download_external_image_if_enabled(&guard, &cl_url, true).await;
+            assert!(
+                matches!(cl_res, Err(GChatError::Protocol(_))),
+                "external image over 2 MiB Content-Length must be rejected with Protocol error, got: {cl_res:?}"
+            );
+
+            let stream_url = format!("http://{addr}/over-stream");
+            let stream_res = download_external_image_if_enabled(&guard, &stream_url, true).await;
+            assert!(
+                matches!(stream_res, Err(GChatError::Protocol(_))),
+                "external image stream over 2 MiB must be rejected with Protocol error, got: {stream_res:?}"
+            );
+            let _ = tokio::time::timeout(Duration::from_secs(2), stream_done.notified()).await;
+            let sent_total = stream_bytes_sent.load(Ordering::SeqCst);
+            assert!(
+                sent_total < 12 * 1024 * 1024,
+                "external image reader must stop reading before reading full 18 MiB stream, server sent {sent_total} bytes"
+            );
+
+            let avatar_url = format!("http://{addr}/avatar-3mib");
+            let (av_bytes, av_mime) = download_avatar(&guard, &avatar_url)
+                .await
+                .expect("avatar 3 MiB download must continue to succeed");
+            assert_eq!(av_bytes.len(), 3 * 1024 * 1024);
+            assert_eq!(av_mime, "image/png");
+
+            server_task.abort();
+        });
+    }
+
+    #[test]
+    fn test_external_image_times_out_within_10s() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let guard = NetGuard::allow_loopback_for_test();
+
+            let server_task = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    tokio::spawn(async move {
+                        let (req_line, _, _) = read_http_request(&mut stream).await;
+                        if req_line.starts_with("GET /hang-body ") {
+                            let _ = stream
+                                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\n\r\n\x89PNG")
+                                .await;
+                            let _ = stream.flush().await;
+                            tokio::time::sleep(Duration::from_secs(120)).await;
+                        } else if req_line.starts_with("GET /hang-headers ") {
+                            tokio::time::sleep(Duration::from_secs(120)).await;
+                        }
+                    });
+                }
+            });
+
+            let hang_url = format!("http://{addr}/hang-body");
+            let start = std::time::Instant::now();
+            let res = tokio::time::timeout(
+                Duration::from_secs(13),
+                download_external_image_if_enabled(&guard, &hang_url, true),
+            )
+            .await;
+            let elapsed = start.elapsed();
+
+            let inner = res.expect("external image download must time out within ~10s");
+            assert!(
+                matches!(inner, Err(GChatError::Network(_))),
+                "timed-out external image download must return Network error, got: {inner:?}"
+            );
+            assert!(
+                elapsed >= Duration::from_secs(9) && elapsed < Duration::from_secs(13),
+                "expected ~10s timeout, elapsed: {elapsed:?}"
+            );
+
+            let hdr_hang_url = format!("http://{addr}/hang-headers");
+            let hdr_start = std::time::Instant::now();
+            let hdr_res = download_external_image_with_limits(
+                &guard,
+                &hdr_hang_url,
+                true,
+                MAX_EXTERNAL_IMAGE_BYTES,
+                Duration::from_millis(200),
+            )
+            .await;
+            let hdr_elapsed = hdr_start.elapsed();
+            assert!(
+                matches!(hdr_res, Err(GChatError::Network(_))),
+                "hung headers must return Network error on custom timeout, got: {hdr_res:?}"
+            );
+            assert!(
+                hdr_elapsed < Duration::from_secs(2),
+                "expected 200ms timeout on hung headers, elapsed: {hdr_elapsed:?}"
+            );
+
+            server_task.abort();
+        });
     }
     }
 }
