@@ -16,7 +16,7 @@ its own version and release, and none waits for another.
 |---|---|---|
 | Claude Code | `/plugin marketplace add VitruvianSoftware/vitruvian-core`, then `/plugin install vitruvian-orchestrator@vitruvian-core` | This repository, which is public. Its marketplace already lists the plugin. |
 | Antigravity | `agy plugin install https://github.com/VitruvianSoftware/vitruvian-orchestrator-antigravity` | A new export-only mirror whose root is `apps/antigravity/plugins/vitruvian-orchestrator/`, the same shape as `gh-watch`. |
-| OpenCode | `"plugin": ["<npm package>"]` in `opencode.json` | npm. Its own section below. |
+| OpenCode | `"plugins": ["@vitruviansoftware/opencode-vitruvian-orchestrator"]` in `opencode.json` | npm, from a new export-only mirror `vitruvian-orchestrator-opencode`. Its own section below. |
 
 ## Versions and releases
 
@@ -53,23 +53,43 @@ Follows `docs/admin/copybara-sync.md` §8f, export-only:
 
 ## OpenCode on npm (a second pull request)
 
-Decided from OpenCode's plugin docs and the `@opencode-ai/plugin` types. The open points
-below are tested on OpenCode 2.3 before that pull request is opened.
+Tested on OpenCode 2.3.2 with the real plugin staged the way npm installs it
+(no `node_modules`), before writing the code:
 
-- Package `@vitruviansoftware/opencode-vitruvian-orchestrator`, added with
-  `"plugin": ["@vitruviansoftware/opencode-vitruvian-orchestrator"]`.
-- `package.json` exports `./server` (`server.mjs`) and `./tui` (`tui.tsx`). A `config`
-  hook in `server.mjs` registers the generic agents from `agents/*.md` and points the
-  skills path at the package's `skills/`, so one entry brings everything.
-- Published from a new export-only mirror, as every npm package here is: npm trusts the
-  mirror's `release.yml`, never this repository (`docs/engineering/npm-trusted-publishing.md`).
-- A new package name cannot have a trusted publisher until it exists. So James publishes
-  the first version once, by hand, from a clone of the mirror (npm needs his 2FA). Then a
-  `tools/registry-trust/bootstrap.tsv` row and `registry-trust:setup` hand every later
-  release to CI.
-- To test on 2.3 first: whether the `opencode.json` entry also loads the TUI part (the docs
-  name `tui.json` and `cli.json` in different places), and whether `skills` is
-  `{ paths: [...] }` or a plain list.
+- The config key is `plugins` (a list). One entry loads the package's
+  `./server` export and its `./tui` export: the sidebar needs no `tui.json`.
+  OpenCode supplies `solid-js` to the sidebar, so the package has no
+  dependencies.
+- OpenCode never reads agent or skill files inside a plugin. A server plugin
+  adds them itself: `ctx.skill.transform(editor => editor.add({ id, name,
+  description, path, content }))`, and, since the agent editor has no `add`,
+  `ctx.agent.transform(editor => editor.update(id, draft => { ... }))`, which
+  creates a missing agent from the draft. `skills` in `opencode.json` is a plain
+  list of folders, which the plugin does not need.
+- OpenCode ships its own `build` agent, and the generic role `build` was
+  dispatched by its bare name, so in OpenCode a generic `build` task went to
+  OpenCode's agent. And no generic agent was registered at all, so every
+  other generic role pointed at an agent that did not exist.
+
+So the package:
+
+- is `@vitruviansoftware/opencode-vitruvian-orchestrator`, exports `./server`
+  and `./tui`, and lists what it ships in `files`;
+- registers the ten generic agents as `vitruvian-orchestrator:<role>` and the
+  two skills by name, keeping any agent or skill the user or repository
+  already defines (`lib/register.mjs`); and the team tool's `dispatch` for a
+  generic role in OpenCode is now `vitruvian-orchestrator:<role>`, the same
+  form as Claude Code;
+- is released by release-please (`release-type: node`, component
+  `vitruvian-orchestrator-opencode`) and exported to the
+  `vitruvian-orchestrator-opencode` mirror, whose `release.yml` publishes each
+  new version to npm with trusted publishing and tags it.
+
+A new package name cannot have a trusted publisher until it exists. So James
+publishes the first version once, by hand, from a clone of the mirror (npm
+needs his 2FA); until then the mirror's publish step warns and skips. Then a
+`tools/registry-trust/bootstrap.tsv` row and `registry-trust:setup` hand every
+later release to CI. The website catalog lists the package once it is on npm.
 
 ## Checks
 

@@ -59,9 +59,47 @@ Posts belong to a channel (`main` by default; channel names match `[a-z0-9][a-z0
 
 The model, worktree, and channel are only ever read from the lead's brief, never from board posts, and are checked before use.
 
-## Setup and verification
+## Install
 
-- **In this repository**: OpenCode automatically loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.
-- **Outside this repository**: Run `./apps/opencode/plugins/vitruvian-orchestrator/install.sh` to install the loader files into `~/.config/opencode/plugins/vitruvian-orchestrator/`.
+Add the plugin to `opencode.json` (your project's, or `~/.config/opencode/opencode.json` for every project):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["@vitruviansoftware/opencode-vitruvian-orchestrator"]
+}
+```
+
+That one entry loads everything, on OpenCode 2.3 or later:
+
+- the tools (`progress`, `step`, `post`, `board`, `channel`, `team`, `team_setup`);
+- the **Orchestrator** sidebar;
+- the ten generic agents, registered as `vitruvian-orchestrator:<role>` (for example `vitruvian-orchestrator:developer`). The prefix keeps them clear of OpenCode's own `build` agent and of your agents. An agent you already define under one of these ids is kept as it is;
+- the `orchestrate` and `team-setup` skills. A skill your repository already has under the same name wins.
+
+The package is published from the read-only mirror [VitruvianSoftware/vitruvian-orchestrator-opencode](https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode). It is developed in [vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/opencode/plugins/vitruvian-orchestrator), where issues and changes go.
+
+To map roles to your own agents, see the [team file guide](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/guides/orchestrator-team-file.md), or run the `team-setup` skill.
+
+## Releasing
+
+Releases are cut in vitruvian-core: release-please opens a release pull request, and merging it exports the new version to the mirror. There, `.github/workflows/release.yml` publishes it to npm with trusted publishing (npm trusts that workflow; there is no npm token) and then tags `v<version>` with a GitHub release.
+
+**The very first version is published by hand, once.** npm will not trust a workflow for a package that does not exist yet. Until it exists, the mirror's workflow warns and does nothing. To publish it, with an npm account in the `@vitruviansoftware` organization:
+
+```sh
+git clone https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode
+cd vitruvian-orchestrator-opencode
+npm publish --dry-run   # check the file list
+npm login
+npm publish --access public
+```
+
+Then, in vitruvian-core, add the version's row to `tools/registry-trust/bootstrap.tsv` and run `bazel run //tools/registry-trust:setup` to make the mirror's `release.yml` the trusted publisher, and re-run the mirror's `release` workflow to tag it. Every later version is published by the workflow. See `docs/engineering/registry-trust.md`.
+
+## Developing the plugin
+
+- **In vitruvian-core**: OpenCode loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.
+- **From a checkout, for every project**: run `./install.sh` to write loader files into `~/.config/opencode/plugins/vitruvian-orchestrator/` that import this folder. Do not also add the npm entry, or the plugin loads twice.
 - **Subdirectory**: [lib](./lib/README.md)
 - **Verification**: `bazel test //apps/opencode/plugins/vitruvian-orchestrator/...`

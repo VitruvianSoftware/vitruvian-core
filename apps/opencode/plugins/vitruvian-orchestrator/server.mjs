@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   agentRoleMap,
@@ -46,8 +47,15 @@ import {
   VALID_PHASES,
   VALID_TIERS,
 } from "./lib/orchestrator-core.mjs";
+import {
+  bareAgentName,
+  registerPluginAgentsAndSkills,
+} from "./lib/register.mjs";
 
 export const PLUGIN_ID = "vitruvian-orchestrator";
+
+// This file's folder: the plugin's agents/ and skills/ sit beside it.
+const PLUGIN_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const VALID_SESSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 
@@ -449,7 +457,7 @@ export default {
         ...(parentID ? { parentID } : {}),
         rootID,
         title: patch.title ?? prev?.title,
-        agent: patch.agent ?? prev?.agent,
+        agent: bareAgentName(patch.agent) ?? prev?.agent,
         model:
           parsedModel.model !== "unknown"
             ? parsedModel.model
@@ -565,7 +573,7 @@ export default {
         };
       }
       if (toolCtx?.agent && !meta.agent) {
-        meta.agent = toolCtx.agent;
+        meta.agent = bareAgentName(toolCtx.agent);
       }
       const workerEntry = findWorkerRunEntry(validID);
       const isHelper = Boolean(meta.parentID) || Boolean(workerEntry);
@@ -584,7 +592,7 @@ export default {
         };
       }
       const norm = (s) =>
-        String(s ?? "")
+        String(bareAgentName(s) ?? "")
           .trim()
           .replace(/^@+/, "")
           .toLowerCase();
@@ -846,6 +854,9 @@ export default {
         }
       }
     }
+
+    // 0. The plugin's agents and skills, so one `plugins` entry brings the team.
+    await registerPluginAgentsAndSkills(ctx, PLUGIN_DIR);
 
     // 1. Register `progress`, `step`, `post`, and `board` tools
     if (ctx?.tool?.transform) {

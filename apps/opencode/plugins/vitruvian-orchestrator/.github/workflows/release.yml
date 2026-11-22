@@ -1,0 +1,206 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Release-on-version-bump.
+#
+# This file is developed in the vitruvian-core monorepo and exported to the
+# VitruvianSoftware/vitruvian-orchestrator-opencode mirror, which is where it
+# runs. It never runs in the monorepo: a workflow only runs from a
+# repository's root .github/.
+#
+# In the monorepo, release-please (apps-release.yaml) bumps package.json,
+# .release-please-manifest.json and CHANGELOG.md together; version_test fails
+# if they disagree. On every push to the mirror's main this reads the version
+# from package.json and does two things, each only when it is still missing,
+# so a re-run finishes a half-done release and never repeats one:
+#   1. publishes that version to npm with trusted publishing (OIDC: npm trusts
+#      this repository's release.yml, and there is no npm token anywhere);
+#   2. once npm has it, tags the commit v<version> and publishes a GitHub
+#      release whose notes are that version's section of CHANGELOG.md.
+#
+# npm refuses a trusted publisher for a package that does not exist yet, so a
+# person publishes the very first version by hand (Releasing in README.md).
+# Until then this workflow warns and does nothing else: the tag waits for npm.
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish and tag an unreleased version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # To create the tag and the release.
+      contents: write
+      # For npm trusted publishing.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the version
+        id: version
+        run: |
+          NAME="$(jq -r '.name // empty' package.json)"
+          V="$(jq -r '.version // empty' package.json)"
+          if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::package.json has no usable version (got '${V}')"
+            exit 1
+          fi
+          if [ -z "$NAME" ]; then
+            echo "::error::package.json has no name"
+            exit 1
+          fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ask npm whether this version is published
+        id: npm
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          # The package's published versions, as JSON on stdout. A package
+          # npm does not have fails with E404 on stderr; any other failure is
+          # a failure to ask, never read as "unpublished". stderr is kept
+          # apart so a warning npm prints cannot spoil the answer.
+          set +e
+          OUT="$(npm view "${NAME}" versions --json 2>"$RUNNER_TEMP/npm-view.err")"
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            if grep -q 'E404' "$RUNNER_TEMP/npm-view.err"; then
+              echo "::warning::${NAME} is not on npm yet. npm only trusts this workflow after the first version exists, so a person publishes it once by hand: see Releasing in README.md. Skipping the publish and the tag."
+              exit 0
+            fi
+            echo "::error::could not ask npm about ${NAME}:"
+            cat "$RUNNER_TEMP/npm-view.err"
+            exit 1
+          fi
+          # One version comes back as a string, several as a list.
+          if printf '%s' "$OUT" | jq -e --arg v "$V" '(if type == "array" then . else [.] end) | index($v) != null' >/dev/null; then
+            echo "${NAME}@${V} is already on npm."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "${NAME}@${V} is not on npm yet: publishing."
+          fi
+          echo "on_npm=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure npm can do trusted publishing
+        if: steps.npm.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1.
+          # Upgrade and then ASSERT: an npm too old does not say so, it
+          # quietly looks for a token that is not there.
+          npm install -g npm@11 >/dev/null
+          have="$(npm --version)"
+          if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"
+            exit 1
+          fi
+          echo "npm $have (>= 11.5.1)"
+          # setup-node's registry-url writes `_authToken=${NODE_AUTH_TOKEN}`;
+          # with no token that is an EMPTY value, npm thinks auth is set and
+          # never does the OIDC exchange (ENEEDAUTH). Strip it and check.
+          # actions/setup-node#1551, npm/documentation#1960
+          rc="$(npm config get userconfig)"
+          if [ -n "$rc" ] && [ -f "$rc" ]; then
+            sed -i.bak '/_authToken/d' "$rc" && rm -f "$rc.bak"
+            if grep -q '_authToken' "$rc"; then
+              echo "::error::_authToken still present in $rc; OIDC will not trigger"
+              exit 1
+            fi
+          fi
+
+      - name: Publish to npm
+        if: steps.npm.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          npm pack --dry-run
+          npm publish --access public --provenance
+
+      # The tag and the GitHub release say "shipped", so they wait until
+      # npm has the version (published here or by hand).
+      - name: Ask whether the tag exists
+        if: steps.npm.outputs.on_npm == 'true'
+        id: tag
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          # Exit 0: the tag exists. Exit 2: it does not. Anything else is a
+          # failure to ask, and is not treated as "unreleased".
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/v${V}" >/dev/null
+          RC=$?
+          set -e
+          case "$RC" in
+            0) echo "v${V} is already tagged." ;;
+            2) echo "missing=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::could not list tags (git ls-remote exited ${RC}); refusing to guess whether v${V} is released."
+              exit 1
+              ;;
+          esac
+
+      - name: Read the release notes from the changelog
+        if: steps.tag.outputs.missing == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v v="${VERSION}" '
+            $0 == "## " v || index($0, "## " v " (") == 1 || index($0, "## [" v "](") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::CHANGELOG.md has no section for '${VERSION}'"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Tag and publish the GitHub release
+        if: steps.tag.outputs.missing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION}" \
+            --notes-file "$RUNNER_TEMP/notes.md"

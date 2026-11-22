@@ -178,6 +178,7 @@ func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
 		{"vitruvian-wand", "vitruvian-wand", "VITRUVIAN_WAND_SYNC_SSH_KEY"},
 		{"mini-party", "vitruvian-party", "MINI_PARTY_SYNC_SSH_KEY"},
 		{"vitruvian-orchestrator-antigravity", "vitruvian-orchestrator-antigravity", "VITRUVIAN_ORCHESTRATOR_ANTIGRAVITY_SYNC_SSH_KEY"},
+		{"vitruvian-orchestrator-opencode", "vitruvian-orchestrator-opencode", "VITRUVIAN_ORCHESTRATOR_OPENCODE_SYNC_SSH_KEY"},
 	} {
 		t.Run(mirror.repo, func(t *testing.T) {
 			if r := got[mirror.resource]; r.typeToken != "github:index/repository:Repository" {

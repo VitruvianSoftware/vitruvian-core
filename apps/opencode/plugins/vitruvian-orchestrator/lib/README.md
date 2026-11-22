@@ -21,6 +21,8 @@ Component package providing implementation for `apps/opencode/plugins/vitruvian-
 - `[adapter.mjs:formatSidebarTitle]`
 - `[adapter.mjs:formatSidebarData]`
 - `[adapter.mjs:formatSidebarLines]`
+- `[register.mjs:registerPluginAgentsAndSkills]`: adds the plugin's `agents/*.md` (as `vitruvian-orchestrator:<role>`) and `skills/*/SKILL.md` through OpenCode's agent and skill editors, keeping any the user or repository already defines.
+- `[register.mjs:bareAgentName]`
 - `[orchestrator-core.mjs:DEFAULT_QUIET_MS]`
 - `[orchestrator-core.mjs:DEFAULT_STALL_MS]`
 - `[orchestrator-core.mjs:DEFAULT_WAITING_STALL_MS]`
