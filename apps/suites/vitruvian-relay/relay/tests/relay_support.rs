@@ -45,7 +45,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
-use vitruvian_mcp_auth::{verifier, VerifierConfig};
+use vitruvian_mcp_auth::{verifier_requiring_role, VerifierConfig};
 use vitruvian_relay::config::Settings;
 use vitruvian_relay::http::{serve, App, Timing};
 use vitruvian_relay::store::PgStore;
@@ -331,15 +331,17 @@ pub async fn start_relay_with(database_url: &str, timing: Timing) -> Relay {
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
     let required_role = settings.required_role.clone();
     let verifier_for = |ids: Vec<String>| {
-        verifier(VerifierConfig {
-            issuer: ISSUER.into(),
-            project_id: PROJECT_ID.into(),
-            allowed_client_ids: ids,
-            allowed_subjects: Vec::new(),
-            required_role: Some(required_role.clone()),
-            jwks_uri: Some(jwks_uri.clone()),
-            user_agent: "vitruvian-relay-itest".into(),
-        })
+        verifier_requiring_role(
+            VerifierConfig {
+                issuer: ISSUER.into(),
+                project_id: PROJECT_ID.into(),
+                allowed_client_ids: ids,
+                allowed_subjects: Vec::new(),
+                jwks_uri: Some(jwks_uri.clone()),
+                user_agent: "vitruvian-relay-itest".into(),
+            },
+            required_role.clone(),
+        )
         .unwrap()
     };
     let logs = Arc::new(Mutex::new(Vec::new()));

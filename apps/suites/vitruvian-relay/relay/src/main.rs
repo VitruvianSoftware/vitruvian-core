@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
-use vitruvian_mcp_auth::{verifier, VerifierConfig};
+use vitruvian_mcp_auth::{verifier_requiring_role, VerifierConfig};
 use vitruvian_relay::config::{wants_version, Settings};
 use vitruvian_relay::http::{serve, App, Timing};
 use vitruvian_relay::store::{purge_activity_forever, PgStore, Store, ACTIVITY_PURGE_EVERY};
@@ -54,15 +54,17 @@ async fn main() {
     let settings = Settings::from_lookup(|k| std::env::var(k).ok())
         .unwrap_or_else(|e| fail(format!("configuration error: {e}")));
     let verifier_for = |client_ids: Vec<String>| {
-        verifier(VerifierConfig {
-            issuer: settings.issuer.clone(),
-            project_id: settings.project_id.clone(),
-            allowed_client_ids: client_ids,
-            allowed_subjects: Vec::new(),
-            required_role: Some(settings.required_role.clone()),
-            jwks_uri: settings.jwks_uri.clone(),
-            user_agent: format!("vitruvian-relay/{}", env!("CARGO_PKG_VERSION")),
-        })
+        verifier_requiring_role(
+            VerifierConfig {
+                issuer: settings.issuer.clone(),
+                project_id: settings.project_id.clone(),
+                allowed_client_ids: client_ids,
+                allowed_subjects: Vec::new(),
+                jwks_uri: settings.jwks_uri.clone(),
+                user_agent: format!("vitruvian-relay/{}", env!("CARGO_PKG_VERSION")),
+            },
+            settings.required_role.clone(),
+        )
         .unwrap_or_else(|e| fail(format!("configuration error: {e}")))
     };
     let mcp = verifier_for(settings.mcp_client_ids.clone());

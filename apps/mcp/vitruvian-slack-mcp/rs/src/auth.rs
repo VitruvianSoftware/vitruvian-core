@@ -83,7 +83,6 @@ pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardToke
         project_id: config.project_id,
         allowed_client_ids: vec![config.allowed_client_id],
         allowed_subjects: config.allowed_subjects,
-        required_role: None,
         jwks_uri: config.jwks_uri,
         user_agent: "vitruvian-slack-mcp".to_string(),
     })

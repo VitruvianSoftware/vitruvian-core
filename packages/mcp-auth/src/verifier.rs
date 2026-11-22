@@ -473,26 +473,30 @@ pub struct VerifierConfig {
     pub project_id: String,
     /// The OIDC clients whose access tokens are accepted (`client_id` claim).
     pub allowed_client_ids: Vec<String>,
-    /// The people allowed in (`sub` claim). May be empty only when
-    /// `required_role` is set: then the role is the whole door.
+    /// The people allowed in (`sub` claim).
     pub allowed_subjects: Vec<String>,
-    /// A Zitadel project role the token's holder must have been granted: the
-    /// token's `urn:zitadel:iam:org:project:{project_id}:roles` claim must
-    /// have it as a key. `None` asks for no role (the Slack MCP, which names
-    /// its people instead). When set, it is checked on top of
-    /// `allowed_subjects`, if that is not empty.
-    pub required_role: Option<String>,
     /// Where to fetch the key set; defaults to `{issuer}/oauth/v2/keys`.
     pub jwks_uri: Option<String>,
     /// Sent with every key-set fetch.
     pub user_agent: String,
 }
 
-/// Build a verifier. Refuses an empty client list, and an empty subject list
-/// unless a role is required: either would let in everyone Zitadel is willing
-/// to issue a token to.
+/// Build a verifier. Refuses an empty client or subject list: either would
+/// let in everyone Zitadel is willing to issue a token to.
 pub fn verifier(cfg: VerifierConfig) -> Result<Verifier, String> {
     Verifier::build(cfg, None, None)
+}
+
+/// Build a verifier whose door is a Zitadel project role rather than a list of
+/// people (the relay). The token's
+/// `urn:zitadel:iam:org:project:{project_id}:roles` claim must hold `role` as
+/// a key, or the token is refused with [`AuthError::RoleMissing`]; a role is
+/// the only difference from [`verifier`], and a token that passes this check
+/// has passed all of that one's. `cfg.allowed_subjects` may be empty (anyone
+/// with the role gets in); if it is not, it applies as well. A blank `role` is
+/// refused rather than read as "no role", which would open the door.
+pub fn verifier_requiring_role(cfg: VerifierConfig, role: String) -> Result<Verifier, String> {
+    Verifier::build_with_role(cfg, Some(role), None, None)
 }
 
 struct CachedJwks {
@@ -527,6 +531,15 @@ impl Verifier {
         key_source: Option<KeySourceFn>,
         jwks_timeout_ms: Option<u64>,
     ) -> Result<Verifier, String> {
+        Verifier::build_with_role(cfg, None, key_source, jwks_timeout_ms)
+    }
+
+    fn build_with_role(
+        cfg: VerifierConfig,
+        required_role: Option<String>,
+        key_source: Option<KeySourceFn>,
+        jwks_timeout_ms: Option<u64>,
+    ) -> Result<Verifier, String> {
         let issuer = cfg.issuer.trim_end_matches('/').to_string();
         let jwks_uri = cfg
             .jwks_uri
@@ -534,7 +547,7 @@ impl Verifier {
         let allowed_subjects: HashSet<String> = cfg.allowed_subjects.into_iter().collect();
         // A blank role is not a requirement: it must not open the door a
         // missing subject list would have kept shut.
-        let required_role = match cfg.required_role {
+        let required_role = match required_role {
             Some(role) if role.trim().is_empty() => {
                 return Err("verifier was given a blank required role. Name the role, \
 or leave it unset and list the allowed subjects."
@@ -1313,25 +1326,24 @@ mod tests {
             project_id: PROJECT_ID.to_string(),
             allowed_client_ids: vec![CLIENT_ID.to_string()],
             allowed_subjects: vec!["user-42".to_string()],
-            required_role: None,
             jwks_uri,
             user_agent: "vitruvian-mcp-auth-test".to_string(),
         }
     }
 
     /// The relay's kind of config: anyone holding the role gets in, no list
-    /// of people.
-    fn role_config(role: &str) -> VerifierConfig {
+    /// of people. The role itself goes to [`verifier_requiring_role`].
+    fn role_config() -> VerifierConfig {
         VerifierConfig {
             allowed_subjects: Vec::new(),
-            required_role: Some(role.to_string()),
             ..config(None)
         }
     }
 
     fn role_verifier(role: &str, set: Value) -> Verifier {
-        Verifier::build(
-            role_config(role),
+        Verifier::build_with_role(
+            role_config(),
+            Some(role.to_string()),
             Some(Arc::new(move || Ok(set.clone()))),
             None,
         )
@@ -1884,10 +1896,16 @@ mod tests {
     #[test]
     fn a_role_and_a_subject_list_both_apply() {
         let a = key_pair(TEST_KEY_A);
-        let mut cfg = role_config("relay-user");
+        let mut cfg = role_config();
         cfg.allowed_subjects = vec!["user-42".to_string()];
         let set = key_set(vec![jwk(&a, "a")]);
-        let verifier = Verifier::build(cfg, Some(Arc::new(move || Ok(set.clone()))), None).unwrap();
+        let verifier = Verifier::build_with_role(
+            cfg,
+            Some("relay-user".to_string()),
+            Some(Arc::new(move || Ok(set.clone()))),
+            None,
+        )
+        .unwrap();
         let roles = json!({ "relay-user": { "org-1": "example.test" } });
         let token = |sub: &str| {
             let c = with(
@@ -1917,17 +1935,18 @@ mod tests {
 
         // A blank role is not a requirement, so it does not open the door.
         for blank in ["", "  "] {
-            let mut cfg = role_config(blank);
-            cfg.allowed_subjects.clear();
-            assert!(verifier(cfg).is_err(), "role {blank:?}");
+            assert!(
+                verifier_requiring_role(role_config(), blank.to_string()).is_err(),
+                "role {blank:?}"
+            );
         }
 
         // With a role, no subject list is fine; the client ids still are
         // required.
-        assert!(verifier(role_config("relay-user")).is_ok());
-        let mut no_clients = role_config("relay-user");
+        assert!(verifier_requiring_role(role_config(), "relay-user".to_string()).is_ok());
+        let mut no_clients = role_config();
         no_clients.allowed_client_ids.clear();
-        assert!(verifier(no_clients).is_err());
+        assert!(verifier_requiring_role(no_clients, "relay-user".to_string()).is_err());
 
         // A role-less token passes where no role is required (Slack MCP).
         let (a, slack_like) = verifier_a();

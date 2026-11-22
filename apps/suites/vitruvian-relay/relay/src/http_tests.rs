@@ -336,15 +336,17 @@ pub(crate) async fn harness_with(timing: Timing) -> Harness {
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
     let required_role = settings.required_role.clone();
     let verifier_for = |ids: Vec<String>| {
-        vitruvian_mcp_auth::verifier(VerifierConfig {
-            issuer: ISSUER.into(),
-            project_id: PROJECT_ID.into(),
-            allowed_client_ids: ids,
-            allowed_subjects: Vec::new(),
-            required_role: Some(required_role.clone()),
-            jwks_uri: Some(jwks_uri.clone()),
-            user_agent: "vitruvian-relay-test".into(),
-        })
+        vitruvian_mcp_auth::verifier_requiring_role(
+            VerifierConfig {
+                issuer: ISSUER.into(),
+                project_id: PROJECT_ID.into(),
+                allowed_client_ids: ids,
+                allowed_subjects: Vec::new(),
+                jwks_uri: Some(jwks_uri.clone()),
+                user_agent: "vitruvian-relay-test".into(),
+            },
+            required_role.clone(),
+        )
         .unwrap()
     };
     let store = Arc::new(MemStore::new());

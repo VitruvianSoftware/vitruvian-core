@@ -25,7 +25,6 @@ pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardToke
         project_id: config.project_id,
         allowed_client_ids: vec![config.allowed_client_id],
         allowed_subjects: config.allowed_subjects,
-        required_role: None,
         jwks_uri: config.jwks_uri,
         user_agent: "vitruvian-slack-mcp".to_string(),
     })
@@ -33,7 +32,7 @@ pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardToke
 }
 ```
 
-Who gets in is either a list of subjects (`allowed_subjects`, the Slack MCP) or a Zitadel project role (`required_role`, the relay): the token's `urn:zitadel:iam:org:project:{project_id}:roles` claim must hold that role, and a token without it is refused with `AuthError::RoleMissing` (403, logged as `role_missing`). A role lets `allowed_subjects` stay empty; without a role it may not.
+Who gets in is either a list of subjects (`verifier`, `allowed_subjects`: the Slack MCP) or a Zitadel project role (`verifier_requiring_role(cfg, role)`: the relay). With a role, the token's `urn:zitadel:iam:org:project:{project_id}:roles` claim must hold it, and a token without it is refused with `AuthError::RoleMissing` (403, logged as `role_missing`). `allowed_subjects` may stay empty there (anyone with the role gets in) and, if not empty, applies as well; `verifier` still refuses an empty list.
 
 ## Depend on it
 
