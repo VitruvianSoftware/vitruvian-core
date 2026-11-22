@@ -245,7 +245,7 @@ fn locate(chars: &[char], mut e: JsonError) -> JsonError {
 
 /// Options for [`loads_with`].
 ///
-/// By default `max_depth` is `None` (no nesting limit, matching [`loads`]).
+/// `Default` (`None`) imposes no nesting limit, matching [`loads`].
 /// Setting `max_depth: Some(n)` allows up to `n` nested objects/arrays and
 /// fails on the `(n + 1)`-th opening `{` or `[` with
 /// `"maximum recursion depth exceeded"`.
@@ -255,11 +255,6 @@ pub struct LoadOptions {
 }
 
 /// Parse JSON with Python's `json.loads` semantics and no nesting limit.
-///
-/// Known limitation: the default unlimited path is recursive, so very deeply
-/// nested input can overflow the stack. Use [`loads_with`] with
-/// [`LoadOptions::max_depth`] when parsing untrusted or unboundedly nested
-/// input.
 pub fn loads(text: &str) -> Result<Value, JsonError> {
     loads_with(text, &LoadOptions::default())
 }
@@ -287,24 +282,17 @@ pub fn loads_with(text: &str, opts: &LoadOptions) -> Result<Value, JsonError> {
         i: 0,
         max_depth: opts.max_depth,
         depth: 0,
-        err: None,
     };
     let parsed = (|| {
         p.ws();
         let v = p.value()?;
         p.ws();
         if p.i != chars.len() {
-            return p.fail("Extra data");
+            return Err(p.err("Extra data"));
         }
-        Some(v)
+        Ok(v)
     })();
-    match parsed {
-        Some(v) => Ok(v),
-        None => Err(locate(
-            &chars,
-            p.err.expect("parser must record an error on failure"),
-        )),
-    }
+    parsed.map_err(|e| locate(&chars, e))
 }
 
 struct Parser<'a> {
@@ -312,39 +300,37 @@ struct Parser<'a> {
     i: usize,
     max_depth: Option<usize>,
     depth: usize,
-    err: Option<JsonError>,
 }
 
 impl<'a> Parser<'a> {
-    fn fail<T>(&mut self, msg: &str) -> Option<T> {
-        self.fail_with_py(msg, self.i, msg, self.i)
+    fn err(&self, msg: &str) -> JsonError {
+        self.err_with_py(msg, self.i, msg, self.i)
     }
 
-    fn fail_with_py<T>(&mut self, msg: &str, pos: usize, py_msg: &str, py_pos: usize) -> Option<T> {
-        self.err = Some(JsonError {
+    fn err_with_py(&self, msg: &str, pos: usize, py_msg: &str, py_pos: usize) -> JsonError {
+        JsonError {
             msg: msg.into(),
             pos,
             line: 0,
             col: 0,
             py_msg: py_msg.into(),
             py_pos,
-        });
-        None
+        }
     }
 
-    fn enter(&mut self) -> Option<()> {
+    fn enter(&mut self) -> Result<(), JsonError> {
         if let Some(max) = self.max_depth {
             if self.depth >= max {
-                return self.fail_with_py(
+                return Err(self.err_with_py(
                     "maximum recursion depth exceeded",
                     self.i,
                     "maximum recursion depth exceeded",
                     self.i,
-                );
+                ));
             }
         }
         self.depth += 1;
-        Some(())
+        Ok(())
     }
 
     fn peek(&self) -> Option<char> {
@@ -367,42 +353,38 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn value(&mut self) -> Option<Value> {
+    fn value(&mut self) -> Result<Value, JsonError> {
         match self.peek() {
-            Some(c @ ('{' | '[')) => {
+            Some('{') => {
                 self.enter()?;
-                let r = if c == '{' {
-                    self.object()
-                } else {
-                    self.array()
-                };
+                let r = self.object();
                 self.depth -= 1;
                 r
             }
-            _ => self.scalar(),
-        }
-    }
-
-    fn scalar(&mut self) -> Option<Value> {
-        match self.peek() {
+            Some('[') => {
+                self.enter()?;
+                let r = self.array();
+                self.depth -= 1;
+                r
+            }
             Some('"') => {
                 self.i += 1;
-                Some(Value::Str(self.string()?))
+                Ok(Value::Str(self.string()?))
             }
-            Some('n') if self.lit("null") => Some(Value::Null),
-            Some('t') if self.lit("true") => Some(Value::Bool(true)),
-            Some('f') if self.lit("false") => Some(Value::Bool(false)),
-            Some('N') if self.lit("NaN") => Some(Value::Float(f64::NAN)),
-            Some('I') if self.lit("Infinity") => Some(Value::Float(f64::INFINITY)),
+            Some('n') if self.lit("null") => Ok(Value::Null),
+            Some('t') if self.lit("true") => Ok(Value::Bool(true)),
+            Some('f') if self.lit("false") => Ok(Value::Bool(false)),
+            Some('N') if self.lit("NaN") => Ok(Value::Float(f64::NAN)),
+            Some('I') if self.lit("Infinity") => Ok(Value::Float(f64::INFINITY)),
             Some('-') if self.s.get(self.i + 1) == Some(&'I') && self.lit("-Infinity") => {
-                Some(Value::Float(f64::NEG_INFINITY))
+                Ok(Value::Float(f64::NEG_INFINITY))
             }
             Some(c) if c == '-' || c.is_ascii_digit() => self.number(),
-            _ => self.fail("Expecting value"),
+            _ => Err(self.err("Expecting value")),
         }
     }
 
-    fn number(&mut self) -> Option<Value> {
+    fn number(&mut self) -> Result<Value, JsonError> {
         let start = self.i;
         if self.peek() == Some('-') {
             self.i += 1;
@@ -416,7 +398,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 self.i = start;
-                return self.fail("Expecting value");
+                return Err(self.err("Expecting value"));
             }
         }
         let mut is_float = false;
@@ -446,37 +428,37 @@ impl<'a> Parser<'a> {
         }
         let text: String = self.s[start..self.i].iter().collect();
         if is_float {
-            Some(Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)))
+            Ok(Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)))
         } else {
-            Some(Value::Int(text))
+            Ok(Value::Int(text))
         }
     }
 
-    fn hex4(&mut self) -> Option<u32> {
+    fn hex4(&mut self) -> Result<u32, JsonError> {
         // JSONDecodeError points at the `u`, just before the digits; preserve
         // `self.i` in `pos` so `Display` matches origin/main.
         if self.i + 4 > self.s.len() {
-            return self.fail_with_py(
+            return Err(self.err_with_py(
                 "Invalid \\uXXXX escape",
                 self.i,
                 "Invalid \\uXXXX escape",
                 self.i - 1,
-            );
+            ));
         }
         let h: String = self.s[self.i..self.i + 4].iter().collect();
         if !h.chars().all(|c| c.is_ascii_hexdigit()) {
-            return self.fail_with_py(
+            return Err(self.err_with_py(
                 "Invalid \\uXXXX escape",
                 self.i,
                 "Invalid \\uXXXX escape",
                 self.i - 1,
-            );
+            ));
         }
         self.i += 4;
-        Some(u32::from_str_radix(&h, 16).unwrap())
+        Ok(u32::from_str_radix(&h, 16).unwrap())
     }
 
-    fn string(&mut self) -> Option<String> {
+    fn string(&mut self) -> Result<String, JsonError> {
         let start = self.i - 1;
         let mut out = String::new();
         let mut last_u_pos: Option<usize> = None;
@@ -491,31 +473,28 @@ impl<'a> Parser<'a> {
                         Some(u_pos) => ("Invalid \\uXXXX escape", u_pos),
                         None => ("Unterminated string starting at", start),
                     };
-                    return self.fail_with_py(
+                    return Err(self.err_with_py(
                         "Unterminated string starting at",
                         self.i,
                         py_msg,
                         py_pos,
-                    );
+                    ));
                 }
                 Some(c) => c,
             };
             last_u_pos = None;
             self.i += 1;
             match c {
-                '"' => return Some(out),
+                '"' => return Ok(out),
                 '\\' => {
-                    let e = match self.peek() {
-                        Some(e) => e,
-                        None => {
-                            return self.fail_with_py(
-                                "Unterminated string",
-                                self.i,
-                                "Unterminated string starting at",
-                                start,
-                            );
-                        }
-                    };
+                    let e = self.peek().ok_or_else(|| {
+                        self.err_with_py(
+                            "Unterminated string",
+                            self.i,
+                            "Unterminated string starting at",
+                            start,
+                        )
+                    })?;
                     self.i += 1;
                     match e {
                         '"' => out.push('"'),
@@ -547,31 +526,31 @@ impl<'a> Parser<'a> {
                         }
                         _ => {
                             self.i -= 1;
-                            return self.fail_with_py(
+                            return Err(self.err_with_py(
                                 "Invalid \\escape",
                                 self.i,
                                 "Invalid \\escape",
                                 self.i - 1,
-                            );
+                            ));
                         }
                     }
                 }
                 c if (c as u32) < 0x20 => {
                     self.i -= 1;
-                    return self.fail("Invalid control character at");
+                    return Err(self.err("Invalid control character at"));
                 }
                 c => out.push(c),
             }
         }
     }
 
-    fn array(&mut self) -> Option<Value> {
+    fn array(&mut self) -> Result<Value, JsonError> {
         self.i += 1;
         let mut items = Vec::new();
         self.ws();
         if self.peek() == Some(']') {
             self.i += 1;
-            return Some(Value::Arr(items));
+            return Ok(Value::Arr(items));
         }
         loop {
             self.ws();
@@ -581,31 +560,31 @@ impl<'a> Parser<'a> {
                 Some(',') => self.i += 1,
                 Some(']') => {
                     self.i += 1;
-                    return Some(Value::Arr(items));
+                    return Ok(Value::Arr(items));
                 }
-                _ => return self.fail("Expecting ',' delimiter"),
+                _ => return Err(self.err("Expecting ',' delimiter")),
             }
         }
     }
 
-    fn object(&mut self) -> Option<Value> {
+    fn object(&mut self) -> Result<Value, JsonError> {
         self.i += 1;
         let mut items: Vec<(String, Value)> = Vec::new();
         self.ws();
         if self.peek() == Some('}') {
             self.i += 1;
-            return Some(Value::Obj(items));
+            return Ok(Value::Obj(items));
         }
         loop {
             self.ws();
             if self.peek() != Some('"') {
-                return self.fail("Expecting property name enclosed in double quotes");
+                return Err(self.err("Expecting property name enclosed in double quotes"));
             }
             self.i += 1;
             let key = self.string()?;
             self.ws();
             if self.peek() != Some(':') {
-                return self.fail("Expecting ':' delimiter");
+                return Err(self.err("Expecting ':' delimiter"));
             }
             self.i += 1;
             self.ws();
@@ -620,9 +599,9 @@ impl<'a> Parser<'a> {
                 Some(',') => self.i += 1,
                 Some('}') => {
                     self.i += 1;
-                    return Some(Value::Obj(items));
+                    return Ok(Value::Obj(items));
                 }
-                _ => return self.fail("Expecting ',' delimiter"),
+                _ => return Err(self.err("Expecting ',' delimiter")),
             }
         }
     }
@@ -1221,115 +1200,133 @@ mod tests {
 
     #[test]
     fn loads_with_max_depth_boundary_900() {
-        let opts = LoadOptions {
-            max_depth: Some(900),
-        };
-        let ok_empty = format!("{}{}", "[".repeat(900), "]".repeat(900));
-        assert!(loads_with(&ok_empty, &opts).is_ok());
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let opts = LoadOptions {
+                    max_depth: Some(900),
+                };
+                let ok_empty = format!("{}{}", "[".repeat(900), "]".repeat(900));
+                assert!(loads_with(&ok_empty, &opts).is_ok());
 
-        let ok_scalar = format!("{}1{}", "[".repeat(900), "]".repeat(900));
-        assert!(loads_with(&ok_scalar, &opts).is_ok());
+                let ok_scalar = format!("{}1{}", "[".repeat(900), "]".repeat(900));
+                assert!(loads_with(&ok_scalar, &opts).is_ok());
 
-        let ok_siblings = format!("{}[],{}{}", "[".repeat(899), "{}", "]".repeat(899));
-        assert!(loads_with(&ok_siblings, &opts).is_ok());
+                let ok_siblings = format!("{}[],{}{}", "[".repeat(899), "{}", "]".repeat(899));
+                assert!(loads_with(&ok_siblings, &opts).is_ok());
 
-        let fail_unclosed = "[".repeat(901);
-        let err = loads_with(&fail_unclosed, &opts).unwrap_err();
-        assert_eq!(
-            err.python_str(),
-            "maximum recursion depth exceeded: line 1 column 901 (char 900)"
-        );
-        assert_eq!(
-            err.to_string(),
-            "maximum recursion depth exceeded (char 900)"
-        );
-        assert_eq!((err.line, err.col, err.pos), (1, 901, 900));
+                let fail_unclosed = "[".repeat(901);
+                let err = loads_with(&fail_unclosed, &opts).unwrap_err();
+                assert_eq!(
+                    err.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 901 (char 900)"
+                );
+                assert_eq!(
+                    err.to_string(),
+                    "maximum recursion depth exceeded (char 900)"
+                );
+                assert_eq!((err.line, err.col, err.pos), (1, 901, 900));
 
-        let fail_empty = format!("{}{}", "[".repeat(901), "]".repeat(901));
-        let err_closed = loads_with(&fail_empty, &opts).unwrap_err();
-        assert_eq!(
-            err_closed.python_str(),
-            "maximum recursion depth exceeded: line 1 column 901 (char 900)"
-        );
+                let fail_empty = format!("{}{}", "[".repeat(901), "]".repeat(901));
+                let err_closed = loads_with(&fail_empty, &opts).unwrap_err();
+                assert_eq!(
+                    err_closed.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 901 (char 900)"
+                );
 
-        let zero_opts = LoadOptions { max_depth: Some(0) };
-        assert!(loads_with("1", &zero_opts).is_ok());
-        assert!(loads_with(r#""hi""#, &zero_opts).is_ok());
-        assert!(loads_with("null", &zero_opts).is_ok());
-        for container in ["[]", "{}"] {
-            let err_zero = loads_with(container, &zero_opts).unwrap_err();
-            assert_eq!(
-                err_zero.python_str(),
-                "maximum recursion depth exceeded: line 1 column 1 (char 0)"
-            );
-        }
+                let zero_opts = LoadOptions { max_depth: Some(0) };
+                assert!(loads_with("1", &zero_opts).is_ok());
+                assert!(loads_with(r#""hi""#, &zero_opts).is_ok());
+                assert!(loads_with("null", &zero_opts).is_ok());
+                for container in ["[]", "{}"] {
+                    let err_zero = loads_with(container, &zero_opts).unwrap_err();
+                    assert_eq!(
+                        err_zero.python_str(),
+                        "maximum recursion depth exceeded: line 1 column 1 (char 0)"
+                    );
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 
     #[test]
     fn loads_with_max_depth_mixed_containers() {
-        fn mixed_chain(depth: usize, start_obj: bool) -> String {
-            let mut out = String::new();
-            for k in 0..depth {
-                if (k % 2 == 0) == start_obj {
-                    out.push_str(r#"{"a":"#);
-                } else {
-                    out.push('[');
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                fn mixed_chain(depth: usize, start_obj: bool) -> String {
+                    let mut out = String::new();
+                    for k in 0..depth {
+                        if (k % 2 == 0) == start_obj {
+                            out.push_str(r#"{"a":"#);
+                        } else {
+                            out.push('[');
+                        }
+                    }
+                    out.push('0');
+                    for k in (0..depth).rev() {
+                        if (k % 2 == 0) == start_obj {
+                            out.push('}');
+                        } else {
+                            out.push(']');
+                        }
+                    }
+                    out
                 }
-            }
-            out.push('0');
-            for k in (0..depth).rev() {
-                if (k % 2 == 0) == start_obj {
-                    out.push('}');
-                } else {
-                    out.push(']');
+
+                let opts = LoadOptions {
+                    max_depth: Some(900),
+                };
+                for start_obj in [false, true] {
+                    let ok_doc = mixed_chain(900, start_obj);
+                    assert!(loads_with(&ok_doc, &opts).is_ok());
+
+                    let fail_doc = mixed_chain(901, start_obj);
+                    let err = loads_with(&fail_doc, &opts).unwrap_err();
+                    assert_eq!(err.msg, "maximum recursion depth exceeded");
                 }
-            }
-            out
-        }
 
-        let opts = LoadOptions {
-            max_depth: Some(900),
-        };
-        for start_obj in [false, true] {
-            let ok_doc = mixed_chain(900, start_obj);
-            assert!(loads_with(&ok_doc, &opts).is_ok());
-
-            let fail_doc = mixed_chain(901, start_obj);
-            let err = loads_with(&fail_doc, &opts).unwrap_err();
-            assert_eq!(err.msg, "maximum recursion depth exceeded");
-        }
-
-        let err_small =
-            loads_with(r#"[{"a":{}}]"#, &LoadOptions { max_depth: Some(2) }).unwrap_err();
-        assert_eq!(
-            err_small.python_str(),
-            "maximum recursion depth exceeded: line 1 column 7 (char 6)"
-        );
+                let err_small =
+                    loads_with(r#"[{"a":{}}]"#, &LoadOptions { max_depth: Some(2) }).unwrap_err();
+                assert_eq!(
+                    err_small.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 7 (char 6)"
+                );
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 
     #[test]
     fn loads_with_max_depth_error_line_and_column() {
-        let doc = format!("{}\n[", "[".repeat(900));
-        let err = loads_with(
-            &doc,
-            &LoadOptions {
-                max_depth: Some(900),
-            },
-        )
-        .unwrap_err();
-        assert_eq!(
-            err.python_str(),
-            "maximum recursion depth exceeded: line 2 column 1 (char 901)"
-        );
-        assert_eq!((err.line, err.col, err.pos), (2, 1, 901));
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let doc = format!("{}\n[", "[".repeat(900));
+                let err = loads_with(
+                    &doc,
+                    &LoadOptions {
+                        max_depth: Some(900),
+                    },
+                )
+                .unwrap_err();
+                assert_eq!(
+                    err.python_str(),
+                    "maximum recursion depth exceeded: line 2 column 1 (char 901)"
+                );
+                assert_eq!((err.line, err.col, err.pos), (2, 1, 901));
 
-        let mb_err =
-            loads_with("{\"é\":\n  [[]]}", &LoadOptions { max_depth: Some(2) }).unwrap_err();
-        assert_eq!(
-            mb_err.python_str(),
-            "maximum recursion depth exceeded: line 2 column 4 (char 9)"
-        );
-        assert_eq!((mb_err.line, mb_err.col, mb_err.pos), (2, 4, 9));
+                let mb_err = loads_with("{\"é\":\n  [[]]}", &LoadOptions { max_depth: Some(2) })
+                    .unwrap_err();
+                assert_eq!(
+                    mb_err.python_str(),
+                    "maximum recursion depth exceeded: line 2 column 4 (char 9)"
+                );
+                assert_eq!((mb_err.line, mb_err.col, mb_err.pos), (2, 4, 9));
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 
     #[test]
