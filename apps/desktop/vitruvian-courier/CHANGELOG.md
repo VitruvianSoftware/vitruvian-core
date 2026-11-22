@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.35...vitruvian-courier-v0.3.36) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update url crate to 2.5.9 for RUSTSEC-2026-0592 ([#5377](https://github.com/VitruvianSoftware/vitruvian-core/issues/5377)) ([4bb66d8](https://github.com/VitruvianSoftware/vitruvian-core/commit/4bb66d886771125b7447a6860941871ce4b389dd))
+
 ## [0.3.35](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.34...vitruvian-courier-v0.3.35) (2026-11-22)
 
 
