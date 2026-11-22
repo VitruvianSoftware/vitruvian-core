@@ -385,7 +385,7 @@ asks for.
   - The relay chart: `DATABASE_URL` from the CNPG-generated `relay-db-app` secret (key `uri`), the CA from `relay-db-ca`, and a CiliumNetworkPolicy egress rule to `relay-db-rw:5432`.
   - `relay/src/config.rs` (`DATABASE_URL` required, `DATA_DIR` removed), `relay/src/main.rs`, `relay/Cargo.toml`.
   - `relay/BUILD`: an `itest_service` named `postgres`, copied from `apps/suites/vitruvian-tabs/api/BUILD:196-221`, and `service_test` targets for the Postgres tests.
-- Delete: `FileDeviceStore`. The PVC stays mounted until Task 13 so the one-time import below can read `/data/devices.json`.
+- Delete: `FileDeviceStore`. The PVC stays mounted (for the old image) until the digest PR in Task 13 turns it off. There is no import of `/data/devices.json` (dropped in Task 13: it never ran live).
 
 **Interfaces:**
 - Produces:
@@ -417,7 +417,7 @@ asks for.
   - Review Focus 4, `database_down_fails_clearly_then_recovers`: stop the itest Postgres. `tools/call` and `/devices` give the message above within 5 s. Start it again; the next call works.
   - `migrations_are_idempotent`.
 - [ ] **Step 2:** `bazel test //apps/suites/vitruvian-relay/relay/...` → FAIL.
-- [ ] **Step 3:** Implement `PgStore` with `deadpool-postgres` (pool size 8, 5 s connect and query timeout), with TLS verified against the CNPG CA. Switch `App` from `Arc<dyn DeviceStore>` to `Arc<dyn Store>`. The one-time import of `devices.json` (James's device) runs at start if the file exists and the table is empty; remove it in Task 13.
+- [ ] **Step 3:** Implement `PgStore` with `deadpool-postgres` (pool size 8, 5 s connect and query timeout), with TLS verified against the CNPG CA. Switch `App` from `Arc<dyn DeviceStore>` to `Arc<dyn Store>`. There is no import of the old `devices.json`: it was dropped in Task 13 before it ran live, and James registers his Mac again.
 - [ ] **Step 4:** All relay tests → PASS. Render the chart: `bazel run //tools/gitops:helm -- template t apps/suites/vitruvian-relay/relay/deploy/chart -f gitops/argocd/platform/relay/values.yaml` shows the DB env, the netpol rule and no PVC.
 - [ ] **Step 5:** Commit `feat(relay): keep devices and activity in Postgres`.
 
@@ -583,15 +583,15 @@ This is §7.4 and the second half of P2's done-when.
 - Modify:
   - Chart `hostname` default and `gitops/argocd/platform/relay/values.yaml`: `hostname: relay.vitruviansoftware.dev`, `oidc.dashboardClientId`, `requiredRole`, no `allowedSubjects`.
   - `connector/src/config.rs`: default `VRELAY_RELAY_URL`, and `defaults_match_relay_stack` updated.
-  - Remove the `devices.json` import from Task 7, the `/data` mount and the PVC template (the PVC object is pruned by Argo CD; confirm in the preview of the sync that nothing else is deleted).
+  - Remove the `devices.json` import from Task 7 (done: no import, no `LEGACY_DEVICES_FILE`). The `/data` mount and the PVC template stay behind `persistence.enabled` until the digest PR turns it off; the claim is annotated `Prune=false`, so Argo CD leaves it in place rather than pruning it (confirm in the preview of the sync that nothing else is deleted).
   - Fix stale spike references in `apps/suites/vitruvian-relay/Cargo.toml`, `connector/src/auth.rs:24`, `bridge.rs` and `.github/workflows/vitruvian-relay-image.yaml:22`.
 
-- [ ] **Step 1:** Open the Part B PR (Tasks 7–9 and 11–13). Then the digest PR. Confirm:
+- [ ] **Step 1:** Open the Part B PR (Tasks 7–9 and 11–13). It leaves the live (old) image working: the new chart settings (`database.enabled`, `persistence.enabled`, `oidc.requiredRole`/`allowedSubjects`, `oidc.dashboardClientId`, `mcpClientLabels`, `hostname`) default to the old relay. Then the digest PR, which flips the new image digest AND all of those values in one change (the new-mode values are `tools/ci/chart-render/vitruvian-relay.values.yaml` plus the digest and the node affinity). Confirm:
   - Argo CD shows `relay` and `relay-db` healthy (`bazel run //tools/gitops:status`).
   - `https://relay.vitruviansoftware.dev/.well-known/oauth-protected-resource` serves PRM.
   - `relay.ipv1337.dev` no longer resolves.
-- [ ] **Step 2:** On James's Mac, reinstall the connector and run `vrelay login --name "James's MacBook"`. James's device keeps its id (imported, then re-registered with `device_id`).
-- [ ] **Step 3:** James removes the old connector in Claude and adds the new URL from the dashboard's device page. From the phone, list Downloads. Expected: it works, and `/activity` shows the row.
+- [ ] **Step 2:** Only after the digest PR is live (the connector's new defaults point at `relay.vitruviansoftware.dev`, which does not answer before that), on James's Mac, reinstall the connector and run `vrelay login --name "James's MacBook"`. The old `devices.json` is not imported, so this registers a new computer: it gets a new device id and so a new MCP URL (Step 3 uses it).
+- [ ] **Step 3:** James removes the old connector in Claude and adds the new URL (the new device id's) from the dashboard's device page. From the phone, list Downloads. Expected: it works, and `/activity` shows the row.
 
 ---
 
