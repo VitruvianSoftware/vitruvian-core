@@ -545,6 +545,13 @@ raises a system notification and waits for the user, as in T3 Code. Nothing
 is denied automatically. A prompt that goes silent is caught by the agy
 silent-prompt timeout (section 2).
 
+**A repository's own Claude settings.** The helper loads Claude's user, project and
+local settings (`settingSources: ["user", "project", "local"]`). So a repository's own
+`.claude/settings.json` can pre-allow tools, add hooks or set environment variables, and the
+app shows no approval card for what it pre-allows. T3 Code does the same, and so does today's
+command-line `claude`, so the helper does not change it. Asking the user before a folder's
+settings take effect (folder trust) is a later step.
+
 ### 9. Settings
 
 The provider settings gain a **Connection** choice per agent:

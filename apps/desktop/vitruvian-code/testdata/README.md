@@ -95,6 +95,7 @@ Agent SDK all run for real; only Claude itself is pretended.
 | `question.json` | an `AskUserQuestion` form |
 | `cancel.json` | text, then a turn that waits for the interrupt |
 | `hang.json` | a turn that never ends, for the stop test |
+| `die.json` | text, then `claude` kills itself mid-turn, as a crash would |
 | `subagent.json` | a `Task` launch and its result |
 | `usage-limit.json` | a rejected `rate_limit_event`, then a normal end |
 

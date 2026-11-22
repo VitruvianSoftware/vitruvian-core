@@ -158,4 +158,184 @@ final class AgentSecretsTests: XCTestCase {
         XCTAssertEqual(written.value.map(\.0), ["/state/agent-secrets.json"])
         XCTAssertTrue(written.value.first?.1.contains("\"K\"") == true)
     }
+
+    // MARK: - How the file is written (`writePrivateFile`)
+
+    private func mode(of path: String) -> Int? {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return nil }
+        return Int(info.st_mode & 0o777)
+    }
+
+    func testAPrivateFileIsCreated0600InAFolderMade0700() throws {
+        let folder = root.appendingPathComponent("made/here", isDirectory: true)
+        let path = folder.appendingPathComponent("secret.json").path
+
+        XCTAssertTrue(VitruvianCodeEngine.writePrivateFile(path, "{\"k\":\"v\"}"))
+
+        XCTAssertEqual(mode(of: path), 0o600)
+        XCTAssertEqual(mode(of: folder.path), 0o700, "the folder this call made")
+        XCTAssertEqual(mode(of: root.appendingPathComponent("made").path), 0o700, "and the one above it")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "{\"k\":\"v\"}")
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: folder.path),
+            ["secret.json"],
+            "no temporary file is left behind"
+        )
+    }
+
+    func testReplacingAFileKeepsItPrivate() throws {
+        let path = root.appendingPathComponent("again/secret.json").path
+        XCTAssertTrue(VitruvianCodeEngine.writePrivateFile(path, "one"))
+        XCTAssertTrue(VitruvianCodeEngine.writePrivateFile(path, "two"))
+        XCTAssertEqual(mode(of: path), 0o600)
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "two")
+    }
+
+    /// The temporary file is opened with `O_EXCL | O_NOFOLLOW`: a symlink planted at its name is
+    /// refused, and what it points at is not written through.
+    func testASymlinkPlantedAtTheTemporaryNameIsRefusedNotFollowed() throws {
+        let folder = root.appendingPathComponent("planted", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let victim = root.appendingPathComponent("victim.txt")
+        try "untouched".write(to: victim, atomically: true, encoding: .utf8)
+        let temporary = ".planted.tmp"
+        try FileManager.default.createSymbolicLink(
+            atPath: folder.appendingPathComponent(temporary).path,
+            withDestinationPath: victim.path
+        )
+        let path = folder.appendingPathComponent("secret.json").path
+
+        XCTAssertFalse(VitruvianCodeEngine.writePrivateFile(path, "SECRET", temporaryName: temporary))
+
+        XCTAssertEqual(try String(contentsOf: victim, encoding: .utf8), "untouched", "nothing was written through the link")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path), "and nothing was put in place")
+    }
+
+    func testAFileAtTheTemporaryNameIsNotWrittenOverEither() throws {
+        let folder = root.appendingPathComponent("exclusive", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let squatter = folder.appendingPathComponent(".squat.tmp")
+        try "someone else's".write(to: squatter, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(VitruvianCodeEngine.writePrivateFile(folder.appendingPathComponent("s.json").path, "SECRET", temporaryName: ".squat.tmp"))
+        XCTAssertEqual(try String(contentsOf: squatter, encoding: .utf8), "someone else's")
+    }
+
+    func testASymlinkAtTheDestinationIsReplacedNotWrittenThrough() throws {
+        let folder = root.appendingPathComponent("dest", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let victim = root.appendingPathComponent("victim2.txt")
+        try "untouched".write(to: victim, atomically: true, encoding: .utf8)
+        let path = folder.appendingPathComponent("secret.json").path
+        try FileManager.default.createSymbolicLink(atPath: path, withDestinationPath: victim.path)
+
+        XCTAssertTrue(VitruvianCodeEngine.writePrivateFile(path, "SECRET"))
+
+        XCTAssertEqual(try String(contentsOf: victim, encoding: .utf8), "untouched")
+        XCTAssertEqual(mode(of: path), 0o600, "now a regular file of its own")
+    }
+
+    func testStoringASecretTightensAStateFolderThatAlreadyExisted() throws {
+        let store = secrets()
+        let folder = (store.path as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o755])
+        XCTAssertEqual(mode(of: folder), 0o755)
+
+        XCTAssertTrue(store.set("v", forKey: "K", provider: providerA))
+
+        XCTAssertEqual(mode(of: folder), 0o700)
+        XCTAssertEqual(mode(of: store.path), 0o600)
+    }
+
+    // MARK: - A file that cannot be trusted
+
+    private func plantFile(_ json: String, mode: mode_t = 0o600) throws -> AgentSecrets {
+        let store = secrets()
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: store.path).deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try json.write(toFile: store.path, atomically: true, encoding: .utf8)
+        XCTAssertEqual(chmod(store.path, mode), 0)
+        return store
+    }
+
+    private func json(_ values: [String: String]) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: ["version": 1, "providers": [providerA.uuidString: values]])
+        return String(data: data, encoding: .utf8)!
+    }
+
+    func testAFileOthersCanReadIsIgnoredAndTheReasonNamesNoValue() throws {
+        for permissions: mode_t in [0o644, 0o640, 0o604, 0o660] {
+            let store = try plantFile(json(["ANTHROPIC_API_KEY": "sk-leaked"]), mode: permissions)
+            XCTAssertEqual(store.values(for: providerA), [:], String(permissions, radix: 8))
+            let reason = try XCTUnwrap(store.problem)
+            XCTAssertTrue(reason.contains(String(permissions, radix: 8)), reason)
+            XCTAssertFalse(reason.contains("sk-leaked"))
+            XCTAssertFalse(store.set("new", forKey: "OTHER_KEY", provider: providerA), "it is not written over")
+        }
+    }
+
+    func testAFileThatIsASymlinkIsIgnored() throws {
+        let store = secrets()
+        let real = root.appendingPathComponent("elsewhere.json")
+        try json(["ANTHROPIC_API_KEY": "sk-through-link"]).write(to: real, atomically: true, encoding: .utf8)
+        XCTAssertEqual(chmod(real.path, 0o600), 0)
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: store.path).deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(atPath: store.path, withDestinationPath: real.path)
+
+        XCTAssertEqual(store.values(for: providerA), [:])
+        XCTAssertEqual(store.problem, "agent-secrets.json: it is a symbolic link")
+    }
+
+    func testAFileThatIsNotAFileIsIgnored() throws {
+        let store = secrets()
+        try FileManager.default.createDirectory(atPath: store.path, withIntermediateDirectories: true)
+        XCTAssertEqual(store.values(for: providerA), [:])
+        XCTAssertEqual(store.problem, "agent-secrets.json: it is not a regular file")
+    }
+
+    func testAGoodFileHasNoProblem() throws {
+        let store = try plantFile(json(["ANTHROPIC_API_KEY": "sk-ok"]))
+        XCTAssertNil(store.problem)
+        XCTAssertEqual(store.values(for: providerA), ["ANTHROPIC_API_KEY": "sk-ok"])
+        XCTAssertNil(secrets().problem, "and a file that is not there yet has none")
+    }
+
+    // MARK: - Names that change how a process starts
+
+    func testNamesThatChangeHowAProcessStartsAreRefusedWhenStored() {
+        let store = secrets()
+        for key in ["PATH", "HOME", "NODE_OPTIONS", "NODE_PATH", "CLAUDE_CODE_EXECPATH",
+                    "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH"] {
+            XCTAssertFalse(store.set("x", forKey: key, provider: providerA), key)
+            XCTAssertTrue(AgentSecrets.isDeniedKey(key), key)
+        }
+        XCTAssertEqual(store.keys(for: providerA), [])
+        // Close-looking names that do not change how anything starts are fine.
+        for key in ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "NODE_EXTRA_CA_CERTS", "MYPATH", "HOMEBREW_TOKEN", "GOLD_KEY", "path"] {
+            XCTAssertFalse(AgentSecrets.isDeniedKey(key), key)
+        }
+        XCTAssertTrue(store.set("x", forKey: "NODE_EXTRA_CA_CERTS", provider: providerA))
+    }
+
+    func testNamesThatChangeHowAProcessStartsAreDroppedWhenRead() throws {
+        let store = try plantFile(json([
+            "ANTHROPIC_API_KEY": "sk-ok",
+            "NODE_OPTIONS": "--require=/tmp/evil.js",
+            "PATH": "/tmp/evil",
+            "DYLD_INSERT_LIBRARIES": "/tmp/evil.dylib",
+            "LD_PRELOAD": "/tmp/evil.so",
+            "HOME": "/tmp/evil",
+            "NODE_PATH": "/tmp/evil",
+            "CLAUDE_CODE_EXECPATH": "/tmp/evil",
+        ]))
+        XCTAssertEqual(store.values(for: providerA), ["ANTHROPIC_API_KEY": "sk-ok"])
+        XCTAssertEqual(store.keys(for: providerA), ["ANTHROPIC_API_KEY"])
+    }
 }

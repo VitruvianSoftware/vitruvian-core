@@ -69,21 +69,45 @@ public enum ClaudeSDKSupport {
         return String(output[range])
     }
 
-    /// Compares two `x.y.z` versions numerically; prerelease and build parts are ignored
-    /// (the helper's `compareClaudeVersions`).
+    /// Compares two versions as semver does (T3 Code's `compareSemverVersions`): the three
+    /// numbers first, and then a pre-release ranks below its release
+    /// (`2.1.280-rc.1 < 2.1.280`), pre-releases among themselves by their dotted parts, numbers
+    /// below words. Build metadata (`+...`) counts for nothing.
+    ///
+    /// The helper's own `compareClaudeVersions` (`claude-helper/src/agent.ts`) ignores the
+    /// pre-release part, so it calls `2.1.326-rc.1` equal to `2.1.326`. The helper only uses it
+    /// for the MCP-secrets rule; the two can differ only for a pre-release of exactly the minimum.
     public static func compare(_ lhs: String, _ rhs: String) -> Int {
-        func parts(_ version: String) -> [Int] {
-            let core = version.split(whereSeparator: { $0 == "-" || $0 == "+" }).first.map(String.init) ?? version
-            return core.split(separator: ".").map { Int($0) ?? 0 }
+        func split(_ version: String) -> (core: [Int], pre: [String]) {
+            let noBuild = version.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? version
+            let pieces = noBuild.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+            let core = (pieces.first.map(String.init) ?? "").split(separator: ".").map { Int($0) ?? 0 }
+            let pre = pieces.count > 1 ? pieces[1].split(separator: ".").map(String.init) : []
+            return (core, pre)
         }
-        let left = parts(lhs)
-        let right = parts(rhs)
+        let left = split(lhs)
+        let right = split(rhs)
         for index in 0..<3 {
-            let a = index < left.count ? left[index] : 0
-            let b = index < right.count ? right[index] : 0
+            let a = index < left.core.count ? left.core[index] : 0
+            let b = index < right.core.count ? right.core[index] : 0
             if a != b { return a < b ? -1 : 1 }
         }
-        return 0
+        if left.pre.isEmpty && right.pre.isEmpty { return 0 }
+        if left.pre.isEmpty { return 1 }
+        if right.pre.isEmpty { return -1 }
+        for index in 0..<min(left.pre.count, right.pre.count) {
+            let a = left.pre[index]
+            let b = right.pre[index]
+            if a == b { continue }
+            switch (Int(a), Int(b)) {
+            case let (x?, y?): return x < y ? -1 : 1
+            case (_?, nil): return -1
+            case (nil, _?): return 1
+            case (nil, nil): return a < b ? -1 : 1
+            }
+        }
+        if left.pre.count == right.pre.count { return 0 }
+        return left.pre.count < right.pre.count ? -1 : 1
     }
 
     /// The command that upgrades Claude Code, as T3 Code words it: Homebrew's cask upgrade when
@@ -97,13 +121,75 @@ public enum ClaudeSDKSupport {
         return "claude update"
     }
 
+    /// T3 Code's `HOMEBREW_LATEST_CASK_SWITCH_COMMAND`, for a `claude` in the stable
+    /// `claude-code` cask (its two casks conflict, so moving to the faster channel replaces the
+    /// install). Nil for any other install.
+    public static func channelSwitchCommand(forClaudeAt path: String) -> String? {
+        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        for candidate in [resolved, path] where candidate.contains("/Caskroom/claude-code/") {
+            return "brew uninstall --cask claude-code && brew install --cask claude-code@latest"
+        }
+        return nil
+    }
+
     /// The warning shown when `claude` is older than the helper's minimum. Only MCP servers
     /// that carry secrets need that version (the helper hands them over in `claude`'s first
     /// message, not on its command line), and the helper refuses that case itself. So, as T3
     /// Code does for a version that's merely old, the chat carries on and only warns.
-    public static func tooOldMessage(version: String, minimum: String, updateCommand: String) -> String {
-        "Claude Code v\(version) is older than v\(minimum). Chats work, but MCP servers that carry "
+    ///
+    /// For the stable Homebrew cask (`channelSwitchCommand`) the message adds T3 Code's advice,
+    /// worded for what the app can know: it cannot tell what the stable cask will offer, so it
+    /// says to switch if the upgrade does not reach the minimum.
+    public static func tooOldMessage(
+        version: String,
+        minimum: String,
+        updateCommand: String,
+        switchCommand: String? = nil
+    ) -> String {
+        var message = "Claude Code v\(version) is older than v\(minimum). Chats work, but MCP servers that carry "
             + "secrets need v\(minimum) or newer. Upgrade with `\(updateCommand)`."
+        if let switchCommand {
+            message += " The stable claude-code Homebrew cask may not reach v\(minimum) yet: if it does not, "
+                + "switch to the claude-code@latest cask with `\(switchCommand)`."
+        }
+        return message
+    }
+
+    // MARK: - Environment
+
+    /// Variables that change how the bundled Node or the dynamic loader starts, which the helper
+    /// must not inherit from the app's environment: Node's `NODE_OPTIONS` and `NODE_PATH`, and
+    /// the loader's `DYLD_*` and `LD_*`. `NODE_EXTRA_CA_CERTS` is kept: corporate proxies need it.
+    public static func isStrippedEnvironmentKey(_ key: String) -> Bool {
+        key == "NODE_OPTIONS" || key == "NODE_PATH" || key.hasPrefix("DYLD_") || key.hasPrefix("LD_")
+    }
+
+    /// The environment the helper starts with, and the one `claude --version` is read in: the
+    /// command-line runner's (`VitruvianCodeSupport.childEnvironment`), without the variables
+    /// above, and with `CLAUDE_CONFIG_DIR` when the provider names a folder.
+    public static func helperEnvironment(
+        base: [String: String],
+        home: String,
+        configDirectory: String?
+    ) -> [String: String] {
+        var environment = VitruvianCodeSupport.childEnvironment(base: base, home: home)
+        for key in environment.keys where isStrippedEnvironmentKey(key) {
+            environment.removeValue(forKey: key)
+        }
+        if let folder = configDirectory?.trimmingCharacters(in: .whitespacesAndNewlines), !folder.isEmpty {
+            environment[configDirectoryKey] = folder
+        }
+        return environment
+    }
+
+    /// What the app tells the helper it is. The version is the app's own when the caller has it.
+    public static func clientInfo(appVersion: String? = nil) -> ACPImplementation {
+        let bundle = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        return ACPImplementation(
+            name: "vitruvian-code",
+            title: "Vitruvian Code",
+            version: appVersion ?? bundle ?? "1.0.0"
+        )
     }
 
     // MARK: - Models
@@ -348,6 +434,7 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         bundledNode: @MainActor () -> BundledNode? = { BundledNode.locate() },
         versionProbe: (@Sendable () async -> String?)? = nil,
         minimumClaudeVersion: String = ClaudeSDKSupport.minimumClaudeVersion,
+        clientVersion: String? = nil,
         cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
         sessionSetupTimeout: TimeInterval = ACPTransport.defaultSessionSetupTimeout,
         terminationGrace: TimeInterval = AgentProcess.defaultTerminationGrace,
@@ -364,18 +451,20 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
                 isExecutable: environment.isExecutable,
                 fileExists: environment.fileExists
             )
-        var childEnv = VitruvianCodeSupport.childEnvironment(base: spec.environment, home: environment.home)
-        if let folder = spec.provider.claudeConfigDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !folder.isEmpty {
-            childEnv[ClaudeSDKSupport.configDirectoryKey] = folder
-        }
+        let childEnv = ClaudeSDKSupport.helperEnvironment(
+            base: spec.environment,
+            home: environment.home,
+            configDirectory: spec.provider.claudeConfigDirectory
+        )
         let node = bundledNode()
         let fallbackMode = spec.configuration.approvalMode
         let fallbackPlan = spec.turnModes.plan
         let liveModeProvider = spec.liveModeProvider ?? { (fallbackMode, fallbackPlan) }
-        let probe: @Sendable () async -> String? = versionProbe ?? { [runProgram = environment.runProgram] in
+        // The version is read in the environment the helper runs in, so a `claude` that starts
+        // with `#!/usr/bin/env node` finds the Node the app's install folders put on its PATH.
+        let probe: @Sendable () async -> String? = versionProbe ?? { [runProgram = environment.runProgramWithEnvironment] in
             guard let claudePath else { return nil }
-            return await runProgram(claudePath, ["--version"])
+            return await runProgram(claudePath, ["--version"], childEnv)
         }
         self.init(
             launchSpec: AgentProcessLaunchSpec(
@@ -393,6 +482,7 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
             stateDirectoryOverride: environment.stateDirectoryOverride,
             versionProbe: probe,
             minimumClaudeVersion: minimumClaudeVersion,
+            clientInfo: ClaudeSDKSupport.clientInfo(appVersion: clientVersion),
             cancelGraceTimeout: cancelGraceTimeout,
             sessionSetupTimeout: sessionSetupTimeout,
             terminationGrace: terminationGrace,
@@ -411,6 +501,7 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         stateDirectoryOverride: String? = nil,
         versionProbe: @escaping @Sendable () async -> String?,
         minimumClaudeVersion: String = ClaudeSDKSupport.minimumClaudeVersion,
+        clientInfo: ACPImplementation = ClaudeSDKSupport.clientInfo(),
         cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
         sessionSetupTimeout: TimeInterval = ACPTransport.defaultSessionSetupTimeout,
         terminationGrace: TimeInterval = AgentProcess.defaultTerminationGrace,
@@ -471,6 +562,7 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
             stateDirectoryOverride: stateDirectoryOverride,
             sessionSetupTimeout: sessionSetupTimeout,
             terminationGrace: terminationGrace,
+            clientInfo: clientInfo,
             processFactory: processFactory
         )
     }
@@ -484,6 +576,9 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         }
 
         let stored = secrets?.values(for: providerID) ?? [:]
+        if let problem = secrets?.problem {
+            inner.recordHostLog("Not using stored secrets: \(problem)")
+        }
         let plan = ClaudeSDKSupport.secretsPlan(environment: stored, mcpSecrets: request.mcpSecrets)
         hookState.secretsParams = plan.params
         inner.addRedactions(plan.values)
@@ -566,7 +661,8 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
             let message = ClaudeSDKSupport.tooOldMessage(
                 version: version,
                 minimum: minimumClaudeVersion,
-                updateCommand: ClaudeSDKSupport.updateCommand(forClaudeAt: claudePath)
+                updateCommand: ClaudeSDKSupport.updateCommand(forClaudeAt: claudePath),
+                switchCommand: ClaudeSDKSupport.channelSwitchCommand(forClaudeAt: claudePath)
             )
             inner.emitHostEvent(.notice(severity: "warning", title: message, detail: nil))
         }

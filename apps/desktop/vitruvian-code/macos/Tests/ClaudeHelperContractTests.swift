@@ -253,7 +253,8 @@ final class ClaudeHelperContractTests: XCTestCase {
 
     private func makeConnection(
         agent: ScriptedACPAgent,
-        providerSecrets: [String: String] = [:]
+        providerSecrets: [String: String] = [:],
+        clientVersion: String? = nil
     ) -> ClaudeSDKConnection {
         var live = VitruvianCodeEngine.Environment.live(stateDirectoryOverride: root.path)
         live.home = root.path
@@ -283,6 +284,7 @@ final class ClaudeHelperContractTests: XCTestCase {
                 BundledNode(nodeURL: URL(fileURLWithPath: "/bundled/node"), helperURL: URL(fileURLWithPath: "/bundled/claude-helper.mjs"))
             },
             versionProbe: { "2.1.400 (Claude Code)" },
+            clientVersion: clientVersion,
             processFactory: agent.makeProcessFactory()
         )
     }
@@ -487,5 +489,74 @@ final class ClaudeHelperContractTests: XCTestCase {
         let setMode = try XCTUnwrap(requests(sent, method: "session/set_mode").first)
         assertSameShape(setMode["params"], try Self.example("client-session-set-mode")["params"], "session/set_mode params")
         XCTAssertEqual(setMode["params"]?.objectValue?["modeId"]?.stringValue, "plan")
+    }
+
+    // MARK: - The client's own identity
+
+    func testInitializeCarriesTheAppsRealNameAndVersion() async throws {
+        let agent = ScriptedACPAgent()
+        let peer = playHelper(agent)
+        defer { peer.cancel() }
+        let connection = makeConnection(agent: agent, clientVersion: "9.8.7")
+        _ = try await connection.start(AgentSessionRequest(workingDirectory: root.appendingPathComponent("work").path))
+        await connection.stop()
+
+        let sent = await agent.allClientMessages()
+        let info = try XCTUnwrap(requests(sent, method: "initialize").first?["params"]?.objectValue?["clientInfo"]?.objectValue)
+        XCTAssertEqual(info["name"]?.stringValue, "vitruvian-code")
+        XCTAssertEqual(info["title"]?.stringValue, "Vitruvian Code")
+        XCTAssertEqual(info["version"]?.stringValue, "9.8.7")
+    }
+
+    func testWithNoVersionGivenTheBundlesIsUsed() {
+        let info = ClaudeSDKSupport.clientInfo()
+        XCTAssertEqual(info.name, "vitruvian-code")
+        XCTAssertEqual(info.version, Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+        XCTAssertEqual(ClaudeSDKSupport.clientInfo(appVersion: "2.0.0").version, "2.0.0")
+    }
+
+    // MARK: - Elicitation modes the client did not offer
+
+    /// The helper takes forms only, and says so at `initialize`; an agent that sends a URL-mode
+    /// request anyway is refused with an error, not shown a page to open.
+    func testAURLModeElicitationIsRefusedWhenTheClientOffersFormsOnly() async throws {
+        let agent = ScriptedACPAgent()
+        let peer = playHelper(agent)
+        defer { peer.cancel() }
+        let connection = makeConnection(agent: agent)
+        let recorder = ClaudeEventRecorder(connection.events)
+        let sessionID = try await connection.start(AgentSessionRequest(workingDirectory: root.appendingPathComponent("work").path))
+
+        for (id, params) in [
+            ("url-1", ["mode": "url", "url": "https://example.com/consent", "elicitationId": "e1"]),
+            ("url-2", ["url": "https://example.com/consent", "elicitationId": "e2"]),
+        ] {
+            var body: [String: ACPJSONValue] = ["sessionId": .string(sessionID), "message": .string("Open this page")]
+            for (key, value) in params { body[key] = .string(value) }
+            try await agent.sendToClient(.object([
+                "jsonrpc": .string("2.0"), "id": .string(id), "method": .string("elicitation/create"), "params": .object(body),
+            ]))
+            var reply: [String: ACPJSONValue]?
+            for _ in 0..<200 where reply == nil {
+                reply = await agent.allClientMessages().compactMap { $0.objectValue }.first { $0["id"]?.stringValue == id }
+                if reply == nil { try await Task.sleep(nanoseconds: 10_000_000) }
+            }
+            let answer = try XCTUnwrap(reply, id)
+            XCTAssertNotNil(answer["error"], "\(id) is answered with an error")
+            XCTAssertNil(answer["result"], id)
+        }
+        XCTAssertFalse(
+            recorder.events.contains { if case .question = $0 { return true } else { return false } },
+            "no question card is shown for a URL the client never offered"
+        )
+        await connection.stop()
+    }
+
+    func testAgysPolicyKeepsItsBehaviour() {
+        let agy = ACPClientPolicy.antigravity(version: "1.5.1")
+        XCTAssertFalse(agy.elicitation, "agy gets no elicitation, so none of its requests reach the URL check")
+        XCTAssertTrue(agy.elicitationURLMode, "and the flag's default is the one it always had")
+        XCTAssertTrue(ACPClientPolicy(elicitation: true).elicitationURLMode)
+        XCTAssertFalse(ACPClientPolicy.claudeSDK.elicitationURLMode)
     }
 }

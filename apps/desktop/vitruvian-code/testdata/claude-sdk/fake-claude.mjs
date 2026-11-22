@@ -23,6 +23,7 @@
 //   {"wait_interrupt": true, "then": [...]} wait for an `interrupt`, then run `then`
 //   {"sleep_ms": 50}                        wait
 //   {"hang": true}                          never finish this turn
+//   {"die": "SIGKILL"}                      end this process at once, as a crash would
 import { appendFileSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -218,6 +219,9 @@ async function runSteps(steps) {
     } else if (step.sleep_ms) {
       await new Promise((resolve) => setTimeout(resolve, step.sleep_ms));
     } else if (step.hang) {
+      await new Promise(() => {});
+    } else if (step.die) {
+      process.kill(process.pid, step.die);
       await new Promise(() => {});
     }
   }

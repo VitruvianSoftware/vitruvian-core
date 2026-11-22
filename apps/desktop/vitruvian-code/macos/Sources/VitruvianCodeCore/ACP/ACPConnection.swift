@@ -1193,6 +1193,13 @@ public final class ACPConnection: PersistentAgentConnection {
                   let decoded = try? params.decode(ACPElicitationCreateParams.self) else {
                 throw ACPRPCError(code: ACPRPCError.invalidParams, message: "Invalid elicitation/create params")
             }
+            // The agent may only use the elicitation modes the client offered at `initialize`.
+            if (decoded.mode == "url" || decoded.url != nil) && !policy.elicitationURLMode {
+                throw ACPRPCError(
+                    code: ACPRPCError.invalidParams,
+                    message: "URL elicitation is not supported: this client offers forms only"
+                )
+            }
             let result = await handleElicitationRequest(decoded)
             return try ACPJSONValue.fromEncodable(result)
 

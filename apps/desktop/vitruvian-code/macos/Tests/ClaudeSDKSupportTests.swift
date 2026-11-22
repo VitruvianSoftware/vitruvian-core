@@ -41,7 +41,25 @@ final class ClaudeSDKSupportTests: XCTestCase {
         XCTAssertEqual(ClaudeSDKSupport.compare("2.1.99", "2.1.326"), -1)
         XCTAssertEqual(ClaudeSDKSupport.compare("2.10.0", "2.9.9"), 1)
         XCTAssertEqual(ClaudeSDKSupport.compare("3.0.0", "2.99.99"), 1)
-        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.326-beta.1", "2.1.326"), 0, "a prerelease part is ignored, as the helper does")
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.326+build.5", "2.1.326"), 0, "build metadata counts for nothing")
+    }
+
+    /// T3 Code's `compareSemverVersions`: a pre-release ranks below its release.
+    func testAPreReleaseRanksBelowItsRelease() {
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280-rc.1", "2.1.280"), -1)
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280", "2.1.280-rc.1"), 1)
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.279", "2.1.280-rc.1"), -1, "the numbers come first")
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.281-rc.1", "2.1.280"), 1)
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280-rc.1", "2.1.280-rc.2"), -1)
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280-rc.2", "2.1.280-rc.10"), -1, "numbers compare as numbers")
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280-rc.1", "2.1.280-rc.1"), 0)
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280-1", "2.1.280-rc"), -1, "numbers rank below words")
+        XCTAssertEqual(ClaudeSDKSupport.compare("2.1.280-rc", "2.1.280-rc.1"), -1, "a shorter list ranks below")
+        // ...and so the upgrade message and model hiding treat a pre-release as older.
+        XCTAssertEqual(
+            ClaudeSDKSupport.unavailableModels(version: "2.1.280-rc.1").map(\.id),
+            ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+        )
     }
 
     // MARK: - Too old for the helper
@@ -63,6 +81,29 @@ final class ClaudeSDKSupportTests: XCTestCase {
             ClaudeSDKSupport.tooOldMessage(version: "2.1.100", minimum: "2.1.326", updateCommand: "claude update"),
             "Claude Code v2.1.100 is older than v2.1.326. Chats work, but MCP servers that carry "
                 + "secrets need v2.1.326 or newer. Upgrade with `claude update`."
+        )
+    }
+
+    /// T3 Code (`ClaudeModelCatalog.ts`, `formatClaudeVersionUpgradeMessage`) tells a user of the
+    /// stable cask to move to `claude-code@latest` when the stable cask is behind. The app cannot
+    /// know what the cask offers, so it says to switch if the upgrade does not reach the minimum.
+    func testTheStableHomebrewCaskIsToldToSwitchToTheLatestChannel() {
+        let stable = "/opt/homebrew/Caskroom/claude-code/2.1.322/claude"
+        let switchCommand = "brew uninstall --cask claude-code && brew install --cask claude-code@latest"
+        XCTAssertEqual(ClaudeSDKSupport.channelSwitchCommand(forClaudeAt: stable), switchCommand)
+        XCTAssertNil(ClaudeSDKSupport.channelSwitchCommand(forClaudeAt: "/opt/homebrew/Caskroom/claude-code@latest/2.1.322/claude"))
+        XCTAssertNil(ClaudeSDKSupport.channelSwitchCommand(forClaudeAt: "/Users/me/.local/bin/claude"))
+        XCTAssertEqual(
+            ClaudeSDKSupport.tooOldMessage(
+                version: "2.1.322",
+                minimum: "2.1.326",
+                updateCommand: ClaudeSDKSupport.updateCommand(forClaudeAt: stable),
+                switchCommand: ClaudeSDKSupport.channelSwitchCommand(forClaudeAt: stable)
+            ),
+            "Claude Code v2.1.322 is older than v2.1.326. Chats work, but MCP servers that carry "
+                + "secrets need v2.1.326 or newer. Upgrade with `brew upgrade --cask claude-code`. "
+                + "The stable claude-code Homebrew cask may not reach v2.1.326 yet: if it does not, "
+                + "switch to the claude-code@latest cask with `\(switchCommand)`."
         )
     }
 
@@ -120,9 +161,9 @@ final class ClaudeSDKSupportTests: XCTestCase {
     }
 
     func testNoListedModelIsHeldBackOnAClaudeTheHelperAccepts() {
-        // The helper needs 2.1.326; the newest model minimum the app lists is 2.1.293. So today
-        // the hiding and the notice cannot fire for a claude that starts; they are there for
-        // the first listed model that needs more than the helper does.
+        // A claude older than the helper's 2.1.326 still starts (it only warns), so models can be
+        // held back on one that runs. At 2.1.326 itself none is: the newest minimum the app lists
+        // is 2.1.293. The hiding matters below that, and for the first model that needs more.
         let all = VitruvianCodeSupport.defaultModels(for: .claude)
         XCTAssertEqual(ClaudeSDKSupport.visibleModels(all, version: ClaudeSDKSupport.minimumClaudeVersion), all)
     }

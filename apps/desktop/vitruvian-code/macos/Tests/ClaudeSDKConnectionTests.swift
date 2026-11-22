@@ -75,6 +75,11 @@ enum ClaudeSDKTestSupport {
     }
 }
 
+/// Thrown after a failure has been recorded, to stop a test that cannot go on.
+enum ClaudeTestFailure: Error {
+    case noApproval
+}
+
 /// A value shared with `@Sendable` closures (a process factory counting launches).
 final class ClaudeLockedBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
@@ -278,6 +283,7 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         minimumClaudeVersion: String = ClaudeSDKSupport.minimumClaudeVersion,
         versionProbe: (@Sendable () async -> String?)? = nil,
         terminationGrace: TimeInterval = 1,
+        extraEnvironment: [String: String] = [:],
         processFactory: @escaping ACPConnection.ProcessFactory = ACPLaunchedProcess.live
     ) -> ClaudeSDKConnection {
         let spec = AgentConnectionSpec(
@@ -287,7 +293,7 @@ final class ClaudeSDKConnectionTests: XCTestCase {
             agentPath: claude,
             workingDirectory: work.path,
             turnModes: AgentTurnModes(plan: plan),
-            environment: environment.processEnvironment
+            environment: environment.processEnvironment.merging(extraEnvironment) { _, new in new }
         )
         let connection = ClaudeSDKConnection(
             spec: spec,
@@ -374,6 +380,27 @@ final class ClaudeSDKConnectionTests: XCTestCase {
 
     // MARK: - Approvals and questions
 
+    /// The approval card among `event`; a test that needs one FAILS, not skips, when none came.
+    static func requireApproval(
+        _ event: AgentEvent?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> VitruvianCodeApprovalRequest {
+        guard case .approval(let approval)? = event else {
+            XCTFail("no approval card arrived", file: file, line: line)
+            throw ClaudeTestFailure.noApproval
+        }
+        return approval
+    }
+
+    func testATestThatNeedsAnApprovalCardFailsWhenNoneArrives() {
+        XCTExpectFailure("no approval arrived") {
+            _ = try? Self.requireApproval(nil)
+            _ = try? Self.requireApproval(.text("not an approval"))
+        }
+        XCTAssertNoThrow(try Self.requireApproval(.approval(VitruvianCodeApprovalRequest(toolName: "Bash", commandOrPath: "ls"))))
+    }
+
     private func approvalTurn(
         answer: String,
         file: StaticString = #filePath,
@@ -390,9 +417,12 @@ final class ClaudeSDKConnectionTests: XCTestCase {
             if case .approval = event { return true }
             return false
         }
-        guard case .approval(let approval)? = asked else {
+        let approval: VitruvianCodeApprovalRequest
+        do {
+            approval = try Self.requireApproval(asked, file: file, line: line)
+        } catch {
             prompt.cancel()
-            throw XCTSkip("no approval arrived")
+            throw error
         }
         XCTAssertEqual(approval.toolName, "Run Bash: rm -rf build")
         XCTAssertEqual(approval.commandOrPath, "rm -rf build")
@@ -672,6 +702,66 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         XCTAssertTrue(subtypes.contains("set_permission_mode"), "\(subtypes)")
     }
 
+    // MARK: - Environment of the helper
+
+    func testTheHelperDoesNotInheritVariablesThatChangeHowNodeStarts() async throws {
+        let bundled = try requireBundled()
+        let stripped = ["NODE_OPTIONS", "NODE_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH"]
+        let claude = try makeFakeClaude(bundled, recordEnvironment: stripped + ["NODE_EXTRA_CA_CERTS"])
+        // A NODE_OPTIONS that names a missing module would stop Node from starting at all.
+        let connection = makeConnection(
+            claude: claude.path,
+            bundled: bundled,
+            extraEnvironment: [
+                "NODE_OPTIONS": "--require=/nonexistent/vitruvian-test.js",
+                "NODE_PATH": "/nonexistent/node-path",
+                "DYLD_INSERT_LIBRARIES": "/nonexistent/lib.dylib",
+                "DYLD_LIBRARY_PATH": "/nonexistent",
+                "LD_PRELOAD": "/nonexistent/preload.so",
+                "LD_LIBRARY_PATH": "/nonexistent",
+                "NODE_EXTRA_CA_CERTS": "/etc/ssl/corporate-ca.pem",
+            ]
+        )
+        _ = try await connection.start(request())
+
+        let launch = connection.launchSpecUsed.environment
+        for key in stripped { XCTAssertNil(launch[key], "\(key) in the helper's launch environment") }
+        XCTAssertEqual(launch["NODE_EXTRA_CA_CERTS"], "/etc/ssl/corporate-ca.pem", "corporate proxies need it")
+
+        // As the system sees the running helper, and as claude, its child, sees it.
+        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let seen = start["parentEnvironment"] as? String ?? ""
+        XCTAssertTrue(seen.contains("NODE_EXTRA_CA_CERTS=/etc/ssl/corporate-ca.pem"), "ps shows the helper's environment")
+        let claudeEnvironment = start["env"] as? [String: Any]
+        for key in stripped {
+            XCTAssertFalse(seen.contains("\(key)="), "\(key) in the running helper's environment")
+            XCTAssertTrue(claudeEnvironment?[key] is NSNull, "\(key) reached claude")
+        }
+        XCTAssertEqual(claudeEnvironment?["NODE_EXTRA_CA_CERTS"] as? String, "/etc/ssl/corporate-ca.pem")
+    }
+
+    // MARK: - Stored secrets that cannot be trusted
+
+    func testAStoredSecretsFileThatOthersCanReadIsNotSentAndSaysWhy() async throws {
+        let bundled = try requireBundled()
+        let secretValue = "sk-untrusted-\(UUID().uuidString)"
+        let claude = try makeFakeClaude(bundled, recordEnvironment: ["ANTHROPIC_API_KEY"])
+        let store = AgentSecrets(environment: environment)
+        XCTAssertTrue(store.set(secretValue, forKey: "ANTHROPIC_API_KEY", provider: provider.id))
+        XCTAssertEqual(chmod(store.path, 0o644), 0, "now group and others can read it")
+
+        let connection = makeConnection(claude: claude.path, bundled: bundled)
+        let sessionID = try await connection.start(request())
+        _ = try await connection.prompt([.text("hi")])
+        await connection.stop()
+
+        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        XCTAssertTrue((start["env"] as? [String: Any])?["ANTHROPIC_API_KEY"] is NSNull, "no secret was sent")
+        let log = (try? String(contentsOfFile: root.appendingPathComponent("logs/chat-\(sessionID).log").path, encoding: .utf8)) ?? ""
+        XCTAssertTrue(log.contains("Not using stored secrets: agent-secrets.json: its permissions (644) let others read it"), log)
+        XCTAssertFalse(log.contains(secretValue), "the log never holds a value")
+    }
+
     // MARK: - The version check
 
     func testAClaudeOlderThanTheMinimumStillStartsAndWarns() async throws {
@@ -729,6 +819,68 @@ final class ClaudeSDKConnectionTests: XCTestCase {
             notices,
             ["Claude Code v2.1.200 is too old for Claude Opus 5.5. Upgrade to v2.1.280 or newer to use it."]
         )
+    }
+
+    func testTheVersionIsReadInTheEnvironmentTheHelperRunsIn() async throws {
+        let bundled = try requireBundled()
+        // A `claude` that starts with `#!/usr/bin/env <interpreter>`, where the interpreter is on the
+        // app's install-folder PATH (`~/.local/bin` here) and on no other PATH. It is named so
+        // that nothing on this machine's own PATH could stand in for it.
+        let interpreter = "vitruvian-test-node-\(UUID().uuidString.prefix(8))"
+        let installFolder = root.appendingPathComponent(".local/bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: installFolder, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: installFolder.appendingPathComponent(interpreter),
+            withDestinationURL: bundled.nodeURL
+        )
+        let fake = try String(contentsOf: try fakeClaudeScript(), encoding: .utf8)
+        let claude = root.appendingPathComponent("claude-script")
+        try "#!/usr/bin/env \(interpreter)\n\(fake)".write(to: claude, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claude.path)
+
+        let connection = makeConnection(claude: claude.path, bundled: bundled)
+        _ = try await connection.start(request())
+
+        XCTAssertEqual(connection.installedClaudeVersion, "2.1.400", "claude --version was read, in the helper's environment")
+    }
+
+    // MARK: - A claude that dies
+
+    func testAClaudeThatDiesMidTurnEndsTheTurnWithOneFailureAndLeavesNothingRunning() async throws {
+        let bundled = try requireBundled()
+        let claude = try makeFakeClaude(bundled, script: "die")
+        let connection = makeConnection(claude: claude.path, bundled: bundled)
+        let recorder = ClaudeEventRecorder(connection.events)
+        _ = try await connection.start(request())
+        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let claudePID = try XCTUnwrap(start["pid"] as? Int)
+        let helperPID = try XCTUnwrap(start["ppid"] as? Int)
+
+        let outcome: Result<AgentStopReason, Error> = await {
+            do { return .success(try await withACPTestTimeout(seconds: 30, description: "the turn to end") { try await connection.prompt([.text("go")]) }) }
+            catch { return .failure(error) }
+        }()
+        switch outcome {
+        case .success(let stop):
+            XCTAssertTrue(stop == .error || stop == .cancelled, "the turn ended as \(stop)")
+        case .failure:
+            break // a failed prompt is a failed turn
+        }
+        await recorder.wait("the turn marked finished with an error") { event in
+            if case .finished(let status, _, _, _, _) = event { return status == "error" || status == "cancelled" }
+            return false
+        }
+        await connection.stop()
+        await recorder.finish()
+
+        let failures = recorder.events.filter { if case .connectionFailed = $0 { return true } else { return false } }
+        XCTAssertEqual(failures.count, 1, "exactly one connection failure: \(failures)")
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, alive(claudePID) || alive(helperPID) {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertFalse(alive(helperPID), "the helper is gone")
+        XCTAssertFalse(alive(claudePID), "claude is gone")
     }
 
     // MARK: - Helper messages
