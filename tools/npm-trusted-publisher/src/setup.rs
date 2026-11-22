@@ -185,6 +185,11 @@ pub fn mirror_for(mf: &str) -> &'static str {
         "vitruvian-sdk/kits/typescript/",
     ]) {
         "VitruvianSoftware/vitruvian-sdk"
+    } else if any(&[
+        "apps/opencode/plugins/vitruvian-orchestrator/",
+        "vitruvian-orchestrator-opencode/",
+    ]) {
+        "VitruvianSoftware/vitruvian-orchestrator-opencode"
     } else {
         ""
     }
@@ -200,6 +205,7 @@ pub fn search_dirs() -> Vec<String> {
         "vitruvian-slack-mcp",
         "packages/vitruvian-sdk/kits/typescript",
         "vitruvian-sdk/kits/typescript",
+        "apps/opencode/plugins/vitruvian-orchestrator",
     ]
     .iter()
     .filter(|d| std::path::Path::new(d).is_dir())
@@ -561,6 +567,10 @@ mod tests {
         assert_eq!(
             mirror_for("vitruvian-sdk/kits/typescript/package.json"),
             "VitruvianSoftware/vitruvian-sdk"
+        );
+        assert_eq!(
+            mirror_for("apps/opencode/plugins/vitruvian-orchestrator/package.json"),
+            "VitruvianSoftware/vitruvian-orchestrator-opencode"
         );
         assert_eq!(mirror_for("somewhere/package.json"), "");
     }
