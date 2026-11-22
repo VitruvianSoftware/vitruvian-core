@@ -12,7 +12,7 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `token <app-id> <key.pem> <inst-id>` | Mints a **1-hour** installation access token. |
 | `env <agent>` | **The one agents use.** Prints every export: token **and** git author identity. |
 | `login <agent>` | Token only. Not sufficient on its own — see below. |
-| `pr-create [--agent <agent>] [gh pr create args]` | **How agents open PRs.** Opens the PR as the agent app (default `wren`) with the `agent-fast-lane` label on at creation, so it skips the heavy PR tests; the merge queue still runs everything (#3418). Every other argument goes to `gh pr create` unchanged. The token is never printed; if it can't be minted, no PR is opened. |
+| `pr-create [--agent <agent>] [gh pr create args]` | **How agents open PRs.** Opens the PR as the agent app (default `wren`) and passes every other argument to `gh pr create` unchanged (callers can still opt in with `--label agent-fast-lane` via #3423). The token is never printed; if it can't be minted, no PR is opened. |
 | `pr-edit <pr> [gh pr edit args]` | Edits the PR as the agent: `--title`, `--body-file`, `--add-label`, and so on. |
 | `pr-comment <pr> --body-file <f>` \| `--body <s>` | Comments as the agent. The body is required: without one gh waits for an editor. |
 | `pr-review <pr> (--approve \| --comment \| --request-changes) [--body-file <f> \| --body <s>]` | Submits a PR review as the agent. Exactly one of `--approve`, `--comment` or `--request-changes` is required (without one gh prompts), and `--comment` / `--request-changes` require a body; `--web` is refused. Pass `--agent <reviewer>` so the review comes from a different agent than the PR author (GitHub blocks self-approval). |

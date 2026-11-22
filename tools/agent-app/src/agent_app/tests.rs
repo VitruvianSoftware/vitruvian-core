@@ -68,27 +68,6 @@ fn need_target_refuses_missing_and_flag_shaped() {
 }
 
 #[test]
-fn fast_lane_label_is_detected_in_every_spelling() {
-    for given in [
-        &["--label", "agent-fast-lane"][..],
-        &["--label=agent-fast-lane"],
-        &["-l", "agent-fast-lane"],
-        &["-lagent-fast-lane"],
-        &["--label", "ci, agent-fast-lane"],
-    ] {
-        assert!(has_fast_lane(&v(given)), "{:?}", given);
-    }
-    for given in [
-        &["--label", "ci"][..],
-        &["--title", "agent-fast-lane"],
-        &["--label", "agent-fast-lane-x"],
-        &["agent-fast-lane"],
-    ] {
-        assert!(!has_fast_lane(&v(given)), "{:?}", given);
-    }
-}
-
-#[test]
 fn has_body_spellings() {
     for a in [
         "--body",

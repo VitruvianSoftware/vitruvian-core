@@ -11,7 +11,6 @@ Component package providing implementation for `tools/agent-app/src/agent_app`.
 - `[mod.rs:HOLD_LABEL]`
 - `[mod.rs:RELEASE_HOLD_LABEL]`
 - `[mod.rs:BETA_GATE_LABEL]`
-- `[mod.rs:FAST_LANE_LABEL]`
 - `[mod.rs:Refusal]`
 - `[mod.rs:b64url]`
 - `[mod.rs:awk_v]`
@@ -22,7 +21,6 @@ Component package providing implementation for `tools/agent-app/src/agent_app`.
 - `[mod.rs:arith]`
 - `[mod.rs:take_agent]`
 - `[mod.rs:need_target]`
-- `[mod.rs:has_fast_lane]`
 - `[mod.rs:has_body]`
 
 ## Invariants
