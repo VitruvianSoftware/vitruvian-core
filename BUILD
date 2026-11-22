@@ -75,6 +75,17 @@ js_library(
 )
 
 exports_files(
+    [".nvmrc"],
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+)
+
+js_library(
+    name = "nvmrc",
+    srcs = [".nvmrc"],
+    visibility = ["//apps/desktop/vitruvian-code/macos/claude-helper:__pkg__"],
+)
+
+exports_files(
     ["pnpm-lock.yaml"],
     visibility = ["//tools/ci:__pkg__"],
 )

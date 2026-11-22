@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
@@ -41,6 +42,12 @@ filegroup(
     name = "sign_and_notarize_script",
     srcs = ["scripts/sign-and-notarize.sh"],
     visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+)
+
+js_library(
+    name = "third_party_notices",
+    srcs = ["THIRD_PARTY_NOTICES.md"],
+    visibility = ["//apps/desktop/vitruvian-code/macos/claude-helper:__pkg__"],
 )
 
 rust_library(

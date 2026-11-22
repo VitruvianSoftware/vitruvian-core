@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import Foundation
+import VitruvianCodeCore
 import WebKit
 
 /// The page a diagram card draws in, and the copy of Mermaid it draws with.
@@ -54,17 +55,10 @@ public enum VitruvianCodeMermaidPage {
     ///   script copies into `Contents/Resources`, and which sits beside the
     ///   executable when the package is run without being packaged.
     public static func scriptDirectories(for bundle: Bundle) -> [URL] {
-        var roots: [URL] = []
-        if let resources = bundle.resourceURL { roots.append(resources) }
-        if let executable = bundle.executableURL { roots.append(executable.deletingLastPathComponent()) }
-        var directories: [URL] = []
-        for root in roots {
-            let swiftPM = root.appendingPathComponent(swiftPMResourceBundleName, isDirectory: true)
-            directories.append(root)
-            directories.append(swiftPM)
-            directories.append(swiftPM.appendingPathComponent("Contents/Resources", isDirectory: true))
-        }
-        return directories
+        BundleResources.resourceDirectories(
+            for: bundle,
+            swiftPMResourceBundleName: swiftPMResourceBundleName
+        )
     }
 
     /// The script's file in the first of `directories` that has it.

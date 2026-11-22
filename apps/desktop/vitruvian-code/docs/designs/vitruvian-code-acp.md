@@ -448,9 +448,11 @@ architecture's Node. The universal app and the extension carry both, joined
 with `lipo`, as the release already does for the app itself. Releases are
 built by the standalone repository's release workflow (Detailed
 Implementation, "How this app is built, shipped and tested"), so that is where
-Node is added and signed. Alongside it go the helper's JavaScript and its locked
-dependency, `@anthropic-ai/claude-agent-sdk`. The costs are listed in Risks &
-Mitigations.
+Node is added and signed. Alongside it go the helper's JavaScript (bundled as a single self-contained ESM
+file, `claude-helper.mjs`, excluding optional platform CLI binaries) and its
+locked dependency, `@anthropic-ai/claude-agent-sdk`, with the Node version
+and tarball checksums pinned in `macos/claude-helper/node.lock`. The costs are
+listed in Risks & Mitigations.
 
 The optional Telegram bot keeps using the user's own Node, as it does today.
 
@@ -867,13 +869,18 @@ events. For Claude chats on the SDK, the follower is off.
     *   **Universal app and extension zip:** both architectures joined with
         `lipo`, as `release.yml` already does for the app binary.
 *   **Where it goes.**
-    *   **App:** `Contents/Resources/node` and
-        `Contents/Resources/claude-helper/`.
-    *   **Extension folder:** `bin/node` and `bin/claude-helper/`.
-*   **How it's found.** `BundledNode` searches the app's Resources first, then
-    the SwiftPM resource bundle, then the folder beside the executable. That's
-    the same search `VitruvianCodeMermaidPage.scriptDirectories(for:)` does
-    today. It moves from UI to Core so both can share it.
+    *   **App:** `Contents/Helpers/node` (beside `Contents/Helpers/bot-engine` —
+        Mach-O executables belong in `Contents/Helpers/`, never
+        `Contents/Resources/`, and `node` is signed inside-out with
+        `macos/Resources/node.entitlements`) and
+        `Contents/Resources/claude-helper/claude-helper.mjs`.
+    *   **Extension folder:** `bin/node` and `bin/claude-helper/claude-helper.mjs`.
+*   **How it's found.** `BundledNode` searches `Contents/Helpers` +
+    `Contents/Resources` in the app bundle first, then the folder beside the
+    executable (`bin/` layout for the tool), then the SwiftPM resource bundle.
+    It shares SwiftPM/resource directory discovery with
+    `VitruvianCodeMermaidPage` via `BundleResources` in Core and never falls back
+    to `PATH`, Homebrew, nvm, or `HOME`.
 
 ### Files
 
@@ -929,12 +936,12 @@ the peak resident memory of one connection.
 | `macos/claude-helper/BUILD` (new) | `npm_link_all_packages`, `ts_project` and `jest_test`, following `packages/vitruvian-sdk/kits/typescript/BUILD`. Adds the test to the app's `pipeline_unit` | Built and tested by Bazel and CI |
 | `macos/claude-helper/test/*.test.ts` (new) | Every `examples/` message validates against the schema. SDK streams map correctly. Approvals and questions make the full round trip. Skills and usage limits are detected | Helper side of the contract |
 | `//MODULE.bazel` | `use_repo` for the darwin arm64 and amd64 Node repositories from the existing `node` extension | Node binaries for packaging |
-| `macos/BUILD` | Puts Node and the helper in the app's Resources and adds `bin/node` and `bin/claude-helper/` to `:tool-folder`'s outputs. `VitruvianCodeTests` gains them as `data` | Bazel build |
+| `macos/BUILD` | Adds `node_helper` (`lipo` + JIT entitlements), puts `node` in `Contents/Helpers` and `claude-helper.mjs` in `Contents/Resources/claude-helper/`, and adds `bin/node` and `bin/claude-helper/claude-helper.mjs` to `:tool-folder`'s outputs. Adds `app_holds_node_test` and helper bundle checks | Bazel build |
 | `macos/Sources/VitruvianCodeCore/BundledNode.swift` (new) | Finds Node and the helper, never the user's Node | Node ships with the app |
 | `macos/Sources/VitruvianCodeCore/ClaudeSDKConnection.swift` (new) | An `ACPConnection` started with the bundled Node and the helper. Passes `CLAUDE_CONFIG_DIR`, sends secrets through `_vitruvian/secrets`, and runs the `claude --version` check. The check hides models the installed `claude` doesn't support and asks the user to upgrade, as `ClaudeProvider.ts` does | App side of the helper |
 | `macos/Sources/VitruvianCodeCore/AgentSecrets.swift` (new) | Saves sensitive environment values to a 0600 file through `writePrivateFile` | API keys never stored in plain settings |
-| `.github/workflows/release.yml` (mirror copy in this folder) | Fetches the pinned Node for each architecture, the version given in `//.nvmrc`. Joins the two with `lipo` for the universal app and the extension zip. Builds the helper with `pnpm install --frozen-lockfile` and copies it in. Adds both to the extension zip | Releases ship Node and the helper |
-| `macos/scripts/src/bin/bundle.rs`, `macos/scripts/src/lib.rs` | Copies `node` and `claude-helper/` into `Contents/Resources` | The `.app` holds them |
+| `.github/workflows/release.yml` (mirror copy in this folder) | Fetches and SHA-256 verifies the pinned Node tarballs from `macos/claude-helper/node.lock` (`//.nvmrc` version) for each architecture, joins the two with `lipo` for the universal app and the extension zip, signs `node` with `node.entitlements`, and copies `claude-helper/bundle/claude-helper.mjs` in | Releases ship Node and the helper |
+| `macos/scripts/src/bundle.rs`, `macos/scripts/src/lib.rs` | Copies `node` into `Contents/Helpers/node` (signed inside-out with `node.entitlements`, without `--deep`) and `claude-helper.mjs` into `Contents/Resources/claude-helper/` | The `.app` holds them |
 | `macos/scripts/src/bin/check_packaged_app.rs` | Fails if Node or the helper is missing, has the wrong architecture, or isn't signed | The release check catches gaps |
 | `macos/scripts/src/mirror_build_test.rs`, `macos/Package.swift` | The mirror build includes the helper's resources. `ClaudeSDKConnectionTests` skips under SwiftPM when no bundled Node is present | The mirror keeps building |
 | `macos/Tests/ClaudeSDKConnectionTests.swift`, `BundledNodeTests.swift`, `AgentSecretsTests.swift` (new) | The real helper runs with a fake `claude` that replays a recorded stream, and every message matches `examples/`. `BundledNode` never picks the user's Node. Secrets land in a 0600 file and never in argv or the environment | Coverage |

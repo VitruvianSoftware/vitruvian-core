@@ -58,6 +58,8 @@ const EXEMPT_PREFIXES: &[&str] = &[
     "apps/extensions/atrium/vitruvian-github/",
     // Vitruvian Code's unmodified vendored Mermaid (another holder's MIT)
     "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/",
+    // Vitruvian Code's generated Claude helper bundle (carries third-party code)
+    "apps/desktop/vitruvian-code/macos/claude-helper/bundle/",
     // AGPL-3.0-or-later, with SPDX AGPL headers
     "apps/desktop/vitruvian-courier/",
 ];
@@ -310,6 +312,8 @@ mod tests {
             "pulumi/library/x.go",
             "packages/pulumi/examples/y.ts",
             "apps/desktop/vitruvian-atrium/S/main.swift",
+            "apps/desktop/vitruvian-code/macos/claude-helper/bundle/claude-helper.mjs",
+            "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js",
             "apps/desktop/vitruvian-courier/a.swift",
             "bazel-/x.go",
         ] {

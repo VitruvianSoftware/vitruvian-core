@@ -29,6 +29,11 @@ const APP_NAME: &str = "Vitruvian Code";
 const EXECUTABLE_NAME: &str = "VitruvianCode";
 const BOT_NAME: &str = "bot-engine";
 const BOT_SIGNING_ID: &str = "com.vitruviansoftware.code.bot-engine";
+const NODE_NAME: &str = "node";
+const NODE_SIGNING_ID: &str = "com.vitruviansoftware.code.node";
+const NODE_ENTITLEMENTS_NAME: &str = "node.entitlements";
+const HELPER_DIR_NAME: &str = "claude-helper";
+const HELPER_FILE_NAME: &str = "claude-helper.mjs";
 const BUNDLE_ID: &str = "com.vitruviansoftware.code";
 const DISPLAY_NAME: &str = "Vitruvian Code";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
@@ -160,6 +165,66 @@ pub fn run(args: &[String]) -> i32 {
     }
     println!("    \u{2713} {} copied", BOT_NAME);
 
+    // Copy bundled Node executable beside the main executable into Contents/Helpers/node
+    let node_src = exe_parent.join(NODE_NAME);
+    if !node_src.is_file() {
+        eprintln!("error: {} not found at {}.", NODE_NAME, node_src.display());
+        eprintln!(
+            "       Keep {} beside the executable before bundling.",
+            NODE_NAME
+        );
+        return 1;
+    }
+    let node_dest = helpers_dir.join(NODE_NAME);
+    if let Err(e) = fs::copy(&node_src, &node_dest) {
+        eprintln!("error: cannot copy {}: {}", NODE_NAME, e);
+        return 1;
+    }
+    if let Err(e) = fs::set_permissions(&node_dest, fs::Permissions::from_mode(0o755)) {
+        eprintln!("error: cannot mark {} executable: {}", NODE_NAME, e);
+        return 1;
+    }
+    println!("    \u{2713} {} copied", NODE_NAME);
+
+    // Copy bundled Claude helper JS beside the main executable into Contents/Resources/claude-helper/
+    let helper_src = exe_parent.join(HELPER_DIR_NAME).join(HELPER_FILE_NAME);
+    if !helper_src.is_file() {
+        eprintln!(
+            "error: {} not found at {}.",
+            HELPER_FILE_NAME,
+            helper_src.display()
+        );
+        eprintln!(
+            "       Keep {}/{} beside the executable before bundling.",
+            HELPER_DIR_NAME, HELPER_FILE_NAME
+        );
+        return 1;
+    }
+    let helper_dest_dir = res_dir.join(HELPER_DIR_NAME);
+    if let Err(e) = fs::create_dir_all(&helper_dest_dir) {
+        eprintln!("error: cannot create {}: {}", helper_dest_dir.display(), e);
+        return 1;
+    }
+    let helper_dest = helper_dest_dir.join(HELPER_FILE_NAME);
+    if let Err(e) = fs::copy(&helper_src, &helper_dest) {
+        eprintln!("error: cannot copy {}: {}", HELPER_FILE_NAME, e);
+        return 1;
+    }
+    println!(
+        "    \u{2713} {}/{} copied",
+        HELPER_DIR_NAME, HELPER_FILE_NAME
+    );
+
+    let node_entitlements = resources_dir.join(NODE_ENTITLEMENTS_NAME);
+    if !node_entitlements.is_file() {
+        eprintln!(
+            "error: {} not found at {}.",
+            NODE_ENTITLEMENTS_NAME,
+            node_entitlements.display()
+        );
+        return 1;
+    }
+
     // Generate Info.plist
     let apple_events_usage = "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>";
     let plist = format!(
@@ -214,7 +279,8 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
-    // Ad-hoc sign the nested helper first, then the app bundle (inside-out)
+    // Ad-hoc sign the nested helpers first (inside-out), then the app bundle
+    // without `--deep` so `node`'s JIT entitlements are preserved.
     println!("==> Signing {} with ad-hoc signature", app_bundle.display());
     let helper_status = Command::new("codesign")
         .args(["--force", "--sign", "-", "--identifier", BOT_SIGNING_ID])
@@ -231,8 +297,31 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     }
+    let node_status = Command::new("codesign")
+        .args([
+            "--force",
+            "--sign",
+            "-",
+            "--identifier",
+            NODE_SIGNING_ID,
+            "--entitlements",
+        ])
+        .arg(&node_entitlements)
+        .arg(&node_dest)
+        .status();
+    match node_status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            eprintln!("error: codesign node exited {}", s.code().unwrap_or(-1));
+            return 1;
+        }
+        Err(e) => {
+            eprintln!("error: cannot run codesign on node: {}", e);
+            return 1;
+        }
+    }
     let status = Command::new("codesign")
-        .args(["--force", "--deep", "--sign", "-"])
+        .args(["--force", "--sign", "-"])
         .arg(&app_bundle)
         .status();
     match status {
