@@ -1262,6 +1262,76 @@ final class TimelineTableViewTests: XCTestCase {
         h.pump(for: 0.05)
         XCTAssertFalse(capsule.model.isVisible)
     }
+
+    // MARK: Summarize (E1) in the real table
+
+    /// The live app showed the "Summarize" button forever: the summary was made and kept, but the table's row never
+    /// drew it, because nothing SwiftUI can compare told the summary's view it had changed. These drive the table the
+    /// app uses, not a lone row.
+    func testSummarizeOnALinkCardDrawsItsPanelInTheTable() throws {
+        let link = "https://www.predicthq.com/"
+        let event = Event(eventID: "$card", roomID: Fixture.room, sender: Fixture.ann, senderName: "Ann Example", mine: false,
+                          type: "m.room.message",
+                          content: .object(["msgtype": .string("m.text"), "body": .string("look at \(link)")]),
+                          ts: Fixture.millis(5), seq: 9000, status: .sent,
+                          linkPreviews: [LinkPreviewItem(matchedURL: link, url: link, title: "Forecasting platform",
+                                                         siteName: "PredictHQ", description: "Events that move demand.")])
+        let request = try XCTUnwrap(ArticleSummaryRequest(preview: try XCTUnwrap(event.linkPreviews?.first)))
+        try assertSummaryGrowsRow("$card", event: event, request: request)
+    }
+
+    /// This path worked before only because the message row happened to draw again around it; its panel now reads the
+    /// row's revision itself (`BareLinkSummary`).
+    func testSummarizeLinkOnABareLinkDrawsItsPanelInTheTable() throws {
+        let event = Fixture.text("$bare", "read https://example.com/story", mine: false, ts: 5)
+        let message = try XCTUnwrap(Fixture.messages([event]).first)
+        let request = try XCTUnwrap(ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed))
+        try assertSummaryGrowsRow("$bare", event: event, request: request)
+    }
+
+    private func assertSummaryGrowsRow(_ id: String, event: Event, request: ArticleSummaryRequest,
+                                       file: StaticString = #filePath, line: UInt = #line) throws {
+        ArticleSummaryCache.shared.removeAll()
+        defer { ArticleSummaryCache.shared.removeAll() }
+        let harness = try mountTable(items: Fixture.items([event]), size: NSSize(width: 640, height: 600))
+        defer { harness.tearDown() }
+        harness.messageActions.articleSummaries.reader = SummaryReader()
+        harness.messageActions.aiProvider = SummaryProvider()
+        harness.pump(for: 0.2)
+
+        func rowHeight() -> CGFloat {
+            harness.tableView.rect(ofRow: harness.coordinator.entries.firstIndex { $0.id == id } ?? 0).height
+        }
+        let before = rowHeight()
+        harness.messageActions.summarizeLink(request)
+        harness.pump(for: 3) {
+            if case .summary? = harness.messageActions.articleSummaries.state(for: request.url) { return rowHeight() > before + 40 }
+            return false
+        }
+        guard case .summary? = harness.messageActions.articleSummaries.state(for: request.url) else {
+            return XCTFail("the summary was made", file: file, line: line)
+        }
+        XCTAssertGreaterThan(rowHeight(), before + 40, "the row grew to show the three bullets", file: file, line: line)
+    }
+}
+
+private final class SummaryReader: ArticleReading, @unchecked Sendable {
+    func readArticle(at url: URL) async throws -> ArticleResult {
+        ArticleResult(url: url.absoluteString, title: "Forecasting platform", site: "PredictHQ", description: "",
+                      text: "PredictHQ ranks events that move demand.", paywalled: false, needsBrowser: false)
+    }
+}
+
+private final class SummaryProvider: AIProvider, @unchecked Sendable {
+    var isAvailable = true
+    var unavailableReason = ""
+    let availableModels = ["m"]
+    func draftResponse(context: AIChatContext, draft: String, tone: AIRewriteTone?) async -> AIProviderDisposition { .text("") }
+    func translate(text: String, targetLanguage: String) async -> AIProviderDisposition { .text("") }
+    func summarize(context: AIChatContext) async -> AIProviderDisposition { .text("") }
+    func summarizeArticle(title: String, site: String, text: String) async -> AIProviderDisposition {
+        .text("- It ranks events by how much they move demand.\n- It covers concerts, sports and holidays.\n- Airlines use it to plan.")
+    }
 }
 
 /// Set from the detached work, read by the test: tells it the work is running.

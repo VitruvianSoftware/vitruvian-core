@@ -63,6 +63,10 @@ struct ArticleSummarySection: View {
     let controls: ArticleSummaryControls
     /// In the card's footer slot: padded to the card's text, and the panel has no box of its own.
     var inCard = false
+    /// Read in `body`: the summary's state reaches this view only through `controls`' closures, which SwiftUI cannot
+    /// compare, so without it the table's row keeps drawing the button after the summary arrives. The row's revision
+    /// changes with the summary (`ArticleSummaryControls.heightSignature`).
+    @Environment(\.timelineContentRevision) private var contentRevision
 
     /// "Summarize with Claude": names the service the article's text goes to.
     private var buttonHelp: String { Self.help(providerName: controls.providerName()) }
@@ -72,6 +76,7 @@ struct ArticleSummarySection: View {
     }
 
     var body: some View {
+        let _ = contentRevision
         if let state = controls.state(request.url) {
             ArticleSummaryPanel(url: request.url, state: state, onBubble: onBubble, controls: controls, inCard: inCard)
         } else if controls.canSummarize(request.url) {
@@ -238,6 +243,26 @@ struct ArticleSummaryPanel: View {
                 .buttonStyle(.borderless)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(onBubble ? Color.white : Color.accentColor)
+        }
+    }
+}
+
+/// The summary under a message whose link has no card ("Summarize Link" from the menu). Its own view, reading the
+/// row's revision, for the same reason as `ArticleSummarySection`: the message row around it is not drawn again when
+/// only a summary changed.
+struct BareLinkSummary: View {
+    let message: TimelineMessage
+    let controls: ArticleSummaryControls
+    @Environment(\.timelineContentRevision) private var contentRevision
+
+    var body: some View {
+        let _ = contentRevision
+        if ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty, controls.hasAny(),
+           let request = ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed),
+           let state = controls.state(request.url) {
+            ArticleSummaryPanel(url: request.url, state: state,
+                                onBubble: message.mine && !message.suppressesBubbleBackground,
+                                controls: controls)
         }
     }
 }

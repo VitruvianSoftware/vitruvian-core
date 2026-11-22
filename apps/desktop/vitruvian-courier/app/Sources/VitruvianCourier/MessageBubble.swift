@@ -1016,12 +1016,9 @@ struct MessageRowView: View {
                 if message.kind != .deleted && message.kind != .undecryptable {
                     if !hasLinkCard { linkCards }
                     // A link with no card ("Summarize Link" from the menu): its summary shows under the message.
-                    if ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty, actions.articleSummary.hasAny(),
-                       let request = ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed),
-                       let state = actions.articleSummary.state(request.url) {
-                        ArticleSummaryPanel(url: request.url, state: state,
-                                            onBubble: message.mine && !message.suppressesBubbleBackground,
-                                            controls: actions.articleSummary)
+                    if ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty,
+                       ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed) != nil {
+                        BareLinkSummary(message: message, controls: actions.articleSummary)
                             .takesOwnClick()
                     }
                     if let embed = ExternalEmbedDescriptor.first(in: message) {
