@@ -334,7 +334,9 @@ pub fn find_child_id(ip: &str, port: i64) -> Result<Value, Crash> {
 pub fn get_relay_state(ip: &str, child_id: &Value, port: i64) -> Result<Value, Crash> {
     for child in sysinfo_children(ip, port)? {
         let id = get(&child, "id", Value::Null)?;
-        if id.py_eq(child_id) || alias_matches(&get(&child, "alias", Value::Str(String::new()))?)? {
+        if json::py_eq(&id, child_id)
+            || alias_matches(&get(&child, "alias", Value::Str(String::new()))?)?
+        {
             return get(&child, "state", Value::Int("0".into()));
         }
     }
@@ -450,7 +452,7 @@ fn act(
     let shown = child_id.py_str();
     if status {
         let state = get_relay_state(ip, &child_id, port)?;
-        let word = if state.py_eq(&Value::Int("1".into())) {
+        let word = if json::py_eq(&state, &Value::Int("1".into())) {
             "ON"
         } else {
             "OFF"
