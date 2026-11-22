@@ -95,6 +95,23 @@ public actor ThumbnailLoader {
         return result
     }
 
+    /// First pictures of MP4 loops, kept apart from `entries` so a video's frame is never handed to the conversation as
+    /// if it were that file's picture.
+    private var loopFrames: [String: Thumbnail] = [:]
+
+    /// A tile's picture for a GIF in the picker: `thumbnail(atPath:)` for a GIF or a picture (a GIF's first frame), and
+    /// for an MP4 loop (what a GIF from a chat network often is) its first frame. Nil when the file is neither.
+    public func loopThumbnail(atPath path: String) async -> Thumbnail? {
+        if let picture = await thumbnail(atPath: path) { return picture }
+        if let kept = loopFrames[path] { return kept }
+        guard LoopFileKind.detect(atPath: path) == .mp4,
+              let frame = await VideoFirstFrame.image(atPath: path, maxPixelSize: maxPixelSize) else { return nil }
+        let thumbnail = Thumbnail(image: frame)
+        if loopFrames.count >= 80 { loopFrames.removeAll() }
+        loopFrames[path] = thumbnail
+        return thumbnail
+    }
+
     private func touch(_ path: String) {
         usage.removeAll { $0 == path }
         usage.append(path)

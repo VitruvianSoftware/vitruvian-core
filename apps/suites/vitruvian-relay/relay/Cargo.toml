@@ -23,7 +23,7 @@
 #
 # The hub only gives a short label (@vitruvian_relay_crates//:ureq) to crates
 # that a workspace member names itself, not to a path dependency's own
-# dependencies. packages/rust/vitruvian-mcp-auth/BUILD uses those labels, so the
+# dependencies. packages/mcp-auth/BUILD uses those labels, so the
 # crates it needs are repeated here, at the same versions.
 [package]
 name = "vitruvian-relay"
@@ -42,7 +42,7 @@ name = "vitruvian-relay"
 path = "src/main.rs"
 
 [dependencies]
-vitruvian-mcp-auth = { path = "../../../../packages/rust/vitruvian-mcp-auth" }
+vitruvian-mcp-auth = { path = "../../../../packages/mcp-auth" }
 vitruvian-relay-protocol = { path = "../protocol" }
 base64 = "0.22"
 bytes = "1"

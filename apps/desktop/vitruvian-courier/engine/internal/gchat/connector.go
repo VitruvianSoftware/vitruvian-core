@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
@@ -50,6 +51,34 @@ type PortalMetadata struct {
 	// minimum seen. Google pages history by sort time (a topic's last activity), so this is the cursor the next
 	// backwards page sends, as chat.google.com does. 0 = never recorded (a chat synced before this existed).
 	OldestTopicSortTime int64 `json:"oldest_topic_sort_time,omitempty"`
+	// HistoryOff is the chat's Google Chat history setting as last read from get_group: true is history off (Google's
+	// "ephemeral one day" retention, so messages are deleted after 24 hours), false is history on. nil: not read yet.
+	// Read it with ChatHistoryOff, which is safe against the sync that sets it.
+	HistoryOff *bool `json:"history_off,omitempty"`
+}
+
+// historyMu guards PortalMetadata.HistoryOff: the engine reads it (Chat Info) while a sync sets it.
+var historyMu sync.RWMutex
+
+// ChatHistoryOff is the chat's history setting: off is true when history is off (messages disappear after 24 hours),
+// and known says Google has told this client (nil: not read yet, so nothing should be claimed either way).
+func (m *PortalMetadata) ChatHistoryOff() (off, known bool) {
+	if m == nil {
+		return false, false
+	}
+	historyMu.RLock()
+	defer historyMu.RUnlock()
+	if m.HistoryOff == nil {
+		return false, false
+	}
+	return *m.HistoryOff, true
+}
+
+// setHistoryOff records the history setting Google gave for the chat.
+func (m *PortalMetadata) setHistoryOff(off bool) {
+	historyMu.Lock()
+	m.HistoryOff = &off
+	historyMu.Unlock()
 }
 
 // GhostMetadata stores per-ghost Google Chat metadata.

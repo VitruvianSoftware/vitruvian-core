@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/ids"
 )
 
 var recentRowsDecoded atomic.Int64
@@ -37,13 +39,16 @@ func (s *Store) ListRecentStickers(ctx context.Context, limit int) ([]RecentMedi
 	return s.listRecentMedia(ctx, `type = 'm.sticker'`, limit)
 }
 
-// ListRecentGIFs returns up to limit (default/max 40) unique GIF events (m.room.message with fi.mau.gif) ordered newest first and deduplicated by URL.
+// ListRecentGIFs returns up to limit (default/max 40) unique GIF events (m.room.message with fi.mau.gif) ordered newest
+// first and deduplicated by URL. Only GIFs I sent or chose count: a GIF someone else sent me (spam chats, say) is
+// never offered back as one of my recents.
 func (s *Store) ListRecentGIFs(ctx context.Context, limit int) ([]RecentMedia, error) {
-	return s.listRecentMedia(ctx, `type = 'm.room.message'
-		  AND (CASE WHEN json_valid(content) THEN (json_extract(content, '$.info."fi.mau.gif"') = 1 OR json_extract(content, '$."fi.mau.gif"') = 1) END)`, limit)
+	return s.listRecentMedia(ctx, `type = 'm.room.message' AND sender = $2
+		  AND (CASE WHEN json_valid(content) THEN (json_extract(content, '$.info."fi.mau.gif"') = 1 OR json_extract(content, '$."fi.mau.gif"') = 1) END)`, limit, string(ids.Me))
 }
 
-func (s *Store) listRecentMedia(ctx context.Context, typeFilter string, limit int) ([]RecentMedia, error) {
+// listRecentMedia runs the recent-media query. typeFilter may use $2.. for extraArgs ($1 is the limit).
+func (s *Store) listRecentMedia(ctx context.Context, typeFilter string, limit int, extraArgs ...any) ([]RecentMedia, error) {
 	if limit <= 0 || limit > MaxRecentMediaLimit {
 		limit = MaxRecentMediaLimit
 	}
@@ -68,7 +73,7 @@ func (s *Store) listRecentMedia(ctx context.Context, typeFilter string, limit in
 		WHERE rn = 1
 		ORDER BY ts DESC, seq DESC
 		LIMIT $1`
-	rows, err := s.db.Query(ctx, query, limit)
+	rows, err := s.db.Query(ctx, query, append([]any{limit}, extraArgs...)...)
 	if err != nil {
 		return nil, err
 	}

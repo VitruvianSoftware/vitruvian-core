@@ -190,6 +190,7 @@ var methods = map[string]handler{
 	"inbox.list":           inboxList,
 	"room.events":          roomEvents,
 	"room.loadOlder":       roomLoadOlder,
+	"article.read":         articleRead,
 	"room.markRead":        roomMarkRead,
 	"thread.markRead":      threadMarkRead,
 	"thread.unread":        threadUnread,
@@ -289,6 +290,9 @@ var methods = map[string]handler{
 	// Stickers & custom emoji catalog (stickers.go).
 	"stickers.list":   stickersList,
 	"stickers.import": stickersImport,
+
+	// A link card's own picture, for a received preview that came without one (linkpreview.go).
+	"linkPreview.image": linkPreviewImage,
 
 	// Bridges, account removal, sub-accounts, and diagnostics (protocol 9).
 	"bridges.list":           bridgesList,

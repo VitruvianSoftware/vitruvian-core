@@ -231,7 +231,7 @@ struct NotificationsSettingsPane: View {
                             Text(item.displayTitle)
                                 .font(.subheadline.weight(.medium))
                             if !item.remoteName.isEmpty {
-                                Text(item.remoteName)
+                                Text(PhoneNumberFormat.display(item.remoteName))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

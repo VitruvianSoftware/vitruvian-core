@@ -32,7 +32,7 @@
 # serde_json parses JSON. Token checking (ring for the RS256 signature, the
 # issuer's JWKS over ureq) is the shared vitruvian-mcp-auth crate, which the
 # Vitruvian Relay uses too. In the monorepo it sits at
-# packages/rust/vitruvian-mcp-auth; the standalone repo carries it at mcp-auth/
+# packages/mcp-auth; the standalone repo carries it at mcp-auth/
 # and its export rewrites the path below. rust-version is the Bazel
 # toolchain's, so the lock only holds versions that toolchain can build.
 [workspace]
@@ -73,7 +73,7 @@ sentry = { version = "0.34", default-features = false, features = ["backtrace", 
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
-vitruvian-mcp-auth = { path = "../../../../packages/rust/vitruvian-mcp-auth" }
+vitruvian-mcp-auth = { path = "../../../../packages/mcp-auth" }
 
 [profile.release]
 opt-level = 3

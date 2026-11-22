@@ -26,14 +26,23 @@ final class SearchPresentationTests: XCTestCase {
             .replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 
-    func testDateIsTheTimeTodayTheDayThisYearElseTheWholeDate() {
+    /// D5: a result's date reads as the inbox's does: the time, "Yesterday", the weekday, then dates.
+    func testDateReadsAsTheInboxDoes() {
         XCTAssertEqual(text(millis(2026, 10, 16)), "9:05 AM", "today: the time")
-        XCTAssertEqual(text(millis(2026, 10, 15, 23, 59)), "Oct 15", "yesterday is a day, not a weekday")
-        XCTAssertEqual(text(millis(2026, 1, 2)), "Jan 2", "this year: day and month")
+        XCTAssertEqual(text(millis(2026, 10, 15, 23, 59)), "Yesterday")
+        XCTAssertEqual(text(millis(2026, 10, 13)), "Tuesday", "within the week: the weekday")
+        XCTAssertEqual(text(millis(2026, 10, 9)), "October 9", "a week or more ago, this year: the day and month")
+        XCTAssertEqual(text(millis(2026, 1, 2)), "January 2")
         XCTAssertEqual(text(millis(2025, 12, 31)), "Dec 31, 2025", "last year: the whole date")
         XCTAssertEqual(text(millis(2025, 12, 31), locale: Locale(identifier: "en_GB")), "31 Dec 2025",
                        "the locale decides the order")
         XCTAssertEqual(text(0), "")
+        // The same words the inbox row uses, for the same moment.
+        let ms = millis(2026, 10, 14)
+        XCTAssertEqual(
+            SearchDate.text(forMillis: ms, now: now, calendar: calendar, locale: locale),
+            RelativeTime.text(forMillis: ms, now: now, calendar: calendar, locale: locale)
+        )
     }
 
     func testPlaceTagsOutsideTheInbox() throws {

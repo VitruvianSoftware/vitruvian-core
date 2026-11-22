@@ -862,6 +862,9 @@ type SharedLink struct {
 	Host    string
 	// Title is the page title from the message's own link preview, when it carries one for this URL; "" otherwise.
 	Title string
+	// ImageURI is the content URI (mxc://) of the preview's picture, when the message's link preview for this URL
+	// carries one; "" otherwise. The caller turns it into a file path.
+	ImageURI string
 }
 
 // SharedMediaKinds is the one definition of "media" that Chat Info's Shared Media and the image viewer both count:
@@ -994,18 +997,20 @@ func (s *Store) RoomSharedLinksCapped(ctx context.Context, roomID string, limit 
 			}
 		}
 		titles := linkPreviewTitles(json.RawMessage(content))
+		images := linkPreviewImages(json.RawMessage(content))
 		for _, rawURL := range messageLinks(json.RawMessage(content), text, editContent != "") {
 			u, err := url.Parse(rawURL)
 			if err != nil || u.Hostname() == "" {
 				continue
 			}
 			out = append(out, SharedLink{
-				EventID: eventID,
-				Sender:  sender,
-				TS:      msTime(ts),
-				URL:     rawURL,
-				Host:    u.Hostname(),
-				Title:   titles[rawURL],
+				EventID:  eventID,
+				Sender:   sender,
+				TS:       msTime(ts),
+				URL:      rawURL,
+				Host:     u.Hostname(),
+				Title:    titles[rawURL],
+				ImageURI: images[rawURL],
 			})
 			if len(out) > limit {
 				return out[:limit], true, nil
@@ -1060,6 +1065,36 @@ func linkPreviewTitles(content json.RawMessage) map[string]string {
 		}
 	}
 	return titles
+}
+
+// linkPreviewImages maps each URL a message's link previews cover (matched_url, and og:url when it differs) to the
+// content URI of the picture the preview holds. URLs whose preview has no picture are left out.
+func linkPreviewImages(content json.RawMessage) map[string]string {
+	var c struct {
+		LinkPreviews []struct {
+			MatchedURL string `json:"matched_url"`
+			URL        string `json:"og:url"`
+			Image      string `json:"og:image"`
+		} `json:"com.beeper.linkpreviews"`
+	}
+	if err := json.Unmarshal(content, &c); err != nil || len(c.LinkPreviews) == 0 {
+		return nil
+	}
+	images := make(map[string]string, len(c.LinkPreviews))
+	for _, lp := range c.LinkPreviews {
+		image := strings.TrimSpace(lp.Image)
+		if image == "" {
+			continue
+		}
+		for _, u := range []string{lp.MatchedURL, lp.URL} {
+			if u != "" {
+				if _, ok := images[u]; !ok {
+					images[u] = image
+				}
+			}
+		}
+	}
+	return images
 }
 
 // messageLinks is every link a message carries, in the order it holds them, each once: the links in its text, the

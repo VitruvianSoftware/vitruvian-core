@@ -32,7 +32,7 @@ package(default_visibility = ["//apps/suites/vitruvian-relay:__subpackages__"])
 
 _CRATES = [
     "//apps/suites/vitruvian-relay/protocol:vitruvian_relay_protocol",
-    "//packages/rust/vitruvian-mcp-auth:vitruvian_mcp_auth",
+    "//packages/mcp-auth:vitruvian_mcp_auth",
     "@vitruvian_relay_crates//:base64",
     "@vitruvian_relay_crates//:futures-util",
     "@vitruvian_relay_crates//:libc",

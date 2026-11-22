@@ -459,7 +459,7 @@ func TestPagesAt10000ChatsAreQuickAndIndexed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 200)
 	require.NotEmpty(t, next)
-	require.Less(t, took, time.Second)
+	require.Less(t, took, grossCeiling(time.Second))
 
 	start = time.Now()
 	rows, _, err = s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"unread"}, After: next, Limit: 500})

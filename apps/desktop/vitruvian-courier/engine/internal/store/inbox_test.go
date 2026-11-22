@@ -501,8 +501,8 @@ func TestInboxAndPagingAreIndexed(t *testing.T) {
 	require.Contains(t, strings.Join(pagePlan, "\n"), "events_room_ts")
 
 	// The secondary check: wall-clock, with room for a busy machine. (Measured: about 7 ms, and about 25 ms under
-	// -race, against 1 s.) The plan above is what proves the queries scale; this only catches something gross.
-	const bound = time.Second
+	// -race, against 10 s.) The plan above is what proves the queries scale; this only catches something gross.
+	bound := grossCeiling(time.Second)
 	start := time.Now()
 	rows, err := s.Inbox(ctx)
 	took := time.Since(start)

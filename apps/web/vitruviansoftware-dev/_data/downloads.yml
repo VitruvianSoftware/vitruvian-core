@@ -28,7 +28,7 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.38.0"
+        version: "1.39.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -90,7 +90,7 @@ categories:
 
       - id: vitruvian-speaker
         name: Vitruvian Speaker
-        version: "1.45.3"
+        version: "1.46.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
@@ -98,19 +98,19 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-speaker
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.45.3/VitruvianSpeaker-1.45.3-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.46.0/VitruvianSpeaker-1.46.0-universal.dmg
             size: 6.2 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.45.3/VitruvianSpeaker-1.45.3-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.46.0/VitruvianSpeaker-1.46.0-arm64.dmg
             size: 4.0 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.45.3/VitruvianSpeaker-1.45.3-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.46.0/VitruvianSpeaker-1.46.0-x86_64.dmg
             size: 4.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.45.3/VitruvianSpeaker-1.45.3-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.46.0/VitruvianSpeaker-1.46.0-universal.zip
             size: 6.2 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker
@@ -120,7 +120,7 @@ categories:
 
       - id: vitruvian-courier
         name: Vitruvian Courier
-        version: "0.3.31"
+        version: "0.3.33"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
@@ -128,20 +128,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.31/VitruvianCourier-0.3.31-universal.dmg
-            size: 153.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.33/VitruvianCourier-0.3.33-universal.dmg
+            size: 154.3 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.31/VitruvianCourier-0.3.31-arm64.dmg
-            size: 74.4 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.33/VitruvianCourier-0.3.33-arm64.dmg
+            size: 74.8 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.31/VitruvianCourier-0.3.31-x86_64.dmg
-            size: 80.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.33/VitruvianCourier-0.3.33-x86_64.dmg
+            size: 80.4 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.31/VitruvianCourier-0.3.31-universal.zip
-            size: 154.1 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.33/VitruvianCourier-0.3.33-universal.zip
+            size: 155.0 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
@@ -152,16 +152,16 @@ categories:
     items:
       - id: vitruvian-remote
         name: Vitruvian Remote
-        version: "0.1.55"
+        version: "0.1.56"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.55/VitruvianRemote-0.1.55.apk
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-remote-v0.1.56/VitruvianRemote-0.1.56.apk
             size: 12.2 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-remote-v0.1.55
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-remote-v0.1.56
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/vitruvian-remote
         extensions_url: /ai/#eco-vitruvian-remote
         extensions_label: Companion Extensions
@@ -243,7 +243,7 @@ categories:
     items:
       - id: devx
         name: Vitruvian DevX CLI
-        version: "0.75.0"
+        version: "0.75.1"
         summary: >-
           A local development orchestrator. One CLI provisions container VMs, ephemeral
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.

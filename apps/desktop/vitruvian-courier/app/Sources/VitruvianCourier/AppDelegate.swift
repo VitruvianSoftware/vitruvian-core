@@ -232,6 +232,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One Read Aloud service for the app: a second Read Aloud on this Mac's voice stops the first, in any window.
         let readAloud = ReadAloudService()
         self.readAloud = readAloud
+        // "Summarize" keeps each finished summary in the app's data folder, so a chat opened again doesn't send the
+        // article to the AI service again.
+        ArticleSummaryCache.shared.enablePersistence(
+            at: EngineLocation.dataDirectory(environment: environment).appendingPathComponent(ArticleSummaryCache.fileName))
         let messageActions = MessageActionsModel(conversation: conversation, appModel: model,
                                                  preferences: composerPreferences, pasteboard: SystemPasteboard(),
                                                  readAloud: readAloud)
@@ -296,6 +300,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuCoordinator.openSettings(pane: .ai)
         }
         conversation.onOpenAISettings = openAISettings
+        // "Open AI Settings" in Edit with AI: Settings ▸ AI at the key the edit needs, with the cursor in it.
+        conversation.onOpenPhotoEditingSettings = { [weak self] kind in
+            self?.menuCoordinator.openSettings(
+                pane: .ai,
+                highlightedSettingID: PhotoEditingChoice.settingID(forKeyOf: kind)
+            )
+        }
         conversation.onToggleMute = { [weak inbox] roomID in
             guard !roomID.isEmpty else { return }
             Task { await inbox?.toggleMute(ids: [roomID]) }
@@ -379,6 +390,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
+        // Edited photos left in the scratch folder by "Add to Message" for over a day go too.
+        Task.detached(priority: .utility) { PhotoEditScratch.sweep() }
         updates.startAutomaticChecks()
         PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in
             windowOpener.show()

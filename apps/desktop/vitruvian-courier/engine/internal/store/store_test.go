@@ -16,6 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// grossCeiling is the wall-clock limit for a "nothing gross happened" check: limit, scaled for a machine that is busy
+// (the whole suite runs its packages in parallel, and the race detector slows a query many times over). These checks
+// are the secondary ones: the query plan, asserted beside each, is what proves a query scales, so the ceiling only has
+// to be far above a healthy run (single-digit milliseconds) and far below a real regression (an unindexed scan of
+// thousands of chats takes many seconds).
+func grossCeiling(limit time.Duration) time.Duration { return 10 * limit }
+
 func open(t *testing.T) *Store {
 	s, err := Open(filepath.Join(t.TempDir(), "courier.db"))
 	require.NoError(t, err)

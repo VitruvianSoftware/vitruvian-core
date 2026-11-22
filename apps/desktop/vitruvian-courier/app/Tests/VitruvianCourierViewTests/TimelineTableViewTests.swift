@@ -832,13 +832,20 @@ final class TimelineTableViewTests: XCTestCase {
     }
 
     func testCancellingTheCallerCancelsADetachedDecode() async {
+        // Cancel only once the work has started, and have the work wait for the cancellation (up to 20 s, only a backstop),
+        // so neither a slow start nor a slow cancel can change the outcome.
+        let started = DecodeStartedFlag()
         let task = Task { () -> Bool? in
             await runDetachedCancellable { () -> Bool? in
-                Thread.sleep(forTimeInterval: 0.3)
+                started.set()
+                let deadline = Date().addingTimeInterval(20)
+                while !Task.isCancelled, Date() < deadline { Thread.sleep(forTimeInterval: 0.005) }
                 return Task.isCancelled
             }
         }
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        let startedBy = Date().addingTimeInterval(20)
+        while !started.isSet, Date() < startedBy { try? await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertTrue(started.isSet, "the work started")
         task.cancel()
         let sawCancellation = await task.value
         XCTAssertEqual(sawCancellation, true, "the work saw the cancellation, so it can stop early")
@@ -1101,4 +1108,166 @@ final class TimelineTableViewTests: XCTestCase {
             "PageUp keyDown during 1.5s open pin window must cancel pin-to-bottom timer"
         )
     }
+
+    // MARK: 13. The floating date while scrolling
+
+    /// Three days of messages, a dozen each, so the table scrolls through two dividers.
+    private func threeDays() -> [TimelineItem] {
+        var events: [Event] = []
+        for day in (0 ..< 3).reversed() {
+            for index in 0 ..< 12 {
+                events.append(Fixture.text("$d\(day)m\(index)", "Message \(index) of day \(day)", mine: index % 2 == 0,
+                                           ts: day * 1440 + (12 - index) * 5))
+            }
+        }
+        return Fixture.items(events)
+    }
+
+    /// The day of the message in the topmost row under the header, from its own time (not from the dividers).
+    private func topMessageDay(_ h: TableHarness, items: [TimelineItem]) -> Date? {
+        let probe = h.scrollView.contentView.bounds.origin.y + h.scrollView.contentInsets.top + 1
+        let row = h.tableView.row(at: NSPoint(x: h.tableView.bounds.midX, y: probe))
+        guard row >= 0, row < h.coordinator.entries.count, case let .message(message)? = h.coordinator.entries[row].item
+        else { return nil }
+        return Calendar.autoupdatingCurrent.startOfDay(for: Date(timeIntervalSince1970: Double(message.ts) / 1000))
+    }
+
+    /// Scrolls by a person (the wheel) in steps until a message from `after` days or later is at the top.
+    private func scrollByPersonUntilTopMessage(_ h: TableHarness, items: [TimelineItem], in days: ClosedRange<Int>) throws {
+        // The table opens at its newest message: start from the oldest and scroll down.
+        h.scrollToTop()
+        for _ in 0 ..< 60 {
+            h.scrollBy(40)
+            if let day = topMessageDay(h, items: items),
+               let first = items.compactMap({ item -> Date? in
+                   if case let .message(m) = item { return Calendar.autoupdatingCurrent.startOfDay(for: Date(timeIntervalSince1970: Double(m.ts) / 1000)) }
+                   return nil
+               }).min() {
+                let index = Calendar.autoupdatingCurrent.dateComponents([.day], from: first, to: day).day ?? 0
+                if days.contains(index) { return }
+            }
+        }
+        XCTFail("never scrolled a message of the wanted day to the top")
+    }
+
+    func testScrollingShowsTheTopMessagesDayAndItFadesAfterwards() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        XCTAssertFalse(capsule.model.isVisible, "nothing shows before anyone scrolls")
+
+        try scrollByPersonUntilTopMessage(h, items: items, in: 1 ... 2)
+        let day = try XCTUnwrap(topMessageDay(h, items: items))
+        XCTAssertTrue(capsule.model.isVisible, "scrolling shows the capsule")
+        XCTAssertEqual(capsule.model.text, FloatingDay.text(day: day, now: Date()), "with the day of the topmost message")
+
+        h.pump(for: FloatingDay.fadeOutDelay + 0.6, until: { !capsule.model.isVisible })
+        XCTAssertFalse(capsule.model.isVisible, "and fades about a second after the scrolling stops")
+    }
+
+    func testTheCapsuleIsHiddenWhileADateDividerIsAtTheTop() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        try scrollByPersonUntilTopMessage(h, items: items, in: 1 ... 2)
+        XCTAssertTrue(capsule.model.isVisible)
+
+        h.scrollToTop()
+        let probe = h.scrollView.contentView.bounds.origin.y + h.scrollView.contentInsets.top + 1
+        let row = h.tableView.row(at: NSPoint(x: h.tableView.bounds.midX, y: probe))
+        guard row >= 0, case .dateSeparator? = h.coordinator.entries[row].item else {
+            return XCTFail("expected the first day's divider at the top of the list")
+        }
+        XCTAssertFalse(capsule.model.isVisible, "the divider already says the day")
+    }
+
+    func testTheAppsOwnScrollingDoesNotShowTheCapsule() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        // No wheel, drag or gesture for longer than the grace: what moves the timeline now is the app's (a jump).
+        h.pump(for: 1.0)
+        let clip = h.scrollView.contentView
+        for target in [200.0, 400.0, 600.0, 120.0] {
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
+            h.scrollView.reflectScrolledClipView(clip)
+            h.pump(for: 0.05)
+        }
+        XCTAssertFalse(capsule.model.isVisible)
+    }
+
+    /// The test seam (`noteUserScrollForTesting`) is not what the app listens to: a real wheel event on the timeline's
+    /// own scroll view is. With no such event the timeline moving (a key, an app jump) shows no capsule, and neither
+    /// does a wheel event that went to another pane (the inbox's list); after one on the timeline it does.
+    func testARealWheelEventOnTheTimelineLetsTheCapsuleShowButAKeyOrAnotherPanesWheelDoesNot() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        h.pump(for: 1.0) // the grace after the last gesture ends
+        let clip = h.scrollView.contentView
+        func moveTimeline(to y: CGFloat) {
+            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+            h.scrollView.reflectScrolledClipView(clip)
+            h.pump(for: 0.05)
+        }
+        func wheelEvent() throws -> NSEvent {
+            let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -12,
+                                           wheel2: 0, wheel3: 0))
+            let wheel = try XCTUnwrap(NSEvent(cgEvent: cg))
+            XCTAssertEqual(wheel.type, .scrollWheel)
+            return wheel
+        }
+
+        let key = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: h.window.windowNumber, context: nil, characters: "x", charactersIgnoringModifiers: "x",
+            isARepeat: false, keyCode: 7))
+        NSApp.sendEvent(key)
+        moveTimeline(to: 300)
+        XCTAssertFalse(capsule.model.isVisible, "a key press is not a wheel, a drag or a scroller")
+
+        h.pump(for: 1.0)
+        // A wheel event for another pane: the app routes it (so the monitor sees it) but not to the timeline.
+        let otherPane = NSScrollView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        NSApp.sendEvent(try wheelEvent())
+        otherPane.scrollWheel(with: try wheelEvent())
+        moveTimeline(to: 360)
+        XCTAssertFalse(capsule.model.isVisible, "scrolling the inbox must never show the timeline's capsule")
+
+        h.pump(for: 1.0)
+        h.scrollView.scrollWheel(with: try wheelEvent())
+        moveTimeline(to: 420)
+        XCTAssertTrue(capsule.model.isVisible, "a wheel event on the timeline's own scroll view lets the capsule show")
+    }
+
+    /// A drag that began in another pane is not the timeline's scrolling either.
+    func testADragNotBeganInTheTimelineDoesNotShowTheCapsule() throws {
+        let items = threeDays()
+        let h = try mountTable(items: items)
+        defer { h.tearDown() }
+        let capsule = h.coordinator.containerView.floatingDay
+        h.pump(for: 1.0)
+        let drag = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDragged, location: NSPoint(x: 5, y: 5), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil, eventNumber: 0,
+            clickCount: 1, pressure: 1))
+        NSApp.sendEvent(drag)
+        let clip = h.scrollView.contentView
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: 300))
+        h.scrollView.reflectScrolledClipView(clip)
+        h.pump(for: 0.05)
+        XCTAssertFalse(capsule.model.isVisible)
+    }
+}
+
+/// Set from the detached work, read by the test: tells it the work is running.
+private final class DecodeStartedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.withLock { value } }
+    func set() { lock.withLock { value = true } }
 }

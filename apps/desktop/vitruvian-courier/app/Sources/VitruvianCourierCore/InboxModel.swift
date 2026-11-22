@@ -184,6 +184,10 @@ public final class InboxModel: ObservableObject {
     @Published public var startNewChatDraft: StartNewChatDraft?
     /// Active Merge / Edit Merged Chat modal draft.
     @Published public var mergedChatEditorDraft: MergedChatEditorDraft?
+    /// What each chat's network said its chat can do, and when (room.features). Not published: the menu reads it as it
+    /// opens, and a change here should not draw the list again.
+    private var chatFeaturesCache: [String: (features: ChatFeatures, at: Date)] = [:]
+    private var featuresInFlight: Set<String> = []
     /// Active Custom… reminder sheet request (`RemindMeMenu`).
     @Published public var customReminder: ReminderRequest?
     /// Whether the ⌘L Remind Me popover is presented.
@@ -1109,6 +1113,94 @@ public final class InboxModel: ObservableObject {
             fail(error)
         }
         requestRead(waiting: false)
+    }
+
+    // MARK: - What a chat's network can do (the right-click menu), and Delete
+
+    /// How long what a chat can do is trusted before it is asked again: a login that drops or reconnects changes it.
+    public static let featuresFreshFor: TimeInterval = 120
+
+    /// What `roomID`'s network says its chat can do (room.features), when it was asked lately; nil when it hasn't
+    /// been, or the answer is old. The menu reads this, so Delete Chat… is only ever offered where it can work.
+    public func cachedFeatures(for roomID: String, now: Date = Date()) -> ChatFeatures? {
+        guard let kept = chatFeaturesCache[roomID], now.timeIntervalSince(kept.at) < Self.featuresFreshFor else { return nil }
+        return kept.features
+    }
+
+    /// Asks the engine what `roomID` can do, unless that is known already or being asked. A chat that stands for
+    /// several (a merged chat) has no features of its own. Never throws: with no answer, the menu leaves out what
+    /// depends on it.
+    public func loadFeatures(for roomID: String) async {
+        guard !isLocked, !roomID.hasPrefix("merge:"), cachedFeatures(for: roomID) == nil,
+              !featuresInFlight.contains(roomID), let client = appModel.client else { return }
+        featuresInFlight.insert(roomID)
+        defer { featuresInFlight.remove(roomID) }
+        let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: roomID))
+        guard client === appModel.client, let read else { return }
+        chatFeaturesCache[roomID] = (read, Date())
+    }
+
+    /// Starts `loadFeatures` for the chat a pointer is on, so the menu has the answer by the time it is opened.
+    public func prefetchFeatures(for row: InboxRow) {
+        guard row.mergeID.isEmpty, cachedFeatures(for: row.roomID) == nil, !featuresInFlight.contains(row.roomID) else { return }
+        let roomID = row.roomID
+        Task { [weak self] in await self?.loadFeatures(for: roomID) }
+    }
+
+    /// What Delete Chat… finds out when it is chosen.
+    public enum DeleteResolution: Equatable, Sendable {
+        /// The network can delete it: ask first, with these features.
+        case ask(ChatFeatures)
+        /// The network says it can't.
+        case unsupported
+        /// The engine could not say.
+        case unknown
+    }
+
+    /// Whether `roomID` can be deleted, asked of the engine if it isn't known yet. Delete Chat… is shown while the
+    /// answer is not in, so this is what decides when it is chosen.
+    public func resolveDelete(roomID: String) async -> DeleteResolution {
+        await loadFeatures(for: roomID)
+        guard let features = cachedFeatures(for: roomID) else { return .unknown }
+        return features.canDelete ? .ask(features) : .unsupported
+    }
+
+    /// Waits up to `limit` seconds for what `roomID`'s network can do, asking the engine if it hasn't been asked, so a
+    /// menu opened on a chat the pointer never rested on still knows. The ask goes on past `limit`, so the next menu has
+    /// it. nil when it isn't known in time: the menu then offers Delete Chat… and finds out when it is chosen.
+    public func featuresWaiting(for roomID: String, upTo limit: TimeInterval = 0.15) async -> ChatFeatures? {
+        if let known = cachedFeatures(for: roomID) { return known }
+        guard !roomID.hasPrefix("merge:") else { return nil }
+        Task { [weak self] in await self?.loadFeatures(for: roomID) }
+        let deadline = Date().addingTimeInterval(limit)
+        while Date() < deadline, cachedFeatures(for: roomID) == nil {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return cachedFeatures(for: roomID)
+    }
+
+    /// Deletes a chat (room.delete): it is hidden on this Mac and deleted for the person on the network; the others in
+    /// the chat keep their copy, and where deleting a group also leaves it (WhatsApp) the person leaves too. The chat
+    /// that was open moves to a neighbour as it does when it is archived. A refusal is said in the toast, and the chat
+    /// stays. True once it is gone.
+    @discardableResult
+    public func deleteChat(roomID: String) async -> Bool {
+        guard !beginAction([roomID]).isEmpty, !roomID.hasPrefix("merge:"), let client = appModel.client else { return false }
+        let next = neighbor(for: preferences.afterArchive, leaving: [roomID], fallBack: true)
+        let wasOpen = appModel.isOpen(roomID: roomID)
+        do {
+            let _: Empty = try await client.call("room.delete", RoomParams(roomID: roomID))
+        } catch {
+            showToast(EngineErrorText.text(for: error, network: rowsByID[roomID]?.network,
+                                           fallback: String(localized: "Couldn’t delete the chat.")))
+            requestRead(waiting: false)
+            return false
+        }
+        chatFeaturesCache[roomID] = nil
+        if wasOpen { apply(next) }
+        showToast(String(localized: "Chat deleted"))
+        requestRead(waiting: false)
+        return true
     }
 
     /// Pins the targets, or unpins them when every one is pinned already. A network that takes pins hears it.

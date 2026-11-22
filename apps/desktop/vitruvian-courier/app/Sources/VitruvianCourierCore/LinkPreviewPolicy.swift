@@ -23,6 +23,12 @@ public enum LinkPreviewPolicy {
         String(localized: "Plays videos inside the chat. The site sees your Mac's address.")
     }
 
+    /// Whether Courier may ask the engine for the picture of the page at `url`: the same rule, and https only, as the
+    /// engine's (it refuses any other address, so asking would only be an error to remember).
+    public static func mayRequestPageImage(_ url: URL, showLinkPreviews: Bool) -> Bool {
+        mayRequest(url, showLinkPreviews: showLinkPreviews) && url.scheme?.lowercased() == "https"
+    }
+
     /// Whether Courier may make a request to `url` for a link card.
     public static func mayRequest(_ url: URL, showLinkPreviews: Bool) -> Bool {
         guard showLinkPreviews, let scheme = url.scheme?.lowercased() else { return false }

@@ -30,6 +30,7 @@ The Zitadel project and sign-in clients for the Vitruvian Relay
 | `relay-connector` | The program on the user's computer | OAuth device flow: the terminal shows a code, the user approves it in a browser. No redirect URI |
 | `relay-claude` | Claude (web, desktop, mobile), via "Use your own OAuth client" | Authorization code with PKCE, callback `https://claude.ai/api/mcp/auth_callback` |
 | `relay-chatgpt` | ChatGPT, only once `chatgptRedirectUris` is set | Authorization code with PKCE, ChatGPT's per-connector callback |
+| `relay-dashboard` | The relay's own web page, where signed-in people see their computers and activity | Authorization code with PKCE, no secret. Callback `https://relay.vitruviansoftware.dev/auth/callback`, after sign-out back to `https://relay.vitruviansoftware.dev/` |
 | `relay-gemini` | The Gemini app (Settings → Connectors → + Custom), only once `geminiRedirectUris` is set | Authorization code with a client secret (`client_secret_post`), Gemini's per-user callback on `oauth-redirect.googleusercontent.com` |
 
 All of them issue JWT access tokens, so the relay can check them locally against
@@ -52,6 +53,8 @@ created:
 - ChatGPT: `https://chatgpt.com/connector/oauth/{id}`, or exactly
   `https://chatgpt.com/connector_platform_oauth_redirect`
 - Gemini: `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`
+- Dashboard: exactly `https://relay.vitruviansoftware.dev/auth/callback` (a fixed
+  value in `main.go`, checked the same way)
 
 `{id}` is letters, digits, `_` and `-` only. Anything else is an apply error: a
 look-alike path, an extra segment, a `.` or `..` id, a `%` escape, a backslash, a
@@ -68,9 +71,76 @@ stack's README explains why).
   project's audience scope. The relay must accept a token only when its client
   id (`azp`) is one of this stack's clients **and** its subject is allowed. See
   `zitadel-apps-mcp-slack`'s README for how that was established.
-- **During P0 only James can sign in.** `projectRoleCheck` is on with one grant.
-  The stack refuses to apply the check without a grant, because that combination
-  locks everyone out and looks like a server bug at the next login.
+- **Access is invite-only.** You can sign in only if you hold the `relay-user`
+  role through a user grant. `projectRoleCheck` is on, and the stack refuses to
+  apply it without at least one grant in `grantUserIds`, because that
+  combination locks everyone out and looks like a server bug at the next login.
+
+## Two sets of clients: old and `-v2`
+
+The multi-user relay refuses any access token that lacks the `relay-user` role
+claim. The clients first created for the relay (`relay-connector`,
+`relay-claude`, and `relay-chatgpt` / `relay-gemini` where configured) were
+made with role assertion off. Zitadel's provider can only change that by
+replacing the client, which deletes the live one and its client id. So the old
+clients are left alone, and each has a sibling with role assertion on:
+`relay-connector-v2`, `relay-claude-v2`, `relay-chatgpt-v2`, `relay-gemini-v2`.
+They have the same type, grants, callbacks and sign-in method. Their ids and
+secrets are the `connectorV2ClientId`, `claudeV2ClientId`, `chatgptV2ClientId`,
+`geminiV2ClientId` and `geminiV2ClientSecret` outputs. `relay-dashboard` already
+asserts roles and is not duplicated.
+
+- **The new relay uses the `-v2` clients and the dashboard.** The current relay
+  keeps working on the old ones until it is replaced.
+- **The old set is removed after the relay moves (Task 13)** and James has
+  reconfigured Claude and reinstalled the connector against the `-v2` ids. A
+  later change deletes the old clients from `main.go`. Until then, both exist,
+  and this change only creates things: no deletes or replaces.
+
+## Who can sign in
+
+- **James** holds `relay-user` through `grantUserIds` (his account in the
+  "Vitruvian" org). That grant already names the role, so it carries over. The
+  relay now refuses tokens without the role, so James must hold it before the
+  new relay image rolls out. After an apply, `roleClaim` and `projectId` show
+  what the relay checks.
+- **Everyone else** is listed in `inviteUserIds` (comma-separated, in the
+  stack config). Each id gets a plain user grant of `relay-user`, exactly like
+  James's. Their users live in the same org as the project (the "Vitruvian"
+  org). Merge the change and CI applies it. Nobody is granted by hand in the
+  console. A user id may appear once, and not in both lists: the stack refuses
+  to apply otherwise.
+- **There is no separate customer org in P2.** A separate org (with the
+  project granted to it) needs an instance-level `IAM_OWNER` machine user. The
+  CI machine user for this stack is only `ORG_OWNER`, and no stack with an
+  `IAM_OWNER` user exists yet. Until one does, invitees live in the project's
+  org. Access is still gated by the role, so someone who registers in that org
+  on their own holds no role and gets nothing.
+- The project asserts roles, so access tokens carry
+  `urn:zitadel:iam:org:project:{projectId}:roles`, an object keyed by role key.
+  That claim name is the `roleClaim` output. The relay checks it, and it still
+  checks the client id and the subject too, never the audience alone.
+
+## Sign-up and invites
+
+Findings from reading the repo on 2026-11-21:
+
+- **Open self-registration needs a login policy with `allowRegister`**, set on
+  the org (or the instance). This stack does not set one, so
+  registration stays off. The instance's own default is not in GitOps and I
+  could not read the live setting (there is no read-only Bazel target for
+  Zitadel's management API; the API is reachable only from CI over the tailnet).
+- **No SMTP is configured.** `gitops/argocd/platform/zitadel/applicationset.yaml`
+  has no mail settings, and nothing else under `gitops/` mentions SMTP. Without
+  mail, Zitadel cannot send the email-verification or password-reset messages
+  that open sign-up depends on.
+
+So, for P2, there is **no open sign-up**. An invited person is created in the
+project's org (their user is not made by this stack, because a password cannot
+live in git), James gives them the first password in person or over a private
+channel, and they set their own password at first sign-in. James then adds their
+user id to `inviteUserIds` and CI grants them the role. Open self-registration
+(`allowRegister`) moves to P3, once Zitadel has SMTP.
 
 ## Applying
 

@@ -116,6 +116,8 @@ public final class StorageModel: ObservableObject {
             let result: StorageCleanupResult = try await client.call("storage.cleanup", params)
             let formatted = Self.formatBytes(result.freedBytes)
             lastStatusMessage = String(localized: "Deleted \(formatted) of media")
+            // "Delete all media" is the app's clear-my-data: the kept article summaries go too.
+            if choice == .allTime { ArticleSummaryCache.shared.removeAll() }
             await refresh()
         } catch {
             lastErrorMessage = EngineErrorText.text(

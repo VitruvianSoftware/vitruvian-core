@@ -42,7 +42,7 @@ path = "src/main.rs"
 [dependencies]
 vitruvian-relay-protocol = { path = "../protocol" }
 # The shared TLS setup (rustls on ring, the system's certificates).
-vitruvian-mcp-auth = { path = "../../../../packages/rust/vitruvian-mcp-auth" }
+vitruvian-mcp-auth = { path = "../../../../packages/mcp-auth" }
 base64 = "0.22"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 libc = "0.2"

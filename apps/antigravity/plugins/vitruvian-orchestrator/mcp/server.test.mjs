@@ -180,6 +180,17 @@ test("handleJsonRpcMessage serves initialize, tools/list, and tools/call for pro
       params: { protocolVersion: "2024-11-05" },
     });
     assert.equal(initRes.result.serverInfo.name, "vitruvian-orchestrator");
+    // release-please bumps plugin.json, so the server reads its version from
+    // there; a hard-coded copy kept reporting 0.2.0 after the 0.2.1 release.
+    assert.equal(
+      initRes.result.serverInfo.version,
+      JSON.parse(
+        readFileSync(
+          fileURLToPath(new URL("../plugin.json", import.meta.url)),
+          "utf8",
+        ),
+      ).version,
+    );
 
     const notifRes = handleJsonRpcMessage({
       jsonrpc: "2.0",

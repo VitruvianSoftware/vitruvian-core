@@ -24,6 +24,12 @@ extension RoomLink {
         return trimmed
     }
 
+    /// Whether the link's preview has a picture on this Mac.
+    public var hasImage: Bool {
+        guard let path = imagePath else { return false }
+        return !path.isEmpty
+    }
+
     /// De-duplicates links with identical `url` strings, keeping the newest entry (`ts` descending)
     /// and preserving relative input order when timestamps match.
     public static func deduplicated(_ links: [RoomLink]) -> [RoomLink] {
@@ -34,11 +40,20 @@ extension RoomLink {
                     // The newest message wins, but not at the cost of a title another copy of the link has.
                     var newest = link
                     if newest.displayTitle == nil, existing.link.displayTitle != nil { newest.title = existing.link.title }
+                    if !newest.hasImage, existing.link.hasImage { newest.imagePath = existing.link.imagePath }
                     bestByURL[link.url] = (index, newest)
-                } else if existing.link.displayTitle == nil, link.displayTitle != nil {
+                } else {
                     var kept = existing.link
-                    kept.title = link.title
-                    bestByURL[link.url] = (existing.index, kept)
+                    var changed = false
+                    if kept.displayTitle == nil, link.displayTitle != nil {
+                        kept.title = link.title
+                        changed = true
+                    }
+                    if !kept.hasImage, link.hasImage {
+                        kept.imagePath = link.imagePath
+                        changed = true
+                    }
+                    if changed { bestByURL[link.url] = (existing.index, kept) }
                 }
             } else {
                 bestByURL[link.url] = (index, link)
@@ -127,6 +142,21 @@ public enum ChatInfoPresentation {
         return MediaSender(name: name, initials: initial, avatarPath: avatarPath, identity: rawSenderID)
     }
 
+    /// Who shared a link, for the small avatar on its tile: the member the link's sender is, me with `ownAvatarPath`,
+    /// else just the sender's ID. nil when the sender is not known at all.
+    public static func linkSender(for link: RoomLink, members: [Member], ownAvatarPath: String) -> MediaSender? {
+        let sender = link.sender.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sender.isEmpty else { return nil }
+        if sender == Timeline.meUserID {
+            return MediaSender(name: String(localized: "You"), initials: "Y", avatarPath: ownAvatarPath, identity: sender)
+        }
+        let member = members.first { $0.userID == sender }
+        let name = member?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let shown = name.isEmpty ? sender : name
+        let initial = String(InboxRow.initials(of: shown).prefix(1))
+        return MediaSender(name: shown, initials: initial, avatarPath: member?.avatarPath ?? "", identity: sender)
+    }
+
     /// My own picture for Chat Info. The chat's member list often has none for me, so this looks for one in turn: my
     /// own entry in the member list, then a message of mine the pane already holds (shared media and files), then
     /// `fallback` (a picture the app has seen on any of my messages). "" when none is known.
@@ -208,5 +238,13 @@ public enum ChatInfoPresentation {
             return people.map { ($0.name, $0.avatarPath, $0.identity) }
         }
         return []
+    }
+}
+
+/// What clicking the chat's name, network or picture in the chat's header does, said for VoiceOver and the tooltip:
+/// it shows or hides Chat Info, as the ⓘ button does.
+public enum ChatInfoHeaderToggle {
+    public static func label(isShowing: Bool) -> String {
+        isShowing ? String(localized: "Hide chat info") : String(localized: "Show chat info")
     }
 }

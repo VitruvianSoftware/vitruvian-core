@@ -50,6 +50,7 @@ struct DetachedChatWindowView: View {
                 appModel: session.appModel
             )
             .environment(\.openDetachedWindow, onOpenDetached)
+            .chatRoomSheets(conversation)
             .frame(minWidth: 520, minHeight: 420)
             .overlay(alignment: .bottom) {
                 ToastView(inbox: session.hostInbox)
@@ -96,7 +97,8 @@ struct DetachedSpaceWindowView: View {
                     spaces: spaces,
                     preferences: inbox.preferences,
                     composerPreferences: session.composerPreferences,
-                    ui: ui
+                    ui: ui,
+                    conversation: conversation
                 )
                 .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
                 if conversation.roomID != nil {
@@ -123,6 +125,7 @@ struct DetachedSpaceWindowView: View {
             }
             .environment(\.openDetachedWindow, onOpenDetached)
             .environment(\.searchInChat, onSearchInChat)
+            .chatRoomSheets(conversation)
             .frame(minWidth: 740, minHeight: 460)
             .sheet(
                 item: Binding(

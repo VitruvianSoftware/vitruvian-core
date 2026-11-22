@@ -339,7 +339,7 @@ docker build -t vitruvian-slack-mcp .
 
 # In the monorepo, from this directory, also pass the shared token-checking
 # crate, which lives outside it:
-docker build --build-context mcpauth=../../../packages/rust/vitruvian-mcp-auth \
+docker build --build-context mcpauth=../../../packages/mcp-auth \
   -t vitruvian-slack-mcp .
 ```
 

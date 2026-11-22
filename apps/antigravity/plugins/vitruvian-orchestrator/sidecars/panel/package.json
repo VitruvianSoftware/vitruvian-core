@@ -1,6 +1,6 @@
 {
   "name": "vitruvian-orchestrator-panel",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "Live task board, burn-down, agents and spend panel for the vitruvian-orchestrator Antigravity plugin."

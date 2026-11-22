@@ -91,6 +91,9 @@ rust_test(
         # Read at runtime by explore_endpoints_parity to assert the UI
         # endpoint catalog matches the server's fail-closed /api/explore table.
         "frontend/utils/apiEndpoints.ts",
+        # Read at runtime by csp_allows_every_stylesheet_import to assert the
+        # CSP allows every external stylesheet (web fonts) the design system loads.
+        "frontend/design-system/tokens.css",
         # Read at runtime by dependency_consistency to assert react & @types/react
         # share the same major version.
         "package.json",

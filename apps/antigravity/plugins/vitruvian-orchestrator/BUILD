@@ -42,6 +42,7 @@ js_library(
 js_library(
     name = "server_lib",
     srcs = ["mcp/server.mjs"],
+    data = ["plugin.json"],
     deps = [":orchestrator_core_lib"],
 )
 
