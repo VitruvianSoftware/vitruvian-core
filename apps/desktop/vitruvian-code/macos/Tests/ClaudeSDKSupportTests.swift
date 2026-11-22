@@ -61,8 +61,8 @@ final class ClaudeSDKSupportTests: XCTestCase {
     func testTheTooOldMessageNamesBothVersionsAndTheCommand() {
         XCTAssertEqual(
             ClaudeSDKSupport.tooOldMessage(version: "2.1.100", minimum: "2.1.326", updateCommand: "claude update"),
-            "Claude Code v2.1.100 is too old for the Claude helper, which needs v2.1.326 or newer. "
-                + "Upgrade to v2.1.326 or newer with `claude update`, then try again."
+            "Claude Code v2.1.100 is older than v2.1.326. Chats work, but MCP servers that carry "
+                + "secrets need v2.1.326 or newer. Upgrade with `claude update`."
         )
     }
 

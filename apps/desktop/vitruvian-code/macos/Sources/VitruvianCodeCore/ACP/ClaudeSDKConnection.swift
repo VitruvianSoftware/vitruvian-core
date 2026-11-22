@@ -97,10 +97,13 @@ public enum ClaudeSDKSupport {
         return "claude update"
     }
 
-    /// The failure shown when `claude` is older than the helper works with.
+    /// The warning shown when `claude` is older than the helper's minimum. Only MCP servers
+    /// that carry secrets need that version (the helper hands them over in `claude`'s first
+    /// message, not on its command line), and the helper refuses that case itself. So, as T3
+    /// Code does for a version that's merely old, the chat carries on and only warns.
     public static func tooOldMessage(version: String, minimum: String, updateCommand: String) -> String {
-        "Claude Code v\(version) is too old for the Claude helper, which needs v\(minimum) or newer. "
-            + "Upgrade to v\(minimum) or newer with `\(updateCommand)`, then try again."
+        "Claude Code v\(version) is older than v\(minimum). Chats work, but MCP servers that carry "
+            + "secrets need v\(minimum) or newer. Upgrade with `\(updateCommand)`."
     }
 
     // MARK: - Models
@@ -545,8 +548,8 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
     // MARK: - Before the first session
 
     /// The checks that come before any process starts: the bundled helper is there, `claude` is
-    /// found, and `claude --version` (20 seconds at most) is new enough. An unreadable version
-    /// is logged and not held against `claude`.
+    /// found, and `claude --version` (20 seconds at most) is read. An old version only warns, and
+    /// an unreadable one is logged; neither is held against `claude`.
     private func preflight() async throws {
         guard bundled != nil else {
             throw await fail(ClaudeSDKSupport.helperMissingMessage)
@@ -560,13 +563,12 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         }
         installedClaudeVersion = version
         if ClaudeSDKSupport.compare(version, minimumClaudeVersion) < 0 {
-            throw await fail(
-                ClaudeSDKSupport.tooOldMessage(
-                    version: version,
-                    minimum: minimumClaudeVersion,
-                    updateCommand: ClaudeSDKSupport.updateCommand(forClaudeAt: claudePath)
-                )
+            let message = ClaudeSDKSupport.tooOldMessage(
+                version: version,
+                minimum: minimumClaudeVersion,
+                updateCommand: ClaudeSDKSupport.updateCommand(forClaudeAt: claudePath)
             )
+            inner.emitHostEvent(.notice(severity: "warning", title: message, detail: nil))
         }
         if let message = ClaudeSDKSupport.versionUpgradeMessage(version: version) {
             inner.emitHostEvent(.notice(severity: "warning", title: message, detail: nil))

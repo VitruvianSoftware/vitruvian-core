@@ -674,53 +674,23 @@ final class ClaudeSDKConnectionTests: XCTestCase {
 
     // MARK: - The version check
 
-    func testAClaudeThatIsTooOldFailsBeforeAnyProcessStarts() async throws {
-        let bundled = BundledNode(nodeURL: URL(fileURLWithPath: "/usr/bin/true"), helperURL: URL(fileURLWithPath: "/usr/bin/true"))
-        let launched = ClaudeLockedBox(0)
-        let connection = makeConnection(
-            claude: "/opt/homebrew/Caskroom/claude-code/2.1.100/claude",
-            bundled: bundled,
-            versionProbe: { "2.1.100 (Claude Code)\n" },
-            processFactory: { _ in launched.update { $0 += 1 }; throw CocoaError(.featureUnsupported) }
-        )
-        let recorder = ClaudeEventRecorder(connection.events)
-
-        do {
-            _ = try await connection.start(request())
-            XCTFail("a claude below the helper's minimum must not start")
-        } catch {
-            let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
-            XCTAssertEqual(
-                message,
-                "Claude Code v2.1.100 is too old for the Claude helper, which needs v2.1.326 or newer. "
-                    + "Upgrade to v2.1.326 or newer with `brew upgrade --cask claude-code`, then try again."
-            )
-            await recorder.wait("a startup failure with that message") { event in
-                if case .connectionFailed(let failure) = event {
-                    return failure.kind == .startupFailed && failure.message == message
-                }
-                return false
-            }
-        }
-        XCTAssertEqual(launched.value, 0)
-        await recorder.finish()
-    }
-
-    func testTheRealVersionOutputOfClaudeIsWhatTheCheckReads() async throws {
+    func testAClaudeOlderThanTheMinimumStillStartsAndWarns() async throws {
         let bundled = try requireBundled()
         let claude = try makeFakeClaude(bundled, version: "2.1.200")
         let connection = makeConnection(claude: claude.path, bundled: bundled)
         let recorder = ClaudeEventRecorder(connection.events)
 
-        do {
-            _ = try await connection.start(request())
-            XCTFail("2.1.200 is below the minimum")
-        } catch {
-            XCTAssertTrue((error as? LocalizedError)?.errorDescription?.contains("v2.1.200") == true, "\(error)")
-        }
+        let sessionID = try await connection.start(request())
+        XCTAssertFalse(sessionID.isEmpty, "an old claude must not block the chat")
         XCTAssertEqual(connection.installedClaudeVersion, "2.1.200")
+        await recorder.wait("a warning naming the installed version and the minimum") { event in
+            if case .notice(let severity, let title, _) = event {
+                return severity == "warning" && title.contains("v2.1.200") && title.contains("v2.1.326")
+            }
+            return false
+        }
+        await connection.stop()
         await recorder.finish()
-        XCTAssertTrue(claude.entries(kind: "start").isEmpty, "claude is never started as a session")
     }
 
     func testAVersionThatCannotBeReadDoesNotBlockAndIsLogged() async throws {
