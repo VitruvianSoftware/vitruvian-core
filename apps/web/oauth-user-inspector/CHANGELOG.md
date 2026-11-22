@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.16.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.16.2...oauth-user-inspector-v1.16.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update url crate to 2.5.9 for RUSTSEC-2026-0592 ([#5377](https://github.com/VitruvianSoftware/vitruvian-core/issues/5377)) ([4bb66d8](https://github.com/VitruvianSoftware/vitruvian-core/commit/4bb66d886771125b7447a6860941871ce4b389dd))
+
 ## [1.16.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.16.1...oauth-user-inspector-v1.16.2) (2026-11-21)
 
 
