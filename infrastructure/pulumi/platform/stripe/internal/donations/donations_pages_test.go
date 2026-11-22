@@ -214,3 +214,34 @@ func TestSponsorButtonsOpenAPageWithALink(t *testing.T) {
 		t.Fatal("sponsor-button-repos.txt lists no repositories")
 	}
 }
+
+// Donate checkout pages must not expose a raw <a href> or verbatim Payment Link
+// URL in static HTML/JS so passive crawlers and link-previewers cannot spawn
+// unpaid Stripe Checkout Sessions on GET.
+func TestDonateCheckoutBlocksPassiveCrawlers(t *testing.T) {
+	cardRaw, err := os.ReadFile(siteDir + "_includes/donate-card.html")
+	if err != nil {
+		t.Fatalf("read _includes/donate-card.html: %v", err)
+	}
+	card := string(cardRaw)
+	if !strings.Contains(card, `<button id="donate-checkout-btn" type="button"`) {
+		t.Errorf("_includes/donate-card.html must render #donate-checkout-btn as a <button type=\"button\">")
+	}
+	if strings.Contains(card, `<a id="donate-checkout-btn"`) || strings.Contains(card, `href="{{ include.link }}"`) {
+		t.Errorf("_includes/donate-card.html must not expose an <a href> to the Stripe Payment Link")
+	}
+
+	scriptRaw, err := os.ReadFile(siteDir + "_includes/donate-checkout.html")
+	if err != nil {
+		t.Fatalf("read _includes/donate-checkout.html: %v", err)
+	}
+	script := string(scriptRaw)
+	if strings.Contains(script, "btn.href") || strings.Contains(script, "{{ include.link | jsonify }}") {
+		t.Errorf("_includes/donate-checkout.html must not assign btn.href or embed the verbatim Payment Link")
+	}
+	for _, want := range []string{`addEventListener("click"`, "isTrusted", "client_reference_id", "window.location.assign"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("_includes/donate-checkout.html missing %q", want)
+		}
+	}
+}

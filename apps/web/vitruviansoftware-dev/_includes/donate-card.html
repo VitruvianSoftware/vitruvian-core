@@ -3,7 +3,8 @@
   and /donate/<key>/ (_includes/donate-app.html) so general and per-app pages
   cannot drift. Formats USD cent bounds from _data/donation_amounts.yml
   (handling non-zero cent remainders cleanly) and includes
-  _includes/donate-checkout.html for source attribution and Umami analytics.
+  _includes/donate-checkout.html so checkout navigation happens only on a
+  trusted button click (preventing crawlers from spawning Stripe sessions).
   Expects: key (Stripe app key), name (display name), link (live Stripe URL).
 {%- endcomment -%}
 {%- assign amounts = site.data.donation_amounts -%}
@@ -31,8 +32,11 @@
         <span class="donate-amount-value">{{ preset_usd }} suggested — pay what you want, {{ min_usd }} to {{ max_usd }}</span>
       </div>
       <div class="donate-actions">
-        <a id="donate-checkout-btn" class="btn btn-primary donate-cta" href="{{ include.link }}" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}">Continue to Stripe</a>
+        <button id="donate-checkout-btn" type="button" class="btn btn-primary donate-cta" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}">Continue to Stripe</button>
       </div>
+      <noscript>
+        <p class="donate-note">JavaScript is required to open Stripe Checkout from this page.</p>
+      </noscript>
       <p class="donate-note">Payments are processed securely by Stripe.</p>
     </article>
   </div>
