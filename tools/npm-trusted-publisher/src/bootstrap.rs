@@ -42,6 +42,10 @@ const SCRIPT: &str = "\
 #   bazel run //tools/npm-trusted-publisher:bootstrap -- --dry-run
 #   bazel run //tools/npm-trusted-publisher:bootstrap -- --no-login
 #
+#   MIRROR_REPO=VitruvianSoftware/vitruvian-orchestrator-opencode \\
+#     bazel run //tools/npm-trusted-publisher:bootstrap
+#
+# The mirror is a workspace (ts/packages/*) or one package at its top.
 # Env: NPM, MIRROR_REPO (default VitruvianSoftware/pulumi-library), MIRROR_DIR
 #      (use an existing checkout instead of cloning), SETUP_SH
 # Exit: 0 nothing to do or all published · 1 a publish failed · 2 precondition
@@ -153,19 +157,17 @@ fn run(args: &[String], cleanup: &mut Option<String>) -> End {
         *cleanup = Some(mirror.clone());
     }
 
-    let packages = format!("{}/ts/packages", mirror);
-    if !std::path::Path::new(&packages).is_dir() {
-        errln(&format!("{}: {} not found -- the", P, packages));
-        errln("  mirror layout moved; this script assumes ts/packages/*.");
-        return End::Exit(2);
-    }
+    let lay = match layout(&mirror) {
+        Ok(l) => l,
+        Err(m) => {
+            errln(&format!("{}: {}", P, m));
+            return End::Exit(2);
+        }
+    };
 
-    // `for mf in $(find ... | sort)`: word-split, so a path with a blank in
-    // it splits exactly as it does in the script.
-    let found = sh::find_manifests(&[packages]).join("\n");
     let mut missing: Vec<String> = Vec::new();
-    for mf in sh::words(&found) {
-        let line = match manifest::load_dict(&mf) {
+    for mf in &lay.manifests {
+        let line = match manifest::load_dict(mf) {
             Ok(d) => manifest::name_private_line(&d),
             Err(e) => {
                 errln(&e);
@@ -180,7 +182,7 @@ fn run(args: &[String], cleanup: &mut Option<String>) -> End {
         if quiet_ok(&npm, &["view", &name, "version"]) {
             continue;
         }
-        missing.push(mf);
+        missing.push(mf.clone());
     }
     // `missing="$missing $mf"` and then `for mf in $missing`: split again.
     let missing: Vec<String> = sh::words(&missing.join(" "));
@@ -274,29 +276,35 @@ fn run(args: &[String], cleanup: &mut Option<String>) -> End {
     );
     outln(&format!("{}: authenticated as {}", P, lossy(&who)));
 
-    outln("npm-trusted-publisher-bootstrap: building the mirror's ts workspace...");
-    // `( cd "$mirror/ts" && npm install && npm run build )`
-    let ts = format!("{}/ts", mirror);
-    let built = (|| {
-        let mut c = Command::new(&npm);
-        c.arg("install");
-        if let Err(m) = sh::in_dir(&mut c, &ts) {
-            errln(&format!("{}: {}", P, m));
-            return false;
+    if let Some(build_dir) = &lay.build_dir {
+        outln(&format!("{}: building {}...", P, build_dir));
+        // `( cd "$build_dir" && npm install && npm run build )`
+        let built = (|| {
+            let mut c = Command::new(&npm);
+            c.arg("install");
+            if let Err(m) = sh::in_dir(&mut c, build_dir) {
+                errln(&format!("{}: {}", P, m));
+                return false;
+            }
+            if sh::run_inherit(&mut c) != 0 {
+                return false;
+            }
+            let mut c = Command::new(&npm);
+            c.args(["run", "build"]);
+            if sh::in_dir(&mut c, build_dir).is_err() {
+                return false;
+            }
+            sh::run_inherit(&mut c) == 0
+        })();
+        if !built {
+            errln("npm-trusted-publisher-bootstrap: the build failed; not publishing.");
+            return End::Exit(2);
         }
-        if sh::run_inherit(&mut c) != 0 {
-            return false;
-        }
-        let mut c = Command::new(&npm);
-        c.args(["run", "build"]);
-        if sh::in_dir(&mut c, &ts).is_err() {
-            return false;
-        }
-        sh::run_inherit(&mut c) == 0
-    })();
-    if !built {
-        errln("npm-trusted-publisher-bootstrap: the workspace build failed; not publishing.");
-        return End::Exit(2);
+    } else {
+        outln(&format!(
+            "{}: the package has no build script; publishing it as it is.",
+            P
+        ));
     }
 
     let (mut published, mut failed) = (0u64, 0u64);
@@ -333,6 +341,49 @@ fn run(args: &[String], cleanup: &mut Option<String>) -> End {
     } else {
         End::Setup
     }
+}
+
+/// Where a mirror checkout keeps its packages, and what to build first.
+#[derive(Debug, PartialEq)]
+struct Layout {
+    /// The package.json files to consider, in order.
+    manifests: Vec<String>,
+    /// The folder to `npm install && npm run build` in, if any.
+    build_dir: Option<String>,
+}
+
+/// The two mirror layouts there are:
+///   * a workspace, `ts/packages/*` built from `ts` (the Pulumi library);
+///   * one package at the top (`package.json` at the root, as the
+///     vitruvian-orchestrator-opencode mirror has it), built only if its
+///     package.json has a `build` script.
+fn layout(mirror: &str) -> Result<Layout, String> {
+    let packages = format!("{}/ts/packages", mirror);
+    if std::path::Path::new(&packages).is_dir() {
+        // `for mf in $(find ... | sort)`: word-split, so a path with a blank in
+        // it splits exactly as it does in the script.
+        let found = sh::find_manifests(&[packages]).join("\n");
+        return Ok(Layout {
+            manifests: sh::words(&found),
+            build_dir: Some(format!("{}/ts", mirror)),
+        });
+    }
+    let root = format!("{}/package.json", mirror);
+    if std::path::Path::new(&root).is_file() {
+        let d = manifest::load_dict(&root)?;
+        let has_build = matches!(
+            d.get("scripts").and_then(|s| s.get("build")),
+            Some(v) if v.truthy()
+        );
+        return Ok(Layout {
+            manifests: vec![root],
+            build_dir: has_build.then(|| mirror.to_string()),
+        });
+    }
+    Err(format!(
+        "{} has neither ts/packages/ nor a package.json at its top; the mirror layout moved.",
+        mirror
+    ))
 }
 
 /// `publish_with_otp_wait`: retry the SAME publish through an EOTP until the
@@ -389,5 +440,55 @@ mod tests {
         assert!(u.starts_with("# Usage:\n"));
         assert!(u.trim_end().ends_with("2 precondition"));
         assert!(u.contains("--dry-run"));
+    }
+    fn tmp(tag: &str) -> String {
+        let d = std::env::temp_dir().join(format!("ntp-layout-{}-{}", tag, sh::unique()));
+        std::fs::create_dir_all(&d).unwrap();
+        d.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn layout_workspace() {
+        let m = tmp("ws");
+        std::fs::create_dir_all(format!("{}/ts/packages/a", m)).unwrap();
+        std::fs::write(format!("{}/ts/packages/a/package.json", m), "{}").unwrap();
+        let l = layout(&m).unwrap();
+        assert_eq!(
+            l.manifests,
+            vec![format!("{}/ts/packages/a/package.json", m)]
+        );
+        assert_eq!(l.build_dir, Some(format!("{}/ts", m)));
+    }
+
+    #[test]
+    fn layout_single_package_without_build() {
+        let m = tmp("one");
+        std::fs::write(
+            format!("{}/package.json", m),
+            r#"{"name":"x","scripts":{"test":"t"}}"#,
+        )
+        .unwrap();
+        let l = layout(&m).unwrap();
+        assert_eq!(l.manifests, vec![format!("{}/package.json", m)]);
+        assert_eq!(l.build_dir, None);
+    }
+
+    #[test]
+    fn layout_single_package_with_build() {
+        let m = tmp("onebuild");
+        std::fs::write(
+            format!("{}/package.json", m),
+            r#"{"name":"x","scripts":{"build":"tsc"}}"#,
+        )
+        .unwrap();
+        assert_eq!(layout(&m).unwrap().build_dir, Some(m.clone()));
+    }
+
+    #[test]
+    fn layout_unknown() {
+        let m = tmp("none");
+        assert!(layout(&m).unwrap_err().contains("layout moved"));
+        std::fs::write(format!("{}/package.json", m), "[]").unwrap();
+        assert!(layout(&m).is_err());
     }
 }
