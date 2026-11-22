@@ -125,6 +125,7 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
             "Assemble .app bundles",
             "Sign and notarize apps and tool",
             "Check the apps",
+            "Ask XProtect about the apps",
             "Free disk space before the DMGs",
             "Create DMGs",
             "Sign and notarize DMGs",
