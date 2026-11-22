@@ -386,6 +386,14 @@ fn layout(mirror: &str) -> Result<Layout, String> {
     ))
 }
 
+/// The first publish runs on a person's machine, where npm cannot make a
+/// provenance statement (it needs a CI identity). A package whose
+/// `publishConfig` asks for provenance would fail with "Automatic provenance
+/// generation not supported for provider: null", so this turns it off for
+/// this one publish. Every later version comes from the mirror's CI, which
+/// still attaches provenance.
+const PUBLISH_ARGS: [&str; 4] = ["publish", "--access", "public", "--provenance=false"];
+
 /// `publish_with_otp_wait`: retry the SAME publish through an EOTP until the
 /// browser authentication lands or the budget runs out, never swallowing
 /// npm's output (its URL is the only way forward).
@@ -393,9 +401,8 @@ fn publish_with_otp_wait(npm: &str, dir: &str, otp_wait: &str, otp_poll: &str) -
     let mut waited: i64 = 0;
     let mut shown = false;
     loop {
-        // `_out="$( ( cd "$dir" && "$NPM" publish --access public ) 2>&1 )"`
         let mut c = Command::new(npm);
-        c.args(["publish", "--access", "public"])
+        c.args(PUBLISH_ARGS)
             .stdin(Stdio::inherit());
         let (rc, out) = match sh::in_dir(&mut c, dir) {
             Ok(()) => sh::capture_merged(&mut c),
@@ -490,5 +497,13 @@ mod tests {
         assert!(layout(&m).unwrap_err().contains("layout moved"));
         std::fs::write(format!("{}/package.json", m), "[]").unwrap();
         assert!(layout(&m).is_err());
+    }
+
+    #[test]
+    fn first_publish_turns_provenance_off() {
+        assert_eq!(PUBLISH_ARGS[0], "publish");
+        assert!(PUBLISH_ARGS.contains(&"--access"));
+        assert!(PUBLISH_ARGS.contains(&"public"));
+        assert!(PUBLISH_ARGS.contains(&"--provenance=false"));
     }
 }
