@@ -22,9 +22,7 @@
 //!
 //! Enforces Decisions 3 and 5 of
 //! `docs/superpowers/specs/2026-11-20-shared-packages-convention.md`:
-//! - Every top-level folder under `packages/` (and every folder directly inside
-//!   transitional `packages/rust/` and `packages/swift/`) has a
-//!   `catalog-info.yaml` declaring a `Component` with `spec.type: library`,
+//! - Every top-level folder under `packages/` has a `catalog-info.yaml` declaring a `Component` with `spec.type: library`,
 //!   `spec.owner`, `spec.lifecycle`, `metadata.description`, at least one
 //!   `metadata.tags` value, and `vitruvian.dev/bazel-target` whose Bazel labels
 //!   resolve to declared targets in their package BUILD files.
@@ -43,7 +41,6 @@ use std::path::{Path, PathBuf};
 use crate::Context;
 
 const GROUP: &str = "CATALOG_ENTRIES";
-const PACKAGE_LANGUAGE_CONTAINERS: &[&str] = &["rust", "swift"];
 
 /// Explicit allowlist of non-product folders under `apps/` (scripts or fixtures
 /// only) that do not require a `catalog-info.yaml`. Format: `(repo_rel_path, reason)`.
@@ -512,14 +509,7 @@ fn collect_package_dirs(root: &str) -> Vec<String> {
     let packages_dir = Path::new(root).join("packages");
     let mut out = Vec::new();
     for entry in list_child_dirs(&packages_dir) {
-        if PACKAGE_LANGUAGE_CONTAINERS.contains(&entry.as_str()) {
-            let container = packages_dir.join(&entry);
-            for child in list_child_dirs(&container) {
-                out.push(format!("packages/{entry}/{child}"));
-            }
-        } else {
-            out.push(format!("packages/{entry}"));
-        }
+        out.push(format!("packages/{entry}"));
     }
     out.sort();
     out
@@ -1066,21 +1056,6 @@ spec:
 
     #[test]
     fn valid_packages_and_apps_pass() {
-        let rust_catalog = VALID_PKG_CATALOG
-            .replace("name: foo", "name: rust-foo")
-            .replace(
-                "//packages/foo:foo_lib",
-                "//packages/rust/rust-foo:rust_foo",
-            );
-        let rust_build = "rust_library(name = \"rust_foo\")\n";
-        let swift_catalog = VALID_PKG_CATALOG
-            .replace("name: foo", "name: swift-bar")
-            .replace("    - rust", "    - swift")
-            .replace(
-                "//packages/foo:foo_lib",
-                "//packages/swift/SwiftBar:SwiftBar",
-            );
-        let swift_build = "swift_library(name = \"SwiftBar\")\n";
         let multi_doc_catalog = "\
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -1112,10 +1087,6 @@ spec:
             &[
                 ("packages/foo/catalog-info.yaml", VALID_PKG_CATALOG),
                 ("packages/foo/BUILD", VALID_PKG_BUILD),
-                ("packages/rust/rust-foo/catalog-info.yaml", &rust_catalog),
-                ("packages/rust/rust-foo/BUILD", rust_build),
-                ("packages/swift/SwiftBar/catalog-info.yaml", &swift_catalog),
-                ("packages/swift/SwiftBar/BUILD.bazel", swift_build),
                 ("packages/pulumi/catalog-info.yaml", multi_doc_catalog),
                 ("packages/pulumi/sub/BUILD", pulumi_sub_build),
                 ("apps/cli/my-app/catalog-info.yaml", VALID_APP_CATALOG),
@@ -1130,7 +1101,7 @@ spec:
             ],
             &[],
         );
-        assert_eq!((ok, fail), (7, 0), "{rows}");
+        assert_eq!((ok, fail), (5, 0), "{rows}");
     }
 
     #[test]
@@ -1142,24 +1113,19 @@ spec:
                     "packages/rust/missing-rs/BUILD",
                     "filegroup(name = \"x\")\n",
                 ),
-                (
-                    "packages/swift/MissingSwift/BUILD",
-                    "filegroup(name = \"x\")\n",
-                ),
             ],
             &[],
         );
-        assert_eq!(fail, 3, "{rows}");
+        assert_eq!(fail, 2, "{rows}");
         assert!(
             rows.contains("packages/no-catalog/catalog-info.yaml"),
             "{rows}"
         );
+        // `packages/rust/` is no longer a language container: a crate nested in
+        // it counts as one package that needs its own catalog at the top level.
+        assert!(rows.contains("packages/rust/catalog-info.yaml"), "{rows}");
         assert!(
-            rows.contains("packages/rust/missing-rs/catalog-info.yaml"),
-            "{rows}"
-        );
-        assert!(
-            rows.contains("packages/swift/MissingSwift/catalog-info.yaml"),
+            !rows.contains("packages/rust/missing-rs/catalog-info.yaml"),
             "{rows}"
         );
     }

@@ -280,9 +280,7 @@ fn resolve_package_root(pkg_file: &str, catalogs: &BTreeMap<String, String>) -> 
     }
 
     let parts: Vec<&str> = pkg_file.split('/').collect();
-    if parts.len() >= 4 && (parts[1] == "rust" || parts[1] == "swift") {
-        format!("{}/{}/{}", parts[0], parts[1], parts[2])
-    } else if parts.len() >= 3 {
+    if parts.len() >= 3 {
         format!("{}/{}", parts[0], parts[1])
     } else {
         "packages".to_string()
