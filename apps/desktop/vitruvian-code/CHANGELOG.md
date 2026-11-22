@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.40.0...vitruvian-code-v1.41.0) (2026-11-22)
+
+
+### Features
+
+* **vitruvian-code:** run Claude through the bundled helper when the Connection is Claude SDK ([#5353](https://github.com/VitruvianSoftware/vitruvian-core/issues/5353)) ([23df0fc](https://github.com/VitruvianSoftware/vitruvian-core/commit/23df0fcc01349503d81fb231ce48bc1573e037f2))
+
 ## [1.40.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.39.0...vitruvian-code-v1.40.0) (2026-11-22)
 
 
