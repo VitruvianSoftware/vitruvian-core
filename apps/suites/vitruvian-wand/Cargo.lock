@@ -4334,7 +4334,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vitruvian-wand-build-smoke"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "android_logger",
  "btleplug",
@@ -4357,7 +4357,7 @@ dependencies = [
 
 [[package]]
 name = "vitruvian-wand-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4365,7 +4365,7 @@ dependencies = [
 
 [[package]]
 name = "vitruvian-wand-desktop"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "btleplug",
  "core-foundation 0.10.1",
@@ -4391,7 +4391,7 @@ dependencies = [
 
 [[package]]
 name = "vitruvian-wand-jni"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "android_logger",
  "jni",

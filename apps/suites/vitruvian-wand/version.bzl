@@ -28,7 +28,7 @@ CARGO_PKG_VERSION and both apps' crash-report release names all come from it.
 files disagree.
 """
 
-VITRUVIAN_WAND_VERSION = "0.1.1"  # x-release-please-version
+VITRUVIAN_WAND_VERSION = "0.1.2"  # x-release-please-version
 
 def _version_code(version):
     parts = version.split(".")
