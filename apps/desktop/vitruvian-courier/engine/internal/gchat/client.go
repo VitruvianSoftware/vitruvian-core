@@ -63,15 +63,15 @@ type Client struct {
 	userInfoCache map[networkid.UserID]*bridgev2.UserInfo
 	prewarmWG     sync.WaitGroup
 	mediaSem      chan struct{}
-	// linkPreviewImageDownloader overrides FFI preview image downloads in tests.
-	linkPreviewImageDownloader func(ctx context.Context, imageURL string) ([]byte, error)
-	initialSyncDone            bool
-	dispatchedMsgIDs           map[string]struct{}
-	dispatchedMsgOrder         []string
-	pendingLocalIDs            map[string]struct{}
-	pendingLocalOrder          []string
-	lastState                  status.BridgeStateEvent
-	lastBridgeStateObj         status.BridgeState
+	// mediaFFI overrides ensureFFIClient for media downloads in tests so the production download wiring runs.
+	mediaFFI           ffiMediaDownloader
+	initialSyncDone    bool
+	dispatchedMsgIDs   map[string]struct{}
+	dispatchedMsgOrder []string
+	pendingLocalIDs    map[string]struct{}
+	pendingLocalOrder  []string
+	lastState          status.BridgeStateEvent
+	lastBridgeStateObj status.BridgeState
 }
 
 var _ bridgev2.NetworkAPI = (*Client)(nil)
