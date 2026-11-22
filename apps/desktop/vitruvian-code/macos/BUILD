@@ -298,8 +298,12 @@ swift_test(
 #
 # No `provisioning_profile` or signing identity is configured, so rules_apple
 # ad-hoc signs the bundle by default ("codesign --identity -").
-# The Rust bot engine as a universal macOS helper executable, signed ad hoc so
-# `VitruvianCode` can bundle it into `Contents/Helpers/bot-engine`.
+# The Rust bot engine as a universal macOS Mach-O, which only exists to be
+# split. XProtect refuses a universal app that holds a fat helper ("Internal
+# Xprotect Error" from syspolicy_check), so the app ships a thin copy per
+# architecture, `bot-engine-arm64` and `bot-engine-x86_64`, and the program picks
+# the one for its own architecture at run time (VitruvianCodeSupport and
+# BundledNode). Same for Node below.
 apple_universal_binary(
     name = "bot_engine_universal",
     binary = "//apps/desktop/vitruvian-code/src:bot-engine",
@@ -313,16 +317,23 @@ apple_universal_binary(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
-genrule(
-    name = "bot_engine_helper",
+# `bot-engine-arm64` and `bot-engine-x86_64`: each the thin slice for its
+# architecture, signed ad hoc.
+[genrule(
+    name = "bot_engine_helper_" + arch,
     srcs = [":bot_engine_universal"],
-    outs = ["bot-engine"],
-    cmd = "cp $(location :bot_engine_universal) $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.bot-engine $@",
+    outs = ["bot-engine-" + arch],
+    cmd = "/usr/bin/lipo -thin " + arch + " $(location :bot_engine_universal) -output $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.bot-engine $@",
     executable = True,
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-)
+) for arch in [
+    "arm64",
+    "x86_64",
+]]
 
+# The tool folder's `bin/node` (Gatekeeper does not assess the tool folder as an
+# app) and the mirror build keep the one fat Node; the app does not hold it.
 genrule(
     name = "node_helper",
     srcs = [
@@ -337,6 +348,24 @@ genrule(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# `node-arm64` and `node-x86_64` for the app: each Node release is already thin,
+# so each is copied and signed with the JIT entitlements.
+[genrule(
+    name = "node_helper_" + arch,
+    srcs = [
+        "Resources/node.entitlements",
+        "@nodejs_darwin_" + ("amd64" if arch == "x86_64" else "arm64") + "//:node_bin",
+    ],
+    outs = ["node-" + arch],
+    cmd = "cp $(location @nodejs_darwin_" + ("amd64" if arch == "x86_64" else "arm64") + "//:node_bin) $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.node --entitlements $(location Resources/node.entitlements) $@",
+    executable = True,
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+) for arch in [
+    "arm64",
+    "x86_64",
+]]
+
 genrule(
     name = "claude_helper_bundle",
     srcs = ["//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files"],
@@ -349,9 +378,11 @@ genrule(
 macos_application(
     name = "VitruvianCode",
     additional_contents = {
-        ":bot_engine_helper": "Helpers",
+        ":bot_engine_helper_arm64": "Helpers",
+        ":bot_engine_helper_x86_64": "Helpers",
         ":claude_helper_bundle": "Resources/claude-helper",
-        ":node_helper": "Helpers",
+        ":node_helper_arm64": "Helpers",
+        ":node_helper_x86_64": "Helpers",
     },
     bundle_id = "com.vitruviansoftware.code",
     bundle_name = "Vitruvian Code",
@@ -429,9 +460,10 @@ rust_test(
     deps = [":vitruvian_code_scripts_lib"],
 )
 
-# The app Bazel built holds Contents/Helpers/bot-engine for all app
-# architectures, verifies its code signature, and confirms `--dry-run` works
-# in an isolated empty environment.
+# The app Bazel built holds the release's universal layout: a thin
+# Contents/Helpers/bot-engine-arm64 and bot-engine-x86_64 and no fat bot-engine,
+# verifies the code signature, and confirms `--dry-run` works in an isolated empty
+# environment for each one this Mac can run.
 rust_test(
     name = "app_holds_bot_test",
     size = "small",

@@ -197,9 +197,111 @@ final class BundledNodeTests: XCTestCase {
         XCTAssertNil(BundledNode.locate(in: emptyHelper))
     }
 
-    /// The layout `bundle.rs` and the Bazel app write, file for file: the main
-    /// program, both helpers, the helper's script and Mermaid's SwiftPM bundle.
-    /// This runs under Bazel and SwiftPM alike; it never skips.
+    // MARK: - Universal app: two thin Nodes in place of one fat `node`
+
+    func testUniversalAppUsesTheThinNodeForTheArchitectureTheProcessRunsAs() throws {
+        let bundle = try makeApp(files: [
+            ("Helpers/node-arm64", "#!/bin/sh\n# arm64\n", true),
+            ("Helpers/node-x86_64", "#!/bin/sh\n# x86_64\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+        ])
+        for architecture in HelperArchitecture.all {
+            let found = try XCTUnwrap(BundledNode.locate(in: bundle, architecture: architecture),
+                                      "a universal app must give \(architecture) its own Node")
+            XCTAssertEqual(
+                found.nodeURL,
+                bundle.bundleURL.appendingPathComponent("Contents/Helpers/node-\(architecture)").standardizedFileURL
+            )
+        }
+        // A universal app running under Rosetta is an x86_64 process, and must
+        // not be handed the arm64 Node (or the reverse).
+        let arm = try XCTUnwrap(BundledNode.nodeURL(in: bundle, architecture: "arm64"))
+        let intel = try XCTUnwrap(BundledNode.nodeURL(in: bundle, architecture: "x86_64"))
+        XCTAssertNotEqual(arm, intel)
+        // With no architecture named, the one this process runs as wins.
+        XCTAssertEqual(
+            try XCTUnwrap(BundledNode.nodeURL(in: bundle)).lastPathComponent,
+            "node-\(HelperArchitecture.current)"
+        )
+    }
+
+    func testThinNodeForThisArchitectureBeatsThePlainNodeInTheSameApp() throws {
+        let bundle = try makeApp(files: [
+            ("Helpers/node", "#!/bin/sh\n", true),
+            ("Helpers/node-arm64", "#!/bin/sh\n", true),
+            ("Helpers/node-x86_64", "#!/bin/sh\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+        ])
+        XCTAssertEqual(BundledNode.nodeURL(in: bundle, architecture: "arm64")?.lastPathComponent, "node-arm64")
+        XCTAssertEqual(BundledNode.nodeURL(in: bundle, architecture: "x86_64")?.lastPathComponent, "node-x86_64")
+    }
+
+    func testPlainNodeIsUsedWhenThereIsNoThinNodeForThisArchitecture() throws {
+        // A single-architecture app ships `node`, thin, and nothing else.
+        let bundle = try makeApp(files: [
+            ("Helpers/node", "#!/bin/sh\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+        ])
+        for architecture in HelperArchitecture.all {
+            XCTAssertEqual(BundledNode.nodeURL(in: bundle, architecture: architecture)?.lastPathComponent, "node")
+        }
+    }
+
+    func testNeverUsesTheOtherArchitecturesNode() throws {
+        // Only the x86_64 Node is there: an arm64 process must find nothing
+        // rather than run a program it cannot (and never fall back to PATH).
+        let bundle = try makeApp(files: [
+            ("Helpers/node-x86_64", "#!/bin/sh\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+        ])
+        XCTAssertNil(BundledNode.nodeURL(in: bundle, architecture: "arm64"))
+        XCTAssertNil(BundledNode.locate(in: bundle, architecture: "arm64"))
+        XCTAssertNotNil(BundledNode.locate(in: bundle, architecture: "x86_64"))
+    }
+
+    func testThinNodeInResourcesOfAnAppIsStillRefused() throws {
+        let bundle = try makeApp(files: [
+            ("Resources/node-arm64", "#!/bin/sh\n", true),
+            ("Resources/node-x86_64", "#!/bin/sh\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+        ])
+        for architecture in HelperArchitecture.all {
+            XCTAssertNil(BundledNode.nodeURL(in: bundle, architecture: architecture),
+                         "Mach-O code never lives in Contents/Resources")
+        }
+    }
+
+    func testToolFolderStillUsesThePlainNodeOnEveryArchitecture() throws {
+        let binDir = scratch.appendingPathComponent("extension/bin", isDirectory: true)
+        let toolExe = binDir.appendingPathComponent("tool")
+        let node = binDir.appendingPathComponent("node")
+        try writeExecutable(toolExe)
+        try writeExecutable(node)
+        try writeFile(binDir.appendingPathComponent("claude-helper/claude-helper.mjs"), content: "export {};\n")
+        for architecture in HelperArchitecture.all {
+            let found = try XCTUnwrap(
+                BundledNode.locate(bundleURL: binDir, resourceURL: binDir, executableURL: toolExe,
+                                   architecture: architecture)
+            )
+            XCTAssertEqual(found.nodeURL, node.standardizedFileURL)
+        }
+    }
+
+    func testHelperFileNamesPutThisArchitectureFirst() {
+        XCTAssertEqual(HelperArchitecture.fileNames("node", architecture: "arm64"), ["node-arm64", "node"])
+        XCTAssertEqual(HelperArchitecture.fileNames("bot-engine", architecture: "x86_64"),
+                       ["bot-engine-x86_64", "bot-engine"])
+        XCTAssertTrue(HelperArchitecture.all.contains(HelperArchitecture.current))
+        #if arch(arm64)
+        XCTAssertEqual(HelperArchitecture.current, "arm64")
+        #elseif arch(x86_64)
+        XCTAssertEqual(HelperArchitecture.current, "x86_64")
+        #endif
+    }
+
+    /// The single-architecture layout `bundle.rs` writes, file for file: the
+    /// main program, both helpers, the helper's script and Mermaid's SwiftPM
+    /// bundle. This runs under Bazel and SwiftPM alike; it never skips.
     func testFindsBundledNodeAndHelperInThePackagedAppLayout() throws {
         let bundle = try makeApp(files: [
             ("Helpers/bot-engine", "#!/bin/sh\n", true),
@@ -209,6 +311,26 @@ final class BundledNodeTests: XCTestCase {
         ])
         let found = try XCTUnwrap(BundledNode.locate(in: bundle), "the packaged app must hold bundled node and claude-helper.mjs")
         XCTAssertTrue(found.nodeURL.path.hasSuffix("/Sample.app/Contents/Helpers/node"), found.nodeURL.path)
+        XCTAssertTrue(
+            found.helperURL.path.hasSuffix("/Sample.app/Contents/Resources/claude-helper/claude-helper.mjs"),
+            found.helperURL.path
+        )
+    }
+
+    /// The universal layout the release and the Bazel app write: two thin
+    /// copies of each helper and no fat file.
+    func testFindsBundledNodeAndHelperInTheUniversalPackagedAppLayout() throws {
+        let bundle = try makeApp(files: [
+            ("Helpers/bot-engine-arm64", "#!/bin/sh\n", true),
+            ("Helpers/bot-engine-x86_64", "#!/bin/sh\n", true),
+            ("Helpers/node-arm64", "#!/bin/sh\n", true),
+            ("Helpers/node-x86_64", "#!/bin/sh\n", true),
+            ("Resources/claude-helper/claude-helper.mjs", "export {};\n", false),
+            ("Resources/VitruvianCode_VitruvianCodeUI.bundle/mermaid.min.js", "m\n", false),
+        ])
+        let found = try XCTUnwrap(BundledNode.locate(in: bundle), "the universal app must hold a Node for this process")
+        XCTAssertTrue(found.nodeURL.path.hasSuffix("/Sample.app/Contents/Helpers/node-\(HelperArchitecture.current)"),
+                      found.nodeURL.path)
         XCTAssertTrue(
             found.helperURL.path.hasSuffix("/Sample.app/Contents/Resources/claude-helper/claude-helper.mjs"),
             found.helperURL.path

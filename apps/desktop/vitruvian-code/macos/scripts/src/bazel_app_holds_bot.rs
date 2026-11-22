@@ -19,11 +19,11 @@
 // SOFTWARE.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const BOT_REL_PATH: &str = "Contents/Helpers/bot-engine";
+use crate::check_packaged_app::{can_run_arch, check_helper_set, Helper, UNIVERSAL_ARCHS};
+
 const MAIN_EXE_NAME: &str = "VitruvianCode";
 
 fn lipo_archs(binary: &Path) -> Result<Vec<String>, String> {
@@ -106,44 +106,26 @@ pub fn resolve_app_bundle(
     }
 }
 
+/// The Bazel-built app holds the release's universal layout whatever
+/// architectures its main program is built for: a thin `bot-engine-arm64` and
+/// `bot-engine-x86_64` and no fat `bot-engine` (XProtect refuses a universal app
+/// with a fat helper). Each one this Mac can run must run.
 pub fn verify_unpacked_app(app: &Path, work_root: &Path) -> Result<(), String> {
     let main_exe = app.join("Contents/MacOS").join(MAIN_EXE_NAME);
     if !main_exe.is_file() {
         return Err(format!("missing main executable at {}", main_exe.display()));
     }
 
-    let bot_exe = app.join(BOT_REL_PATH);
-    if !bot_exe.is_file() {
-        return Err(format!("missing {} inside {}", BOT_REL_PATH, app.display()));
-    }
-    let meta =
-        fs::metadata(&bot_exe).map_err(|e| format!("cannot stat {}: {}", bot_exe.display(), e))?;
-    if meta.permissions().mode() & 0o111 == 0 {
-        return Err(format!("{} is not executable", BOT_REL_PATH));
-    }
-
     let app_archs = lipo_archs(&main_exe)?;
-    let bot_archs = lipo_archs(&bot_exe)?;
-    let missing: Vec<&str> = app_archs
-        .iter()
-        .filter(|a| !bot_archs.contains(a))
-        .map(|s| s.as_str())
-        .collect();
-    if !missing.is_empty() {
-        return Err(format!(
-            "{} lacks app architecture(s) {} (app: {}, bot: {})",
-            BOT_REL_PATH,
-            missing.join(" "),
-            app_archs.join(" "),
-            bot_archs.join(" ")
-        ));
+    let bots = check_helper_set(app, UNIVERSAL_ARCHS, Helper::Bot)?;
+    for bot in &bots {
+        println!(
+            "ok: {} is thin for {} (app program: {})",
+            bot.rel,
+            bot.arch,
+            app_archs.join(" ")
+        );
     }
-    println!(
-        "ok: {} covers app architectures [{}] (bot: {})",
-        BOT_REL_PATH,
-        app_archs.join(" "),
-        bot_archs.join(" ")
-    );
 
     let cs = Command::new("codesign")
         .args(["--verify", "--deep", "--strict"])
@@ -159,49 +141,62 @@ pub fn verify_unpacked_app(app: &Path, work_root: &Path) -> Result<(), String> {
     }
     println!("ok: codesign --verify --deep --strict passed");
 
-    // Run the bundled bot-engine in an isolated temp workspace with a fake token
-    // so it loads .env from CWD and validates without reading ~/.config or calling Telegram.
-    let dry_root = work_root.join("dry_run");
-    let _ = fs::remove_dir_all(&dry_root);
-    let dry_home = dry_root.join("home");
-    let dry_bot_dir = dry_root.join("bot");
-    fs::create_dir_all(&dry_home)
-        .map_err(|e| format!("cannot create isolated HOME {}: {}", dry_home.display(), e))?;
-    fs::create_dir_all(&dry_bot_dir).map_err(|e| {
-        format!(
-            "cannot create isolated bot dir {}: {}",
-            dry_bot_dir.display(),
-            e
-        )
-    })?;
-    fs::write(dry_bot_dir.join(".env"), "TELEGRAM_BOT_TOKEN=0:dry-run\n")
-        .map_err(|e| format!("cannot write isolated .env: {}", e))?;
+    // Run each bundled bot-engine this Mac can run, in an isolated temp
+    // workspace with a fake token, so it loads .env from CWD and validates
+    // without reading ~/.config or calling Telegram. The one for this Mac's own
+    // architecture always runs.
+    let mut ran = 0;
+    for bot in &bots {
+        if !can_run_arch(&bot.arch) {
+            println!(
+                "skip: {} is for {}, which this Mac cannot run",
+                bot.rel, bot.arch
+            );
+            continue;
+        }
+        let dry_root = work_root.join("dry_run").join(&bot.arch);
+        let _ = fs::remove_dir_all(&dry_root);
+        let dry_home = dry_root.join("home");
+        let dry_bot_dir = dry_root.join("bot");
+        fs::create_dir_all(&dry_home)
+            .map_err(|e| format!("cannot create isolated HOME {}: {}", dry_home.display(), e))?;
+        fs::create_dir_all(&dry_bot_dir).map_err(|e| {
+            format!(
+                "cannot create isolated bot dir {}: {}",
+                dry_bot_dir.display(),
+                e
+            )
+        })?;
+        fs::write(dry_bot_dir.join(".env"), "TELEGRAM_BOT_TOKEN=0:dry-run\n")
+            .map_err(|e| format!("cannot write isolated .env: {}", e))?;
 
-    let dry_out = Command::new(&bot_exe)
-        .arg("--dry-run")
-        .current_dir(&dry_bot_dir)
-        .env_clear()
-        .env("HOME", &dry_home)
-        .env("PATH", "/usr/bin:/bin")
-        .output()
-        .map_err(|e| format!("cannot run {} --dry-run: {}", bot_exe.display(), e))?;
-    let combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&dry_out.stdout),
-        String::from_utf8_lossy(&dry_out.stderr)
-    );
-    if !dry_out.status.success() || !combined.contains("Bot is running") {
-        return Err(format!(
-            "{} --dry-run failed (status {:?}): {}",
-            BOT_REL_PATH,
-            dry_out.status.code(),
-            combined.trim()
-        ));
+        let dry_out = Command::new(&bot.path)
+            .arg("--dry-run")
+            .current_dir(&dry_bot_dir)
+            .env_clear()
+            .env("HOME", &dry_home)
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .map_err(|e| format!("cannot run {} --dry-run: {}", bot.path.display(), e))?;
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&dry_out.stdout),
+            String::from_utf8_lossy(&dry_out.stderr)
+        );
+        if !dry_out.status.success() || !combined.contains("Bot is running") {
+            return Err(format!(
+                "{} --dry-run failed (status {:?}): {}",
+                bot.rel,
+                dry_out.status.code(),
+                combined.trim()
+            ));
+        }
+        println!("ok: {} --dry-run exited 0 in isolated environment", bot.rel);
+        ran += 1;
     }
-    println!(
-        "ok: {} --dry-run exited 0 in isolated environment",
-        BOT_REL_PATH
-    );
+    if ran == 0 {
+        return Err("no bundled bot-engine could be run on this Mac".to_string());
+    }
 
     Ok(())
 }

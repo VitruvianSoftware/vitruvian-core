@@ -149,11 +149,33 @@ final class PortedRulesTests: XCTestCase {
                       "AGY_BIN wins when it runs; otherwise the usual install folders, or nothing")
         let bundleURL = URL(fileURLWithPath: "/Applications/Vitruvian Code.app")
         let execURL = URL(fileURLWithPath: "/Applications/Vitruvian Code.app/Contents/MacOS/VitruvianCode")
-        let candidates = VitruvianCodeSupport.bundledBotCandidates(bundleURL: bundleURL, executableURL: execURL)
+        let candidates = VitruvianCodeSupport.bundledBotCandidates(bundleURL: bundleURL, executableURL: execURL,
+                                                                   architecture: "arm64")
         XCTAssertEqual(candidates, [
+            "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-arm64",
             "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine",
+            "/Applications/Vitruvian Code.app/Contents/MacOS/bot-engine-arm64",
             "/Applications/Vitruvian Code.app/Contents/MacOS/bot-engine",
         ])
+        // The universal app holds a thin bot-engine per architecture; a process
+        // running as x86_64 (a universal app under Rosetta) gets its own, and
+        // the other architecture's is never a candidate.
+        let intel = VitruvianCodeSupport.bundledBotCandidates(bundleURL: bundleURL, executableURL: execURL,
+                                                              architecture: "x86_64")
+        XCTAssertEqual(intel.first, "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-x86_64")
+        XCTAssertFalse(intel.contains { $0.hasSuffix("bot-engine-arm64") })
+        XCTAssertFalse(candidates.contains { $0.hasSuffix("bot-engine-x86_64") })
+        XCTAssertTrue(VitruvianCodeSupport.bundledBotCandidates(for: .main)
+                        .contains { $0.hasSuffix("bot-engine-\(HelperArchitecture.current)") },
+                      "with no architecture named, the one this process runs as")
+        let universalApp: Set<String> = ["/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-arm64",
+                                         "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-x86_64"]
+        XCTAssertEqual(VitruvianCodeSupport.locateBundledBot(environment: [:], candidates: candidates,
+                                                             isExecutable: universalApp.contains),
+                       "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-arm64")
+        XCTAssertEqual(VitruvianCodeSupport.locateBundledBot(environment: [:], candidates: intel,
+                                                             isExecutable: universalApp.contains),
+                       "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-x86_64")
         XCTAssertTrue(VitruvianCodeSupport.locateBundledBot(environment: [:], candidates: candidates,
                                                             isExecutable: installed.contains)
                       == "/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine"

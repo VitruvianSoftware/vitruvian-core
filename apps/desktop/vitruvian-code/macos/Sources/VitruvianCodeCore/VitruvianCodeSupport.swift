@@ -1030,25 +1030,51 @@ public enum VitruvianCodeSupport {
     public static let botExecutableEnvironmentKey = "VITRUVIAN_CODE_BOT_BIN"
     public static let defaultBundledBotCandidate = "/bundled/Contents/Helpers/bot-engine"
 
+    /// Every file name the bot helper is shipped under: the plain one (a
+    /// single-architecture app) and the two thin ones the universal app holds
+    /// instead of one fat file (XProtect refuses a universal app with a fat
+    /// helper).
+    public static let botExecutableFileNames: [String] =
+        [botExecutableName] + HelperArchitecture.all.map { HelperArchitecture.fileName(botExecutableName, architecture: $0) }
+
+    /// True for `bot-engine`, `bot-engine-arm64` and `bot-engine-x86_64`, and
+    /// nothing else (`bot-engine-helper` is some other program).
+    public static func isBotExecutableFileName(_ name: String) -> Bool {
+        botExecutableFileNames.contains(name)
+    }
+
     /// Candidate locations inside the app bundle (and alongside the main
     /// executable) where the bundled `bot-engine` helper may live.
-    public static func bundledBotCandidates(bundleURL: URL?, executableURL: URL?) -> [String] {
+    ///
+    /// In each folder `bot-engine-<architecture>` (the thin copy of the
+    /// universal app, for the architecture this process runs as) comes before
+    /// the plain `bot-engine`.
+    public static func bundledBotCandidates(bundleURL: URL?, executableURL: URL?,
+                                            architecture: String = HelperArchitecture.current) -> [String] {
+        let names = HelperArchitecture.fileNames(botExecutableName, architecture: architecture)
         var candidates: [String] = []
+        func add(_ directory: URL) {
+            for name in names {
+                candidates.append(directory.appendingPathComponent(name).standardizedFileURL.path)
+            }
+        }
         if let bundleURL {
-            candidates.append(bundleURL.appendingPathComponent(botHelperRelativePath).standardizedFileURL.path)
+            add(bundleURL.appendingPathComponent("Contents/Helpers", isDirectory: true))
         }
         if let executableURL {
             let execDir = executableURL.deletingLastPathComponent()
-            candidates.append(execDir.appendingPathComponent("../Helpers/\(botExecutableName)").standardizedFileURL.path)
-            candidates.append(execDir.appendingPathComponent(botExecutableName).standardizedFileURL.path)
+            add(execDir.appendingPathComponent("../Helpers", isDirectory: true))
+            add(execDir)
         }
         var seen = Set<String>()
         return candidates.filter { seen.insert($0).inserted }
     }
 
     /// Candidate locations for the bundled `bot-engine` helper inside `bundle`.
-    public static func bundledBotCandidates(for bundle: Bundle = .main) -> [String] {
-        bundledBotCandidates(bundleURL: bundle.bundleURL, executableURL: bundle.executableURL)
+    public static func bundledBotCandidates(for bundle: Bundle = .main,
+                                            architecture: String = HelperArchitecture.current) -> [String] {
+        bundledBotCandidates(bundleURL: bundle.bundleURL, executableURL: bundle.executableURL,
+                             architecture: architecture)
     }
 
     /// `VITRUVIAN_CODE_BOT_BIN` override when executable, otherwise the first

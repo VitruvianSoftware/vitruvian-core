@@ -20,11 +20,45 @@
 
 import Foundation
 
+/// The architecture this process runs as: `arm64` or `x86_64`.
+///
+/// It is the slice that is executing, not the Mac's chip, so a universal app
+/// run under Rosetta reports `x86_64`.
+public enum HelperArchitecture {
+    #if arch(arm64)
+    public static let current = "arm64"
+    #elseif arch(x86_64)
+    public static let current = "x86_64"
+    #else
+    #error("Vitruvian Code ships helpers for arm64 and x86_64 only")
+    #endif
+
+    /// Both architectures a universal app carries a helper for.
+    public static let all = ["arm64", "x86_64"]
+
+    /// `name-arm64` or `name-x86_64`: the file a universal app holds for `name`.
+    public static func fileName(_ name: String, architecture: String = current) -> String {
+        "\(name)-\(architecture)"
+    }
+
+    /// The file names to try for `name`, in order: this architecture's thin
+    /// copy first (what the universal app ships), then the plain name (what a
+    /// single-architecture app and the tool folder ship).
+    public static func fileNames(_ name: String, architecture: String = current) -> [String] {
+        [fileName(name, architecture: architecture), name]
+    }
+}
+
 /// Locates the Node runtime and Claude helper bundle shipped inside the app or
 /// tool folder.
 ///
 /// Never looks on `PATH`, in Homebrew, nvm, or the user's home directory:
 /// returns `nil` when either bundled file is missing or invalid.
+///
+/// The universal app ships `node-arm64` and `node-x86_64`, each a thin Mach-O,
+/// instead of one fat `node` (XProtect refuses a universal app that holds a
+/// fat helper). The one for this process's architecture is tried first, then
+/// the plain `node` that single-architecture apps and the tool folder ship.
 public struct BundledNode: Equatable, Sendable {
 
     /// File name of the bundled Node executable.
@@ -47,15 +81,20 @@ public struct BundledNode: Equatable, Sendable {
 
     /// Finds both the bundled `node` binary and `claude-helper.mjs` for `bundle`.
     ///
-    /// Search order:
+    /// Search order (`node` below means `node-<architecture>`, then `node`):
     /// 1. App bundle: `Contents/Helpers/node` and `Contents/Resources/claude-helper/claude-helper.mjs`.
     /// 2. Tool / executable folder: `<execDir>/node` and `<execDir>/claude-helper/claude-helper.mjs`.
     /// 3. SwiftPM resource bundle (`VitruvianCode_VitruvianCodeCore.bundle` / `VitruvianCode_VitruvianCodeUI.bundle`).
-    public static func locate(in bundle: Bundle = .main, fileManager: FileManager = .default) -> BundledNode? {
+    public static func locate(
+        in bundle: Bundle = .main,
+        architecture: String = HelperArchitecture.current,
+        fileManager: FileManager = .default
+    ) -> BundledNode? {
         locate(
             bundleURL: bundle.bundleURL,
             resourceURL: bundle.resourceURL,
             executableURL: bundle.executableURL,
+            architecture: architecture,
             fileManager: fileManager
         )
     }
@@ -65,12 +104,14 @@ public struct BundledNode: Equatable, Sendable {
         bundleURL: URL?,
         resourceURL: URL?,
         executableURL: URL?,
+        architecture: String = HelperArchitecture.current,
         fileManager: FileManager = .default
     ) -> BundledNode? {
         guard let nodeURL = nodeURL(
             bundleURL: bundleURL,
             resourceURL: resourceURL,
             executableURL: executableURL,
+            architecture: architecture,
             fileManager: fileManager
         ),
               let helperURL = helperURL(
@@ -85,22 +126,31 @@ public struct BundledNode: Equatable, Sendable {
     }
 
     /// Candidate file URLs for the bundled `node` binary, in priority order.
+    ///
+    /// In each folder `node-<architecture>` comes before `node`.
     public static func nodeCandidates(
         bundleURL: URL?,
         resourceURL: URL?,
-        executableURL: URL?
+        executableURL: URL?,
+        architecture: String = HelperArchitecture.current
     ) -> [URL] {
+        let names = HelperArchitecture.fileNames(nodeExecutableName, architecture: architecture)
         var candidates: [URL] = []
+        func add(_ directory: URL) {
+            for name in names {
+                candidates.append(directory.appendingPathComponent(name, isDirectory: false))
+            }
+        }
 
-        // 1. App bundle Contents/Helpers/node (Mach-O code never lives in Resources).
+        // 1. App bundle Contents/Helpers (Mach-O code never lives in Resources).
         if let bundleURL {
-            candidates.append(bundleURL.appendingPathComponent("Contents/Helpers/\(nodeExecutableName)", isDirectory: false))
+            add(bundleURL.appendingPathComponent("Contents/Helpers", isDirectory: true))
         }
         if let executableURL {
             let execDir = executableURL.deletingLastPathComponent()
-            candidates.append(execDir.appendingPathComponent("../Helpers/\(nodeExecutableName)", isDirectory: false))
+            add(execDir.appendingPathComponent("../Helpers", isDirectory: true))
             // 2. Folder beside executable (tool `bin/` layout).
-            candidates.append(execDir.appendingPathComponent(nodeExecutableName, isDirectory: false))
+            add(execDir)
         }
         // Unpackaged directory `Bundle(url: binDir)` has resourceURL == bundleURL
         // and no executableURL; allow that folder as a sibling layout while never
@@ -108,12 +158,12 @@ public struct BundledNode: Equatable, Sendable {
         if let resourceURL,
            resourceURL.pathExtension != "app",
            resourceURL.lastPathComponent != "Resources" || resourceURL.deletingLastPathComponent().lastPathComponent != "Contents" {
-            candidates.append(resourceURL.appendingPathComponent(nodeExecutableName, isDirectory: false))
+            add(resourceURL)
         }
 
         // 3. SwiftPM resource bundle directories.
         for dir in BundleResources.swiftPMResourceDirectories(resourceURL: resourceURL, executableURL: executableURL) {
-            candidates.append(dir.appendingPathComponent(nodeExecutableName, isDirectory: false))
+            add(dir)
         }
 
         return BundleResources.deduplicated(candidates)
@@ -149,11 +199,16 @@ public struct BundledNode: Equatable, Sendable {
     }
 
     /// Returns the first valid bundled `node` executable URL for `bundle`, or `nil`.
-    public static func nodeURL(in bundle: Bundle = .main, fileManager: FileManager = .default) -> URL? {
+    public static func nodeURL(
+        in bundle: Bundle = .main,
+        architecture: String = HelperArchitecture.current,
+        fileManager: FileManager = .default
+    ) -> URL? {
         nodeURL(
             bundleURL: bundle.bundleURL,
             resourceURL: bundle.resourceURL,
             executableURL: bundle.executableURL,
+            architecture: architecture,
             fileManager: fileManager
         )
     }
@@ -163,9 +218,15 @@ public struct BundledNode: Equatable, Sendable {
         bundleURL: URL?,
         resourceURL: URL?,
         executableURL: URL?,
+        architecture: String = HelperArchitecture.current,
         fileManager: FileManager = .default
     ) -> URL? {
-        nodeCandidates(bundleURL: bundleURL, resourceURL: resourceURL, executableURL: executableURL)
+        nodeCandidates(
+            bundleURL: bundleURL,
+            resourceURL: resourceURL,
+            executableURL: executableURL,
+            architecture: architecture
+        )
             .first { isUsableExecutable($0, fileManager: fileManager) }?
             .standardizedFileURL
     }

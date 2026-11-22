@@ -941,7 +941,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     }
 
     nonisolated private static func isBotEngineExecutablePath(_ path: String) -> Bool {
-        (path as NSString).lastPathComponent == VitruvianCodeSupport.botExecutableName
+        VitruvianCodeSupport.isBotExecutableFileName((path as NSString).lastPathComponent)
     }
 
     nonisolated public static func isBotEngineProcess(_ pid: Int32) -> Bool {
@@ -965,16 +965,20 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         }
         // Unquoted `ps` command lines preserve spaces inside `.app` bundle paths.
         let bundleMarker = ".app/"
-        let helperSuffix = "/\(VitruvianCodeSupport.botExecutableName)"
         guard trimmed.hasPrefix("/"),
               let appRange = trimmed.range(of: bundleMarker),
-              !trimmed[..<appRange.lowerBound].contains(" /"),
-              let exeRange = trimmed.range(of: helperSuffix, range: appRange.upperBound..<trimmed.endIndex),
-              exeRange.upperBound == trimmed.endIndex || trimmed[exeRange.upperBound].isWhitespace,
-              !trimmed[appRange.upperBound..<exeRange.lowerBound].contains(where: \.isWhitespace) else {
+              !trimmed[..<appRange.lowerBound].contains(" /") else {
             return false
         }
-        return true
+        // The helper is `bot-engine`, or the thin copy a universal app holds.
+        return VitruvianCodeSupport.botExecutableFileNames.contains { name in
+            guard let exeRange = trimmed.range(of: "/\(name)", range: appRange.upperBound..<trimmed.endIndex),
+                  exeRange.upperBound == trimmed.endIndex || trimmed[exeRange.upperBound].isWhitespace,
+                  !trimmed[appRange.upperBound..<exeRange.lowerBound].contains(where: \.isWhitespace) else {
+                return false
+            }
+            return true
+        }
     }
 
     nonisolated public static func launchBotEngine(_ executable: String, _ directory: String, _ logPath: String,

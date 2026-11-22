@@ -26,7 +26,13 @@ use std::process::Command;
 const SCRIPT_NAME: &str = "mermaid.min.js";
 const LICENCE_NAME: &str = "mermaid-LICENSE.txt";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
-const NODE_REL_PATH: &str = "Contents/Helpers/node";
+const HELPERS_REL_DIR: &str = "Contents/Helpers";
+const BOT_NAME: &str = "bot-engine";
+const NODE_NAME: &str = "node";
+/// The architectures a universal app is built for.
+pub const ARCHS: [&str; 2] = ["arm64", "x86_64"];
+/// `ARCHS` the way the checks here take them: sorted, each followed by a space.
+pub const UNIVERSAL_ARCHS: &str = "arm64 x86_64 ";
 const HELPER_REL_PATH: &str = "Contents/Resources/claude-helper/claude-helper.mjs";
 const TOOL_NODE_REL_PATH: &str = "bin/node";
 const TOOL_HELPER_REL_PATH: &str = "bin/claude-helper/claude-helper.mjs";
@@ -144,6 +150,215 @@ pub fn check_node_binary(node_exe: &Path, label: &str, want_archs: &str) -> Resu
         return Err(format!("{} signature does not verify", label));
     }
     check_node_entitlements(node_exe)
+}
+
+/// True when `want_archs` ("arm64 x86_64 ": sorted, each followed by a space)
+/// names both architectures: a universal app.
+pub fn is_universal(want_archs: &str) -> bool {
+    ARCHS
+        .iter()
+        .all(|a| want_archs.split_whitespace().any(|w| w == *a))
+}
+
+/// `Contents/Helpers/<name>-<arch>`: where the universal app holds one thin copy
+/// of a helper.
+pub fn per_arch_helper_rel_path(name: &str, arch: &str) -> String {
+    format!("{}/{}-{}", HELPERS_REL_DIR, name, arch)
+}
+
+/// The architectures of the Mach-O at `binary`, sorted.
+pub fn lipo_archs(binary: &Path, label: &str) -> Result<Vec<String>, String> {
+    let out = Command::new("lipo")
+        .args(["-archs"])
+        .arg(binary)
+        .output()
+        .map_err(|e| format!("cannot run lipo on {}: {}", label, e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "lipo -archs on {} failed: {}",
+            label,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let mut got: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+    got.sort();
+    got.dedup();
+    Ok(got)
+}
+
+/// The bundled bot engine at `bot_exe` (called `label` in messages): present,
+/// executable, built for exactly `want_archs` and signed.
+pub fn check_bot_binary(bot_exe: &Path, label: &str, want_archs: &str) -> Result<(), String> {
+    if !bot_exe.is_file() {
+        return Err(format!("no executable at {}", label));
+    }
+    let meta = fs::metadata(bot_exe).map_err(|e| format!("cannot read {}: {}", label, e))?;
+    if meta.permissions().mode() & 0o111 == 0 {
+        return Err(format!("{} is not executable", label));
+    }
+    let got = lipo_archs(bot_exe, label)?;
+    let got_str = format!("{} ", got.join(" "));
+    if got_str != want_archs {
+        return Err(format!(
+            "{} is built for '{}', expected '{}'",
+            label,
+            got_str.trim(),
+            want_archs.trim()
+        ));
+    }
+    println!("    \u{2713} {}, built for {}", label, got_str.trim());
+    let verified = Command::new("codesign")
+        .args(["--verify", "--strict"])
+        .arg(bot_exe)
+        .status();
+    if !matches!(verified, Ok(s) if s.success()) {
+        return Err(format!("{} signature does not verify", label));
+    }
+    Ok(())
+}
+
+/// A helper the app holds: the architecture it is for, its path relative to the
+/// app (for messages), and where it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelperFile {
+    pub arch: String,
+    pub rel: String,
+    pub path: PathBuf,
+}
+
+/// One of the two Mach-O helpers in `Contents/Helpers`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Helper {
+    Bot,
+    Node,
+}
+
+impl Helper {
+    pub fn name(self) -> &'static str {
+        match self {
+            Helper::Bot => BOT_NAME,
+            Helper::Node => NODE_NAME,
+        }
+    }
+
+    fn check(self, path: &Path, rel: &str, want_archs: &str) -> Result<(), String> {
+        match self {
+            Helper::Bot => check_bot_binary(path, rel, want_archs),
+            Helper::Node => {
+                check_node_binary(path, rel, want_archs)?;
+                println!("    \u{2713} {} signed with JIT entitlements", rel);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// What `Contents/Helpers` of the app at `app` must hold of `helper`, for an
+/// executable built for `want_archs` ("arm64 x86_64 ": sorted, each followed by
+/// a space). Returns the files found.
+///
+/// - A single-architecture app holds `<name>`, thin.
+/// - A universal app holds `<name>-arm64` and `<name>-x86_64`, each thin Mach-O
+///   for the architecture in its name, and no plain `<name>`: XProtect
+///   (`syspolicy_check`) refuses a universal app that holds a fat helper, with
+///   "Internal Xprotect Error".
+pub fn check_helper_set(
+    app: &Path,
+    want_archs: &str,
+    helper: Helper,
+) -> Result<Vec<HelperFile>, String> {
+    let name = helper.name();
+    let mut found = Vec::new();
+    if !is_universal(want_archs) {
+        let rel = format!("{}/{}", HELPERS_REL_DIR, name);
+        let path = app.join(&rel);
+        helper.check(&path, &rel, want_archs)?;
+        found.push(HelperFile {
+            arch: want_archs.trim().to_string(),
+            rel,
+            path,
+        });
+        return Ok(found);
+    }
+    let plain = format!("{}/{}", HELPERS_REL_DIR, name);
+    if app.join(&plain).exists() {
+        return Err(format!(
+            "{} is in the universal app: ship a thin {}-<arch> for each architecture instead (XProtect refuses a universal app with a fat helper)",
+            plain, name
+        ));
+    }
+    for arch in ARCHS {
+        let rel = per_arch_helper_rel_path(name, arch);
+        let path = app.join(&rel);
+        helper.check(&path, &rel, &format!("{} ", arch))?;
+        found.push(HelperFile {
+            arch: arch.to_string(),
+            rel,
+            path,
+        });
+    }
+    Ok(found)
+}
+
+/// What `Contents/Helpers` of the app at `app` must hold: both helpers (see
+/// `check_helper_set`) and, in a universal app, nothing fat.
+pub fn check_helpers(app: &Path, want_archs: &str) -> Result<(), String> {
+    for helper in [Helper::Bot, Helper::Node] {
+        check_helper_set(app, want_archs, helper)?;
+    }
+    if !is_universal(want_archs) {
+        return Ok(());
+    }
+    // No other Mach-O in Contents/Helpers may be fat either.
+    let entries = fs::read_dir(app.join(HELPERS_REL_DIR))
+        .map_err(|e| format!("cannot read {}: {}", HELPERS_REL_DIR, e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("cannot read {}: {}", HELPERS_REL_DIR, e))?;
+        if !entry.path().is_file() {
+            continue;
+        }
+        let rel = format!(
+            "{}/{}",
+            HELPERS_REL_DIR,
+            entry.file_name().to_string_lossy()
+        );
+        let archs = lipo_archs(&entry.path(), &rel).unwrap_or_default();
+        if archs.len() > 1 {
+            return Err(format!(
+                "{} is a fat helper ({}): the universal app holds only thin helpers",
+                rel,
+                archs.join(" ")
+            ));
+        }
+    }
+    println!(
+        "    \u{2713} {} holds a thin bot-engine and node per architecture and no fat helper",
+        HELPERS_REL_DIR
+    );
+    Ok(())
+}
+
+/// Whether this Mac can run a Mach-O built for `arch`: its own architecture
+/// always, `x86_64` on Apple silicon when Rosetta is installed.
+pub fn can_run_arch(arch: &str) -> bool {
+    let host = if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x86_64"
+    };
+    if arch == host {
+        return true;
+    }
+    arch == "x86_64"
+        && Command::new("/usr/bin/arch")
+            .args(["-x86_64", "/usr/bin/true"])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
 }
 
 /// The Claude helper's bundle at `helper`: a file with something in it.
@@ -468,64 +683,12 @@ fn check_program_and_signature(
         }
     }
 
-    // Bundled bot helper check
-    let bot_rel = "Contents/Helpers/bot-engine";
-    let bot_exe = format!("{}/{}", app, bot_rel);
-    if !Path::new(&bot_exe).is_file() {
-        return fail(app, &format!("no executable at {}", bot_rel));
-    }
-    let bot_meta = fs::metadata(&bot_exe).unwrap();
-    if bot_meta.permissions().mode() & 0o111 == 0 {
-        return fail(app, &format!("{} is not executable", bot_rel));
-    }
-    let bot_lipo = Command::new("lipo").args(["-archs", &bot_exe]).output();
-    match bot_lipo {
-        Ok(o) if o.status.success() => {
-            let raw = String::from_utf8_lossy(&o.stdout);
-            let mut got: Vec<&str> = raw.split_whitespace().filter(|s| !s.is_empty()).collect();
-            got.sort();
-            let got_str = format!("{} ", got.join(" "));
-            if got_str != want_archs {
-                return fail(
-                    app,
-                    &format!(
-                        "{} is built for '{}', expected '{}'",
-                        bot_rel,
-                        got_str.trim(),
-                        want_archs.trim()
-                    ),
-                );
-            }
-            println!("    \u{2713} {}, built for {}", bot_rel, got_str.trim());
-        }
-        Ok(o) => {
-            return fail(
-                app,
-                &format!(
-                    "lipo -archs on {} failed: {}",
-                    bot_rel,
-                    String::from_utf8_lossy(&o.stderr)
-                ),
-            );
-        }
-        Err(e) => {
-            return fail(app, &format!("cannot run lipo on {}: {}", bot_rel, e));
-        }
-    }
-
-    // Bundled Node helper check (Mach-O executable in Contents/Helpers/node)
-    // and the Claude helper's JavaScript.
-    if let Err(msg) = check_node_binary(
-        &Path::new(app).join(NODE_REL_PATH),
-        NODE_REL_PATH,
-        want_archs,
-    ) {
+    // Bundled bot and Node helpers (Mach-O executables in Contents/Helpers):
+    // one thin file per architecture in the universal app, one in the others.
+    if let Err(msg) = check_helpers(Path::new(app), want_archs) {
         return fail(app, &msg);
     }
-    println!(
-        "    \u{2713} {} signed with JIT entitlements",
-        NODE_REL_PATH
-    );
+    // The Claude helper's JavaScript.
     if let Err(msg) = check_helper_file(&Path::new(app).join(HELPER_REL_PATH), HELPER_REL_PATH) {
         return fail(app, &msg);
     }

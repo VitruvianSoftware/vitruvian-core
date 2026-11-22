@@ -114,6 +114,23 @@ fn add_helpers(app: &Path) {
     }
 }
 
+/// The universal app's helpers: a thin bot-engine and node per architecture,
+/// in place of one fat file of each.
+fn add_universal_helpers(app: &Path) {
+    let helpers = app.join("Contents/Helpers");
+    fs::create_dir_all(&helpers).unwrap();
+    for name in [
+        "bot-engine-arm64",
+        "bot-engine-x86_64",
+        "node-arm64",
+        "node-x86_64",
+    ] {
+        let p = helpers.join(name);
+        fs::write(&p, format!("FAKE_MACHO_{name}")).unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
 fn install_fake_signing_toolchain(fake_bin: &Path, slow_codesign: bool) {
     write_exec(
         fake_bin,
@@ -1002,6 +1019,97 @@ fn signs_nested_helpers_node_and_node_macho_with_jit_entitlements_in_both_modes(
         } else {
             assert!(sign_lines[nested_node_pos].contains("--sign -"));
             assert!(sign_lines[standalone_pos].contains("--sign -"));
+        }
+    }
+}
+
+#[test]
+fn signs_every_node_helper_of_the_universal_app_with_jit_entitlements_in_both_modes() {
+    for mode in ["developer-id", "adhoc"] {
+        let dir = scratch_dir(&format!("universal_node_signing_{mode}"));
+        let fake_bin = dir.join("fake_bin");
+        let log_dir = dir.join("logs");
+        let runner_temp = dir.join("runner_temp");
+        fs::create_dir_all(&fake_bin).unwrap();
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::create_dir_all(&runner_temp).unwrap();
+
+        install_fake_signing_toolchain(&fake_bin, false);
+        let harness = create_mocked_harness_script(&dir, &fake_bin);
+
+        let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", false);
+        add_universal_helpers(&app);
+
+        let mut cmd = Command::new(&harness);
+        cmd.args(["apps", "--entitlements-app", app.to_str().unwrap()])
+            .env("FAKE_LOG_DIR", &log_dir)
+            .env("RUNNER_TEMP", &runner_temp)
+            .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
+            .env("VITRUVIAN_CODE_NODE_ENTITLEMENTS", node_entitlements_path())
+            .env("SIGNING", mode);
+        if mode == "developer-id" {
+            cmd.env("VITRUVIAN_SIGNING_CERT_P12", "dGVzdC1wMTI=")
+                .env("VITRUVIAN_SIGNING_CERT_PASSWORD", "test-pass")
+                .env(
+                    "VITRUVIAN_NOTARY_API_KEY_P8",
+                    "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----",
+                )
+                .env("VITRUVIAN_NOTARY_KEY_ID", "KEYID12345")
+                .env(
+                    "VITRUVIAN_NOTARY_ISSUER_ID",
+                    "00000000-0000-0000-0000-000000000000",
+                );
+        }
+        let out = cmd.output().expect("run sign-and-notarize harness");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "mode {mode} stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let codesign_log = fs::read_to_string(log_dir.join("codesign.log")).unwrap();
+        let sign_lines: Vec<&str> = codesign_log
+            .lines()
+            .filter(|l| l.contains("--sign "))
+            .collect();
+        let node_ent = node_entitlements_path();
+        let node_ent_str = node_ent.to_string_lossy();
+        let bundle_pos = sign_lines
+            .iter()
+            .position(|l| l.ends_with("Vitruvian Code.app") && l.contains("--entitlements"))
+            .expect("app bundle must be signed");
+        for arch in ["arm64", "x86_64"] {
+            let node_pos = sign_lines
+                .iter()
+                .position(|l| {
+                    l.ends_with(&format!("Contents/Helpers/node-{arch}"))
+                        && l.contains("--identifier com.vitruviansoftware.code.node")
+                        && l.contains(&format!("--entitlements {}", node_ent_str))
+                })
+                .unwrap_or_else(|| {
+                    panic!("Contents/Helpers/node-{arch} must be signed with node.entitlements in {mode}")
+                });
+            let bot_pos = sign_lines
+                .iter()
+                .position(|l| l.ends_with(&format!("Contents/Helpers/bot-engine-{arch}")))
+                .unwrap_or_else(|| panic!("Contents/Helpers/bot-engine-{arch} must be signed"));
+            assert!(
+                node_pos < bundle_pos && bot_pos < bundle_pos,
+                "helpers are signed before the app"
+            );
+            // The bot engine is not Node: it gets no JIT entitlements.
+            assert!(
+                !sign_lines[bot_pos].contains("node.entitlements"),
+                "bot-engine-{arch} must not carry Node's entitlements: {}",
+                sign_lines[bot_pos]
+            );
+            if mode == "developer-id" {
+                assert!(sign_lines[node_pos].contains("--options runtime"));
+            } else {
+                assert!(sign_lines[node_pos].contains("--sign -"));
+            }
         }
     }
 }

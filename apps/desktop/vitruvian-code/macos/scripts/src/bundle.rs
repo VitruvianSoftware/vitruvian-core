@@ -38,6 +38,70 @@ const BUNDLE_ID: &str = "com.vitruviansoftware.code";
 const DISPLAY_NAME: &str = "Vitruvian Code";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
 
+/// The architectures a universal app holds a thin copy of each helper for.
+const ARCHS: [&str; 2] = ["arm64", "x86_64"];
+
+/// Copies the helper `name` from beside the executable into `helpers_dir`, and
+/// returns where the copies landed (one file, or two).
+///
+/// A universal app must not hold a fat helper: XProtect refuses it ("Internal
+/// Xprotect Error"). So when `<name>-arm64` and `<name>-x86_64` sit beside the
+/// executable, both go in, each thin and picked at run time by architecture.
+/// Otherwise `<name>` goes in as it is, which is what a single-architecture app
+/// holds.
+fn copy_helper(exe_parent: &Path, helpers_dir: &Path, name: &str) -> Result<Vec<PathBuf>, String> {
+    let per_arch: Vec<String> = ARCHS.iter().map(|a| format!("{}-{}", name, a)).collect();
+    let names: Vec<String> = if per_arch.iter().all(|n| exe_parent.join(n).is_file()) {
+        per_arch
+    } else {
+        vec![name.to_string()]
+    };
+    let mut copies = Vec::new();
+    for n in &names {
+        let src = exe_parent.join(n);
+        if !src.is_file() {
+            return Err(format!(
+                "{} not found at {}.\n       Keep {} (or {}-arm64 and {}-x86_64) beside the executable before bundling.",
+                n,
+                src.display(),
+                name,
+                name,
+                name
+            ));
+        }
+        let dest = helpers_dir.join(n);
+        fs::copy(&src, &dest).map_err(|e| format!("cannot copy {}: {}", n, e))?;
+        fs::set_permissions(&dest, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("cannot mark {} executable: {}", n, e))?;
+        println!("    \u{2713} {} copied", n);
+        copies.push(dest);
+    }
+    Ok(copies)
+}
+
+/// Ad-hoc signs `target` with `identifier`, and `entitlements` when given.
+fn codesign_adhoc(
+    target: &Path,
+    identifier: &str,
+    entitlements: Option<&Path>,
+    what: &str,
+) -> Result<(), String> {
+    let mut cmd = Command::new("codesign");
+    cmd.args(["--force", "--sign", "-", "--identifier", identifier]);
+    if let Some(ent) = entitlements {
+        cmd.arg("--entitlements").arg(ent);
+    }
+    match cmd.arg(target).status() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!(
+            "codesign {} exited {}",
+            what,
+            s.code().unwrap_or(-1)
+        )),
+        Err(e) => Err(format!("cannot run codesign on {}: {}", what, e)),
+    }
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -144,47 +208,25 @@ pub fn run(args: &[String]) -> i32 {
     }
     println!("    \u{2713} Chat resources copied");
 
-    // Copy bundled Rust bot helper beside the main executable
-    let bot_src = exe_parent.join(BOT_NAME);
-    if !bot_src.is_file() {
-        eprintln!("error: {} not found at {}.", BOT_NAME, bot_src.display());
-        eprintln!(
-            "       Keep {} beside the executable before bundling.",
-            BOT_NAME
-        );
-        return 1;
-    }
-    let bot_dest = helpers_dir.join(BOT_NAME);
-    if let Err(e) = fs::copy(&bot_src, &bot_dest) {
-        eprintln!("error: cannot copy {}: {}", BOT_NAME, e);
-        return 1;
-    }
-    if let Err(e) = fs::set_permissions(&bot_dest, fs::Permissions::from_mode(0o755)) {
-        eprintln!("error: cannot mark {} executable: {}", BOT_NAME, e);
-        return 1;
-    }
-    println!("    \u{2713} {} copied", BOT_NAME);
+    // Copy the bundled Rust bot helper beside the main executable into
+    // Contents/Helpers (`bot-engine`, or a thin copy per architecture).
+    let bot_copies = match copy_helper(exe_parent, &helpers_dir, BOT_NAME) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
 
-    // Copy bundled Node executable beside the main executable into Contents/Helpers/node
-    let node_src = exe_parent.join(NODE_NAME);
-    if !node_src.is_file() {
-        eprintln!("error: {} not found at {}.", NODE_NAME, node_src.display());
-        eprintln!(
-            "       Keep {} beside the executable before bundling.",
-            NODE_NAME
-        );
-        return 1;
-    }
-    let node_dest = helpers_dir.join(NODE_NAME);
-    if let Err(e) = fs::copy(&node_src, &node_dest) {
-        eprintln!("error: cannot copy {}: {}", NODE_NAME, e);
-        return 1;
-    }
-    if let Err(e) = fs::set_permissions(&node_dest, fs::Permissions::from_mode(0o755)) {
-        eprintln!("error: cannot mark {} executable: {}", NODE_NAME, e);
-        return 1;
-    }
-    println!("    \u{2713} {} copied", NODE_NAME);
+    // Copy the bundled Node executable the same way (`node`, or a thin copy per
+    // architecture).
+    let node_copies = match copy_helper(exe_parent, &helpers_dir, NODE_NAME) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
 
     // Copy bundled Claude helper JS beside the main executable into Contents/Resources/claude-helper/
     let helper_src = exe_parent.join(HELPER_DIR_NAME).join(HELPER_FILE_NAME);
@@ -282,41 +324,15 @@ pub fn run(args: &[String]) -> i32 {
     // Ad-hoc sign the nested helpers first (inside-out), then the app bundle
     // without `--deep` so `node`'s JIT entitlements are preserved.
     println!("==> Signing {} with ad-hoc signature", app_bundle.display());
-    let helper_status = Command::new("codesign")
-        .args(["--force", "--sign", "-", "--identifier", BOT_SIGNING_ID])
-        .arg(&bot_dest)
-        .status();
-    match helper_status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            eprintln!("error: codesign helper exited {}", s.code().unwrap_or(-1));
-            return 1;
-        }
-        Err(e) => {
-            eprintln!("error: cannot run codesign on helper: {}", e);
+    for bot in &bot_copies {
+        if let Err(e) = codesign_adhoc(bot, BOT_SIGNING_ID, None, "helper") {
+            eprintln!("error: {}", e);
             return 1;
         }
     }
-    let node_status = Command::new("codesign")
-        .args([
-            "--force",
-            "--sign",
-            "-",
-            "--identifier",
-            NODE_SIGNING_ID,
-            "--entitlements",
-        ])
-        .arg(&node_entitlements)
-        .arg(&node_dest)
-        .status();
-    match node_status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            eprintln!("error: codesign node exited {}", s.code().unwrap_or(-1));
-            return 1;
-        }
-        Err(e) => {
-            eprintln!("error: cannot run codesign on node: {}", e);
+    for node in &node_copies {
+        if let Err(e) = codesign_adhoc(node, NODE_SIGNING_ID, Some(&node_entitlements), "node") {
+            eprintln!("error: {}", e);
             return 1;
         }
     }
