@@ -246,3 +246,23 @@ struct ArticleSummaryPanel: View {
         }
     }
 }
+
+/// The summary under a message whose link has no card ("Summarize Link" from the menu). Its own view, reading the
+/// row's revision, for the same reason as `ArticleSummarySection`: the message row around it is not drawn again when
+/// only a summary changed.
+struct BareLinkSummary: View {
+    let message: TimelineMessage
+    let controls: ArticleSummaryControls
+    @Environment(\.timelineContentRevision) private var contentRevision
+
+    var body: some View {
+        let _ = contentRevision
+        if ExternalEmbedDescriptor.cardPreviews(in: message).isEmpty, controls.hasAny(),
+           let request = ArticleSummaryRequest.first(in: message, isEmbed: ArticleSummaryControls.isEmbed),
+           let state = controls.state(request.url) {
+            ArticleSummaryPanel(url: request.url, state: state,
+                                onBubble: message.mine && !message.suppressesBubbleBackground,
+                                controls: controls)
+        }
+    }
+}

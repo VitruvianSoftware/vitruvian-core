@@ -1280,7 +1280,8 @@ final class TimelineTableViewTests: XCTestCase {
         try assertSummaryGrowsRow("$card", event: event, request: request)
     }
 
-    /// This path was not broken (the message row draws again around it); kept so a regression in either place shows.
+    /// This path worked before only because the message row happened to draw again around it; its panel now reads the
+    /// row's revision itself (`BareLinkSummary`).
     func testSummarizeLinkOnABareLinkDrawsItsPanelInTheTable() throws {
         let event = Fixture.text("$bare", "read https://example.com/story", mine: false, ts: 5)
         let message = try XCTUnwrap(Fixture.messages([event]).first)
