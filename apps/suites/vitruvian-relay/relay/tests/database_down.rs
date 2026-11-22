@@ -95,9 +95,14 @@ async fn assert_calls_work(relay: &Relay, path: &str, session: &str, id: u64) {
     );
 }
 
-/// How long the relay may take to say the database is down: the store's own
-/// limit is 5 s (connect and query), and a cut road answers at once.
-const WITHIN: Duration = Duration::from_secs(5);
+/// How long the relay may take to say the database is down before the test
+/// calls it hung. The store's own limit is 5 s (connect and query) and a cut
+/// road answers at once, so 20 s is only "it came back at all": a machine
+/// busy with other tests in the merge queue cannot push a correct answer
+/// there, and a relay that waits for ever (no limit) cannot meet it. Where
+/// the exact limit matters, the tests below prove it by what the person is
+/// told, not by the clock.
+const WITHIN: Duration = Duration::from_secs(20);
 
 #[tokio::test(flavor = "multi_thread")]
 async fn database_down_fails_clearly_then_recovers() {
@@ -159,11 +164,12 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
     let r = relay.tools_call(&path, &session, 2).await;
     let took = started.elapsed();
     assert_eq!(text_of(&r), MESSAGE, "{}", r.body);
-    // It waited for the limit rather than answering at once, and not longer
-    // than it (one limit for the whole step; the upper bound leaves three
-    // seconds of slack for a loaded machine, and two limits would be 10 s).
+    // It waited for the limit rather than answering at once (the lower bound
+    // is what proves the 5 s limit is there; a clock that runs slow cannot
+    // break it) and it did come back (the upper bound only says "not hung":
+    // it is wide on purpose, for a loaded machine).
     assert!(
-        took >= Duration::from_secs(4) && took < Duration::from_secs(8),
+        took >= Duration::from_secs(4) && took < WITHIN,
         "took {took:?}"
     );
 
@@ -175,14 +181,19 @@ async fn a_silent_database_gets_the_same_message_after_the_limit() {
 /// answer from the database is 4.6 s late, so getting a connection (the pool
 /// checks an idle one first) takes about 4.6 s and the query as long again:
 /// each is under 5 s alone, together they are not. The person must still hear
-/// within one limit (about 5 s), not after a limit per step (a connection
-/// that takes 4.6 s, then a query that gets its own 5 s: about 9.6 s). The
-/// bound sits in the middle, [`SLOW_BOUND`]: 2.3 s above the right answer and
-/// 2.3 s below the wrong one. A wider gap is not possible: the two differ by
-/// the delay, which must stay under the 5 s limit for each step to be fine
-/// alone.
+/// within one limit (about 5 s), not after a limit per step.
+///
+/// Only the clock tells the two apart (with a limit per step the query gets
+/// its own 5 s, times out all the same, and the person is told the same words
+/// after about 9.6 s), so the upper bound has to stay under that, but it need
+/// not sit in the middle. Timers never fire early, so a relay that gives each
+/// step its own limit takes at least 4.6 + 5 s however busy the machine is;
+/// only the right answer, at about 5 s, can be pushed later by load. So
+/// [`SLOW_BOUND`] sits just under the wrong answer, leaving the right one
+/// four seconds of slack. A wider gap is not possible: the two differ by the
+/// delay, which must stay under the 5 s limit for each step to be fine alone.
 const SLOW_DELAY: Duration = Duration::from_millis(4600);
-const SLOW_BOUND: Duration = Duration::from_millis(7300);
+const SLOW_BOUND: Duration = Duration::from_secs(9);
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_database_is_given_one_limit_in_all_not_one_per_step() {

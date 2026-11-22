@@ -224,6 +224,9 @@ pub struct Mcp {
     write_slots: Arc<Semaphore>,
     /// Calls per person per minute.
     limiter: RateLimit,
+    /// `check_request`s per person: a bucket of its own, so polling never
+    /// uses up the call limit and a flood of guessed ids is still stopped.
+    check_limiter: RateLimit,
     in_flight: Mutex<HashMap<Key, InFlight>>,
     parked: ParkedCalls,
     /// How long a request waits for an approval dialog before it answers
@@ -324,6 +327,22 @@ struct CallLog {
     outcome: &'static str,
 }
 
+/// The outcome of a `check_request` for an id that is not the person's, or
+/// never was, or expired.
+const UNKNOWN_REQUEST_OUTCOME: &str = "unknown_request";
+
+impl CallLog {
+    /// Whether this call goes in the person's activity list. Not the ones a
+    /// flood of guessed request ids makes: an unknown id (`unknown_request`)
+    /// and a `check_request` refused for going too fast. They would crowd the
+    /// person's real calls off a page of 200, and say nothing they need to
+    /// know. They still get their log line.
+    fn recorded(&self) -> bool {
+        self.outcome != UNKNOWN_REQUEST_OUTCOME
+            && !(self.tool == CHECK_REQUEST && self.outcome == RATE_LIMITED_OUTCOME)
+    }
+}
+
 impl Drop for CallLog {
     fn drop(&mut self) {
         let duration_ms = self.started.elapsed().as_millis() as u64;
@@ -340,6 +359,9 @@ impl Drop for CallLog {
                 "outcome": self.outcome,
             }),
         );
+        if !self.recorded() {
+            return;
+        }
         // The same facts, kept for the person's activity list. Written in the
         // background: a slow or failed write must never hold up or fail the
         // call (it is logged, `activity_write_failed`, and that is all).
@@ -420,6 +442,10 @@ impl Mcp {
                 crate::ratelimit::CALLS_PER_MINUTE_PER_USER,
                 crate::ratelimit::RATE_BURST,
             ),
+            check_limiter: RateLimit::new(
+                crate::ratelimit::CHECKS_PER_MINUTE_PER_USER,
+                crate::ratelimit::CHECK_BURST,
+            ),
             in_flight: Mutex::new(HashMap::new()),
             parked: ParkedCalls::new(
                 Duration::from_secs(REJOIN_WINDOW_SECS),
@@ -448,6 +474,12 @@ impl Mcp {
     /// [`crate::ratelimit::RATE_BURST`]).
     pub fn with_rate_limit(mut self, limiter: RateLimit) -> Self {
         self.limiter = limiter;
+        self
+    }
+
+    /// Replaces the per-person `check_request` limit (tests).
+    pub fn with_check_rate_limit(mut self, limiter: RateLimit) -> Self {
+        self.check_limiter = limiter;
         self
     }
 
@@ -728,6 +760,16 @@ impl Mcp {
             return rpc_result(id, result);
         }
         if tool == CHECK_REQUEST {
+            // Its own bucket, checked before anything is looked up: guessing
+            // ids is a flood like any other. The refusal is the same plain
+            // words (and, like an unknown id, is not put in the activity
+            // list: see `CallLog::recorded`).
+            if self.check_limiter.check(&caller.subject).is_err() {
+                log.outcome = RATE_LIMITED_OUTCOME;
+                let result = text_result(RATE_LIMITED_MESSAGE, true);
+                log.result_bytes = result["content"].to_string().len();
+                return rpc_result(id, result);
+            }
             return self
                 .check_request(id, &arguments, caller, &mut log, delivery)
                 .await;
@@ -873,7 +915,7 @@ impl Mcp {
         // An id that is not this person's gets the answer for an id that
         // never was.
         let Some(owned) = self.owned_request(&caller.subject, &request_id) else {
-            log.outcome = "unknown_request";
+            log.outcome = UNKNOWN_REQUEST_OUTCOME;
             return rpc_result(id, text_result(UNKNOWN_REQUEST, true));
         };
         // Waits on the request `owned_request` returned, and does not ask
@@ -909,7 +951,7 @@ impl Mcp {
             }
             // Expired while it was waited for.
             Fetch::Unknown => {
-                log.outcome = "unknown_request";
+                log.outcome = UNKNOWN_REQUEST_OUTCOME;
                 rpc_result(id, text_result(UNKNOWN_REQUEST, true))
             }
         }
@@ -1215,6 +1257,70 @@ mod tests {
         first.await.unwrap();
         let answered = next.await.unwrap();
         assert_eq!(answered["result"]["isError"], false, "{answered}");
+    }
+
+    fn check_call(id: u64, request_id: &str) -> Value {
+        json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+               "params": {"name": CHECK_REQUEST, "arguments": {"request_id": request_id}}})
+    }
+
+    /// A flood of guessed request ids is stopped by `check_request`'s own
+    /// bucket, with the same plain words as any other refusal, and it does
+    /// not touch the person's call limit (nor the other way round).
+    #[tokio::test]
+    async fn guessing_request_ids_is_rate_limited_on_its_own() {
+        let (m, _) = mcp();
+        // Three checks and so little refill that none comes back; the call
+        // limit is one place, to show the checks do not spend it.
+        let m = m
+            .with_check_rate_limit(RateLimit::new(1, 3))
+            .with_rate_limit(RateLimit::new(1, 1));
+        for n in 0..3 {
+            let r = ask(&m, check_call(n, "guess")).await;
+            assert_eq!(r["result"]["isError"], true);
+            assert_eq!(
+                r["result"]["content"][0]["text"], UNKNOWN_REQUEST,
+                "check {n}: {r}"
+            );
+        }
+        let refused = ask(&m, check_call(9, "guess")).await;
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(
+            refused["result"]["content"][0]["text"], RATE_LIMITED_MESSAGE,
+            "{refused}"
+        );
+        // Another person has a bucket of their own.
+        let bob = Caller {
+            subject: "bob".into(),
+            client_id: "claude".into(),
+        };
+        let r = m
+            .handle(&check_call(10, "guess"), "d1", &bob, Some("s1"))
+            .await
+            .unwrap();
+        assert_eq!(r["result"]["content"][0]["text"], UNKNOWN_REQUEST, "{r}");
+        // The call limit still has its one place: a refused check spent none
+        // of it, and the three before it spent none either.
+        assert!(m.limiter.check("alice").is_ok());
+    }
+
+    /// Calls a flood of guessed ids makes are not kept in the activity list;
+    /// real ones are.
+    #[tokio::test]
+    async fn guessed_request_ids_are_not_recorded_in_the_activity_list() {
+        let (m, _) = mcp();
+        let row = |tool: &str, outcome: &'static str| {
+            m.call_log("d1", &caller(), tool, 0, outcome).recorded()
+        };
+        assert!(!row(CHECK_REQUEST, "unknown_request"));
+        assert!(!row(CHECK_REQUEST, RATE_LIMITED_OUTCOME));
+        // A real tool call refused by the call limit still is a row, as is
+        // every other outcome of a check.
+        assert!(row("read_file", RATE_LIMITED_OUTCOME));
+        for o in ["ok", "waiting_approval", "still_working", "offline"] {
+            assert!(row(CHECK_REQUEST, o), "{o}");
+        }
+        assert!(row("read_file", "offline"));
     }
 
     /// Final review, Minor 4: `check_request` says "waiting for you" only

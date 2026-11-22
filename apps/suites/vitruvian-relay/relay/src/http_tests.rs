@@ -1496,44 +1496,53 @@ async fn activity_row_written_without_content() {
         .is_empty());
 }
 
-/// Every call is recorded, a refusal and an offline computer included.
+/// Every call is recorded, a refusal and an offline computer included, except
+/// a `check_request` for an id that was never there: a flood of guesses must
+/// not fill the person's activity list.
 #[tokio::test]
 async fn every_call_is_recorded_whatever_its_outcome() {
     let h = Arc::new(harness().await);
     let (device, _key) = h.new_device(ALICE).await;
     let s = h.session(&device, ALICE).await;
-    let r = h
-        .rpc(
-            &device,
-            ALICE,
-            Some(&s),
-            call_body(json!(1), "read_file", json!({})),
-        )
-        .await;
-    assert!(error_text(&r).contains("is offline"));
-    let r = h
-        .rpc(
-            &device,
-            ALICE,
-            Some(&s),
-            call_body(json!(2), CHECK_REQUEST_NAME, json!({"request_id": "nope"})),
-        )
-        .await;
-    assert_eq!(r.json()["result"]["isError"], true);
+    // The guess comes first, so its row (if it were written) is the first
+    // one to appear.
+    for n in 0..3 {
+        let r = h
+            .rpc(
+                &device,
+                ALICE,
+                Some(&s),
+                call_body(json!(n), CHECK_REQUEST_NAME, json!({"request_id": "nope"})),
+            )
+            .await;
+        assert_eq!(r.json()["result"]["isError"], true);
+    }
+    for n in 10..12 {
+        let r = h
+            .rpc(
+                &device,
+                ALICE,
+                Some(&s),
+                call_body(json!(n), "read_file", json!({})),
+            )
+            .await;
+        assert!(error_text(&r).contains("is offline"));
+    }
 
     let rows = activity_when(&h, ALICE, 2).await;
-    let mut seen: Vec<(String, String)> = rows
+    let seen: Vec<(String, String)> = rows
         .iter()
         .map(|r| (r.tool.clone(), r.outcome.clone()))
         .collect();
-    seen.sort();
     assert_eq!(
         seen,
         [
-            ("check_request".to_string(), "unknown_request".to_string()),
+            ("read_file".to_string(), "offline".to_string()),
             ("read_file".to_string(), "offline".to_string()),
         ]
     );
+    // The guesses were logged as lines, and only there.
+    assert!(h.logs().contains("\"outcome\":\"unknown_request\""));
 }
 
 const CHECK_REQUEST_NAME: &str = crate::mcp::CHECK_REQUEST;
@@ -1771,7 +1780,9 @@ async fn twenty_first_burst_call_is_rate_limited() {
 }
 
 /// An AI app polling `check_request` while a person decides must not use up
-/// its own allowance: polls are recorded but spend nothing.
+/// its own allowance: polls spend nothing from the call limit (they have a
+/// bucket of their own, 30 at once). Polls of an id the relay does not know are
+/// not put in the activity list.
 #[tokio::test]
 async fn polling_check_request_does_not_spend_the_allowance() {
     let h = harness_with(Timing {
@@ -1796,13 +1807,45 @@ async fn polling_check_request_does_not_spend_the_allowance() {
     )
     .await;
     assert!(mcp_text(&r).contains("is offline"), "{r}");
-    // Every poll is still a recorded call.
-    let rows = activity_when(&h, ALICE, 31).await;
-    assert_eq!(
-        rows.iter().filter(|r| r.tool == "check_request").count(),
-        30
-    );
+    // The call is recorded; the 30 guesses are not.
+    let rows = activity_when(&h, ALICE, 1).await;
+    assert!(rows.iter().all(|r| r.tool != "check_request"), "{rows:?}");
     assert!(rows.iter().all(|r| r.outcome != "rate_limited"));
+}
+
+/// Past the burst, `check_request` is refused in plain words, and the call
+/// limit is untouched: a flood of guessed ids cannot be had for free, nor
+/// stop the person's real calls.
+#[tokio::test]
+async fn a_flood_of_check_request_guesses_is_refused() {
+    let h = harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    let mut refused = 0;
+    for i in 1..=200u64 {
+        let r = mcp_call(&h, &device, ALICE, check_body(i, "r_000000000000000a")).await;
+        if mcp_text(&r).contains("Too many requests") {
+            refused += 1;
+        } else {
+            // Each unrefused guess is answered as an unknown id.
+            assert!(mcp_text(&r).contains("finished or expired"), "{r}");
+        }
+    }
+    // 30 at once, then about ten a second. Two hundred guesses in a tight
+    // loop must hit the limit however slow the machine (it would take 17 s to
+    // let them all through), and cannot be refused before the burst is spent.
+    assert!((1..=170).contains(&refused), "{refused} of 200 refused");
+    // Real calls are not held back by it.
+    let r = mcp_call(
+        &h,
+        &device,
+        ALICE,
+        call_body(json!(100), "read_file", json!({})),
+    )
+    .await;
+    assert!(mcp_text(&r).contains("is offline"), "{r}");
+    // None of the guesses, nor their refusals, is in the activity list.
+    let rows = activity_when(&h, ALICE, 1).await;
+    assert!(rows.iter().all(|r| r.tool != "check_request"), "{rows:?}");
 }
 
 /// Asks the MCP layer directly (no HTTP, no token to sign: for tests that

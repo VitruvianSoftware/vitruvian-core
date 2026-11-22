@@ -39,6 +39,13 @@ pub const CALLS_PER_MINUTE_PER_USER: u32 = 60;
 /// Calls a person may make at once after being quiet.
 pub const RATE_BURST: u32 = 20;
 
+/// `check_request` polls a call already running, so it has a bucket of its own
+/// and a generous one: 10 a second, a burst of 30. It only stops a flood of
+/// guessed ids; an AI app waiting on a person's approval never comes near it.
+pub const CHECKS_PER_MINUTE_PER_USER: u32 = 600;
+/// `check_request`s a person may make at once after being quiet.
+pub const CHECK_BURST: u32 = 30;
+
 /// What a person is told when a call is refused. Plain words, and what to do.
 pub const RATE_LIMITED_MESSAGE: &str =
     "Too many requests from your account; wait a minute and try again.";

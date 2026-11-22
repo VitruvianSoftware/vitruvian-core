@@ -1207,6 +1207,16 @@ impl App {
                 .verify(message.as_bytes(), &sig)
                 .is_ok()
             });
+        // The one place outside `owned_device` that compares an owner with
+        // the caller, and why it may. This is not the ownership check: the
+        // device it looks at is removed, and nothing here connects, lists,
+        // calls or changes anything. All it chooses is which of two sentences
+        // the connector reads, and the second is what everyone else gets.
+        // "Removed" is said only to the caller that is the recorded owner AND
+        // holds that device's own private key (the signature, over this token
+        // and a timestamp inside the clock-skew window, checked above). So
+        // someone who merely knows an id learns nothing, and no answer here
+        // ever grants access: the hello is refused either way.
         if rec.owner_sub == caller.subject && signed {
             REMOVED_DEVICE.into()
         } else {
