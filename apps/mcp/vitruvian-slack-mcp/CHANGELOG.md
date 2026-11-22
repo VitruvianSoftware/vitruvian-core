@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.26.0...vitruvian-slack-mcp-v1.26.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update url crate to 2.5.9 for RUSTSEC-2026-0592 ([#5377](https://github.com/VitruvianSoftware/vitruvian-core/issues/5377)) ([4bb66d8](https://github.com/VitruvianSoftware/vitruvian-core/commit/4bb66d886771125b7447a6860941871ce4b389dd))
+
 ## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-slack-mcp-v1.25.0...vitruvian-slack-mcp-v1.26.0) (2026-11-14)
 
 
