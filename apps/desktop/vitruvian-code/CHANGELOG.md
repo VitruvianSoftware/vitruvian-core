@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.40.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.39.0...vitruvian-code-v1.40.0) (2026-11-22)
+
+
+### Features
+
+* **vitruvian-code:** ship Node and the Claude helper inside the app ([#5317](https://github.com/VitruvianSoftware/vitruvian-core/issues/5317)) ([62dfac2](https://github.com/VitruvianSoftware/vitruvian-core/commit/62dfac25b1dc44e9d14bb8bac5ab91f4c9f6c117))
+
 ## [1.39.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.38.0...vitruvian-code-v1.39.0) (2026-11-21)
 
 
