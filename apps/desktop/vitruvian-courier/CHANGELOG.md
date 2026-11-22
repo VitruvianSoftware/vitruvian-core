@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.35](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.34...vitruvian-courier-v0.3.35) (2026-11-22)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** show the article summary under a link card ([#5358](https://github.com/VitruvianSoftware/vitruvian-core/issues/5358)) ([dc1867a](https://github.com/VitruvianSoftware/vitruvian-core/commit/dc1867a1fe72be8bc38e045a126e5dc9d077769c))
+
 ## [0.3.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.33...vitruvian-courier-v0.3.34) (2026-11-22)
 
 
