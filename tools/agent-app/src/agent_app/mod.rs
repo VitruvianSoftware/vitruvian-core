@@ -42,7 +42,6 @@ use std::process::{Command, Stdio};
 pub const HOLD_LABEL: &str = "do-not-automerge";
 pub const RELEASE_HOLD_LABEL: &str = "dev-deploy-red";
 pub const BETA_GATE_LABEL: &str = "beta-not-built";
-pub const FAST_LANE_LABEL: &str = "agent-fast-lane";
 
 /// The lines of the script a diagnostic names (bash says `<script>: line N:`).
 mod line {
@@ -112,7 +111,7 @@ is two clicks per agent; everything either side of them is here.
   bazel run //tools/agent-app -- env <agent>        # the one agents actually use
   bazel run //tools/agent-app -- login <agent>      # token only
   bazel run //tools/agent-app -- pr-create [--agent <agent>] [gh pr create args]
-                                  # open a PR as the agent, in the fast lane
+                                  # open a PR as the agent
   bazel run //tools/agent-app -- pr-edit [--agent <agent>] <pr> [gh pr edit args]
   bazel run //tools/agent-app -- pr-comment [--agent <agent>] <pr> --body-file <f> | --body <s>
   bazel run //tools/agent-app -- pr-review [--agent <agent>] <pr> (--approve | --comment | --request-changes) [--body-file <f> | --body <s>]
@@ -963,15 +962,9 @@ impl Tool {
     fn pr_create(&self, args: &[Vec<u8>]) -> Res {
         let (agent, rest) = take_agent(args)
             .ok_or_else(|| die(b"usage: pr-create [--agent <agent>] [gh pr create args]"))?;
-        let has = has_fast_lane(rest);
         let tok = self.mint_token(&agent, b"the PR was NOT opened")?;
-        let mut v: Vec<Vec<u8>> = rest.to_vec();
-        if !has {
-            v.push(b"--label".to_vec());
-            v.push(FAST_LANE_LABEL.as_bytes().to_vec());
-        }
         to_caller_dir()?;
-        self.pass(&tok, &[b"pr", b"create"], &v)
+        self.pass(&tok, &[b"pr", b"create"], rest)
     }
 
     fn pr_passthrough(&self, verb: &[u8], usage: &str, args: &[Vec<u8>]) -> Res {
@@ -2207,34 +2200,6 @@ pub fn need_target(what: &str, usage: &str, target: &[u8]) -> Result<(), Refusal
         what.as_bytes(),
         b">)",
     ]))
-}
-
-/// pr-create: did the caller already pass the fast-lane label?
-pub fn has_fast_lane(args: &[Vec<u8>]) -> bool {
-    let mut has = false;
-    let mut prev: &[u8] = b"";
-    for a in args {
-        let a = a.as_slice();
-        let mut labels: &[u8] = b"";
-        if prev == b"--label" || prev == b"-l" {
-            labels = a;
-        }
-        if let Some(r) = a.strip_prefix(b"--label=") {
-            labels = r;
-        } else if a.starts_with(b"-l") && a.len() > 2 {
-            labels = &a[2..];
-        }
-        if !labels.is_empty() {
-            let squeezed: Vec<u8> = labels.iter().copied().filter(|&c| c != b' ').collect();
-            let hay = cat(&[b",", &squeezed, b","]);
-            let needle = cat(&[b",", FAST_LANE_LABEL.as_bytes(), b","]);
-            if sh::contains(&hay, &needle) {
-                has = true;
-            }
-        }
-        prev = a;
-    }
-    has
 }
 
 /// `has_body`: do these arguments give gh a body?

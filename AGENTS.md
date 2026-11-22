@@ -226,8 +226,8 @@ backstop that runs the main checkout's `hook.sh` (`bazel run //tools/agent-guard
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.
 1. **Open a PR.** When the work is done, push and open one unless an open, related PR already
    covers it. Open it with `bazel run //tools/agent-app -- pr-create [gh pr create args]`, not
-   bare `gh pr create`: that opens it as the agent app with the `agent-fast-lane` label, so the
-   PR skips the heavy tests (#3418). The merge queue still tests everything before it lands. Never merge locally. PR bodies are self-contained: what
+   bare `gh pr create`: that opens it as the agent app and runs PR checks before entering the
+   merge queue. Never merge locally. PR bodies are self-contained: what
    changed, why, how it was verified.
    **Act as your own app.** Every `//tools/agent-app` PR command acts as **wren** unless you pass
    `--agent <your agent name>` as its first argument (`pr-create --agent atlas --title ...`), so
