@@ -1150,6 +1150,30 @@ final class AntigravityACPTests: XCTestCase {
         XCTAssertTrue(defaultEnv.makeConnection(AgentConnectionSpec(provider: .claude, workingDirectory: "/workspace")) is CommandLineConnection)
     }
 
+    func testAClaudeSDKChatDoesNotFollowItsTranscriptAndOtherClaudeChatsStillDo() throws {
+        let env = makeSessionEnvironment(
+            makeConnection: { MockPersistentConnection(spec: $0) },
+            transcriptPath: { _, _ in "/tmp/nonexistent-follower-\(UUID().uuidString).jsonl" },
+            readTranscriptRaw: { _, _ in "{}" }
+        )
+        let summary = VitruvianCodeSessionSummary(id: "conv-sdk", title: "SDK", preview: "Hi", steps: 1, modified: nil)
+
+        var sdk = VitruvianCodeCLIProvider.claude
+        sdk.connection = .claudeSDK
+        let sdkSession = VitruvianCodeQuickPromptSession(environment: env, host: MockSessionHost())
+        sdkSession.resume(summary, configuration: VitruvianCodeConfiguration(activeProvider: sdk))
+        XCTAssertFalse(sdkSession.isFollowerActive, "the SDK's events are the chat; its transcript would show each message twice")
+        sdkSession.startTranscriptFollower(provider: sdk)
+        XCTAssertFalse(sdkSession.isFollowerActive, "starting it again does not start it")
+
+        // Nothing changes for a Claude chat on the command line.
+        let cliSession = VitruvianCodeQuickPromptSession(environment: env, host: MockSessionHost())
+        cliSession.resume(summary, configuration: VitruvianCodeConfiguration(activeProvider: .claude))
+        XCTAssertTrue(cliSession.isFollowerActive)
+        XCTAssertEqual(cliSession.transcriptFollowerMode, .full)
+        cliSession.stopTranscriptFollower()
+    }
+
     // MARK: - Group 4: Round 1 QA defect fixes
 
     func testWorktreeModeCreatesWorktreeFirstAndLaunchesAgyWithWorktreeAsProcessAndSessionCwd() async throws {

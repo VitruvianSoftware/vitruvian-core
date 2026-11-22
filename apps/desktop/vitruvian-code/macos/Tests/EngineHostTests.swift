@@ -130,6 +130,8 @@ final class EngineHostTests: XCTestCase {
         /// Every program the engine asked to run for its output, and what
         /// the pretend program prints (nil: it could not be started).
         var programRuns: [(name: String, arguments: [String])] = []
+        /// The environment each program was asked to run in (the runs that name one).
+        var programEnvironments: [[String: String]] = []
         var programOutput: String?
         /// While true the pretend program does not finish until `finishProgram` is called.
         var holdsProgram = false
@@ -238,6 +240,11 @@ final class EngineHostTests: XCTestCase {
                     if holdsProgram {
                         await withCheckedContinuation { heldProgram = $0 }
                     }
+                    return programOutput
+                },
+                runProgramWithEnvironment: { @MainActor [unowned self] name, arguments, environment in
+                    programRuns.append((name, arguments))
+                    programEnvironments.append(environment)
                     return programOutput
                 },
                 launchCommand: { [unowned self] path, arguments, directory, environment, onOutput, onErrors, onExit in
@@ -3128,6 +3135,78 @@ final class EngineHostTests: XCTestCase {
         XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node src/bot.js"))
         XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/opt/homebrew/bin/node /Applications/Vitruvian Code.app/Contents/Helpers/bot-engine"))
         XCTAssertFalse(VitruvianCodeEngine.isBotEngineProcess("/Applications/Vitruvian Code.app/Contents/Helpers/bot-engine-helper --dry-run"))
+    }
+
+    /// Claude on the Agent SDK hides the listed models the installed `claude` is too old for
+    /// (T3 Code's `resolveClaudeModelsForVersion`); only `claude --version` decides, and a
+    /// version that cannot be read hides nothing.
+    func testClaudeOnTheSDKHidesTheModelsTheInstalledClaudeIsTooOldFor() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let claudePath = rig.home + "/.local/bin/claude"
+        rig.executables = [claudePath]
+        rig.programOutput = "2.1.200 (Claude Code)\n"
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: RecordingHost())
+        var provider = VitruvianCodeCLIProvider.claude
+        provider.connection = .claudeSDK
+
+        engine.updateActiveProvider(provider)
+        await rig.wait { !engine.availableModels.contains { $0.id == "claude-opus-5-5" } }
+
+        let ids = engine.availableModels.map(\.id)
+        for hidden in ["opus", "sonnet", "haiku", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] {
+            XCTAssertFalse(ids.contains(hidden), hidden)
+        }
+        XCTAssertTrue(ids.contains("claude-opus-4-7"))
+        XCTAssertTrue(ids.contains("claude-sonnet-4-6"))
+        XCTAssertTrue(rig.programRuns.contains { $0.name == claudePath && $0.arguments == ["--version"] })
+    }
+
+    /// `claude --version` is read in the environment the helper runs in, not the app's raw one.
+    func testTheModelCheckReadsTheVersionInTheEnvironmentTheHelperRunsIn() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.executables = [rig.home + "/.local/bin/claude"]
+        rig.programOutput = "2.1.400 (Claude Code)"
+        rig.processEnvironment = ["PATH": "/usr/bin", "NODE_OPTIONS": "--inspect", "HOME": rig.home]
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: RecordingHost())
+        var provider = VitruvianCodeCLIProvider.claude
+        provider.connection = .claudeSDK
+        provider.claudeConfigDirectory = "/Users/rig/.claude-work"
+
+        engine.updateActiveProvider(provider)
+        await rig.wait { !rig.programEnvironments.isEmpty }
+
+        let environment = rig.programEnvironments.first
+        XCTAssertTrue(environment?["PATH"]?.hasPrefix(rig.home + "/.local/bin") == true, "the install folders are on its PATH")
+        XCTAssertNil(environment?["NODE_OPTIONS"], "and what the helper does not inherit is gone")
+        XCTAssertEqual(environment?["CLAUDE_CONFIG_DIR"], "/Users/rig/.claude-work")
+    }
+
+    func testClaudeModelsAreAllListedWhenTheVersionCannotBeReadOrTheCommandLineIsUsed() async {
+        let all = VitruvianCodeSupport.defaultModels(for: .claude).map(\.id)
+
+        let unreadable = Rig()
+        defer { unreadable.tearDown() }
+        unreadable.executables = [unreadable.home + "/.local/bin/claude"]
+        unreadable.programOutput = "no version here"
+        let engine = VitruvianCodeEngine(environment: unreadable.environment, host: RecordingHost())
+        var sdk = VitruvianCodeCLIProvider.claude
+        sdk.connection = .claudeSDK
+        engine.updateActiveProvider(sdk)
+        await unreadable.wait { unreadable.programRuns.count > 0 }
+        await unreadable.settle()
+        XCTAssertEqual(engine.availableModels.map(\.id), all)
+
+        let commandLine = Rig()
+        defer { commandLine.tearDown() }
+        commandLine.executables = [commandLine.home + "/.local/bin/claude"]
+        commandLine.programOutput = "2.1.200 (Claude Code)"
+        let cliEngine = VitruvianCodeEngine(environment: commandLine.environment, host: RecordingHost())
+        cliEngine.updateActiveProvider(.claude)
+        await commandLine.settle()
+        XCTAssertEqual(cliEngine.availableModels.map(\.id), all, "nothing changes for a chat that has not picked Claude SDK")
+        XCTAssertTrue(commandLine.programRuns.isEmpty)
     }
 
     func testPerProviderModelSelectionAndCatalog() async {

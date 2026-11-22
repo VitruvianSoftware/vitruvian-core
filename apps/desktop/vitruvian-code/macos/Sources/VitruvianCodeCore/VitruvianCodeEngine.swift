@@ -83,7 +83,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         private var customMakeConnection: ((AgentConnectionSpec) -> any AgentConnection)?
         internal var hasCustomMakeConnection: Bool { customMakeConnection != nil }
         /// Builds the `AgentConnection` for a turn. Defaults to `AntigravityACPConnection` when
-        /// `spec.provider` is Antigravity with `.acp` selected, and `CommandLineConnection` otherwise.
+        /// `spec.provider` is Antigravity with `.acp` selected, `ClaudeSDKConnection` when it is
+        /// Claude with `.claudeSDK` selected, and `CommandLineConnection` otherwise.
         public var makeConnection: (AgentConnectionSpec) -> any AgentConnection {
             get {
                 if let customMakeConnection { return customMakeConnection }
@@ -91,6 +92,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 return { spec in
                     if spec.provider.route == .antigravity && spec.provider.connection == .acp {
                         return AntigravityACPConnection(spec: spec, environment: current)
+                    }
+                    if spec.provider.route == .claude && spec.provider.connection == .claudeSDK {
+                        return ClaudeSDKConnection(spec: spec, environment: current)
                     }
                     return CommandLineConnection(spec: spec, environment: current)
                 }
@@ -114,6 +118,10 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         /// be started. `name` is a bare name (`ollama`) or a full path.
         /// It does not run on the main thread: the program may be slow.
         public var runProgram: @Sendable (_ name: String, _ arguments: [String]) async -> String?
+        /// The same, in exactly this environment (and so with its PATH, which a program that
+        /// starts with `#!/usr/bin/env node` looks its interpreter up in).
+        public var runProgramWithEnvironment: @Sendable (_ name: String, _ arguments: [String],
+                                                        _ environment: [String: String]) async -> String?
         /// Runs a provider's own command in `directory`, as the program at
         /// `path` with exactly these arguments: no shell reads them. What
         /// it prints and what it writes to standard error are delivered
@@ -167,6 +175,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                      transcriptPath: @escaping (String, VitruvianCodeCLIProvider) -> String? = { _, _ in nil },
                      readTranscriptRaw: @escaping (String, VitruvianCodeCLIProvider) -> String? = { _, _ in nil },
                      runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil },
+                     // Left out, the environment is ignored and `runProgram` answers.
+                     runProgramWithEnvironment: (@Sendable (String, [String], [String: String]) async -> String?)? = nil,
                      // Left out, no command can be started, and a turn that
                      // needs one fails saying so.
                      launchCommand: @escaping (String, [String], String, [String: String],
@@ -206,6 +216,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.transcriptPath = transcriptPath
             self.readTranscriptRaw = readTranscriptRaw
             self.runProgram = runProgram
+            self.runProgramWithEnvironment = runProgramWithEnvironment ?? { name, arguments, _ in
+                await runProgram(name, arguments)
+            }
             self.launchCommand = launchCommand
             self.runSqlite = runSqlite
             self.runSqliteOffMain = runSqliteOffMain
@@ -255,6 +268,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     return try? String(contentsOfFile: path, encoding: .utf8)
                 },
                 runProgram: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1) },
+                runProgramWithEnvironment: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1, environment: $2) },
                 launchCommand: VitruvianCodeEngine.launchCommandProcess,
                 runSqlite: { VitruvianCodeEngine.runSqliteProcess($0, $1, $2) },
                 runSqliteOffMain: { database, sql, readsRows in
@@ -575,6 +589,32 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     private func syncAvailableModels() {
         let route = configuration.activeProvider.route
         availableModels = discoveredModelsByRoute[route] ?? VitruvianCodeSupport.defaultModels(for: route)
+        hideClaudeModelsTheInstalledVersionCannotRun()
+    }
+
+    /// With Claude on the Agent SDK, drops the listed models the installed `claude` is too old
+    /// for (T3 Code's `resolveClaudeModelsForVersion`). It asks `claude --version` once for each
+    /// time the list is rebuilt; a version that cannot be read hides nothing.
+    private func hideClaudeModelsTheInstalledVersionCannotRun() {
+        let provider = configuration.activeProvider
+        guard provider.route == .claude, provider.connection == .claudeSDK,
+              let path = agentPath else { return }
+        modelFetchGeneration += 1
+        let generation = modelFetchGeneration
+        // Read in the environment the connection launches the helper in, as its own check is.
+        let launchEnvironment = ClaudeSDKSupport.helperEnvironment(
+            base: environment.processEnvironment,
+            home: environment.home,
+            configDirectory: provider.claudeConfigDirectory
+        )
+        let runProgram = environment.runProgramWithEnvironment
+        Task { @MainActor [weak self] in
+            let output = await runProgram(path, ["--version"], launchEnvironment)
+            guard let self, self.modelFetchGeneration == generation,
+                  let version = ClaudeSDKSupport.parseVersion(output),
+                  self.configuration.activeProvider.route == .claude else { return }
+            self.availableModels = ClaudeSDKSupport.visibleModels(self.availableModels, version: version)
+        }
     }
 
     /// Queries the active provider's CLI (for example `agy models`, `opencode models`,
@@ -603,6 +643,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         }
         guard let query else {
             isLoadingModels = false
+            hideClaudeModelsTheInstalledVersionCannotRun()
             return
         }
         isLoadingModels = true
@@ -856,17 +897,47 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         return text
     }
 
-    nonisolated private static func writePrivateFile(_ path: String, _ content: String) -> Bool {
+    /// Writes `content` to `path` so no one else can read it at any moment: the folder is made
+    /// 0700 where it is made here, the content goes to a temporary file created with
+    /// `open(O_CREAT | O_EXCL | O_NOFOLLOW, 0600)` (so it never exists with wider rights, and a
+    /// planted symlink at its name is refused, not followed), is flushed with `fsync`, and is
+    /// renamed over `path`. A symlink at `path` itself is replaced, not written through.
+    nonisolated static func writePrivateFile(_ path: String, _ content: String) -> Bool {
+        writePrivateFile(path, content, temporaryName: ".\(UUID().uuidString).tmp")
+    }
+
+    /// `temporaryName` is the name of the temporary file in `path`'s folder; a test gives one
+    /// to plant a symlink at it.
+    nonisolated static func writePrivateFile(_ path: String, _ content: String, temporaryName: String) -> Bool {
         let url = URL(fileURLWithPath: path)
+        let folder = url.deletingLastPathComponent().path
         do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            try Data(content.utf8).write(to: url, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
-            return true
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
         } catch {
             return false
         }
+        let temporary = (folder as NSString).appendingPathComponent(temporaryName)
+        let descriptor = Darwin.open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard descriptor >= 0 else { return false }
+        var written = false
+        defer {
+            _ = Darwin.close(descriptor)
+            if !written { _ = Darwin.unlink(temporary) }
+        }
+        let bytes = Array(content.utf8)
+        var offset = 0
+        while offset < bytes.count {
+            let count = bytes[offset...].withUnsafeBytes { Darwin.write(descriptor, $0.baseAddress, $0.count) }
+            if count < 0 {
+                if errno == EINTR { continue }
+                return false
+            }
+            offset += count
+        }
+        guard Darwin.fsync(descriptor) == 0, Darwin.rename(temporary, path) == 0 else { return false }
+        written = true
+        return true
     }
 
     nonisolated private static func isBotEngineExecutablePath(_ path: String) -> Bool {
@@ -961,11 +1032,12 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     /// keep running; it no longer holds anything up. The limit is a
     /// parameter only so a test can use a short one.
     nonisolated public static func runProgram(named name: String, arguments: [String],
+                                              environment: [String: String]? = nil,
                                               timeLimit: TimeInterval = 20) async -> String? {
         let files = FileManager.default
         let path = VitruvianCodeSupport.executablePath(
             named: name,
-            pathVariable: ProcessInfo.processInfo.environment["PATH"] ?? "",
+            pathVariable: (environment ?? ProcessInfo.processInfo.environment)["PATH"] ?? "",
             isExecutable: { files.isExecutableFile(atPath: $0) },
             fileExists: { files.fileExists(atPath: $0) })
             ?? (name.hasPrefix("/") ? name : "/opt/homebrew/bin/" + name)
@@ -975,6 +1047,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 let output = Pipe()
                 process.executableURL = URL(fileURLWithPath: path)
                 process.arguments = arguments
+                if let environment { process.environment = environment }
                 process.standardOutput = output
                 process.standardError = FileHandle.nullDevice
                 do {

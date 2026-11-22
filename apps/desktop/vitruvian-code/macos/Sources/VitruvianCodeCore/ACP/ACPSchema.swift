@@ -1597,6 +1597,8 @@ public struct ACPTerminalReleaseParams: Equatable, Sendable, Codable {
 
 public struct ACPElicitationCreateParams: Equatable, Sendable, Codable {
     public var sessionId: String?
+    /// The tool call the form belongs to (the helper's `AskUserQuestion`).
+    public var toolCallId: String?
     public var mode: String?
     public var title: String?
     public var message: String
@@ -1607,6 +1609,7 @@ public struct ACPElicitationCreateParams: Equatable, Sendable, Codable {
 
     public init(
         sessionId: String? = nil,
+        toolCallId: String? = nil,
         mode: String? = nil,
         title: String? = nil,
         message: String,
@@ -1616,6 +1619,7 @@ public struct ACPElicitationCreateParams: Equatable, Sendable, Codable {
         _meta: [String: ACPJSONValue]? = nil
     ) {
         self.sessionId = sessionId
+        self.toolCallId = toolCallId
         self.mode = mode
         self.title = title
         self.message = message

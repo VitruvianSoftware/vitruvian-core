@@ -243,6 +243,11 @@ swift_test(
     # MermaidPageTests draws a diagram with the shipped copy of Mermaid.
     # TimelineTests reads the standalone host and its Settings to prove the
     # timeline's edge is kept under one key.
+    # ClaudeSDKConnectionTests runs the bundled helper on the bundled Node against a fake
+    # `claude` (testdata/claude-sdk), so it needs Node and the helper as data; the contract
+    # tests read the helper's protocol examples. The Node is the one for the machine's own
+    # architecture, from the same repositories `node_helper` joins. Only the tests read the
+    # two variables: the app's own lookup (BundledNode.locate) is unchanged.
     data = [
         "Sources/VitruvianCode/ConfigManager.swift",
         "Sources/VitruvianCode/SettingsView.swift",
@@ -251,7 +256,22 @@ swift_test(
         ":shared_ui_resources",
         ":shared_ui_sources",
         "//apps/desktop/vitruvian-code:testdata_files",
-    ],
+        "//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files",
+        "//apps/desktop/vitruvian-code/macos/claude-helper:protocol_files",
+    ] + select({
+        "@platforms//cpu:arm64": ["@nodejs_darwin_arm64//:node_bin"],
+        "//conditions:default": ["@nodejs_darwin_amd64//:node_bin"],
+    }),
+    env = select({
+        "@platforms//cpu:arm64": {
+            "CLAUDE_SDK_TEST_HELPER": "$(rlocationpath //apps/desktop/vitruvian-code/macos/claude-helper:bundle_files)",
+            "CLAUDE_SDK_TEST_NODE": "$(rlocationpath @nodejs_darwin_arm64//:node_bin)",
+        },
+        "//conditions:default": {
+            "CLAUDE_SDK_TEST_HELPER": "$(rlocationpath //apps/desktop/vitruvian-code/macos/claude-helper:bundle_files)",
+            "CLAUDE_SDK_TEST_NODE": "$(rlocationpath @nodejs_darwin_amd64//:node_bin)",
+        },
+    }),
     tags = ["manual"],
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
@@ -358,6 +378,8 @@ rust_test(
         ":bundle-app",
         ":node_helper",
         "//apps/desktop/vitruvian-code/macos/claude-helper:bundle_files",
+        # The contract tests read the helper's protocol examples.
+        "//apps/desktop/vitruvian-code/macos/claude-helper:protocol_files",
         "//apps/desktop/vitruvian-code/src:bot-engine",
     ] + glob([
         "Resources/**",

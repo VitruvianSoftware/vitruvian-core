@@ -83,9 +83,23 @@ public struct AgentSessionRequest: Equatable, Sendable {
         case http(name: String, url: String, headers: [String: String] = [:])
     }
 
+    /// Secret environment values and headers of MCP servers, by server name. A connection that
+    /// has a channel for them (the Claude helper's `_vitruvian/secrets`) sends them there, so
+    /// they never ride in `mcpServers`, a command line or an environment.
+    public struct MCPServerSecrets: Equatable, Sendable {
+        public var environment: [String: String]
+        public var headers: [String: String]
+
+        public init(environment: [String: String] = [:], headers: [String: String] = [:]) {
+            self.environment = environment
+            self.headers = headers
+        }
+    }
+
     public var workingDirectory: String
     public var additionalDirectories: [String]
     public var mcpServers: [MCPServer]
+    public var mcpSecrets: [String: MCPServerSecrets]
     public var systemPrompt: String?
     public var resumeSessionID: String?
 
@@ -93,12 +107,14 @@ public struct AgentSessionRequest: Equatable, Sendable {
         workingDirectory: String,
         additionalDirectories: [String] = [],
         mcpServers: [MCPServer] = [],
+        mcpSecrets: [String: MCPServerSecrets] = [:],
         systemPrompt: String? = nil,
         resumeSessionID: String? = nil
     ) {
         self.workingDirectory = workingDirectory
         self.additionalDirectories = additionalDirectories
         self.mcpServers = mcpServers
+        self.mcpSecrets = mcpSecrets
         self.systemPrompt = systemPrompt
         self.resumeSessionID = resumeSessionID
     }

@@ -545,6 +545,13 @@ raises a system notification and waits for the user, as in T3 Code. Nothing
 is denied automatically. A prompt that goes silent is caught by the agy
 silent-prompt timeout (section 2).
 
+**A repository's own Claude settings.** The helper loads Claude's user, project and
+local settings (`settingSources: ["user", "project", "local"]`). So a repository's own
+`.claude/settings.json` can pre-allow tools, add hooks or set environment variables, and the
+app shows no approval card for what it pre-allows. T3 Code does the same, and so does today's
+command-line `claude`, so the helper does not change it. Asking the user before a folder's
+settings take effect (folder trust) is a later step.
+
 ### 9. Settings
 
 The provider settings gain a **Connection** choice per agent:
@@ -938,7 +945,7 @@ the peak resident memory of one connection.
 | `//MODULE.bazel` | `use_repo` for the darwin arm64 and amd64 Node repositories from the existing `node` extension | Node binaries for packaging |
 | `macos/BUILD` | Adds `node_helper` (`lipo` + JIT entitlements), puts `node` in `Contents/Helpers` and `claude-helper.mjs` in `Contents/Resources/claude-helper/`, and adds `bin/node` and `bin/claude-helper/claude-helper.mjs` to `:tool-folder`'s outputs. Adds `app_holds_node_test` and helper bundle checks | Bazel build |
 | `macos/Sources/VitruvianCodeCore/BundledNode.swift` (new) | Finds Node and the helper, never the user's Node | Node ships with the app |
-| `macos/Sources/VitruvianCodeCore/ClaudeSDKConnection.swift` (new) | An `ACPConnection` started with the bundled Node and the helper. Passes `CLAUDE_CONFIG_DIR`, sends secrets through `_vitruvian/secrets`, and runs the `claude --version` check. The check hides models the installed `claude` doesn't support and asks the user to upgrade, as `ClaudeProvider.ts` does | App side of the helper |
+| `macos/Sources/VitruvianCodeCore/ACP/ClaudeSDKConnection.swift` (new) | An `ACPConnection` started with the bundled Node and the helper. Passes `CLAUDE_CONFIG_DIR`, sends secrets through `_vitruvian/secrets`, and runs the `claude --version` check. The check hides models the installed `claude` doesn't support and asks the user to upgrade, as `ClaudeProvider.ts` does | App side of the helper |
 | `macos/Sources/VitruvianCodeCore/AgentSecrets.swift` (new) | Saves sensitive environment values to a 0600 file through `writePrivateFile` | API keys never stored in plain settings |
 | `.github/workflows/release.yml` (mirror copy in this folder) | Fetches and SHA-256 verifies the pinned Node tarballs from `macos/claude-helper/node.lock` (`//.nvmrc` version) for each architecture, joins the two with `lipo` for the universal app and the extension zip, signs `node` with `node.entitlements`, and copies `claude-helper/bundle/claude-helper.mjs` in | Releases ship Node and the helper |
 | `macos/scripts/src/bundle.rs`, `macos/scripts/src/lib.rs` | Copies `node` into `Contents/Helpers/node` (signed inside-out with `node.entitlements`, without `--deep`) and `claude-helper.mjs` into `Contents/Resources/claude-helper/` | The `.app` holds them |
