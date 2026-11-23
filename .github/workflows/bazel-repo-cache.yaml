@@ -130,10 +130,19 @@ jobs:
         run: |
           set -euo pipefail
           IFS=' ' read -r -a targets <<< "$TARGETS"
-          bazel --output_base="$OB" build --nobuild \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS" \
-            "${targets[@]}"
+          if [ "$MODE" = "verify" ]; then
+            FILL_LOG="${RUNNER_TEMP}/online-fill.log"
+            echo "FILL_LOG=${FILL_LOG}" >> "$GITHUB_ENV"
+            bazel --output_base="$OB" build --nobuild \
+              --repository_cache="$REPO" \
+              --repo_contents_cache="$CONTENTS" \
+              "${targets[@]}" 2>&1 | tee "$FILL_LOG"
+          else
+            bazel --output_base="$OB" build --nobuild \
+              --repository_cache="$REPO" \
+              --repo_contents_cache="$CONTENTS" \
+              "${targets[@]}"
+          fi
 
       - name: Measure archive vs contents sizes
         shell: bash
@@ -174,13 +183,325 @@ jobs:
             echo "ARCHIVE_BYTES=${archive_bytes}"
           } >> "$GITHUB_ENV"
 
+      - name: Break down Linux archives (verify-only)
+        if: ${{ github.event_name == 'pull_request' && env.MODE == 'verify' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          # Mapping method: combines (1) parsing the online-fill log (`Fetching repository @@...`
+          # and `Fetching https://...; <size>` lines after stripping ANSI/CR) with (2) exact
+          # CAS sha256 (and base64 SRI `sha256-...`) resolution against MODULE.bazel.lock,
+          # maven_install.json, workspace files, and `$OB/external/` (marker/rule metadata and
+          # `.bzl`/`.json` distribution tables such as llvm_distributions_data).
+          # Why: setup-bazel sets `--curses=yes --show_progress_rate_limit=60`, which truncates
+          # long URLs/repo names with `...` and omits fast downloads from terminal output, so
+          # sha256 cross-referencing recovers exact un-truncated origin URLs and repo names while
+          # the online-fill log validates and fills in any dynamic fetches.
+          import base64
+          import glob
+          import json
+          import os
+          import re
+          import urllib.parse
+
+          repo_dir = os.environ["REPO"]
+          cas_root = os.path.join(repo_dir, "content_addressable")
+          ob_dir = os.environ.get("OB", "")
+          fill_log = os.environ.get("FILL_LOG", "")
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+
+          archives = []
+          for path in glob.glob(os.path.join(cas_root, "*", "*", "file")):
+              parts = path.split(os.sep)
+              digest = parts[-2]
+              algo = parts[-3]
+              try:
+                  size = os.path.getsize(path)
+              except OSError:
+                  continue
+              archives.append({"algo": algo, "sha": digest, "size": size, "path": path})
+
+          archives.sort(key=lambda x: x["size"], reverse=True)
+          cas_shas = {a["sha"] for a in archives if a["algo"] == "sha256"}
+
+          # sha -> list of (repo, url)
+          mappings = {}
+
+          def add_map(sha, repo_name, url):
+              if not sha:
+                  return
+              sha = sha.lower()
+              mappings.setdefault(sha, [])
+              pair = (repo_name or "", url or "")
+              if pair not in mappings[sha]:
+                  mappings[sha].append(pair)
+
+          def sri_to_hex(sri):
+              if isinstance(sri, str) and sri.startswith("sha256-"):
+                  try:
+                      return base64.b64decode(sri[7:]).hex()
+                  except Exception:
+                      return ""
+              return ""
+
+          # 1. MODULE.bazel.lock
+          if os.path.isfile("MODULE.bazel.lock"):
+              try:
+                  with open("MODULE.bazel.lock", "r", encoding="utf-8") as f:
+                      lock = json.load(f)
+                  for url, sha in lock.get("registryFileHashes", {}).items():
+                      if isinstance(sha, str):
+                          add_map(sha, "bcr", url)
+                  for ext_id, ext_data in lock.get("moduleExtensions", {}).items():
+                      if not isinstance(ext_data, dict):
+                          continue
+                      for _factors, fdata in ext_data.items():
+                          if not isinstance(fdata, dict):
+                              continue
+                          for rname, rspec in fdata.get("generatedRepoSpecs", {}).items():
+                              attrs = rspec.get("attributes", {})
+                              sha = attrs.get("sha256", "") or sri_to_hex(attrs.get("integrity", ""))
+                              urls = attrs.get("urls") or ([attrs["url"]] if "url" in attrs else [])
+                              repo_label = f"@@{ext_id}+{rname}"
+                              if urls:
+                                  for u in urls:
+                                      add_map(sha, repo_label, u)
+                              elif sha:
+                                  add_map(sha, repo_label, "")
+              except Exception as exc:
+                  print(f"Warning: failed reading MODULE.bazel.lock: {exc}")
+
+          # 2. maven_install.json
+          if os.path.isfile("maven_install.json"):
+              try:
+                  with open("maven_install.json", "r", encoding="utf-8") as f:
+                      mav = json.load(f)
+                  repos = mav.get("repositories", {})
+                  repo_urls = list(repos.keys()) if isinstance(repos, dict) else []
+                  default_maven = repo_urls[0] if repo_urls else "https://repo1.maven.org/maven2/"
+                  for coord, art in mav.get("artifacts", {}).items():
+                      shasums = art.get("shasums", {})
+                      ver = art.get("version", "")
+                      parts = coord.split(":")
+                      if len(parts) < 2 or not ver:
+                          continue
+                      group, artifact = parts[0], parts[1]
+                      gpath = group.replace(".", "/")
+                      for ext, sha in shasums.items():
+                          if not isinstance(sha, str) or len(sha) != 64:
+                              continue
+                          fname = f"{artifact}-{ver}.{ext}"
+                          base = default_maven.rstrip("/")
+                          for r_url, r_arts in (repos.items() if isinstance(repos, dict) else []):
+                              if isinstance(r_arts, list) and coord in r_arts:
+                                  base = r_url.rstrip("/")
+                                  break
+                          url = f"{base}/{gpath}/{artifact}/{ver}/{fname}"
+                          repo_label = "@@rules_jvm_external++maven+" + re.sub(r"[^A-Za-z0-9_]", "_", f"{group}_{artifact}_{ver}")
+                          add_map(sha, repo_label, url)
+              except Exception as exc:
+                  print(f"Warning: failed reading maven_install.json: {exc}")
+
+          # 3. Parse online-fill log
+          ansi_re = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+          log_entries = []  # list of (repo, url)
+          repo_to_log_urls = {}
+          if fill_log and os.path.isfile(fill_log):
+              current_repo = ""
+              with open(fill_log, "r", encoding="utf-8", errors="ignore") as f:
+                  for raw_line in f:
+                      for seg in raw_line.replace("\r", "\n").splitlines():
+                          line = ansi_re.sub("", seg).strip()
+                          m_repo = re.search(r"Fetching repository (@@\S+?)(?:;|$)", line)
+                          if m_repo:
+                              current_repo = m_repo.group(1)
+                              continue
+                          m_url = re.search(r"Fetching (https?://\S+?);", line)
+                          if m_url:
+                              u = m_url.group(1)
+                              log_entries.append((current_repo, u))
+                              if current_repo:
+                                  repo_to_log_urls.setdefault(current_repo, [])
+                                  if u not in repo_to_log_urls[current_repo]:
+                                      repo_to_log_urls[current_repo].append(u)
+
+          # 4. Scan $OB/external/ and workspace metadata for any remaining CAS sha256s
+          remaining_shas = cas_shas - set(mappings.keys())
+          if remaining_shas:
+              sri_lookup = {}
+              for s in remaining_shas:
+                  try:
+                      sri_lookup["sha256-" + base64.b64encode(bytes.fromhex(s)).decode("ascii")] = s
+                  except Exception:
+                      pass
+              url_re = re.compile(r"https?://[^\s\"'`,)\\>]+")
+
+              def scan_text_file(fpath, default_repo):
+                  try:
+                      if os.path.getsize(fpath) > 4 * 1024 * 1024:
+                          return
+                      with open(fpath, "r", encoding="utf-8", errors="ignore") as tf:
+                          txt = tf.read()
+                  except OSError:
+                      return
+                  matched = [s for s in remaining_shas if s in txt]
+                  for sri, s in sri_lookup.items():
+                      if sri in txt and s not in matched:
+                          matched.append(s)
+                  if not matched:
+                      return
+                  lines = txt.splitlines()
+                  for idx, ln in enumerate(lines):
+                      for s in matched:
+                          sri = "sha256-" + base64.b64encode(bytes.fromhex(s)).decode("ascii")
+                          if s in ln or sri in ln:
+                              win = "\n".join(lines[max(0, idx - 8):min(len(lines), idx + 9)])
+                              found_urls = url_re.findall(win)
+                              if found_urls:
+                                  for fu in found_urls:
+                                      add_map(s, default_repo, fu)
+                              else:
+                                  add_map(s, default_repo, "")
+
+              ext_dir = os.path.join(ob_dir, "external") if ob_dir else ""
+              if ext_dir and os.path.isdir(ext_dir):
+                  for root, _dirs, files in os.walk(ext_dir):
+                      rel = os.path.relpath(root, ext_dir)
+                      top = rel.split(os.sep)[0]
+                      repo_lbl = f"@@{top}" if top not in (".", "") else ""
+                      for fn in files:
+                          if fn.endswith((".bzl", ".json", ".marker", ".bazel", ".lock", ".txt", ".yaml", ".yml")):
+                              scan_text_file(os.path.join(root, fn), repo_lbl)
+
+              for wf in ["MODULE.bazel", "MODULE.bazel.lock", "Cargo.lock", "pnpm-lock.yaml"]:
+                  if os.path.isfile(wf):
+                      scan_text_file(wf, "workspace")
+              for pat in ["tools/**/*.bzl", "requirements/*.txt", "third_party/**/*.bzl"]:
+                  for wf in glob.glob(pat, recursive=True):
+                      scan_text_file(wf, wf)
+
+          # Cross-match any repo-only entry with parsed online-fill log URLs
+          for sha, pairs in list(mappings.items()):
+              for repo_name, url in list(pairs):
+                  if repo_name and not url and repo_name in repo_to_log_urls:
+                      for lu in repo_to_log_urls[repo_name]:
+                          add_map(sha, repo_name, lu)
+
+          def pick_best(sha):
+              pairs = mappings.get(sha, [])
+              if not pairs:
+                  return ("unknown", "")
+              # Prefer entries that have both non-empty repo and non-empty url
+              with_url = [(r, u) for (r, u) in pairs if u]
+              if with_url:
+                  with_both = [(r, u) for (r, u) in with_url if r and r != "workspace"]
+                  return with_both[0] if with_both else with_url[0]
+              return pairs[0]
+
+          def classify_lane(repo_name, url):
+              if repo_name == "unknown" and not url:
+                  return "unknown"
+              text = f"{repo_name} {url}".lower()
+              if any(k in text for k in ("rules_apple", "rules_swift", "xcode", "apple", "macos", "darwin", "osx")):
+                  return "apple-only"
+              if any(k in text for k in ("windows", "win32", "win64", "msvc", "mingw", "pc-windows")):
+                  return "windows-only"
+              if any(k in text for k in ("android", "ndk", "rules_android", "emulator", "androidx")):
+                  return "android-only"
+              if "sdk" in text and not any(k in text for k in ("go_sdk", "vitruvian-sdk", "vitruvian_sdk")):
+                  return "android-only"
+              return "all-linux"
+
+          def fmt_bytes(n):
+              for unit in ("B", "KiB", "MiB", "GiB"):
+                  if n < 1024.0 or unit == "GiB":
+                      return f"{n:.2f} {unit}" if unit != "B" else f"{n} B"
+                  n /= 1024.0
+
+          lane_totals = {k: [0, 0] for k in ("android-only", "apple-only", "windows-only", "all-linux", "unknown")}
+          total_all_bytes = 0
+          url_to_shas = {}
+          sha_to_urls = {}
+
+          for item in archives:
+              sha = item["sha"]
+              total_all_bytes += item["size"]
+              repo_name, url = pick_best(sha)
+              host = urllib.parse.urlparse(url).netloc if url else "unknown"
+              if not host:
+                  host = "unknown"
+              lane = classify_lane(repo_name or "unknown", url)
+              item["repo"] = repo_name or "unknown"
+              item["url"] = url
+              item["host"] = host
+              item["lane"] = lane
+              lane_totals[lane][0] += item["size"]
+              lane_totals[lane][1] += 1
+
+              # Collect all distinct URLs seen for this sha and all shas seen for each URL
+              urls_for_sha = sorted({u for (_r, u) in mappings.get(sha, []) if u})
+              if urls_for_sha:
+                  sha_to_urls[sha] = urls_for_sha
+                  for u in urls_for_sha:
+                      url_to_shas.setdefault(u, set()).add(sha)
+
+          dup_sha_multi_url = {s: us for s, us in sha_to_urls.items() if len(us) > 1}
+          dup_url_multi_sha = {u: sorted(ss) for u, ss in url_to_shas.items() if len(ss) > 1}
+
+          top25 = archives[:25]
+          top25_bytes = sum(x["size"] for x in top25)
+
+          lines = [
+              "",
+              "#### Linux archive breakdown (verify-only)",
+              "",
+              "_Note: `lane` is a name-based heuristic on repository name and origin URL._",
+              "",
+              "| # | Size (bytes) | Size | Repository | Origin host | Lane | SHA-256 |",
+              "|---:|---:|---:|---|---|---|---|",
+          ]
+          for idx, item in enumerate(top25, 1):
+              repo_disp = item["repo"].replace("|", "\\|")
+              host_disp = item["host"].replace("|", "\\|")
+              lines.append(
+                  f"| {idx} | {item['size']:,} | {fmt_bytes(item['size'])} | `{repo_disp}` | `{host_disp}` | `{item['lane']}` | `{item['sha'][:12]}` |"
+              )
+
+          lines.extend([
+              "",
+              "**Totals**",
+              "",
+              f"- Top 25 listed: **{top25_bytes:,} bytes** ({fmt_bytes(top25_bytes)})",
+              f"- All archives ({len(archives)} files): **{total_all_bytes:,} bytes** ({fmt_bytes(total_all_bytes)})",
+              "",
+              "| Lane (name-based) | Files | Bytes | Size |",
+              "|---|---:|---:|---:|",
+          ])
+          for lane_name in ("all-linux", "android-only", "apple-only", "windows-only", "unknown"):
+              b, c = lane_totals[lane_name]
+              lines.append(f"| `{lane_name}` | {c} | {b:,} | {fmt_bytes(b)} |")
+
+          lines.append("")
+          lines.append("**Duplicate origin/checksum check**")
+          lines.append("")
+          if not dup_sha_multi_url and not dup_url_multi_sha:
+              lines.append("- None detected.")
+          else:
+              for u, ss in sorted(dup_url_multi_sha.items()):
+                  lines.append(f"- Same origin URL with multiple sha256s: `{u}` -> `{', '.join(s[:12] for s in ss)}`")
+              for s, us in sorted(dup_sha_multi_url.items()):
+                  lines.append(f"- Same sha256 under multiple URLs: `{s[:12]}` -> {', '.join(f'`{u}`' for u in us)}")
+
+          with open(summary_path, "a", encoding="utf-8") as sf:
+              sf.write("\n".join(lines) + "\n")
+          PY
+
       - name: Verify offline completeness from a clean state
         shell: bash
         run: |
           set -euo pipefail
-          bazel --output_base="$OB" shutdown || true
-          rm -rf "$OB" "$CONTENTS"
-
           OB2="${RUNNER_TEMP}/verify-ob"
           CONTENTS2="${RUNNER_TEMP}/verify-contents"
           if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
@@ -188,6 +509,15 @@ jobs:
             exit 1
           fi
           mkdir -p "$OB2" "$CONTENTS2"
+          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
+            if [ -e "$p" ] || [ -L "$p" ]; then
+              echo "::error::verify contents directory '$CONTENTS2' is not empty before bazel commands (found '${p##*/}')"
+              exit 1
+            fi
+          done
+
+          bazel --output_base="$OB" shutdown || true
+          rm -rf "$OB" "$CONTENTS"
 
           got_repo="$(bazel --output_base="$OB2" info \
             --repository_cache="$REPO" \
@@ -208,10 +538,17 @@ jobs:
             echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
             exit 1
           fi
-          if [ -n "$(ls -A "$CONTENTS2")" ]; then
-            echo "::error::verify contents directory '$CONTENTS2' is not empty before offline check"
-            exit 1
-          fi
+          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
+            [ -e "$p" ] || [ -L "$p" ] || continue
+            entry="${p##*/}"
+            case "$entry" in
+              gc_lock) ;;
+              *)
+                echo "::error::unexpected entry '$entry' in '$CONTENTS2' before offline check (only gc_lock is allowed)"
+                exit 1
+                ;;
+            esac
+          done
 
           IFS=' ' read -r -a targets <<< "$TARGETS"
           log_file="${RUNNER_TEMP}/verify-offline.log"
@@ -242,10 +579,24 @@ jobs:
             echo "::error::${REPO}/contents was created during offline verification"
             exit 1
           fi
-          if [ -z "$(ls -A "$CONTENTS2")" ]; then
-            echo "::error::verify contents directory '$CONTENTS2' remained empty after offline build"
+          extracted_count=0
+          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
+            [ -e "$p" ] || [ -L "$p" ] || continue
+            entry="${p##*/}"
+            case "$entry" in
+              gc_lock) ;;
+              *)
+                if [ -d "$p" ]; then
+                  extracted_count=$((extracted_count + 1))
+                fi
+                ;;
+            esac
+          done
+          if [ "$extracted_count" -eq 0 ]; then
+            echo "::error::verify contents directory '$CONTENTS2' has no extracted repos after offline build (only lock files or empty)"
             exit 1
           fi
+          echo "Offline build populated ${extracted_count} extracted repo content entries in ${CONTENTS2}."
 
           bazel --output_base="$OB2" shutdown || true
           rm -rf "$OB2" "$CONTENTS2"
@@ -271,6 +622,207 @@ jobs:
           fi
 
           echo "Offline completeness verified (control check exited ${control_rc})."
+
+      - name: BuildBuddy Remote Asset API experiment (verify-only)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && env.MODE == 'verify' }}
+        continue-on-error: true
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=' ' read -r -a targets <<< "$TARGETS"
+          CASE_TARGETS=(
+            "@maven//:org_hamcrest_hamcrest_core"
+            "@@aspect_rules_py++tomltool+toml2json_aarch64_osx_libsystem//file:file"
+          )
+          HAMCREST_SHA="66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9"
+          TOML2JSON_SHA="9adc44d976e8f5baf5a6d613ceb3db6e5f56b2e22e75ac56521fdce62f227d88"
+
+          dir_bytes() {
+            if [ -d "$1" ]; then
+              du -sb "$1" | cut -f1
+            else
+              echo "0"
+            fi
+          }
+
+          xfer_note() {
+            local log_path="$1"
+            local hits
+            hits="$(grep -Ei 'Remote Cache|download.*bytes|upload.*bytes|bytes downloaded|bytes uploaded' "$log_path" | tail -n 5 | tr '\n' ';' || true)"
+            if [ -n "$hits" ]; then
+              printf '%s' "$hits"
+            else
+              printf 'not printed in Bazel --nobuild output'
+            fi
+          }
+
+          case_a_rc="SKIPPED"
+          case_a_bytes="0"
+          case_a_note="no BUILDBUDDY_API_KEY"
+          case_b_rc="SKIPPED"
+          case_b_bytes="0"
+          case_b_proof="skipped (no BUILDBUDDY_API_KEY)"
+          case_b_note="no BUILDBUDDY_API_KEY"
+
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            # Case A (warm): full Linux set via BuildBuddy remote downloader + local fallback
+            A_OB="${RUNNER_TEMP}/rd-case-a-ob"
+            A_REPO="${RUNNER_TEMP}/rd-case-a-repo"
+            A_CONTENTS="${RUNNER_TEMP}/rd-case-a-contents"
+            A_LOG="${RUNNER_TEMP}/rd-case-a.log"
+            rm -rf "$A_OB" "$A_REPO" "$A_CONTENTS"
+            mkdir -p "$A_OB" "$A_REPO" "$A_CONTENTS"
+            set +e
+            bazel --output_base="$A_OB" build --nobuild \
+              --remote_cache=grpcs://remote.buildbuddy.io \
+              --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
+              --experimental_remote_downloader_local_fallback \
+              --remote_header="x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
+              --repository_cache="$A_REPO" \
+              --repo_contents_cache="$A_CONTENTS" \
+              "${targets[@]}" 2>&1 | tee "$A_LOG"
+            case_a_rc="${PIPESTATUS[0]}"
+            # Ensure both Case B probe artifacts are warmed in BuildBuddy even if Linux //... skips Darwin toml2json
+            if [ ! -f "${A_REPO}/content_addressable/sha256/${HAMCREST_SHA}/file" ] || [ ! -f "${A_REPO}/content_addressable/sha256/${TOML2JSON_SHA}/file" ]; then
+              bazel --output_base="$A_OB" build --nobuild \
+                --remote_cache=grpcs://remote.buildbuddy.io \
+                --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
+                --experimental_remote_downloader_local_fallback \
+                --remote_header="x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
+                --repository_cache="$A_REPO" \
+                --repo_contents_cache="$A_CONTENTS" \
+                "${CASE_TARGETS[@]}" 2>&1 | tee -a "$A_LOG"
+            fi
+            set -e
+            case_a_bytes="$(dir_bytes "$A_REPO")"
+            case_a_note="$(xfer_note "$A_LOG")"
+            bazel --output_base="$A_OB" shutdown || true
+            rm -rf "$A_OB" "$A_REPO" "$A_CONTENTS"
+
+            # Case B (origin blocked): rewrite both origin URLs to https://unreachable.invalid/...
+            B_OB="${RUNNER_TEMP}/rd-case-b-ob"
+            B_REPO="${RUNNER_TEMP}/rd-case-b-repo"
+            B_CONTENTS="${RUNNER_TEMP}/rd-case-b-contents"
+            B_CFG="${RUNNER_TEMP}/rd-case-b-downloader.cfg"
+            B_LOG="${RUNNER_TEMP}/rd-case-b.log"
+            rm -rf "$B_OB" "$B_REPO" "$B_CONTENTS"
+            mkdir -p "$B_OB" "$B_REPO" "$B_CONTENTS"
+            cp tools/downloader.cfg "$B_CFG"
+            {
+              echo ""
+              echo "# Test-only origin-block rewrites (verify mode)"
+              echo 'rewrite repo1\.maven\.org/(.*hamcrest-core-1\.3\.jar) https://unreachable.invalid/$1'
+              echo 'rewrite maven\.google\.com/(.*hamcrest-core-1\.3\.jar) https://unreachable.invalid/$1'
+              echo 'rewrite github\.com/(.*toml2json_darwin_arm64) https://unreachable.invalid/$1'
+            } >> "$B_CFG"
+            set +e
+            bazel --output_base="$B_OB" build --nobuild --keep_going \
+              --downloader_config="$B_CFG" \
+              --remote_cache=grpcs://remote.buildbuddy.io \
+              --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
+              --experimental_remote_downloader_local_fallback \
+              --remote_header="x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
+              --repository_cache="$B_REPO" \
+              --repo_contents_cache="$B_CONTENTS" \
+              "${CASE_TARGETS[@]}" 2>&1 | tee "$B_LOG"
+            case_b_rc="${PIPESTATUS[0]}"
+            set -e
+            case_b_bytes="$(dir_bytes "$B_REPO")"
+            case_b_note="$(xfer_note "$B_LOG")"
+            ham_hit="no"
+            toml_hit="no"
+            [ -f "${B_REPO}/content_addressable/sha256/${HAMCREST_SHA}/file" ] && ham_hit="yes"
+            [ -f "${B_REPO}/content_addressable/sha256/${TOML2JSON_SHA}/file" ] && toml_hit="yes"
+            case_b_proof="hamcrest_sha_present=${ham_hit}, toml2json_sha_present=${toml_hit}; origins rewritten to https://unreachable.invalid/..."
+            if [ "$case_b_rc" -ne 0 ]; then
+              err_snip="$(grep -E 'ERROR:|unreachable\.invalid|hamcrest|toml2json' "$B_LOG" | tail -n 5 | tr '\n' ';' || true)"
+              case_b_proof="${case_b_proof}; errors: ${err_snip}"
+            fi
+            bazel --output_base="$B_OB" shutdown || true
+            rm -rf "$B_OB" "$B_REPO" "$B_CONTENTS" "$B_CFG"
+          fi
+
+          # Case C (BuildBuddy down, fallback): unreachable grpcs host + local fallback enabled
+          C_OB="${RUNNER_TEMP}/rd-case-c-ob"
+          C_REPO="${RUNNER_TEMP}/rd-case-c-repo"
+          C_CONTENTS="${RUNNER_TEMP}/rd-case-c-contents"
+          C_LOG="${RUNNER_TEMP}/rd-case-c.log"
+          rm -rf "$C_OB" "$C_REPO" "$C_CONTENTS"
+          mkdir -p "$C_OB" "$C_REPO" "$C_CONTENTS"
+          set +e
+          bazel --output_base="$C_OB" build --nobuild \
+            --remote_cache=grpcs://unreachable.invalid:443 \
+            --experimental_remote_downloader=grpcs://unreachable.invalid:443 \
+            --experimental_remote_downloader_local_fallback \
+            --remote_retries=1 \
+            --remote_timeout=5s \
+            --repository_cache="$C_REPO" \
+            --repo_contents_cache="$C_CONTENTS" \
+            "${CASE_TARGETS[@]}" 2>&1 | tee "$C_LOG"
+          case_c_rc="${PIPESTATUS[0]}"
+          set -e
+          case_c_bytes="$(dir_bytes "$C_REPO")"
+          case_c_note="$(xfer_note "$C_LOG")"
+          bazel --output_base="$C_OB" shutdown || true
+          rm -rf "$C_OB" "$C_REPO" "$C_CONTENTS"
+
+          # Case D1 (no key, fork-PR shape with downloader flag set and NO key header)
+          D1_OB="${RUNNER_TEMP}/rd-case-d1-ob"
+          D1_REPO="${RUNNER_TEMP}/rd-case-d1-repo"
+          D1_CONTENTS="${RUNNER_TEMP}/rd-case-d1-contents"
+          D1_LOG="${RUNNER_TEMP}/rd-case-d1.log"
+          rm -rf "$D1_OB" "$D1_REPO" "$D1_CONTENTS"
+          mkdir -p "$D1_OB" "$D1_REPO" "$D1_CONTENTS"
+          set +e
+          bazel --output_base="$D1_OB" build --nobuild \
+            --remote_cache=grpcs://remote.buildbuddy.io \
+            --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
+            --experimental_remote_downloader_local_fallback \
+            --remote_retries=1 \
+            --remote_timeout=15s \
+            --repository_cache="$D1_REPO" \
+            --repo_contents_cache="$D1_CONTENTS" \
+            "${CASE_TARGETS[@]}" 2>&1 | tee "$D1_LOG"
+          case_d1_rc="${PIPESTATUS[0]}"
+          set -e
+          case_d1_bytes="$(dir_bytes "$D1_REPO")"
+          case_d1_note="$(xfer_note "$D1_LOG")"
+          bazel --output_base="$D1_OB" shutdown || true
+          rm -rf "$D1_OB" "$D1_REPO" "$D1_CONTENTS"
+
+          # Case D2 (no key, fork-PR shape without downloader flag)
+          D2_OB="${RUNNER_TEMP}/rd-case-d2-ob"
+          D2_REPO="${RUNNER_TEMP}/rd-case-d2-repo"
+          D2_CONTENTS="${RUNNER_TEMP}/rd-case-d2-contents"
+          D2_LOG="${RUNNER_TEMP}/rd-case-d2.log"
+          rm -rf "$D2_OB" "$D2_REPO" "$D2_CONTENTS"
+          mkdir -p "$D2_OB" "$D2_REPO" "$D2_CONTENTS"
+          set +e
+          bazel --output_base="$D2_OB" build --nobuild \
+            --repository_cache="$D2_REPO" \
+            --repo_contents_cache="$D2_CONTENTS" \
+            "${CASE_TARGETS[@]}" 2>&1 | tee "$D2_LOG"
+          case_d2_rc="${PIPESTATUS[0]}"
+          set -e
+          case_d2_bytes="$(dir_bytes "$D2_REPO")"
+          case_d2_note="$(xfer_note "$D2_LOG")"
+          bazel --output_base="$D2_OB" shutdown || true
+          rm -rf "$D2_OB" "$D2_REPO" "$D2_CONTENTS"
+
+          {
+            echo ""
+            echo "#### BuildBuddy Remote Asset API experiment (verify-only)"
+            echo ""
+            echo "| Case | Exit code | Fresh repo cache (bytes) | Transfer / notes |"
+            echo "|---|---:|---:|---|"
+            echo "| A: Warm (BuildBuddy downloader + key, Linux \`//...\`) | ${case_a_rc} | ${case_a_bytes} | ${case_a_note} |"
+            echo "| B: Origin blocked (\`unreachable.invalid\` rewrite, 2 targets) | ${case_b_rc} | ${case_b_bytes} | ${case_b_proof}; ${case_b_note} |"
+            echo "| C: BuildBuddy down (\`unreachable.invalid:443\` + fallback, 2 targets) | ${case_c_rc} | ${case_c_bytes} | ${case_c_note} |"
+            echo "| D1: No key (downloader flag set, no header, 2 targets) | ${case_d1_rc} | ${case_d1_bytes} | ${case_d1_note} |"
+            echo "| D2: No key (no downloader flag, 2 targets) | ${case_d2_rc} | ${case_d2_bytes} | ${case_d2_note} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check if complete repository cache already exists
         id: cache-lookup
@@ -434,9 +986,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bazel --output_base="$OB" shutdown || true
-          rm -rf "$OB" "$CONTENTS"
-
           OB2="${RUNNER_TEMP}/verify-ob"
           CONTENTS2="${RUNNER_TEMP}/verify-contents"
           if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
@@ -444,6 +993,15 @@ jobs:
             exit 1
           fi
           mkdir -p "$OB2" "$CONTENTS2"
+          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
+            if [ -e "$p" ] || [ -L "$p" ]; then
+              echo "::error::verify contents directory '$CONTENTS2' is not empty before bazel commands (found '${p##*/}')"
+              exit 1
+            fi
+          done
+
+          bazel --output_base="$OB" shutdown || true
+          rm -rf "$OB" "$CONTENTS"
 
           got_repo="$(bazel --output_base="$OB2" info \
             --repository_cache="$REPO" \
@@ -464,10 +1022,17 @@ jobs:
             echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
             exit 1
           fi
-          if [ -n "$(ls -A "$CONTENTS2")" ]; then
-            echo "::error::verify contents directory '$CONTENTS2' is not empty before offline check"
-            exit 1
-          fi
+          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
+            [ -e "$p" ] || [ -L "$p" ] || continue
+            entry="${p##*/}"
+            case "$entry" in
+              gc_lock) ;;
+              *)
+                echo "::error::unexpected entry '$entry' in '$CONTENTS2' before offline check (only gc_lock is allowed)"
+                exit 1
+                ;;
+            esac
+          done
 
           IFS=' ' read -r -a targets <<< "$TARGETS"
           log_file="${RUNNER_TEMP}/verify-offline.log"
@@ -498,10 +1063,24 @@ jobs:
             echo "::error::${REPO}/contents was created during offline verification"
             exit 1
           fi
-          if [ -z "$(ls -A "$CONTENTS2")" ]; then
-            echo "::error::verify contents directory '$CONTENTS2' remained empty after offline build"
+          extracted_count=0
+          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
+            [ -e "$p" ] || [ -L "$p" ] || continue
+            entry="${p##*/}"
+            case "$entry" in
+              gc_lock) ;;
+              *)
+                if [ -d "$p" ]; then
+                  extracted_count=$((extracted_count + 1))
+                fi
+                ;;
+            esac
+          done
+          if [ "$extracted_count" -eq 0 ]; then
+            echo "::error::verify contents directory '$CONTENTS2' has no extracted repos after offline build (only lock files or empty)"
             exit 1
           fi
+          echo "Offline build populated ${extracted_count} extracted repo content entries in ${CONTENTS2}."
 
           bazel --output_base="$OB2" shutdown || true
           rm -rf "$OB2" "$CONTENTS2"
