@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.43.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.42.0...vitruvian-code-v1.43.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-code:** notices, compaction, usage-limit wait and error cards ([#5428](https://github.com/VitruvianSoftware/vitruvian-core/issues/5428)) ([d4ae788](https://github.com/VitruvianSoftware/vitruvian-core/commit/d4ae78872e5e5ba8ddeb34736ba8c8f28106eeec))
+* **vitruvian-code:** settings bar, per-chat modes, slash details and file mentions ([#5417](https://github.com/VitruvianSoftware/vitruvian-core/issues/5417)) ([154b0ae](https://github.com/VitruvianSoftware/vitruvian-core/commit/154b0aeed6ff2e36eab3dcb73a566c2b50ed5f7f))
+
 ## [1.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.41.2...vitruvian-code-v1.42.0) (2026-11-23)
 
 
