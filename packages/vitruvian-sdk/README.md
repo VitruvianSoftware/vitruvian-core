@@ -91,6 +91,7 @@ not work.
 | `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
 | `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
 | `conformance/` | A script that plays the app's side to your tool in seven scripted checks, and the two smallest tools that pass it: `reference-tool`, which speaks protocol 1 and has one command, and `reference-tool-2`, the same tool in protocol 2 with one panel, a line of text and a button. Both are plain Python with nothing else. |
+| `vendor/vitruvian-pycompat/` | (Public mirror only.) Standard-library-only, MIT-licensed Python 3.12 compatibility crate used by `conformance/`, synced automatically from `vitruvian-core`. |
 | `.github/workflows/` | The CI and the release of [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk). They run only there. |
 
 ## Getting it

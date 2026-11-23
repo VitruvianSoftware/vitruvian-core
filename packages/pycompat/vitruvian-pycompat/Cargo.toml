@@ -20,11 +20,8 @@
 
 # Python 3.12 compatibility helpers (std-only) for ported Rust tools.
 #
-# Its own empty [workspace], like packages/mcp-auth/Cargo.toml, so Cargo does
-# not treat this crate as an unlisted member of the repo-root workspace when
-# another workspace (e.g. packages/vitruvian-sdk/verification/Cargo.toml)
-# path-depends on it. Exported into the public vitruvian-sdk mirror at
-# vendor/vitruvian-pycompat/ by tools/copybara/copy.bara.sky.
+# Its own empty [workspace] so Cargo does not treat this crate as an unlisted
+# member of an enclosing workspace when another workspace path-depends on it.
 [workspace]
 
 [package]

@@ -531,6 +531,7 @@ jobs:
               - 'apps/desktop/vitruvian-speaker/**'
               - 'apps/mobile/vitruvian-remote/macmenu/**'
               - 'packages/peripherals/**'
+              - 'packages/pycompat/vitruvian-pycompat/**'
               - 'packages/sentry-lite/**'
               - 'packages/vitruvian-sdk/**'
               - 'tools/**'
