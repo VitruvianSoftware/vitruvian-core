@@ -425,6 +425,12 @@ public final class VitruvianCodeWorktreeManager: ObservableObject {
                 if output == nil {
                     managed.setupStatus = .failed("Setup command failed: \(command)")
                     updateManagedWorktree(managed)
+                    _ = await removeWorktree(
+                        id: managed.id,
+                        force: true,
+                        deleteBranch: true,
+                        runGit: runGit
+                    )
                     return managed
                 }
             }
