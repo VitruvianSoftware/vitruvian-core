@@ -358,6 +358,10 @@ pub struct App {
     /// which is bounded, so this keeps one address from pushing out
     /// everyone else's sign-ins.
     pub(crate) authorize_limit: RateLimit,
+    /// Calls to `/oauth/token` per source address: 60 a minute, a burst of
+    /// 30. Each one may start a call to the identity service, which has only
+    /// a few places ([`crate::dashboard::Dashboard::exchange`]).
+    pub(crate) token_limit: RateLimit,
     /// App sign-ins in progress, consents waiting and codes handed out.
     pub(crate) pending: crate::oauth::Pending,
     mcp: Mcp,
@@ -409,6 +413,7 @@ impl App {
             registry,
             register_limit: RateLimit::new(10, 10),
             authorize_limit: RateLimit::new(30, 30),
+            token_limit: RateLimit::new(60, 30),
             pending: crate::oauth::Pending::default(),
             sessions: Mutex::new(HashMap::new()),
             timing,

@@ -18,8 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! The app sign-in's public endpoints: the authorization server's metadata
-//! and `POST /oauth/register`. Both answer 404 unless the feature is on.
+//! The app sign-in's public endpoints: the authorization server's metadata,
+//! `POST /oauth/register`, and the routing of the rest. All answer 404
+//! unless the feature is on.
 //!
 //! Registration stores nothing: the client id and secret are derived from the
 //! redirect URIs' shared id (see [`super::clients`]), so the only thing an
@@ -36,6 +37,7 @@ use serde_json::{json, Value};
 
 use super::clients::parse_registration;
 use super::consent;
+use super::token;
 use crate::http::{header_str, json_response, not_found, read_body, text, App, Body};
 
 /// The one scope an app asks for and the relay's tokens carry.
@@ -55,8 +57,7 @@ enum Route {
     Authorize,
     Callback,
     Consent,
-    /// `/oauth/token`: built in a later task.
-    NotYet,
+    Token,
 }
 
 fn route(path: &str) -> Option<Route> {
@@ -66,7 +67,7 @@ fn route(path: &str) -> Option<Route> {
         "/oauth/authorize" => Some(Route::Authorize),
         "/oauth/callback" => Some(Route::Callback),
         "/oauth/consent" => Some(Route::Consent),
-        "/oauth/token" => Some(Route::NotYet),
+        "/oauth/token" => Some(Route::Token),
         _ => None,
     }
 }
@@ -98,7 +99,8 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
         (Route::Consent, &Method::GET) => consent::consent_page(&app, &req),
         (Route::Consent, &Method::POST) => consent::consent_decide(&app, req).await,
         (Route::Consent, _) => wrong_method("GET, POST"),
-        (Route::NotYet, _) => text(StatusCode::NOT_IMPLEMENTED, "not implemented"),
+        (Route::Token, &Method::POST) => token::token(&app, req).await,
+        (Route::Token, _) => token::no_store(wrong_method("POST")),
     }
 }
 

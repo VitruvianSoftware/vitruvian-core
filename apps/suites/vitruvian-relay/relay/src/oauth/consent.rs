@@ -198,7 +198,7 @@ fn binding_of(req: &Request<Incoming>) -> Binding<'_> {
 /// The query as pairs, or `None` if a name appears twice (which the OAuth
 /// specs forbid, and which would otherwise let two readers of one request
 /// disagree about it).
-fn strict_pairs(query: &str) -> Option<HashMap<String, String>> {
+pub(super) fn strict_pairs(query: &str) -> Option<HashMap<String, String>> {
     let mut out = HashMap::new();
     for pair in query.split('&').filter(|p| !p.is_empty()) {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
@@ -513,7 +513,7 @@ pub(super) async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Respons
                 "Signing in is busy right now. Go back to your AI app and connect again in a minute.",
             );
         }
-        Err(ExchangeError::Failed(why)) => {
+        Err(ExchangeError::Failed(why) | ExchangeError::Refused(why)) => {
             app.log("app_signin_failed", json!({"why": why}));
             return try_again(
                 StatusCode::BAD_GATEWAY,

@@ -31,7 +31,7 @@ use crate::dashboard::parse_pairs;
 use crate::dashboard::session::challenge_for;
 use crate::http::tests::{
     app_harness, app_harness_with, harness, mint_with_role, now_secs, Harness, Reply, ALICE,
-    APPS_CLIENT, BOB, ISSUER, PUBLIC_URL,
+    APPS_CLIENT, BOB, ISSUER, MCP_CLIENT, PUBLIC_URL,
 };
 use crate::http::Timing;
 use ring::signature::KeyPair;
@@ -359,12 +359,11 @@ async fn feature_off_every_new_path_is_404() {
 }
 
 #[tokio::test]
-async fn later_endpoints_answer_501_when_on() {
+async fn wrong_methods_are_405_when_on() {
     let h = app_harness().await;
-    for (method, path) in [("POST", "/oauth/token")] {
-        let r = h.send(method, path, &[], "").await;
-        assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED, "{method} {path}");
-    }
+    let wrong = h.send("GET", "/oauth/token", &[], "").await;
+    assert_eq!(wrong.status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(wrong.header("allow").as_deref(), Some("POST"));
     let wrong = h.send("GET", "/oauth/register", &[], "").await;
     assert_eq!(wrong.status, StatusCode::METHOD_NOT_ALLOWED);
     let wrong = h
@@ -1583,4 +1582,901 @@ async fn allow_rechecks_the_computer_and_issues_nothing_when_it_is_gone() {
     let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
     assert_eq!(r.status, StatusCode::SEE_OTHER);
     assert_eq!(codes_held(&h), 1);
+}
+
+// -------------------------------------------------------------------- token
+
+const NEW_REFRESH: &str = "ROTATED-REFRESH-TOKEN-VALUE";
+
+/// The id and secret a registration for `id` hands out.
+fn creds(h: &Harness, id: &str) -> (String, String) {
+    h.app
+        .settings
+        .app_signin
+        .as_ref()
+        .unwrap()
+        .keys
+        .issue_client(id)
+}
+
+fn keys(h: &Harness) -> &super::AppKeys {
+    &h.app.settings.app_signin.as_ref().unwrap().keys
+}
+
+/// An access token for the apps client that expires at `exp`.
+fn app_token_exp(h: &Harness, sub: &str, role: Option<&str>, exp: u64) -> String {
+    mint_with_role(&h.rsa, APPS_CLIENT, sub, Some(exp), role)
+}
+
+fn pairs_body(pairs: &[(&str, String)]) -> String {
+    pairs
+        .iter()
+        .map(|(k, v)| format!("{k}={}", form_encode(v)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+async fn post_token_from(
+    h: &Harness,
+    ip: Option<&str>,
+    extra: &[(&str, String)],
+    body: &str,
+) -> Reply {
+    let mut headers = vec![(
+        "content-type",
+        "application/x-www-form-urlencoded".to_string(),
+    )];
+    if let Some(ip) = ip {
+        headers.push(("cf-connecting-ip", ip.to_string()));
+    }
+    headers.extend(extra.iter().cloned());
+    h.send("POST", "/oauth/token", &headers, body).await
+}
+
+async fn post_token(h: &Harness, pairs: &[(&str, String)]) -> Reply {
+    post_token_from(h, None, &[], &pairs_body(pairs)).await
+}
+
+/// A redemption of `code` by the app registered for `ID`, as Gemini sends it.
+fn redeem(h: &Harness, code: &str) -> Vec<(&'static str, String)> {
+    let (id, secret) = creds(h, ID);
+    vec![
+        ("grant_type", "authorization_code".into()),
+        ("code", code.into()),
+        ("redirect_uri", production_callback(ID)),
+        ("code_verifier", VERIFIER.into()),
+        ("client_id", id),
+        ("client_secret", secret),
+    ]
+}
+
+/// A refresh by the app registered for `id`.
+fn refresh_by(h: &Harness, id: &str, token: &str) -> Vec<(&'static str, String)> {
+    let (client, secret) = creds(h, id);
+    vec![
+        ("grant_type", "refresh_token".into()),
+        ("refresh_token", token.into()),
+        ("client_id", client),
+        ("client_secret", secret),
+    ]
+}
+
+fn refresh(h: &Harness, token: &str) -> Vec<(&'static str, String)> {
+    refresh_by(h, ID, token)
+}
+
+/// What the relay seals for an app.
+fn sealed_for(h: &Harness, client: &str, zitadel_refresh: &str, device: &str, sub: &str) -> String {
+    keys(h).seal(
+        client,
+        json!({"refresh_token": zitadel_refresh, "device_id": device, "subject": sub})
+            .to_string()
+            .as_bytes(),
+    )
+}
+
+/// A person allowed an app on their computer: the code that was issued.
+struct Issued {
+    code: String,
+    device: String,
+    access: String,
+}
+
+async fn issue_code(h: &Harness, sub: &str) -> Issued {
+    let (device, _key) = h.new_device(sub).await;
+    let st = start(h, &device).await;
+    let access = app_token(h, sub, Some("relay-user"));
+    let r = come_back(h, &st, &access).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let csrf = csrf_in(&consent_get(h, &st.cookie).await.body);
+    let r = decide(h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let code = param(&r.header("location").unwrap(), "code").unwrap();
+    Issued {
+        code,
+        device,
+        access,
+    }
+}
+
+fn error_of(r: &Reply, status: StatusCode, error: &str) {
+    assert_eq!(r.status, status, "{}", r.body);
+    assert_eq!(r.json()["error"], error, "{}", r.body);
+}
+
+/// Redeems a fresh code and returns what came back.
+async fn redeemed(h: &Harness) -> (Issued, Value) {
+    let issued = issue_code(h, ALICE).await;
+    let r = post_token(h, &redeem(h, &issued.code)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let doc = r.json();
+    (issued, doc)
+}
+
+fn payload_of(h: &Harness, sealed: &str) -> Value {
+    let (client, _) = creds(h, ID);
+    let plain = keys(h).open(&client, sealed).expect("sealed for this app");
+    serde_json::from_slice(&plain).unwrap()
+}
+
+#[tokio::test]
+async fn code_redeems_once() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let doc = r.json();
+    // Zitadel's own access token, the kind of token and how long it has.
+    assert_eq!(doc["access_token"], issued.access);
+    assert_eq!(doc["token_type"], "Bearer");
+    let left = doc["expires_in"].as_u64().unwrap();
+    assert!((1..=600).contains(&left), "counted from the token: {left}");
+    assert!(doc["refresh_token"].as_str().is_some());
+    // The token works where the app will use it.
+    let caller = h.app.mcp_verifier.verify(&issued.access).unwrap();
+    assert_eq!(caller.subject, ALICE);
+
+    // The same code again gets nothing.
+    let again = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(&again, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert!(again.json().get("access_token").is_none());
+}
+
+#[tokio::test]
+async fn expired_code_is_invalid_grant() {
+    static SKEW: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    fn skewed() -> u64 {
+        now_secs() + SKEW.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    let h = app_harness_with(Timing {
+        clock: skewed,
+        ..Timing::default()
+    })
+    .await;
+    let issued = issue_code(&h, ALICE).await;
+    SKEW.store(61, std::sync::atomic::Ordering::SeqCst);
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    SKEW.store(0, std::sync::atomic::Ordering::SeqCst);
+    // It is gone, not merely late.
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+}
+
+#[tokio::test]
+async fn a_code_that_was_never_issued_is_invalid_grant() {
+    let h = app_harness().await;
+    for code in ["nonsense", &"A".repeat(43)] {
+        let r = post_token(&h, &redeem(&h, code)).await;
+        error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    }
+}
+
+#[tokio::test]
+async fn wrong_verifier_is_invalid_grant_and_burns_code() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let wrong = with(
+        redeem(&h, &issued.code),
+        "code_verifier",
+        Some(&"x".repeat(43)),
+    );
+    error_of(
+        &post_token(&h, &wrong).await,
+        StatusCode::BAD_REQUEST,
+        "invalid_grant",
+    );
+    // The right verifier is too late: the code was spent by the first try.
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert_eq!(h.app.pending.counts().2, 0);
+}
+
+#[tokio::test]
+async fn wrong_client_is_invalid_client() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let (id, secret) = creds(&h, ID);
+    let (other_id, other_secret) = creds(&h, OTHER_ID);
+    let forged = format!("{id}x");
+    let cases: Vec<(&str, Vec<(&'static str, String)>)> = vec![
+        (
+            "wrong secret",
+            with(
+                redeem(&h, &issued.code),
+                "client_secret",
+                Some(&format!("{secret}x")),
+            ),
+        ),
+        (
+            "another client's secret",
+            with(
+                redeem(&h, &issued.code),
+                "client_secret",
+                Some(&other_secret),
+            ),
+        ),
+        (
+            "no secret",
+            with(redeem(&h, &issued.code), "client_secret", None),
+        ),
+        (
+            "no client",
+            with(redeem(&h, &issued.code), "client_id", None),
+        ),
+        (
+            "forged id",
+            with(redeem(&h, &issued.code), "client_id", Some(&forged)),
+        ),
+        (
+            "empty secret",
+            with(redeem(&h, &issued.code), "client_secret", Some("")),
+        ),
+    ];
+    for (what, pairs) in cases {
+        let r = post_token(&h, &pairs).await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{what}: {}", r.body);
+        assert_eq!(r.json()["error"], "invalid_client", "{what}");
+    }
+    // A caller who cannot prove who it is does not spend anyone's code.
+    assert_eq!(h.app.pending.counts().2, 1);
+    let ok = post_token(&h, &redeem(&h, &issued.code)).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+
+    // A different registered client, properly signed in, is refused the grant
+    // and the code is spent.
+    let issued = issue_code(&h, ALICE).await;
+    let theirs = with(
+        with(redeem(&h, &issued.code), "client_id", Some(&other_id)),
+        "client_secret",
+        Some(&other_secret),
+    );
+    error_of(
+        &post_token(&h, &theirs).await,
+        StatusCode::BAD_REQUEST,
+        "invalid_grant",
+    );
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+}
+
+#[tokio::test]
+async fn client_can_authenticate_with_basic() {
+    let h = app_harness().await;
+    let (id, secret) = creds(&h, ID);
+    let basic = |user: &str, pass: &str| {
+        format!(
+            "Basic {}",
+            crate::http::tests::b64(format!("{user}:{pass}").as_bytes())
+        )
+    };
+    let bare = |h: &Harness, code: &str| {
+        let mut p = redeem(h, code);
+        p.retain(|(k, _)| *k != "client_id" && *k != "client_secret");
+        p
+    };
+
+    let issued = issue_code(&h, ALICE).await;
+    let r = post_token_from(
+        &h,
+        None,
+        &[("authorization", basic(&id, &secret))],
+        &pairs_body(&bare(&h, &issued.code)),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+
+    // Basic with the same id repeated in the body is still one client.
+    let issued = issue_code(&h, ALICE).await;
+    let mut with_id = bare(&h, &issued.code);
+    with_id.push(("client_id", id.clone()));
+    let r = post_token_from(
+        &h,
+        None,
+        &[("authorization", basic(&id, &secret))],
+        &pairs_body(&with_id),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+
+    // Both ways at once, or two different ids, is a malformed request, and
+    // spends nothing.
+    let issued = issue_code(&h, ALICE).await;
+    let r = post_token_from(
+        &h,
+        None,
+        &[("authorization", basic(&id, &secret))],
+        &pairs_body(&redeem(&h, &issued.code)),
+    )
+    .await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+    let (other_id, _) = creds(&h, OTHER_ID);
+    let mut two_ids = bare(&h, &issued.code);
+    two_ids.push(("client_id", other_id));
+    let r = post_token_from(
+        &h,
+        None,
+        &[("authorization", basic(&id, &secret))],
+        &pairs_body(&two_ids),
+    )
+    .await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+    assert_eq!(h.app.pending.counts().2, 1, "nothing was spent");
+
+    // A wrong Basic secret is a failed client check, which says how to retry.
+    let r = post_token_from(
+        &h,
+        None,
+        &[("authorization", basic(&id, "nope"))],
+        &pairs_body(&bare(&h, &issued.code)),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{}", r.body);
+    assert_eq!(r.json()["error"], "invalid_client");
+    assert!(r.header("www-authenticate").unwrap().starts_with("Basic"));
+    for bad in ["Basic !!!", "Basic", "Bearer abc", "Basic YWJj"] {
+        let r = post_token_from(
+            &h,
+            None,
+            &[("authorization", bad.to_string())],
+            &pairs_body(&bare(&h, &issued.code)),
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{bad}: {}", r.body);
+    }
+    assert_eq!(h.app.pending.counts().2, 1, "still not spent");
+}
+
+#[tokio::test]
+async fn wrong_callback_is_invalid_grant() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    for (n, uri) in [
+        production_callback(OTHER_ID),
+        format!("{}/", production_callback(ID)),
+        production_callback(ID).replace("/r/", "/a/"),
+        "https://oauth-redirect-sandbox.googleusercontent.com/r/user_bound_custom-mcp-089fb14b828289a2178722b6".to_string(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        // One person holds only so many computers, so each try has its own.
+        let issued = issue_code(&h, &format!("person-{n}")).await;
+        let r = post_token(
+            &h,
+            &with(redeem(&h, &issued.code), "redirect_uri", Some(&uri)),
+        )
+        .await;
+        error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    }
+    // The first code is untouched by those and still redeems.
+    let ok = post_token(&h, &redeem(&h, &issued.code)).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    // Leaving it out (or empty) is a malformed request, not a mismatch.
+    let issued = issue_code(&h, ALICE).await;
+    let r = post_token(&h, &with(redeem(&h, &issued.code), "redirect_uri", None)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+    let r = post_token(
+        &h,
+        &with(redeem(&h, &issued.code), "redirect_uri", Some("")),
+    )
+    .await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+}
+
+#[tokio::test]
+async fn wrong_resource_is_invalid_grant() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let mine = format!("{PUBLIC_URL}/mcp/app/{}", issued.device);
+    let theirs = format!("{PUBLIC_URL}/mcp/app/someone-elses");
+    let r = post_token(
+        &h,
+        &with(redeem(&h, &issued.code), "resource", Some(&theirs)),
+    )
+    .await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    // Burned: even the right resource now fails.
+    let r = post_token(&h, &with(redeem(&h, &issued.code), "resource", Some(&mine))).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+
+    // The right one, or none at all, works.
+    let issued = issue_code(&h, ALICE).await;
+    let mine = format!("{PUBLIC_URL}/mcp/app/{}", issued.device);
+    let r = post_token(&h, &with(redeem(&h, &issued.code), "resource", Some(&mine))).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn refresh_token_is_sealed_not_zitadels() {
+    let h = app_harness().await;
+    let (issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap();
+    assert!(
+        !sealed.contains(REFRESH),
+        "Zitadel's token is not passed on"
+    );
+    let payload = payload_of(&h, sealed);
+    assert_eq!(payload["refresh_token"], REFRESH);
+    assert_eq!(payload["device_id"], issued.device);
+    assert_eq!(payload["subject"], ALICE);
+    // Zitadel's own refresh token is not something the relay accepts.
+    let before = h.tokens.requests().len();
+    let r = post_token(&h, &refresh(&h, REFRESH)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert_eq!(h.tokens.requests().len(), before, "nothing was forwarded");
+}
+
+#[tokio::test]
+async fn no_refresh_token_from_zitadel_means_none_for_the_app() {
+    let h = app_harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    let st = start(&h, &device).await;
+    let access = app_token(&h, ALICE, Some("relay-user"));
+    h.tokens.give_token(&access);
+    let r = h
+        .send(
+            "GET",
+            &format!(
+                "/oauth/callback?code={ZITADEL_CODE}&state={}",
+                form_encode(&st.state)
+            ),
+            &[("cookie", st.cookie.clone())],
+            "",
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
+    let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    let code = param(&r.header("location").unwrap(), "code").unwrap();
+    let r = post_token(&h, &redeem(&h, &code)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.json().get("refresh_token").is_none(), "{}", r.body);
+    assert_eq!(r.json()["access_token"], access);
+}
+
+#[tokio::test]
+async fn refresh_rotates_sealed_token() {
+    let h = app_harness().await;
+    let (issued, doc) = redeemed(&h).await;
+    let first = doc["refresh_token"].as_str().unwrap().to_string();
+
+    // Zitadel rotates: the app gets a new sealed token for the new one.
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, &first)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let second = r.json();
+    assert_eq!(second["access_token"], access);
+    assert_eq!(second["token_type"], "Bearer");
+    let left = second["expires_in"].as_u64().unwrap();
+    assert!((601..=900).contains(&left), "{left}");
+    let sealed = second["refresh_token"].as_str().unwrap();
+    assert_ne!(sealed, first);
+    assert!(!sealed.contains(NEW_REFRESH));
+    let payload = payload_of(&h, sealed);
+    assert_eq!(payload["refresh_token"], NEW_REFRESH);
+    assert_eq!(payload["device_id"], issued.device);
+    assert_eq!(payload["subject"], ALICE);
+    // What went to Zitadel: the sealed token's contents, for the apps client.
+    let sent = h.tokens.requests().last().cloned().unwrap();
+    let form = parse_pairs(&sent);
+    assert_eq!(form["grant_type"], "refresh_token");
+    assert_eq!(form["refresh_token"], REFRESH);
+    assert_eq!(form["client_id"], APPS_CLIENT);
+    assert!(!sent.contains("client_secret"), "{sent}");
+
+    // The new sealed token refreshes in turn.
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 1200);
+    h.tokens.give_tokens(&access, "THIRD");
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let sent = parse_pairs(&h.tokens.requests().last().cloned().unwrap());
+    assert_eq!(sent["refresh_token"], NEW_REFRESH);
+
+    // Zitadel does not rotate: the same refresh token is sealed again.
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 1500);
+    h.tokens.give_token(&access);
+    let sealed = r.json()["refresh_token"].as_str().unwrap().to_string();
+    let r = post_token(&h, &refresh(&h, &sealed)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["access_token"], access);
+    let payload = payload_of(&h, r.json()["refresh_token"].as_str().unwrap());
+    assert_eq!(payload["refresh_token"], "THIRD");
+    assert_eq!(payload["device_id"], issued.device);
+}
+
+#[tokio::test]
+async fn refresh_from_another_client_is_invalid_grant() {
+    let h = app_harness().await;
+    let (_issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap();
+    let before = h.tokens.requests().len();
+    // Another registered client, with its own correct secret.
+    let r = post_token(&h, &refresh_by(&h, OTHER_ID, sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert_eq!(h.tokens.requests().len(), before, "nothing was forwarded");
+    // Without its own credentials the other client is not even asked.
+    let (id, _) = creds(&h, OTHER_ID);
+    let r = post_token(
+        &h,
+        &[
+            ("grant_type", "refresh_token".to_string()),
+            ("refresh_token", sealed.to_string()),
+            ("client_id", id),
+        ],
+    )
+    .await;
+    error_of(&r, StatusCode::UNAUTHORIZED, "invalid_client");
+    // Tampered or not a sealed value at all.
+    let mut bad = sealed.to_string();
+    bad.pop();
+    bad.push(if sealed.ends_with('A') { 'B' } else { 'A' });
+    for token in [bad.as_str(), "", "garbage", "AAAA"] {
+        let r = post_token(&h, &refresh(&h, token)).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{token}: {}", r.body);
+        assert_eq!(
+            r.json()["error"],
+            if token.is_empty() {
+                "invalid_request"
+            } else {
+                "invalid_grant"
+            }
+        );
+    }
+    assert_eq!(h.tokens.requests().len(), before);
+    // The owner still can.
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn zitadel_refusing_refresh_is_invalid_grant() {
+    let h = app_harness().await;
+    let (_issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap();
+    h.tokens.refuse();
+    error_of(
+        &post_token(&h, &refresh(&h, sealed)).await,
+        StatusCode::BAD_REQUEST,
+        "invalid_grant",
+    );
+    h.tokens.give_status(401);
+    error_of(
+        &post_token(&h, &refresh(&h, sealed)).await,
+        StatusCode::BAD_REQUEST,
+        "invalid_grant",
+    );
+}
+
+#[tokio::test]
+async fn zitadel_down_is_503_temporarily_unavailable() {
+    let h = app_harness().await;
+    let (_issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap();
+    for status in [500, 502, 503] {
+        h.tokens.give_status(status);
+        let r = post_token(&h, &refresh(&h, sealed)).await;
+        error_of(
+            &r,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "temporarily_unavailable",
+        );
+        assert!(r.header("retry-after").is_some(), "{status}");
+    }
+    // A 200 with no access token is Zitadel failing, not the app's grant.
+    h.tokens.give_answer(200, "{}");
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    error_of(
+        &r,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    );
+    // The sealed token is still good once Zitadel is back.
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn only_so_many_refreshes_run_at_once() {
+    let h = std::sync::Arc::new(app_harness().await);
+    let (device, _key) = h.new_device(ALICE).await;
+    let (client, _) = creds(&h, ID);
+    let sealed = sealed_for(&h, &client, REFRESH, &device, ALICE);
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    h.tokens.stall(true);
+    let mut pending = Vec::new();
+    for _ in 0..8 {
+        let (h, body) = (h.clone(), pairs_body(&refresh(&h, &sealed)));
+        pending.push(tokio::spawn(async move {
+            post_token_from(&h, None, &[], &body).await
+        }));
+    }
+    crate::http::tests::within(async {
+        while h.app.dashboard.free_exchange_slots() > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    let r = post_token(&h, &refresh(&h, &sealed)).await;
+    error_of(
+        &r,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    );
+    assert!(r.header("retry-after").is_some());
+    h.tokens.stall(false);
+    for p in pending {
+        let r = crate::http::tests::within(p).await.unwrap();
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    }
+}
+
+#[tokio::test]
+async fn refresh_stops_when_the_person_loses_the_role_or_the_token_is_not_theirs() {
+    let h = app_harness().await;
+    let (_issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap();
+    // Zitadel still refreshes, but the person no longer holds `relay-user`.
+    let access = app_token_exp(&h, ALICE, None, now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert!(r.json().get("access_token").is_none());
+    // A token for someone else (or another client) is not handed on.
+    let bobs = app_token_exp(&h, BOB, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&bobs, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    let other_client = mint_with_role(
+        &h.rsa,
+        MCP_CLIENT,
+        ALICE,
+        Some(now_secs() + 900),
+        Some("relay-user"),
+    );
+    h.tokens.give_tokens(&other_client, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    // Not a token at all.
+    h.tokens.give_tokens("not-a-jwt", NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+}
+
+#[tokio::test]
+async fn the_computer_is_rechecked_at_redemption_and_at_refresh() {
+    let h = app_harness().await;
+    // Removed between Allow and the app's redemption.
+    let issued = issue_code(&h, ALICE).await;
+    assert!(h.app.revoke(ALICE, &issued.device).await.unwrap());
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert!(r.json().get("access_token").is_none());
+
+    // The database not answering at that moment: try again, no tokens.
+    let issued = issue_code(&h, ALICE).await;
+    h.store
+        .fail_with(Some(crate::store::StoreError::Unavailable));
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    error_of(
+        &r,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    );
+    assert!(r.header("retry-after").is_some());
+    assert!(r.json().get("access_token").is_none());
+    h.store.fail_with(None);
+
+    // Removed after the app has its tokens: the next refresh fails.
+    let (issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap();
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    h.store
+        .fail_with(Some(crate::store::StoreError::Unavailable));
+    error_of(
+        &post_token(&h, &refresh(&h, sealed)).await,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    );
+    h.store.fail_with(None);
+    assert!(h.app.revoke(ALICE, &issued.device).await.unwrap());
+    let r = post_token(&h, &refresh(&h, sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert!(r.json().get("access_token").is_none());
+}
+
+#[tokio::test]
+async fn malformed_token_requests_are_invalid_request() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let good = redeem(&h, &issued.code);
+    // A repeated name, whichever name, refuses the whole request.
+    for name in ["code", "client_id", "grant_type", "code_verifier"] {
+        let value = good.iter().find(|(k, _)| *k == name).unwrap().1.clone();
+        let body = format!("{}&{name}={}", pairs_body(&good), form_encode(&value));
+        let r = post_token_from(&h, None, &[], &body).await;
+        error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+    }
+    // Missing pieces.
+    for name in ["grant_type", "code", "code_verifier"] {
+        let r = post_token(&h, &with(good.clone(), name, None)).await;
+        error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+    }
+    let r = post_token(&h, &with(refresh(&h, "x"), "refresh_token", None)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_request");
+    let r = post_token_from(&h, None, &[], "").await;
+    assert!(r.status.is_client_error(), "{}", r.body);
+    // Not a form at all.
+    let r = post_token_from(&h, None, &[], "\u{ff}\u{fe}").await;
+    assert!(r.status.is_client_error(), "{}", r.body);
+    // A grant the relay does not have.
+    for grant in ["password", "client_credentials", "implicit"] {
+        let r = post_token(&h, &with(good.clone(), "grant_type", Some(grant))).await;
+        error_of(&r, StatusCode::BAD_REQUEST, "unsupported_grant_type");
+    }
+    // None of that spent the code.
+    let ok = post_token(&h, &good).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+}
+
+#[tokio::test]
+async fn token_body_over_16k_is_refused() {
+    let h = app_harness().await;
+    let big = format!("grant_type=x&pad={}", "x".repeat(17 * 1024));
+    let r = post_token_from(&h, None, &[], &big).await;
+    assert_eq!(r.status, StatusCode::PAYLOAD_TOO_LARGE, "{}", r.body);
+    assert_eq!(r.header("cache-control").as_deref(), Some("no-store"));
+}
+
+#[tokio::test]
+async fn token_is_rate_limited_per_ip_before_the_body_is_read() {
+    let h = app_harness().await;
+    for i in 1..=30 {
+        let r = post_token_from(&h, Some("198.51.100.1"), &[], "grant_type=x").await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "call {i}: {}", r.body);
+    }
+    let r = post_token_from(&h, Some("198.51.100.1"), &[], "grant_type=x").await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS, "{}", r.body);
+    assert!(r.header("retry-after").is_some());
+    // Over the limit, even a body that is too big is not read.
+    let big = "x".repeat(17 * 1024);
+    let r = post_token_from(&h, Some("198.51.100.1"), &[], &big).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    // Someone else is not held up, and a valid redemption from them works.
+    let issued = issue_code(&h, ALICE).await;
+    let r = post_token_from(
+        &h,
+        Some("198.51.100.2"),
+        &[],
+        &pairs_body(&redeem(&h, &issued.code)),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn responses_are_no_store() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let big = format!("grant_type=x&pad={}", "x".repeat(17 * 1024));
+    let doc = post_token(&h, &redeem(&h, &issued.code)).await;
+    let sealed = doc.json()["refresh_token"].as_str().unwrap().to_string();
+    h.tokens.give_status(500);
+    let replies = vec![
+        ("success", doc),
+        (
+            "invalid_grant",
+            post_token(&h, &redeem(&h, &issued.code)).await,
+        ),
+        (
+            "invalid_client",
+            post_token(&h, &with(redeem(&h, &issued.code), "client_secret", None)).await,
+        ),
+        ("invalid_request", post_token_from(&h, None, &[], "").await),
+        (
+            "unsupported_grant_type",
+            post_token(&h, &with(redeem(&h, &issued.code), "grant_type", Some("x"))).await,
+        ),
+        ("too big", post_token_from(&h, None, &[], &big).await),
+        ("zitadel down", post_token(&h, &refresh(&h, &sealed)).await),
+        ("rate limited", {
+            for _ in 0..40 {
+                let _ = post_token_from(&h, Some("203.0.113.77"), &[], "").await;
+            }
+            post_token_from(&h, Some("203.0.113.77"), &[], "").await
+        }),
+    ];
+    for (what, r) in &replies {
+        assert_eq!(
+            r.header("cache-control").as_deref(),
+            Some("no-store"),
+            "{what}"
+        );
+        assert_eq!(r.header("pragma").as_deref(), Some("no-cache"), "{what}");
+    }
+    assert_eq!(replies[0].1.status, StatusCode::OK);
+    assert_eq!(replies[6].1.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(replies[7].1.status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(replies[0]
+        .1
+        .header("content-type")
+        .unwrap()
+        .starts_with("application/json"));
+    // Even the 405 says so.
+    let wrong = h.send("GET", "/oauth/token", &[], "").await;
+    assert_eq!(wrong.header("cache-control").as_deref(), Some("no-store"));
+}
+
+#[tokio::test]
+async fn the_token_endpoint_leaves_no_secret_in_the_logs() {
+    let h = app_harness().await;
+    let issued = issue_code(&h, ALICE).await;
+    let r = post_token(&h, &redeem(&h, &issued.code)).await;
+    let doc = r.json();
+    let sealed = doc["refresh_token"].as_str().unwrap().to_string();
+    // A refused redemption, a refresh, a refused refresh and a failing Zitadel.
+    let _ = post_token(&h, &redeem(&h, &issued.code)).await;
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    let r = post_token(&h, &refresh(&h, &sealed)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let newer = r.json()["refresh_token"].as_str().unwrap().to_string();
+    h.tokens.refuse();
+    let _ = post_token(&h, &refresh(&h, &sealed)).await;
+    h.tokens.give_status(500);
+    let _ = post_token(&h, &refresh(&h, &sealed)).await;
+    // The token endpoint's own lines (the sign-in's name the computer).
+    let logs = h
+        .logs()
+        .lines()
+        .filter(|l| l.contains("app_token_"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(logs.contains("app_token_issued"), "{logs}");
+    assert!(logs.contains("app_token_refused"), "{logs}");
+    let (id, secret) = creds(&h, ID);
+    for secret in [
+        issued.access.as_str(),
+        access.as_str(),
+        REFRESH,
+        NEW_REFRESH,
+        issued.code.as_str(),
+        VERIFIER,
+        sealed.as_str(),
+        newer.as_str(),
+        id.as_str(),
+        secret.as_str(),
+        ALICE,
+        issued.device.as_str(),
+        ID,
+    ] {
+        assert!(!logs.contains(secret), "{secret} is in the logs:\n{logs}");
+    }
 }

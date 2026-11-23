@@ -29,6 +29,7 @@ pub mod pending;
 pub mod seal;
 #[cfg(test)]
 mod tests;
+mod token;
 
 pub use clients::{parse_registration, production_callback, RegisterError};
 pub(crate) use http::app_protected_resource_metadata;

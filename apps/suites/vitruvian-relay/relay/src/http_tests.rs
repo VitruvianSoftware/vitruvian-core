@@ -232,6 +232,16 @@ impl TokenServer {
         *self.answer.lock().unwrap() = (400, json!({"error": "invalid_grant"}).to_string());
     }
 
+    /// Answers every exchange with a bare status and no tokens (a 500, say).
+    pub(crate) fn give_status(&self, status: u16) {
+        *self.answer.lock().unwrap() = (status, json!({"error": "server_error"}).to_string());
+    }
+
+    /// Answers every exchange with exactly this status and body.
+    pub(crate) fn give_answer(&self, status: u16, body: &str) {
+        *self.answer.lock().unwrap() = (status, body.to_string());
+    }
+
     /// The form bodies sent so far.
     pub(crate) fn requests(&self) -> Vec<String> {
         self.requests.lock().unwrap().clone()

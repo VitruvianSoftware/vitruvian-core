@@ -77,6 +77,7 @@ _LIB_SRCS = [
     "src/oauth/pending.rs",
     "src/oauth/seal.rs",
     "src/oauth/tests.rs",
+    "src/oauth/token.rs",
     "src/parked.rs",
     "src/ratelimit.rs",
     "src/registry.rs",

@@ -669,27 +669,37 @@ pub(crate) enum ExchangeError {
     /// The identity service refused, did not answer or answered nonsense.
     /// What went wrong, in words with no secret in them.
     Failed(String),
+    /// The identity service said the grant is bad (a 400 or 401), as
+    /// opposed to being down: whatever was sent will never work.
+    Refused(String),
     /// The blocking task panicked or was cancelled.
     Internal,
 }
 
 /// Trades the sign-in code for tokens. Blocking.
-fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<Tokens, String> {
+fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<Tokens, ExchangeError> {
     let response = agent
         .post(url)
         .set("Content-Type", "application/x-www-form-urlencoded")
         .set("Accept", "application/json")
         .send_string(form)
         .map_err(|e| match e {
-            ureq::Error::Status(code, _) => format!("the token endpoint answered {code}"),
-            ureq::Error::Transport(_) => "the token endpoint did not answer".to_string(),
+            ureq::Error::Status(code @ (400 | 401), _) => {
+                ExchangeError::Refused(format!("the token endpoint answered {code}"))
+            }
+            ureq::Error::Status(code, _) => {
+                ExchangeError::Failed(format!("the token endpoint answered {code}"))
+            }
+            ureq::Error::Transport(_) => {
+                ExchangeError::Failed("the token endpoint did not answer".to_string())
+            }
         })?;
     let mut body = String::new();
     response
         .into_reader()
         .take(MAX_TOKEN_ANSWER_BYTES)
         .read_to_string(&mut body)
-        .map_err(|_| "the token answer could not be read".to_string())?;
+        .map_err(|_| ExchangeError::Failed("the token answer could not be read".to_string()))?;
     let doc = serde_json::from_str::<Value>(&body).ok();
     let text = |key: &str| {
         doc.as_ref()
@@ -697,8 +707,9 @@ fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<Tokens, S
             .filter(|t| !t.is_empty())
     };
     Ok(Tokens {
-        access_token: text("access_token")
-            .ok_or_else(|| "the token answer had no access token".to_string())?,
+        access_token: text("access_token").ok_or_else(|| {
+            ExchangeError::Failed("the token answer had no access token".to_string())
+        })?,
         refresh_token: text("refresh_token"),
         id_token: text("id_token"),
         expires_in: doc.as_ref().and_then(|v| v.get("expires_in")?.as_u64()),
@@ -730,7 +741,7 @@ impl Dashboard {
         .await;
         match exchanged {
             Ok(Ok(tokens)) => Ok(tokens),
-            Ok(Err(why)) => Err(ExchangeError::Failed(why)),
+            Ok(Err(e)) => Err(e),
             Err(_) => Err(ExchangeError::Internal),
         }
     }
@@ -807,7 +818,7 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
                 "Signing in is busy right now; try again in a minute.",
             );
         }
-        Err(ExchangeError::Failed(why)) => {
+        Err(ExchangeError::Failed(why) | ExchangeError::Refused(why)) => {
             app.log("dashboard_signin_failed", json!({"why": why}));
             return refused(
                 StatusCode::BAD_GATEWAY,
