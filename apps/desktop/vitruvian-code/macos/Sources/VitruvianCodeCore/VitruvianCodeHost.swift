@@ -176,7 +176,7 @@ public struct VitruvianCodeHostStrings: Sendable {
                  commandNoOutput: String = "No output from provider",
                  deleteSession: String = "Delete",
                  worktreeCreationFailed: String = "Could not create a git worktree for this chat.",
-                 worktreeFreshSessionNotice: String = "Starting a new session in the worktree. The agent won’t remember earlier messages in this chat.") {
+                 worktreeFreshSessionNotice: String = "Starting a new session. The agent won’t remember earlier messages in this chat.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
