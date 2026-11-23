@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.103.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.102.0...vitruvian-atrium-v3.103.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 46, fan resume retry, latched monitor speakers and 2 more ([#5431](https://github.com/VitruvianSoftware/vitruvian-core/issues/5431)) ([8217448](https://github.com/VitruvianSoftware/vitruvian-core/commit/82174489624e986d0ad3a9f0e1a36369fb130131))
+
 ## [3.102.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.2...vitruvian-atrium-v3.102.0) (2026-11-23)
 
 
