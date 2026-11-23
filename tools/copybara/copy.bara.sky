@@ -631,13 +631,16 @@ COMPONENTS = [
         # The shared Python-compatible JSON crate lives outside the subtree, so
         # the mirror gets its own copy at vendor/vitruvian-pycompat/ and the
         # conformance crate's Cargo.toml path to it is rewritten to match.
-        # Keep monorepo-only pycompat scripts and its monorepo Backstage README out
-        # of the public mirror; vendor/vitruvian-pycompat/ is explained in README.md.
+        # Keep monorepo-only pycompat scripts, its monorepo Backstage README,
+        # and monorepo-only golden test fixtures out of the public mirror;
+        # vendor/vitruvian-pycompat/ is explained in README.md.
         "extra_exports": {"packages/pycompat/vitruvian-pycompat": "vendor/vitruvian-pycompat"},
         "origin_only_exclude": [
             "packages/pycompat/vitruvian-pycompat/README.md",
             "packages/pycompat/vitruvian-pycompat/rustc-build.sh",
             "packages/pycompat/vitruvian-pycompat/rustc_build_test.sh",
+            "packages/pycompat/vitruvian-pycompat/testdata/gen_json_golden.py",
+            "packages/pycompat/vitruvian-pycompat/testdata/json_golden.jsonl",
         ],
         "export_transformations": [
             core.replace(

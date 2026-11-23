@@ -1,0 +1,7 @@
+# Turnstile + Cloudflare Worker checkout endpoint for /donate/ and /donate/<key>/.
+#
+# Set turnstile_sitekey from `pulumi stack output donateTurnstileSitekey --stack production`
+# once infrastructure/pulumi/platform/stripe has applied with Cloudflare credentials.
+# While turnstile_sitekey is empty, donate pages fall back to _data/donations.yml.
+endpoint: "https://donate-api.vitruviansoftware.dev/checkout"
+turnstile_sitekey: ""

@@ -425,8 +425,10 @@ fn run(args: Vec<OsString>) -> i32 {
 
     // Cloud sessions only: a local checkout already has direnv, bazel_env and
     // real gcloud credentials, and must not have a key installed over them.
-    if sub != "whoami" && !force && sh::env_or_empty("CLAUDE_CODE_REMOTE") != b"true" {
-        warn("not a cloud session (CLAUDE_CODE_REMOTE != true) — nothing to do.");
+    let is_cloud_session = sh::env_or_empty("VITRUVIAN_CLOUD_SESSION") == b"true"
+        || sh::env_or_empty("CLAUDE_CODE_REMOTE") == b"true";
+    if sub != "whoami" && !force && !is_cloud_session {
+        warn("not a cloud session (VITRUVIAN_CLOUD_SESSION != true) — nothing to do.");
         note("pass --force to run this against a local checkout anyway.");
         return 0;
     }

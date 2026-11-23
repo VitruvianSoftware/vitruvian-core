@@ -70,6 +70,14 @@ _LIB_SRCS = [
     "src/http_tests.rs",
     "src/lib.rs",
     "src/mcp.rs",
+    "src/oauth/clients.rs",
+    "src/oauth/consent.rs",
+    "src/oauth/http.rs",
+    "src/oauth/mod.rs",
+    "src/oauth/pending.rs",
+    "src/oauth/seal.rs",
+    "src/oauth/tests.rs",
+    "src/oauth/token.rs",
     "src/parked.rs",
     "src/ratelimit.rs",
     "src/registry.rs",
@@ -346,12 +354,15 @@ sh_test(
     env = {
         "EXPECT_FAILURE_BINARY": "$(rootpath :isolation_canary_itest_bin)",
         "EXPECT_FAILURE_PREFIX": "isolation::",
-        # The tests that look at someone else's computer.
+        # The tests that look at someone else's computer (the last two through
+        # the relay's own app sign-in).
         "EXPECT_FAILURE_REQUIRED": " ".join([
             "isolation::mcp_initialize_tools_list_and_call_on_bobs_device",
             "isolation::dashboard_device_page_rename_remove_for_bobs_device",
             "isolation::hello_with_bobs_device_id",
             "isolation::check_request_on_bobs_device_endpoint",
+            "isolation::gemini_flow_reaches_only_own_computer",
+            "isolation::alice_cannot_sign_in_an_app_to_bobs_computer",
         ]),
     },
     tags = ["manual"],

@@ -410,7 +410,29 @@ pub fn register_device(
     Ok(DeviceInfo {
         device_id: str_field(&body, "device_id").ok_or("the relay's answer has no device_id")?,
         mcp_url: str_field(&body, "mcp_url").ok_or("the relay's answer has no mcp_url")?,
+        // Only a relay with app sign-in on sends it. Printed to a terminal, so
+        // anything with a control character in it is treated as absent.
+        app_mcp_url: str_field(&body, "app_mcp_url").filter(|u| !u.chars().any(char::is_control)),
     })
+}
+
+/// What `vrelay login` prints once this Mac is registered: how to add it to
+/// Claude and, if the relay sent an app URL, to Gemini, which needs only that
+/// URL (it signs in with the relay, so there is no client id or secret).
+pub fn login_summary(claude_client_id: &str, device: &DeviceInfo) -> String {
+    let mut out = format!(
+        "Signed in. This Mac is registered with the relay.\n\
+         \n\
+         To use it from Claude, add a custom connector with:\n  MCP URL:    {}\n  Client ID:  {}\n",
+        device.mcp_url, claude_client_id
+    );
+    if let Some(app) = &device.app_mcp_url {
+        out.push_str(&format!(
+            "\nTo use it from Gemini, add a custom connector with:\n  MCP URL:    {app}\n  \
+             Gemini needs only this URL. Leave Client ID and secret blank.\n"
+        ));
+    }
+    out
 }
 
 /// What `vrelay login` does after the sign-in: registers this Mac and saves
@@ -963,6 +985,110 @@ mod tests {
             assert_eq!(sent["device_id"], "d-first");
             assert!(sent.get("rename").is_none(), "{sent}");
         }
+    }
+
+    /// A relay with app sign-in on also sends the address Gemini is given.
+    #[test]
+    fn register_device_reads_the_app_url_when_the_relay_sends_it() {
+        let base = fake_server(Box::new(|_, _, _, _| {
+            (
+                200,
+                json!({
+                    "device_id": "d1",
+                    "mcp_url": "https://r/mcp/d/d1",
+                    "app_mcp_url": "https://r/mcp/app/d1",
+                })
+                .to_string(),
+            )
+        }));
+        let d = register_device(
+            &cfg_for(&base, test_dir("reg-app")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(d.mcp_url, "https://r/mcp/d/d1");
+        assert_eq!(d.app_mcp_url.as_deref(), Some("https://r/mcp/app/d1"));
+    }
+
+    /// A relay without the feature (or an older one) sends no such field, and
+    /// the connector must work exactly as before. A field that is empty, not
+    /// text, or has control characters in it (it is printed to a terminal) is
+    /// the same as none.
+    #[test]
+    fn register_device_without_an_app_url_is_as_before() {
+        for extra in [
+            json!({}),
+            json!({"app_mcp_url": null}),
+            json!({"app_mcp_url": ""}),
+            json!({"app_mcp_url": 7}),
+            json!({"app_mcp_url": "https://r/mcp/app/d1\u{1b}[2J"}),
+        ] {
+            let mut answer = json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"});
+            answer
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let body = answer.to_string();
+            let base = fake_server(Box::new(move |_, _, _, _| (200, body.clone())));
+            let d = register_device(
+                &cfg_for(&base, test_dir("reg-noapp")),
+                "tok",
+                "PK",
+                None,
+                None,
+                false,
+            )
+            .unwrap();
+            assert_eq!(d.mcp_url, "https://r/mcp/d/d1");
+            assert_eq!(d.app_mcp_url, None, "{answer}");
+        }
+    }
+
+    /// What `vrelay login` says. The app URL is not saved with the device: the
+    /// relay sends it each time, so it cannot go stale if the feature is turned off.
+    #[test]
+    fn login_prints_the_app_url_for_gemini() {
+        let device = DeviceInfo {
+            device_id: "d1".into(),
+            mcp_url: "https://r/mcp/d/d1".into(),
+            app_mcp_url: Some("https://r/mcp/app/d1".into()),
+        };
+        let said = login_summary("claude-id", &device);
+        assert_eq!(
+            said,
+            "Signed in. This Mac is registered with the relay.\n\
+             \n\
+             To use it from Claude, add a custom connector with:\n\
+             \x20 MCP URL:    https://r/mcp/d/d1\n\
+             \x20 Client ID:  claude-id\n\
+             \n\
+             To use it from Gemini, add a custom connector with:\n\
+             \x20 MCP URL:    https://r/mcp/app/d1\n\
+             \x20 Gemini needs only this URL. Leave Client ID and secret blank.\n"
+        );
+    }
+
+    /// Without the field (feature off, or an older relay) there is no Gemini
+    /// line, and the Claude part is exactly what it was.
+    #[test]
+    fn login_prints_no_gemini_line_without_the_app_url() {
+        let device = DeviceInfo {
+            device_id: "d1".into(),
+            mcp_url: "https://r/mcp/d/d1".into(),
+            app_mcp_url: None,
+        };
+        assert_eq!(
+            login_summary("claude-id", &device),
+            "Signed in. This Mac is registered with the relay.\n\
+             \n\
+             To use it from Claude, add a custom connector with:\n\
+             \x20 MCP URL:    https://r/mcp/d/d1\n\
+             \x20 Client ID:  claude-id\n"
+        );
     }
 
     /// A stale id loses nothing: the name still goes with it (the relay uses

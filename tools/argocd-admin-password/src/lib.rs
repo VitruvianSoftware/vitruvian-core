@@ -21,8 +21,8 @@
 //! argocd-admin-password sync: pin the dev-local Argo CD `admin` password to
 //! the value held in Bitwarden. A port of sync.sh -- same environment, same
 //! calls to bw, kubectl, htpasswd and pulumi, same output and exit codes --
-//! with the script's jq done in Rust (src/jq.rs, through serde) and its
-//! `openssl rand`, `base64 -d` and `date -u` done natively.
+//! with the script's jq done in Rust (src/jq.rs, backed by `vitruvian_jq`)
+//! and its `openssl rand`, `base64 -d` and `date -u` done natively.
 //!
 //! `set -e` is followed step by step: a failing `item="$(item_json)"`, item
 //! creation pipeline, `hash` pipeline or `pulumi config set` ends the run
@@ -34,7 +34,6 @@ pub mod jq;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use serde::Serialize;
 use shell_compat as sh;
 
 pub const ITEM: &str = "argocd admin (dev-local)";
@@ -125,13 +124,13 @@ fn quiet_stdout(cmd: &mut Command) -> (Vec<u8>, i32) {
 fn item_json() -> Result<Vec<u8>, i32> {
     let (out, bw_rc) = quiet_stdout(Command::new("bw").args(["list", "items", "--search", ITEM]));
     let f = jq::select_item(ITEM);
-    let r = jq::run(&out, &f, jq::dump_compact);
-    sh::err(r.stderr.as_bytes());
+    let r = jq::run(&out, jq::RunOptions::compact(), &f);
+    sh::err(&r.stderr);
     let rc = if r.status != 0 { r.status } else { bw_rc };
     if rc != 0 {
         return Err(rc);
     }
-    Ok(sh::subst(r.stdout.into_bytes()))
+    Ok(sh::subst(r.stdout))
 }
 
 /// `base64 -d` of valid input; at the first byte that is not base64 it
@@ -212,42 +211,26 @@ fn random_password() -> Vec<u8> {
     p
 }
 
-#[derive(Serialize)]
-struct Uri<'a> {
-    uri: &'a str,
-}
-
-#[derive(Serialize)]
-struct Login<'a> {
-    username: &'a str,
-    password: &'a str,
-    uris: Vec<Uri<'a>>,
-}
-
-#[derive(Serialize)]
-struct Item<'a> {
-    #[serde(rename = "type")]
-    kind: u8,
-    name: &'a str,
-    notes: &'a str,
-    login: Login<'a>,
-}
-
 /// `jq -nc --arg n "$ITEM" --arg p "$seed" --arg u "$URL" '{...}'`: what jq
-/// writes, which differs from serde_json only in escaping DEL.
+/// writes, including escaping DEL as `\u007f`.
 pub fn item_doc(password: &str) -> String {
-    let item = Item {
-        kind: 1,
-        name: ITEM,
-        notes: NOTES,
-        login: Login {
-            username: "admin",
-            password,
-            uris: vec![Uri { uri: URL }],
-        },
-    };
-    let s = serde_json::to_string(&item).unwrap_or_default();
-    format!("{}\n", s.replace('\u{7f}', "\\u007f"))
+    let doc = jq::Jv::object([
+        ("type".into(), jq::Jv::int(1)),
+        ("name".into(), jq::Jv::str(ITEM)),
+        ("notes".into(), jq::Jv::str(NOTES)),
+        (
+            "login".into(),
+            jq::Jv::object([
+                ("username".into(), jq::Jv::str("admin")),
+                ("password".into(), jq::Jv::str(password)),
+                (
+                    "uris".into(),
+                    jq::Jv::Array(vec![jq::Jv::object([("uri".into(), jq::Jv::str(URL))])]),
+                ),
+            ]),
+        ),
+    ]);
+    format!("{}\n", jq::dump_compact(&doc))
 }
 
 /// Run `cmd` with `input` on stdin and its stdout captured (stderr ours).
@@ -427,9 +410,9 @@ fn body(trap: &mut Trap) -> Result<(), Exit> {
     }
 
     let (status_out, _) = quiet_stdout(Command::new("bw").arg("status"));
-    let st = jq::run(&status_out, jq::status, jq::raw);
-    sh::err(st.stderr.as_bytes());
-    if sh::subst(st.stdout.into_bytes()) != b"unlocked" {
+    let st = jq::run(&status_out, jq::RunOptions::raw(), jq::status);
+    sh::err(&st.stderr);
+    if sh::subst(st.stdout) != b"unlocked" {
         return Err(die(
             "Bitwarden is locked. Run: bazel run //tools/sync-env-secrets:unlock",
         ));
@@ -489,12 +472,12 @@ fn body(trap: &mut Trap) -> Result<(), Exit> {
     // password="$(jq -r '.login.password // empty' <<<"$item")"
     let mut here = item.clone();
     here.push(b'\n');
-    let pw = jq::run(&here, jq::password, jq::raw);
-    sh::err(pw.stderr.as_bytes());
+    let pw = jq::run(&here, jq::RunOptions::raw(), jq::password);
+    sh::err(&pw.stderr);
     if pw.status != 0 {
         return Err(Exit(pw.status));
     }
-    let password = sh::subst(pw.stdout.into_bytes());
+    let password = sh::subst(pw.stdout);
     if password.is_empty() {
         return Err(die(&format!("Bitwarden item \"{}\" has no password", ITEM)));
     }

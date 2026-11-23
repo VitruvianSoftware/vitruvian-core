@@ -281,6 +281,7 @@ mod tests {
             &DeviceInfo {
                 device_id: "dev-1".into(),
                 mcp_url: "https://relay.example/mcp/d/dev-1".into(),
+                app_mcp_url: None,
             },
         )
         .unwrap();

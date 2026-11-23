@@ -78,7 +78,9 @@ filegroup(
     name = "donate_pages",
     srcs = [
         "_data/donation_amounts.yml",
+        "_data/donation_checkout.yml",
         "_data/donations.yml",
+        "donate/thanks/index.html",
     ] + glob([
         "_includes/donate-*.html",
         "donate/*.html",

@@ -1,4 +1,5 @@
 #!/bin/sh
+# Generated from apps/antigravity/hook_rust_hook_test.sh by //apps/antigravity:hooks-gen. Do not edit; run `bazel run //apps/antigravity:hooks-gen -- --write`.
 # Copyright (c) 2026 VitruvianSoftware
 #
 # SPDX-License-Identifier: MIT
@@ -19,8 +20,9 @@
 #   cache folder;
 # - every hooks.json command exists, and names a crate and source that exist.
 #
-# The test is identical in every plugin; plugin-specific checks are in the
-# hook's own Rust tests.
+# Each plugin's copy is generated from apps/antigravity/hook_rust_hook_test.sh
+# by //apps/antigravity:hooks-gen; plugin-specific checks are in the hook's
+# own Rust tests.
 
 set -u
 

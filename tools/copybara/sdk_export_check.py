@@ -416,7 +416,19 @@ def run_mirror_cargo_checks(export_dir: Path) -> None:
         )
 
     # Mirrors .github/workflows/vitruvian-sdk-mirror-checks.yaml lines 78-87
-    # and the exported mirror's kits.yml Rust sample check.
+    # and the exported mirror's kits.yml Rust sample check, plus the vendored
+    # pycompat crate's own unit tests (without the excluded golden fixture).
+    _run(
+        [
+            cargo_bin,
+            "test",
+            "--offline",
+            "--manifest-path",
+            "vendor/vitruvian-pycompat/Cargo.toml",
+        ],
+        cwd=export_dir,
+        env=env,
+    )
     _run(
         [cargo_bin, "test", "--locked", "--manifest-path", "verification/Cargo.toml"],
         cwd=export_dir,

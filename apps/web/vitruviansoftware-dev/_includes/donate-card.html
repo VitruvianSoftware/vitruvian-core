@@ -8,6 +8,12 @@
   Expects: key (Stripe app key), name (display name), link (live Stripe URL).
 {%- endcomment -%}
 {%- assign amounts = site.data.donation_amounts -%}
+{%- assign checkout = site.data.donation_checkout -%}
+{%- assign sitekey = checkout.turnstile_sitekey | default: "" | strip -%}
+{%- assign endpoint = checkout.endpoint | default: "" | strip -%}
+{%- assign use_turnstile = false -%}
+{%- assign endpoint_https = endpoint | slice: 0, 8 -%}
+{%- if sitekey != "" and endpoint_https == "https://" -%}{%- assign use_turnstile = true -%}{%- endif -%}
 {%- assign min_d = amounts.minimum | divided_by: 100 -%}
 {%- assign min_r = amounts.minimum | modulo: 100 -%}
 {%- capture min_usd -%}${{ min_d }}{%- if min_r != 0 -%}.{%- if min_r < 10 -%}0{%- endif -%}{{ min_r }}{%- endif -%}{%- endcapture -%}
@@ -31,9 +37,16 @@
         <span class="donate-amount-label">Amount (USD)</span>
         <span class="donate-amount-value">{{ preset_usd }} suggested — pay what you want, {{ min_usd }} to {{ max_usd }}</span>
       </div>
+      {%- if use_turnstile %}
+      <div id="donate-turnstile" class="donate-turnstile"></div>
+      {%- endif %}
       <div class="donate-actions">
-        <button id="donate-checkout-btn" type="button" class="btn btn-primary donate-cta" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}">Continue to Stripe</button>
+        <button id="donate-checkout-btn" type="button" class="btn btn-primary donate-cta" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}"{% if use_turnstile %} disabled{% endif %}>Continue to Stripe</button>
       </div>
+      {%- if use_turnstile %}
+      <p id="donate-error" class="donate-error" role="alert" hidden></p>
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=vitruvianDonateTurnstileReady" async defer></script>
+      {%- endif %}
       <noscript>
         <p class="donate-note">JavaScript is required to open Stripe Checkout from this page.</p>
       </noscript>
@@ -41,4 +54,4 @@
     </article>
   </div>
 </section>
-{%- include donate-checkout.html key=include.key link=include.link -%}
+{%- include donate-checkout.html key=include.key link=include.link endpoint=endpoint sitekey=sitekey -%}

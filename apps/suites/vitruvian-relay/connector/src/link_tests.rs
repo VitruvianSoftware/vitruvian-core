@@ -582,6 +582,7 @@ fn registered(name: &str) -> PathBuf {
         &DeviceInfo {
             device_id: "dev-1".into(),
             mcp_url: "https://relay.example/mcp/d/dev-1".into(),
+            app_mcp_url: None,
         },
     )
     .unwrap();
@@ -1194,6 +1195,7 @@ async fn waits_for_token_instead_of_exiting() {
         &DeviceInfo {
             device_id: "dev-1".into(),
             mcp_url: "u".into(),
+            app_mcp_url: None,
         },
     )
     .unwrap();

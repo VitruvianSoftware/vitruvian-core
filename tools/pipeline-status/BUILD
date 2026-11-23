@@ -33,9 +33,14 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "@crates//:serde",
-        "@crates//:serde_json",
+        "//packages/jq:vitruvian_jq",
     ],
+)
+
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//packages/pycompat/vitruvian-pycompat:__pkg__"],
 )
 
 rust_binary(

@@ -874,6 +874,11 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		params["room_ids"], params["label_id"] = one, label()
 	case "room.setPinned", "room.setDraft":
 		params["room_id"] = w.room
+	case "room.reorderPins":
+		second := addRooms(t, w.s, "whatsapp", "pin2", 1)[0]
+		require.NoError(t, w.s.SetPinned(ctx, w.room, true))
+		require.NoError(t, w.s.SetPinned(ctx, second, true))
+		params["room_ids"] = []any{second, w.room}
 	case "room.acceptRequest":
 		require.NoError(t, w.s.SetRequest(ctx, w.room, true))
 		params["room_id"] = w.room

@@ -79,7 +79,7 @@ S=/home/user/vitruvian-core/tools/cloud-bootstrap/cloud-bootstrap.sh
 echo "cloud-bootstrap: repo not cloned yet — the SessionStart hook will install instead"
 ```
 
-`--force` is required: `CLAUDE_CODE_REMOTE` is not set that early, so without it
+`--force` is required: neither `VITRUVIAN_CLOUD_SESSION` nor `CLAUDE_CODE_REMOTE` is set that early, so without it
 the tool silently no-ops. The Setup script also builds the tool, so the build
 lands in the cached image with the CLIs. Credentials are deliberately *not* done here — the
 `SessionStart` hook establishes those per session, so no token is baked into a

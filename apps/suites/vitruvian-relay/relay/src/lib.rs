@@ -27,6 +27,7 @@ pub mod dashboard;
 pub mod devices;
 pub mod http;
 pub mod mcp;
+pub mod oauth;
 pub mod parked;
 pub mod ratelimit;
 pub mod registry;

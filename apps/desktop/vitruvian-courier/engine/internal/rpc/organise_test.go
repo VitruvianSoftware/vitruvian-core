@@ -957,3 +957,51 @@ func TestInboxRowsCarryTheNetworksReadPositionNotTheLocalOne(t *testing.T) {
 	require.Equal(t, e.TS.UnixMilli(), got.TS)
 	require.Equal(t, e.Seq, got.Seq)
 }
+
+func TestReorderPinsOverTheSocket(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	extra := addRooms(t, w.s, "whatsapp", "pin", 2)
+	other1, other2 := extra[0], extra[1]
+	c := dial(t, w.path)
+	c.hello()
+
+	c.ok("room.setPinned", map[string]any{"room_id": w.room, "pinned": true}, nil)
+	received(t, w.wa.Tags)
+	require.NoError(t, w.s.SetPinned(ctx, other1, true))
+	require.NoError(t, w.s.SetPinned(ctx, other2, true))
+
+	inboxIDs := func() []string {
+		var p wirePage
+		c.ok("inbox.list", nil, &p)
+		out := make([]string, len(p.Rooms))
+		for i, r := range p.Rooms {
+			out[i] = r.RoomID
+		}
+		return out
+	}
+	require.Equal(t, []string{w.room, other1, other2}, inboxIDs())
+
+	// Reordering updates inbox order without telling the network.
+	c.ok("room.reorderPins", map[string]any{"room_ids": []string{other2, w.room, other1}}, nil)
+	require.Equal(t, []string{other2, w.room, other1}, inboxIDs())
+	select {
+	case tag := <-w.wa.Tags:
+		t.Fatalf("reordering pins must not tell the network, got %+v", tag)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Empty list is valid and leaves order unchanged.
+	c.ok("room.reorderPins", map[string]any{"room_ids": []string{}}, nil)
+	require.Equal(t, []string{other2, w.room, other1}, inboxIDs())
+
+	// Unknown IDs are ignored and unnamed pinned chats keep their slot.
+	c.ok("room.reorderPins", map[string]any{"room_ids": []string{"!gone:courier.local", other1, other2}}, nil)
+	require.Equal(t, []string{other1, w.room, other2}, inboxIDs())
+
+	// Missing room_ids or merge_ids are invalid params.
+	e := c.fails(CodeInvalidParams, "room.reorderPins", map[string]any{})
+	require.Contains(t, reason(t, e), "room_ids")
+	e = c.fails(CodeInvalidParams, "room.reorderPins", map[string]any{"room_ids": []string{"merge:abc"}})
+	require.Contains(t, reason(t, e), "room_ids")
+}
