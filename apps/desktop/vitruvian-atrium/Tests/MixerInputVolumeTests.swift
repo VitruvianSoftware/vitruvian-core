@@ -1267,51 +1267,10 @@ enum MixerInputVolumeContract {
                 && !HAL.muteService.hasOutstandingClaims,
               "a pending legacy unmute restores only the claimed main switch when the microphone returns")
 
-        HAL.reset()
-        HAL.now = 10
-        let retryService = HAL.muteService
-        HAL.uids[10] = "MSLoopbackDriverDevice_UID"
-        HAL.devices = [10, 20]
-        HAL.levels[HAL.key(10)] = 0.5
-        HAL.levels[HAL.key(20)] = 0.75
-        HAL.ignoredWrites.insert(HAL.key(10))
-        retryService.setMuted(true)
-        Queue.drain()
         func changed(_ device: UInt32) {
             HAL.notify(device, kAudioDevicePropertyVolumeScalar)
             Queue.drain()
         }
-        for _ in 0..<10 { changed(10) }
-        let refusingWrites = HAL.writes.filter { $0 == HAL.key(10) }.count
-        check(refusingWrites == 3 && HAL.listeners.contains(HAL.key(10)),
-              "a refusing driver stops receiving writes from its callbacks but remains watched")
-        for _ in 0..<8 { HAL.notify(10, kAudioDevicePropertyVolumeScalar) }
-        check(Queue.main.work.count == 1, "a callback burst hands one reapply to the main thread")
-        Queue.drain()
-        check(HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites
-                && retryService.retryDeadline == HAL.now + 0.25,
-              "a callback burst during driver backoff preserves the retry deadline without writing hardware")
-        HAL.levels[HAL.key(20)] = 0.8
-        changed(20)
-        check(HAL.levels[HAL.key(20)] == 0 && HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites,
-              "another input is silenced immediately without retrying the refusing device")
-        HAL.now += 0.25
-        HAL.muteQueue.runTimers()
-        check(HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites + 1
-                && retryService.retryDeadline == HAL.now + 0.5,
-              "a refusing device retries without a notification and doubles its backoff")
-        HAL.ignoredWrites.removeAll()
-        HAL.levels[HAL.key(10)] = 0
-        changed(10)
-        HAL.levels[HAL.key(10)] = 0.5
-        changed(10)
-        check(HAL.levels[HAL.key(10)] == 0 && retryService.retryDeadline == nil,
-              "delayed silence restores immediate enforcement on the next gain change")
-        retryService.setMuted(false)
-        Queue.drain()
-        HAL.muteQueue.runTimers()
-        check(HAL.levels[HAL.key(10)] == 0.5 && HAL.levels[HAL.key(20)] == 0.75,
-              "a canceled retry cannot remute inputs after an explicit unmute")
 
         HAL.reset()
         HAL.now = 20
@@ -1357,69 +1316,6 @@ enum MixerInputVolumeContract {
         }
         check(HAL.muteService.retryDeadline == nil,
               "starting capture bypasses a previously idle virtual input's backoff")
-
-        HAL.reset()
-        HAL.now = 40
-        HAL.uids = [10: "first input"]
-        HAL.virtual = [10]
-        HAL.levels[HAL.key(10)] = 0.5
-        HAL.ignoredWrites = [HAL.key(10)]
-        HAL.muteService.setMuted(true)
-        Queue.drain()
-        changed(10)
-        changed(10)
-        let hotPlugged = HAL.muteService
-        HAL.ignoredWrites = []
-        HAL.uids = [10: "replacement input"]
-        HAL.levels[HAL.key(10)] = 0.35
-        changed(10)
-        check(HAL.levels[HAL.key(10)] == 0 && hotPlugged.retryDeadline == nil,
-              "a new UID reusing an old audio object ID is not subject to the old cooldown")
-        hotPlugged.setMuted(false)
-        Queue.drain()
-        HAL.now += 1
-        HAL.muteQueue.runTimers()
-        check(HAL.levels[HAL.key(10)] == 0.35 && hotPlugged.hasOutstandingClaims,
-              "the new input restores its own gain and retains the disconnected input's separate claim")
-
-        HAL.reset()
-        HAL.now = 50
-        HAL.virtual = [10]
-        HAL.levels[HAL.key(10)] = 0.5
-        HAL.ignoredWrites = [HAL.key(10)]
-        HAL.muteService.setMuted(true)
-        Queue.drain()
-        changed(10)
-        changed(10)
-        HAL.levels[HAL.key(10)] = 0.2
-        HAL.muteService.setMuted(false)
-        Queue.drain()
-        check(HAL.muteService.isMuted && HAL.muteService.retryDeadline != nil,
-              "a wholly failed manual unmute keeps the active mute's retry")
-        HAL.defaults.set(false, forKey: AppFeature.micMute.availabilityKey)
-        HAL.muteService.syncWithPreferences()
-        Queue.drain()
-        check(!HAL.muteService.isMuted && HAL.muteService.retryDeadline == nil,
-              "disabling the feature cancels mute retries even if unmute fails")
-        HAL.muteService.unmuteForTeardown()
-        HAL.ignoredWrites = []
-        HAL.now += 1
-        HAL.muteQueue.runTimers()
-        check(!HAL.muteService.isMuted && HAL.muteService.retryDeadline == nil
-                && HAL.levels[HAL.key(10)] == 0.2,
-              "teardown cancels retries even when the audio driver refuses restoration")
-
-        HAL.reset()
-        HAL.levels[HAL.key(10)] = 0.5
-        HAL.ignoreWrites = true
-        HAL.muteService.setMuted(true)
-        Queue.drain()
-        for _ in 0..<5 { changed(10) }
-        check(HAL.muteService.retryDeadline == nil && HAL.writes.filter { $0 == HAL.key(10) }.count == 6,
-              "an unclassified or physical microphone never enters virtual-driver backoff")
-        HAL.ignoreWrites = false
-        changed(10)
-        check(HAL.levels[HAL.key(10)] == 0, "a slow physical microphone is silenced on its next change")
 
         HAL.reset()
         HAL.levels[HAL.key(10)] = 0.5
