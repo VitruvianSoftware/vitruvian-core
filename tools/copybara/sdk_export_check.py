@@ -28,7 +28,9 @@ rewrites) so any broken Copybara rewrite fails before merge.
 
 Also guards vendor/vitruvian-pycompat/ against leaking monorepo-only files:
 verifies that the assembled vendored tree matches EXPECTED_VENDORED_FILES
-exactly and contains no *.sh or README* files.
+exactly and contains no *.sh or README* files, and verifies that every concrete
+Rust version installed by the mirror's workflows is at least as new as the
+highest rust-version declared in any exported Cargo.toml.
 """
 
 from __future__ import annotations
@@ -343,6 +345,206 @@ def verify_vendored_pycompat(dest_dir: Path) -> None:
     )
 
 
+_VERSION_RE = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+))?$")
+_CARGO_RUST_VERSION_RE = re.compile(r'^\s*rust-version\s*=\s*"([^"]+)"')
+_RUSTUP_CMD_RE = re.compile(r"\brustup\s+(?:toolchain\s+install|default)\s+(.+)")
+_YAML_RUST_KEY_RE = re.compile(r"^(\s*)rust\s*:(.*)$")
+_YAML_LIST_ITEM_RE = re.compile(r"^(\s*)-\s*(.+)$")
+
+
+def parse_rust_version(raw: str) -> tuple[int, int, int] | None:
+    """Parse a concrete Rust version (MAJOR.MINOR or MAJOR.MINOR.PATCH) into a tuple.
+
+    Returns None for symbolic channels (e.g. 'stable') or shell/template expressions.
+    """
+    m = _VERSION_RE.match(raw.strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+
+
+def _strip_yaml_comment(raw: str) -> str:
+    in_single = False
+    in_double = False
+    for idx, ch in enumerate(raw):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "#" and not in_single and not in_double:
+            if idx == 0 or raw[idx - 1].isspace():
+                return raw[:idx].rstrip()
+    return raw.rstrip()
+
+
+def _unquote(raw: str) -> str:
+    s = raw.strip()
+    if len(s) >= 2 and (
+        (s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")
+    ):
+        return s[1:-1]
+    return s
+
+
+def collect_cargo_rust_versions(
+    root_dir: Path,
+) -> list[tuple[str, str, tuple[int, int, int]]]:
+    """Return (rel_path, raw_version, parsed_tuple) for every Cargo.toml rust-version."""
+    found: list[tuple[str, str, tuple[int, int, int]]] = []
+    for root, dirs, files in os.walk(root_dir):
+        dirs[:] = sorted(
+            d for d in dirs if d not in {"target", ".git", ".build", "node_modules"}
+        )
+        for fname in sorted(files):
+            if fname != "Cargo.toml":
+                continue
+            fpath = Path(root) / fname
+            rel = fpath.relative_to(root_dir).as_posix()
+            for line in fpath.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                m = _CARGO_RUST_VERSION_RE.match(line)
+                if not m:
+                    continue
+                raw_ver = m.group(1).strip()
+                parsed = parse_rust_version(raw_ver)
+                if parsed is None:
+                    raise RuntimeError(f"{rel}: unparseable rust-version {raw_ver!r}")
+                found.append((rel, raw_ver, parsed))
+    return found
+
+
+def _extract_rustup_versions(cmd_tail: str) -> list[str]:
+    tokens = cmd_tail.split()
+    versions: list[str] = []
+    skip_next = False
+    value_flags = {"--profile", "-c", "--component", "-t", "--target"}
+    for tok in tokens:
+        if tok in {"&&", "||", ";", "|"}:
+            break
+        if skip_next:
+            skip_next = False
+            continue
+        if tok in value_flags:
+            skip_next = True
+            continue
+        if tok.startswith("-"):
+            continue
+        versions.append(_unquote(tok))
+    return versions
+
+
+def collect_workflow_rust_versions(
+    root_dir: Path,
+) -> list[tuple[str, int, str, tuple[int, int, int]]]:
+    """Return (rel_path, line_no, raw_version, parsed_tuple) from mirror workflows.
+
+    Collects concrete version numbers named by `rustup toolchain install <v>`,
+    `rustup default <v>`, and YAML `rust:` keys (inline scalars/lists or block
+    sequences). Non-version values like `stable` or `$RUST` are ignored.
+    """
+    workflows_dir = root_dir / ".github" / "workflows"
+    if not workflows_dir.is_dir():
+        raise RuntimeError(f"Mirror workflows directory missing: {workflows_dir}")
+
+    workflow_files = sorted(
+        p
+        for p in workflows_dir.iterdir()
+        if p.is_file() and p.suffix in {".yml", ".yaml"}
+    )
+    found: list[tuple[str, int, str, tuple[int, int, int]]] = []
+
+    for wf_path in workflow_files:
+        rel = wf_path.relative_to(root_dir).as_posix()
+        lines = wf_path.read_text(encoding="utf-8").splitlines()
+        in_rust_list_indent: int | None = None
+
+        for line_no, line in enumerate(lines, start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            indent = len(line) - len(line.lstrip(" "))
+            if in_rust_list_indent is not None:
+                if indent <= in_rust_list_indent:
+                    in_rust_list_indent = None
+                else:
+                    item_m = _YAML_LIST_ITEM_RE.match(line)
+                    if item_m:
+                        val = _unquote(_strip_yaml_comment(item_m.group(2)))
+                        parsed = parse_rust_version(val)
+                        if parsed is not None:
+                            found.append((rel, line_no, val, parsed))
+                        continue
+                    in_rust_list_indent = None
+
+            rustup_m = _RUSTUP_CMD_RE.search(line)
+            if rustup_m:
+                for raw_ver in _extract_rustup_versions(rustup_m.group(1)):
+                    parsed = parse_rust_version(raw_ver)
+                    if parsed is not None:
+                        found.append((rel, line_no, raw_ver, parsed))
+
+            key_m = _YAML_RUST_KEY_RE.match(line)
+            if key_m:
+                key_indent = len(key_m.group(1))
+                rest = _strip_yaml_comment(key_m.group(2)).strip()
+                if not rest:
+                    in_rust_list_indent = key_indent
+                elif rest.startswith("[") and rest.endswith("]"):
+                    inner = rest[1:-1]
+                    for part in inner.split(","):
+                        val = _unquote(part.strip())
+                        parsed = parse_rust_version(val)
+                        if parsed is not None:
+                            found.append((rel, line_no, val, parsed))
+                else:
+                    val = _unquote(rest)
+                    parsed = parse_rust_version(val)
+                    if parsed is not None:
+                        found.append((rel, line_no, val, parsed))
+
+    return found
+
+
+def verify_workflow_rust_versions(dest_dir: Path) -> None:
+    """Verify every concrete Rust version in mirror workflows >= max Cargo.toml rust-version.
+
+    Prevents mirror CI jobs from installing a Rust floor older than the MSRV
+    declared in exported Cargo.toml manifests (as happened when Cargo.toml moved
+    to 1.98 while ci.yml/kits.yml still installed 1.75.0).
+    """
+    cargo_versions = collect_cargo_rust_versions(dest_dir)
+    if not cargo_versions:
+        raise RuntimeError(
+            f"No rust-version entries found in Cargo.toml under {dest_dir}"
+        )
+
+    wf_versions = collect_workflow_rust_versions(dest_dir)
+    if not wf_versions:
+        raise RuntimeError(
+            f"No concrete Rust versions found in .github/workflows under {dest_dir}"
+        )
+
+    req_cargo, req_str, req_tuple = max(cargo_versions, key=lambda item: item[2])
+    errors: list[str] = []
+    for rel_wf, line_no, ver_str, ver_tuple in wf_versions:
+        if ver_tuple < req_tuple:
+            errors.append(
+                f"{rel_wf}:{line_no}: Rust version {ver_str} is lower than required rust-version {req_str} (from {req_cargo})"
+            )
+
+    if errors:
+        raise RuntimeError(
+            "mirror workflow Rust version check failed:\n" + "\n".join(errors)
+        )
+
+    print(
+        f"verified workflow Rust versions ({len(wf_versions)} concrete version(s) >= {req_str})"
+    )
+
+
 def assemble_exported_tree(repo_root: Path, dest_dir: Path) -> None:
     sky_path = repo_root / "tools" / "copybara" / "copy.bara.sky"
     spec = load_sdk_export_spec(sky_path)
@@ -369,6 +571,7 @@ def assemble_exported_tree(repo_root: Path, dest_dir: Path) -> None:
         )
 
     verify_vendored_pycompat(dest_dir)
+    verify_workflow_rust_versions(dest_dir)
 
 
 def _resolve_tool(env_var: str, expected_name: str) -> str | None:
@@ -503,6 +706,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Assemble the exported tree into this directory and exit without running Cargo.",
     )
+    parser.add_argument(
+        "--check-rust-versions",
+        type=Path,
+        default=None,
+        help="Run only the workflow Rust version floor check against an already-assembled export directory.",
+    )
     args = parser.parse_args(argv)
 
     repo_root = Path(
@@ -510,6 +719,10 @@ def main(argv: list[str] | None = None) -> int:
     ).resolve()
 
     try:
+        if args.check_rust_versions is not None:
+            verify_workflow_rust_versions(args.check_rust_versions.resolve())
+            return 0
+
         if args.export_only is not None:
             dest = args.export_only.resolve()
             if dest.exists():
