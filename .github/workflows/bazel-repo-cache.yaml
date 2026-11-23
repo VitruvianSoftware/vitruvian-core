@@ -1,0 +1,574 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Bazel Repository Cache
+
+# The ONLY workflow that saves the Bazel repository download cache.
+#
+# Every other CI lane restores via ./.github/actions/setup-bazel (restore-only)
+# and reads the archive-only `...-repository-full-...` entries written here
+# after a clean-state offline completeness check (`--repository_disable_download`).
+# Separating `--repository_cache` (archives) from `--repo_contents_cache`
+# (extracted repos) ensures only archives are cached and legacy partial entries
+# (`...-repository-<hash>`) are never read.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - ".bazelversion"
+      - ".github/actions/setup-bazel/**"
+      - ".github/workflows/bazel-repo-cache.yaml"
+  pull_request:
+    paths:
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - ".bazelversion"
+      - ".github/actions/setup-bazel/**"
+      - ".github/workflows/bazel-repo-cache.yaml"
+  schedule:
+    # Daily, off the hour, to refresh evicted entries without overwriting hits.
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm-linux:
+    name: warm-linux
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    concurrency:
+      group: bazel-repo-cache-linux-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      MODE: ${{ github.event_name == 'pull_request' && 'verify' || 'save' }}
+      PLATFORM_OS: linux
+      PLATFORM_ARCH: x64
+      # Target list source: .github/workflows/periodic-full-sweep.yaml (bazel build //...,
+      # bazel test //...). ci.yaml's build-test runs //tools/ci:affected_targets
+      # (dynamic affected-target selection with a //... fallback), so the full-sweep
+      # pattern is the exact Linux CI build universe. No exclusions: hosted
+      # ubuntu-26.04 keeps $ANDROID_HOME (/usr/local/lib/android/sdk) intact, so
+      # Android targets analyze cleanly under //...
+      TARGETS: //...
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+        with:
+          extra-paths: |
+            /usr/share/swift
+            /usr/local/share/powershell
+
+      - name: Install Bazelisk (no cache restore or save)
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
+        with:
+          repository-cache: false
+          cache-save: false
+          bazelisk-cache: false
+          bazelrc: |
+            common --announce_rc --color=yes --curses=yes
+            common --show_progress_rate_limit=60 --show_timestamps
+            common --repo_env=GOPROXY=https://proxy.golang.org|direct
+
+      - name: Prepare clean warm directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="${HOME}/.cache/bazel-repo"
+          CONTENTS="${RUNNER_TEMP}/warm-contents"
+          OB="${RUNNER_TEMP}/warm-ob"
+
+          if [ -e "$REPO" ]; then
+            if [ ! -d "$REPO" ] || [ -n "$(ls -A "$REPO")" ]; then
+              echo "::error::REPO directory '$REPO' already exists and is non-empty"
+              exit 1
+            fi
+          fi
+          if [ -e "$CONTENTS" ]; then
+            echo "::error::CONTENTS directory '$CONTENTS' already exists"
+            exit 1
+          fi
+          if [ -e "$OB" ]; then
+            echo "::error::OB directory '$OB' already exists"
+            exit 1
+          fi
+
+          mkdir -p "$REPO" "$CONTENTS" "$OB"
+          {
+            echo "REPO=$REPO"
+            echo "CONTENTS=$CONTENTS"
+            echo "OB=$OB"
+          } >> "$GITHUB_ENV"
+
+      - name: Online fill (download all external archives)
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=' ' read -r -a targets <<< "$TARGETS"
+          bazel --output_base="$OB" build --nobuild \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS" \
+            "${targets[@]}"
+
+      - name: Measure archive vs contents sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e "${REPO}/contents" ]; then
+            echo "::error::${REPO}/contents exists; archive and contents caches were not kept separate"
+            exit 1
+          fi
+          if [ ! -d "${REPO}/content_addressable" ]; then
+            echo "::error::${REPO}/content_addressable is missing after online fill"
+            exit 1
+          fi
+
+          archive_size="$(du -sh "${REPO}/content_addressable" | cut -f1)"
+          archive_kb="$(du -sk "${REPO}/content_addressable" | cut -f1)"
+          archive_bytes=$((archive_kb * 1024))
+          contents_size="$(du -sh "$CONTENTS" | cut -f1)"
+          repo_total_size="$(du -sh "$REPO" | cut -f1)"
+
+          echo "Mode: ${MODE}"
+          echo "Archives (${REPO}/content_addressable): ${archive_size} (${archive_bytes} bytes)"
+          echo "Contents (${CONTENTS}): ${contents_size}"
+          echo "Total REPO (${REPO}): ${repo_total_size}"
+
+          {
+            echo "### Bazel Repository Cache (${PLATFORM_OS}-${PLATFORM_ARCH}, mode: ${MODE})"
+            echo ""
+            echo "| Store | Size |"
+            echo "|---|---|"
+            echo "| Archives (\`$REPO/content_addressable\`) | ${archive_size} (${archive_bytes} bytes) |"
+            echo "| Contents (\`$CONTENTS\`) | ${contents_size} |"
+            echo "| Total saved path (\`$REPO\`) | ${repo_total_size} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          {
+            echo "ARCHIVE_SIZE=${archive_size}"
+            echo "ARCHIVE_BYTES=${archive_bytes}"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify offline completeness from a clean state
+        shell: bash
+        run: |
+          set -euo pipefail
+          bazel --output_base="$OB" shutdown || true
+          rm -rf "$OB" "$CONTENTS"
+
+          OB2="${RUNNER_TEMP}/verify-ob"
+          CONTENTS2="${RUNNER_TEMP}/verify-contents"
+          if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
+            echo "::error::verify directories already exist ($OB2 / $CONTENTS2)"
+            exit 1
+          fi
+          mkdir -p "$OB2" "$CONTENTS2"
+
+          got_repo="$(bazel --output_base="$OB2" info \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS2" \
+            repository_cache)"
+          if [ "$got_repo" != "$REPO" ]; then
+            echo "::error::bazel info repository_cache returned '$got_repo', expected '$REPO'"
+            exit 1
+          fi
+          canon="$(bazel --output_base="$OB2" canonicalize-flags --for_command=build -- \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS2")"
+          if ! grep -Fqx -- "--repository_cache=${REPO}" <<<"$canon"; then
+            echo "::error::canonicalized flags did not include --repository_cache=${REPO}"
+            exit 1
+          fi
+          if ! grep -Fqx -- "--repo_contents_cache=${CONTENTS2}" <<<"$canon"; then
+            echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
+            exit 1
+          fi
+          if [ -n "$(ls -A "$CONTENTS2")" ]; then
+            echo "::error::verify contents directory '$CONTENTS2' is not empty before offline check"
+            exit 1
+          fi
+
+          IFS=' ' read -r -a targets <<< "$TARGETS"
+          log_file="${RUNNER_TEMP}/verify-offline.log"
+          set +e
+          bazel --output_base="$OB2" build --nobuild --keep_going \
+            --repository_disable_download \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS2" \
+            "${targets[@]}" 2>&1 | tee "$log_file"
+          verify_rc="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$verify_rc" -ne 0 ]; then
+            {
+              echo ""
+              echo "#### Offline completeness check FAILED (exit ${verify_rc})"
+              echo ""
+              echo '```'
+              grep -E 'ERROR:|download.*disabled|no such package|Cannot find|not found in repository cache' "$log_file" || tail -n 100 "$log_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            bazel --output_base="$OB2" shutdown || true
+            rm -rf "$OB2" "$CONTENTS2"
+            exit "$verify_rc"
+          fi
+
+          if [ -e "${REPO}/contents" ]; then
+            echo "::error::${REPO}/contents was created during offline verification"
+            exit 1
+          fi
+          if [ -z "$(ls -A "$CONTENTS2")" ]; then
+            echo "::error::verify contents directory '$CONTENTS2' remained empty after offline build"
+            exit 1
+          fi
+
+          bazel --output_base="$OB2" shutdown || true
+          rm -rf "$OB2" "$CONTENTS2"
+
+          # Control check: prove the offline completeness check can fail.
+          OB3="${RUNNER_TEMP}/control-ob"
+          EMPTY_REPO="${RUNNER_TEMP}/empty-repo"
+          EMPTY_CONTENTS="${RUNNER_TEMP}/empty-contents"
+          mkdir -p "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
+          set +e
+          bazel --output_base="$OB3" build --nobuild \
+            --repository_disable_download \
+            --repository_cache="$EMPTY_REPO" \
+            --repo_contents_cache="$EMPTY_CONTENTS" \
+            "${targets[@]}" >/dev/null 2>&1
+          control_rc=$?
+          set -e
+          bazel --output_base="$OB3" shutdown || true
+          rm -rf "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
+          if [ "$control_rc" -eq 0 ]; then
+            echo "::error::the completeness check is vacuous"
+            exit 1
+          fi
+
+          echo "Offline completeness verified (control check exited ${control_rc})."
+
+      - name: Check if complete repository cache already exists
+        id: cache-lookup
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          lookup-only: true
+          path: ${{ env.REPO }}
+          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+
+      - name: Write COMPLETE.json marker
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        run: |
+          set -euo pipefail
+          if [ -e "${REPO}/contents" ]; then
+            echo "::error::refusing to write COMPLETE.json while ${REPO}/contents exists"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          data = {
+              "lock_hash": os.environ["LOCK_HASH"],
+              "commit": os.environ["GITHUB_SHA"],
+              "platform": f"{os.environ['PLATFORM_OS']}-{os.environ['PLATFORM_ARCH']}",
+              "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "archive_size": os.environ["ARCHIVE_SIZE"],
+              "archive_bytes": int(os.environ["ARCHIVE_BYTES"]),
+          }
+          with open(os.path.join(os.environ["REPO"], "COMPLETE.json"), "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Save complete repository cache (archives only)
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.REPO }}
+          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+
+  warm-macos:
+    name: warm-macos
+    runs-on: xcode-27
+    timeout-minutes: 120
+    concurrency:
+      group: bazel-repo-cache-macos-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      MODE: ${{ github.event_name == 'pull_request' && 'verify' || 'save' }}
+      PLATFORM_OS: darwin
+      PLATFORM_ARCH: arm64
+      # Target list source: .github/workflows/ci.yaml (macos-build job, lines 613-661,
+      # every target pattern passed to bazel build/test/run with --config=macos-app).
+      # No exclusions; every macOS CI target is included verbatim.
+      TARGETS: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Install Bazelisk (no cache restore or save)
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
+        with:
+          repository-cache: false
+          cache-save: false
+          bazelisk-cache: false
+          bazelrc: |
+            common --announce_rc --color=yes --curses=yes
+            common --show_progress_rate_limit=60 --show_timestamps
+            common --repo_env=GOPROXY=https://proxy.golang.org|direct
+
+      - name: Prepare clean warm directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="${HOME}/.cache/bazel-repo"
+          CONTENTS="${RUNNER_TEMP}/warm-contents"
+          OB="${RUNNER_TEMP}/warm-ob"
+
+          if [ -e "$REPO" ]; then
+            if [ ! -d "$REPO" ] || [ -n "$(ls -A "$REPO")" ]; then
+              echo "::error::REPO directory '$REPO' already exists and is non-empty"
+              exit 1
+            fi
+          fi
+          if [ -e "$CONTENTS" ]; then
+            echo "::error::CONTENTS directory '$CONTENTS' already exists"
+            exit 1
+          fi
+          if [ -e "$OB" ]; then
+            echo "::error::OB directory '$OB' already exists"
+            exit 1
+          fi
+
+          mkdir -p "$REPO" "$CONTENTS" "$OB"
+          {
+            echo "REPO=$REPO"
+            echo "CONTENTS=$CONTENTS"
+            echo "OB=$OB"
+          } >> "$GITHUB_ENV"
+
+      - name: Online fill (download all external archives)
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=' ' read -r -a targets <<< "$TARGETS"
+          bazel --output_base="$OB" build --nobuild --config=macos-app \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS" \
+            "${targets[@]}"
+
+      - name: Measure archive vs contents sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e "${REPO}/contents" ]; then
+            echo "::error::${REPO}/contents exists; archive and contents caches were not kept separate"
+            exit 1
+          fi
+          if [ ! -d "${REPO}/content_addressable" ]; then
+            echo "::error::${REPO}/content_addressable is missing after online fill"
+            exit 1
+          fi
+
+          archive_size="$(du -sh "${REPO}/content_addressable" | cut -f1)"
+          archive_kb="$(du -sk "${REPO}/content_addressable" | cut -f1)"
+          archive_bytes=$((archive_kb * 1024))
+          contents_size="$(du -sh "$CONTENTS" | cut -f1)"
+          repo_total_size="$(du -sh "$REPO" | cut -f1)"
+
+          echo "Mode: ${MODE}"
+          echo "Archives (${REPO}/content_addressable): ${archive_size} (${archive_bytes} bytes)"
+          echo "Contents (${CONTENTS}): ${contents_size}"
+          echo "Total REPO (${REPO}): ${repo_total_size}"
+
+          {
+            echo "### Bazel Repository Cache (${PLATFORM_OS}-${PLATFORM_ARCH}, mode: ${MODE})"
+            echo ""
+            echo "| Store | Size |"
+            echo "|---|---|"
+            echo "| Archives (\`$REPO/content_addressable\`) | ${archive_size} (${archive_bytes} bytes) |"
+            echo "| Contents (\`$CONTENTS\`) | ${contents_size} |"
+            echo "| Total saved path (\`$REPO\`) | ${repo_total_size} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          {
+            echo "ARCHIVE_SIZE=${archive_size}"
+            echo "ARCHIVE_BYTES=${archive_bytes}"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify offline completeness from a clean state
+        shell: bash
+        run: |
+          set -euo pipefail
+          bazel --output_base="$OB" shutdown || true
+          rm -rf "$OB" "$CONTENTS"
+
+          OB2="${RUNNER_TEMP}/verify-ob"
+          CONTENTS2="${RUNNER_TEMP}/verify-contents"
+          if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
+            echo "::error::verify directories already exist ($OB2 / $CONTENTS2)"
+            exit 1
+          fi
+          mkdir -p "$OB2" "$CONTENTS2"
+
+          got_repo="$(bazel --output_base="$OB2" info \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS2" \
+            repository_cache)"
+          if [ "$got_repo" != "$REPO" ]; then
+            echo "::error::bazel info repository_cache returned '$got_repo', expected '$REPO'"
+            exit 1
+          fi
+          canon="$(bazel --output_base="$OB2" canonicalize-flags --for_command=build -- \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS2")"
+          if ! grep -Fqx -- "--repository_cache=${REPO}" <<<"$canon"; then
+            echo "::error::canonicalized flags did not include --repository_cache=${REPO}"
+            exit 1
+          fi
+          if ! grep -Fqx -- "--repo_contents_cache=${CONTENTS2}" <<<"$canon"; then
+            echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
+            exit 1
+          fi
+          if [ -n "$(ls -A "$CONTENTS2")" ]; then
+            echo "::error::verify contents directory '$CONTENTS2' is not empty before offline check"
+            exit 1
+          fi
+
+          IFS=' ' read -r -a targets <<< "$TARGETS"
+          log_file="${RUNNER_TEMP}/verify-offline.log"
+          set +e
+          bazel --output_base="$OB2" build --nobuild --keep_going --config=macos-app \
+            --repository_disable_download \
+            --repository_cache="$REPO" \
+            --repo_contents_cache="$CONTENTS2" \
+            "${targets[@]}" 2>&1 | tee "$log_file"
+          verify_rc="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$verify_rc" -ne 0 ]; then
+            {
+              echo ""
+              echo "#### Offline completeness check FAILED (exit ${verify_rc})"
+              echo ""
+              echo '```'
+              grep -E 'ERROR:|download.*disabled|no such package|Cannot find|not found in repository cache' "$log_file" || tail -n 100 "$log_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            bazel --output_base="$OB2" shutdown || true
+            rm -rf "$OB2" "$CONTENTS2"
+            exit "$verify_rc"
+          fi
+
+          if [ -e "${REPO}/contents" ]; then
+            echo "::error::${REPO}/contents was created during offline verification"
+            exit 1
+          fi
+          if [ -z "$(ls -A "$CONTENTS2")" ]; then
+            echo "::error::verify contents directory '$CONTENTS2' remained empty after offline build"
+            exit 1
+          fi
+
+          bazel --output_base="$OB2" shutdown || true
+          rm -rf "$OB2" "$CONTENTS2"
+
+          # Control check: prove the offline completeness check can fail.
+          OB3="${RUNNER_TEMP}/control-ob"
+          EMPTY_REPO="${RUNNER_TEMP}/empty-repo"
+          EMPTY_CONTENTS="${RUNNER_TEMP}/empty-contents"
+          mkdir -p "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
+          set +e
+          bazel --output_base="$OB3" build --nobuild --config=macos-app \
+            --repository_disable_download \
+            --repository_cache="$EMPTY_REPO" \
+            --repo_contents_cache="$EMPTY_CONTENTS" \
+            "${targets[@]}" >/dev/null 2>&1
+          control_rc=$?
+          set -e
+          bazel --output_base="$OB3" shutdown || true
+          rm -rf "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
+          if [ "$control_rc" -eq 0 ]; then
+            echo "::error::the completeness check is vacuous"
+            exit 1
+          fi
+
+          echo "Offline completeness verified (control check exited ${control_rc})."
+
+      - name: Check if complete repository cache already exists
+        id: cache-lookup
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          lookup-only: true
+          path: ${{ env.REPO }}
+          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+
+      - name: Write COMPLETE.json marker
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        run: |
+          set -euo pipefail
+          if [ -e "${REPO}/contents" ]; then
+            echo "::error::refusing to write COMPLETE.json while ${REPO}/contents exists"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          data = {
+              "lock_hash": os.environ["LOCK_HASH"],
+              "commit": os.environ["GITHUB_SHA"],
+              "platform": f"{os.environ['PLATFORM_OS']}-{os.environ['PLATFORM_ARCH']}",
+              "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "archive_size": os.environ["ARCHIVE_SIZE"],
+              "archive_bytes": int(os.environ["ARCHIVE_BYTES"]),
+          }
+          with open(os.path.join(os.environ["REPO"], "COMPLETE.json"), "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Save complete repository cache (archives only)
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.REPO }}
+          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
