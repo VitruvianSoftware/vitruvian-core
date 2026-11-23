@@ -21,10 +21,11 @@
 """The vitruvian-orchestrator plugin: the files the site registry reads."""
 
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
-# The mod (hooks/) runs inside Claude Code, not under Bazel; its tests run with
+# The mod (hooks/) runs inside Claude Code, so :plugin_test runs its tests with
 # `claude plugin test`. Keep gazelle from generating js targets for it.
 # gazelle:exclude hooks
 # gazelle:exclude tsconfig.json
@@ -72,6 +73,22 @@ js_test(
         "release-please-config.json",
     ],
     entry_point = "version.test.mjs",
+)
+
+# Not listed in pipeline_unit below: the required build-test check runs it on
+# every PR and merge-queue commit that affects it.
+# no-remote-exec: the CLI is the host's build, which may not match a remote worker.
+sh_test(
+    name = "plugin_test",
+    size = "small",
+    srcs = ["plugin_test.sh"],
+    args = ["$(rootpath @claude_cli//:claude)"],
+    data = [
+        ".claude-plugin/plugin.json",
+        "//apps/claude-code/plugins/vitruvian-orchestrator/types:index.d.ts",
+        "@claude_cli//:claude",
+    ] + glob(["hooks/**"]),
+    tags = ["no-remote-exec"],
 )
 
 filegroup(

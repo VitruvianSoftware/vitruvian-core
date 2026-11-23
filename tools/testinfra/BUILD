@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 # Platform config_settings + aliases for hermetic test-service binaries
 # (PostgreSQL from theseus-rs/postgresql-binaries; see MODULE.bazel).
 
@@ -75,3 +77,9 @@ _PG_SELECT = {
 ]
 
 exports_files(["playwright-browsers-1.57.0.json"])
+
+bzl_library(
+    name = "claude_cli",
+    srcs = ["claude_cli.bzl"],
+    visibility = ["//visibility:public"],
+)
