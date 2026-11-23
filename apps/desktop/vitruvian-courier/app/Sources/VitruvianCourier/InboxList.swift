@@ -233,6 +233,7 @@ struct InboxList: View {
                 }
                 .listStyle(.inset)
                 .courierSidebarList()
+                .courierScrollEdgeFade(refreshToken: rows.count)
                 .contextMenu(forSelectionType: String.self, menu: { _ in EmptyView() }, primaryAction: { ids in
                     if let id = ids.first, id != InboxModel.newChatRowID,
                        let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
@@ -385,11 +386,87 @@ struct EmptyStateView: View {
     }
 }
 
-/// Grey rows while the first page is read.
-private struct SkeletonRows: View {
+/// Grey rows while the first page is read, with a soft 1 s linear shimmer. The shimmer runs only while the rows are
+/// on screen (in a window that is showing them) and Reduce Motion is off; otherwise the rows are plain grey.
+struct SkeletonRows: View {
     let compact: Bool
+    /// Told when the shimmer starts or stops; a seam for tests, which cannot see a running animation.
+    var onShimmerActivityChange: ((Bool) -> Void)?
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.windowShowsContentProbe) private var windowProbe
+    @State private var workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    @State private var isVisible = false
+    @State private var windowShowsContent = false
+    @State private var startDate: Date?
+
+    init(compact: Bool, onShimmerActivityChange: ((Bool) -> Void)? = nil) {
+        self.compact = compact
+        self.onShimmerActivityChange = onShimmerActivityChange
+    }
+
+    private var reduceMotionEnabled: Bool {
+        reduceMotionOverride ?? (accessibilityReduceMotion || workspaceReduceMotion)
+    }
+
+    private var isShimmering: Bool {
+        SkeletonShimmerMotion.shouldAnimate(isVisible: isVisible && windowShowsContent, reduceMotion: reduceMotionEnabled)
+    }
 
     var body: some View {
+        skeletonShapes
+            .foregroundStyle(Color.primary.opacity(SkeletonShimmerMotion.baseOpacity))
+            .overlay {
+                if isShimmering {
+                    TimelineView(.animation) { context in
+                        GeometryReader { geo in
+                            let elapsed = startDate.map { context.date.timeIntervalSince($0) } ?? 0
+                            let phase = SkeletonShimmerMotion.phase(elapsed: elapsed)
+                            let bandWidth = SkeletonShimmerMotion.bandWidth(containerWidth: geo.size.width)
+                            LinearGradient(
+                                colors: [
+                                    .clear,
+                                    Color.primary.opacity(SkeletonShimmerMotion.highlightOpacity),
+                                    .clear,
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: bandWidth, height: geo.size.height)
+                            .offset(x: SkeletonShimmerMotion.bandOffsetX(phase: phase, containerWidth: geo.size.width))
+                        }
+                    }
+                    .mask(skeletonShapes)
+                    .allowsHitTesting(false)
+                }
+            }
+            .background(WindowShowsContentReader(probe: windowProbe) { windowShowsContent = $0 })
+            .accessibilityLabel(String(localized: "Loading chats"))
+            .onAppear {
+                isVisible = true
+                workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+            .onDisappear {
+                isVisible = false
+                startDate = nil
+                // Gone from the tree: the overlay (and its clock) go with it; say so, as `onChange` will not.
+                onShimmerActivityChange?(false)
+            }
+            .onChange(of: isShimmering) { _, active in
+                // The clock starts when the shimmer does, so each run begins at the left edge.
+                startDate = active ? Date() : nil
+                onShimmerActivityChange?(active)
+            }
+            .onReceive(
+                NSWorkspace.shared.notificationCenter.publisher(
+                    for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+                )
+            ) { _ in
+                workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+    }
+
+    private var skeletonShapes: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 16) {
             ForEach(0 ..< 8, id: \.self) { index in
                 HStack(spacing: 10) {
@@ -407,10 +484,8 @@ private struct SkeletonRows: View {
             }
             Spacer(minLength: 0)
         }
-        .foregroundStyle(Color.primary.opacity(0.08))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityLabel(String(localized: "Loading chats"))
     }
 }
 

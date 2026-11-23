@@ -952,7 +952,7 @@ public struct ChatInfoPane: View {
 
 /// A topic of Chat Info in a rounded box with its name above it. With `isExpanded` the box folds up from its title;
 /// without, it stays open.
-private struct ChatInfoSection<Content: View>: View {
+struct ChatInfoSection<Content: View>: View {
     let title: String
     /// The number in the badge by the title; nil for a section with nothing to count (Notes).
     let count: Int?
@@ -962,15 +962,31 @@ private struct ChatInfoSection<Content: View>: View {
     var onSeeAll: (() -> Void)? = nil
     var seeAllTitle: String = String(localized: "See All")
     @ViewBuilder let content: () -> Content
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
 
     private var open: Bool { isExpanded?.wrappedValue ?? true }
+
+    private var reduceMotionEnabled: Bool {
+        courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 if let isExpanded {
                     Button {
-                        isExpanded.wrappedValue.toggle()
+                        if ChatInfoSectionMotion.animatesExpand(reduceMotion: reduceMotionEnabled) {
+                            withAnimation(
+                                ChatInfoSectionMotion.expandCurve.swiftUIAnimation(
+                                    duration: ChatInfoSectionMotion.expandDuration
+                                )
+                            ) {
+                                isExpanded.wrappedValue.toggle()
+                            }
+                        } else {
+                            isExpanded.wrappedValue.toggle()
+                        }
                     } label: {
                         titleRow(showsChevron: true)
                     }
@@ -997,6 +1013,7 @@ private struct ChatInfoSection<Content: View>: View {
 
             if open {
                 content()
+                    .transition(.opacity)
             }
         }
         .padding(ChatInfoBoxMetrics.padding)
@@ -1005,6 +1022,7 @@ private struct ChatInfoSection<Content: View>: View {
             RoundedRectangle(cornerRadius: ChatInfoBoxMetrics.cornerRadius, style: .continuous)
                 .fill(Color.primary.opacity(0.05))
         )
+        .clipShape(RoundedRectangle(cornerRadius: ChatInfoBoxMetrics.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: ChatInfoBoxMetrics.cornerRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
@@ -1014,10 +1032,19 @@ private struct ChatInfoSection<Content: View>: View {
     private func titleRow(showsChevron: Bool) -> some View {
         HStack(spacing: 6) {
             if showsChevron {
-                Image(systemName: open ? "chevron.down" : "chevron.right")
+                Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 10)
+                    .rotationEffect(.degrees(ChatInfoSectionMotion.chevronRotationDegrees(isOpen: open)))
+                    .animation(
+                        ChatInfoSectionMotion.animatesChevron(reduceMotion: reduceMotionEnabled)
+                            ? ChatInfoSectionMotion.chevronCurve.swiftUIAnimation(
+                                duration: ChatInfoSectionMotion.chevronDuration
+                            )
+                            : nil,
+                        value: open
+                    )
             }
             Text(title)
                 .font(.callout.weight(.semibold))
