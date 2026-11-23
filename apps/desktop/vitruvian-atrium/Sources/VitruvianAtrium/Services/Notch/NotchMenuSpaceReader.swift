@@ -48,17 +48,22 @@ package final class NotchMenuSpaceReader {
         /// Calls its closure about once a second until the returned closure
         /// cancels it.
         package var ticks: (@escaping () -> Void) -> () -> Void
+        /// Calls its closure on the main thread once `delay` seconds have
+        /// passed, unless the returned closure cancels it first.
+        package var after: (_ delay: TimeInterval, _ work: @escaping () -> Void) -> () -> Void
 
         package init(menuBarOwner: @escaping () -> pid_t?,
                      measure: @escaping (pid_t, Subject) -> CGFloat?,
                      background: @escaping (@escaping () -> Void) -> Void,
                      main: @escaping (@escaping () -> Void) -> Void,
-                     ticks: @escaping (@escaping () -> Void) -> () -> Void) {
+                     ticks: @escaping (@escaping () -> Void) -> () -> Void,
+                     after: @escaping (TimeInterval, @escaping () -> Void) -> () -> Void = { _, _ in {} }) {
             self.menuBarOwner = menuBarOwner
             self.measure = measure
             self.background = background
             self.main = main
             self.ticks = ticks
+            self.after = after
         }
 
         package static var system: Environment {
@@ -84,6 +89,13 @@ package final class NotchMenuSpaceReader {
                     timer.tolerance = 0.2
                     RunLoop.main.add(timer, forMode: .common)
                     return { timer.invalidate() }
+                },
+                after: { delay, work in
+                    // Made and run on the main thread only.
+                    nonisolated(unsafe) let work = work
+                    let item = DispatchWorkItem { work() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+                    return { item.cancel() }
                 })
         }
 
@@ -141,16 +153,27 @@ package final class NotchMenuSpaceReader {
         generation += 1
     }
 
+    /// How long a read may take before the island stops trusting the old
+    /// answer, which may leave room over a status item that has since come.
+    package static let readTimeout: TimeInterval = 0.30
+
     /// Reads now, unless the reader is stopped or a read is still running.
+    /// With no menus on show there is nothing to leave room for.
     package func read() {
-        guard cancelTicks != nil, !reading,
-              let pid = environment.menuBarOwner(), let subject = subject() else { return }
+        guard cancelTicks != nil, !reading else { return }
+        guard let pid = environment.menuBarOwner() else { apply(nil); return }
+        guard let subject = subject() else { return }
         reading = true
         let generation = generation
         let environment = environment
+        let cancelTimeout = environment.after(Self.readTimeout) { [weak self] in
+            guard let self, self.cancelTicks != nil, self.reading else { return }
+            self.apply(nil)
+        }
         environment.background { [weak self] in
             let room = environment.measure(pid, subject)
             environment.main {
+                cancelTimeout()
                 guard let self else { return }
                 self.reading = false
                 // A stop moves the generation on as well, and a stopped

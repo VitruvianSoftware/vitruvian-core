@@ -75,6 +75,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/VitruvianAtrium/Core/Notch/NotchCalendarSupport.swift",
     "Sources/VitruvianAtrium/Core/Notch/NotchKeepAwakeSupport.swift",
     "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
+    "Sources/VitruvianAtrium/Services/Notch/NotchMenuBarSpace.swift",
     "Sources/VitruvianAtrium/Services/Notch/NotchAudioLevelSupport.swift",
     "Sources/VitruvianAtrium/Services/Notch/NotchVolumeKeyGate.swift",
     "Sources/VitruvianAtrium/Services/Notch/NotchMusicSupport.swift",

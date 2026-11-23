@@ -38,7 +38,31 @@ enum BrightnessStepTests {
         abs(value - expected) < 0.0001
     }
 
+    /// A monitor behind the built-in HDMI port's converter hears only the
+    /// converter's address: the probe, the read before a step and the write
+    /// all have to use it.
+    private static func converterChecks(_ suite: TestSuite) {
+        let desk = Rig.Desk()
+        let monitor = Rig.Monitor(current: 50)
+        monitor.behindConverter = true
+        desk.displays = [Rig.Display(id: 2, monitor: monitor)]
+        let service = BrightnessService(environment: desk.environment)
+        service.start()
+        desk.drain()
+        defer { desk.tearDown() }
+        suite.expect(service.displays.map(\.method) == [.ddc] && service.displays.first?.readable == true
+                     && close(level(service), 0.5) && monitor.misaddressed == 0,
+                     "a monitor behind the HDMI converter is probed at the converter's address")
+        monitor.current = 80
+        desk.advance(seconds: 5)
+        service.step(2, method: .ddc, delta: 0.1, showOSD: false)
+        desk.drain()
+        suite.expect(close(level(service), 0.9) && monitor.written.last == 90 && monitor.misaddressed == 0,
+                     "a step reads and writes the monitor through the converter's address")
+    }
+
     static func run(_ suite: TestSuite) {
+        converterChecks(suite)
         let (desk, service, monitor) = monitorDesk()
         defer { desk.tearDown() }
         suite.expect(service.displays.map(\.method) == [.ddc] && service.displays.first?.readable == true
