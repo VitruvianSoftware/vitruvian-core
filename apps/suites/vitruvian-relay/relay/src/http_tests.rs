@@ -293,6 +293,28 @@ pub(crate) async fn harness() -> Harness {
 }
 
 pub(crate) async fn harness_with(timing: Timing) -> Harness {
+    harness_env(timing, &[]).await
+}
+
+/// The client id the app sign-in tests issue tokens for.
+pub(crate) const APPS_CLIENT: &str = "apps-client";
+
+/// A relay with the app sign-in turned on (its server key and client id set,
+/// the client id also an MCP client id, as the config requires).
+pub(crate) async fn app_harness() -> Harness {
+    harness_env(
+        Timing::default(),
+        &[
+            ("APP_SIGNIN_KEY", b64(&[7u8; 32])),
+            ("APPS_CLIENT_ID", APPS_CLIENT.to_string()),
+            ("MCP_CLIENT_IDS", format!("{MCP_CLIENT},{APPS_CLIENT}")),
+        ],
+    )
+    .await
+}
+
+/// The standard environment, with `extra` set over it.
+async fn harness_env(timing: Timing, extra: &[(&str, String)]) -> Harness {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
     let tokens = start_token_server();
@@ -312,6 +334,7 @@ pub(crate) async fn harness_with(timing: Timing) -> Harness {
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
+    .chain(extra.iter().map(|(k, v)| (*k, v.clone())))
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
     let required_role = settings.required_role.clone();
@@ -329,13 +352,14 @@ pub(crate) async fn harness_with(timing: Timing) -> Harness {
         )
         .unwrap()
     };
+    let mcp_ids = settings.mcp_client_ids.clone();
     let store = Arc::new(MemStore::new());
     let logs = Arc::new(Mutex::new(Vec::new()));
     let sink_logs = logs.clone();
     let sink: LogSink = Arc::new(move |line| sink_logs.lock().unwrap().push(line.to_string()));
     let app = App::new(
         settings,
-        verifier_for(vec![MCP_CLIENT.into()]),
+        verifier_for(mcp_ids),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
         verifier_for(vec![DASHBOARD_CLIENT.into()]),
         store.clone(),

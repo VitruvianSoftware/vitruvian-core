@@ -25,6 +25,7 @@
 //!   GET    /.well-known/oauth-protected-resource             RFC 9728 metadata for the relay
 //!   GET    /.well-known/oauth-protected-resource/mcp/d/{id}  metadata for one device's URL
 //!   POST   /mcp/d/{id}                                       MCP over Streamable HTTP (JSON answers)
+//!   POST   /mcp/app/{id}, and the oauth routes ([`crate::oauth`])  the same, for apps that register themselves (off unless APP_SIGNIN_KEY is set)
 //!                                                            (2026-07-28 requests stand alone; older ones use initialize + Mcp-Session-Id)
 //!   GET    /mcp/d/{id}, DELETE /mcp/d/{id}                   405: no SSE stream or session delete in P1
 //!   POST   /devices                                          register this person's device (connector token)
@@ -75,6 +76,7 @@ use crate::devices::{
     clean_device_name, DeviceRecord, NewDevice, DEFAULT_DEVICE_NAME, DEVICE_NAME_MAX,
 };
 use crate::mcp::{era, needs_session, Answer, Era, Mcp};
+use crate::oauth;
 use crate::parked::Delivery;
 use crate::ratelimit::{RateLimit, CALLS_PER_MINUTE_PER_USER, RATE_BURST};
 use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
@@ -345,6 +347,9 @@ pub struct App {
     /// device ever changed.
     key_changes: Mutex<HashMap<String, (u64, Instant, Change)>>,
     pub(crate) registry: Registry,
+    /// Registrations per source address (see [`crate::oauth`]): 10 a minute,
+    /// a burst of 10. Bounded, as the endpoint is open to the internet.
+    pub(crate) register_limit: RateLimit,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
     pub(crate) timing: Timing,
@@ -392,6 +397,7 @@ impl App {
             key_generation: AtomicU64::new(0),
             key_changes: Mutex::new(HashMap::new()),
             registry,
+            register_limit: RateLimit::new(10, 10),
             sessions: Mutex::new(HashMap::new()),
             timing,
             log,
@@ -572,7 +578,11 @@ impl App {
 
 // ------------------------------------------------------------------ helpers
 
-fn respond(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Response<Body> {
+pub(crate) fn respond(
+    status: StatusCode,
+    content_type: &str,
+    body: impl Into<Bytes>,
+) -> Response<Body> {
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
@@ -581,11 +591,11 @@ fn respond(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Re
         .expect("static response parts are valid")
 }
 
-fn json_response(status: StatusCode, v: &Value) -> Response<Body> {
+pub(crate) fn json_response(status: StatusCode, v: &Value) -> Response<Body> {
     respond(status, "application/json", v.to_string())
 }
 
-fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
+pub(crate) fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
     respond(status, "text/plain", msg)
 }
 
@@ -703,13 +713,26 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
     let path = req.uri().path().to_string();
     let method = req.method().clone();
 
-    if let Some(device_id) = path.strip_prefix("/mcp/d/") {
-        if !valid_device_id(device_id) {
+    // `/mcp/d/` is for apps that sign in at Zitadel (Claude); `/mcp/app/` is
+    // the same service for apps that register themselves with the relay
+    // (Gemini), and exists only when that is turned on.
+    let mcp_route = match (path.strip_prefix("/mcp/d/"), path.strip_prefix("/mcp/app/")) {
+        (Some(id), _) => Some((id, false)),
+        (None, Some(id)) => Some((id, true)),
+        (None, None) => None,
+    };
+    if let Some((device_id, for_apps)) = mcp_route {
+        if !valid_device_id(device_id) || (for_apps && app.settings.app_signin.is_none()) {
             return not_found();
         }
+        let metadata_url = if for_apps {
+            app.settings.app_metadata_url(device_id)
+        } else {
+            app.settings.device_metadata_url(device_id)
+        };
         let device_id = device_id.to_string();
         return match method {
-            Method::POST => mcp_post(app, req, device_id).await,
+            Method::POST => mcp_post(app, req, device_id, metadata_url).await,
             Method::GET | Method::DELETE => {
                 let mut r = text(StatusCode::METHOD_NOT_ALLOWED, "POST only");
                 r.headers_mut()
@@ -736,6 +759,22 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
             _ => not_found(),
         };
     }
+    if let Some(device_id) = path
+        .strip_prefix(PRM)
+        .and_then(|p| p.strip_prefix("/mcp/app/"))
+    {
+        // As above, and only when the app sign-in is on.
+        return match (method, valid_device_id(device_id), &app.settings.app_signin) {
+            (Method::GET, true, Some(_)) => json_response(
+                StatusCode::OK,
+                &oauth::app_protected_resource_metadata(&app, device_id),
+            ),
+            _ => not_found(),
+        };
+    }
+    if oauth::wants(&method, &path) {
+        return oauth::handle(app, req).await;
+    }
     if dashboard::wants(&method, &path) {
         return dashboard::handle(app, req).await;
     }
@@ -758,9 +797,13 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
 
 // ---------------------------------------------------------------------- MCP
 
-async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> Response<Body> {
+async fn mcp_post(
+    app: Arc<App>,
+    req: Request<Incoming>,
+    device_id: String,
+    metadata_url: String,
+) -> Response<Body> {
     let tracker = req.extensions().get::<Arc<WriteTracker>>().cloned();
-    let metadata_url = app.settings.device_metadata_url(&device_id);
     let caller =
         match authenticate(&app.mcp_verifier, header_str(&req, header::AUTHORIZATION)).await {
             Ok((caller, _token)) => caller,
