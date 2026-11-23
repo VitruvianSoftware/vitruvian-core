@@ -258,35 +258,35 @@ fn dump_value_limited(
     }
 }
 
-fn dump_value(v: &Value, indent: Option<usize>, _level: usize, sort_keys: bool, out: &mut String) {
+fn dump_value(v: &Value, indent: Option<usize>, sort_keys: bool, out: &mut String) {
     dump_value_limited(v, indent, sort_keys, None, out);
 }
 
 /// `jq -c`: compact JSON without trailing newline.
 pub fn compact(v: &Value) -> String {
     let mut out = String::new();
-    dump_value(v, None, 0, false, &mut out);
+    dump_value(v, None, false, &mut out);
     out
 }
 
 /// `jq -Sc`: sorted-key compact JSON without trailing newline.
 pub fn compact_sorted(v: &Value) -> String {
     let mut out = String::new();
-    dump_value(v, None, 0, true, &mut out);
+    dump_value(v, None, true, &mut out);
     out
 }
 
 /// `jq`: two-space pretty JSON without trailing newline.
 pub fn pretty(v: &Value) -> String {
     let mut out = String::new();
-    dump_value(v, Some(2), 0, false, &mut out);
+    dump_value(v, Some(2), false, &mut out);
     out
 }
 
 /// `jq -S`: sorted-key two-space pretty JSON without trailing newline.
 pub fn pretty_sorted(v: &Value) -> String {
     let mut out = String::new();
-    dump_value(v, Some(2), 0, true, &mut out);
+    dump_value(v, Some(2), true, &mut out);
     out
 }
 
@@ -336,7 +336,7 @@ pub fn format_value(v: &Value, opts: OutputOptions) -> String {
     }
     let indent = if opts.compact { None } else { Some(2) };
     let mut out = String::new();
-    dump_value(v, indent, 0, opts.sort_keys, &mut out);
+    dump_value(v, indent, opts.sort_keys, &mut out);
     out
 }
 

@@ -30,6 +30,9 @@ use crate::value::{Number, Value};
 
 const DEPTH_LIMIT: usize = 10_000;
 const OBJECT_LIMIT: usize = 5_000;
+const ALT_LIMIT: usize = 6_667;
+const ALT_ARR_FIRST_ERR_COL: usize = 20_000;
+const ALT_OBJ_FIRST_ERR_COL: usize = 20_004;
 const DROP_OVERFLOW_DEPTH: usize = 20_000;
 const STACK_SIZE_2MIB: usize = 2 * 1024 * 1024;
 
@@ -78,6 +81,41 @@ fn nested_object_json(depth: usize, leaf: &str) -> String {
     s.push_str(leaf);
     for _ in 0..depth {
         s.push('}');
+    }
+    s
+}
+
+fn make_deep_alt(levels: usize, arr_first: bool, leaf: Value) -> Value {
+    let mut cur = leaf;
+    for i in (0..levels).rev() {
+        let is_arr = if arr_first { i % 2 == 0 } else { i % 2 == 1 };
+        cur = if is_arr {
+            Value::Array(vec![cur])
+        } else {
+            Value::Object(vec![("a".to_string(), cur)])
+        };
+    }
+    cur
+}
+
+fn nested_alt_json(levels: usize, arr_first: bool, leaf: &str) -> String {
+    let mut s = String::with_capacity(levels * 4 + leaf.len());
+    for i in 0..levels {
+        let is_arr = if arr_first { i % 2 == 0 } else { i % 2 == 1 };
+        if is_arr {
+            s.push('[');
+        } else {
+            s.push_str("{\"a\":");
+        }
+    }
+    s.push_str(leaf);
+    for i in (0..levels).rev() {
+        let is_arr = if arr_first { i % 2 == 0 } else { i % 2 == 1 };
+        if is_arr {
+            s.push(']');
+        } else {
+            s.push('}');
+        }
     }
     s
 }
@@ -526,6 +564,546 @@ fn depth_value_del_and_set() {
             (
                 "a".into(),
                 make_deep_array(DROP_OVERFLOW_DEPTH, Value::int(1)),
+            ),
+            ("a".into(), Value::int(9)),
+        ]);
+        assert_eq!(dedup, Value::object([("a".into(), Value::int(9))]));
+    });
+}
+
+#[test]
+fn alt_depth_parse_stream() {
+    run_2mib(|| {
+        let ok_arr = nested_alt_json(ALT_LIMIT, true, "1");
+        let items = parse_stream(ok_arr.as_bytes());
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], StreamItem::Value(_, 0)));
+
+        let bad_arr = nested_alt_json(ALT_LIMIT + 1, true, "1");
+        assert_eq!(
+            parse_stream(bad_arr.as_bytes()),
+            vec![StreamItem::ParseError(format!(
+                "Exceeds depth limit for parsing at line 1, column {}",
+                ALT_ARR_FIRST_ERR_COL
+            ))]
+        );
+
+        let ok_obj = nested_alt_json(ALT_LIMIT, false, "1");
+        let obj_items = parse_stream(ok_obj.as_bytes());
+        assert_eq!(obj_items.len(), 1);
+        assert!(matches!(obj_items[0], StreamItem::Value(_, 0)));
+
+        let bad_obj = nested_alt_json(ALT_LIMIT + 1, false, "1");
+        assert_eq!(
+            parse_stream(bad_obj.as_bytes()),
+            vec![StreamItem::ParseError(format!(
+                "Exceeds depth limit for parsing at line 1, column {}",
+                ALT_OBJ_FIRST_ERR_COL
+            ))]
+        );
+    });
+}
+
+#[test]
+fn alt_depth_parse_stream_str() {
+    run_2mib(|| {
+        let ok_arr = nested_alt_json(ALT_LIMIT, true, "1");
+        let items = parse_stream_str(&ok_arr);
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], StreamItem::Value(_, 0)));
+
+        let bad_arr = nested_alt_json(ALT_LIMIT + 1, true, "1");
+        assert_eq!(
+            parse_stream_str(&bad_arr),
+            vec![StreamItem::ParseError(format!(
+                "Exceeds depth limit for parsing at line 1, column {}",
+                ALT_ARR_FIRST_ERR_COL
+            ))]
+        );
+
+        let ok_obj = nested_alt_json(ALT_LIMIT, false, "1");
+        let obj_items = parse_stream_str(&ok_obj);
+        assert_eq!(obj_items.len(), 1);
+        assert!(matches!(obj_items[0], StreamItem::Value(_, 0)));
+
+        let bad_obj = nested_alt_json(ALT_LIMIT + 1, false, "1");
+        assert_eq!(
+            parse_stream_str(&bad_obj),
+            vec![StreamItem::ParseError(format!(
+                "Exceeds depth limit for parsing at line 1, column {}",
+                ALT_OBJ_FIRST_ERR_COL
+            ))]
+        );
+    });
+}
+
+#[test]
+fn alt_depth_parse_one() {
+    run_2mib(|| {
+        let ok_arr = nested_alt_json(ALT_LIMIT, true, "1");
+        assert!(parse_one(ok_arr.as_bytes()).is_ok());
+
+        let bad_arr = nested_alt_json(ALT_LIMIT + 1, true, "1");
+        assert_eq!(
+            parse_one(bad_arr.as_bytes()).unwrap_err(),
+            format!(
+                "Exceeds depth limit for parsing at line 1, column {}",
+                ALT_ARR_FIRST_ERR_COL
+            )
+        );
+
+        let ok_obj = nested_alt_json(ALT_LIMIT, false, "1");
+        assert!(parse_one(ok_obj.as_bytes()).is_ok());
+
+        let bad_obj = nested_alt_json(ALT_LIMIT + 1, false, "1");
+        assert_eq!(
+            parse_one(bad_obj.as_bytes()).unwrap_err(),
+            format!(
+                "Exceeds depth limit for parsing at line 1, column {}",
+                ALT_OBJ_FIRST_ERR_COL
+            )
+        );
+    });
+}
+
+#[test]
+fn alt_depth_drop() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        drop(arr_first);
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        drop(obj_first);
+        let over = make_deep_alt(DROP_OVERFLOW_DEPTH, true, Value::int(1));
+        drop(over);
+    });
+}
+
+#[test]
+fn alt_depth_clone() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let arr_first_clone = arr_first.clone();
+        assert_eq!(arr_first_clone.kind(), "array");
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let obj_first_clone = obj_first.clone();
+        assert_eq!(obj_first_clone.kind(), "object");
+    });
+}
+
+#[test]
+fn alt_depth_partial_eq() {
+    run_2mib(|| {
+        let a1 = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let a2 = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let a3 = make_deep_alt(ALT_LIMIT, true, Value::int(2));
+        assert!(a1 == a2);
+        assert!(a1 != a3);
+
+        let o1 = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let o2 = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let o3 = make_deep_alt(ALT_LIMIT, false, Value::int(2));
+        assert!(o1 == o2);
+        assert!(o1 != o3);
+    });
+}
+
+#[test]
+fn alt_depth_debug() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let dbg_arr = format!("{arr_first:?}");
+        assert!(dbg_arr.starts_with("Array([Object([(\"a\", Array(["));
+        assert!(dbg_arr.ends_with("]))])])"));
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let dbg_obj = format!("{obj_first:?}");
+        assert!(dbg_obj.starts_with("Object([(\"a\", Array([Object(["));
+        assert!(dbg_obj.ends_with(")])]))])"));
+    });
+}
+
+#[test]
+fn alt_depth_compare() {
+    run_2mib(|| {
+        let a1 = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let a2 = make_deep_alt(ALT_LIMIT, true, Value::int(2));
+        let a1_dup = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(compare(&a1, &a2), Ordering::Less);
+        assert_eq!(compare(&a2, &a1), Ordering::Greater);
+        assert_eq!(compare(&a1, &a1_dup), Ordering::Equal);
+
+        let o1 = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let o2 = make_deep_alt(ALT_LIMIT, false, Value::int(2));
+        let o1_dup = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(compare(&o1, &o2), Ordering::Less);
+        assert_eq!(compare(&o2, &o1), Ordering::Greater);
+        assert_eq!(compare(&o1, &o1_dup), Ordering::Equal);
+    });
+}
+
+#[test]
+fn alt_depth_jq_eq() {
+    run_2mib(|| {
+        let a1 = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let a1_float = make_deep_alt(
+            ALT_LIMIT,
+            true,
+            Value::Number(Number::parse("1.0").unwrap()),
+        );
+        let a_nan1 = make_deep_alt(ALT_LIMIT, true, Value::Number(Number::Nan));
+        let a_nan2 = make_deep_alt(ALT_LIMIT, true, Value::Number(Number::Nan));
+        assert!(jq_eq(&a1, &a1_float));
+        assert!(a1.jq_eq(&a1_float));
+        assert!(!jq_eq(&a_nan1, &a_nan2));
+
+        let o1 = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let o1_float = make_deep_alt(
+            ALT_LIMIT,
+            false,
+            Value::Number(Number::parse("1.0").unwrap()),
+        );
+        let o_nan1 = make_deep_alt(ALT_LIMIT, false, Value::Number(Number::Nan));
+        let o_nan2 = make_deep_alt(ALT_LIMIT, false, Value::Number(Number::Nan));
+        assert!(jq_eq(&o1, &o1_float));
+        assert!(!jq_eq(&o_nan1, &o_nan2));
+    });
+}
+
+#[test]
+fn alt_depth_jq_cmp() {
+    run_2mib(|| {
+        let a1 = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let a2 = make_deep_alt(ALT_LIMIT, true, Value::int(2));
+        assert_eq!(a2.jq_cmp(&a1), Ordering::Greater);
+        assert_eq!(a1.jq_cmp(&a2), Ordering::Less);
+
+        let o1 = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let o2 = make_deep_alt(ALT_LIMIT, false, Value::int(2));
+        assert_eq!(o2.jq_cmp(&o1), Ordering::Greater);
+        assert_eq!(o1.jq_cmp(&o2), Ordering::Less);
+    });
+}
+
+#[test]
+fn alt_depth_sort() {
+    run_2mib(|| {
+        let items = vec![
+            make_deep_alt(ALT_LIMIT, true, Value::int(2)),
+            make_deep_alt(ALT_LIMIT, true, Value::int(1)),
+        ];
+        let sorted = sort(&items);
+        assert_eq!(sorted.len(), 2);
+        assert_eq!(compact(&sorted[0]), nested_alt_json(ALT_LIMIT, true, "1"));
+        assert_eq!(compact(&sorted[1]), nested_alt_json(ALT_LIMIT, true, "2"));
+    });
+}
+
+#[test]
+fn alt_depth_sort_by() {
+    run_2mib(|| {
+        let items = vec![
+            Value::object([(
+                "k".into(),
+                make_deep_alt(ALT_LIMIT - 1, true, Value::int(2)),
+            )]),
+            Value::object([(
+                "k".into(),
+                make_deep_alt(ALT_LIMIT - 1, true, Value::int(1)),
+            )]),
+        ];
+        let sorted = sort_by(&items, |v| v.index("k")).unwrap();
+        assert_eq!(sorted.len(), 2);
+        assert_eq!(
+            compact(&sorted[0].index("k").unwrap()),
+            nested_alt_json(ALT_LIMIT - 1, true, "1")
+        );
+    });
+}
+
+#[test]
+fn alt_depth_group_by() {
+    run_2mib(|| {
+        let items = vec![
+            Value::object([(
+                "k".into(),
+                make_deep_alt(ALT_LIMIT - 1, true, Value::int(2)),
+            )]),
+            Value::object([(
+                "k".into(),
+                make_deep_alt(ALT_LIMIT - 1, true, Value::int(1)),
+            )]),
+            Value::object([(
+                "k".into(),
+                make_deep_alt(
+                    ALT_LIMIT - 1,
+                    true,
+                    Value::Number(Number::parse("1.0").unwrap()),
+                ),
+            )]),
+        ];
+        let groups = group_by(&items, |v| v.index("k")).unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].len(), 2);
+        assert_eq!(groups[1].len(), 1);
+    });
+}
+
+#[test]
+fn alt_depth_unique() {
+    run_2mib(|| {
+        let items = vec![
+            make_deep_alt(ALT_LIMIT, true, Value::int(2)),
+            make_deep_alt(ALT_LIMIT, true, Value::int(1)),
+            make_deep_alt(
+                ALT_LIMIT,
+                true,
+                Value::Number(Number::parse("1.0").unwrap()),
+            ),
+        ];
+        let uniq = unique(&items);
+        assert_eq!(uniq.len(), 2);
+        assert_eq!(compact(&uniq[0]), nested_alt_json(ALT_LIMIT, true, "1"));
+        assert_eq!(compact(&uniq[1]), nested_alt_json(ALT_LIMIT, true, "2"));
+    });
+}
+
+#[test]
+fn alt_depth_unique_by() {
+    run_2mib(|| {
+        let items = vec![
+            Value::object([(
+                "k".into(),
+                make_deep_alt(ALT_LIMIT - 1, true, Value::int(2)),
+            )]),
+            Value::object([(
+                "k".into(),
+                make_deep_alt(ALT_LIMIT - 1, true, Value::int(1)),
+            )]),
+            Value::object([(
+                "k".into(),
+                make_deep_alt(
+                    ALT_LIMIT - 1,
+                    true,
+                    Value::Number(Number::parse("1.0").unwrap()),
+                ),
+            )]),
+        ];
+        let uniq = unique_by(&items, |v| v.index("k")).unwrap();
+        assert_eq!(uniq.len(), 2);
+    });
+}
+
+#[test]
+fn alt_depth_compact() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(compact(&arr_first), nested_alt_json(ALT_LIMIT, true, "1"));
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(compact(&obj_first), nested_alt_json(ALT_LIMIT, false, "1"));
+    });
+}
+
+#[test]
+fn alt_depth_compact_sorted() {
+    run_2mib(|| {
+        let leaf = Value::object([("b".into(), Value::int(1)), ("a".into(), Value::int(2))]);
+        let alt = make_deep_alt(ALT_LIMIT - 1, true, leaf);
+        assert_eq!(
+            compact_sorted(&alt),
+            nested_alt_json(ALT_LIMIT - 1, true, "{\"a\":2,\"b\":1}")
+        );
+    });
+}
+
+#[test]
+fn alt_depth_pretty() {
+    run_2mib(|| {
+        let alt = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let out = pretty(&alt);
+        assert!(out.starts_with("[\n  {\n    \"a\": [\n"));
+        assert!(out.ends_with("\n  }\n]"));
+    });
+}
+
+#[test]
+fn alt_depth_pretty_sorted() {
+    run_2mib(|| {
+        let leaf = Value::object([("b".into(), Value::int(1)), ("a".into(), Value::int(2))]);
+        let alt = make_deep_alt(ALT_LIMIT - 1, true, leaf);
+        let out = pretty_sorted(&alt);
+        assert!(out.starts_with("[\n  {\n    \"a\": [\n"));
+        assert!(out.ends_with("\n  }\n]"));
+        let a_pos = out.find("\"a\": 2").expect("sorted key a present");
+        let b_pos = out.find("\"b\": 1").expect("sorted key b present");
+        assert!(a_pos < b_pos);
+    });
+}
+
+#[test]
+fn alt_depth_raw() {
+    run_2mib(|| {
+        let alt = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        let out = raw(&alt);
+        assert!(out.starts_with("[\n  {\n    \"a\": [\n"));
+        assert!(out.ends_with("\n  }\n]"));
+    });
+}
+
+#[test]
+fn alt_depth_raw_compact() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(
+            raw_compact(&arr_first),
+            nested_alt_json(ALT_LIMIT, true, "1")
+        );
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(
+            raw_compact(&obj_first),
+            nested_alt_json(ALT_LIMIT, false, "1")
+        );
+    });
+}
+
+#[test]
+fn alt_depth_raw_sorted() {
+    run_2mib(|| {
+        let leaf = Value::object([("b".into(), Value::int(1)), ("a".into(), Value::int(2))]);
+        let alt = make_deep_alt(ALT_LIMIT - 1, true, leaf);
+        let out = raw_sorted(&alt);
+        let a_pos = out.find("\"a\": 2").expect("sorted key a present");
+        let b_pos = out.find("\"b\": 1").expect("sorted key b present");
+        assert!(a_pos < b_pos);
+    });
+}
+
+#[test]
+fn alt_depth_tostring() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(tostring(&arr_first), nested_alt_json(ALT_LIMIT, true, "1"));
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(tostring(&obj_first), nested_alt_json(ALT_LIMIT, false, "1"));
+    });
+}
+
+#[test]
+fn alt_depth_interpolate() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(
+            interpolate(&arr_first),
+            nested_alt_json(ALT_LIMIT, true, "1")
+        );
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(
+            interpolate(&obj_first),
+            nested_alt_json(ALT_LIMIT, false, "1")
+        );
+    });
+}
+
+#[test]
+fn alt_depth_format_value() {
+    run_2mib(|| {
+        let leaf = Value::object([("b".into(), Value::int(1)), ("a".into(), Value::int(2))]);
+        let alt = make_deep_alt(ALT_LIMIT - 1, true, leaf);
+        assert_eq!(
+            format_value(&alt, OutputOptions::compact()),
+            nested_alt_json(ALT_LIMIT - 1, true, "{\"b\":1,\"a\":2}")
+        );
+        assert_eq!(
+            format_value(&alt, OutputOptions::sorted_compact()),
+            nested_alt_json(ALT_LIMIT - 1, true, "{\"a\":2,\"b\":1}")
+        );
+        let out = format_value(&alt, OutputOptions::pretty());
+        assert!(out.starts_with("[\n  {\n    \"a\": [\n"));
+        assert!(out.ends_with("\n  }\n]"));
+    });
+}
+
+#[test]
+fn alt_depth_dump_trunc() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(
+            dump_trunc(&arr_first),
+            "[{\"a\":[{\"a\":[{\"a\":[{\"a\":[...]"
+        );
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(
+            dump_trunc(&obj_first),
+            "{\"a\":[{\"a\":[{\"a\":[{\"a\":[{...}"
+        );
+    });
+}
+
+#[test]
+fn alt_depth_value_index() {
+    run_2mib(|| {
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        let extracted = obj_first.index("a").unwrap();
+        assert_eq!(extracted.kind(), "array");
+
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(arr_first.index_num(0).unwrap().kind(), "object");
+        assert_eq!(
+            arr_first.index_number(&Number::from_i64(0)).unwrap().kind(),
+            "object"
+        );
+    });
+}
+
+#[test]
+fn alt_depth_value_iterate() {
+    run_2mib(|| {
+        let arr_first = make_deep_alt(ALT_LIMIT, true, Value::int(1));
+        assert_eq!(arr_first.iterate().unwrap().len(), 1);
+        assert_eq!(arr_first.iterate_redacted().unwrap().len(), 1);
+        assert_eq!(arr_first.iterate_opt().len(), 1);
+
+        let obj_first = make_deep_alt(ALT_LIMIT, false, Value::int(1));
+        assert_eq!(obj_first.iterate().unwrap().len(), 1);
+        assert_eq!(obj_first.iterate_redacted().unwrap().len(), 1);
+        assert_eq!(obj_first.iterate_opt().len(), 1);
+    });
+}
+
+#[test]
+fn alt_depth_value_del_and_set() {
+    run_2mib(|| {
+        let mut obj = Value::object([(
+            "a".into(),
+            make_deep_alt(DROP_OVERFLOW_DEPTH, true, Value::int(1)),
+        )]);
+        assert!(obj.set("a", Value::int(2)));
+        assert_eq!(obj.get("a"), Some(&Value::int(2)));
+
+        let mut obj2 = Value::object([(
+            "a".into(),
+            make_deep_alt(DROP_OVERFLOW_DEPTH, false, Value::int(1)),
+        )]);
+        obj2.del_key("a").unwrap();
+        assert_eq!(obj2, Value::object([]));
+
+        let mut arr = Value::Array(vec![make_deep_alt(
+            DROP_OVERFLOW_DEPTH,
+            true,
+            Value::int(1),
+        )]);
+        arr.del_index(0).unwrap();
+        assert_eq!(arr, Value::Array(vec![]));
+
+        let dedup = Value::object([
+            (
+                "a".into(),
+                make_deep_alt(DROP_OVERFLOW_DEPTH, false, Value::int(1)),
             ),
             ("a".into(), Value::int(9)),
         ]);

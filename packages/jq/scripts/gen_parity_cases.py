@@ -949,6 +949,67 @@ def build_cases() -> list[tuple[str, str, str, str, bytes]]:
     for cid, inp in depth_cases:
         add(cid, "id", "compact", ["-c", "."], inp)
 
+    depth_status_cases = [
+        (
+            "depth_mixed_alt_obj_first_6667_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6667, arr_first=False),
+        ),
+        (
+            "depth_mixed_alt_obj_first_6668_err",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6668, arr_first=False),
+        ),
+        (
+            "depth_exit_e_arr_10001_err",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            b"[" * 10001 + b"]" * 10001,
+        ),
+        (
+            "depth_exit_e_alt_6668_err",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            alternating(6668, arr_first=True),
+        ),
+        (
+            "depth_stream_arr_err_then_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            b"[" * 10001 + b"]" * 10001 + b"\n1",
+        ),
+        (
+            "depth_stream_alt_err_then_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6668, arr_first=True) + b"\n1",
+        ),
+        (
+            "depth_exit_e_stream_arr_err_then_ok",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            b"[" * 10001 + b"]" * 10001 + b"\n1",
+        ),
+        (
+            "depth_exit_e_stream_alt_err_then_ok",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            alternating(6668, arr_first=True) + b"\n1",
+        ),
+    ]
+    for cid, op, flags, jq_args, inp in depth_status_cases:
+        add(cid, op, flags, jq_args, inp)
+
     assert len(cases) >= 200, f"Expected >= 200 cases, got {len(cases)}"
     return cases
 
