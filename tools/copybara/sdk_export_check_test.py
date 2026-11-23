@@ -138,3 +138,190 @@ def test_verify_workflow_rust_versions_flags_all_lower_versions(tmp_path: Path) 
         in msg
     )
     assert "1.70.0" not in msg
+
+
+def test_dtolnay_ref_below_floor_fails(tmp_path: Path) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "ci.yml": (
+                "jobs:\n"
+                "  checks:\n"
+                "    steps:\n"
+                "      - uses: dtolnay/rust-toolchain@1.97.0\n"
+            ),
+        },
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+    msg = str(exc_info.value)
+    assert (
+        ".github/workflows/ci.yml:4: Rust version 1.97.0 is lower than required rust-version 1.98"
+        in msg
+    )
+
+
+def test_dtolnay_with_toolchain_below_floor_fails(tmp_path: Path) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "ci.yml": (
+                "jobs:\n"
+                "  checks:\n"
+                "    steps:\n"
+                "      - uses: dtolnay/rust-toolchain@master\n"
+                "        with:\n"
+                "          toolchain: 1.97\n"
+            ),
+        },
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+    msg = str(exc_info.value)
+    assert (
+        ".github/workflows/ci.yml:6: Rust version 1.97 is lower than required rust-version 1.98"
+        in msg
+    )
+
+
+@pytest.mark.parametrize("channel", ["stable", "beta", "nightly"])
+def test_dtolnay_channel_refs_pass(tmp_path: Path, channel: str) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "ci.yml": (
+                "jobs:\n"
+                "  checks:\n"
+                "    steps:\n"
+                f"      - uses: dtolnay/rust-toolchain@{channel}\n"
+            ),
+        },
+    )
+    sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "actions-rs/toolchain@v1",
+        "actions-rust-lang/setup-rust-toolchain@v1",
+    ],
+)
+def test_unknown_toolchain_action_fails_closed(tmp_path: Path, action: str) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "ci.yml": (f"jobs:\n  checks:\n    steps:\n      - uses: {action}\n"),
+        },
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+    msg = str(exc_info.value)
+    assert ".github/workflows/ci.yml:4:" in msg
+
+
+def test_unparseable_rustup_var_without_matrix_fails_closed(tmp_path: Path) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "ci.yml": (
+                "jobs:\n"
+                "  checks:\n"
+                "    steps:\n"
+                '      - run: rustup toolchain install "$WHATEVER" --profile minimal\n'
+            ),
+        },
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+    msg = str(exc_info.value)
+    assert ".github/workflows/ci.yml:4:" in msg
+    assert "$WHATEVER" in msg
+
+
+def test_dtolnay_matrix_toolchain_passes_with_matrix(tmp_path: Path) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "kits.yml": (
+                "jobs:\n"
+                "  rust:\n"
+                "    strategy:\n"
+                "      matrix:\n"
+                '        rust: ["1.98.1", "stable"]\n'
+                "    steps:\n"
+                "      - uses: dtolnay/rust-toolchain@master\n"
+                "        with:\n"
+                "          toolchain: ${{ matrix.rust }}\n"
+            ),
+        },
+    )
+    sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+
+def test_dtolnay_matrix_toolchain_without_matrix_fails_closed(tmp_path: Path) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "kits.yml": (
+                "jobs:\n"
+                "  rust:\n"
+                "    steps:\n"
+                "      - uses: dtolnay/rust-toolchain@master\n"
+                "        with:\n"
+                "          toolchain: ${{ matrix.rust }}\n"
+            ),
+        },
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+    msg = str(exc_info.value)
+    assert ".github/workflows/kits.yml:6:" in msg
+
+
+def test_dtolnay_unparseable_ref_without_toolchain_fails_closed(tmp_path: Path) -> None:
+    _write_tree(
+        tmp_path,
+        cargo_files={
+            "kits/rust/Cargo.toml": '[package]\nname = "kit"\nrust-version = "1.98"\n',
+        },
+        workflows={
+            "ci.yml": (
+                "jobs:\n"
+                "  checks:\n"
+                "    steps:\n"
+                "      - uses: dtolnay/rust-toolchain@master\n"
+            ),
+        },
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        sdk_export_check.verify_workflow_rust_versions(tmp_path)
+
+    msg = str(exc_info.value)
+    assert ".github/workflows/ci.yml:4:" in msg
