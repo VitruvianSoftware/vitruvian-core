@@ -31,14 +31,49 @@ pub struct Settings {
     pub project_id: String,
     /// Client ids of the AI apps allowed on `/mcp/d/{device_id}` (Claude).
     pub mcp_client_ids: Vec<String>,
+    /// What to call each AI app in the dashboard (`Claude=<id>`), from
+    /// `MCP_CLIENT_LABELS`. Optional; an app with no label is "an AI app".
+    pub mcp_client_labels: Vec<(String, String)>,
     /// Client id of the connector, the only one allowed on `/devices` and `/connect`.
     pub connector_client_id: String,
-    pub allowed_subjects: Vec<String>,
-    /// Where `devices.json` lives.
-    pub data_dir: PathBuf,
+    /// Client id of the dashboard's sign-in (`relay-dashboard`), the only one
+    /// allowed on `/auth/*`. In neither of the other two lists.
+    pub dashboard_client_id: String,
+    /// The Zitadel project role that marks an invited person. Being able to
+    /// sign in is not enough: a token without it is refused (`role_missing`).
+    pub required_role: String,
+    /// The Postgres URL (`postgres://user:password@host:5432/dbname`). It
+    /// carries the password, so it never prints.
+    pub database_url: Secret,
+    /// The PEM file of the CA that signed the database's certificate (the CNPG
+    /// cluster's `ca.crt`). Unset means the system's certificates. Not needed
+    /// when the URL says `sslmode=disable` (tests).
+    pub database_ca_file: Option<PathBuf>,
     /// Overrides where signing keys are fetched. Unset in production (keys come
     /// from `{issuer}/oauth/v2/keys`); set for local runs against test keys.
     pub jwks_uri: Option<String>,
+    /// Overrides where the dashboard's sign-in code is exchanged. Unset in
+    /// production (`{issuer}/oauth/v2/token`); set for local runs and tests.
+    pub token_uri: Option<String>,
+}
+
+/// The role an invited person holds, unless `REQUIRED_ROLE` says otherwise.
+pub const DEFAULT_REQUIRED_ROLE: &str = "relay-user";
+
+/// A setting that must never reach a log or a test failure message.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(<hidden>)")
+    }
 }
 
 fn csv(raw: &str) -> Vec<String> {
@@ -49,36 +84,56 @@ fn csv(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// True for an https URL on any host, or an http one only on this machine
+/// (`localhost` or `127.0.0.1`, for local runs and tests), with no user part.
+/// `bare` also requires it to be an origin: no path, no query.
+fn safe_url(url: &str, bare: bool) -> bool {
+    let Ok(uri) = url.parse::<http::Uri>() else {
+        return false;
+    };
+    let (Some(scheme), Some(authority)) = (uri.scheme_str(), uri.authority()) else {
+        return false;
+    };
+    let host = authority.host();
+    let shaped = !authority.as_str().contains('@')
+        && !host.is_empty()
+        && (!bare || (matches!(uri.path(), "" | "/") && uri.query().is_none()));
+    shaped
+        && match scheme {
+            "https" => true,
+            "http" => matches!(host, "localhost" | "127.0.0.1"),
+            _ => false,
+        }
+}
+
 /// PUBLIC_URL is an origin: https on any host, or http only on this machine
 /// (`localhost` or `127.0.0.1`, for local runs). No user, path or query.
 fn check_public_url(url: &str) -> Result<(), String> {
-    let refuse = || {
-        Err(format!(
-            "PUBLIC_URL={url:?} must be an https origin (or http://localhost or http://127.0.0.1 for local runs), with no path or query"
-        ))
-    };
-    let Ok(uri) = url.parse::<http::Uri>() else {
-        return refuse();
-    };
-    let (Some(scheme), Some(authority)) = (uri.scheme_str(), uri.authority()) else {
-        return refuse();
-    };
-    let host = authority.host();
-    let bare = !authority.as_str().contains('@')
-        && !host.is_empty()
-        && matches!(uri.path(), "" | "/")
-        && uri.query().is_none();
-    match (bare, scheme, host) {
-        (true, "https", _) => Ok(()),
-        (true, "http", "localhost" | "127.0.0.1") => Ok(()),
-        _ => refuse(),
+    if safe_url(url, true) {
+        return Ok(());
     }
+    Err(format!(
+        "PUBLIC_URL={url:?} must be an https origin (or http://localhost or http://127.0.0.1 for local runs), with no path or query"
+    ))
+}
+
+/// ISSUER, JWKS_URI and TOKEN_URI point at the identity service, so a token or
+/// a sign-in code must never travel to them in plain text: the same rule as
+/// PUBLIC_URL, but they may have a path.
+fn check_endpoint_url(name: &str, url: &str) -> Result<(), String> {
+    if safe_url(url, false) {
+        return Ok(());
+    }
+    Err(format!(
+        "{name}={url:?} must be an https URL (or http://localhost or http://127.0.0.1 for local runs), with no user name in it"
+    ))
 }
 
 impl Settings {
     /// Reads settings from a key lookup (the environment in production).
-    /// Every id list is required: a missing client id or subject list would
-    /// otherwise widen who can get in.
+    /// Every client id list is required: a missing one would otherwise
+    /// widen who can get in. Who may sign in is not a list of people but the
+    /// role (`REQUIRED_ROLE`, default `relay-user`).
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Settings, String> {
         let opt = |k: &str| {
             get(k)
@@ -95,11 +150,26 @@ impl Settings {
         let public_url = req("PUBLIC_URL")?.trim_end_matches('/').to_string();
         check_public_url(&public_url)?;
         let mcp_client_ids = csv(&req("MCP_CLIENT_IDS")?);
-        let allowed_subjects = csv(&req("ALLOWED_SUBJECTS")?);
-        if mcp_client_ids.is_empty() || allowed_subjects.is_empty() {
-            return Err(
-                "MCP_CLIENT_IDS and ALLOWED_SUBJECTS must each name at least one id".into(),
-            );
+        if mcp_client_ids.is_empty() {
+            return Err("MCP_CLIENT_IDS must name at least one id".into());
+        }
+        let mut mcp_client_labels = Vec::new();
+        for entry in csv(&opt("MCP_CLIENT_LABELS").unwrap_or_default()) {
+            let pair = entry
+                .split_once('=')
+                .map(|(label, id)| (label.trim(), id.trim()))
+                .filter(|(label, id)| !label.is_empty() && !id.is_empty());
+            let Some((label, id)) = pair else {
+                return Err(format!(
+                    "MCP_CLIENT_LABELS entry {entry:?} must look like Claude=<client id>"
+                ));
+            };
+            if !mcp_client_ids.iter().any(|known| known == id) {
+                return Err(format!(
+                    "MCP_CLIENT_LABELS names {id:?}, which is not in MCP_CLIENT_IDS"
+                ));
+            }
+            mcp_client_labels.push((label.to_string(), id.to_string()));
         }
         let connector_client_id = req("CONNECTOR_CLIENT_ID")?;
         if mcp_client_ids.contains(&connector_client_id) {
@@ -107,17 +177,88 @@ impl Settings {
             // on /connect.
             return Err("CONNECTOR_CLIENT_ID must not also be in MCP_CLIENT_IDS".into());
         }
+        let dashboard_client_id = req("DASHBOARD_CLIENT_ID")?;
+        if mcp_client_ids.contains(&dashboard_client_id)
+            || dashboard_client_id == connector_client_id
+        {
+            // The same rule for the dashboard: its token must never work on
+            // /mcp, /devices or /connect, nor theirs on /auth/*.
+            return Err(
+                "DASHBOARD_CLIENT_ID must not also be in MCP_CLIENT_IDS or be CONNECTOR_CLIENT_ID"
+                    .into(),
+            );
+        }
+        // The issuer is where people are sent to sign in, and where the keys
+        // that check every token come from: the same rule as the endpoints
+        // under it.
+        let issuer = req("ISSUER")?.trim_end_matches('/').to_string();
+        check_endpoint_url("ISSUER", &issuer)?;
+        let jwks_uri = opt("JWKS_URI");
+        let token_uri = opt("TOKEN_URI");
+        for (name, value) in [("JWKS_URI", &jwks_uri), ("TOKEN_URI", &token_uri)] {
+            if let Some(url) = value {
+                check_endpoint_url(name, url)?;
+            }
+        }
         Ok(Settings {
             port,
             public_url,
-            issuer: req("ISSUER")?.trim_end_matches('/').to_string(),
+            issuer,
             project_id: req("PROJECT_ID")?,
             mcp_client_ids,
+            mcp_client_labels,
             connector_client_id,
-            allowed_subjects,
-            data_dir: PathBuf::from(opt("DATA_DIR").unwrap_or_else(|| "/data".into())),
-            jwks_uri: opt("JWKS_URI"),
+            dashboard_client_id,
+            required_role: opt("REQUIRED_ROLE").unwrap_or_else(|| DEFAULT_REQUIRED_ROLE.into()),
+            database_url: Secret(req("DATABASE_URL")?),
+            database_ca_file: opt("DATABASE_CA_FILE").map(PathBuf::from),
+            jwks_uri,
+            token_uri,
         })
+    }
+
+    /// What the dashboard calls the AI app with this client id.
+    pub fn mcp_client_label(&self, client_id: &str) -> Option<&str> {
+        self.mcp_client_labels
+            .iter()
+            .find(|(_, id)| id == client_id)
+            .map(|(label, _)| label.as_str())
+    }
+
+    /// The client id of the AI app labelled `label` (case does not matter).
+    pub fn mcp_client_id_of(&self, label: &str) -> Option<&str> {
+        self.mcp_client_labels
+            .iter()
+            .find(|(l, _)| l.eq_ignore_ascii_case(label))
+            .map(|(_, id)| id.as_str())
+    }
+
+    /// Where the dashboard sends a person to sign in.
+    pub fn authorize_url(&self) -> String {
+        format!("{}/oauth/v2/authorize", self.issuer)
+    }
+
+    /// Where the dashboard exchanges a sign-in code for a token.
+    pub fn token_url(&self) -> String {
+        self.token_uri
+            .clone()
+            .unwrap_or_else(|| format!("{}/oauth/v2/token", self.issuer))
+    }
+
+    /// Where Zitadel sends a person back to after signing in.
+    pub fn dashboard_callback_url(&self) -> String {
+        format!("{}/auth/callback", self.public_url)
+    }
+
+    /// Where a person can end their sign-in on the identity service itself,
+    /// and come back to the relay's front page.
+    pub fn end_session_url(&self) -> String {
+        format!(
+            "{}/oidc/v1/end_session?client_id={}&post_logout_redirect_uri={}",
+            self.issuer,
+            crate::dashboard::form_encode(&self.dashboard_client_id),
+            crate::dashboard::form_encode(&format!("{}/", self.public_url)),
+        )
     }
 
     /// The URL an AI app is given for one device.
@@ -136,10 +277,6 @@ impl Settings {
     /// The relay's own metadata, for clients that look at the bare path first.
     pub fn relay_metadata_url(&self) -> String {
         format!("{}/.well-known/oauth-protected-resource", self.public_url)
-    }
-
-    pub fn devices_file(&self) -> PathBuf {
-        self.data_dir.join("devices.json")
     }
 }
 
@@ -162,7 +299,8 @@ mod tests {
             ("PROJECT_ID", "123"),
             ("MCP_CLIENT_IDS", "claude-id, ,chatgpt-id"),
             ("CONNECTOR_CLIENT_ID", "conn-id"),
-            ("ALLOWED_SUBJECTS", "sub-1"),
+            ("DASHBOARD_CLIENT_ID", "dash-id"),
+            ("DATABASE_URL", "postgres://relay:pw@relay-db-rw:5432/relay"),
         ]
         .into_iter()
         .collect()
@@ -179,9 +317,24 @@ mod tests {
         assert_eq!(s.public_url, "https://relay.example.dev");
         assert_eq!(s.issuer, "https://auth.example.dev");
         assert_eq!(s.mcp_client_ids, vec!["claude-id", "chatgpt-id"]);
-        assert_eq!(s.data_dir, PathBuf::from("/data"));
-        assert_eq!(s.devices_file(), PathBuf::from("/data/devices.json"));
+        assert_eq!(
+            s.database_url.expose(),
+            "postgres://relay:pw@relay-db-rw:5432/relay"
+        );
+        assert_eq!(s.database_ca_file, None);
         assert_eq!(s.jwks_uri, None);
+        assert_eq!(s.token_uri, None);
+        assert_eq!(s.dashboard_client_id, "dash-id");
+        assert_eq!(s.required_role, "relay-user");
+        assert_eq!(
+            s.authorize_url(),
+            "https://auth.example.dev/oauth/v2/authorize"
+        );
+        assert_eq!(s.token_url(), "https://auth.example.dev/oauth/v2/token");
+        assert_eq!(
+            s.dashboard_callback_url(),
+            "https://relay.example.dev/auth/callback"
+        );
         assert_eq!(
             s.device_mcp_url("d-1"),
             "https://relay.example.dev/mcp/d/d-1"
@@ -193,9 +346,35 @@ mod tests {
 
         let mut env = base();
         env.insert("PORT", "8080");
-        env.insert("DATA_DIR", "/var/relay");
+        env.insert("REQUIRED_ROLE", " relay-tester ");
+        env.insert("DATABASE_CA_FILE", "/etc/relay-db-ca/ca.crt");
         let s = load(&env).unwrap();
-        assert_eq!((s.port, s.data_dir), (8080, PathBuf::from("/var/relay")));
+        assert_eq!(s.port, 8080);
+        assert_eq!(s.required_role, "relay-tester");
+        assert_eq!(
+            s.database_ca_file,
+            Some(PathBuf::from("/etc/relay-db-ca/ca.crt"))
+        );
+    }
+
+    /// Access is by role now: the old list of people is not a setting any
+    /// more, and a blank role means the default, never "no role".
+    #[test]
+    fn access_is_by_role_not_a_list_of_people() {
+        let mut env = base();
+        env.insert("ALLOWED_SUBJECTS", "someone");
+        let s = load(&env).unwrap();
+        assert_eq!(s.required_role, "relay-user");
+        assert!(!format!("{s:?}").contains("someone"));
+        env.insert("REQUIRED_ROLE", "  ");
+        assert_eq!(load(&env).unwrap().required_role, "relay-user");
+    }
+
+    #[test]
+    fn the_database_password_never_prints() {
+        let shown = format!("{:?}", load(&base()).unwrap());
+        assert!(!shown.contains("relay:pw"), "{shown}");
+        assert!(!shown.contains("postgres://"), "{shown}");
     }
 
     #[test]
@@ -206,14 +385,14 @@ mod tests {
             "PROJECT_ID",
             "MCP_CLIENT_IDS",
             "CONNECTOR_CLIENT_ID",
-            "ALLOWED_SUBJECTS",
+            "DASHBOARD_CLIENT_ID",
+            "DATABASE_URL",
         ] {
             let mut env = base();
             env.remove(drop);
             assert!(load(&env).is_err(), "missing {drop} must be refused");
         }
         for (k, v, why) in [
-            ("ALLOWED_SUBJECTS", " , ", "separators-only subject list"),
             ("MCP_CLIENT_IDS", ",", "separators-only client list"),
             (
                 "PUBLIC_URL",
@@ -240,10 +419,73 @@ mod tests {
                 "claude-id",
                 "connector id shared with an AI app",
             ),
+            (
+                "DASHBOARD_CLIENT_ID",
+                "claude-id",
+                "dashboard id shared with an AI app",
+            ),
+            (
+                "DASHBOARD_CLIENT_ID",
+                "conn-id",
+                "dashboard id shared with the connector",
+            ),
+            ("MCP_CLIENT_LABELS", "Claude", "a label with no id"),
+            (
+                "MCP_CLIENT_LABELS",
+                "Claude=nobody",
+                "a label for an unknown id",
+            ),
         ] {
             let mut env = base();
             env.insert(k, v);
             assert!(load(&env).is_err(), "{why} must be refused");
+        }
+    }
+
+    #[test]
+    fn ai_apps_can_be_given_names_for_the_dashboard() {
+        let mut env = base();
+        env.insert("MCP_CLIENT_LABELS", "Claude=claude-id, Gemini = chatgpt-id");
+        env.insert("TOKEN_URI", " http://127.0.0.1:9/token ");
+        let s = load(&env).unwrap();
+        assert_eq!(s.mcp_client_label("claude-id"), Some("Claude"));
+        assert_eq!(s.mcp_client_label("chatgpt-id"), Some("Gemini"));
+        assert_eq!(s.mcp_client_label("other"), None);
+        assert_eq!(s.mcp_client_id_of("claude"), Some("claude-id"));
+        assert_eq!(s.token_url(), "http://127.0.0.1:9/token");
+    }
+
+    #[test]
+    fn identity_service_urls_are_https_or_local_http() {
+        for name in ["ISSUER", "JWKS_URI", "TOKEN_URI"] {
+            for ok in [
+                "https://auth.example.dev/oauth/v2/keys",
+                "http://localhost:9000/keys",
+                "http://127.0.0.1:9000/oauth/v2/token",
+            ] {
+                let mut env = base();
+                env.insert(name, ok);
+                assert!(load(&env).is_ok(), "{name}={ok} must be accepted");
+            }
+            for (bad, why) in [
+                ("http://auth.example.dev/keys", "plain http to another host"),
+                ("ftp://auth.example.dev/keys", "another scheme"),
+                ("auth.example.dev/keys", "no scheme"),
+                (
+                    "http://localhost@evil.example/keys",
+                    "userinfo naming localhost",
+                ),
+                (
+                    "http://localhost.example.com/keys",
+                    "a host that starts with localhost",
+                ),
+                ("https://", "no host"),
+            ] {
+                let mut env = base();
+                env.insert(name, bad);
+                let err = load(&env).unwrap_err();
+                assert!(err.contains(name), "{why}: {err}");
+            }
         }
     }
 

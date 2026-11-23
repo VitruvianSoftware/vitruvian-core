@@ -27,8 +27,9 @@
 //! no assertion depends on a tight wall-clock bound.
 
 use super::*;
-use crate::devices::{DeviceRecord, FileDeviceStore};
+use crate::devices::NewDevice;
 use crate::mcp::{LEGACY_VERSIONS, MODERN_VERSIONS, SERVER_NAME};
+use crate::store::{MemStore, StoreError};
 use futures_util::{SinkExt, StreamExt};
 use http::header;
 use http_body_util::BodyExt;
@@ -36,7 +37,6 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair, RsaKeyPair, RSA_PKCS1_SHA256};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -49,47 +49,30 @@ use vitruvian_relay_protocol::{
     ToolDef, PROTOCOL,
 };
 
-const PUBLIC_URL: &str = "https://relay.example.test";
-const ISSUER: &str = "https://auth.example.test";
-const PROJECT_ID: &str = "123456789";
-const MCP_CLIENT: &str = "claude-client";
-const CONNECTOR_CLIENT: &str = "connector-client";
-const ALICE: &str = "alice";
-const BOB: &str = "bob";
+pub(crate) const PUBLIC_URL: &str = "https://relay.example.test";
+pub(crate) const ISSUER: &str = "https://auth.example.test";
+pub(crate) const PROJECT_ID: &str = "123456789";
+pub(crate) const MCP_CLIENT: &str = "claude-client";
+pub(crate) const CONNECTOR_CLIENT: &str = "connector-client";
+pub(crate) const ALICE: &str = "alice";
+pub(crate) const BOB: &str = "bob";
+/// The Zitadel role that lets a person in.
+pub(crate) const ROLE: &str = "relay-user";
+pub(crate) const DASHBOARD_CLIENT: &str = "dashboard-client";
 const ACCEPT: &str = "application/json, text/event-stream";
 
 // A throwaway 2048-bit RSA key (PKCS#8 DER, base64url), the same test-only key
 // vitruvian-mcp-auth's tests use. Used nowhere else.
-const TEST_RSA_KEY: &str = concat!(
-    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCvutM9Ruknu7rIHzvYC02EWEa-9e1c7uKxV81fV2",
-    "RMN-iBE4rlA_sxIccFC8QeISKKeIg8dxlY3V1EbkRjY7TYyGcsie28b6dWUi9uUkZqTCG0cMu5laAR8YxUbWdetOHp",
-    "fwiD70KTDd_n2-Mgb84FfjpzEwSvFrdNgwGccDkcPzAqMkQcy7r-vEqKpLfLbw3iile4Tq_PILB6GriFVl63TEsosP",
-    "WVyGEncch5YPzngHL94zkoKmUQMKBgR5CTIE7V157bvw_OkXAfjG6LjGDNlS1rUN0nuuO56pZcSdhVNT0qkLainlmh",
-    "flaudwusJGEfrBjBXTHYnxZdHFMXUrmDAgMBAAECggEAVa34B5T24hYQhDliUrx0D5aA6-N5V0nsAn6mVhmEf_r0ZF",
-    "a0bmPqCfMHl8i8Vtpd_ni1KBIDrEXGDzLaKkF3cAkJ8PfRD4K66oYItTftOC-lcVZbpkEzOfx1KMbs0wrLaS60Zqt1",
-    "4MAvjtsxmuOYZio88lVv_7RKLEM3OmCnH8NJ7HJ2AZtk_9pBhWs3gVWNnf2HwZe2g9LpFKEpD1VZLKd9fv7IQ9Pki3",
-    "Om1m_EIuJhDTMS2ZtY52E5YDQzixuD2J1CylcofbwOCf02MXEvfWhZw_IzmTFuAr8VaxPBTpF3U_AMCvU5rOT-svEs",
-    "lh0ezfMS9FF8gJJhzwlEv82UuQKBgQDjw02gBCXfVmKmUN8PQiFVC7le3tdGREU6DetDeUiCH_fhkZLhZGCJ7XN0pL",
-    "FAD0kQy5JgIMRI_AmmCwLy5FBUyKlHCGS064ati-4m0Xu8j_q-MMp1co5J4d_S_b0hf3qyezHqCAiZb30rTTIQHQxI",
-    "mHCCW1MOLquW9hJ1kHDAawKBgQDFhBrAg1Xw6RgdhDr7P4UZUKHTWZnUVVL3Coqj5CYd6wSdhJOKG4IwIxELWk_TYl",
-    "dHR-LbBLKGTqkGWNxSigjU7bLL2ne7JtDvEJ82StD6Q9BFdifrYUCGNsdpdyTeQ_2fwaVXhpLgpUEyn3whbHZPMvqz",
-    "tL8XeUPtcGVAeV5RSQKBgElAyTiL3PpluDixjexEYqANs0L1_NrWnkU7sMz0twNS8NCVl13ygLIbsqRzS6bEw8UpFB",
-    "zirP6kQR4sMHiaQdPi7b6wzmL51Uj_1kqZ2WgeDpEY9CSuAWF1yhz8CtY5P-cjhDw29T0UBHfmzhEspoS6soTahm3r",
-    "SLi2z90L5ZedAoGAWRs17m_Rz7N426gR69NGOptzxiOAEJjFqwmobjO5NnoWRPHQlde_LfRD9jkyFg0hjtjRcTl3SL",
-    "wn6OMh0mLPhTAPH4RZy6bBT3jSOu4ZxS3ewdeCPuBK-cGwyNWlXliSDQaRjyD5Fju3ZB0rJPEHlsdK7tO1-eMNUAsK",
-    "wsF-WXECgYEAwPw6ZR4Qkg3Nvgm3gXg6u0kikIRkNwtrh1gFZCTb2OVt6pYGnTXlmv6dsUZEz7k3p7PRMsavi3sd8i",
-    "hKXawoJUsQ9-eQi6wO_uiFVIdV566aclIo_0nuVRjs8tQ5KI6eUZ0woMsrqfavYnwZ9H7RfOQW8Sjkc5hG1z5pc2gM",
-    "xLI",
-);
+const TEST_RSA_KEY: &str = include_str!("../tests/testdata/test_rsa_key.b64");
 
-async fn within<T>(f: impl std::future::Future<Output = T>) -> T {
+pub(crate) async fn within<T>(f: impl std::future::Future<Output = T>) -> T {
     tokio::time::timeout(Duration::from_secs(10), f)
         .await
         .expect("timed out")
 }
 
 /// Waits until `f` holds.
-async fn until(f: impl Fn() -> bool) {
+pub(crate) async fn until(f: impl Fn() -> bool) {
     within(async {
         while !f() {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -98,15 +81,15 @@ async fn until(f: impl Fn() -> bool) {
     .await
 }
 
-fn b64url(bytes: &[u8]) -> String {
+pub(crate) fn b64url(bytes: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn b64(bytes: &[u8]) -> String {
+pub(crate) fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -128,16 +111,27 @@ fn jwks(pair: &RsaKeyPair) -> Value {
     }]})
 }
 
-fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
+pub(crate) fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str) -> String {
     mint_exp(pair, client_id, sub, now_secs() + 600)
 }
 
-fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
+pub(crate) fn mint_exp(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
     mint_claims(pair, client_id, sub, Some(exp))
 }
 
-/// `exp: None` leaves the claim out.
+/// `exp: None` leaves the claim out. The person holds the `relay-user` role.
 fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) -> String {
+    mint_with_role(pair, client_id, sub, exp, Some(ROLE))
+}
+
+/// `role: None` is a person who signed in but was never invited.
+pub(crate) fn mint_with_role(
+    pair: &RsaKeyPair,
+    client_id: &str,
+    sub: &str,
+    exp: Option<u64>,
+    role: Option<&str>,
+) -> String {
     let now = now_secs();
     let header = b64url(json!({"alg": "RS256", "kid": "k1"}).to_string().as_bytes());
     let mut claims = json!({
@@ -146,6 +140,10 @@ fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) 
     });
     if let Some(exp) = exp {
         claims["exp"] = json!(exp);
+    }
+    if let Some(role) = role {
+        claims[format!("urn:zitadel:iam:org:project:{PROJECT_ID}:roles")] =
+            json!({ role: { "org-1": "example.test" } });
     }
     let input = format!("{header}.{}", b64url(claims.to_string().as_bytes()));
     let mut sig = vec![0u8; pair.public().modulus_len()];
@@ -160,7 +158,7 @@ fn mint_claims(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: Option<u64>) 
 }
 
 /// Serves the key set on a loopback port from a plain thread.
-fn start_jwks_server(body: String) -> String {
+pub(crate) fn start_jwks_server(body: String) -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/oauth/v2/keys", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -181,78 +179,157 @@ fn start_jwks_server(body: String) -> String {
     url
 }
 
-fn temp_dir(name: &str) -> PathBuf {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::var_os("TEST_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(format!(
-            "relay-http-{}-{}-{name}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::SeqCst)
-        ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// A stand-in for the identity service's token endpoint: records the forms
+/// it is sent and answers with whatever the test last set.
+pub(crate) struct TokenServer {
+    pub(crate) url: String,
+    requests: Arc<Mutex<Vec<String>>>,
+    answer: Arc<Mutex<(u16, String)>>,
+    stalled: Arc<AtomicBool>,
 }
 
-struct Harness {
-    app: Arc<App>,
-    addr: std::net::SocketAddr,
-    rsa: RsaKeyPair,
-    logs: Arc<Mutex<Vec<String>>>,
-    store: Arc<FileDeviceStore>,
+impl TokenServer {
+    /// While stalled, the server reads each request and then says nothing.
+    pub(crate) fn stall(&self, stalled: bool) {
+        self.stalled.store(stalled, Ordering::SeqCst);
+    }
+
+    /// Answers every exchange with this access token.
+    pub(crate) fn give_token(&self, access_token: &str) {
+        *self.answer.lock().unwrap() = (
+            200,
+            json!({"access_token": access_token, "token_type": "Bearer", "expires_in": 3600})
+                .to_string(),
+        );
+    }
+
+    /// Answers every exchange with an error.
+    pub(crate) fn refuse(&self) {
+        *self.answer.lock().unwrap() = (400, json!({"error": "invalid_grant"}).to_string());
+    }
+
+    /// The form bodies sent so far.
+    pub(crate) fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
 }
 
-struct Reply {
-    status: StatusCode,
-    headers: http::HeaderMap,
-    body: String,
+fn start_token_server() -> TokenServer {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/oauth/v2/token", listener.local_addr().unwrap());
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let answer = Arc::new(Mutex::new((
+        400,
+        json!({"error": "invalid_grant"}).to_string(),
+    )));
+    let stalled = Arc::new(AtomicBool::new(false));
+    let (seen, reply, hold) = (requests.clone(), answer.clone(), stalled.clone());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut length = 0usize;
+            let mut line = String::new();
+            while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
+                if let Some((k, v)) = line.split_once(':') {
+                    if k.eq_ignore_ascii_case("content-length") {
+                        length = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                line.clear();
+            }
+            let mut body = vec![0u8; length];
+            std::io::Read::read_exact(&mut reader, &mut body).unwrap();
+            seen.lock()
+                .unwrap()
+                .push(String::from_utf8_lossy(&body).into_owned());
+            while hold.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let (status, text) = reply.lock().unwrap().clone();
+            let _ = write!(
+                stream,
+                "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+                text.len()
+            );
+        }
+    });
+    TokenServer {
+        url,
+        requests,
+        answer,
+        stalled,
+    }
+}
+
+pub(crate) struct Harness {
+    pub(crate) app: Arc<App>,
+    pub(crate) addr: std::net::SocketAddr,
+    pub(crate) rsa: RsaKeyPair,
+    pub(crate) logs: Arc<Mutex<Vec<String>>>,
+    pub(crate) store: Arc<MemStore>,
+    pub(crate) tokens: TokenServer,
+}
+
+pub(crate) struct Reply {
+    pub(crate) status: StatusCode,
+    pub(crate) headers: http::HeaderMap,
+    pub(crate) body: String,
 }
 
 impl Reply {
-    fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         serde_json::from_str(&self.body).unwrap_or_else(|_| panic!("not JSON: {}", self.body))
     }
-    fn header(&self, name: &str) -> Option<String> {
+    pub(crate) fn header(&self, name: &str) -> Option<String> {
         self.headers
             .get(name)
             .map(|v| v.to_str().unwrap().to_string())
     }
 }
 
-async fn harness() -> Harness {
+pub(crate) async fn harness() -> Harness {
     harness_with(Timing::default()).await
 }
 
-async fn harness_with(timing: Timing) -> Harness {
+pub(crate) async fn harness_with(timing: Timing) -> Harness {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
-    let data_dir = temp_dir("data");
+    let tokens = start_token_server();
     let env: std::collections::HashMap<&str, String> = [
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
         ("ISSUER", ISSUER.to_string()),
         ("PROJECT_ID", PROJECT_ID.to_string()),
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
-        ("ALLOWED_SUBJECTS", format!("{ALICE},{BOB}")),
-        ("DATA_DIR", data_dir.to_string_lossy().into_owned()),
+        ("DASHBOARD_CLIENT_ID", DASHBOARD_CLIENT.to_string()),
+        ("MCP_CLIENT_LABELS", format!("Claude={MCP_CLIENT}")),
+        ("TOKEN_URI", tokens.url.clone()),
+        (
+            "DATABASE_URL",
+            "postgres://unused@localhost/unused".to_string(),
+        ),
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
+    let required_role = settings.required_role.clone();
     let verifier_for = |ids: Vec<String>| {
-        vitruvian_mcp_auth::verifier(VerifierConfig {
-            issuer: ISSUER.into(),
-            project_id: PROJECT_ID.into(),
-            allowed_client_ids: ids,
-            allowed_subjects: vec![ALICE.into(), BOB.into()],
-            jwks_uri: Some(jwks_uri.clone()),
-            user_agent: "vitruvian-relay-test".into(),
-        })
+        vitruvian_mcp_auth::verifier_requiring_role(
+            VerifierConfig {
+                issuer: ISSUER.into(),
+                project_id: PROJECT_ID.into(),
+                allowed_client_ids: ids,
+                allowed_subjects: Vec::new(),
+                jwks_uri: Some(jwks_uri.clone()),
+                user_agent: "vitruvian-relay-test".into(),
+            },
+            required_role.clone(),
+        )
         .unwrap()
     };
-    let store = Arc::new(FileDeviceStore::open(settings.devices_file()).unwrap());
+    let store = Arc::new(MemStore::new());
     let logs = Arc::new(Mutex::new(Vec::new()));
     let sink_logs = logs.clone();
     let sink: LogSink = Arc::new(move |line| sink_logs.lock().unwrap().push(line.to_string()));
@@ -260,6 +337,7 @@ async fn harness_with(timing: Timing) -> Harness {
         settings,
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
+        verifier_for(vec![DASHBOARD_CLIENT.into()]),
         store.clone(),
         timing,
         sink,
@@ -273,25 +351,30 @@ async fn harness_with(timing: Timing) -> Harness {
         rsa,
         logs,
         store,
+        tokens,
     }
 }
 
 impl Harness {
-    fn mcp_token(&self, sub: &str) -> String {
+    pub(crate) fn mcp_token(&self, sub: &str) -> String {
         mint(&self.rsa, MCP_CLIENT, sub)
     }
 
-    fn connector_token(&self, sub: &str) -> String {
+    pub(crate) fn connector_token(&self, sub: &str) -> String {
         mint(&self.rsa, CONNECTOR_CLIENT, sub)
     }
 
-    fn logs(&self) -> String {
+    pub(crate) fn dashboard_token(&self, sub: &str) -> String {
+        mint(&self.rsa, DASHBOARD_CLIENT, sub)
+    }
+
+    pub(crate) fn logs(&self) -> String {
         self.logs.lock().unwrap().join("\n")
     }
 
     /// Opens a connection and sends one request. The returned future drives
     /// the response; dropping it (and the connection task) drops the request.
-    async fn send(
+    pub(crate) async fn send(
         &self,
         method: &str,
         path: &str,
@@ -348,11 +431,35 @@ impl Harness {
         String::from_utf8_lossy(&got).into_owned()
     }
 
-    async fn get(&self, path: &str) -> Reply {
+    pub(crate) async fn get(&self, path: &str) -> Reply {
         self.send("GET", path, &[], "").await
     }
 
-    async fn register(&self, sub: &str, key: &Ed25519KeyPair) -> Reply {
+    /// A new device for `sub` (no name, no device id sent).
+    pub(crate) async fn register(&self, sub: &str, key: &Ed25519KeyPair) -> Reply {
+        self.register_with(sub, key, None, None).await
+    }
+
+    /// What `vrelay login` sends: the key, and a name and the device id when
+    /// it has them.
+    async fn register_with(
+        &self,
+        sub: &str,
+        key: &Ed25519KeyPair,
+        name: Option<&str>,
+        device_id: Option<&str>,
+    ) -> Reply {
+        let mut body = json!({"public_key": b64(key.public_key().as_ref())});
+        if let Some(name) = name {
+            body["name"] = json!(name);
+        }
+        if let Some(id) = device_id {
+            body["device_id"] = json!(id);
+        }
+        self.register_body(sub, &body.to_string()).await
+    }
+
+    pub(crate) async fn register_body(&self, sub: &str, body: &str) -> Reply {
         self.send(
             "POST",
             "/devices",
@@ -363,20 +470,29 @@ impl Harness {
                 ),
                 ("content-type", "application/json".into()),
             ],
-            &json!({"public_key": b64(key.public_key().as_ref())}).to_string(),
+            body,
         )
         .await
     }
 
+    /// Registers `key` as the new key of a device `sub` already has.
+    async fn reregister(&self, sub: &str, device: &str, key: &Ed25519KeyPair) -> Reply {
+        self.register_with(sub, key, None, Some(device)).await
+    }
+
     /// Registers a device for `sub` and returns its id and key.
-    async fn new_device(&self, sub: &str) -> (String, Ed25519KeyPair) {
+    pub(crate) async fn new_device(&self, sub: &str) -> (String, Ed25519KeyPair) {
         let key = ed25519();
         let r = self.register(sub, &key).await;
         assert_eq!(r.status, StatusCode::OK, "{}", r.body);
         (r.json()["device_id"].as_str().unwrap().to_string(), key)
     }
 
-    fn mcp_headers(&self, sub: &str, session: Option<&str>) -> Vec<(&'static str, String)> {
+    pub(crate) fn mcp_headers(
+        &self,
+        sub: &str,
+        session: Option<&str>,
+    ) -> Vec<(&'static str, String)> {
         let mut h = vec![
             ("authorization", format!("Bearer {}", self.mcp_token(sub))),
             ("accept", ACCEPT.to_string()),
@@ -388,7 +504,13 @@ impl Harness {
         h
     }
 
-    async fn rpc(&self, device: &str, sub: &str, session: Option<&str>, body: Value) -> Reply {
+    pub(crate) async fn rpc(
+        &self,
+        device: &str,
+        sub: &str,
+        session: Option<&str>,
+        body: Value,
+    ) -> Reply {
         self.send(
             "POST",
             &format!("/mcp/d/{device}"),
@@ -399,7 +521,7 @@ impl Harness {
     }
 
     /// `initialize`, then returns the session id it handed out.
-    async fn session(&self, device: &str, sub: &str) -> String {
+    pub(crate) async fn session(&self, device: &str, sub: &str) -> String {
         let r = self
             .rpc(
                 device,
@@ -416,7 +538,7 @@ impl Harness {
 
     // The error is tungstenite's own (it carries the refused HTTP response).
     #[allow(clippy::result_large_err)]
-    async fn ws(
+    pub(crate) async fn ws(
         &self,
         token: &str,
     ) -> Result<
@@ -449,7 +571,7 @@ impl Harness {
     }
 
     /// Connects as the device and waits for `welcome`.
-    async fn connect(
+    pub(crate) async fn connect(
         &self,
         sub: &str,
         device: &str,
@@ -485,7 +607,7 @@ impl Harness {
     }
 }
 
-fn ed25519() -> Ed25519KeyPair {
+pub(crate) fn ed25519() -> Ed25519KeyPair {
     let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
     Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap()
 }
@@ -520,7 +642,7 @@ where
     }
 }
 
-fn tool(name: &str) -> ToolDef {
+pub(crate) fn tool(name: &str) -> ToolDef {
     ToolDef {
         name: name.into(),
         description: format!("the {name} tool"),
@@ -530,18 +652,18 @@ fn tool(name: &str) -> ToolDef {
 
 /// A connector on a real WebSocket: answers pings (until told not to), hands
 /// calls and cancels to the test, and sends what the test gives it.
-struct FakeDevice {
-    frames: mpsc::UnboundedReceiver<ToConnector>,
-    out: mpsc::UnboundedSender<ToRelay>,
-    answer_pings: Arc<AtomicBool>,
-    auto_ack: Arc<AtomicBool>,
-    starts: Arc<Mutex<Vec<String>>>,
+pub(crate) struct FakeDevice {
+    pub(crate) frames: mpsc::UnboundedReceiver<ToConnector>,
+    pub(crate) out: mpsc::UnboundedSender<ToRelay>,
+    pub(crate) answer_pings: Arc<AtomicBool>,
+    pub(crate) auto_ack: Arc<AtomicBool>,
+    pub(crate) starts: Arc<Mutex<Vec<String>>>,
     /// Ids the relay sent a `ResultAck` for (kept out of `frames`).
-    result_acks: Arc<Mutex<Vec<String>>>,
+    pub(crate) result_acks: Arc<Mutex<Vec<String>>>,
     /// Pings received from the relay.
-    pings: Arc<AtomicU32>,
-    closed: Arc<tokio::sync::Notify>,
-    is_closed: Arc<AtomicBool>,
+    pub(crate) pings: Arc<AtomicU32>,
+    pub(crate) closed: Arc<tokio::sync::Notify>,
+    pub(crate) is_closed: Arc<AtomicBool>,
 }
 
 impl FakeDevice {
@@ -635,22 +757,22 @@ impl FakeDevice {
         self.auto_ack.store(false, Ordering::SeqCst);
     }
 
-    async fn next(&mut self) -> ToConnector {
+    pub(crate) async fn next(&mut self) -> ToConnector {
         within(self.frames.recv()).await.expect("device frame")
     }
 
-    async fn next_call(&mut self) -> Call {
+    pub(crate) async fn next_call(&mut self) -> Call {
         match self.next().await {
             ToConnector::Call(c) => c,
             other => panic!("expected a call, got {other:?}"),
         }
     }
 
-    fn send(&self, f: ToRelay) {
+    pub(crate) fn send(&self, f: ToRelay) {
         self.out.send(f).unwrap();
     }
 
-    fn reply(&self, call_id: &str, text: &str) {
+    pub(crate) fn reply(&self, call_id: &str, text: &str) {
         self.send(ToRelay::Result(CallResult {
             call_id: call_id.into(),
             content: json!([{"type": "text", "text": text}]),
@@ -659,7 +781,7 @@ impl FakeDevice {
         }));
     }
 
-    async fn wait_closed(&self) {
+    pub(crate) async fn wait_closed(&self) {
         within(async {
             while !self.is_closed.load(Ordering::SeqCst) {
                 let _ =
@@ -670,13 +792,13 @@ impl FakeDevice {
     }
 }
 
-fn call_body(id: Value, tool: &str, args: Value) -> Value {
+pub(crate) fn call_body(id: Value, tool: &str, args: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
            "params": {"name": tool, "arguments": args}})
 }
 
 /// Starts a tools/call in the background.
-fn spawn_rpc(
+pub(crate) fn spawn_rpc(
     h: &Arc<Harness>,
     device: &str,
     sub: &str,
@@ -826,11 +948,13 @@ async fn mcp_rejects_other_users_device_as_404() {
     // Nor on another device of the same person (P2 allows several; P1's
     // registration does not, so the record goes straight into the store).
     h.store
-        .put(DeviceRecord {
+        .insert_device(&NewDevice {
             device_id: "alices-second".into(),
             owner_sub: ALICE.into(),
+            name: "Second".into(),
             public_key_ed25519: [9; 32],
         })
+        .await
         .unwrap();
     let r = h
         .rpc(
@@ -960,13 +1084,16 @@ async fn register_device_returns_mcp_url() {
     assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
     let mut expected_key = [0u8; 32];
     expected_key.copy_from_slice(key.public_key().as_ref());
+    let stored = h.store.device(&id).await.unwrap().expect("stored");
     assert_eq!(
-        h.store.get(&id),
-        Some(DeviceRecord {
-            device_id: id.clone(),
-            owner_sub: ALICE.into(),
-            public_key_ed25519: expected_key,
-        })
+        (
+            stored.device_id.as_str(),
+            stored.owner_sub.as_str(),
+            stored.name.as_str(),
+            stored.public_key_ed25519,
+            stored.revoked
+        ),
+        (id.as_str(), ALICE, "My Mac", expected_key, false)
     );
 
     // Bad bodies and the wrong client are refused.
@@ -1005,7 +1132,7 @@ async fn reregister_kicks_old_session() {
     let fake = h.connect(ALICE, &device, &old_key, vec![tool("a")]).await;
 
     let new_key = ed25519();
-    let r = h.register(ALICE, &new_key).await;
+    let r = h.reregister(ALICE, &device, &new_key).await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.json()["device_id"], device.as_str(), "same id, new key");
     fake.wait_closed().await;
@@ -1131,7 +1258,7 @@ async fn connect_rejects_bad_signature() {
     .unwrap();
     match next_frame(&mut ws).await {
         Some(ToConnector::Reject { reason }) => {
-            assert!(reason.contains("unknown device"), "{reason}")
+            assert!(reason.contains("not registered"), "{reason}")
         }
         other => panic!("expected reject, got {other:?}"),
     }
@@ -1275,8 +1402,618 @@ async fn call_reaches_the_device_and_answers() {
     assert_eq!(r.json()["result"]["isError"], true);
     assert_eq!(
         r.json()["result"]["content"][0]["text"],
-        "Your computer is offline."
+        offline_said("My Mac", "never")
     );
+}
+
+/// The words for a call to a computer that is not connected.
+fn offline_said(name: &str, last_seen: &str) -> String {
+    format!(
+        "Your computer \"{name}\" is offline (last seen {last_seen}). \
+         It may be asleep, shut down or off the network."
+    )
+}
+
+/// The activity rows for `sub`, once there are `n` of them (they are written
+/// in the background, after the call has answered).
+async fn activity_when(h: &Harness, sub: &str, n: usize) -> Vec<crate::store::ActivityRow> {
+    within(async {
+        loop {
+            let rows = h.store.activity_of(sub, None, 100).await.unwrap();
+            if rows.len() >= n {
+                return rows;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+}
+
+/// The relay keeps no content (spec 7.2): the row says which tool, how big,
+/// how long and how it went, and no column can hold what was asked or said.
+#[tokio::test]
+async fn activity_row_written_without_content() {
+    const MARKER: &str = "SECRET-MARKER-9f3a";
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let args = json!({"path": format!("/tmp/{MARKER}")});
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(5), "read_file", args.clone()),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, &format!("the file says {MARKER}"));
+    let r = within(pending).await.unwrap();
+    assert!(text_of(&r).contains(MARKER), "the person gets the result");
+
+    let rows = activity_when(&h, ALICE, 1).await;
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row.owner_sub, ALICE);
+    assert_eq!(row.device_id, device);
+    assert_eq!(row.client_id, MCP_CLIENT);
+    assert_eq!(row.tool, "read_file");
+    assert_eq!(row.outcome, "ok");
+    assert_eq!(row.arg_bytes, Some(args.to_string().len() as u32));
+    let reply = json!([{"type": "text", "text": format!("the file says {MARKER}")}]);
+    assert_eq!(row.result_bytes, Some(reply.to_string().len() as u32));
+    assert!(row.duration_ms.is_some());
+    // Nothing a person said or got back is in the row, or in the log.
+    assert!(!format!("{row:?}").contains(MARKER), "{row:?}");
+    assert!(!h.logs().contains(MARKER), "the log holds content");
+
+    // Another person never sees it.
+    assert!(h
+        .store
+        .activity_of(BOB, None, 100)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+/// Every call is recorded, a refusal and an offline computer included, except
+/// a `check_request` for an id that was never there: a flood of guesses must
+/// not fill the person's activity list.
+#[tokio::test]
+async fn every_call_is_recorded_whatever_its_outcome() {
+    let h = Arc::new(harness().await);
+    let (device, _key) = h.new_device(ALICE).await;
+    let s = h.session(&device, ALICE).await;
+    // The guess comes first, so its row (if it were written) is the first
+    // one to appear.
+    for n in 0..3 {
+        let r = h
+            .rpc(
+                &device,
+                ALICE,
+                Some(&s),
+                call_body(json!(n), CHECK_REQUEST_NAME, json!({"request_id": "nope"})),
+            )
+            .await;
+        assert_eq!(r.json()["result"]["isError"], true);
+    }
+    for n in 10..12 {
+        let r = h
+            .rpc(
+                &device,
+                ALICE,
+                Some(&s),
+                call_body(json!(n), "read_file", json!({})),
+            )
+            .await;
+        assert!(error_text(&r).contains("is offline"));
+    }
+
+    let rows = activity_when(&h, ALICE, 2).await;
+    let seen: Vec<(String, String)> = rows
+        .iter()
+        .map(|r| (r.tool.clone(), r.outcome.clone()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("read_file".to_string(), "offline".to_string()),
+            ("read_file".to_string(), "offline".to_string()),
+        ]
+    );
+    // The guesses were logged as lines, and only there.
+    assert!(h.logs().contains("\"outcome\":\"unknown_request\""));
+}
+
+const CHECK_REQUEST_NAME: &str = crate::mcp::CHECK_REQUEST;
+
+/// A call is never failed by its own log line: the person gets the result,
+/// the failed write is logged, and nothing is kept.
+#[tokio::test]
+async fn activity_write_failure_does_not_fail_call() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("read_file")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    h.store
+        .fail_activity_writes_with(Some(StoreError::Unavailable));
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(5), "read_file", json!({})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "contents");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["result"]["isError"], false, "{}", r.body);
+    assert_eq!(text_of(&r), "contents");
+
+    until(|| h.logs().contains("\"activity_write_failed\"")).await;
+    assert!(h
+        .store
+        .activity_of(ALICE, None, 10)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // The database is writable again: the next call is recorded.
+    h.store.fail_activity_writes_with(None);
+    let pending = spawn_rpc(
+        &h,
+        &device,
+        ALICE,
+        &s,
+        call_body(json!(6), "read_file", json!({"again": 1})),
+    );
+    let call = fake.next_call().await;
+    fake.reply(&call.call_id, "contents");
+    within(pending).await.unwrap();
+    assert_eq!(activity_when(&h, ALICE, 1).await.len(), 1);
+}
+
+#[tokio::test]
+async fn offline_message_names_device_and_last_seen() {
+    let h = harness().await;
+    let key = ed25519();
+    let r = h.register_with(ALICE, &key, Some("Studio Mac"), None).await;
+    let device = r.json()["device_id"].as_str().unwrap().to_string();
+    let s = h.session(&device, ALICE).await;
+    let ask = |id: u64| {
+        h.rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(id), "read_file", json!({"n": id})),
+        )
+    };
+
+    // Never connected.
+    assert_eq!(
+        error_text(&ask(1).await),
+        offline_said("Studio Mac", "never")
+    );
+
+    // Seen at various times before now. Each on a computer of its own:
+    // "last seen" never moves back, so one computer cannot be set to a
+    // later and then an earlier time.
+    let now = SystemTime::now();
+    for (secs, said) in [
+        (5, "just now"),
+        (60, "1 minute ago"),
+        (7 * 60 + 30, "7 minutes ago"),
+        (3600, "1 hour ago"),
+        (3 * 3600 + 120, "3 hours ago"),
+        (24 * 3600, "1 day ago"),
+        (4 * 24 * 3600 + 3600, "4 days ago"),
+    ] {
+        let who = format!("person-{secs}");
+        let r = h
+            .register_with(&who, &ed25519(), Some("Studio Mac"), None)
+            .await;
+        let dev = r.json()["device_id"].as_str().unwrap().to_string();
+        let sess = h.session(&dev, &who).await;
+        h.store
+            .touch_seen(&dev, now - Duration::from_secs(secs))
+            .await
+            .unwrap();
+        let r = h
+            .rpc(
+                &dev,
+                &who,
+                Some(&sess),
+                call_body(json!(1), "read_file", json!({})),
+            )
+            .await;
+        assert_eq!(
+            error_text(&r),
+            offline_said("Studio Mac", said),
+            "{secs} s ago"
+        );
+    }
+
+    // It says which computer, so a second one has its own words.
+    let other = h
+        .register_with(ALICE, &ed25519(), Some("Laptop"), None)
+        .await;
+    let other = other.json()["device_id"].as_str().unwrap().to_string();
+    let s2 = h.session(&other, ALICE).await;
+    let r = h
+        .rpc(
+            &other,
+            ALICE,
+            Some(&s2),
+            call_body(json!(1), "read_file", json!({})),
+        )
+        .await;
+    assert_eq!(error_text(&r), offline_said("Laptop", "never"));
+
+    // Plain words that end with what to do or what may be going on.
+    let said = error_text(&ask(99_999).await);
+    assert!(said.ends_with("It may be asleep, shut down or off the network."));
+}
+
+#[test]
+fn how_long_ago_is_said_the_way_a_person_would() {
+    let now = SystemTime::now();
+    let at = |secs: u64| Some(now - Duration::from_secs(secs));
+    assert_eq!(crate::mcp::ago(None, now), "never");
+    for (secs, said) in [
+        (0, "just now"),
+        (59, "just now"),
+        (60, "1 minute ago"),
+        (119, "1 minute ago"),
+        (120, "2 minutes ago"),
+        (3599, "59 minutes ago"),
+        (3600, "1 hour ago"),
+        (86_399, "23 hours ago"),
+        (86_400, "1 day ago"),
+        (30 * 86_400, "30 days ago"),
+    ] {
+        assert_eq!(crate::mcp::ago(at(secs), now), said, "{secs} s");
+    }
+    // A last-seen in the future (a clock that stepped back) is "just now".
+    assert_eq!(
+        crate::mcp::ago(Some(now + Duration::from_secs(90)), now),
+        "just now"
+    );
+}
+
+/// 20 calls at once are fine, the 21st is refused in plain words and recorded
+/// as such, and it is per person: someone else is not held up.
+#[tokio::test]
+async fn twenty_first_burst_call_is_rate_limited() {
+    // The same burst, but refilling one call a minute so the test does not
+    // depend on how fast it runs.
+    let h = harness_with(Timing {
+        calls_per_minute: 1,
+        ..Timing::default()
+    })
+    .await;
+    assert_eq!(Timing::default().calls_per_minute, 60);
+    assert_eq!(Timing::default().rate_burst, 20);
+    let (device, _key) = h.new_device(ALICE).await;
+    let s = h.session(&device, ALICE).await;
+    for i in 1..=20u64 {
+        let r = h
+            .rpc(
+                &device,
+                ALICE,
+                Some(&s),
+                call_body(json!(i), "read_file", json!({"i": i})),
+            )
+            .await;
+        assert!(
+            error_text(&r).contains("is offline"),
+            "call {i}: {}",
+            r.body
+        );
+    }
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(21), "read_file", json!({"i": 21})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        error_text(&r),
+        "Too many requests from your account; wait a minute and try again."
+    );
+    // Still refused, not a protocol error, and the session is fine.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 22, "method": "tools/list"}),
+        )
+        .await;
+    assert!(r.json()["result"]["tools"].is_array(), "{}", r.body);
+
+    // Recorded as such.
+    let rows = activity_when(&h, ALICE, 21).await;
+    assert_eq!(
+        rows.iter().filter(|r| r.outcome == "rate_limited").count(),
+        1
+    );
+    assert_eq!(rows.iter().filter(|r| r.outcome == "offline").count(), 20);
+
+    // Bob has his own allowance.
+    let (bobs, _k) = h.new_device(BOB).await;
+    let sb = h.session(&bobs, BOB).await;
+    let r = h
+        .rpc(
+            &bobs,
+            BOB,
+            Some(&sb),
+            call_body(json!(1), "read_file", json!({})),
+        )
+        .await;
+    assert!(error_text(&r).contains("is offline"), "{}", r.body);
+}
+
+/// An AI app polling `check_request` while a person decides must not use up
+/// its own allowance: polls spend nothing from the call limit (they have a
+/// bucket of their own, 30 at once). Polls of an id the relay does not know are
+/// not put in the activity list.
+#[tokio::test]
+async fn polling_check_request_does_not_spend_the_allowance() {
+    let h = harness_with(Timing {
+        calls_per_minute: 1,
+        ..Timing::default()
+    })
+    .await;
+    let (device, _key) = h.new_device(ALICE).await;
+    for i in 1..=30u64 {
+        let r = mcp_call(&h, &device, ALICE, check_body(i, "r_000000000000000a")).await;
+        assert!(
+            !mcp_text(&r).contains("Too many requests"),
+            "poll {i} was refused: {r}"
+        );
+    }
+    // A fresh call afterwards still works: the 30 polls spent nothing.
+    let r = mcp_call(
+        &h,
+        &device,
+        ALICE,
+        call_body(json!(100), "read_file", json!({})),
+    )
+    .await;
+    assert!(mcp_text(&r).contains("is offline"), "{r}");
+    // The call is recorded; the 30 guesses are not.
+    let rows = activity_when(&h, ALICE, 1).await;
+    assert!(rows.iter().all(|r| r.tool != "check_request"), "{rows:?}");
+    assert!(rows.iter().all(|r| r.outcome != "rate_limited"));
+}
+
+/// Past the burst, `check_request` is refused in plain words, and the call
+/// limit is untouched: a flood of guessed ids cannot be had for free, nor
+/// stop the person's real calls.
+#[tokio::test]
+async fn a_flood_of_check_request_guesses_is_refused() {
+    let h = harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    let mut refused = 0;
+    for i in 1..=200u64 {
+        let r = mcp_call(&h, &device, ALICE, check_body(i, "r_000000000000000a")).await;
+        if mcp_text(&r).contains("Too many requests") {
+            refused += 1;
+        } else {
+            // Each unrefused guess is answered as an unknown id.
+            assert!(mcp_text(&r).contains("finished or expired"), "{r}");
+        }
+    }
+    // 30 at once, then about ten a second. Two hundred guesses in a tight
+    // loop must hit the limit however slow the machine (it would take 17 s to
+    // let them all through), and cannot be refused before the burst is spent.
+    assert!((1..=170).contains(&refused), "{refused} of 200 refused");
+    // Real calls are not held back by it.
+    let r = mcp_call(
+        &h,
+        &device,
+        ALICE,
+        call_body(json!(100), "read_file", json!({})),
+    )
+    .await;
+    assert!(mcp_text(&r).contains("is offline"), "{r}");
+    // None of the guesses, nor their refusals, is in the activity list.
+    let rows = activity_when(&h, ALICE, 1).await;
+    assert!(rows.iter().all(|r| r.tool != "check_request"), "{rows:?}");
+}
+
+/// Asks the MCP layer directly (no HTTP, no token to sign: for tests that
+/// make many calls).
+async fn mcp_call(h: &Harness, device: &str, sub: &str, body: Value) -> Value {
+    let caller = Caller {
+        subject: sub.to_string(),
+        client_id: MCP_CLIENT.to_string(),
+    };
+    h.app
+        .mcp
+        .handle(&body, device, &caller, None)
+        .await
+        .expect("an answer")
+}
+
+fn mcp_text(v: &Value) -> String {
+    v["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no text: {v}"))
+        .to_string()
+}
+
+/// A retry that joins a call that is already running starts nothing, so it
+/// spends nothing either (and is not refused when the allowance is used up);
+/// the call it joined spent one place when it began.
+#[tokio::test]
+async fn a_retry_that_rejoins_an_open_call_does_not_spend_the_allowance() {
+    let h = Arc::new(
+        harness_with(Timing {
+            calls_per_minute: 1,
+            rate_burst: 1,
+            ..Timing::default()
+        })
+        .await,
+    );
+    let (device, key) = h.new_device(ALICE).await;
+    let mut fake = h
+        .connect(ALICE, &device, &key, vec![tool("start_process")])
+        .await;
+    let s = h.session(&device, ALICE).await;
+    let body = |id: u64| call_body(json!(id), "start_process", json!({"command": "ls"}));
+    let first = spawn_rpc(&h, &device, ALICE, &s, body(1));
+    let call = fake.next_call().await;
+    // Two retries while the first is open: the one place is already spent.
+    let second = spawn_rpc(&h, &device, ALICE, &s, body(2));
+    let third = spawn_rpc(&h, &device, ALICE, &s, body(3));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.reply(&call.call_id, "one answer");
+    for r in [
+        within(first).await.unwrap(),
+        within(second).await.unwrap(),
+        within(third).await.unwrap(),
+    ] {
+        assert_eq!(text_of(&r), "one answer", "{}", r.body);
+    }
+    // The one place was spent by the call that started, so a different call
+    // is refused: the retries did not hand anything back or take more.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(4), "start_process", json!({"command": "pwd"})),
+        )
+        .await;
+    assert!(error_text(&r).contains("Too many requests"), "{}", r.body);
+    // All three were recorded.
+    let rows = activity_when(&h, ALICE, 4).await;
+    assert_eq!(
+        rows.iter().filter(|r| r.outcome == "rate_limited").count(),
+        1
+    );
+}
+
+/// A database that has stopped answering must not let activity writes pile
+/// up: past 64 in flight a row is dropped and logged, calls are unaffected,
+/// and writing goes on once the database is back.
+#[tokio::test]
+async fn a_stalled_database_cannot_pile_up_activity_writes() {
+    let h = harness_with(Timing {
+        calls_per_minute: 6000,
+        rate_burst: 1000,
+        ..Timing::default()
+    })
+    .await;
+    let (device, _key) = h.new_device(ALICE).await;
+    h.store.stall_activity_writes(true);
+    for i in 1..=70u64 {
+        let r = mcp_call(
+            &h,
+            &device,
+            ALICE,
+            call_body(json!(i), "read_file", json!({"i": i})),
+        )
+        .await;
+        assert!(mcp_text(&r).contains("is offline"), "call {i}: {r}");
+    }
+    let dropped = || h.logs().matches("\"activity_write_dropped\"").count();
+    assert_eq!(dropped(), 6, "64 writes wait, the other 6 are dropped");
+    assert!(h
+        .store
+        .activity_of(ALICE, None, 100)
+        .await
+        .unwrap()
+        .is_empty());
+
+    // The database answers again: the 64 that waited are written, no more.
+    h.store.stall_activity_writes(false);
+    activity_when(&h, ALICE, 64).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        h.store.activity_of(ALICE, None, 100).await.unwrap().len(),
+        64
+    );
+    // And the places came back: the next call is recorded.
+    let r = mcp_call(
+        &h,
+        &device,
+        ALICE,
+        call_body(json!(71), "read_file", json!({"i": 71})),
+    )
+    .await;
+    assert!(mcp_text(&r).contains("is offline"));
+    activity_when(&h, ALICE, 65).await;
+    assert_eq!(dropped(), 6);
+}
+
+/// "Last seen" is kept up to date: when the computer connects, while it stays
+/// connected, and when it goes.
+#[tokio::test]
+async fn last_seen_is_kept_up_to_date() {
+    let h = harness_with(Timing {
+        seen_every: Duration::from_millis(40),
+        ..Timing::default()
+    })
+    .await;
+    let (device, key) = h.new_device(ALICE).await;
+    let last_seen = || async { h.store.device(&device).await.unwrap().unwrap().last_seen };
+    assert_eq!(last_seen().await, None);
+
+    let fake = h.connect(ALICE, &device, &key, vec![]).await;
+    // On connecting.
+    within(async {
+        while last_seen().await.is_none() {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+    // Then again while it stays connected.
+    let old = SystemTime::now() - Duration::from_secs(3600);
+    h.store.touch_seen(&device, old).await.unwrap();
+    within(async {
+        while last_seen().await == Some(old) {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+    drop(fake);
+}
+
+#[tokio::test]
+async fn last_seen_is_set_on_connect_and_on_disconnect() {
+    // The periodic update is five minutes here: only the connect and the
+    // disconnect can have touched it.
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let last_seen = || async { h.store.device(&device).await.unwrap().unwrap().last_seen };
+    let fake = h.connect(ALICE, &device, &key, vec![]).await;
+    within(async {
+        while last_seen().await.is_none() {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+
+    let old = SystemTime::now() - Duration::from_secs(3600);
+    h.store.touch_seen(&device, old).await.unwrap();
+    drop(fake);
+    within(async {
+        while last_seen().await == Some(old) {
+            tokio::time::sleep(Duration::from_millis(5)).await
+        }
+    })
+    .await;
+    assert!(last_seen().await.unwrap() > old);
 }
 
 /// A request in the stateless MCP revision: the version in `_meta` and,
@@ -1549,8 +2286,13 @@ fn text_of(r: &Reply) -> String {
         .to_string()
 }
 
-/// The request id inside a waiting reply, checking the text around it.
-fn waiting_id(r: &Reply, device: &str) -> String {
+/// The request id inside a waiting reply, checking the text around it. The
+/// computer is named by its name, "My Mac" for one registered without one.
+fn waiting_id(r: &Reply, _device: &str) -> String {
+    waiting_id_named(r, "My Mac")
+}
+
+fn waiting_id_named(r: &Reply, name: &str) -> String {
     let v = r.json();
     assert_eq!(v["result"]["isError"], false, "{}", r.body);
     let text = text_of(r);
@@ -1563,7 +2305,7 @@ fn waiting_id(r: &Reply, device: &str) -> String {
     assert_eq!(
         text,
         format!(
-            "Waiting for you to allow this on \"{device}\". Call check_request with \
+            "Waiting for you to allow this on \"{name}\". Call check_request with \
              request_id \"{id}\" to get the result. The request is cancelled if nobody \
              answers within 60 seconds."
         )
@@ -2567,7 +3309,10 @@ async fn reregister_during_hello_gap_ends_old_key_connection() {
     within(reached.notified()).await;
     // The key changes in the gap; there is nothing to kick yet.
     *h.app.after_hello.lock().unwrap() = None;
-    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+    assert_eq!(
+        h.reregister(ALICE, &device, &ed25519()).await.status,
+        StatusCode::OK
+    );
     release.notify_one();
     // The old-key connection must end, whatever it saw first.
     loop {
@@ -2905,7 +3650,10 @@ async fn stale_key_hello_in_the_gap_does_not_displace_the_new_connection() {
     *h.app.after_hello.lock().unwrap() = None;
     // Meanwhile the device is registered again and connects with its new key.
     let new_key = ed25519();
-    assert_eq!(h.register(ALICE, &new_key).await.status, StatusCode::OK);
+    assert_eq!(
+        h.reregister(ALICE, &device, &new_key).await.status,
+        StatusCode::OK
+    );
     let fresh = h.connect(ALICE, &device, &new_key, vec![tool("new")]).await;
     release.notify_one();
     // The stale connection ends without ever taking the device's place,
@@ -3133,7 +3881,7 @@ impl HeldSends {
     }
 }
 
-fn error_text(r: &Reply) -> String {
+pub(crate) fn error_text(r: &Reply) -> String {
     assert_eq!(r.json()["result"]["isError"], true, "{}", r.body);
     r.json()["result"]["content"][0]["text"]
         .as_str()
@@ -3266,7 +4014,10 @@ async fn a_reregistered_device_never_gets_the_calls_still_queued_for_its_old_con
     let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
     within(held.reached.notified()).await;
     // The device is registered again: the relay fails the call.
-    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+    assert_eq!(
+        h.reregister(ALICE, &device, &ed25519()).await.status,
+        StatusCode::OK
+    );
     let r = within(pending).await.unwrap();
     assert_eq!(
         error_text(&r),
@@ -3692,4 +4443,712 @@ async fn v1_hello_is_rejected_with_update_message() {
         })
     );
     assert!(next_frame(&mut ws).await.is_none());
+}
+
+/// The database not answering is said plainly, on every path that needs it,
+/// and the relay works again the moment it answers (with a unit-test store;
+/// the real database being cut is `tests/database_down.rs`).
+#[tokio::test]
+async fn a_database_that_is_down_gets_a_plain_message_then_recovers() {
+    const MESSAGE: &str = "The relay is having trouble right now; try again in a minute.";
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let s = h.session(&device, ALICE).await;
+    h.store.fail_with(Some(StoreError::Unavailable));
+
+    // A call: an ordinary tool result that says what to do, and logs why.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(5), "read_file", json!({"path": "/top/secret"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["id"], 5);
+    assert_eq!(r.json()["result"]["isError"], true);
+    assert_eq!(r.json()["result"]["content"][0]["text"], MESSAGE);
+    let logs = h.logs();
+    assert!(logs.contains("\"outcome\":\"store_unavailable\""), "{logs}");
+    assert!(logs.contains("\"tool\":\"read_file\""), "{logs}");
+    assert!(!logs.contains("/top/secret"), "arguments reached the log");
+
+    // Another method has no tool result to carry it: a 503 with the words.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 6, "method": "tools/list"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(r.body, MESSAGE);
+
+    // Registering: the same.
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(r.body, MESSAGE);
+
+    // A device connecting is told, in words the connector shows.
+    let token = h.connector_token(ALICE);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![],
+    )))
+    .await
+    .unwrap();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => assert_eq!(reason, MESSAGE),
+        other => panic!("expected reject, got {other:?}"),
+    }
+
+    // The database is back: the next call is an ordinary one (no computer
+    // is connected, so it says so).
+    h.store.fail_with(None);
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            call_body(json!(7), "read_file", json!({})),
+        )
+        .await;
+    assert_eq!(r.json()["result"]["isError"], true);
+    assert_eq!(
+        r.json()["result"]["content"][0]["text"],
+        offline_said("My Mac", "never")
+    );
+    assert_eq!(h.register(ALICE, &ed25519()).await.status, StatusCode::OK);
+}
+
+/// A person who already has the most devices is told what to do.
+#[tokio::test]
+async fn registering_when_the_store_refuses_says_what_to_do() {
+    let h = harness().await;
+    h.store.fail_with(Some(StoreError::TooManyDevices));
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    assert!(r.body.contains("Remove one"), "{}", r.body);
+    h.store.fail_with(Some(StoreError::DuplicateId));
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    assert!(r.body.contains("Register it again"), "{}", r.body);
+}
+
+/// The relay remembers a key change only as long as a `/connect` could still
+/// be in flight, so the map does not grow with every device ever changed.
+#[tokio::test]
+async fn key_changes_are_forgotten_after_their_memory() {
+    let h = harness_with(Timing {
+        key_change_memory: Duration::from_millis(50),
+        ..Timing::default()
+    })
+    .await;
+    let before = h.app.key_generation();
+    h.app.key_changed("a");
+    assert!(h.app.key_changed_since("a", before));
+    assert!(!h.app.key_changed_since("a", h.app.key_generation()));
+    assert!(!h.app.key_changed_since("other", before));
+
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    h.app.key_changed("b");
+    let remembered: Vec<String> = h.app.key_changes.lock().unwrap().keys().cloned().collect();
+    assert_eq!(remembered, ["b"], "a was forgotten, b is remembered");
+
+    // Many devices over a long time never accumulate.
+    for i in 0..200 {
+        h.app.key_changed(&format!("d{i}"));
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    h.app.key_changed("last");
+    assert_eq!(h.app.key_changes.lock().unwrap().len(), 1);
+}
+
+// ------------------------------------------- several computers, and the role
+
+const FIVE_COMPUTERS: &str =
+    "You already have 5 computers connected. Remove one in the dashboard first.";
+
+/// Everything about a reply that a caller could tell apart, except the
+/// `date` header (a second can tick over between two requests).
+fn fingerprint(r: &Reply) -> (StatusCode, String, Vec<(String, String)>) {
+    let mut headers: Vec<(String, String)> = r
+        .headers
+        .iter()
+        .filter(|(k, _)| *k != header::DATE)
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap().to_string()))
+        .collect();
+    headers.sort();
+    (r.status, r.body.clone(), headers)
+}
+
+async fn names_of(h: &Harness, sub: &str) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = h
+        .store
+        .devices_of(sub)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|d| (d.device_id, d.name))
+        .collect();
+    v.sort();
+    v
+}
+
+#[tokio::test]
+async fn second_device_gets_its_own_id_and_url() {
+    let h = Arc::new(harness().await);
+    let (first, first_key) = h.new_device(ALICE).await;
+    let second_key = ed25519();
+    let r = h
+        .register_with(ALICE, &second_key, Some("Studio Mac"), None)
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let second = r.json()["device_id"].as_str().unwrap().to_string();
+    assert_ne!(first, second, "a new computer is a new device");
+    assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{second}"));
+
+    // Both are hers, each with its own name and key.
+    let mut expected = vec![
+        (first.clone(), "My Mac".to_string()),
+        (second.clone(), "Studio Mac".to_string()),
+    ];
+    expected.sort();
+    assert_eq!(names_of(&h, ALICE).await, expected);
+    let stored = h.store.device(&second).await.unwrap().unwrap();
+    assert_eq!(
+        &stored.public_key_ed25519[..],
+        second_key.public_key().as_ref()
+    );
+
+    // Both can be connected at once, and each URL reaches its own computer.
+    let mut a = h
+        .connect(ALICE, &first, &first_key, vec![tool("one")])
+        .await;
+    let mut b = h
+        .connect(ALICE, &second, &second_key, vec![tool("two")])
+        .await;
+    let sa = h.session(&first, ALICE).await;
+    let sb = h.session(&second, ALICE).await;
+    let pending = spawn_rpc(
+        &h,
+        &second,
+        ALICE,
+        &sb,
+        call_body(json!(1), "two", json!({})),
+    );
+    let call = b.next_call().await;
+    b.reply(&call.call_id, "from the studio");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["content"][0]["text"], "from the studio");
+    let pending = spawn_rpc(
+        &h,
+        &first,
+        ALICE,
+        &sa,
+        call_body(json!(1), "one", json!({})),
+    );
+    let call = a.next_call().await;
+    a.reply(&call.call_id, "from the first");
+    let r = within(pending).await.unwrap();
+    assert_eq!(r.json()["result"]["content"][0]["text"], "from the first");
+    assert!(a.frames.try_recv().is_err() && b.frames.try_recv().is_err());
+
+    // Another person's registrations are their own.
+    let (bobs, _) = h.new_device(BOB).await;
+    assert_eq!(names_of(&h, BOB).await.len(), 1);
+    assert_ne!(bobs, first);
+    assert_eq!(names_of(&h, ALICE).await.len(), 2);
+}
+
+#[tokio::test]
+async fn relogin_with_device_id_keeps_the_id() {
+    let h = harness().await;
+    let (device, old_key) = h.new_device(ALICE).await;
+    let fake = h.connect(ALICE, &device, &old_key, vec![tool("a")]).await;
+
+    // Signing in again on that computer: same id, same URL, the key is
+    // replaced, the old link ends, and nothing new is made.
+    let new_key = ed25519();
+    let r = h.reregister(ALICE, &device, &new_key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["device_id"], device.as_str());
+    assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{device}"));
+    fake.wait_closed().await;
+    assert_eq!(
+        names_of(&h, ALICE).await,
+        [(device.clone(), "My Mac".to_string())],
+        "no name sent, so the name stays"
+    );
+    let stored = h.store.device(&device).await.unwrap().unwrap();
+    assert_eq!(
+        &stored.public_key_ed25519[..],
+        new_key.public_key().as_ref()
+    );
+    h.connect(ALICE, &device, &new_key, vec![]).await;
+
+    // A name sent with it is only what a new computer would be called: this
+    // one keeps the name it has (the person may have changed it in the
+    // dashboard).
+    let r = h
+        .register_with(ALICE, &new_key, Some("Studio Mac"), Some(&device))
+        .await;
+    assert_eq!(r.json()["device_id"], device.as_str());
+    assert_eq!(
+        names_of(&h, ALICE).await,
+        [(device.clone(), "My Mac".to_string())]
+    );
+    // Asking for the rename (`vrelay login --name`) changes it.
+    let body = json!({"public_key": b64(new_key.public_key().as_ref()),
+                      "name": "Desk Mac", "device_id": device, "rename": true});
+    let r = h.register_body(ALICE, &body.to_string()).await;
+    assert_eq!(r.json()["device_id"], device.as_str());
+    assert_eq!(
+        names_of(&h, ALICE).await,
+        [(device.clone(), "Desk Mac".to_string())]
+    );
+
+    // An id that is not hers (someone else's, one nobody has, or one she
+    // removed) gets her a new device. It never touches the other one, and
+    // the answer does not say which of those it was.
+    let (bobs, bobs_key) = h.new_device(BOB).await;
+    let bobs_fake = h.connect(BOB, &bobs, &bobs_key, vec![tool("b")]).await;
+    let nobody = "00000000-0000-4000-8000-000000000000".to_string();
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    let mut made = Vec::new();
+    for not_hers in [&bobs, &nobody, &device] {
+        // The name sent is what the new computer is called: a stale id loses
+        // nothing.
+        let r = h
+            .register_with(ALICE, &ed25519(), Some("Studio Mac"), Some(not_hers))
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let id = r.json()["device_id"].as_str().unwrap().to_string();
+        assert_ne!(&id, not_hers);
+        assert_eq!(
+            h.store.device(&id).await.unwrap().unwrap().name,
+            "Studio Mac"
+        );
+        assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
+        made.push(id);
+    }
+    assert_eq!(names_of(&h, ALICE).await.len(), 3);
+    let bobs_record = h.store.device(&bobs).await.unwrap().unwrap();
+    assert_eq!(
+        (
+            &bobs_record.owner_sub[..],
+            &bobs_record.public_key_ed25519[..]
+        ),
+        (BOB, bobs_key.public_key().as_ref()),
+        "Bob's device is untouched"
+    );
+    assert!(
+        !bobs_fake.is_closed.load(Ordering::SeqCst),
+        "and still linked"
+    );
+
+    // Something that is not an id at all, or a name that is not text, is
+    // a request the person can fix.
+    for bad in [
+        json!({"public_key": b64(&[1u8; 32]), "device_id": 7}),
+        json!({"public_key": b64(&[1u8; 32]), "name": ["x"]}),
+    ] {
+        let r = h.register_body(ALICE, &bad.to_string()).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn sixth_device_is_refused() {
+    let h = harness().await;
+    for i in 0..5 {
+        let r = h
+            .register_with(ALICE, &ed25519(), Some(&format!("Mac {i}")), None)
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{i}: {}", r.body);
+    }
+    let r = h
+        .register_with(ALICE, &ed25519(), Some("One too many"), None)
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.body);
+    assert_eq!(r.header("content-type").unwrap(), "application/json");
+    assert_eq!(r.json(), json!({ "error": FIVE_COMPUTERS }));
+    assert_eq!(names_of(&h, ALICE).await.len(), 5, "nothing was added");
+
+    // The limit is per person.
+    assert_eq!(h.register(BOB, &ed25519()).await.status, StatusCode::OK);
+
+    // Signing in again on a computer she already has is not a sixth.
+    let ids: Vec<String> = names_of(&h, ALICE).await.into_iter().map(|d| d.0).collect();
+    let r = h.reregister(ALICE, &ids[0], &ed25519()).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.json()["device_id"], ids[0].as_str());
+
+    // Removing one makes room.
+    assert!(h.app.revoke(ALICE, &ids[1]).await.unwrap());
+    let r = h.register(ALICE, &ed25519()).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(names_of(&h, ALICE).await.len(), 5);
+}
+
+#[tokio::test]
+async fn name_is_trimmed_and_capped() {
+    let h = harness().await;
+    let long_with_space_at_the_cut = format!("{} tail", "b".repeat(63));
+    let cases: Vec<(String, String)> = vec![
+        ("  Work Mac  ".into(), "Work Mac".into()),
+        ("Home\u{7}\nMac\t\u{0}".into(), "HomeMac".into()),
+        ("a".repeat(100), "a".repeat(64)),
+        // Characters, not bytes: 70 two-byte letters are cut to 64 letters.
+        ("é".repeat(70), "é".repeat(64)),
+        // A cut that lands after a space leaves no trailing space.
+        (long_with_space_at_the_cut, "b".repeat(63)),
+        ("a".repeat(64), "a".repeat(64)),
+    ];
+    for (i, (sent, stored)) in cases.iter().enumerate() {
+        // A different person each time, so the five-computer limit is not
+        // what is being tried.
+        let sub = format!("person-{i}");
+        let r = h.register_with(&sub, &ed25519(), Some(sent), None).await;
+        assert_eq!(r.status, StatusCode::OK, "{sent:?}: {}", r.body);
+        let id = r.json()["device_id"].as_str().unwrap().to_string();
+        let name = h.store.device(&id).await.unwrap().unwrap().name;
+        assert_eq!(&name, stored, "sent {sent:?}");
+        assert!(name.chars().count() <= 64);
+    }
+
+    // A name that is nothing once cleaned is a request she can fix, and
+    // nothing is registered.
+    for blank in ["", "   ", "\u{7}\n"] {
+        let r = h
+            .register_with("person-blank", &ed25519(), Some(blank), None)
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{blank:?}");
+        let said = r.json()["error"].as_str().unwrap().to_string();
+        assert!(said.contains("name") && said.contains("64"), "{said}");
+    }
+    assert!(names_of(&h, "person-blank").await.is_empty());
+
+    // The same cleaning when a name comes with a re-login.
+    let (device, key) = h.new_device("person-rename").await;
+    let body = json!({"public_key": b64(key.public_key().as_ref()),
+                      "name": "  New\u{7} name ", "device_id": device, "rename": true});
+    let r = h.register_body("person-rename", &body.to_string()).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        names_of(&h, "person-rename").await,
+        [(device, "New name".to_string())]
+    );
+}
+
+/// What the relay says to a connector whose hello names `device`, signed with
+/// `key`, under `who`'s token.
+async fn reject_for(h: &Harness, who: &str, device: &str, key: &Ed25519KeyPair) -> String {
+    reject_for_at(h, who, device, key, now_secs()).await
+}
+
+/// The same, with the hello stamped `ts`.
+async fn reject_for_at(
+    h: &Harness,
+    who: &str,
+    device: &str,
+    key: &Ed25519KeyPair,
+    ts: u64,
+) -> String {
+    let token = h.connector_token(who);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(device, key, &token, ts, vec![])))
+        .await
+        .unwrap();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => reason,
+        other => panic!("expected reject, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn revoke_closes_live_link() {
+    let h = Arc::new(harness().await);
+    let (device, key) = h.new_device(ALICE).await;
+    let (other, other_key) = h.new_device(ALICE).await;
+    let mut fake = h.connect(ALICE, &device, &key, vec![tool("t")]).await;
+    let other_fake = h.connect(ALICE, &other, &other_key, vec![tool("t")]).await;
+    let s = h.session(&device, ALICE).await;
+    let pending = spawn_rpc(&h, &device, ALICE, &s, call_body(json!(1), "t", json!({})));
+    fake.next_call().await;
+
+    // Someone else cannot remove it, and removing twice is not an error.
+    assert!(!h.app.revoke(BOB, &device).await.unwrap());
+    assert!(h.store.device(&device).await.unwrap().is_some());
+    assert!(!fake.is_closed.load(Ordering::SeqCst));
+
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    assert!(!h.app.revoke(ALICE, &device).await.unwrap());
+
+    // The call in flight fails with the plain words, the link closes.
+    let r = within(pending).await.unwrap();
+    assert_eq!(
+        error_text(&r),
+        "This computer was removed from your account."
+    );
+    fake.wait_closed().await;
+    assert!(h.app.registry.tools(&device).is_none());
+
+    // The removed computer, signing its hello with its own key, is told what
+    // happened and what to do.
+    let told = reject_for(&h, ALICE, &device, &key).await;
+    assert_eq!(told, REMOVED_DEVICE);
+    assert!(
+        told.contains("removed") && told.contains("vrelay login"),
+        "{told}"
+    );
+
+    // Anyone else asking about that id gets exactly what a device that never
+    // existed gets: a bad signature, or another person holding Alice's real
+    // key (and so signing correctly) under their own token.
+    let never = "00000000-0000-4000-8000-000000000000";
+    let unknown = reject_for(&h, ALICE, never, &ed25519()).await;
+    assert_ne!(unknown, told);
+    assert!(unknown.contains("vrelay login"), "{unknown}");
+    assert_eq!(
+        reject_for(&h, ALICE, &device, &ed25519()).await,
+        unknown,
+        "a bad signature does not learn it was removed"
+    );
+    assert_eq!(
+        reject_for(&h, BOB, &device, &key).await,
+        unknown,
+        "someone else's removed device looks like one that never existed"
+    );
+
+    // Her AI app's URL for it is gone too, session or not.
+    let r = h
+        .rpc(
+            &device,
+            ALICE,
+            Some(&s),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+
+    // Her other computer never noticed.
+    assert!(!other_fake.is_closed.load(Ordering::SeqCst));
+    assert!(h.app.registry.tools(&other).is_some());
+}
+
+/// Task 8 review: the word "removed" is for the computer itself, now. A hello
+/// signed with a removed computer's key but stamped far from the relay's clock
+/// is a replay (or a clock that is wrong), and is answered like any unknown
+/// computer, exactly as a hello for a computer that is still registered would
+/// be refused for its timestamp.
+#[tokio::test]
+async fn removed_is_not_told_to_a_stale_hello() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+
+    let now = now_secs();
+    let fresh = reject_for_at(&h, ALICE, &device, &key, now).await;
+    assert_eq!(fresh, REMOVED_DEVICE);
+
+    let never = "00000000-0000-4000-8000-000000000000";
+    let unknown = reject_for(&h, ALICE, never, &ed25519()).await;
+    assert_eq!(unknown, UNKNOWN_DEVICE);
+    let skew = h.app.timing.max_clock_skew_secs;
+    for (label, ts) in [
+        ("an hour old", now - 3600),
+        ("an hour ahead", now + 3600),
+        ("just past the limit", now - skew - 5),
+    ] {
+        assert_eq!(
+            reject_for_at(&h, ALICE, &device, &key, ts).await,
+            unknown,
+            "a correctly signed hello that is {label} must not learn it was removed"
+        );
+    }
+    // Just inside the limit still counts as now.
+    assert_eq!(
+        reject_for_at(&h, ALICE, &device, &key, now - skew + 5).await,
+        REMOVED_DEVICE
+    );
+}
+
+/// A `/connect` that read the device before it was removed must not register
+/// after it (the same gap `reregister_during_hello_gap_ends_old_key_connection`
+/// covers for a new key).
+#[tokio::test]
+async fn connect_racing_a_revoke_cannot_register() {
+    let h = harness().await;
+    let (device, key) = h.new_device(ALICE).await;
+    let (reached, release) = (
+        Arc::new(tokio::sync::Notify::new()),
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    *h.app.after_hello.lock().unwrap() = Some((reached.clone(), release.clone()));
+    let token = h.connector_token(ALICE);
+    let mut ws = h.ws(&token).await.unwrap();
+    ws.send(Message::Text(hello(
+        &device,
+        &key,
+        &token,
+        now_secs(),
+        vec![tool("a")],
+    )))
+    .await
+    .unwrap();
+    within(reached.notified()).await;
+    *h.app.after_hello.lock().unwrap() = None;
+    // Removed in the gap: there is no link to close yet.
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    release.notify_one();
+    match next_frame(&mut ws).await {
+        Some(ToConnector::Reject { reason }) => {
+            assert_eq!(reason, REMOVED_DEVICE)
+        }
+        other => panic!("expected reject, got {other:?}"),
+    }
+    assert!(next_frame(&mut ws).await.is_none(), "closed after reject");
+    assert!(h.app.registry.tools(&device).is_none(), "never registered");
+}
+
+#[tokio::test]
+async fn token_without_role_is_refused() {
+    let h = harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let uninvited =
+        |client: &str| mint_with_role(&h.rsa, client, ALICE, Some(now_secs() + 600), None);
+    let other_role = |client: &str| {
+        mint_with_role(
+            &h.rsa,
+            client,
+            ALICE,
+            Some(now_secs() + 600),
+            Some("someone-else"),
+        )
+    };
+
+    for (label, token) in [
+        ("no role", uninvited(CONNECTOR_CLIENT)),
+        ("another role", other_role(CONNECTOR_CLIENT)),
+    ] {
+        let r = h
+            .send(
+                "POST",
+                "/devices",
+                &[("authorization", format!("Bearer {token}"))],
+                &json!({"public_key": b64(&[1u8; 32])}).to_string(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{label}: {}", r.body);
+        let challenge = r.header("www-authenticate").unwrap();
+        assert!(challenge.contains("insufficient_scope"), "{challenge}");
+        assert!(challenge.contains("relay-user"), "{challenge}");
+        assert!(!challenge.contains("resource_metadata"), "{challenge}");
+    }
+    assert_eq!(names_of(&h, ALICE).await.len(), 1, "nothing was registered");
+
+    // On the AI app's side too.
+    for token in [uninvited(MCP_CLIENT), other_role(MCP_CLIENT)] {
+        let r = h
+            .send(
+                "POST",
+                &format!("/mcp/d/{device}"),
+                &[
+                    ("authorization", format!("Bearer {token}")),
+                    ("accept", ACCEPT.into()),
+                ],
+                &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"}).to_string(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{}", r.body);
+    }
+
+    // And on the connector's socket.
+    match h.ws(&uninvited(CONNECTOR_CLIENT)).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => {
+            assert_eq!(resp.status(), StatusCode::FORBIDDEN)
+        }
+        other => panic!("expected a 403, got {:?}", other.map(|_| "a socket")),
+    }
+
+    // Each refusal is logged with its reason, and never with who it was.
+    let logs = h.logs();
+    for route in ["devices", "mcp", "connect"] {
+        assert!(
+            logs.lines().any(|l| l.contains("auth_refused")
+                && l.contains(&format!("\"route\":\"{route}\""))
+                && l.contains("\"code\":\"role_missing\"")),
+            "{route}: {logs}"
+        );
+    }
+    assert!(!logs.contains(ALICE), "{logs}");
+
+    // A person who holds the role is let in with no list naming them.
+    let key = ed25519();
+    let r = h.register("a-person-nobody-listed", &key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn owned_device_is_the_one_ownership_check() {
+    let h = harness().await;
+    let (mine, _) = h.new_device(ALICE).await;
+    let (bobs, _) = h.new_device(BOB).await;
+    let own = h.app.owned_device(ALICE, &mine).await.unwrap();
+    assert_eq!(own.map(|d| d.device_id), Some(mine.clone()));
+    assert_eq!(h.app.owned_device(ALICE, &bobs).await, Ok(None));
+    assert_eq!(h.app.owned_device(ALICE, "no-such-device").await, Ok(None));
+    assert!(h.app.revoke(ALICE, &mine).await.unwrap());
+    assert_eq!(h.app.owned_device(ALICE, &mine).await, Ok(None));
+    h.store.fail_with(Some(StoreError::Unavailable));
+    assert_eq!(
+        h.app.owned_device(ALICE, &bobs).await,
+        Err(StoreError::Unavailable)
+    );
+}
+
+/// Every route that names a device answers for someone else's exactly as it
+/// does for one that does not exist: status, body and headers.
+#[tokio::test]
+async fn someone_elses_device_looks_like_a_missing_one() {
+    let h = harness().await;
+    let (bobs, bobs_key) = h.new_device(BOB).await;
+    let _bob_fake = h.connect(BOB, &bobs, &bobs_key, vec![tool("t")]).await;
+    let missing = "00000000-0000-4000-8000-000000000000";
+
+    for body in [
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+               "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                          "clientInfo": {"name": "test", "version": "0"}}}),
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        call_body(json!(3), "t", json!({})),
+    ] {
+        let theirs = h.rpc(&bobs, ALICE, None, body.clone()).await;
+        let nobodys = h.rpc(missing, ALICE, None, body.clone()).await;
+        assert_eq!(theirs.status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(fingerprint(&theirs), fingerprint(&nobodys), "{body}");
+    }
+
+    // The connector's socket: the same refusal.
+    let token = h.connector_token(ALICE);
+    let mut reasons = Vec::new();
+    for (id, key) in [(bobs.as_str(), &bobs_key), (missing, &ed25519())] {
+        let mut ws = h.ws(&token).await.unwrap();
+        ws.send(Message::Text(hello(id, key, &token, now_secs(), vec![])))
+            .await
+            .unwrap();
+        match next_frame(&mut ws).await {
+            Some(ToConnector::Reject { reason }) => reasons.push(reason),
+            other => panic!("expected reject, got {other:?}"),
+        }
+    }
+    assert_eq!(reasons[0], reasons[1]);
 }

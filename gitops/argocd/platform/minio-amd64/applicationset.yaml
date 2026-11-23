@@ -116,6 +116,10 @@ spec:
               - name: umami-db-backups
                 policy: none
                 purge: false
+              # CNPG Barman backups for relay-db (gitops/argocd/platform/relay/).
+              - name: relay-db-backup
+                policy: none
+                purge: false
               # Thanos TSDB block storage for the HA Prometheus migration (sidecar
               # upload + Store Gateway reads + Compactor). See
               # docs/archive/design/prometheus-thanos-ha.md.
@@ -279,6 +283,22 @@ spec:
                       - "s3:DeleteObject"
                       - "s3:AbortMultipartUpload"
                       - "s3:ListMultipartUploadParts"
+              - name: relay-db-backup
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::relay-db-backup'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::relay-db-backup/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
               - name: buzz-media
                 statements:
                   - resources:
@@ -384,6 +404,10 @@ spec:
                 existingSecret: minio-user-umami-db-backup
                 existingSecretKey: secretKey
                 policy: umami-db-backup
+              - accessKey: relay-db-backup
+                existingSecret: minio-user-relay-db-backup
+                existingSecretKey: secretKey
+                policy: relay-db-backup
               - accessKey: sentry-db-backup
                 existingSecret: minio-user-sentry-db-backup
                 existingSecretKey: secretKey

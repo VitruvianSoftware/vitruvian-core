@@ -21,7 +21,6 @@
 //! Sign-in against Zitadel (OAuth device flow, RFC 8628), token refresh, and
 //! registering the device with the relay. Blocking I/O on purpose: it is one
 //! person's terminal tool, and Task 8 calls these from a worker thread.
-//! The device-flow parsing is the spike's (`spike/src/client.rs`).
 
 use std::time::{Duration, Instant};
 
@@ -354,20 +353,55 @@ pub fn fresh_token_checked_from(
 }
 
 /// `POST /devices`: tells the relay this device's public key and learns the
-/// device id and the MCP URL. Registering again keeps the id and replaces the key.
+/// device id and the MCP URL. With `device_id` (the one this Mac was given
+/// when it first signed in) the relay keeps that id and replaces the key;
+/// without one, or if the relay does not know it any more, it registers a
+/// new computer. `name` is what the person sees in their list: the relay
+/// uses it whenever it makes a new computer, and on a computer it already
+/// has only if `rename` is set (the person asked for it with `--name`;
+/// otherwise a name they chose in the dashboard stays).
 pub fn register_device(
     cfg: &Config,
     access_token: &str,
     public_key_b64: &str,
+    device_id: Option<&str>,
+    name: Option<&str>,
+    rename: bool,
 ) -> Result<DeviceInfo> {
     let url = format!("{}/devices", cfg.relay_url);
+    let mut body = json!({"public_key": public_key_b64});
+    if let Some(id) = device_id {
+        body["device_id"] = json!(id);
+    }
+    if let Some(name) = name {
+        body["name"] = json!(name);
+        if rename {
+            body["rename"] = json!(true);
+        }
+    }
     let resp = agent()
         .post(&url)
         .set("Authorization", &format!("Bearer {access_token}"))
         .set("Content-Type", "application/json")
-        .send_string(&json!({"public_key": public_key_b64}).to_string());
+        .send_string(&body.to_string());
     let body = match resp {
         Ok(r) => read_json(r),
+        // The relay's own words for a full list (and only for that): they
+        // say what to do. Any other body stays out of the message.
+        Err(ureq::Error::Status(409, r)) => {
+            let said = read_json(r);
+            return Err(str_field(&said, "error")
+                .filter(|m| m.chars().count() <= 300)
+                .unwrap_or_else(|| "the relay refused the device (HTTP 409)".into()));
+        }
+        Err(ureq::Error::Status(403, _)) => {
+            return Err(
+                "the relay did not let this account in (HTTP 403). The relay is \
+                 invite-only: ask whoever runs it to give you access, then run \
+                 `vrelay login` again."
+                    .into(),
+            )
+        }
         Err(ureq::Error::Status(code, _)) => {
             return Err(format!("the relay refused the device (HTTP {code})"))
         }
@@ -377,6 +411,78 @@ pub fn register_device(
         device_id: str_field(&body, "device_id").ok_or("the relay's answer has no device_id")?,
         mcp_url: str_field(&body, "mcp_url").ok_or("the relay's answer has no mcp_url")?,
     })
+}
+
+/// What `vrelay login` does after the sign-in: registers this Mac and saves
+/// the answer. A Mac that has been registered before (signed in now, or
+/// signed out since) sends its device id, so it stays the same computer: same
+/// id, same URL. The name sent is `--name` if given, else `default_name`
+/// (what System Settings calls it), always, so that if the relay no longer
+/// has that id the new computer still gets the right name. Only an explicit
+/// `--name` renames a computer the relay already has.
+pub fn register_this_mac(
+    cfg: &Config,
+    access_token: &str,
+    public_key_b64: &str,
+    name_arg: Option<&str>,
+    default_name: Option<&str>,
+) -> Result<DeviceInfo> {
+    let existing = crate::state::remembered_device(&cfg.dir);
+    let device = register_device(
+        cfg,
+        access_token,
+        public_key_b64,
+        existing.as_ref().map(|d| d.device_id.as_str()),
+        name_arg.or(default_name),
+        name_arg.is_some(),
+    )?;
+    crate::state::save_new_device(&cfg.dir, &device)?;
+    Ok(device)
+}
+
+/// What this Mac calls itself in System Settings (`scutil --get
+/// ComputerName`): the name `vrelay login` registers it under unless
+/// `--name` says otherwise. `None` where there is no `scutil` or it has no
+/// name, and the relay then says "My Mac".
+pub fn computer_name() -> Option<String> {
+    let out = std::process::Command::new("scutil")
+        .args(["--get", "ComputerName"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let name = String::from_utf8(out.stdout).ok()?;
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The arguments after `vrelay login`: `--name <name>` (or `--name=<name>`)
+/// is the only one. `Some(name)` if given.
+pub fn parse_login_args(args: &[String]) -> Result<Option<String>> {
+    const USAGE: &str = "usage: vrelay login [--name <name for this computer>]";
+    let mut name = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        let value = if arg == "--name" {
+            rest.next().ok_or(USAGE)?.as_str()
+        } else if let Some(v) = arg.strip_prefix("--name=") {
+            v
+        } else {
+            return Err(USAGE.into());
+        };
+        if value.trim().is_empty() {
+            return Err("the name for this computer cannot be empty. \
+                 Use `vrelay login --name \"Studio Mac\"`."
+                .into());
+        }
+        if name.replace(value.to_string()).is_some() {
+            return Err(USAGE.into());
+        }
+    }
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -791,20 +897,202 @@ mod tests {
                 json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
             )
         }));
-        let d = register_device(&cfg_for(&base, test_dir("reg")), "tok", "PK").unwrap();
+        let d = register_device(
+            &cfg_for(&base, test_dir("reg")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(d.device_id, "d1");
         assert_eq!(d.mcp_url, "https://r/mcp/d/d1");
     }
 
     #[test]
+    fn register_device_sends_the_device_id_it_has_and_the_name() {
+        let base = fake_server(Box::new(|_, _, _, body| {
+            let sent: Value = serde_json::from_str(body).unwrap();
+            assert_eq!(
+                sent,
+                json!({"public_key": "PK", "device_id": "d1", "name": "Studio Mac", "rename": true})
+            );
+            (
+                200,
+                json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
+            )
+        }));
+        let cfg = cfg_for(&base, test_dir("reg-id"));
+        let d = register_device(&cfg, "tok", "PK", Some("d1"), Some("Studio Mac"), true).unwrap();
+        assert_eq!(d.device_id, "d1");
+    }
+
+    /// Signing out and in again is the same computer: the id the relay gave
+    /// is sent, and the id and URL come back unchanged.
+    #[test]
+    fn logout_then_login_keeps_the_device() {
+        let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let log = seen.clone();
+        let base = fake_server(Box::new(move |_, _, _, body| {
+            let sent: Value = serde_json::from_str(body).unwrap();
+            let id = sent["device_id"].as_str().unwrap_or("d-first").to_string();
+            log.lock().unwrap().push(sent);
+            (
+                200,
+                json!({"device_id": id, "mcp_url": format!("https://r/mcp/d/{id}")}).to_string(),
+            )
+        }));
+        let cfg = cfg_for(&base, test_dir("logout-login"));
+        crate::state::ensure_dir(&cfg.dir).unwrap();
+
+        // The first sign-in on this Mac: a new computer, named for the Mac.
+        let first = register_this_mac(&cfg, "tok", "PK1", None, Some("Studio Mac")).unwrap();
+        assert_eq!(first.device_id, "d-first");
+        // Signing out, five times over with a sign-in between, never makes
+        // another computer.
+        for i in 0..5 {
+            assert!(crate::state::clear_sign_in(&cfg.dir).unwrap() || i > 0);
+            let again = register_this_mac(&cfg, "tok", &format!("PK{i}"), None, Some("Studio Mac"))
+                .unwrap();
+            assert_eq!(again, first, "round {i}");
+        }
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen[0], json!({"public_key": "PK1", "name": "Studio Mac"}));
+        for sent in &seen[1..] {
+            assert_eq!(sent["device_id"], "d-first");
+            assert!(sent.get("rename").is_none(), "{sent}");
+        }
+    }
+
+    /// A stale id loses nothing: the name still goes with it (the relay uses
+    /// it if it has to make a new computer), and only `--name` renames.
+    #[test]
+    fn the_name_always_goes_with_the_login() {
+        let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let log = seen.clone();
+        let base = fake_server(Box::new(move |_, _, _, body| {
+            log.lock()
+                .unwrap()
+                .push(serde_json::from_str(body).unwrap());
+            (
+                200,
+                json!({"device_id": "d1", "mcp_url": "https://r/mcp/d/d1"}).to_string(),
+            )
+        }));
+        let cfg = cfg_for(&base, test_dir("name-always"));
+        crate::state::ensure_dir(&cfg.dir).unwrap();
+        register_this_mac(&cfg, "tok", "PK", None, Some("Studio Mac")).unwrap();
+        // Has an id now; no --name: the Mac's own name goes, as a default.
+        register_this_mac(&cfg, "tok", "PK", None, Some("Studio Mac")).unwrap();
+        // --name: it goes, and asks for the rename.
+        register_this_mac(&cfg, "tok", "PK", Some("Desk"), Some("Studio Mac")).unwrap();
+        // No name from anywhere (no scutil): none is sent.
+        register_this_mac(&cfg, "tok", "PK", None, None).unwrap();
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen[0], json!({"public_key": "PK", "name": "Studio Mac"}));
+        assert_eq!(
+            seen[1],
+            json!({"public_key": "PK", "device_id": "d1", "name": "Studio Mac"})
+        );
+        assert_eq!(
+            seen[2],
+            json!({"public_key": "PK", "device_id": "d1", "name": "Desk", "rename": true})
+        );
+        assert_eq!(seen[3], json!({"public_key": "PK", "device_id": "d1"}));
+    }
+
+    #[test]
+    fn a_full_list_is_reported_in_the_relays_words() {
+        let words = "You already have 5 computers connected. Remove one in the dashboard first.";
+        let base = fake_server(Box::new(move |_, _, _, _| {
+            (409, json!({ "error": words }).to_string())
+        }));
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg409")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err, words);
+        // Anything else the relay says with a 409 stays out of the message.
+        let base = fake_server(Box::new(|_, _, _, _| (409, "not json".into())));
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg409b")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(err.contains("409") && !err.contains("not json"), "{err}");
+    }
+
+    #[test]
+    fn someone_without_the_role_is_told_to_ask_for_access() {
+        let base = fake_server(Box::new(|_, _, _, _| (403, "{\"error\":\"x\"}".into())));
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg403")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("403") && err.contains("ask whoever runs it"),
+            "{err}"
+        );
+        assert!(err.contains("vrelay login"), "{err}");
+    }
+
+    #[test]
+    fn login_takes_an_optional_name() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(parse_login_args(&args(&[])), Ok(None));
+        assert_eq!(
+            parse_login_args(&args(&["--name", "Studio Mac"])),
+            Ok(Some("Studio Mac".into()))
+        );
+        assert_eq!(
+            parse_login_args(&args(&["--name=Work"])),
+            Ok(Some("Work".into()))
+        );
+        for bad in [
+            args(&["--name"]),
+            args(&["--name", "  "]),
+            args(&["--name="]),
+            args(&["--nme", "x"]),
+            args(&["stray"]),
+            args(&["--name", "a", "--name", "b"]),
+        ] {
+            let err = parse_login_args(&bad).unwrap_err();
+            assert!(err.contains("vrelay login"), "{bad:?}: {err}");
+        }
+    }
+
+    #[test]
     fn register_device_reports_a_refusal_without_the_body() {
         let base = fake_server(Box::new(|_, _, _, _| (401, "secret-ish body".into())));
-        let err = register_device(&cfg_for(&base, test_dir("reg401")), "tok", "PK").unwrap_err();
+        let err = register_device(
+            &cfg_for(&base, test_dir("reg401")),
+            "tok",
+            "PK",
+            None,
+            None,
+            false,
+        )
+        .unwrap_err();
         assert!(err.contains("401") && !err.contains("secret-ish"), "{err}");
     }
 
     #[test]
-    fn token_answers_parse_like_the_spike() {
+    fn token_answers_parse_by_rfc_8628() {
         assert_eq!(
             parse_token_response(400, &json!({"error": "slow_down"}), 0),
             Poll::SlowDown

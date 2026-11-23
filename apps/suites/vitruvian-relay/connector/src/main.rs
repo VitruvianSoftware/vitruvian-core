@@ -20,23 +20,28 @@
 
 //! `vrelay` commands. Installing it is `scripts:install`.
 
-use vitruvian_relay_connector::auth::{fresh_token, login, register_device};
+use vitruvian_relay_connector::auth::{
+    computer_name, fresh_token, login, parse_login_args, register_this_mac,
+};
 use vitruvian_relay_connector::awake::Awake;
 use vitruvian_relay_connector::bridge::{Bridge, BridgeCommand};
 use vitruvian_relay_connector::config::Config;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
 use vitruvian_relay_connector::link::{system_rng, Dialog, FileTokens, Link, Timing};
-use vitruvian_relay_connector::state::{
-    clear_sign_in, ensure_dir, now_unix, save_new_device, save_new_sign_in,
-};
+use vitruvian_relay_connector::state::{clear_sign_in, ensure_dir, now_unix, save_new_sign_in};
 use vitruvian_relay_connector::{rules, state, status, Result};
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-const USAGE: &str = "usage: vrelay <login|run|status|logout|pause|resume|reload|tools [--raw]>";
+const USAGE: &str =
+    "usage: vrelay <login [--name <name>]|run|status|logout|pause|resume|reload|tools [--raw]>";
 
-fn cmd_login(cfg: &Config) -> Result<()> {
+/// `vrelay login [--name <name>]`. A Mac that has been registered before
+/// (even if it signed out since) signs in as that same computer: its id and
+/// URL are kept and only its key is replaced. A new one is named `--name`, or
+/// what System Settings calls it, or (if neither) "My Mac".
+fn cmd_login(cfg: &Config, name: Option<String>) -> Result<()> {
     ensure_dir(&cfg.dir)?;
     // The key first, so a failure here does not cost the person a sign-in.
     let key = load_or_create(&cfg.dir)?;
@@ -45,8 +50,13 @@ fn cmd_login(cfg: &Config) -> Result<()> {
     // the same moment cannot write the old session over this one.
     save_new_sign_in(&cfg.dir, &tokens)?;
     let access = fresh_token(cfg, &mut tokens)?;
-    let device = register_device(cfg, &access, &public_key_b64(&key))?;
-    save_new_device(&cfg.dir, &device)?;
+    let device = register_this_mac(
+        cfg,
+        &access,
+        &public_key_b64(&key),
+        name.as_deref(),
+        computer_name().as_deref(),
+    )?;
     println!("Signed in. This Mac is registered with the relay.");
     println!();
     println!("To use it from Claude, add a custom connector with:");
@@ -58,7 +68,8 @@ fn cmd_login(cfg: &Config) -> Result<()> {
 fn cmd_logout(cfg: &Config) -> Result<()> {
     if clear_sign_in(&cfg.dir)? {
         println!(
-            "Signed out. The sign-in and the device key are removed; sign in again to reconnect."
+            "Signed out. The sign-in and the device key are removed; run `vrelay login` to reconnect. \
+             This Mac keeps its place and its URL."
         );
     } else {
         println!("Already signed out.");
@@ -264,7 +275,10 @@ fn cmd_run(cfg: &Config) -> Result<()> {
 fn main() {
     let cfg = Config::from_env();
     let result = match std::env::args().nth(1).as_deref() {
-        Some("login") => cmd_login(&cfg),
+        Some("login") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            parse_login_args(&rest).and_then(|name| cmd_login(&cfg, name))
+        }
         Some("status") => {
             print!("{}", status::render(&cfg.dir, now_unix()));
             Ok(())

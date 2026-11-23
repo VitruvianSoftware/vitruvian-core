@@ -18,8 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# vitruvian-relay: the Vitruvian Relay server, public at relay.ipv1337.dev.
-# Plan: docs/superpowers/plans/2026-11-15-relay-p1-single-user-alpha.md.
+# vitruvian-relay: the Vitruvian Relay server, public at relay.ipv1337.dev until
+# the digest PR moves it to relay.vitruviansoftware.dev (chart README: "Two modes").
+# Plans: docs/superpowers/plans/2026-11-15-relay-p1-single-user-alpha.md and
+# docs/superpowers/plans/2026-11-20-relay-p2-multi-user.md.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -39,6 +41,14 @@ spec:
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
       ref: values
+    # relay-db, the database cluster and its backups (sync-waves order them
+    # before the chart's Deployment). Only the cnpg-*.yaml files: the folder
+    # also holds the chart's values.
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      path: gitops/argocd/platform/relay
+      directory:
+        include: 'cnpg-*.yaml'
   destination:
     server: https://kubernetes.default.svc
     namespace: relay

@@ -19,14 +19,20 @@
 // SOFTWARE.
 
 //! The relay server: which devices are connected, how calls reach them, and
-//! the HTTP side (MCP for AI apps, device registration, `/connect`).
+//! the HTTP side (MCP for AI apps, device registration, `/connect`, and the
+//! dashboard).
 
 pub mod config;
+pub mod dashboard;
 pub mod devices;
 pub mod http;
 pub mod mcp;
 pub mod parked;
+pub mod ratelimit;
 pub mod registry;
+pub mod store;
+#[doc(hidden)]
+pub mod store_contract;
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};

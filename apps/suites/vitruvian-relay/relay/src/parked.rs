@@ -327,6 +327,11 @@ impl Table {
 }
 
 /// A request id that is the caller's (see [`ParkedCalls::owned`]).
+///
+/// Only `ParkedCalls::find` may build one, after the ownership check:
+/// [`ParkedCalls::wait_for`] hands over the result without asking who is
+/// asking, so a hand-made `Owned` would skip the check. The fields are
+/// private to this module for that reason; keep it that way.
 pub struct Owned {
     pub id: RequestId,
     /// The device the request was made on.
@@ -438,6 +443,16 @@ impl ParkedCalls {
         Some(handle)
     }
 
+    /// Whether an identical request would join a call now: the same test as
+    /// [`ParkedCalls::rejoin`] and [`ParkedCalls::join_or_park`] make, but
+    /// nothing is attached. For deciding whether a request starts anything.
+    pub fn would_rejoin(&self, key: &RejoinKey) -> bool {
+        let mut t = self.table.lock().unwrap();
+        let now = Instant::now();
+        t.sweep(now, self.result_ttl);
+        t.rejoinable(key, now, self.rejoin_window).is_some()
+    }
+
     /// [`ParkedCalls::rejoin`], or else enter the call `start` makes, as one
     /// step: two identical requests at once start one call between them.
     pub fn join_or_park(
@@ -477,10 +492,21 @@ impl ParkedCalls {
     /// everything that names a request by id. Someone else's id, an expired
     /// one and one that never was are all `None`.
     pub fn owned(&self, subject: &str, id: &RequestId) -> Option<Owned> {
+        self.find(id, |e| e.subject == subject)
+    }
+
+    /// The canary's break of [`ParkedCalls::owned`] (see `Mcp::owned_request`):
+    /// the request whoever it belongs to. Exists only in that build.
+    #[cfg(relay_broken_request_ownership)]
+    pub fn owned_by_anyone(&self, id: &RequestId) -> Option<Owned> {
+        self.find(id, |_| true)
+    }
+
+    fn find(&self, id: &RequestId, wanted: impl Fn(&Entry) -> bool) -> Option<Owned> {
         let mut t = self.table.lock().unwrap();
         t.sweep(Instant::now(), self.result_ttl);
         match t.by_id.get(id) {
-            Some(e) if e.subject == subject => Some(Owned {
+            Some(e) if wanted(e) => Some(Owned {
                 id: id.clone(),
                 device_id: e.device_id.clone(),
                 handle: e.handle.clone(),
@@ -493,9 +519,16 @@ impl ParkedCalls {
     /// Taking does not hand the result over (see [`Delivery`]): that is for
     /// whoever sends it.
     pub async fn take(&self, subject: &str, id: &RequestId, wait: Duration) -> Fetch {
-        let Some(owned) = self.owned(subject, id) else {
-            return Fetch::Unknown;
-        };
+        match self.owned(subject, id) {
+            Some(owned) => Self::wait_for(&owned, wait).await,
+            None => Fetch::Unknown,
+        }
+    }
+
+    /// The result of a request already checked to be the caller's (by
+    /// `Mcp::owned_request`, the one check), waiting up to `wait` for it. It
+    /// does not look at who is asking: that was decided before.
+    pub async fn wait_for(owned: &Owned, wait: Duration) -> Fetch {
         let finished = match owned.handle.peek() {
             Some(f) => f,
             None => match tokio::time::timeout(wait, owned.handle.finished()).await {

@@ -32,6 +32,8 @@ pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardToke
 }
 ```
 
+Who gets in is either a list of subjects (`verifier`, `allowed_subjects`: the Slack MCP) or a Zitadel project role (`verifier_requiring_role(cfg, role)`: the relay). With a role, the token's `urn:zitadel:iam:org:project:{project_id}:roles` claim must hold it, and a token without it is refused with `AuthError::RoleMissing` (403, logged as `role_missing`). `allowed_subjects` may stay empty there (anyone with the role gets in) and, if not empty, applies as well; `verifier` still refuses an empty list.
+
 ## Depend on it
 
 - `//packages/mcp-auth:vitruvian_mcp_auth` (for consumers on `@vitruvian_relay_crates`)

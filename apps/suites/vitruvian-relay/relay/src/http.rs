@@ -29,16 +29,19 @@
 //!   GET    /mcp/d/{id}, DELETE /mcp/d/{id}                   405: no SSE stream or session delete in P1
 //!   POST   /devices                                          register this person's device (connector token)
 //!   GET    /connect                                          the connector's WebSocket (connector token)
+//!   GET    /, /auth/*, /devices, /devices/{id}, /activity    the dashboard (a signed-in browser, [`crate::dashboard`])
 //!
 //! What it guards: an AI app's token only works on `/mcp`, the connector's
-//! only on `/devices` and `/connect` (one verifier per side, each pinned to
-//! its client ids, plus the subject allowlist). A device answers only its
-//! owner: anyone else gets the same 404 as for a device that does not exist.
-//! Nothing logged carries call arguments, output or a token.
+//! only on `/devices` and `/connect`, the dashboard's only on `/auth/*` (one
+//! verifier per side, each pinned to its client ids, and each asking for the
+//! Zitadel role that marks an invited person). A device answers only its owner, and
+//! [`App::owned_device`] is the one place that is decided: anyone else gets
+//! the same answer as for a device that does not exist. Nothing logged
+//! carries call arguments, output or a token.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -67,10 +70,15 @@ use vitruvian_relay_protocol::{
 };
 
 use crate::config::Settings;
-use crate::devices::{DeviceRecord, DeviceStore};
+use crate::dashboard::{self, Dashboard};
+use crate::devices::{
+    clean_device_name, DeviceRecord, NewDevice, DEFAULT_DEVICE_NAME, DEVICE_NAME_MAX,
+};
 use crate::mcp::{era, needs_session, Answer, Era, Mcp};
 use crate::parked::Delivery;
+use crate::ratelimit::{RateLimit, CALLS_PER_MINUTE_PER_USER, RATE_BURST};
 use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
+use crate::store::{Store, StoreError, UNAVAILABLE_MESSAGE};
 use crate::{hex, log_event, random_id, uuid_v4, LogSink};
 
 /// A response body: one buffer, and (for an MCP result) the delivery to
@@ -232,6 +240,18 @@ pub struct Timing {
     pub body_timeout: Duration,
     /// Longest a `/connect` socket may stay open, whatever its token's `exp`.
     pub max_connection_lifetime: Duration,
+    /// How long the relay remembers that a device's key was replaced, so a
+    /// `/connect` that read the old key a moment earlier is turned away. Must
+    /// be longer than a `/connect` takes from reading the key to registering
+    /// (seconds); the rest is only memory.
+    pub key_change_memory: Duration,
+    /// How often a connected device's "last seen" is brought up to date
+    /// (it is also set when the device connects and when it disconnects).
+    pub seen_every: Duration,
+    /// Calls one person may make in a minute, once their burst is used up.
+    pub calls_per_minute: u32,
+    /// Calls one person may make at once after being quiet.
+    pub rate_burst: u32,
     /// Seconds since the epoch.
     pub clock: fn() -> u64,
 }
@@ -264,10 +284,35 @@ impl Default for Timing {
             header_read_timeout: Duration::from_secs(75),
             body_timeout: Duration::from_secs(30),
             max_connection_lifetime: Duration::from_secs(12 * 60 * 60),
+            key_change_memory: Duration::from_secs(5 * 60),
+            seen_every: Duration::from_secs(5 * 60),
+            calls_per_minute: CALLS_PER_MINUTE_PER_USER,
+            rate_burst: RATE_BURST,
             clock: unix_now,
         }
     }
 }
+
+/// What happened to a device that a `/connect` already in flight must not
+/// outlive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Change {
+    /// Its key was replaced (the person signed in again on that computer).
+    KeyReplaced,
+    /// It was removed from the person's account.
+    Revoked,
+}
+
+/// What a connector is told when it connects as a computer the account does
+/// not have. Said the same for someone else's device and for one that does
+/// not exist, so it never tells them apart.
+const UNKNOWN_DEVICE: &str =
+    "This computer is not registered with your account. Run `vrelay login` here to register it again.";
+
+/// What a connector is told when its computer was removed from the account
+/// (and proves it is that computer, by its key).
+const REMOVED_DEVICE: &str =
+    "This computer was removed from your account. Run `vrelay login` to connect it again.";
 
 /// An MCP session: which device and person it was opened for.
 struct Session {
@@ -278,17 +323,31 @@ struct Session {
 }
 
 pub struct App {
-    settings: Settings,
+    pub(crate) settings: Settings,
     mcp_verifier: Arc<Verifier>,
     connector_verifier: Arc<Verifier>,
-    store: Arc<dyn DeviceStore>,
-    registry: Registry,
+    /// Pinned to the dashboard's own client id: its token works only on
+    /// `/auth/*`, and no other token works there.
+    pub(crate) dashboard_verifier: Arc<Verifier>,
+    /// Dashboard sessions, and the client that exchanges a sign-in code.
+    pub(crate) dashboard: Dashboard,
+    pub(crate) store: Arc<dyn Store>,
+    /// A counter that goes up each time a device's key is replaced
+    /// ([`App::key_changed`]). A `/connect` takes the number before it reads
+    /// the device's key, and registers only if that device has not changed
+    /// since ([`App::key_changed_since`]). The relay is one process, so this
+    /// is enough.
+    key_generation: AtomicU64,
+    /// Which generation each recently changed device changed at, how, and
+    /// when. Only a `/connect` still in flight needs this, and one is over
+    /// within [`Timing::key_change_memory`], so older entries are dropped:
+    /// the map holds only the changes of the last few minutes, never one per
+    /// device ever changed.
+    key_changes: Mutex<HashMap<String, (u64, Instant, Change)>>,
+    pub(crate) registry: Registry,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
-    /// One registration at a time, so two at once for the same person cannot
-    /// both create a device.
-    registering: tokio::sync::Mutex<()>,
-    timing: Timing,
+    pub(crate) timing: Timing,
     log: LogSink,
     /// Tests: pause a connection between checking its hello and registering
     /// it (reached, release).
@@ -305,13 +364,21 @@ impl App {
         settings: Settings,
         mcp: Verifier,
         connector: Verifier,
-        store: Arc<dyn DeviceStore>,
+        dashboard_verifier: Verifier,
+        store: Arc<dyn Store>,
         timing: Timing,
         log: LogSink,
     ) -> Arc<App> {
         let registry = Registry::with_timeouts(timing.ack_timeout, timing.reconnect_grace);
         Arc::new(App {
-            mcp: Mcp::new(registry.clone(), timing.call_budget, log.clone()).with_parking(
+            mcp: Mcp::new(
+                registry.clone(),
+                timing.call_budget,
+                log.clone(),
+                store.clone(),
+            )
+            .with_rate_limit(RateLimit::new(timing.calls_per_minute, timing.rate_burst))
+            .with_parking(
                 timing.approval_reply,
                 timing.rejoin_window,
                 timing.parked_result,
@@ -319,10 +386,13 @@ impl App {
             settings,
             mcp_verifier: Arc::new(mcp),
             connector_verifier: Arc::new(connector),
+            dashboard_verifier: Arc::new(dashboard_verifier),
+            dashboard: Dashboard::new(concat!("vitruvian-relay/", env!("CARGO_PKG_VERSION"))),
             store,
+            key_generation: AtomicU64::new(0),
+            key_changes: Mutex::new(HashMap::new()),
             registry,
             sessions: Mutex::new(HashMap::new()),
-            registering: tokio::sync::Mutex::new(()),
             timing,
             log,
             #[cfg(test)]
@@ -332,8 +402,117 @@ impl App {
         })
     }
 
-    fn log(&self, event: &str, fields: Value) {
+    pub(crate) fn log(&self, event: &str, fields: Value) {
         log_event(&self.log, event, fields);
+    }
+
+    /// Records that `device_id` is connected, or has just been: its "last
+    /// seen", which the offline message and the device list show. Done in the
+    /// background, so a slow database never holds up the link (whose pings
+    /// share the loop); a failure is logged and the next one tries again.
+    fn note_seen(self: &Arc<Self>, device_id: &str) {
+        let (app, id, at) = (self.clone(), device_id.to_string(), SystemTime::now());
+        tokio::spawn(async move {
+            if let Err(e) = app.store.touch_seen(&id, at).await {
+                app.log(
+                    "touch_seen_failed",
+                    json!({"device_id": id, "error": e.to_string()}),
+                );
+            }
+        });
+    }
+
+    /// The key generation now: take it before reading a device's key.
+    fn key_generation(&self) -> u64 {
+        self.key_generation.load(Ordering::SeqCst)
+    }
+
+    /// How the device changed after `generation` was taken: `None` if it
+    /// has not.
+    fn change_since(&self, device_id: &str, generation: u64) -> Option<Change> {
+        self.key_changes
+            .lock()
+            .unwrap()
+            .get(device_id)
+            .filter(|(at, _, _)| *at > generation)
+            .map(|(_, _, change)| *change)
+    }
+
+    /// True if the device's key was replaced, or the device removed, after
+    /// `generation` was taken.
+    fn key_changed_since(&self, device_id: &str, generation: u64) -> bool {
+        self.change_since(device_id, generation).is_some()
+    }
+
+    /// Takes a new generation and remembers that `device_id` changed at it.
+    fn note_change(&self, device_id: &str, change: Change) {
+        let generation = self.key_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let now = Instant::now();
+        let memory = self.timing.key_change_memory;
+        let mut changes = self.key_changes.lock().unwrap();
+        changes.retain(|_, (_, when, _)| now.duration_since(*when) < memory);
+        changes.insert(device_id.to_string(), (generation, now, change));
+    }
+
+    /// The device's key was replaced: ends its connection. The generation
+    /// moves first, so a connection that checked the old key and has not
+    /// registered yet cannot register after the kick.
+    fn key_changed(&self, device_id: &str) {
+        self.note_change(device_id, Change::KeyReplaced);
+        self.registry.kick(device_id);
+    }
+
+    /// The device was removed from its owner's account: the same ordering as
+    /// [`App::key_changed`] (a `/connect` that read the device a moment
+    /// earlier cannot register after this), then its link ends, its calls in
+    /// flight fail with [`crate::registry::CallError::Revoked`], and its AI
+    /// app sessions are forgotten.
+    fn device_removed(&self, device_id: &str) {
+        self.note_change(device_id, Change::Revoked);
+        self.registry.revoke(device_id);
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|_, s| s.device_id != device_id);
+    }
+
+    /// The device `device_id` if `subject` owns it and it is not removed.
+    /// This is the only ownership check: every route that names a device
+    /// goes through it, so someone else's device and one that does not exist
+    /// are the same answer (`None`) everywhere.
+    pub async fn owned_device(
+        &self,
+        subject: &str,
+        device_id: &str,
+    ) -> Result<Option<DeviceRecord>, StoreError> {
+        let found = self.store.device(device_id).await?;
+        // The canary's deliberate break (BUILD: `relay_broken_ownership`, run
+        // by `:vitruvian_relay_isolation_canary_test`, which must see the
+        // isolation tests fail). It exists here and nowhere else, and is never
+        // set on a build that ships.
+        #[cfg(relay_broken_ownership)]
+        {
+            let _ = subject;
+            Ok(found)
+        }
+        #[cfg(not(relay_broken_ownership))]
+        Ok(found.filter(|rec| rec.owner_sub == subject))
+    }
+
+    /// Removes `device_id` from `subject`'s account: stored as revoked, its
+    /// link closed, and its calls in flight failed with "This computer was
+    /// removed from your account." `false` if `subject` has no such device
+    /// (someone else's, one that does not exist, or one already removed).
+    pub async fn revoke(&self, subject: &str, device_id: &str) -> Result<bool, StoreError> {
+        if self.owned_device(subject, device_id).await?.is_none() {
+            return Ok(false);
+        }
+        if !self.store.revoke(device_id, subject).await? {
+            return Ok(false);
+        }
+        self.device_removed(device_id);
+        self.log("device_revoked", json!({"device_id": device_id}));
+        Ok(true)
     }
 
     fn new_session(&self, device_id: &str, caller: &Caller) -> String {
@@ -410,17 +589,17 @@ fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
     respond(status, "text/plain", msg)
 }
 
-fn not_found() -> Response<Body> {
+pub(crate) fn not_found() -> Response<Body> {
     text(StatusCode::NOT_FOUND, "not found")
 }
 
 /// A device id in a path: what `uuid_v4` makes, or anything shaped like it.
 /// Checked before it goes into a header or a log line.
-fn valid_device_id(id: &str) -> bool {
+pub(crate) fn valid_device_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-fn header_str(req: &Request<Incoming>, name: header::HeaderName) -> Option<&str> {
+pub(crate) fn header_str(req: &Request<Incoming>, name: header::HeaderName) -> Option<&str> {
     req.headers().get(name).and_then(|v| v.to_str().ok())
 }
 
@@ -438,7 +617,7 @@ fn accepts_json(accept: Option<&str>) -> bool {
 
 /// Reads a request body: 413 only when it is over `limit`, 408 when it does
 /// not arrive in time, 400 for anything else wrong with it.
-async fn read_body(
+pub(crate) async fn read_body(
     body: Incoming,
     limit: usize,
     timeout: Duration,
@@ -502,8 +681,14 @@ fn refusal(app: &App, route: &str, metadata_url: &str, r: Refused) -> Response<B
             return text(StatusCode::INTERNAL_SERVER_ERROR, "token check failed");
         }
     };
-    // The code only: the checker's message can name the subject.
-    app.log("auth_refused", json!({"route": route, "code": code}));
+    // The code only: the checker's message can name the subject. A person
+    // who signed in but was never invited is logged as `role_missing`, which
+    // the client sees as the `insufficient_scope` every 403 carries.
+    let logged = match &r {
+        Refused::Token(e) => e.log_code(),
+        _ => code,
+    };
+    app.log("auth_refused", json!({"route": route, "code": logged}));
     let mut resp = json_response(status, &json!({"error": code}));
     if let Ok(v) = HeaderValue::from_str(&challenge) {
         resp.headers_mut().insert(header::WWW_AUTHENTICATE, v);
@@ -551,6 +736,9 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
             _ => not_found(),
         };
     }
+    if dashboard::wants(&method, &path) {
+        return dashboard::handle(app, req).await;
+    }
     match (method, path.as_str()) {
         (Method::GET, "/healthz") => text(StatusCode::OK, "ok"),
         (Method::GET, PRM) => json_response(
@@ -579,10 +767,16 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
             Err(r) => return refusal(&app, "mcp", &metadata_url, r),
         };
     // Someone else's device answers exactly like a missing one.
-    match app.store.get(&device_id) {
-        Some(rec) if rec.owner_sub == caller.subject => {}
-        _ => return not_found(),
+    let found = app.owned_device(&caller.subject, &device_id).await;
+    match &found {
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found(),
+        // The database is not answering: say so plainly (below, once the
+        // request is read, so a call can be answered as a call).
+        Err(StoreError::Unavailable) => {}
+        Err(_) => return not_found(),
     }
+    let store_down = found.is_err();
     if !accepts_json(header_str(&req, header::ACCEPT)) {
         return text(
             StatusCode::NOT_ACCEPTABLE,
@@ -614,6 +808,16 @@ async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> R
         }
     };
     let method = msg.get("method").and_then(Value::as_str);
+    if store_down {
+        app.log(
+            "mcp_refused",
+            json!({"device_id": device_id, "reason": "store_unavailable"}),
+        );
+        return match app.mcp.store_unavailable_call(&msg, &device_id, &caller) {
+            Some(answer) => json_response(StatusCode::OK, &answer),
+            None => text(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE),
+        };
+    }
     let era = match era(&msg, protocol_header.as_deref()) {
         Ok(e) => e,
         Err(err) => return json_response(StatusCode::BAD_REQUEST, &err),
@@ -689,56 +893,138 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
         Ok(b) => b,
         Err(resp) => return *resp,
     };
-    let key = serde_json::from_slice::<Value>(&bytes)
-        .ok()
+    let body = serde_json::from_slice::<Value>(&bytes).ok();
+    let key = body
+        .as_ref()
         .and_then(|v| v.get("public_key")?.as_str().map(String::from))
         .and_then(|k| base64::engine::general_purpose::STANDARD.decode(k).ok())
         .and_then(|k| <[u8; 32]>::try_from(k).ok());
-    let Some(public_key_ed25519) = key else {
+    let (Some(body), Some(public_key_ed25519)) = (body, key) else {
         return text(
             StatusCode::BAD_REQUEST,
-            "body must be {\"public_key\": \"<base64 of a 32-byte Ed25519 key>\"}",
+            "body must be {\"public_key\": \"<base64 of a 32-byte Ed25519 key>\", \"name\": \"<optional>\", \"device_id\": \"<optional>\"}",
         );
+    };
+    // The name is optional; one that is nothing once cleaned is a mistake
+    // the person can fix.
+    let name = match body.get("name") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(raw)) => match clean_device_name(raw) {
+            Some(name) => Some(name),
+            None => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({"error": format!(
+                        "Give this computer a name of 1 to {DEVICE_NAME_MAX} characters, then try again."
+                    )}),
+                )
+            }
+        },
+        Some(_) => {
+            return json_response(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "The computer's name must be text. Try again with a name."}),
+            )
+        }
+    };
+    // Only a person who asked for a new name (`vrelay login --name`) renames
+    // a computer the relay already has; otherwise the name sent is only what
+    // a new computer is called.
+    let rename = match body.get("rename") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => {
+            return json_response(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "`rename` must be true or false."}),
+            )
+        }
+    };
+    let wanted = match body.get("device_id") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(id)) => Some(id.as_str()),
+        Some(_) => {
+            return json_response(
+                StatusCode::BAD_REQUEST,
+                &json!({"error": "The device id must be text. Run `vrelay login` again."}),
+            )
+        }
     };
 
-    let _one_at_a_time = app.registering.lock().await;
-    // P1: one device per person. Registering again keeps the id, replaces
-    // the key, and ends any session signed with the old one.
-    let existing = app.store.find_by_owner(&caller.subject);
-    let replacing = existing.is_some();
-    let device_id = existing.map(|r| r.device_id).unwrap_or_else(uuid_v4);
-    let rec = DeviceRecord {
+    // Signing in again on a computer this person already has keeps its id and
+    // replaces its key (which ends the link made with the old one). An id that
+    // is not theirs (someone else's, unknown, or removed) is not told apart
+    // from one another: it just registers a new computer.
+    if let Some(id) = wanted {
+        match app.owned_device(&caller.subject, id).await {
+            Ok(Some(rec)) => match app
+                .store
+                .replace_key(&rec.device_id, &caller.subject, public_key_ed25519)
+                .await
+            {
+                Ok(true) => {
+                    app.key_changed(&rec.device_id);
+                    if let Some(name) = name.as_ref().filter(|_| rename) {
+                        if let Err(e) = app
+                            .store
+                            .rename(&rec.device_id, &caller.subject, name)
+                            .await
+                        {
+                            return store_failure(&app, "device_store_failed", &e);
+                        }
+                    }
+                    app.log(
+                        "device_registered",
+                        json!({"device_id": rec.device_id, "client_id": caller.client_id, "replaced_key": true}),
+                    );
+                    return registered(&app, &rec.device_id);
+                }
+                // Removed in the meantime: register a new one instead.
+                Ok(false) => {}
+                Err(e) => return store_failure(&app, "device_store_failed", &e),
+            },
+            Ok(None) => {}
+            Err(e) => return store_failure(&app, "device_store_failed", &e),
+        }
+    }
+
+    // A new computer. The store counts this person's computers and refuses
+    // the sixth atomically, so concurrent registrations cannot outrun it.
+    let device_id = uuid_v4();
+    let new = NewDevice {
         device_id: device_id.clone(),
         owner_sub: caller.subject.clone(),
+        name: name.unwrap_or_else(|| DEFAULT_DEVICE_NAME.to_string()),
         public_key_ed25519,
     };
-    if let Err(e) = app.store.put(rec.clone()) {
-        // `put` can fail after the new file is in place (the directory sync
-        // failed): then the record is stored, just maybe not durable. Only a
-        // record that is not there is a failure.
-        if app.store.get(&device_id).as_ref() != Some(&rec) {
-            app.log("device_store_failed", json!({"error": e.to_string()}));
-            return text(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "could not store the device",
-            );
-        }
-        app.log(
-            "device_store_not_durable",
-            json!({"device_id": device_id, "error": e.to_string()}),
-        );
-    }
-    if replacing {
-        app.registry.kick(&device_id);
+    if let Err(e) = app.store.insert_device(&new).await {
+        return store_failure(&app, "device_store_failed", &e);
     }
     app.log(
         "device_registered",
-        json!({"device_id": device_id, "client_id": caller.client_id, "replaced_key": replacing}),
+        json!({"device_id": device_id, "client_id": caller.client_id, "replaced_key": false}),
     );
+    registered(&app, &device_id)
+}
+
+fn registered(app: &App, device_id: &str) -> Response<Body> {
     json_response(
         StatusCode::OK,
-        &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(&device_id)}),
+        &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(device_id)}),
     )
+}
+
+/// The answer when the store could not do what a request needed: the
+/// database being down is a 503 that says what to do; anything else (too many
+/// computers) is a 409, `{"error": ...}`, that says the same.
+fn store_failure(app: &App, event: &str, e: &StoreError) -> Response<Body> {
+    app.log(event, json!({"error": e.to_string()}));
+    match e {
+        StoreError::Unavailable => text(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE_MESSAGE),
+        StoreError::TooManyDevices | StoreError::DuplicateId => {
+            json_response(StatusCode::CONFLICT, &json!({"error": e.to_string()}))
+        }
+    }
 }
 
 // ------------------------------------------------------------------ /connect
@@ -845,22 +1131,33 @@ where
 
 impl App {
     /// Checks a `hello` against the device record and the token it came with.
-    /// The reason goes back to the connector in `reject`.
-    fn check_hello(
+    /// The reason goes back to the connector in `reject`. Returns the key
+    /// generation from before the device's key was read (see
+    /// [`App::key_changed`]): the session registers only if the device has
+    /// not changed since.
+    async fn check_hello(
         &self,
         hello: &Hello,
         caller: &Caller,
         token_hash: &str,
-    ) -> Result<[u8; 32], String> {
+    ) -> Result<u64, String> {
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "Update vrelay: this relay needs protocol {PROTOCOL}."
             ));
         }
         // Another person's device is "unknown", like one that does not exist.
-        let rec = match self.store.get(&hello.device_id) {
-            Some(r) if r.owner_sub == caller.subject => r,
-            _ => return Err("unknown device; register it again".into()),
+        let generation = self.key_generation();
+        let rec = match self.owned_device(&caller.subject, &hello.device_id).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err(self.unknown_or_removed(hello, caller, token_hash).await),
+            Err(e) => {
+                self.log(
+                    "connect_store_failed",
+                    json!({"device_id": hello.device_id, "error": e.to_string()}),
+                );
+                return Err(e.to_string());
+            }
         };
         let now = (self.timing.clock)();
         if now.abs_diff(hello.ts) > self.timing.max_clock_skew_secs {
@@ -876,8 +1173,55 @@ impl App {
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, rec.public_key_ed25519)
             .verify(message.as_bytes(), &sig)
             .map_err(|_| "bad signature".to_string())?;
-        // The key that verified it: the session re-checks it after registering.
-        Ok(rec.public_key_ed25519)
+        Ok(generation)
+    }
+}
+
+impl App {
+    /// What to tell a connector whose hello names a device that is not
+    /// registered to this person. Nearly always [`UNKNOWN_DEVICE`], the same
+    /// words for someone else's device and for one that never existed. The
+    /// one exception: the device was this person's and was removed, and the
+    /// hello is signed with that device's own key (for this token), so only
+    /// that computer can be hearing it. Then it is told it was removed. A bad
+    /// signature, someone else's id, a hello stamped too far from the relay's
+    /// clock (the check every hello gets, so an old one that was captured
+    /// cannot be replayed to ask), or any failure of the lookup gets the
+    /// unknown answer.
+    async fn unknown_or_removed(&self, hello: &Hello, caller: &Caller, token_hash: &str) -> String {
+        if (self.timing.clock)().abs_diff(hello.ts) > self.timing.max_clock_skew_secs {
+            return UNKNOWN_DEVICE.into();
+        }
+        let Ok(Some(rec)) = self.store.revoked_device(&hello.device_id).await else {
+            return UNKNOWN_DEVICE.into();
+        };
+        let signed = base64::engine::general_purpose::STANDARD
+            .decode(&hello.sig)
+            .ok()
+            .is_some_and(|sig| {
+                let message = hello_message(&hello.device_id, hello.ts, token_hash);
+                ring::signature::UnparsedPublicKey::new(
+                    &ring::signature::ED25519,
+                    rec.public_key_ed25519,
+                )
+                .verify(message.as_bytes(), &sig)
+                .is_ok()
+            });
+        // The one place outside `owned_device` that compares an owner with
+        // the caller, and why it may. This is not the ownership check: the
+        // device it looks at is removed, and nothing here connects, lists,
+        // calls or changes anything. All it chooses is which of two sentences
+        // the connector reads, and the second is what everyone else gets.
+        // "Removed" is said only to the caller that is the recorded owner AND
+        // holds that device's own private key (the signature, over this token
+        // and a timestamp inside the clock-skew window, checked above). So
+        // someone who merely knows an id learns nothing, and no answer here
+        // ever grants access: the hello is refused either way.
+        if rec.owner_sub == caller.subject && signed {
+            REMOVED_DEVICE.into()
+        } else {
+            UNKNOWN_DEVICE.into()
+        }
     }
 }
 
@@ -1101,29 +1445,35 @@ async fn run_connection<S>(
 {
     let t = app.timing.clone();
     let reject = |reason: String| ToConnector::Reject { reason };
-    let hello = match tokio::time::timeout(t.hello_timeout, first_frame(&mut ws)).await {
-        Ok(First::Closed) => return,
-        Err(_) => Err(format!(
-            "no hello within {} s",
-            t.hello_timeout.as_secs_f32()
-        )),
-        Ok(First::Other) => Err("the first frame must be hello".to_string()),
-        Ok(First::Text(text)) => match decode_to_relay(&text) {
-            Ok(ToRelay::Hello(h)) => Ok(h),
-            _ => Err("the first frame must be hello".to_string()),
-        },
+    let hello = async {
+        let h = match tokio::time::timeout(t.hello_timeout, first_frame(&mut ws)).await {
+            Ok(First::Closed) => return None,
+            Err(_) => Err(format!(
+                "no hello within {} s",
+                t.hello_timeout.as_secs_f32()
+            )),
+            Ok(First::Other) => Err("the first frame must be hello".to_string()),
+            Ok(First::Text(text)) => match decode_to_relay(&text) {
+                Ok(ToRelay::Hello(h)) => Ok(h),
+                _ => Err("the first frame must be hello".to_string()),
+            },
+        };
+        Some(match h {
+            Ok(h) => match app.check_hello(&h, &caller, &token_hash).await {
+                Ok(generation) => match token_exp {
+                    Some(exp) if exp <= (t.clock)() => {
+                        Err("the token has expired; sign in again and reconnect".to_string())
+                    }
+                    _ => Ok((h, generation)),
+                },
+                Err(reason) => Err(reason),
+            },
+            Err(reason) => Err(reason),
+        })
     }
-    .and_then(|h| {
-        app.check_hello(&h, &caller, &token_hash)
-            .map(|key| (h, key))
-    })
-    .and_then(|hk| match token_exp {
-        Some(exp) if exp <= (t.clock)() => {
-            Err("the token has expired; sign in again and reconnect".to_string())
-        }
-        _ => Ok(hk),
-    });
-    let (hello, verified_key) = match hello {
+    .await;
+    let Some(hello) = hello else { return };
+    let (hello, generation) = match hello {
         Ok(hk) => hk,
         Err(reason) => {
             app.log("connect_rejected", json!({"reason": reason}));
@@ -1147,14 +1497,10 @@ async fn run_connection<S>(
     let send_timeout = t.send_timeout;
     let (mut sink, mut stream) = ws.split();
     let (tx, mut rx) = mpsc::channel(CONNECTION_QUEUE);
-    // Check the key again before registering, atomically with it: a
-    // connection checked with a key that has since been replaced must not
-    // take the place of one made with the new key.
-    let key_still_current = || {
-        app.store
-            .get(&device_id)
-            .is_some_and(|r| r.owner_sub == caller.subject && r.public_key_ed25519 == verified_key)
-    };
+    // Check the key has not changed since it was read, atomically with
+    // registering: a connection checked with a key that has since been
+    // replaced must not take the place of one made with the new key.
+    let key_still_current = || !app.key_changed_since(&device_id, generation);
     // The closer is set when a cancel could not be queued: end at once,
     // sending nothing more, so the device treats it as a drop (and never runs
     // the call).
@@ -1164,14 +1510,13 @@ async fn run_connection<S>(
     else {
         app.log(
             "connect_rejected",
-            json!({"device_id": device_id, "reason": "device registered again"}),
+            json!({"device_id": device_id, "reason": "device registered again or removed"}),
         );
-        let _ = send_frame(
-            &mut sink,
-            &reject("this device was registered again; reconnect with its new key".into()),
-            send_timeout,
-        )
-        .await;
+        let why = match app.change_since(&device_id, generation) {
+            Some(Change::Revoked) => REMOVED_DEVICE,
+            _ => "this device was registered again; reconnect with its new key",
+        };
+        let _ = send_frame(&mut sink, &reject(why.into()), send_timeout).await;
         let _ = tokio::time::timeout(send_timeout, sink.close()).await;
         return;
     };
@@ -1194,6 +1539,7 @@ async fn run_connection<S>(
         return;
     }
     let started = Instant::now();
+    app.note_seen(&device_id);
     app.log(
         "connect",
         json!({"device_id": device_id, "connector_version": hello.connector_version.chars().take(32).collect::<String>()}),
@@ -1216,6 +1562,13 @@ async fn run_connection<S>(
     let expires = tokio::time::sleep(limit);
     tokio::pin!(expires);
     let mut ended: Option<Ending> = None;
+    // "Last seen" is brought up to date while the device stays connected, so
+    // a computer that drops without a goodbye is still seen as of a few
+    // minutes ago, not as of when it connected.
+    let seen_every = t.seen_every.max(Duration::from_millis(1));
+    let mut seen_ticker =
+        tokio::time::interval_at(tokio::time::Instant::now() + seen_every, seen_every);
+    seen_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let reason: String = loop {
         tokio::select! {
@@ -1235,6 +1588,7 @@ async fn run_connection<S>(
                     }
                 }
             }
+            _ = seen_ticker.tick() => app.note_seen(&device_id),
             _ = closer.closed() => break "closed: a cancel could not be queued".into(),
             _ = &mut expires => {
                 ended = Some(ending);
@@ -1343,6 +1697,7 @@ async fn run_connection<S>(
         }
     };
     app.registry.disconnect(&device_id, conn);
+    app.note_seen(&device_id);
     if let Some(ending) = ended {
         // A reason the connector can log; it then reconnects (with a
         // refreshed token if that was the reason).
@@ -1500,4 +1855,4 @@ where
 
 #[cfg(test)]
 #[path = "http_tests.rs"]
-mod tests;
+pub(crate) mod tests;

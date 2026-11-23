@@ -1,0 +1,82 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# relay-db: the Vitruvian Relay's dedicated CloudNativePG Postgres cluster
+# (devices and call history; the relay keeps no content). Copies umami-db's
+# conventions: 3 instances spread 1-per-node across WIRED nodes, switchover on
+# primary updates, local-path storage, memory request==limit with no cpu limit,
+# and Barman Cloud plugin WAL archiving + nightly backups to MinIO
+# (cnpg-objectstore.yaml, cnpg-scheduledbackup.yaml).
+#
+# No bootstrap secret: CloudNativePG makes the `relay` user's password itself
+# and writes the connection string to the relay-db-app secret (key `uri`) and
+# the CA to relay-db-ca (key `ca.crt`). The relay reads both (the chart's
+# DATABASE_URL and DATABASE_CA_FILE) and reaches the primary through the
+# relay-db-rw Service at relay-db-rw.relay.svc.cluster.local:5432.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: relay-db
+  namespace: relay
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
+  affinity:
+    topologyKey: kubernetes.io/hostname
+    nodeSelector:
+      node.ipv1337.dev/link: wired
+  inheritedMetadata:
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9187"
+  # A handful of small rows per person and one row per call; 512Mi is the same
+  # as umami-db, well clear of the <256Mi that OOMKilled buzz-db under load.
+  # Memory request==limit, no cpu limit (cpu limits caused CFS throttling kills
+  # in zitadel-db/grafana-db).
+  resources:
+    requests:
+      cpu: 50m
+      memory: 512Mi
+    limits:
+      memory: 512Mi
+  storage:
+    size: 2Gi
+    storageClass: local-path
+  bootstrap:
+    initdb:
+      database: relay
+      owner: relay
+  postgresql:
+    parameters:
+      wal_sender_timeout: "600s"
+      wal_receiver_timeout: "600s"
+      wal_keep_size: "1GB"
+  monitoring:
+    enablePodMonitor: false
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      # CNPG defaults this to true; stating it keeps Argo CD's diff clean.
+      enabled: true
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: relay-db-backups

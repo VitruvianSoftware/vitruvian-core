@@ -1208,6 +1208,13 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# The relay chart's render values hold the new relay's real client ids, which
+# the connector's defaults_match_relay_stack test compares its defaults with.
+exports_files(
+    ["chart-render/vitruvian-relay.values.yaml"],
+    visibility = ["//apps/suites/vitruvian-relay/connector:__pkg__"],
+)
+
 # require-dev-soak
 rust_library(
     name = "require_dev_soak_lib",

@@ -22,9 +22,10 @@ apiVersion: v2
 name: vitruvian-relay
 description: >-
   Vitruvian Relay: the server AI apps (MCP over Streamable HTTP at /mcp/d/{device})
-  and the Mac connector (POST /devices, the /connect WebSocket) both reach, public at
-  relay.ipv1337.dev through the Cloudflare Tunnel.
-  See docs/superpowers/plans/2026-11-15-relay-p1-single-user-alpha.md.
+  and the Mac connector (POST /devices, the /connect WebSocket) both reach, public through
+  the Cloudflare Tunnel (relay.ipv1337.dev until the digest PR moves it to
+  relay.vitruviansoftware.dev), with a dashboard for people's computers and activity.
+  See docs/superpowers/plans/2026-11-20-relay-p2-multi-user.md.
 type: application
 version: 0.1.0
 appVersion: "0.0.0"

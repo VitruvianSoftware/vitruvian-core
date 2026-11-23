@@ -18,11 +18,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# The device records (devices.json). Argo CD leaves the claim in place when the
-# Application is deleted (Delete=false) and does not prune it if it ever drops
-# out of the rendered manifests (Prune=false), because the `nfs` class deletes the
-# volume's data with its claim (reclaimPolicy: Delete), and losing the file
-# means every Mac has to sign in and register again.
+# The old relay's device records (devices.json), only while persistence.enabled
+# (the old relay's mode; the new one keeps devices in Postgres and the digest PR
+# turns this off). Argo CD leaves the claim in place when the Application is
+# deleted (Delete=false) and does not prune it when it drops out of the rendered
+# manifests (Prune=false), because the `nfs` class deletes the volume's data
+# with its claim (reclaimPolicy: Delete), and losing the file means every Mac
+# has to sign in and register again.
+#
+# Required even when off, so an unset class never slips through unnoticed.
+{{- $class := required "persistence.storageClassName is required" .Values.persistence.storageClassName }}
+{{- if .Values.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -33,7 +39,8 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: {{ required "persistence.storageClassName is required" .Values.persistence.storageClassName | quote }}
+  storageClassName: {{ $class | quote }}
   resources:
     requests:
       storage: {{ .Values.persistence.size | quote }}
+{{- end }}

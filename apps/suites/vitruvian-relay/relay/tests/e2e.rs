@@ -48,10 +48,10 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, watch};
-use vitruvian_mcp_auth::{verifier, VerifierConfig};
+use vitruvian_mcp_auth::{verifier_requiring_role, VerifierConfig};
 use vitruvian_relay::config::Settings;
-use vitruvian_relay::devices::FileDeviceStore;
 use vitruvian_relay::http::{serve, App, Timing as RelayTiming};
+use vitruvian_relay::store::MemStore;
 use vitruvian_relay::LogSink;
 use vitruvian_relay_connector::bridge::BridgeOutput;
 use vitruvian_relay_connector::keys::{load_or_create, public_key_b64};
@@ -68,6 +68,8 @@ const PROJECT_ID: &str = "123456789";
 const MCP_CLIENT: &str = "claude-client";
 const CONNECTOR_CLIENT: &str = "connector-client";
 const ALICE: &str = "alice";
+/// The Zitadel role that lets a person in.
+const ROLE: &str = "relay-user";
 
 /// The longest any one step may take before a test gives up. Only a failing
 /// test waits this long.
@@ -75,27 +77,7 @@ const WAIT: Duration = Duration::from_secs(20);
 
 // A throwaway 2048-bit RSA key (PKCS#8 DER, base64url): the test-only key the
 // relay's and vitruvian-mcp-auth's own tests use. Used nowhere else.
-const TEST_RSA_KEY: &str = concat!(
-    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCvutM9Ruknu7rIHzvYC02EWEa-9e1c7uKxV81fV2",
-    "RMN-iBE4rlA_sxIccFC8QeISKKeIg8dxlY3V1EbkRjY7TYyGcsie28b6dWUi9uUkZqTCG0cMu5laAR8YxUbWdetOHp",
-    "fwiD70KTDd_n2-Mgb84FfjpzEwSvFrdNgwGccDkcPzAqMkQcy7r-vEqKpLfLbw3iile4Tq_PILB6GriFVl63TEsosP",
-    "WVyGEncch5YPzngHL94zkoKmUQMKBgR5CTIE7V157bvw_OkXAfjG6LjGDNlS1rUN0nuuO56pZcSdhVNT0qkLainlmh",
-    "flaudwusJGEfrBjBXTHYnxZdHFMXUrmDAgMBAAECggEAVa34B5T24hYQhDliUrx0D5aA6-N5V0nsAn6mVhmEf_r0ZF",
-    "a0bmPqCfMHl8i8Vtpd_ni1KBIDrEXGDzLaKkF3cAkJ8PfRD4K66oYItTftOC-lcVZbpkEzOfx1KMbs0wrLaS60Zqt1",
-    "4MAvjtsxmuOYZio88lVv_7RKLEM3OmCnH8NJ7HJ2AZtk_9pBhWs3gVWNnf2HwZe2g9LpFKEpD1VZLKd9fv7IQ9Pki3",
-    "Om1m_EIuJhDTMS2ZtY52E5YDQzixuD2J1CylcofbwOCf02MXEvfWhZw_IzmTFuAr8VaxPBTpF3U_AMCvU5rOT-svEs",
-    "lh0ezfMS9FF8gJJhzwlEv82UuQKBgQDjw02gBCXfVmKmUN8PQiFVC7le3tdGREU6DetDeUiCH_fhkZLhZGCJ7XN0pL",
-    "FAD0kQy5JgIMRI_AmmCwLy5FBUyKlHCGS064ati-4m0Xu8j_q-MMp1co5J4d_S_b0hf3qyezHqCAiZb30rTTIQHQxI",
-    "mHCCW1MOLquW9hJ1kHDAawKBgQDFhBrAg1Xw6RgdhDr7P4UZUKHTWZnUVVL3Coqj5CYd6wSdhJOKG4IwIxELWk_TYl",
-    "dHR-LbBLKGTqkGWNxSigjU7bLL2ne7JtDvEJ82StD6Q9BFdifrYUCGNsdpdyTeQ_2fwaVXhpLgpUEyn3whbHZPMvqz",
-    "tL8XeUPtcGVAeV5RSQKBgElAyTiL3PpluDixjexEYqANs0L1_NrWnkU7sMz0twNS8NCVl13ygLIbsqRzS6bEw8UpFB",
-    "zirP6kQR4sMHiaQdPi7b6wzmL51Uj_1kqZ2WgeDpEY9CSuAWF1yhz8CtY5P-cjhDw29T0UBHfmzhEspoS6soTahm3r",
-    "SLi2z90L5ZedAoGAWRs17m_Rz7N426gR69NGOptzxiOAEJjFqwmobjO5NnoWRPHQlde_LfRD9jkyFg0hjtjRcTl3SL",
-    "wn6OMh0mLPhTAPH4RZy6bBT3jSOu4ZxS3ewdeCPuBK-cGwyNWlXliSDQaRjyD5Fju3ZB0rJPEHlsdK7tO1-eMNUAsK",
-    "wsF-WXECgYEAwPw6ZR4Qkg3Nvgm3gXg6u0kikIRkNwtrh1gFZCTb2OVt6pYGnTXlmv6dsUZEz7k3p7PRMsavi3sd8i",
-    "hKXawoJUsQ9-eQi6wO_uiFVIdV566aclIo_0nuVRjs8tQ5KI6eUZ0woMsrqfavYnwZ9H7RfOQW8Sjkc5hG1z5pc2gM",
-    "xLI",
-);
+const TEST_RSA_KEY: &str = include_str!("testdata/test_rsa_key.b64");
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -123,11 +105,14 @@ fn jwks(pair: &RsaKeyPair) -> Value {
     }]})
 }
 
-fn mint(pair: &RsaKeyPair, client_id: &str, exp: u64) -> String {
+/// A token for `sub`, who holds the `relay-user` role.
+fn mint(pair: &RsaKeyPair, client_id: &str, sub: &str, exp: u64) -> String {
     let header = b64url(json!({"alg": "RS256", "kid": "k1"}).to_string().as_bytes());
     let claims = json!({
-        "iss": ISSUER, "aud": [PROJECT_ID], "sub": ALICE, "client_id": client_id,
+        "iss": ISSUER, "aud": [PROJECT_ID], "sub": sub, "client_id": client_id,
         "iat": now_secs(), "exp": exp,
+        format!("urn:zitadel:iam:org:project:{PROJECT_ID}:roles"):
+            { ROLE: { "org-1": "example.test" } },
     });
     let input = format!("{header}.{}", b64url(claims.to_string().as_bytes()));
     let mut sig = vec![0u8; pair.public().modulus_len()];
@@ -192,7 +177,10 @@ struct Relay {
     addr: SocketAddr,
     rsa: Arc<RsaKeyPair>,
     logs: Arc<Mutex<Vec<String>>>,
-    data_dir: PathBuf,
+    /// Where this relay keeps its devices: a relay started over the same store
+    /// is this one restarted, with none of its calls.
+    store: Arc<MemStore>,
+    app: Arc<App>,
 }
 
 /// In-call pings every 2 s, as in production: three missed (6 s) is a drop
@@ -215,12 +203,12 @@ async fn start_relay() -> Relay {
 }
 
 async fn start_relay_with(timing: RelayTiming) -> Relay {
-    start_relay_in(timing, temp_dir("relay-data")).await
+    start_relay_in(timing, Arc::new(MemStore::new())).await
 }
 
-/// A relay keeping its devices in `data_dir`: a second one started on the
-/// same folder is the first one restarted, with none of its calls.
-async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
+/// A relay keeping its devices in `store`: a second one started over the
+/// same store is the first one restarted, with none of its calls.
+async fn start_relay_in(timing: RelayTiming, store: Arc<MemStore>) -> Relay {
     let rsa = rsa_key();
     let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
     let env: HashMap<&str, String> = [
@@ -229,25 +217,31 @@ async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
         ("PROJECT_ID", PROJECT_ID.to_string()),
         ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
-        ("ALLOWED_SUBJECTS", ALICE.to_string()),
-        ("DATA_DIR", data_dir.to_string_lossy().into_owned()),
+        ("DASHBOARD_CLIENT_ID", "dashboard-client".to_string()),
+        (
+            "DATABASE_URL",
+            "postgres://unused@localhost/unused".to_string(),
+        ),
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
+    let required_role = settings.required_role.clone();
     let verifier_for = |ids: Vec<String>| {
-        verifier(VerifierConfig {
-            issuer: ISSUER.into(),
-            project_id: PROJECT_ID.into(),
-            allowed_client_ids: ids,
-            allowed_subjects: vec![ALICE.into()],
-            jwks_uri: Some(jwks_uri.clone()),
-            user_agent: "vitruvian-relay-e2e".into(),
-        })
+        verifier_requiring_role(
+            VerifierConfig {
+                issuer: ISSUER.into(),
+                project_id: PROJECT_ID.into(),
+                allowed_client_ids: ids,
+                allowed_subjects: Vec::new(),
+                jwks_uri: Some(jwks_uri.clone()),
+                user_agent: "vitruvian-relay-e2e".into(),
+            },
+            required_role.clone(),
+        )
         .unwrap()
     };
-    let store = Arc::new(FileDeviceStore::open(settings.devices_file()).unwrap());
     let logs = Arc::new(Mutex::new(Vec::new()));
     let sink_logs = logs.clone();
     let sink: LogSink = Arc::new(move |line| sink_logs.lock().unwrap().push(line.to_string()));
@@ -255,18 +249,20 @@ async fn start_relay_in(timing: RelayTiming, data_dir: PathBuf) -> Relay {
         settings,
         verifier_for(vec![MCP_CLIENT.into()]),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
-        store,
+        verifier_for(vec!["dashboard-client".into()]),
+        store.clone(),
         timing,
         sink,
     );
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(serve(listener, app));
+    tokio::spawn(serve(listener, app.clone()));
     Relay {
         addr,
         rsa,
         logs,
-        data_dir,
+        store,
+        app,
     }
 }
 
@@ -295,24 +291,22 @@ impl Relay {
         post(self.addr, path, token, session, body).await
     }
 
-    /// Registers a device key for Alice, as `vrelay login` does; the id.
-    async fn register(&self, public_key_b64: &str) -> String {
-        let token = mint(&self.rsa, CONNECTOR_CLIENT, now_secs() + 600);
-        let r = self
-            .post(
-                "/devices",
-                &token,
-                None,
-                json!({"public_key": public_key_b64}),
-            )
-            .await;
+    /// Registers a device key for Alice, as `vrelay login` does; the id. With
+    /// `existing`, it is that computer signing in again: the id is kept.
+    async fn register(&self, public_key_b64: &str, existing: Option<&str>) -> String {
+        let token = mint(&self.rsa, CONNECTOR_CLIENT, ALICE, now_secs() + 600);
+        let mut body = json!({"public_key": public_key_b64, "name": "E2E Mac"});
+        if let Some(id) = existing {
+            body["device_id"] = json!(id);
+        }
+        let r = self.post("/devices", &token, None, body).await;
         assert_eq!(r.status, 200, "{}", r.body);
         r.json()["device_id"].as_str().unwrap().to_string()
     }
 
     /// An AI app's MCP session on Alice's device.
     async fn mcp(&self, device_id: &str) -> Mcp {
-        let token = mint(&self.rsa, MCP_CLIENT, now_secs() + 600);
+        let token = mint(&self.rsa, MCP_CLIENT, ALICE, now_secs() + 600);
         let path = format!("/mcp/d/{device_id}");
         let r = self
             .post(
@@ -568,7 +562,12 @@ impl TokenSource for MintTokens {
         } else {
             600
         };
-        Ok(Some(mint(&self.rsa, CONNECTOR_CLIENT, now_secs() + life)))
+        Ok(Some(mint(
+            &self.rsa,
+            CONNECTOR_CLIENT,
+            ALICE,
+            now_secs() + life,
+        )))
     }
 }
 
@@ -626,9 +625,23 @@ async fn start_connector_with(
     short_tokens: usize,
     timing: LinkTiming,
 ) -> Connector {
+    start_connector_as(relay, name, url, short_tokens, timing, None).await
+}
+
+/// `start_connector_with`, signing in again as a computer the person already
+/// has when `existing` is its id (what `vrelay login` does when it has a
+/// device file): the id is kept and the key replaced.
+async fn start_connector_as(
+    relay: &Relay,
+    name: &str,
+    url: &str,
+    short_tokens: usize,
+    timing: LinkTiming,
+    existing: Option<&str>,
+) -> Connector {
     let dir = temp_dir(name);
     let key = load_or_create(&dir).unwrap();
-    let device_id = relay.register(&public_key_b64(&key)).await;
+    let device_id = relay.register(&public_key_b64(&key), existing).await;
     save_device(
         &dir,
         &DeviceInfo {
@@ -899,8 +912,16 @@ async fn registering_again_kicks_the_old_link_and_the_new_key_takes_over() {
     let old = start_connector(&relay, "e-old", &relay.url(), 0).await;
     let mcp = relay.mcp(&old.device_id).await;
     until_online(&mcp).await;
-    // `vrelay login` again with a new key (one device per person: same id).
-    let new = start_connector(&relay, "e-new", &relay.url(), 0).await;
+    // `vrelay login` again with a new key, sending the id it has: same id.
+    let new = start_connector_as(
+        &relay,
+        "e-new",
+        &relay.url(),
+        0,
+        link_timing(),
+        Some(&old.device_id),
+    )
+    .await;
     assert_eq!(new.device_id, old.device_id);
     until("the old link to be kicked", || old.logged("link down")).await;
     // The old key is now refused, and never takes the device back.
@@ -1166,7 +1187,7 @@ async fn a_relay_restart_never_lets_an_old_dialog_run() {
     // takes its place.
     proxy.cut();
     until("the connector to see the drop", || c.logged("link down")).await;
-    let restarted = start_relay_in(relay_timing(), relay.data_dir.clone()).await;
+    let restarted = start_relay_in(relay_timing(), relay.store.clone()).await;
     proxy.retarget(restarted.addr);
     proxy.reopen();
     until("the connector to be back", || {
@@ -1188,4 +1209,67 @@ async fn a_relay_restart_never_lets_an_old_dialog_run() {
     .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(c.tools.ran("start_process"), 0, "an old dialog ran");
+}
+
+/// One person, two computers, both linked to the real relay at once: each
+/// AI-app URL reaches its own computer.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_computers_of_one_person_answer_at_their_own_urls() {
+    let relay = start_relay().await;
+    let first = start_connector(&relay, "e-first", &relay.url(), 0).await;
+    let second = start_connector(&relay, "e-second", &relay.url(), 0).await;
+    assert_ne!(first.device_id, second.device_id);
+    let (one, two) = (
+        relay.mcp(&first.device_id).await,
+        relay.mcp(&second.device_id).await,
+    );
+    until_online(&one).await;
+    until_online(&two).await;
+    let (text, _) = two.call("read_file", json!({"path": "/b"})).await;
+    assert_eq!(text, "read /b");
+    let (text, _) = one.call("read_file", json!({"path": "/a"})).await;
+    assert_eq!(text, "read /a");
+    assert_eq!(
+        (first.tools.ran("read_file"), second.tools.ran("read_file")),
+        (1, 1)
+    );
+}
+
+/// Removing a computer ends its link, and when it tries again it is told it
+/// is no longer registered; the person's other computer carries on.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_removed_computer_loses_its_link_and_is_told_why() {
+    let relay = start_relay().await;
+    let gone = start_connector(&relay, "e-gone", &relay.url(), 0).await;
+    let kept = start_connector(&relay, "e-kept", &relay.url(), 0).await;
+    let (gone_mcp, kept_mcp) = (
+        relay.mcp(&gone.device_id).await,
+        relay.mcp(&kept.device_id).await,
+    );
+    until_online(&gone_mcp).await;
+    until_online(&kept_mcp).await;
+
+    assert!(relay.app.revoke(ALICE, &gone.device_id).await.unwrap());
+    until("the removed computer's link to end", || {
+        gone.logged("link down")
+    })
+    .await;
+    until("the removed computer to be refused", || {
+        gone.logged("was removed from your account")
+    })
+    .await;
+    // Its URL is gone, and the other computer never noticed.
+    let token = mint(&relay.rsa, MCP_CLIENT, ALICE, now_secs() + 600);
+    let r = post(
+        relay.addr,
+        &format!("/mcp/d/{}", gone.device_id),
+        &token,
+        None,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+    )
+    .await;
+    assert_eq!(r.status, 404);
+    let (text, _) = kept_mcp.call("read_file", json!({"path": "/k"})).await;
+    assert_eq!(text, "read /k");
+    assert_eq!(gone.tools.ran("read_file"), 0);
 }

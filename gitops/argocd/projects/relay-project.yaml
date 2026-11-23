@@ -19,8 +19,14 @@
 # SOFTWARE.
 
 # vitruvian-relay: the Vitruvian Relay server (apps/suites/vitruvian-relay/relay). One
-# namespace, and only the kinds its chart renders. No Secret or SealedSecret:
-# the server needs none (it fetches Zitadel's public keys).
+# namespace, and only the kinds its chart and its database render: the chart's
+# Deployment, Service, routes and policies, and relay-db's CloudNativePG
+# Cluster, ObjectStore and ScheduledBackup (gitops/argocd/platform/relay/).
+# Secret and SealedSecret are deliberately not allowed: nothing this app renders
+# is one. CloudNativePG creates relay-db-app and relay-db-ca itself, in the
+# cluster, and the backup credentials are SealedSecrets applied by
+# sealed-secrets-manifests (platform-project). They are listed under
+# orphanedResources.ignore instead, so they do not show as orphans.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -32,6 +38,11 @@ spec:
   description: vitruvian-relay — Vitruvian Relay (MCP over Zitadel sign-in, device WebSocket, device registry)
   orphanedResources:
     warn: true
+    ignore:
+      - group: ''
+        kind: Secret
+      - group: bitnami.com
+        kind: SealedSecret
   sourceRepos:
     - 'https://github.com/VitruvianSoftware/vitruvian-core.git'
   destinations:
@@ -59,3 +70,9 @@ spec:
       kind: BackendTrafficPolicy
     - group: externaldns.k8s.io
       kind: DNSEndpoint
+    - group: postgresql.cnpg.io
+      kind: Cluster
+    - group: postgresql.cnpg.io
+      kind: ScheduledBackup
+    - group: barmancloud.cnpg.io
+      kind: ObjectStore

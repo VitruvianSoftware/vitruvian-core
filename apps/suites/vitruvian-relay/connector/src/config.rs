@@ -26,14 +26,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub const DEFAULT_ISSUER: &str = "https://auth.ipv1337.dev";
-pub const DEFAULT_RELAY_URL: &str = "https://relay.ipv1337.dev";
-/// The `relay-connector` client (native app, device flow + refresh):
-/// `zitadel-apps-relay` output `connectorClientId`.
-pub const DEFAULT_CLIENT_ID: &str = "398912442404505402";
+pub const DEFAULT_RELAY_URL: &str = "https://relay.vitruviansoftware.dev";
+/// The `relay-connector-v2` client (native app, device flow + refresh; its
+/// tokens carry the user's roles): `zitadel-apps-relay` output
+/// `connectorV2ClientId`.
+pub const DEFAULT_CLIENT_ID: &str = "400571151425800521";
 /// The `relay` Zitadel project (`projectId`). Its id must be in the token's audience.
 pub const DEFAULT_PROJECT_ID: &str = "398912441632687930";
-/// The `relay-claude` client (`claudeClientId`): what a person pastes into Claude.
-pub const DEFAULT_CLAUDE_CLIENT_ID: &str = "398912442404439866";
+/// The `relay-claude-v2` client (`claudeV2ClientId`): what a person pastes into Claude.
+pub const DEFAULT_CLAUDE_CLIENT_ID: &str = "400571151425734985";
 
 /// Refresh the access token when it has less than this long to live.
 pub const REFRESH_MARGIN_SECS: u64 = 300;
@@ -238,29 +239,60 @@ mod tests {
         std::fs::read_to_string(PathBuf::from(base).join("_main").join(rel)).unwrap()
     }
 
-    /// The compiled-in defaults are the deployed relay's values: if the Argo CD
-    /// values file or the chart defaults change (or these constants do), the
+    /// The compiled-in defaults are the relay's new-mode values: if those
+    /// values or the chart defaults change (or these constants do), the
     /// connector would sign in to, or call, the wrong place.
+    ///
+    /// They are checked against `chart-render/vitruvian-relay.values.yaml`,
+    /// the new mode with its real ids, not against the Argo CD file alone: the
+    /// Argo CD file keeps running the old relay (the old host and client ids)
+    /// until the digest PR switches it to the new one, so it cannot be the
+    /// reference yet. This file is what the digest PR copies, so a client
+    /// recreated in the Zitadel stack still fails here. Once the Argo CD file
+    /// is on the new host it is held to the same defaults too (second half).
     #[test]
     fn defaults_match_relay_stack() {
-        let live = runfile_text("gitops/argocd/platform/relay/values.yaml");
+        let new_mode = runfile_text("tools/ci/chart-render/vitruvian-relay.values.yaml");
         let chart = runfile_text("apps/suites/vitruvian-relay/relay/deploy/chart/values.yaml");
         assert_eq!(
-            values_entry(&live, "oidc", "connectorClientId"),
+            values_entry(&new_mode, "oidc", "connectorClientId"),
             DEFAULT_CLIENT_ID
         );
-        assert_eq!(values_entry(&live, "oidc", "projectId"), DEFAULT_PROJECT_ID);
-        let mcp = values_entry(&live, "oidc", "mcpClientIds");
+        assert_eq!(
+            values_entry(&new_mode, "oidc", "projectId"),
+            DEFAULT_PROJECT_ID
+        );
+        let mcp = values_entry(&new_mode, "oidc", "mcpClientIds");
         assert!(
             mcp.split(',').any(|c| c == DEFAULT_CLAUDE_CLIENT_ID),
             "mcpClientIds {mcp} lacks the claude client"
         );
-        // What Argo CD deploys: the gitops file's value when it sets one,
-        // else the chart's default.
-        let issuer = find_entry(&live, "oidc", "issuer")
+        let issuer = find_entry(&new_mode, "oidc", "issuer")
             .unwrap_or_else(|| values_entry(&chart, "oidc", "issuer"));
         assert_eq!(issuer, DEFAULT_ISSUER);
-        let host = find_top(&live, "hostname").unwrap_or_else(|| top_entry(&chart, "hostname"));
+        // The new host is named in the file itself: the chart's own default is
+        // still the old host until the old relay is gone.
+        let host = top_entry(&new_mode, "hostname");
         assert_eq!(format!("https://{host}"), DEFAULT_RELAY_URL);
+
+        // What Argo CD deploys. While it still runs the old relay (another
+        // host) it is not the reference; once it has moved to this host, its
+        // ids and issuer must be the defaults as well.
+        let live = runfile_text("gitops/argocd/platform/relay/values.yaml");
+        if find_top(&live, "hostname").as_deref() == Some(host.as_str()) {
+            assert_eq!(
+                values_entry(&live, "oidc", "connectorClientId"),
+                DEFAULT_CLIENT_ID
+            );
+            assert_eq!(values_entry(&live, "oidc", "projectId"), DEFAULT_PROJECT_ID);
+            let mcp = values_entry(&live, "oidc", "mcpClientIds");
+            assert!(
+                mcp.split(',').any(|c| c == DEFAULT_CLAUDE_CLIENT_ID),
+                "the Argo CD mcpClientIds {mcp} lacks the claude client"
+            );
+            let issuer = find_entry(&live, "oidc", "issuer")
+                .unwrap_or_else(|| values_entry(&chart, "oidc", "issuer"));
+            assert_eq!(issuer, DEFAULT_ISSUER);
+        }
     }
 }

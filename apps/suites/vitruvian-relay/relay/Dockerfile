@@ -85,6 +85,8 @@ RUN set -eu; \
 
 COPY --from=mcpauth src /src/packages/mcp-auth/src
 COPY relay/src relay/src
+# The schema is compiled in (include_str! in relay/src/store.rs).
+COPY relay/migrations relay/migrations
 COPY protocol/src protocol/src
 RUN set -eu; \
     . /tmp/cross.env; \
@@ -104,10 +106,9 @@ RUN set -eu; \
 
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app
-# DATA_DIR is the chart's persistent volume (devices.json); the chart sets it
-# too, so this default only matters for a bare `docker run`.
+# DATABASE_URL (Postgres) is required and has no default: the chart sets it.
+# The relay keeps devices and calls in Postgres and writes nothing to disk.
 ENV PORT=3000 \
-    DATA_DIR=/data \
     HOME=/tmp
 COPY --from=build --chmod=0755 /vitruvian-relay /app/vitruvian-relay
 USER 10001:10001

@@ -19,9 +19,8 @@
 # SOFTWARE.
 
 # Builds and publishes the Vitruvian Relay server image
-# (apps/suites/vitruvian-relay/relay). A copy of vitruvian-relay-spike-image.yaml
-# (itself from vitruvian-slack-mcp-image.yaml, which explains each step). The
-# differences: the image name and paths; the build context is the relay
+# (apps/suites/vitruvian-relay/relay). Modelled on vitruvian-slack-mcp-image.yaml,
+# which explains each step. The differences: the image name and paths; the build context is the relay
 # WORKSPACE (apps/suites/vitruvian-relay, where Cargo.lock lives) with the
 # Dockerfile named by -f; and the second named build context is `mcpauth`
 # (packages/mcp-auth), the shared token checker the relay
@@ -44,6 +43,10 @@ on:
       - 'apps/suites/vitruvian-relay/relay/.dockerignore'
       - 'apps/suites/vitruvian-relay/relay/Cargo.toml'
       - 'apps/suites/vitruvian-relay/relay/src/**'
+      # The relay compiles its SQL migrations in (include_str!), so an edit
+      # there changes the image. `*.sql`, not `**`, because //tools/conformance
+      # reads a `/**` filter as an image root and expects a chart under it.
+      - 'apps/suites/vitruvian-relay/relay/migrations/*.sql'
       - 'apps/suites/vitruvian-relay/protocol/Cargo.toml'
       - 'apps/suites/vitruvian-relay/protocol/src/**'
       # Cargo loads every workspace member's manifest even for -p vitruvian-relay;
@@ -82,6 +85,10 @@ on:
       - 'apps/suites/vitruvian-relay/relay/.dockerignore'
       - 'apps/suites/vitruvian-relay/relay/Cargo.toml'
       - 'apps/suites/vitruvian-relay/relay/src/**'
+      # The relay compiles its SQL migrations in (include_str!), so an edit
+      # there changes the image. `*.sql`, not `**`, because //tools/conformance
+      # reads a `/**` filter as an image root and expects a chart under it.
+      - 'apps/suites/vitruvian-relay/relay/migrations/*.sql'
       - 'apps/suites/vitruvian-relay/protocol/Cargo.toml'
       - 'apps/suites/vitruvian-relay/protocol/src/**'
       # Cargo loads every workspace member's manifest even for -p vitruvian-relay;
@@ -154,16 +161,16 @@ jobs:
       # ASSERTION 1 — the pod runs as UID/GID 10001 (deployment.yaml
       # securityContext), a UID that exists in no image layer, with a read-only
       # root filesystem, every capability dropped, no privilege escalation, and
-      # exactly one writable mount: the /data volume. No writable /tmp: the
-      # relay writes only under /data (devices.json and its .tmp sibling), so
-      # the pod gets no emptyDir and this check gets no --tmpfs /tmp either.
-      # If the relay ever needs /tmp, this run fails first; then add an emptyDir
-      # at /tmp to the chart and a matching --tmpfs here.
+      # no writable mount at all: the relay keeps devices and calls in Postgres
+      # and writes nothing to disk, so the pod gets no volume or emptyDir and
+      # this check gets no --tmpfs either. If the relay ever needs to write
+      # (say /tmp), this run fails first; then add an emptyDir to the chart and
+      # a matching --tmpfs here.
       # Require `--version` to exit 0 and print the real binary banner (catching
       # stub binaries too).
       #
       # It deliberately does NOT start the server: that needs real Zitadel ids,
-      # a writable /data and a reachable IdP, and a start attempt failing on
+      # a Postgres database and a reachable IdP, and a start attempt failing on
       # config would not discriminate a permission fault from a missing variable.
       - name: Verify UID 10001 can read and load the image
         run: |
@@ -173,7 +180,6 @@ jobs:
             --read-only \
             --cap-drop ALL \
             --security-opt no-new-privileges \
-            --tmpfs /data:uid=10001,gid=10001 \
             --entrypoint /app/vitruvian-relay \
             vitruvian-relay:verify \
             --version)"
@@ -346,8 +352,8 @@ jobs:
       #
       #   - on `pull_request` the step is skipped outright by the `if:` below —
       #     PR runs never push, so there is no digest to fetch;
-      #   - on `main` the package is expected to come out public, as the
-      #     spike's and vitruvian-slack-mcp's did, so the fetch succeeds. The
+      #   - on `main` the package is expected to come out public, as
+      #     vitruvian-slack-mcp's did, so the fetch succeeds. The
       #     relay's first run is the one real test: a private package fails it.
       #
       # The failure branch therefore has no foreseeable execution, and its green

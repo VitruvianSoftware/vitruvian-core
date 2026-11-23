@@ -33,6 +33,12 @@ rust-version = "1.98"
 publish = false
 license = "MIT"
 
+# `relay_broken_ownership` and `relay_broken_request_ownership` are set by the
+# BUILD file's canary builds only (see `App::owned_device` and
+# `Mcp::owned_request`); naming them here keeps rustc from calling them typos.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(relay_broken_ownership)', 'cfg(relay_broken_request_ownership)'] }
+
 [lib]
 name = "vitruvian_relay"
 path = "src/lib.rs"
@@ -44,8 +50,10 @@ path = "src/main.rs"
 [dependencies]
 vitruvian-mcp-auth = { path = "../../../../packages/mcp-auth" }
 vitruvian-relay-protocol = { path = "../protocol" }
+async-trait = "0.1"
 base64 = "0.22"
 bytes = "1"
+deadpool-postgres = { version = "0.14", default-features = false, features = ["rt_tokio_1"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 http = "1"
 http-body-util = "0.1"
@@ -59,7 +67,9 @@ rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # No `test-util`: it would unify into the production build through the hub.
-tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-postgres = "0.7"
+tokio-postgres-rustls = "0.13"
 # handshake only (server accept key, and the tests' client); no bundled TLS.
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
