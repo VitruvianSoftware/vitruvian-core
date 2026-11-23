@@ -623,6 +623,40 @@
       ]
     },
     {
+      "id": "vitruvian-orchestrator-opencode",
+      "name": "vitruvian-orchestrator",
+      "kind": "plugin",
+      "category": "Agent Plugin",
+      "status": "released",
+      "summary": "A lead agent plans the work, specialist agents do it, and a live sidebar shows the plan, the board and the spend in OpenCode.",
+      "repo": "https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode",
+      "source": "apps/opencode/plugins/vitruvian-orchestrator",
+      "ecosystems": [
+        "codex-opencode"
+      ],
+      "capabilities": [
+        "Live Sidebar",
+        "2 Skills"
+      ],
+      "skills": [
+        "orchestrate",
+        "team-setup"
+      ],
+      "hooks": [],
+      "rules": [],
+      "needs": "OpenCode (tested on 2.3.2)",
+      "note": "",
+      "installs": [
+        {
+          "tool": "OpenCode",
+          "ecosystem": "codex-opencode",
+          "label": "Add to opencode.json",
+          "command": "{ \"plugins\": [\"@vitruviansoftware/opencode-vitruvian-orchestrator\"] }"
+        }
+      ]
+    },
+    {
       "id": "vitruvian-roborock-mcp",
       "name": "vitruvian-roborock-mcp",
       "kind": "plugin",
