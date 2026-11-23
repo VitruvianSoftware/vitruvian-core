@@ -81,7 +81,8 @@ struct SettingsWindow: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .frame(minWidth: 980, minHeight: 540)
+        .frame(minWidth: SettingsWindowResizer.minimumSize.width, minHeight: SettingsWindowResizer.minimumSize.height)
+        .background(SettingsWindowResizer())
         .background(
             Button("") {
                 guard !lifecycle.isLocked else { return }
@@ -495,5 +496,33 @@ struct SettingsAccountCardView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(card.title), \(card.subtitle)")
         .accessibilityHint(String(localized: "Opens Accounts settings"))
+    }
+}
+
+/// Makes the Settings window resizable. A SwiftUI `Settings` scene opens a window without the resizable style and
+/// ignores `.windowResizability`, so the window is reached and given the style directly. How small it may go is
+/// `SettingsView`'s `.frame(minWidth:minHeight:)` (`minimumSize`), which the hosting view hands to the window.
+struct SettingsWindowResizer: NSViewRepresentable {
+    static let minimumSize = CGSize(width: 980, height: 540)
+
+    func makeNSView(context _: Context) -> NSView { ResizerView() }
+    func updateNSView(_: NSView, context _: Context) {}
+
+    static func makeResizable(_ window: NSWindow) {
+        window.styleMask.insert(.resizable)
+        // The scene pins the window's largest size to its content's; there is no largest size.
+        window.contentMaxSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+    }
+
+    private final class ResizerView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            SettingsWindowResizer.makeResizable(window)
+            // Again once SwiftUI has finished setting the window up, which it does after the view arrives.
+            DispatchQueue.main.async { [weak window] in
+                if let window { SettingsWindowResizer.makeResizable(window) }
+            }
+        }
     }
 }

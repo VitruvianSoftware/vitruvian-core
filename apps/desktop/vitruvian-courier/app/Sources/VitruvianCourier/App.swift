@@ -164,6 +164,9 @@ struct CourierApp: App {
             }
         }
         .defaultSize(width: 820, height: 600)
+        // Needed with `SettingsWindowResizer`: left at the default, the scene sizes the window to its content (once
+        // 980 × 1866) and fixes it there, whatever the window's style says. Checked on screen.
+        .windowResizability(.contentMinSize)
         // InboxCommands' Settings… is the menu's only one: it follows the shortcut set in Settings ▸ Shortcuts and is
         // off while Vitruvian Courier is locked. Without this the scene adds its own Settings… (⌘,) beside it.
         .commandsRemoved()
