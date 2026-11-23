@@ -1,0 +1,83 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# PUBLIC Grafana HTTP API — grafana-api.ipv1337.dev, reached through Cloudflare Tunnel.
+# Exists so the Grafana MCP server (mcp-grafana, GRAFANA_URL=https://grafana-api.ipv1337.dev)
+# works off-tailnet, e.g. from cloud agent sessions. Use a Viewer service-account token.
+#
+# Only /api/ is routed; the UI, /login and everything else stay on
+# grafana.lab.ipv1337.dev (tailnet only) and get no route here.
+# Requests carrying HTTP Basic credentials are NOT forwarded: the more specific
+# header-matching rule has no backendRefs, so the Gateway answers it with an error.
+# That keeps admin-password guessing off the public internet; only bearer
+# (service-account) tokens reach Grafana, and they are the access-control boundary.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana-api-public
+  namespace: grafana
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - grafana-api.ipv1337.dev
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/
+          headers:
+            - type: RegularExpression
+              name: Authorization
+              value: "(?i)^\\s*basic\\s.*"
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: grafana
+          port: 80
+          weight: 1
+---
+# PUBLIC Grafana API DNS — grafana-api.ipv1337.dev -> Cloudflare Tunnel (proxied).
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: grafana-api-tunnel
+  namespace: grafana
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  endpoints:
+    - dnsName: grafana-api.ipv1337.dev
+      recordType: CNAME
+      recordTTL: 1
+      targets:
+        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+      providerSpecific:
+        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+          value: "true"
