@@ -202,7 +202,8 @@ fn every_section(tree: &CValue, where_: &str) -> Result<(), E2EFailure> {
                 && b.get("section").and_then(|s| s.as_bool()) == Some(true)
         })
         .map(|b| {
-            let text = b.get("text").unwrap_or(&CValue::Null);
+            let null = CValue::Null;
+            let text = b.get("text").unwrap_or(&null);
             words(text).join(" ")
         })
         .collect();
