@@ -15,12 +15,11 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
-# The three tools' logic, and the slice of jq they need, over serde_json.
+# The three tools' logic, over vitruvian_jq and shell_compat.
 rust_library(
     name = "preview_lib",
     srcs = [
         "src/common.rs",
-        "src/jq.rs",
         "src/lib.rs",
         "src/neon_branch.rs",
         "src/pr_comment.rs",
@@ -31,9 +30,8 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//packages/jq:vitruvian_jq",
         "//tools/shell-compat:shell_compat",
-        "@crates//:serde",
-        "@crates//:serde_json",
     ],
 )
 

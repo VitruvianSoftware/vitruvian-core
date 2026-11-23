@@ -764,6 +764,156 @@ def build_cases() -> list[tuple[str, str, str, str, bytes]]:
     for name, inp in round3_eof_sep:
         add(f"parse_{name}", "id", "compact", ["-c", "."], inp)
 
+    # -----------------------------------------------------------------------
+    # 10. Combinators: or_empty, alt, first, any
+    # -----------------------------------------------------------------------
+    for name, inp in [
+        ("empty_obj", b"{}"),
+        ("false", b'{"a":false}'),
+        ("zero", b'{"a":0}'),
+        ("empty_str", b'{"a":""}'),
+        ("ok", b'{"a":"ok"}'),
+        ("err_str", b'"str"'),
+        ("err_then_ok", b'[1] {"a":"ok"}'),
+        ("ok_then_err", b'{"a":"ok"} [1]'),
+    ]:
+        add(
+            f"or_empty_c_{name}",
+            "idx_a_or_empty",
+            "compact",
+            ["-c", ".a // empty"],
+            inp,
+        )
+        add(f"or_empty_r_{name}", "idx_a_or_empty", "raw", ["-r", ".a // empty"], inp)
+
+    for name, inp in [
+        ("empty_arr", b"[]"),
+        ("all_falsy", b'[{"a":false},{"a":null}]'),
+        ("mixed", b'[{"a":false},{"a":1},{"a":null},{"a":2}]'),
+        ("falsy_then_err", b'[{"a":false},5]'),
+        ("falsy_truthy_err", b'[{"a":false},{"a":1},5]'),
+        ("err_then_truthy", b'[5,{"a":1}]'),
+    ]:
+        add(
+            f"iter_or_empty_{name}",
+            "iter_idx_a_or_empty",
+            "compact",
+            ["-c", "(.[] | .a) // empty"],
+            inp,
+        )
+
+    for name, inp in [
+        ("empty_obj", b"{}"),
+        ("false", b'{"a":false}'),
+        ("null", b'{"a":null}'),
+        ("zero", b'{"a":0}'),
+        ("empty_str", b'{"a":""}'),
+        ("str_1", b'{"a":"1"}'),
+        ("err_str", b'"str"'),
+        ("err_then_null", b'5 {"a":null}'),
+        ("null_then_err", b'{"a":null} 5'),
+    ]:
+        add(f"alt_c_{name}", "idx_a_alt_def", "compact", ["-c", '.a // "0"'], inp)
+        add(f"alt_r_{name}", "idx_a_alt_def", "raw", ["-r", '.a // "0"'], inp)
+
+    for name, inp in [
+        ("empty_arr", b"[]"),
+        ("all_falsy", b'[{"a":false},{"a":null}]'),
+        ("mixed", b'[{"a":false},{"a":1},{"a":2}]'),
+        ("falsy_then_err", b'[{"a":false},5]'),
+        ("falsy_truthy_err", b'[{"a":false},{"a":1},5]'),
+    ]:
+        add(
+            f"iter_alt_{name}",
+            "iter_idx_a_alt_def",
+            "compact",
+            ["-c", '(.[] | .a) // "0"'],
+            inp,
+        )
+
+    for name, inp in [
+        ("hit", b'{"data":{"result":[{"value":[0,"1"]}]}}'),
+        ("empty", b'{"data":{"result":[]}}'),
+        ("false_val", b'{"data":{"result":[{"value":[0,false]}]}}'),
+        ("bad_data", b'{"data":"bad"}'),
+        ("err_str", b'"str"'),
+    ]:
+        add(
+            f"prom_val_{name}",
+            "prom_val",
+            "raw",
+            ["-r", '.data.result[0].value[1] // "0"'],
+            inp,
+        )
+
+    for name, inp in [
+        ("empty", b"[]"),
+        ("two_hits", b'[{"a":1},{"a":2}]'),
+        ("false_before_err", b'[{"a":false},5]'),
+        ("null_before_err", b'[{"a":null},5]'),
+        ("err_before_hit", b'[5,{"a":1}]'),
+        ("err_top", b'"str"'),
+    ]:
+        add(
+            f"first_iter_{name}",
+            "first_iter_idx_a",
+            "compact",
+            ["-c", "first(.[] | .a)"],
+            inp,
+        )
+
+    for name, inp in [
+        (
+            "short_circuit_after_hit",
+            b'{"attachments":[{"fileName":"b","id":"0"},{"fileName":"a","id":"1"},"x"]}',
+        ),
+        ("err_before_hit", b'{"attachments":["x",{"fileName":"a","id":"1"}]}'),
+        (
+            "first_hit_false",
+            b'{"attachments":[{"fileName":"a","id":false},{"fileName":"a","id":"2"}]}',
+        ),
+        (
+            "first_hit_null",
+            b'{"attachments":[{"fileName":"a","id":null},{"fileName":"a","id":"2"}]}',
+        ),
+        ("non_iter_attachments", b'{"attachments":5}'),
+        ("err_top_str", b'"str"'),
+        ("empty_stream", b""),
+    ]:
+        add(
+            f"first_att_or_empty_{name}",
+            "first_att_or_empty",
+            "raw",
+            ["-r", 'first(.attachments[]? | select(.fileName=="a") | .id) // empty'],
+            inp,
+        )
+
+    for name, inp in [
+        ("hit_before_err", b'{"attachments":[{"fileName":"a"},"x"]}'),
+        ("err_before_hit", b'{"attachments":["x",{"fileName":"a"}]}'),
+        ("miss", b'{"attachments":[{"fileName":"b"}]}'),
+        ("non_iter", b'{"attachments":5}'),
+        ("empty_obj", b"{}"),
+        ("err_top_str", b'"str"'),
+        ("empty_stream", b""),
+        ("err_then_true", b'{"attachments":["x"]} {"attachments":[{"fileName":"a"}]}'),
+        ("true_then_err", b'{"attachments":[{"fileName":"a"}]} {"attachments":["x"]}'),
+    ]:
+        add(
+            f"any_att_c_{name}",
+            "any_att",
+            "compact",
+            ["-c", 'any(.attachments[]?; .fileName == "a")'],
+            inp,
+        )
+        add(
+            f"any_att_ce_{name}",
+            "any_att",
+            "compact_exit",
+            ["-ce", 'any(.attachments[]?; .fileName == "a")'],
+            inp,
+        )
+
     assert len(cases) >= 200, f"Expected >= 200 cases, got {len(cases)}"
     return cases
 

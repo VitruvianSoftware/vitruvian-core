@@ -13,24 +13,14 @@ Component package providing implementation for `tools/preview/src`.
 - `[common.rs:inherited]`
 - `[common.rs:pipeline]`
 - `[common.rs:log]`
-- `[jq.rs:J]`
-- `[jq.rs:pretty]`
-- `[jq.rs:compact]`
-- `[jq.rs:trunc]`
-- `[jq.rs:Run]`
-- `[jq.rs:Produced]`
-- `[jq.rs:run]`
-- `[jq.rs:each]`
-- `[jq.rs:one]`
-- `[jq.rs:arg]`
-- `[jq.rs:head1]`
+- `[common.rs:head1]`
 - Subdirectory: [bin](./bin/README.md)
 
 ## Invariants
-- [jq.rs:470]: `assert!(r.stderr.starts_with(b"jq: error (at <stdin>:1)"));`
-- [jq.rs:472]: `assert!(r.stderr.starts_with(b"jq: error (at <stdin>:4)"));`
-- [neon_branch.rs:260]: `b"\",\n  \"database_url\": \"postgresql://neondb_owner:mock_password@ep-dry-r...`
-- [neon_branch.rs:302]: `b"/neondb?sslmode=require",`
+- [neon_branch.rs:256]: `b"\",\n  \"database_url\": \"postgresql://neondb_owner:mock_password@ep-dry-r...`
+- [neon_branch.rs:296]: `b"/neondb?sslmode=require",`
+- [neon_branch.rs:462]: `assert!(r.stderr.starts_with(b"jq: error (at <stdin>:1)"));`
+- [neon_branch.rs:464]: `assert!(r.stderr.starts_with(b"jq: error (at <stdin>:4)"));`
 - [pr_comment.rs:302]: `assert!(render(b"bogus", b"a", b"1", b"", b"", b"", b"t").is_none());`
 - [pr_comment.rs:308]: `assert!(b.ends_with(b"\n\n<!-- vitruvian-preview-bot: vitruvian-tabs -->"));`
 - [pr_comment.rs:309]: `assert!(b.starts_with("### ❌".as_bytes()));`
