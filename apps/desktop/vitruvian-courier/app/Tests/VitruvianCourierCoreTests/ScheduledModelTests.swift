@@ -129,6 +129,53 @@ final class ScheduledModelTests: XCTestCase {
         XCTAssertEqual(toasts.all, ["That chat or message is no longer there."])
         try await waitUntil { self.lists(server).count > reads }
     }
+
+    func testQueuedEventCountIncrementsOnlyWhenNewMessageIsQueuedInOpenChat() async throws {
+        let (script, server, app, model) = try await start()
+        script.lists["!a"] = [scheduledJSON(1, room: "!a", due: 2000), scheduledJSON(2, room: "!a", due: 3000)]
+        script.lists["!b"] = []
+
+        // Opening a chat that already has scheduled messages must not trigger a queued bounce.
+        app.selectedRoomID = "!a"
+        try await waitUntil { model.hasLoadedRoom && model.scheduled.map(\.outboxID) == [1, 2] }
+        XCTAssertEqual(model.queuedEventCount, 0)
+
+        // Switching to a chat with no scheduled messages starts clean.
+        app.selectedRoomID = "!b"
+        try await waitUntil { model.roomID == "!b" && model.hasLoadedRoom && model.scheduled.isEmpty }
+        XCTAssertEqual(model.queuedEventCount, 0)
+
+        // Queueing a message (0 -> 1) increments queuedEventCount.
+        script.lists["!b"] = [scheduledJSON(5, room: "!b", due: 4000)]
+        server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { model.scheduled.map(\.outboxID) == [5] }
+        XCTAssertEqual(model.queuedEventCount, 1)
+
+        // Queueing a second message (1 -> 2) increments queuedEventCount again.
+        script.lists["!b"] = [scheduledJSON(5, room: "!b", due: 4000), scheduledJSON(6, room: "!b", due: 5000)]
+        server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { model.scheduled.map(\.outboxID) == [5, 6] }
+        XCTAssertEqual(model.queuedEventCount, 2)
+
+        // State changes or deletions do not increment queuedEventCount.
+        script.lists["!b"] = [
+            scheduledJSON(5, room: "!b", due: 4000, state: "canceled"),
+            scheduledJSON(6, room: "!b", due: 5000),
+        ]
+        server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { model.scheduled.first?.state == .canceled }
+        XCTAssertEqual(model.queuedEventCount, 2)
+
+        script.lists["!b"] = [scheduledJSON(6, room: "!b", due: 5000)]
+        server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { model.scheduled.map(\.outboxID) == [6] }
+        XCTAssertEqual(model.queuedEventCount, 2)
+
+        // Switching back to !a with existing messages does not bounce.
+        app.selectedRoomID = "!a"
+        try await waitUntil { model.scheduled.map(\.outboxID) == [1, 2] }
+        XCTAssertEqual(model.queuedEventCount, 2)
+    }
 }
 
 @MainActor

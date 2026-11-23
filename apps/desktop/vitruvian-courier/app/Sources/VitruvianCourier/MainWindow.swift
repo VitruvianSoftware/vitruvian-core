@@ -114,9 +114,7 @@ struct MainWindow: View {
                 }
             }
             .overlay {
-                if commandBar.isPresented {
-                    CommandBarOverlay(model: commandBar)
-                }
+                CommandBarOverlayHost(model: commandBar)
             }
             .overlay {
                 ConfettiOverlayView(triggerCount: appearance.confettiTriggerCount)

@@ -10,6 +10,11 @@ public struct CommandBarOverlay: View {
     @FocusState private var isSearchFocused: Bool
     @Environment(\.redactNamesAndPictures) private var isRedacted
     @Environment(\.themeAccentColor) private var themeAccent
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     public init(model: CommandBarModel) {
         self.model = model
@@ -60,7 +65,10 @@ public struct CommandBarOverlay: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("commandBar.overlay")
         .onAppear {
-            isSearchFocused = true
+            isSearchFocused = model.isPresented
+        }
+        .onChange(of: model.isPresented) { _, presented in
+            isSearchFocused = presented
         }
         .onKeyPress(.upArrow) {
             model.moveSelection(delta: -1)
@@ -268,9 +276,14 @@ public struct CommandBarOverlay: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
+            .courierScrollEdgeFade(refreshToken: filtered.count)
             .onChange(of: model.selectedIndex) { _, newIndex in
                 guard filtered.indices.contains(newIndex) else { return }
-                withAnimation(.easeInOut(duration: 0.12)) {
+                if CommandBarMotion.animatesSelectionScroll(reduceMotion: reduceMotionEnabled) {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        proxy.scrollTo(filtered[newIndex].id, anchor: .center)
+                    }
+                } else {
                     proxy.scrollTo(filtered[newIndex].id, anchor: .center)
                 }
             }
@@ -457,10 +470,15 @@ public struct CommandBarOverlay: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
+            .courierScrollEdgeFade(refreshToken: rows.count)
             // ↑ and ↓ keep the highlighted chat in view, as they do in the command list.
             .onChange(of: model.selectedIndex) { _, newIndex in
                 guard rows.indices.contains(newIndex) else { return }
-                withAnimation(.easeInOut(duration: 0.12)) {
+                if CommandBarMotion.animatesSelectionScroll(reduceMotion: reduceMotionEnabled) {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        proxy.scrollTo(rows[newIndex].roomID, anchor: .center)
+                    }
+                } else {
                     proxy.scrollTo(rows[newIndex].roomID, anchor: .center)
                 }
             }

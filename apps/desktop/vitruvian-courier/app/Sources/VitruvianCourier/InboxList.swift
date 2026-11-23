@@ -197,6 +197,7 @@ struct InboxList: View {
                 }
                 .listStyle(.inset)
                 .courierSidebarList()
+                .courierScrollEdgeFade(refreshToken: rows.count)
                 .contextMenu(forSelectionType: String.self, menu: { _ in EmptyView() }, primaryAction: { ids in
                     if let id = ids.first, id != InboxModel.newChatRowID,
                        let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
@@ -348,11 +349,69 @@ struct EmptyStateView: View {
     }
 }
 
-/// Grey rows while the first page is read.
-private struct SkeletonRows: View {
+/// Grey rows while the first page is read, with a soft 1 s linear shimmer when visible and Reduce Motion is off.
+struct SkeletonRows: View {
     let compact: Bool
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    @State private var isVisible = false
+    @State private var startDate: Date?
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || workspaceReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private var isShimmering: Bool {
+        SkeletonShimmerMotion.shouldAnimate(isVisible: isVisible, reduceMotion: reduceMotionEnabled)
+    }
 
     var body: some View {
+        skeletonShapes
+            .foregroundStyle(Color.primary.opacity(SkeletonShimmerMotion.baseOpacity))
+            .overlay {
+                if isShimmering {
+                    TimelineView(.animation(paused: !isShimmering)) { context in
+                        GeometryReader { geo in
+                            let elapsed = startDate.map { context.date.timeIntervalSince($0) } ?? 0
+                            let phase = SkeletonShimmerMotion.phase(elapsed: elapsed)
+                            let bandWidth = SkeletonShimmerMotion.bandWidth(containerWidth: geo.size.width)
+                            LinearGradient(
+                                colors: [
+                                    .clear,
+                                    Color.primary.opacity(SkeletonShimmerMotion.highlightOpacity),
+                                    .clear,
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: bandWidth, height: geo.size.height)
+                            .offset(x: SkeletonShimmerMotion.bandOffsetX(phase: phase, containerWidth: geo.size.width))
+                        }
+                    }
+                    .mask(skeletonShapes)
+                    .allowsHitTesting(false)
+                }
+            }
+            .accessibilityLabel(String(localized: "Loading chats"))
+            .onAppear {
+                isVisible = true
+                startDate = Date()
+                workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+            .onDisappear {
+                isVisible = false
+                startDate = nil
+            }
+            .onReceive(
+                NSWorkspace.shared.notificationCenter.publisher(
+                    for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+                )
+            ) { _ in
+                workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+    }
+
+    private var skeletonShapes: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 16) {
             ForEach(0 ..< 8, id: \.self) { index in
                 HStack(spacing: 10) {
@@ -370,10 +429,8 @@ private struct SkeletonRows: View {
             }
             Spacer(minLength: 0)
         }
-        .foregroundStyle(Color.primary.opacity(0.08))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityLabel(String(localized: "Loading chats"))
     }
 }
 

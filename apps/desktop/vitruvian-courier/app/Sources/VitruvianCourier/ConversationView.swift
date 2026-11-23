@@ -70,6 +70,7 @@ struct ConversationView: View {
                 ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
                            messageActions: messageActions, preferences: preferences, focus: focus,
                            headerInToolbar: drawsLiquidGlass, chatName: chatName)
+                    .courierSidePaneEntrance()
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
                     .reportsSidePaneWidth(.thread)
             }
@@ -180,6 +181,7 @@ struct ConversationView: View {
                     headerInToolbar: drawsLiquidGlass,
                     selfAvatarPath: conversation.ownAvatarPath(for: info)
                 )
+                .courierSidePaneEntrance()
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)
             }
@@ -866,8 +868,7 @@ struct ConversationView: View {
     /// Changes when anything under the timeline changes size.
     private var bottomBarSignature: [String] {
         [composerChromeSignature,
-         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight),
-         conversation.typingLine == nil ? "" : "typing"]
+         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight)]
     }
 
     /// At the top of the timeline when this Mac holds no older message but the network may: the "Loading earlier
