@@ -698,6 +698,27 @@ func roomSetPinned(ctx context.Context, d *Deps, raw json.RawMessage) (any, erro
 	return nil, d.Actions.SetPinned(ctx, *p.RoomID, *p.Pinned)
 }
 
+func roomReorderPins(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomIDs *[]string `json:"room_ids"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if p.RoomIDs == nil {
+		return nil, invalidParams("room_ids is required")
+	}
+	if len(*p.RoomIDs) > maxBulkRoomIDs {
+		return nil, invalidParams(fmt.Sprintf("room_ids must name at most %d chats", maxBulkRoomIDs))
+	}
+	for _, id := range *p.RoomIDs {
+		if strings.HasPrefix(id, "merge:") {
+			return nil, invalidParams("room_ids must not contain a merge_id")
+		}
+	}
+	return nil, d.Store.ReorderPins(ctx, *p.RoomIDs)
+}
+
 func roomSetArchived(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
 		RoomIDs  *[]string `json:"room_ids"`

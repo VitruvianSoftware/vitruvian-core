@@ -4,10 +4,15 @@
 import AppKit
 import VitruvianCourierCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Pinned chats above the list, as Beeper-like tiles (a 48 pt avatar, the name on one line under it) (Settings ▸ Inbox ▸ "Show pinned chats as full rows" puts them
 /// in the list instead). A click opens the chat, or while selecting, selects it.
 struct PinnedStrip: View {
+    static let dragType: UTType = UTType("com.vitruviansoftware.courier.pinned-chat")
+        ?? UTType(mimeType: "application/x-vitruvian-courier-pinned-chat", conformingTo: .data)
+        ?? .data
+
     @ObservedObject var inbox: InboxModel
     @ObservedObject var spaces: SpacesModel
     let ui: InboxUI
@@ -15,15 +20,24 @@ struct PinnedStrip: View {
     let rows: [InboxRow]
     let doubleClick: (InboxRow) -> Void
 
+    @State private var draftOrder: [String]?
+    @State private var draggingID: String?
+    @State private var dragTracker = PinnedDragTracker()
+
+    private var canDrag: Bool { !inbox.isSelecting && !inbox.isLocked && rows.count > 1 }
+    private var displayedRows: [InboxRow] { PinnedOrder.ordered(rows, by: draftOrder) }
+    private var rowIDs: [String] { rows.map(\.id) }
+
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 84, maximum: 112), spacing: 6)], spacing: 6) {
-            ForEach(rows, id: \.id) { row in
+            ForEach(displayedRows, id: \.id) { row in
                 PinnedChat(row: row, displayTitleOverride: inbox.displayTitle(for: row),
                            networkName: inbox.networkName(row.network),
                            isOpen: !inbox.isSelecting && inbox.isOpen(row.id),
                            isSelected: inbox.isSelecting && inbox.selection.contains(row.id),
                            showsBadge: inbox.preferences.showNetworkIcons,
                            tinted: inbox.preferences.colorNetworkIcons)
+                    .opacity(draggingID == row.id ? 0.45 : 1)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         let flags = NSEvent.modifierFlags
@@ -41,10 +55,110 @@ struct PinnedStrip: View {
                     // A native menu, so the system's own "Ask Siri" item is left out.
                     .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row) }
                     .onHover { inside in if inside { inbox.prefetchFeatures(for: row) } }
+                    .modifier(PinnedTileDragModifier(
+                        enabled: canDrag,
+                        makeProvider: { beginDrag(rowID: row.id) },
+                        dropDelegate: makeDropDelegate(targetID: row.id)
+                    ))
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+        .onDrop(of: [Self.dragType], delegate: makeDropDelegate(targetID: nil))
+        .onChange(of: rowIDs) { _, newIDs in
+            draftOrder = nil
+            if let draggingID, !newIDs.contains(draggingID) {
+                self.draggingID = nil
+                dragTracker.cancelAll()
+            }
+        }
+        .onChange(of: canDrag) { _, allowed in
+            if !allowed {
+                cancelDrag(animated: false)
+            }
+        }
+        .onDisappear {
+            cancelDrag(animated: false)
+        }
+    }
+
+    @MainActor
+    private func beginDrag(rowID: String) -> NSItemProvider {
+        dragTracker.cancelAll()
+        draggingID = rowID
+        draftOrder = rowIDs
+        dragTracker.startWatchingDragEnd {
+            cancelDrag(animated: true)
+        }
+        let provider = NSItemProvider()
+        // Private type conforming only to public.data so tiles cannot be dropped into other apps as text.
+        provider.registerDataRepresentation(forTypeIdentifier: Self.dragType.identifier, visibility: .ownProcess) { completion in
+            completion(Data(rowID.utf8), nil)
+            return nil
+        }
+        return provider
+    }
+
+    @MainActor
+    private func cancelDrag(animated: Bool) {
+        dragTracker.cancelAll()
+        draggingID = nil
+        if animated {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                draftOrder = nil
+            }
+        } else {
+            draftOrder = nil
+        }
+    }
+
+    private func makeDropDelegate(targetID: String?) -> PinnedStripDropDelegate {
+        PinnedStripDropDelegate(
+            targetID: targetID,
+            isValid: { canDrag && draggingID != nil },
+            onEnter: { target in
+                dragTracker.markInsideStrip()
+                guard let target, let draggingID else { return }
+                let base = draftOrder ?? rowIDs
+                let next = PinnedOrder.moving(draggingID, onto: target, in: base)
+                if next != base {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        draftOrder = next
+                    }
+                }
+            },
+            onUpdate: {
+                dragTracker.markInsideStrip()
+            },
+            onExit: {
+                dragTracker.scheduleExitReset {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        draftOrder = nil
+                    }
+                }
+            },
+            onPerformDrop: {
+                dragTracker.cancelAll()
+                guard canDrag, draggingID != nil else {
+                    draggingID = nil
+                    draftOrder = nil
+                    return false
+                }
+                let committed = draftOrder
+                draggingID = nil
+                guard let committed, committed != rowIDs else {
+                    draftOrder = nil
+                    return true
+                }
+                Task { @MainActor in
+                    await inbox.reorderPinned(committed)
+                    if draggingID == nil {
+                        draftOrder = nil
+                    }
+                }
+                return true
+            }
+        )
     }
 
     private func click(_ row: InboxRow) {
@@ -61,6 +175,117 @@ struct PinnedStrip: View {
     /// Right-clicking a chat that is part of the selection acts on the selection.
     private func menuIDs(_ row: InboxRow) -> [String]? {
         inbox.isSelecting && inbox.selection.contains(row.id) ? nil : [row.id]
+    }
+}
+
+private struct PinnedTileDragModifier: ViewModifier {
+    let enabled: Bool
+    let makeProvider: @MainActor () -> NSItemProvider
+    let dropDelegate: PinnedStripDropDelegate
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .onDrag { makeProvider() }
+                .onDrop(of: [PinnedStrip.dragType], delegate: dropDelegate)
+        } else {
+            content
+        }
+    }
+}
+
+private struct PinnedStripDropDelegate: DropDelegate {
+    let targetID: String?
+    let isValid: @MainActor () -> Bool
+    let onEnter: @MainActor (String?) -> Void
+    let onUpdate: @MainActor () -> Void
+    let onExit: @MainActor () -> Void
+    let onPerformDrop: @MainActor () -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        guard info.hasItemsConforming(to: [PinnedStrip.dragType]) else { return false }
+        return MainActor.assumeIsolated { isValid() }
+    }
+
+    func dropEntered(info: DropInfo) {
+        MainActor.assumeIsolated { onEnter(targetID) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        MainActor.assumeIsolated {
+            onUpdate()
+            return isValid() ? DropProposal(operation: .move) : DropProposal(operation: .cancel)
+        }
+    }
+
+    func dropExited(info: DropInfo) {
+        MainActor.assumeIsolated { onExit() }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        MainActor.assumeIsolated { onPerformDrop() }
+    }
+}
+
+/// Coordinates exit-reset debouncing across the 6 pt grid gaps and cleanup when a drag ends outside or is cancelled.
+@MainActor
+private final class PinnedDragTracker {
+    private var exitResetTask: Task<Void, Never>?
+    private var endWatchTask: Task<Void, Never>?
+
+    func markInsideStrip() {
+        exitResetTask?.cancel()
+        exitResetTask = nil
+    }
+
+    func scheduleExitReset(_ reset: @escaping @MainActor () -> Void) {
+        exitResetTask?.cancel()
+        exitResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.exitResetTask = nil
+            reset()
+        }
+    }
+
+    func startWatchingDragEnd(_ onEnded: @escaping @MainActor () -> Void) {
+        endWatchTask?.cancel()
+        endWatchTask = Task { @MainActor [weak self] in
+            var sawPressed = (NSEvent.pressedMouseButtons & 1) != 0
+            var releasedTicks = 0
+            var idleTicks = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                guard let self, !Task.isCancelled else { return }
+                if (NSEvent.pressedMouseButtons & 1) != 0 {
+                    sawPressed = true
+                    releasedTicks = 0
+                    idleTicks = 0
+                } else if sawPressed {
+                    releasedTicks += 1
+                    if releasedTicks >= 2 {
+                        self.endWatchTask = nil
+                        onEnded()
+                        return
+                    }
+                } else {
+                    idleTicks += 1
+                    if idleTicks >= 5 {
+                        self.endWatchTask = nil
+                        onEnded()
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    func cancelAll() {
+        exitResetTask?.cancel()
+        exitResetTask = nil
+        endWatchTask?.cancel()
+        endWatchTask = nil
     }
 }
 

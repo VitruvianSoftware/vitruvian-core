@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -216,6 +217,69 @@ func (s *Store) SetPinned(ctx context.Context, roomID string, pinned bool) error
 		return true, nil
 	})
 	return err
+}
+
+// ReorderPins updates pinned_at for the named pinned chats so they appear in roomIDs's order, reassigning only
+// the pinned_at slots those chats already hold (sorted ascending). Unnamed pinned chats keep their pinned_at,
+// values stay unique and strictly increasing, unknown or unpinned IDs are ignored, and a "room" change is
+// published only for chats whose pinned_at actually changed.
+func (s *Store) ReorderPins(ctx context.Context, roomIDs []string) error {
+	if len(roomIDs) == 0 {
+		return nil
+	}
+	var changed []string
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		changed = nil
+		rows, err := s.db.Query(ctx, `SELECT room_id, pinned_at FROM room_prefs WHERE pinned_at > 0 ORDER BY pinned_at ASC, room_id ASC`)
+		if err != nil {
+			return err
+		}
+		current := make(map[string]int64)
+		for rows.Next() {
+			var id string
+			var pinnedAt int64
+			if err := rows.Scan(&id, &pinnedAt); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			current[id] = pinnedAt
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		// Keep only distinct given IDs that are currently pinned, in the given order.
+		ordered := make([]string, 0, len(roomIDs))
+		for _, id := range distinct(roomIDs) {
+			if _, ok := current[id]; ok {
+				ordered = append(ordered, id)
+			}
+		}
+		if len(ordered) <= 1 {
+			return nil
+		}
+		slots := make([]int64, len(ordered))
+		for i, id := range ordered {
+			slots[i] = current[id]
+		}
+		slices.Sort(slots)
+		for i, id := range ordered {
+			if current[id] == slots[i] {
+				continue
+			}
+			if _, err := s.db.Exec(ctx, `UPDATE room_prefs SET pinned_at = $2 WHERE room_id = $1`, id, slots[i]); err != nil {
+				return err
+			}
+			changed = append(changed, id)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, id := range changed {
+		s.publish(Change{Kind: "room", RoomID: id})
+	}
+	return nil
 }
 
 // SetArchived archives or unarchives chats, and returns the ones that changed. A pinned chat is never archived:
