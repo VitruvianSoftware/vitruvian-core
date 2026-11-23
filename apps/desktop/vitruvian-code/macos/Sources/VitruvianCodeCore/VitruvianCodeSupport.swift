@@ -2556,11 +2556,35 @@ public struct VitruvianCodeActiveSubagent: Identifiable, Equatable, Sendable {
 }
 
 /// A tool execution step within an agent response.
-public struct VitruvianCodeToolStep: Identifiable, Equatable, Sendable {
+public struct VitruvianCodeToolStep: Identifiable, Equatable, Sendable, Codable {
     /// What sort of tool ran, so the bubble can show a diff, a shell
     /// output block or a plain row.
     public enum Kind: String, Equatable, Sendable, Codable {
         case edit, write, bash, read, search, subagent, other
+    }
+
+    /// A file location (path and optional 1-based line number) touched by a tool step.
+    public struct Location: Equatable, Sendable, Codable {
+        public let path: String
+        public let line: Int?
+
+        public init(path: String, line: Int? = nil) {
+            self.path = path
+            self.line = line
+        }
+    }
+
+    /// A single file diff produced by a tool step.
+    public struct Diff: Equatable, Sendable, Codable {
+        public let path: String
+        public let oldText: String?
+        public let newText: String
+
+        public init(path: String, oldText: String? = nil, newText: String) {
+            self.path = path
+            self.oldText = oldText
+            self.newText = newText
+        }
     }
 
     public let id: String
@@ -2573,6 +2597,23 @@ public struct VitruvianCodeToolStep: Identifiable, Equatable, Sendable {
     public var diffNew: String?
     public var output: String?
     public var isError: Bool
+    public var locations: [Location]
+    public var diffs: [Diff]
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case detail
+        case isFinished
+        case kind
+        case filePath
+        case diffOld
+        case diffNew
+        case output
+        case isError
+        case locations
+        case diffs
+    }
 
     public init(
         id: String = UUID().uuidString,
@@ -2584,7 +2625,9 @@ public struct VitruvianCodeToolStep: Identifiable, Equatable, Sendable {
         diffOld: String? = nil,
         diffNew: String? = nil,
         output: String? = nil,
-        isError: Bool = false
+        isError: Bool = false,
+        locations: [Location] = [],
+        diffs: [Diff] = []
     ) {
         self.id = id
         self.title = title
@@ -2596,10 +2639,76 @@ public struct VitruvianCodeToolStep: Identifiable, Equatable, Sendable {
         self.diffNew = diffNew
         self.output = output
         self.isError = isError
+        self.locations = locations
+        self.diffs = diffs
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        self.isFinished = try container.decodeIfPresent(Bool.self, forKey: .isFinished) ?? true
+        self.kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .other
+        self.filePath = try container.decodeIfPresent(String.self, forKey: .filePath)
+        self.diffOld = try container.decodeIfPresent(String.self, forKey: .diffOld)
+        self.diffNew = try container.decodeIfPresent(String.self, forKey: .diffNew)
+        self.output = try container.decodeIfPresent(String.self, forKey: .output)
+        self.isError = try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false
+        self.locations = try container.decodeIfPresent([Location].self, forKey: .locations) ?? []
+        self.diffs = try container.decodeIfPresent([Diff].self, forKey: .diffs) ?? []
+    }
+
+    /// All locations on this step, falling back to legacy `filePath` when `locations` is empty.
+    public var effectiveLocations: [Location] {
+        if !locations.isEmpty {
+            return locations
+        }
+        if let filePath, !filePath.isEmpty {
+            return [Location(path: filePath, line: nil)]
+        }
+        return []
+    }
+
+    /// All diffs on this step, falling back to legacy `diffOld`/`diffNew` when `diffs` is empty.
+    public var effectiveDiffs: [Diff] {
+        if !diffs.isEmpty {
+            return diffs
+        }
+        if (kind == .edit || kind == .write), (diffOld != nil || diffNew != nil) {
+            return [Diff(path: filePath ?? "", oldText: kind == .write ? nil : diffOld, newText: diffNew ?? "")]
+        }
+        return []
     }
 
     /// True when the row has something to expand into.
-    public var hasDetail: Bool { diffOld != nil || diffNew != nil || output != nil }
+    public var hasDetail: Bool { !effectiveDiffs.isEmpty || !effectiveLocations.isEmpty || output != nil }
+
+    /// Merges an incoming live step update while preserving earlier locations, diffs, and output
+    /// if the newer update omits them.
+    public func merging(with incoming: VitruvianCodeToolStep) -> VitruvianCodeToolStep {
+        var merged = self
+        let mergedTitle = incoming.title.isEmpty ? title : incoming.title
+        merged = VitruvianCodeToolStep(
+            id: id,
+            title: mergedTitle,
+            detail: incoming.detail ?? detail,
+            isFinished: incoming.isFinished,
+            kind: incoming.kind != .other ? incoming.kind : kind,
+            filePath: (incoming.filePath?.isEmpty == false) ? incoming.filePath : filePath,
+            diffOld: (!incoming.diffs.isEmpty || incoming.diffOld != nil || incoming.diffNew != nil)
+                ? incoming.diffOld
+                : diffOld,
+            diffNew: (!incoming.diffs.isEmpty || incoming.diffOld != nil || incoming.diffNew != nil)
+                ? incoming.diffNew
+                : diffNew,
+            output: incoming.output ?? output,
+            isError: incoming.isError,
+            locations: incoming.locations.isEmpty ? locations : incoming.locations,
+            diffs: incoming.diffs.isEmpty ? diffs : incoming.diffs
+        )
+        return merged
+    }
 }
 
 extension VitruvianCodeToolStep {

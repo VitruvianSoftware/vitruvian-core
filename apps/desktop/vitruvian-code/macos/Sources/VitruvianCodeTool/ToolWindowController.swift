@@ -221,6 +221,13 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.skipQuestion, "skipQuestion"), (\.openLink, "openLink"), (\.declineLink, "declineLink"),
         (\.requiredField, "requiredField"), (\.invalidNumber, "invalidNumber"),
         (\.invalidInteger, "invalidInteger"), (\.booleanYes, "booleanYes"), (\.booleanNo, "booleanNo"),
+        (\.plan, "plan"), (\.planProgressFormat, "planProgressFormat"),
+        (\.planStatusPending, "planStatusPending"), (\.planStatusInProgress, "planStatusInProgress"),
+        (\.planStatusCompleted, "planStatusCompleted"), (\.planStatusOther, "planStatusOther"),
+        (\.toolStatusRunning, "toolStatusRunning"), (\.toolStatusDone, "toolStatusDone"),
+        (\.toolStatusFailed, "toolStatusFailed"), (\.diffTruncatedFormat, "diffTruncatedFormat"),
+        (\.timelineToolSingularFormat, "timelineToolSingularFormat"),
+        (\.timelineToolsFormat, "timelineToolsFormat"), (\.diffSourceLiveTurn, "diffSourceLiveTurn"),
     ]
 
     private func ensurePanel() -> NSPanel {

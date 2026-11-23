@@ -157,6 +157,127 @@ final class AgentCardSnapshotTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testRendersPlanCardAndToolCardStatesLightAndDark() throws {
+        let strings = VitruvianCodeChatStrings()
+
+        let inProgressPlan = AgentPlanView(
+            entries: [
+                PlanEntry(content: "Inspect ACP protocol schema", status: .completed),
+                PlanEntry(content: "Render live plan card above composer", status: .inProgress),
+                PlanEntry(content: "Show all tool diffs and locations", status: .pending),
+                PlanEntry(content: "Optional follow-up note", status: .other),
+            ],
+            strings: strings
+        )
+        let completedPlan = AgentPlanView(
+            entries: [
+                PlanEntry(content: "Inspect ACP protocol schema", status: .completed),
+                PlanEntry(content: "Render live plan card above composer", status: .completed),
+            ],
+            strings: strings
+        )
+        let longPlan = AgentPlanView(
+            entries: (1...12).map { index in
+                let status: PlanEntry.Status = index < 6 ? .completed : (index == 6 ? .inProgress : .pending)
+                return PlanEntry(content: "Step \(index): verify live transcript behaviour", status: status)
+            },
+            strings: strings
+        )
+
+        let runningStep = VitruvianCodeToolStep(
+            id: "tool-run",
+            title: "Edit Sources/App.swift",
+            isFinished: false,
+            kind: .edit,
+            filePath: "/workspace/Sources/App.swift",
+            locations: [VitruvianCodeToolStep.Location(path: "/workspace/Sources/App.swift", line: 42)]
+        )
+        let doneMultiStep = VitruvianCodeToolStep(
+            id: "tool-done",
+            title: "Refactor auth and router",
+            isFinished: true,
+            kind: .edit,
+            filePath: "/workspace/Sources/Auth.swift",
+            diffOld: "let timeout = 10",
+            diffNew: "let timeout = 30",
+            locations: [
+                VitruvianCodeToolStep.Location(path: "/workspace/Sources/Auth.swift", line: 18),
+                VitruvianCodeToolStep.Location(path: "/workspace/Sources/Router.swift", line: 7),
+            ],
+            diffs: [
+                VitruvianCodeToolStep.Diff(
+                    path: "Sources/Auth.swift",
+                    oldText: "let timeout = 10\nlet retries = 1",
+                    newText: "let timeout = 30\nlet retries = 3"
+                ),
+                VitruvianCodeToolStep.Diff(
+                    path: "Sources/Router.swift",
+                    oldText: "return .ok",
+                    newText: "return .accepted"
+                ),
+            ]
+        )
+        let failedStep = VitruvianCodeToolStep(
+            id: "tool-fail",
+            title: "swift test",
+            isFinished: true,
+            kind: .bash,
+            output: "error: build failed with exit code 1",
+            isError: true,
+            locations: [VitruvianCodeToolStep.Location(path: "/workspace/Package.swift", line: 12)]
+        )
+
+        let shots: [(name: String, view: AnyView, minHeight: Int)] = [
+            ("plan-card-in-progress", AnyView(inProgressPlan), 80),
+            ("plan-card-completed", AnyView(completedPlan), 20),
+            ("plan-card-long-scrolling", AnyView(longPlan), 150),
+            ("tool-card-running", AnyView(VitruvianCodeToolStepRow(
+                step: runningStep, strings: strings, workingDirectory: "/workspace", isExpanded: true, toggle: {}
+            )), 40),
+            ("tool-card-done-multi", AnyView(VitruvianCodeToolStepRow(
+                step: doneMultiStep, strings: strings, workingDirectory: "/workspace", isExpanded: true, toggle: {}
+            )), 120),
+            ("tool-card-failed", AnyView(VitruvianCodeToolStepRow(
+                step: failedStep, strings: strings, workingDirectory: "/workspace", isExpanded: true, toggle: {}
+            )), 60),
+        ]
+
+        _ = NSApplication.shared
+        let folderURL = URL(fileURLWithPath: Self.snapshotFolderPath, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+
+        for shot in shots {
+            for (schemeName, scheme, appearanceName) in [
+                ("light", ColorScheme.light, NSAppearance.Name.aqua),
+                ("dark", ColorScheme.dark, NSAppearance.Name.darkAqua),
+            ] {
+                let framed = shot.view
+                    .frame(width: 560)
+                    .padding(16)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(scheme == .dark ? Color(white: 0.12) : Color(white: 0.97))
+                    .environment(\.colorScheme, scheme)
+
+                let bitmap = try Self.renderViewToBitmap(framed, width: 592, appearanceName: appearanceName)
+                let yellowShare = Self.placeholderYellowShare(in: bitmap)
+                XCTAssertLessThan(
+                    yellowShare,
+                    0.01,
+                    "\(shot.name)-\(schemeName) contains placeholder yellow (\(String(format: "%.2f", yellowShare * 100))%)"
+                )
+
+                let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let fileName = "\(shot.name)-\(schemeName).png"
+                let destination = folderURL.appendingPathComponent(fileName)
+                try data.write(to: destination)
+                print("agent card snapshot: \(destination.path)")
+                XCTAssertGreaterThan(bitmap.pixelsWide, 100)
+                XCTAssertGreaterThan(bitmap.pixelsHigh, shot.minHeight)
+            }
+        }
+    }
+
     func testReturnToSendSubmitsValidFormAndSendsNothingWhenInvalid() {
         let question = AgentQuestion(
             requestID: "q-ret",

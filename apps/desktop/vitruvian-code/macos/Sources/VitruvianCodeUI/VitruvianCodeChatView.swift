@@ -183,6 +183,12 @@ public struct VitruvianCodeChatView: View {
                     Divider().opacity(0.3)
                 } else {
                     conversation
+                    if !session.liveState.plan.isEmpty {
+                        AgentPlanView(entries: session.liveState.plan, strings: strings)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 6)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                     Divider().opacity(0.3)
                 }
                 ModeToggleStrip(
@@ -1275,7 +1281,12 @@ public struct VitruvianCodeChatView: View {
     }
 
     private var conversation: some View {
-        let turns = VitruvianCodeTimeline.turns(from: session.messages)
+        let isLive = session.isLiveChat(for: engine.configuration)
+        let turns = VitruvianCodeTimeline.turns(
+            from: session.messages,
+            livePlan: isLive ? session.liveState.plan : [],
+            includeLiveMetadata: isLive
+        )
         let showsTimeline = VitruvianCodeTimeline.showsRail(turnCount: turns.count)
         let turnOf = showsTimeline ? VitruvianCodeTimeline.turnIndexByMessage(turns) : [:]
         return ZStack(alignment: .bottomTrailing) {
@@ -1767,6 +1778,7 @@ public struct VitruvianCodeChatView: View {
         case .diffReview:
             VitruvianCodeAnnotatedDiffView(
                 reviewSession: session.diffReviewSession,
+                strings: strings,
                 onSendBatch: { payload in
                     session.activeADEPanel = nil
                     session.send(payload, configuration: engine.configuration, agentPath: engine.agentPath)
