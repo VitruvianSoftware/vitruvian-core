@@ -55,13 +55,27 @@ pub fn load_or_create_in(store: &dyn SecretStore) -> Result<Ed25519KeyPair> {
             seed.to_vec()
         }
     };
+    from_seed(&seed)
+}
+
+/// The key as saved right now, or `None` if there is none. Never creates
+/// one: a running agent reads this while the person is signed out, and a key
+/// made then would not be the one `vrelay login` registers.
+pub fn load_saved(dir: &Path) -> Result<Option<Ed25519KeyPair>> {
+    secrets::for_dir(dir)
+        .get(DEVICE_KEY)?
+        .map(|seed| from_seed(&seed))
+        .transpose()
+}
+
+fn from_seed(seed: &[u8]) -> Result<Ed25519KeyPair> {
     if seed.len() != SEED_LEN {
         return Err(format!(
             "the saved device key is {} bytes, expected {SEED_LEN}; remove it (`vrelay logout`) and sign in again to make a new device key",
             seed.len()
         ));
     }
-    Ed25519KeyPair::from_seed_unchecked(&seed)
+    Ed25519KeyPair::from_seed_unchecked(seed)
         .map_err(|e| format!("the saved device key is not usable: {e}"))
 }
 
@@ -108,6 +122,17 @@ mod tests {
         write_private(&key_path(&dir), b"short").unwrap();
         assert!(load_or_create(&dir).unwrap_err().contains("expected 32"));
         assert_eq!(std::fs::read(key_path(&dir)).unwrap(), b"short");
+    }
+
+    #[test]
+    fn load_saved_reads_the_current_key_and_never_makes_one() {
+        let dir = test_dir("saved");
+        ensure_dir(&dir).unwrap();
+        assert!(load_saved(&dir).unwrap().is_none());
+        assert!(!key_path(&dir).exists());
+        let made = load_or_create(&dir).unwrap();
+        let read = load_saved(&dir).unwrap().unwrap();
+        assert_eq!(made.public_key().as_ref(), read.public_key().as_ref());
     }
 
     #[test]

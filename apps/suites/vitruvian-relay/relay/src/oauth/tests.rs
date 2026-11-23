@@ -1475,6 +1475,8 @@ async fn the_sign_in_leaves_no_secret_in_the_logs() {
     let _ = come_back(&h, &mut st, &token).await;
     let logs = h.logs();
     assert!(logs.contains("app_consent_allowed"), "{logs}");
+    // One sign-in is one line, so counting them counts sign-ins.
+    assert_eq!(logs.matches("app_authorize_started").count(), 1, "{logs}");
     for secret in [
         token.as_str(),
         REFRESH,

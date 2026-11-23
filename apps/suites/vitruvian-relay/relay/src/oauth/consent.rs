@@ -328,7 +328,6 @@ pub(super) async fn authorize(app: &Arc<App>, req: &Request<Incoming>) -> Respon
         return error_to_app(&callback, "invalid_target", Some(state));
     };
 
-    app.log("app_authorize_started", json!({"state_bytes": state.len()}));
     let started = app.pending.begin(
         AuthRequest {
             client_id,
@@ -371,7 +370,7 @@ pub(super) async fn authorize(app: &Arc<App>, req: &Request<Incoming>) -> Respon
         form_encode(&started.pkce.state),
         form_encode(&started.pkce.challenge()),
     );
-    app.log("app_authorize_started", json!({}));
+    app.log("app_authorize_started", json!({"state_bytes": state.len()}));
     with_cookie(
         redirect(&url),
         &binding_cookie(&started.browser, secure(app)),
