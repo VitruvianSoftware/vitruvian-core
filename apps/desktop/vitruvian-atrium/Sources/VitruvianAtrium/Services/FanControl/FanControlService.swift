@@ -22,6 +22,9 @@ package final class FanControlService: ObservableObject {
     @Published package private(set) var snapshot: FanControlSnapshot = .empty
     @Published package private(set) var error: FanControlErrorCode?
     @Published package private(set) var isWorking = false
+    /// Every retry of a kept control failed, so the fans stayed with the
+    /// system even though the card still shows the chosen manual speed or curve.
+    @Published package private(set) var resumeFailed = false
 
     private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.fan-control.probe",
                                            qos: .utility)
@@ -36,6 +39,7 @@ package final class FanControlService: ObservableObject {
     private var tickCount = 0
     private var registrationAttemptedVersion: String?
     private var observingWorkspace = false
+    private var resumeAttempt: DispatchWorkItem?
     private lazy var lifecycle = FanControlLifecycle(helperVersion: Self.helperVersion, host: .init(
         helperEnabled: { [weak self] in
             guard let self else { return false }
@@ -44,7 +48,7 @@ package final class FanControlService: ObservableObject {
         },
         snapshot: { [weak self] in self?.snapshot ?? .empty },
         panelIsVisible: { [weak self] in self?.panelIsVisible ?? false },
-        apply: { [weak self] in self?.applyConfiguration($0) },
+        apply: { [weak self] in self?.applyConfiguration($0, resuming: $1) },
         restore: { [weak self] in self?.restoreAutomatic(supersedingCurrentRequest: $0) },
         restoreThenUnregister: { [weak self] in self?.restoreThenUnregister() },
         refresh: { [weak self] in self?.refresh() },
@@ -54,7 +58,13 @@ package final class FanControlService: ObservableObject {
             self?.connection?.invalidate()
             self?.connection = nil
         },
-        stopObservingSystemState: { [weak self] in self?.stopObservingSystemState() }))
+        stopObservingSystemState: { [weak self] in self?.stopObservingSystemState() },
+        startObservingSystemState: { [weak self] in self?.startObservingSystemState() },
+        isWorking: { [weak self] in self?.isWorking ?? false },
+        defersResume: { FanControlResumePolicy.defersResume(thermalState: ProcessInfo.processInfo.thermalState) },
+        scheduleResumeAttempt: { [weak self] in self?.scheduleResumeAttempt(after: $0) },
+        cancelResumeAttempt: { [weak self] in self?.cancelResumeAttempt() },
+        resumeFailedChanged: { [weak self] in self?.resumeFailed = $0 }))
 
     nonisolated private static var appService: SMAppService {
         SMAppService.daemon(plistName: FanControlIdentifiers.plistName)
@@ -141,6 +151,12 @@ package final class FanControlService: ObservableObject {
     }
 
     package func applyConfiguration(_ configuration: FanControlConfiguration) {
+        // The user's own choice replaces any resume still waiting to retry.
+        lifecycle.cancelResumeRetry()
+        applyConfiguration(configuration, resuming: false)
+    }
+
+    private func applyConfiguration(_ configuration: FanControlConfiguration, resuming: Bool) {
         guard FanControlPolicy.validConfiguration(configuration) else {
             error = .controlFailed
             return
@@ -168,22 +184,30 @@ package final class FanControlService: ObservableObject {
             guard let response else {
                 self.error = .helperUnavailable
                 self.restoreAutomatic()
+                if resuming { self.lifecycle.resumeDidFail(.helperUnavailable) }
                 return
             }
             self.apply(response)
             if response.succeeded, response.snapshot.isCooling {
+                self.lifecycle.resumeSucceeded()
                 self.lifecycle.rememberForResume(configuration)
                 self.startTimerIfNeeded()
             } else {
                 self.restoreAutomatic(supersedingCurrentRequest: false,
                                       preserving: response.error ?? .controlFailed,
                                       retrySnapshot: retrySnapshot)
+                if resuming { self.lifecycle.resumeDidFail(response.error ?? .controlFailed, stopReason: response.snapshot.stopReason) }
             }
         }
     }
 
     package func restoreAutomatic() {
         restoreAutomatic(supersedingCurrentRequest: false)
+    }
+
+    /// Picking System in the card forgets the kept control and its retries.
+    package func forgetResume() {
+        lifecycle.forgetResume()
     }
 
     /// The user's own return to System, the one stop a resume must honor.
@@ -210,7 +234,7 @@ package final class FanControlService: ObservableObject {
             self.apply(response)
             if response.succeeded, !response.snapshot.isCooling {
                 if self.snapshot.fans.isEmpty, let retrySnapshot {
-                    self.snapshot = retrySnapshot
+                    self.snapshot.fans = retrySnapshot.fans
                 }
                 if let failure { self.error = failure }
                 UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
@@ -336,6 +360,33 @@ package final class FanControlService: ObservableObject {
         lifecycle.resumePreferenceDidChange()
     }
 
+    /// Both panel refreshes and heartbeats can be the first to see a stopped session.
+    private func applyStatus(_ response: FanControlResponse) {
+        let wasCooling = snapshot.isCooling
+        apply(response)
+        guard response.succeeded, !response.snapshot.isCooling else { return }
+        UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
+        stopIdleWorkIfPossible()
+        lifecycle.sessionStopped(wasCooling: wasCooling, reason: response.snapshot.stopReason)
+    }
+
+    private func scheduleResumeAttempt(after delay: TimeInterval) {
+        resumeAttempt?.cancel()
+        let attempt = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.resumeAttempt = nil
+                self?.lifecycle.retryResume()
+            }
+        }
+        resumeAttempt = attempt
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: attempt)
+    }
+
+    private func cancelResumeAttempt() {
+        resumeAttempt?.cancel()
+        resumeAttempt = nil
+    }
+
     // MARK: - Requests
 
     private func requestStatus() {
@@ -347,13 +398,10 @@ package final class FanControlService: ObservableObject {
                 self.error = .helperUnavailable
                 return
             }
-            self.apply(response)
+            self.applyStatus(response)
             // Any decoded reply proves that the installed helper speaks this
             // protocol, even when the hardware itself is unsupported.
             UserDefaults.standard[Preferences.fanControlHelperVersion] = Self.helperVersion
-            if response.succeeded, !response.snapshot.isCooling {
-                UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
-            }
         }
     }
 
@@ -429,11 +477,7 @@ package final class FanControlService: ObservableObject {
                 self.error = .helperUnavailable
                 return
             }
-            self.apply(response)
-            if response.succeeded, !response.snapshot.isCooling {
-                UserDefaults.standard.removeValue(for: Preferences.fanControlRecoveryNeeded)
-                self.stopIdleWorkIfPossible()
-            }
+            self.applyStatus(response)
         }
     }
 
@@ -643,6 +687,9 @@ package final class FanControlService: ObservableObject {
     }
 
     @objc private func workspaceWillSleep() {
+        // A retry must not re-apply control on the way into sleep; the wake
+        // starts a fresh resume.
+        lifecycle.workspaceWillSleep()
         if UserDefaults.standard[Preferences.fanControlRecoveryNeeded] {
             restoreAutomatic(supersedingCurrentRequest: true)
         }

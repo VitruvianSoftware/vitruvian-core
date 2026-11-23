@@ -28,3 +28,22 @@ extension FanControlConfiguration {
         return configuration
     }
 }
+
+package enum FanControlResumePolicy {
+    /// Right after a wake the SMC can refuse a curve for a moment, before the
+    /// fans and temperature sensors answer again. A refused resume is tried
+    /// again on this schedule, about two minutes in all, before the card
+    /// reports that the fans stayed with the system.
+    package static let retryDelays: [TimeInterval] = [2, 3, 5, 8, 13, 20, 30, 30]
+
+    /// The wait before the next attempt, or nil once every retry is spent.
+    package static func retryDelay(afterFailures failures: Int) -> TimeInterval? {
+        retryDelays.indices.contains(failures) ? retryDelays[failures] : nil
+    }
+
+    /// The helper itself hands the fans back under serious thermal pressure,
+    /// so a resume waits for it to ease instead of fighting that stop.
+    package static func defersResume(thermalState: ProcessInfo.ThermalState) -> Bool {
+        thermalState == .serious || thermalState == .critical
+    }
+}
