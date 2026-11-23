@@ -442,6 +442,175 @@ final class TimelineMotionViewTests: XCTestCase {
         }
     }
 
+    /// Where the top edge of a row actually is on screen at this instant (the layer as drawn, mid-animation included),
+    /// in the window's y-up space: bigger is higher.
+    private func visualTop(_ harness: TableHarness, _ id: String) throws -> CGFloat {
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == id })
+        let rowLayer = try XCTUnwrap(harness.tableView.rowView(atRow: row, makeIfNecessary: false)?.layer)
+        var root = rowLayer
+        while let up = root.superlayer { root = up }
+        let drawn = rowLayer.presentation() ?? rowLayer
+        let rootDrawn = root.presentation() ?? root
+        let corners = [CGPoint(x: 0, y: 0), CGPoint(x: 0, y: drawn.bounds.height)]
+        return corners.map { drawn.convert($0, to: rootDrawn).y }.max() ?? 0
+    }
+
+    private func sendingBecomesSent(reduceMotion: Bool) throws -> (newest: [CGFloat], older: [CGFloat], shift: CGFloat) {
+        let older = message("$older", .sent, ts: 10)
+        let harness = try mountTable(
+            items: Fixture.items([older, message("$newest", .pending, ts: 2)]),
+            lastOutgoingID: "$older", size: NSSize(width: 600, height: 400)
+        )
+        defer { harness.tearDown() }
+        harness.coordinator.reduceMotionOverrideForTesting = reduceMotion
+        harness.bottomInsetBox.bottomSafeAreaInset = 0.5 // hands the coordinator the setting
+        harness.pump(for: 0.1)
+        let newestBefore = try visualTop(harness, "$newest")
+        let olderBefore = try visualTop(harness, "$older")
+        let olderHeightBefore = try frame(harness, "$older").height
+
+        harness.conversation.setSnapshotStateForTesting(
+            roomID: "!motion-view-test",
+            items: Fixture.items([older, message("$newest", .sent, ts: 2)]),
+            row: Fixture.row("!motion-view-test", "Motion Chat", network: "slack", direct: false, ts: 1, preview: "hi"),
+            features: Fixture.features,
+            lastOutgoingID: "$newest"
+        )
+        var newest: [CGFloat] = [], olderShift: [CGFloat] = []
+        for _ in 0 ..< 14 {
+            harness.pump(for: 0.02)
+            newest.append(try visualTop(harness, "$newest") - newestBefore)
+            olderShift.append(olderBefore - (try visualTop(harness, "$older")))
+        }
+        let olderHeightAfter = try frame(harness, "$older").height
+        return (newest, olderShift, olderHeightBefore - olderHeightAfter)
+    }
+
+    /// Mounted, measured on screen at every step: the newest bubble does not move at any moment of Sending -> Sent;
+    /// the older message loses its "Sent" line over 0.15 s (its rows ease down by the line's height), not at once.
+    func testTheNewestBubbleNeverMovesAndTheReceiptLineEasesAway() throws {
+        let run = try sendingBecomesSent(reduceMotion: false)
+        XCTAssertGreaterThan(run.shift, 10, "the older message lost its receipt line")
+        for (step, moved) in run.newest.enumerated() {
+            XCTAssertEqual(moved, 0, accuracy: 0.6, "the newest bubble moved at step \(step)")
+        }
+        XCTAssertEqual(run.older.last ?? 0, run.shift, accuracy: 1.0, "the older rows end where the line's height puts them")
+        XCTAssertLessThan(run.older.first ?? run.shift, run.shift - 3, "eased: not already there after 20 ms")
+        XCTAssertEqual(run.older, run.older.sorted(), "and it only ever moves one way")
+    }
+
+    /// Under Reduce Motion the same change is instant: no frame of it is in between.
+    func testTheReceiptLineGoesAtOnceUnderReduceMotion() throws {
+        let run = try sendingBecomesSent(reduceMotion: true)
+        for moved in run.newest { XCTAssertEqual(moved, 0, accuracy: 0.6) }
+        XCTAssertEqual(run.older.first ?? 0, run.shift, accuracy: 1.0, "already there: no ease")
+    }
+
+    // MARK: - Mounted: the placeholder, the jump button and the highlight tint under Reduce Motion
+
+    private func mount<V: View>(_ view: V, size: NSSize = NSSize(width: 500, height: 300)) -> (host: NSHostingView<V>, window: NSWindow) {
+        _ = NSApplication.shared
+        let host = NSHostingView(rootView: view)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: size)
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.orderFrontRegardless()
+        return (host, window)
+    }
+
+    private func pumpRunLoop(_ seconds: TimeInterval) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+    }
+
+    /// The strongest alpha anywhere in what the view draws.
+    private func peakAlpha(_ host: NSView) -> CGFloat {
+        host.layoutSubtreeIfNeeded()
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return -1 }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        var peak: CGFloat = 0
+        for y in stride(from: 0, to: rep.pixelsHigh, by: 3) {
+            for x in stride(from: 0, to: rep.pixelsWide, by: 3) {
+                peak = max(peak, rep.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+            }
+        }
+        return peak
+    }
+
+    /// Nothing for the first 120 ms; then the message-shaped bars fade in over 0.2 s, or just appear under Reduce Motion.
+    func testThePlaceholderIsPlainFor120msThenFadesInOrJustAppearsUnderReduceMotion() {
+        let normal = mount(TimelinePlaceholder(reduceMotionOverride: false))
+        defer { normal.window.orderOut(nil) }
+        let reduced = mount(TimelinePlaceholder(reduceMotionOverride: true))
+        defer { reduced.window.orderOut(nil) }
+
+        pumpRunLoop(0.05)
+        XCTAssertEqual(peakAlpha(normal.host), 0, accuracy: 0.001, "plain at 50 ms")
+        XCTAssertEqual(peakAlpha(reduced.host), 0, accuracy: 0.001, "plain at 50 ms")
+
+        pumpRunLoop(0.12) // about 170 ms: the delay is over, the fade has begun
+        let atReduced = peakAlpha(reduced.host)
+        XCTAssertGreaterThan(atReduced, 0.03, "Reduce Motion: there at once, in full")
+        XCTAssertLessThan(peakAlpha(normal.host), atReduced - 0.005, "otherwise still fading in")
+
+        pumpRunLoop(0.4)
+        XCTAssertEqual(peakAlpha(normal.host), atReduced, accuracy: 0.01, "it ends at the same strength")
+    }
+
+    /// The width of the jump button, measured as drawn, over the jump from a search result: it does not snap.
+    func testTheJumpButtonKeepsItsWidthWhenAJumpFromASearchWindowEndsAway() throws {
+        _ = NSApplication.shared
+        let box = try mountTable(items: Fixture.items([Fixture.text("$x", "x", mine: false, ts: 1)]))
+        let conversation = box.conversation
+        box.tearDown()
+        conversation.setAwayFromLatestForTesting(true)
+        conversation.setBottomStateForTesting(isAtBottom: false)
+        let view = JumpToLatestButton(conversation: conversation, bottom: conversation.bottom, appearance: nil,
+                                      reduceMotionOverride: false)
+        let mounted = mount(view, size: NSSize(width: 500, height: 100))
+        defer { mounted.window.orderOut(nil) }
+        pumpRunLoop(0.1)
+        let awayWidth = mounted.host.fittingSize.width
+        XCTAssertGreaterThan(awayWidth, 120, "says \"Jump to latest\"")
+
+        // The jump: away ends at once; the view is not at the bottom yet.
+        conversation.setAwayFromLatestForTesting(false)
+        pumpRunLoop(0.05)
+        XCTAssertEqual(mounted.host.fittingSize.width, awayWidth, accuracy: 0.5, "no snap to the chevron alone")
+
+        // The bottom is reached and the button fades out: still the same width.
+        conversation.setBottomStateForTesting(isAtBottom: true)
+        pumpRunLoop(0.05)
+        XCTAssertEqual(mounted.host.fittingSize.width, awayWidth, accuracy: 0.5, "nor while it fades away")
+
+        // Shown again later by scrolling up: its own, plain label, not the old words.
+        pumpRunLoop(0.3)
+        conversation.setBottomStateForTesting(isAtBottom: false)
+        pumpRunLoop(0.1)
+        XCTAssertLessThan(mounted.host.fittingSize.width, awayWidth - 40, "a plain chevron again")
+    }
+
+    /// The tint behind a jumped-to message: ramps in normally, is at its peak at once under Reduce Motion.
+    func testTheJumpHighlightRampsInNormallyAndIsAtOnceUnderReduceMotion() {
+        func tint(reduceMotion: Bool) -> (host: NSHostingView<some View>, window: NSWindow) {
+            mount(JumpHighlightTint(isHighlighted: true, rowID: "$m", reduceMotionOverride: reduceMotion), size: NSSize(width: 200, height: 60))
+        }
+        let normal = tint(reduceMotion: false)
+        let reduced = tint(reduceMotion: true)
+        defer { normal.window.orderOut(nil); reduced.window.orderOut(nil) }
+        pumpRunLoop(0.05)
+        let peak = peakAlpha(reduced.host)
+        XCTAssertEqual(peak, JumpHighlightMotion.peakTintOpacity, accuracy: 0.02, "Reduce Motion: 40% of the tint, at once")
+        XCTAssertLessThan(peakAlpha(normal.host), peak - 0.02, "otherwise it has barely begun at 50 ms")
+        pumpRunLoop(0.27) // 0.32 s: the peak, as the fade out is only beginning
+        XCTAssertEqual(peakAlpha(normal.host), peak, accuracy: 0.03, "and reaches the same peak")
+        pumpRunLoop(0.2)
+        pumpRunLoop(1.3)
+        XCTAssertLessThan(peakAlpha(normal.host), 0.02, "then fades away over the rest of 1.5 s")
+        XCTAssertEqual(peakAlpha(reduced.host), peak, accuracy: 0.02, "Reduce Motion: stays until the model clears it")
+    }
+
     // MARK: - Item 9: Short Chats Sit at the Bottom Across Resize, Composer Growth, and Older Loads
 
     func testShortChatSitsAtBottomAcrossResizeComposerGrowthAndOlderLoad() throws {

@@ -96,7 +96,7 @@ final class TimelineMotionTests: XCTestCase {
         try await h.open("!a")
         let before = h.server.receivedMethods().count
 
-        h.conversation.hoverPrefetch("!b")
+        h.conversation.hoverPrefetch("!b", inside: true)
         try await waitUntil { time.pendingSleeps == [0.08] }
         time.advance(0.079)
         await Task.yield()
@@ -121,17 +121,17 @@ final class TimelineMotionTests: XCTestCase {
         let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
         try await h.open("!a")
 
-        h.conversation.hoverPrefetch("!b")
+        h.conversation.hoverPrefetch("!b", inside: true)
         try await waitUntil { time.pendingSleeps == [0.08] }
-        h.conversation.hoverPrefetch("!c") // superseded: the wait for !b is dropped
+        h.conversation.hoverPrefetch("!c", inside: true) // superseded: the wait for !b is dropped
         try await waitUntil { time.pendingSleeps == [0.08] }
         time.advance(0.1)
         try await waitUntil { h.conversation.prefetchedRoomsForTesting == ["!c"] }
         XCTAssertFalse(roomEventsRooms(h).contains("!b"))
 
-        h.conversation.hoverPrefetch("!d")
+        h.conversation.hoverPrefetch("!d", inside: true)
         try await waitUntil { time.pendingSleeps == [0.08] }
-        h.conversation.hoverPrefetch(nil) // the pointer left
+        h.conversation.hoverPrefetch("!d", inside: false) // the pointer left
         time.advance(0.1)
         await Task.yield()
         try await Task.sleep(for: .milliseconds(50))
@@ -143,7 +143,7 @@ final class TimelineMotionTests: XCTestCase {
         let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
         try await h.open("!a")
         h.script.hold("!b")
-        h.conversation.hoverPrefetch("!b")
+        h.conversation.hoverPrefetch("!b", inside: true)
         try await waitUntil { time.pendingSleeps == [0.08] }
         time.advance(0.1)
         try await waitUntil { self.roomEventsRooms(h).contains("!b") } // the read ahead is in flight
@@ -195,6 +195,186 @@ final class TimelineMotionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertTrue(h.conversation.isCached("!r1"), "a chat opened before is not pushed out by reads ahead")
         XCTAssertLessThanOrEqual(h.conversation.prefetchedRoomsForTesting.count, ConversationModel.prefetchLimit)
+    }
+
+    /// Chat B's enter can come before chat A's exit. A's exit then cancels only A's own wait, never B's.
+    func testLeavingOneChatNeverCancelsTheReadOfTheOneEnteredNext() async throws {
+        let time = FakeTime()
+        let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+
+        h.conversation.hoverPrefetch("!b", inside: true)
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        h.conversation.hoverPrefetch("!c", inside: true) // the pointer is on !c now
+        h.conversation.hoverPrefetch("!b", inside: false) // !b's exit arrives late
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        time.advance(0.1)
+        try await waitUntil { h.conversation.prefetchedRoomsForTesting == ["!c"] }
+
+        h.conversation.hoverPrefetch("!c", inside: false) // its own exit does cancel it
+        h.conversation.hoverPrefetch("!d", inside: true)
+        h.conversation.hoverPrefetch("!d", inside: false)
+        time.advance(0.1)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(roomEventsRooms(h).contains("!d"))
+    }
+
+    /// One read ahead at a time, whether from a hover or the idle warm-up, and the hover goes next.
+    func testOnlyOneReadAheadIsInFlightAndAHoverGoesBeforeTheWarmUp() async throws {
+        let time = FakeTime()
+        var events = fiveChats()
+        for room in ["!w1", "!w2", "!w3", "!h"] { events[room] = history(2, room: room) }
+        let h = try await start(events, sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+
+        h.script.hold("!w1")
+        h.conversation.warmFirstPages(of: ["!w1", "!w2", "!w3"])
+        try await waitUntil { time.pendingSleeps == [2] }
+        time.advance(2)
+        try await waitUntil { self.roomEventsRooms(h).contains("!w1") } // the warm-up's read is in flight
+
+        h.conversation.hoverPrefetch("!h", inside: true)
+        try await waitUntil { time.pendingSleeps.contains(0.08) }
+        time.advance(0.08)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(roomEventsRooms(h).filter { ["!w1", "!w2", "!w3", "!h"].contains($0) }, ["!w1"],
+                       "the hover waits: only one read ahead is asked of the engine at a time")
+
+        h.server.releaseHeld(method: "room.events", room: "!w1",
+                             with: ["events": h.script.newestFirst("!w1", limit: 50), "before": NSNull(), "after": NSNull()])
+        try await waitUntil { h.conversation.prefetchedRoomsForTesting.contains("!h") }
+        XCTAssertEqual(roomEventsRooms(h).filter { ["!w1", "!w2", "!w3", "!h"].contains($0) }, ["!w1", "!h"],
+                       "the hover goes before the next of the warm-up")
+        for _ in 0 ..< 10 {
+            if time.pendingSleeps.isEmpty { try await Task.sleep(for: .milliseconds(30)) }
+            time.advance(1)
+        }
+        try await waitUntil { h.conversation.prefetchedRoomsForTesting.count == 4 }
+    }
+
+    /// A page read ahead is dropped when anything changes in its chat, so opening it never shows a message that was
+    /// removed or replaced meanwhile.
+    func testAChangeInAChatDropsItsPageReadAhead() async throws {
+        let time = FakeTime()
+        let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+
+        for (index, change) in [["kind": "event", "room_id": "!b", "event_id": "$new"],
+                                ["kind": "status", "room_id": "!b", "event_id": "!b$1"],
+                                ["kind": "room", "room_id": "!b"]].enumerated() {
+            h.conversation.hoverPrefetch("!b", inside: true)
+            try await waitUntil { time.pendingSleeps.contains(0.08) }
+            time.advance(0.08)
+            try await waitUntil { h.conversation.prefetchedRoomsForTesting == ["!b"] }
+            h.server.notify(change)
+            try await waitUntil { h.conversation.prefetchedRoomsForTesting.isEmpty }
+            XCTAssertFalse(h.conversation.isCached("!b"), "change \(index): nothing stale is left to open")
+            h.conversation.hoverPrefetch("!b", inside: false)
+        }
+
+        // Opened now, it reads its page fresh: not drawn from anything.
+        h.script.hold("!b")
+        h.app.selectedRoomID = "!b"
+        XCTAssertFalse(h.conversation.isLoaded)
+        XCTAssertTrue(h.conversation.items.isEmpty)
+    }
+
+    /// A change that lands while the page is still being read drops that page when it arrives.
+    func testAChangeWhileThePageIsBeingReadDropsIt() async throws {
+        let time = FakeTime()
+        let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+        h.script.hold("!b")
+        h.conversation.hoverPrefetch("!b", inside: true)
+        try await waitUntil { time.pendingSleeps.contains(0.08) }
+        time.advance(0.08)
+        try await waitUntil { self.roomEventsRooms(h).contains("!b") }
+        h.server.notify(["kind": "event", "room_id": "!b", "event_id": "$gone"])
+        try await Task.sleep(for: .milliseconds(100))
+        h.server.releaseHeld(method: "room.events", room: "!b",
+                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(h.conversation.prefetchedRoomsForTesting, [], "the page read before the change is not kept")
+    }
+
+    /// At the limit the idle warm-up neither churns nor pushes anything out; only a hover makes room, by dropping the
+    /// oldest page read ahead, never a chat that was opened.
+    func testEvictionPastTheLimitDoesNotChurnOrDropAnOpenedChat() async throws {
+        let time = FakeTime()
+        var events: [String: [[String: Any]]] = [:]
+        for index in 1 ... 32 { events["!r\(index)"] = history(2, room: "!r\(index)") }
+        let h = try await start(events, sleep: { try await time.sleep(for: $0) })
+        try await h.open("!r1")
+        try await h.open("!r2") // !r1 is kept as an opened chat
+
+        func hover(_ room: String) async throws {
+            h.conversation.hoverPrefetch(room, inside: true)
+            try await waitUntil { time.pendingSleeps.contains(0.08) }
+            time.advance(0.08)
+            try await waitUntil { h.conversation.prefetchedRoomsForTesting.contains(room) }
+            h.conversation.hoverPrefetch(room, inside: false)
+        }
+        func runWarmUp() async throws {
+            for _ in 0 ..< 80 {
+                if time.pendingSleeps.isEmpty { try await Task.sleep(for: .milliseconds(30)) }
+                time.advance(3)
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let hovered = ["!r25", "!r26", "!r27", "!r28"]
+        for room in hovered { try await hover(room) }
+
+        // Sixteen to warm, room for twelve: the four that were hovered stay, nothing is pushed out for the rest.
+        let warmList = (3 ... 18).map { "!r\($0)" }
+        h.conversation.warmFirstPages(of: warmList)
+        try await runWarmUp()
+        XCTAssertEqual(h.conversation.prefetchedRoomsForTesting.count, ConversationModel.prefetchLimit)
+        XCTAssertTrue(hovered.allSatisfy { h.conversation.prefetchedRoomsForTesting.contains($0) },
+                      "the warm-up pushed a hovered page out")
+        let held = h.conversation.prefetchedRoomsForTesting
+        let readsBefore = h.count("room.events")
+
+        // Warming the same list again reads nothing: no page is read only to push another out.
+        h.conversation.warmFirstPages(of: warmList)
+        try await runWarmUp()
+        XCTAssertEqual(h.count("room.events"), readsBefore, "no read at the limit")
+        XCTAssertEqual(h.conversation.prefetchedRoomsForTesting, held)
+
+        // A hover does make room: the oldest page read ahead goes, the opened chats stay.
+        try await hover("!r30")
+        XCTAssertEqual(h.conversation.prefetchedRoomsForTesting.count, ConversationModel.prefetchLimit)
+        XCTAssertFalse(h.conversation.prefetchedRoomsForTesting.contains(held[0]), "the oldest went")
+        XCTAssertTrue(h.conversation.isCached("!r1"), "an opened chat is never the one dropped")
+        XCTAssertTrue(h.conversation.isCached("!r2") || h.conversation.roomID == "!r2")
+    }
+
+    func testTheReceiptLineMoveIsEasedOnlyAtTheBottomAndNotUnderReduceMotion() {
+        func eases(_ ids: [String], at bottom: Bool = true, rm: Bool = false) -> Bool {
+            StatusLineStability.easesReceiptMove(changedHeightIDs: ids, previousReceiptID: "$1", currentReceiptID: "$2",
+                                                 isAtBottom: bottom, reduceMotion: rm)
+        }
+        XCTAssertEqual(StatusLineStability.receiptEaseDuration, 0.15, accuracy: 0.0001)
+        XCTAssertTrue(eases(["$1"]))
+        XCTAssertTrue(eases(["$1", "$2"]))
+        XCTAssertFalse(eases(["$1"], rm: true), "instant under Reduce Motion")
+        XCTAssertFalse(eases(["$1"], at: false), "nothing the person is reading is moved")
+        XCTAssertFalse(eases(["$1", "$9"]), "some other row changed height: not this move")
+        XCTAssertFalse(eases([]))
+        XCTAssertFalse(StatusLineStability.easesReceiptMove(changedHeightIDs: ["$1"], previousReceiptID: "$1",
+                                                            currentReceiptID: "$1", isAtBottom: true, reduceMotion: false))
+    }
+
+    /// The jump from a search result ends "away" at once, the bottom is reached a moment later: the button keeps
+    /// its "Jump to latest" words so its width does not snap.
+    func testJumpButtonHoldsItsWordsBetweenTheJumpAndReachingTheBottom() {
+        let away = JumpToLatestLabel(isAwayFromLatest: true, hasNewerWhileAway: false, newMessageCount: 0)
+        let plain = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 0)
+        let counted = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 3)
+        XCTAssertEqual(JumpToLatestLabel.displayed(current: plain, lastShown: away, held: away, isVisible: true), away)
+        XCTAssertEqual(JumpToLatestLabel.displayed(current: counted, lastShown: away, held: away, isVisible: true), counted,
+                       "new messages say their own count")
+        XCTAssertEqual(JumpToLatestLabel.displayed(current: plain, lastShown: away, held: nil, isVisible: true), plain)
+        XCTAssertEqual(JumpToLatestLabel.displayed(current: plain, lastShown: away, held: away, isVisible: false), away)
     }
 
     // MARK: - Item 6: Jump-to-Latest Motion Constants

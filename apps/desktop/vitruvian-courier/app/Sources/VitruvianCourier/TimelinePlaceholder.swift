@@ -10,11 +10,14 @@ import VitruvianCourierCore
 /// bars fade in (they just appear under Reduce Motion), bottom-aligned where the real messages will land. It is
 /// replaced by the timeline, which starts at the same bottom edge, so nothing jumps when the page arrives.
 struct TimelinePlaceholder: View {
+    /// Tests: stands in for the system's Reduce Motion setting.
+    var reduceMotionOverride: Bool?
+
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isShown = false
 
     private var reduceMotion: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        reduceMotionOverride ?? (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     var body: some View {

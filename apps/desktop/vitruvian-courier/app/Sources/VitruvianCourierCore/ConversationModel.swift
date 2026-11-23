@@ -690,6 +690,8 @@ public final class ConversationModel: ObservableObject {
     public static let warmStartDelay: Duration = .seconds(2)
     public static let warmGap: Duration = .milliseconds(250)
     private var prefetchInFlight: Set<String> = []
+    /// Chats that changed while their page was being read ahead: that page is not kept.
+    private var prefetchInvalidated: Set<String> = []
     private var hoverPrefetchRoom: String?
     private var hoverPrefetchTask: Task<Void, Never>?
     private var warmTask: Task<Void, Never>?
@@ -1073,6 +1075,18 @@ public final class ConversationModel: ObservableObject {
         if let hasOlder {
             self.hasOlder = hasOlder
         }
+    }
+
+    /// Sets the jump button's inputs in view tests without an engine.
+    public func setBottomStateForTesting(isAtBottom: Bool, newMessageCount: Int = 0) {
+        bottom.isAtBottom = isAtBottom
+        bottom.newMessageCount = newMessageCount
+    }
+
+    /// Sets whether the chat is held away from the latest message, in view tests without an engine.
+    public func setAwayFromLatestForTesting(_ away: Bool, hasNewer: Bool = false) {
+        isAwayFromLatest = away
+        hasNewerWhileAway = hasNewer
     }
 
     /// Sets `olderFailed` in view tests without an engine.
@@ -1523,6 +1537,9 @@ public final class ConversationModel: ObservableObject {
             isDirectChat = nil
         }
         if room != roomID {
+            // Per-chat state that an action reads later: cleared here, for every kind of chat (a merged chat too), so
+            // that nothing of the chat just left can be acted on in the new one.
+            unreadThreads = []
             mySends = []
             repliesRead = []
             chatInfo = nil
@@ -1622,19 +1639,27 @@ public final class ConversationModel: ObservableObject {
 
     // MARK: - Reading a chat's first page before it is opened
 
-    /// The pointer is on `room` (nil: it has left). After `hoverPrefetchDelay` at rest the chat's first page is read
-    /// into the cache, so opening it shows its messages at once. Moving to another chat drops the wait, and a read
-    /// that is no longer wanted is not kept.
-    public func hoverPrefetch(_ room: String?) {
+    /// The pointer entered (`inside`) or left `room`. After `hoverPrefetchDelay` at rest the chat's first page is read
+    /// into the cache, so opening it shows its messages at once. Entering another chat drops the wait for the
+    /// previous one. Leaving cancels only that chat's own wait or read: if the pointer has already entered another
+    /// chat (its enter can come before the old chat's exit), that chat's prefetch is left alone.
+    public func hoverPrefetch(_ room: String, inside: Bool) {
+        guard inside else {
+            guard hoverPrefetchRoom == room else { return }
+            hoverPrefetchTask?.cancel()
+            hoverPrefetchTask = nil
+            hoverPrefetchRoom = nil
+            return
+        }
         hoverPrefetchTask?.cancel()
         hoverPrefetchTask = nil
         hoverPrefetchRoom = room
-        guard let room, wantsPrefetch(room) else { return }
+        guard wantsPrefetch(room) else { return }
         let sleep = self.sleep
         hoverPrefetchTask = Task { [weak self] in
             do { try await sleep(Self.hoverPrefetchDelay) } catch { return }
             guard let self, !Task.isCancelled, self.hoverPrefetchRoom == room else { return }
-            await self.prefetchFirstPage(room)
+            await self.prefetchFirstPage(room, isHover: true)
         }
     }
 
@@ -1651,7 +1676,7 @@ public final class ConversationModel: ObservableObject {
             do { try await sleep(Self.warmStartDelay) } catch { return }
             for room in list {
                 guard let self, !Task.isCancelled else { return }
-                if self.wantsPrefetch(room) { await self.prefetchFirstPage(room) }
+                if self.wantsPrefetch(room) { await self.prefetchFirstPage(room, isHover: false) }
                 do { try await sleep(Self.warmGap) } catch { return }
             }
         }
@@ -1666,12 +1691,51 @@ public final class ConversationModel: ObservableObject {
         !isLocked && roomCache[room] == nil && room != roomID && !prefetchInFlight.contains(room) && appModel.client != nil
     }
 
+    /// Whether a page read ahead can be kept. At the limit only a hover makes room (by dropping the oldest page that
+    /// was read ahead); the idle warm-up never pushes anything out, so it cannot churn. A chat that was opened is
+    /// never in that list, so it is never the one dropped.
+    private func canKeepPrefetched(mayEvict: Bool) -> Bool {
+        if prefetched.count >= Self.prefetchLimit || roomCache.count >= Self.roomCacheLimit {
+            return mayEvict && !prefetched.isEmpty
+        }
+        return true
+    }
+
+    /// One read ahead at a time, whether it came from a hover or from the idle warm-up; a hover goes first.
+    private var laneBusy = false
+    private var laneWaiters: [CheckedContinuation<Void, Never>] = []
+
+    private func acquireLane(isHover: Bool) async {
+        if !laneBusy {
+            laneBusy = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            if isHover { laneWaiters.insert(continuation, at: 0) } else { laneWaiters.append(continuation) }
+        }
+    }
+
+    private func releaseLane() {
+        if laneWaiters.isEmpty {
+            laneBusy = false
+        } else {
+            laneWaiters.removeFirst().resume() // the lane stays busy: it is handed on
+        }
+    }
+
     /// Reads the newest page of `room`, and only reads it: no read receipt, no mark as read, nothing sent. The page
-    /// is kept (`roomCache`) when it is still wanted once it is in.
-    private func prefetchFirstPage(_ room: String) async {
-        guard wantsPrefetch(room), let client = appModel.client else { return }
+    /// is kept (`roomCache`) when it is still wanted once it is in, and is dropped when anything changed in the chat
+    /// meanwhile (a new message, an edit, a removal, a reaction).
+    private func prefetchFirstPage(_ room: String, isHover: Bool) async {
+        guard wantsPrefetch(room), canKeepPrefetched(mayEvict: isHover), let client = appModel.client else { return }
         prefetchInFlight.insert(room)
-        defer { prefetchInFlight.remove(room) }
+        defer { prefetchInFlight.remove(room); prefetchInvalidated.remove(room) }
+        await acquireLane(isHover: isHover)
+        defer { releaseLane() }
+        // Waited for its turn: the world may have moved on.
+        guard !Task.isCancelled, !isLocked, roomCache[room] == nil, room != roomID,
+              client === appModel.client, canKeepPrefetched(mayEvict: isHover) else { return }
+        prefetchInvalidated.remove(room)
         let epoch = prefetchEpoch
         let params: RoomEventsParams
         if let merged = appModel.mergedChats[room] {
@@ -1681,13 +1745,15 @@ public final class ConversationModel: ObservableObject {
         }
         guard let page: EventsPage = try? await client.call("room.events", params) else { return }
         await ImagePixelSizeReader.shared.warm(events: page.events)
-        // Dropped when it was cancelled (the pointer moved on), when the engine changed, or when the chat was opened
-        // or read meanwhile: an answer that comes late never overwrites what the open chat has.
+        // Dropped when it was cancelled (the pointer moved on), when the engine changed, when the chat changed after
+        // the read began, or when the chat was opened or read meanwhile: an answer that comes late never overwrites
+        // what the open chat has, and never shows a message that has since been removed or replaced.
         guard !Task.isCancelled, epoch == prefetchEpoch, client === appModel.client,
-              roomCache[room] == nil, room != roomID, !page.events.isEmpty else { return }
+              !prefetchInvalidated.contains(room),
+              roomCache[room] == nil, room != roomID, !page.events.isEmpty,
+              canKeepPrefetched(mayEvict: isHover) else { return }
         if prefetched.count >= Self.prefetchLimit || roomCache.count >= Self.roomCacheLimit {
-            guard let oldest = prefetched.first else { return }
-            prefetched.removeFirst()
+            let oldest = prefetched.removeFirst()
             roomCache[oldest] = nil
             roomCacheOrder.removeAll { $0 == oldest }
         }
@@ -1696,6 +1762,23 @@ public final class ConversationModel: ObservableObject {
         roomCache[room] = RoomSnapshot(events: byID, olderCursor: page.before, olderPagesLoaded: false)
         roomCacheOrder.insert(room, at: 0)
         prefetched.append(room)
+    }
+
+    /// Something changed in `room` (nil: in chats unknown): a page of it that was read ahead may now show a message
+    /// that was removed, edited or has a new reaction. It is dropped, so opening the chat reads it fresh; a read of it
+    /// still in flight is dropped when it ends. A chat that was opened is not touched here: its kept page is read
+    /// again on open and reconciled, as before.
+    private func invalidatePrefetched(forChangeIn room: String?) {
+        func affects(_ key: String) -> Bool {
+            guard let room else { return true }
+            return key == room || appModel.mergedChats[key]?.roomIDs.contains(room) == true
+        }
+        for key in prefetched where affects(key) {
+            roomCache[key] = nil
+            roomCacheOrder.removeAll { $0 == key }
+        }
+        prefetched.removeAll(where: affects)
+        for key in prefetchInFlight where affects(key) { prefetchInvalidated.insert(key) }
     }
 
     private func startReading() {
@@ -1749,6 +1832,14 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func handle(_ change: Change) {
+        switch change {
+        case let .event(room, _), let .status(room, _), let .receipt(room):
+            invalidatePrefetched(forChangeIn: room)
+        case let .room(room):
+            invalidatePrefetched(forChangeIn: room)
+        default:
+            break
+        }
         guard let open = roomID else { return }
         switch change {
         case let .event(room, eventID):

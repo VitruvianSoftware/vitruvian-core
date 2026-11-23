@@ -399,10 +399,6 @@ struct MessageRowView: View {
     @State private var cardChip: String?
     @State private var openCard: Task<Void, Never>?
     @State private var cardSize: CGSize = .zero
-    /// The highlight's tint, relative to `JumpHighlightMotion.baseTintOpacity`.
-    @State private var highlight: Double = 0
-    @State private var highlightTask: Task<Void, Never>?
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     /// A double click set to show the menu.
     @State private var showsMenu = false
     /// Where the row's own buttons and media are (`takesOwnClick`), in the row's coordinates: a click there is theirs.
@@ -527,8 +523,7 @@ struct MessageRowView: View {
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
         .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(JumpHighlightMotion.baseTintOpacity * highlight)))
-        .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
+        .background(JumpHighlightTint(isHighlighted: isHighlighted, rowID: message.id))
         .contentShape(Rectangle())
         .onHover { pointer.rowHover($0); pointerMoved() }
         .onChange(of: isSelected) { _, _ in pointer.selectionChanged() }
@@ -688,17 +683,6 @@ struct MessageRowView: View {
             if activeDetectedDate != nil { activeDetectedDate = nil }
             if linkOpenedAt != nil { linkOpenedAt = nil }
             if lastRowClick != nil { lastRowClick = nil }
-            highlightTask?.cancel()
-            highlightTask = nil
-            if isHighlighted {
-                fadeHighlight(true)
-            } else if highlight != 0 {
-                highlight = 0
-            }
-        }
-        .onDisappear {
-            highlightTask?.cancel()
-            highlightTask = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
             showsMenu = false
@@ -816,39 +800,6 @@ struct MessageRowView: View {
             actions.deselect()
         } else {
             actions.select(message.id)
-        }
-    }
-
-    /// Fades in to 40% of the base tint over the first 20% of `JumpHighlightMotion.totalDuration` (0.3 s ease-out),
-    /// then fades out over the remaining 80% (1.2 s ease-out).
-    private func fadeHighlight(_ on: Bool) {
-        highlightTask?.cancel()
-        highlightTask = nil
-        guard on else {
-            highlight = 0
-            return
-        }
-        // Reduce Motion: the tint is there at once and goes when the model clears the highlight; no ramp.
-        if JumpHighlightMotion.rampsTint(
-            reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        ) == false {
-            highlight = JumpHighlightMotion.peakTintFraction
-            return
-        }
-        highlight = 0
-        highlightTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeInDuration)) {
-                highlight = JumpHighlightMotion.peakTintFraction
-            }
-            let fadeInMS = Int((JumpHighlightMotion.fadeInDuration * 1000).rounded())
-            try? await Task.sleep(for: .milliseconds(fadeInMS))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeOutDuration)) {
-                highlight = 0
-            }
-            highlightTask = nil
         }
     }
 
@@ -2526,5 +2477,73 @@ public struct GIFAttachmentView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(gif.caption ?? (message.fileName.isEmpty ? String(localized: "GIF") : message.fileName))
+    }
+}
+
+
+/// The yellow tint behind the message a chat was opened at (a search result, a jump to a quoted message). It fades in
+/// to 40% of the tint over the first 20% of `JumpHighlightMotion.totalDuration` (0.3 s, ease-out) and out over the
+/// rest (1.2 s, ease-out). Under Reduce Motion it is at its peak at once and goes when the model clears the
+/// highlight: no ramp. A row that is reused for another message starts over.
+struct JumpHighlightTint: View {
+    let isHighlighted: Bool
+    /// The message the row shows now.
+    let rowID: String
+    /// Tests: stands in for the system's Reduce Motion setting.
+    var reduceMotionOverride: Bool?
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    /// The tint, relative to `JumpHighlightMotion.baseTintOpacity`.
+    @State private var tint: Double = 0
+    @State private var task: Task<Void, Never>?
+
+    init(isHighlighted: Bool, rowID: String, reduceMotionOverride: Bool? = nil) {
+        self.isHighlighted = isHighlighted
+        self.rowID = rowID
+        self.reduceMotionOverride = reduceMotionOverride
+    }
+
+    private var reduceMotion: Bool {
+        reduceMotionOverride ?? (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.yellow.opacity(JumpHighlightMotion.baseTintOpacity * tint))
+            .onChange(of: isHighlighted, initial: true) { _, on in start(on) }
+            .onChange(of: rowID) { _, _ in start(isHighlighted) }
+            .onDisappear { stop() }
+    }
+
+    private func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    private func start(_ on: Bool) {
+        stop()
+        guard on else {
+            tint = 0
+            return
+        }
+        guard JumpHighlightMotion.rampsTint(reduceMotion: reduceMotion) else {
+            tint = JumpHighlightMotion.peakTintFraction
+            return
+        }
+        tint = 0
+        task = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeInDuration)) {
+                tint = JumpHighlightMotion.peakTintFraction
+            }
+            let fadeInMS = Int((JumpHighlightMotion.fadeInDuration * 1000).rounded())
+            try? await Task.sleep(for: .milliseconds(fadeInMS))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeOutDuration)) {
+                tint = 0
+            }
+            task = nil
+        }
     }
 }

@@ -1908,6 +1908,27 @@ struct TimelineTableView: NSViewRepresentable {
             }
         }
 
+        /// The receipt line has moved from the older message to the newer one: the older row got shorter at once (the
+        /// timeline's state and scroll position are already final, and the newest message has not moved). Every row
+        /// from it upward now sits `shrink` lower than it did a moment ago; each draws its old place and eases to the
+        /// new one over `StatusLineStability.receiptEaseDuration`. Purely visual: nothing is measured or scrolled.
+        private func playReceiptEase(shrunkRows: [Int], shrink: CGFloat) {
+            guard shrink > 0.5, let lowest = shrunkRows.max() else { return }
+            tableView.enumerateAvailableRowViews { rowView, row in
+                guard row <= lowest, let layer = rowView.layer else { return }
+                // "Higher on screen" in the layer's own terms: -y when the parent counts y downwards.
+                let from = TimelineCell.yPointsDown(inSublayersOf: layer.superlayer) ? -shrink : shrink
+                let ease = CABasicAnimation(keyPath: "transform.translation.y")
+                ease.fromValue = from
+                ease.toValue = 0
+                ease.duration = StatusLineStability.receiptEaseDuration
+                ease.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                layer.add(ease, forKey: Self.receiptEaseKey)
+            }
+        }
+
+        private static let receiptEaseKey = "courier.receiptLineEase"
+
         // MARK: - Updates & CollectionDifference
 
         func applyUpdates(from view: TimelineTableView, environment: EnvironmentValues) {
@@ -2117,6 +2138,21 @@ struct TimelineTableView: NSViewRepresentable {
                 ? visibleAnchor(preferMessage: false, allowedIDs: Set(newIDs))
                 : nil
 
+            // Only the receipt line moving between two messages (a newer one has gone): the change itself is as any
+            // other, instant and bottom-anchored, and the rows above it then ease down by the line's height.
+            let easesReceipt = prependAnchor == nil && removedIndexes.isEmpty && insertedIndexes.isEmpty
+                && reloadNewIndexes.isEmpty
+                && StatusLineStability.easesReceiptMove(
+                    changedHeightIDs: heightChangedNewIndexes.compactMap { $0 < newEntries.count ? newEntries[$0].id : nil },
+                    previousReceiptID: lastLastOutgoingID,
+                    currentReceiptID: conversation.lastOutgoingID,
+                    isAtBottom: wasAtBottom && !conversation.isAwayFromLatest,
+                    reduceMotion: reduceMotion
+                )
+            let heightsBefore: [Int: CGFloat] = easesReceipt
+                ? Dictionary(uniqueKeysWithValues: heightChangedNewIndexes.map { ($0, tableView.rect(ofRow: $0).height) })
+                : [:]
+
             isApplyingProgrammaticUpdate = true
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0
@@ -2162,6 +2198,13 @@ struct TimelineTableView: NSViewRepresentable {
             }
             if prependAnchor == nil, !insertedIndexes.isEmpty {
                 animateEligibleSentRows(insertedIndexes, conversation: conversation)
+            }
+            if easesReceipt {
+                let shrunk = heightChangedNewIndexes.filter { (heightsBefore[$0] ?? 0) - tableView.rect(ofRow: $0).height > 0.5 }
+                playReceiptEase(
+                    shrunkRows: shrunk,
+                    shrink: shrunk.reduce(0) { $0 + (heightsBefore[$1] ?? 0) - tableView.rect(ofRow: $1).height }
+                )
             }
             isApplyingProgrammaticUpdate = false
             lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
@@ -2262,6 +2305,19 @@ struct TimelineTableView: NSViewRepresentable {
                 let wasAtBottom = isScrolledToBottom()
                 let anchor = wasAtBottom ? nil : visibleAnchor(preferMessage: false)
                 isApplyingProgrammaticUpdate = true
+                // The older message losing its "Sent" line (a newer one has gone): the rows above ease down by that
+                // much over 0.15 s while the newest stays exactly where it is, because the bottom edge is kept by
+                // moving the clip view's origin in step with the rows' own change.
+                let easesReceipt = StatusLineStability.easesReceiptMove(
+                    changedHeightIDs: heightChanged.compactMap { $0 < entries.count ? entries[$0].id : nil },
+                    previousReceiptID: lastLastOutgoingID,
+                    currentReceiptID: lastOutgoingID,
+                    isAtBottom: wasAtBottom && !parent.conversation.isAwayFromLatest,
+                    reduceMotion: reduceMotion
+                )
+                let heightsBefore: [Int: CGFloat] = easesReceipt
+                    ? Dictionary(uniqueKeysWithValues: heightChanged.map { ($0, tableView.rect(ofRow: $0).height) })
+                    : [:]
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = 0
                     ctx.allowsImplicitAnimation = false
@@ -2271,6 +2327,13 @@ struct TimelineTableView: NSViewRepresentable {
                     }
                     tableView.layoutSubtreeIfNeeded()
                     restoreScrollAfterHeightChange(wasAtBottom: wasAtBottom, anchor: anchor)
+                }
+                if easesReceipt {
+                    let shrunk = heightChanged.filter { (heightsBefore[$0] ?? 0) - tableView.rect(ofRow: $0).height > 0.5 }
+                    playReceiptEase(
+                        shrunkRows: shrunk,
+                        shrink: shrunk.reduce(0) { $0 + (heightsBefore[$1] ?? 0) - tableView.rect(ofRow: $1).height }
+                    )
                 }
                 isApplyingProgrammaticUpdate = false
                 lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y

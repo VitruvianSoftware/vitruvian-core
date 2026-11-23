@@ -244,6 +244,25 @@ public enum StatusLineStability: Sendable {
     /// Shared single-line height for `.queued`, `.sending`, `.sent`, `.delivered`, and single-line `.seen` status labels
     /// so `Sending…` and `Sent` have identical row height.
     public static let compactLineHeight: CGFloat = 16
+
+    /// How long the older message's "Sent" line takes to go when a newer message has gone.
+    public static let receiptEaseDuration: TimeInterval = 0.15
+
+    /// Whether a height change of these rows is the receipt line moving from one message to the next, and so is
+    /// eased: only while the timeline is at the bottom (so nothing the person is reading moves) and not under
+    /// Reduce Motion (then it is instant). Every row that changed height must be one of the two that carry the line.
+    public static func easesReceiptMove(
+        changedHeightIDs: [String],
+        previousReceiptID: String?,
+        currentReceiptID: String?,
+        isAtBottom: Bool,
+        reduceMotion: Bool
+    ) -> Bool {
+        guard isAtBottom, !reduceMotion, !changedHeightIDs.isEmpty,
+              previousReceiptID != currentReceiptID else { return false }
+        let carriers = Set([previousReceiptID, currentReceiptID].compactMap { $0 })
+        return changedHeightIDs.allSatisfy { carriers.contains($0) }
+    }
 }
 
 // MARK: - Item 9: Short Chats Anchored at the Bottom
@@ -351,8 +370,17 @@ public struct JumpToLatestLabel: Equatable, Sendable {
         self.newMessageCount = newMessageCount
     }
 
-    /// The label to draw: the live one while the button is shown, the last shown one while it fades away.
-    public static func displayed(current: JumpToLatestLabel, lastShown: JumpToLatestLabel, isVisible: Bool) -> JumpToLatestLabel {
-        isVisible ? current : lastShown
+    /// The label to draw: the live one while the button is shown, the last shown one while it fades away, and, from
+    /// the moment the jump ends being "away" until the bottom is reached, the "Jump to latest" words it had (unless
+    /// new messages have come, which say their own count).
+    public static func displayed(
+        current: JumpToLatestLabel,
+        lastShown: JumpToLatestLabel,
+        held: JumpToLatestLabel? = nil,
+        isVisible: Bool
+    ) -> JumpToLatestLabel {
+        guard isVisible else { return lastShown }
+        if let held, !current.isAwayFromLatest, current.newMessageCount == 0 { return held }
+        return current
     }
 }

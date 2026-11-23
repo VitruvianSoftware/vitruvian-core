@@ -1445,15 +1445,17 @@ private struct ProblemBar: View {
 
 /// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
 /// a dot once something new has come in. It watches `BottomState` itself, so the timeline does not have to.
-private struct JumpToLatestButton: View {
+struct JumpToLatestButton: View {
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var bottom: BottomState
     let appearance: AppearancePreferences?
+    /// Tests: stands in for the system's Reduce Motion setting.
+    var reduceMotionOverride: Bool?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     private var reduceMotion: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        reduceMotionOverride ?? (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     private var isVisible: Bool { !bottom.isAtBottom || conversation.isAwayFromLatest }
@@ -1469,6 +1471,10 @@ private struct JumpToLatestButton: View {
     /// What the button said the last time it was shown: it keeps these words while it fades out, so its width does
     /// not snap to the chevron alone when the count resets as the bottom comes into view.
     @State private var lastShownLabel = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 0)
+    /// The "Jump to latest" words, kept from the moment the chat stops being away from the latest (the jump was
+    /// made) until the button is gone: the view has not reached the bottom yet, and the button must not shrink to
+    /// the chevron alone on the way.
+    @State private var heldLabel: JumpToLatestLabel?
 
     /// The fade only: 0.15 s ease-out, with a 50 ms wait when it appears. It never moves or scales, so Reduce Motion
     /// only shortens it and drops the wait.
@@ -1479,7 +1485,9 @@ private struct JumpToLatestButton: View {
 
     var body: some View {
         // Always in the tree, so it can fade out as well as in; hidden, it takes no clicks and is not announced.
-        let label = JumpToLatestLabel.displayed(current: liveLabel, lastShown: lastShownLabel, isVisible: isVisible)
+        let label = JumpToLatestLabel.displayed(
+            current: liveLabel, lastShown: lastShownLabel, held: heldLabel, isVisible: isVisible
+        )
         Button {
             conversation.jumpToBottom()
         } label: {
@@ -1527,11 +1535,18 @@ private struct JumpToLatestButton: View {
         .allowsHitTesting(isVisible)
         .accessibilityHidden(!isVisible)
         .animation(fade, value: isVisible)
-        .onChange(of: liveLabel, initial: true) { _, new in
-            if isVisible { lastShownLabel = new }
+        .onChange(of: liveLabel, initial: true) { old, new in
+            guard isVisible else { return }
+            // The jump from a search result: "away" ends at once, the bottom is reached a moment later. The words it
+            // had are kept until the button is gone.
+            if old.isAwayFromLatest, !new.isAwayFromLatest, new.newMessageCount == 0 { heldLabel = old }
+            lastShownLabel = JumpToLatestLabel.displayed(current: new, lastShown: lastShownLabel, held: heldLabel, isVisible: true)
         }
         .onChange(of: isVisible) { _, visible in
-            if visible { lastShownLabel = liveLabel }
+            if visible {
+                heldLabel = nil
+                lastShownLabel = liveLabel
+            }
         }
         .help(String(localized: "Jump to the newest message (⌘↓)"))
         .accessibilityLabel(String(localized: "Jump to the newest message"))

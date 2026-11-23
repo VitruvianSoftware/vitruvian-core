@@ -186,7 +186,7 @@ struct InboxList: View {
                             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
                             onHoverChange: { inside in
                                 // At rest 80 ms: read this chat's first page ahead, so opening it shows at once.
-                                conversation?.hoverPrefetch(inside ? row.id : nil)
+                                conversation?.hoverPrefetch(row.id, inside: inside)
                                 if inside {
                                     hoverTracker.roomID = row.id
                                     // The menu offers Delete Chat… only where the network can: ask now, so it knows.
