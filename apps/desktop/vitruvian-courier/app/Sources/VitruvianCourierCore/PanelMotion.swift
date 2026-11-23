@@ -49,6 +49,12 @@ public enum SidePaneMotion {
     public static func effectiveCurve(reduceMotion: Bool) -> MotionCurve {
         reduceMotion ? .easeOut : curve
     }
+
+    /// The entrance plays once each time the person opens the pane. A pane that is rebuilt while it stays open (the
+    /// chat changed under it and its content came in again) does not play it again.
+    public static func playsEntrance(alreadyPlayedThisOpen: Bool) -> Bool {
+        !alreadyPlayedThisOpen
+    }
 }
 
 /// Motion rules for the `CommandBarOverlay` dimmer and floating panel.
@@ -76,11 +82,18 @@ public enum CommandBarMotion {
     }
 }
 
-/// Motion rules for `TypingLine` above the composer, keeping a constant reserved height.
+/// Motion rules for `TypingLine`: a small floating pill just above the composer, over the timeline. It takes no
+/// room when nobody is typing. While it shows and the person is at the bottom, the timeline's bottom inset grows by
+/// the pill's height so the newest message stays fully visible; when they have scrolled up nothing changes.
 public enum TypingLineMotion {
     public static let fadeDuration: TimeInterval = 0.15
-    public static let reservedHeight: CGFloat = 22
     public static let fadeCurve: MotionCurve = .easeInOut
+    public static let pillHeight: CGFloat = 24
+    /// Space between the pill and the composer, and between the pill and the newest message when the inset is on.
+    public static let pillGap: CGFloat = 6
+
+    /// How far the timeline's bottom inset grows while the pill is held clear of the newest message.
+    public static let timelineInset: CGFloat = pillHeight + pillGap
 
     public static func isVisible(text: String?) -> Bool {
         text != nil
@@ -101,6 +114,23 @@ public enum TypingLineMotion {
     public static func usesMovement(reduceMotion _: Bool) -> Bool {
         false
     }
+
+    /// Whether the timeline's bottom inset is raised for the pill. At the bottom it follows the pill (raised while
+    /// it shows, back when it goes). Away from the bottom it stays as it was, so nothing under the person's eyes
+    /// moves: a pill that came while they read above floats over the content, and one that goes leaves the inset
+    /// until they are back at the bottom.
+    public static func nextInsetRaised(current: Bool, pillVisible: Bool, atBottom: Bool) -> Bool {
+        atBottom ? pillVisible : current
+    }
+
+    public static func insetHeight(raised: Bool) -> CGFloat {
+        raised ? timelineInset : 0
+    }
+
+    /// The inset is eased over the fade; with Reduce Motion it changes at once.
+    public static func animatesInset(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
 }
 
 /// Motion rules for the `SkeletonRows` loading shimmer in the inbox list.
@@ -113,6 +143,17 @@ public enum SkeletonShimmerMotion {
 
     public static func shouldAnimate(isVisible: Bool, reduceMotion: Bool) -> Bool {
         isVisible && !reduceMotion
+    }
+
+    /// Whether the window the rows are in is showing them: on screen, not minimised and not covered. A window the
+    /// system reports as covered has no `visible` occlusion state. A shimmer in a window nobody can see only burns
+    /// frames.
+    public static func windowShowsContent(
+        isOnScreen: Bool,
+        isMiniaturized: Bool,
+        occlusionVisible: Bool
+    ) -> Bool {
+        isOnScreen && !isMiniaturized && occlusionVisible
     }
 
     public static func phase(elapsed: TimeInterval) -> Double {
@@ -133,27 +174,38 @@ public enum SkeletonShimmerMotion {
     }
 }
 
-/// Visibility state of the top and bottom scroll-edge fade masks.
+/// How strongly the top and bottom edges of a scroller fade out, 0 (not at all) to 1 (rows fade to nothing at the
+/// edge). An edge fades only while there is more content beyond it, and eases in over the first points scrolled so
+/// nothing pops.
 public struct ScrollEdgeFadeState: Equatable, Sendable {
-    public let top: Bool
-    public let bottom: Bool
+    public let top: CGFloat
+    public let bottom: CGFloat
 
-    public init(top: Bool, bottom: Bool) {
+    public init(top: CGFloat, bottom: CGFloat) {
         self.top = top
         self.bottom = bottom
     }
 
-    public static let none = Self(top: false, bottom: false)
+    public static let none = Self(top: 0, bottom: 0)
+
+    /// True when either edge fades: the only time a mask is attached at all.
+    public var isActive: Bool { top > 0 || bottom > 0 }
 }
 
-/// Pure scroll-geometry rules determining when top and bottom edge fades appear.
+/// Pure scroll-geometry rules for the top and bottom edge fades.
 public enum ScrollEdgeFadeMotion {
     public static let fadeHeight: CGFloat = 10
+    /// Content hidden beyond an edge by no more than this counts as not hidden (rounding, rubber band).
     public static let threshold: CGFloat = 1.0
-    public static let fadeTransitionDuration: TimeInterval = 0.12
 
     public static func effectiveFadeHeight(containerHeight: CGFloat) -> CGFloat {
         min(fadeHeight, max(0, containerHeight / 2))
+    }
+
+    /// 0 when nothing (beyond `threshold`) is hidden past the edge, rising to 1 once `fadeHeight` is.
+    public static func strength(hiddenDistance: CGFloat) -> CGFloat {
+        guard hiddenDistance > threshold else { return 0 }
+        return min(1, hiddenDistance / fadeHeight)
     }
 
     public static func state(
@@ -163,8 +215,7 @@ public enum ScrollEdgeFadeMotion {
         clipMaxY: CGFloat,
         topInset: CGFloat = 0,
         bottomInset: CGFloat = 0,
-        isFlipped: Bool = true,
-        threshold: CGFloat = ScrollEdgeFadeMotion.threshold
+        isFlipped: Bool = true
     ) -> ScrollEdgeFadeState {
         guard documentMaxY > documentMinY, clipMaxY > clipMinY else {
             return .none
@@ -173,21 +224,33 @@ public enum ScrollEdgeFadeMotion {
             let visibleTop = clipMinY + topInset
             let visibleBottom = clipMaxY - bottomInset
             return ScrollEdgeFadeState(
-                top: (visibleTop - documentMinY) > threshold,
-                bottom: (documentMaxY - visibleBottom) > threshold
+                top: strength(hiddenDistance: visibleTop - documentMinY),
+                bottom: strength(hiddenDistance: documentMaxY - visibleBottom)
             )
         } else {
             let visibleTop = clipMaxY - topInset
             let visibleBottom = clipMinY + bottomInset
             return ScrollEdgeFadeState(
-                top: (documentMaxY - visibleTop) > threshold,
-                bottom: (visibleBottom - documentMinY) > threshold
+                top: strength(hiddenDistance: documentMaxY - visibleTop),
+                bottom: strength(hiddenDistance: visibleBottom - documentMinY)
             )
         }
     }
 
-    public static func animatesMaskChange(reduceMotion: Bool) -> Bool {
-        !reduceMotion
+    /// Alpha of the mask at its two ends and where the fade ends, as fractions of the height, top to bottom:
+    /// four stops `(alpha, location)`. An edge with strength 0 is fully opaque.
+    public static func maskStops(
+        state: ScrollEdgeFadeState,
+        containerHeight: CGFloat
+    ) -> [(alpha: CGFloat, location: CGFloat)] {
+        let edge = effectiveFadeHeight(containerHeight: containerHeight)
+        let fraction = containerHeight > 0 ? edge / containerHeight : 0
+        return [
+            (1 - state.top, 0),
+            (1, fraction),
+            (1, 1 - fraction),
+            (1 - state.bottom, 1),
+        ]
     }
 }
 

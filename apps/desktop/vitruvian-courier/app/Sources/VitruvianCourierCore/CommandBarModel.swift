@@ -54,7 +54,7 @@ public final class CommandBarModel: ObservableObject {
         }
 
         lifecycle?.onLock { [weak self] in
-            self?.close()
+            self?.closeImmediately()
         }
 
         self.lockCancellable = NotificationCenter.default
@@ -64,7 +64,7 @@ public final class CommandBarModel: ObservableObject {
                 if let lockedLifecycle = notification.object as? SystemLifecycleModel {
                     self.lifecycle = lockedLifecycle
                 }
-                self.close()
+                self.closeImmediately()
             }
     }
 
@@ -105,8 +105,26 @@ public final class CommandBarModel: ObservableObject {
         }
     }
 
+    /// Hides the bar. What it shows (query, mode, breadcrumb, results) is left as it was so the panel can fade out
+    /// looking the same; the host calls `finishClosing()` when the fade is done. `open()` starts from a blank state
+    /// at once, so opening again during the fade never shows what was there.
     public func close() {
         isPresented = false
+    }
+
+    /// Clears what the bar showed, once it has faded out. A no-op if it was opened again in the meantime.
+    public func finishClosing() {
+        guard !isPresented else { return }
+        resetContent()
+    }
+
+    /// Hides the bar and clears it in the same moment: for locking the app, where nothing may linger on screen.
+    public func closeImmediately() {
+        isPresented = false
+        resetContent()
+    }
+
+    private func resetContent() {
         query = ""
         mode = .commands
         breadcrumb = []

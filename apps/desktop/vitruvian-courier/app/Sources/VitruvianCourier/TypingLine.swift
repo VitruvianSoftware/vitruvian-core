@@ -5,61 +5,61 @@ import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
-/// Who is typing in the open chat, above the composer (01 §4's BrandTypingIndicator): "Ana is typing…" or "3 people
-/// are typing…", after three dots that pulse. Nothing at all when no one is (`ConversationModel.typingLine`, the
-/// chat's row's words). VoiceOver hears it, quietly, when someone starts typing in the window in front; not on every
-/// change after that.
+/// Who is typing in the open chat: "Ana is typing…" or "3 people are typing…", after three dots that pulse. It is a
+/// small floating pill that `ConversationView` lays over the timeline just above the composer, so it takes no room
+/// when no one is typing and never changes the composer's layout. Nothing at all when no one is
+/// (`ConversationModel.typingLine`, the chat's row's words). VoiceOver hears it, quietly, when someone starts typing
+/// in the window in front; not on every change after that.
 struct TypingLine: View {
     let text: String?
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
+    /// The last words shown, kept so the pill fades out with them instead of going blank first.
     @State private var lastText: String?
 
     private var reduceMotionEnabled: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
     }
 
     var body: some View {
         let isVisible = TypingLineMotion.isVisible(text: text)
         let renderedText = text ?? lastText ?? ""
-        let fadeAnimation = TypingLineMotion.fadeCurve
+        let fade = TypingLineMotion.fadeCurve
             .swiftUIAnimation(duration: TypingLineMotion.effectiveFadeDuration(reduceMotion: reduceMotionEnabled))
 
-        // Always reserves its slot so showing or hiding the line never changes the height above the composer.
-        VStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "ellipsis")
-                    .font(.caption.weight(.bold))
-                    .symbolEffect(
-                        .variableColor.iterative,
-                        options: .repeating,
-                        isActive: TypingLineMotion.animatesDots(isVisible: isVisible, reduceMotion: reduceMotionEnabled)
-                    )
-                    .accessibilityHidden(true)
-                Text(renderedText.isEmpty ? " " : renderedText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, minHeight: TypingLineMotion.reservedHeight, alignment: .leading)
-            .opacity(TypingLineMotion.opacity(text: text))
-            .animation(fadeAnimation, value: isVisible)
-            .allowsHitTesting(false)
-            .accessibilityElement(children: .combine)
-            .accessibilityHidden(!isVisible)
+        HStack(spacing: 5) {
+            Image(systemName: "ellipsis")
+                .font(.caption.weight(.bold))
+                .symbolEffect(
+                    .variableColor.iterative,
+                    options: .repeating,
+                    isActive: TypingLineMotion.animatesDots(isVisible: isVisible, reduceMotion: reduceMotionEnabled)
+                )
+                .accessibilityHidden(true)
+            Text(renderedText)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .frame(height: TypingLineMotion.pillHeight)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 3, x: 0, y: 1)
+        .frame(maxWidth: 320)
+        .opacity(TypingLineMotion.opacity(text: text))
+        .animation(fade, value: isVisible)
+        // It floats over the timeline: it must never take a click or a scroll from what is under it.
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityHidden(!isVisible)
         .onAppear {
-            if let text {
-                lastText = text
-            }
+            if let text { lastText = text }
         }
         .onChange(of: text) { old, new in
-            if let new {
-                lastText = new
-            }
+            if let new { lastText = new }
             guard let words = Self.announcement(from: old, to: new, isKey: controlActiveState == .key) else { return }
             var spoken = AttributedString(words)
             spoken.accessibilitySpeechAnnouncementPriority = .low

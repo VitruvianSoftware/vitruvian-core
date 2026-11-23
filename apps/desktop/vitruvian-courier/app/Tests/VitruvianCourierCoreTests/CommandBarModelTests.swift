@@ -260,6 +260,56 @@ final class CommandBarModelTests: XCTestCase {
         XCTAssertEqual(h.count("inbox.markAllRead"), 0, "Canceled mark-all-read command must not invoke RPC")
     }
 
+    func testCloseKeepsWhatTheBarShowedUntilTheFadeIsDone() {
+        let commands = [
+            CourierCommand(id: "chat.archive", title: "Archive", category: .chat, run: {}),
+            CourierCommand(id: "settings.open", title: "Settings", category: .settings, run: {}),
+        ]
+        let model = CommandBarModel(defaults: defaults, commandsProvider: { commands })
+        model.open()
+        model.query = "arch"
+        let shown = model.displayedCommands.map(\.id)
+        XCTAssertEqual(shown, ["chat.archive"])
+
+        model.close()
+        XCTAssertFalse(model.isPresented)
+        XCTAssertEqual(model.query, "arch", "the panel fades out showing the same query")
+        XCTAssertEqual(model.displayedCommands.map(\.id), shown, "and the same results")
+
+        model.finishClosing()
+        XCTAssertEqual(model.query, "", "once the fade is done it is cleared")
+        XCTAssertEqual(model.mode, .commands)
+        XCTAssertTrue(model.breadcrumb.isEmpty)
+    }
+
+    func testOpeningAgainDuringTheFadeStartsFreshAndTheLateFinishLeavesItAlone() {
+        let model = CommandBarModel(defaults: defaults, commandsProvider: { [] })
+        model.open()
+        model.query = "old words"
+        model.close()
+        XCTAssertEqual(model.query, "old words")
+
+        model.open(initialQuery: "new")
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.query, "new", "open() resets at once: the old words never show in the reopened bar")
+
+        model.finishClosing() // the fade-out's timer fires late
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.query, "new", "a finish that arrives after a reopen must not clear it")
+    }
+
+    func testRecentChatsModeAlsoStartsFreshWhenOpenedDuringTheFade() {
+        let model = CommandBarModel(defaults: defaults, commandsProvider: { [] })
+        model.open()
+        model.query = "typed"
+        model.close()
+        model.openInRecentChatsMode()
+        XCTAssertEqual(model.mode, .recentChats)
+        XCTAssertEqual(model.query, "")
+        model.finishClosing()
+        XCTAssertEqual(model.mode, .recentChats)
+    }
+
     func testAppLockDismissesCommandBarAndRefusesOpenOrExecute() {
         let lifecycle = SystemLifecycleModel(
             defaults: defaults,
@@ -281,8 +331,10 @@ final class CommandBarModelTests: XCTestCase {
         model.open()
         XCTAssertTrue(model.isPresented)
 
+        model.query = "arch"
         lifecycle.lockNow()
         XCTAssertFalse(model.isPresented, "Locking the app must immediately dismiss the command bar")
+        XCTAssertEqual(model.query, "", "Locking must clear what the bar showed at once, not after a fade")
 
         model.open()
         XCTAssertFalse(model.isPresented, "CommandBarModel.open must be a no-op while locked")

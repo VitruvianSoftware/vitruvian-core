@@ -197,7 +197,7 @@ struct MainWindow: View {
                 .onDisappear {
                     ui.isMainWindowKey = false
                     search.close()
-                    commandBar.close()
+                    commandBar.closeImmediately()
                     conversation.composer.voiceRecorder.cancelImmediately()
                     conversation.thread.composer.voiceRecorder.cancelImmediately()
                     conversation.composer.isStickerPickerPresented = false

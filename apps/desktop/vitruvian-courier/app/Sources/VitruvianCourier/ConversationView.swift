@@ -27,6 +27,9 @@ struct ConversationView: View {
     @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @Environment(\.conversationLayoutProbe) private var conversationLayoutProbe
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.typingLineForTesting) private var typingLineForTesting
     @StateObject private var ui = MessageUI()
     @State private var scrollBox = TimelineScrollBox()
     @State private var isDropTargeted = false
@@ -61,6 +64,12 @@ struct ConversationView: View {
     @State private var measuredHeaderOverlayHeight: CGFloat = 0
     @State private var measuredBottomBarHeight: CGFloat = 0
     @State private var windowToolbarOverlap: CGFloat = 0
+    /// Whether the thread or Chat Info pane has played its entrance since the person opened it: a pane that is rebuilt
+    /// while it stays open (the chat changed under it) must not play it again.
+    @State private var threadEntrancePlayed = false
+    @State private var chatInfoEntrancePlayed = false
+    /// Whether the timeline's bottom inset is raised to hold the typing pill clear of the newest message.
+    @State private var typingInsetRaised = false
 
     var body: some View {
         HSplitView {
@@ -70,7 +79,9 @@ struct ConversationView: View {
                 ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
                            messageActions: messageActions, preferences: preferences, focus: focus,
                            headerInToolbar: drawsLiquidGlass, chatName: chatName)
-                    .courierSidePaneEntrance()
+                    .courierSidePaneEntrance(
+                        plays: SidePaneMotion.playsEntrance(alreadyPlayedThisOpen: threadEntrancePlayed)
+                    ) { threadEntrancePlayed = true }
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
                     .reportsSidePaneWidth(.thread)
             }
@@ -181,7 +192,9 @@ struct ConversationView: View {
                     headerInToolbar: drawsLiquidGlass,
                     selfAvatarPath: conversation.ownAvatarPath(for: info)
                 )
-                .courierSidePaneEntrance()
+                .courierSidePaneEntrance(
+                    plays: SidePaneMotion.playsEntrance(alreadyPlayedThisOpen: chatInfoEntrancePlayed)
+                ) { chatInfoEntrancePlayed = true }
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)
             }
@@ -212,6 +225,29 @@ struct ConversationView: View {
             }
         }
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
+        // Closing a pane re-arms its entrance for the next time the person opens it.
+        .onChange(of: conversation.isShowingChatInfo) { _, showing in
+            if !showing { chatInfoEntrancePlayed = false }
+        }
+        .onChange(of: thread.rootID == nil) { _, closed in
+            if closed { threadEntrancePlayed = false }
+        }
+        .onChange(of: [typingText != nil, conversation.isAtBottom && !conversation.isAwayFromLatest]) {
+            _, signal in
+            let raised = TypingLineMotion.nextInsetRaised(
+                current: typingInsetRaised, pillVisible: signal[0], atBottom: signal[1]
+            )
+            guard raised != typingInsetRaised else { return }
+            let reduceMotion = courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
+            if TypingLineMotion.animatesInset(reduceMotion: reduceMotion) {
+                withAnimation(
+                    TypingLineMotion.fadeCurve.swiftUIAnimation(duration: TypingLineMotion.fadeDuration)
+                ) { typingInsetRaised = raised }
+            } else {
+                typingInsetRaised = raised
+            }
+        }
+        .onChange(of: conversation.roomID) { _, _ in typingInsetRaised = false }
         .environment(\.appearancePreferences, resolvedAppearance)
         .environment(\.themeRoomID, conversation.roomID)
         .environment(\.timelineCovered, windowCoversTimeline || coveredBySheet)
@@ -448,7 +484,6 @@ struct ConversationView: View {
                     ProblemBar(problem: problem, retry: conversation.reload)
                 }
                 ScheduledStrip(scheduled: scheduled)
-                TypingLine(text: conversation.typingLine)
                 ConversationComposerContainer(
                     composer: composer,
                     inbox: inbox,
@@ -660,30 +695,45 @@ struct ConversationView: View {
     }
 
     private var tableMessages: some View {
-        let bottomInset = drawsLiquidGlass ? measuredBottomBarHeight : 0
+        let barInset = drawsLiquidGlass ? measuredBottomBarHeight : 0
         let resolvedThemeHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
-        return TimelineTableView(
-            conversation: conversation,
-            messageActions: messageActions,
-            preferences: preferences,
-            ui: ui,
-            appModel: appModel,
-            actions: actions,
-            effectiveHeaderInset: effectiveHeaderInset,
-            bottomSafeAreaInset: bottomInset,
-            bottomBarSignature: bottomBarSignature,
-            resolvedAppearance: resolvedAppearance,
-            redact: redact,
-            themeAccentHex: resolvedThemeHex,
-            drawsLiquidGlass: drawsLiquidGlass,
-            timelineCovered: windowCoversTimeline || coveredBySheet
-        )
+        // The typing pill floats over the bottom of the timeline. While it shows and the person is at the bottom,
+        // the inset grows by its height (eased) so the newest message stays clear of it and pinned to the bottom.
+        return EasedInsetHost(inset: TypingLineMotion.insetHeight(raised: typingInsetRaised)) { typingInset in
+            TimelineTableView(
+                conversation: conversation,
+                messageActions: messageActions,
+                preferences: preferences,
+                ui: ui,
+                appModel: appModel,
+                actions: actions,
+                effectiveHeaderInset: effectiveHeaderInset,
+                bottomSafeAreaInset: barInset + typingInset,
+                bottomBarSignature: bottomBarSignature,
+                resolvedAppearance: resolvedAppearance,
+                redact: redact,
+                themeAccentHex: resolvedThemeHex,
+                drawsLiquidGlass: drawsLiquidGlass,
+                timelineCovered: windowCoversTimeline || coveredBySheet
+            )
+        }
         .modifier(ConversationBottomScrollEdge())
         .modifier(IgnoreBottomContainerSafeAreaWhenGlass(enabled: drawsLiquidGlass))
         .overlay(alignment: .bottomTrailing) {
             jumpButton
-                .padding(.bottom, bottomInset)
+                .padding(.bottom, barInset)
         }
+        .overlay(alignment: .bottomLeading) { typingPill(barInset: barInset) }
+    }
+
+    private var typingText: String? { typingLineForTesting ?? conversation.typingLine }
+
+    /// Who is typing, as a pill just above the composer over the timeline: it has no place in the layout.
+    private func typingPill(barInset: CGFloat) -> some View {
+        TypingLine(text: typingText)
+            .id(conversation.roomID)
+            .padding(.leading, 16)
+            .padding(.bottom, barInset + TypingLineMotion.pillGap)
     }
 
     private var messages: some View {
@@ -802,6 +852,7 @@ struct ConversationView: View {
             // A click on the timeline's empty space (not on a message, which takes its own click) deselects.
             .deselectsOnEmptyClick { conversation.deselectMessage() }
             .overlay(alignment: .bottomTrailing) { jumpButton }
+            .overlay(alignment: .bottomLeading) { typingPill(barInset: 0) }
             .onChange(of: conversation.isLoadingOlder) { _, loading in
                 if !loading, topInView, !conversation.olderFailed { requestOlder() }
             }

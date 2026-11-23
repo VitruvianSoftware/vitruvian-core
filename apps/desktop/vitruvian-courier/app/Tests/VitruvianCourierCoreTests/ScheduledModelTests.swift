@@ -171,6 +171,12 @@ final class ScheduledModelTests: XCTestCase {
         try await waitUntil { model.scheduled.map(\.outboxID) == [6] }
         XCTAssertEqual(model.queuedEventCount, 2)
 
+        // Rescheduling or editing a message keeps its outbox id (`scheduled.update`), so it is not a new one: no bounce.
+        script.lists["!b"] = [scheduledJSON(6, room: "!b", due: 9000)]
+        server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { model.scheduled.first?.dueAt == 9000 }
+        XCTAssertEqual(model.queuedEventCount, 2, "a reschedule of an existing message must not bounce")
+
         // Switching back to !a with existing messages does not bounce.
         app.selectedRoomID = "!a"
         try await waitUntil { model.scheduled.map(\.outboxID) == [1, 2] }

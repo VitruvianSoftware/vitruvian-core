@@ -7,17 +7,22 @@ import SwiftUI
 
 public struct CommandBarOverlay: View {
     @ObservedObject public var model: CommandBarModel
+    /// False while the panel fades out after the bar closed: it then takes no keys and no clicks, and lets go of
+    /// the text field, though it still shows what it showed.
+    private let isInteractive: Bool
     @FocusState private var isSearchFocused: Bool
     @Environment(\.redactNamesAndPictures) private var isRedacted
     @Environment(\.themeAccentColor) private var themeAccent
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
 
     private var reduceMotionEnabled: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
     }
 
-    public init(model: CommandBarModel) {
+    public init(model: CommandBarModel, isInteractive: Bool = true) {
         self.model = model
+        self.isInteractive = isInteractive
     }
 
     public var body: some View {
@@ -64,21 +69,25 @@ public struct CommandBarOverlay: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("commandBar.overlay")
+        .allowsHitTesting(isInteractive)
         .onAppear {
-            isSearchFocused = model.isPresented
+            isSearchFocused = isInteractive
         }
-        .onChange(of: model.isPresented) { _, presented in
-            isSearchFocused = presented
+        .onChange(of: isInteractive) { _, interactive in
+            isSearchFocused = interactive
         }
         .onKeyPress(.upArrow) {
+            guard isInteractive else { return .ignored }
             model.moveSelection(delta: -1)
             return .handled
         }
         .onKeyPress(.downArrow) {
+            guard isInteractive else { return .ignored }
             model.moveSelection(delta: 1)
             return .handled
         }
         .onKeyPress(.escape) {
+            guard isInteractive else { return .ignored }
             if model.pendingConfirmation != nil {
                 model.cancelPendingConfirmation()
             } else if !model.breadcrumb.isEmpty || model.mode == .recentChats {
@@ -89,10 +98,12 @@ public struct CommandBarOverlay: View {
             return .handled
         }
         .onKeyPress(.return) {
+            guard isInteractive else { return .ignored }
             model.executeSelected()
             return .handled
         }
         .onKeyPress(.delete) {
+            guard isInteractive else { return .ignored }
             if model.query.isEmpty, !model.breadcrumb.isEmpty || model.mode == .recentChats {
                 _ = model.handleBackspaceOnEmptyQuery()
                 return .handled

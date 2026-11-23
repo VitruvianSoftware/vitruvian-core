@@ -28,6 +28,11 @@ final class PanelMotionTests: XCTestCase {
         XCTAssertEqual(SidePaneMotion.effectiveCurve(reduceMotion: true), .easeOut)
     }
 
+    func testSidePaneEntrancePlaysOncePerOpen() {
+        XCTAssertTrue(SidePaneMotion.playsEntrance(alreadyPlayedThisOpen: false))
+        XCTAssertFalse(SidePaneMotion.playsEntrance(alreadyPlayedThisOpen: true), "a rebuilt pane must not replay it")
+    }
+
     func testCommandBarMotionTimingsCurvesAndReduceMotion() {
         XCTAssertEqual(CommandBarMotion.fadeInDuration, 0.12, accuracy: 0.001)
         XCTAssertEqual(CommandBarMotion.fadeOutDuration, 0.10, accuracy: 0.001)
@@ -52,7 +57,6 @@ final class PanelMotionTests: XCTestCase {
 
     func testTypingLineMotionFadeAndDotAnimation() {
         XCTAssertEqual(TypingLineMotion.fadeDuration, 0.15, accuracy: 0.001)
-        XCTAssertGreaterThanOrEqual(TypingLineMotion.reservedHeight, 20)
         XCTAssertFalse(TypingLineMotion.isVisible(text: nil))
         XCTAssertTrue(TypingLineMotion.isVisible(text: "Ana is typing…"))
         XCTAssertEqual(TypingLineMotion.opacity(text: nil), 0, accuracy: 0.001)
@@ -63,6 +67,41 @@ final class PanelMotionTests: XCTestCase {
         XCTAssertFalse(TypingLineMotion.animatesDots(isVisible: true, reduceMotion: true))
         XCTAssertFalse(TypingLineMotion.usesMovement(reduceMotion: false))
         XCTAssertFalse(TypingLineMotion.usesMovement(reduceMotion: true))
+    }
+
+    func testTypingPillTakesNoRoomUntilRaisedAndRaisesTheInsetByItsHeight() {
+        XCTAssertEqual(TypingLineMotion.insetHeight(raised: false), 0, "no room reserved when nobody is typing")
+        XCTAssertEqual(
+            TypingLineMotion.insetHeight(raised: true),
+            TypingLineMotion.pillHeight + TypingLineMotion.pillGap,
+            "the newest message is held clear of the pill and its gap"
+        )
+        XCTAssertTrue(TypingLineMotion.animatesInset(reduceMotion: false))
+        XCTAssertFalse(TypingLineMotion.animatesInset(reduceMotion: true), "Reduce Motion: the inset changes at once")
+    }
+
+    func testTypingPillInsetFollowsThePillAtTheBottomAndNeverMovesAnythingAwayFromIt() {
+        // At the bottom: raised while the pill shows, back when it goes.
+        XCTAssertTrue(TypingLineMotion.nextInsetRaised(current: false, pillVisible: true, atBottom: true))
+        XCTAssertFalse(TypingLineMotion.nextInsetRaised(current: true, pillVisible: false, atBottom: true))
+        XCTAssertTrue(TypingLineMotion.nextInsetRaised(current: true, pillVisible: true, atBottom: true))
+        XCTAssertFalse(TypingLineMotion.nextInsetRaised(current: false, pillVisible: false, atBottom: true))
+
+        // Scrolled up: whatever the pill does, the inset stays exactly as it was (so nothing the person reads moves).
+        for current in [false, true] {
+            for visible in [false, true] {
+                XCTAssertEqual(
+                    TypingLineMotion.nextInsetRaised(current: current, pillVisible: visible, atBottom: false),
+                    current,
+                    "away from the bottom the inset must not change (current \(current), pill \(visible))"
+                )
+            }
+        }
+
+        // A pill that came while they read above is picked up when they return to the bottom, and one that left
+        // while they were away is let go then.
+        XCTAssertTrue(TypingLineMotion.nextInsetRaised(current: false, pillVisible: true, atBottom: true))
+        XCTAssertFalse(TypingLineMotion.nextInsetRaised(current: true, pillVisible: false, atBottom: true))
     }
 
     func testSkeletonShimmerMotionVisibilityPhaseAndOffset() {
@@ -88,116 +127,123 @@ final class PanelMotionTests: XCTestCase {
         XCTAssertEqual(SkeletonShimmerMotion.bandOffsetX(phase: 0.5, containerWidth: 200), 45, accuracy: 0.001)
     }
 
-    func testScrollEdgeFadeVisibilityFlippedAndNonFlipped() {
+    func testShimmerStopsInAWindowNobodyCanSee() {
+        func shows(_ onScreen: Bool, _ mini: Bool, _ visible: Bool) -> Bool {
+            SkeletonShimmerMotion.windowShowsContent(isOnScreen: onScreen, isMiniaturized: mini, occlusionVisible: visible)
+        }
+        XCTAssertTrue(shows(true, false, true))
+        XCTAssertFalse(shows(false, false, true), "ordered out")
+        XCTAssertFalse(shows(true, true, true), "minimised")
+        XCTAssertFalse(shows(true, false, false), "covered by other windows, or off every screen")
+    }
+
+    func testScrollEdgeFadeStrengthIsZeroUntilContentIsHiddenThenEasesToFull() {
         XCTAssertEqual(ScrollEdgeFadeMotion.fadeHeight, 10, accuracy: 0.001)
+        XCTAssertEqual(ScrollEdgeFadeMotion.strength(hiddenDistance: -12), 0, "rubber band past the edge")
+        XCTAssertEqual(ScrollEdgeFadeMotion.strength(hiddenDistance: 0), 0)
+        XCTAssertEqual(ScrollEdgeFadeMotion.strength(hiddenDistance: 1), 0, "within the tolerance")
+        XCTAssertEqual(ScrollEdgeFadeMotion.strength(hiddenDistance: 5), 0.5, accuracy: 0.001)
+        XCTAssertEqual(ScrollEdgeFadeMotion.strength(hiddenDistance: 10), 1, accuracy: 0.001)
+        XCTAssertEqual(ScrollEdgeFadeMotion.strength(hiddenDistance: 400), 1, accuracy: 0.001)
+        XCTAssertFalse(ScrollEdgeFadeState.none.isActive)
+        XCTAssertTrue(ScrollEdgeFadeState(top: 0.2, bottom: 0).isActive)
+    }
+
+    func testScrollEdgeFadeVisibilityFlippedAndNonFlipped() {
         XCTAssertEqual(ScrollEdgeFadeMotion.effectiveFadeHeight(containerHeight: 200), 10, accuracy: 0.001)
         XCTAssertEqual(ScrollEdgeFadeMotion.effectiveFadeHeight(containerHeight: 12), 6, accuracy: 0.001)
         XCTAssertEqual(ScrollEdgeFadeMotion.effectiveFadeHeight(containerHeight: 0), 0, accuracy: 0.001)
 
         // Empty or invalid geometry never shows edge fades.
         XCTAssertEqual(
-            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 0, clipMinY: 0, clipMaxY: 100),
-            .none
+            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 0, clipMinY: 0, clipMaxY: 100), .none
         )
         XCTAssertEqual(
-            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 200, clipMinY: 0, clipMaxY: 0),
-            .none
+            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 200, clipMinY: 0, clipMaxY: 0), .none
         )
 
-        // Content fits within the viewport: no fade on either edge.
-        XCTAssertEqual(
-            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 120, clipMinY: 0, clipMaxY: 200),
-            ScrollEdgeFadeState(top: false, bottom: false)
-        )
+        // Content fits within the viewport: nothing fades, so no mask is wanted at all.
+        let fits = ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 120, clipMinY: 0, clipMaxY: 200)
+        XCTAssertEqual(fits, .none)
+        XCTAssertFalse(fits.isActive)
 
-        // Flipped document: at top, scrolled into middle, and at bottom.
+        // Flipped document: at top, scrolled into the middle, and at the bottom.
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 500, clipMinY: 0, clipMaxY: 200),
-            ScrollEdgeFadeState(top: false, bottom: true)
+            ScrollEdgeFadeState(top: 0, bottom: 1)
         )
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 500, clipMinY: 100, clipMaxY: 300),
-            ScrollEdgeFadeState(top: true, bottom: true)
+            ScrollEdgeFadeState(top: 1, bottom: 1)
         )
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 500, clipMinY: 300, clipMaxY: 500),
-            ScrollEdgeFadeState(top: true, bottom: false)
+            ScrollEdgeFadeState(top: 1, bottom: 0)
         )
 
-        // Threshold tolerance: <= 1 pt stays hidden, > 1 pt activates.
+        // A few points scrolled: the top edge eases in rather than popping.
         XCTAssertEqual(
-            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 201, clipMinY: 1, clipMaxY: 200),
-            ScrollEdgeFadeState(top: false, bottom: false)
-        )
-        XCTAssertEqual(
-            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 201.5, clipMinY: 1.5, clipMaxY: 200),
-            ScrollEdgeFadeState(top: true, bottom: true)
+            ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 500, clipMinY: 4, clipMaxY: 204),
+            ScrollEdgeFadeState(top: 0.4, bottom: 1)
         )
 
-        // Rubber-band overscroll past top keeps top fade off.
+        // Rubber-band overscroll past top keeps the top fade off.
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(documentMinY: 0, documentMaxY: 500, clipMinY: -12, clipMaxY: 188),
-            ScrollEdgeFadeState(top: false, bottom: true)
+            ScrollEdgeFadeState(top: 0, bottom: 1)
         )
 
         // Flipped document with top/bottom clip insets.
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(
-                documentMinY: 0,
-                documentMaxY: 500,
-                clipMinY: -20,
-                clipMaxY: 180,
-                topInset: 20,
-                bottomInset: 10
+                documentMinY: 0, documentMaxY: 500, clipMinY: -20, clipMaxY: 180, topInset: 20, bottomInset: 10
             ),
-            ScrollEdgeFadeState(top: false, bottom: true)
+            ScrollEdgeFadeState(top: 0, bottom: 1)
         )
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(
-                documentMinY: 0,
-                documentMaxY: 500,
-                clipMinY: 310,
-                clipMaxY: 510,
-                topInset: 20,
-                bottomInset: 10
+                documentMinY: 0, documentMaxY: 500, clipMinY: 310, clipMaxY: 510, topInset: 20, bottomInset: 10
             ),
-            ScrollEdgeFadeState(top: true, bottom: false)
+            ScrollEdgeFadeState(top: 1, bottom: 0)
         )
 
-        // Non-flipped document (origin at bottom): clipMaxY == docMaxY is top, clipMinY == docMinY is bottom.
+        // Non-flipped document (origin at bottom): clipMaxY == docMaxY is the top, clipMinY == docMinY the bottom.
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(
-                documentMinY: 0,
-                documentMaxY: 500,
-                clipMinY: 300,
-                clipMaxY: 500,
-                isFlipped: false
+                documentMinY: 0, documentMaxY: 500, clipMinY: 300, clipMaxY: 500, isFlipped: false
             ),
-            ScrollEdgeFadeState(top: false, bottom: true)
+            ScrollEdgeFadeState(top: 0, bottom: 1)
         )
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(
-                documentMinY: 0,
-                documentMaxY: 500,
-                clipMinY: 150,
-                clipMaxY: 350,
-                isFlipped: false
+                documentMinY: 0, documentMaxY: 500, clipMinY: 150, clipMaxY: 350, isFlipped: false
             ),
-            ScrollEdgeFadeState(top: true, bottom: true)
+            ScrollEdgeFadeState(top: 1, bottom: 1)
         )
         XCTAssertEqual(
             ScrollEdgeFadeMotion.state(
-                documentMinY: 0,
-                documentMaxY: 500,
-                clipMinY: 0,
-                clipMaxY: 200,
-                isFlipped: false
+                documentMinY: 0, documentMaxY: 500, clipMinY: 0, clipMaxY: 200, isFlipped: false
             ),
-            ScrollEdgeFadeState(top: true, bottom: false)
+            ScrollEdgeFadeState(top: 1, bottom: 0)
         )
+    }
 
-        XCTAssertTrue(ScrollEdgeFadeMotion.animatesMaskChange(reduceMotion: false))
-        XCTAssertFalse(ScrollEdgeFadeMotion.animatesMaskChange(reduceMotion: true))
+    func testScrollEdgeFadeMaskStopsAreOpaqueOnAnEdgeWithNothingBeyondIt() {
+        func assertStops(
+            _ state: ScrollEdgeFadeState, height: CGFloat, alphas: [CGFloat], locations: [CGFloat],
+            file: StaticString = #filePath, line: UInt = #line
+        ) {
+            let stops = ScrollEdgeFadeMotion.maskStops(state: state, containerHeight: height)
+            XCTAssertEqual(stops.count, 4, file: file, line: line)
+            for (stop, (alpha, location)) in zip(stops, zip(alphas, locations)) {
+                XCTAssertEqual(stop.alpha, alpha, accuracy: 0.0001, file: file, line: line)
+                XCTAssertEqual(stop.location, location, accuracy: 0.0001, file: file, line: line)
+            }
+        }
+        assertStops(ScrollEdgeFadeState(top: 0, bottom: 1), height: 200, alphas: [1, 1, 1, 0],
+                    locations: [0, 0.05, 0.95, 1])
+        assertStops(ScrollEdgeFadeState(top: 0.5, bottom: 1), height: 100, alphas: [0.5, 1, 1, 0],
+                    locations: [0, 0.1, 0.9, 1])
     }
 
     func testChatInfoSectionMotionConstantsAndReduceMotion() {
