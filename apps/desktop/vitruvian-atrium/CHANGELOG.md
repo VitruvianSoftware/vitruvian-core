@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.102.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.2...vitruvian-atrium-v3.102.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 45, mic-mute backoff, screenshot memory and 9 more ([#5419](https://github.com/VitruvianSoftware/vitruvian-core/issues/5419)) ([5899e1b](https://github.com/VitruvianSoftware/vitruvian-core/commit/5899e1b64e212692818e895fe7cc5b4d7e4299b8))
+
 ## [3.101.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.1...vitruvian-atrium-v3.101.2) (2026-11-17)
 
 
