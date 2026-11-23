@@ -36,13 +36,23 @@ hostname: relay.vitruviansoftware.dev
 
 oidc:
   projectId: "398912441632687930"
-  # claudeV2ClientId, geminiV2ClientId
-  mcpClientIds: "400571151425734985,400571151492842651"
+  # claudeV2ClientId, geminiV2ClientId, appsClientId. The last is a PLACEHOLDER:
+  # the apps client does not exist until the zitadel-apps-relay stack is applied.
+  # The relay refuses to start unless the apps client is in this list.
+  mcpClientIds: "400571151425734985,400571151492842651,400000000000000001"
   # connectorV2ClientId
   connectorClientId: "400571151425800521"
   # dashboardClientId
   dashboardClientId: "400571151492909385"
   requiredRole: "relay-user"
+  # appsClientId (placeholder, as above)
+  appsClientId: "400000000000000001"
+
+# App sign-in is rendered ON here so CI exercises its templates, and its
+# "no client id" refusals. The live values (gitops/argocd/platform/relay) keep it
+# off until a later PR turns it on; copy this block only then.
+appSignin:
+  enabled: true
 
 mcpClientLabels:
   Claude: "400571151425734985"

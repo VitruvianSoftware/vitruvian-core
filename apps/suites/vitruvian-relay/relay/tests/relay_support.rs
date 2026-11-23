@@ -60,6 +60,9 @@ pub const PROJECT_ID: &str = "123456789";
 pub const MCP_CLIENT: &str = "claude-client";
 pub const CONNECTOR_CLIENT: &str = "connector-client";
 pub const DASHBOARD_CLIENT: &str = "dashboard-client";
+/// The client id Gemini's tokens are issued for, by the relay's own sign-in
+/// (`/oauth/*`). Like Claude's it is an MCP client id.
+pub const APPS_CLIENT: &str = "apps-client";
 pub const ALICE: &str = "alice";
 pub const BOB: &str = "bob";
 /// The Zitadel role that lets a person in.
@@ -298,7 +301,11 @@ pub async fn start_relay_with(database_url: &str, timing: Timing) -> Relay {
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
         ("ISSUER", ISSUER.to_string()),
         ("PROJECT_ID", PROJECT_ID.to_string()),
-        ("MCP_CLIENT_IDS", MCP_CLIENT.to_string()),
+        ("MCP_CLIENT_IDS", format!("{MCP_CLIENT},{APPS_CLIENT}")),
+        // The relay is an authorization server for self-registering apps, as
+        // in production.
+        ("APP_SIGNIN_KEY", b64(&[7u8; 32])),
+        ("APPS_CLIENT_ID", APPS_CLIENT.to_string()),
         ("CONNECTOR_CLIENT_ID", CONNECTOR_CLIENT.to_string()),
         ("DASHBOARD_CLIENT_ID", DASHBOARD_CLIENT.to_string()),
         ("MCP_CLIENT_LABELS", format!("Claude={MCP_CLIENT}")),
@@ -310,6 +317,7 @@ pub async fn start_relay_with(database_url: &str, timing: Timing) -> Relay {
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
     let required_role = settings.required_role.clone();
+    let mcp_ids = settings.mcp_client_ids.clone();
     let verifier_for = |ids: Vec<String>| {
         verifier_requiring_role(
             VerifierConfig {
@@ -332,7 +340,7 @@ pub async fn start_relay_with(database_url: &str, timing: Timing) -> Relay {
         .expect("the relay's store connects");
     let app = App::new(
         settings,
-        verifier_for(vec![MCP_CLIENT.into()]),
+        verifier_for(mcp_ids),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
         verifier_for(vec![DASHBOARD_CLIENT.into()]),
         Arc::new(store),
@@ -359,6 +367,11 @@ impl Relay {
 
     pub fn mcp_token(&self, sub: &str) -> String {
         mint(&self.rsa, MCP_CLIENT, sub)
+    }
+
+    /// What the identity service gives the relay's own sign-in for `sub`.
+    pub fn apps_token(&self, sub: &str) -> String {
+        mint(&self.rsa, APPS_CLIENT, sub)
     }
 
     pub fn connector_token(&self, sub: &str) -> String {

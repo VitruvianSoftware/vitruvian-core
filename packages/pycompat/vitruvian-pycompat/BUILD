@@ -23,6 +23,7 @@ rust_test(
     name = "vitruvian_pycompat_test",
     size = "small",
     crate = ":vitruvian_pycompat",
+    data = ["testdata/json_golden.jsonl"],
 )
 
 # Sources and plain-rustc build helper, for //tools/ci:build_ci_tool_test.
@@ -40,8 +41,10 @@ sh_test(
     srcs = ["rustc_build_test.sh"],
     data = glob(["src/**/*.rs"]) + [
         "rustc-build.sh",
+        "//packages/jq:srcs",
         "//tools/agent-app:rust_sources",
         "//tools/gitops/appset-render:srcs",
+        "//tools/pipeline-status:rust_sources",
         "//tools/release-scope:rust_sources",
         "//tools/sync-downloads:rust_sources",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",

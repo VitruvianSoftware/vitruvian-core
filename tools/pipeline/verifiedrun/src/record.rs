@@ -330,7 +330,7 @@ impl StatusRecorder<'_> {
                         d.string(x, &mut login);
                     } else {
                         match x {
-                            json::GoValue::Num(t, _) => id = t.clone(),
+                            json::GoValue::Num(t) => id = t.clone(),
                             json::GoValue::Str(s) => id = s.clone(),
                             json::GoValue::Null => {}
                             _ => d.string(&json::GoValue::Bool(false), &mut String::new()),

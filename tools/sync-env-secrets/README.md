@@ -195,11 +195,14 @@ reviewer's approval.
 
 | Environment | Secret | What it is |
 |---|---|---|
-| `stripe-sandbox` | `STRIPE_API_KEY` | A Stripe **sandbox** (test-mode) secret key, ideally a restricted `rk_test_…` key limited to writing Products, Prices and Payment Links. The job refuses any key that does not start `sk_test_` or `rk_test_`. |
-| `stripe-production` | `STRIPE_API_KEY` | The **live** account's key, ideally a restricted `rk_live_…` key with the same permissions. The job refuses any key that does not start `sk_live_` or `rk_live_`. |
+| `stripe-sandbox` | `STRIPE_API_KEY` | A Stripe **sandbox** (test-mode) secret key, ideally a restricted `rk_test_…` key limited to writing Products, Prices, Payment Links, and **Checkout Sessions (`Write`)**. The job refuses any key that does not start `sk_test_` or `rk_test_`. |
+| `stripe-production` | `STRIPE_API_KEY` | The **live** account's key, ideally a restricted `rk_live_…` key with the same permissions (including **Checkout Sessions: Write** for the Turnstile checkout Worker). The job refuses any key that does not start `sk_live_` or `rk_live_`. |
+| `stripe-sandbox`, `stripe-production` | `CLOUDFLARE_API_TOKEN` | Cloudflare API token with `Account.Turnstile:Edit`, `Account.Workers Scripts:Edit`, `Zone.Workers Routes:Edit`, and `Zone.DNS:Edit` on `vitruviansoftware.dev`. |
+| `stripe-sandbox`, `stripe-production` | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID owning the `vitruviansoftware.dev` zone, Workers script, and Turnstile widget. |
 
 To set them: `set -- stripe-sandbox STRIPE_API_KEY` and
-`set -- stripe-production STRIPE_API_KEY` (each also backs the store up to
+`set -- stripe-production STRIPE_API_KEY` (plus `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` in each environment; each also backs the store up to
 Bitwarden), then `apply -- stripe-sandbox` and `apply -- stripe-production`.
 
 ## `pagerduty-production`

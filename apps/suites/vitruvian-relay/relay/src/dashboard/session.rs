@@ -181,7 +181,7 @@ pub fn cookie_value<'a>(headers: impl IntoIterator<Item = &'a str>, name: &str) 
         .filter(|v| !v.is_empty())
 }
 
-fn cookie(name: &str, value: &str, path: &str, max_age: u64, secure: bool) -> String {
+pub(crate) fn cookie(name: &str, value: &str, path: &str, max_age: u64, secure: bool) -> String {
     format!(
         "{name}={value}; HttpOnly;{} SameSite=Lax; Path={path}; Max-Age={max_age}",
         if secure { " Secure;" } else { "" },

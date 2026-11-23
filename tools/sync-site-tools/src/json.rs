@@ -33,11 +33,6 @@ pub use vitruvian_pycompat::pystr::repr_float as float_repr;
 use crate::pyerr::PyErr;
 use crate::pystr::PyStr;
 
-/// CPython 3.12's measured container nesting limit for `json.loads`
-/// (`/opt/homebrew/bin/python3.12 -I` accepts depth 9,997 and raises
-/// `RecursionError` at depth 9,998).
-pub const MAX_DEPTH: usize = 9_997;
-
 /// `f"{value:.1f}"` of a float.
 pub fn format_fixed1(f: f64) -> String {
     vitruvian_pycompat::pystr::format_fixed(f, 1)
@@ -126,7 +121,7 @@ fn crash_to_pyerr(crash: Crash) -> PyErr {
 pub fn loads(text: &PyStr) -> Result<Value, PyErr> {
     vitruvian_pycompat::json::loads_with_limits(
         &text.to_string_lossy(),
-        Some(MAX_DEPTH),
+        None,
         Some(DEFAULT_INT_MAX_STR_DIGITS),
     )
     .map_err(|e| match e.kind() {
@@ -453,8 +448,7 @@ mod tests {
 
     #[test]
     fn deep_nesting_returns_recursion_error_without_crashing() {
-        // Value::drop is compiler-generated and recursive because Value variants
-        // are moved out by callers, so test depth 9,997 on a 32 MiB stack.
+        // Test CPython 3.12's 9,997 accepted / 9,998 rejected depth boundary on a 32 MiB thread.
         let handle = std::thread::Builder::new()
             .stack_size(32 << 20)
             .spawn(|| {
@@ -481,7 +475,8 @@ mod tests {
                     out
                 }
 
-                const ACCEPTED_DEPTH: usize = 9_997;
+                const ACCEPTED_DEPTH: usize = vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH;
+                assert_eq!(ACCEPTED_DEPTH, 9_997);
                 // Exact accepted depth: 9,997 across arrays, objects, and mixed chains.
                 let ok_cases = [
                     format!("{}{}", "[".repeat(ACCEPTED_DEPTH), "]".repeat(ACCEPTED_DEPTH)),

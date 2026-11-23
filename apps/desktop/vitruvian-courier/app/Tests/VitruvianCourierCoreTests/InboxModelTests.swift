@@ -1870,6 +1870,82 @@ final class InboxModelTests: XCTestCase {
         XCTAssertEqual(publishCount, 1)
         await stop(h)
     }
+
+    func testReorderPinnedExpandsMergedRoomsUpdatesLocallyAndCallsRPC() async throws {
+        var sigRow = room("!sig:courier.local", ts: 200, network: "signal", name: "Alice Merged", pinned: true)
+        sigRow["merge_id"] = "merge:alice"
+        var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice WA", pinned: true)
+        waRow["merge_id"] = "merge:alice"
+        let pinA = room("!a:courier.local", ts: 300, pinned: true)
+        let pinC = room("!c:courier.local", ts: 150, pinned: true)
+        let unpinned = room("!u:courier.local", ts: 400, pinned: false)
+
+        let h = try await start(rooms: [pinA, sigRow, pinC, unpinned], autoRelease: true)
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "",
+            "last_room_id": "!sig:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.script.rooms = [pinA, sigRow, waRow, pinC, unpinned]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil {
+            !h.inbox.mergedChats.isEmpty
+                && h.inbox.rows.map(\.id) == ["!a:courier.local", "merge:alice", "!c:courier.local", "!u:courier.local"]
+        }
+
+        // Hold inbox.list so we observe the optimistic local reorder before the engine refresh returns.
+        h.script.holdInbox = true
+        await h.inbox.reorderPinned(["!c:courier.local", "merge:alice", "!a:courier.local"])
+
+        XCTAssertEqual(
+            h.inbox.rows.map(\.id),
+            ["!c:courier.local", "merge:alice", "!a:courier.local", "!u:courier.local"]
+        )
+        let calls = h.server.receivedParams("room.reorderPins")
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(
+            calls.last?["room_ids"] as? [String],
+            ["!c:courier.local", "!wa:courier.local", "!sig:courier.local", "!a:courier.local"]
+        )
+        h.script.holdInbox = false
+        h.server.releaseHeld(with: page([pinC, sigRow, waRow, pinA, unpinned]))
+
+        // Locked app does nothing and sends no RPC.
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+        let lockSuite = TestDefaults()
+        defer {
+            lockSuite.remove()
+            AppLockGate.shared.resetForTesting()
+        }
+        let lifecycle = SystemLifecycleModel(
+            defaults: lockSuite.defaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        let lockedInbox = InboxModel(appModel: h.app, preferences: h.preferences, lifecycle: lifecycle)
+        lockedInbox.setSnapshotRowsForTesting(h.inbox.rows)
+        let beforeLockedRows = lockedInbox.rows.map(\.id)
+        lifecycle.lockNow()
+        XCTAssertTrue(lockedInbox.isLocked)
+
+        await lockedInbox.reorderPinned(["!a:courier.local", "merge:alice", "!c:courier.local"])
+        XCTAssertEqual(lockedInbox.rows.map(\.id), beforeLockedRows)
+        XCTAssertEqual(h.server.receivedParams("room.reorderPins").count, 1)
+
+        await stop(h)
+    }
 }
 
 // MARK: - Harness

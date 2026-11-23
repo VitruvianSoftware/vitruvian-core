@@ -90,3 +90,13 @@ config:
         name: devx
       - key: homelab
         name: homelab
+  vitruvian-stripe:checkoutWorker:
+    cloudflareZone: vitruviansoftware.dev
+    cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
+    customDomain: donate-api.vitruviansoftware.dev
+    workerName: vitruvian-donate-checkout
+    allowedOrigin: https://vitruviansoftware.dev
+    siteBaseUrl: https://vitruviansoftware.dev
+    turnstileWidgetName: vitruvian-donate
+    turnstileDomains:
+      - vitruviansoftware.dev

@@ -45,7 +45,7 @@
 set -uo pipefail
 
 # Cloud sessions only — no-op on a local checkout.
-[ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
+[ "${VITRUVIAN_CLOUD_SESSION:-}" = "true" ] || [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 
 # Pick up anything //tools/cloud-bootstrap resolved for this session's profile.
 # Hooks are separate processes, so a LAB_SA_TOKEN it fetched from Secret Manager

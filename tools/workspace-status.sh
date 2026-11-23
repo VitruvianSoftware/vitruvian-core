@@ -47,6 +47,7 @@ fi
 # Primary-checkout branch guard (#502).
 if [ "${inside_work_tree}" = "true" ] \
 	&& [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ] \
+	&& [ "${VITRUVIAN_CLOUD_SESSION:-}" != "true" ] \
 	&& [ "${CLAUDE_CODE_REMOTE:-}" != "true" ] \
 	&& [ "${VITRUVIAN_ALLOW_PRIMARY_BRANCH:-0}" != "1" ]; then
 	git_dir=$(git rev-parse --git-dir 2>/dev/null || true)

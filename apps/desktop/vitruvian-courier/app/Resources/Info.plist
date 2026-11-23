@@ -39,5 +39,18 @@
 	<string>Vitruvian Courier turns your speech into text on this Mac for Talk to Type and voice-note transcripts.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.vitruviansoftware.courier.pinned-chat</string>
+			<key>UTTypeDescription</key>
+			<string>Vitruvian Courier Pinned Chat</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

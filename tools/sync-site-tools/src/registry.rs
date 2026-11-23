@@ -316,8 +316,9 @@ pub fn inspect_capabilities(plugin_dir: &PyStr) -> Result<Caps, PyErr> {
     if pyfs::is_file(&hooks_json)? {
         // `except Exception`: any failure to read or parse it.
         match pyfs::read_text(&hooks_json).and_then(|text| json::loads(&text)) {
-            Ok(Value::Obj(pairs)) => {
-                let mut keys: Vec<PyStr> = pairs.into_iter().map(|(k, _)| PyStr::from(k)).collect();
+            Ok(Value::Obj(ref pairs)) => {
+                let mut keys: Vec<PyStr> =
+                    pairs.iter().map(|(k, _)| PyStr::from(k.as_str())).collect();
                 keys.sort();
                 caps.hooks = keys;
             }

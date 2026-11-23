@@ -40,8 +40,8 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//packages/gocompat/gojson:vitruvian_gojson",
         "@crates//:serde",
-        "@crates//:serde_json",
     ],
 )
 

@@ -32,6 +32,7 @@ The Zitadel project and sign-in clients for the Vitruvian Relay
 | `relay-chatgpt` | ChatGPT, only once `chatgptRedirectUris` is set | Authorization code with PKCE, ChatGPT's per-connector callback |
 | `relay-dashboard` | The relay's own web page, where signed-in people see their computers and activity | Authorization code with PKCE, no secret. Callback `https://relay.vitruviansoftware.dev/auth/callback`, after sign-out back to `https://relay.vitruviansoftware.dev/` |
 | `relay-gemini` | The Gemini app (Settings → Connectors → + Custom), only once `geminiRedirectUris` is set | Authorization code with a client secret (`client_secret_post`), Gemini's per-user callback on `oauth-redirect.googleusercontent.com` |
+| `relay-apps` | The relay itself, signing people in for AI apps (Gemini) that connect through the relay's own sign-in endpoints | Authorization code with PKCE, no secret. Callback exactly `https://relay.vitruviansoftware.dev/oauth/callback`. Asserts roles in the access token and carries name and email in the id token, so the consent page can say who is approving. Its id is the `appsClientId` output |
 
 All of them issue JWT access tokens, so the relay can check them locally against
 Zitadel's public keys. All but `relay-gemini` are public clients (no secret;
@@ -55,6 +56,7 @@ created:
 - Gemini: `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-{id}`
 - Dashboard: exactly `https://relay.vitruviansoftware.dev/auth/callback` (a fixed
   value in `main.go`, checked the same way)
+- Apps: exactly `https://relay.vitruviansoftware.dev/oauth/callback` (fixed too)
 
 `{id}` is letters, digits, `_` and `-` only. Anything else is an apply error: a
 look-alike path, an extra segment, a `.` or `..` id, a `%` escape, a backslash, a
@@ -87,8 +89,8 @@ clients are left alone, and each has a sibling with role assertion on:
 `relay-connector-v2`, `relay-claude-v2`, `relay-chatgpt-v2`, `relay-gemini-v2`.
 They have the same type, grants, callbacks and sign-in method. Their ids and
 secrets are the `connectorV2ClientId`, `claudeV2ClientId`, `chatgptV2ClientId`,
-`geminiV2ClientId` and `geminiV2ClientSecret` outputs. `relay-dashboard` already
-asserts roles and is not duplicated.
+`geminiV2ClientId` and `geminiV2ClientSecret` outputs. `relay-dashboard` and
+`relay-apps` already assert roles and are not duplicated.
 
 - **The new relay uses the `-v2` clients and the dashboard.** The current relay
   keeps working on the old ones until it is replaced.

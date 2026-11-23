@@ -1,4 +1,5 @@
 #!/bin/sh
+# Generated from apps/antigravity/hook_rust_hook.sh by //apps/antigravity:hooks-gen. Do not edit; run `bazel run //apps/antigravity:hooks-gen -- --write`.
 # Copyright (c) 2026 VitruvianSoftware
 #
 # SPDX-License-Identifier: MIT
@@ -36,8 +37,8 @@
 # For tests: RUST_HOOK_RUSTC, if set, is the only rustc tried, and
 # RUST_HOOK_WHICH=1 prints the binary path and stops.
 #
-# This file is identical in every plugin under apps/antigravity/plugins
-# (//apps/antigravity:shared_files_test checks it).
+# Each plugin's copy is generated from apps/antigravity/hook_rust_hook.sh by
+# //apps/antigravity:hooks-gen (//apps/antigravity:hooks_drift_test checks it).
 
 umask 077
 

@@ -16,7 +16,12 @@
 {%- endcomment -%}
 {%- assign app = site.data.donations[include.key] -%}
 {%- assign link = app.url | strip -%}
+{%- assign checkout = site.data.donation_checkout -%}
+{%- assign sitekey = checkout.turnstile_sitekey | default: "" | strip -%}
+{%- assign endpoint = checkout.endpoint | default: "" | strip -%}
+{%- assign endpoint_https = endpoint | slice: 0, 8 -%}
 {%- assign live = false -%}
+{%- if sitekey != "" and endpoint_https == "https://" -%}{%- assign live = true -%}{%- endif -%}
 {%- assign buy = link | slice: 0, 23 -%}
 {%- assign donate = link | slice: 0, 26 -%}
 {%- if buy == "https://buy.stripe.com/" and link.size > 23 -%}{%- assign live = true -%}{%- endif -%}

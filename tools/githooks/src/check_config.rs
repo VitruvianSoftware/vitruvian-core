@@ -117,6 +117,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     if inside_work_tree == b"true"
         && env_or_empty("CI").is_empty()
         && env_or_empty("GITHUB_ACTIONS").is_empty()
+        && env_or_empty("VITRUVIAN_CLOUD_SESSION") != b"true"
         && env_or_empty("CLAUDE_CODE_REMOTE") != b"true"
         && env_or("VITRUVIAN_ALLOW_PRIMARY_BRANCH", b"0") != b"1"
     {

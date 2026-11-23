@@ -180,19 +180,73 @@ fn as_int_str(v: &Value) -> Option<&str> {
     }
 }
 
+fn normalize_int(s: &str) -> (bool, &str) {
+    let (neg, digits) = match s.strip_prefix('-') {
+        Some(d) => (true, d),
+        None => (false, s),
+    };
+    let trimmed = digits.trim_start_matches('0');
+    if trimmed.is_empty() {
+        (false, "0")
+    } else {
+        (neg, trimmed)
+    }
+}
+
+fn cmp_int_str(a: &str, b: &str) -> std::cmp::Ordering {
+    let (aneg, adig) = normalize_int(a);
+    let (bneg, bdig) = normalize_int(b);
+    match (aneg, bneg) {
+        (false, true) => std::cmp::Ordering::Greater,
+        (true, false) => std::cmp::Ordering::Less,
+        (false, false) => adig.len().cmp(&bdig.len()).then_with(|| adig.cmp(bdig)),
+        (true, true) => bdig.len().cmp(&adig.len()).then_with(|| bdig.cmp(adig)),
+    }
+}
+
+/// Compare a decimal integer string against an `f64` by exact mathematical
+/// value, as Python compares `int` and `float`; returns `None` for `NaN`.
+fn cmp_int_float(int_str: &str, f: f64) -> Option<std::cmp::Ordering> {
+    if f.is_nan() {
+        return None;
+    }
+    if f.is_infinite() {
+        return Some(if f > 0.0 {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        });
+    }
+    let whole = f.trunc();
+    let exact = format!("{:.0}", whole);
+    match cmp_int_str(int_str, &exact) {
+        std::cmp::Ordering::Equal => {
+            let frac = f - whole;
+            Some(if frac > 0.0 {
+                std::cmp::Ordering::Less
+            } else if frac < 0.0 {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            })
+        }
+        other => Some(other),
+    }
+}
+
 /// Python's `a < b`.
 pub fn lt(a: &Value, b: &Value) -> Result<bool, Crash> {
     use std::cmp::Ordering;
     let is_num = |v: &Value| matches!(v, Value::Bool(_) | Value::Int(_) | Value::Float(_));
     if is_num(a) && is_num(b) {
         return Ok(match (as_int_str(a), as_int_str(b)) {
-            (Some(x), Some(y)) => crate::json::cmp_int_str(x, y) == Ordering::Less,
+            (Some(x), Some(y)) => cmp_int_str(x, y) == Ordering::Less,
             (Some(x), None) => match b {
-                Value::Float(y) => crate::json::cmp_int_float(x, *y) == Some(Ordering::Less),
+                Value::Float(y) => cmp_int_float(x, *y) == Some(Ordering::Less),
                 _ => unreachable!(),
             },
             (None, Some(y)) => match a {
-                Value::Float(x) => crate::json::cmp_int_float(y, *x) == Some(Ordering::Greater),
+                Value::Float(x) => cmp_int_float(y, *x) == Some(Ordering::Greater),
                 _ => unreachable!(),
             },
             (None, None) => match (a, b) {
@@ -420,5 +474,37 @@ mod tests {
                 "'<' not supported between instances of 'str' and 'int'"
             )
         );
+    }
+
+    #[test]
+    fn cmp_int_str_and_float_exact() {
+        use std::cmp::Ordering;
+
+        assert_eq!(cmp_int_str("-0", "0"), Ordering::Equal);
+        assert_eq!(cmp_int_str("-10", "2"), Ordering::Less);
+        assert_eq!(cmp_int_str("-2", "-10"), Ordering::Greater);
+        assert_eq!(
+            cmp_int_str(
+                "1000000000000000000000000000001",
+                "1000000000000000000000000000000"
+            ),
+            Ordering::Greater
+        );
+
+        assert_eq!(cmp_int_float("3", 3.5), Some(Ordering::Less));
+        assert_eq!(cmp_int_float("-3", -3.5), Some(Ordering::Greater));
+        assert_eq!(cmp_int_float("0", -0.0), Some(Ordering::Equal));
+        assert_eq!(cmp_int_float("0", -0.5), Some(Ordering::Greater));
+        assert_eq!(cmp_int_float("0", 0.5), Some(Ordering::Less));
+        assert_eq!(
+            cmp_int_float("9007199254740993", 9007199254740992.0),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(cmp_int_float("1", f64::INFINITY), Some(Ordering::Less));
+        assert_eq!(
+            cmp_int_float("1", f64::NEG_INFINITY),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(cmp_int_float("1", f64::NAN), None);
     }
 }
