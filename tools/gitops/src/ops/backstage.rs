@@ -107,7 +107,10 @@ fn py_load_object(input: &[u8]) -> Result<PyValue, String> {
             "AttributeError: '{}' object has no attribute 'get'",
             other.type_name()
         )),
-        Err(e) => Err(format!("json.decoder.JSONDecodeError: {}", e.python_str())),
+        Err(e) => match e.recursion_message() {
+            Some(m) => Err(format!("RecursionError: {m}")),
+            None => Err(format!("json.decoder.JSONDecodeError: {}", e.python_str())),
+        },
     }
 }
 
@@ -343,7 +346,7 @@ fn run_main(args: &[Vec<u8>]) -> Res<i32> {
             // sys.stderr.write(d.get("error","")[:200]): only a string gets
             // through; anything else is a TypeError.
             match py_get(&v, "error") {
-                PyValue::Str(e) => {
+                PyValue::Str(ref e) => {
                     let cut: String = e.chars().take(200).collect();
                     sc::err(cut.as_bytes());
                 }
@@ -432,5 +435,25 @@ mod tests {
         let bad = py_load_object(br#"{"token":"FAKE-SECRET-VALUE-1"#).unwrap_err();
         assert!(bad.starts_with("json.decoder.JSONDecodeError: "));
         assert!(!bad.contains("FAKE-SECRET-VALUE-1"));
+    }
+
+    #[test]
+    fn py_load_object_rejects_deeply_nested_input_cleanly() {
+        let arr = "[".repeat(10000);
+        let obj = "{\"a\":".repeat(10000);
+        let err_arr = py_load_object(arr.as_bytes()).unwrap_err();
+        let err_obj = py_load_object(obj.as_bytes()).unwrap_err();
+        assert!(
+            err_arr.starts_with(
+                "RecursionError: maximum recursion depth exceeded while decoding a JSON array from a unicode string"
+            ),
+            "arr={err_arr:?}"
+        );
+        assert!(
+            err_obj.starts_with(
+                "RecursionError: maximum recursion depth exceeded while decoding a JSON object from a unicode string"
+            ),
+            "obj={err_obj:?}"
+        );
     }
 }
