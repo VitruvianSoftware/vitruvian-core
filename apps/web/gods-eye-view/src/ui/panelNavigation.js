@@ -21,7 +21,7 @@
  */
 
 import PanelRailView from './PanelRailView.vue';
-import { PANEL_RAIL_HOST_CLASS, PANEL_RAIL_ITEMS } from './panelRailCatalog.js';
+import { PANEL_RAIL_HOST_CLASS } from './panelRailCatalog.js';
 import { usePanelStore } from './stores/panels.js';
 
 /**
@@ -93,7 +93,6 @@ export class PanelNavigation {
         ? [...stack.children]
             .filter((panel) => panel.matches('[data-panel-id]'))
             .map((panel) => {
-              const shownBy = PANEL_RAIL_ITEMS[panel.id]?.shownBy;
               return {
                 id: panel.id,
                 title:
@@ -101,9 +100,7 @@ export class PanelNavigation {
                     .querySelector('.panel-title, .pp-header-label')
                     ?.textContent.trim() || panel.id,
                 open: !panel.classList.contains('collapsed'),
-                available:
-                  !panel.hidden &&
-                  (!shownBy || panel.classList.contains(shownBy)),
+                available: !panel.hidden,
               };
             })
         : [];

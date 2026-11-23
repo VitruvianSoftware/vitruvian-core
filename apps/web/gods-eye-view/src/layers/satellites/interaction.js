@@ -21,6 +21,7 @@
  */
 
 import { inputFor } from '../../input/dispatcher.js';
+import { modelHitNorad } from './stationModels.js';
 import { onFollowChanged } from '../../data/followed.js';
 
 export function createInteraction({
@@ -29,7 +30,8 @@ export function createInteraction({
   parts,
   source,
 }) {
-  const { resolvePickId, isOwnedByOtherLayer } = services.picking;
+  const { resolvePickId, isOwnedByOtherLayer, isUnderOtherCard } =
+    services.picking;
 
   function _onKeyDown(e) {
     // The Cockpit owns Escape while it rides the tracked satellite.
@@ -72,6 +74,9 @@ export function createInteraction({
       // The Cockpit camera rides the tracked satellite: a click on the
       // picture below must not untrack it or switch satellites.
       if (parts.cockpit?._cockpitHeld()) return;
+      // Another layer's card or label painted on top takes the click: the item
+      // under it does not act, and the click is not empty space either.
+      if (isUnderOtherCard?.(event)) return;
       const picked = event.topHit;
       const hit = event.drawHit;
 
@@ -84,6 +89,18 @@ export function createInteraction({
         parts.tracking._cancelPendingTrackingRestore();
         parts.tracking._trackSatellite(noradId, { origin: 'user' });
         return;
+      }
+      // A station's 3D model (stationModel.js) names its station. A click
+      // on the tracked station's own model is already tracked; on another
+      // station's model it tracks that one.
+      const modelNorad = modelHitNorad(parts, hit);
+      if (modelNorad !== null) {
+        if (modelNorad === layerState._trackedNorad) return;
+        if (layerState._catalog.has(modelNorad)) {
+          parts.tracking._cancelPendingTrackingRestore();
+          parts.tracking._trackSatellite(modelNorad, { origin: 'user' });
+          return;
+        }
       }
 
       // A pick that belongs to a sibling layer (plane, vessel, station, CCTV

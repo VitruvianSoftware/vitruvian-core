@@ -39,7 +39,7 @@ const KINDS = {
 };
 const ATTRIBUTION = {
   datacenters: '© OpenStreetMap contributors (ODbL 1.0)',
-  dams: '© OpenStreetMap contributors (ODbL 1.0), via Open Infrastructure Map',
+  dams: '© OpenStreetMap contributors (ODbL 1.0) + Open Infrastructure Map',
 };
 
 const round = (value, digits) =>

@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	624c229bc2a86fc1e47ed34c95fc7cefa2ac1676	tree	0629f67b790b64e62a0e66aaf8f14d52c8e589bb
+# base	ec2f7d8ca732c489403813e90ec88460c9d7fcd2	tree	1b9d771e8179511ec1db486251e7e9268ded6060
 # path	change	why
 .dockerignore	modified	Legacy local-context filter (superseded for repo-root builds by Dockerfile.dockerignore). Upstream ships its own for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
@@ -78,6 +78,7 @@ src/sentry.ts	added	TypeScript re-exports and interface for client-side Sentry.
 src/main.js	modified	Initializes client-side Sentry error monitoring and captures startup failures.
 src/ui/styles/provider-settings.css	modified	Adds styles for key-setup-sentry-test diagnostic button.
 src/ui/views/ProviderSettingsView.vue	modified	Adds Sentry diagnostic test button to trigger client and server exceptions.
+src/ui/kit/missionsRadioControls.test.mjs	modified	Counts five UiButtons in ProviderSettingsView.vue, not four: the Sentry test button that view adds here is a UiButton.
 README.md	modified	Monorepo README contract (#4586): the generated Interface/Invariants/Side Effects/Verification sections every component README carries here. Upstream has none.
 pinokio/README.md	added	Monorepo README contract (#4586): the generated Interface/Invariants/Side Effects/Verification sections every component README carries here. Upstream has none.
 scripts/README.md	added	Monorepo README contract (#4586): the generated Interface/Invariants/Side Effects/Verification sections every component README carries here. Upstream has none.

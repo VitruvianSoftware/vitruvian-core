@@ -24,12 +24,10 @@ import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
 import { t } from './i18n/index.js';
 import { initClientSentry, captureClientException } from './sentry.js';
+import { PHOTON_SETTING as photonSetting } from './search/photonSetting.js';
 
 // Early initialization of client-side Sentry error monitoring
 initClientSentry().catch((err) => console.warn('[Sentry] Client init deferred:', err));
-
-// The Vite boundary exposes only undefined, null, or a validated URL.
-const photonSetting = import.meta.env.PHOTON_URL;
 
 const application = createStandaloneApplication({
   googleApiKey: import.meta.env.GOOGLE_MAPS_API_KEY,

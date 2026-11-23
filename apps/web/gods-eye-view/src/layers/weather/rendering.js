@@ -21,7 +21,7 @@
  */
 
 import { weatherTileUrl, closeWeatherPixels } from './source.js';
-import { WEATHER_IMAGERY_Z } from './imageryOrder.js';
+import { WEATHER_IMAGERY_SHOWS, WEATHER_IMAGERY_Z } from './imageryOrder.js';
 import { imageryHostStatus } from './imageryHost.js';
 import { globeImageryHost } from './shellRendering.js';
 import { drawMosaicTile, createFrameTileFetch } from './rasterTiles.js';
@@ -525,6 +525,7 @@ function createGlobeRendering({
                 drawMosaicTile(texture, rectangle, tile, canvas),
               admit,
               zOrder: WEATHER_IMAGERY_Z[snapshot.product],
+              shows: WEATHER_IMAGERY_SHOWS[snapshot.product],
             }
           : {
               kind: 'xyz',
@@ -567,6 +568,7 @@ function createGlobeRendering({
                   }
                 : {}),
               zOrder: WEATHER_IMAGERY_Z[snapshot.product],
+              shows: WEATHER_IMAGERY_SHOWS[snapshot.product],
             };
         // A shown, transparent layer lets the renderer request staging tiles
         // while the last complete observation stays visible underneath it.

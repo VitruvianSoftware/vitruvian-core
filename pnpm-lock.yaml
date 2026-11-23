@@ -904,6 +904,9 @@ importers:
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4
+      opencc-js:
+        specifier: 1.4.2
+        version: 1.4.2
       prettier:
         specifier: 3.10.1
         version: 3.10.1
@@ -15940,6 +15943,9 @@ packages:
 
   openapi3-ts@3.2.0:
     resolution: {integrity: sha512-/ykNWRV5Qs0Nwq7Pc0nJ78fgILvOT/60OxEmB3v7yQ8a8Bwcm43D4diaYazG/KBn6czA+52XYy931WFLMCUeSg==}
+
+  opencc-js@1.4.2:
+    resolution: {integrity: sha512-EdcspgdROiCCZDM+jZR6Pa670xW+EW2QhctPBQ8gRjg6lrx4IHEl+2s+kt5izk/TkxVRgdWuFgaGkaEdIUfdaw==}
 
   openid-client@6.8.8:
     resolution: {integrity: sha512-ZsucJA5Ad04Uv7YN4ql+s4GXNmb9uAYQwyJTsJx7CH/MX3JZioLE2pVKi1SC+YrbSLA4Px3Gi30dMjgOZtb6pA==}
@@ -41397,6 +41403,8 @@ snapshots:
   openapi3-ts@3.2.0:
     dependencies:
       yaml: 2.9.1
+
+  opencc-js@1.4.2: {}
 
   openid-client@6.8.8:
     dependencies:
