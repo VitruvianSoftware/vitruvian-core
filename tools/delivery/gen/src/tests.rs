@@ -824,6 +824,8 @@ fn stripe_rungs_accept_only_their_own_key_mode() {
             format!("            *) echo \"::error::STRIPE_API_KEY in the stripe-{} environment is not a {}-mode secret key", env, mode),
             format!("          if [ \"$mode\" != \"{}\" ]; then\n", mode),
             format!("          stack: {}\n", env),
+            "          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n".to_string(),
+            "          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n".to_string(),
         ] {
             assert!(job.contains(&want), "stripe-{} job lacks {:?}", env, want);
         }

@@ -210,8 +210,8 @@ rung (production still waits for the reviewer).
 
 | Stack | GitHub Environment | Secret | Accepts | Gate |
 |---|---|---|---|---|
-| `sandbox` | `stripe-sandbox` | `STRIPE_API_KEY` | `sk_test_…`, `rk_test_…` | merge to `main` |
-| `production` | `stripe-production` | `STRIPE_API_KEY` | `sk_live_…`, `rk_live_…` | sandbox applied in the same run, then a required reviewer |
+| `sandbox` | `stripe-sandbox` | `STRIPE_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | `sk_test_…`, `rk_test_…` | merge to `main` |
+| `production` | `stripe-production` | `STRIPE_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | `sk_live_…`, `rk_live_…` | sandbox applied in the same run, then a required reviewer |
 
 Both Environments are declared in
 [`repo-config`](../repo-config/stripe_environments.go), and only `main` may
@@ -219,22 +219,49 @@ deploy to them, so no pull request can read a key. The secrets are set with
 [`//tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md#stripe-sandbox-and-stripe-production),
 never by hand and never in git. Stripe creates API keys only in its Dashboard,
 so each key starts there; use a restricted key limited to writing Products,
-Prices and Payment Links.
+Prices, Payment Links, and **Checkout Sessions (`Write`)** (needed by the
+Turnstile checkout Worker).
+
+The Cloudflare Worker (`donate-api.vitruviansoftware.dev` in production,
+`donate-api.dev.vitruviansoftware.dev` in sandbox) and Turnstile widget are
+provisioned by `internal/checkoutworker` when both `CLOUDFLARE_API_TOKEN`
+(`Account.Turnstile:Edit`, `Account.Workers Scripts:Edit`,
+`Zone.Workers Routes:Edit`, `Zone.DNS:Edit` on `vitruviansoftware.dev`) and
+`CLOUDFLARE_ACCOUNT_ID` are set.
 
 ```sh
 bazel run //tools/sync-env-secrets:unlock
 bazel run //tools/sync-env-secrets:set -- stripe-sandbox STRIPE_API_KEY
 bazel run //tools/sync-env-secrets:set -- stripe-production STRIPE_API_KEY
+bazel run //tools/sync-env-secrets:set -- stripe-sandbox CLOUDFLARE_API_TOKEN
+bazel run //tools/sync-env-secrets:set -- stripe-production CLOUDFLARE_API_TOKEN
+bazel run //tools/sync-env-secrets:set -- stripe-sandbox CLOUDFLARE_ACCOUNT_ID
+bazel run //tools/sync-env-secrets:set -- stripe-production CLOUDFLARE_ACCOUNT_ID
 bazel run //tools/sync-env-secrets:apply -- stripe-sandbox
 bazel run //tools/sync-env-secrets:apply -- stripe-production
 ```
 
-`set` prompts for the key without echoing it and backs the store up to
+`set` prompts for each value without echoing it and backs the store up to
 Bitwarden; `apply` puts it in the Environment.
 
 Then push a change under this directory, or dispatch `delivery-stripe.yaml`
 (unit `stripe`, environment `sandbox`). Each run's summary lists the product,
-the price and one Payment Link URL per app.
+the price, `donateCheckoutUrl`, `donateTurnstileSitekey`, and one Payment Link
+URL per app.
+
+### Turnstile cutover (zero downtime)
+
+1. Set the Cloudflare secrets above and ensure `STRIPE_API_KEY` includes
+   **Checkout Sessions: Write**, then run `delivery-stripe.yaml` through
+   `stripe-production`.
+2. Copy `donateTurnstileSitekey` from the `stripe-production` step summary (or
+   `pulumi stack output donateTurnstileSitekey --stack ipv1337/vitruvian-stripe/production`)
+   into `apps/web/vitruviansoftware-dev/_data/donation_checkout.yml` under
+   `turnstile_sitekey`.
+3. Once verified live on `vitruviansoftware.dev/donate/`, clear the static URLs
+   in `apps/web/vitruviansoftware-dev/_data/donations.yml` and deactivate the
+   13 static Payment Links in Stripe so scraped `donate.stripe.com` URLs stop
+   spawning sessions.
 
 ## Not in this change
 

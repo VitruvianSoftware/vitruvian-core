@@ -2528,6 +2528,17 @@ html.lightbox-open {
   display: flex;
 }
 
+.donate-turnstile {
+  min-height: 65px;
+}
+
+.donate-error {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-sanguine-text);
+}
+
 .donate-cta {
   width: 100%;
   justify-content: center;

@@ -3,6 +3,7 @@ module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platfor
 go 1.26.10
 
 require (
+	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
 	github.com/pulumi/pulumi-terraform-provider/sdks/go/stripe v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi/sdk/v3 v3.259.0
 	gopkg.in/yaml.v3 v3.0.1

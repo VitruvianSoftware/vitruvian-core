@@ -721,6 +721,8 @@ fn render_stripe_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R {
     w!(b, "        uses: {}\n", PULUMI_RUN_CAPTURED_ACTION);
     b.push_str("        env:\n");
     b.push_str("          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}\n");
+    b.push_str("          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n");
+    b.push_str("          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n");
     b.push_str("        with:\n");
     b.push_str("          command: up\n");
     w!(b, "          stack: {}\n", env);
