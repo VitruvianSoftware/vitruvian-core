@@ -1534,7 +1534,7 @@
     "@@rules_playwright+//playwright:extensions.bzl%playwright": {
       "general": {
         "bzlTransitiveDigest": "Cfc8ChmmLyIGXOs8EWPVZxxuNAHMDV3RTEeq21sA1tw=",
-        "usagesDigest": "fswqCpA9sfy68AgUimXob8m7xvGhFYQE8RUN/hY/sPM=",
+        "usagesDigest": "tdhci5YbY/6NV+9NvjQZGiejdhDP9lch3FQ3RyF89Bg=",
         "recordedInputs": [
           "REPO_MAPPING:rules_playwright+,bazel_tools bazel_tools",
           "FILE:@@rules_playwright+//tools/release/artifacts/cli-arm64-apple-darwin 67731b424ce41adff3be0b4f612c60be0bddb53454eab0a5c415815d9c97f9cc"
@@ -1796,6 +1796,7 @@
           "playwright-chromium-debian11-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-5z7raAMS6W1Pj7ylia1C4/txkXi0vdhwf5/nlhI79Is=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
@@ -1806,6 +1807,7 @@
           "playwright-chromium-debian11-x64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-q1ayp5VcKWH3Q0jiNJ8ekHSJKD2iPbo3xzC2JOTWcLs=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux.zip",
@@ -1816,6 +1818,7 @@
           "playwright-chromium-debian12-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-5z7raAMS6W1Pj7ylia1C4/txkXi0vdhwf5/nlhI79Is=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
@@ -1826,6 +1829,7 @@
           "playwright-chromium-debian12-x64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-q1ayp5VcKWH3Q0jiNJ8ekHSJKD2iPbo3xzC2JOTWcLs=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux.zip",
@@ -2036,6 +2040,7 @@
           "playwright-chromium-mac10.13": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2046,6 +2051,7 @@
           "playwright-chromium-mac10.14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2056,6 +2062,7 @@
           "playwright-chromium-mac10.15": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2066,6 +2073,7 @@
           "playwright-chromium-mac11": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2076,6 +2084,7 @@
           "playwright-chromium-mac11-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-AQRrEhUbKEa200/2GTNrYzjKJUxHqsyQNgLdlq/JObM=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
@@ -2086,6 +2095,7 @@
           "playwright-chromium-mac12": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2096,6 +2106,7 @@
           "playwright-chromium-mac12-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-AQRrEhUbKEa200/2GTNrYzjKJUxHqsyQNgLdlq/JObM=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
@@ -2106,6 +2117,7 @@
           "playwright-chromium-mac13": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2116,6 +2128,7 @@
           "playwright-chromium-mac13-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-AQRrEhUbKEa200/2GTNrYzjKJUxHqsyQNgLdlq/JObM=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
@@ -2126,6 +2139,7 @@
           "playwright-chromium-mac14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2136,6 +2150,7 @@
           "playwright-chromium-mac14-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-AQRrEhUbKEa200/2GTNrYzjKJUxHqsyQNgLdlq/JObM=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
@@ -2146,6 +2161,7 @@
           "playwright-chromium-mac15": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac.zip",
@@ -2156,6 +2172,7 @@
           "playwright-chromium-mac15-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-AQRrEhUbKEa200/2GTNrYzjKJUxHqsyQNgLdlq/JObM=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip",
@@ -2596,6 +2613,7 @@
           "playwright-chromium-ubuntu20.04-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-5z7raAMS6W1Pj7ylia1C4/txkXi0vdhwf5/nlhI79Is=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
@@ -2606,6 +2624,7 @@
           "playwright-chromium-ubuntu20.04-x64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-q1ayp5VcKWH3Q0jiNJ8ekHSJKD2iPbo3xzC2JOTWcLs=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux.zip",
@@ -2616,6 +2635,7 @@
           "playwright-chromium-ubuntu22.04-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-5z7raAMS6W1Pj7ylia1C4/txkXi0vdhwf5/nlhI79Is=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
@@ -2626,6 +2646,7 @@
           "playwright-chromium-ubuntu22.04-x64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-q1ayp5VcKWH3Q0jiNJ8ekHSJKD2iPbo3xzC2JOTWcLs=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux.zip",
@@ -2636,6 +2657,7 @@
           "playwright-chromium-ubuntu24.04-arm64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-5z7raAMS6W1Pj7ylia1C4/txkXi0vdhwf5/nlhI79Is=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip",
@@ -2646,6 +2668,7 @@
           "playwright-chromium-ubuntu24.04-x64": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
+              "integrity": "sha256-q1ayp5VcKWH3Q0jiNJ8ekHSJKD2iPbo3xzC2JOTWcLs=",
               "urls": [
                 "https://playwright.azureedge.net/builds/chromium/1200/chromium-linux.zip",
                 "https://playwright-akamai.azureedge.net/builds/chromium/1200/chromium-linux.zip",

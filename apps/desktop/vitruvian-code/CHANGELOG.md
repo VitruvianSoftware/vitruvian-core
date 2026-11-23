@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.43.0...vitruvian-code-v1.44.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-code:** run scheduled automations through live connections ([#5439](https://github.com/VitruvianSoftware/vitruvian-core/issues/5439)) ([4a8aeee](https://github.com/VitruvianSoftware/vitruvian-core/commit/4a8aeee56271c47853e30d9ffc7bcb6bc5c34ac9))
+
 ## [1.43.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.42.0...vitruvian-code-v1.43.0) (2026-11-23)
 
 
