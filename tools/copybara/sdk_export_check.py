@@ -25,6 +25,10 @@ and run the mirror's Cargo checks against it.
 Reads subtree, extra_exports, origin_only_exclude, _monorepo_only, and
 export_transformations directly from copy.bara.sky (no duplicated paths or
 rewrites) so any broken Copybara rewrite fails before merge.
+
+Also guards vendor/vitruvian-pycompat/ against leaking monorepo-only files:
+verifies that the assembled vendored tree matches EXPECTED_VENDORED_FILES
+exactly and contains no *.sh or README* files.
 """
 
 from __future__ import annotations
@@ -39,6 +43,18 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+
+EXPECTED_VENDORED_FILES: tuple[str, ...] = (
+    "Cargo.toml",
+    "src/argparse.rs",
+    "src/http.rs",
+    "src/json.rs",
+    "src/lib.rs",
+    "src/pyerr.rs",
+    "src/pystr.rs",
+    "src/unicode_tables.rs",
+)
 
 
 @dataclass(frozen=True)
@@ -273,6 +289,60 @@ def _apply_replace(dest_dir: Path, rule: ReplaceRule) -> int:
     return replaced_files
 
 
+def verify_vendored_pycompat(dest_dir: Path) -> None:
+    """Verify vendor/vitruvian-pycompat/ matches EXPECTED_VENDORED_FILES with no leaks."""
+    vendored_dir = dest_dir / "vendor" / "vitruvian-pycompat"
+    if not vendored_dir.is_dir():
+        raise RuntimeError(
+            f"vendor/vitruvian-pycompat/ directory missing; expected {list(EXPECTED_VENDORED_FILES)}"
+        )
+
+    actual_files = sorted(
+        p.relative_to(vendored_dir).as_posix()
+        for p in vendored_dir.rglob("*")
+        if p.is_file() or p.is_symlink()
+    )
+    expected_files = sorted(EXPECTED_VENDORED_FILES)
+
+    extra = sorted(set(actual_files) - set(expected_files))
+    missing = sorted(set(expected_files) - set(actual_files))
+    forbidden = sorted(
+        rel
+        for rel in actual_files
+        if Path(rel).name.endswith(".sh") or Path(rel).name.startswith("README")
+    )
+
+    errors: list[str] = []
+    if extra or missing:
+        errors.append(
+            "assembled vendor/vitruvian-pycompat/ file list differs from EXPECTED_VENDORED_FILES"
+        )
+        if extra:
+            errors.append(
+                "unexpected files in vendor/vitruvian-pycompat/ (not in EXPECTED_VENDORED_FILES): "
+                + ", ".join(extra)
+            )
+        if missing:
+            errors.append(
+                "missing files from EXPECTED_VENDORED_FILES (absent in vendor/vitruvian-pycompat/): "
+                + ", ".join(missing)
+            )
+    if forbidden:
+        errors.append(
+            "forbidden *.sh or README* files found under vendor/vitruvian-pycompat/: "
+            + ", ".join(forbidden)
+        )
+
+    if errors:
+        raise RuntimeError(
+            "vendor/vitruvian-pycompat/ guard failed:\n" + "\n".join(errors)
+        )
+
+    print(
+        f"verified vendor/vitruvian-pycompat/ ({len(actual_files)} expected files, no *.sh or README* leaks)"
+    )
+
+
 def assemble_exported_tree(repo_root: Path, dest_dir: Path) -> None:
     sky_path = repo_root / "tools" / "copybara" / "copy.bara.sky"
     spec = load_sdk_export_spec(sky_path)
@@ -297,6 +367,8 @@ def assemble_exported_tree(repo_root: Path, dest_dir: Path) -> None:
         print(
             f"applied core.replace ({rule.before!r} -> {rule.after!r}) to {n_rep} file(s)"
         )
+
+    verify_vendored_pycompat(dest_dir)
 
 
 def _resolve_tool(env_var: str, expected_name: str) -> str | None:
@@ -425,20 +497,24 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.get("BUILD_WORKSPACE_DIRECTORY") or os.getcwd()
     ).resolve()
 
-    if args.export_only is not None:
-        dest = args.export_only.resolve()
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.mkdir(parents=True, exist_ok=True)
-        assemble_exported_tree(repo_root, dest)
-        return 0
+    try:
+        if args.export_only is not None:
+            dest = args.export_only.resolve()
+            if dest.exists():
+                shutil.rmtree(dest)
+            dest.mkdir(parents=True, exist_ok=True)
+            assemble_exported_tree(repo_root, dest)
+            return 0
 
-    with tempfile.TemporaryDirectory(prefix="vitruvian-sdk-export-") as tmp:
-        export_dir = Path(tmp) / "vitruvian-sdk"
-        export_dir.mkdir(parents=True, exist_ok=True)
-        assemble_exported_tree(repo_root, export_dir)
-        run_mirror_cargo_checks(export_dir)
-    return 0
+        with tempfile.TemporaryDirectory(prefix="vitruvian-sdk-export-") as tmp:
+            export_dir = Path(tmp) / "vitruvian-sdk"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            assemble_exported_tree(repo_root, export_dir)
+            run_mirror_cargo_checks(export_dir)
+        return 0
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
