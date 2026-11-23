@@ -37,4 +37,17 @@ final class PinnedOrderTests: XCTestCase {
             ["d", "c", "b", "a"]
         )
     }
+
+    /// The strip has one drop target and finds the tile under the pointer from the tiles' frames.
+    func testTileAtFindsTheTileUnderThePointerAndNoneInTheGaps() {
+        let frames: [String: CGRect] = [
+            "a": CGRect(x: 10, y: 8, width: 84, height: 70),
+            "b": CGRect(x: 100, y: 8, width: 84, height: 70),
+        ]
+        XCTAssertEqual(PinnedOrder.tile(at: CGPoint(x: 50, y: 40), in: frames), "a")
+        XCTAssertEqual(PinnedOrder.tile(at: CGPoint(x: 140, y: 40), in: frames), "b")
+        XCTAssertNil(PinnedOrder.tile(at: CGPoint(x: 97, y: 40), in: frames), "the gap between tiles is no tile")
+        XCTAssertNil(PinnedOrder.tile(at: CGPoint(x: 50, y: 90), in: frames), "below the tiles")
+        XCTAssertNil(PinnedOrder.tile(at: .zero, in: [:]))
+    }
 }

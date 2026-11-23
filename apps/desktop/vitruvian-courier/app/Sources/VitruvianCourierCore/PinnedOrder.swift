@@ -44,4 +44,10 @@ public enum PinnedOrder {
         }
         return result
     }
+
+    /// The tile whose frame holds `point`, if any (`frames` by row ID, in the same space as `point`). Between tiles
+    /// (the grid's gaps) there is none, and the order stays as it is.
+    public static func tile(at point: CGPoint, in frames: [String: CGRect]) -> String? {
+        frames.first { $0.value.contains(point) }?.key
+    }
 }

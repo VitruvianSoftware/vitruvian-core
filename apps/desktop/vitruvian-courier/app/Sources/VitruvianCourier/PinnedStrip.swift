@@ -21,8 +21,13 @@ struct PinnedStrip: View {
     let doubleClick: (InboxRow) -> Void
 
     @State private var draftOrder: [String]?
+    /// The tile shown faded while it is dragged over the strip.
     @State private var draggingID: String?
-    @State private var dragTracker = PinnedDragTracker()
+    /// The tile the last drag started from. Kept when the drag leaves the strip (it may come back) and replaced by
+    /// the next drag; a stale one is harmless, since a drop needs a drag carrying the pinned-chat type.
+    @State private var dragSourceID: String?
+    @State private var tileFrames: [String: CGRect] = [:]
+    private static let space = "pinnedStrip"
 
     private var canDrag: Bool { !inbox.isSelecting && !inbox.isLocked && rows.count > 1 }
     private var displayedRows: [InboxRow] { PinnedOrder.ordered(rows, by: draftOrder) }
@@ -55,21 +60,25 @@ struct PinnedStrip: View {
                     // A native menu, so the system's own "Ask Siri" item is left out.
                     .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row) }
                     .onHover { inside in if inside { inbox.prefetchFeatures(for: row) } }
-                    .modifier(PinnedTileDragModifier(
-                        enabled: canDrag,
-                        makeProvider: { beginDrag(rowID: row.id) },
-                        dropDelegate: makeDropDelegate(targetID: row.id)
-                    ))
+                    .modifier(PinnedTileDragModifier(enabled: canDrag, makeProvider: { beginDrag(rowID: row.id) }))
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: PinnedTileFramesKey.self,
+                                               value: [row.id: proxy.frame(in: .named(Self.space))])
+                    })
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .onDrop(of: [Self.dragType], delegate: makeDropDelegate(targetID: nil))
+        // One drop target for the whole strip: a drop target on each tile never hears the drag under this one, so
+        // the tile under the pointer is found from the tiles' frames, in the same space as the drop's location.
+        .coordinateSpace(name: Self.space)
+        .onPreferenceChange(PinnedTileFramesKey.self) { tileFrames = $0 }
+        .onDrop(of: [Self.dragType], delegate: dropDelegate)
         .onChange(of: rowIDs) { _, newIDs in
             draftOrder = nil
-            if let draggingID, !newIDs.contains(draggingID) {
-                self.draggingID = nil
-                dragTracker.cancelAll()
+            if let dragSourceID, !newIDs.contains(dragSourceID) {
+                self.dragSourceID = nil
+                draggingID = nil
             }
         }
         .onChange(of: canDrag) { _, allowed in
@@ -84,15 +93,14 @@ struct PinnedStrip: View {
 
     @MainActor
     private func beginDrag(rowID: String) -> NSItemProvider {
-        dragTracker.cancelAll()
+        dragSourceID = rowID
         draggingID = rowID
         draftOrder = rowIDs
-        dragTracker.startWatchingDragEnd {
-            cancelDrag(animated: true)
-        }
         let provider = NSItemProvider()
-        // Private type conforming only to public.data so tiles cannot be dropped into other apps as text.
-        provider.registerDataRepresentation(forTypeIdentifier: Self.dragType.identifier, visibility: .ownProcess) { completion in
+        // A private type conforming only to public.data, so no other app takes the tile (as text or otherwise). Visible
+        // to all: a drag goes through the system's drag pasteboard, and an own-process item never reaches it, so no
+        // drop target, Courier's included, would ever see it.
+        provider.registerDataRepresentation(forTypeIdentifier: Self.dragType.identifier, visibility: .all) { completion in
             completion(Data(rowID.utf8), nil)
             return nil
         }
@@ -101,8 +109,8 @@ struct PinnedStrip: View {
 
     @MainActor
     private func cancelDrag(animated: Bool) {
-        dragTracker.cancelAll()
         draggingID = nil
+        dragSourceID = nil
         if animated {
             withAnimation(.easeInOut(duration: 0.15)) {
                 draftOrder = nil
@@ -112,47 +120,45 @@ struct PinnedStrip: View {
         }
     }
 
-    private func makeDropDelegate(targetID: String?) -> PinnedStripDropDelegate {
+    private var dropDelegate: PinnedStripDropDelegate {
         PinnedStripDropDelegate(
-            targetID: targetID,
-            isValid: { canDrag && draggingID != nil },
-            onEnter: { target in
-                dragTracker.markInsideStrip()
-                guard let target, let draggingID else { return }
+            isValid: { canDrag && dragSourceID != nil },
+            onMove: { location in
+                guard let dragSourceID else { return }
+                draggingID = dragSourceID
+                guard let target = PinnedOrder.tile(at: location, in: tileFrames) else { return }
                 let base = draftOrder ?? rowIDs
-                let next = PinnedOrder.moving(draggingID, onto: target, in: base)
+                let next = PinnedOrder.moving(dragSourceID, onto: target, in: base)
                 if next != base {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         draftOrder = next
                     }
                 }
             },
-            onUpdate: {
-                dragTracker.markInsideStrip()
-            },
             onExit: {
-                dragTracker.scheduleExitReset {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        draftOrder = nil
-                    }
+                // Out of the strip (or the drag was cancelled): the tiles go back, and the faded one comes back.
+                draggingID = nil
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    draftOrder = nil
                 }
             },
             onPerformDrop: {
-                dragTracker.cancelAll()
-                guard canDrag, draggingID != nil else {
+                guard canDrag, dragSourceID != nil else {
                     draggingID = nil
+                    dragSourceID = nil
                     draftOrder = nil
                     return false
                 }
                 let committed = draftOrder
                 draggingID = nil
+                dragSourceID = nil
                 guard let committed, committed != rowIDs else {
                     draftOrder = nil
                     return true
                 }
                 Task { @MainActor in
                     await inbox.reorderPinned(committed)
-                    if draggingID == nil {
+                    if dragSourceID == nil {
                         draftOrder = nil
                     }
                 }
@@ -181,25 +187,28 @@ struct PinnedStrip: View {
 private struct PinnedTileDragModifier: ViewModifier {
     let enabled: Bool
     let makeProvider: @MainActor () -> NSItemProvider
-    let dropDelegate: PinnedStripDropDelegate
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if enabled {
             content
                 .onDrag { makeProvider() }
-                .onDrop(of: [PinnedStrip.dragType], delegate: dropDelegate)
         } else {
             content
         }
     }
 }
 
+private struct PinnedTileFramesKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 private struct PinnedStripDropDelegate: DropDelegate {
-    let targetID: String?
     let isValid: @MainActor () -> Bool
-    let onEnter: @MainActor (String?) -> Void
-    let onUpdate: @MainActor () -> Void
+    let onMove: @MainActor (CGPoint) -> Void
     let onExit: @MainActor () -> Void
     let onPerformDrop: @MainActor () -> Bool
 
@@ -209,12 +218,12 @@ private struct PinnedStripDropDelegate: DropDelegate {
     }
 
     func dropEntered(info: DropInfo) {
-        MainActor.assumeIsolated { onEnter(targetID) }
+        MainActor.assumeIsolated { onMove(info.location) }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         MainActor.assumeIsolated {
-            onUpdate()
+            onMove(info.location)
             return isValid() ? DropProposal(operation: .move) : DropProposal(operation: .cancel)
         }
     }
@@ -225,67 +234,6 @@ private struct PinnedStripDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         MainActor.assumeIsolated { onPerformDrop() }
-    }
-}
-
-/// Coordinates exit-reset debouncing across the 6 pt grid gaps and cleanup when a drag ends outside or is cancelled.
-@MainActor
-private final class PinnedDragTracker {
-    private var exitResetTask: Task<Void, Never>?
-    private var endWatchTask: Task<Void, Never>?
-
-    func markInsideStrip() {
-        exitResetTask?.cancel()
-        exitResetTask = nil
-    }
-
-    func scheduleExitReset(_ reset: @escaping @MainActor () -> Void) {
-        exitResetTask?.cancel()
-        exitResetTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            guard let self, !Task.isCancelled else { return }
-            self.exitResetTask = nil
-            reset()
-        }
-    }
-
-    func startWatchingDragEnd(_ onEnded: @escaping @MainActor () -> Void) {
-        endWatchTask?.cancel()
-        endWatchTask = Task { @MainActor [weak self] in
-            var sawPressed = (NSEvent.pressedMouseButtons & 1) != 0
-            var releasedTicks = 0
-            var idleTicks = 0
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 80_000_000)
-                guard let self, !Task.isCancelled else { return }
-                if (NSEvent.pressedMouseButtons & 1) != 0 {
-                    sawPressed = true
-                    releasedTicks = 0
-                    idleTicks = 0
-                } else if sawPressed {
-                    releasedTicks += 1
-                    if releasedTicks >= 2 {
-                        self.endWatchTask = nil
-                        onEnded()
-                        return
-                    }
-                } else {
-                    idleTicks += 1
-                    if idleTicks >= 5 {
-                        self.endWatchTask = nil
-                        onEnded()
-                        return
-                    }
-                }
-            }
-        }
-    }
-
-    func cancelAll() {
-        exitResetTask?.cancel()
-        exitResetTask = nil
-        endWatchTask?.cancel()
-        endWatchTask = nil
     }
 }
 
