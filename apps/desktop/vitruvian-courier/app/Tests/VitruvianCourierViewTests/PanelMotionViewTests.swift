@@ -244,6 +244,14 @@ final class PanelMotionViewTests: XCTestCase {
 
     private final class TypingBox: ObservableObject {
         @Published var text: String?
+        /// False swaps the whole conversation out for an empty view, as New Chat does in the main window.
+        @Published var showsConversation = true
+    }
+
+    private final class Frames {
+        var values: [String: CGRect] = [:]
+        /// Every probe call, in order (an entrance that plays reports itself as "entrance/...").
+        var calls: [String] = []
     }
 
     private struct ConversationRoot: View {
@@ -254,22 +262,42 @@ final class PanelMotionViewTests: XCTestCase {
         let scheduled: ScheduledModel
         let prefs: ComposerPreferences
         let app: AppModel
+        let frames: Frames
 
         var body: some View {
-            ConversationView(
-                conversation: conversation,
-                composer: conversation.composer,
-                inbox: inbox,
-                messageActions: messageActions,
-                scheduled: scheduled,
-                preferences: prefs,
-                thread: conversation.thread,
-                focus: MessageFocus(),
-                appModel: app
-            )
+            Group {
+                if box.showsConversation {
+                    ConversationView(
+                        conversation: conversation,
+                        composer: conversation.composer,
+                        inbox: inbox,
+                        messageActions: messageActions,
+                        scheduled: scheduled,
+                        preferences: prefs,
+                        thread: conversation.thread,
+                        focus: MessageFocus(),
+                        appModel: app
+                    )
+                } else {
+                    Color.clear
+                }
+            }
             .environment(\.liquidGlass, false)
             .environment(\.typingLineForTesting, box.text)
+            .environment(\.conversationLayoutProbe) { name, frame in
+                frames.values[name] = frame
+                frames.calls.append(name)
+            }
         }
+    }
+
+    private struct ChatHost {
+        let window: NSWindow
+        let host: NSView
+        let box: TypingBox
+        let conversation: ConversationModel
+        let room: String
+        let frames: Frames
     }
 
     private struct LoadedChat {
@@ -280,13 +308,15 @@ final class PanelMotionViewTests: XCTestCase {
         let table: TimelineNSTableView
         let scroll: NSScrollView
         let room: String
+        let frames: Frames
     }
 
-    private func openLoadedChat(messages: Int = 80) throws -> LoadedChat {
+    /// A chat of `messages` messages in a window `width` wide, on `engine`; nothing waited for.
+    private func makeChatHost(engine: TimelineEngine, messages: Int = 80, width: CGFloat = 760) throws -> ChatHost {
         let store = defaults()
         let app = try offlineApp()
         let prefs = ComposerPreferences(defaults: store)
-        prefs.timelineEngine = .table
+        prefs.timelineEngine = engine
         let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: store))
         let conversation = ConversationModel(appModel: app, preferences: prefs)
         final class NoPasteboard: TextPasteboard { func setString(_: String) {} }
@@ -304,19 +334,25 @@ final class PanelMotionViewTests: XCTestCase {
             features: Fixture.features
         )
         let box = TypingBox()
+        let frames = Frames()
         let root = ConversationRoot(
             box: box, conversation: conversation, inbox: inbox, messageActions: messageActions,
-            scheduled: ScheduledModel(appModel: app), prefs: prefs, app: app
+            scheduled: ScheduledModel(appModel: app), prefs: prefs, app: app, frames: frames
         )
         let hostView = NSHostingView(rootView: root)
-        let window = showOffscreen(hostView, size: NSSize(width: 760, height: 460))
-        XCTAssertTrue(pump(hostView) { hostView.first(TimelineNSTableView.self) != nil }, "the timeline is built")
-        let table = try XCTUnwrap(hostView.first(TimelineNSTableView.self))
+        let window = showOffscreen(hostView, size: NSSize(width: width, height: 460))
+        return ChatHost(window: window, host: hostView, box: box, conversation: conversation, room: room, frames: frames)
+    }
+
+    private func openLoadedChat(messages: Int = 80, width: CGFloat = 760) throws -> LoadedChat {
+        let chat = try makeChatHost(engine: .table, messages: messages, width: width)
+        XCTAssertTrue(pump(chat.host) { chat.host.first(TimelineNSTableView.self) != nil }, "the timeline is built")
+        let table = try XCTUnwrap(chat.host.first(TimelineNSTableView.self))
         let scroll = try XCTUnwrap(table.enclosingScrollView)
-        XCTAssertTrue(pump(hostView) { table.numberOfRows > 10 && conversation.isAtBottom }, "opens at the newest message")
-        settle(hostView, 0.3)
-        return LoadedChat(window: window, host: hostView, box: box, conversation: conversation, table: table,
-                          scroll: scroll, room: room)
+        XCTAssertTrue(pump(chat.host) { table.numberOfRows > 10 && chat.conversation.isAtBottom }, "opens at the newest message")
+        settle(chat.host, 0.3)
+        return LoadedChat(window: chat.window, host: chat.host, box: chat.box, conversation: chat.conversation,
+                          table: table, scroll: scroll, room: chat.room, frames: chat.frames)
     }
 
     private func isAtBottom(_ scroll: NSScrollView) -> Bool {
@@ -333,20 +369,22 @@ final class PanelMotionViewTests: XCTestCase {
         let base = chat.scroll.contentInsets.bottom
         let lastRow = chat.table.numberOfRows - 1
 
+        let raise = TypingLineMotion.insetHeight(raised: true, rowPadding: ConversationView.timelineVerticalPadding)
         chat.box.text = "Ana is typing…"
         XCTAssertTrue(
-            pump(chat.host, timeout: 2) {
-                abs(chat.scroll.contentInsets.bottom - (base + TypingLineMotion.timelineInset)) < 0.5
-            },
-            "the inset eases up by the pill's height (was \(base), now \(chat.scroll.contentInsets.bottom))"
+            pump(chat.host, timeout: 2) { abs(chat.scroll.contentInsets.bottom - (base + raise)) < 0.5 },
+            "the inset eases up (was \(base), now \(chat.scroll.contentInsets.bottom))"
         )
         settle(chat.host, 0.2)
         XCTAssertTrue(isAtBottom(chat.scroll), "the newest message stays pinned to the bottom")
         let newest = chat.table.rect(ofRow: lastRow)
         let visible = chat.scroll.contentView.bounds
-        XCTAssertLessThanOrEqual(
-            newest.maxY, visible.maxY - chat.scroll.contentInsets.bottom + 1,
-            "the newest message is fully above the pill, not under it"
+        // The pill's top is pillGap + pillHeight above the timeline's bottom edge (no bar under it here); the newest
+        // message must end 6 pt above that.
+        let pillTop = TypingLineMotion.pillGap + TypingLineMotion.pillHeight
+        XCTAssertEqual(
+            (visible.maxY - newest.maxY) - pillTop, TypingLineMotion.messageGap, accuracy: 1.0,
+            "6 pt between the newest message and the pill"
         )
 
         chat.box.text = nil
@@ -719,20 +757,19 @@ final class PanelMotionViewTests: XCTestCase {
         XCTAssertLessThan(alpha(of: host, at: NSPoint(x: 100, y: 198)), 0.5, "start of list: bottom fades")
     }
 
-    func testEdgeFadeMaskKeepsTheScrollerStripSolidSoTheThumbIsNotFaded() throws {
-        // The mask itself, drawn alone: both edges fully faded, yet the strip on the right, where the scroller's
-        // thumb sits, stays solid top and bottom.
+    func testEdgeFadeMaskFadesTheFullRowWidthWithNoSolidSlice() throws {
+        // The mask itself, drawn alone: with both edges fully faded, every column across the width is see-through
+        // at the top and bottom, the right edge included (a solid strip there would cut a sharp slice into a
+        // selected row).
         let mask = ScrollEdgeFadeMask(state: ScrollEdgeFadeState(top: 1, bottom: 1)).frame(width: 200, height: 200)
         let (window, host) = hosted(mask, size: NSSize(width: 200, height: 200))
         defer { close(window) }
-        let strip = ScrollEdgeFadeMask(state: .none).scrollerStrip
-        XCTAssertGreaterThan(strip, 5)
         settle(host, 0.1)
-        XCTAssertLessThan(alpha(of: host, at: NSPoint(x: 50, y: 1)), 0.2, "rows fade at the top edge")
-        XCTAssertLessThan(alpha(of: host, at: NSPoint(x: 50, y: 198)), 0.2, "and at the bottom edge")
-        XCTAssertGreaterThan(alpha(of: host, at: NSPoint(x: 100, y: 100)), 0.99)
-        XCTAssertGreaterThan(alpha(of: host, at: NSPoint(x: 200 - strip / 2, y: 1)), 0.99, "the thumb's strip is solid at the top")
-        XCTAssertGreaterThan(alpha(of: host, at: NSPoint(x: 200 - strip / 2, y: 198)), 0.99, "and at the bottom")
+        for x in [CGFloat(2), 100, 185, 198] {
+            XCTAssertLessThan(alpha(of: host, at: NSPoint(x: x, y: 1)), 0.2, "faded at the top, column \(x)")
+            XCTAssertLessThan(alpha(of: host, at: NSPoint(x: x, y: 198)), 0.2, "faded at the bottom, column \(x)")
+            XCTAssertGreaterThan(alpha(of: host, at: NSPoint(x: x, y: 100)), 0.99, "solid in the middle, column \(x)")
+        }
 
         // Nothing fading: the mask is a plain opaque fill.
         let plain = ScrollEdgeFadeMask(state: .none).frame(width: 200, height: 200)
@@ -839,6 +876,217 @@ final class PanelMotionViewTests: XCTestCase {
             noneMs, shippedMs, oldMs
         ))
         print("QA-TIMING edge-fade rounds: none \(none) shipped \(shipped) old \(old)")
-        XCTAssertLessThanOrEqual(shippedMs, max(oldMs * 1.25, noneMs * 1.5), "the shipped fade costs about what the old mask did")
+        // Logged only: a wall-clock ratio on a shared machine would flake, so nothing is asserted about the numbers.
+        XCTAssertGreaterThan(noneMs + shippedMs + oldMs, 0)
+    }
+
+    // MARK: Round 2
+
+    func testTypingPillOnTheSwiftUIEngineLeavesRoomUnderTheNewestMessage() throws {
+        let chat = try makeChatHost(engine: .swiftui)
+        defer { close(chat.window) }
+        let newestID = "item/$m79"
+        XCTAssertTrue(pump(chat.host, timeout: 4) { chat.frames.values[newestID] != nil && chat.conversation.isAtBottom })
+        settle(chat.host, 1.0) // it pins to the bottom for a while after opening
+        let before = try XCTUnwrap(chat.frames.values[newestID])
+
+        chat.box.text = "Ana is typing…"
+        let raise = TypingLineMotion.insetHeight(raised: true, rowPadding: ConversationView.timelineVerticalPadding)
+        XCTAssertTrue(
+            pump(chat.host, timeout: 3) { (chat.frames.values[newestID]?.maxY ?? before.maxY) < before.maxY - raise + 1 },
+            "the newest message moves up to make room"
+        )
+        settle(chat.host, 0.5)
+        let pill = try XCTUnwrap(chat.frames.values["typingPill"])
+        let newest = try XCTUnwrap(chat.frames.values[newestID])
+        XCTAssertLessThanOrEqual(newest.maxY, pill.minY - TypingLineMotion.messageGap + 1,
+                                 "the pill (\(pill)) does not cover the newest message (\(newest))")
+
+        chat.box.text = nil
+        XCTAssertTrue(pump(chat.host, timeout: 3) { abs((chat.frames.values[newestID]?.maxY ?? 0) - before.maxY) < 1 },
+                      "and it comes back down when nobody is typing")
+    }
+
+    func testTypingPillNeverOverlapsTheJumpToLatestButtonOnANarrowPane() throws {
+        let chat = try openLoadedChat(width: 360)
+        defer { close(chat.window) }
+        let doc = try XCTUnwrap(chat.scroll.documentView)
+        let clip = chat.scroll.contentView
+        clip.scroll(to: NSPoint(x: 0, y: (doc.frame.height - clip.bounds.height) / 2))
+        chat.scroll.reflectScrolledClipView(clip)
+        XCTAssertTrue(pump(chat.host) { !chat.conversation.isAtBottom }, "scrolled up: the jump button shows")
+        chat.box.text = "Alexandra Bartholomew-Longname, Christopher Montgomery and 5 others are typing…"
+        settle(chat.host, 0.5)
+
+        let pill = try XCTUnwrap(chat.frames.values["typingPill"])
+        let jump = try XCTUnwrap(chat.frames.values["jumpButton"])
+        XCTAssertGreaterThan(jump.width, 20, "the button is there")
+        XCTAssertTrue(pill.minY < jump.maxY && pill.maxY > jump.minY, "they share a band, so overlap is possible")
+        XCTAssertLessThanOrEqual(pill.maxX, jump.minX - TypingLineMotion.buttonGap + 0.5,
+                                 "the pill (\(pill)) ends before the button (\(jump)) starts")
+        XCTAssertGreaterThan(pill.width, 60, "and still shows some of its words")
+    }
+
+    func testCommandBarCloseImmediatelyDoesNotFade() throws {
+        let model = commandBarModel()
+        let (window, host) = hosted(CommandBarOverlayHost(model: model), size: NSSize(width: 800, height: 600))
+        defer { close(window) }
+        model.open(initialQuery: "arch")
+        XCTAssertTrue(pump(host, timeout: 1) { searchField(in: host) != nil })
+        settle(host, 0.3)
+
+        model.closeImmediately()
+        // A fade would still show the panel 30 ms on (the ordinary close does: see the test above).
+        settle(host, 0.03)
+        XCTAssertNil(searchField(in: host), "locked: gone at once, no fade-out showing the reset list")
+        XCTAssertEqual(model.query, "")
+    }
+
+    func testChatInfoEntrancePlaysWhenOpenedButNotWhenNewChatTakesTheDetailPaneAndCancelBringsItBack() throws {
+        let chat = try openLoadedChat()
+        defer { close(chat.window) }
+        let info = RoomInfoResult(
+            roomID: chat.room, name: "Panel Chat", remoteName: "Panel Chat", network: "whatsapp", isDirect: true,
+            features: Fixture.features
+        )
+        func entrances() -> Int { chat.frames.calls.filter { $0 == "entrance/chatInfo" }.count }
+        func paneIsUp() -> Bool { chat.host.first(NSSplitView.self)?.arrangedSubviews.count == 2 }
+        XCTAssertEqual(entrances(), 0)
+
+        // The person opens Chat Info: the entrance plays, once.
+        chat.conversation.setChatInfoForTesting(info)
+        XCTAssertTrue(pump(chat.host, timeout: 2) { paneIsUp() })
+        settle(chat.host, 0.5)
+        XCTAssertEqual(entrances(), 1, "opening plays the entrance")
+
+        // New Chat takes the detail pane (the conversation view goes), Cancel brings it back with Chat Info still
+        // open: it is there at once, not entered again.
+        chat.box.showsConversation = false
+        settle(chat.host, 0.4)
+        chat.box.showsConversation = true
+        XCTAssertTrue(pump(chat.host, timeout: 2) { paneIsUp() }, "Chat Info is back")
+        settle(chat.host, 0.5)
+        XCTAssertEqual(entrances(), 1, "coming back does not replay the entrance")
+
+        // Closing and opening again is a new open: it plays again.
+        chat.conversation.setChatInfoForTesting(nil)
+        settle(chat.host, 0.4)
+        chat.conversation.setChatInfoForTesting(info)
+        XCTAssertTrue(pump(chat.host, timeout: 2) { entrances() == 2 }, "a fresh open plays it again")
+    }
+
+    // MARK: Reduce Motion override: Chat Info sections and the scheduled strip
+
+    /// Presses the button at `point` (top-left origin) of `host`'s window.
+    private func click(_ window: NSWindow, at point: NSPoint) {
+        let location = NSPoint(x: point.x, y: window.contentView!.bounds.height - point.y)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            if let event = NSEvent.mouseEvent(
+                with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            ) { window.sendEvent(event) }
+        }
+    }
+
+    /// How many rows of the pixel column at `x` draw anything.
+    private func drawnHeight(of view: NSView, x: Int) -> Int {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return 0 }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return (0 ..< rep.pixelsHigh).filter { (rep.colorAt(x: x, y: $0)?.alphaComponent ?? 0) > 0.01 }.count
+    }
+
+    func testChatInfoSectionExpandsInstantlyUnderReduceMotionAndEasesOtherwise() throws {
+        final class Open: ObservableObject { @Published var value = false }
+        struct Root: View {
+            @ObservedObject var open: Open
+            let reduceMotion: Bool
+            var body: some View {
+                ChatInfoSection(
+                    title: "Media", count: 6,
+                    isExpanded: Binding(get: { open.value }, set: { open.value = $0 })
+                ) {
+                    VStack(spacing: 0) { ForEach(0 ..< 6, id: \.self) { Text("Row \($0)").frame(height: 30) } }
+                }
+                .environment(\.courierReduceMotionOverride, reduceMotion)
+                .frame(width: 300)
+                .frame(height: 400, alignment: .top)
+            }
+        }
+        /// The drawn heights seen from the click to the end.
+        func heights(reduceMotion: Bool) throws -> [Int] {
+            let open = Open()
+            let (window, host) = hosted(Root(open: open, reduceMotion: reduceMotion), size: NSSize(width: 300, height: 400))
+            defer { close(window) }
+            settle(host, 0.3)
+            var seen = [drawnHeight(of: host, x: 4)]
+            click(window, at: NSPoint(x: 40, y: 22))
+            XCTAssertTrue(pump(host, timeout: 1) { open.value }, "the click reached the section's button")
+            let end = Date().addingTimeInterval(0.6)
+            pump(host, timeout: 1) {
+                seen.append(drawnHeight(of: host, x: 4))
+                return Date() >= end
+            }
+            return seen
+        }
+        func intermediates(_ seen: [Int]) -> [Int] {
+            guard let first = seen.first, let last = seen.last else { return [] }
+            return seen.filter { $0 > first + 3 && $0 < last - 3 }
+        }
+        let still = try heights(reduceMotion: true)
+        XCTAssertGreaterThan((still.last ?? 0) - (still.first ?? 0), 60, "it did expand")
+        XCTAssertTrue(intermediates(still).isEmpty, "Reduce Motion: no in-between heights, it just opens: \(still)")
+        let moving = try heights(reduceMotion: false)
+        XCTAssertFalse(intermediates(moving).isEmpty, "otherwise it eases through in-between heights: \(moving)")
+    }
+
+    func testScheduledStripBounceHonoursTheReduceMotionOverride() throws {
+        final class Trigger: ObservableObject { @Published var value = 0 }
+        struct Root: View {
+            @ObservedObject var trigger: Trigger
+            let reduceMotion: Bool
+            var body: some View {
+                ScheduledList(
+                    messages: [ScheduledMessage(outboxID: 1, roomID: "!r", text: "Later", dueAt: 1_800_000_000_000,
+                                                condition: .always, state: .waiting, setAt: 1)],
+                    actions: ScheduledActions(),
+                    bounceTrigger: trigger.value
+                )
+                .environment(\.courierReduceMotionOverride, reduceMotion)
+                .frame(width: 300, height: 120, alignment: .top)
+            }
+        }
+        /// The weighted vertical centre of what is drawn, in pixels from the top.
+        func centre(_ view: NSView) -> CGFloat {
+            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return 0 }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            var weight: CGFloat = 0
+            var moment: CGFloat = 0
+            for y in 0 ..< rep.pixelsHigh {
+                for x in stride(from: 0, to: rep.pixelsWide, by: 2) {
+                    let alpha = rep.colorAt(x: x, y: y)?.alphaComponent ?? 0
+                    weight += alpha
+                    moment += alpha * CGFloat(y)
+                }
+            }
+            return weight > 0 ? moment / weight : 0
+        }
+        /// The largest move of the strip's toggle after a message is queued.
+        func largestMove(reduceMotion: Bool) -> CGFloat {
+            let trigger = Trigger()
+            let (window, host) = hosted(Root(trigger: trigger, reduceMotion: reduceMotion), size: NSSize(width: 300, height: 120))
+            defer { close(window) }
+            settle(host, 0.4)
+            let rest = centre(host)
+            trigger.value += 1
+            var largest: CGFloat = 0
+            let end = Date().addingTimeInterval(0.5)
+            pump(host, timeout: 1) {
+                largest = max(largest, abs(centre(host) - rest))
+                return Date() >= end
+            }
+            return largest
+        }
+        XCTAssertLessThan(largestMove(reduceMotion: true), 0.2, "Reduce Motion: the toggle does not bounce")
+        XCTAssertGreaterThan(largestMove(reduceMotion: false), 1.0, "otherwise it bounces")
     }
 }

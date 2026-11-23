@@ -162,6 +162,10 @@ struct CommandBarOverlayHost: View {
             } else {
                 isMounted = true // fades in from its `onAppear`
             }
+        } else if isMounted, model.closedImmediately {
+            // Locked (or closed with the window): gone this instant, nothing fades.
+            isMounted = false
+            isShown = false
         } else if isMounted {
             withAnimation(animation(isPresented: false)) { isShown = false }
             let fade = CommandBarMotion.duration(isPresented: false, reduceMotion: reduceMotionEnabled)
@@ -292,12 +296,14 @@ struct WindowShowsContentReader: NSViewRepresentable {
 extension View {
     /// Fades the scroller's rows out over about 10 pt at the top and bottom, only on a side that has more content
     /// beyond it, easing in over the first points scrolled. It is a SwiftUI mask driven by the scroll geometry the
-    /// observer reads; the scroller's strip is left solid so its thumb is not faded, and the mask is a plain opaque
-    /// fill (nothing fades) while nothing overflows. It never affects hit testing. `refreshToken` tells it to look
-    /// again when the content changed; `onStateChange` reports the edge strengths (tests).
+    /// observer reads, across the full width (the scroller's thumb fades with the rows in those 10 pt; a sharp
+    /// unfaded slice on a selected row would be worse). The mask is always attached, because attaching it only when
+    /// needed would rebuild the list; while nothing overflows it is a plain opaque fill and fades nothing. It never
+    /// affects hit testing. `refreshToken` tells it to look again when the content changed; `onStateChange` reports
+    /// the edge strengths (tests).
     ///
     /// Why a SwiftUI mask and not a Core Animation mask on the scroll view's layers: measured on a 600-row list a
-    /// layer mask cost about 0.8 ms more per scroll step than no fade, this one about 0.15 ms
+    /// layer mask cost about 0.8 ms more per scroll step than no fade, this one about 0.1 ms
     /// (`PanelMotionViewTests.testEdgeFadeCostOnALongListIsMeasured`).
     func courierScrollEdgeFade(
         refreshToken: Int = 0,
@@ -329,30 +335,24 @@ private struct ScrollEdgeFadeModifier: ViewModifier {
 
 struct ScrollEdgeFadeMask: View {
     let state: ScrollEdgeFadeState
-    /// The scroller's strip stays solid: its thumb must not fade with the rows.
-    let scrollerStrip = NSScroller.scrollerWidth(for: .regular, scrollerStyle: NSScroller.preferredScrollerStyle)
 
     var body: some View {
         GeometryReader { geo in
-            let edge = ScrollEdgeFadeMotion.effectiveFadeHeight(containerHeight: geo.size.height)
-            HStack(spacing: 0) {
-                if state.isActive {
-                    VStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [Color.black.opacity(1 - state.top), .black], startPoint: .top, endPoint: .bottom
-                        )
-                        .frame(height: edge)
-                        Color.black
-                        LinearGradient(
-                            colors: [.black, Color.black.opacity(1 - state.bottom)], startPoint: .top, endPoint: .bottom
-                        )
-                        .frame(height: edge)
-                    }
-                    .frame(width: max(0, geo.size.width - scrollerStrip))
-                    Color.black.frame(width: min(geo.size.width, scrollerStrip))
-                } else {
+            if state.isActive {
+                let edge = ScrollEdgeFadeMotion.effectiveFadeHeight(containerHeight: geo.size.height)
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.black.opacity(1 - state.top), .black], startPoint: .top, endPoint: .bottom
+                    )
+                    .frame(height: edge)
                     Color.black
+                    LinearGradient(
+                        colors: [.black, Color.black.opacity(1 - state.bottom)], startPoint: .top, endPoint: .bottom
+                    )
+                    .frame(height: edge)
                 }
+            } else {
+                Color.black
             }
         }
     }

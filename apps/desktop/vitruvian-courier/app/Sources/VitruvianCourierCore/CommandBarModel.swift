@@ -83,6 +83,7 @@ public final class CommandBarModel: ObservableObject {
         statusBanner = nil
         query = initialQuery
         selectedIndex = 0
+        closedImmediately = false
         isPresented = true
     }
 
@@ -94,6 +95,7 @@ public final class CommandBarModel: ObservableObject {
         statusBanner = nil
         query = initialQuery
         selectedIndex = 0
+        closedImmediately = false
         isPresented = true
     }
 
@@ -105,10 +107,14 @@ public final class CommandBarModel: ObservableObject {
         }
     }
 
+    /// Whether the last close was `closeImmediately()`: the host then drops the panel at once instead of fading it.
+    public private(set) var closedImmediately = false
+
     /// Hides the bar. What it shows (query, mode, breadcrumb, results) is left as it was so the panel can fade out
     /// looking the same; the host calls `finishClosing()` when the fade is done. `open()` starts from a blank state
     /// at once, so opening again during the fade never shows what was there.
     public func close() {
+        if isPresented { closedImmediately = false }
         isPresented = false
     }
 
@@ -118,8 +124,10 @@ public final class CommandBarModel: ObservableObject {
         resetContent()
     }
 
-    /// Hides the bar and clears it in the same moment: for locking the app, where nothing may linger on screen.
+    /// Hides the bar and clears it in the same moment, with no fade: for locking the app, where nothing may linger
+    /// on screen (not even the reset command list for a tenth of a second).
     public func closeImmediately() {
+        closedImmediately = true
         isPresented = false
         resetContent()
     }

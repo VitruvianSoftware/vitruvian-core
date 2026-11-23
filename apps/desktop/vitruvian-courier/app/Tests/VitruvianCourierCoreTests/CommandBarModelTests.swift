@@ -298,6 +298,24 @@ final class CommandBarModelTests: XCTestCase {
         XCTAssertEqual(model.query, "new", "a finish that arrives after a reopen must not clear it")
     }
 
+    func testCloseImmediatelyClearsAtOnceAndSaysNoFadeAndAnOrdinaryCloseOrOpenResetsThat() {
+        let model = CommandBarModel(defaults: defaults, commandsProvider: { [] })
+        model.open(initialQuery: "secret")
+        model.closeImmediately()
+        XCTAssertFalse(model.isPresented)
+        XCTAssertEqual(model.query, "", "nothing lingers")
+        XCTAssertTrue(model.closedImmediately, "the host must not fade it")
+
+        model.open()
+        XCTAssertFalse(model.closedImmediately)
+        model.close()
+        XCTAssertFalse(model.closedImmediately, "an ordinary close fades")
+        model.open()
+        model.closeImmediately()
+        model.open(); model.close()
+        XCTAssertFalse(model.closedImmediately)
+    }
+
     func testRecentChatsModeAlsoStartsFreshWhenOpenedDuringTheFade() {
         let model = CommandBarModel(defaults: defaults, commandsProvider: { [] })
         model.open()

@@ -74,3 +74,43 @@ struct TypingLine: View {
         return new
     }
 }
+
+/// The width the jump-to-latest button takes, reported up for the typing pill to leave room for.
+struct JumpButtonWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Where the typing pill sits over the timeline: bottom-left, just above the composer, ending before the
+/// jump-to-latest button starts while that button shows. It observes the chat's bottom state itself, so the
+/// timeline's own view is not re-evaluated when that flips (the rows must not be).
+struct TypingPillSlot: View {
+    @ObservedObject var conversation: ConversationModel
+    @ObservedObject var bottom: BottomState
+    let text: String?
+    let barInset: CGFloat
+    let jumpButtonWidth: CGFloat
+    let coordinateSpace: String
+    /// The person came back to the bottom (or left it): the timeline decides whether the inset follows.
+    let atBottomChanged: () -> Void
+    @Environment(\.conversationLayoutProbe) private var layoutProbe
+
+    var body: some View {
+        let jumpShows = !bottom.isAtBottom || conversation.isAwayFromLatest
+        TypingLine(text: text)
+            .id(conversation.roomID)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(coordinateSpace)) } action: { frame in
+                layoutProbe?("typingPill", frame)
+            }
+            .padding(.leading, 16)
+            .padding(
+                .trailing,
+                TypingLineMotion.trailingPadding(jumpButtonVisible: jumpShows, jumpButtonWidth: jumpButtonWidth, margin: 16)
+            )
+            .padding(.bottom, barInset + TypingLineMotion.pillGap)
+            .onChange(of: bottom.isAtBottom) { _, _ in atBottomChanged() }
+    }
+}

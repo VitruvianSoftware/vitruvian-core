@@ -952,7 +952,7 @@ public struct ChatInfoPane: View {
 
 /// A topic of Chat Info in a rounded box with its name above it. With `isExpanded` the box folds up from its title;
 /// without, it stays open.
-private struct ChatInfoSection<Content: View>: View {
+struct ChatInfoSection<Content: View>: View {
     let title: String
     /// The number in the badge by the title; nil for a section with nothing to count (Notes).
     let count: Int?
@@ -963,11 +963,12 @@ private struct ChatInfoSection<Content: View>: View {
     var seeAllTitle: String = String(localized: "See All")
     @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
 
     private var open: Bool { isExpanded?.wrappedValue ?? true }
 
     private var reduceMotionEnabled: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
     }
 
     var body: some View {

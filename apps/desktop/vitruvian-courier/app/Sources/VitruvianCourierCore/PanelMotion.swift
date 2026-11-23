@@ -89,11 +89,28 @@ public enum TypingLineMotion {
     public static let fadeDuration: TimeInterval = 0.15
     public static let fadeCurve: MotionCurve = .easeInOut
     public static let pillHeight: CGFloat = 24
-    /// Space between the pill and the composer, and between the pill and the newest message when the inset is on.
+    /// Space between the pill and the composer.
     public static let pillGap: CGFloat = 6
+    /// Space left between the newest message and the pill when the inset is raised.
+    public static let messageGap: CGFloat = 6
+    /// Room kept between the pill and the jump-to-latest button beside it.
+    public static let buttonGap: CGFloat = 8
 
-    /// How far the timeline's bottom inset grows while the pill is held clear of the newest message.
-    public static let timelineInset: CGFloat = pillHeight + pillGap
+    /// How far the timeline's bottom inset grows while the pill is held clear of the newest message. The timeline
+    /// already keeps `rowPadding` between its last row and its inset, so that counts toward the gap: the last row
+    /// ends `messageGap` below the pill's top whatever the padding.
+    public static func timelineInset(rowPadding: CGFloat) -> CGFloat {
+        max(0, pillGap + pillHeight + messageGap - rowPadding)
+    }
+
+    /// The room the pill leaves on its trailing side: its usual margin, or, while the jump-to-latest button shows
+    /// in the same corner band, that button's whole width plus a gap, so the two never overlap at any pane width.
+    /// The pill's text truncates to the width that is left.
+    public static func trailingPadding(
+        jumpButtonVisible: Bool, jumpButtonWidth: CGFloat, margin: CGFloat
+    ) -> CGFloat {
+        jumpButtonVisible && jumpButtonWidth > 0 ? jumpButtonWidth + buttonGap : margin
+    }
 
     public static func isVisible(text: String?) -> Bool {
         text != nil
@@ -123,8 +140,8 @@ public enum TypingLineMotion {
         atBottom ? pillVisible : current
     }
 
-    public static func insetHeight(raised: Bool) -> CGFloat {
-        raised ? timelineInset : 0
+    public static func insetHeight(raised: Bool, rowPadding: CGFloat) -> CGFloat {
+        raised ? timelineInset(rowPadding: rowPadding) : 0
     }
 
     /// The inset is eased over the fade; with Reduce Motion it changes at once.
@@ -188,7 +205,7 @@ public struct ScrollEdgeFadeState: Equatable, Sendable {
 
     public static let none = Self(top: 0, bottom: 0)
 
-    /// True when either edge fades: the only time a mask is attached at all.
+    /// True when either edge fades (otherwise the mask is a plain opaque fill).
     public var isActive: Bool { top > 0 || bottom > 0 }
 }
 

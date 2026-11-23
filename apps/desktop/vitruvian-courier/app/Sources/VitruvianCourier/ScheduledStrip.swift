@@ -47,9 +47,10 @@ struct ScheduledList: View {
     @State private var handledBounceTrigger = 0
     @State private var activeBounceTrigger = 0
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
 
     private var reduceMotionEnabled: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
     }
 
     private var editingBinding: Binding<ScheduledMessage?> {

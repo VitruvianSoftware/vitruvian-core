@@ -69,15 +69,30 @@ final class PanelMotionTests: XCTestCase {
         XCTAssertFalse(TypingLineMotion.usesMovement(reduceMotion: true))
     }
 
-    func testTypingPillTakesNoRoomUntilRaisedAndRaisesTheInsetByItsHeight() {
-        XCTAssertEqual(TypingLineMotion.insetHeight(raised: false), 0, "no room reserved when nobody is typing")
-        XCTAssertEqual(
-            TypingLineMotion.insetHeight(raised: true),
-            TypingLineMotion.pillHeight + TypingLineMotion.pillGap,
-            "the newest message is held clear of the pill and its gap"
-        )
+    func testTypingPillTakesNoRoomUntilRaisedAndLeavesASixPointGapUnderIt() {
+        XCTAssertEqual(TypingLineMotion.insetHeight(raised: false, rowPadding: 8), 0, "no room reserved when nobody is typing")
+        for rowPadding in [CGFloat(0), 8, 12] {
+            let inset = TypingLineMotion.insetHeight(raised: true, rowPadding: rowPadding)
+            // The last row ends (rowPadding + inset) above the composer; the pill's top is at gap + height.
+            let gap = (rowPadding + inset) - (TypingLineMotion.pillGap + TypingLineMotion.pillHeight)
+            XCTAssertEqual(gap, 6, accuracy: 0.001, "6 pt between the newest message and the pill (padding \(rowPadding))")
+        }
+        XCTAssertEqual(TypingLineMotion.insetHeight(raised: true, rowPadding: 8), 28, accuracy: 0.001)
+        XCTAssertEqual(TypingLineMotion.timelineInset(rowPadding: 100), 0, "never negative")
         XCTAssertTrue(TypingLineMotion.animatesInset(reduceMotion: false))
         XCTAssertFalse(TypingLineMotion.animatesInset(reduceMotion: true), "Reduce Motion: the inset changes at once")
+    }
+
+    func testTypingPillLeavesRoomForTheJumpButtonAtAnyPaneWidth() {
+        for pane in [CGFloat(280), 340, 420, 520, 900] {
+            let beside = TypingLineMotion.trailingPadding(jumpButtonVisible: true, jumpButtonWidth: 150, margin: 16)
+            // The pill's right edge (pane - trailing) is left of the button's left edge (pane - width).
+            XCTAssertLessThanOrEqual(pane - beside, pane - 150 - TypingLineMotion.buttonGap + 0.001)
+        }
+        XCTAssertEqual(TypingLineMotion.trailingPadding(jumpButtonVisible: false, jumpButtonWidth: 150, margin: 16), 16,
+                       "no button showing: the usual margin")
+        XCTAssertEqual(TypingLineMotion.trailingPadding(jumpButtonVisible: true, jumpButtonWidth: 0, margin: 16), 16,
+                       "button not measured yet")
     }
 
     func testTypingPillInsetFollowsThePillAtTheBottomAndNeverMovesAnythingAwayFromIt() {
