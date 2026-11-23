@@ -23,6 +23,7 @@ rust_test(
     name = "vitruvian_pycompat_test",
     size = "small",
     crate = ":vitruvian_pycompat",
+    data = ["testdata/json_golden.jsonl"],
 )
 
 # Sources and plain-rustc build helper, for //tools/ci:build_ci_tool_test.

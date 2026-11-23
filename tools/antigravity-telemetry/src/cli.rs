@@ -95,11 +95,12 @@ pub struct Namespace {
 
 impl Namespace {
     pub fn get(&self, name: &str) -> &J {
+        static NULL: J = J::Null;
         self.values
             .iter()
             .find(|(k, _)| *k == name)
             .map(|(_, v)| v)
-            .unwrap_or(&J::Null)
+            .unwrap_or(&NULL)
     }
 
     pub fn flag(&self, name: &str) -> bool {
@@ -358,16 +359,20 @@ pub fn strip_legacy_hooks(existing: &J) -> Result<(J, Vec<String>), String> {
         _ => Vec::new(),
     };
     for event_name in event_names {
-        let Some(J::Arr(matchers)) = hooks.get(&event_name).cloned() else {
+        let Some(J::Arr(matchers)) = hooks.get(&event_name) else {
             continue;
         };
+        let matchers = matchers.clone();
         let mut kept_matchers = Vec::new();
         for mut matcher in matchers {
             if !matches!(matcher, J::Obj(_)) {
                 kept_matchers.push(matcher);
                 continue;
             }
-            let Some(J::Arr(inner)) = matcher.get("hooks").cloned() else {
+            let Some(inner) = matcher.get("hooks").and_then(|v| match v {
+                J::Arr(a) => Some(a.clone()),
+                _ => None,
+            }) else {
                 kept_matchers.push(matcher);
                 continue;
             };
