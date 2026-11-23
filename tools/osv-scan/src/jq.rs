@@ -152,4 +152,32 @@ mod tests {
             Some(br#"{"a":2}"#)
         ));
     }
+
+    fn nested_version_doc(version: &str, array_depth: usize) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(32 + array_depth * 2);
+        buf.extend_from_slice(br#"{"version":""#);
+        buf.extend_from_slice(version.as_bytes());
+        buf.extend_from_slice(br#"","x":"#);
+        buf.resize(buf.len() + array_depth, b'[');
+        buf.push(b'1');
+        buf.resize(buf.len() + array_depth, b']');
+        buf.push(b'}');
+        buf
+    }
+
+    #[test]
+    fn depth_at_jq_limit_compares_version_only() {
+        // Object + 9,998 arrays = depth 10,000, accepted by jq 1.8.2 (exit 0).
+        let a = nested_version_doc("1", 9_998);
+        let b = nested_version_doc("2", 9_998);
+        assert!(same_without_version(Some(&a), Some(&b)));
+    }
+
+    #[test]
+    fn depth_over_jq_limit_fails_closed() {
+        // Object + 9,999 arrays = depth 10,001, rejected by jq 1.8.2 (exit 5).
+        let a = nested_version_doc("1", 9_999);
+        let b = nested_version_doc("2", 9_999);
+        assert!(!same_without_version(Some(&a), Some(&b)));
+    }
 }
