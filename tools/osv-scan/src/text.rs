@@ -113,6 +113,61 @@ pub fn cut4_sort(b: &[u8]) -> Vec<u8> {
     unlines(&ls)
 }
 
+/// Parse `git status --porcelain -z` output into sorted path entries (preserving
+/// `orig -> new` for renames/copies so output matches `cut -c4-`).
+pub fn parse_porcelain_z_paths(b: &[u8]) -> Vec<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut parts = b.split(|c| *c == b'\0');
+    while let Some(entry) = parts.next() {
+        if entry.is_empty() {
+            continue;
+        }
+        if entry.len() < 3 {
+            out.push(Vec::new());
+            continue;
+        }
+        let (x, y) = (entry[0], entry[1]);
+        let path = &entry[3..];
+        if matches!(x, b'R' | b'C') || matches!(y, b'R' | b'C') {
+            let orig = parts.next().unwrap_or(b"");
+            let mut combined = Vec::with_capacity(orig.len() + 4 + path.len());
+            combined.extend_from_slice(orig);
+            combined.extend_from_slice(b" -> ");
+            combined.extend_from_slice(path);
+            out.push(combined);
+        } else {
+            out.push(path.to_vec());
+        }
+    }
+    out.sort();
+    out
+}
+
+/// `comm -13` over sorted raw byte entries (never splits on newlines).
+pub fn comm_13_entries<'a>(a: &'a [Vec<u8>], b: &'a [Vec<u8>]) -> Vec<&'a [u8]> {
+    let (mut i, mut j) = (0, 0);
+    let mut out = Vec::new();
+    while j < b.len() {
+        if i >= a.len() {
+            out.push(b[j].as_slice());
+            j += 1;
+            continue;
+        }
+        match a[i].cmp(&b[j]) {
+            std::cmp::Ordering::Less => i += 1,
+            std::cmp::Ordering::Greater => {
+                out.push(b[j].as_slice());
+                j += 1;
+            }
+            std::cmp::Ordering::Equal => {
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    out
+}
+
 /// `comm -13 <(printf '%s\n' "$A") <(printf '%s\n' "$B")`: lines only in B.
 pub fn comm_13(a: &[u8], b: &[u8]) -> Vec<u8> {
     let mut av = a.to_vec();
@@ -248,6 +303,25 @@ mod tests {
         assert_eq!(comm_13(b"", b"a"), b"a\n");
         assert_eq!(comm_13(b"a\nc", b"a\nb\nc\nd"), b"b\nd\n");
         assert_eq!(cut4_sort(b" M z\n?? a\nab\n"), b"\na\nz\n");
+    }
+
+    #[test]
+    fn porcelain_z_and_comm_entries() {
+        let z = b" M caf\xc3\xa9/go.mod\0?? nl\ndir/go.mod\0R  new.mod\0old.mod\0";
+        let got = parse_porcelain_z_paths(z);
+        assert_eq!(
+            got,
+            vec![
+                b"caf\xc3\xa9/go.mod".to_vec(),
+                b"nl\ndir/go.mod".to_vec(),
+                b"old.mod -> new.mod".to_vec(),
+            ]
+        );
+        let before = vec![b"caf\xc3\xa9/go.mod".to_vec()];
+        assert_eq!(
+            comm_13_entries(&before, &got),
+            vec![&b"nl\ndir/go.mod"[..], &b"old.mod -> new.mod"[..],]
+        );
     }
 
     #[test]

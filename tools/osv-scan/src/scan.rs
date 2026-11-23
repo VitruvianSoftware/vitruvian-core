@@ -141,8 +141,11 @@ fn spawn_failure(e: &std::io::Error) -> i32 {
 }
 
 /// `$(prog args...)` with stderr discarded (or inherited): (status, stdout).
-fn capture(prog: &str, args: &[&[u8]], quiet: bool) -> (i32, Vec<u8>) {
+fn capture_in(dir: Option<&Path>, prog: &str, args: &[&[u8]], quiet: bool) -> (i32, Vec<u8>) {
     let mut c = Command::new(prog);
+    if let Some(d) = dir {
+        c.current_dir(d);
+    }
     c.args(args.iter().map(|a| os(a)))
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
@@ -157,9 +160,16 @@ fn capture(prog: &str, args: &[&[u8]], quiet: bool) -> (i32, Vec<u8>) {
     }
 }
 
+fn capture(prog: &str, args: &[&[u8]], quiet: bool) -> (i32, Vec<u8>) {
+    capture_in(None, prog, args, quiet)
+}
+
 /// `prog args >/dev/null 2>/dev/null`'s status.
-fn quiet_status(prog: &str, args: &[&[u8]]) -> i32 {
+fn quiet_status_in(dir: Option<&Path>, prog: &str, args: &[&[u8]]) -> i32 {
     let mut c = Command::new(prog);
+    if let Some(d) = dir {
+        c.current_dir(d);
+    }
     c.args(args.iter().map(|a| os(a)))
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -167,6 +177,10 @@ fn quiet_status(prog: &str, args: &[&[u8]]) -> i32 {
         Ok(s) => code_of(s),
         Err(e) => spawn_failure(&e),
     }
+}
+
+fn quiet_status(prog: &str, args: &[&[u8]]) -> i32 {
+    quiet_status_in(None, prog, args)
 }
 
 /// `command -v name`: the first executable file on PATH.
@@ -306,7 +320,7 @@ struct Ctx {
     scan_args: Vec<Vec<u8>>,
     json: PathBuf,
     scan_err: PathBuf,
-    tree_before: Vec<u8>,
+    tree_before: Vec<Vec<u8>>,
     max_attempts: String,
     retry_delay: String,
 }
@@ -353,25 +367,41 @@ fn transient(errf: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// `dirty_snapshot`: (pipeline status, output with trailing newlines kept off).
-fn dirty_snapshot() -> (i32, Vec<u8>) {
-    if quiet_status("git", &[b"rev-parse", b"--is-inside-work-tree"]) != 0 {
+/// `dirty_snapshot`: (pipeline status, sorted raw path entries).
+fn dirty_snapshot_in(repo: Option<&Path>) -> (i32, Vec<Vec<u8>>) {
+    if quiet_status_in(repo, "git", &[b"rev-parse", b"--is-inside-work-tree"]) != 0 {
         return (0, Vec::new());
     }
-    let (rc, o) = capture("git", &[b"status", b"--porcelain"], true);
-    (rc, text::strip_nl(&text::cut4_sort(&o)))
+    let (rc, o) = capture_in(
+        repo,
+        "git",
+        &[
+            b"-c",
+            b"core.quotePath=false",
+            b"status",
+            b"--porcelain",
+            b"-z",
+        ],
+        true,
+    );
+    (rc, text::parse_porcelain_z_paths(&o))
+}
+
+fn dirty_snapshot() -> (i32, Vec<Vec<u8>>) {
+    dirty_snapshot_in(None)
 }
 
 /// `assert_tree_unchanged`: Some(exit code) when it dies.
 fn assert_tree_unchanged(ctx: &Ctx) -> Option<i32> {
     let (_, now) = dirty_snapshot();
-    let touched = text::strip_nl(&text::comm_13(&ctx.tree_before, &now));
+    let touched = text::comm_13_entries(&ctx.tree_before, &now);
     if touched.is_empty() {
         return None;
     }
+    let joined = touched.join(&b'\n');
     let msg = cat(&[
         b"the scan MUTATED the working tree -- refusing to report a verdict:\n",
-        &text::indent_var(&touched),
+        &text::indent_var(&joined),
         b"\n   This gate is required and must be read-only; a scan that rewrites the
    checkout breaks tidy-check downstream and corrupts what it is inspecting.
    Historically this was osv-scanner's Go call analysis normalising go.work.sum.
@@ -403,19 +433,26 @@ fn resolve_diff_base() -> Vec<u8> {
     text::strip_nl(&o)
 }
 
-fn commit_readable(base: &[u8]) -> bool {
+fn commit_readable_in(repo: Option<&Path>, base: &[u8]) -> bool {
     let spec = cat(&[base, b"^{commit}"]);
     // stdout is inherited by the script, but `cat-file -e` prints nothing.
     let mut c = Command::new("git");
+    if let Some(d) = repo {
+        c.current_dir(d);
+    }
     c.args([os(b"cat-file"), os(b"-e"), os(&spec)])
         .stderr(Stdio::null());
     matches!(c.status().map(code_of), Ok(0))
 }
 
+fn commit_readable(base: &[u8]) -> bool {
+    commit_readable_in(None, base)
+}
+
 /// `git show <rev>:<file>`'s stdout, or None when it fails.
-fn git_show(rev: &[u8], f: &[u8]) -> Option<Vec<u8>> {
+fn git_show_in(repo: Option<&Path>, rev: &[u8], f: &[u8]) -> Option<Vec<u8>> {
     let spec = cat(&[rev, b":", f]);
-    let (rc, o) = capture("git", &[b"show", &spec], true);
+    let (rc, o) = capture_in(repo, "git", &[b"show", b"--end-of-options", &spec], true);
     if rc == 0 {
         Some(o)
     } else {
@@ -424,24 +461,29 @@ fn git_show(rev: &[u8], f: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// `dep_manifests_changed`: true for "changed".
-fn dep_manifests_changed() -> bool {
-    let base = resolve_diff_base();
-    if base.is_empty() || !commit_readable(&base) {
+fn dep_manifests_changed_in(repo: Option<&Path>, base: &[u8]) -> bool {
+    if base.is_empty() || !commit_readable_in(repo, base) {
         return true;
     }
-    let (rc, files) = capture("git", &[b"diff", b"--name-only", &base, b"HEAD"], true);
+    let (rc, files) = capture_in(
+        repo,
+        "git",
+        &[
+            b"-c",
+            b"core.quotePath=false",
+            b"diff",
+            b"--name-only",
+            b"-z",
+            base,
+            b"HEAD",
+        ],
+        true,
+    );
     if rc != 0 {
         return true;
     }
-    let files = text::strip_nl(&files);
-    let mut herestring = files.clone();
-    herestring.push(b'\n');
-    let matches: Vec<&[u8]> = text::lines(&herestring)
-        .into_iter()
-        .filter(|l| text::is_dep_manifest(l))
-        .collect();
-    for f in matches {
-        if f.is_empty() {
+    for f in files.split(|c| *c == b'\0') {
+        if f.is_empty() || !text::is_dep_manifest(f) {
             continue;
         }
         let json_manifest = f == b"package.json"
@@ -451,13 +493,17 @@ fn dep_manifests_changed() -> bool {
         if !json_manifest {
             return true;
         }
-        let old = git_show(&base, f);
-        let new = git_show(b"HEAD", f);
+        let old = git_show_in(repo, base, f);
+        let new = git_show_in(repo, b"HEAD", f);
         if !jq::same_without_version(old.as_deref(), new.as_deref()) {
             return true;
         }
     }
     false
+}
+
+fn dep_manifests_changed() -> bool {
+    dep_manifests_changed_in(None, &resolve_diff_base())
 }
 
 // --- advisories_added's python ---------------------------------------------------
@@ -1104,6 +1150,210 @@ mod tests {
         assert_eq!(
             awk_field(t, b"ADDED", 2, b"     "),
             b"     GHSA-c hono (4.1) in p\n     "
+        );
+    }
+
+    struct TempRepo {
+        path: PathBuf,
+    }
+
+    impl TempRepo {
+        fn new() -> Self {
+            static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path =
+                std::env::temp_dir().join(format!("osv-scan-test-{}-{}", std::process::id(), id));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).expect("create temp repo dir");
+            let repo = Self { path };
+            repo.git(&["init", "-q"]);
+            repo.git(&["config", "core.quotePath", "true"]);
+            repo
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+
+        fn git(&self, args: &[&str]) -> Vec<u8> {
+            let out = Command::new("git")
+                .current_dir(&self.path)
+                .args(args)
+                .output()
+                .expect("run git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+            out.stdout
+        }
+
+        fn write(&self, rel: &str, content: &str) {
+            let full = self.path.join(rel);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent).expect("create parent dirs");
+            }
+            std::fs::write(&full, content.as_bytes()).expect("write file");
+        }
+
+        fn remove(&self, rel: &str) {
+            std::fs::remove_file(self.path.join(rel)).expect("remove file");
+        }
+
+        fn commit(&self, msg: &str) -> Vec<u8> {
+            self.git(&["add", "-A"]);
+            self.git(&[
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                msg,
+            ]);
+            text::strip_nl(&self.git(&["rev-parse", "HEAD"]))
+        }
+    }
+
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn non_ascii_dir_manifest_is_changed() {
+        let repo = TempRepo::new();
+        repo.write("café/go.mod", "module example.com/a\n\ngo 1.21\n");
+        let base = repo.commit("base");
+        repo.write(
+            "café/go.mod",
+            "module example.com/a\n\ngo 1.21\n\nrequire example.com/x v1.0.0\n",
+        );
+        repo.commit("head");
+        assert!(dep_manifests_changed_in(Some(repo.path()), &base));
+    }
+
+    #[test]
+    fn quoted_path_chars_manifest_is_changed() {
+        for path in [
+            "my dir/go.mod",
+            "tab\tdir/go.mod",
+            "nl\ndir/go.mod",
+            "q\"dir/go.mod",
+            "b\\dir/go.mod",
+        ] {
+            let repo = TempRepo::new();
+            repo.write(path, "module example.com/a\n\ngo 1.21\n");
+            let base = repo.commit("base");
+            repo.write(
+                path,
+                "module example.com/a\n\ngo 1.21\n\nrequire example.com/x v1.0.0\n",
+            );
+            repo.commit("head");
+            assert!(
+                dep_manifests_changed_in(Some(repo.path()), &base),
+                "expected CHANGED for {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_ascii_package_json_version_only_is_unchanged() {
+        let repo = TempRepo::new();
+        repo.write(
+            "café/package.json",
+            r#"{"name":"x","version":"1.0.0","dependencies":{"a":"1.0.0"}}"#,
+        );
+        let base = repo.commit("base");
+        repo.write(
+            "café/package.json",
+            r#"{"name":"x","version":"1.0.1","dependencies":{"a":"1.0.0"}}"#,
+        );
+        repo.commit("head");
+        assert!(!dep_manifests_changed_in(Some(repo.path()), &base));
+    }
+
+    #[test]
+    fn non_ascii_package_json_dep_change_is_changed() {
+        let repo = TempRepo::new();
+        repo.write(
+            "café/package.json",
+            r#"{"name":"x","version":"1.0.0","dependencies":{"a":"1.0.0"}}"#,
+        );
+        let base = repo.commit("base");
+        repo.write(
+            "café/package.json",
+            r#"{"name":"x","version":"1.0.0","dependencies":{"a":"2.0.0"}}"#,
+        );
+        repo.commit("head");
+        assert!(dep_manifests_changed_in(Some(repo.path()), &base));
+    }
+
+    #[test]
+    fn deleted_json_manifest_fails_closed() {
+        let repo = TempRepo::new();
+        repo.write(
+            "café/package.json",
+            r#"{"name":"x","version":"1.0.0","dependencies":{"a":"1.0.0"}}"#,
+        );
+        let base = repo.commit("base");
+        repo.remove("café/package.json");
+        repo.commit("head");
+        assert!(dep_manifests_changed_in(Some(repo.path()), &base));
+    }
+
+    #[test]
+    fn dash_and_colon_paths_are_read() {
+        for path in [
+            "-dash/package.json",
+            "col:on/package.json",
+            ":leadcolon/package.json",
+        ] {
+            let repo = TempRepo::new();
+            repo.write(
+                path,
+                r#"{"name":"x","version":"1.0.0","dependencies":{"a":"1.0.0"}}"#,
+            );
+            let base = repo.commit("base");
+            repo.write(
+                path,
+                r#"{"name":"x","version":"1.0.1","dependencies":{"a":"1.0.0"}}"#,
+            );
+            repo.commit("head");
+            assert!(
+                !dep_manifests_changed_in(Some(repo.path()), &base),
+                "expected UNCHANGED for {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dirty_snapshot_handles_quoted_and_renamed_paths() {
+        let repo = TempRepo::new();
+        repo.write("café/keep", "1");
+        repo.write("nl\ndir/keep", "1");
+        repo.write("old/go.mod", "module old\n");
+        repo.commit("base");
+
+        repo.write("café/go.mod", "module cafe\n");
+        repo.write("nl\ndir/go.mod", "module nl\n");
+        repo.write("new/go.mod", "module old\n");
+        repo.remove("old/go.mod");
+        repo.git(&["add", "new/go.mod", "old/go.mod"]);
+
+        let (rc, entries) = dirty_snapshot_in(Some(repo.path()));
+        assert_eq!(rc, 0);
+        assert_eq!(
+            entries,
+            vec![
+                b"caf\xc3\xa9/go.mod".to_vec(),
+                b"nl\ndir/go.mod".to_vec(),
+                b"old/go.mod -> new/go.mod".to_vec(),
+            ]
         );
     }
 }
