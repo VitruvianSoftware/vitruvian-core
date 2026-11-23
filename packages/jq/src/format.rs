@@ -94,13 +94,16 @@ impl OutputOptions {
 /// DEL (`\u007f`); `/` and non-ASCII UTF-8 pass through verbatim.
 pub fn dump_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
-    write_string(s, &mut out);
+    write_string_limited(s, None, &mut out);
     out
 }
 
-fn write_string(s: &str, out: &mut String) {
+fn write_string_limited(s: &str, max_bytes: Option<usize>, out: &mut String) {
     out.push('"');
     for c in s.chars() {
+        if max_bytes.is_some_and(|limit| out.len() > limit) {
+            return;
+        }
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -118,63 +121,145 @@ fn write_string(s: &str, out: &mut String) {
     out.push('"');
 }
 
-fn dump_value(v: &Value, indent: Option<usize>, level: usize, sort_keys: bool, out: &mut String) {
-    let pad = |out: &mut String, l: usize| {
-        if let Some(n) = indent {
-            out.push('\n');
-            for _ in 0..n * l {
-                out.push(' ');
-            }
-        }
-    };
-    match v {
-        Value::Null => out.push_str("null"),
-        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        Value::Number(n) => out.push_str(&n.fmt_jq()),
-        Value::String(s) => write_string(s, out),
-        Value::Array(items) => {
-            if items.is_empty() {
-                out.push_str("[]");
-                return;
-            }
-            out.push('[');
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                pad(out, level + 1);
-                dump_value(item, indent, level + 1, sort_keys, out);
-            }
-            pad(out, level);
-            out.push(']');
-        }
-        Value::Object(entries) => {
-            if entries.is_empty() {
-                out.push_str("{}");
-                return;
-            }
-            out.push('{');
-            let mut order: Vec<usize> = (0..entries.len()).collect();
-            if sort_keys {
-                order.sort_by(|&a, &b| entries[a].0.as_bytes().cmp(entries[b].0.as_bytes()));
-            }
-            for (i, idx) in order.into_iter().enumerate() {
-                let (k, item) = &entries[idx];
-                if i > 0 {
-                    out.push(',');
-                }
-                pad(out, level + 1);
-                write_string(k, out);
-                out.push(':');
-                if indent.is_some() {
-                    out.push(' ');
-                }
-                dump_value(item, indent, level + 1, sort_keys, out);
-            }
-            pad(out, level);
-            out.push('}');
+const PAD_SPACES: &str = "                                                                                                                                                                                                                                                                ";
+
+fn push_pad(out: &mut String, indent: Option<usize>, level: usize) {
+    if let Some(n) = indent {
+        out.push('\n');
+        let mut rem = n * level;
+        while rem > 0 {
+            let chunk = rem.min(PAD_SPACES.len());
+            out.push_str(&PAD_SPACES[..chunk]);
+            rem -= chunk;
         }
     }
+}
+
+fn dump_value_limited(
+    root: &Value,
+    indent: Option<usize>,
+    sort_keys: bool,
+    max_bytes: Option<usize>,
+    out: &mut String,
+) {
+    enum DumpFrame<'a> {
+        Array {
+            items: &'a [Value],
+            next_idx: usize,
+            level: usize,
+        },
+        Object {
+            entries: &'a [(String, Value)],
+            order: Option<Vec<usize>>,
+            next_idx: usize,
+            level: usize,
+        },
+    }
+
+    let mut stack: Vec<DumpFrame<'_>> = Vec::new();
+    let mut cur: Option<(&Value, usize)> = Some((root, 0));
+
+    loop {
+        if max_bytes.is_some_and(|limit| out.len() > limit) {
+            return;
+        }
+        if let Some((v, level)) = cur.take() {
+            match v {
+                Value::Null => out.push_str("null"),
+                Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+                Value::Number(n) => out.push_str(&n.fmt_jq()),
+                Value::String(s) => write_string_limited(s, max_bytes, out),
+                Value::Array(items) if items.is_empty() => out.push_str("[]"),
+                Value::Array(items) => {
+                    out.push('[');
+                    push_pad(out, indent, level + 1);
+                    cur = Some((&items[0], level + 1));
+                    stack.push(DumpFrame::Array {
+                        items,
+                        next_idx: 1,
+                        level,
+                    });
+                }
+                Value::Object(entries) if entries.is_empty() => out.push_str("{}"),
+                Value::Object(entries) => {
+                    out.push('{');
+                    let order = if sort_keys && entries.len() > 1 {
+                        let mut ord: Vec<usize> = (0..entries.len()).collect();
+                        ord.sort_by(|&a, &b| entries[a].0.as_bytes().cmp(entries[b].0.as_bytes()));
+                        Some(ord)
+                    } else {
+                        None
+                    };
+                    let first_idx = order.as_ref().map_or(0, |o| o[0]);
+                    let (k, item) = &entries[first_idx];
+                    push_pad(out, indent, level + 1);
+                    write_string_limited(k, max_bytes, out);
+                    out.push(':');
+                    if indent.is_some() {
+                        out.push(' ');
+                    }
+                    cur = Some((item, level + 1));
+                    stack.push(DumpFrame::Object {
+                        entries,
+                        order,
+                        next_idx: 1,
+                        level,
+                    });
+                }
+            }
+            continue;
+        }
+
+        match stack.last_mut() {
+            None => return,
+            Some(DumpFrame::Array {
+                items,
+                next_idx,
+                level,
+            }) => {
+                if *next_idx < items.len() {
+                    out.push(',');
+                    push_pad(out, indent, *level + 1);
+                    cur = Some((&items[*next_idx], *level + 1));
+                    *next_idx += 1;
+                } else {
+                    let lvl = *level;
+                    stack.pop();
+                    push_pad(out, indent, lvl);
+                    out.push(']');
+                }
+            }
+            Some(DumpFrame::Object {
+                entries,
+                order,
+                next_idx,
+                level,
+            }) => {
+                if *next_idx < entries.len() {
+                    let idx = order.as_ref().map_or(*next_idx, |o| o[*next_idx]);
+                    let (k, item) = &entries[idx];
+                    out.push(',');
+                    push_pad(out, indent, *level + 1);
+                    write_string_limited(k, max_bytes, out);
+                    out.push(':');
+                    if indent.is_some() {
+                        out.push(' ');
+                    }
+                    cur = Some((item, *level + 1));
+                    *next_idx += 1;
+                } else {
+                    let lvl = *level;
+                    stack.pop();
+                    push_pad(out, indent, lvl);
+                    out.push('}');
+                }
+            }
+        }
+    }
+}
+
+fn dump_value(v: &Value, indent: Option<usize>, _level: usize, sort_keys: bool, out: &mut String) {
+    dump_value_limited(v, indent, sort_keys, None, out);
 }
 
 /// `jq -c`: compact JSON without trailing newline.
@@ -260,7 +345,8 @@ pub fn format_value(v: &Value, opts: OutputOptions) -> String {
 /// bytes on a UTF-8 char boundary + `..."`, arrays + `...]`, objects + `...}`,
 /// numbers/others keep up to 26 bytes + `...`).
 pub fn dump_trunc(v: &Value) -> String {
-    let dumped = compact(v);
+    let mut dumped = String::new();
+    dump_value_limited(v, None, false, Some(29), &mut dumped);
     if dumped.len() <= 29 {
         return dumped;
     }

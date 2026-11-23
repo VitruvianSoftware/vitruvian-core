@@ -40,6 +40,9 @@ pub use format::{
     pretty_sorted, raw, raw_compact, raw_sorted, tostring, uri_encode, OutputOptions,
 };
 pub use order::{compare, group_by, jq_eq, sort, sort_by, unique, unique_by};
-pub use parse::{parse_one, parse_stream, parse_stream_str, StreamItem};
+pub use parse::{parse_one, parse_stream, parse_stream_str, StreamItem, MAX_PARSING_DEPTH};
 pub use run::{alt, any, each, first, one, or_empty, run, Produced, RunOptions, RunResult};
 pub use value::{Number, Value};
+
+#[cfg(test)]
+mod stack_tests;
