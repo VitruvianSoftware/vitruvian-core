@@ -53,6 +53,8 @@ package final class NotchFileDrop {
         package var capturing: () -> Bool
         /// The island shows its files module.
         package var showsFiles: () -> Bool
+        /// A media card open in the island takes file drags itself.
+        package var directMediaDrop: () -> Bool
         /// Where on the open island the media tools take the drop.
         package var mediaArea: () -> CGRect
         /// Runs before the destinations change, so the views showing them redraw.
@@ -67,13 +69,14 @@ package final class NotchFileDrop {
         package var cheer: () -> Void
 
         package init(acceptsUserInteraction: @escaping () -> Bool, capturing: @escaping () -> Bool,
-                     showsFiles: @escaping () -> Bool,
+                     showsFiles: @escaping () -> Bool, directMediaDrop: @escaping () -> Bool = { false },
                      mediaArea: @escaping () -> CGRect, willChange: @escaping () -> Void,
                      openFiles: @escaping (_ takeFocus: Bool) -> Void, refreshPresentation: @escaping () -> Void,
                      landed: @escaping () -> Void, cheer: @escaping () -> Void = {}) {
             self.acceptsUserInteraction = acceptsUserInteraction
             self.capturing = capturing
             self.showsFiles = showsFiles
+            self.directMediaDrop = directMediaDrop
             self.mediaArea = mediaArea
             self.willChange = willChange
             self.openFiles = openFiles
@@ -107,10 +110,17 @@ package final class NotchFileDrop {
             && environment.shelfEnabled()
     }
 
+    /// The island takes this drag. Files are left to an open media card in the
+    /// island as they cross its edge; the Files page keeps its own shelf and
+    /// media destinations.
+    package func canAccept(_ pasteboard: NSPasteboard) -> Bool {
+        canAccept && !(island.directMediaDrop() && pasteboard.types?.contains(.fileURL) == true)
+    }
+
     /// A drag entered the island: it opens on its files, offering the media
     /// tools when they can take what is dragged.
     package func begin(_ pasteboard: NSPasteboard) {
-        guard canAccept else { return }
+        guard canAccept(pasteboard) else { return }
         choosingDestination = environment.offersMedia(pasteboard)
         targetsMedia = false
         island.openFiles(false)
@@ -135,7 +145,7 @@ package final class NotchFileDrop {
     /// Delivers the drop to the destination the pointer chose.
     package func accept(_ pasteboard: NSPasteboard) -> Bool {
         defer { end() }
-        guard canAccept else { return false }
+        guard canAccept(pasteboard) else { return false }
         let optimize = choosingDestination && targetsMedia
         let accepted = optimize ? environment.openMedia(pasteboard) : environment.shelfAccept(pasteboard)
         if accepted {

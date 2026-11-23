@@ -272,7 +272,7 @@ enum MediaWorkspaceLayoutTests {
         }
         for embedded in [false, true] {
             let input = NSHostingView(rootView: MediaInputDropTarget(
-                inNotch: embedded, isDropTargeted: .constant(false), acceptDrop: { _ in false }) {
+                acceptsDrops: !embedded, isDropTargeted: .constant(false), acceptDrop: { _ in false }) {
                     Color.clear.frame(width: 300, height: 70)
                 })
             input.frame = CGRect(x: 0, y: 0, width: 300, height: 70)

@@ -363,6 +363,8 @@ package final class NotchService: ObservableObject {
     private let hotkey: ToolHotkey
     @Published package private(set) var peeking = false
     @Published package private(set) var dragPlaceholder = false
+    /// The media card open in the island, which takes file drags itself.
+    package weak var directMediaDropWorkspace: MediaWorkspaceSelection?
     /// A drag onto the island offers the shelf and the media tools.
     package var choosingFileDropDestination: Bool {
         fileDrop.choosingDestination
@@ -493,6 +495,7 @@ package final class NotchService: ObservableObject {
             acceptsUserInteraction: { [weak self] in self?.acceptsUserInteraction ?? false },
             capturing: { [weak self] in self?.captureControls != nil },
             showsFiles: { [weak self] in self?.modules.contains(.files) == true },
+            directMediaDrop: { [weak self] in self?.directMediaDropWorkspace != nil },
             mediaArea: { [weak self] in self?.mediaDropArea ?? .null },
             willChange: { [weak self] in self?.objectWillChange.send() },
             openFiles: { [weak self] in self?.open(.files, takeFocus: $0) },
@@ -3091,6 +3094,12 @@ package final class NotchService: ObservableObject {
         fileDrop.canAccept
     }
 
+    /// Whether the island takes this drag. File drags are left to an open
+    /// media card in the island, which takes them directly.
+    package func canAcceptFileDrop(_ pasteboard: NSPasteboard) -> Bool {
+        fileDrop.canAccept(pasteboard)
+    }
+
     /// Where on the open island the media tools take a drop.
     private var mediaDropArea: CGRect {
         NotchFileToolsSupport.mediaDropArea(in: expandedGeometry, size: surfaceSize)
@@ -4002,7 +4011,7 @@ package final class NotchService: ObservableObject {
         if modules.contains(.files), AppFeature.shelf.isAvailable(in: defaults) {
             windowHost?.setFileDropActions(NotchFileDropActions(
                 canAccept: { [weak self] pasteboard in
-                    self?.canAcceptFileDrop == true && Self.collaborators.shelfCanAccept(pasteboard)
+                    self?.canAcceptFileDrop(pasteboard) == true && Self.collaborators.shelfCanAccept(pasteboard)
                 },
                 enter: { [weak self] in self?.beginFileDrop($0) },
                 accept: { [weak self] in self?.accept($0) == true },
