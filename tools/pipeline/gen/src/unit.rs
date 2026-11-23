@@ -25,8 +25,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::gojson::{fold_name, Json};
 use crate::gostr;
+use vitruvian_gojson::{parse, Dec};
 
 pub const SCHEMA_VERSION: i64 = 1;
 
@@ -67,200 +67,56 @@ impl Unit {
     }
 }
 
-/// A Go slice under decoding: its backing array outlives a shorter
-/// re-decode, which a duplicate key can expose (`null` elements keep the
-/// old value). `None` is nil.
-#[derive(Default)]
-struct GoSlice {
-    backing: Vec<String>,
-    len: usize,
-    nil: bool,
-}
-
-impl GoSlice {
-    fn nil() -> Self {
-        GoSlice {
-            nil: true,
-            ..Default::default()
-        }
-    }
-    fn get(&self) -> Option<Vec<String>> {
-        if self.nil {
-            None
-        } else {
-            Some(self.backing[..self.len].to_vec())
-        }
-    }
-}
-
-struct Decoder {
-    err: Option<String>,
-}
-
-#[derive(Clone, Copy)]
-enum Field {
-    Schema,
-    Name,
-    Package,
-    TestTargets,
-    Tier,
-    Runner,
-    Persona,
-    ConcurrencyGroup,
-    TimeoutMinutes,
-    Env,
-    DependsOn,
-    NeedsEmulator,
-    Artifacts,
-    BuildFlags,
-    Tags,
-}
-
-const FIELDS: &[(&str, Field)] = &[
-    ("schema", Field::Schema),
-    ("name", Field::Name),
-    ("package", Field::Package),
-    ("test_targets", Field::TestTargets),
-    ("tier", Field::Tier),
-    ("runner", Field::Runner),
-    ("persona", Field::Persona),
-    ("concurrency_group", Field::ConcurrencyGroup),
-    ("timeout_minutes", Field::TimeoutMinutes),
-    ("env", Field::Env),
-    ("depends_on", Field::DependsOn),
-    ("needs_emulator", Field::NeedsEmulator),
-    ("artifacts", Field::Artifacts),
-    ("build_flags", Field::BuildFlags),
-    ("tags", Field::Tags),
+const FIELDS: &[&str] = &[
+    "schema",
+    "name",
+    "package",
+    "test_targets",
+    "tier",
+    "runner",
+    "persona",
+    "concurrency_group",
+    "timeout_minutes",
+    "env",
+    "depends_on",
+    "needs_emulator",
+    "artifacts",
+    "build_flags",
+    "tags",
 ];
-
-impl Decoder {
-    fn type_error(&mut self, value: &str, field: &str, ty: &str) {
-        if self.err.is_none() {
-            self.err = Some(format!(
-                "json: cannot unmarshal {value} into Go struct field Unit.{field} of type {ty}"
-            ));
-        }
-    }
-
-    fn string(&mut self, dst: &mut String, v: &Json, field: &str) {
-        match v {
-            Json::Str(s) => *dst = s.clone(),
-            Json::Null => {}
-            other => self.type_error(other.kind(), field, "string"),
-        }
-    }
-
-    fn int(&mut self, dst: &mut i64, v: &Json, field: &str) {
-        match v {
-            Json::Num(s) => match s.parse::<i64>() {
-                Ok(n) if !s.starts_with('+') => *dst = n,
-                _ => self.type_error(&format!("number {s}"), field, "int"),
-            },
-            Json::Null => {}
-            other => self.type_error(other.kind(), field, "int"),
-        }
-    }
-
-    fn boolean(&mut self, dst: &mut bool, v: &Json, field: &str) {
-        match v {
-            Json::Bool(b) => *dst = *b,
-            Json::Null => {}
-            other => self.type_error(other.kind(), field, "bool"),
-        }
-    }
-
-    fn slice(&mut self, dst: &mut GoSlice, v: &Json, field: &str) {
-        match v {
-            Json::Arr(items) => {
-                dst.nil = false;
-                for (i, item) in items.iter().enumerate() {
-                    if i >= dst.backing.len() {
-                        dst.backing.push(String::new());
-                    }
-                    let mut slot = std::mem::take(&mut dst.backing[i]);
-                    self.string(&mut slot, item, field);
-                    dst.backing[i] = slot;
-                }
-                if items.is_empty() {
-                    // Go sets a fresh empty slice: the old backing is gone.
-                    dst.backing.clear();
-                }
-                dst.len = items.len();
-            }
-            Json::Null => *dst = GoSlice::nil(),
-            other => self.type_error(other.kind(), field, "[]string"),
-        }
-    }
-
-    fn map(&mut self, dst: &mut Option<BTreeMap<String, String>>, v: &Json, field: &str) {
-        match v {
-            Json::Obj(kv) => {
-                let m = dst.get_or_insert_with(BTreeMap::new);
-                for (k, val) in kv {
-                    let mut s = String::new();
-                    self.string(&mut s, val, field);
-                    m.insert(k.clone(), s);
-                }
-            }
-            Json::Null => *dst = None,
-            other => self.type_error(other.kind(), field, "map[string]string"),
-        }
-    }
-}
 
 /// Go's `json.Unmarshal(b, &u)` into the generator's Unit struct.
 fn unmarshal_unit(b: &[u8]) -> Result<Unit, String> {
-    let j = crate::gojson::parse(b)?;
+    let v = parse(b)?;
     let mut u = Unit::default();
-    let pairs = match j {
-        Json::Null => return Ok(u),
-        Json::Obj(kv) => kv,
-        other => {
-            return Err(format!(
-                "json: cannot unmarshal {} into Go value of type main.Unit",
-                other.kind()
-            ))
-        }
-    };
-    let mut d = Decoder { err: None };
-    let mut targets = GoSlice::nil();
-    let mut depends = GoSlice::nil();
-    let mut flags = GoSlice::nil();
-    let mut tags = GoSlice::nil();
+    let mut depends: Option<Vec<String>> = None;
+    let mut flags: Option<Vec<String>> = None;
+    let mut tags: Option<Vec<String>> = None;
     let mut env: Option<BTreeMap<String, String>> = None;
     let mut artifacts: Option<BTreeMap<String, String>> = None;
-    for (key, v) in &pairs {
-        let field = FIELDS.iter().find(|(n, _)| n == key).or_else(|| {
-            let folded = fold_name(key);
-            FIELDS.iter().find(|(n, _)| fold_name(n) == folded)
-        });
-        let Some((name, f)) = field else { continue };
-        match f {
-            Field::Schema => d.int(&mut u.schema, v, name),
-            Field::Name => d.string(&mut u.name, v, name),
-            Field::Package => d.string(&mut u.package, v, name),
-            Field::TestTargets => d.slice(&mut targets, v, name),
-            Field::Tier => d.string(&mut u.tier, v, name),
-            Field::Runner => d.string(&mut u.runner, v, name),
-            Field::Persona => d.string(&mut u.persona, v, name),
-            Field::ConcurrencyGroup => d.string(&mut u.concurrency_group, v, name),
-            Field::TimeoutMinutes => d.int(&mut u.timeout_minutes, v, name),
-            Field::Env => d.map(&mut env, v, name),
-            Field::DependsOn => d.slice(&mut depends, v, name),
-            Field::NeedsEmulator => d.boolean(&mut u.needs_emulator, v, name),
-            Field::Artifacts => d.map(&mut artifacts, v, name),
-            Field::BuildFlags => d.slice(&mut flags, v, name),
-            Field::Tags => d.slice(&mut tags, v, name),
-        }
-    }
-    if let Some(e) = d.err {
-        return Err(e);
-    }
-    u.test_targets = targets.get();
-    u.depends_on = depends.get().unwrap_or_default();
-    u.build_flags = flags.get().unwrap_or_default();
-    u.tags = tags.get().unwrap_or_default();
+    let mut d = Dec::new();
+    d.object(&v, "Unit", "main.Unit", FIELDS, |d, name, val| match name {
+        "schema" => d.int(val, &mut u.schema),
+        "name" => d.string(val, &mut u.name),
+        "package" => d.string(val, &mut u.package),
+        "test_targets" => d.strings(val, &mut u.test_targets),
+        "tier" => d.string(val, &mut u.tier),
+        "runner" => d.string(val, &mut u.runner),
+        "persona" => d.string(val, &mut u.persona),
+        "concurrency_group" => d.string(val, &mut u.concurrency_group),
+        "timeout_minutes" => d.int(val, &mut u.timeout_minutes),
+        "env" => d.string_map(val, &mut env),
+        "depends_on" => d.strings(val, &mut depends),
+        "needs_emulator" => d.bool(val, &mut u.needs_emulator),
+        "artifacts" => d.string_map(val, &mut artifacts),
+        "build_flags" => d.strings(val, &mut flags),
+        "tags" => d.strings(val, &mut tags),
+        _ => unreachable!(),
+    });
+    d.finish()?;
+    u.depends_on = depends.unwrap_or_default();
+    u.build_flags = flags.unwrap_or_default();
+    u.tags = tags.unwrap_or_default();
     u.env = env.unwrap_or_default();
     u.artifacts = artifacts.unwrap_or_default();
     Ok(u)
@@ -341,28 +197,11 @@ pub fn find_unit_files(root: &str) -> Vec<String> {
     paths
 }
 
-/// Go's JSON escaping on top of serde_json's: `<`, `>`, `&`, U+2028 and
-/// U+2029 are written as `\u` escapes. In serialised JSON these can only
-/// occur inside strings, so a textual pass is exact.
-pub fn go_html_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '<' => out.push_str("\\u003c"),
-            '>' => out.push_str("\\u003e"),
-            '&' => out.push_str("\\u0026"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
 /// Go's `json.MarshalIndent(v, "", "  ")`.
 pub fn marshal_indent<T: Serialize>(v: &T) -> String {
-    let s = serde_json::to_string_pretty(v).expect("serialising plain data cannot fail");
-    go_html_escape(&s)
+    vitruvian_gojson::marshal_indent_string(v).expect(
+        "no caller marshals a float; vitruvian_gojson rejects floats, see packages/gocompat/gojson/README.md",
+    )
 }
 
 #[cfg(test)]
@@ -395,6 +234,8 @@ mod tests {
              "decode unit json: json: cannot unmarshal number 1.5 into Go struct field Unit.schema of type int"),
             (r#"{"schema":1,"name":"a","test_targets":["x"],"env":{"a":1}}"#,
              "decode unit json: json: cannot unmarshal number into Go struct field Unit.env of type string"),
+            (r#"{"schema":1,"name":"a","test_targets":["x"],"env":123}"#,
+             "decode unit json: json: cannot unmarshal number into Go struct field Unit.env of type map[string]string"),
             ("[]", "decode unit json: json: cannot unmarshal array into Go value of type main.Unit"),
             ("null", "unit \"\": unsupported schema version 0 (expected 1)"),
         ];
@@ -410,22 +251,27 @@ mod tests {
     #[test]
     fn keys_fold_and_maps_merge() {
         let u = decode_unit(
-            "{\"\u{17f}chema\":1,\"NAME\":\"a\",\"test_targets\":[\"x\",\"y\"],\"test_targets\":[null],\
-             \"artifacts\":{\"x\":\"y\"},\"artifacts\":{\"z\":\"w\"}}"
+            "{\"\u{17f}chema\":1,\"NAME\":\"a\",\"t\u{0131}er\":\"L2\",\"test_targets\":[\"x\",\"y\"],\"test_targets\":[null],\
+             \"artifacts\":{\"x\":\"y\"},\"artifacts\":{\"z\":\"w\",\"x\":null},\
+             \"env\":{\"k\":\"v\"},\"env\":null}"
                 .as_bytes(),
         )
         .unwrap();
         assert_eq!(u.name, "a");
+        // Turkish dotless 'ı' (U+0131) does not SimpleFold to 'i', matching Go.
+        assert_eq!(u.tier, "L1");
         // The second test_targets reuses the first's backing array.
         assert_eq!(u.test_targets, Some(vec!["x".to_string()]));
-        assert_eq!(u.artifacts.len(), 2);
+        assert_eq!(u.artifacts.get("x").map(String::as_str), Some(""));
+        assert_eq!(u.artifacts.get("z").map(String::as_str), Some("w"));
+        assert!(u.env.is_empty());
     }
 
     #[test]
     fn json_escapes_like_go() {
         assert_eq!(
-            go_html_escape("\"<&>\u{2028}\""),
-            "\"\\u003c\\u0026\\u003e\\u2028\""
+            marshal_indent(&"<&>\u{2028}\u{2029}"),
+            "\"\\u003c\\u0026\\u003e\\u2028\\u2029\""
         );
     }
 }

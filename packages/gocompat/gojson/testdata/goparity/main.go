@@ -430,4 +430,42 @@ func main() {
 		}
 		emit("UNM_STRUCT", tc.name, hex.EncodeToString([]byte(tc.inp)), hex.EncodeToString([]byte(res)))
 	}
+
+	for _, tc := range []struct {
+		name string
+		inp  string
+	}{
+		{"map_str_null", `{"m":null}`},
+		{"map_str_empty", `{"m":{}}`},
+		{"map_str_merge", `{"m":{"a":"1"},"m":{"b":"2"}}`},
+		{"map_str_overwrite", `{"m":{"a":"1"},"m":{"a":"2"}}`},
+		{"map_str_null_val_overwrites", `{"m":{"a":"1"},"m":{"a":null}}`},
+		{"map_str_dup_null_resets", `{"m":{"a":"1"},"m":null}`},
+		{"map_str_dup_null_then_obj", `{"m":{"a":"1"},"m":null,"m":{"b":"2"}}`},
+		{"map_str_dup_empty_keeps", `{"m":{"a":"1"},"m":{}}`},
+		{"map_str_err_not_obj", `{"m":123}`},
+		{"map_str_err_val_type", `{"m":{"a":1}}`},
+	} {
+		type SM struct {
+			M map[string]string `json:"m"`
+		}
+		var sm SM
+		err := json.Unmarshal([]byte(tc.inp), &sm)
+		res := "NIL"
+		if err != nil {
+			res = "ERR:" + err.Error()
+		} else if sm.M != nil {
+			ks := make([]string, 0, len(sm.M))
+			for k := range sm.M {
+				ks = append(ks, k)
+			}
+			sort.Strings(ks)
+			parts := make([]string, len(ks))
+			for i, k := range ks {
+				parts[i] = fmt.Sprintf("%s=%s", k, sm.M[k])
+			}
+			res = "MAP:" + strings.Join(parts, "|")
+		}
+		emit("UNM_STRUCT", tc.name, hex.EncodeToString([]byte(tc.inp)), hex.EncodeToString([]byte(res)))
+	}
 }
