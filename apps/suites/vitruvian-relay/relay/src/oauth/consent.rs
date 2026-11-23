@@ -39,6 +39,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use http::{header, HeaderValue, Request, Response, StatusCode};
 use hyper::body::Incoming;
 use serde_json::json;
@@ -51,7 +53,7 @@ use crate::dashboard::pages::{esc, message_page, page_shell, Ctx};
 use crate::dashboard::session::{cookie, cookie_value};
 use crate::dashboard::{form_encode, parse_pairs, percent_decode, ExchangeError};
 use crate::http::{header_str, read_body, valid_device_id, App, Body};
-use crate::store::UNAVAILABLE_MESSAGE;
+use crate::store::{StoreError, UNAVAILABLE_MESSAGE};
 
 /// The cookie that ties a sign-in to the browser that started it.
 pub(crate) const BINDING_COOKIE: &str = "vr_oauth";
@@ -69,6 +71,15 @@ const MAX_FORM_BYTES: usize = 4 * 1024;
 const APP_NAME: &str = "Gemini";
 /// What the page says, word for word.
 pub(crate) const WARNING: &str = "Only allow this if you just started connecting Gemini yourself. Allowing it lets that Gemini account use this computer.";
+
+/// Nothing loads but the relay's own stylesheet. `form-action` names the
+/// app's callback host as well as the relay: browsers apply it to the
+/// redirect that follows a form post, so without it Allow and Deny would
+/// be blocked on their way back to the app. Only the production callback
+/// host is ever redirected to.
+pub(crate) const CSP: &str = "default-src 'none'; style-src 'self'; \
+    form-action 'self' https://oauth-redirect.googleusercontent.com; \
+    base-uri 'none'; frame-ancestors 'none'";
 
 const HOME: (&str, &str) = ("/", "Vitruvian Relay");
 
@@ -99,7 +110,7 @@ fn hardened(status: StatusCode, content_type: &str, body: String) -> Response<Bo
         .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "no-store")
         .header(header::X_FRAME_OPTIONS, "DENY")
-        .header(header::CONTENT_SECURITY_POLICY, "frame-ancestors 'none'")
+        .header(header::CONTENT_SECURITY_POLICY, CSP)
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
         .header(header::REFERRER_POLICY, "same-origin")
         .body(Body::new(body))
@@ -151,14 +162,35 @@ fn now(app: &App) -> u64 {
     (app.timing.clock)()
 }
 
-fn browser_of(req: &Request<Incoming>) -> Option<&str> {
-    cookie_value(
+/// What a request says about the browser binding.
+enum Binding<'a> {
+    /// No `vr_oauth` cookie, or an empty one.
+    Missing,
+    One(&'a str),
+    /// More than one `vr_oauth` cookie. A page on a sibling subdomain can
+    /// plant its own with the same name and a wider scope ("cookie tossing"),
+    /// and which one a server reads first is then up to the browser. So two
+    /// are refused rather than one picked.
+    Many,
+}
+
+fn binding_of(req: &Request<Incoming>) -> Binding<'_> {
+    let headers = || {
         req.headers()
             .get_all(header::COOKIE)
             .iter()
-            .filter_map(|v| v.to_str().ok()),
-        BINDING_COOKIE,
-    )
+            .filter_map(|v| v.to_str().ok())
+    };
+    let named = headers()
+        .flat_map(|h| h.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .filter(|(k, _)| *k == BINDING_COOKIE)
+        .count();
+    match (named, cookie_value(headers(), BINDING_COOKIE)) {
+        (0, _) | (1, None) => Binding::Missing,
+        (1, Some(value)) => Binding::One(value),
+        _ => Binding::Many,
+    }
 }
 
 // ---------------------------------------------------------------- authorize
@@ -294,12 +326,27 @@ pub(super) async fn authorize(app: &Arc<App>, req: &Request<Incoming>) -> Respon
             state: state.to_string(),
             device_id,
         },
+        &key,
         now(app),
     );
+    // An address with this many sign-ins waiting is refused; it does not
+    // get to push out other people's.
+    let Some(started) = started else {
+        app.log("app_authorize_refused", json!({"why": "too_many_waiting"}));
+        let mut r = say(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many sign-ins waiting",
+            "Too many sign-ins from your network are waiting to finish. Finish one, or wait ten minutes, then start again from your AI app.",
+            HOME,
+        );
+        r.headers_mut()
+            .insert(header::RETRY_AFTER, HeaderValue::from(60));
+        return r;
+    };
     // The project's audience scope puts the project in the token's audience,
     // which the token check requires; the role comes with it.
     let scope = format!(
-        "openid offline_access {}",
+        "openid profile email offline_access {}",
         audience_scope_for(&app.settings.project_id)
     );
     let url = format!(
@@ -334,6 +381,67 @@ fn try_again(status: StatusCode, title: &str, text: &str) -> Response<Body> {
     say(status, title, text, HOME)
 }
 
+/// The page for a computer that is not the person's: the same for someone
+/// else's, one that was removed and one that never existed.
+fn computer_not_found(app: &App) -> Response<Body> {
+    app.log("app_signin_refused", json!({"why": "device"}));
+    say(
+        StatusCode::NOT_FOUND,
+        "We could not find that computer",
+        "It may have been removed, or the link from your AI app may be wrong. Your computers are listed on your Vitruvian Relay page.",
+        ("/devices", "Your computers"),
+    )
+}
+
+fn store_down(app: &App, e: &StoreError) -> Response<Body> {
+    app.log("app_signin_store_failed", json!({"error": e.to_string()}));
+    try_again(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Vitruvian Relay is having trouble",
+        UNAVAILABLE_MESSAGE,
+    )
+}
+
+/// What a person's name is worth on the page: the longest shown.
+const WHO_PART_MAX: usize = 100;
+
+/// Characters that are no use in a name and can make one read as something
+/// else (controls, and the ones that reverse or hide text).
+fn shown_char(c: char) -> bool {
+    !c.is_control()
+        && !matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
+fn clean_part(raw: &str) -> Option<String> {
+    let kept: String = raw.chars().filter(|c| shown_char(*c)).collect();
+    let cut: String = kept.trim().chars().take(WHO_PART_MAX).collect();
+    let cut = cut.trim();
+    (!cut.is_empty()).then(|| cut.to_string())
+}
+
+/// How the person is named on the consent page: "name (email)", or
+/// whichever the ID token has, or their id. The ID token came straight from
+/// the identity service over TLS, so it is read without checking its
+/// signature. That is for display only: nothing here decides anything, and
+/// the access token is what is checked.
+fn who_is(id_token: Option<&str>, subject: &str) -> String {
+    let claims = id_token
+        .and_then(|t| t.split('.').nth(1))
+        .and_then(|p| URL_SAFE_NO_PAD.decode(p.trim_end_matches('=')).ok())
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    let claim = |k: &str| {
+        claims
+            .as_ref()
+            .and_then(|c| c.get(k)?.as_str())
+            .and_then(clean_part)
+    };
+    match (claim("name"), claim("email")) {
+        (Some(n), Some(e)) => format!("{n} ({e})"),
+        (Some(x), None) | (None, Some(x)) => x,
+        (None, None) => subject.to_string(),
+    }
+}
+
 fn refused_sign_in() -> Response<Body> {
     say(
         StatusCode::FORBIDDEN,
@@ -352,7 +460,18 @@ pub(super) async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Respons
         return crate::http::not_found();
     };
     let query = parse_pairs(req.uri().query().unwrap_or(""));
-    let (Some(browser), Some(state)) = (browser_of(req), query.get("state")) else {
+    let browser = match binding_of(req) {
+        Binding::One(b) => b,
+        Binding::Missing => {
+            app.log("app_signin_refused", json!({"why": "state"}));
+            return not_started();
+        }
+        Binding::Many => {
+            app.log("app_signin_refused", json!({"why": "cookie"}));
+            return not_started();
+        }
+    };
+    let Some(state) = query.get("state") else {
         app.log("app_signin_refused", json!({"why": "state"}));
         return not_started();
     };
@@ -458,29 +577,15 @@ pub(super) async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Respons
     // not exist get the same page.
     let device = match app.owned_device(&caller.subject, &request.device_id).await {
         Ok(Some(d)) => d,
-        Ok(None) => {
-            app.log("app_signin_refused", json!({"why": "device"}));
-            return say(
-                StatusCode::NOT_FOUND,
-                "We could not find that computer",
-                "It may have been removed, or the link from your AI app may be wrong. Your computers are listed on your Vitruvian Relay page.",
-                ("/devices", "Your computers"),
-            );
-        }
-        Err(e) => {
-            app.log("app_signin_store_failed", json!({"error": e.to_string()}));
-            return try_again(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Vitruvian Relay is having trouble",
-                UNAVAILABLE_MESSAGE,
-            );
-        }
+        Ok(None) => return computer_not_found(app),
+        Err(e) => return store_down(app, &e),
     };
 
     app.pending.put_consent(
         browser,
         Consent {
             request,
+            who: who_is(tokens.id_token.as_deref(), &caller.subject),
             subject: caller.subject,
             device_name: device.name,
             access_token: tokens.access_token,
@@ -508,7 +613,7 @@ fn expired() -> Response<Body> {
 
 /// What the page shows about a waiting consent.
 struct View {
-    subject: String,
+    who: String,
     device_name: String,
     /// The last 8 characters of the app's callback id.
     callback_tail: String,
@@ -533,7 +638,7 @@ fn consent_html(v: &View) -> String {
              <button type=\"submit\" name=\"decision\" value=\"deny\">Deny</button></p>\
              </form></section>",
             app = APP_NAME,
-            who = esc(&v.subject),
+            who = esc(&v.who),
             tail = esc(&v.callback_tail),
             computer = esc(&v.device_name),
             warning = esc(WARNING),
@@ -544,15 +649,16 @@ fn consent_html(v: &View) -> String {
 
 /// `GET /oauth/consent`: the page, for the sign-in waiting in this browser.
 pub(super) fn consent_page(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
-    let Some(browser) = browser_of(req) else {
+    let Binding::One(browser) = binding_of(req) else {
         return expired();
     };
     let view = app.pending.view_consent(browser, now(app), |c| View {
-        subject: c.subject.clone(),
+        who: c.who.clone(),
         device_name: c.device_name.clone(),
         callback_tail: {
-            let url = &c.request.callback;
-            url[url.len().saturating_sub(8)..].to_string()
+            let mut last: Vec<char> = c.request.callback.chars().rev().take(8).collect();
+            last.reverse();
+            last.into_iter().collect()
         },
         csrf: c.csrf.clone(),
     });
@@ -578,9 +684,10 @@ pub(super) async fn consent_decide(app: &Arc<App>, req: Request<Incoming>) -> Re
     if header_str(&req, header::ORIGIN) != Some(app.settings.public_url.as_str()) {
         return consent_refused(app, "origin");
     }
-    let Some(browser) = browser_of(&req).map(String::from) else {
+    let Binding::One(browser) = binding_of(&req) else {
         return consent_refused(app, "cookie");
     };
+    let browser = browser.to_string();
     let bytes = match read_body(req.into_body(), MAX_FORM_BYTES, app.timing.body_timeout).await {
         Ok(b) => b,
         Err(resp) => return *resp,
@@ -600,6 +707,16 @@ pub(super) async fn consent_decide(app: &Arc<App>, req: Request<Incoming>) -> Re
         return consent_refused(app, "csrf_or_expired");
     };
     let r = c.request;
+    // Allow: the computer must still be this person's. It may have been
+    // removed since the page was shown, or the database may not answer, and
+    // either way no code is issued.
+    if allow {
+        match app.owned_device(&c.subject, &r.device_id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return computer_not_found(app),
+            Err(e) => return store_down(app, &e),
+        }
+    }
     let to_app = if allow {
         let code = random_token();
         let url = format!(
@@ -679,5 +796,34 @@ mod tests {
         assert!(strict_pairs("a=1&b=2").is_some());
         assert!(strict_pairs("a=1&a=2").is_none());
         assert!(strict_pairs("a=1&%61=2").is_none());
+    }
+
+    #[test]
+    fn the_person_is_named_from_the_id_token_or_their_id() {
+        let token = |claims: &str| format!("h.{}.s", URL_SAFE_NO_PAD.encode(claims.as_bytes()));
+        assert_eq!(
+            who_is(Some(&token(r#"{"name":"A B","email":"a@b.c"}"#)), "sub-1"),
+            "A B (a@b.c)"
+        );
+        assert_eq!(who_is(Some(&token(r#"{"name":"A B"}"#)), "sub-1"), "A B");
+        assert_eq!(
+            who_is(Some(&token(r#"{"email":"a@b.c"}"#)), "sub-1"),
+            "a@b.c"
+        );
+        for bad in [None, Some("x"), Some("a.b.c"), Some("a..c"), Some("")] {
+            assert_eq!(who_is(bad, "sub-1"), "sub-1", "{bad:?}");
+        }
+        assert_eq!(who_is(Some(&token(r#"{"name":5}"#)), "sub-1"), "sub-1");
+        // Text that can reverse or hide what is around it is dropped, and
+        // a long name is cut.
+        assert_eq!(
+            who_is(Some(&token(r#"{"name":"A\u202eB\u0007"}"#)), "s"),
+            "AB"
+        );
+        let long = format!(r#"{{"name":"{}"}}"#, "x".repeat(500));
+        assert_eq!(
+            who_is(Some(&token(&long)), "s").chars().count(),
+            WHO_PART_MAX
+        );
     }
 }

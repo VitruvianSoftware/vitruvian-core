@@ -205,16 +205,26 @@ impl TokenServer {
 
     /// Answers every exchange with this access token and refresh token.
     pub(crate) fn give_tokens(&self, access_token: &str, refresh_token: &str) {
-        *self.answer.lock().unwrap() = (
-            200,
-            json!({
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": "Bearer",
-                "expires_in": 3600,
-            })
-            .to_string(),
-        );
+        self.give_tokens_and_id(access_token, refresh_token, None);
+    }
+
+    /// As [`Self::give_tokens`], with an ID token when there is one.
+    pub(crate) fn give_tokens_and_id(
+        &self,
+        access_token: &str,
+        refresh_token: &str,
+        id_token: Option<&str>,
+    ) {
+        let mut answer = json!({
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        });
+        if let Some(id) = id_token {
+            answer["id_token"] = json!(id);
+        }
+        *self.answer.lock().unwrap() = (200, answer.to_string());
     }
 
     /// Answers every exchange with an error.

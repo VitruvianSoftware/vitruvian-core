@@ -475,7 +475,17 @@ fn app_token(h: &Harness, sub: &str, role: Option<&str>) -> String {
 
 /// The identity service sends the browser back to the callback.
 async fn come_back(h: &Harness, st: &Started, token: &str) -> Reply {
-    h.tokens.give_tokens(token, REFRESH);
+    come_back_with_id(h, st, token, None).await
+}
+
+/// As [`come_back`], with an ID token in the identity service's answer.
+async fn come_back_with_id(
+    h: &Harness,
+    st: &Started,
+    token: &str,
+    id_token: Option<&str>,
+) -> Reply {
+    h.tokens.give_tokens_and_id(token, REFRESH, id_token);
     h.send(
         "GET",
         &format!(
@@ -511,6 +521,25 @@ fn csrf_in(page: &str) -> String {
 /// A person who owns a computer goes through authorize and the callback and
 /// is shown the consent page. Returns the browser and the page's form token.
 async fn at_consent(h: &Harness, sub: &str, name: &str) -> (Started, String, String) {
+    at_consent_with_id(h, sub, name, None).await
+}
+
+/// An unsigned token with these claims, which is all the page reads.
+fn id_token(claims: Value) -> String {
+    let b64 = crate::http::tests::b64url;
+    format!(
+        "{}.{}.sig",
+        b64(br#"{"alg":"none"}"#),
+        b64(claims.to_string().as_bytes())
+    )
+}
+
+async fn at_consent_with_id(
+    h: &Harness,
+    sub: &str,
+    name: &str,
+    id: Option<&str>,
+) -> (Started, String, String) {
     let reg = h
         .register_body(
             sub,
@@ -520,7 +549,7 @@ async fn at_consent(h: &Harness, sub: &str, name: &str) -> (Started, String, Str
     assert_eq!(reg.status, StatusCode::OK, "{}", reg.body);
     let device = reg.json()["device_id"].as_str().unwrap().to_string();
     let st = start(h, &device).await;
-    let r = come_back(h, &st, &app_token(h, sub, Some("relay-user"))).await;
+    let r = come_back_with_id(h, &st, &app_token(h, sub, Some("relay-user")), id).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     assert_eq!(r.header("location").as_deref(), Some("/oauth/consent"));
     let page = consent_get(h, &st.cookie).await;
@@ -589,7 +618,7 @@ async fn authorize_redirects_to_zitadel_with_fixed_callback_and_own_pkce() {
     );
     assert_eq!(
         param(&to, "scope").as_deref(),
-        Some("openid offline_access urn:zitadel:iam:org:project:id:123456789:aud")
+        Some("openid profile email offline_access urn:zitadel:iam:org:project:id:123456789:aud")
     );
     assert_eq!(param(&to, "prompt").as_deref(), Some("select_account"));
     assert_eq!(param(&to, "code_challenge_method").as_deref(), Some("S256"));
@@ -839,18 +868,54 @@ async fn authorize_needs_code_response_type_and_a_reasonable_state() {
 #[tokio::test]
 async fn authorize_is_rate_limited_per_ip() {
     let h = app_harness().await;
-    let path = authorize_path(&good_query(&h, "dev-1"));
+    // Requests that are refused still count: the limit is on calls.
+    let path = "/oauth/authorize?client_id=nobody";
     let from = |ip: &str| vec![("cf-connecting-ip", ip.to_string())];
     for i in 1..=30 {
-        let r = h.send("GET", &path, &from("198.51.100.20"), "").await;
-        assert_eq!(r.status, StatusCode::SEE_OTHER, "call {i}");
+        let r = h.send("GET", path, &from("198.51.100.20"), "").await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "call {i}");
     }
-    let refused = h.send("GET", &path, &from("198.51.100.20"), "").await;
+    let refused = h.send("GET", path, &from("198.51.100.20"), "").await;
     assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
     assert!(refused.header("retry-after").is_some());
     no_redirect_cookie_free(&refused);
-    let other = h.send("GET", &path, &from("198.51.100.21"), "").await;
+    let other = h.send("GET", path, &from("198.51.100.21"), "").await;
+    assert_eq!(other.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_few_addresses_cannot_flush_real_sign_ins() {
+    let h = app_harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    let path = authorize_path(&good_query(&h, &device));
+    let from = |ip: &str| vec![("cf-connecting-ip", ip.to_string())];
+    // A real person's sign-in is waiting.
+    let real = start(&h, &device).await;
+    // One address starts as many as it may...
+    for i in 1..=20 {
+        let r = h.send("GET", &path, &from("203.0.113.50"), "").await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "sign-in {i}");
+    }
+    // ...and then is refused, with no cookie and nothing stored.
+    let before = h.app.pending.counts().0;
+    let refused = h.send("GET", &path, &from("203.0.113.50"), "").await;
+    assert_eq!(
+        refused.status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "{}",
+        refused.body
+    );
+    no_redirect_cookie_free(&refused);
+    assert_eq!(
+        h.app.pending.counts().0,
+        before,
+        "nothing was stored or evicted"
+    );
+    // Someone else is not held up, and the real sign-in still finishes.
+    let other = h.send("GET", &path, &from("203.0.113.51"), "").await;
     assert_eq!(other.status, StatusCode::SEE_OTHER);
+    let done = come_back(&h, &real, &app_token(&h, ALICE, Some("relay-user"))).await;
+    assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);
 }
 
 fn no_redirect_cookie_free(r: &Reply) {
@@ -1046,10 +1111,7 @@ async fn consent_page_sets_no_store_and_frame_deny() {
     let page = consent_get(&h, &st.cookie).await;
     assert_eq!(page.header("cache-control").as_deref(), Some("no-store"));
     assert_eq!(page.header("x-frame-options").as_deref(), Some("DENY"));
-    assert_eq!(
-        page.header("content-security-policy").as_deref(),
-        Some("frame-ancestors 'none'")
-    );
+    assert_eq!(page.header("content-security-policy").as_deref(), Some(CSP));
     // `same-origin`, not `no-referrer`: under `no-referrer` a browser sends
     // `Origin: null` with the form, and the origin check would refuse Allow.
     assert_eq!(
@@ -1064,11 +1126,27 @@ async fn consent_page_sets_no_store_and_frame_deny() {
     let gone = h.get("/oauth/consent").await;
     assert_eq!(gone.header("x-frame-options").as_deref(), Some("DENY"));
     assert_eq!(gone.header("cache-control").as_deref(), Some("no-store"));
-    assert_eq!(
-        gone.header("content-security-policy").as_deref(),
-        Some("frame-ancestors 'none'")
+    assert_eq!(gone.header("content-security-policy").as_deref(), Some(CSP));
+    // The policy lets nothing load but the stylesheet, and the page needs
+    // nothing else: no inline style, no script, no images.
+    assert!(
+        page.body.contains("href=\"/static/relay.css\""),
+        "{}",
+        page.body
     );
+    for banned in ["style=", "<style", "<script", "<img", "<iframe", "<base"] {
+        assert!(!page.body.contains(banned), "{banned} in {}", page.body);
+    }
+    let css = h.get("/static/relay.css").await;
+    assert_eq!(css.status, StatusCode::OK);
+    assert!(!css.body.contains("url("), "the stylesheet loads nothing");
+    assert!(!css.body.contains("@import"));
 }
+
+/// The consent page's policy, spelled out: nothing loads but the relay's
+/// own stylesheet, and a form may go to the relay and to Google's callback
+/// host (browsers apply it to the redirect after the post).
+const CSP: &str = "default-src 'none'; style-src 'self'; form-action 'self' https://oauth-redirect.googleusercontent.com; base-uri 'none'; frame-ancestors 'none'";
 
 #[tokio::test]
 async fn deny_sends_access_denied_and_no_code() {
@@ -1335,4 +1413,174 @@ async fn the_sign_in_leaves_no_secret_in_the_logs() {
     ] {
         assert!(!logs.contains(secret), "{secret} is in the logs:\n{logs}");
     }
+}
+
+#[tokio::test]
+async fn consent_names_the_person_from_the_id_token() {
+    let h = app_harness().await;
+    let id =
+        id_token(json!({"sub": "alice", "name": "Alice Example", "email": "alice@example.test"}));
+    let (st, _csrf, _device) = at_consent_with_id(&h, ALICE, "Mac", Some(&id)).await;
+    let page = consent_get(&h, &st.cookie).await;
+    assert!(
+        page.body
+            .contains("<strong>Alice Example (alice@example.test)</strong>"),
+        "{}",
+        page.body
+    );
+}
+
+#[tokio::test]
+async fn a_name_with_markup_is_escaped() {
+    let h = app_harness().await;
+    let id = id_token(json!({
+        "name": "<script>alert(1)</script>",
+        "email": "a\"onmouseover=\"x@example.test",
+    }));
+    let (st, _csrf, _device) = at_consent_with_id(&h, ALICE, "Mac", Some(&id)).await;
+    let body = consent_get(&h, &st.cookie).await.body;
+    assert!(!body.contains("<script"), "{body}");
+    assert!(
+        body.contains("&lt;script&gt;alert(1)&lt;/script&gt;"),
+        "{body}"
+    );
+    assert!(
+        body.contains("a&quot;onmouseover=&quot;x@example.test"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn the_person_falls_back_to_what_exists_then_to_the_id() {
+    let h = app_harness().await;
+    let cases = [
+        (
+            Some(id_token(json!({"name": "Only Name"}))),
+            "<strong>Only Name</strong>",
+        ),
+        (
+            Some(id_token(json!({"email": "only@example.test"}))),
+            "<strong>only@example.test</strong>",
+        ),
+        (
+            Some(id_token(json!({"name": "  ", "email": "e@example.test"}))),
+            "<strong>e@example.test</strong>",
+        ),
+        (
+            Some(id_token(json!({"name": 5, "email": null}))),
+            "<strong>SUB</strong>",
+        ),
+        (Some(id_token(json!({}))), "<strong>SUB</strong>"),
+        (Some("not-a-jwt".to_string()), "<strong>SUB</strong>"),
+        (Some("a.!!!notbase64.c".to_string()), "<strong>SUB</strong>"),
+        (
+            Some(format!("a.{}.c", crate::http::tests::b64url(b"not json"))),
+            "<strong>SUB</strong>",
+        ),
+        (Some(String::new()), "<strong>SUB</strong>"),
+        (None, "<strong>SUB</strong>"),
+    ];
+    for (n, (id, expected)) in cases.into_iter().enumerate() {
+        // A person each time: one person may only have a few computers.
+        let sub = format!("sub-{n}");
+        let expected = expected.replace("SUB", &sub);
+        let (st, _csrf, _device) = at_consent_with_id(&h, &sub, "Mac", id.as_deref()).await;
+        let body = consent_get(&h, &st.cookie).await.body;
+        assert!(body.contains(&expected), "case {n} ({id:?}): {body}");
+    }
+}
+
+#[tokio::test]
+async fn two_binding_cookies_are_refused_everywhere() {
+    let h = app_harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    let st = start(&h, &device).await;
+    let token = app_token(&h, ALICE, Some("relay-user"));
+    h.tokens.give_tokens(&token, REFRESH);
+    let planted = "vr_oauth=planted";
+    let both = [
+        format!("{}; {planted}", st.cookie),
+        format!("{planted}; {}", st.cookie),
+        format!("{}; {}", st.cookie, st.cookie),
+    ];
+    let path = format!("/oauth/callback?code={ZITADEL_CODE}&state={}", st.state);
+    // The callback: refused, and the sign-in is left for the one-cookie
+    // browser (nothing was exchanged or used up).
+    for cookie in &both {
+        let r = h
+            .send("GET", &path, &[("cookie", cookie.clone())], "")
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{cookie}: {}", r.body);
+        assert!(r.header("location").is_none());
+    }
+    // Two separate Cookie headers count the same.
+    let r = h
+        .send(
+            "GET",
+            &path,
+            &[
+                ("cookie", st.cookie.clone()),
+                ("cookie", planted.to_string()),
+            ],
+            "",
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert!(h.tokens.requests().is_empty());
+    assert_eq!(h.app.pending.counts().0, 1);
+    let ok = h
+        .send("GET", &path, &[("cookie", st.cookie.clone())], "")
+        .await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+    let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
+
+    // The page and the decision likewise.
+    for cookie in &both {
+        let page = consent_get(&h, cookie).await;
+        assert_eq!(page.status, StatusCode::BAD_REQUEST, "{cookie}");
+        assert!(!page.body.contains("Allow"));
+        let r = decide(&h, Some(cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{cookie}: {}", r.body);
+        assert!(r.header("location").is_none());
+    }
+    assert_eq!(codes_held(&h), 0);
+    assert_eq!(consents_held(&h), 1, "a planted cookie uses nothing up");
+    // The browser with one cookie still can.
+    let ok = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn allow_rechecks_the_computer_and_issues_nothing_when_it_is_gone() {
+    let h = app_harness().await;
+    // The page the callback shows for a computer that is not there.
+    let st = start(&h, "no-such-device").await;
+    let missing = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    assert_eq!(missing.status, StatusCode::NOT_FOUND);
+
+    // Removed between the page and the press of Allow.
+    let (st, csrf, device) = at_consent(&h, ALICE, "Mac").await;
+    assert!(h.app.revoke(ALICE, &device).await.unwrap());
+    let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "{}", r.body);
+    assert_eq!(r.body, missing.body, "the same page as the callback's");
+    assert!(r.header("location").is_none());
+    assert_eq!(codes_held(&h), 0);
+
+    // The database not answering at that moment.
+    let (st, csrf, _device) = at_consent(&h, ALICE, "Mac").await;
+    h.store
+        .fail_with(Some(crate::store::StoreError::Unavailable));
+    let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE, "{}", r.body);
+    assert!(r.body.contains("try again"), "{}", r.body);
+    assert!(r.header("location").is_none());
+    assert_eq!(codes_held(&h), 0);
+    h.store.fail_with(None);
+
+    // Still owned: Allow works as before.
+    let (st, csrf, _device) = at_consent(&h, ALICE, "Mac").await;
+    let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert_eq!(codes_held(&h), 1);
 }

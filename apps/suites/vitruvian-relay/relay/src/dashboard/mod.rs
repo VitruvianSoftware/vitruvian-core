@@ -653,6 +653,10 @@ fn login(app: &App, req: &Request<Incoming>) -> Response<Body> {
 pub(crate) struct Tokens {
     pub access_token: String,
     pub refresh_token: Option<String>,
+    /// The ID token, when the answer has one. Unverified: it came straight
+    /// from the identity service over TLS, which is enough to show a name
+    /// and never enough to decide anything.
+    pub id_token: Option<String>,
     /// Seconds the access token lives, when the answer says.
     pub expires_in: Option<u64>,
 }
@@ -696,6 +700,7 @@ fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<Tokens, S
         access_token: text("access_token")
             .ok_or_else(|| "the token answer had no access token".to_string())?,
         refresh_token: text("refresh_token"),
+        id_token: text("id_token"),
         expires_in: doc.as_ref().and_then(|v| v.get("expires_in")?.as_u64()),
     })
 }

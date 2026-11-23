@@ -44,6 +44,9 @@ use crate::random_bytes;
 
 /// Most entries each table holds. When full, the oldest goes.
 pub const MAX_ENTRIES: usize = 2_000;
+/// Sign-ins one client address may have waiting at once. At the limit a new
+/// one is refused, never made by pushing out someone else's.
+pub const MAX_SIGN_INS_PER_ADDRESS: usize = 20;
 /// How long a sign-in may take, from `/oauth/authorize` to the return.
 pub const SIGN_IN_SECS: u64 = 10 * 60;
 /// How long a person has to press Allow or Deny.
@@ -119,6 +122,12 @@ impl<T> Table<T> {
         );
     }
 
+    /// Live entries (as of `now`) that `matches`.
+    fn count_where(&mut self, now: u64, matches: impl Fn(&T) -> bool) -> usize {
+        self.prune(now);
+        self.by_key.values().filter(|s| matches(&s.value)).count()
+    }
+
     /// Looks at the live entry for `key`.
     fn peek(&mut self, key: &str, now: u64) -> Option<&T> {
         self.prune(now);
@@ -175,6 +184,8 @@ struct SignIn {
     verifier: String,
     /// The value of the browser-binding cookie that started it.
     browser: String,
+    /// The client address that started it (the rate limit's key).
+    address: String,
 }
 
 /// What the relay's sign-in with the identity service started.
@@ -190,6 +201,9 @@ pub struct Started {
 pub struct Consent {
     pub request: AuthRequest,
     pub subject: String,
+    /// How the person is shown on the page: their name and email if the
+    /// identity service gave them, else their id. For display only.
+    pub who: String,
     pub device_name: String,
     /// The tokens the identity service gave, held for the code (or dropped).
     pub access_token: String,
@@ -254,21 +268,28 @@ impl Default for Pending {
 
 impl Pending {
     /// Records a checked `/oauth/authorize` request and makes the relay's
-    /// own PKCE pair and browser-binding value for it. `now` is seconds
-    /// since the epoch.
-    pub fn begin(&self, request: AuthRequest, now: u64) -> Started {
+    /// own PKCE pair and browser-binding value for it. `address` is the
+    /// caller's rate-limit key; `None` when that address already has
+    /// [`MAX_SIGN_INS_PER_ADDRESS`] sign-ins waiting. `now` is seconds since
+    /// the epoch.
+    pub fn begin(&self, request: AuthRequest, address: &str, now: u64) -> Option<Started> {
         let pkce = Pkce::new();
         let browser = random_token();
-        self.sign_ins.lock().unwrap().insert(
+        let mut table = self.sign_ins.lock().unwrap();
+        if table.count_where(now, |s| s.address == address) >= MAX_SIGN_INS_PER_ADDRESS {
+            return None;
+        }
+        table.insert(
             pkce.state.clone(),
             SignIn {
                 request,
                 verifier: pkce.verifier.clone(),
                 browser: browser.clone(),
+                address: address.to_string(),
             },
             now,
         );
-        Started { pkce, browser }
+        Some(Started { pkce, browser })
     }
 
     /// The sign-in the identity service sent back under `state`, once, and
@@ -364,6 +385,7 @@ mod tests {
         Consent {
             request: request(0),
             subject: "alice".into(),
+            who: "Alice".into(),
             device_name: "Mac".into(),
             access_token: "ACCESS-SECRET".into(),
             refresh_token: Some("REFRESH-SECRET".into()),
@@ -389,9 +411,9 @@ mod tests {
     #[test]
     fn pending_is_bounded() {
         let p = Pending::default();
-        let first = p.begin(request(0), 100);
+        let first = p.begin(request(0), "addr-0", 100).unwrap();
         for n in 1..(MAX_ENTRIES + 50) {
-            p.begin(request(n), 100);
+            p.begin(request(n), &format!("addr-{n}"), 100).unwrap();
         }
         for n in 0..(MAX_ENTRIES + 50) {
             p.put_consent(&format!("b{n}"), consent("t"), 100);
@@ -410,9 +432,35 @@ mod tests {
     }
 
     #[test]
+    fn one_address_cannot_flush_other_peoples_sign_ins() {
+        let p = Pending::default();
+        let theirs = p.begin(request(1), "victim", 0).unwrap();
+        let mut mine = Vec::new();
+        for n in 0..MAX_SIGN_INS_PER_ADDRESS {
+            mine.push(p.begin(request(n), "attacker", 1).expect("under the limit"));
+        }
+        // At the limit the new one is refused, and nobody's is pushed out.
+        assert!(p.begin(request(99), "attacker", 2).is_none());
+        assert_eq!(p.counts().0, MAX_SIGN_INS_PER_ADDRESS + 1);
+        assert!(p
+            .take_for_callback(&theirs.pkce.state, &theirs.browser, 3)
+            .is_some());
+        // Someone else's address is not held up, and finishing one frees a slot.
+        assert!(p.begin(request(5), "other", 3).is_some());
+        let first = &mine[0];
+        assert!(p
+            .take_for_callback(&first.pkce.state, &first.browser, 4)
+            .is_some());
+        assert!(p.begin(request(98), "attacker", 4).is_some());
+        // And expiry frees them too.
+        let later = SIGN_IN_SECS + 10;
+        assert!(p.begin(request(97), "attacker", later).is_some());
+    }
+
+    #[test]
     fn entries_expire_on_their_own_clocks() {
         let p = Pending::default();
-        let s = p.begin(request(0), 1_000);
+        let s = p.begin(request(0), "a", 1_000).unwrap();
         p.put_consent("b", consent("t"), 1_000);
         p.put_code("code", issued(0), 1_000);
         // A code lives 60 s.
@@ -434,7 +482,7 @@ mod tests {
     #[test]
     fn a_sign_in_comes_back_once_and_only_to_its_browser() {
         let p = Pending::default();
-        let s = p.begin(request(7), 0);
+        let s = p.begin(request(7), "a", 0).unwrap();
         assert!(p.take_for_callback(&s.pkce.state, "other", 1).is_none());
         assert!(p.take_for_callback("other", &s.browser, 1).is_none());
         // The wrong browser did not use it up.
