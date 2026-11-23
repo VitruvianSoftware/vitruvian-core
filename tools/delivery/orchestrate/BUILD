@@ -38,6 +38,7 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
     deps = [
         "//packages/gocompat:vitruvian_gocompat",
+        "//packages/gocompat/gojson:vitruvian_gojson",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
