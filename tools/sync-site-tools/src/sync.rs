@@ -35,7 +35,7 @@ use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 
 use crate::catalogue;
-use crate::json::{self, Value};
+use crate::json::{self, ValueExt};
 use crate::pyerr::PyErr;
 use crate::pyfs;
 use crate::pystr::{self, PyStr};
@@ -238,7 +238,7 @@ fn read(base: &PyStr, path: &str) -> Result<PyStr, PyErr> {
 }
 
 fn dumps_ascii(value: &PyStr) -> PyStr {
-    json::dumps(&Value::Str(value.clone()), true, None)
+    json::dumps(&json::s_py(value), true, None)
 }
 
 /// `from_markdown(base, source, permalink, description)`: a page made of
@@ -302,17 +302,17 @@ pub fn methods_table(base: &PyStr) -> Result<PyStr, PyErr> {
     ];
     for row in table.subscript("methods")?.iterate()? {
         let uses = if row.subscript("uses")?.truthy() {
-            cat(&[&lit("`"), &row.subscript("uses")?.py_str(), &lit("`")])
+            cat(&[&lit("`"), &row.subscript("uses")?.to_pystr(), &lit("`")])
         } else {
             lit("")
         };
         rows.push(cat(&[
             &lit("| `"),
-            &row.subscript("method")?.py_str(),
+            &row.subscript("method")?.to_pystr(),
             &lit("` | "),
-            &row.subscript("sender")?.py_str(),
+            &row.subscript("sender")?.to_pystr(),
             &lit(" | "),
-            &row.subscript("kind")?.py_str(),
+            &row.subscript("kind")?.to_pystr(),
             &lit(" | "),
             &uses,
             &lit(" |"),

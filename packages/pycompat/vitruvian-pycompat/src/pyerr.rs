@@ -80,12 +80,17 @@ impl Crash {
     }
 }
 
-/// `d.get(key, default)`, which needs `d` to be a dict.
-pub fn get_or(v: &Value, key: &str, default: Value) -> Result<Value, Crash> {
+/// `d.get(key)`: `None` for a missing key, `AttributeError` if `v` is not a dict.
+pub fn get_ref<'a>(v: &'a Value, key: &str) -> Result<Option<&'a Value>, Crash> {
     if !v.is_obj() {
         return Err(Crash::attribute(v, "get"));
     }
-    Ok(v.get(key).cloned().unwrap_or(default))
+    Ok(v.get(key))
+}
+
+/// `d.get(key, default)`, which needs `d` to be a dict.
+pub fn get_or(v: &Value, key: &str, default: Value) -> Result<Value, Crash> {
+    Ok(get_ref(v, key)?.cloned().unwrap_or(default))
 }
 
 /// A str for a str method call, or the AttributeError a non-str raises.
@@ -127,13 +132,12 @@ pub fn iterate(v: &Value) -> Result<Vec<Value>, Crash> {
     }
 }
 
-/// `v[key]` with a str key. A missing key is the KeyError the script
-/// catches (or not); anything but a dict is a TypeError.
-pub fn index(v: &Value, key: &str) -> Result<Value, Crash> {
+/// `v[key]` with a str key, returning a borrowed reference. A missing key is
+/// `KeyError`; anything but a dict is `TypeError`.
+pub fn index_ref<'a>(v: &'a Value, key: &str) -> Result<&'a Value, Crash> {
     match v {
         Value::Obj(_) => v
             .get(key)
-            .cloned()
             .ok_or_else(|| Crash::new("KeyError", pystr::repr_str(key))),
         Value::Arr(_) => Err(Crash::new(
             "TypeError",
@@ -146,6 +150,74 @@ pub fn index(v: &Value, key: &str) -> Result<Value, Crash> {
         other => Err(Crash::new(
             "TypeError",
             format!("'{}' object is not subscriptable", other.type_name()),
+        )),
+    }
+}
+
+/// `v[key]` with a str key. A missing key is the KeyError the script
+/// catches (or not); anything but a dict is a TypeError.
+pub fn index(v: &Value, key: &str) -> Result<Value, Crash> {
+    index_ref(v, key).cloned()
+}
+
+/// Raises what `hash(v)` raises for unhashable JSON containers (`list`, `dict`).
+pub fn check_hashable(v: &Value) -> Result<(), Crash> {
+    match v {
+        Value::Arr(_) | Value::Obj(_) => Err(Crash::new(
+            "TypeError",
+            format!("unhashable type: '{}'", v.type_name()),
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn as_int_str(v: &Value) -> Option<&str> {
+    match v {
+        Value::Bool(true) => Some("1"),
+        Value::Bool(false) => Some("0"),
+        Value::Int(s) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+/// Python's `a < b`.
+pub fn lt(a: &Value, b: &Value) -> Result<bool, Crash> {
+    use std::cmp::Ordering;
+    let is_num = |v: &Value| matches!(v, Value::Bool(_) | Value::Int(_) | Value::Float(_));
+    if is_num(a) && is_num(b) {
+        return Ok(match (as_int_str(a), as_int_str(b)) {
+            (Some(x), Some(y)) => crate::json::cmp_int_str(x, y) == Ordering::Less,
+            (Some(x), None) => match b {
+                Value::Float(y) => crate::json::cmp_int_float(x, *y) == Some(Ordering::Less),
+                _ => unreachable!(),
+            },
+            (None, Some(y)) => match a {
+                Value::Float(x) => crate::json::cmp_int_float(y, *x) == Some(Ordering::Greater),
+                _ => unreachable!(),
+            },
+            (None, None) => match (a, b) {
+                (Value::Float(x), Value::Float(y)) => x.partial_cmp(y) == Some(Ordering::Less),
+                _ => unreachable!(),
+            },
+        });
+    }
+    match (a, b) {
+        (Value::Str(x), Value::Str(y)) => Ok(x < y),
+        (Value::Arr(x), Value::Arr(y)) => {
+            for (p, q) in x.iter().zip(y) {
+                if !crate::json::py_eq(p, q) {
+                    return lt(p, q);
+                }
+            }
+            Ok(x.len() < y.len())
+        }
+        _ => Err(Crash::new(
+            "TypeError",
+            format!(
+                "'<' not supported between instances of '{}' and '{}'",
+                a.type_name(),
+                b.type_name()
+            ),
         )),
     }
 }
@@ -300,6 +372,53 @@ mod tests {
         assert_eq!(
             len(&flag).unwrap_err(),
             Crash::new("TypeError", "object of type 'bool' has no len()")
+        );
+
+        assert_eq!(get_ref(&obj, "b").unwrap(), Some(&Value::Str("hi".into())));
+        assert_eq!(get_ref(&obj, "missing").unwrap(), None);
+        assert_eq!(
+            get_ref(&arr, "a").unwrap_err(),
+            Crash::new("AttributeError", "'list' object has no attribute 'get'")
+        );
+
+        assert_eq!(index_ref(&obj, "b").unwrap(), &Value::Str("hi".into()));
+        assert_eq!(
+            index_ref(&obj, "missing").unwrap_err(),
+            Crash::new("KeyError", "'missing'")
+        );
+
+        assert!(check_hashable(&Value::Null).is_ok());
+        assert!(check_hashable(&Value::Str("a".into())).is_ok());
+        assert_eq!(
+            check_hashable(&arr).unwrap_err(),
+            Crash::new("TypeError", "unhashable type: 'list'")
+        );
+        assert_eq!(
+            check_hashable(&obj).unwrap_err(),
+            Crash::new("TypeError", "unhashable type: 'dict'")
+        );
+
+        assert!(lt(&Value::Int("1".into()), &Value::Float(1.5)).unwrap());
+        assert!(!lt(
+            &Value::Int("9007199254740993".into()),
+            &Value::Float(9007199254740992.0)
+        )
+        .unwrap());
+        assert!(lt(&Value::Bool(false), &Value::Int("1".into())).unwrap());
+        assert!(!lt(&Value::Float(f64::NAN), &Value::Int("1".into())).unwrap());
+        assert!(!lt(&Value::Int("1".into()), &Value::Float(f64::NAN)).unwrap());
+        assert!(lt(&Value::Str("a".into()), &Value::Str("b".into())).unwrap());
+        assert!(lt(
+            &Value::Arr(vec![Value::Int("1".into()), Value::Str("a".into())]),
+            &Value::Arr(vec![Value::Float(1.0), Value::Str("b".into())])
+        )
+        .unwrap());
+        assert_eq!(
+            lt(&Value::Str("a".into()), &Value::Int("1".into())).unwrap_err(),
+            Crash::new(
+                "TypeError",
+                "'<' not supported between instances of 'str' and 'int'"
+            )
         );
     }
 }

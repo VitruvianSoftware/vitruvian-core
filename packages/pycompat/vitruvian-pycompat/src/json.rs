@@ -193,6 +193,58 @@ fn float_is(v: &Value, n: &str) -> bool {
     }
 }
 
+/// Compare two decimal integer strings (such as `Value::Int`'s text) by
+/// exact mathematical value.
+pub fn cmp_int_str(a: &str, b: &str) -> std::cmp::Ordering {
+    let a = normalize_int(a);
+    let b = normalize_int(b);
+    let (aneg, adig) = match a.strip_prefix('-') {
+        Some(d) => (true, d),
+        None => (false, a.as_str()),
+    };
+    let (bneg, bdig) = match b.strip_prefix('-') {
+        Some(d) => (true, d),
+        None => (false, b.as_str()),
+    };
+    match (aneg, bneg) {
+        (false, true) => std::cmp::Ordering::Greater,
+        (true, false) => std::cmp::Ordering::Less,
+        (false, false) => adig.len().cmp(&bdig.len()).then_with(|| adig.cmp(bdig)),
+        (true, true) => bdig.len().cmp(&adig.len()).then_with(|| bdig.cmp(adig)),
+    }
+}
+
+/// Compare a decimal integer string against an `f64` by exact mathematical
+/// value, as Python compares `int` and `float`; returns `None` for `NaN`.
+pub fn cmp_int_float(int_str: &str, f: f64) -> Option<std::cmp::Ordering> {
+    if f.is_nan() {
+        return None;
+    }
+    if f.is_infinite() {
+        return Some(if f > 0.0 {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        });
+    }
+    let whole = f.trunc();
+    // Rust prints an integral float's exact value at precision 0.
+    let exact = format!("{:.0}", whole);
+    match cmp_int_str(int_str, &exact) {
+        std::cmp::Ordering::Equal => {
+            let frac = f - whole;
+            Some(if frac > 0.0 {
+                std::cmp::Ordering::Less
+            } else if frac < 0.0 {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            })
+        }
+        other => Some(other),
+    }
+}
+
 /// A document that does not parse. The message is in Python's words where
 /// that was easy; callers that mirror a crash only rely on the class.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,9 +255,52 @@ pub struct JsonError {
     pub col: usize,
     py_msg: String,
     py_pos: usize,
+    kind: JsonErrorKind,
+    recursion_msg: Option<&'static str>,
+}
+
+/// Classifies why [`loads`] / [`loads_with`] / [`loads_with_limits`] failed,
+/// so callers mapping into Python exception types can distinguish
+/// `JSONDecodeError`, `RecursionError`, and `ValueError` (integer digit limit).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum JsonErrorKind {
+    Decode,
+    Recursion,
+    IntDigitLimit,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum RecursionContainer {
+    Array,
+    Object,
+}
+
+impl RecursionContainer {
+    fn cpython_message(self) -> &'static str {
+        match self {
+            Self::Array => {
+                "maximum recursion depth exceeded while decoding a JSON array from a unicode string"
+            }
+            Self::Object => {
+                "maximum recursion depth exceeded while decoding a JSON object from a unicode string"
+            }
+        }
+    }
 }
 
 impl JsonError {
+    /// Why parsing failed (`Decode`, `Recursion`, or `IntDigitLimit`).
+    pub fn kind(&self) -> JsonErrorKind {
+        self.kind
+    }
+
+    /// CPython 3.12's `RecursionError` message when `kind() == JsonErrorKind::Recursion`
+    /// (`"maximum recursion depth exceeded while decoding a JSON array/object from a unicode string"`),
+    /// or `None` for other error kinds.
+    pub fn recursion_message(&self) -> Option<&'static str> {
+        self.recursion_msg
+    }
+
     /// Matches CPython 3.12's `json` module `str(json.JSONDecodeError)`:
     /// `"{msg}: line {line} column {col} (char {pos})"`.
     ///
@@ -243,6 +338,9 @@ fn locate(chars: &[char], mut e: JsonError) -> JsonError {
     e
 }
 
+/// CPython 3.12's default `sys.get_int_max_str_digits()`.
+pub const DEFAULT_INT_MAX_STR_DIGITS: usize = 4300;
+
 /// Options for [`loads_with`].
 ///
 /// `Default` (`None`) imposes no nesting limit, matching [`loads`].
@@ -262,6 +360,17 @@ pub fn loads(text: &str) -> Result<Value, JsonError> {
 /// Parse JSON with Python's `json.loads` semantics and the given
 /// [`LoadOptions`].
 pub fn loads_with(text: &str, opts: &LoadOptions) -> Result<Value, JsonError> {
+    loads_with_limits(text, opts.max_depth, None)
+}
+
+/// Parse JSON with Python's `json.loads` semantics, optional container
+/// nesting limit (`max_depth`), and optional CPython integer string-digit
+/// limit (`int_max_str_digits`, e.g. `Some(DEFAULT_INT_MAX_STR_DIGITS)`).
+pub fn loads_with_limits(
+    text: &str,
+    max_depth: Option<usize>,
+    int_max_str_digits: Option<usize>,
+) -> Result<Value, JsonError> {
     let chars: Vec<char> = text.chars().collect();
     if text.starts_with('\u{feff}') {
         let msg = "Unexpected UTF-8 BOM (decode using utf-8-sig)";
@@ -274,14 +383,16 @@ pub fn loads_with(text: &str, opts: &LoadOptions) -> Result<Value, JsonError> {
                 col: 0,
                 py_msg: msg.into(),
                 py_pos: 0,
+                kind: JsonErrorKind::Decode,
+                recursion_msg: None,
             },
         ));
     }
     let mut p = Parser {
         s: &chars,
         i: 0,
-        max_depth: opts.max_depth,
-        depth: 0,
+        max_depth,
+        int_max_str_digits,
     };
     let parsed = (|| {
         p.ws();
@@ -299,7 +410,7 @@ struct Parser<'a> {
     s: &'a [char],
     i: usize,
     max_depth: Option<usize>,
-    depth: usize,
+    int_max_str_digits: Option<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -315,21 +426,25 @@ impl<'a> Parser<'a> {
             col: 0,
             py_msg: py_msg.into(),
             py_pos,
+            kind: JsonErrorKind::Decode,
+            recursion_msg: None,
         }
     }
 
-    fn enter(&mut self) -> Result<(), JsonError> {
+    fn check_depth(&self, depth: usize, container: RecursionContainer) -> Result<(), JsonError> {
         if let Some(max) = self.max_depth {
-            if self.depth >= max {
-                return Err(self.err_with_py(
+            if depth >= max {
+                let mut e = self.err_with_py(
                     "maximum recursion depth exceeded",
                     self.i,
                     "maximum recursion depth exceeded",
                     self.i,
-                ));
+                );
+                e.kind = JsonErrorKind::Recursion;
+                e.recursion_msg = Some(container.cpython_message());
+                return Err(e);
             }
         }
-        self.depth += 1;
         Ok(())
     }
 
@@ -353,34 +468,124 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn obj_key_and_colon(&mut self) -> Result<String, JsonError> {
+        self.ws();
+        if self.peek() != Some('"') {
+            return Err(self.err("Expecting property name enclosed in double quotes"));
+        }
+        self.i += 1;
+        let key = self.string()?;
+        self.ws();
+        if self.peek() != Some(':') {
+            return Err(self.err("Expecting ':' delimiter"));
+        }
+        self.i += 1;
+        self.ws();
+        Ok(key)
+    }
+
     fn value(&mut self) -> Result<Value, JsonError> {
-        match self.peek() {
-            Some('{') => {
-                self.enter()?;
-                let r = self.object();
-                self.depth -= 1;
-                r
+        enum Frame {
+            Arr(Vec<Value>),
+            Obj {
+                items: Vec<(String, Value)>,
+                key: String,
+            },
+        }
+
+        let mut stack: Vec<Frame> = Vec::new();
+        loop {
+            let mut val = match self.peek() {
+                Some('{') => {
+                    self.check_depth(stack.len(), RecursionContainer::Object)?;
+                    self.i += 1;
+                    self.ws();
+                    if self.peek() == Some('}') {
+                        self.i += 1;
+                        Value::Obj(Vec::new())
+                    } else {
+                        let key = self.obj_key_and_colon()?;
+                        stack.push(Frame::Obj {
+                            items: Vec::new(),
+                            key,
+                        });
+                        continue;
+                    }
+                }
+                Some('[') => {
+                    self.check_depth(stack.len(), RecursionContainer::Array)?;
+                    self.i += 1;
+                    self.ws();
+                    if self.peek() == Some(']') {
+                        self.i += 1;
+                        Value::Arr(Vec::new())
+                    } else {
+                        stack.push(Frame::Arr(Vec::new()));
+                        continue;
+                    }
+                }
+                Some('"') => {
+                    self.i += 1;
+                    Value::Str(self.string()?)
+                }
+                Some('n') if self.lit("null") => Value::Null,
+                Some('t') if self.lit("true") => Value::Bool(true),
+                Some('f') if self.lit("false") => Value::Bool(false),
+                Some('N') if self.lit("NaN") => Value::Float(f64::NAN),
+                Some('I') if self.lit("Infinity") => Value::Float(f64::INFINITY),
+                Some('-') if self.s.get(self.i + 1) == Some(&'I') && self.lit("-Infinity") => {
+                    Value::Float(f64::NEG_INFINITY)
+                }
+                Some(c) if c == '-' || c.is_ascii_digit() => self.number()?,
+                _ => return Err(self.err("Expecting value")),
+            };
+
+            loop {
+                match stack.pop() {
+                    None => return Ok(val),
+                    Some(Frame::Arr(mut items)) => {
+                        items.push(val);
+                        self.ws();
+                        match self.peek() {
+                            Some(',') => {
+                                self.i += 1;
+                                self.ws();
+                                stack.push(Frame::Arr(items));
+                                break;
+                            }
+                            Some(']') => {
+                                self.i += 1;
+                                val = Value::Arr(items);
+                            }
+                            _ => return Err(self.err("Expecting ',' delimiter")),
+                        }
+                    }
+                    Some(Frame::Obj { mut items, key }) => {
+                        if let Some(slot) = items.iter_mut().find(|(k, _)| *k == key) {
+                            slot.1 = val;
+                        } else {
+                            items.push((key, val));
+                        }
+                        self.ws();
+                        match self.peek() {
+                            Some(',') => {
+                                self.i += 1;
+                                let next_key = self.obj_key_and_colon()?;
+                                stack.push(Frame::Obj {
+                                    items,
+                                    key: next_key,
+                                });
+                                break;
+                            }
+                            Some('}') => {
+                                self.i += 1;
+                                val = Value::Obj(items);
+                            }
+                            _ => return Err(self.err("Expecting ',' delimiter")),
+                        }
+                    }
+                }
             }
-            Some('[') => {
-                self.enter()?;
-                let r = self.array();
-                self.depth -= 1;
-                r
-            }
-            Some('"') => {
-                self.i += 1;
-                Ok(Value::Str(self.string()?))
-            }
-            Some('n') if self.lit("null") => Ok(Value::Null),
-            Some('t') if self.lit("true") => Ok(Value::Bool(true)),
-            Some('f') if self.lit("false") => Ok(Value::Bool(false)),
-            Some('N') if self.lit("NaN") => Ok(Value::Float(f64::NAN)),
-            Some('I') if self.lit("Infinity") => Ok(Value::Float(f64::INFINITY)),
-            Some('-') if self.s.get(self.i + 1) == Some(&'I') && self.lit("-Infinity") => {
-                Ok(Value::Float(f64::NEG_INFINITY))
-            }
-            Some(c) if c == '-' || c.is_ascii_digit() => self.number(),
-            _ => Err(self.err("Expecting value")),
         }
     }
 
@@ -430,6 +635,24 @@ impl<'a> Parser<'a> {
         if is_float {
             Ok(Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)))
         } else {
+            if let Some(limit) = self.int_max_str_digits {
+                let digits = text.trim_start_matches('-').len();
+                if digits > limit {
+                    let msg = format!(
+                        "Exceeds the limit ({limit} digits) for integer string conversion: value has {digits} digits; use sys.set_int_max_str_digits() to increase the limit"
+                    );
+                    return Err(JsonError {
+                        msg: msg.clone(),
+                        pos: start,
+                        line: 0,
+                        col: 0,
+                        py_msg: msg,
+                        py_pos: start,
+                        kind: JsonErrorKind::IntDigitLimit,
+                        recursion_msg: None,
+                    });
+                }
+            }
             Ok(Value::Int(text))
         }
     }
@@ -540,68 +763,6 @@ impl<'a> Parser<'a> {
                     return Err(self.err("Invalid control character at"));
                 }
                 c => out.push(c),
-            }
-        }
-    }
-
-    fn array(&mut self) -> Result<Value, JsonError> {
-        self.i += 1;
-        let mut items = Vec::new();
-        self.ws();
-        if self.peek() == Some(']') {
-            self.i += 1;
-            return Ok(Value::Arr(items));
-        }
-        loop {
-            self.ws();
-            items.push(self.value()?);
-            self.ws();
-            match self.peek() {
-                Some(',') => self.i += 1,
-                Some(']') => {
-                    self.i += 1;
-                    return Ok(Value::Arr(items));
-                }
-                _ => return Err(self.err("Expecting ',' delimiter")),
-            }
-        }
-    }
-
-    fn object(&mut self) -> Result<Value, JsonError> {
-        self.i += 1;
-        let mut items: Vec<(String, Value)> = Vec::new();
-        self.ws();
-        if self.peek() == Some('}') {
-            self.i += 1;
-            return Ok(Value::Obj(items));
-        }
-        loop {
-            self.ws();
-            if self.peek() != Some('"') {
-                return Err(self.err("Expecting property name enclosed in double quotes"));
-            }
-            self.i += 1;
-            let key = self.string()?;
-            self.ws();
-            if self.peek() != Some(':') {
-                return Err(self.err("Expecting ':' delimiter"));
-            }
-            self.i += 1;
-            self.ws();
-            let v = self.value()?;
-            if let Some(slot) = items.iter_mut().find(|(k, _)| *k == key) {
-                slot.1 = v;
-            } else {
-                items.push((key, v));
-            }
-            self.ws();
-            match self.peek() {
-                Some(',') => self.i += 1,
-                Some('}') => {
-                    self.i += 1;
-                    return Ok(Value::Obj(items));
-                }
-                _ => return Err(self.err("Expecting ',' delimiter")),
             }
         }
     }
@@ -1368,5 +1529,136 @@ mod tests {
 
         let v = loads(r#"{"b": [1, 2.0, "é"], "a": null}"#).unwrap();
         assert_eq!(dumps(&v), r#"{"b": [1, 2.0, "\u00e9"], "a": null}"#);
+    }
+
+    #[test]
+    fn loads_with_limits_int_digits_and_error_kinds() {
+        let ok_4300 = "1".repeat(DEFAULT_INT_MAX_STR_DIGITS);
+        assert!(loads_with_limits(&ok_4300, None, Some(DEFAULT_INT_MAX_STR_DIGITS)).is_ok());
+
+        let ok_float = format!("{}.5", "1".repeat(4301));
+        assert!(matches!(
+            loads_with_limits(&ok_float, None, Some(DEFAULT_INT_MAX_STR_DIGITS)),
+            Ok(Value::Float(_))
+        ));
+
+        for doc in [
+            "1".repeat(4301),
+            format!("-{}", "9".repeat(4301)),
+            format!("[{}, ]", "1".repeat(4301)),
+            format!("{} x", "1".repeat(4301)),
+        ] {
+            let err = loads_with_limits(&doc, None, Some(DEFAULT_INT_MAX_STR_DIGITS)).unwrap_err();
+            assert_eq!(err.kind(), JsonErrorKind::IntDigitLimit, "{doc}");
+            assert_eq!(
+                err.msg,
+                "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+            );
+        }
+
+        // Default loads_with has no integer digit limit.
+        assert!(loads(&"1".repeat(4301)).is_ok());
+
+        assert_eq!(loads("").unwrap_err().kind(), JsonErrorKind::Decode);
+        assert_eq!(loads("").unwrap_err().recursion_message(), None);
+        assert_eq!(
+            loads_with_limits(&"1".repeat(4301), None, Some(DEFAULT_INT_MAX_STR_DIGITS))
+                .unwrap_err()
+                .recursion_message(),
+            None
+        );
+        let arr_rec = loads_with("[]", &LoadOptions { max_depth: Some(0) }).unwrap_err();
+        assert_eq!(arr_rec.kind(), JsonErrorKind::Recursion);
+        assert_eq!(arr_rec.msg, "maximum recursion depth exceeded");
+        assert_eq!(
+            arr_rec.python_str(),
+            "maximum recursion depth exceeded: line 1 column 1 (char 0)"
+        );
+        assert_eq!(
+            arr_rec.to_string(),
+            "maximum recursion depth exceeded (char 0)"
+        );
+        assert_eq!(
+            arr_rec.recursion_message(),
+            Some("maximum recursion depth exceeded while decoding a JSON array from a unicode string")
+        );
+        let obj_rec = loads_with("{}", &LoadOptions { max_depth: Some(0) }).unwrap_err();
+        assert_eq!(obj_rec.kind(), JsonErrorKind::Recursion);
+        assert_eq!(
+            obj_rec.recursion_message(),
+            Some(
+                "maximum recursion depth exceeded while decoding a JSON object from a unicode string"
+            )
+        );
+    }
+
+    #[test]
+    fn loads_with_max_depth_boundary_9997() {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 << 20)
+            .spawn(|| {
+                let opts = LoadOptions {
+                    max_depth: Some(9_997),
+                };
+                let ok_arr = format!("{}{}", "[".repeat(9_997), "]".repeat(9_997));
+                assert!(loads_with(&ok_arr, &opts).is_ok());
+                let ok_obj = format!("{}1{}", r#"{"a":"#.repeat(9_997), "}".repeat(9_997));
+                assert!(loads_with(&ok_obj, &opts).is_ok());
+
+                let fail_arr = format!("{}{}", "[".repeat(9_998), "]".repeat(9_998));
+                let err_arr = loads_with(&fail_arr, &opts).unwrap_err();
+                assert_eq!(err_arr.kind(), JsonErrorKind::Recursion);
+                assert_eq!(err_arr.msg, "maximum recursion depth exceeded");
+                assert_eq!(
+                    err_arr.python_str(),
+                    "maximum recursion depth exceeded: line 1 column 9998 (char 9997)"
+                );
+                assert_eq!(
+                    err_arr.recursion_message(),
+                    Some("maximum recursion depth exceeded while decoding a JSON array from a unicode string")
+                );
+
+                let fail_obj = format!("{}1{}", r#"{"a":"#.repeat(9_998), "}".repeat(9_998));
+                let err_obj = loads_with(&fail_obj, &opts).unwrap_err();
+                assert_eq!(err_obj.kind(), JsonErrorKind::Recursion);
+                assert_eq!(
+                    err_obj.recursion_message(),
+                    Some("maximum recursion depth exceeded while decoding a JSON object from a unicode string")
+                );
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn cmp_int_str_and_float_exact() {
+        use std::cmp::Ordering;
+
+        assert_eq!(cmp_int_str("-0", "0"), Ordering::Equal);
+        assert_eq!(cmp_int_str("-10", "2"), Ordering::Less);
+        assert_eq!(cmp_int_str("-2", "-10"), Ordering::Greater);
+        assert_eq!(
+            cmp_int_str(
+                "1000000000000000000000000000001",
+                "1000000000000000000000000000000"
+            ),
+            Ordering::Greater
+        );
+
+        assert_eq!(cmp_int_float("3", 3.5), Some(Ordering::Less));
+        assert_eq!(cmp_int_float("-3", -3.5), Some(Ordering::Greater));
+        assert_eq!(cmp_int_float("0", -0.0), Some(Ordering::Equal));
+        assert_eq!(cmp_int_float("0", -0.5), Some(Ordering::Greater));
+        assert_eq!(cmp_int_float("0", 0.5), Some(Ordering::Less));
+        assert_eq!(
+            cmp_int_float("9007199254740993", 9007199254740992.0),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(cmp_int_float("1", f64::INFINITY), Some(Ordering::Less));
+        assert_eq!(
+            cmp_int_float("1", f64::NEG_INFINITY),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(cmp_int_float("1", f64::NAN), None);
     }
 }

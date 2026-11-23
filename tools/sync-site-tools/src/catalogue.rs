@@ -21,7 +21,7 @@
 //! catalogue.py: the catalog's part of the website, `_data/tools.yml`,
 //! which the page tools/catalog.html lists, written from catalog/tools.json.
 
-use crate::json::{self, BigInt, Value};
+use crate::json::{self, Value, ValueExt};
 use crate::pyerr::PyErr;
 use crate::pyfs;
 use crate::pystr::PyStr;
@@ -54,7 +54,7 @@ fn round_half_even(x: f64) -> f64 {
 
 /// `size(count)`: bytes as a person reads them, 4 KB, 1.8 MB.
 pub fn size(count: &Value) -> Result<String, PyErr> {
-    let limit = Value::Int(BigInt::from_i64(1_048_576));
+    let limit = json::int(1_048_576);
     let below = match count {
         Value::Int(_) | Value::Bool(_) | Value::Float(_) => count.py_lt(&limit)?,
         other => {
@@ -68,7 +68,7 @@ pub fn size(count: &Value) -> Result<String, PyErr> {
         match count {
             Value::Float(f) => Ok(f / (1u64 << power) as f64),
             Value::Bool(b) => Ok(*b as u8 as f64 / (1u64 << power) as f64),
-            Value::Int(i) => i.div_pow2(power).ok_or_else(|| {
+            Value::Int(i) => json::int_div_pow2(i, power).ok_or_else(|| {
                 PyErr::exc(
                     "OverflowError",
                     "integer division result too large for a float",
@@ -117,9 +117,9 @@ pub fn render(catalog: &Value, public_key: &PyStr) -> Result<Vec<u8>, PyErr> {
     ]));
     lines.push(line(&[
         &lit("public_key: "),
-        &scalar(&Value::Str(public_key.clone())),
+        &scalar(&json::s_py(public_key)),
     ]));
-    let tools = catalog.get_or("tools", Value::List(Vec::new()))?;
+    let tools = catalog.get_or("tools", Value::Arr(Vec::new()))?;
     lines.push(lit(if tools.truthy() {
         "tools:"
     } else {
@@ -149,7 +149,7 @@ pub fn render(catalog: &Value, public_key: &PyStr) -> Result<Vec<u8>, PyErr> {
         ];
         lines.extend(entry);
         let mut uses: Vec<&str> = Vec::new();
-        for name in tool.get_or("uses", Value::List(Vec::new()))?.iterate()? {
+        for name in tool.get_or("uses", Value::Arr(Vec::new()))?.iterate()? {
             name.check_hashable()?;
             if let Some((_, words)) = USES.iter().find(|(key, _)| name.eq_str(key)) {
                 uses.push(words);
@@ -209,7 +209,7 @@ mod tests {
     fn an_entry_as_the_page_reads_it() {
         let catalog = json::obj(vec![
             ("generated", json::s("2026-11-02T10:00:00Z")),
-            ("tools", Value::List(vec![entry()])),
+            ("tools", Value::Arr(vec![entry()])),
         ]);
         let text = String::from_utf8(render(&catalog, &PyStr::from("KEY=")).unwrap()).unwrap();
         let lines: Vec<&str> = text.lines().skip(2).collect();
@@ -236,7 +236,7 @@ mod tests {
         );
         let empty = json::obj(vec![
             ("generated", json::s("2026-11-02T10:00:00Z")),
-            ("tools", Value::List(vec![])),
+            ("tools", Value::Arr(vec![])),
         ]);
         let text = String::from_utf8(render(&empty, &PyStr::from("K")).unwrap()).unwrap();
         assert!(text.contains("tools: []"));
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn sizes_as_python_rounds_them() {
-        let int = |n: i64| Value::Int(BigInt::from_i64(n));
+        let int = json::int;
         let cases = [
             (int(4000), "4 KB"),
             (int(0), "1 KB"),

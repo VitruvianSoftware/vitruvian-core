@@ -40,7 +40,7 @@ pub mod unicode_tables;
 /// files: run by `bazel test`, whose runfiles hold them.
 #[cfg(test)]
 mod in_sync_tests {
-    use crate::json::{self, Value};
+    use crate::json::{self, Value, ValueExt};
     use crate::pystr::PyStr;
     use crate::{pyfs, registry, sync};
 
@@ -89,8 +89,8 @@ mod in_sync_tests {
         let bumped: Vec<String> = extra
             .iter()
             .map(|entry| match entry {
-                Value::Str(path) => path.to_string_lossy(),
-                other => other.subscript("path").unwrap().py_str().to_string_lossy(),
+                Value::Str(path) => path.clone(),
+                other => other.subscript("path").unwrap().py_str(),
             })
             .collect();
         let copied = sync::sources();
@@ -109,10 +109,7 @@ mod in_sync_tests {
             return;
         }
         let extensions = registry::discover_all(&root()).unwrap();
-        let ids: Vec<String> = extensions
-            .iter()
-            .map(|e| e.id.py_str().to_string_lossy())
-            .collect();
+        let ids: Vec<String> = extensions.iter().map(|e| e.id.py_str()).collect();
         for expected in [
             "ext-marketplace",
             "gh-watch",
@@ -138,7 +135,7 @@ mod in_sync_tests {
             .iterate()
             .unwrap()
             .iter()
-            .map(|p| p.subscript("name").unwrap().py_str().to_string_lossy())
+            .map(|p| p.subscript("name").unwrap().py_str())
             .collect();
         for expected in ["ext-marketplace", "gh-watch", "vitruvian-roborock-mcp"] {
             assert!(names.iter().any(|n| n == expected), "{}", expected);
@@ -170,10 +167,7 @@ mod in_sync_tests {
             .unwrap()
             .iterate()
             .unwrap();
-        let mut want: Vec<String> = services
-            .iter()
-            .map(|v| v.py_str().to_string_lossy())
-            .collect();
+        let mut want: Vec<String> = services.iter().map(|v| v.py_str()).collect();
         let mut have: Vec<String> = crate::catalogue::USES
             .iter()
             .map(|(k, _)| k.to_string())

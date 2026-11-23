@@ -23,7 +23,7 @@
 //! and writes `_data/extensions.yml`, `ai/catalog.json` and both copies of
 //! `.claude-plugin/marketplace.json`.
 
-use crate::json::{self, list_of_str, obj, s, Value};
+use crate::json::{self, list_of_str, obj, s, s_py, Value, ValueExt};
 use crate::pyerr::PyErr;
 use crate::pyfs;
 use crate::pystr::PyStr;
@@ -276,7 +276,7 @@ pub struct Ext {
 }
 
 fn strs(items: &[PyStr]) -> Value {
-    Value::List(items.iter().cloned().map(Value::Str).collect())
+    Value::Arr(items.iter().map(s_py).collect())
 }
 
 /// What inspect_capabilities finds in a plugin's folder.
@@ -316,8 +316,8 @@ pub fn inspect_capabilities(plugin_dir: &PyStr) -> Result<Caps, PyErr> {
     if pyfs::is_file(&hooks_json)? {
         // `except Exception`: any failure to read or parse it.
         match pyfs::read_text(&hooks_json).and_then(|text| json::loads(&text)) {
-            Ok(Value::Dict(pairs)) => {
-                let mut keys: Vec<PyStr> = pairs.into_iter().map(|(k, _)| k).collect();
+            Ok(Value::Obj(pairs)) => {
+                let mut keys: Vec<PyStr> = pairs.into_iter().map(|(k, _)| PyStr::from(k)).collect();
                 keys.sort();
                 caps.hooks = keys;
             }
@@ -424,18 +424,18 @@ pub fn discover_plugin_dir(
     let ext_id = manifest.subscript("name")?.clone();
     let custom = or(manifest.get_value("marketplace")?, || {
         or(manifest.get_value("x-vitruvian")?, || {
-            Ok(Value::Dict(Vec::new()))
+            Ok(Value::Obj(Vec::new()))
         })
     })?;
     ext_id.check_hashable()?;
     let known = KNOWN_PLUGIN_META.iter().find(|k| ext_id.eq_str(k.id));
     let caps = inspect_capabilities(&plugin_dir)?;
 
-    let ext_id_str = ext_id.py_str();
+    let ext_id_str = ext_id.to_pystr();
     let repo_url = or(custom.get_value("repo")?, || {
         manifest.get_or(
             "repository",
-            Value::Str(str_cat(
+            s_py(&str_cat(
                 &["https://github.com/VitruvianSoftware/"],
                 &ext_id_str,
             )),
@@ -451,7 +451,7 @@ pub fn discover_plugin_dir(
     };
 
     let mut ecosystems = or(custom.get_value("ecosystems")?, || {
-        Ok(Value::List(Vec::new()))
+        Ok(Value::Arr(Vec::new()))
     })?
     .iterate()?;
     if ecosystems.is_empty() {
@@ -466,14 +466,12 @@ pub fn discover_plugin_dir(
         }
     }
 
-    let mut installs = or(custom.get_value("installs")?, || {
-        Ok(Value::List(Vec::new()))
-    })?
-    .iterate()?;
+    let mut installs =
+        or(custom.get_value("installs")?, || Ok(Value::Arr(Vec::new())))?.iterate()?;
     if installs.is_empty() {
         if in_list(&ecosystems, "antigravity") {
             let install_target = if is_released(&status) {
-                repo_url.py_str()
+                repo_url.to_pystr()
             } else {
                 str_cat(
                     &["https://github.com/VitruvianSoftware/vitruvian-core/tree/main/"],
@@ -488,18 +486,18 @@ pub fn discover_plugin_dir(
                 // the bare monorepo URL would install the repository root, not the plugin,
                 // so point the command at the plugin's own folder (agy installs from a
                 // GitHub subpath).
-                Value::Str(str_cat(
+                s_py(&str_cat(
                     &["agy plugin install "],
-                    &if repo_url.py_str() == PyStr::from(MONOREPO_URL) {
+                    &if repo_url.py_str() == MONOREPO_URL {
                         install_target.clone()
                     } else {
-                        repo_url.py_str()
+                        repo_url.to_pystr()
                     },
                 )),
             );
             pairs.push((
                 "monorepo_command",
-                Value::Str(str_cat(&["agy plugin install "], &install_target)),
+                s_py(&str_cat(&["agy plugin install "], &install_target)),
             ));
             installs.push(obj(pairs));
         }
@@ -508,7 +506,7 @@ pub fn discover_plugin_dir(
                 "Claude Code",
                 "claude-code",
                 s("Install in Claude Code (after adding marketplace)"),
-                Value::Str(str_cat(&["claude plugin install "], &ext_id_str)),
+                s_py(&str_cat(&["claude plugin install "], &ext_id_str)),
             )));
         }
         if in_list(&ecosystems, "codex-opencode") && !caps.skills.is_empty() {
@@ -521,8 +519,8 @@ pub fn discover_plugin_dir(
             installs.push(obj(install(
                 "Codex / OpenCode",
                 "codex-opencode",
-                Value::Str(str_cat(&["Load portable SKILL.md (", ")"], &skill_list)),
-                Value::Str(str_cat(
+                s_py(&str_cat(&["Load portable SKILL.md (", ")"], &skill_list)),
+                s_py(&str_cat(
                     &["cp -R ", "/skills/* ~/.agents/skills/"],
                     rel_source,
                 )),
@@ -542,7 +540,7 @@ pub fn discover_plugin_dir(
     let summary = or(custom.get_value("summary")?, || {
         manifest.get_or("description", s(""))
     })?;
-    let keywords = manifest.get_or("keywords", Value::List(Vec::new()))?;
+    let keywords = manifest.get_or("keywords", Value::Arr(Vec::new()))?;
     let needs = or(custom.get_value("needs")?, || {
         Ok(s(known.map_or(NEEDS_DEFAULT, |k| k.needs)))
     })?;
@@ -550,7 +548,7 @@ pub fn discover_plugin_dir(
         Ok(s(known.and_then(|k| k.note).unwrap_or("")))
     })?;
     let claude_marketplace_source = if caps.has_claude_plugin {
-        Value::Str(str_cat(&["./"], rel_source))
+        s_py(&str_cat(&["./"], rel_source))
     } else {
         s("")
     };
@@ -564,7 +562,7 @@ pub fn discover_plugin_dir(
         summary,
         repo: public_repo,
         mirror_repo: repo_url,
-        source: Value::Str(rel_source.clone()),
+        source: s_py(rel_source),
         ecosystems,
         capabilities: caps.capabilities,
         skills: caps.skills,
@@ -845,7 +843,7 @@ pub fn render_extensions_yml(extensions: &[Ext]) -> Result<Vec<u8>, PyErr> {
             field(&mut lines, label, eco.subscript(key)?);
         }
         for key in ["bootstrap_label", "bootstrap_command", "feed_url"] {
-            if let Some(value) = eco.get(key)? {
+            if let Some(value) = eco.py_get(key)? {
                 field(&mut lines, &format!("    {}: ", key), value);
             }
         }
@@ -884,7 +882,7 @@ pub fn render_extensions_yml(extensions: &[Ext]) -> Result<Vec<u8>, PyErr> {
         } else {
             lit(&mut lines, "    capabilities:");
             for cap in &ext.capabilities {
-                field(&mut lines, "      - ", &Value::Str(cap.clone()));
+                field(&mut lines, "      - ", &s_py(cap));
             }
         }
         lit(&mut lines, "    installs:");
@@ -931,14 +929,14 @@ pub fn render_ai_catalog_json(extensions: &[Ext]) -> Result<Vec<u8>, PyErr> {
                 ("repo", ext.repo.clone()),
                 ("mirrorRepo", ext.mirror_repo.clone()),
                 ("source", ext.source.clone()),
-                ("ecosystems", Value::List(ext.ecosystems.clone())),
+                ("ecosystems", Value::Arr(ext.ecosystems.clone())),
                 ("capabilities", strs(&ext.capabilities)),
                 ("skills", strs(&ext.skills)),
                 ("hooks", strs(&ext.hooks)),
                 ("rules", strs(&ext.rules)),
                 ("needs", ext.needs.clone()),
                 ("note", ext.note.clone()),
-                ("installs", Value::List(ext.installs.clone())),
+                ("installs", Value::Arr(ext.installs.clone())),
             ])
         })
         .collect();
@@ -958,8 +956,8 @@ pub fn render_ai_catalog_json(extensions: &[Ext]) -> Result<Vec<u8>, PyErr> {
                 ("vitruvianDesktopSignature", s("https://vitruviansoftware.dev/tools/catalog/tools.json.sig")),
             ]),
         ),
-        ("ecosystems", Value::List(ecosystems())),
-        ("extensions", Value::List(entries)),
+        ("ecosystems", Value::Arr(ecosystems())),
+        ("extensions", Value::Arr(entries)),
     ]);
     dump_file(&payload)
 }
@@ -993,7 +991,7 @@ pub fn render_claude_marketplace_json(extensions: &[Ext]) -> Result<Vec<u8>, PyE
         ("name", s("vitruvian-core")),
         ("description", s("Vitruvian Software multi-agent plugins, guardrails, FastMCP servers, and workflow skills for Claude Code and Antigravity")),
         ("owner", author()),
-        ("plugins", Value::List(plugins)),
+        ("plugins", Value::Arr(plugins)),
     ]);
     dump_file(&payload)
 }
@@ -1084,12 +1082,7 @@ mod tests {
         let commands: Vec<String> = after
             .installs
             .iter()
-            .map(|inst| {
-                inst.subscript("command")
-                    .unwrap()
-                    .py_str()
-                    .to_string_lossy()
-            })
+            .map(|inst| inst.subscript("command").unwrap().py_str())
             .collect();
         assert_eq!(
             commands,
@@ -1113,7 +1106,7 @@ mod tests {
         let ids: Vec<String> = discover_all(&tmp.root())
             .unwrap()
             .iter()
-            .map(|ext| ext.id.py_str().to_string_lossy())
+            .map(|ext| ext.id.py_str())
             .collect();
         assert_eq!(
             ids,
