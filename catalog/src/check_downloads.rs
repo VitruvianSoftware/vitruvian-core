@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 use crate::argparse::{Kind, Opt, Parser};
 use crate::crypto::sha256;
 use crate::here::TempDir;
-use crate::json::{self, Value};
+use crate::json::{self, Value, ValueExt};
 use crate::pyerr::{self, Crash, Res};
 use crate::{http, py, pypath, rules};
 
@@ -53,7 +53,7 @@ pub fn fetch(url: &Value, size: &Value) -> Res<Option<Vec<u8>>> {
         }
     };
     let size = match size {
-        Value::Int(n) if *n >= 0 => *n as usize,
+        Value::Int(s) if !s.starts_with('-') => s.parse::<usize>().unwrap_or(usize::MAX),
         Value::Int(_) => 0,
         other => {
             return Err(Crash::new(
@@ -143,7 +143,7 @@ pub fn check_entry(entry: &Value, fetch: &Fetch, validate: &Validate) -> Res<Vec
     };
     let mut problems = Vec::new();
     let size = download(entry, "size")?;
-    if !json::py_eq(&Value::Int(data.len() as i128), size) {
+    if !json::py_eq(&json::int(data.len() as i128), size) {
         problems.push(format!(
             "the download is {} bytes, the entry says {}",
             data.len(),
@@ -185,7 +185,7 @@ pub fn check_entry(entry: &Value, fetch: &Fetch, validate: &Validate) -> Res<Vec
 
 fn ids(catalog: &Value) -> Res<Vec<json::Key>> {
     let mut out = Vec::new();
-    for tool in py::get_or(catalog, "tools", Value::List(vec![]))?.py_iter()? {
+    for tool in py::get_or(catalog, "tools", Value::Arr(vec![]))?.py_iter()? {
         out.push(json::key(tool.at("id")?)?);
     }
     Ok(out)
@@ -264,7 +264,7 @@ fn run(base_path: &str, head_path: &str, tool: &str) -> Res<i32> {
     let base = if Path::new(base_path).exists() {
         json::loads(&pyerr::read_text(base_path)?)?
     } else {
-        json::dict(vec![("tools", Value::List(vec![]))])
+        json::dict(vec![("tools", Value::Arr(vec![]))])
     };
     let head = json::loads(&pyerr::read_text(head_path)?)?;
     for entry in rules::changed(&base, &head)? {
@@ -340,9 +340,9 @@ mod tests {
             json::loads(r#"{"version": 1, "generated": "2026-10-12T00:00:00Z", "tools": []}"#)
                 .unwrap();
         let head = json::dict(vec![
-            ("version", Value::Int(1)),
+            ("version", json::int(1)),
             ("generated", py::s("2026-10-12T00:00:01Z")),
-            ("tools", Value::List(vec![entry.clone()])),
+            ("tools", Value::Arr(vec![entry.clone()])),
         ]);
         let fetch_ok =
             |_url: &Value, _size: &Value| -> Res<Option<Vec<u8>>> { Ok(Some(zip_bytes.clone())) };
@@ -353,9 +353,9 @@ mod tests {
         );
 
         let stale_head = json::dict(vec![
-            ("version", Value::Int(1)),
+            ("version", json::int(1)),
             ("generated", py::s("2026-10-12T00:00:00Z")),
-            ("tools", Value::List(vec![entry])),
+            ("tools", Value::Arr(vec![entry])),
         ]);
         let probs = check(&base, &stale_head, &fetch_ok, &validate_ok).unwrap();
         assert!(probs.iter().any(|p| p.contains("not later than main's")));

@@ -54,3 +54,16 @@ test -x "$out/pipeline/pipeline_status"
 bash "$build" --test "$out/pipeline" pipeline_status tools/pipeline-status/src/lib.rs -O
 "$out/pipeline/pipeline_status-test" >/dev/null
 echo "PASS pipeline_status and its tests build with plain rustc (linking vitruvian_jq) and run"
+
+bash "$build" "$out/osv" osv_scan tools/osv-scan/src/lib.rs tools/osv-scan/src/main.rs
+test -f "$out/osv/libvitruvian_jq.rlib"
+test -x "$out/osv/osv_scan"
+echo "PASS osv_scan builds with plain rustc (linking vitruvian_jq)"
+
+bash "$build" "$out/catalog-bump" catalog catalog/src/lib.rs catalog/src/bin/bump.rs
+test -f "$out/catalog-bump/libvitruvian_pycompat.rlib"
+"$out/catalog-bump/catalog" --help >/dev/null
+bash "$build" "$out/catalog-dl" catalog catalog/src/lib.rs catalog/src/bin/check_downloads.rs -O
+test -f "$out/catalog-dl/libvitruvian_pycompat.rlib"
+"$out/catalog-dl/catalog" --help >/dev/null
+echo "PASS catalog (bump and check_downloads) build with plain rustc (linking vitruvian_pycompat) and run"

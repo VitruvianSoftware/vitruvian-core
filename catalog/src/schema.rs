@@ -24,8 +24,8 @@
 //! each schema's keywords in the order the schema writes them, `$ref`
 //! among them.
 
-use crate::json::Value;
-use crate::{py, pyre};
+use crate::json::{self, Value, ValueExt};
+use crate::pyre;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
@@ -61,14 +61,30 @@ fn add(out: &mut Vec<Error>, path: &[Step], message: String) {
     });
 }
 
+// Cap nested `descend` depth at 113: half of the lowest measured overflow on a 2 MiB
+// unoptimised thread (`oneOf` at 227 levels; `anyOf` at 238, `not`/`if` at 241,
+// `allOf`/`$ref`/`properties`/`items` at 245) and >12x the depth 9 of `catalog.schema.json`
+// on `catalog/tools.json` (which is non-recursive; combinator recursion to depth 50 takes 153).
+// Cap total `descend` steps at 43,400: 100x the 434 steps `catalog.schema.json` takes on
+// `catalog/tools.json`, so exponential branching stops in milliseconds instead of hanging.
+const MAX_DEPTH: usize = 113;
+const MAX_STEPS: usize = 43_400;
+
+#[derive(Default)]
+struct Budget {
+    depth: usize,
+    steps: usize,
+    hard_error: Option<Error>,
+}
+
 pub struct Validator<'a> {
     root: &'a Value,
 }
 
 fn is_type(v: &Value, t: &str) -> bool {
     match t {
-        "object" => matches!(v, Value::Dict(_)),
-        "array" => matches!(v, Value::List(_)),
+        "object" => matches!(v, Value::Obj(_)),
+        "array" => matches!(v, Value::Arr(_)),
         "string" => matches!(v, Value::Str(_)),
         "boolean" => matches!(v, Value::Bool(_)),
         "null" => matches!(v, Value::Null),
@@ -85,30 +101,11 @@ fn is_type(v: &Value, t: &str) -> bool {
 /// jsonschema's `equal`: like ==, except that True is not 1 and False is
 /// not 0, at any depth.
 fn equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::Bool(_), _) | (_, Value::Bool(_)) => false,
-        (Value::List(x), Value::List(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| equal(p, q))
-        }
-        (Value::Dict(x), Value::Dict(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| match y.iter().find(|(yk, _)| yk == k) {
-                        Some((_, w)) => equal(v, w),
-                        None => false,
-                    })
-        }
-        _ => py::eq(a, b),
-    }
+    json::schema_equal(a, b)
 }
 
 fn as_f64(v: &Value) -> Option<f64> {
-    match v {
-        Value::Int(s) => Some(*s as f64),
-        Value::Float(f) => Some(*f),
-        _ => None,
-    }
+    v.num_f64()
 }
 
 fn len_limit(v: &Value) -> Option<usize> {
@@ -123,7 +120,11 @@ impl<'a> Validator<'a> {
     /// Every error, in jsonschema's order.
     pub fn iter_errors(&self, instance: &Value) -> Vec<Error> {
         let mut out = Vec::new();
-        self.descend(instance, self.root, &mut Vec::new(), &mut out);
+        let mut budget = Budget::default();
+        self.descend(instance, self.root, &mut Vec::new(), &mut budget, &mut out);
+        if let Some(err) = budget.hard_error {
+            return vec![err];
+        }
         out
     }
 
@@ -133,25 +134,63 @@ impl<'a> Validator<'a> {
         for part in pointer.split('/').skip(1) {
             let part = part.replace("~1", "/").replace("~0", "~");
             at = match at {
-                Value::Dict(_) => at.field(&part)?,
-                Value::List(items) => items.get(part.parse::<usize>().ok()?)?,
+                Value::Obj(_) => at.field(&part)?,
+                Value::Arr(items) => items.get(part.parse::<usize>().ok()?)?,
                 _ => return None,
             };
         }
         Some(at)
     }
 
-    fn valid(&self, instance: &Value, schema: &Value) -> bool {
+    fn valid(&self, instance: &Value, schema: &'a Value, budget: &mut Budget) -> bool {
+        if budget.hard_error.is_some() {
+            return false;
+        }
         let mut out = Vec::new();
-        self.descend(instance, schema, &mut Vec::new(), &mut out);
-        out.is_empty()
+        self.descend(instance, schema, &mut Vec::new(), budget, &mut out);
+        budget.hard_error.is_none() && out.is_empty()
     }
 
     fn descend(
         &self,
         instance: &Value,
-        schema: &Value,
+        schema: &'a Value,
         path: &mut Vec<Step>,
+        budget: &mut Budget,
+        out: &mut Vec<Error>,
+    ) {
+        if budget.hard_error.is_some() {
+            return;
+        }
+        budget.steps += 1;
+        if budget.steps > MAX_STEPS {
+            budget.hard_error = Some(Error {
+                path: path.clone(),
+                message: format!("schema validation exceeded step budget of {}", MAX_STEPS),
+            });
+            return;
+        }
+        if budget.depth >= MAX_DEPTH {
+            budget.hard_error = Some(Error {
+                path: path.clone(),
+                message: format!(
+                    "schema validation nested too deeply: more than {} nested schema levels",
+                    MAX_DEPTH
+                ),
+            });
+            return;
+        }
+        budget.depth += 1;
+        self.descend_inner(instance, schema, path, budget, out);
+        budget.depth -= 1;
+    }
+
+    fn descend_inner(
+        &self,
+        instance: &Value,
+        schema: &'a Value,
+        path: &mut Vec<Step>,
+        budget: &mut Budget,
         out: &mut Vec<Error>,
     ) {
         let items = match schema {
@@ -163,23 +202,25 @@ impl<'a> Validator<'a> {
                 });
                 return;
             }
-            Value::Dict(items) => items,
+            Value::Obj(items) => items,
             _ => return,
         };
         for (keyword, value) in items {
+            if budget.hard_error.is_some() {
+                return;
+            }
             match keyword.as_str() {
                 "$ref" => {
                     if let Value::Str(r) = value {
                         if let Some(target) = self.resolve(r) {
-                            let mut sub = path.clone();
-                            self.descend(instance, target, &mut sub, out);
+                            self.descend(instance, target, path, budget, out);
                         }
                     }
                 }
                 "type" => {
                     let types: Vec<String> = match value {
                         Value::Str(t) => vec![t.clone()],
-                        Value::List(ts) => ts.iter().map(|t| t.py_str()).collect(),
+                        Value::Arr(ts) => ts.iter().map(|t| t.py_str()).collect(),
                         _ => vec![],
                     };
                     if !types.iter().any(|t| is_type(instance, t)) {
@@ -199,7 +240,7 @@ impl<'a> Validator<'a> {
                 }
                 "enum" => {
                     let options = match value {
-                        Value::List(o) => o.clone(),
+                        Value::Arr(o) => o.clone(),
                         _ => vec![],
                     };
                     if options.iter().all(|o| !equal(o, instance)) {
@@ -211,7 +252,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "required" => {
-                    if let (Value::Dict(_), Value::List(names)) = (instance, value) {
+                    if let (Value::Obj(_), Value::Arr(names)) = (instance, value) {
                         for name in names {
                             if let Value::Str(n) = name {
                                 if instance.field(n).is_none() {
@@ -226,18 +267,18 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "properties" => {
-                    if let (Value::Dict(_), Value::Dict(props)) = (instance, value) {
+                    if let (Value::Obj(_), Value::Obj(props)) = (instance, value) {
                         for (name, sub) in props {
                             if let Some(v) = instance.field(name) {
                                 path.push(Step::Key(name.clone()));
-                                self.descend(v, sub, path, out);
+                                self.descend(v, sub, path, budget, out);
                                 path.pop();
                             }
                         }
                     }
                 }
                 "patternProperties" => {
-                    if let (Value::Dict(fields), Value::Dict(patterns)) = (instance, value) {
+                    if let (Value::Obj(fields), Value::Obj(patterns)) = (instance, value) {
                         for (pattern, sub) in patterns {
                             let re = match pyre::compile(pattern) {
                                 Ok(r) => r,
@@ -246,7 +287,7 @@ impl<'a> Validator<'a> {
                             for (k, v) in fields {
                                 if re.search(k).is_some() {
                                     path.push(Step::Key(k.clone()));
-                                    self.descend(v, sub, path, out);
+                                    self.descend(v, sub, path, budget, out);
                                     path.pop();
                                 }
                             }
@@ -254,13 +295,14 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "additionalProperties" => {
-                    if let Value::Dict(fields) = instance {
-                        let extras = self.additional(&fields.0, &items.0);
+                    if let Value::Obj(fields) = instance {
+                        let extras = self.additional(fields, items);
                         match value {
-                            Value::Dict(_) => {
+                            Value::Obj(_) => {
                                 for k in &extras {
                                     path.push(Step::Key(k.clone()));
-                                    self.descend(instance.field(k).unwrap(), value, path, out);
+                                    let v = instance.field(k).unwrap();
+                                    self.descend(v, value, path, budget, out);
                                     path.pop();
                                 }
                             }
@@ -273,7 +315,7 @@ impl<'a> Validator<'a> {
                                 {
                                     let mut pats: Vec<String> =
                                         match schema.field("patternProperties") {
-                                            Some(Value::Dict(p)) => {
+                                            Some(Value::Obj(p)) => {
                                                 p.iter().map(|(k, _)| k.clone()).collect()
                                             }
                                             _ => vec![],
@@ -301,16 +343,16 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "propertyNames" => {
-                    if let Value::Dict(fields) = instance {
+                    if let Value::Obj(fields) = instance {
                         for (k, _) in fields {
-                            self.descend(&Value::Str(k.clone()), value, path, out);
+                            self.descend(&Value::Str(k.clone()), value, path, budget, out);
                         }
                     }
                 }
                 "items" => {
-                    if let Value::List(elements) = instance {
+                    if let Value::Arr(elements) = instance {
                         let prefix = match schema.field("prefixItems") {
-                            Some(Value::List(p)) => p.len(),
+                            Some(Value::Arr(p)) => p.len(),
                             _ => 0,
                         };
                         if value == &Value::Bool(false) && elements.len() > prefix {
@@ -318,7 +360,7 @@ impl<'a> Validator<'a> {
                             let rest = if extra == 1 {
                                 elements[prefix].clone()
                             } else {
-                                Value::List(elements[prefix..].to_vec())
+                                Value::Arr(elements[prefix..].to_vec())
                             };
                             add(
                                 out,
@@ -334,17 +376,17 @@ impl<'a> Validator<'a> {
                         } else {
                             for (i, e) in elements.iter().enumerate().skip(prefix) {
                                 path.push(Step::Index(i));
-                                self.descend(e, value, path, out);
+                                self.descend(e, value, path, budget, out);
                                 path.pop();
                             }
                         }
                     }
                 }
                 "prefixItems" => {
-                    if let (Value::List(elements), Value::List(subs)) = (instance, value) {
+                    if let (Value::Arr(elements), Value::Arr(subs)) = (instance, value) {
                         for (i, (e, sub)) in elements.iter().zip(subs).enumerate() {
                             path.push(Step::Index(i));
-                            self.descend(e, sub, path, out);
+                            self.descend(e, sub, path, budget, out);
                             path.pop();
                         }
                     }
@@ -388,7 +430,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "minItems" | "maxItems" => {
-                    if let (Value::List(a), Some(limit)) = (instance, len_limit(value)) {
+                    if let (Value::Arr(a), Some(limit)) = (instance, len_limit(value)) {
                         if keyword == "minItems" && a.len() < limit {
                             let words = if limit == 1 {
                                 "should be non-empty"
@@ -408,7 +450,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "minProperties" | "maxProperties" => {
-                    if let (Value::Dict(o), Some(limit)) = (instance, len_limit(value)) {
+                    if let (Value::Obj(o), Some(limit)) = (instance, len_limit(value)) {
                         if keyword == "minProperties" && o.len() < limit {
                             let words = if limit == 1 {
                                 "should be non-empty"
@@ -428,7 +470,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "uniqueItems" => {
-                    if let Value::List(a) = instance {
+                    if let Value::Arr(a) = instance {
                         if value.truthy() && !unique(a) {
                             add(
                                 out,
@@ -460,15 +502,15 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "allOf" => {
-                    if let Value::List(subs) = value {
+                    if let Value::Arr(subs) = value {
                         for sub in subs {
-                            self.descend(instance, sub, path, out);
+                            self.descend(instance, sub, path, budget, out);
                         }
                     }
                 }
                 "anyOf" => {
-                    if let Value::List(subs) = value {
-                        if !subs.iter().any(|s| self.valid(instance, s)) {
+                    if let Value::Arr(subs) = value {
+                        if !subs.iter().any(|s| self.valid(instance, s, budget)) {
                             add(
                                 out,
                                 path,
@@ -481,9 +523,11 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "oneOf" => {
-                    if let Value::List(subs) = value {
-                        let good: Vec<&Value> =
-                            subs.iter().filter(|s| self.valid(instance, s)).collect();
+                    if let Value::Arr(subs) = value {
+                        let good: Vec<&Value> = subs
+                            .iter()
+                            .filter(|s| self.valid(instance, s, budget))
+                            .collect();
                         if good.is_empty() {
                             add(
                                 out,
@@ -508,7 +552,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "not" => {
-                    if self.valid(instance, value) {
+                    if self.valid(instance, value, budget) {
                         add(
                             out,
                             path,
@@ -521,22 +565,22 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "if" => {
-                    let branch = if self.valid(instance, value) {
+                    let branch = if self.valid(instance, value, budget) {
                         "then"
                     } else {
                         "else"
                     };
                     if let Some(sub) = schema.field(branch) {
-                        self.descend(instance, sub, path, out);
+                        self.descend(instance, sub, path, budget, out);
                     }
                 }
                 "dependentRequired" => {
-                    if let (Value::Dict(_), Value::Dict(deps)) = (instance, value) {
+                    if let (Value::Obj(_), Value::Obj(deps)) = (instance, value) {
                         for (prop, needs) in deps {
                             if instance.field(prop).is_none() {
                                 continue;
                             }
-                            if let Value::List(needs) = needs {
+                            if let Value::Arr(needs) = needs {
                                 for each in needs {
                                     if let Value::Str(n) = each {
                                         if instance.field(n).is_none() {
@@ -569,7 +613,7 @@ impl<'a> Validator<'a> {
             .map(|(_, v)| v);
         let patterns: Vec<pyre::Regex> = match schema.iter().find(|(k, _)| k == "patternProperties")
         {
-            Some((_, Value::Dict(p))) => p
+            Some((_, Value::Obj(p))) => p
                 .iter()
                 .filter_map(|(k, _)| pyre::compile(k).ok())
                 .collect(),
@@ -579,7 +623,7 @@ impl<'a> Validator<'a> {
             .iter()
             .filter(|(k, _)| {
                 let listed =
-                    matches!(props, Some(Value::Dict(_)) if props.unwrap().field(k).is_some());
+                    matches!(props, Some(Value::Obj(_)) if props.unwrap().field(k).is_some());
                 !listed && !patterns.iter().any(|re| re.search(k).is_some())
             })
             .map(|(k, _)| k.clone())
@@ -644,5 +688,367 @@ mod tests {
             errors(r#"{"type": "integer"}"#, "true"),
             vec![": True is not of type 'integer'"]
         );
+    }
+
+    #[test]
+    fn recursive_ref_depth_cap_on_2mb_thread() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let d = json::MAX_DEPTH;
+                let inst_s = format!("{}1{}", "{\"a\":".repeat(d), "}".repeat(d));
+                let inst = loads(&inst_s).unwrap();
+
+                let simple_ref = loads(
+                    r##"{"$defs":{"n":{"type":["object","integer"],"properties":{"a":{"$ref":"#/$defs/n"}}}},"$ref":"#/$defs/n"}"##,
+                )
+                .unwrap();
+                assert!(Validator::new(&simple_ref).iter_errors(&inst).is_empty());
+
+                let combinator_ref = loads(
+                    r##"{"$defs":{"n":{"anyOf":[{"type":"integer"},{"type":"object","properties":{"a":{"$ref":"#/$defs/n"}}}]}},"$ref":"#/$defs/n"}"##,
+                )
+                .unwrap();
+                // Each recursive object hop in combinator_ref adds 3 `descend` levels
+                // (`anyOf` -> `$ref` -> `properties`), so 50 levels would need 153 > MAX_DEPTH;
+                // the committed catalog schema is not recursive.
+                let comb_d = ((MAX_DEPTH - 3) / 3).min(d);
+                let comb_inst_s = format!("{}1{}", "{\"a\":".repeat(comb_d), "}".repeat(comb_d));
+                let comb_inst = loads(&comb_inst_s).unwrap();
+                assert!(Validator::new(&combinator_ref)
+                    .iter_errors(&comb_inst)
+                    .is_empty());
+
+                let over = format!("{}1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
+                let err = loads(&over).unwrap_err();
+                assert_eq!(err.class, "RecursionError");
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    fn on_2mb_thread<F: FnOnce() + Send + 'static>(f: F) {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn direct_ref_cycle_is_a_clean_error() {
+        on_2mb_thread(|| {
+            let errs = errors(
+                r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}"##,
+                "1",
+            );
+            assert_eq!(
+                errs,
+                vec![format!(
+                    ": schema validation nested too deeply: more than {} nested schema levels",
+                    MAX_DEPTH
+                )]
+            );
+        });
+    }
+
+    #[test]
+    fn indirect_ref_cycle_is_a_clean_error() {
+        on_2mb_thread(|| {
+            let errs = errors(
+                r##"{"$defs":{"a":{"$ref":"#/$defs/b"},"b":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}"##,
+                "1",
+            );
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
+        });
+    }
+
+    #[test]
+    fn three_step_ref_cycle_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let errs = errors(
+                r##"{"$defs":{"a":{"$ref":"#/$defs/b"},"b":{"$ref":"#/$defs/c"},"c":{"$ref":"#/$defs/a"}},"$ref":"#/$defs/a"}"##,
+                "1",
+            );
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
+        });
+    }
+
+    #[test]
+    fn deep_non_cyclic_ref_chain_5000_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let mut defs = Vec::with_capacity(5001);
+            for i in 0..5000 {
+                defs.push(format!(r##""n{}":{{"$ref":"#/$defs/n{}"}}"##, i, i + 1));
+            }
+            defs.push(r#""n5000":{"type":"integer"}"#.to_string());
+            let schema = format!(
+                r##"{{"$defs":{{{}}},"$ref":"#/$defs/n0"}}"##,
+                defs.join(",")
+            );
+            let errs = errors(&schema, "1");
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
+        });
+    }
+
+    #[test]
+    fn branching_ref_n40_hits_step_budget_fast() {
+        on_2mb_thread(|| {
+            let mut defs = Vec::with_capacity(41);
+            for i in 0..40 {
+                defs.push(format!(
+                    r##""n{}":{{"allOf":[{{"$ref":"#/$defs/n{}"}},{{"$ref":"#/$defs/n{}"}}]}}"##,
+                    i,
+                    i + 1,
+                    i + 1
+                ));
+            }
+            defs.push(r#""n40":{"type":"integer"}"#.to_string());
+            let schema = format!(
+                r##"{{"$defs":{{{}}},"$ref":"#/$defs/n0"}}"##,
+                defs.join(",")
+            );
+            let start = std::time::Instant::now();
+            let errs = errors(&schema, "1");
+            let elapsed = start.elapsed();
+            eprintln!("branching_n40_elapsed={:?}", elapsed);
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].contains("schema validation exceeded step budget of 43400"));
+            assert!(
+                elapsed < std::time::Duration::from_secs(1),
+                "took {:?}",
+                elapsed
+            );
+        });
+    }
+
+    #[test]
+    fn cycle_under_combinators_never_fails_open() {
+        on_2mb_thread(|| {
+            let cases = [
+                (
+                    "not",
+                    r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"not":{"$ref":"#/$defs/a"}}"##,
+                ),
+                (
+                    "if",
+                    r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"if":{"$ref":"#/$defs/a"}}"##,
+                ),
+                (
+                    "if_else",
+                    r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"if":{"$ref":"#/$defs/a"},"else":{}}"##,
+                ),
+                (
+                    "anyOf",
+                    r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"anyOf":[{"$ref":"#/$defs/a"},{"type":"integer"}]}"##,
+                ),
+                (
+                    "oneOf",
+                    r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"oneOf":[{"type":"integer"},{"$ref":"#/$defs/a"}]}"##,
+                ),
+            ];
+            for (name, schema) in cases {
+                let errs = errors(schema, "1");
+                assert_eq!(errs.len(), 1, "expected hard error for {}", name);
+                assert!(
+                    errs[0].contains(&format!(
+                        "schema validation nested too deeply: more than {} nested schema levels",
+                        MAX_DEPTH
+                    )),
+                    "unexpected error for {}: {:?}",
+                    name,
+                    errs
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn repeated_non_cyclic_ref_is_valid() {
+        on_2mb_thread(|| {
+            assert!(errors(
+                r##"{"$defs":{"s":{"type":"string"}},"anyOf":[{"$ref":"#/$defs/s","minLength":5},{"$ref":"#/$defs/s"}]}"##,
+                r#""hi""#,
+            )
+            .is_empty());
+            assert!(errors(
+                r##"{"$defs":{"s":{"type":"string"}},"type":"object","properties":{"a":{"$ref":"#/$defs/s"},"b":{"$ref":"#/$defs/s"}}}"##,
+                r#"{"a":"x","b":"y"}"#,
+            )
+            .is_empty());
+        });
+    }
+
+    #[test]
+    fn recursive_tree_ref_is_valid() {
+        on_2mb_thread(|| {
+            assert!(errors(
+                r##"{"$defs":{"n":{"type":"object","properties":{"c":{"$ref":"#/$defs/n"}}}},"$ref":"#/$defs/n"}"##,
+                r#"{"c":{"c":{"c":{}}}}"#,
+            )
+            .is_empty());
+        });
+    }
+
+    #[test]
+    fn two_nots_per_hop_64_hops_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let mut defs = Vec::with_capacity(65);
+            for i in 0..64 {
+                defs.push(format!(
+                    r##""n{}":{{"not":{{"not":{{"$ref":"#/$defs/n{}"}}}}}}"##,
+                    i,
+                    i + 1
+                ));
+            }
+            defs.push(r#""n64":true"#.to_string());
+            let schema = format!(
+                r##"{{"$defs":{{{}}},"$ref":"#/$defs/n0"}}"##,
+                defs.join(",")
+            );
+            let errs = errors(&schema, "1");
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
+        });
+    }
+
+    #[test]
+    fn three_combinator_wraps_per_hop_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let patterns = [
+                (
+                    "oneOf",
+                    r##"{"oneOf":[{"oneOf":[{"oneOf":[{"$ref":"#/$defs/n{}"}]}]}]}"##,
+                ),
+                (
+                    "allOf",
+                    r##"{"allOf":[{"allOf":[{"allOf":[{"$ref":"#/$defs/n{}"}]}]}]}"##,
+                ),
+                (
+                    "if_then",
+                    r##"{"if":{},"then":{"if":{},"then":{"if":{},"then":{"$ref":"#/$defs/n{}"}}}}"##,
+                ),
+                (
+                    "if_cond",
+                    r##"{"if":{"if":{"if":{"$ref":"#/$defs/n{}"}}}}"##,
+                ),
+                (
+                    "mixed",
+                    r##"{"oneOf":[{"allOf":[{"if":{},"then":{"$ref":"#/$defs/n{}"}}]}]}"##,
+                ),
+            ];
+            for (name, pat) in patterns {
+                let mut defs = Vec::with_capacity(65);
+                for i in 0..64 {
+                    let next = (i + 1).to_string();
+                    defs.push(format!(r#""n{}":{}"#, i, pat.replace("{}", &next)));
+                }
+                defs.push(r#""n64":true"#.to_string());
+                let schema = format!(
+                    r##"{{"$defs":{{{}}},"$ref":"#/$defs/n0"}}"##,
+                    defs.join(",")
+                );
+                let errs = errors(&schema, "1");
+                assert_eq!(errs.len(), 1, "expected hard error for {}", name);
+                assert!(
+                    errs[0].contains(&format!(
+                        "schema validation nested too deeply: more than {} nested schema levels",
+                        MAX_DEPTH
+                    )),
+                    "unexpected error for {}: {:?}",
+                    name,
+                    errs
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn pure_combinator_stack_without_ref_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let obj = |pairs: Vec<(&str, Value)>| -> Value {
+                Value::Obj(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+            };
+            let one = Value::Int("1".to_string());
+            let mut not_stack = Value::Bool(true);
+            let mut one_of_stack = Value::Bool(true);
+            for _ in 0..200 {
+                not_stack = obj(vec![("not", not_stack)]);
+                one_of_stack = obj(vec![("oneOf", Value::Arr(vec![one_of_stack]))]);
+            }
+            for (name, schema) in [("not_200", not_stack), ("oneOf_200", one_of_stack)] {
+                let errs = Validator::new(&schema).iter_errors(&one);
+                assert_eq!(errs.len(), 1, "expected hard error for {}", name);
+                assert!(
+                    errs[0].message.contains(&format!(
+                        "schema validation nested too deeply: more than {} nested schema levels",
+                        MAX_DEPTH
+                    )),
+                    "unexpected error for {}: {:?}",
+                    name,
+                    errs
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn not_wrapping_hard_limit_never_passes() {
+        on_2mb_thread(|| {
+            let obj = |pairs: Vec<(&str, Value)>| -> Value {
+                Value::Obj(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+            };
+            let one = Value::Int("1".to_string());
+
+            let mut pure_not = Value::Bool(true);
+            for _ in 0..200 {
+                pure_not = obj(vec![("not", pure_not)]);
+            }
+            let wrapped_pure = obj(vec![("not", pure_not)]);
+            let errs = Validator::new(&wrapped_pure).iter_errors(&one);
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].message.contains("nested too deeply"));
+
+            let cycle_errs = errors(
+                r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"not":{"$ref":"#/$defs/a"}}"##,
+                "1",
+            );
+            assert_eq!(cycle_errs.len(), 1);
+            assert!(cycle_errs[0].contains("nested too deeply"));
+
+            let mut defs = Vec::with_capacity(41);
+            for i in 0..40 {
+                defs.push(format!(
+                    r##""n{}":{{"allOf":[{{"$ref":"#/$defs/n{}"}},{{"$ref":"#/$defs/n{}"}}]}}"##,
+                    i,
+                    i + 1,
+                    i + 1
+                ));
+            }
+            defs.push(r#""n40":{"type":"integer"}"#.to_string());
+            let step_schema = format!(
+                r##"{{"$defs":{{{}}},"not":{{"$ref":"#/$defs/n0"}}}}"##,
+                defs.join(",")
+            );
+            let step_errs = errors(&step_schema, "1");
+            assert_eq!(step_errs.len(), 1);
+            assert!(step_errs[0].contains(&format!("step budget of {}", MAX_STEPS)));
+        });
     }
 }

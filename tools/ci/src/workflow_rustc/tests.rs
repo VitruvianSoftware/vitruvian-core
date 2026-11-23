@@ -37,12 +37,6 @@ use std::process::Command;
 
 /// (file, the binary its block writes to `$RUNNER_TEMP`), in file order.
 const EXPECT: &[(&str, &str)] = &[
-    // Catalog's workflow binaries live under catalog/src rather than tools/ci/src,
-    // so they compile with plain rustc rather than .github/actions/build-ci-tool.
-    (".github/workflows/catalog-bump.yaml", "bump"),
-    (".github/workflows/catalog-check.yaml", "check-downloads"),
-    (".github/workflows/catalog-check.yaml", "bump"),
-    (".github/workflows/catalog-check.yaml", "bump"),
     // //tools/gomod:check lives outside tools/ci/src, so it does not fit
     // .github/actions/build-ci-tool (which //tools/ci:build_ci_tool_test
     // covers); its three lines stay inline in ci.yaml.
@@ -55,7 +49,7 @@ const EXPECT: &[(&str, &str)] = &[
 /// Only blocks that build one of these are this test's business; a listed
 /// file may carry other rustc blocks (ci.yaml's homelab test, supply-chain's
 /// osv-scan) that other targets own.
-const SOURCES: &[&str] = &["catalog/src/", "tools/ci/src/", "tools/gomod/src/"];
+const SOURCES: &[&str] = &["tools/ci/src/", "tools/gomod/src/"];
 
 /// The blocks of `text`, each a list of command lines.
 fn blocks(text: &str) -> Vec<Vec<String>> {

@@ -22,7 +22,7 @@
 //! `_data/tools.yml`, written from catalog/tools.json, byte for byte as the
 //! Python writes it.
 
-use crate::json::{self, Value};
+use crate::json::{self, Value, ValueExt};
 use crate::py;
 use crate::pyerr::Res;
 use crate::pystr;
@@ -47,7 +47,7 @@ pub const USES: &[(&str, &str)] = &[
 pub fn size(count: &Value) -> Res<String> {
     let n = match count {
         Value::Bool(b) => *b as i64 as f64,
-        other => other.as_f64().ok_or_else(|| {
+        other => other.num_f64().ok_or_else(|| {
             crate::pyerr::Stop::crash(
                 "TypeError",
                 format!(
@@ -77,7 +77,7 @@ pub fn render(catalog: &Value, public_key: &str) -> Res<Vec<u8>> {
         format!("generated: {}", scalar(py::index(catalog, "generated")?)),
         format!("public_key: {}", scalar(&py::s(public_key))),
     ];
-    let tools = py::iterate(&py::get_or(catalog, "tools", Value::List(vec![]))?)?;
+    let tools = py::iterate(&py::get_or(catalog, "tools", Value::Arr(vec![]))?)?;
     lines.push(
         if tools.is_empty() {
             "tools: []"
@@ -121,7 +121,7 @@ pub fn render(catalog: &Value, public_key: &str) -> Res<Vec<u8>> {
             scalar(py::path(tool, &["download", "sha256"])?)
         ));
         let mut uses = Vec::new();
-        for name in py::iterate(&py::get_or(tool, "uses", Value::List(vec![]))?)? {
+        for name in py::iterate(&py::get_or(tool, "uses", Value::Arr(vec![]))?)? {
             py::hashable(&name)?;
             if let Value::Str(n) = &name {
                 if let Some((_, words)) = USES.iter().find(|(k, _)| k == n) {

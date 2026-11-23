@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use crate::argparse::{Kind, Opt, Parser};
 use crate::crypto::sha256;
 use crate::http::{self, Request, Response};
-use crate::json::{self, Value};
+use crate::json::{self, DictExt, Value, ValueExt};
 use crate::pyerr::{self, Crash, Res};
 use crate::zip::ZipWriter;
 use crate::{argparse, py, pypath, pystr, signing, timefmt};
@@ -115,7 +115,7 @@ pub fn tool_zip(folder: &Path, version: &str, extra: &[(&str, &[u8])]) -> Res<Ve
         if name == "vitruvian-tool.json" {
             let mut manifest = json::loads_bytes(&data)?;
             match &mut manifest {
-                Value::Dict(d) => d.insert("version", Value::Str(version.into())),
+                Value::Obj(d) => d.dict_insert("version", Value::Str(version.into())),
                 other => {
                     return Err(Crash::new(
                         "TypeError",
@@ -143,17 +143,17 @@ pub fn tool_zip(folder: &Path, version: &str, extra: &[(&str, &[u8])]) -> Res<Ve
 
 /// `entry(manifest, version, url, data)`.
 pub fn entry(manifest: &Value, version: &str, url: &str, data: &[u8]) -> Res<Value> {
-    let contributes = py::get_or(manifest, "contributes", Value::Dict(json::Dict::new()))?;
+    let contributes = py::get_or(manifest, "contributes", Value::Obj(json::Dict::new()))?;
     let mut commands = Vec::new();
-    for c in py::get_or(&contributes, "commands", Value::List(vec![]))?.py_iter()? {
+    for c in py::get_or(&contributes, "commands", Value::Arr(vec![]))?.py_iter()? {
         commands.push(json::dict(vec![
             ("id", c.at("id")?.clone()),
             ("title", c.at("title")?.clone()),
         ]));
     }
-    let contributes = py::get_or(manifest, "contributes", Value::Dict(json::Dict::new()))?;
+    let contributes = py::get_or(manifest, "contributes", Value::Obj(json::Dict::new()))?;
     let mut panels = Vec::new();
-    for p in py::get_or(&contributes, "panels", Value::List(vec![]))?.py_iter()? {
+    for p in py::get_or(&contributes, "panels", Value::Arr(vec![]))?.py_iter()? {
         panels.push(p.at("placement")?.clone());
     }
     Ok(json::dict(vec![
@@ -173,12 +173,12 @@ pub fn entry(manifest: &Value, version: &str, url: &str, data: &[u8]) -> Res<Val
             json::dict(vec![
                 ("url", json::s(url)),
                 ("sha256", json::s(sha256::hexdigest(data))),
-                ("size", Value::Int(data.len() as i128)),
+                ("size", json::int(data.len() as i128)),
             ]),
         ),
-        ("uses", py::get_or(manifest, "uses", Value::List(vec![]))?),
-        ("commands", Value::List(commands)),
-        ("panels", Value::List(panels)),
+        ("uses", py::get_or(manifest, "uses", Value::Arr(vec![]))?),
+        ("commands", Value::Arr(commands)),
+        ("panels", Value::Arr(panels)),
     ]))
 }
 
@@ -197,13 +197,13 @@ pub fn build(folder: &Path, base: &str, private: &str, scenario: &str, when: i64
         &u("/downloads/reference-0.2.0.zip"),
         &new,
     )?;
-    if let Value::Dict(d) = &mut mismatch {
-        d.insert(
+    if let Value::Obj(d) = &mut mismatch {
+        d.dict_insert(
             "download",
             json::dict(vec![
                 ("url", json::s(u("/downloads/reference-0.2.0.zip"))),
                 ("sha256", json::s(sha256::hexdigest(&old))),
-                ("size", Value::Int(new.len() as i128)),
+                ("size", json::int(new.len() as i128)),
             ]),
         );
     }
@@ -265,9 +265,9 @@ pub fn build(folder: &Path, base: &str, private: &str, scenario: &str, when: i64
         .map(|(_, v)| v)
         .ok_or_else(|| Crash::key_error(scenario))?;
     let listed = json::dict(vec![
-        ("version", Value::Int(1)),
+        ("version", json::int(1)),
         ("generated", json::s(timefmt::format(when))),
-        ("tools", Value::List(vec![chosen])),
+        ("tools", Value::Arr(vec![chosen])),
     ]);
     let data = (json::dumps(&listed, Some(2), true) + "\n").into_bytes();
     let key = if scenario == "not-ours" {

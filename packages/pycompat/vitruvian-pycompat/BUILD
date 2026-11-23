@@ -41,9 +41,11 @@ sh_test(
     srcs = ["rustc_build_test.sh"],
     data = glob(["src/**/*.rs"]) + [
         "rustc-build.sh",
+        "//catalog:srcs",
         "//packages/jq:srcs",
         "//tools/agent-app:rust_sources",
         "//tools/gitops/appset-render:srcs",
+        "//tools/osv-scan:rust_sources",
         "//tools/pipeline-status:rust_sources",
         "//tools/release-scope:rust_sources",
         "//tools/sync-downloads:rust_sources",
