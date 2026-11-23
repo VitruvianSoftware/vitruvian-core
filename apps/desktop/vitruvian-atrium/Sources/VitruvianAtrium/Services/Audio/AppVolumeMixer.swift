@@ -17,6 +17,7 @@ package struct MixerOutputDevice: Identifiable, Equatable {
     package let name: String
     package let isDefault: Bool
     package let isHeadphones: Bool
+    package let isAirPlay: Bool
     package let canBeDefaultOutput: Bool
     package let canBeDefaultSystemOutput: Bool
     package let priorityTier: MixerRoutingSupport.PriorityTier
@@ -24,13 +25,14 @@ package struct MixerOutputDevice: Identifiable, Equatable {
 
     // Spelled out because a memberwise initializer never leaves its module.
     package init(id: String, uid: String, name: String, isDefault: Bool, isHeadphones: Bool,
-                 canBeDefaultOutput: Bool, canBeDefaultSystemOutput: Bool,
+                 isAirPlay: Bool = false, canBeDefaultOutput: Bool, canBeDefaultSystemOutput: Bool,
                  priorityTier: MixerRoutingSupport.PriorityTier, audioObjectID: AudioObjectID) {
         self.id = id
         self.uid = uid
         self.name = name
         self.isDefault = isDefault
         self.isHeadphones = isHeadphones
+        self.isAirPlay = isAirPlay
         self.canBeDefaultOutput = canBeDefaultOutput
         self.canBeDefaultSystemOutput = canBeDefaultSystemOutput
         self.priorityTier = priorityTier
@@ -2128,6 +2130,7 @@ package final class AppVolumeMixer: ObservableObject {
                                                 uid: uid,
                                                 dataSourceName: dataSourceName,
                                                 terminalTypes: terminalTypes),
+                                             isAirPlay: transportType == kAudioDeviceTransportTypeAirPlay,
                                              canBeDefaultOutput: canBeDefaultOutput,
                                              canBeDefaultSystemOutput: canBeDefaultSystemOutput,
                                              priorityTier: MixerRoutingSupport.PriorityTier(
@@ -2151,6 +2154,7 @@ package final class AppVolumeMixer: ObservableObject {
                                              name: airPlayName,
                                              isDefault: false,
                                              isHeadphones: false,
+                                             isAirPlay: true,
                                              canBeDefaultOutput: false,
                                              canBeDefaultSystemOutput: false,
                                              priorityTier: .hardware,
