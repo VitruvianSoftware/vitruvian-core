@@ -620,9 +620,9 @@ e2e61044b5a9d0dbace11662f2ad037f184a2198	719bca26a8a24970e25973657bb128628e4ec55
 7ef0b3c7c875d263ac69c966a515ef58e141a060	c6c9cee6a95deb5780ab9ff527d2b4abdf964e56	2026-11-19	ported	#5431	fix(display): unmute speakers latched at zero and play the volume click (#4011)
 ced9bf540280e17ea61e43df340a3614a3e23202	72658d0a5312c4a63df8df67f37ec2b94e3066d1	2026-11-19	ported	#5431	fix(media): accept dropped files in notch workspace (#4083)
 8c783a35b0aa49bbd67ae9b3063ba95b8a491b0e	5e5a65627c1291b7092bff0b96b1a23e1641240a	2026-11-18	ported	#5431	feat(settings): save settings to the XDG file from the Backup section (#4127)
-bf4836db0ce9ae9f54ef72db8b22fdf0fa67b1cf	7b6f1bf780e39ec0a1072351fc222a36f9eac925	2026-11-18	pending	-	fix(display): address DDC through the built-in HDMI port's converter (#4086)
-ef97c3c931ee41fe283a2b0cd7994231ef129281	cc1182a08971cb2cab3ccc3942b7464ffae17be0	2026-11-19	pending	-	fix(disk-image-installer): skip images mounted by scripts (#3623)
-dd14fcb22280c9c3161def993e3a23982b521d34	7a5e4308c90a6d0c9013e35a875daa73cf8324d7	2026-11-19	pending	-	fix(notch): keep the island off status items on macOS 27 (#4037)
+bf4836db0ce9ae9f54ef72db8b22fdf0fa67b1cf	7b6f1bf780e39ec0a1072351fc222a36f9eac925	2026-11-18	ported	#5435	fix(display): address DDC through the built-in HDMI port's converter (#4086)
+ef97c3c931ee41fe283a2b0cd7994231ef129281	cc1182a08971cb2cab3ccc3942b7464ffae17be0	2026-11-19	ported	#5435	fix(disk-image-installer): skip images mounted by scripts (#3623)
+dd14fcb22280c9c3161def993e3a23982b521d34	7a5e4308c90a6d0c9013e35a875daa73cf8324d7	2026-11-19	ported	#5435	fix(notch): keep the island off status items on macOS 27 (#4037)
 d874193836e1c9543abf2e9f10167bfea9f9159c	94b5f9f0479238695f3056f72c079c3b0b7d076b	2026-11-19	pending	-	perf(switcher): monitor windows list in the background for fast switching (#4089)
 36767574b7b02d3d949579928660fe83c9f172ac	c7a1943272f3756296051a70e4eba04dc6b40588	2026-11-19	pending	-	perf(clipboard): search long history entries without folding them whole (#4076)
 faada18df1b90572cddc6182ce7fc04e0eb1435c	a007a5e5f3a49cd400a8d0ba2e2df1c233c79843	2026-11-18	skipped	touches only upstream-only paths	docs: record display, search and installer fixes
