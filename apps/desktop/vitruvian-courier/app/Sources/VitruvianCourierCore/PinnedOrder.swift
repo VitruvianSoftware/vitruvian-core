@@ -51,3 +51,78 @@ public enum PinnedOrder {
         frames.first { $0.value.contains(point) }?.key
     }
 }
+
+/// What a drag in the pinned strip is doing: the tile it started from, the tile shown faded, and the order the tiles
+/// are drawn in while it lasts. Kept apart from the view so every step (start, move, leave, drop, cancel) is tested.
+public struct PinnedDragState: Equatable {
+    /// The tile the last drag started from. Kept when the drag leaves the strip (it may come back) and replaced by
+    /// the next drag; a stale one is harmless, since a drop needs a drag carrying the pinned-chat type.
+    public private(set) var sourceID: String?
+    /// The tile drawn faded: the dragged one, while it is over the strip.
+    public private(set) var fadedID: String?
+    /// The order the tiles are drawn in while dragging (or until a dropped order arrives); nil: the rows' own.
+    public private(set) var draft: [String]?
+
+    public init() {}
+
+    public var canDrop: Bool { sourceID != nil }
+
+    public mutating func begin(_ id: String, order: [String]) {
+        sourceID = id
+        fadedID = id
+        draft = order
+    }
+
+    /// Over the strip, with `target` the tile under the pointer (nil in a gap): the dragged tile takes its place.
+    /// Returns whether the drawn order changed.
+    @discardableResult
+    public mutating func move(over target: String?, order: [String]) -> Bool {
+        guard let sourceID else { return false }
+        fadedID = sourceID
+        guard let target else { return false }
+        let base = draft ?? order
+        let next = PinnedOrder.moving(sourceID, onto: target, in: base)
+        guard next != base else { return false }
+        draft = next
+        return true
+    }
+
+    /// Out of the strip, or the drag was cancelled there: the tiles go back and the faded one comes back.
+    public mutating func exit() {
+        fadedID = nil
+        draft = nil
+    }
+
+    /// Dropped on the strip: the order to save, or nil when there is nothing to save. The drawn order stays until the
+    /// saved one arrives (`rowsChanged` or `committed`), so the tiles don't jump back meanwhile.
+    public mutating func drop(order: [String]) -> [String]? {
+        defer {
+            sourceID = nil
+            fadedID = nil
+        }
+        guard sourceID != nil, let draft, draft != order else {
+            self.draft = nil
+            return nil
+        }
+        return draft
+    }
+
+    /// The save finished: the rows' own order takes over, unless another drag has started since.
+    public mutating func committed() {
+        if sourceID == nil { draft = nil }
+    }
+
+    /// The rows changed from outside: their order takes over, and a drag from a tile that is gone ends.
+    public mutating func rowsChanged(_ ids: [String]) {
+        draft = nil
+        if let sourceID, !ids.contains(sourceID) {
+            self.sourceID = nil
+            fadedID = nil
+        }
+    }
+
+    /// Dragging stopped being allowed (selecting, locked) or the strip went away.
+    public mutating func cancel() {
+        self = PinnedDragState()
+    }
+}

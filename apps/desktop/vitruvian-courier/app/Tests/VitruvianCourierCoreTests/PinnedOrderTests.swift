@@ -50,4 +50,74 @@ final class PinnedOrderTests: XCTestCase {
         XCTAssertNil(PinnedOrder.tile(at: CGPoint(x: 50, y: 90), in: frames), "below the tiles")
         XCTAssertNil(PinnedOrder.tile(at: .zero, in: [:]))
     }
+
+    // MARK: The drag's steps
+
+    func testADragThatMovesAndDropsSavesTheNewOrder() {
+        var drag = PinnedDragState()
+        let order = ["a", "b", "c", "d"]
+        drag.begin("a", order: order)
+        XCTAssertEqual(drag.fadedID, "a")
+        XCTAssertTrue(drag.move(over: "c", order: order))
+        XCTAssertEqual(drag.draft, ["b", "c", "a", "d"])
+        XCTAssertFalse(drag.move(over: "a", order: order), "over itself nothing moves")
+        XCTAssertFalse(drag.move(over: nil, order: order), "a gap moves nothing")
+        XCTAssertEqual(drag.drop(order: order), ["b", "c", "a", "d"])
+        XCTAssertNil(drag.fadedID)
+        XCTAssertFalse(drag.canDrop)
+        XCTAssertEqual(drag.draft, ["b", "c", "a", "d"], "the dropped order stays drawn until the saved one arrives")
+        drag.committed()
+        XCTAssertNil(drag.draft)
+    }
+
+    func testLeavingTheStripPutsTheTilesBackAndComingBackResumes() {
+        var drag = PinnedDragState()
+        let order = ["a", "b", "c"]
+        drag.begin("a", order: order)
+        drag.move(over: "c", order: order)
+        drag.exit()
+        XCTAssertNil(drag.draft, "out of the strip (or cancelled there) the tiles go back")
+        XCTAssertNil(drag.fadedID)
+        XCTAssertTrue(drag.canDrop, "the same drag may come back")
+        XCTAssertTrue(drag.move(over: "b", order: order))
+        XCTAssertEqual(drag.draft, ["b", "a", "c"])
+        XCTAssertEqual(drag.fadedID, "a")
+    }
+
+    func testDroppingWithoutMovingSavesNothing() {
+        var drag = PinnedDragState()
+        drag.begin("a", order: ["a", "b"])
+        XCTAssertNil(drag.drop(order: ["a", "b"]))
+        XCTAssertNil(drag.draft)
+        var none = PinnedDragState()
+        XCTAssertNil(none.drop(order: ["a", "b"]), "a drop with no drag of ours saves nothing")
+    }
+
+    func testRowsChangingOrADisallowedDragEndsIt() {
+        var drag = PinnedDragState()
+        drag.begin("a", order: ["a", "b", "c"])
+        drag.move(over: "b", order: ["a", "b", "c"])
+        drag.rowsChanged(["a", "b", "c", "d"])
+        XCTAssertNil(drag.draft, "the rows' own order takes over")
+        XCTAssertTrue(drag.canDrop, "the dragged tile is still there")
+        drag.rowsChanged(["b", "c"])
+        XCTAssertFalse(drag.canDrop, "its tile was unpinned: the drag ends")
+        XCTAssertNil(drag.fadedID)
+
+        var locked = PinnedDragState()
+        locked.begin("a", order: ["a", "b"])
+        locked.cancel()
+        XCTAssertEqual(locked, PinnedDragState())
+    }
+
+    func testASaveFinishingDuringTheNextDragLeavesThatDragAlone() {
+        var drag = PinnedDragState()
+        drag.begin("a", order: ["a", "b", "c"])
+        drag.move(over: "c", order: ["a", "b", "c"])
+        _ = drag.drop(order: ["a", "b", "c"])
+        drag.begin("b", order: ["b", "c", "a"])
+        drag.move(over: "a", order: ["b", "c", "a"])
+        drag.committed()
+        XCTAssertEqual(drag.draft, ["c", "a", "b"], "the earlier save doesn't wipe the drag under way")
+    }
 }

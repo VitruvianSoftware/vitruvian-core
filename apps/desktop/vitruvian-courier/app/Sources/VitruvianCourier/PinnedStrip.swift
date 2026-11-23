@@ -20,17 +20,12 @@ struct PinnedStrip: View {
     let rows: [InboxRow]
     let doubleClick: (InboxRow) -> Void
 
-    @State private var draftOrder: [String]?
-    /// The tile shown faded while it is dragged over the strip.
-    @State private var draggingID: String?
-    /// The tile the last drag started from. Kept when the drag leaves the strip (it may come back) and replaced by
-    /// the next drag; a stale one is harmless, since a drop needs a drag carrying the pinned-chat type.
-    @State private var dragSourceID: String?
+    @State private var drag = PinnedDragState()
     @State private var tileFrames: [String: CGRect] = [:]
     private static let space = "pinnedStrip"
 
     private var canDrag: Bool { !inbox.isSelecting && !inbox.isLocked && rows.count > 1 }
-    private var displayedRows: [InboxRow] { PinnedOrder.ordered(rows, by: draftOrder) }
+    private var displayedRows: [InboxRow] { PinnedOrder.ordered(rows, by: drag.draft) }
     private var rowIDs: [String] { rows.map(\.id) }
 
     var body: some View {
@@ -42,7 +37,7 @@ struct PinnedStrip: View {
                            isSelected: inbox.isSelecting && inbox.selection.contains(row.id),
                            showsBadge: inbox.preferences.showNetworkIcons,
                            tinted: inbox.preferences.colorNetworkIcons)
-                    .opacity(draggingID == row.id ? 0.45 : 1)
+                    .opacity(drag.fadedID == row.id ? 0.45 : 1)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         let flags = NSEvent.modifierFlags
@@ -74,28 +69,16 @@ struct PinnedStrip: View {
         .coordinateSpace(name: Self.space)
         .onPreferenceChange(PinnedTileFramesKey.self) { tileFrames = $0 }
         .onDrop(of: [Self.dragType], delegate: dropDelegate)
-        .onChange(of: rowIDs) { _, newIDs in
-            draftOrder = nil
-            if let dragSourceID, !newIDs.contains(dragSourceID) {
-                self.dragSourceID = nil
-                draggingID = nil
-            }
-        }
+        .onChange(of: rowIDs) { _, newIDs in drag.rowsChanged(newIDs) }
         .onChange(of: canDrag) { _, allowed in
-            if !allowed {
-                cancelDrag(animated: false)
-            }
+            if !allowed { drag.cancel() }
         }
-        .onDisappear {
-            cancelDrag(animated: false)
-        }
+        .onDisappear { drag.cancel() }
     }
 
     @MainActor
     private func beginDrag(rowID: String) -> NSItemProvider {
-        dragSourceID = rowID
-        draggingID = rowID
-        draftOrder = rowIDs
+        drag.begin(rowID, order: rowIDs)
         let provider = NSItemProvider()
         // A private type conforming only to public.data, so no other app takes the tile (as text or otherwise). Visible
         // to all: a drag goes through the system's drag pasteboard, and an own-process item never reaches it, so no
@@ -107,60 +90,29 @@ struct PinnedStrip: View {
         return provider
     }
 
-    @MainActor
-    private func cancelDrag(animated: Bool) {
-        draggingID = nil
-        dragSourceID = nil
-        if animated {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                draftOrder = nil
-            }
-        } else {
-            draftOrder = nil
-        }
-    }
-
     private var dropDelegate: PinnedStripDropDelegate {
         PinnedStripDropDelegate(
-            isValid: { canDrag && dragSourceID != nil },
+            isValid: { canDrag && drag.canDrop },
             onMove: { location in
-                guard let dragSourceID else { return }
-                draggingID = dragSourceID
-                guard let target = PinnedOrder.tile(at: location, in: tileFrames) else { return }
-                let base = draftOrder ?? rowIDs
-                let next = PinnedOrder.moving(dragSourceID, onto: target, in: base)
-                if next != base {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        draftOrder = next
-                    }
+                var next = drag
+                if next.move(over: PinnedOrder.tile(at: location, in: tileFrames), order: rowIDs) {
+                    withAnimation(.easeInOut(duration: 0.15)) { drag = next }
+                } else if next != drag {
+                    drag = next
                 }
             },
             onExit: {
-                // Out of the strip (or the drag was cancelled): the tiles go back, and the faded one comes back.
-                draggingID = nil
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    draftOrder = nil
-                }
+                withAnimation(.easeInOut(duration: 0.15)) { drag.exit() }
             },
             onPerformDrop: {
-                guard canDrag, dragSourceID != nil else {
-                    draggingID = nil
-                    dragSourceID = nil
-                    draftOrder = nil
+                guard canDrag else {
+                    drag.cancel()
                     return false
                 }
-                let committed = draftOrder
-                draggingID = nil
-                dragSourceID = nil
-                guard let committed, committed != rowIDs else {
-                    draftOrder = nil
-                    return true
-                }
+                guard let order = drag.drop(order: rowIDs) else { return true }
                 Task { @MainActor in
-                    await inbox.reorderPinned(committed)
-                    if dragSourceID == nil {
-                        draftOrder = nil
-                    }
+                    await inbox.reorderPinned(order)
+                    drag.committed()
                 }
                 return true
             }
