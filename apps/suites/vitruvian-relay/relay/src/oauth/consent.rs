@@ -78,14 +78,12 @@ pub(crate) const WARNING: &str = "Only allow this if you just started connecting
 /// token the app gets works on every computer the person has.
 const HEADING: &str = "Allow Gemini to use your computers on Vitruvian Relay?";
 
-/// Nothing loads but the relay's own stylesheet. `form-action` names the
-/// app's callback host as well as the relay: browsers apply it to the
-/// redirect that follows a form post, so without it Allow and Deny would
-/// be blocked on their way back to the app. Only the production callback
-/// host is ever redirected to.
+/// Nothing loads but the relay's own stylesheet, and forms post only to the
+/// relay. Browsers apply `form-action` to every redirect after a form post,
+/// including the ones Google's callback makes next, so Allow and Deny answer
+/// with a page that moves on by itself ([`hand_back`]) instead of a redirect.
 pub(crate) const CSP: &str = "default-src 'none'; style-src 'self'; \
-    form-action 'self' https://oauth-redirect.googleusercontent.com; \
-    base-uri 'none'; frame-ancestors 'none'";
+    form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 const HOME: (&str, &str) = ("/", "Vitruvian Relay");
 
@@ -134,6 +132,25 @@ fn say(status: StatusCode, title: &str, text: &str, link: (&str, &str)) -> Respo
         now: UNIX_EPOCH,
     };
     html(status, message_page(ctx, title, text, link))
+}
+
+/// The answer to Allow or Deny: a page that loads the app's callback, with a
+/// link in case the browser does not follow it. A new page load is outside
+/// `form-action`, so the callback may redirect wherever it needs to.
+fn hand_back(to_app: &str) -> Response<Body> {
+    let to = esc(to_app);
+    html(
+        StatusCode::OK,
+        page_shell(
+            "Going back to Gemini",
+            &format!(
+                "<meta http-equiv=\"refresh\" content=\"0;url={to}\">\
+                 <section class=\"message\"><h1>Going back to Gemini</h1>\
+                 <p class=\"lead\">If nothing happens, use the button.</p>\
+                 <p><a class=\"button\" href=\"{to}\">Continue to Gemini</a></p></section>"
+            ),
+        ),
+    )
 }
 
 /// 303 to `location`, which the caller has built from encoded parts.
@@ -770,7 +787,7 @@ pub(super) async fn consent_decide(app: &Arc<App>, req: Request<Incoming>) -> Re
             form_encode(&r.state)
         )
     };
-    with_cookie(redirect(&to_app), &clear_binding_cookie(secure(app)))
+    with_cookie(hand_back(&to_app), &clear_binding_cookie(secure(app)))
 }
 
 #[cfg(test)]

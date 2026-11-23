@@ -590,6 +590,21 @@ async fn decide(
     h.send("POST", "/oauth/consent", &headers, &body).await
 }
 
+/// Where the answer to Allow or Deny sends the browser. It must be a page
+/// load: Chrome holds a form's redirects to `form-action`, and Google's
+/// callback redirects again, so a 303 here leaves the person on the page.
+fn to_app(r: &Reply) -> String {
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.header("location").is_none(), "a form redirect");
+    let after = |mark: &str| {
+        let rest = r.body.split(mark).nth(1).expect(mark);
+        rest.split('"').next().unwrap().replace("&amp;", "&")
+    };
+    let to = after("content=\"0;url=");
+    assert_eq!(to, after("class=\"button\" href=\""));
+    to
+}
+
 fn codes_held(h: &Harness) -> usize {
     h.app.pending.counts().2
 }
@@ -1176,8 +1191,8 @@ async fn a_cookie_planted_before_sign_in_cannot_reach_consent() {
 
     // The new one can still decide it.
     let ok = decide(&h, Some(&fresh), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
-    assert!(param(&ok.header("location").unwrap(), "code").is_some());
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    assert!(param(&to_app(&ok), "code").is_some());
     assert_eq!(codes_held(&h), 1);
 }
 
@@ -1223,15 +1238,15 @@ async fn consent_page_sets_no_store_and_frame_deny() {
 /// The consent page's policy, spelled out: nothing loads but the relay's
 /// own stylesheet, and a form may go to the relay and to Google's callback
 /// host (browsers apply it to the redirect after the post).
-const CSP: &str = "default-src 'none'; style-src 'self'; form-action 'self' https://oauth-redirect.googleusercontent.com; base-uri 'none'; frame-ancestors 'none'";
+const CSP: &str = "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 #[tokio::test]
 async fn deny_sends_access_denied_and_no_code() {
     let h = app_harness().await;
     let (st, csrf, _device) = at_consent(&h, ALICE, "Mac").await;
     let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "deny").await;
-    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
-    let to = r.header("location").unwrap();
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let to = to_app(&r);
     assert_eq!(
         to,
         format!(
@@ -1265,8 +1280,8 @@ async fn allow_redirects_with_code_and_original_state() {
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
     let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
-    let to = r.header("location").unwrap();
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let to = to_app(&r);
     assert!(
         to.starts_with(&format!("{}?code=", production_callback(ID))),
         "{to}"
@@ -1334,7 +1349,7 @@ async fn allow_without_csrf_does_nothing() {
     // Nothing was used up: the page's own Allow still works.
     assert_eq!(consents_held(&h), 1);
     let ok = decide(&h, Some(&st.cookie), origin, Some(&csrf), "allow").await;
-    assert_eq!(ok.status, StatusCode::SEE_OTHER);
+    assert_eq!(ok.status, StatusCode::OK);
     assert_eq!(codes_held(&h), 1);
 }
 
@@ -1366,7 +1381,7 @@ async fn allow_replayed_does_nothing() {
     let h = app_harness().await;
     let (st, csrf, _device) = at_consent(&h, ALICE, "Mac").await;
     let first = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    assert_eq!(first.status, StatusCode::SEE_OTHER, "{}", first.body);
+    assert_eq!(first.status, StatusCode::OK, "{}", first.body);
     assert_eq!(codes_held(&h), 1);
     let again = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
     assert_eq!(again.status, StatusCode::FORBIDDEN, "{}", again.body);
@@ -1394,7 +1409,7 @@ async fn racing_allows_issue_one_code() {
     }
     let mut won = 0;
     for t in tasks {
-        if t.await.unwrap() == StatusCode::SEE_OTHER {
+        if t.await.unwrap() == StatusCode::OK {
             won += 1;
         }
     }
@@ -1470,7 +1485,7 @@ async fn the_sign_in_leaves_no_secret_in_the_logs() {
     assert_eq!(r.status, StatusCode::SEE_OTHER);
     let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
     let done = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    let code = param(&done.header("location").unwrap(), "code").unwrap();
+    let code = param(&to_app(&done), "code").unwrap();
     // A refused attempt too.
     let _ = come_back(&h, &mut st, &token).await;
     let logs = h.logs();
@@ -1634,7 +1649,7 @@ async fn two_binding_cookies_are_refused_everywhere() {
     assert_eq!(consents_held(&h), 1, "a planted cookie uses nothing up");
     // The browser with one cookie still can.
     let ok = decide(&h, Some(&fresh), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    assert_eq!(ok.status, StatusCode::SEE_OTHER);
+    assert_eq!(ok.status, StatusCode::OK);
 }
 
 #[tokio::test]
@@ -1668,7 +1683,7 @@ async fn allow_rechecks_the_computer_and_issues_nothing_when_it_is_gone() {
     // Still owned: Allow works as before.
     let (st, csrf, _device) = at_consent(&h, ALICE, "Mac").await;
     let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert_eq!(r.status, StatusCode::OK);
     assert_eq!(codes_held(&h), 1);
 }
 
@@ -1778,8 +1793,8 @@ async fn issue_code(h: &Harness, sub: &str) -> Issued {
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     let csrf = csrf_in(&consent_get(h, &st.cookie).await.body);
     let r = decide(h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
-    let code = param(&r.header("location").unwrap(), "code").unwrap();
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let code = param(&to_app(&r), "code").unwrap();
     Issued {
         code,
         device,
@@ -2175,7 +2190,7 @@ async fn no_refresh_token_from_zitadel_means_none_for_the_app() {
     let bound = cookie_pair(&set_cookie(&r, "vr_oauth").expect("the callback binds the browser"));
     let csrf = csrf_in(&consent_get(&h, &bound).await.body);
     let r = decide(&h, Some(&bound), Some(PUBLIC_URL), Some(&csrf), "allow").await;
-    let code = param(&r.header("location").unwrap(), "code").unwrap();
+    let code = param(&to_app(&r), "code").unwrap();
     let r = post_token(&h, &redeem(&h, &code)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert!(r.json().get("refresh_token").is_none(), "{}", r.body);
