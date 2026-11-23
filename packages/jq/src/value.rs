@@ -28,6 +28,10 @@ use crate::order::{compare, jq_eq};
 
 const MAX_EXP: i64 = 999_999_999;
 
+/// decNumber subnormal exponent floor in jq 1.8 (`emin = -999_999_999`,
+/// `digits = 147_483_648`, so `etiny = emin - (digits - 1) = -1_147_483_646`).
+const ETINY: i64 = -1_147_483_646;
+
 /// A jq 1.8 number: either an arbitrary-precision decimal (`decNumber` literal),
 /// `+Infinity`, `-Infinity`, or `NaN`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,25 +122,30 @@ impl Number {
             format!("{int_part}{frac_part}")
         };
         let trimmed = combined.trim_start_matches('0');
-        let digits = if trimmed.is_empty() {
+        let mut digits = if trimmed.is_empty() {
             "0".to_string()
         } else {
             trimmed.to_string()
         };
 
         let mut exp = raw_exp.saturating_sub(frac_part.len() as i128);
-        let adj = exp.saturating_add(digits.len() as i128 - 1);
-        if digits != "0" && adj > MAX_EXP as i128 {
-            return Some(if neg { Number::NegInf } else { Number::PosInf });
+        if digits == "0" {
+            exp = exp.clamp(ETINY as i128, MAX_EXP as i128);
+        } else {
+            let adj = exp.saturating_add(digits.len() as i128 - 1);
+            if adj > MAX_EXP as i128 {
+                return Some(if neg { Number::NegInf } else { Number::PosInf });
+            }
+            if exp < ETINY as i128 {
+                let shift = (ETINY as i128).saturating_sub(exp);
+                digits = round_half_up_right(&digits, shift);
+                exp = ETINY as i128;
+            }
         }
-        if digits == "0" && exp > MAX_EXP as i128 {
-            exp = MAX_EXP as i128;
-        }
-        let exp_i64 = exp.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         Some(Number::Finite {
             neg,
             digits,
-            exp: exp_i64,
+            exp: exp as i64,
         })
     }
 
@@ -406,6 +415,34 @@ impl Number {
         }
         self.cmp_jq(other) == Ordering::Equal
     }
+}
+
+fn round_half_up_right(digits: &str, shift: i128) -> String {
+    let len = digits.len();
+    if shift > len as i128 {
+        return "0".to_string();
+    }
+    let bytes = digits.as_bytes();
+    if shift == len as i128 {
+        return if bytes[0] >= b'5' { "1" } else { "0" }.to_string();
+    }
+    let keep = len - shift as usize;
+    let mut out = bytes[..keep].to_vec();
+    if bytes[keep] >= b'5' {
+        let mut carry = true;
+        for b in out.iter_mut().rev() {
+            if *b < b'9' {
+                *b += 1;
+                carry = false;
+                break;
+            }
+            *b = b'0';
+        }
+        if carry {
+            out.insert(0, b'1');
+        }
+    }
+    String::from_utf8(out).expect("decimal ASCII digits")
 }
 
 fn compare_positive_finite(da: &str, ea: i64, db: &str, eb: i64) -> Ordering {
@@ -746,6 +783,58 @@ mod tests {
         for bad in ["", "-", "+", ".", "-.", "1e", "1e+", "nan123", "1a"] {
             assert!(Number::parse(bad).is_none(), "{bad}");
         }
+    }
+
+    #[test]
+    fn exponent_floor_etiny_and_ceiling_emax_match_jq_182() {
+        let cases = [
+            // Ceiling (emax = 999_999_999)
+            ("1e999999999", "1E+999999999"),
+            ("1e1000000000", "1.7976931348623157e+308"),
+            ("10e999999998", "1.0E+999999999"),
+            ("10e999999999", "1.7976931348623157e+308"),
+            ("0.1e1000000000", "1E+999999999"),
+            ("0.1e1000000001", "1.7976931348623157e+308"),
+            ("0.0e999999999", "0E+999999998"),
+            ("0.0e1000000000", "0E+999999999"),
+            ("0.0e1000000001", "0E+999999999"),
+            ("-0e1000000000", "-0E+999999999"),
+            // Floor (etiny = -1_147_483_646, DEC_ROUND_HALF_UP)
+            ("1e-1147483646", "1E-1147483646"),
+            ("1e-1147483647", "0E-1147483646"),
+            ("-1e-1147483646", "-1E-1147483646"),
+            ("-1e-1147483647", "-0E-1147483646"),
+            ("0e-1147483646", "0E-1147483646"),
+            ("0e-1147483647", "0E-1147483646"),
+            ("-0e-1147483647", "-0E-1147483646"),
+            ("0.00e-1147483645", "0E-1147483646"),
+            ("4e-1147483647", "0E-1147483646"),
+            ("5e-1147483647", "1E-1147483646"),
+            ("-5e-1147483647", "-1E-1147483646"),
+            ("5e-1147483648", "0E-1147483646"),
+            ("12e-1147483647", "1E-1147483646"),
+            ("15e-1147483647", "2E-1147483646"),
+            ("25e-1147483647", "3E-1147483646"),
+            ("9.5e-1147483646", "1.0E-1147483645"),
+            ("99.5e-1147483646", "1.00E-1147483644"),
+            ("1.23456e-1147483641", "1.23456E-1147483641"),
+            ("1.23456e-1147483642", "1.2346E-1147483642"),
+            ("1.23456e-1147483646", "1E-1147483646"),
+            ("1.23456e-1147483647", "0E-1147483646"),
+            ("0.00000000001e-1147483635", "1E-1147483646"),
+            ("0.00000000001e-1147483636", "0E-1147483646"),
+            ("1e-99999999999999999999", "0E-1147483646"),
+        ];
+        for (raw, want) in cases {
+            let n = Number::parse(raw).unwrap_or_else(|| panic!("failed to parse {raw}"));
+            assert_eq!(n.fmt_jq(), want, "{raw}");
+        }
+        assert!(Number::parse("1e-1147483647")
+            .unwrap()
+            .jq_eq(&Number::from_i64(0)));
+        assert!(!Number::parse("1e-1147483646")
+            .unwrap()
+            .jq_eq(&Number::from_i64(0)));
     }
 
     #[test]

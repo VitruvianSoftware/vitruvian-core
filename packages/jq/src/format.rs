@@ -309,7 +309,10 @@ mod tests {
 
     #[test]
     fn truncates_matching_jq_30_byte_buffer() {
-        assert_eq!(dump_trunc(&Value::str("a".repeat(27))).len(), 29);
+        assert_eq!(
+            dump_trunc(&Value::str("a".repeat(27))),
+            format!("\"{}\"", "a".repeat(27))
+        );
         assert_eq!(
             dump_trunc(&Value::str("a".repeat(28))),
             format!("\"{}...", "a".repeat(24)) + "\""

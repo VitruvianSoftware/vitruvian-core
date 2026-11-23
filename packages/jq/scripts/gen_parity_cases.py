@@ -616,6 +616,123 @@ def build_cases() -> list[tuple[str, str, str, str, bytes]]:
     for name, inp in parse_bad:
         add(f"parse_{name}", "id", "compact", ["-c", "."], inp)
 
+    # -----------------------------------------------------------------------
+    # 8. Round 2 regression parity cases (colon/key errors, mismatched
+    #    brackets, and decNumber etiny/emax exponent boundaries)
+    # -----------------------------------------------------------------------
+    round2_parse_bad = [
+        # Colon & key error branches
+        ("top_colon_after_num", b"1:2"),
+        ("top_colon_after_num_sp", b"1 : 2"),
+        ("top_colon_after_true", b"true:1"),
+        ("top_colon_after_false", b"false:1"),
+        ("top_colon_after_null", b"null:1"),
+        ("top_colon_after_str", b'"a":1'),
+        ("top_colon_after_obj", b'{"a":1}:2'),
+        ("top_colon_after_two_nums", b"1 2:3"),
+        ("arr_empty_colon", b"[:]"),
+        ("arr_colon_after_comma", b"[1,:2]"),
+        ("arr_str_colon", b'["a":1]'),
+        ("arr_bool_colon", b"[true:1]"),
+        ("arr_null_colon", b"[null:1]"),
+        ("arr_arr_colon", b"[[]:1]"),
+        ("arr_obj_colon", b"[{}:1]"),
+        ("obj_leading_colon", b"{:1}"),
+        ("obj_empty_colon", b"{:}"),
+        ("obj_colon_after_comma", b'{"a":1,:2}'),
+        ("obj_adjacent_double_colon", b'{"a"::1}'),
+        ("obj_second_key_double_colon", b'{"a":1,"b"::2}'),
+        ("obj_val_str_colon", b'{"a":"b":1}'),
+        ("obj_val_bool_colon", b'{"a":true:1}'),
+        ("obj_second_num_key", b'{"a":1,1:2}'),
+        ("obj_second_bool_key", b'{"a":1,true:2}'),
+        ("obj_false_key", b"{false:1}"),
+        # Mismatched brackets & unexpected closes
+        ("mismatch_arr_rbrace_empty", b"[}"),
+        ("mismatch_obj_rbracket_empty", b"{]"),
+        ("mismatch_arr_val_rbrace", b"[1}"),
+        ("mismatch_arr_comma_rbrace", b"[1,}"),
+        ("mismatch_arr_two_vals_rbrace", b"[1,2}"),
+        ("mismatch_arr_str_rbrace", b'["a"}'),
+        ("mismatch_arr_str_comma_rbrace", b'["a",}'),
+        ("mismatch_arr_nested_arr_rbrace", b"[[1]}"),
+        ("mismatch_arr_nested_obj_rbrace", b"[{}}"),
+        ("mismatch_obj_key_rbracket", b'{"a"]'),
+        ("mismatch_obj_colon_rbracket", b'{"a":]'),
+        ("mismatch_obj_val_rbracket", b'{"a":1]'),
+        ("mismatch_obj_comma_rbracket", b'{"a":1,]'),
+        ("mismatch_obj_num_rbracket", b"{1]"),
+        ("mismatch_obj_num_rbrace", b"{1}"),
+        ("mismatch_obj_key_comma_rbracket", b'{"a",]'),
+        ("mismatch_nested_arr_obj_rbracket", b"[{]"),
+        ("mismatch_nested_arr_obj_val_rbracket", b'[{"a":1]'),
+        ("mismatch_nested_arr_obj_comma_rbracket", b'[{"a":1,]'),
+        ("mismatch_nested_obj_arr_rbrace", b'{"a":[}'),
+        ("mismatch_nested_obj_arr_val_rbrace", b'{"a":[1}'),
+        ("mismatch_nested_obj_arr_comma_rbrace", b'{"a":[1,}'),
+        ("mismatch_nested_arr_multiline_rbrace", b"[\n1\n}"),
+        ("top_num_rbrace", b"1}"),
+        ("top_num_sp_rbrace", b"1 }"),
+        ("top_str_rbrace", b'"a"}'),
+        ("top_arr_rbrace", b"[]}"),
+        ("top_obj_extra_rbrace", b'{"a":1}}'),
+    ]
+    for name, inp in round2_parse_bad:
+        add(f"parse_{name}", "id", "compact", ["-c", "."], inp)
+
+    round2_num_limits = [
+        ("num_emax_multi_ok", b"10e999999998"),
+        ("num_emax_multi_overflow", b"10e999999999"),
+        ("num_emax_frac_ok", b"0.1e1000000000"),
+        ("num_emax_frac_overflow", b"0.1e1000000001"),
+        ("num_emax_zero_frac_below", b"0.0e999999999"),
+        ("num_emax_zero_frac_exact", b"0.0e1000000000"),
+        ("num_emax_zero_frac_clamp", b"0.0e1000000001"),
+        ("num_emax_neg_zero_clamp", b"-0e1000000000"),
+        ("num_emax_huge", b"1e99999999999999999999"),
+        ("num_etiny_exact", b"1e-1147483646"),
+        ("num_etiny_underflow", b"1e-1147483647"),
+        ("num_etiny_neg_exact", b"-1e-1147483646"),
+        ("num_etiny_neg_underflow", b"-1e-1147483647"),
+        ("num_etiny_zero_exact", b"0e-1147483646"),
+        ("num_etiny_zero_clamp", b"0e-1147483647"),
+        ("num_etiny_neg_zero_clamp", b"-0e-1147483647"),
+        ("num_etiny_zero_frac_clamp", b"0.00e-1147483645"),
+        ("num_etiny_round_down_4", b"4e-1147483647"),
+        ("num_etiny_round_half_up_5", b"5e-1147483647"),
+        ("num_etiny_round_neg_5", b"-5e-1147483647"),
+        ("num_etiny_round_5_below", b"5e-1147483648"),
+        ("num_etiny_round_half_up_25", b"25e-1147483647"),
+        ("num_etiny_round_half_up_15", b"15e-1147483647"),
+        ("num_etiny_round_12", b"12e-1147483647"),
+        ("num_etiny_round_carry_95", b"9.5e-1147483646"),
+        ("num_etiny_round_carry_995", b"99.5e-1147483646"),
+        ("num_etiny_multidigit_exact", b"1.23456e-1147483641"),
+        ("num_etiny_multidigit_round1", b"1.23456e-1147483642"),
+        ("num_etiny_multidigit_round5", b"1.23456e-1147483646"),
+        ("num_etiny_multidigit_zero", b"1.23456e-1147483647"),
+        ("num_etiny_frac_offset_ok", b"0.00000000001e-1147483635"),
+        ("num_etiny_frac_offset_underflow", b"0.00000000001e-1147483636"),
+        ("num_etiny_huge_neg", b"1e-99999999999999999999"),
+    ]
+    for cid, inp in round2_num_limits:
+        add(cid, "id", "compact", ["-c", "."], inp)
+
+    add(
+        "num_etiny_sort",
+        "sort",
+        "compact",
+        ["-c", "sort"],
+        b"[1e-1147483647,1e-1147483646,0,-1e-1147483646,-1e-1147483647]",
+    )
+    add(
+        "num_etiny_unique",
+        "unique",
+        "compact",
+        ["-c", "unique"],
+        b"[1e-1147483647,0,-1e-1147483647]",
+    )
+
     assert len(cases) >= 200, f"Expected >= 200 cases, got {len(cases)}"
     return cases
 

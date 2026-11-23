@@ -170,55 +170,63 @@ impl<'a> StreamParser<'a> {
     }
 
     fn handle_close_object(&mut self, end_exclusive: usize) -> Result<(), String> {
-        let Some(Container::Object {
-            mut entries,
-            mut index_by_key,
-            pending_key,
-            after_comma,
-        }) = self.stack.pop()
-        else {
-            return Err(self.err("Unmatched '}'"));
-        };
-        match (pending_key, self.next.take()) {
-            (Some(k), Some(v)) => insert_entry(&mut entries, &mut index_by_key, k, v),
-            (Some(_), None) => return Err(self.err("Unmatched '}'")),
-            (None, Some(_)) => return Err(self.err("Objects must consist of key:value pairs")),
-            (None, None) => {
-                if after_comma {
-                    return Err(self.err("Expected another key-value pair"));
+        let next_val = self.next.take();
+        match self.stack.pop() {
+            None => Err(self.err("Unmatched '}'")),
+            Some(Container::Array { .. }) => {
+                if next_val.is_some() {
+                    Err(self.err("Objects must consist of key:value pairs"))
+                } else {
+                    Err(self.err("Unmatched '}'"))
                 }
             }
+            Some(Container::Object {
+                mut entries,
+                mut index_by_key,
+                pending_key,
+                after_comma,
+            }) => {
+                match (pending_key, next_val) {
+                    (Some(k), Some(v)) => insert_entry(&mut entries, &mut index_by_key, k, v),
+                    (Some(_), None) => return Err(self.err("Unmatched '}'")),
+                    (None, Some(_)) => {
+                        return Err(self.err("Objects must consist of key:value pairs"));
+                    }
+                    (None, None) => {
+                        if after_comma {
+                            return Err(self.err("Expected another key-value pair"));
+                        }
+                    }
+                }
+                let obj = Value::Object(entries);
+                if self.stack.is_empty() {
+                    self.emit_top(obj, end_exclusive);
+                } else {
+                    self.next = Some(obj);
+                }
+                Ok(())
+            }
         }
-        let obj = Value::Object(entries);
-        if self.stack.is_empty() {
-            self.emit_top(obj, end_exclusive);
-        } else {
-            self.next = Some(obj);
-        }
-        Ok(())
     }
 
     fn handle_colon(&mut self) -> Result<(), String> {
         let next_val = self.next.take();
+        let Some(val) = next_val else {
+            return Err(self.err("Expected string key before ':'"));
+        };
         match self.stack.last_mut() {
+            None => Err(self.err("Expected string key before ':'")),
+            Some(Container::Array { .. }) => Err(self.err("':' not as part of an object")),
             Some(Container::Object { pending_key, .. }) => {
                 if pending_key.is_some() {
                     return Err(self.err("':' not as part of an object"));
                 }
-                match next_val {
-                    Some(Value::String(k)) => {
+                match val {
+                    Value::String(k) => {
                         *pending_key = Some(k);
                         Ok(())
                     }
-                    Some(_) => Err(self.err("Object keys must be strings")),
-                    None => Err(self.err("Expected string key before ':'")),
-                }
-            }
-            Some(Container::Array { .. }) | None => {
-                if next_val.is_some() {
-                    Err(self.err("':' not as part of an object"))
-                } else {
-                    Err(self.err("Expected string key before ':'"))
+                    _ => Err(self.err("Object keys must be strings")),
                 }
             }
         }
@@ -627,5 +635,131 @@ mod tests {
             parse_one(b"\"\xf1\x80A\x80\"").unwrap(),
             Value::str("\u{fffd}A\u{fffd}")
         );
+    }
+
+    #[test]
+    fn colon_and_key_errors_match_jq_182() {
+        let err_cases: &[(&[u8], &str)] = &[
+            (b":", "Expected string key before ':' at line 1, column 1"),
+            (b"1:2", "Expected string key before ':' at line 1, column 2"),
+            (
+                b"true:1",
+                "Expected string key before ':' at line 1, column 5",
+            ),
+            (
+                b"false:1",
+                "Expected string key before ':' at line 1, column 6",
+            ),
+            (
+                b"null:1",
+                "Expected string key before ':' at line 1, column 5",
+            ),
+            (b"[:]", "Expected string key before ':' at line 1, column 2"),
+            (b"[1:2]", "':' not as part of an object at line 1, column 3"),
+            (
+                b"[\"a\":1]",
+                "':' not as part of an object at line 1, column 5",
+            ),
+            (
+                b"{:1}",
+                "Expected string key before ':' at line 1, column 2",
+            ),
+            (
+                b"{\"a\"::1}",
+                "Expected string key before ':' at line 1, column 6",
+            ),
+            (
+                b"{\"a\":1,:2}",
+                "Expected string key before ':' at line 1, column 8",
+            ),
+            (
+                b"{\"a\":1,\"b\"::2}",
+                "Expected string key before ':' at line 1, column 12",
+            ),
+            (
+                b"{\"a\":1:2}",
+                "':' not as part of an object at line 1, column 7",
+            ),
+            (
+                b"{\"a\":\"b\":1}",
+                "':' not as part of an object at line 1, column 9",
+            ),
+            (b"{1:2}", "Object keys must be strings at line 1, column 3"),
+            (
+                b"{true:1}",
+                "Object keys must be strings at line 1, column 6",
+            ),
+            (
+                b"{\"a\":1,null:2}",
+                "Object keys must be strings at line 1, column 12",
+            ),
+        ];
+        for &(inp, want_err) in err_cases {
+            assert_eq!(
+                parse_stream(inp),
+                vec![StreamItem::ParseError(want_err.to_string())],
+                "input={:?}",
+                String::from_utf8_lossy(inp)
+            );
+        }
+
+        assert_eq!(
+            parse_stream(b"1 : 2"),
+            vec![
+                StreamItem::Value(Value::int(1), 0),
+                StreamItem::ParseError("Expected string key before ':' at line 1, column 3".into()),
+            ]
+        );
+        assert_eq!(
+            parse_stream(b"\"a\":1"),
+            vec![
+                StreamItem::Value(Value::str("a"), 0),
+                StreamItem::ParseError("Expected string key before ':' at line 1, column 4".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn mismatched_bracket_errors_match_jq_182() {
+        let cases: &[(&[u8], &str)] = &[
+            (b"[}", "Unmatched '}' at line 1, column 2"),
+            (b"{]", "Unmatched ']' at line 1, column 2"),
+            (
+                b"[1}",
+                "Objects must consist of key:value pairs at line 1, column 3",
+            ),
+            (b"[1,}", "Unmatched '}' at line 1, column 4"),
+            (
+                b"[1,2}",
+                "Objects must consist of key:value pairs at line 1, column 5",
+            ),
+            (
+                b"[\"a\"}",
+                "Objects must consist of key:value pairs at line 1, column 5",
+            ),
+            (b"{\"a\"]", "Unmatched ']' at line 1, column 5"),
+            (b"{\"a\":]", "Unmatched ']' at line 1, column 6"),
+            (b"{\"a\":1]", "Unmatched ']' at line 1, column 7"),
+            (b"{\"a\":1,]", "Unmatched ']' at line 1, column 8"),
+            (b"[{]", "Unmatched ']' at line 1, column 3"),
+            (b"{\"a\":[}", "Unmatched '}' at line 1, column 7"),
+            (
+                b"{\"a\":[1}",
+                "Objects must consist of key:value pairs at line 1, column 8",
+            ),
+            (b"1}", "Unmatched '}' at line 1, column 2"),
+            (
+                b"[\n1\n}",
+                "Objects must consist of key:value pairs at line 3, column 1",
+            ),
+        ];
+        for &(inp, want_err) in cases {
+            assert_eq!(
+                parse_stream(inp),
+                vec![StreamItem::ParseError(want_err.to_string())],
+                "input={:?}",
+                String::from_utf8_lossy(inp)
+            );
+        }
     }
 }
