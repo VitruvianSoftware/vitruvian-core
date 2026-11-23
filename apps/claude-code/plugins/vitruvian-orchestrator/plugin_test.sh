@@ -42,9 +42,14 @@ if [ "$status" -ne 0 ]; then
 	exit 1
 fi
 
-# A run that finds no tests must not count as a pass.
+# Trust the summary as well as the exit code: it must show tests ran and none failed.
 passed="$(printf '%s\n' "$output" | sed -nE 's/^ *([0-9]+) pass$/\1/p' | tail -1)"
+failed="$(printf '%s\n' "$output" | sed -nE 's/^ *([0-9]+) fail$/\1/p' | tail -1)"
 if [ -z "$passed" ] || [ "$passed" -eq 0 ]; then
 	echo "FAIL: no plugin tests ran" >&2
+	exit 1
+fi
+if [ "$failed" != "0" ]; then
+	echo "FAIL: expected 0 failed plugin tests, got '${failed:-no summary}'" >&2
 	exit 1
 fi

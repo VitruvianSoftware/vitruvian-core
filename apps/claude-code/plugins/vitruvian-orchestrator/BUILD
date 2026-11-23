@@ -87,14 +87,7 @@ sh_test(
         ".claude-plugin/plugin.json",
         "//apps/claude-code/plugins/vitruvian-orchestrator/types:index.d.ts",
         "@claude_cli//:claude",
-    ] + glob(
-        [
-            "agents/*.md",
-            "hooks/**",
-            "skills/**",
-        ],
-        allow_empty = True,
-    ),
+    ] + glob(["hooks/**"]),
     tags = ["no-remote-exec"],
 )
 
