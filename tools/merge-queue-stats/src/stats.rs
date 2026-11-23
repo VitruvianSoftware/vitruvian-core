@@ -109,7 +109,7 @@ fn nodes(pr: &Value) -> Result<Vec<Value>, Crash> {
 }
 
 fn typename_is(e: &Value, name: &str) -> Result<bool, Crash> {
-    Ok(matches!(pyerr::get_or(e, "__typename", Value::Null)?, Value::Str(s) if s == name))
+    Ok(matches!(&pyerr::get_or(e, "__typename", Value::Null)?, Value::Str(s) if s == name))
 }
 
 /// `queue_times`: (last-entry minutes, first-entry minutes).
@@ -440,13 +440,16 @@ mod tests {
             Some("2026-10-10T00:10:00Z"),
             vec![added("2026-10-10T00:00:00Z")],
         )];
-        let runs = loads(
+        let mut runs = loads(
             r#"[{"name": "CI", "conclusion": "failure"},
                 {"name": "CI", "conclusion": "timed_out"},
                 {"name": "Presubmit", "conclusion": "success"}]"#,
         )
         .unwrap();
-        let Value::Arr(runs) = runs else { panic!() };
+        let Value::Arr(ref mut runs) = runs else {
+            panic!()
+        };
+        let runs = std::mem::take(runs);
         let out = report(
             "o/r",
             since(),

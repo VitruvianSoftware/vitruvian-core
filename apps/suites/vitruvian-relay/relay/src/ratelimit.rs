@@ -27,6 +27,9 @@
 //! person's computer, so it is per person, not per computer or per app: a
 //! second AI app does not get a second allowance.
 //!
+//! At most [`MAX_TRACKED`] keys are held at once, so a flood of made-up keys
+//! (a source address on a public endpoint) cannot grow it without end.
+//!
 //! The relay is one process, so memory is enough. A restart gives everyone a
 //! full bucket, which is harmless.
 
@@ -54,6 +57,12 @@ pub const RATE_LIMITED_OUTCOME: &str = "rate_limited";
 
 /// Most people tracked before the idle ones are dropped.
 const PRUNE_ABOVE: usize = 1024;
+
+/// Most keys tracked at once, however many are sent. The cap applies to every
+/// limiter, including the per-person MCP one. A full map refuses only new
+/// keys, and only until idle buckets refill and are dropped; keys already
+/// tracked keep working.
+const MAX_TRACKED: usize = 10_000;
 
 /// A refused call: how long until the next one would be let through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +113,14 @@ impl RateLimit {
             // at all, so dropping it loses nothing.
             buckets.retain(|_, b| {
                 b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * per_second < burst
+            });
+        }
+        if buckets.len() >= MAX_TRACKED && !buckets.contains_key(subject) {
+            // Still full after dropping the idle ones: a flood of new keys.
+            // Refuse the newcomer rather than remember it, so the map never
+            // grows past the cap (a key already tracked is unaffected).
+            return Err(Retry {
+                after: Duration::from_secs_f64(1.0 / per_second),
             });
         }
         let b = buckets.entry(subject.to_string()).or_insert(Bucket {
@@ -251,5 +268,25 @@ mod tests {
             rl.check("busy").is_err(),
             "pruning did not hand busy a full bucket"
         );
+    }
+
+    #[test]
+    fn a_flood_of_new_keys_cannot_grow_the_map_past_the_cap() {
+        let (clock, now) = manual();
+        let rl = RateLimit::with_clock(10, 10, clock);
+        rl.check("known").unwrap();
+        for i in 0..MAX_TRACKED * 2 {
+            let _ = rl.check(&format!("ip{i}"));
+        }
+        assert!(rl.tracked() <= MAX_TRACKED, "tracked {}", rl.tracked());
+        // A key past the cap is refused, not remembered.
+        assert!(rl.check("one-too-many").is_err());
+        assert!(rl.tracked() <= MAX_TRACKED);
+        // One already tracked still gets its place.
+        assert!(rl.check("known").is_ok());
+        // Once the buckets have refilled they are dropped and newcomers fit.
+        advance(&now, Duration::from_secs(60));
+        assert!(rl.check("one-too-many").is_ok());
+        assert!(rl.tracked() < MAX_TRACKED);
     }
 }

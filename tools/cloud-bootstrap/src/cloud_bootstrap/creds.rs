@@ -614,7 +614,8 @@ impl Ctx {
             Command::new(&self.cache_setup)
                 .args(["--cache", "buildbuddy", "--no-ci", "--yes"])
                 .env("BUILD_WORKSPACE_DIRECTORY", &self.ws)
-                .env("BUILDBUDDY_API_KEY", sh::os(&key)),
+                .env("BUILDBUDDY_API_KEY", sh::os(&key))
+                .stdin(std::process::Stdio::null()),
         );
         if ran && sh::file_contains(&user_bazelrc, b"--config=remotecache") {
             note("build cache: BuildBuddy is now the default for plain bazel (cache only; RBE stays --config=remote)");

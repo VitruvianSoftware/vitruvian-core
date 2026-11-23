@@ -244,6 +244,10 @@ pub fn parse_tokens(bytes: &[u8]) -> Result<Tokens> {
 pub struct DeviceInfo {
     pub device_id: String,
     pub mcp_url: String,
+    /// The address for Gemini, which the relay sends only when its app
+    /// sign-in is on. Not saved: it is shown once, at sign-in, so it cannot
+    /// outlive the feature being turned off.
+    pub app_mcp_url: Option<String>,
 }
 
 pub fn save_device(dir: &Path, d: &DeviceInfo) -> Result<()> {
@@ -260,6 +264,7 @@ fn read_device(path: &Path) -> Option<DeviceInfo> {
     Some(DeviceInfo {
         device_id: str_field(&v, "device_id")?,
         mcp_url: str_field(&v, "mcp_url")?,
+        app_mcp_url: None,
     })
 }
 
@@ -622,6 +627,7 @@ mod tests {
             &DeviceInfo {
                 device_id: "d".into(),
                 mcp_url: "u".into(),
+                app_mcp_url: None,
             },
         )
         .unwrap();
@@ -641,6 +647,7 @@ mod tests {
         let device = DeviceInfo {
             device_id: "d".into(),
             mcp_url: "u".into(),
+            app_mcp_url: None,
         };
         assert_eq!(remembered_device(&dir), None);
         save_device(&dir, &device).unwrap();

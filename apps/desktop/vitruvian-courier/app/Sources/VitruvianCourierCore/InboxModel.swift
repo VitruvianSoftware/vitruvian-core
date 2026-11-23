@@ -1218,6 +1218,38 @@ public final class InboxModel: ObservableObject {
         requestRead(waiting: false)
     }
 
+    /// Reorders pinned chats to `orderedRowIDs` (expanding merged rows so each row's member rooms stay together in
+    /// row order). Reorders pinned rows locally at once so the strip doesn't snap back while the RPC runs.
+    public func reorderPinned(_ orderedRowIDs: [String]) async {
+        guard !isLocked else { return }
+        let expandedIDs = expandRoomIDs(orderedRowIDs)
+        guard !expandedIDs.isEmpty, let client = appModel.client else { return }
+        let pinnedByID = Dictionary(
+            rows.filter(\.pinned).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var seenRowIDs = Set<String>()
+        let validOrderedIDs = orderedRowIDs.filter { pinnedByID[$0] != nil && seenRowIDs.insert($0).inserted }
+        if validOrderedIDs.count > 1 {
+            let namedSet = Set(validOrderedIDs)
+            var reordered = rows
+            let slotIndices = reordered.indices.filter { reordered[$0].pinned && namedSet.contains(reordered[$0].id) }
+            if slotIndices.count == validOrderedIDs.count {
+                for (slotIndex, rowID) in zip(slotIndices, validOrderedIDs) {
+                    if let row = pinnedByID[rowID] {
+                        reordered[slotIndex] = row
+                    }
+                }
+                if reordered != rows {
+                    rows = reordered
+                }
+            }
+        }
+        // Ignored on failure, as togglePin: the read below restores the engine's truth.
+        let _: Empty? = try? await client.call("room.reorderPins", ReorderPinsParams(roomIDs: expandedIDs))
+        requestRead(waiting: false)
+    }
+
     /// Moves the targets to Low priority (part of a plan), or back (always).
     public func setLowPriority(_ on: Bool, ids: [String]? = nil) async {
         if on, !entitlement.isEntitled(.lowPriority) {
