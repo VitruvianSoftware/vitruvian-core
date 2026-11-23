@@ -28,7 +28,6 @@ struct ConversationView: View {
     @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @Environment(\.conversationLayoutProbe) private var conversationLayoutProbe
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
     @Environment(\.typingLineForTesting) private var typingLineForTesting
     @StateObject private var ui = MessageUI()
@@ -959,7 +958,15 @@ struct ConversationView: View {
             }
             .onChange(of: typingInsetRaised) { _, _ in
                 // The typing pill took (or gave back) room under the newest message: keep it in view.
-                if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
+                guard conversation.isAtBottom, !conversation.isAwayFromLatest else { return }
+                scrollToBottom(proxy)
+                // The room eases, so a scroll during the ease can land short of the final bottom: settle it after.
+                let room = conversation.roomID
+                DispatchQueue.main.asyncAfter(deadline: .now() + TypingLineMotion.fadeDuration + 0.05) {
+                    guard conversation.roomID == room, conversation.isAtBottom,
+                          !conversation.isAwayFromLatest else { return }
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                }
             }
             .onChange(of: bottomBarSignature) { _, _ in
                 // The bottom bar grew (a reply, files, more lines): keep the newest message in view.
