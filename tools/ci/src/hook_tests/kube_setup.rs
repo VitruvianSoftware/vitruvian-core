@@ -452,6 +452,25 @@ fn hook_script_is_executable() {
     assert!(is_executable(&repo(HOOK)), "hook script is not executable");
 }
 
+#[test]
+fn vitruvian_cloud_session_runs_without_claude_code_remote() {
+    let f = Fixture::new();
+    let r = f.run(
+        "Running",
+        "ok",
+        &[
+            ("CLAUDE_CODE_REMOTE", ""),
+            ("VITRUVIAN_CLOUD_SESSION", "true"),
+        ],
+    );
+    verdict(
+        &r,
+        "VITRUVIAN_CLOUD_SESSION=true runs without CLAUDE_CODE_REMOTE",
+        true,
+        "",
+    );
+}
+
 /// The suite can fail: with the apiserver probe always succeeds (planted in a temp copy, never in
 /// .claude/), `token_rejected_blames_lab_sa_token` must fail.
 #[test]

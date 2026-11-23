@@ -111,9 +111,10 @@ re-verifies idempotently, which costs a few `command -v` calls.
 
 Two things that are easy to get wrong:
 
-- **`--force` is required.** `CLAUDE_CODE_REMOTE` is not set that early, so
+- **`--force` is required.** Neither `VITRUVIAN_CLOUD_SESSION` nor `CLAUDE_CODE_REMOTE` is set that early, so
   without it the script hits its cloud-session guard and silently no-ops — an
-  empty cache with no error to explain why.
+  empty cache with no error to explain why. (For non-Claude cloud sessions, set
+  `VITRUVIAN_CLOUD_SESSION=true` on the environment.)
 - **It degrades safely.** If the repo is not cloned yet when the Setup script
   runs, it prints one line and exits 0; the hook does the install instead.
 
