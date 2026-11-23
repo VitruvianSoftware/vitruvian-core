@@ -20,6 +20,11 @@ enum FanControlResumeContract {
         var observing = true
         var applied: [FanControlConfiguration] = []
         var events: [String] = []
+        var isWorking = false
+        var thermallyDeferred = false
+        /// The delay of every resume attempt scheduled and not cancelled.
+        var scheduledResumes: [TimeInterval] = []
+        var resumeFailed = false
     }
 
     static func run(_ suite: TestSuite) {
@@ -32,12 +37,18 @@ enum FanControlResumeContract {
             helperEnabled: { service.helperEnabled },
             snapshot: { service.snapshot },
             panelIsVisible: { service.panelIsVisible },
-            apply: { service.applied.append($0) },
+            apply: { configuration, _ in service.applied.append(configuration) },
             restore: { service.events.append($0 ? "restore superseding" : "restore") },
             restoreThenUnregister: { service.events.append("unregister") },
             refresh: { service.events.append("refresh") },
             stopTimer: { service.timerStopped = true },
-            stopObservingSystemState: { service.observing = false }))
+            stopObservingSystemState: { service.observing = false },
+            startObservingSystemState: { service.observing = true },
+            isWorking: { service.isWorking },
+            defersResume: { service.thermallyDeferred },
+            scheduleResumeAttempt: { service.scheduledResumes.append($0) },
+            cancelResumeAttempt: { service.scheduledResumes.removeAll() },
+            resumeFailedChanged: { service.resumeFailed = $0 }))
         let manual = FanControlConfiguration.manual(level: 100)
         func reset(resume: Bool = true, stored: FanControlConfiguration? = manual,
                    recovery: Bool = false) {
@@ -57,6 +68,10 @@ enum FanControlResumeContract {
             service.observing = true
             service.applied = []
             service.events = []
+            service.isWorking = false
+            service.thermallyDeferred = false
+            lifecycle.cancelResumeRetry()
+            service.scheduledResumes = []
         }
         var storedResume: String? { defaults.string(forKey: DefaultsKey.fanControlResumeConfiguration) }
 
@@ -164,6 +179,109 @@ enum FanControlResumeContract {
         lifecycle.workspaceDidWake()
         suite.expect(service.applied.isEmpty && service.events.isEmpty,
                      "without resume, waking with the panel closed does nothing")
+
+        // A resume can fail for a moment right after a wake, before the fans and
+        // sensors answer again. One refusal must not leave the fans on System
+        // while the card still shows the curve as chosen.
+        reset()
+        lifecycle.workspaceDidWake()
+        lifecycle.resumeDidFail(.controlFailed)
+        suite.expect(service.scheduledResumes == [FanControlResumePolicy.retryDelays[0]],
+                     "a resume refused right after a wake is tried again shortly")
+        lifecycle.retryResume()
+        suite.expect(service.applied == [manual, manual],
+                     "the retry re-applies the kept control")
+        reset()
+        for _ in FanControlResumePolicy.retryDelays { lifecycle.resumeDidFail(.controlFailed) }
+        suite.expect(service.scheduledResumes == FanControlResumePolicy.retryDelays && !service.resumeFailed,
+                     "failed resumes back off through every planned retry")
+        lifecycle.resumeDidFail(.controlFailed)
+        suite.expect(service.scheduledResumes == FanControlResumePolicy.retryDelays && service.resumeFailed,
+                     "resuming gives up after the last retry and says so instead of looking active")
+        lifecycle.workspaceDidWake()
+        suite.expect(lifecycle.resumeFailures == 0 && !service.resumeFailed && service.applied == [manual],
+                     "a later wake starts a fresh resume with the full retry budget")
+        reset(resume: false, stored: nil)
+        lifecycle.resumeDidFail(.controlFailed)
+        suite.expect(service.scheduledResumes.isEmpty && !service.resumeFailed,
+                     "without resume a failed apply is never retried")
+        reset()
+        lifecycle.resumeDidFail(.controlFailed)
+        lifecycle.returnToSystem()
+        lifecycle.retryResume()
+        suite.expect(service.scheduledResumes.isEmpty && service.applied.isEmpty,
+                     "returning to System cancels a pending resume retry")
+        reset()
+        lifecycle.resumeDidFail(.controlFailed)
+        defaults.set(false, forKey: DefaultsKey.fanControlResume)
+        lifecycle.resumePreferenceDidChange()
+        suite.expect(service.scheduledResumes.isEmpty, "turning resume off cancels a pending retry")
+        reset()
+        lifecycle.resumeDidFail(.controlFailed)
+        lifecycle.workspaceWillSleep()
+        suite.expect(service.scheduledResumes.isEmpty, "sleep cancels a pending retry; the wake resumes anew")
+        reset()
+        service.snapshot.isCooling = true
+        lifecycle.retryResume()
+        suite.expect(service.applied.isEmpty, "a retry does nothing once the control is running again")
+        reset()
+        service.thermallyDeferred = true
+        lifecycle.retryResume()
+        suite.expect(service.applied.isEmpty
+                        && service.scheduledResumes == [FanControlResumePolicy.retryDelays[0]],
+                     "under thermal pressure a retry waits instead of fighting the system")
+        reset()
+        service.isWorking = true
+        lifecycle.retryResume()
+        suite.expect(service.applied.isEmpty && service.scheduledResumes.count == 1,
+                     "a retry waits for a request already in flight")
+        service.snapshot.isCooling = true
+        lifecycle.retryResume()
+        suite.expect(service.scheduledResumes.count == 2 && lifecycle.resumeFailures == 0,
+                     "a stale active snapshot during restoration does not lose the retry")
+        service.isWorking = false
+        service.snapshot = .empty
+        service.thermallyDeferred = true
+        for _ in 0..<20 { lifecycle.retryResume() }
+        service.thermallyDeferred = false
+        lifecycle.retryResume()
+        suite.expect(service.applied == [manual] && lifecycle.resumeFailures == 0,
+                     "waiting for restoration and thermal pressure preserves the full retry budget")
+        reset()
+        service.thermallyDeferred = true
+        lifecycle.workspaceDidWake()
+        suite.expect(service.applied.isEmpty && service.scheduledResumes.count == 1,
+                     "a wake under thermal pressure defers even its initial application")
+        reset()
+        lifecycle.resumeDidFail(.controlFailed)
+        lifecycle.forgetResume()
+        defaults.set(FanControlMode.manual.rawValue, forKey: DefaultsKey.fanControlMode)
+        lifecycle.retryResume()
+        suite.expect(storedResume == nil && service.applied.isEmpty,
+                     "selecting System then Manual cannot bring back an unapplied curve")
+
+        for reason: FanControlStopReason? in [.hardwareChanged, .temperatureUnavailable, .thermalPressure,
+                                               .recovery, .appDisconnected, .timeLimit, nil, .heartbeatLost] {
+            reset()
+            lifecycle.sessionStopped(wasCooling: true, reason: reason)
+            // The second poll finds the session already stopped.
+            lifecycle.sessionStopped(wasCooling: false, reason: reason)
+            suite.expect(service.scheduledResumes.count == (reason == .heartbeatLost ? 1 : 0)
+                            && service.resumeFailed == (reason != .heartbeatLost),
+                         "polling a stopped session twice honors its reason and schedules at most once")
+        }
+        reset()
+        lifecycle.resumeDidFail(.controlFailed, stopReason: .hardwareChanged)
+        suite.expect(service.resumeFailed && service.scheduledResumes.isEmpty,
+                     "a refused application that lost hardware ownership leaves control with the system")
+        reset(resume: false, stored: nil)
+        lifecycle.sessionStopped(wasCooling: true, reason: .heartbeatLost)
+        suite.expect(service.scheduledResumes.isEmpty, "a heartbeat loss only resumes opted-in control")
+        suite.expect(FanControlResumePolicy.defersResume(thermalState: .serious)
+                        && FanControlResumePolicy.defersResume(thermalState: .critical)
+                        && !FanControlResumePolicy.defersResume(thermalState: .fair)
+                        && FanControlResumePolicy.retryDelay(afterFailures: FanControlResumePolicy.retryDelays.count) == nil,
+                     "serious thermal pressure defers a resume, and the retries run out")
 
         reset()
         defaults.set(false, forKey: AppFeature.fanControl.availabilityKey)

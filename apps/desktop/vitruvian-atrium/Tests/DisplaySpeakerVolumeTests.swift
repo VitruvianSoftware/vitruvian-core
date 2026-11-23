@@ -55,26 +55,44 @@ enum DisplaySpeakerVolumeTests {
         var muted: Bool?
         var ignoresLevel = false
         var levelOnUnmute: UInt16?
+        /// What the mute control reads while unmuted: 2 by the standard, 0 on
+        /// monitors such as the Samsung S34C65xT that latch silent at zero.
+        let unmutedReads: UInt16
+        var rejectUnmute = false
         var writes: [String] = []
         var restore: BrightnessSupport.SpeakerLevel?
+        /// An unmute still owed after leaving zero, as the service keeps it
+        /// per connection between changes.
+        var needsUnmute = false
+        /// Read from the mute control when the monitor was found, as the
+        /// service probes it.
+        let hasNativeMute: Bool
+        let unmutesLeavingZero: Bool
 
-        init(raw: UInt16, maximum: UInt16 = 100, muted: Bool?) {
+        init(raw: UInt16, maximum: UInt16 = 100, muted: Bool?, unmutedReads: UInt16 = 2) {
             self.raw = raw
             self.maximum = maximum
             self.muted = muted
+            self.unmutedReads = unmutedReads
+            let reply = muted.map { $0 ? BrightnessSupport.audioMutedValue : unmutedReads }
+            hasNativeMute = reply.flatMap { BrightnessSupport.muteReply(current: $0, maximum: 2) } != nil
+            unmutesLeavingZero = reply.map { BrightnessSupport.unmutesLeavingZero(muteReply: $0, maximum: 2) } ?? false
         }
 
         @discardableResult
         func apply(_ change: BrightnessSupport.SpeakerChange,
                    settings: MonitorVolumeKeySettings = MonitorVolumeKeySettings())
             -> (level: BrightnessSupport.SpeakerLevel, muted: Bool?)? {
-            BrightnessSupport.applySpeakerChange(change, hasNativeMute: muted != nil, keySettings: settings,
-                restore: &restore,
+            BrightnessSupport.applySpeakerChange(change, hasNativeMute: hasNativeMute,
+                unmutesLeavingZero: unmutesLeavingZero, keySettings: settings,
+                restore: &restore, needsUnmute: &needsUnmute,
                 read: { code in
                     if code == BrightnessSupport.audioVolumeCode { return (self.raw, self.maximum) }
                     guard let muted = self.muted else { return nil }
-                    return (muted ? BrightnessSupport.audioMutedValue : BrightnessSupport.audioUnmutedValue, 2)
+                    return (muted ? BrightnessSupport.audioMutedValue : self.unmutedReads, 2)
                 }, write: { code, value in
+                    if code == BrightnessSupport.audioMuteCode, value == BrightnessSupport.audioUnmutedValue,
+                       self.rejectUnmute { return false }
                     if code == BrightnessSupport.audioVolumeCode {
                         self.writes.append("volume:\(value)")
                         if !self.ignoresLevel { self.raw = value }
@@ -277,11 +295,43 @@ enum DisplaySpeakerVolumeTests {
                      "a speaker scan is forced once per setting change, not again while one is queued")
     }
 
+    /// Monitors whose mute reads 0 while unmuted: they take no MCCS mute, but
+    /// leaving zero still has to tell them to unmute.
+    private static func latchedAtZeroChecks(_ suite: TestSuite) {
+        var speakers = ScriptedSpeakers(raw: 80, muted: false, unmutedReads: 0)
+        speakers.apply(.toggleMute)
+        let result = speakers.apply(.toggleMute)
+        suite.expect(!speakers.hasNativeMute && speakers.writes == ["volume:0", "volume:80", "mute:off"]
+                        && result != nil && result?.muted != true,
+                     "a mute that reads 0 is volume-only, but leaving zero still unmutes a monitor latched silent there")
+        speakers = ScriptedSpeakers(raw: 0, muted: false, unmutedReads: 0)
+        speakers.rejectUnmute = true
+        suite.expect(speakers.apply(.set(volume: 0.05, muted: nil)) == nil,
+                     "a rejected unmute cannot confirm a positive volume")
+        speakers = ScriptedSpeakers(raw: 4, muted: true, unmutedReads: 0)
+        let released = speakers.apply(.set(volume: 0.05, muted: nil))
+        suite.expect(released?.muted == false && speakers.muted == false,
+                     "a monitor discovered while muted can confirm release with zero")
+        let keys = MonitorVolumeKeySettings(stepPercent: 1, maximumPercent: 5)
+        speakers = ScriptedSpeakers(raw: 0, muted: false, unmutedReads: 0)
+        speakers.levelOnUnmute = 80
+        let loud = speakers.apply(.step(levels: [{ keys.requestedLevel(from: $0, direction: 1, fine: false) }],
+                                        raises: true), settings: keys)
+        suite.expect(loud == nil && speakers.muted == true
+                        && speakers.writes == ["volume:1", "mute:off", "mute:on"],
+                     "a nonstandard unmute that restores a loud volume is silenced and reports nothing")
+        suite.expect(BrightnessSupport.unmutesLeavingZero(muteReply: 0, maximum: 2)
+                        && !BrightnessSupport.unmutesLeavingZero(muteReply: 2, maximum: 2)
+                        && !BrightnessSupport.unmutesLeavingZero(muteReply: 0, maximum: 1),
+                     "only a mute that reads 0 and accepts the unmuted value latches at zero")
+    }
+
     /// `applySpeakerChange` against a scripted monitor: what a slider, a key
     /// or the mute button does to the speakers, read for read and write for
     /// write. Upstream checks these through its mixer stand-in; here they run
     /// on the production transaction directly.
     private static func transactionChecks(_ suite: TestSuite) {
+        latchedAtZeroChecks(suite)
         var speakers = ScriptedSpeakers(raw: 80, muted: true)
         var result = speakers.apply(.set(volume: 0.05, muted: nil))
         suite.expect(speakers.writes == ["volume:5", "mute:off"] && result?.level.raw == 5 && result?.muted == false,

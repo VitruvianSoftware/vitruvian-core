@@ -211,6 +211,7 @@ package final class MediaWorkspaceSelection: ObservableObject {
     @Published package var outputURL: URL?
     @Published package var outputWasChosenManually = false
     @Published package var tool: MediaTool?
+    package var pendingDrop: UUID?
     package var loadedInitialInputs = false
     package var durationLoading = MediaDurationLoading()
 

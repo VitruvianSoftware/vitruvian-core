@@ -30,6 +30,7 @@ package struct FanControlSection: View {
                                   accessState: service.accessState,
                                   error: service.error,
                                   isWorking: service.isWorking,
+                                  resumeFailed: service.resumeFailed,
                                   mode: modeBinding,
                                   coolingLevel: $coolingLevel,
                                   curves: curvesBinding,
@@ -48,7 +49,10 @@ package struct FanControlSection: View {
     private var modeBinding: Binding<FanControlMode> {
         Binding(
             get: { FanControlMode(rawValue: modeRaw) ?? .system },
-            set: { modeRaw = $0.rawValue }
+            set: { selection in
+                modeRaw = selection.rawValue
+                if selection == .system { service.forgetResume() }
+            }
         )
     }
 
@@ -79,6 +83,7 @@ package struct FanControlCardContent: View {
     package let accessState: FanControlService.AccessState
     package let error: FanControlErrorCode?
     package let isWorking: Bool
+    package var resumeFailed = false
     @Binding package var mode: FanControlMode
     @Binding package var coolingLevel: Int
     @Binding package var curves: [FanControlCurve]
@@ -361,6 +366,9 @@ package struct FanControlCardContent: View {
         }
         if accessState == .notRegistered, !snapshot.fans.isEmpty { return strings.approvalCaption }
         if accessState == .requiresApproval { return strings.approvalCaption }
+        // The kept curve or speed could not be brought back after a wake or a
+        // safety stop. Without this the card reads as if it were still running.
+        if resumeFailed, !snapshot.isCooling { return strings.failed }
         switch snapshot.stopReason {
         case .temperatureUnavailable: return strings.temperatureUnavailable
         case .timeLimit, .appDisconnected, .heartbeatLost, .hardwareChanged,
@@ -372,6 +380,7 @@ package struct FanControlCardContent: View {
     }
 
     private var messageIsError: Bool {
+        if resumeFailed, !snapshot.isCooling { return true }
         switch error {
         case .alreadyControlled, .unsupportedHardware, .helperUnavailable, .controlFailed:
             return true
