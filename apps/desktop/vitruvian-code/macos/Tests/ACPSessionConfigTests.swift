@@ -76,8 +76,20 @@ final class ACPSessionConfigTests: XCTestCase {
         XCTAssertEqual(
             state.agentConfigOptions,
             [
-                AgentConfigOption(id: "agent_mode", name: "Mode", value: .string("code"), options: ["code", "plan"]),
-                AgentConfigOption(id: "model", name: "Model", value: .string("sonnet"), options: ["sonnet", "opus"]),
+                AgentConfigOption(
+                    id: "agent_mode",
+                    name: "Mode",
+                    value: .string("code"),
+                    options: ["code", "plan"],
+                    category: "mode"
+                ),
+                AgentConfigOption(
+                    id: "model",
+                    name: "Model",
+                    value: .string("sonnet"),
+                    options: ["sonnet", "opus"],
+                    category: "model"
+                ),
                 AgentConfigOption(id: "thinking", name: "Extended Thinking", value: .bool(false), options: []),
             ]
         )
@@ -135,7 +147,8 @@ final class ACPSessionConfigTests: XCTestCase {
                     id: ACPSessionConfigState.sessionModeOptionID,
                     name: "Mode",
                     value: .string("ask"),
-                    options: ["ask", "architect"]
+                    options: ["ask", "architect"],
+                    category: "mode"
                 ),
             ]
         )

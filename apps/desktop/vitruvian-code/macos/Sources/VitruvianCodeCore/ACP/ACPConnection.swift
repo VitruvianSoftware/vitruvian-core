@@ -560,6 +560,10 @@ public final class ACPConnection: PersistentAgentConnection {
             self.capabilities = resolvedCapabilities
 
             self.sessionID = establishedID
+            let initialOptions = configState.agentConfigOptions
+            if !initialOptions.isEmpty {
+                emit(.configOptions(initialOptions))
+            }
             flushBufferedLogs()
             return establishedID
         } catch {
@@ -616,8 +620,19 @@ public final class ACPConnection: PersistentAgentConnection {
             throw ACPConnectionError.alreadyStopped
         }
 
-        let contentBlocks = blocks.map { block in
-            Self.encodePromptBlock(block, supportsImages: capabilities.images)
+        let supportsImages = capabilities.images
+        let supportsEmbeddedContext = capabilities.embeddedContext
+        let workdir = clientFiles?.workingDirectory ?? launchSpec.workingDirectory
+        let contentBlocks = await Task.detached(priority: .userInitiated) {
+            Self.encodePromptBlocks(
+                blocks,
+                supportsImages: supportsImages,
+                supportsEmbeddedContext: supportsEmbeddedContext,
+                workingDirectory: workdir
+            )
+        }.value
+        guard !isStopped else {
+            throw ACPConnectionError.alreadyStopped
         }
         let params = ACPPromptParams(sessionId: sessionID, prompt: contentBlocks)
 
@@ -1144,12 +1159,9 @@ public final class ACPConnection: PersistentAgentConnection {
             emit(.planReplaced(mapped))
 
         case .availableCommandsUpdate(let commands):
-            let names = commands.compactMap { cmd -> String? in
-                let raw = cmd.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                let stripped = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
-                return stripped.isEmpty ? nil : stripped
-            }
-            emit(.slashCommands(names))
+            let mapped = Self.mapAvailableCommands(commands)
+            emit(.slashCommands(mapped.map(\.name)))
+            emit(.availableCommands(mapped))
 
         case .currentModeUpdate(let modeId):
             configState.applyCurrentModeUpdate(modeId)
@@ -2065,10 +2077,55 @@ public final class ACPConnection: PersistentAgentConnection {
         return nonEmpty(call.title) ?? ""
     }
 
-    private static func encodePromptBlock(
+    static func mapAvailableCommands(_ commands: [ACPAvailableCommand]) -> [VitruvianCodeSlashCommand] {
+        func normalizedPlainText(_ value: String?) -> String {
+            guard let value else { return "" }
+            return value
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }
+        return commands.compactMap { cmd -> VitruvianCodeSlashCommand? in
+            let raw = cmd.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stripped = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+            guard !stripped.isEmpty else { return nil }
+            let description = normalizedPlainText(cmd.description)
+            let rawHint = normalizedPlainText(cmd.input?.hint)
+            return VitruvianCodeSlashCommand(
+                name: stripped,
+                description: description,
+                argumentHint: rawHint.isEmpty ? nil : rawHint,
+                isBuiltIn: false
+            )
+        }
+    }
+
+    nonisolated static func encodePromptBlocks(
+        _ blocks: [PromptBlock],
+        supportsImages: Bool,
+        supportsEmbeddedContext: Bool,
+        workingDirectory: String?,
+        maxResourceBytes: Int = VitruvianCodeDiffParser.maxMentionFileBytes
+    ) -> [ACPContentBlock] {
+        blocks.compactMap { block in
+            encodePromptBlock(
+                block,
+                supportsImages: supportsImages,
+                supportsEmbeddedContext: supportsEmbeddedContext,
+                workingDirectory: workingDirectory,
+                maxResourceBytes: maxResourceBytes
+            )
+        }
+    }
+
+    private nonisolated static func encodePromptBlock(
         _ block: PromptBlock,
-        supportsImages: Bool
-    ) -> ACPContentBlock {
+        supportsImages: Bool,
+        supportsEmbeddedContext: Bool,
+        workingDirectory: String?,
+        maxResourceBytes: Int
+    ) -> ACPContentBlock? {
         switch block {
         case .text(let text):
             return .text(text)
@@ -2089,10 +2146,72 @@ public final class ACPConnection: PersistentAgentConnection {
                 mimeType: mime,
                 size: size
             )
+
+        case .resource(let path):
+            let outcome = VitruvianCodeDiffParser.readSafeWorkingDirectoryFileResult(
+                path: path,
+                workingDirectory: workingDirectory,
+                maxBytes: maxResourceBytes,
+                readContent: supportsEmbeddedContext
+            )
+            switch outcome {
+            case .text(let resolvedPath, let content, _):
+                let fileURL = URL(fileURLWithPath: resolvedPath)
+                return .resource(
+                    ACPEmbeddedResource(
+                        uri: fileURL.absoluteString,
+                        mimeType: textMimeType(forExtension: fileURL.pathExtension),
+                        text: content
+                    )
+                )
+            case .nonTextOrOversize(let resolvedPath, let byteCount):
+                let fileURL = URL(fileURLWithPath: resolvedPath)
+                return .resourceLink(
+                    uri: fileURL.absoluteString,
+                    name: fileURL.lastPathComponent,
+                    mimeType: resourceLinkMimeType(forExtension: fileURL.pathExtension),
+                    size: byteCount
+                )
+            case .outsideWorkingDirectory, .notRegularFileOrMissing:
+                return nil
+            }
         }
     }
 
-    private static func mimeType(forExtension ext: String) -> String {
+    private nonisolated static func textMimeType(forExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "md", "markdown": return "text/markdown"
+        case "json", "jsonc", "json5": return "application/json"
+        case "swift": return "text/x-swift"
+        case "ts", "tsx": return "text/typescript"
+        case "js", "jsx", "mjs", "cjs": return "text/javascript"
+        case "py": return "text/x-python"
+        case "rs": return "text/x-rust"
+        case "go": return "text/x-go"
+        case "yaml", "yml": return "text/yaml"
+        case "toml": return "text/toml"
+        case "html", "htm": return "text/html"
+        case "css": return "text/css"
+        case "xml": return "application/xml"
+        case "sh", "bash", "zsh": return "text/x-shellscript"
+        default: return "text/plain"
+        }
+    }
+
+    private nonisolated static func resourceLinkMimeType(forExtension ext: String) -> String {
+        let lower = ext.lowercased()
+        let imageMime = mimeType(forExtension: lower)
+        if imageMime != "application/octet-stream" {
+            return imageMime
+        }
+        let textMime = textMimeType(forExtension: lower)
+        if textMime != "text/plain" || ["txt", "log", "csv", "tsv", "env", "ini", "cfg", "conf"].contains(lower) {
+            return textMime
+        }
+        return "application/octet-stream"
+    }
+
+    private nonisolated static func mimeType(forExtension ext: String) -> String {
         switch ext.lowercased() {
         case "png": return "image/png"
         case "jpg", "jpeg": return "image/jpeg"

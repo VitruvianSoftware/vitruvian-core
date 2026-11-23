@@ -86,7 +86,10 @@ let package = Package(
                 .product(name: "VitruvianToolKit", package: "vitruvian-sdk"),
                 .product(name: "VitruvianToolProtocol", package: "vitruvian-sdk"),
             ],
-            path: "Sources/VitruvianCodeTool"
+            path: "Sources/VitruvianCodeTool",
+            // The tool folder may hold 256 MB, and Node alone takes 215. Local symbols
+            // are 18 MB of this program and nothing reads them at run time.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-x"], .when(configuration: .release))]
         ),
         .executableTarget(
             name: "VitruvianCode",

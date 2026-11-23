@@ -199,6 +199,16 @@ public struct VitruvianCodeChatView: View {
                     strings: strings,
                     undoTurn: session.canUndoLastTurn ? { session.undoLastTurn(note: strings.undoTurnNote) } : nil
                 )
+                if !AgentSettingsBarLogic.visibleOptions(from: session.liveState.configOptions).isEmpty {
+                    AgentSettingsBar(
+                        options: session.liveState.configOptions,
+                        isDisabled: session.isRunning || session.isUpdatingLiveConfigOption,
+                        errorMessage: session.liveConfigOptionError,
+                        strings: strings
+                    ) { id, value in
+                        Task { await session.setLiveConfigOption(id: id, value: value) }
+                    }
+                }
                 if !session.activeSubagents.isEmpty {
                     ActiveSubagentBannerView(subagents: session.activeSubagents, strings: strings)
                         .padding(.horizontal, 14)
@@ -406,13 +416,13 @@ public struct VitruvianCodeChatView: View {
 
     private func hintText(_ text: String, detail: String) -> some View {
         HStack(spacing: 4) {
-            Text(text)
+            Text(verbatim: text)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(VitruvianCodeTheme.warmCoral.opacity(0.85))
                 .lineLimit(1)
                 .truncationMode(.middle)
             if !detail.isEmpty {
-                Text(detail).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(1)
+                Text(verbatim: detail).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(1)
             }
             Text(strings.completeKey)
                 .font(.system(size: 9, weight: .medium, design: .rounded))

@@ -37,6 +37,10 @@ final class Step4WordsTests: XCTestCase {
             "timelineToolSingularFormat",
             "timelineToolsFormat",
             "diffSourceLiveTurn",
+            "agentSettingsBarLabel",
+            "configOptionUpdateFailed",
+            "configOptionUnavailable",
+            "mentionOutsideWorkspaceFormat",
         ]
 
         for key in addedKeys {
@@ -53,6 +57,10 @@ final class Step4WordsTests: XCTestCase {
             XCTAssertNotEqual(Words.text("toolStatusRunning", language), Words.text("toolStatusRunning", "en"), language)
             XCTAssertNotEqual(Words.text("diffTruncatedFormat", language), Words.text("diffTruncatedFormat", "en"), language)
             XCTAssertNotEqual(Words.text("diffSourceLiveTurn", language), Words.text("diffSourceLiveTurn", "en"), language)
+            XCTAssertNotEqual(Words.text("agentSettingsBarLabel", language), Words.text("agentSettingsBarLabel", "en"), language)
+            XCTAssertNotEqual(Words.text("configOptionUpdateFailed", language), Words.text("configOptionUpdateFailed", "en"), language)
+            XCTAssertNotEqual(Words.text("configOptionUnavailable", language), Words.text("configOptionUnavailable", "en"), language)
+            XCTAssertNotEqual(Words.text("mentionOutsideWorkspaceFormat", language), Words.text("mentionOutsideWorkspaceFormat", "en"), language)
         }
     }
 }

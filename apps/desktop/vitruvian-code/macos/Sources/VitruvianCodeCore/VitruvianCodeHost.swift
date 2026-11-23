@@ -146,6 +146,12 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var worktreeCreationFailed: String
     /// Starting a fresh session in a worktree drops earlier conversation context.
     public var worktreeFreshSessionNotice: String
+    /// Updating a live session config option failed.
+    public var configOptionUpdateFailed: String
+    /// Live session config options require an active connection.
+    public var configOptionUnavailable: String
+    /// An `@`-mentioned file path resolved outside the working directory and was omitted.
+    public var mentionOutsideWorkspaceFormat: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -176,7 +182,10 @@ public struct VitruvianCodeHostStrings: Sendable {
                  commandNoOutput: String = "No output from provider",
                  deleteSession: String = "Delete",
                  worktreeCreationFailed: String = "Could not create a git worktree for this chat.",
-                 worktreeFreshSessionNotice: String = "Starting a new session. The agent won’t remember earlier messages in this chat.") {
+                 worktreeFreshSessionNotice: String = "Starting a new session. The agent won’t remember earlier messages in this chat.",
+                 configOptionUpdateFailed: String = "Could not update setting.",
+                 configOptionUnavailable: String = "Send a message to reconnect before changing settings.",
+                 mentionOutsideWorkspaceFormat: String = "Skipped %@: outside the working folder.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -207,6 +216,9 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.deleteSession = deleteSession
         self.worktreeCreationFailed = worktreeCreationFailed
         self.worktreeFreshSessionNotice = worktreeFreshSessionNotice
+        self.configOptionUpdateFailed = configOptionUpdateFailed
+        self.configOptionUnavailable = configOptionUnavailable
+        self.mentionOutsideWorkspaceFormat = mentionOutsideWorkspaceFormat
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {
@@ -262,6 +274,13 @@ public struct VitruvianCodeHostStrings: Sendable {
 
     public func doneTitle(provider: String) -> String {
         "\(provider)\(doneTitleSuffix)"
+    }
+
+    public func mentionOutsideWorkspace(_ path: String) -> String {
+        if let range = mentionOutsideWorkspaceFormat.range(of: "%@") {
+            return mentionOutsideWorkspaceFormat.replacingCharacters(in: range, with: path)
+        }
+        return "\(mentionOutsideWorkspaceFormat) \(path)"
     }
 }
 

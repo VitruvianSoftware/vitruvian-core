@@ -120,10 +120,11 @@ public struct AgentSessionRequest: Equatable, Sendable {
     }
 }
 
-/// One part of a user's prompt: plain text or an attached image on disk.
+/// One part of a user's prompt: plain text, an attached image on disk, or a file resource.
 public enum PromptBlock: Equatable, Sendable {
     case text(String)
     case image(path: String)
+    case resource(path: String)
 }
 
 /// Why a turn ended.
@@ -155,12 +156,20 @@ public struct AgentConfigOption: Identifiable, Equatable, Sendable, Codable {
     public var name: String
     public var value: AgentConfigValue
     public var options: [String]
+    public var category: String?
 
-    public init(id: String, name: String, value: AgentConfigValue, options: [String] = []) {
+    public init(
+        id: String,
+        name: String,
+        value: AgentConfigValue,
+        options: [String] = [],
+        category: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.value = value
         self.options = options
+        self.category = category
     }
 }
 

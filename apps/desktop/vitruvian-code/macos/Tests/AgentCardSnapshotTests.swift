@@ -313,6 +313,88 @@ final class AgentCardSnapshotTests: XCTestCase {
     }
 
     @MainActor
+    func testRendersSettingsBarLightAndDark() throws {
+        let strings = VitruvianCodeChatStrings()
+        let options: [AgentConfigOption] = [
+            AgentConfigOption(
+                id: ACPSessionConfigState.sessionModeOptionID,
+                name: "Mode",
+                value: .string("default"),
+                options: ["default", "plan"],
+                category: "mode"
+            ),
+            AgentConfigOption(
+                id: "model",
+                name: "Model",
+                value: .string("claude-opus-4-1"),
+                options: ["claude-sonnet-4-5", "claude-opus-4-1"],
+                category: "model"
+            ),
+            AgentConfigOption(
+                id: "effort",
+                name: "Effort",
+                value: .string("high"),
+                options: ["low", "medium", "high"],
+                category: "thought_level"
+            ),
+        ]
+
+        let normalBar = AgentSettingsBar(
+            options: options,
+            isDisabled: false,
+            errorMessage: nil,
+            strings: strings,
+            onSelect: { _, _ in }
+        )
+        let errorBar = AgentSettingsBar(
+            options: options,
+            isDisabled: false,
+            errorMessage: "Could not update setting.",
+            strings: strings,
+            onSelect: { _, _ in }
+        )
+
+        let shots: [(name: String, view: AnyView, minHeight: Int)] = [
+            ("settings-bar-normal", AnyView(normalBar), 24),
+            ("settings-bar-error", AnyView(errorBar), 36),
+        ]
+
+        _ = NSApplication.shared
+        let folderURL = URL(fileURLWithPath: Self.snapshotFolderPath, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+
+        for shot in shots {
+            for (schemeName, scheme, appearanceName) in [
+                ("light", ColorScheme.light, NSAppearance.Name.aqua),
+                ("dark", ColorScheme.dark, NSAppearance.Name.darkAqua),
+            ] {
+                let framed = shot.view
+                    .frame(width: 560)
+                    .padding(16)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(scheme == .dark ? Color(white: 0.12) : Color(white: 0.97))
+                    .environment(\.colorScheme, scheme)
+
+                let bitmap = try Self.renderViewToBitmap(framed, width: 592, appearanceName: appearanceName)
+                let yellowShare = Self.placeholderYellowShare(in: bitmap)
+                XCTAssertLessThan(
+                    yellowShare,
+                    0.01,
+                    "\(shot.name)-\(schemeName) contains placeholder yellow (\(String(format: "%.2f", yellowShare * 100))%)"
+                )
+
+                let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let fileName = "\(shot.name)-\(schemeName).png"
+                let destination = folderURL.appendingPathComponent(fileName)
+                try data.write(to: destination)
+                print("agent card snapshot: \(destination.path)")
+                XCTAssertGreaterThan(bitmap.pixelsWide, 100)
+                XCTAssertGreaterThan(bitmap.pixelsHigh, shot.minHeight)
+            }
+        }
+    }
+
+    @MainActor
     private static func renderViewToBitmap<V: View>(
         _ view: V,
         width: CGFloat,

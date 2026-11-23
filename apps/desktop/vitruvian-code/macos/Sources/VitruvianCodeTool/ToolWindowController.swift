@@ -228,6 +228,7 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.toolStatusFailed, "toolStatusFailed"), (\.diffTruncatedFormat, "diffTruncatedFormat"),
         (\.timelineToolSingularFormat, "timelineToolSingularFormat"),
         (\.timelineToolsFormat, "timelineToolsFormat"), (\.diffSourceLiveTurn, "diffSourceLiveTurn"),
+        (\.agentSettingsBarLabel, "agentSettingsBarLabel"),
     ]
 
     private func ensurePanel() -> NSPanel {
