@@ -26,12 +26,16 @@ use vitruvian_gojson::{parse, Dec};
 
 /// `json.Marshal(v)`.
 pub fn marshal<T: serde::Serialize>(v: &T) -> Vec<u8> {
-    vitruvian_gojson::marshal(v).expect("serializing to memory cannot fail")
+    vitruvian_gojson::marshal(v).expect(
+        "no caller marshals a float; vitruvian_gojson rejects floats, see packages/gocompat/gojson/README.md",
+    )
 }
 
 /// `json.MarshalIndent(v, "", "  ")`.
 pub fn marshal_indent<T: serde::Serialize>(v: &T) -> Vec<u8> {
-    vitruvian_gojson::marshal_indent(v).expect("serializing to memory cannot fail")
+    vitruvian_gojson::marshal_indent(v).expect(
+        "no caller marshals a float; vitruvian_gojson rejects floats, see packages/gocompat/gojson/README.md",
+    )
 }
 
 /// `tools/delivery/defs.bzl`'s metadata, as `unitMeta` decodes it.

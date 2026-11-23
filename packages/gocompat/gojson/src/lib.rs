@@ -24,7 +24,9 @@
 //! - Marshaling ([`marshal`], [`marshal_string`], [`marshal_indent`],
 //!   [`marshal_indent_string`]) with Go's HTML-safe escaping (`<`, `>`, `&`,
 //!   `U+2028`, `U+2029`), two-space `MarshalIndent`, and Go unsupported-value
-//!   errors on `NaN` / `±Inf`.
+//!   errors on `NaN` / `±Inf`. Floating-point values (`f32`/`f64`) are
+//!   rejected: no current caller marshals floats, and adding float support is
+//!   a deliberate change to this crate.
 //! - Go's byte-by-byte UTF-8 string conversion ([`go_string`]).
 //! - Go's JSON scanner (`MAX_DEPTH = 10000`, streaming [`value_len`]) with
 //!   Go's exact syntax error text.
@@ -115,14 +117,17 @@ impl serde::ser::Error for FloatErr {
     }
 }
 
-fn reject_float(v: f64, ty: &str) -> FloatErr {
+fn reject_float(v: f64) -> FloatErr {
     if v.is_nan() {
         FloatErr("json: unsupported value: NaN".to_string())
     } else if v.is_infinite() {
         let sign = if v.is_sign_positive() { '+' } else { '-' };
         FloatErr(format!("json: unsupported value: {sign}Inf"))
     } else {
-        FloatErr(format!("json: unsupported type: {ty}"))
+        FloatErr(
+            "vitruvian_gojson: floats are not supported (no caller needs them; add support here if one does)"
+                .to_string(),
+        )
     }
 }
 
@@ -235,11 +240,11 @@ impl serde::Serializer for CheckNoFloat {
     );
 
     fn serialize_f32(self, v: f32) -> Result<(), FloatErr> {
-        Err(reject_float(v as f64, "float32"))
+        Err(reject_float(v as f64))
     }
 
     fn serialize_f64(self, v: f64) -> Result<(), FloatErr> {
-        Err(reject_float(v, "float64"))
+        Err(reject_float(v))
     }
 
     fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), FloatErr> {
@@ -277,22 +282,42 @@ fn marshal_with<T: Serialize, F: serde_json::ser::Formatter>(
 }
 
 /// `json.Marshal(v)` returning UTF-8 bytes.
+///
+/// Floats (`f32`/`f64`) are rejected: no current caller marshals one, and
+/// adding float support is a deliberate change to this crate (`NaN`/`±Inf`
+/// return Go's unsupported-value error; finite floats return
+/// `vitruvian_gojson: floats are not supported ...`).
 pub fn marshal<T: Serialize>(v: &T) -> Result<Vec<u8>, String> {
     marshal_with(v, serde_json::ser::CompactFormatter)
 }
 
 /// `json.Marshal(v)` returning a `String`.
+///
+/// Floats (`f32`/`f64`) are rejected: no current caller marshals one, and
+/// adding float support is a deliberate change to this crate (`NaN`/`±Inf`
+/// return Go's unsupported-value error; finite floats return
+/// `vitruvian_gojson: floats are not supported ...`).
 pub fn marshal_string<T: Serialize>(v: &T) -> Result<String, String> {
     let bytes = marshal(v)?;
     Ok(String::from_utf8(bytes).expect("Go JSON output is valid UTF-8"))
 }
 
 /// `json.MarshalIndent(v, "", "  ")` returning UTF-8 bytes.
+///
+/// Floats (`f32`/`f64`) are rejected: no current caller marshals one, and
+/// adding float support is a deliberate change to this crate (`NaN`/`±Inf`
+/// return Go's unsupported-value error; finite floats return
+/// `vitruvian_gojson: floats are not supported ...`).
 pub fn marshal_indent<T: Serialize>(v: &T) -> Result<Vec<u8>, String> {
     marshal_with(v, serde_json::ser::PrettyFormatter::with_indent(b"  "))
 }
 
 /// `json.MarshalIndent(v, "", "  ")` returning a `String`.
+///
+/// Floats (`f32`/`f64`) are rejected: no current caller marshals one, and
+/// adding float support is a deliberate change to this crate (`NaN`/`±Inf`
+/// return Go's unsupported-value error; finite floats return
+/// `vitruvian_gojson: floats are not supported ...`).
 pub fn marshal_indent_string<T: Serialize>(v: &T) -> Result<String, String> {
     let bytes = marshal_indent(v)?;
     Ok(String::from_utf8(bytes).expect("Go JSON output is valid UTF-8"))
@@ -1561,6 +1586,16 @@ mod tests {
         }
         assert!(marshal(&1.5_f64).is_err());
         assert!(marshal(&1.5_f32).is_err());
+    }
+
+    #[test]
+    fn finite_floats_return_unsupported_error() {
+        let want = "vitruvian_gojson: floats are not supported (no caller needs them; add support here if one does)";
+        assert_eq!(marshal(&1.5f64).unwrap_err(), want);
+        assert_eq!(marshal(&1.5f32).unwrap_err(), want);
+        assert_eq!(marshal_string(&1.5f64).unwrap_err(), want);
+        assert_eq!(marshal_indent(&1.5f64).unwrap_err(), want);
+        assert_eq!(marshal_indent_string(&1.5f32).unwrap_err(), want);
     }
 
     #[test]

@@ -41,5 +41,5 @@ let out = marshal_indent(&name)?;
 ## Constraints
 
 - Depends on `//packages/gocompat:vitruvian_gocompat`, `@crates//:serde`, and `@crates//:serde_json` (built through Bazel, unlike `vitruvian_gocompat` which has zero third-party crate dependencies).
-- Floating-point serialization (`f32`/`f64`) is not supported by the current callers and returns an error instead of emitting `null`; non-finite values return Go's exact messages (`json: unsupported value: NaN`, `json: unsupported value: +Inf`, `json: unsupported value: -Inf`).
+- Floating-point values (`f32`/`f64`) are rejected during marshaling: no current caller marshals one, and adding float support is a deliberate change to this crate. Finite floats return `vitruvian_gojson: floats are not supported (no caller needs them; add support here if one does)`; non-finite values return Go's exact messages (`json: unsupported value: NaN`, `json: unsupported value: +Inf`, `json: unsupported value: -Inf`) rather than `null`.
 - Parity fixtures track the Go toolchain version pinned in `go.mod`.

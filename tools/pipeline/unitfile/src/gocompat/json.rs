@@ -24,10 +24,14 @@ pub use vitruvian_gojson::{parse, value_len, Dec, GoValue};
 
 /// `json.Marshal(v)`.
 pub fn marshal<T: serde::Serialize>(v: &T) -> String {
-    vitruvian_gojson::marshal_string(v).expect("json encoding cannot fail")
+    vitruvian_gojson::marshal_string(v).expect(
+        "no caller marshals a float; vitruvian_gojson rejects floats, see packages/gocompat/gojson/README.md",
+    )
 }
 
 /// `json.MarshalIndent(v, "", "  ")`.
 pub fn marshal_indent<T: serde::Serialize>(v: &T) -> String {
-    vitruvian_gojson::marshal_indent_string(v).expect("json encoding cannot fail")
+    vitruvian_gojson::marshal_indent_string(v).expect(
+        "no caller marshals a float; vitruvian_gojson rejects floats, see packages/gocompat/gojson/README.md",
+    )
 }
