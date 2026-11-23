@@ -176,7 +176,7 @@ spec:
             # Only `latest-dev` is free, so it is pinned by digest.
             mcImage:
               repository: cgr.dev/chainguard/minio-client
-              tag: "latest-dev@sha256:88089adbf38f78512ebf42287eaa5423c9d08ef82866d71616d4ecbf5bd04517"
+              tag: "latest-dev@sha256:9751bbefa7fa338f5f1fedd1682b3df80134aa0546c3bf91bbbf0976cda7d730"
             # Scoped logins. Each database's backups use a login that can reach
             # ONLY its own bucket, instead of the root user, so one leaked
             # credential no longer exposes every other database's backups.
