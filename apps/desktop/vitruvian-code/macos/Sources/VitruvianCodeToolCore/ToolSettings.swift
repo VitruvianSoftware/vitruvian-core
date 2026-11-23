@@ -344,7 +344,8 @@ public final class ToolSettings: VitruvianCodeHost {
                               missingAgent: Words.text("missingAgent", language),
                               agentFailed: Words.text("agentFailed", language),
                               replyStopped: Words.text("replyStopped", language),
-                              emptyReply: Words.text("emptyReply", language))
+                              emptyReply: Words.text("emptyReply", language),
+                              worktreeCreationFailed: Words.text("worktreeCreationFailed", language))
     }
 
     public func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {

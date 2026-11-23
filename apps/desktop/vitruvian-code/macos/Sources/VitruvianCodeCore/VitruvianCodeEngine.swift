@@ -122,6 +122,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         /// starts with `#!/usr/bin/env node` looks its interpreter up in).
         public var runProgramWithEnvironment: @Sendable (_ name: String, _ arguments: [String],
                                                         _ environment: [String: String]) async -> String?
+        /// Runs a program to its end and gives back what it printed to standard output only
+        /// when it exits with status 0; nil if it could not start, timed out, or exited non-zero.
+        public var runProgramChecked: @Sendable (_ name: String, _ arguments: [String]) async -> String?
         /// Runs a provider's own command in `directory`, as the program at
         /// `path` with exactly these arguments: no shell reads them. What
         /// it prints and what it writes to standard error are delivered
@@ -177,6 +180,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                      runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil },
                      // Left out, the environment is ignored and `runProgram` answers.
                      runProgramWithEnvironment: (@Sendable (String, [String], [String: String]) async -> String?)? = nil,
+                     // Left out, `runProgram` answers so existing test doubles stay compatible.
+                     runProgramChecked: (@Sendable (String, [String]) async -> String?)? = nil,
                      // Left out, no command can be started, and a turn that
                      // needs one fails saying so.
                      launchCommand: @escaping (String, [String], String, [String: String],
@@ -219,6 +224,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.runProgramWithEnvironment = runProgramWithEnvironment ?? { name, arguments, _ in
                 await runProgram(name, arguments)
             }
+            self.runProgramChecked = runProgramChecked ?? runProgram
             self.launchCommand = launchCommand
             self.runSqlite = runSqlite
             self.runSqliteOffMain = runSqliteOffMain
@@ -269,6 +275,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 },
                 runProgram: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1) },
                 runProgramWithEnvironment: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1, environment: $2) },
+                runProgramChecked: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1, requireZeroExit: true) },
                 launchCommand: VitruvianCodeEngine.launchCommandProcess,
                 runSqlite: { VitruvianCodeEngine.runSqliteProcess($0, $1, $2) },
                 runSqliteOffMain: { database, sql, readsRows in
@@ -1037,7 +1044,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     /// parameter only so a test can use a short one.
     nonisolated public static func runProgram(named name: String, arguments: [String],
                                               environment: [String: String]? = nil,
-                                              timeLimit: TimeInterval = 20) async -> String? {
+                                              timeLimit: TimeInterval = 20,
+                                              requireZeroExit: Bool = false) async -> String? {
         let files = FileManager.default
         let path = VitruvianCodeSupport.executablePath(
             named: name,
@@ -1109,7 +1117,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 process.waitUntilExit()
                 watchdog.cancel()
                 if claimAnswer(answered) {
-                    continuation.resume(returning: String(data: data, encoding: .utf8))
+                    if requireZeroExit && (process.terminationReason != .exit || process.terminationStatus != 0) {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(returning: String(data: data, encoding: .utf8))
+                    }
                 }
             }
         }

@@ -136,6 +136,7 @@ public enum Words {
         "invalidInteger",
         "booleanYes",
         "booleanNo",
+        "worktreeCreationFailed",
     ]
 
     public static func text(_ key: String, _ language: String) -> String {
@@ -257,6 +258,7 @@ public enum Words {
             "invalidInteger": "Enter a whole number",
             "booleanYes": "Yes",
             "booleanNo": "No",
+            "worktreeCreationFailed": "Could not create a git worktree for this chat.",
         ],
         "pt-BR": [
             "quickPromptTitle": "Prompt rápido do agente",
@@ -360,6 +362,7 @@ public enum Words {
             "invalidInteger": "Digite um número inteiro",
             "booleanYes": "Sim",
             "booleanNo": "Não",
+            "worktreeCreationFailed": "Não foi possível criar um worktree git para esta conversa.",
         ],
         "tr": [
             "quickPromptTitle": "Ajan Hızlı İstemi",
@@ -463,6 +466,7 @@ public enum Words {
             "invalidInteger": "Bir tam sayı girin",
             "booleanYes": "Evet",
             "booleanNo": "Hayır",
+            "worktreeCreationFailed": "Bu sohbet için git worktree oluşturulamadı.",
         ],
         "ru": [
             "quickPromptTitle": "Быстрый запрос к агенту",
@@ -566,6 +570,7 @@ public enum Words {
             "invalidInteger": "Введите целое число",
             "booleanYes": "Да",
             "booleanNo": "Нет",
+            "worktreeCreationFailed": "Не удалось создать git worktree для этого чата.",
         ],
         "es": [
             "quickPromptTitle": "Prompt rápido del agente",
@@ -669,6 +674,7 @@ public enum Words {
             "invalidInteger": "Introduce un número entero",
             "booleanYes": "Sí",
             "booleanNo": "No",
+            "worktreeCreationFailed": "No se pudo crear un worktree de git para este chat.",
         ],
         "sk": [
             "quickPromptTitle": "Rýchla výzva agentovi",
@@ -772,6 +778,7 @@ public enum Words {
             "invalidInteger": "Zadajte celé číslo",
             "booleanYes": "Áno",
             "booleanNo": "Nie",
+            "worktreeCreationFailed": "Pre tento rozhovor sa nepodarilo vytvoriť git worktree.",
         ],
         "de": [
             "quickPromptTitle": "Agent-Schnell-Prompt",
@@ -875,6 +882,7 @@ public enum Words {
             "invalidInteger": "Ganze Zahl eingeben",
             "booleanYes": "Ja",
             "booleanNo": "Nein",
+            "worktreeCreationFailed": "Für diesen Chat konnte kein Git Worktree erstellt werden.",
         ],
         "fr": [
             "quickPromptTitle": "Prompt rapide de l’agent",
@@ -978,6 +986,7 @@ public enum Words {
             "invalidInteger": "Saisissez un nombre entier",
             "booleanYes": "Oui",
             "booleanNo": "Non",
+            "worktreeCreationFailed": "Impossible de créer un worktree git pour cette discussion.",
         ],
         "it": [
             "quickPromptTitle": "Prompt rapido dell’agente",
@@ -1081,6 +1090,7 @@ public enum Words {
             "invalidInteger": "Inserisci un numero intero",
             "booleanYes": "Sì",
             "booleanNo": "No",
+            "worktreeCreationFailed": "Impossibile creare un worktree git per questa chat.",
         ],
         "ja": [
             "quickPromptTitle": "エージェントのクイックプロンプト",
@@ -1184,6 +1194,7 @@ public enum Words {
             "invalidInteger": "整数を入力してください",
             "booleanYes": "はい",
             "booleanNo": "いいえ",
+            "worktreeCreationFailed": "このチャットの git worktree を作成できませんでした。",
         ],
         "ko": [
             "quickPromptTitle": "에이전트 빠른 프롬프트",
@@ -1287,6 +1298,7 @@ public enum Words {
             "invalidInteger": "정수를 입력하세요",
             "booleanYes": "예",
             "booleanNo": "아니요",
+            "worktreeCreationFailed": "이 채팅의 git worktree를 만들 수 없습니다.",
         ],
         "uk": [
             "quickPromptTitle": "Швидкий запит до агента",
@@ -1390,6 +1402,7 @@ public enum Words {
             "invalidInteger": "Введіть ціле число",
             "booleanYes": "Так",
             "booleanNo": "Ні",
+            "worktreeCreationFailed": "Не вдалося створити git worktree для цього чату.",
         ],
         "zh-Hans": [
             "quickPromptTitle": "智能体快速提问",
@@ -1493,6 +1506,7 @@ public enum Words {
             "invalidInteger": "请输入整数",
             "booleanYes": "是",
             "booleanNo": "否",
+            "worktreeCreationFailed": "无法为此聊天创建 git worktree。",
         ],
         "zh-TW": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1596,6 +1610,7 @@ public enum Words {
             "invalidInteger": "請輸入整數",
             "booleanYes": "是",
             "booleanNo": "否",
+            "worktreeCreationFailed": "無法為此聊天建立 git worktree。",
         ],
         "zh-HK": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1699,6 +1714,7 @@ public enum Words {
             "invalidInteger": "請輸入整數",
             "booleanYes": "是",
             "booleanNo": "否",
+            "worktreeCreationFailed": "無法為此傾偈建立 git worktree。",
         ],
     ]
 }

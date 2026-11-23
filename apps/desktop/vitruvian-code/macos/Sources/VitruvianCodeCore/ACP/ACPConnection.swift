@@ -212,6 +212,7 @@ public final class ACPConnection: PersistentAgentConnection {
     private var clientFiles: ACPClientFiles?
     private var configState = ACPSessionConfigState()
     private var isLoadingSessionReplay = false
+    private var isStarting = false
     private var isStopping = false
     private var isStopped = false
     private var hasEmittedTerminalFailure = false
@@ -304,7 +305,7 @@ public final class ACPConnection: PersistentAgentConnection {
     // MARK: - AgentConnection
 
     public func start(_ request: AgentSessionRequest) async throws -> String {
-        guard !isStopped else {
+        guard !isStopped, !isStopping else {
             throw ACPConnectionError.alreadyStopped
         }
         if !sessionID.isEmpty, transport != nil {
@@ -322,6 +323,9 @@ public final class ACPConnection: PersistentAgentConnection {
             }
             return copy
         }()
+
+        isStarting = true
+        defer { isStarting = false }
 
         do {
             let initialAdditionalDirs = Self.mergedDirectories(
@@ -385,6 +389,9 @@ public final class ACPConnection: PersistentAgentConnection {
                 params: initParams,
                 timeout: sessionSetupTimeout
             )
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
+            }
 
             self.initializeResult = initResult
             self.agentVersion = initResult.agentInfo?.version
@@ -415,6 +422,9 @@ public final class ACPConnection: PersistentAgentConnection {
                     params: request.params,
                     timeout: sessionSetupTimeout
                 )
+            }
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
             }
 
             let mcpServers = Self.encodeMCPServers(request.mcpServers, allowHTTP: resolvedCapabilities.mcpHTTP)
@@ -523,6 +533,10 @@ public final class ACPConnection: PersistentAgentConnection {
                 }
             }
 
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
+            }
+
             let establishedID = (setupResult.sessionId ?? fallbackSessionID ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !establishedID.isEmpty else {
@@ -564,29 +578,31 @@ public final class ACPConnection: PersistentAgentConnection {
                 recordLogLine("[acp] startup failed: \(failure.message)")
                 emitTerminalPromptFailure(failure)
             }
-            isStopping = true
-            isStopped = true
-            hasFinalizedLogTarget = true
-            await clientTerminals.closeAll()
-            // End the process group before closing the transport: an outgoing
-            // write blocked on a full stdin pipe holds the transport actor, so
-            // closing it first would wait forever. The group's exit fails that
-            // write and frees the actor.
-            if let launchedProcess {
-                await launchedProcess.terminate(terminationGrace)
+            if !isStopped {
+                isStopping = true
+                isStopped = true
+                hasFinalizedLogTarget = true
+                await clientTerminals.closeAll()
+                // End the process group before closing the transport: an outgoing
+                // write blocked on a full stdin pipe holds the transport actor, so
+                // closing it first would wait forever. The group's exit fails that
+                // write and frees the actor.
+                if let launchedProcess {
+                    await launchedProcess.terminate(terminationGrace)
+                }
+                if let acpTransport = transport {
+                    await acpTransport.close(reason: "ACP startup failed")
+                }
+                for _ in 0..<5 {
+                    await Task.yield()
+                }
+                flushBufferedLogs(allowFallbackSessionID: true)
+                exitMonitorTask?.cancel()
+                exitMonitorTask = nil
+                stderrDrainTask?.cancel()
+                stderrDrainTask = nil
+                eventsContinuation.finish()
             }
-            if let acpTransport = transport {
-                await acpTransport.close(reason: "ACP startup failed")
-            }
-            for _ in 0..<5 {
-                await Task.yield()
-            }
-            flushBufferedLogs(allowFallbackSessionID: true)
-            exitMonitorTask?.cancel()
-            exitMonitorTask = nil
-            stderrDrainTask?.cancel()
-            stderrDrainTask = nil
-            eventsContinuation.finish()
             throw error
         }
     }
@@ -777,6 +793,10 @@ public final class ACPConnection: PersistentAgentConnection {
     }
 
     public func cancel() async {
+        if isStarting {
+            await stop()
+            return
+        }
         guard isPromptActive, let acpTransport = transport, !sessionID.isEmpty else {
             return
         }
@@ -853,10 +873,14 @@ public final class ACPConnection: PersistentAgentConnection {
         lastKnownModeID = modeID
     }
 
+    public func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        let target = (planSwitch || approvalMode == .plan) ? "plan" : "default"
+        try await setSessionMode(target)
+    }
+
     public func syncPlanMode(_ planSwitch: Bool) async throws {
         let current = modeProvider()
-        let target = (planSwitch || current.mode == .plan) ? "plan" : "default"
-        try await setSessionMode(target)
+        try await syncMode(approvalMode: current.mode, planSwitch: planSwitch)
     }
 
     public func setConfigOption(

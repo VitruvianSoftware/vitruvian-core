@@ -142,6 +142,8 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var commandNoOutput: String
     /// The menu item that deletes a conversation.
     public var deleteSession: String
+    /// Creating an isolated git worktree for a chat failed.
+    public var worktreeCreationFailed: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -170,7 +172,8 @@ public struct VitruvianCodeHostStrings: Sendable {
                  commandNotFoundSuffix: String = "' in PATH. Is it installed?",
                  commandExitedPrefix: String = "Process exited with code ",
                  commandNoOutput: String = "No output from provider",
-                 deleteSession: String = "Delete") {
+                 deleteSession: String = "Delete",
+                 worktreeCreationFailed: String = "Could not create a git worktree for this chat.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -199,6 +202,7 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.commandExitedPrefix = commandExitedPrefix
         self.commandNoOutput = commandNoOutput
         self.deleteSession = deleteSession
+        self.worktreeCreationFailed = worktreeCreationFailed
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {
