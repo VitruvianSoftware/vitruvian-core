@@ -85,6 +85,16 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+rust_test(
+    name = "backup_file_modes_test",
+    size = "small",
+    srcs = ["tests/backup_file_modes.rs"],
+    data = [":gitops-cli"],
+    edition = "2021",
+    env = {"GITOPS_CLI_BIN": "$(rootpath :gitops-cli)"},
+    rustc_flags = ["-Copt-level=3"],
+)
+
 # ---------------------------------------------------------------------------
 # The GitOps tools, in Rust.
 #

@@ -246,4 +246,58 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn jq_errors_never_leak_postgres_secret_marker() {
+        let cases: &[(&[u8], i32, i32, i32)] = &[
+            (br#""postgres://user:SECRET-MARKER-123@host/db""#, 5, 5, 5),
+            (br#""SECRET-MARKER-123""#, 5, 5, 5),
+            (b"42", 5, 5, 5),
+            (b"null", 0, 0, 0),
+            (br#"["postgres://user:SECRET-MARKER-123@host/db"]"#, 5, 5, 5),
+            (
+                br#"{"attachments":"postgres://user:SECRET-MARKER-123@host/db"}"#,
+                0,
+                5,
+                0,
+            ),
+            (
+                br#"{"attachments":["postgres://user:SECRET-MARKER-123@host/db"]}"#,
+                0,
+                5,
+                5,
+            ),
+            (
+                br#"{"id":"postgres://user:SECRET-MARKER-123@host/db"#,
+                5,
+                5,
+                5,
+            ),
+        ];
+        for &(inp, obj_field_st, first_id_st, att_st) in cases {
+            for (r, want_st) in [
+                (status(inp), obj_field_st),
+                (id(inp), obj_field_st),
+                (first_id_or_empty(inp), first_id_st),
+                (attachment_ids(inp, "a"), att_st),
+                (first_attachment_id_or_empty(inp, "a"), att_st),
+            ] {
+                assert_eq!(
+                    r.status,
+                    want_st,
+                    "input={:?}, stderr={}",
+                    String::from_utf8_lossy(inp),
+                    r.stderr_string()
+                );
+                for needle in ["SECRET-MARKER-123", "SECRET-M", "postgres://user:"] {
+                    assert!(
+                        !r.stderr_string().contains(needle),
+                        "leaked {needle:?} in stderr for {:?}: {}",
+                        String::from_utf8_lossy(inp),
+                        r.stderr_string()
+                    );
+                }
+            }
+        }
+    }
 }

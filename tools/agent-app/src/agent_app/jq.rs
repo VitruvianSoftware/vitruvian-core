@@ -50,7 +50,7 @@ fn eval(prog: &Prog, v: &Value) -> Produced {
                 "app_id={id}\nslug={slug}\nowner={login}\nkey={out}"
             )))
         })()),
-        Prog::Installations => each(v.iterate(), |x| {
+        Prog::Installations => each(v.iterate_redacted(), |x| {
             one((|| -> Result<Value, String> {
                 let sel = interpolate(&x.index("repository_selection")?);
                 let acct = interpolate(&x.index("account")?.index("login")?);
@@ -60,9 +60,10 @@ fn eval(prog: &Prog, v: &Value) -> Produced {
                 )))
             })())
         }),
-        Prog::Repos => each(v.index("repositories").and_then(|r| r.iterate()), |x| {
-            one(x.index("full_name"))
-        }),
+        Prog::Repos => each(
+            v.index("repositories").and_then(|r| r.iterate_redacted()),
+            |x| one(x.index("full_name")),
+        ),
     }
 }
 

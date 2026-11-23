@@ -28,7 +28,7 @@
 use std::process::Stdio;
 
 use shell_compat as sc;
-use vitruvian_jq::{dump_string, parse_stream, pretty, StreamItem, Value};
+use vitruvian_jq::{cannot_iterate_redacted, dump_string, parse_stream, pretty, StreamItem, Value};
 
 use super::common::*;
 use super::jq;
@@ -298,14 +298,20 @@ fn strip_key_list(input: &[u8]) -> Result<String, (i32, String)> {
             Some(Value::Null) | None => {
                 return Err((
                     5,
-                    "jq: error (at <stdin>:0): Cannot iterate over null".into(),
+                    format!(
+                        "jq: error (at <stdin>:0): {}",
+                        cannot_iterate_redacted(&Value::Null)
+                    ),
                 ))
             }
             // Keep value-free: `items` can live inside a Secret List payload.
-            Some(_) => {
+            Some(other) => {
                 return Err((
                     5,
-                    "jq: error (at <stdin>:0): Cannot iterate over this value".into(),
+                    format!(
+                        "jq: error (at <stdin>:0): {}",
+                        cannot_iterate_redacted(other)
+                    ),
                 ))
             }
         }
@@ -336,7 +342,7 @@ fn sealed_run(args: &[Vec<u8>]) -> Res<i32> {
     need_tools(&["kubectl", "bw"], true)?;
     ensure_session(false, true, (59, 63))?;
 
-    sc::umask(0o077);
+    let _umask = sc::UmaskGuard::new(0o077);
     let tmpd = match mktemp_dir_named("sskeys") {
         Ok(d) => TempDir(d),
         Err(e) => {
@@ -364,7 +370,7 @@ fn sealed_run(args: &[Vec<u8>]) -> Res<i32> {
                 Ok(t) => t.clone(),
                 Err(_) => String::new(),
             };
-            sc::write_file(&f, text.as_bytes(), 0o600).map_err(|e| {
+            sc::write_secret_file(&f, text.as_bytes()).map_err(|e| {
                 sc::redirect_error(99, &f, &e);
                 1
             })?;
@@ -610,6 +616,7 @@ fn argocd_run(args: &[Vec<u8>]) -> Res<i32> {
     need_tools(&["kubectl", "bw", "python3"], true)?;
     ensure_session(true, false, (62, 66))?;
 
+    let _umask = sc::UmaskGuard::new(0o077);
     let tmpd = match mktemp_dir_named("argocdsec") {
         Ok(d) => TempDir(d),
         Err(e) => {
@@ -624,18 +631,15 @@ fn argocd_run(args: &[Vec<u8>]) -> Res<i32> {
 
     match sub.as_slice() {
         b"backup" => {
-            let o = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(sc::path(&f))
-                .map_err(|e| {
-                    sc::redirect_error(104, &f, &e);
-                    1
-                })?;
-            let mut get = kubectl(&k, &[b"-n", &ns, b"get", b"secret", secret, b"-o", b"yaml"]);
-            get.stdout(o);
-            let st = run(104, &mut get, false);
+            let (st, yaml) = output(
+                104,
+                kubectl(&k, &[b"-n", &ns, b"get", b"secret", secret, b"-o", b"yaml"]),
+                false,
+            );
+            sc::write_secret_file(&f, &yaml).map_err(|e| {
+                sc::redirect_error(104, &f, &e);
+                1
+            })?;
             if st != 0 {
                 return Err(st);
             }
@@ -804,12 +808,44 @@ mod tests {
 
     #[test]
     fn strip_key_list_errors_never_leak_secret_values() {
-        for bad in [
-            br#"{"kind":"List","items":"FAKE-SECRET-VALUE-1"}"#.as_slice(),
-            br#"{"tls.key":"FAKE-SECRET-VALUE-1"#.as_slice(),
+        for (bad, want) in [
+            (
+                br#"{"kind":"List","items":"FAKE-SECRET-VALUE-1"}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over string",
+            ),
+            (
+                br#"{"kind":"List","items":"postgres://user:SECRET-MARKER-123@host/db"}"#
+                    .as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over string",
+            ),
+            (
+                br#"{"kind":"List","items":42}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over number",
+            ),
+            (
+                br#"{"kind":"List","items":null}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over null",
+            ),
+            (
+                br#"{"kind":"List"}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over null",
+            ),
+            (
+                br#"{"tls.key":"FAKE-SECRET-VALUE-1"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot parse input",
+            ),
         ] {
-            let (_, msg) = strip_key_list(bad).unwrap_err();
-            assert!(!msg.contains("FAKE-SECRET-VALUE-1"), "secret leaked: {msg}");
+            let (code, msg) = strip_key_list(bad).unwrap_err();
+            assert_eq!(code, if want.contains("parse") { 2 } else { 5 });
+            assert_eq!(msg, want);
+            for needle in [
+                "FAKE-SECRET-VALUE-1",
+                "SECRET-MARKER-123",
+                "SECRET-M",
+                "postgres://user:",
+            ] {
+                assert!(!msg.contains(needle), "secret leaked: {msg}");
+            }
         }
     }
 }

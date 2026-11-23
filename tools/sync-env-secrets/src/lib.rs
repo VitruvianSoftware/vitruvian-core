@@ -295,32 +295,7 @@ impl Tool {
     /// Persist the unlocked session, 0600, in a 0700 directory.
     fn cache_session(&self) -> R {
         let session = sh::env_or_empty("BW_SESSION");
-        let old = sh::umask(0o077);
-        let r = (|| -> R {
-            let dir = sh::dirname(&self.sess_cache);
-            if let Err(e) = sh::mkdir_p(&dir) {
-                sh::err(&sh::cat(&[
-                    b"mkdir: ",
-                    &dir,
-                    b": ",
-                    sh::strerror(&e).as_bytes(),
-                    b"\n",
-                ]));
-                return Err(Exit(1));
-            }
-            if let Err(e) = sh::write_file(&self.sess_cache, &session, 0o666) {
-                sh::redirect_error(140, &self.sess_cache, &e);
-                return Err(Exit(1));
-            }
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(
-                sh::path(&self.sess_cache),
-                std::fs::Permissions::from_mode(0o600),
-            );
-            Ok(())
-        })();
-        sh::umask(old);
-        r
+        write_session_cache(&self.sess_cache, &session)
     }
 
     /// bw_item_id: the first search hit's id, or nothing; never fails.
@@ -348,6 +323,7 @@ impl Tool {
             ])));
         }
         self.bw_sync(153)?;
+        let _umask = sh::UmaskGuard::new(0o077);
         let tmpdir = self.mktemp_dir()?;
         let tar = sh::cat(&[&tmpdir, b"/", &self.archive]);
         let mut c = Command::new("tar");
@@ -453,6 +429,7 @@ impl Tool {
                 b"'",
             ])));
         }
+        let _umask = sh::UmaskGuard::new(0o077);
         let tmpdir = self.mktemp_dir()?;
         let tar = sh::cat(&[&tmpdir, b"/", &self.archive]);
         let mut c = bw();
@@ -572,7 +549,7 @@ impl Tool {
 
     fn agent_keys_pull(&mut self) -> R {
         self.use_agent_store();
-        sh::umask(0o077);
+        let _umask = sh::UmaskGuard::new(0o077);
         self.bw_pull()
     }
 
@@ -619,9 +596,7 @@ impl Tool {
             return Err(Exit(1));
         }
         let file = sh::cat(&[&dir, b"/", name]);
-        let old = sh::umask(0o077);
-        let w = sh::write_file(&file, &val, 0o666);
-        sh::umask(old);
+        let w = sh::write_secret_file(&file, &val);
         if let Err(e) = w {
             sh::redirect_error(251, &file, &e);
             return Err(Exit(1));
@@ -767,6 +742,26 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     }
 }
 
+fn write_session_cache(sess_cache: &[u8], session: &[u8]) -> R {
+    let _umask = sh::UmaskGuard::new(0o077);
+    let dir = sh::dirname(sess_cache);
+    if let Err(e) = sh::mkdir_p(&dir) {
+        sh::err(&sh::cat(&[
+            b"mkdir: ",
+            &dir,
+            b": ",
+            sh::strerror(&e).as_bytes(),
+            b"\n",
+        ]));
+        return Err(Exit(1));
+    }
+    if let Err(e) = sh::write_secret_file(sess_cache, session) {
+        sh::redirect_error(140, sess_cache, &e);
+        return Err(Exit(1));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,5 +814,35 @@ mod tests {
         assert_eq!(piped(3, j(5)).1, 5);
         let ok = j(0);
         assert_eq!(piped(0, ok).1, 0);
+    }
+
+    #[test]
+    fn session_cache_and_secret_file_are_created_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::temp_dir().join(format!("sync-env-sec-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let sess_dir = base.join("cache/vitruvian-core");
+        let sess_file = sess_dir.join("bw-session");
+        let sess_b = sh::path_bytes(&sess_file);
+
+        assert!(write_session_cache(&sess_b, b"fake-bw-session-1").is_ok());
+        assert_eq!(
+            std::fs::metadata(&sess_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(&sess_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        std::fs::set_permissions(&sess_file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(write_session_cache(&sess_b, b"fake-bw-session-2").is_ok());
+        assert_eq!(
+            std::fs::metadata(&sess_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(std::fs::read(&sess_file).unwrap(), b"fake-bw-session-2");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

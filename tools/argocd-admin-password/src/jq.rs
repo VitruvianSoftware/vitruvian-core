@@ -38,7 +38,7 @@ pub fn status(v: &Jv) -> Produced {
 /// `[.[] | select(.name==$n)][0] // empty`.
 pub fn select_item(n: &str) -> impl Fn(&Jv) -> Produced + '_ {
     move |v: &Jv| {
-        let items = match v.iterate() {
+        let items = match v.iterate_redacted() {
             Ok(xs) => xs,
             Err(e) => return (Vec::new(), Some(e)),
         };
@@ -132,7 +132,7 @@ mod tests {
         let r = run(b"null", RunOptions::compact(), &f);
         assert_eq!(
             r.stderr_string(),
-            "jq: error (at <stdin>:0): Cannot iterate over null (null)\n"
+            "jq: error (at <stdin>:0): Cannot iterate over null\n"
         );
         let r = run(
             b"\"aaaaaaaaaaaaaaaaaaaaaaaaaaaa\"",
@@ -141,7 +141,7 @@ mod tests {
         );
         assert_eq!(
             r.stderr_string(),
-            "jq: error (at <stdin>:0): Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaa...\")\n"
+            "jq: error (at <stdin>:0): Cannot iterate over string\n"
         );
     }
 
@@ -175,5 +175,69 @@ mod tests {
             dump_string("a\u{7f}\u{1}é/\"\\\n"),
             "\"a\\u007f\\u0001é/\\\"\\\\\\n\""
         );
+    }
+
+    #[test]
+    fn jq_errors_never_leak_secret_values() {
+        let bare_url = br#""postgres://user:SECRET-MARKER-123@host/db""#.as_slice();
+        let bare_short = br#""SECRET-MARKER-123""#.as_slice();
+        let num = b"42".as_slice();
+        let null = b"null".as_slice();
+        let arr_url = br#"["postgres://user:SECRET-MARKER-123@host/db"]"#.as_slice();
+        let nested_obj = br#"{"x":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+        let nested_login = br#"{"login":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+
+        let assert_clean = |inp: &[u8], r: &Run, want_status: i32| {
+            let err = r.stderr_string();
+            assert_eq!(
+                r.status,
+                want_status,
+                "input={:?}, stderr={err}",
+                String::from_utf8_lossy(inp)
+            );
+            for needle in ["SECRET-MARKER-123", "SECRET-M", "postgres://user:"] {
+                assert!(
+                    !err.contains(needle),
+                    "leaked {needle:?} in stderr for {:?}: {err}",
+                    String::from_utf8_lossy(inp)
+                );
+            }
+        };
+
+        let sel = select_item(crate::ITEM);
+        for (inp, want_err) in [
+            (
+                bare_url,
+                "jq: error (at <stdin>:0): Cannot iterate over string\n",
+            ),
+            (
+                bare_short,
+                "jq: error (at <stdin>:0): Cannot iterate over string\n",
+            ),
+            (
+                num,
+                "jq: error (at <stdin>:0): Cannot iterate over number\n",
+            ),
+            (null, "jq: error (at <stdin>:0): Cannot iterate over null\n"),
+        ] {
+            let r = run(inp, RunOptions::compact(), &sel);
+            assert_clean(inp, &r, 5);
+            assert_eq!(r.stderr_string(), want_err);
+        }
+        for inp in [arr_url, nested_obj] {
+            assert_clean(inp, &run(inp, RunOptions::compact(), &sel), 5);
+        }
+
+        for inp in [bare_url, bare_short, num] {
+            assert_clean(inp, &run(inp, RunOptions::raw(), status), 5);
+            assert_clean(inp, &run(inp, RunOptions::raw(), password), 5);
+        }
+        assert_clean(
+            nested_login,
+            &run(nested_login, RunOptions::raw(), password),
+            5,
+        );
+        assert_clean(null, &run(null, RunOptions::raw(), status), 0);
+        assert_clean(null, &run(null, RunOptions::raw(), password), 0);
     }
 }

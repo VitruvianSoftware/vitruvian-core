@@ -25,9 +25,8 @@
 //! seal_pagerduty_readonly.sh. Each value goes to
 //! kubectl or kubeseal on stdin, never on a command line, and is never printed.
 
-use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 
 use shell_compat as sc;
 
@@ -1217,30 +1216,22 @@ fn backstage_app_run(args: &[Vec<u8>]) -> Res<i32> {
     cd_workspace(0)?;
     let out = out_path(secret);
 
-    let dir = std::env::temp_dir().join(format!("seal-backstage-app.{}", std::process::id()));
-    if let Err(e) = std::fs::create_dir(&dir) {
-        return die(
-            1,
-            format!("ERROR: cannot create {}: {e}", dir.display()).as_bytes(),
-        );
-    }
-    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    let dir = match mktemp_dir_named("seal-backstage-app") {
+        Ok(d) => d,
+        Err(e) => {
+            return die(1, format!("ERROR: cannot create temp dir: {e}").as_bytes());
+        }
+    };
     let r = (|| -> Res<i32> {
         let put = |name: &str, val: &[u8]| -> Res<Vec<u8>> {
-            let p = dir.join(name);
-            let mut f = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(0o600)
-                .open(&p)
-                .map_err(|_| 1)?;
-            f.write_all(val).map_err(|_| 1)?;
-            Ok(p.into_os_string().into_vec())
+            let p = sc::cat(&[&dir, b"/", name.as_bytes()]);
+            sc::write_secret_file_new(&p, val).map_err(|_| 1)?;
+            Ok(p)
         };
         let f_id = put("id", &app_id)?;
         let f_cid = put("cid", client_id.as_bytes())?;
         let f_cs = put("cs", client_secret.as_bytes())?;
-        let tmp = dir.join("sealed.yaml").into_os_string().into_vec();
+        let tmp = sc::cat(&[&dir, b"/sealed.yaml"]);
         write_new(0, &tmp, LICENSE_HEADER.as_bytes())?;
         let o = append_to(0, &tmp)?;
         let create = kubectl(
@@ -1283,7 +1274,7 @@ fn backstage_app_run(args: &[Vec<u8>]) -> Res<i32> {
         mv(0, &tmp, &out)?;
         Ok(0)
     })();
-    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(sc::path(&dir));
     r?;
     say(&sc::cat(&[
         "\u{2713} sealed \u{2192} ".as_bytes(),

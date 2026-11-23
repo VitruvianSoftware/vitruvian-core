@@ -717,6 +717,47 @@ pub fn umask(mask: u32) -> u32 {
     unsafe { c_umask(mask as ModeT) as u32 }
 }
 
+/// Restores the process umask when dropped.
+pub struct UmaskGuard(u32);
+
+impl UmaskGuard {
+    /// Sets the process umask to `mask` and returns a guard that restores the
+    /// prior mask on drop.
+    pub fn new(mask: u32) -> Self {
+        Self(umask(mask))
+    }
+}
+
+impl Drop for UmaskGuard {
+    fn drop(&mut self) {
+        umask(self.0);
+    }
+}
+
+/// Creates a new file exclusively at mode `0600` at creation time (without
+/// post-write chmod) and writes `data`.
+pub fn write_secret_file_new(p: &[u8], data: &[u8]) -> io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path(p))?;
+    f.write_all(data)
+}
+
+/// Unlinks any pre-existing file at `p` and recreates it at mode `0600` via
+/// [`write_secret_file_new`], so wider permissions on an older file never
+/// survive across writes and no post-write chmod is needed.
+pub fn write_secret_file(p: &[u8], data: &[u8]) -> io::Result<()> {
+    match fs::remove_file(path(p)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    write_secret_file_new(p, data)
+}
+
 /// `printf '%s' DATA >FILE` (create or truncate), with the file made mode
 /// `mode` & ~umask when it is new.
 pub fn write_file(p: &[u8], data: &[u8], mode: u32) -> io::Result<()> {
@@ -1051,5 +1092,47 @@ mod tests {
     fn pad_right_counts_bytes() {
         assert_eq!(pad_right(b"ab", 4), b"ab  ");
         assert_eq!(pad_right(b"abcde", 4), b"abcde");
+    }
+
+    #[test]
+    fn secret_file_helpers_enforce_0600_and_restore_umask() {
+        let dir = std::env::temp_dir().join(format!("shell-compat-sec-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let p_new = dir.join("new-secret");
+        let p_new_b = path_bytes(&p_new);
+        write_secret_file_new(&p_new_b, b"secret-1").unwrap();
+        assert_eq!(
+            fs::metadata(&p_new).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            write_secret_file_new(&p_new_b, b"secret-2")
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::AlreadyExists
+        );
+
+        let p_rep = dir.join("replace-secret");
+        fs::write(&p_rep, b"old").unwrap();
+        fs::set_permissions(&p_rep, fs::Permissions::from_mode(0o644)).unwrap();
+        let p_rep_b = path_bytes(&p_rep);
+        write_secret_file(&p_rep_b, b"new-secret").unwrap();
+        assert_eq!(
+            fs::metadata(&p_rep).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(fs::read(&p_rep).unwrap(), b"new-secret");
+
+        let baseline = umask(0o022);
+        {
+            let _g = UmaskGuard::new(0o077);
+            let inner = umask(0o077);
+            assert_eq!(inner, 0o077);
+        }
+        assert_eq!(umask(baseline), 0o022);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

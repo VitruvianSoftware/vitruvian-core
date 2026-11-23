@@ -23,7 +23,9 @@
 use std::cmp::Ordering;
 use std::fmt;
 
-use crate::error::{cannot_index_number, cannot_index_string, cannot_iterate};
+use crate::error::{
+    cannot_index_number, cannot_index_string, cannot_iterate, cannot_iterate_redacted,
+};
 use crate::order::{compare, jq_eq};
 
 const MAX_EXP: i64 = 999_999_999;
@@ -674,6 +676,24 @@ impl Value {
         }
     }
 
+    /// `.[]` for credential-handling tools: array elements or object values in
+    /// order, or `Cannot iterate over <kind>` without quoting the value.
+    ///
+    /// Deliberate exception to jq 1.8.2: jq 1.8.2 prints
+    /// `Cannot iterate over <kind> (<truncated value>)` (e.g.
+    /// `Cannot iterate over string ("postgres://user:SECRET-M...")`). Because a
+    /// bare-string response from a credential endpoint can contain a username,
+    /// password, token, or key, this method omits the value while keeping jq's
+    /// runtime error semantics and exit code 5. Non-secret tools should use
+    /// [`Value::iterate`] for full jq 1.8.2 error parity.
+    pub fn iterate_redacted(&self) -> Result<Vec<Value>, String> {
+        match self {
+            Value::Array(items) => Ok(items.clone()),
+            Value::Object(entries) => Ok(entries.iter().map(|(_, v)| v.clone()).collect()),
+            other => Err(cannot_iterate_redacted(other)),
+        }
+    }
+
     /// `.[]?`: array elements or object values; empty vec on anything else.
     pub fn iterate_opt(&self) -> Vec<Value> {
         match self {
@@ -882,6 +902,38 @@ mod tests {
         assert_eq!(
             Value::int(5).del_key("a").unwrap_err(),
             "Cannot index number with string (\"a\")"
+        );
+    }
+
+    #[test]
+    fn iterate_redacted_omits_values() {
+        let arr = Value::Array(vec![Value::int(1), Value::str("x")]);
+        assert_eq!(
+            arr.iterate_redacted().unwrap(),
+            vec![Value::int(1), Value::str("x")]
+        );
+        let obj = Value::object([("a".into(), Value::int(1)), ("b".into(), Value::int(2))]);
+        assert_eq!(
+            obj.iterate_redacted().unwrap(),
+            vec![Value::int(1), Value::int(2)]
+        );
+        assert_eq!(
+            Value::str("postgres://user:SECRET-MARKER-123@host/db")
+                .iterate_redacted()
+                .unwrap_err(),
+            "Cannot iterate over string"
+        );
+        assert_eq!(
+            Value::int(42).iterate_redacted().unwrap_err(),
+            "Cannot iterate over number"
+        );
+        assert_eq!(
+            Value::Null.iterate_redacted().unwrap_err(),
+            "Cannot iterate over null"
+        );
+        assert_eq!(
+            Value::Bool(false).iterate_redacted().unwrap_err(),
+            "Cannot iterate over boolean"
         );
     }
 }

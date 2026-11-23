@@ -125,15 +125,7 @@ impl Opts {
     fn find_branch_by_name(&self, name: &[u8]) -> (i32, Vec<u8>) {
         let (_, json) = self.api(b"GET", &self.branches_path(), None);
         let target = String::from_utf8_lossy(name);
-        let r = jq::run(&echo(&json), RunOptions::raw(), |v| {
-            each(v.index("branches").and_then(|b| b.iterate()), |b| {
-                match b.index("name") {
-                    Ok(n) if n.is_str(&target) => (vec![b.clone()], None),
-                    Ok(_) => (Vec::new(), None),
-                    Err(e) => (Vec::new(), Some(e)),
-                }
-            })
-        });
+        let r = jq::run(&echo(&json), RunOptions::raw(), branch_by_name(&target));
         err(&r.stderr);
         (r.status, subst(r.stdout))
     }
@@ -163,16 +155,11 @@ impl Opts {
         let path = cat(&[b"projects/", &self.project_id, b"/endpoints"]);
         let (_, json) = self.api(b"GET", &path, None);
         let target = String::from_utf8_lossy(branch_id);
-        let r = jq::run(&echo(&json), RunOptions::raw(), |v| {
-            each(
-                v.index("endpoints").and_then(|b| b.iterate()),
-                |e| match e.index("branch_id") {
-                    Ok(b) if b.is_str(&target) => one(e.index("host")),
-                    Ok(_) => (Vec::new(), None),
-                    Err(x) => (Vec::new(), Some(x)),
-                },
-            )
-        });
+        let r = jq::run(
+            &echo(&json),
+            RunOptions::raw(),
+            endpoint_host_for_branch(&target),
+        );
         err(&r.stderr);
         (r.status, subst(head1(&r.stdout)))
     }
@@ -188,23 +175,56 @@ impl Opts {
     }
 }
 
+fn branch_by_name<'a>(target: &'a str) -> impl Fn(&Value) -> Produced + 'a {
+    move |v: &Value| {
+        each(
+            v.index("branches").and_then(|b| b.iterate_redacted()),
+            |b| match b.index("name") {
+                Ok(n) if n.is_str(target) => (vec![b.clone()], None),
+                Ok(_) => (Vec::new(), None),
+                Err(e) => (Vec::new(), Some(e)),
+            },
+        )
+    }
+}
+
+fn endpoint_host_for_branch<'a>(target: &'a str) -> impl Fn(&Value) -> Produced + 'a {
+    move |v: &Value| {
+        each(
+            v.index("endpoints").and_then(|b| b.iterate_redacted()),
+            |e| match e.index("branch_id") {
+                Ok(b) if b.is_str(target) => one(e.index("host")),
+                Ok(_) => (Vec::new(), None),
+                Err(x) => (Vec::new(), Some(x)),
+            },
+        )
+    }
+}
+
+fn created_branch_id(v: &Value) -> Produced {
+    one(v.index("branch").and_then(|b| b.index("id")))
+}
+
 fn parent_branch_ids<'a>(p: &'a str) -> impl Fn(&Value) -> Produced + 'a {
     move |v: &Value| {
-        each(v.index("branches").and_then(|b| b.iterate()), |b| {
-            let hit = match b.index("id") {
-                Ok(id) if id.is_str(p) => true,
-                Ok(_) => match b.index("name") {
-                    Ok(n) => n.is_str(p),
+        each(
+            v.index("branches").and_then(|b| b.iterate_redacted()),
+            |b| {
+                let hit = match b.index("id") {
+                    Ok(id) if id.is_str(p) => true,
+                    Ok(_) => match b.index("name") {
+                        Ok(n) => n.is_str(p),
+                        Err(e) => return (Vec::new(), Some(e)),
+                    },
                     Err(e) => return (Vec::new(), Some(e)),
-                },
-                Err(e) => return (Vec::new(), Some(e)),
-            };
-            if hit {
-                one(b.index("id"))
-            } else {
-                (Vec::new(), None)
-            }
-        })
+                };
+                if hit {
+                    one(b.index("id"))
+                } else {
+                    (Vec::new(), None)
+                }
+            },
+        )
     }
 }
 
@@ -284,9 +304,7 @@ fn do_create(o: &Opts) -> R<()> {
         ]));
         let (st, resp) = o.api(b"POST", &o.branches_path(), Some(payload.as_bytes()));
         check(st)?;
-        jq_assign(&resp, |v| {
-            one(v.index("branch").and_then(|b| b.index("id")))
-        })?
+        jq_assign(&resp, created_branch_id)?
     };
     let (st, host) = o.get_branch_endpoint(&branch_id);
     check(st)?;
@@ -461,13 +479,13 @@ mod tests {
         let r = jq::run(b"{}\n", RunOptions::raw(), &f);
         assert_eq!(
             r.stderr,
-            b"jq: error (at <stdin>:1): Cannot iterate over null (null)\n"
+            b"jq: error (at <stdin>:1): Cannot iterate over null\n"
         );
         assert_eq!(r.status, 5);
         let r = jq::run(b"{}", RunOptions::raw(), &f);
         assert_eq!(
             r.stderr,
-            b"jq: error (at <stdin>:0): Cannot iterate over null (null)\n"
+            b"jq: error (at <stdin>:0): Cannot iterate over null\n"
         );
         let r = jq::run(b"{}\n\n\n", RunOptions::raw(), &f);
         assert!(r.stderr.starts_with(b"jq: error (at <stdin>:1)"));
@@ -500,6 +518,125 @@ mod tests {
             let r = jq::run(inp, RunOptions::raw(), uri_or_empty);
             assert_eq!(r.status, 5);
             assert!(!r.stderr_string().contains("FAKE-SECRET-VALUE-1"));
+        }
+    }
+
+    #[test]
+    fn neon_branch_errors_never_leak_secret_values() {
+        let bare_url = br#""postgres://user:SECRET-MARKER-123@host/db""#.as_slice();
+        let bare_short = br#""SECRET-MARKER-123""#.as_slice();
+        let num = b"42".as_slice();
+        let null = b"null".as_slice();
+        let nested_branches_url =
+            br#"{"branches":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+        let nested_branches_short = br#"{"branches":"SECRET-MARKER-123"}"#.as_slice();
+        let nested_branches_arr =
+            br#"{"branches":["postgres://user:SECRET-MARKER-123@host/db"]}"#.as_slice();
+        let nested_branches_num = br#"{"branches":42}"#.as_slice();
+        let nested_branches_null = br#"{"branches":null}"#.as_slice();
+        let nested_endpoints_url =
+            br#"{"endpoints":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+        let nested_endpoints_short = br#"{"endpoints":"SECRET-MARKER-123"}"#.as_slice();
+        let nested_endpoints_arr =
+            br#"{"endpoints":["postgres://user:SECRET-MARKER-123@host/db"]}"#.as_slice();
+        let nested_endpoints_num = br#"{"endpoints":42}"#.as_slice();
+        let nested_endpoints_null = br#"{"endpoints":null}"#.as_slice();
+        let nested_branch_obj_url =
+            br#"{"branch":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+
+        let assert_clean = |inp: &[u8], r: &jq::RunResult, want_status: i32| {
+            let err = r.stderr_string();
+            assert_eq!(
+                r.status,
+                want_status,
+                "input={:?}, stderr={err}",
+                String::from_utf8_lossy(inp)
+            );
+            for needle in ["SECRET-MARKER-123", "SECRET-M", "postgres://user:"] {
+                assert!(
+                    !err.contains(needle),
+                    "leaked {needle:?} in stderr for {:?}: {err}",
+                    String::from_utf8_lossy(inp)
+                );
+            }
+        };
+
+        let find_b = branch_by_name("main");
+        let parent_b = parent_branch_ids("main");
+        let ep_host = endpoint_host_for_branch("br-1");
+
+        for (inp, want_err) in [
+            (
+                nested_branches_url,
+                "jq: error (at <stdin>:0): Cannot iterate over string\n",
+            ),
+            (
+                nested_branches_short,
+                "jq: error (at <stdin>:0): Cannot iterate over string\n",
+            ),
+            (
+                nested_branches_num,
+                "jq: error (at <stdin>:0): Cannot iterate over number\n",
+            ),
+            (
+                nested_branches_null,
+                "jq: error (at <stdin>:0): Cannot iterate over null\n",
+            ),
+        ] {
+            for r in [
+                jq::run(inp, RunOptions::raw(), &find_b),
+                jq::run(inp, RunOptions::raw(), &parent_b),
+            ] {
+                assert_clean(inp, &r, 5);
+                assert_eq!(r.stderr_string(), want_err);
+            }
+        }
+        for (inp, want_err) in [
+            (
+                nested_endpoints_url,
+                "jq: error (at <stdin>:0): Cannot iterate over string\n",
+            ),
+            (
+                nested_endpoints_short,
+                "jq: error (at <stdin>:0): Cannot iterate over string\n",
+            ),
+            (
+                nested_endpoints_num,
+                "jq: error (at <stdin>:0): Cannot iterate over number\n",
+            ),
+            (
+                nested_endpoints_null,
+                "jq: error (at <stdin>:0): Cannot iterate over null\n",
+            ),
+        ] {
+            let r = jq::run(inp, RunOptions::raw(), &ep_host);
+            assert_clean(inp, &r, 5);
+            assert_eq!(r.stderr_string(), want_err);
+        }
+
+        for inp in [bare_url, bare_short, num, nested_branches_arr] {
+            assert_clean(inp, &jq::run(inp, RunOptions::raw(), &find_b), 5);
+            assert_clean(inp, &jq::run(inp, RunOptions::raw(), &parent_b), 5);
+        }
+        for inp in [bare_url, bare_short, num, nested_endpoints_arr] {
+            assert_clean(inp, &jq::run(inp, RunOptions::raw(), &ep_host), 5);
+        }
+        assert_clean(null, &jq::run(null, RunOptions::raw(), &find_b), 5);
+        assert_clean(null, &jq::run(null, RunOptions::raw(), &parent_b), 5);
+        assert_clean(null, &jq::run(null, RunOptions::raw(), &ep_host), 5);
+
+        for inp in [bare_url, bare_short, num] {
+            assert_clean(inp, &jq::run(inp, RunOptions::raw(), id_of), 5);
+            assert_clean(inp, &jq::run(inp, RunOptions::raw(), uri_or_empty), 5);
+            assert_clean(inp, &jq::run(inp, RunOptions::raw(), created_branch_id), 5);
+        }
+        assert_clean(
+            nested_branch_obj_url,
+            &jq::run(nested_branch_obj_url, RunOptions::raw(), created_branch_id),
+            5,
+        );
+        for f in [id_of, uri_or_empty, created_branch_id] {
+            assert_clean(null, &jq::run(null, RunOptions::raw(), f), 0);
         }
     }
 }
