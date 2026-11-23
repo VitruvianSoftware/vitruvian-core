@@ -31,8 +31,8 @@ use http::StatusCode;
 
 use super::*;
 use crate::http::tests::{
-    call_body, ed25519, error_text, harness, harness_with, spawn_rpc, tool, within, Harness, Reply,
-    ALICE, BOB, CONNECTOR_CLIENT, MCP_CLIENT, PUBLIC_URL,
+    app_harness, call_body, ed25519, error_text, harness, harness_with, spawn_rpc, tool, within,
+    Harness, Reply, ALICE, BOB, CONNECTOR_CLIENT, MCP_CLIENT, PUBLIC_URL,
 };
 use crate::http::Timing;
 use crate::store::{ActivityRow, Store};
@@ -974,6 +974,67 @@ async fn the_list_shows_my_computers_with_their_address_and_status() {
     let nobody = sign_in(&h, "carol").await;
     let empty = nobody.get(&h, "/devices").await;
     assert!(empty.body.contains("vrelay login"), "{}", empty.body);
+}
+
+/// With app sign-in on, a computer's row gives the Gemini address (the one
+/// that needs no client id or secret) next to Claude's, and its page tells
+/// Gemini people to paste only that.
+#[tokio::test]
+async fn device_row_shows_app_url() {
+    let h = app_harness().await;
+    let (id, _) = h.new_device(ALICE).await;
+    let b = sign_in(&h, ALICE).await;
+
+    let page = b.get(&h, "/devices").await;
+    let claude = format!("{PUBLIC_URL}/mcp/d/{id}");
+    let gemini = format!("{PUBLIC_URL}/mcp/app/{id}");
+    assert!(page.body.contains(&claude), "{}", page.body);
+    assert!(page.body.contains(&gemini), "{}", page.body);
+    // Each address is labelled for its app, and the labels sit in order.
+    let (c_label, g_label) = (
+        page.body.find("For Claude:").expect("Claude label"),
+        page.body.find("For Gemini:").expect("Gemini label"),
+    );
+    let (c_url, g_url) = (
+        page.body.find(&claude).unwrap(),
+        page.body.find(&gemini).unwrap(),
+    );
+    assert!(
+        c_label < c_url && c_url < g_label && g_label < g_url,
+        "{}",
+        page.body
+    );
+
+    let one = b.get(&h, &format!("/devices/{id}")).await;
+    assert!(one.body.contains(&gemini), "{}", one.body);
+    assert!(
+        one.body.contains("client ID and secret blank"),
+        "{}",
+        one.body
+    );
+    assert!(
+        !one.body.contains("Ask the person who invited you"),
+        "{}",
+        one.body
+    );
+}
+
+/// With it off, the Gemini address does not exist, so the pages never show it.
+#[tokio::test]
+async fn device_row_has_no_app_url_when_app_sign_in_is_off() {
+    let h = harness().await;
+    let (id, _) = h.new_device(ALICE).await;
+    let b = sign_in(&h, ALICE).await;
+
+    let page = b.get(&h, "/devices").await;
+    assert!(page.body.contains(&format!("{PUBLIC_URL}/mcp/d/{id}")));
+    assert!(page.body.contains("Address for your AI app:"));
+    for gone in ["/mcp/app/", "For Claude:", "For Gemini:"] {
+        assert!(!page.body.contains(gone), "{gone} in {}", page.body);
+    }
+    let one = b.get(&h, &format!("/devices/{id}")).await;
+    assert!(!one.body.contains("/mcp/app/"), "{}", one.body);
+    assert!(one.body.contains("Ask the person who invited you"));
 }
 
 #[tokio::test]

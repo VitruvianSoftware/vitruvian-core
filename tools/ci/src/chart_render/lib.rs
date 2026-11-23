@@ -114,6 +114,18 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
         good_with: &[("oidc.requiredRole", "")],
         expect: "value: \"{v}\"",
     },
+    // App sign-in (appSignin.enabled in the CI values) needs the apps client's
+    // id, and the relay refuses to start unless that id is also one of the AI
+    // apps' ids, so the chart refuses an empty id and one missing from
+    // mcpClientIds (_helpers.tpl appSignin). Renders as APPS_CLIENT_ID.
+    ValueControl {
+        chart_dir: "apps/suites/vitruvian-relay/relay/deploy/chart",
+        path: "oidc.appsClientId",
+        bad: &["", "400000000000000999"],
+        good: &["400000000000000001", "400571151492842651"],
+        good_with: &[],
+        expect: "value: \"{v}\"",
+    },
 ];
 
 /// Extract every `required "<message>" .Values.<path>` from a chart's

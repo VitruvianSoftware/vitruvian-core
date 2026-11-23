@@ -1145,6 +1145,58 @@ async fn unknown_session_gets_404() {
     assert_eq!(r.status, StatusCode::ACCEPTED);
 }
 
+/// With app sign-in on, the answer also carries the address Gemini is given, so
+/// the connector can print it. It is a new field: old connectors ignore it.
+#[tokio::test]
+async fn register_device_returns_the_app_url_when_app_sign_in_is_on() {
+    let h = app_harness().await;
+    let key = ed25519();
+    let r = h.register(ALICE, &key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let id = r.json()["device_id"].as_str().unwrap().to_string();
+    assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
+    assert_eq!(
+        r.json()["app_mcp_url"],
+        format!("{PUBLIC_URL}/mcp/app/{id}")
+    );
+    // The same computer signing in again (a new key, the same id) gets them too.
+    let again = h.reregister(ALICE, &id, &ed25519()).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.body);
+    assert_eq!(again.json()["device_id"], id);
+    assert_eq!(
+        again.json()["app_mcp_url"],
+        format!("{PUBLIC_URL}/mcp/app/{id}")
+    );
+}
+
+/// With it off the field is absent, not null or empty: the answer is exactly
+/// what it was before app sign-in existed.
+#[tokio::test]
+async fn register_device_omits_the_app_url_when_app_sign_in_is_off() {
+    let h = harness().await;
+    let key = ed25519();
+    let r = h.register(ALICE, &key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let id = r.json()["device_id"].as_str().unwrap().to_string();
+    let body = r.json();
+    let keys: Vec<&str> = body
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys.len(), 2, "{keys:?}");
+    assert!(
+        keys.contains(&"device_id") && keys.contains(&"mcp_url"),
+        "{keys:?}"
+    );
+    assert!(!r.body.contains("app_mcp_url"), "{}", r.body);
+    assert_eq!(body["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
+    let again = h.reregister(ALICE, &id, &ed25519()).await;
+    assert_eq!(again.json()["device_id"], id);
+    assert!(!again.body.contains("app_mcp_url"), "{}", again.body);
+}
+
 #[tokio::test]
 async fn register_device_returns_mcp_url() {
     let h = harness().await;

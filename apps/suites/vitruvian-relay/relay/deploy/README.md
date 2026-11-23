@@ -85,6 +85,34 @@ new image digest and the new-mode values, which is the file
 affinity. It moves the hostname, so external-dns drops the `relay.ipv1337.dev`
 record and the HTTPRoute stops serving that name in the same sync.
 
+### App sign-in (Gemini with one URL), off until switched on
+
+`appSignin.enabled` (default off) makes the relay an OAuth server for AI apps
+that register themselves, so a person pastes one URL into Gemini and leaves the
+client id and secret blank. It is wired in three places, all inert until the
+switch is on, and turning it on is its own values PR
+(`gitops/argocd/platform/relay/values.yaml`):
+
+| What | Where |
+|---|---|
+| The Zitadel client the relay signs people in with | `relay-apps` in `zitadel-apps-relay` (`appsClientId` output). Created by CI on merge; the relay does not use it until the switch is on |
+| The key the relay seals its sign-in state with | SealedSecret `relay-app-signin`, key `app-signin-key`, in `gitops/argocd/platform/sealed-secrets-manifests/` (not in this app's folder: the relay Argo project does not allow SealedSecret) |
+| The chart | `appSignin.enabled`, `appSignin.secretName`, `appSignin.secretKey`, `oidc.appsClientId` |
+
+With the switch on, the chart refuses to render unless `oidc.appsClientId` is set
+**and** is also listed in `oidc.mcpClientIds` (the relay refuses to start
+otherwise), the pod gets `APPS_CLIENT_ID` and `APP_SIGNIN_KEY`, and the HTTPRoute
+also publishes `/oauth/`, `/mcp/app/` and `/.well-known/oauth-authorization-server`
+(the protected-resource metadata for `/mcp/app/` is under the existing
+`/.well-known/oauth-protected-resource` prefix). With it off, the render is
+byte-for-byte what it was. The relay's dashboard then also shows the Gemini
+address, and `vrelay login` prints it (the relay sends it back when a computer
+registers, only when the feature is on).
+
+The CI render values turn the switch on (with a placeholder client id) so the
+templates and their refusals are tested; the live values do not copy that block
+until the values PR.
+
 ### The new hostname
 
 `relay.vitruviansoftware.dev` is published the way `storybook.`, `stats.` and

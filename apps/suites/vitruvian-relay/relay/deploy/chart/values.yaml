@@ -64,6 +64,20 @@ oidc:
   # publishes the dashboard's paths (/, /auth/, /static/, /devices/,
   # /activity). Leave it empty for the old relay, which has no dashboard.
   dashboardClientId: ""
+  # The apps client's id (appsClientId output), used only when appSignin.enabled
+  # is true. It must also be listed in mcpClientIds.
+  appsClientId: ""
+
+# App sign-in: the relay acts as an OAuth server for AI apps that register
+# themselves (Gemini). Off by default. When on, it needs oidc.appsClientId, the
+# sealed key below, and the image that implements it; the HTTPRoute then also
+# publishes /oauth/, /mcp/app/ and /.well-known/oauth-authorization-server.
+# The key is 32 random bytes, base64, in the Secret appSignin.secretName
+# (a SealedSecret under gitops/argocd/platform/sealed-secrets-manifests).
+appSignin:
+  enabled: false
+  secretName: relay-app-signin
+  secretKey: app-signin-key
 
 # What the dashboard calls each AI app, as label: client id (each id must be in
 # mcpClientIds). Becomes MCP_CLIENT_LABELS. Empty for the old relay.

@@ -1067,11 +1067,16 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
     registered(&app, &device_id)
 }
 
+/// The answer to a registration. `app_mcp_url` is there only when app sign-in
+/// is on (the address Gemini is given); the connector prints it if present, and
+/// a connector that does not know the field ignores it.
 fn registered(app: &App, device_id: &str) -> Response<Body> {
-    json_response(
-        StatusCode::OK,
-        &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(device_id)}),
-    )
+    let mut body =
+        json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(device_id)});
+    if app.settings.app_signin.is_some() {
+        body["app_mcp_url"] = json!(app.settings.app_mcp_url(device_id));
+    }
+    json_response(StatusCode::OK, &body)
 }
 
 /// The answer when the store could not do what a request needed: the

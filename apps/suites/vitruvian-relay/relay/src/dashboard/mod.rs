@@ -370,6 +370,11 @@ fn device_view(app: &App, d: &DeviceRecord) -> DeviceView {
         online: app.registry.tools(&d.device_id).is_some(),
         last_seen: d.last_seen,
         mcp_url: app.settings.device_mcp_url(&d.device_id),
+        app_mcp_url: app
+            .settings
+            .app_signin
+            .as_ref()
+            .map(|_| app.settings.app_mcp_url(&d.device_id)),
     }
 }
 
