@@ -61,17 +61,18 @@ fn add(out: &mut Vec<Error>, path: &[Step], message: String) {
     });
 }
 
-// Cap nested `$ref` resolution at 64: a 50-level recursive instance (`json::MAX_DEPTH`)
-// needs 51 `$ref`s, while the lowest measured overflow on a 2 MiB unoptimised thread
-// is 118 (`oneOf` -> `$ref`; `not`/`if`/`anyOf` overflow at 121, `allOf` at 122, plain at 244).
+// Cap nested `descend` depth at 113: half of the lowest measured overflow on a 2 MiB
+// unoptimised thread (`oneOf` at 227 levels; `anyOf` at 238, `not`/`if` at 241,
+// `allOf`/`$ref`/`properties`/`items` at 245) and >12x the depth 9 of `catalog.schema.json`
+// on `catalog/tools.json` (which is non-recursive; combinator recursion to depth 50 takes 153).
 // Cap total `descend` steps at 43,400: 100x the 434 steps `catalog.schema.json` takes on
 // `catalog/tools.json`, so exponential branching stops in milliseconds instead of hanging.
-const MAX_REF_DEPTH: usize = 64;
+const MAX_DEPTH: usize = 113;
 const MAX_STEPS: usize = 43_400;
 
 #[derive(Default)]
 struct Budget {
-    ref_depth: usize,
+    depth: usize,
     steps: usize,
     hard_error: Option<Error>,
 }
@@ -169,6 +170,29 @@ impl<'a> Validator<'a> {
             });
             return;
         }
+        if budget.depth >= MAX_DEPTH {
+            budget.hard_error = Some(Error {
+                path: path.clone(),
+                message: format!(
+                    "schema validation nested too deeply: more than {} nested schema levels",
+                    MAX_DEPTH
+                ),
+            });
+            return;
+        }
+        budget.depth += 1;
+        self.descend_inner(instance, schema, path, budget, out);
+        budget.depth -= 1;
+    }
+
+    fn descend_inner(
+        &self,
+        instance: &Value,
+        schema: &'a Value,
+        path: &mut Vec<Step>,
+        budget: &mut Budget,
+        out: &mut Vec<Error>,
+    ) {
         let items = match schema {
             Value::Bool(true) => return,
             Value::Bool(false) => {
@@ -189,19 +213,7 @@ impl<'a> Validator<'a> {
                 "$ref" => {
                     if let Value::Str(r) = value {
                         if let Some(target) = self.resolve(r) {
-                            if budget.ref_depth >= MAX_REF_DEPTH {
-                                budget.hard_error = Some(Error {
-                                    path: path.clone(),
-                                    message: format!(
-                                        "schema $ref depth exceeded limit of {} at {}",
-                                        MAX_REF_DEPTH, r
-                                    ),
-                                });
-                                return;
-                            }
-                            budget.ref_depth += 1;
                             self.descend(instance, target, path, budget, out);
-                            budget.ref_depth -= 1;
                         }
                     }
                 }
@@ -697,8 +709,14 @@ mod tests {
                     r##"{"$defs":{"n":{"anyOf":[{"type":"integer"},{"type":"object","properties":{"a":{"$ref":"#/$defs/n"}}}]}},"$ref":"#/$defs/n"}"##,
                 )
                 .unwrap();
+                // Each recursive object hop in combinator_ref adds 3 `descend` levels
+                // (`anyOf` -> `$ref` -> `properties`), so 50 levels would need 153 > MAX_DEPTH;
+                // the committed catalog schema is not recursive.
+                let comb_d = ((MAX_DEPTH - 3) / 3).min(d);
+                let comb_inst_s = format!("{}1{}", "{\"a\":".repeat(comb_d), "}".repeat(comb_d));
+                let comb_inst = loads(&comb_inst_s).unwrap();
                 assert!(Validator::new(&combinator_ref)
-                    .iter_errors(&inst)
+                    .iter_errors(&comb_inst)
                     .is_empty());
 
                 let over = format!("{}1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
@@ -727,7 +745,10 @@ mod tests {
             );
             assert_eq!(
                 errs,
-                vec![": schema $ref depth exceeded limit of 64 at #/$defs/a"]
+                vec![format!(
+                    ": schema validation nested too deeply: more than {} nested schema levels",
+                    MAX_DEPTH
+                )]
             );
         });
     }
@@ -740,7 +761,10 @@ mod tests {
                 "1",
             );
             assert_eq!(errs.len(), 1);
-            assert!(errs[0].contains("schema $ref depth exceeded limit of 64"));
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
         });
     }
 
@@ -752,7 +776,10 @@ mod tests {
                 "1",
             );
             assert_eq!(errs.len(), 1);
-            assert!(errs[0].contains("schema $ref depth exceeded limit of 64"));
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
         });
     }
 
@@ -770,7 +797,10 @@ mod tests {
             );
             let errs = errors(&schema, "1");
             assert_eq!(errs.len(), 1);
-            assert!(errs[0].contains("schema $ref depth exceeded limit of 64"));
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
         });
     }
 
@@ -834,7 +864,10 @@ mod tests {
                 let errs = errors(schema, "1");
                 assert_eq!(errs.len(), 1, "expected hard error for {}", name);
                 assert!(
-                    errs[0].contains("schema $ref depth exceeded limit of 64"),
+                    errs[0].contains(&format!(
+                        "schema validation nested too deeply: more than {} nested schema levels",
+                        MAX_DEPTH
+                    )),
                     "unexpected error for {}: {:?}",
                     name,
                     errs
@@ -867,6 +900,155 @@ mod tests {
                 r#"{"c":{"c":{"c":{}}}}"#,
             )
             .is_empty());
+        });
+    }
+
+    #[test]
+    fn two_nots_per_hop_64_hops_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let mut defs = Vec::with_capacity(65);
+            for i in 0..64 {
+                defs.push(format!(
+                    r##""n{}":{{"not":{{"not":{{"$ref":"#/$defs/n{}"}}}}}}"##,
+                    i,
+                    i + 1
+                ));
+            }
+            defs.push(r#""n64":true"#.to_string());
+            let schema = format!(
+                r##"{{"$defs":{{{}}},"$ref":"#/$defs/n0"}}"##,
+                defs.join(",")
+            );
+            let errs = errors(&schema, "1");
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].contains(&format!(
+                "schema validation nested too deeply: more than {} nested schema levels",
+                MAX_DEPTH
+            )));
+        });
+    }
+
+    #[test]
+    fn three_combinator_wraps_per_hop_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let patterns = [
+                (
+                    "oneOf",
+                    r##"{"oneOf":[{"oneOf":[{"oneOf":[{"$ref":"#/$defs/n{}"}]}]}]}"##,
+                ),
+                (
+                    "allOf",
+                    r##"{"allOf":[{"allOf":[{"allOf":[{"$ref":"#/$defs/n{}"}]}]}]}"##,
+                ),
+                (
+                    "if_then",
+                    r##"{"if":{},"then":{"if":{},"then":{"if":{},"then":{"$ref":"#/$defs/n{}"}}}}"##,
+                ),
+                (
+                    "if_cond",
+                    r##"{"if":{"if":{"if":{"$ref":"#/$defs/n{}"}}}}"##,
+                ),
+                (
+                    "mixed",
+                    r##"{"oneOf":[{"allOf":[{"if":{},"then":{"$ref":"#/$defs/n{}"}}]}]}"##,
+                ),
+            ];
+            for (name, pat) in patterns {
+                let mut defs = Vec::with_capacity(65);
+                for i in 0..64 {
+                    let next = (i + 1).to_string();
+                    defs.push(format!(r#""n{}":{}"#, i, pat.replace("{}", &next)));
+                }
+                defs.push(r#""n64":true"#.to_string());
+                let schema = format!(
+                    r##"{{"$defs":{{{}}},"$ref":"#/$defs/n0"}}"##,
+                    defs.join(",")
+                );
+                let errs = errors(&schema, "1");
+                assert_eq!(errs.len(), 1, "expected hard error for {}", name);
+                assert!(
+                    errs[0].contains(&format!(
+                        "schema validation nested too deeply: more than {} nested schema levels",
+                        MAX_DEPTH
+                    )),
+                    "unexpected error for {}: {:?}",
+                    name,
+                    errs
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn pure_combinator_stack_without_ref_is_a_hard_error() {
+        on_2mb_thread(|| {
+            let obj = |pairs: Vec<(&str, Value)>| -> Value {
+                Value::Obj(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+            };
+            let one = Value::Int("1".to_string());
+            let mut not_stack = Value::Bool(true);
+            let mut one_of_stack = Value::Bool(true);
+            for _ in 0..200 {
+                not_stack = obj(vec![("not", not_stack)]);
+                one_of_stack = obj(vec![("oneOf", Value::Arr(vec![one_of_stack]))]);
+            }
+            for (name, schema) in [("not_200", not_stack), ("oneOf_200", one_of_stack)] {
+                let errs = Validator::new(&schema).iter_errors(&one);
+                assert_eq!(errs.len(), 1, "expected hard error for {}", name);
+                assert!(
+                    errs[0].message.contains(&format!(
+                        "schema validation nested too deeply: more than {} nested schema levels",
+                        MAX_DEPTH
+                    )),
+                    "unexpected error for {}: {:?}",
+                    name,
+                    errs
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn not_wrapping_hard_limit_never_passes() {
+        on_2mb_thread(|| {
+            let obj = |pairs: Vec<(&str, Value)>| -> Value {
+                Value::Obj(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+            };
+            let one = Value::Int("1".to_string());
+
+            let mut pure_not = Value::Bool(true);
+            for _ in 0..200 {
+                pure_not = obj(vec![("not", pure_not)]);
+            }
+            let wrapped_pure = obj(vec![("not", pure_not)]);
+            let errs = Validator::new(&wrapped_pure).iter_errors(&one);
+            assert_eq!(errs.len(), 1);
+            assert!(errs[0].message.contains("nested too deeply"));
+
+            let cycle_errs = errors(
+                r##"{"$defs":{"a":{"$ref":"#/$defs/a"}},"not":{"$ref":"#/$defs/a"}}"##,
+                "1",
+            );
+            assert_eq!(cycle_errs.len(), 1);
+            assert!(cycle_errs[0].contains("nested too deeply"));
+
+            let mut defs = Vec::with_capacity(41);
+            for i in 0..40 {
+                defs.push(format!(
+                    r##""n{}":{{"allOf":[{{"$ref":"#/$defs/n{}"}},{{"$ref":"#/$defs/n{}"}}]}}"##,
+                    i,
+                    i + 1,
+                    i + 1
+                ));
+            }
+            defs.push(r#""n40":{"type":"integer"}"#.to_string());
+            let step_schema = format!(
+                r##"{{"$defs":{{{}}},"not":{{"$ref":"#/$defs/n0"}}}}"##,
+                defs.join(",")
+            );
+            let step_errs = errors(&step_schema, "1");
+            assert_eq!(step_errs.len(), 1);
+            assert!(step_errs[0].contains(&format!("step budget of {}", MAX_STEPS)));
         });
     }
 }
