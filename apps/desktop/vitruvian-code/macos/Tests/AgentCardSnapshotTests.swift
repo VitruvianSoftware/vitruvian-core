@@ -395,6 +395,107 @@ final class AgentCardSnapshotTests: XCTestCase {
     }
 
     @MainActor
+    func testRendersBannersUsageLimitAndErrorCardsLightAndDark() throws {
+        let strings = VitruvianCodeChatStrings()
+        let fixedNow = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let notices = [
+            AgentLiveState.Notice(id: 1, severity: "info", title: "Session notice", detail: "Claude Code v2.1.320 works with standard MCP."),
+            AgentLiveState.Notice(id: 2, severity: "warning", title: "Context warning", detail: "Approaching context limit; consider compacting."),
+            AgentLiveState.Notice(id: 3, severity: "error", title: "Untrusted **markdown** [link](https://example.com)", detail: "Rendered verbatim without links."),
+        ]
+        let bannerStack = VStack(alignment: .leading, spacing: 8) {
+            AgentBannerView(notices: notices, dismissedIDs: [], strings: strings, onDismiss: { _ in })
+            AgentCompactionRowView(
+                compaction: AgentLiveState.Compaction(id: "cmp-1", status: "completed", summary: "180000 -> 42000 tokens"),
+                strings: strings
+            )
+            AgentCompactionChipView(strings: strings, onCompact: {}, onKeep: {})
+        }
+
+        let usageWaitView = AgentUsageLimitBannerView(
+            limit: AgentLiveState.UsageLimit(resetsAt: fixedNow.addingTimeInterval(1_860)),
+            strings: strings,
+            nowOverride: fixedNow,
+            onResume: {},
+            onDismiss: {}
+        )
+        let usageNoResetView = AgentUsageLimitBannerView(
+            limit: AgentLiveState.UsageLimit(resetsAt: nil),
+            strings: strings,
+            nowOverride: fixedNow,
+            onResume: {},
+            onDismiss: {}
+        )
+        let errorLiveCard = AgentErrorCardView(
+            failure: AgentLiveFailure(
+                message: "Claude helper crashed unexpectedly (signal SIGKILL).",
+                source: .helperCrash,
+                isLocked: false,
+                restartFailureCount: 1
+            ),
+            strings: strings,
+            onRetry: {},
+            onUseCommandLine: {},
+            onDismiss: {}
+        )
+        let errorLockedCard = AgentErrorCardView(
+            failure: AgentLiveFailure(
+                message: "Claude (`claude`) exited unexpectedly: query ended before producing a result",
+                source: .claudeCrash,
+                isLocked: true,
+                restartFailureCount: 3
+            ),
+            strings: strings,
+            onRetry: {},
+            onUseCommandLine: {},
+            onDismiss: {}
+        )
+
+        let shots: [(name: String, view: AnyView, minHeight: Int)] = [
+            ("agent-banners", AnyView(bannerStack), 120),
+            ("usage-limit-wait", AnyView(usageWaitView), 24),
+            ("usage-limit-no-reset", AnyView(usageNoResetView), 20),
+            ("error-card-live", AnyView(errorLiveCard), 60),
+            ("error-card-locked", AnyView(errorLockedCard), 80),
+        ]
+
+        _ = NSApplication.shared
+        let folderURL = URL(fileURLWithPath: Self.snapshotFolderPath, isDirectory: true)
+        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+
+        for shot in shots {
+            for (schemeName, scheme, appearanceName) in [
+                ("light", ColorScheme.light, NSAppearance.Name.aqua),
+                ("dark", ColorScheme.dark, NSAppearance.Name.darkAqua),
+            ] {
+                let framed = shot.view
+                    .frame(width: 560)
+                    .padding(16)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(scheme == .dark ? Color(white: 0.12) : Color(white: 0.97))
+                    .environment(\.colorScheme, scheme)
+
+                let bitmap = try Self.renderViewToBitmap(framed, width: 592, appearanceName: appearanceName)
+                let yellowShare = Self.placeholderYellowShare(in: bitmap)
+                XCTAssertLessThan(
+                    yellowShare,
+                    0.01,
+                    "\(shot.name)-\(schemeName) contains placeholder yellow (\(String(format: "%.2f", yellowShare * 100))%)"
+                )
+
+                let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                let fileName = "\(shot.name)-\(schemeName).png"
+                let destination = folderURL.appendingPathComponent(fileName)
+                try data.write(to: destination)
+                print("agent card snapshot: \(destination.path)")
+                XCTAssertGreaterThan(bitmap.pixelsWide, 100)
+                XCTAssertGreaterThan(bitmap.pixelsHigh, shot.minHeight)
+            }
+        }
+    }
+
+    @MainActor
     private static func renderViewToBitmap<V: View>(
         _ view: V,
         width: CGFloat,

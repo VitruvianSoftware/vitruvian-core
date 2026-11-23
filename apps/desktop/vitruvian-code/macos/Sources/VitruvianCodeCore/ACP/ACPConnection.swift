@@ -129,6 +129,8 @@ public final class ACPConnection: PersistentAgentConnection {
         /// Notifications other than `session/update` (the helper's `_vitruvian/usageLimit`),
         /// turned into events. Returns nothing for a notification it does not know.
         public var onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])?
+        /// Custom failure builder when the launched process exits unexpectedly.
+        public var onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)?
 
         public init(
             initializeMeta: [String: ACPJSONValue]? = nil,
@@ -148,10 +150,12 @@ public final class ACPConnection: PersistentAgentConnection {
             promptInactivityTimeout: TimeInterval? = nil,
             cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
             postInitializeRequests: (@MainActor @Sendable (ACPInitializeResult) -> [(method: String, params: ACPJSONValue)])? = nil,
-            onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil
+            onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil,
+            onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)? = nil
         ) {
             self.postInitializeRequests = postInitializeRequests
             self.onExtensionNotification = onExtensionNotification
+            self.onUnexpectedExitFailure = onUnexpectedExitFailure
             self.initializeMeta = initializeMeta
             self.prepareInitialize = prepareInitialize
             self.onInitialized = onInitialized
@@ -783,6 +787,10 @@ public final class ACPConnection: PersistentAgentConnection {
                 return .cancelled
             }
 
+            if case ACPTransportError.rpcError = error {
+                throw error
+            }
+
             // Give the exit monitor a brief turn to observe process termination if the pipe closed first.
             if !hasEmittedTerminalFailure, let launchedProcess {
                 for _ in 0..<20 where !hasEmittedTerminalFailure && !isStopping {
@@ -791,7 +799,8 @@ public final class ACPConnection: PersistentAgentConnection {
                 }
                 if !hasEmittedTerminalFailure && !isStopping {
                     let detail = recentStderrDetail()
-                    let failure = AgentFailure(
+                    let syntheticExit = AgentProcessExit(exitCode: -1, signal: nil)
+                    let failure = hooks.onUnexpectedExitFailure?(syntheticExit, detail) ?? AgentFailure(
                         kind: .exited,
                         message: "Agent process exited unexpectedly.",
                         detail: detail
@@ -1491,12 +1500,13 @@ public final class ACPConnection: PersistentAgentConnection {
         } else {
             statusDesc = "status \(exit.terminationStatus)"
         }
+        let stderr = recentStderrDetail()
         let message = "Agent process exited unexpectedly (\(statusDesc))."
         recordLogLine("[acp] \(message)")
-        let failure = AgentFailure(
+        let failure = hooks.onUnexpectedExitFailure?(exit, stderr) ?? AgentFailure(
             kind: .exited,
             message: message,
-            detail: recentStderrDetail()
+            detail: stderr
         )
         emitTerminalPromptFailure(failure)
         if let acpTransport = transport {
@@ -1546,6 +1556,17 @@ public final class ACPConnection: PersistentAgentConnection {
         }
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         return AgentFailure(kind: .startupFailed, message: message, detail: detail)
+    }
+
+    func emitExternalTerminalFailure(_ failure: AgentFailure, duringPrompt: Bool) {
+        guard !hasEmittedTerminalFailure else { return }
+        if duringPrompt && !isPromptActive {
+            isPromptActive = true
+            defer { isPromptActive = false }
+            emitTerminalPromptFailure(failure)
+        } else {
+            emitTerminalPromptFailure(failure)
+        }
     }
 
     private func emitTerminalPromptFailure(_ failure: AgentFailure) {

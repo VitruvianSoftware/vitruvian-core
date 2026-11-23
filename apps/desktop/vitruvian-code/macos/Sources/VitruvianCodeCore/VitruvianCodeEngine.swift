@@ -1252,8 +1252,12 @@ extension VitruvianCodeEngine {
 
     /// Retries the last failed prompt if any.
     public func retryQuickPrompt() {
-        guard let prompt = session.lastFailedPrompt else { return }
-        session.send(prompt, configuration: configuration, agentPath: agentPath)
+        session.retryFailedPrompt(configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Switches this chat only to the command-line connection and re-sends the failed prompt once.
+    public func useCommandLineForCurrentChat() {
+        session.useCommandLineForThisChat(configuration: configuration, agentPath: agentPath)
     }
 
     /// Reads agy, claude or OpenCode conversation index; empty when provider has none.

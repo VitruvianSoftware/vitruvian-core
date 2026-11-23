@@ -53,6 +53,8 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
     public var thinkingTokens: Int?
     /// How long the model spent reasoning before it answered.
     public var thinkingDurationMs: Int?
+    /// Live compaction item rendered as a compact timeline row.
+    public var compaction: AgentLiveState.Compaction?
     /// When the message was written: now, for one the chat sends or
     /// receives; the record's own time, for one read back from a saved
     /// transcript that keeps one; nil when nothing says.
@@ -80,6 +82,7 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
         contextUsage: VitruvianCodeContextUsage? = nil,
         thinkingTokens: Int? = nil,
         thinkingDurationMs: Int? = nil,
+        compaction: AgentLiveState.Compaction? = nil,
         createdAt: Date? = nil
     ) {
         self.id = id
@@ -103,6 +106,7 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
         self.contextUsage = contextUsage
         self.thinkingTokens = thinkingTokens
         self.thinkingDurationMs = thinkingDurationMs
+        self.compaction = compaction
         self.createdAt = createdAt
     }
 }
@@ -263,6 +267,20 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var thinkingStartedAt: Date?
     /// Structured live session state from non-message `AgentEvent` updates.
     @Published public private(set) var liveState = AgentLiveState()
+    /// Per-chat connection override (e.g. `.commandLine` chosen from the error card),
+    /// persisted by conversation ID in `host.chatConnections` and cleared on New Chat.
+    @Published public private(set) var chatConnectionOverride: AgentConnectionKind? = nil
+    /// True after the user clicks Keep on the idle compaction chip until the next compaction.
+    @Published public private(set) var compactionChipDismissed: Bool = false
+    /// Most recent live-connection failure for the error card (nil for command-line chats).
+    @Published public private(set) var lastLiveFailure: AgentLiveFailure? = nil
+    private var turnStartedPrompt = false
+    /// The files and picked mentions that went with the last turn, kept so that a
+    /// Retry, a Resume or "Use command line" sends them again with the failed prompt.
+    private var lastTurnAttachments: [VitruvianCodeAttachment] = []
+    private var lastTurnPickedMentions: [String] = []
+    private var turnReceivedUsageLimit = false
+    private var turnFailure: AgentFailure? = nil
     /// Inline error shown on the live settings bar when updating a config option fails.
     @Published public private(set) var liveConfigOptionError: String?
     /// True while a `setLiveConfigOption` call is awaiting agent confirmation.
@@ -700,6 +718,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConfigOptionError = nil
         isUpdatingLiveConfigOption = false
         liveState.reset()
+        compactionChipDismissed = false
+        lastLiveFailure = nil
         rememberedConfigChoices = [:]
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
@@ -711,6 +731,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         activeSubagents = []
         conversationID = summary.id
         restoreChatModes(for: summary.id)
+        restoreChatConnectionOverride(for: summary.id)
         let effectiveTitle = summary.title.isEmpty
             ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
             : summary.title
@@ -842,6 +863,44 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if chatApprovalMode != nil || chatPlanMode != nil {
             persistCurrentChatMode()
         }
+        if chatConnectionOverride != nil {
+            persistCurrentChatConnectionOverride()
+        }
+    }
+
+    /// Effective connection kind for this chat (`chatConnectionOverride` wins over provider setting).
+    public func effectiveConnectionKind(for provider: VitruvianCodeCLIProvider) -> AgentConnectionKind? {
+        chatConnectionOverride ?? provider.connection
+    }
+
+    private func effectiveProvider(for provider: VitruvianCodeCLIProvider) -> VitruvianCodeCLIProvider {
+        var copy = provider
+        copy.connection = effectiveConnectionKind(for: provider)
+        return copy
+    }
+
+    private func persistCurrentChatConnectionOverride() {
+        guard let id = conversationID, !id.isEmpty else { return }
+        var stored = host.chatConnections
+        if let override = chatConnectionOverride {
+            guard stored[id] != override.rawValue else { return }
+            stored[id] = override.rawValue
+        } else if stored.removeValue(forKey: id) == nil {
+            return
+        }
+        host.chatConnections = stored
+    }
+
+    private func restoreChatConnectionOverride(for id: String) {
+        if let raw = host.chatConnections[id], let kind = AgentConnectionKind(rawValue: raw) {
+            chatConnectionOverride = kind
+        } else {
+            chatConnectionOverride = nil
+        }
+    }
+
+    private func clearChatConnectionOverrideForNewChat() {
+        chatConnectionOverride = nil
     }
 
     /// Builds `PromptBlock`s for a turn: attachments first (`.image(path:)` for images,
@@ -900,6 +959,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // of it: the next prompt starts with no attachments and no fork.
         let turnAttachments = attachments
         let turnPickedMentions = pickedMentions
+        lastTurnAttachments = turnAttachments
+        lastTurnPickedMentions = turnPickedMentions
         let fork = forkNextTurn && conversationID != nil
         attachments = []
         pickedMentions = []
@@ -978,6 +1039,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stoppedByUser = false
         reportedError = false
         reportedErrorText = nil
+        turnStartedPrompt = false
+        turnReceivedUsageLimit = false
+        turnFailure = nil
+        lastLiveFailure = nil
+        _ = liveState.clearUsageLimitIfExpired(now: Date())
         currentToolCalls = 0
         awaitingAnswers = []
         turnInputClosed = false
@@ -1165,10 +1231,17 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         turn current: Int
     ) {
         if !isCustomCommand, isConnectionLockedAfterFailures {
-            let lockMessage = lastRestartFailureMessage
-                ?? "Live connection failed \(Self.maxConsecutiveRestartFailures) times in a row. Start a new chat or change the connection to retry."
+            let lockReason = strings.connectionLocked(count: Self.maxConsecutiveRestartFailures)
+            let lockMessage = lastRestartFailureMessage.map { "\(lockReason) (\($0))" } ?? lockReason
             reportedError = true
             reportedErrorText = lockMessage
+            lastLiveFailure = AgentLiveFailure(
+                message: lastRestartFailureMessage ?? lockMessage,
+                detail: nil,
+                source: lastLiveFailure?.source ?? .generic,
+                isLocked: true,
+                restartFailureCount: consecutiveRestartFailures
+            )
             if currentReplyText.isEmpty { removeReply() }
             messages.append(VitruvianCodeChatMessage(role: .agent, text: lockMessage, isError: true, createdAt: Date()))
             connection = nil
@@ -1188,9 +1261,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             discardLiveConnection(existing)
         }
 
+        let effectiveProv = effectiveProvider(for: configuration.activeProvider)
         let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
         let directory = workingDirectory(for: configuration)
-        let usesDefaultCommandLine = (configuration.activeProvider.connection ?? .commandLine) == .commandLine
+        let usesDefaultCommandLine = (effectiveProv.connection ?? .commandLine) == .commandLine
             && !environment.hasCustomMakeConnection
         let wantsWorktree = !isCustomCommand
             && !usesDefaultCommandLine
@@ -1200,8 +1274,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if !isCustomCommand,
            let reusable = liveConnection,
            reusable.isConnected,
-           liveConnectionProviderID == configuration.activeProvider.id,
-           liveConnectionKind == configuration.activeProvider.connection,
+           liveConnectionProviderID == effectiveProv.id,
+           liveConnectionKind == effectiveProv.connection,
            liveConnectionWorktree == wantsWorktree,
            (!wantsWorktree || liveWorktreePath != nil) {
             connection = reusable
@@ -1253,6 +1327,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                         self.scheduleIdleConnectionShutdown()
                         return
                     }
+                    self.turnStartedPrompt = true
                     let stopReason = try await reusable.prompt(blocks)
                     await self.waitForTurnFinishedEvent()
                     guard current == self.turn else { return }
@@ -1373,22 +1448,24 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         forceFreshSession: Bool = false,
         turn current: Int
     ) {
+        let effectiveProv = effectiveProvider(for: configuration.activeProvider)
         if lastTurnProviderID != nil,
-           lastTurnProviderID != configuration.activeProvider.id
-               || lastTurnConnectionKind != configuration.activeProvider.connection {
+           lastTurnProviderID != effectiveProv.id
+               || lastTurnConnectionKind != effectiveProv.connection {
             cliSlashCommands = []
             agentSlashCommands = []
             rememberedConfigChoices = [:]
         }
-        lastTurnProviderID = configuration.activeProvider.id
-        lastTurnConnectionKind = configuration.activeProvider.connection
+        lastTurnProviderID = effectiveProv.id
+        lastTurnConnectionKind = effectiveProv.connection
         if !isCustomCommand, forceFreshSession {
             conversationID = nil
             liveState.reset()
             insertFreshSessionNotice(strings.worktreeFreshSessionNotice)
         }
         let spec = AgentConnectionSpec(
-            provider: configuration.activeProvider,
+            kind: effectiveProv.connection ?? .commandLine,
+            provider: effectiveProv,
             configuration: turnConfiguration,
             agentPath: agentPath,
             workingDirectory: resolvedDirectory,
@@ -1451,8 +1528,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             lastTurnWasPersistent = true
             retireLiveConnection()
             liveConnection = persistent
-            liveConnectionProviderID = configuration.activeProvider.id
-            liveConnectionKind = configuration.activeProvider.connection
+            liveConnectionProviderID = effectiveProv.id
+            liveConnectionKind = effectiveProv.connection
             liveConnectionWorktree = (liveWorktreePath != nil && resolvedDirectory == liveWorktreePath)
             hasReceivedTurnFinishedEvent = false
 
@@ -1579,6 +1656,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     } else {
                         persistentBlocks = blocks
                     }
+                    self.turnStartedPrompt = true
                     let stopReason = try await persistent.prompt(persistentBlocks)
                     await self.waitForTurnFinishedEvent()
                     guard current == self.turn else { return }
@@ -1765,16 +1843,48 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         } else if reportedError {
             // The connection already emitted `.connectionFailed(failure)` with its
             // original `failure.message` in a bubble of its own; remove the empty
-            // placeholder reply rather than appending a generic second error bubble.
-            if currentReplyText.isEmpty {
+            // placeholder reply rather than appending a generic second error bubble,
+            // unless the turn was interrupted mid-prompt (in which case keep the reply
+            // marked `"interrupted"` so the conversation shows the interrupted state).
+            if turnStartedPrompt && lastTurnWasPersistent && !stoppedByUser, let idx = replyIndex() {
+                messages[idx].stopReason = "interrupted"
+            } else if currentReplyText.isEmpty {
                 removeReply()
             }
             reason = reportedErrorText ?? strings.agentFailed
             lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
         } else {
-            reason = strings.agentFailed
-            replace(reply: reason, isError: true)
+            if turnStartedPrompt && lastTurnWasPersistent && !stoppedByUser, let idx = replyIndex() {
+                messages[idx].stopReason = "interrupted"
+                let desc = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                reason = desc.isEmpty ? strings.agentFailed : desc
+            } else {
+                reason = strings.agentFailed
+                replace(reply: reason, isError: true)
+            }
             lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
+        }
+        if !isCustomCommand && lastTurnWasPersistent {
+            let source: AgentLiveFailure.Source
+            if let turnFailure {
+                switch turnFailure.kind {
+                case .helperCrashed: source = .helperCrash
+                case .agentCrashed: source = .claudeCrash
+                case .exited: source = turnStartedPrompt ? .interrupted : .generic
+                default: source = .generic
+                }
+            } else {
+                source = turnStartedPrompt ? .interrupted : .generic
+            }
+            lastLiveFailure = AgentLiveFailure(
+                message: reason,
+                detail: turnFailure?.detail,
+                source: source,
+                isLocked: isConnectionLockedAfterFailures,
+                restartFailureCount: consecutiveRestartFailures
+            )
+        } else {
+            lastLiveFailure = nil
         }
         replyID = nil
         // A turn that could not start is a failed turn to the host, in
@@ -1883,6 +1993,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         replyID = nil
         conversationID = nil
         clearChatModesForNewChat()
+        clearChatConnectionOverrideForNewChat()
         sessionAllowedTools = []
         sessionTitle = nil
         isResumed = false
@@ -1893,6 +2004,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConfigOptionError = nil
         isUpdatingLiveConfigOption = false
         liveState.reset()
+        compactionChipDismissed = false
+        lastLiveFailure = nil
         rememberedConfigChoices = [:]
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
@@ -1985,6 +2098,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
         liveConfigOptionError = nil
         isUpdatingLiveConfigOption = false
+        lastLiveFailure = nil
         consecutiveRestartFailures = 0
         isConnectionLockedAfterFailures = false
         lastRestartFailureMessage = nil
@@ -2299,7 +2413,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     }
                 }
                 messages[idx].toolCalls = currentToolCalls
-                messages[idx].stopReason = status
+                if !(messages[idx].stopReason == "interrupted" && status == "error") {
+                    messages[idx].stopReason = status
+                }
             }
             if let error, !reportedError {
                 reportedError = true
@@ -2311,11 +2427,33 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             activity = nil
             turnInputClosed = true
             awaitingAnswers = []
+            turnFailure = failure
             for index in messages.indices where messages[index].approvalRequest?.status == .pending {
                 messages[index].approvalRequest?.status = .denied
             }
             expirePendingQuestionCards()
             refreshPendingApproval()
+            // A turn the user stopped is never "interrupted" or crashed, whatever the connection does after.
+            let isInterruptedMidTurn = isRunning && turnStartedPrompt && failure.kind.isCrash && !stoppedByUser
+            if isInterruptedMidTurn, let idx = replyIndex() {
+                messages[idx].stopReason = "interrupted"
+            }
+            let failureSource: AgentLiveFailure.Source
+            switch failure.kind {
+            case .helperCrashed: failureSource = .helperCrash
+            case .agentCrashed: failureSource = .claudeCrash
+            case .exited: failureSource = isInterruptedMidTurn ? .interrupted : .generic
+            default: failureSource = .generic
+            }
+            if !stoppedByUser {
+                lastLiveFailure = AgentLiveFailure(
+                    message: failure.message,
+                    detail: failure.detail,
+                    source: failureSource,
+                    isLocked: isConnectionLockedAfterFailures,
+                    restartFailureCount: consecutiveRestartFailures
+                )
+            }
             if !reportedError {
                 reportedError = true
                 reportedErrorText = failure.message
@@ -2381,12 +2519,19 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 worktreeName: worktreeMode ? "worktree" : nil
             )
             host.turnNeedsApproval(questionNotice)
+        case .compaction:
+            liveState.apply(event)
+            compactionChipDismissed = false
+            if let latest = liveState.compaction {
+                upsertCompactionMessage(latest)
+            }
+        case .usageLimit:
+            turnReceivedUsageLimit = true
+            liveState.apply(event)
         case .planReplaced,
              .configOptions,
-             .compaction,
              .notice,
-             .sessionInfo,
-             .usageLimit:
+             .sessionInfo:
             if case .configOptions = event { configOptionsEventCount += 1 }
             liveState.apply(event)
         }
@@ -2560,7 +2705,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         } else if currentReplyText.isEmpty {
             if reportedError {
                 // agy said what went wrong in a bubble of its own.
-                removeReply()
+                if turnStartedPrompt && lastTurnWasPersistent, let idx = replyIndex() {
+                    messages[idx].stopReason = "interrupted"
+                } else {
+                    removeReply()
+                }
                 lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
             } else if status != 0 {
                 let detail = ([strings.agentFailed] + noise).joined(separator: "\n")
@@ -2579,6 +2728,35 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             } else {
                 endedCleanly = true
             }
+        }
+        if endedCleanly {
+            lastLiveFailure = nil
+            lastFailedPrompt = nil
+            if !turnReceivedUsageLimit {
+                liveState.clearUsageLimit()
+            }
+        } else if !lastTurnWasPersistent {
+            lastLiveFailure = nil
+        } else if hadError && !stoppedByUser && lastLiveFailure == nil {
+            let reason = failureDetail ?? strings.agentFailed
+            let source: AgentLiveFailure.Source
+            if let turnFailure {
+                switch turnFailure.kind {
+                case .helperCrashed: source = .helperCrash
+                case .agentCrashed: source = .claudeCrash
+                case .exited: source = turnStartedPrompt ? .interrupted : .generic
+                default: source = .generic
+                }
+            } else {
+                source = .generic
+            }
+            lastLiveFailure = AgentLiveFailure(
+                message: reason,
+                detail: turnFailure?.detail,
+                source: source,
+                isLocked: isConnectionLockedAfterFailures,
+                restartFailureCount: consecutiveRestartFailures
+            )
         }
         report(VitruvianCodeTurnNotice(providerName: providerName, text: completedReply,
                                     failed: hadError, endedCleanly: endedCleanly,
@@ -3139,6 +3317,9 @@ extension VitruvianCodeQuickPromptSession {
     /// True when this session uses a live persistent connection (ACP or Claude SDK)
     /// rather than a one-shot command-line invocation.
     public func isLiveChat(for configuration: VitruvianCodeConfiguration) -> Bool {
+        if chatConnectionOverride == .commandLine {
+            return false
+        }
         if liveConnection != nil
             || lastTurnWasPersistent
             || !liveState.plan.isEmpty
@@ -3148,10 +3329,146 @@ extension VitruvianCodeQuickPromptSession {
         if let lastKind = lastTurnConnectionKind {
             return lastKind != .commandLine
         }
-        if let configuredKind = configuration.activeProvider.connection {
+        if let configuredKind = effectiveConnectionKind(for: configuration.activeProvider) {
             return configuredKind != .commandLine
         }
         return false
+    }
+
+    // MARK: - Live Banners, Compaction, Usage Limit & Failure Recovery
+
+    /// Dismisses a single notice banner by ID without mutating `liveState.notices`.
+    public func dismissNotice(id: Int) {
+        liveState.dismissNotice(id: id)
+    }
+
+    private func upsertCompactionMessage(_ compaction: AgentLiveState.Compaction) {
+        if let idx = messages.lastIndex(where: { $0.compaction?.id == compaction.id }) {
+            messages[idx].compaction = compaction
+            return
+        }
+        let row = VitruvianCodeChatMessage(role: .agent, text: "", compaction: compaction, createdAt: Date())
+        if let replyID,
+           let replyIdx = messages.firstIndex(where: { $0.id == replyID }),
+           messages[replyIdx].text.isEmpty,
+           (messages[replyIdx].toolSteps ?? []).isEmpty,
+           messages[replyIdx].approvalRequest == nil,
+           messages[replyIdx].question == nil {
+            messages.insert(row, at: replyIdx)
+        } else {
+            messages.append(row)
+        }
+    }
+
+    /// True when the idle Compact/Keep suggestion chip should appear above the composer.
+    public func shouldShowCompactionChip(for configuration: VitruvianCodeConfiguration) -> Bool {
+        let isClaude = configuration.activeProvider.route == .claude
+        let isCompacting = liveState.compactions.contains(where: \.isInProgress)
+        let usage = currentContextUsage(provider: configuration.activeProvider, model: configuration.model)
+        return AgentCompactionSuggestion.shouldShow(
+            isIdle: !isRunning,
+            isLiveChat: isLiveChat(for: configuration),
+            isClaude: isClaude,
+            isCompacting: isCompacting,
+            isDismissed: compactionChipDismissed,
+            contextUsage: usage
+        )
+    }
+
+    /// Hides the Compact/Keep chip for this chat until the next compaction occurs.
+    public func keepContextWithoutCompacting() {
+        compactionChipDismissed = true
+    }
+
+    /// Sends `/compact` to compact context while preserving whatever the user typed in the draft.
+    public func compactFromSuggestion(configuration: VitruvianCodeConfiguration, agentPath: String?) {
+        guard !isRunning else { return }
+        let typed = draft
+        send("/compact", configuration: configuration, agentPath: agentPath)
+        draft = typed
+    }
+
+    /// Dismisses the active usage-limit banner without sending anything.
+    public func dismissUsageLimit() {
+        liveState.clearUsageLimit()
+    }
+
+    /// Clears the active usage-limit banner if its reset time has already passed.
+    public func clearExpiredUsageLimit(now: Date = Date()) {
+        _ = liveState.clearUsageLimitIfExpired(now: now)
+    }
+
+    /// Explicit user-triggered resume after a usage limit's reset time has passed.
+    /// Never called automatically; returns false when the limit has not reset yet.
+    @discardableResult
+    public func resumeAfterUsageLimit(
+        configuration: VitruvianCodeConfiguration,
+        agentPath: String?,
+        now: Date = Date()
+    ) -> Bool {
+        guard !isRunning,
+              let limit = liveState.usageLimit,
+              AgentUsageLimitState.canResume(limit, now: now) else {
+            return false
+        }
+        liveState.clearUsageLimit()
+        if let failed = lastFailedPrompt, !failed.isEmpty {
+            lastFailedPrompt = nil
+            resend(failed, configuration: configuration, agentPath: agentPath)
+        } else if let waiting = queuedPrompt, !waiting.isEmpty {
+            queuedPrompt = nil
+            send(waiting, configuration: configuration, agentPath: agentPath)
+        }
+        return true
+    }
+
+    /// Dismisses the error card's failed prompt state (keeps lock state when locked).
+    public func dismissFailedTurn() {
+        lastFailedPrompt = nil
+        if !isConnectionLockedAfterFailures {
+            lastLiveFailure = nil
+        }
+    }
+
+    /// Sets a per-chat override to use the command-line connection for this chat only
+    /// (leaving the provider's saved setting untouched) and re-sends the failed prompt once.
+    public func useCommandLineForThisChat(
+        configuration: VitruvianCodeConfiguration,
+        agentPath: String?
+    ) {
+        guard !isRunning else { return }
+        let promptToSend = lastFailedPrompt
+        lastFailedPrompt = nil
+        chatConnectionOverride = .commandLine
+        persistCurrentChatConnectionOverride()
+        resetLiveConnectionState(keepingWorktree: true)
+        lastTurnWasPersistent = false
+        lastTurnConnectionKind = .commandLine
+        if let prompt = promptToSend, !prompt.isEmpty {
+            resend(prompt, configuration: configuration, agentPath: agentPath)
+        }
+    }
+
+    /// Retries the failed prompt once, with the files that went with it. Does nothing while a
+    /// turn runs, so a second click cannot send it again or overlap the first.
+    public func retryFailedPrompt(configuration: VitruvianCodeConfiguration, agentPath: String?) {
+        guard !isRunning, let prompt = lastFailedPrompt, !prompt.isEmpty else { return }
+        resend(prompt, configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Sends a failed prompt again with its own attachments and picked mentions, leaving
+    /// whatever the user has meanwhile put in the composer where it is.
+    private func resend(_ prompt: String, configuration: VitruvianCodeConfiguration, agentPath: String?) {
+        guard !isRunning else { return }
+        let composerAttachments = attachments
+        let composerMentions = pickedMentions
+        let composerDraft = draft
+        attachments = lastTurnAttachments
+        pickedMentions = lastTurnPickedMentions
+        send(prompt, configuration: configuration, agentPath: agentPath)
+        attachments = composerAttachments
+        pickedMentions = composerMentions
+        draft = composerDraft
     }
 
     private struct ConfigReapplyError: LocalizedError {

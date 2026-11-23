@@ -45,6 +45,43 @@ public enum ClaudeSDKSupport {
     public static let claudeNotFoundMessage =
         "Claude Code (`claude`) was not found. Install Claude Code, then try again."
 
+    /// Shown when the bundled Node helper exits unexpectedly.
+    public static func helperCrashedMessage(exit: AgentProcessExit) -> String {
+        if let signalName = exit.signalName {
+            return "Claude helper crashed unexpectedly (signal \(signalName))."
+        }
+        if let code = exit.exitCode {
+            return "Claude helper crashed unexpectedly (exit code \(code))."
+        }
+        return "Claude helper crashed unexpectedly."
+    }
+
+    /// True when a helper JSON-RPC error indicates the underlying `claude` process exited or crashed.
+    public static func isClaudeCrashMessage(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        let markers = [
+            "query ended before producing a result",
+            "session ended",
+            "process exited",
+            "exited with code",
+            "killed by signal",
+            "terminated by signal",
+            "process terminated",
+            "terminated unexpectedly",
+            "crashed",
+        ]
+        return markers.contains { lower.contains($0) }
+    }
+
+    /// Shown when the helper reports that the underlying `claude` process exited unexpectedly.
+    public static func claudeCrashedMessage(detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "Claude (`claude`) exited unexpectedly."
+        }
+        return "Claude (`claude`) exited unexpectedly: \(trimmed)"
+    }
+
     /// The variable that moves Claude Code's config folder.
     public static let configDirectoryKey = "CLAUDE_CONFIG_DIR"
 
@@ -553,7 +590,14 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
             finishSubagentsOnTurnEnd: true,
             cancelGraceTimeout: cancelGraceTimeout,
             postInitializeRequests: postInitializeRequests,
-            onExtensionNotification: onExtensionNotification
+            onExtensionNotification: onExtensionNotification,
+            onUnexpectedExitFailure: { exit, stderr in
+                AgentFailure(
+                    kind: .helperCrashed,
+                    message: ClaudeSDKSupport.helperCrashedMessage(exit: exit),
+                    detail: stderr
+                )
+            }
         )
         self.inner = ACPConnection(
             launchSpec: launchSpec,
@@ -594,7 +638,23 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         hookState.secretsParams = plan.params
         inner.addRedactions(plan.values)
 
-        let sessionID = try await inner.start(request)
+        let sessionID: String
+        do {
+            sessionID = try await inner.start(request)
+        } catch {
+            if case ACPTransportError.rpcError(let rpc) = error,
+               ClaudeSDKSupport.isClaudeCrashMessage(rpc.message) {
+                inner.emitExternalTerminalFailure(
+                    AgentFailure(
+                        kind: .agentCrashed,
+                        message: ClaudeSDKSupport.claudeCrashedMessage(detail: rpc.message),
+                        detail: rpc.message
+                    ),
+                    duringPrompt: false
+                )
+            }
+            throw error
+        }
         guard !startupCancelled, inner.isConnected else {
             throw ACPConnectionError.alreadyStopped
         }
@@ -604,7 +664,22 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
     }
 
     public func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {
-        try await inner.prompt(blocks)
+        do {
+            return try await inner.prompt(blocks)
+        } catch {
+            if case ACPTransportError.rpcError(let rpc) = error,
+               ClaudeSDKSupport.isClaudeCrashMessage(rpc.message) {
+                inner.emitExternalTerminalFailure(
+                    AgentFailure(
+                        kind: .agentCrashed,
+                        message: ClaudeSDKSupport.claudeCrashedMessage(detail: rpc.message),
+                        detail: rpc.message
+                    ),
+                    duringPrompt: true
+                )
+            }
+            throw error
+        }
     }
 
     public func cancel() async {

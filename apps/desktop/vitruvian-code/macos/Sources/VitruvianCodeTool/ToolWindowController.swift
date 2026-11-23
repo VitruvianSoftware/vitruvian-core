@@ -229,6 +229,15 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.timelineToolSingularFormat, "timelineToolSingularFormat"),
         (\.timelineToolsFormat, "timelineToolsFormat"), (\.diffSourceLiveTurn, "diffSourceLiveTurn"),
         (\.agentSettingsBarLabel, "agentSettingsBarLabel"),
+        (\.dismissNotice, "dismissNotice"), (\.compactingContext, "compactingContext"),
+        (\.contextCompacted, "contextCompacted"), (\.compactionFailed, "compactionFailed"),
+        (\.compactionStopped, "compactionStopped"), (\.compactionSuggestion, "compactionSuggestion"),
+        (\.compactAction, "compactAction"), (\.keepAction, "keepAction"),
+        (\.usageLimitReached, "usageLimitReached"), (\.usageLimitResetsAtPrefix, "usageLimitResetsAtPrefix"),
+        (\.usageLimitReady, "usageLimitReady"), (\.usageLimitResume, "usageLimitResume"),
+        (\.useCommandLineForChat, "useCommandLineForChat"), (\.helperCrashTitle, "helperCrashTitle"),
+        (\.claudeCrashTitle, "claudeCrashTitle"), (\.turnInterrupted, "turnInterrupted"),
+        (\.connectionLockedTitle, "connectionLockedTitle"), (\.connectionLockedExplanation, "connectionLockedExplanation"),
     ]
 
     private func ensurePanel() -> NSPanel {

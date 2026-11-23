@@ -696,4 +696,168 @@ describe("SDK -> ACP mapping", () => {
       expect(authOutcome.error.message).toContain("claude auth login");
     }
   });
+
+  test("maps system compaction status and compact_boundary updates", () => {
+    const state = createMappingState();
+
+    const startNotes = mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+        uuid: "cmp-1",
+        session_id: SESSION_ID,
+      } as unknown as SDKMessage,
+      state,
+    );
+    expect(startNotes).toEqual([
+      {
+        sessionId: SESSION_ID,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId: "cmp-1",
+          status: "running",
+        } as unknown,
+      },
+    ]);
+
+    // Duplicate compacting status while already running is ignored.
+    const dupNotes = mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+        uuid: "cmp-dup",
+        session_id: SESSION_ID,
+      } as unknown as SDKMessage,
+      state,
+    );
+    expect(dupNotes).toEqual([]);
+
+    // compact_boundary completes the active compaction and keeps its ID.
+    const boundaryNotes = mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "cmp-boundary-uuid",
+        session_id: SESSION_ID,
+        compact_metadata: {
+          trigger: "manual",
+          pre_tokens: 180_000,
+          post_tokens: 42_000,
+        },
+      } as unknown as SDKMessage,
+      state,
+    );
+    expect(boundaryNotes).toEqual([
+      {
+        sessionId: SESSION_ID,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId: "cmp-1",
+          status: "completed",
+          summary: "180000 -> 42000 tokens",
+        } as unknown,
+      },
+    ]);
+
+    // A second standalone compact_boundary gets a distinct ID.
+    const secondBoundary = mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "cmp-2",
+        session_id: SESSION_ID,
+        compact_metadata: {
+          trigger: "auto",
+          pre_tokens: 210_000,
+        },
+      } as unknown as SDKMessage,
+      state,
+    );
+    expect(secondBoundary).toEqual([
+      {
+        sessionId: SESSION_ID,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId: "cmp-2",
+          status: "completed",
+          summary: "210000 tokens compacted",
+        } as unknown,
+      },
+    ]);
+
+    // Failed compaction uses compact_error as summary.
+    mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+        uuid: "cmp-3",
+        session_id: SESSION_ID,
+      } as unknown as SDKMessage,
+      state,
+    );
+    const failedNotes = mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "status",
+        status: null,
+        compact_result: "failed",
+        compact_error: "Prompt too short to compact",
+        session_id: SESSION_ID,
+      } as unknown as SDKMessage,
+      state,
+    );
+    expect(failedNotes).toEqual([
+      {
+        sessionId: SESSION_ID,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId: "cmp-3",
+          status: "failed",
+          summary: "Prompt too short to compact",
+        } as unknown,
+      },
+    ]);
+
+    // status: null without permissionMode interrupts active compaction.
+    mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+        uuid: "cmp-4",
+        session_id: SESSION_ID,
+      } as unknown as SDKMessage,
+      state,
+    );
+    const interruptedNotes = mapSdkMessageToNotifications(
+      SESSION_ID,
+      {
+        type: "system",
+        subtype: "status",
+        status: null,
+        session_id: SESSION_ID,
+      } as unknown as SDKMessage,
+      state,
+    );
+    expect(interruptedNotes).toEqual([
+      {
+        sessionId: SESSION_ID,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId: "cmp-4",
+          status: "interrupted",
+        } as unknown,
+      },
+    ]);
+  });
 });

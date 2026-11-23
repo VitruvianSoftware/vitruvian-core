@@ -158,6 +158,11 @@ final class StandaloneHost: VitruvianCodeHost, ObservableObject {
         set { AppPreferences.defaults.set(newValue, forKey: "chatModes") }
     }
 
+    var chatConnections: [String: String] {
+        get { AppPreferences.defaults.dictionary(forKey: "chatConnections") as? [String: String] ?? [:] }
+        set { AppPreferences.defaults.set(newValue, forKey: "chatConnections") }
+    }
+
     /// Kept on this instance only: Settings sets it while it is open (Option
     /// held at open) and it is off at every launch.
     var showsConnectionSetting = false {
