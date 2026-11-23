@@ -20,6 +20,13 @@ enum MixerInputVolumeContract {
         static let main = Queue()
         nonisolated(unsafe) static var queues: [Queue] = [main]
         var work: [() -> Void] = []
+        /// Work queued to run after a delay; a test fires it with `runTimers`.
+        var delayed: [() -> Void] = []
+        func runTimers() {
+            let pending = delayed
+            delayed.removeAll()
+            for item in pending { item() }
+        }
         func run() { if !work.isEmpty { work.removeFirst()() } }
         static func make() -> Queue {
             let queue = Queue()
@@ -39,7 +46,8 @@ enum MixerInputVolumeContract {
                            sync: { [self] body in
                                while !work.isEmpty { run() }
                                body()
-                           })
+                           },
+                           after: { [self] _, work in delayed.append(work) })
         }
     }
     /// What the mute shows: the island's microphone notice and the HUD.
@@ -83,6 +91,8 @@ enum MixerInputVolumeContract {
         nonisolated(unsafe) static var uids: [UInt32: String] = [:]
         nonisolated(unsafe) static var aggregates: Set<UInt32> = []
         nonisolated(unsafe) static var running: Set<UInt32> = []
+        /// Virtual drivers: their transport type reads as virtual.
+        nonisolated(unsafe) static var virtual: Set<UInt32> = []
         static func key(_ d: UInt32, _ e: UInt32 = 0, _ s: UInt32 = kAudioDevicePropertyVolumeScalar)
             -> Key
         {
@@ -96,6 +106,8 @@ enum MixerInputVolumeContract {
         /// Devices with no input stream: speakers, which are not microphones.
         nonisolated(unsafe) static var outputOnly: Set<UInt32> = []
         nonisolated(unsafe) static var clock: CFAbsoluteTime = 0
+        /// The mute's uptime, which only a test moves.
+        nonisolated(unsafe) static var now: TimeInterval = 0
         nonisolated(unsafe) static var suite = ""
         nonisolated(unsafe) static var defaults = Foundation.UserDefaults()
         nonisolated(unsafe) static var inputQueue = Queue()
@@ -122,7 +134,8 @@ enum MixerInputVolumeContract {
                 },
                 retractMicrophoneNotice: { Feedback.retractions += 1 },
                 hud: { _, message in Feedback.messages.append(message) },
-                reactMascot: { Feedback.reactions.append($0) }))
+                reactMascot: { Feedback.reactions.append($0) },
+                uptime: { now }))
         }
 
         @MainActor static func makeManager() -> AudioInputDeviceManager {
@@ -174,6 +187,7 @@ enum MixerInputVolumeContract {
             current = 10
             uids = [:]
             aggregates = []
+            virtual = []
             running = []
             streamChannels = [:]
             streamReadFails = false
@@ -262,8 +276,13 @@ enum MixerInputVolumeContract {
                 p.storeBytes(of: UInt32(1), as: UInt32.self)
             case kAudioDevicePropertyIsHidden: p.storeBytes(of: UInt32(0), as: UInt32.self)
             case kAudioDevicePropertyTransportType:
-                guard aggregates.contains(d) else { return -1 }
-                p.storeBytes(of: kAudioDeviceTransportTypeAggregate, as: UInt32.self)
+                if virtual.contains(d) {
+                    p.storeBytes(of: kAudioDeviceTransportTypeVirtual, as: UInt32.self)
+                } else if aggregates.contains(d) {
+                    p.storeBytes(of: kAudioDeviceTransportTypeAggregate, as: UInt32.self)
+                } else {
+                    return -1
+                }
             case kAudioDevicePropertyDeviceIsRunningSomewhere:
                 p.storeBytes(of: UInt32(running.contains(d) ? 1 : 0), as: UInt32.self)
             case kAudioDevicePropertyMute:
@@ -1247,5 +1266,164 @@ enum MixerInputVolumeContract {
         check(HAL.mute[10] == 0 && HAL.levels[HAL.key(10)] == 0 && HAL.muteElements[legacyFirstMute] == 1
                 && !HAL.muteService.hasOutstandingClaims,
               "a pending legacy unmute restores only the claimed main switch when the microphone returns")
+
+        HAL.reset()
+        HAL.now = 10
+        let retryService = HAL.muteService
+        HAL.uids[10] = "MSLoopbackDriverDevice_UID"
+        HAL.devices = [10, 20]
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.levels[HAL.key(20)] = 0.75
+        HAL.ignoredWrites.insert(HAL.key(10))
+        retryService.setMuted(true)
+        Queue.drain()
+        func changed(_ device: UInt32) {
+            HAL.notify(device, kAudioDevicePropertyVolumeScalar)
+            Queue.drain()
+        }
+        for _ in 0..<10 { changed(10) }
+        let refusingWrites = HAL.writes.filter { $0 == HAL.key(10) }.count
+        check(refusingWrites == 3 && HAL.listeners.contains(HAL.key(10)),
+              "a refusing driver stops receiving writes from its callbacks but remains watched")
+        HAL.levels[HAL.key(20)] = 0.8
+        changed(20)
+        check(HAL.levels[HAL.key(20)] == 0 && HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites,
+              "another input is silenced immediately without retrying the refusing device")
+        HAL.now += 0.25
+        HAL.muteQueue.runTimers()
+        check(HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites + 1
+                && retryService.retryDeadline == HAL.now + 0.5,
+              "a refusing device retries without a notification and doubles its backoff")
+        HAL.ignoredWrites.removeAll()
+        HAL.levels[HAL.key(10)] = 0
+        changed(10)
+        HAL.levels[HAL.key(10)] = 0.5
+        changed(10)
+        check(HAL.levels[HAL.key(10)] == 0 && retryService.retryDeadline == nil,
+              "delayed silence restores immediate enforcement on the next gain change")
+        retryService.setMuted(false)
+        Queue.drain()
+        HAL.muteQueue.runTimers()
+        check(HAL.levels[HAL.key(10)] == 0.5 && HAL.levels[HAL.key(20)] == 0.75,
+              "a canceled retry cannot remute inputs after an explicit unmute")
+
+        HAL.reset()
+        HAL.now = 20
+        HAL.virtual = [10]
+        HAL.levels[HAL.key(10)] = 1
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        for _ in 0..<10 {
+            HAL.levels[HAL.key(10)] = 1
+            changed(10)
+        }
+        check(HAL.writes.filter { $0 == HAL.key(10) }.count == 3,
+              "a virtual driver that resets after successful readback cannot loop on its own notifications")
+        HAL.now += 0.25
+        HAL.muteQueue.runTimers()
+        check(HAL.levels[HAL.key(10)] == 0, "a virtual driver that recovers without notifying is silenced")
+        HAL.muteService.setMuted(false)
+        Queue.drain()
+        HAL.now += 1
+        HAL.muteQueue.runTimers()
+        check(HAL.levels[HAL.key(10)] == 1, "an explicit unmute cancels a pending virtual driver retry")
+
+        HAL.reset()
+        HAL.now = 30
+        HAL.virtual = [10]
+        HAL.levels[HAL.key(10)] = 1
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        for _ in 0..<3 {
+            HAL.levels[HAL.key(10)] = 1
+            changed(10)
+        }
+        let runningKey = HAL.key(10, 0, kAudioDevicePropertyDeviceIsRunningSomewhere)
+        check(HAL.listeners.contains(runningKey) && HAL.muteService.retryDeadline != nil,
+              "a virtual driver in backoff keeps its recording-start listener")
+        HAL.running = [10]
+        HAL.notify(10, kAudioDevicePropertyDeviceIsRunningSomewhere)
+        Queue.drain()
+        for _ in 0..<5 {
+            HAL.levels[HAL.key(10)] = 1
+            changed(10)
+            check(HAL.levels[HAL.key(10)] == 0, "a recording virtual input is immediately silenced")
+        }
+        check(HAL.muteService.retryDeadline == nil,
+              "starting capture bypasses a previously idle virtual input's backoff")
+
+        HAL.reset()
+        HAL.now = 40
+        HAL.uids = [10: "first input"]
+        HAL.virtual = [10]
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.ignoredWrites = [HAL.key(10)]
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        changed(10)
+        changed(10)
+        let hotPlugged = HAL.muteService
+        HAL.ignoredWrites = []
+        HAL.uids = [10: "replacement input"]
+        HAL.levels[HAL.key(10)] = 0.35
+        changed(10)
+        check(HAL.levels[HAL.key(10)] == 0 && hotPlugged.retryDeadline == nil,
+              "a new UID reusing an old audio object ID is not subject to the old cooldown")
+        hotPlugged.setMuted(false)
+        Queue.drain()
+        HAL.now += 1
+        HAL.muteQueue.runTimers()
+        check(HAL.levels[HAL.key(10)] == 0.35 && hotPlugged.hasOutstandingClaims,
+              "the new input restores its own gain and retains the disconnected input's separate claim")
+
+        HAL.reset()
+        HAL.now = 50
+        HAL.virtual = [10]
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.ignoredWrites = [HAL.key(10)]
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        changed(10)
+        changed(10)
+        HAL.levels[HAL.key(10)] = 0.2
+        HAL.muteService.setMuted(false)
+        Queue.drain()
+        check(HAL.muteService.isMuted && HAL.muteService.retryDeadline != nil,
+              "a wholly failed manual unmute keeps the active mute's retry")
+        HAL.defaults.set(false, forKey: AppFeature.micMute.availabilityKey)
+        HAL.muteService.syncWithPreferences()
+        Queue.drain()
+        check(!HAL.muteService.isMuted && HAL.muteService.retryDeadline == nil,
+              "disabling the feature cancels mute retries even if unmute fails")
+        HAL.muteService.unmuteForTeardown()
+        HAL.ignoredWrites = []
+        HAL.now += 1
+        HAL.muteQueue.runTimers()
+        check(!HAL.muteService.isMuted && HAL.muteService.retryDeadline == nil
+                && HAL.levels[HAL.key(10)] == 0.2,
+              "teardown cancels retries even when the audio driver refuses restoration")
+
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.ignoreWrites = true
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        for _ in 0..<5 { changed(10) }
+        check(HAL.muteService.retryDeadline == nil && HAL.writes.filter { $0 == HAL.key(10) }.count == 6,
+              "an unclassified or physical microphone never enters virtual-driver backoff")
+        HAL.ignoreWrites = false
+        changed(10)
+        check(HAL.levels[HAL.key(10)] == 0, "a slow physical microphone is silenced on its next change")
+
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.afterWrite = { HAL.levels[HAL.key(10)] = 0.5 }
+        HAL.notify(10, kAudioDevicePropertyVolumeScalar)
+        Queue.drain()
+        check(HAL.listeners.contains(HAL.key(10)),
+              "a gain raised again right after the re-mute keeps the microphone watched")
     }
 }

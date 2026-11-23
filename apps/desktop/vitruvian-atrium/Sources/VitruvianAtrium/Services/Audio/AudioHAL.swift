@@ -59,15 +59,20 @@ package struct AudioWorkQueue: Sendable {
     package var async: @Sendable (@escaping @Sendable () -> Void) -> Void
     /// Runs work after everything already queued, and waits for it.
     package var sync: @Sendable (() -> Void) -> Void
+    /// Runs work on the queue once the given number of seconds has passed.
+    package var after: @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void
 
     package init(async: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
-                 sync: @escaping @Sendable (() -> Void) -> Void) {
+                 sync: @escaping @Sendable (() -> Void) -> Void,
+                 after: @escaping @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void) {
         self.async = async
         self.sync = sync
+        self.after = after
     }
 
     package static func live(label: String) -> AudioWorkQueue {
         let queue = DispatchQueue(label: label, qos: .userInitiated)
-        return AudioWorkQueue(async: { queue.async(execute: $0) }, sync: { queue.sync(execute: $0) })
+        return AudioWorkQueue(async: { queue.async(execute: $0) }, sync: { queue.sync(execute: $0) },
+                              after: { queue.asyncAfter(deadline: .now() + $0, execute: $1) })
     }
 }
