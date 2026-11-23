@@ -1485,10 +1485,11 @@ mod isolation {
             .await;
             assert_ne!(page.status, 200, "{}", page.body);
             assert!(!page.body.contains("name=\"csrf\""), "{}", page.body);
-            answers.push((back.status, back.body.replace(device.as_str(), "<id>")));
+            answers.push(back);
         }
         assert_eq!(
-            answers[0], answers[1],
+            shape(&answers[0], &[(&w.bob.laptop.id, "<id>")]),
+            shape(&answers[1], &[(&nowhere, "<id>")]),
             "Alice's answer about Bob's computer differs from her answer about one that does not exist"
         );
         assert_bobs_laptop_untouched(&w).await;
