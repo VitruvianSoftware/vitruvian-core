@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "backstage": {
+      "type": "remote",
+      "url": "https://backstage.vitruviansoftware.dev/api/mcp-actions/v1",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:BACKSTAGE_MCP_AGENT_TOKEN}"
+      }
+    }
+  }
+}
