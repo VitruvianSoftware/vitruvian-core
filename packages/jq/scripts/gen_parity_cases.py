@@ -733,6 +733,37 @@ def build_cases() -> list[tuple[str, str, str, str, bytes]]:
         b"[1e-1147483647,0,-1e-1147483647]",
     )
 
+    # -----------------------------------------------------------------------
+    # 9. Round 3 regression parity cases (EOF separator errors)
+    # -----------------------------------------------------------------------
+    round3_eof_sep = [
+        ("eof_sep_arr_sp_nums", b"[ 1 1"),
+        ("eof_sep_arr_nums_11", b"[1 1"),
+        ("eof_sep_arr_str_num_nosp", b'["a"1'),
+        ("eof_sep_arr_str_num_sp", b'["a" 1'),
+        ("eof_sep_obj_sp_str_num", b'{ "a" 1'),
+        ("eof_sep_obj_str_num_nosp", b'{"a"1'),
+        ("eof_sep_arr_sp_true_null", b"[ true null"),
+        ("eof_sep_arr_true_null_nosp", b"[true null"),
+        ("eof_sep_arr_num_str_sp", b'[1 "a"'),
+        ("eof_sep_arr_num_str_nosp", b'[1"a"'),
+        ("eof_sep_arr_1_2", b"[1 2"),
+        ("eof_sep_arr_1_2_trailing_sp", b"[1 2 "),
+        ("eof_sep_arr_12_unclosed", b"[12"),
+        ("eof_sep_arr_str_str_nosp", b'["a""b"'),
+        ("eof_sep_obj_val_num", b'{"a":1 2'),
+        ("eof_sep_obj_val_bool", b'{"a":1 true'),
+        ("eof_sep_obj_val_str_nosp", b'{"a":1"b"'),
+        ("eof_sep_obj_str_val_num_nosp", b'{"a":"b"1'),
+        ("eof_sep_nested_arr_num_nosp", b"[[1]1"),
+        ("eof_sep_nested_obj_num_nosp", b"[{}1"),
+        ("eof_sep_arr_num_str_esc", ('[1 "a' + BS + 'n"').encode("ascii")),
+        ("eof_sep_arr_multiline", b"[\n1\n2"),
+        ("eof_sep_after_top_val", b"1 [ 1 1"),
+    ]
+    for name, inp in round3_eof_sep:
+        add(f"parse_{name}", "id", "compact", ["-c", "."], inp)
+
     assert len(cases) >= 200, f"Expected >= 200 cases, got {len(cases)}"
     return cases
 

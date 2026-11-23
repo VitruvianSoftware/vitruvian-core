@@ -101,9 +101,13 @@ impl<'a> StreamParser<'a> {
         self.out.push(StreamItem::Value(value, line_no));
     }
 
-    fn push_value(&mut self, v: Value) -> Result<(), String> {
+    fn push_value(&mut self, v: Value, at_eof: bool) -> Result<(), String> {
         if self.next.is_some() {
-            return Err(self.err("Expected separator between values"));
+            return Err(if at_eof {
+                self.err_eof("Expected separator between values")
+            } else {
+                self.err("Expected separator between values")
+            });
         }
         self.next = Some(v);
         Ok(())
@@ -122,7 +126,7 @@ impl<'a> StreamParser<'a> {
             }
         })?;
         self.token_buf.clear();
-        self.push_value(val)?;
+        self.push_value(val, at_eof)?;
         if at_eof && self.stack.is_empty() {
             if let Some(v) = self.next.take() {
                 self.emit_top(v, end_exclusive);
@@ -266,7 +270,7 @@ impl<'a> StreamParser<'a> {
         self.str_buf.clear();
         self.in_string = false;
         self.str_escaped = false;
-        self.push_value(Value::String(decoded))
+        self.push_value(Value::String(decoded), false)
     }
 
     fn run(mut self) -> Vec<StreamItem> {
@@ -751,6 +755,52 @@ mod tests {
             (
                 b"[\n1\n}",
                 "Objects must consist of key:value pairs at line 3, column 1",
+            ),
+        ];
+        for &(inp, want_err) in cases {
+            assert_eq!(
+                parse_stream(inp),
+                vec![StreamItem::ParseError(want_err.to_string())],
+                "input={:?}",
+                String::from_utf8_lossy(inp)
+            );
+        }
+    }
+
+    #[test]
+    fn eof_separator_errors_match_jq_182() {
+        let cases: &[(&[u8], &str)] = &[
+            (
+                b"[ 1 1",
+                "Expected separator between values at EOF at line 1, column 5",
+            ),
+            (
+                b"[\"a\"1",
+                "Expected separator between values at EOF at line 1, column 5",
+            ),
+            (
+                b"{ \"a\" 1",
+                "Expected separator between values at EOF at line 1, column 7",
+            ),
+            (
+                b"[ true null",
+                "Expected separator between values at EOF at line 1, column 11",
+            ),
+            (
+                b"[1 2",
+                "Expected separator between values at EOF at line 1, column 4",
+            ),
+            (
+                b"[1 \"a\"",
+                "Expected separator between values at line 1, column 6",
+            ),
+            (
+                b"[1\"a\"",
+                "Expected separator between values at line 1, column 5",
+            ),
+            (
+                b"[1 2 ",
+                "Expected separator between values at line 1, column 5",
             ),
         ];
         for &(inp, want_err) in cases {
