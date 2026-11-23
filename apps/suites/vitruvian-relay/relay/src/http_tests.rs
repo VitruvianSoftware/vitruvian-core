@@ -1230,6 +1230,74 @@ async fn app_route_logs_each_request_by_kind_without_its_content() {
     assert_eq!(h.logs().matches("app_mcp_request").count(), before);
 }
 
+/// The other ways a request on the app route can go: each still leaves a line
+/// that says what happened, and a version the relay does not know stays a label.
+#[tokio::test]
+async fn app_route_logs_refusals_and_the_stateless_protocol() {
+    const MARKER: &str = "client-chose-this-version";
+    let h = app_harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let path = format!("/mcp/app/{device}");
+    let headers = h.mcp_headers(ALICE, None);
+    let meta = |v: &str| json!({"_meta": {"io.modelcontextprotocol/protocolVersion": v}});
+
+    // A stream request, which this server does not offer.
+    let r = h.send("GET", &path, &headers, "").await;
+    assert_eq!(r.status, StatusCode::METHOD_NOT_ALLOWED);
+    // The stateless revision, with no session.
+    let r = h
+        .send(
+            "POST",
+            &path,
+            &headers,
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                    "params": meta("2026-07-28")})
+            .to_string(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    // A version nobody knows.
+    let r = h
+        .send(
+            "POST",
+            &path,
+            &headers,
+            &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list",
+                    "params": meta(MARKER)})
+            .to_string(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    // A session that ended.
+    let gone = h.mcp_headers(ALICE, Some("ended-session"));
+    let r = h
+        .send(
+            "POST",
+            &path,
+            &gone,
+            &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}).to_string(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+
+    let logs = h.logs();
+    let lines: Vec<Value> = logs
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|l| l["event"] == "app_mcp_request")
+        .collect();
+    assert_eq!(lines.len(), 4, "{logs}");
+    assert_eq!(lines[0]["http"], "GET");
+    assert_eq!(lines[0]["status"], 405);
+    assert_eq!(lines[1]["protocol"], "2026-07-28");
+    assert_eq!(lines[1]["tools"], 1);
+    assert_eq!(lines[2]["protocol"], "other");
+    assert_eq!(lines[2]["status"], 400);
+    assert_eq!(lines[3]["method"], "tools/list");
+    assert_eq!(lines[3]["status"], 404);
+    assert!(!logs.contains(MARKER), "the log holds client text:\n{logs}");
+}
+
 /// With it off the field is absent, not null or empty: the answer is exactly
 /// what it was before app sign-in existed.
 #[tokio::test]

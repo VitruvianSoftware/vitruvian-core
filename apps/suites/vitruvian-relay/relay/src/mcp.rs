@@ -212,6 +212,15 @@ pub fn method_label(method: Option<&str>) -> &'static str {
     }
 }
 
+/// The protocol revision a request names: its header, its `_meta`, or the
+/// version `initialize` asks for.
+pub fn named_version<'a>(req: &'a Value, header: Option<&'a str>) -> Option<&'a str> {
+    let params = req.get("params");
+    header
+        .or_else(|| params?.get("_meta")?.get(META_VERSION)?.as_str())
+        .or_else(|| params?.get("protocolVersion")?.as_str())
+}
+
 /// The protocol revision a client named, as a fixed label for the logs.
 pub fn protocol_label(version: Option<&str>) -> &'static str {
     match version {
