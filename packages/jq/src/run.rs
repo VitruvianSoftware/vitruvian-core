@@ -139,6 +139,66 @@ pub fn each(items: Result<Vec<Value>, String>, f: impl Fn(&Value) -> Produced) -
     (outs, None)
 }
 
+/// `a // empty`: keeps truthy outputs from `a` and propagates any runtime error
+/// (jq `//` does not swallow errors in its left operand).
+pub fn or_empty((outs, err): Produced) -> Produced {
+    (outs.into_iter().filter(Value::truthy).collect(), err)
+}
+
+/// `a // b`: emits all truthy outputs of `a`, or evaluates `fallback` when `a`
+/// produced no truthy values without error. A runtime error in `a` is propagated
+/// without evaluating `fallback` (matching jq 1.8).
+pub fn alt((outs, err): Produced, fallback: impl FnOnce() -> Produced) -> Produced {
+    let truthy: Vec<Value> = outs.into_iter().filter(Value::truthy).collect();
+    if err.is_some() || !truthy.is_empty() {
+        (truthy, err)
+    } else {
+        fallback()
+    }
+}
+
+/// `first(items | f)`: applies `f` to elements of `items` and short-circuits on
+/// the first output value (even if `false` or `null`, without evaluating later
+/// items that might error). Propagates an error from `items` or from `f` if it
+/// occurs before any value is produced.
+pub fn first(items: Result<Vec<Value>, String>, mut f: impl FnMut(&Value) -> Produced) -> Produced {
+    let items = match items {
+        Ok(v) => v,
+        Err(e) => return (Vec::new(), Some(e)),
+    };
+    for item in &items {
+        let (outs, err) = f(item);
+        if let Some(v) = outs.into_iter().next() {
+            return (vec![v], None);
+        }
+        if err.is_some() {
+            return (Vec::new(), err);
+        }
+    }
+    (Vec::new(), None)
+}
+
+/// `any(items; pred)`: evaluates `pred` across `items`, short-circuiting with
+/// `true` on the first match without evaluating later items, returning `false`
+/// if no item matches, or propagating the first error before a match.
+pub fn any(
+    items: Result<Vec<Value>, String>,
+    mut pred: impl FnMut(&Value) -> Result<bool, String>,
+) -> Produced {
+    let items = match items {
+        Ok(v) => v,
+        Err(e) => return (Vec::new(), Some(e)),
+    };
+    for item in &items {
+        match pred(item) {
+            Ok(true) => return (vec![Value::Bool(true)], None),
+            Ok(false) => {}
+            Err(e) => return (Vec::new(), Some(e)),
+        }
+    }
+    (vec![Value::Bool(false)], None)
+}
+
 /// Runs `filter` over the JSON stream in `input`, matching jq 1.8's stream
 /// semantics and exit status:
 /// - Runtime errors emit `jq: error (at <stdin>:N): ...` and processing continues.
@@ -194,4 +254,99 @@ pub fn run(
         }
     };
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn or_empty_filters_falsy_and_preserves_errors() {
+        assert_eq!(
+            or_empty((
+                vec![
+                    Value::Bool(false),
+                    Value::int(1),
+                    Value::Null,
+                    Value::int(0)
+                ],
+                None
+            )),
+            (vec![Value::int(1), Value::int(0)], None)
+        );
+        assert_eq!(
+            or_empty((vec![Value::Bool(false), Value::int(1)], Some("boom".into()))),
+            (vec![Value::int(1)], Some("boom".into()))
+        );
+    }
+
+    #[test]
+    fn alt_uses_fallback_only_when_empty_and_error_free() {
+        let mut called = false;
+        let out = alt((vec![Value::int(1)], None), || {
+            called = true;
+            (vec![Value::str("fallback")], None)
+        });
+        assert!(!called);
+        assert_eq!(out, (vec![Value::int(1)], None));
+
+        let out = alt((vec![Value::Bool(false), Value::Null], None), || {
+            called = true;
+            (vec![Value::str("fallback")], None)
+        });
+        assert!(called);
+        assert_eq!(out, (vec![Value::str("fallback")], None));
+
+        let mut called_on_err = false;
+        let out = alt((vec![Value::Null], Some("err".into())), || {
+            called_on_err = true;
+            (vec![Value::str("fallback")], None)
+        });
+        assert!(!called_on_err);
+        assert_eq!(out, (vec![], Some("err".into())));
+    }
+
+    #[test]
+    fn first_short_circuits_on_first_value_even_if_falsy() {
+        let items = Ok(vec![
+            Value::object([("a".into(), Value::Bool(false))]),
+            Value::int(5),
+        ]);
+        assert_eq!(
+            first(items, |v| one(v.index("a"))),
+            (vec![Value::Bool(false)], None)
+        );
+
+        let items = Ok(vec![
+            Value::int(5),
+            Value::object([("a".into(), Value::int(1))]),
+        ]);
+        assert!(first(items, |v| one(v.index("a"))).1.is_some());
+    }
+
+    #[test]
+    fn any_short_circuits_and_propagates_prior_errors() {
+        let items = Ok(vec![
+            Value::object([("fileName".into(), Value::str("a"))]),
+            Value::str("x"),
+        ]);
+        assert_eq!(
+            any(items, |v| Ok(v.index("fileName")?.is_str("a"))),
+            (vec![Value::Bool(true)], None)
+        );
+
+        let items = Ok(vec![
+            Value::str("x"),
+            Value::object([("fileName".into(), Value::str("a"))]),
+        ]);
+        assert!(any(items, |v| Ok(v.index("fileName")?.is_str("a")))
+            .1
+            .is_some());
+
+        let items = Ok(vec![Value::object([("fileName".into(), Value::str("b"))])]);
+        assert_eq!(
+            any(items, |v| Ok(v.index("fileName")?.is_str("a"))),
+            (vec![Value::Bool(false)], None)
+        );
+    }
 }

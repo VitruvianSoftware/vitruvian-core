@@ -134,9 +134,24 @@ pub fn log(parts: &[&[u8]]) {
     let _ = std::io::stderr().lock().write_all(&v);
 }
 
+/// `head -n 1` of some output: the first line, newline included.
+pub fn head1(b: &[u8]) -> Vec<u8> {
+    match b.iter().position(|&c| c == b'\n') {
+        Some(i) => b[..=i].to_vec(),
+        None => b.to_vec(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn head1_takes_first_line() {
+        assert_eq!(head1(b"a\nb\n"), b"a\n");
+        assert_eq!(head1(b"a"), b"a");
+        assert_eq!(head1(b""), b"");
+    }
 
     #[test]
     fn echo_adds_a_newline_except_for_its_own_options() {

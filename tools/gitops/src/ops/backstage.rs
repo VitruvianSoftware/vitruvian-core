@@ -23,14 +23,14 @@
 //! putting it on a command line. The JSON the script built and read with
 //! python3 is built here as python's `json.dumps` writes it (the request
 //! bodies are compared byte for byte by the parity test) and read with
-//! serde_json.
+//! `vitruvian_pycompat::json`.
 
 use std::process::Stdio;
 
 use shell_compat as sc;
+use vitruvian_pycompat::json::{self as pyjson, Value as PyValue};
 
 use super::common::*;
-use super::jq::{self, J};
 
 /// The text of a byte string as python sees an argv element or environment
 /// value: UTF-8, with each undecodable byte as a lone surrogate
@@ -93,36 +93,24 @@ pub fn py_json_str(b: &[u8]) -> String {
 }
 
 /// What python's `print(x)` writes for a value `json.load` returned.
-fn py_print(v: &J) -> String {
-    match v {
-        J::Str(s) => s.clone(),
-        J::Null => "None".into(),
-        J::Bool(true) => "True".into(),
-        J::Bool(false) => "False".into(),
-        J::Num(n) => n.to_string(),
-        other => jq::pretty(other).trim_end().to_string(),
-    }
+fn py_print(v: &PyValue) -> String {
+    v.py_str()
 }
 
 /// `json.load(sys.stdin)` on a document that must be a JSON object; the
 /// message python would die with otherwise.
-fn py_load_object(input: &[u8]) -> Result<J, String> {
-    match serde_json::from_slice::<J>(input) {
-        Ok(v @ J::Obj(_)) => Ok(v),
-        Ok(other) => {
-            let t = match other {
-                J::Arr(_) => "list",
-                J::Str(_) => "str",
-                J::Num(_) => "int",
-                J::Bool(_) => "bool",
-                _ => "NoneType",
-            };
-            Err(format!(
-                "AttributeError: '{}' object has no attribute 'get'",
-                t
-            ))
-        }
-        Err(e) => Err(format!("json.decoder.JSONDecodeError: {}", e)),
+fn py_load_object(input: &[u8]) -> Result<PyValue, String> {
+    let text = std::str::from_utf8(input).map_err(|e| format!("UnicodeDecodeError: {}", e))?;
+    match pyjson::loads(text) {
+        Ok(v @ PyValue::Obj(_)) => Ok(v),
+        Ok(other) => Err(format!(
+            "AttributeError: '{}' object has no attribute 'get'",
+            other.type_name()
+        )),
+        Err(e) => match e.recursion_message() {
+            Some(m) => Err(format!("RecursionError: {m}")),
+            None => Err(format!("json.decoder.JSONDecodeError: {}", e.python_str())),
+        },
     }
 }
 
@@ -138,14 +126,10 @@ fn py_die(msg: &str) -> i32 {
 }
 
 /// `dict.get(key, "")`.
-fn py_get(v: &J, key: &str) -> J {
-    match v {
-        J::Obj(m) => m
-            .iter()
-            .find(|(k, _)| k == key)
-            .map_or(J::Str(String::new()), |(_, x)| x.clone()),
-        _ => J::Str(String::new()),
-    }
+fn py_get(v: &PyValue, key: &str) -> PyValue {
+    v.get(key)
+        .cloned()
+        .unwrap_or_else(|| PyValue::Str(String::new()))
 }
 
 /// `curl ARGS` (fed `body` on stdin when given), its stdout read here as the
@@ -362,7 +346,7 @@ fn run_main(args: &[Vec<u8>]) -> Res<i32> {
             // sys.stderr.write(d.get("error","")[:200]): only a string gets
             // through; anything else is a TypeError.
             match py_get(&v, "error") {
-                J::Str(e) => {
+                PyValue::Str(ref e) => {
                     let cut: String = e.chars().take(200).collect();
                     sc::err(cut.as_bytes());
                 }
@@ -432,8 +416,44 @@ mod tests {
 
     #[test]
     fn print_like_python() {
-        assert_eq!(py_print(&J::Null), "None");
-        assert_eq!(py_print(&J::Str("tok".into())), "tok");
-        assert_eq!(py_print(&J::Bool(true)), "True");
+        assert_eq!(py_print(&PyValue::Null), "None");
+        assert_eq!(py_print(&PyValue::Str("tok".into())), "tok");
+        assert_eq!(py_print(&PyValue::Bool(true)), "True");
+    }
+
+    #[test]
+    fn py_load_object_behaves_like_python_and_never_leaks_secrets() {
+        assert!(py_load_object(br#"{"token":"ok","x":NaN}"#).is_ok());
+        assert_eq!(
+            py_load_object(b"1.5").unwrap_err(),
+            "AttributeError: 'float' object has no attribute 'get'"
+        );
+        assert_eq!(
+            py_load_object(b"\"FAKE-SECRET-VALUE-1\"").unwrap_err(),
+            "AttributeError: 'str' object has no attribute 'get'"
+        );
+        let bad = py_load_object(br#"{"token":"FAKE-SECRET-VALUE-1"#).unwrap_err();
+        assert!(bad.starts_with("json.decoder.JSONDecodeError: "));
+        assert!(!bad.contains("FAKE-SECRET-VALUE-1"));
+    }
+
+    #[test]
+    fn py_load_object_rejects_deeply_nested_input_cleanly() {
+        let arr = "[".repeat(10000);
+        let obj = "{\"a\":".repeat(10000);
+        let err_arr = py_load_object(arr.as_bytes()).unwrap_err();
+        let err_obj = py_load_object(obj.as_bytes()).unwrap_err();
+        assert!(
+            err_arr.starts_with(
+                "RecursionError: maximum recursion depth exceeded while decoding a JSON array from a unicode string"
+            ),
+            "arr={err_arr:?}"
+        );
+        assert!(
+            err_obj.starts_with(
+                "RecursionError: maximum recursion depth exceeded while decoding a JSON object from a unicode string"
+            ),
+            "obj={err_obj:?}"
+        );
     }
 }

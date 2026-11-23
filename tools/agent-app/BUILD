@@ -154,8 +154,8 @@ test_suite(
 #
 # It also carries agent_app (src/agent_app/), the Rust `:agent-app` above: a
 # package gets one rust_library (//tools/lint-naming), so the two share it.
-# agent_app reads GitHub's JSON with serde_json and reuses shell-compat's bash
-# behaviours.
+# agent_app reads GitHub's JSON with vitruvian_jq and reuses shell-compat's
+# bash behaviours.
 rust_library(
     name = "permission_drift_lib",
     srcs = glob(
@@ -170,9 +170,9 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//packages/jq:vitruvian_jq",
         "//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat",
         "//tools/shell-compat:shell_compat",
-        "@crates//:serde",
         "@crates//:serde_json",
     ],
 )

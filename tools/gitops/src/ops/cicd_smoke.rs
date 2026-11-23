@@ -116,7 +116,7 @@ fn sleep5(line: u32) -> Res<()> {
 fn prom(q: &str) -> (i32, Vec<u8>, Vec<u8>) {
     let url = format!(
         "localhost:9090/api/v1/query?query={}",
-        jq::uri(q.as_bytes())
+        vitruvian_jq::uri_encode(q.as_bytes())
     );
     let mut c = cmd(
         "kubectl",
@@ -374,7 +374,7 @@ fn smoke(w_slot: &mut Option<Vec<u8>>) -> Res<i32> {
     ]));
 
     // 4. trace appears in Tempo, WITHOUT the committer email
-    let tq = jq::uri(
+    let tq = vitruvian_jq::uri_encode(
         format!(
             "{{ resource.service.name = \"github-actions\" && resource.cicd.pipeline.run.id = {} }}",
             run_id

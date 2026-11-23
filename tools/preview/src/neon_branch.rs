@@ -21,7 +21,7 @@
 //! neon-branch: neon-branch.sh in Rust. Creates, deletes and reads Neon
 //! copy-on-write branches through the Neon API with `curl`, exactly as the
 //! script does -- same curl argv, same output, same exit codes. The jq the
-//! script pipes every response through is [`crate::jq`].
+//! script pipes every response through uses `vitruvian_jq`.
 //!
 //! The script's control flow has two bash subtleties the port keeps:
 //! - Its helpers run inside `$(...)`, where bash clears `set -e`. So a curl
@@ -33,10 +33,10 @@
 //! - A helper's status is its last pipeline's (`pipefail`), so a jq error in
 //!   one ends the run with jq's 5.
 
-use crate::common::{captured, discarded, echo, prog_name, unbound};
-use crate::jq::{self, each, one, Produced, J};
+use crate::common::{captured, discarded, echo, head1, prog_name, unbound};
 use shell_compat::{cat, err, out, subst};
 use std::process::Command;
+use vitruvian_jq::{self as jq, each, one, or_empty, Produced, RunOptions, Value};
 
 const USAGE: &str = "Usage: {PROG} <create|delete|get> [options]
 
@@ -124,17 +124,16 @@ impl Opts {
     /// `find_branch_by_name` as `$(...)` sees it: (status, output).
     fn find_branch_by_name(&self, name: &[u8]) -> (i32, Vec<u8>) {
         let (_, json) = self.api(b"GET", &self.branches_path(), None);
-        let f = |v: &J| -> Produced {
-            each(
-                v.index("branches").and_then(|b| b.iterate()),
-                &|b: &J| match b.index("name") {
-                    Ok(n) if n.is_str(name) => (vec![b.clone()], None),
-                    Ok(_) => (vec![], None),
-                    Err(e) => (vec![], Some(e)),
-                },
-            )
-        };
-        let r = jq::run(&echo(&json), true, &f);
+        let target = String::from_utf8_lossy(name);
+        let r = jq::run(&echo(&json), RunOptions::raw(), |v| {
+            each(v.index("branches").and_then(|b| b.iterate()), |b| {
+                match b.index("name") {
+                    Ok(n) if n.is_str(&target) => (vec![b.clone()], None),
+                    Ok(_) => (Vec::new(), None),
+                    Err(e) => (Vec::new(), Some(e)),
+                }
+            })
+        });
         err(&r.stderr);
         (r.status, subst(r.stdout))
     }
@@ -142,27 +141,10 @@ impl Opts {
     /// `resolve_parent_branch_id` as `$(...)` sees it.
     fn resolve_parent_branch_id(&self) -> (i32, Vec<u8>) {
         let (_, json) = self.api(b"GET", &self.branches_path(), None);
-        let p = &self.parent_id;
-        let f = |v: &J| -> Produced {
-            each(v.index("branches").and_then(|b| b.iterate()), &|b: &J| {
-                let hit = match b.index("id") {
-                    Ok(id) if id.is_str(p) => true,
-                    Ok(_) => match b.index("name") {
-                        Ok(n) => n.is_str(p),
-                        Err(e) => return (vec![], Some(e)),
-                    },
-                    Err(e) => return (vec![], Some(e)),
-                };
-                if hit {
-                    one(b.index("id"))
-                } else {
-                    (vec![], None)
-                }
-            })
-        };
-        let r = jq::run(&echo(&json), true, &f);
+        let target = String::from_utf8_lossy(&self.parent_id);
+        let r = jq::run(&echo(&json), RunOptions::raw(), parent_branch_ids(&target));
         err(&r.stderr);
-        let id = subst(jq::head1(&r.stdout));
+        let id = subst(head1(&r.stdout));
         if id.is_empty() || id == b"null" {
             err(&cat(&[
                 b"ERROR: Parent branch '",
@@ -180,19 +162,19 @@ impl Opts {
     fn get_branch_endpoint(&self, branch_id: &[u8]) -> (i32, Vec<u8>) {
         let path = cat(&[b"projects/", &self.project_id, b"/endpoints"]);
         let (_, json) = self.api(b"GET", &path, None);
-        let f = |v: &J| -> Produced {
+        let target = String::from_utf8_lossy(branch_id);
+        let r = jq::run(&echo(&json), RunOptions::raw(), |v| {
             each(
                 v.index("endpoints").and_then(|b| b.iterate()),
-                &|e: &J| match e.index("branch_id") {
-                    Ok(b) if b.is_str(branch_id) => one(e.index("host")),
-                    Ok(_) => (vec![], None),
-                    Err(x) => (vec![], Some(x)),
+                |e| match e.index("branch_id") {
+                    Ok(b) if b.is_str(&target) => one(e.index("host")),
+                    Ok(_) => (Vec::new(), None),
+                    Err(x) => (Vec::new(), Some(x)),
                 },
             )
-        };
-        let r = jq::run(&echo(&json), true, &f);
+        });
         err(&r.stderr);
-        (r.status, subst(jq::head1(&r.stdout)))
+        (r.status, subst(head1(&r.stdout)))
     }
 
     fn connection_uri_path(&self, branch_id: &[u8]) -> Vec<u8> {
@@ -206,38 +188,54 @@ impl Opts {
     }
 }
 
+fn parent_branch_ids<'a>(p: &'a str) -> impl Fn(&Value) -> Produced + 'a {
+    move |v: &Value| {
+        each(v.index("branches").and_then(|b| b.iterate()), |b| {
+            let hit = match b.index("id") {
+                Ok(id) if id.is_str(p) => true,
+                Ok(_) => match b.index("name") {
+                    Ok(n) => n.is_str(p),
+                    Err(e) => return (Vec::new(), Some(e)),
+                },
+                Err(e) => return (Vec::new(), Some(e)),
+            };
+            if hit {
+                one(b.index("id"))
+            } else {
+                (Vec::new(), None)
+            }
+        })
+    }
+}
+
 /// `x="$(echo "$v" | jq -r <filter>)"` in a `set -e` context.
-fn jq_assign(v: &[u8], f: &dyn Fn(&J) -> Produced) -> R<Vec<u8>> {
-    let r = jq::run(&echo(v), true, f);
+fn jq_assign(v: &[u8], f: impl FnMut(&Value) -> Produced) -> R<Vec<u8>> {
+    let r = jq::run(&echo(v), RunOptions::raw(), f);
     err(&r.stderr);
     check(r.status)?;
     Ok(subst(r.stdout))
 }
 
-fn id_of(v: &J) -> Produced {
+fn id_of(v: &Value) -> Produced {
     one(v.index("id"))
 }
 
-fn uri_or_empty(v: &J) -> Produced {
-    match v.index("uri") {
-        Ok(u) if u.truthy() => (vec![u], None),
-        Ok(_) => (vec![], None),
-        Err(e) => (vec![], Some(e)),
-    }
+fn uri_or_empty(v: &Value) -> Produced {
+    or_empty(one(v.index("uri")))
 }
 
 fn connection_json(o: &Opts, branch_id: &[u8], host: &[u8], db_url: &[u8], ready: bool) {
     let mut m = vec![
-        ("project_id".to_string(), jq::arg(&o.project_id)),
-        ("branch_id".to_string(), jq::arg(branch_id)),
-        ("branch_name".to_string(), jq::arg(&o.branch_name)),
-        ("host".to_string(), jq::arg(host)),
-        ("database_url".to_string(), jq::arg(db_url)),
+        ("project_id".to_string(), Value::arg(&o.project_id)),
+        ("branch_id".to_string(), Value::arg(branch_id)),
+        ("branch_name".to_string(), Value::arg(&o.branch_name)),
+        ("host".to_string(), Value::arg(host)),
+        ("database_url".to_string(), Value::arg(db_url)),
     ];
     if ready {
-        m.push(("status".to_string(), J::str("ready")));
+        m.push(("status".to_string(), Value::str("ready")));
     }
-    out(&cat(&[jq::pretty(&J::Obj(m)).as_bytes(), b"\n"]));
+    out(&cat(&[jq::pretty(&Value::Object(m)).as_bytes(), b"\n"]));
 }
 
 fn or_default<'a>(v: &'a [u8], d: &'a [u8]) -> &'a [u8] {
@@ -264,29 +262,29 @@ fn do_create(o: &Opts) -> R<()> {
     let (st, existing) = o.find_branch_by_name(&o.branch_name);
     check(st)?;
     let branch_id = if !existing.is_empty() && existing != b"null" {
-        jq_assign(&existing, &id_of)?
+        jq_assign(&existing, id_of)?
     } else {
         let (st, parent) = o.resolve_parent_branch_id();
         check(st)?;
-        let payload = jq::pretty(&J::Obj(vec![
+        let payload = jq::pretty(&Value::Object(vec![
             (
                 "branch".to_string(),
-                J::Obj(vec![
-                    ("name".to_string(), jq::arg(&o.branch_name)),
-                    ("parent_id".to_string(), jq::arg(&parent)),
+                Value::Object(vec![
+                    ("name".to_string(), Value::arg(&o.branch_name)),
+                    ("parent_id".to_string(), Value::arg(&parent)),
                 ]),
             ),
             (
                 "endpoints".to_string(),
-                J::Arr(vec![J::Obj(vec![(
+                Value::Array(vec![Value::Object(vec![(
                     "type".to_string(),
-                    J::str("read_write"),
+                    Value::str("read_write"),
                 )])]),
             ),
         ]));
         let (st, resp) = o.api(b"POST", &o.branches_path(), Some(payload.as_bytes()));
         check(st)?;
-        jq_assign(&resp, &|v: &J| {
+        jq_assign(&resp, |v| {
             one(v.index("branch").and_then(|b| b.index("id")))
         })?
     };
@@ -294,7 +292,7 @@ fn do_create(o: &Opts) -> R<()> {
     check(st)?;
     let (st, uri_resp) = o.api(b"GET", &o.connection_uri_path(&branch_id), None);
     check(st)?;
-    let mut db_url = jq_assign(&uri_resp, &uri_or_empty)?;
+    let mut db_url = jq_assign(&uri_resp, uri_or_empty)?;
     if db_url.is_empty() {
         db_url = cat(&[
             b"postgresql://neondb_owner@",
@@ -329,7 +327,7 @@ fn do_delete(o: &Opts) -> R<()> {
         ]));
         return Ok(());
     }
-    let branch_id = jq_assign(&existing, &id_of)?;
+    let branch_id = jq_assign(&existing, id_of)?;
     let path = cat(&[b"projects/", &o.project_id, b"/branches/", &branch_id]);
     check(discarded(93, &mut o.curl(b"DELETE", &path, None)))?;
     out(&cat(&[
@@ -361,12 +359,12 @@ fn do_get(o: &Opts) -> R<()> {
         ]));
         return Err(1);
     }
-    let branch_id = jq_assign(&existing, &id_of)?;
+    let branch_id = jq_assign(&existing, id_of)?;
     let (st, host) = o.get_branch_endpoint(&branch_id);
     check(st)?;
     let (st, uri_resp) = o.api(b"GET", &o.connection_uri_path(&branch_id), None);
     check(st)?;
-    let db_url = jq_assign(&uri_resp, &uri_or_empty)?;
+    let db_url = jq_assign(&uri_resp, uri_or_empty)?;
     if o.format == b"url" {
         out(&echo(&db_url));
     } else {
@@ -450,5 +448,58 @@ fn main(args: &[Vec<u8>]) -> R<()> {
         b"create" => do_create(&o),
         b"delete" => do_delete(&o),
         _ => do_get(&o),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iterate_null_error_and_location() {
+        let f = parent_branch_ids("main");
+        let r = jq::run(b"{}\n", RunOptions::raw(), &f);
+        assert_eq!(
+            r.stderr,
+            b"jq: error (at <stdin>:1): Cannot iterate over null (null)\n"
+        );
+        assert_eq!(r.status, 5);
+        let r = jq::run(b"{}", RunOptions::raw(), &f);
+        assert_eq!(
+            r.stderr,
+            b"jq: error (at <stdin>:0): Cannot iterate over null (null)\n"
+        );
+        let r = jq::run(b"{}\n\n\n", RunOptions::raw(), &f);
+        assert!(r.stderr.starts_with(b"jq: error (at <stdin>:1)"));
+        let r = jq::run(b"\n\n{\n}\n", RunOptions::raw(), &f);
+        assert!(r.stderr.starts_with(b"jq: error (at <stdin>:4)"));
+    }
+
+    #[test]
+    fn select_by_id_or_name_streams_until_error() {
+        let f = parent_branch_ids("main");
+        let r = jq::run(
+            b"{\"branches\":[{\"id\":\"a\",\"name\":\"main\"},{\"id\":\"main\"},\"s\",{\"id\":\"z\",\"name\":\"main\"}]}\n",
+            RunOptions::raw(),
+            &f,
+        );
+        assert_eq!(r.stdout, b"a\nmain\n");
+        assert_eq!(
+            r.stderr,
+            b"jq: error (at <stdin>:1): Cannot index string with string (\"id\")\n"
+        );
+        assert_eq!(r.status, 5);
+    }
+
+    #[test]
+    fn uri_or_empty_errors_never_leak_secrets() {
+        for inp in [
+            br#""FAKE-SECRET-VALUE-1""#.as_slice(),
+            br#"{"uri":"FAKE-SECRET-VALUE-1"#.as_slice(),
+        ] {
+            let r = jq::run(inp, RunOptions::raw(), uri_or_empty);
+            assert_eq!(r.status, 5);
+            assert!(!r.stderr_string().contains("FAKE-SECRET-VALUE-1"));
+        }
     }
 }

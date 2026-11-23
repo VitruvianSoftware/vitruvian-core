@@ -18,191 +18,56 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! The five `jq -r` filters sync-env-secrets.sh runs over `bw` output, over
-//! serde_json instead of a jq binary. Each reads a stream of JSON values the
-//! way jq 1.7 does: every value in turn, a runtime error on one (indexing a
-//! string, say) reported and the next one still processed; the exit status
-//! is that of the LAST value (5 if it failed, else 0), and a parse error
-//! ends the stream with 5. Output is `-r`: a string raw, anything else as
-//! JSON, one per line.
+//! The five `jq -r` filters sync-env-secrets.sh runs over `bw` output,
+//! implemented as thin filters over `vitruvian_jq` (matching jq 1.8.2).
 
-use serde_json::Value;
-
-/// A jq runtime error: the message after "jq: error (at <stdin>:N): ".
-type JqErr = String;
-
-/// One filter applied to one input: what it output, then the error it hit
-/// if it hit one (outputs before the error are still printed).
-type Filter<'a> = dyn Fn(&Value) -> (Vec<Value>, Option<JqErr>) + 'a;
+use vitruvian_jq::{each, first, one, or_empty, run, Produced, RunOptions, RunResult, Value};
 
 /// What `jq -r FILTER` printed and its exit status.
-#[derive(Debug, PartialEq)]
-pub struct JqOut {
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub status: i32,
-}
+pub type JqOut = RunResult;
 
-fn render(v: &Value, out: &mut Vec<u8>) {
-    match v {
-        Value::String(s) => out.extend_from_slice(s.as_bytes()),
-        Value::Array(a) if a.is_empty() => out.extend_from_slice(b"[]"),
-        Value::Object(o) if o.is_empty() => out.extend_from_slice(b"{}"),
-        Value::Array(_) | Value::Object(_) => {
-            out.extend(serde_json::to_vec_pretty(v).unwrap_or_default());
-        }
-        other => out.extend(serde_json::to_vec(other).unwrap_or_default()),
+fn match_attachment<'a>(name: &'a str) -> impl Fn(&Value) -> Produced + 'a {
+    move |e: &Value| match e.index("fileName") {
+        Ok(fname) if fname.is_str(name) => one(e.index("id")),
+        Ok(_) => (Vec::new(), None),
+        Err(err) => (Vec::new(), Some(err)),
     }
-    out.push(b'\n');
-}
-
-fn run(input: &[u8], f: &Filter) -> JqOut {
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let mut status = 0;
-    // jq names the input line it had read up to; it reads small inputs whole.
-    let lines = input.iter().filter(|&&c| c == b'\n').count();
-    let stream = serde_json::Deserializer::from_slice(input).into_iter::<Value>();
-    for item in stream {
-        match item {
-            Ok(v) => {
-                let (outs, failed) = f(&v);
-                outs.iter().for_each(|o| render(o, &mut stdout));
-                status = match failed {
-                    Some(msg) => {
-                        stderr.extend(
-                            format!("jq: error (at <stdin>:{}): {}\n", lines, msg).into_bytes(),
-                        );
-                        5
-                    }
-                    None => 0,
-                };
-            }
-            Err(e) => {
-                stderr.extend(format!("jq: parse error: {}\n", e).into_bytes());
-                status = 5;
-                break;
-            }
-        }
-    }
-    JqOut {
-        stdout,
-        stderr,
-        status,
-    }
-}
-
-fn type_name(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
-/// `.key` on one value: null and objects index, anything else is an error.
-fn field(v: &Value, key: &str) -> Result<Value, JqErr> {
-    match v {
-        Value::Null => Ok(Value::Null),
-        Value::Object(o) => Ok(o.get(key).cloned().unwrap_or(Value::Null)),
-        other => Err(format!(
-            "Cannot index {} with string (\"{}\")",
-            type_name(other),
-            key
-        )),
-    }
-}
-
-/// `.[0]`: null and arrays index, anything else is an error.
-fn first_elem(v: &Value) -> Result<Value, JqErr> {
-    match v {
-        Value::Null => Ok(Value::Null),
-        Value::Array(a) => Ok(a.first().cloned().unwrap_or(Value::Null)),
-        other => Err(format!("Cannot index {} with number", type_name(other))),
-    }
-}
-
-fn truthy(v: &Value) -> bool {
-    !matches!(v, Value::Null | Value::Bool(false))
-}
-
-/// `.attachments[]? | select(.fileName==$n) | .id`, stopping after `limit`
-/// outputs when given (jq's `first(...)`).
-fn matching_attachment_ids(
-    v: &Value,
-    name: &str,
-    limit: Option<usize>,
-) -> (Vec<Value>, Option<JqErr>) {
-    // `.attachments[]?`: the ? swallows an error from the iteration only, so
-    // a non-iterable `.attachments` yields nothing, but indexing a value that
-    // is not an object (or null) is still an error.
-    let elems: Vec<Value> = match field(v, "attachments") {
-        Ok(Value::Array(a)) => a,
-        Ok(Value::Object(o)) => o.into_iter().map(|(_, x)| x).collect(),
-        Ok(_) => Vec::new(),
-        Err(e) => return (Vec::new(), Some(e)),
-    };
-    let mut out = Vec::new();
-    for e in &elems {
-        let fname = match field(e, "fileName") {
-            Ok(x) => x,
-            Err(err) => return (out, Some(err)),
-        };
-        if fname == Value::String(name.to_string()) {
-            match field(e, "id") {
-                Ok(x) => out.push(x),
-                Err(err) => return (out, Some(err)),
-            }
-            if limit.map_or(false, |l| out.len() >= l) {
-                break;
-            }
-        }
-    }
-    (out, None)
-}
-
-fn one(r: Result<Value, JqErr>) -> (Vec<Value>, Option<JqErr>) {
-    match r {
-        Ok(x) => (vec![x], None),
-        Err(e) => (Vec::new(), Some(e)),
-    }
-}
-
-/// `a // empty`: a's truthy outputs. jq 1.7 does not swallow an error in
-/// `a`; it is still raised.
-fn or_empty((outs, err): (Vec<Value>, Option<JqErr>)) -> (Vec<Value>, Option<JqErr>) {
-    (outs.into_iter().filter(truthy).collect(), err)
 }
 
 /// `jq -r '.status'`.
 pub fn status(input: &[u8]) -> JqOut {
-    run(input, &|v| one(field(v, "status")))
+    run(input, RunOptions::raw(), |v| one(v.index("status")))
 }
 
 /// `jq -r '.id'`.
 pub fn id(input: &[u8]) -> JqOut {
-    run(input, &|v| one(field(v, "id")))
+    run(input, RunOptions::raw(), |v| one(v.index("id")))
 }
 
 /// `jq -r '.[0].id // empty'`.
 pub fn first_id_or_empty(input: &[u8]) -> JqOut {
-    run(input, &|v| {
-        or_empty(one(first_elem(v).and_then(|x| field(&x, "id"))))
+    run(input, RunOptions::raw(), |v| {
+        or_empty(one(v.index_num(0).and_then(|x| x.index("id"))))
     })
 }
 
 /// `jq -r --arg n NAME '.attachments[]? | select(.fileName==$n) | .id'`.
 pub fn attachment_ids(input: &[u8], name: &str) -> JqOut {
-    run(input, &|v| matching_attachment_ids(v, name, None))
+    run(input, RunOptions::raw(), |v| {
+        each(
+            v.index("attachments").map(|a| a.iterate_opt()),
+            match_attachment(name),
+        )
+    })
 }
 
 /// `jq -r --arg n NAME 'first(.attachments[]? | select(.fileName==$n) | .id) // empty'`.
 pub fn first_attachment_id_or_empty(input: &[u8], name: &str) -> JqOut {
-    run(input, &|v| {
-        or_empty(matching_attachment_ids(v, name, Some(1)))
+    run(input, RunOptions::raw(), |v| {
+        or_empty(first(
+            v.index("attachments").map(|a| a.iterate_opt()),
+            match_attachment(name),
+        ))
     })
 }
 
@@ -211,7 +76,7 @@ mod tests {
     use super::*;
 
     fn s(o: JqOut) -> (String, i32) {
-        (String::from_utf8(o.stdout).unwrap(), o.status)
+        (o.stdout_string(), o.status)
     }
 
     #[test]
@@ -253,19 +118,19 @@ mod tests {
     }
 
     #[test]
-    fn error_messages_name_the_types() {
+    fn error_messages_match_jq_182() {
         let o = status(b"\"s\"\n");
         assert_eq!(
-            String::from_utf8(o.stderr).unwrap(),
+            o.stderr_string(),
             "jq: error (at <stdin>:1): Cannot index string with string (\"status\")\n"
         );
         let o = first_id_or_empty(br#"{"id":"x"}"#);
         assert_eq!(
-            String::from_utf8(o.stderr).unwrap(),
-            "jq: error (at <stdin>:0): Cannot index object with number\n"
+            o.stderr_string(),
+            "jq: error (at <stdin>:0): Cannot index object with number (0)\n"
         );
-        assert!(String::from_utf8(status(b"{").stderr)
-            .unwrap()
+        assert!(status(b"{")
+            .stderr_string()
             .starts_with("jq: parse error: "));
     }
 
@@ -341,5 +206,44 @@ mod tests {
             )),
             ("null\n".into(), 0)
         );
+    }
+
+    #[test]
+    fn first_attachment_short_circuits_on_falsy_match() {
+        let item = br#"{"attachments":[{"fileName":"a","id":false},{"fileName":"a","id":"2"}]}"#;
+        assert_eq!(s(first_attachment_id_or_empty(item, "a")), ("".into(), 0));
+    }
+
+    #[test]
+    fn secret_values_never_leak_in_errors() {
+        let payloads: &[&[u8]] = &[
+            br#""FAKE-SECRET-VALUE-1""#,
+            br#"["FAKE-SECRET-VALUE-1"]"#,
+            br#"{"attachments":["FAKE-SECRET-VALUE-1"]}"#,
+            br#"{"attachments":"FAKE-SECRET-VALUE-1"}"#,
+            br#"{"secret":"FAKE-SECRET-VALUE-1"#,
+        ];
+        for inp in payloads {
+            for r in [
+                status(inp),
+                id(inp),
+                first_id_or_empty(inp),
+                attachment_ids(inp, "a"),
+                first_attachment_id_or_empty(inp, "a"),
+            ] {
+                assert!(
+                    !r.stderr_string().contains("FAKE-SECRET-VALUE-1"),
+                    "secret leaked in stderr for {}: {}",
+                    String::from_utf8_lossy(inp),
+                    r.stderr_string()
+                );
+                assert!(
+                    !r.stdout_string().contains("FAKE-SECRET-VALUE-1"),
+                    "secret leaked in stdout for {}: {}",
+                    String::from_utf8_lossy(inp),
+                    r.stdout_string()
+                );
+            }
+        }
     }
 }

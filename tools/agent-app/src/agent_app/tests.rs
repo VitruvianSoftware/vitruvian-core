@@ -21,8 +21,9 @@
 //! Unit tests for agent_app: the argument rules, the encodings and the jq
 //! programs.
 
-use super::jq::{self, Prog, J};
+use super::jq::{self, Prog};
 use super::*;
+use vitruvian_jq::{compact, parse_one, Value};
 
 fn v(args: &[&str]) -> Vec<Vec<u8>> {
     args.iter().map(|a| a.as_bytes().to_vec()).collect()
@@ -642,18 +643,41 @@ fn jq_programs() {
 
 #[test]
 fn jq_keeps_document_order_and_escapes() {
-    let v: J = serde_json::from_str(r#"{"z":1,"a":"\u0001é\"","z":2}"#).unwrap();
-    assert_eq!(v.compact(), "{\"z\":2,\"a\":\"\\u0001é\\\"\"}");
-    let v: J = serde_json::from_str("\"aaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
+    let v = parse_one(r#"{"z":1,"a":"\u0001é\"","z":2}"#.as_bytes()).unwrap();
+    assert_eq!(compact(&v), "{\"z\":2,\"a\":\"\\u0001é\\\"\"}");
+    let v = parse_one(b"\"aaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
     assert_eq!(
         v.iterate().unwrap_err(),
         "Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaaaaa\")"
     );
-    let v: J = serde_json::from_str("\"aaaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
+    let v = parse_one(b"\"aaaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
     assert_eq!(
         v.iterate().unwrap_err(),
-        "Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaa...)"
+        "Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaa...\")"
     );
+}
+
+#[test]
+fn jq_secret_paths_never_quote_values() {
+    for prog in [
+        Prog::Field("pem"),
+        Prog::Field("token"),
+        Prog::Convert("k.pem"),
+    ] {
+        for input in [
+            br#""FAKE-SECRET-VALUE-1""#.as_slice(),
+            br#"["FAKE-SECRET-VALUE-1"]"#.as_slice(),
+            br#"{"pem":"FAKE-SECRET-VALUE-1"#.as_slice(),
+        ] {
+            let r = jq::run(&prog, input, true);
+            assert_eq!(r.status, 5);
+            assert!(
+                !r.stderr_string().contains("FAKE-SECRET-VALUE-1"),
+                "secret leaked in stderr: {}",
+                r.stderr_string()
+            );
+        }
+    }
 }
 
 #[test]
@@ -1012,25 +1036,28 @@ fn enrich_pr_view_json_surfaces_merge_queue_and_ruleset_approvals() {
         "autoMergeRequest".to_string(),
     ];
     let enriched = enrich_pr_view_json(gh_out, &requested, false, Some(&enr)).unwrap();
-    let v: J = serde_json::from_slice(&enriched).unwrap();
+    let v = parse_one(&enriched).unwrap();
     // Unrequested `id` is stripped, while `mergeQueueEntry` and `approvedBy` are added.
-    assert_eq!(v.index("id").unwrap(), J::Null);
+    assert_eq!(v.index("id").unwrap(), Value::Null);
     assert_eq!(
         v.index("mergeQueueEntry")
             .unwrap()
             .index("position")
             .unwrap(),
-        J::Uint(3)
+        Value::uint(3)
     );
     assert_eq!(
         v.index("mergeQueueEntry").unwrap().index("state").unwrap(),
-        J::Str("AWAITING_CHECKS".to_string())
+        Value::str("AWAITING_CHECKS")
     );
     assert_eq!(
         v.index("approvedBy").unwrap(),
-        J::Arr(vec![J::Str("ipv1337".to_string())])
+        Value::Array(vec![Value::str("ipv1337")])
     );
-    assert!(matches!(v.index("reviewDecisionNote").unwrap(), J::Str(_)));
+    assert!(matches!(
+        v.index("reviewDecisionNote").unwrap(),
+        Value::String(_)
+    ));
 }
 
 #[test]

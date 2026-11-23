@@ -2,7 +2,7 @@
 
 ## What it gives you
 
-Standard-library-only Rust crate reproducing jq 1.8 behavior for ported CLI tools without shelling out to `jq`: an order-preserving JSON `Value` and `decNumber`-accurate `Number`, streaming JSON parser with jq 1.8 parse-error messages and `<stdin>:N` line numbers, jq total ordering (`compare`, `jq_eq`, `sort`, `sort_by`, `group_by`, `unique`, `unique_by`), output formatters (`pretty`, `compact`, `raw`, `pretty_sorted`, `compact_sorted`, `tostring`, `interpolate`, `uri_encode`), jq 1.8 index/iterate error text and 30-byte truncation (`dump_trunc`), and stream runner exit-status rules (`5` only when a parse error occurs or the last input value errors, plus `-e`).
+Standard-library-only Rust crate reproducing jq 1.8 behavior for ported CLI tools without shelling out to `jq`: an order-preserving JSON `Value` and `decNumber`-accurate `Number`, streaming JSON parser with jq 1.8 parse-error messages and `<stdin>:N` line numbers, jq total ordering (`compare`, `jq_eq`, `sort`, `sort_by`, `group_by`, `unique`, `unique_by`), output formatters (`pretty`, `compact`, `raw`, `pretty_sorted`, `compact_sorted`, `tostring`, `interpolate`, `uri_encode`), jq 1.8 index/iterate error text and 30-byte truncation (`dump_trunc`), filter combinators (`one`, `each`, `or_empty`, `alt`, `first`, `any`), and stream runner exit-status rules (`5` only when a parse error occurs or the last input value errors, plus `-e`).
 
 ## When to use it
 
