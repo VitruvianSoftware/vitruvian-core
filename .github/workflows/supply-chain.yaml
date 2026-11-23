@@ -196,6 +196,10 @@ jobs:
   # periodic-full-sweep.yaml: one issue deduped by exact title, later red
   # nights comment on it, closing it re-arms creation.
   #
+  # A green night closes it again (nightly-osv-all-clear, below). Without that
+  # it stayed open from 2026-10-01 through every green night in between, 42
+  # "Still red" comments long (#2622), so it no longer said whether main was red.
+  #
   # Separate job so osv-scan itself keeps read-only permissions on every event.
   nightly-osv-alert:
     needs: osv-scan-nightly
@@ -228,4 +232,27 @@ jobs:
             gh issue comment "$existing" --body "Still red: ${run_url}"
           else
             gh issue create --title "$title" --body "$body"
+          fi
+
+  # The other half: a green scheduled scan closes the open issue, so an open
+  # issue always means the latest nightly was red, and the next red night files
+  # a fresh one that lists only what is new.
+  nightly-osv-all-clear:
+    needs: osv-scan-nightly
+    if: success() && github.event_name == 'schedule'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Close the advisory issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="Nightly osv-scan is red: known advisories in dependencies on main"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --reason completed --comment "Green again: ${run_url}"
           fi
