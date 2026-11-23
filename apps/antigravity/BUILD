@@ -19,6 +19,31 @@ PLUGINS = [
     "worktree-band",
 ]
 
+# Plugins under plugins/ that have their own BUILD file but no hooks/ directory.
+NO_HOOK_PLUGINS = [
+    "vitruvian-orchestrator",
+]
+
+# Generated hook files inside any new plugin folder that does not yet have its
+# own BUILD file (Bazel's glob() stops at subpackage boundaries, so this reaches
+# folders without a BUILD file).
+UNLISTED_HOOK_FILES = glob(
+    [
+        "plugins/*/hooks/rust-hook.sh",
+        "plugins/*/hooks/rust-hook_test.sh",
+        "plugins/*/hooks/src/json.rs",
+    ],
+    allow_empty = True,
+)
+
+# Direct plugin subpackages (folders with their own BUILD file). Bazel's glob()
+# cannot descend into subpackages, so subpackages() ensures a new plugin with a
+# BUILD file cannot silently bypass hooks_drift_test either.
+PLUGIN_SUBPACKAGES = [
+    p[len("plugins/"):]
+    for p in subpackages(include = ["plugins/*"])
+]
+
 exports_files(
     ["plugins/README.md"],
     visibility = ["//apps/antigravity/plugins/ext-marketplace:__pkg__"],
@@ -87,18 +112,27 @@ rust_test(
         "hook_json_helper.rs",
         "hook_rust_hook.sh",
         "hook_rust_hook_test.sh",
-    ] + CONFORMANCE,
+    ] + CONFORMANCE + UNLISTED_HOOK_FILES,
     edition = "2021",
-    env = CONFORMANCE_ENV,
+    env = dict(
+        CONFORMANCE_ENV,
+        NO_HOOK_PLUGINS = " ".join(NO_HOOK_PLUGINS),
+        PLUGIN_SUBPACKAGES = " ".join(PLUGIN_SUBPACKAGES),
+        UNLISTED_HOOK_FILES = " ".join(["$(rootpaths %s)" % f for f in UNLISTED_HOOK_FILES]),
+    ),
     rustc_flags = ["-Copt-level=3"],
 )
 
-# Preserved label for .github/workflows/presubmit.yaml (generated from the
-# pipeline_unit below); delegates directly to :hooks_drift_test so presubmit
-# runs drift checks without editing .github/.
+# Preserved label that .github/workflows/presubmit.yaml runs (generated from the
+# pipeline_unit below) without editing .github/. Contains:
+# - :hook_json_helper_test (unit tests for the canonical hook JSON helper)
+# - :hooks_drift_test (generator, missing-file, drift, and unlisted-plugin checks)
 test_suite(
     name = "shared_files_test",
-    tests = [":hooks_drift_test"],
+    tests = [
+        ":hook_json_helper_test",
+        ":hooks_drift_test",
+    ],
 )
 
 # Run on every PR that touches a plugin, not only in the nightly full sweep.

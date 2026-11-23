@@ -10,7 +10,7 @@
 //! inside every plugin that uses them. This library keeps all copies
 //! generated from single sources of truth under `apps/antigravity/`.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -90,12 +90,13 @@ pub struct ExpectedOutput {
 pub struct Diff {
     pub missing: Vec<String>,
     pub different: Vec<String>,
+    pub unlisted: Vec<String>,
     pub unchanged: usize,
 }
 
 impl Diff {
     pub fn is_clean(&self) -> bool {
-        self.missing.is_empty() && self.different.is_empty()
+        self.missing.is_empty() && self.different.is_empty() && self.unlisted.is_empty()
     }
 }
 
@@ -164,6 +165,170 @@ fn ensure_executable(_path: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+pub fn missing_generated_file_message(rel: &str) -> String {
+    format!("generated file {rel} is missing; run bazel run {GENERATOR_TARGET} -- --write")
+}
+
+pub fn read_generated_file(path: &Path, rel: &str) -> Result<String, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(contents),
+        Err(e) if e.kind() == ErrorKind::NotFound => Err(missing_generated_file_message(rel)),
+        Err(e) => Err(format!("failed to read generated file {rel}: {e}")),
+    }
+}
+
+fn parse_plugin_file(path: &str) -> Option<(&str, &str)> {
+    let rest = if let Some(r) = path.strip_prefix("apps/antigravity/plugins/") {
+        r
+    } else if let Some(idx) = path.find("/apps/antigravity/plugins/") {
+        &path[idx + "/apps/antigravity/plugins/".len()..]
+    } else if let Some(r) = path.strip_prefix("plugins/") {
+        r
+    } else {
+        return None;
+    };
+    let (plugin, rel) = rest.split_once('/')?;
+    if plugin.is_empty() || rel.is_empty() {
+        return None;
+    }
+    Some((plugin, rel))
+}
+
+pub fn unlisted_plugin_message(
+    plugin: &str,
+    found_files: &[String],
+    has_json_helper: bool,
+) -> String {
+    let mut files = found_files.to_vec();
+    files.sort();
+    files.dedup();
+    let files_list = files.join(", ");
+    if has_json_helper {
+        format!(
+            "unlisted plugin \"{plugin}\" carries generated hook file(s) ({files_list}); add \"{plugin}\" to PLUGINS in apps/antigravity/BUILD and to ALL_PLUGINS in apps/antigravity/hooks_gen_lib.rs and to JSON_HELPER_PLUGINS in apps/antigravity/hooks_gen_lib.rs"
+        )
+    } else {
+        format!(
+            "unlisted plugin \"{plugin}\" carries generated hook file(s) ({files_list}); add \"{plugin}\" to PLUGINS in apps/antigravity/BUILD and to ALL_PLUGINS in apps/antigravity/hooks_gen_lib.rs"
+        )
+    }
+}
+
+pub fn unlisted_json_helper_message(plugin: &str) -> String {
+    format!(
+        "plugin \"{plugin}\" carries hooks/src/json.rs; add \"{plugin}\" to JSON_HELPER_PLUGINS in apps/antigravity/hooks_gen_lib.rs"
+    )
+}
+
+pub fn unlisted_subpackage_message(plugin: &str) -> String {
+    format!(
+        "unlisted plugin subpackage \"{plugin}\" (has its own BUILD file, so Bazel cannot inspect its hooks/); if it carries hooks, add \"{plugin}\" to PLUGINS in apps/antigravity/BUILD and to ALL_PLUGINS in apps/antigravity/hooks_gen_lib.rs (and to JSON_HELPER_PLUGINS if hooks/src/json.rs is present); if it has no hooks, add \"{plugin}\" to NO_HOOK_PLUGINS in apps/antigravity/BUILD"
+    )
+}
+
+pub fn check_unlisted_bazel_plugins(
+    unlisted_hook_files: &[&str],
+    plugin_subpackages: &[&str],
+    no_hook_plugins: &[&str],
+) -> Vec<String> {
+    let managed_all: HashSet<&str> = ALL_PLUGINS.iter().copied().collect();
+    let managed_json: HashSet<&str> = JSON_HELPER_PLUGINS.iter().copied().collect();
+    let generated_rels: HashSet<&str> = GROUPS.iter().map(|g| g.plugin_rel_path).collect();
+    let json_rel = GROUPS[0].plugin_rel_path;
+
+    let mut errors = Vec::new();
+    let mut by_plugin: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for path in unlisted_hook_files {
+        match parse_plugin_file(path) {
+            Some((plugin, rel)) => {
+                if generated_rels.contains(rel) {
+                    by_plugin.entry(plugin).or_default().push(rel.to_string());
+                }
+            }
+            None => errors.push(format!("unrecognized unlisted hook file path: {path}")),
+        }
+    }
+
+    for (plugin, files) in by_plugin {
+        let has_json = files.iter().any(|r| r == json_rel);
+        if !managed_all.contains(plugin) {
+            errors.push(unlisted_plugin_message(plugin, &files, has_json));
+        } else if has_json && !managed_json.contains(plugin) {
+            errors.push(unlisted_json_helper_message(plugin));
+        }
+    }
+
+    let mut no_hook_set: HashSet<&str> = HashSet::new();
+    for &plugin in no_hook_plugins {
+        no_hook_set.insert(plugin);
+        if managed_all.contains(plugin) {
+            errors.push(format!(
+                "plugin \"{plugin}\" is listed in both ALL_PLUGINS and NO_HOOK_PLUGINS; remove it from NO_HOOK_PLUGINS in apps/antigravity/BUILD"
+            ));
+        }
+    }
+
+    let mut subpkgs: Vec<&str> = plugin_subpackages.to_vec();
+    subpkgs.sort_unstable();
+    subpkgs.dedup();
+    for plugin in subpkgs {
+        if !managed_all.contains(plugin) && !no_hook_set.contains(plugin) {
+            errors.push(unlisted_subpackage_message(plugin));
+        }
+    }
+
+    errors
+}
+
+fn find_unlisted_plugins_on_disk(repo_root: &Path) -> Result<Vec<String>, String> {
+    let plugins_dir = repo_root.join("apps/antigravity/plugins");
+    let entries = match fs::read_dir(&plugins_dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("failed to read {}: {e}", plugins_dir.display())),
+    };
+
+    let managed_all: HashSet<&str> = ALL_PLUGINS.iter().copied().collect();
+    let managed_json: HashSet<&str> = JSON_HELPER_PLUGINS.iter().copied().collect();
+    let json_rel = GROUPS[0].plugin_rel_path;
+
+    let mut plugin_dirs = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("failed to read {}: {e}", plugins_dir.display()))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("failed to stat {}: {e}", entry.path().display()))?;
+        if !file_type.is_dir() {
+            continue;
+        }
+        if let Some(name) = entry.file_name().to_str() {
+            plugin_dirs.push(name.to_string());
+        }
+    }
+    plugin_dirs.sort();
+
+    let mut unlisted = Vec::new();
+    for plugin in plugin_dirs {
+        let plugin_dir = plugins_dir.join(&plugin);
+        let found: Vec<String> = GROUPS
+            .iter()
+            .filter(|g| plugin_dir.join(g.plugin_rel_path).exists())
+            .map(|g| g.plugin_rel_path.to_string())
+            .collect();
+        if found.is_empty() {
+            continue;
+        }
+        let has_json = found.iter().any(|r| r == json_rel);
+        if !managed_all.contains(plugin.as_str()) {
+            unlisted.push(unlisted_plugin_message(&plugin, &found, has_json));
+        } else if has_json && !managed_json.contains(plugin.as_str()) {
+            unlisted.push(unlisted_json_helper_message(&plugin));
+        }
+    }
+
+    Ok(unlisted)
+}
+
 /// Reads each canonical source under `repo_root`, renders the expected outputs,
 /// and compares every target path (contents and executable bit) on disk.
 pub fn check_in_root(repo_root: &Path) -> Result<(Vec<ExpectedOutput>, Diff), String> {
@@ -206,11 +371,14 @@ pub fn check_in_root(repo_root: &Path) -> Result<(Vec<ExpectedOutput>, Diff), St
         }
     }
 
+    let unlisted = find_unlisted_plugins_on_disk(repo_root)?;
+
     Ok((
         outputs,
         Diff {
             missing,
             different,
+            unlisted,
             unchanged,
         },
     ))
@@ -241,7 +409,12 @@ pub fn run_in_workspace(repo_root: &Path, mode: Mode) -> i32 {
                 for p in &diff.different {
                     eprintln!("different: {p}");
                 }
-                eprintln!("run: bazel run {GENERATOR_TARGET} -- --write");
+                for msg in &diff.unlisted {
+                    eprintln!("unlisted: {msg}");
+                }
+                if !diff.missing.is_empty() || !diff.different.is_empty() {
+                    eprintln!("run: bazel run {GENERATOR_TARGET} -- --write");
+                }
                 1
             }
         }
@@ -277,6 +450,12 @@ pub fn run_in_workspace(repo_root: &Path, mode: Mode) -> i32 {
                 written += 1;
             }
             println!("written {written}, unchanged {}", diff.unchanged);
+            if !diff.unlisted.is_empty() {
+                for msg in &diff.unlisted {
+                    eprintln!("unlisted: {msg}");
+                }
+                return 1;
+            }
             0
         }
     }
@@ -321,8 +500,8 @@ mod tests {
 
             for plugin in group.plugins {
                 let rel = output_path(plugin, group.plugin_rel_path);
-                let on_disk = fs::read_to_string(&rel)
-                    .unwrap_or_else(|e| panic!("generated file missing {rel}: {e}"));
+                let on_disk = read_generated_file(Path::new(&rel), &rel)
+                    .unwrap_or_else(|msg| panic!("{msg}"));
                 assert_eq!(
                     on_disk, expected,
                     "generated file {rel} drifted from {}; run `bazel run {GENERATOR_TARGET} -- --write`",
@@ -341,7 +520,23 @@ mod tests {
                         let out = output_path(plugin, group.plugin_rel_path);
                         *path == out || path.ends_with(&format!("/{out}"))
                     }),
-                    "unmanaged plugin file {path}; add it to GROUPS in apps/antigravity/hooks_gen_lib.rs"
+                    "{}",
+                    match parse_plugin_file(path) {
+                        Some((plugin, rel))
+                            if rel == GROUPS[0].plugin_rel_path
+                                && ALL_PLUGINS.contains(&plugin) =>
+                        {
+                            unlisted_json_helper_message(plugin)
+                        }
+                        Some((plugin, rel)) => unlisted_plugin_message(
+                            plugin,
+                            &[rel.to_string()],
+                            rel == GROUPS[0].plugin_rel_path,
+                        ),
+                        None => format!(
+                            "unmanaged plugin file {path}; add it to GROUPS in apps/antigravity/hooks_gen_lib.rs"
+                        ),
+                    }
                 );
             }
             assert_eq!(
@@ -353,6 +548,20 @@ mod tests {
                 discovered.len()
             );
         }
+
+        let unlisted_env = std::env::var("UNLISTED_HOOK_FILES")
+            .expect("UNLISTED_HOOK_FILES must be set by BUILD for hooks_drift_test");
+        let subpackages_env = std::env::var("PLUGIN_SUBPACKAGES")
+            .expect("PLUGIN_SUBPACKAGES must be set by BUILD for hooks_drift_test");
+        let no_hook_env = std::env::var("NO_HOOK_PLUGINS")
+            .expect("NO_HOOK_PLUGINS must be set by BUILD for hooks_drift_test");
+
+        let unlisted_files: Vec<&str> = unlisted_env.split_whitespace().collect();
+        let subpackages: Vec<&str> = subpackages_env.split_whitespace().collect();
+        let no_hook_plugins: Vec<&str> = no_hook_env.split_whitespace().collect();
+        let unlisted_errors =
+            check_unlisted_bazel_plugins(&unlisted_files, &subpackages, &no_hook_plugins);
+        assert!(unlisted_errors.is_empty(), "{}", unlisted_errors.join("\n"));
     }
 
     #[test]
@@ -443,6 +652,7 @@ mod tests {
         assert_eq!(run_in_workspace(&tmp.0, Mode::Check), 1);
         let (_, diff) = check_in_root(&tmp.0).unwrap();
         assert_eq!(diff.missing, Vec::<String>::new());
+        assert_eq!(diff.unlisted, Vec::<String>::new());
         #[cfg(unix)]
         {
             assert_eq!(
@@ -466,5 +676,148 @@ mod tests {
         {
             assert!(has_owner_exec(&tmp.0.join(&test_out_rel)).unwrap());
         }
+    }
+
+    #[test]
+    fn missing_generated_file_reports_path_and_fix() {
+        let tmp = TempDirGuard::new("missing-msg");
+        let rel = "apps/antigravity/plugins/hookify/hooks/src/json.rs";
+        let missing_path = tmp.0.join(rel);
+        let err = read_generated_file(&missing_path, rel).unwrap_err();
+        assert_eq!(err, missing_generated_file_message(rel));
+        assert_eq!(
+            err,
+            "generated file apps/antigravity/plugins/hookify/hooks/src/json.rs is missing; run bazel run //apps/antigravity:hooks-gen -- --write"
+        );
+    }
+
+    #[test]
+    fn unlisted_plugin_detection_covers_glob_subpackages_and_disk() {
+        let mut all_subpkgs: Vec<&str> = ALL_PLUGINS.to_vec();
+        all_subpkgs.push("vitruvian-orchestrator");
+
+        // 1. Clean set
+        assert_eq!(
+            check_unlisted_bazel_plugins(&[], &all_subpkgs, &["vitruvian-orchestrator"]),
+            Vec::<String>::new()
+        );
+
+        // 2. Unlisted non-subpackage plugin without json.rs
+        let errs_scratch = check_unlisted_bazel_plugins(
+            &["apps/antigravity/plugins/zz-scratch/hooks/rust-hook.sh"],
+            &all_subpkgs,
+            &["vitruvian-orchestrator"],
+        );
+        assert_eq!(errs_scratch.len(), 1);
+        assert!(errs_scratch[0].contains("zz-scratch"), "{errs_scratch:?}");
+        assert!(
+            errs_scratch[0].contains(
+                "add \"zz-scratch\" to PLUGINS in apps/antigravity/BUILD and to ALL_PLUGINS in apps/antigravity/hooks_gen_lib.rs"
+            ),
+            "{errs_scratch:?}"
+        );
+        assert!(
+            !errs_scratch[0].contains("JSON_HELPER_PLUGINS"),
+            "{errs_scratch:?}"
+        );
+
+        // 3. Unlisted non-subpackage plugin with json.rs
+        let errs_json = check_unlisted_bazel_plugins(
+            &[
+                "apps/antigravity/plugins/zz-json/hooks/rust-hook.sh",
+                "apps/antigravity/plugins/zz-json/hooks/src/json.rs",
+            ],
+            &all_subpkgs,
+            &["vitruvian-orchestrator"],
+        );
+        assert_eq!(errs_json.len(), 1);
+        assert!(errs_json[0].contains("zz-json"), "{errs_json:?}");
+        assert!(errs_json[0].contains("PLUGINS"), "{errs_json:?}");
+        assert!(errs_json[0].contains("ALL_PLUGINS"), "{errs_json:?}");
+        assert!(
+            errs_json[0].contains("JSON_HELPER_PLUGINS"),
+            "{errs_json:?}"
+        );
+
+        // 4. Listed plugin carrying unlisted hooks/src/json.rs
+        let errs_listed_json = check_unlisted_bazel_plugins(
+            &["apps/antigravity/plugins/ext-marketplace/hooks/src/json.rs"],
+            &all_subpkgs,
+            &["vitruvian-orchestrator"],
+        );
+        assert_eq!(errs_listed_json.len(), 1);
+        assert!(
+            errs_listed_json[0].contains("JSON_HELPER_PLUGINS"),
+            "{errs_listed_json:?}"
+        );
+
+        // 5. Unlisted subpackage
+        let mut with_subpkg = all_subpkgs.clone();
+        with_subpkg.push("zz-subpkg");
+        let errs_subpkg =
+            check_unlisted_bazel_plugins(&[], &with_subpkg, &["vitruvian-orchestrator"]);
+        assert_eq!(errs_subpkg.len(), 1);
+        assert!(errs_subpkg[0].contains("zz-subpkg"), "{errs_subpkg:?}");
+        assert!(
+            errs_subpkg[0].contains(
+                "add \"zz-subpkg\" to PLUGINS in apps/antigravity/BUILD and to ALL_PLUGINS in apps/antigravity/hooks_gen_lib.rs"
+            ),
+            "{errs_subpkg:?}"
+        );
+        assert!(
+            errs_subpkg[0].contains("JSON_HELPER_PLUGINS"),
+            "{errs_subpkg:?}"
+        );
+        assert!(
+            errs_subpkg[0].contains("NO_HOOK_PLUGINS"),
+            "{errs_subpkg:?}"
+        );
+
+        // 6. Overlap between ALL_PLUGINS and NO_HOOK_PLUGINS
+        let errs_overlap =
+            check_unlisted_bazel_plugins(&[], &all_subpkgs, &["vitruvian-orchestrator", "hookify"]);
+        assert_eq!(errs_overlap.len(), 1);
+        assert!(errs_overlap[0].contains("hookify"), "{errs_overlap:?}");
+
+        // 7. On-disk discovery via check_in_root / run_in_workspace
+        let tmp = TempDirGuard::new("disk-unlisted");
+        let samples = [
+            (
+                GROUPS[0].source,
+                "// canonical\npub fn answer() -> i32 { 42 }\n",
+            ),
+            (GROUPS[1].source, "#!/bin/sh\n# canonical\necho ok\n"),
+            (GROUPS[2].source, "#!/bin/sh\n# canonical test\necho pass\n"),
+        ];
+        for (src_rel, body) in samples {
+            let p = tmp.0.join(src_rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, body).unwrap();
+        }
+        assert_eq!(run_in_workspace(&tmp.0, Mode::Write), 0);
+
+        let disk_sh = tmp
+            .0
+            .join("apps/antigravity/plugins/zz-disk/hooks/rust-hook.sh");
+        let disk_json = tmp
+            .0
+            .join("apps/antigravity/plugins/zz-disk/hooks/src/json.rs");
+        fs::create_dir_all(disk_json.parent().unwrap()).unwrap();
+        fs::write(&disk_sh, "#!/bin/sh\n").unwrap();
+        fs::write(&disk_json, "// json\n").unwrap();
+
+        assert_eq!(run_in_workspace(&tmp.0, Mode::Check), 1);
+        let (_, disk_diff) = check_in_root(&tmp.0).unwrap();
+        assert_eq!(
+            disk_diff.unlisted,
+            vec![unlisted_plugin_message(
+                "zz-disk",
+                &[
+                    "hooks/rust-hook.sh".to_string(),
+                    "hooks/src/json.rs".to_string(),
+                ],
+                true,
+            )]
+        );
     }
 }
