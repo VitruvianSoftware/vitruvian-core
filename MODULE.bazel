@@ -233,6 +233,33 @@ playwright = use_extension("@rules_playwright//playwright:extensions.bzl", "play
 playwright.repo(
     name = "playwright",
     browsers_json = "//tools/testinfra:playwright-browsers-1.57.0.json",
+    # Pin @playwright//:chromium (rev 1200, Chrome for Testing 143.0.7499.4) so
+    # offline repository-cache checks pass; rules_playwright 0.5.3/0.5.4
+    # KNOWN_BROWSER_INTEGRITY stops at rev 1161. Playwright publishes no SHA-256
+    # checksums (trust-on-first-use). Using integrity_path_map (integrity_map is
+    # deprecated and requires the "playwright-" repo prefix).
+    # Refresh: delete the entry, run
+    #   bazel fetch --repository_cache=<scratch> @@rules_playwright++playwright+playwright-chromium-<platform>//file
+    # take Bazel's reported integrity SRI sha256, update the comment, and run
+    #   bazel mod deps --lockfile_mode=update
+    integrity_path_map = {
+        # https://playwright.azureedge.net/builds/chromium/1200/chromium-linux.zip
+        # (redirects to CfT GCS 143.0.7499.4/linux64/chrome-linux64.zip).
+        # Source: GitHub Linux runner CI run 45228641007 (2026-11-23); cross-checked
+        # via independent Mac scratch-cache fetch + GCS x-goog-hash md5.
+        "builds/chromium/1200/chromium-linux.zip": "sha256-q1ayp5VcKWH3Q0jiNJ8ekHSJKD2iPbo3xzC2JOTWcLs=",
+        # https://playwright.azureedge.net/builds/chromium/1200/chromium-linux-arm64.zip
+        # Source: local Mac scratch-cache fetch (2026-11-23, TOFU; single network).
+        "builds/chromium/1200/chromium-linux-arm64.zip": "sha256-5z7raAMS6W1Pj7ylia1C4/txkXi0vdhwf5/nlhI79Is=",
+        # https://playwright.azureedge.net/builds/chromium/1200/chromium-mac-arm64.zip
+        # (redirects to CfT GCS 143.0.7499.4/mac-arm64/chrome-mac-arm64.zip).
+        # Source: local Mac scratch-cache fetch (2026-11-23, TOFU) + GCS x-goog-hash md5.
+        "builds/chromium/1200/chromium-mac-arm64.zip": "sha256-AQRrEhUbKEa200/2GTNrYzjKJUxHqsyQNgLdlq/JObM=",
+        # https://playwright.azureedge.net/builds/chromium/1200/chromium-mac.zip
+        # (redirects to CfT GCS 143.0.7499.4/mac-x64/chrome-mac-x64.zip).
+        # Source: local Mac scratch-cache fetch (2026-11-23, TOFU) + GCS x-goog-hash md5.
+        "builds/chromium/1200/chromium-mac.zip": "sha256-ER37i/iYjlfJnSvRUi1m15orJ2fRjRT0TUJIS1K4dcA=",
+    },
 )
 use_repo(playwright, "playwright")
 
