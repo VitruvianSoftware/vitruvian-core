@@ -164,6 +164,8 @@ struct CourierApp: App {
             }
         }
         .defaultSize(width: 820, height: 600)
+        // With `SettingsWindowResizer`: resizable down to the panes' minimum, like every other window.
+        .windowResizability(.contentMinSize)
         // InboxCommands' Settings… is the menu's only one: it follows the shortcut set in Settings ▸ Shortcuts and is
         // off while Vitruvian Courier is locked. Without this the scene adds its own Settings… (⌘,) beside it.
         .commandsRemoved()
