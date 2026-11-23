@@ -2310,6 +2310,18 @@ enum AppManagementFeatureTests {
                 && promptDefaults.bool(forKey: DefaultsKey.diskImageInstallerRevealsApp)
                 && !installPrompt.isOpen && resultAnswers == 1 && !resultAlert.isOpen,
                "the install prompt answers with its options and the result alert through its OK button")
+        // An image neither tagged as downloaded nor in Downloads starts with
+        // cleanup off, and its choice leaves the saved preference alone.
+        promptDefaults.set(true, forKey: DefaultsKey.diskImageInstallerTrashesDownload)
+        var untaggedAnswers: [DiskImageInstallerService.InstallChoice?] = []
+        let untaggedPrompt = DiskImageInstallerService.presentInstallPrompt(
+            appURL: URL(fileURLWithPath: "/Applications/Fixture.app"), displayName: "Fixture",
+            hasDownloadOrigin: false, strings: installerStrings, defaults: promptDefaults,
+            show: { _ in }, answer: { untaggedAnswers.append($0) })
+        untaggedPrompt.alert.buttons.first?.performClick(nil)
+        suite.expect(untaggedAnswers.count == 1 && untaggedAnswers[0]?.trashesDownload == false
+                && promptDefaults.bool(forKey: DefaultsKey.diskImageInstallerTrashesDownload),
+               "an image that was not downloaded is kept by default and keeps the saved cleanup choice")
         promptDefaults.removePersistentDomain(forName: "vitru.tests.disk-image-prompt")
     }
 }

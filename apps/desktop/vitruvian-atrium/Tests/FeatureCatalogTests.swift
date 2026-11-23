@@ -1003,6 +1003,45 @@ enum FeatureCatalogTests {
             "missing application-domain resolutions fail closed")
         let installerFixture = FileManager.default.temporaryDirectory
             .appendingPathComponent("vitru-installer-\(UUID().uuidString)", isDirectory: true)
+        do {
+            let fm = FileManager.default
+            defer { try? fm.removeItem(at: installerFixture) }
+            let excluded = installerFixture.appendingPathComponent("build", isDirectory: true)
+            let scratch = installerFixture.appendingPathComponent("scratch", isDirectory: true)
+            try fm.createDirectory(at: excluded, withIntermediateDirectories: true)
+            let alias = installerFixture.appendingPathComponent("linked-build")
+            try fm.createSymbolicLink(at: alias, withDestinationURL: excluded)
+            let marker = excluded.appendingPathComponent(".vitruvian-no-install")
+            try Data().write(to: marker)
+            func offers(_ relative: String, browsable: Bool? = true) -> Bool {
+                DiskImageInstallerSupport.offersInstall(volumeIsBrowsable: browsable,
+                    imageURL: installerFixture.appendingPathComponent(relative), temporaryDirectories: [scratch])
+            }
+            suite.expect(!offers("build/nested/App.dmg") && !offers("linked-build/App.dmg")
+                         && !offers("scratch/App.dmg"), "excluded and temporary directories include their descendants and aliases")
+            suite.expect(offers("build-backup/App.dmg") && offers("scratchpad/App.dmg") && offers("Desktop/App.dmg"),
+                         "similarly named siblings and manual images remain available")
+            suite.expect(!offers("Desktop/App.dmg", browsable: false) && !offers("Desktop/App.dmg", browsable: nil),
+                         "hidden mounts and mounts with unknown visibility are not offered")
+            try fm.removeItem(at: marker)
+            suite.expect(offers("build/nested/App.dmg"), "removing a folder exclusion restores its manual installs")
+            let downloads = installerFixture.appendingPathComponent("Downloads", isDirectory: true)
+            let untagged = installerFixture.appendingPathComponent("Desktop/App.dmg")
+            try fm.createDirectory(at: untagged.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: untagged)
+            suite.expect(DiskImageInstallerSupport.hasDownloadOrigin(downloads.appendingPathComponent("App.dmg"),
+                                                                     downloadsURL: downloads)
+                         && !DiskImageInstallerSupport.hasDownloadOrigin(untagged, downloadsURL: downloads)
+                         && !DiskImageInstallerSupport.hasDownloadOrigin(
+                            installerFixture.appendingPathComponent("Downloads-old/App.dmg"), downloadsURL: downloads),
+                         "an image counts as downloaded only inside Downloads or with a quarantine tag")
+            suite.expect(DiskImageInstallerSupport.downloadTrashPreference(true, hasDownloadOrigin: true) == true
+                         && DiskImageInstallerSupport.downloadTrashPreference(false, hasDownloadOrigin: true) == false
+                         && DiskImageInstallerSupport.downloadTrashPreference(true, hasDownloadOrigin: false) == nil,
+                         "the cleanup choice for an image that was not downloaded is not saved")
+        } catch {
+            suite.expect(false, "could not create the disk image exclusion fixture: \(error)")
+        }
         let installerFM = InstallerFileManager(root: installerFixture)
         let installerApp = URL(fileURLWithPath: "/Volumes/Installer/Example.app")
         let missingUserDestination = installerFM.userApplications!
