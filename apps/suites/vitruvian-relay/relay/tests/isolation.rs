@@ -1184,8 +1184,17 @@ mod isolation {
     /// Allow; the code the app is sent back with.
     async fn allow_for_code(relay: &Relay, app: &GeminiApp, browser: &AtConsent) -> String {
         let r = decide(relay, Some(&browser.cookie), &browser.csrf, "allow").await;
-        assert_eq!(r.status, 303, "{}", r.body);
-        let to = r.header("location").unwrap();
+        // A page that moves on by itself, not a redirect: browsers hold a
+        // form's redirects to `form-action`, and Google's callback redirects.
+        assert_eq!(r.status, 200, "{}", r.body);
+        assert!(r.header("location").is_none());
+        let to = r
+            .body
+            .split("content=\"0;url=")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("the page moves on to the app")
+            .replace("&amp;", "&");
         assert!(to.starts_with(&app.redirect_uri), "{to}");
         assert_eq!(query_param(&to, "state").as_deref(), Some(APP_STATE));
         query_param(&to, "code").expect("a code")
