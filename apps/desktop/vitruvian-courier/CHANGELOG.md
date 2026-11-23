@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.36...vitruvian-courier-v0.3.37) (2026-11-23)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** let the Settings window be resized ([#5386](https://github.com/VitruvianSoftware/vitruvian-core/issues/5386)) ([e7edb76](https://github.com/VitruvianSoftware/vitruvian-core/commit/e7edb7616fa4aecb3aa3e57c564e5621006d2e12))
+
 ## [0.3.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.35...vitruvian-courier-v0.3.36) (2026-11-22)
 
 
