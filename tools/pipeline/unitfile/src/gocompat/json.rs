@@ -20,7 +20,14 @@
 
 //! Re-exports Go-compatible JSON helpers from `vitruvian_gojson`.
 
-pub use vitruvian_gojson::{
-    check_valid, go_escape, marshal_indent_string as marshal_indent, marshal_string as marshal,
-    parse, value_len, Dec, GoValue,
-};
+pub use vitruvian_gojson::{parse, value_len, Dec, GoValue};
+
+/// `json.Marshal(v)`.
+pub fn marshal<T: serde::Serialize>(v: &T) -> String {
+    vitruvian_gojson::marshal_string(v).expect("json encoding cannot fail")
+}
+
+/// `json.MarshalIndent(v, "", "  ")`.
+pub fn marshal_indent<T: serde::Serialize>(v: &T) -> String {
+    vitruvian_gojson::marshal_indent_string(v).expect("json encoding cannot fail")
+}

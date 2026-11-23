@@ -21,10 +21,18 @@
 //! JSON helpers and `unitMeta` decoding for `//tools/delivery/orchestrate`,
 //! backed by `vitruvian_gojson`.
 
-pub use vitruvian_gojson::{
-    check_valid, decode_string_map, go_string, marshal, marshal_indent, parse, Dec, GoFormatter,
-    GoSlice, GoValue as Val,
-};
+pub use vitruvian_gojson::{decode_string_map, go_string};
+use vitruvian_gojson::{parse, Dec};
+
+/// `json.Marshal(v)`.
+pub fn marshal<T: serde::Serialize>(v: &T) -> Vec<u8> {
+    vitruvian_gojson::marshal(v).expect("serializing to memory cannot fail")
+}
+
+/// `json.MarshalIndent(v, "", "  ")`.
+pub fn marshal_indent<T: serde::Serialize>(v: &T) -> Vec<u8> {
+    vitruvian_gojson::marshal_indent(v).expect("serializing to memory cannot fail")
+}
 
 /// `tools/delivery/defs.bzl`'s metadata, as `unitMeta` decodes it.
 #[derive(Debug, Clone, Default)]
@@ -66,11 +74,6 @@ const FIELDS: &[&str] = &[
 pub fn decode_unit_meta(raw: &[u8]) -> Result<UnitMeta, String> {
     let v = parse(raw)?;
     let mut meta = UnitMeta::default();
-    let mut environments = GoSlice::<String>::default();
-    let mut companions = GoSlice::<String>::default();
-    let mut extra_paths = GoSlice::<String>::default();
-    let mut exclude_paths = GoSlice::<String>::default();
-    let mut graph_targets = GoSlice::<String>::default();
     let mut d = Dec::new();
     d.object(
         &v,
@@ -83,23 +86,18 @@ pub fn decode_unit_meta(raw: &[u8]) -> Result<UnitMeta, String> {
             "kind" => d.string(val, &mut meta.kind),
             "run" => d.string(val, &mut meta.run),
             "build" => d.string(val, &mut meta.build),
-            "environments" => d.go_strings(val, &mut environments),
+            "environments" => d.strings(val, &mut meta.environments),
             "github_environment" => d.string(val, &mut meta.github_environment),
             "promotion" => d.string(val, &mut meta.promotion),
-            "companions" => d.go_strings(val, &mut companions),
-            "extra_paths" => d.go_strings(val, &mut extra_paths),
-            "exclude_paths" => d.go_strings(val, &mut exclude_paths),
-            "graph_targets" => d.go_strings(val, &mut graph_targets),
+            "companions" => d.strings(val, &mut meta.companions),
+            "extra_paths" => d.strings(val, &mut meta.extra_paths),
+            "exclude_paths" => d.strings(val, &mut meta.exclude_paths),
+            "graph_targets" => d.strings(val, &mut meta.graph_targets),
             "preflight" => d.string(val, &mut meta.preflight),
             _ => d.string(val, &mut meta.package),
         },
     );
     d.finish()?;
-    meta.environments = environments.into_option();
-    meta.companions = companions.into_option();
-    meta.extra_paths = extra_paths.into_option();
-    meta.exclude_paths = exclude_paths.into_option();
-    meta.graph_targets = graph_targets.into_option();
     Ok(meta)
 }
 

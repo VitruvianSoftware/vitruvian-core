@@ -21,22 +21,24 @@
 //! Go's `encoding/json` behaviour on top of `serde_json`.
 //!
 //! Covers:
-//! - Marshaling via [`GoFormatter`] and [`IndentFormatter`] (escaping `<`, `>`,
-//!   `&`, `U+2028`, `U+2029`; Go's `float32`/`float64` formatting; `MarshalIndent`
-//!   prefixes/indents with empty containers on one line; and byte-level invalid
-//!   UTF-8 escaping via [`marshal_raw_string`]).
-//! - Go's byte-by-byte UTF-8 string decoding ([`go_string`]).
-//! - Go's exact JSON scanner ([`check_valid`] and streaming [`value_len`]) with
-//!   `MAX_DEPTH = 10000` and identical syntax error text.
+//! - Marshaling ([`marshal`], [`marshal_string`], [`marshal_indent`],
+//!   [`marshal_indent_string`]) with Go's HTML-safe escaping (`<`, `>`, `&`,
+//!   `U+2028`, `U+2029`), two-space `MarshalIndent`, and Go unsupported-value
+//!   errors on `NaN` / `±Inf`.
+//! - Go's byte-by-byte UTF-8 string conversion ([`go_string`]).
+//! - Go's JSON scanner (`MAX_DEPTH = 10000`, streaming [`value_len`]) with
+//!   Go's exact syntax error text.
 //! - Iterative AST parsing ([`parse`], [`GoValue`]) preserving exact number
 //!   literals, duplicate keys, byte-by-byte invalid UTF-8 replacement, and lone
 //!   surrogate replacement with `U+FFFD`.
-//! - Typed struct decoding ([`Dec`], [`GoSlice`], [`decode_string_map`]) with
-//!   exact-first then `unicode.SimpleFold` field matching, backing-array slice
-//!   reuse on duplicate keys, and Go's exact `json: cannot unmarshal ...` errors.
+//! - Typed struct decoding ([`Dec`], [`decode_string_map`]) with exact-first
+//!   then `unicode.SimpleFold` field matching, backing-array slice reuse on
+//!   duplicate keys, and Go's exact `json: cannot unmarshal ...` errors.
 
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::any::Any;
+use std::collections::{BTreeMap, HashMap};
+use std::fmt;
 use std::io;
 use vitruvian_gocompat::{gostd, unicode};
 
@@ -46,69 +48,7 @@ const MAX_DEPTH: usize = 10000;
 // emission
 // ---------------------------------------------------------------------------
 
-/// Escapes `<`, `>`, `&`, `U+2028`, and `U+2029` inside an already-encoded JSON string.
-pub fn go_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '<' => out.push_str("\\u003c"),
-            '>' => out.push_str("\\u003e"),
-            '&' => out.push_str("\\u0026"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-fn format_go_float<W: ?Sized + io::Write>(
-    w: &mut W,
-    is_neg: bool,
-    is_zero: bool,
-    sci_abs: &str,
-    use_fixed: bool,
-) -> io::Result<()> {
-    if is_zero {
-        return w.write_all(if is_neg { b"-0" } else { b"0" });
-    }
-    if is_neg {
-        w.write_all(b"-")?;
-    }
-    let (mantissa, exp_str) = sci_abs.split_once('e').unwrap_or((sci_abs, "0"));
-    let exp: isize = exp_str.parse().unwrap_or(0);
-    if !use_fixed {
-        w.write_all(mantissa.as_bytes())?;
-        return if exp >= 0 {
-            write!(w, "e+{exp}")
-        } else {
-            write!(w, "e{exp}")
-        };
-    }
-    let digits: Vec<u8> = mantissa.bytes().filter(|&b| b != b'.').collect();
-    let dec_pos = exp + 1;
-    if dec_pos <= 0 {
-        w.write_all(b"0.")?;
-        for _ in 0..(-dec_pos) {
-            w.write_all(b"0")?;
-        }
-        w.write_all(&digits)
-    } else if (dec_pos as usize) < digits.len() {
-        let split = dec_pos as usize;
-        w.write_all(&digits[..split])?;
-        w.write_all(b".")?;
-        w.write_all(&digits[split..])
-    } else {
-        w.write_all(&digits)?;
-        for _ in 0..(dec_pos as usize - digits.len()) {
-            w.write_all(b"0")?;
-        }
-        Ok(())
-    }
-}
-
-/// A `serde_json` formatter that matches Go's `encoding/json` string escaping and float formatting.
-pub struct GoFormatter<F>(pub F);
+struct GoFormatter<F>(F);
 
 macro_rules! delegate_fmt {
     ($($name:ident($($arg:ident: $ty:ty),*);)*) => {
@@ -156,233 +96,206 @@ impl<F: serde_json::ser::Formatter> serde_json::ser::Formatter for GoFormatter<F
         }
         w.write_all(fragment[start..].as_bytes())
     }
+}
 
-    fn write_f32<W: ?Sized + io::Write>(&mut self, w: &mut W, value: f32) -> io::Result<()> {
-        if !value.is_finite() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "json: unsupported value",
-            ));
-        }
-        let abs = value.abs();
-        let sci_abs = format!("{abs:e}");
-        let use_fixed = (1e-6_f32..1e21_f32).contains(&abs);
-        format_go_float(
-            w,
-            value.is_sign_negative(),
-            value == 0.0,
-            &sci_abs,
-            use_fixed,
-        )
-    }
+#[derive(Debug)]
+struct FloatErr(String);
 
-    fn write_f64<W: ?Sized + io::Write>(&mut self, w: &mut W, value: f64) -> io::Result<()> {
-        if !value.is_finite() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "json: unsupported value",
-            ));
-        }
-        let abs = value.abs();
-        let sci_abs = format!("{abs:e}");
-        let use_fixed = (1e-6_f64..1e21_f64).contains(&abs);
-        format_go_float(
-            w,
-            value.is_sign_negative(),
-            value == 0.0,
-            &sci_abs,
-            use_fixed,
-        )
+impl fmt::Display for FloatErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
     }
 }
 
-/// Formatter implementing Go's `json.MarshalIndent(v, prefix, indent)`.
-pub struct IndentFormatter<'a> {
-    prefix: &'a [u8],
-    indent: &'a [u8],
-    depth: usize,
-    has_value: bool,
+impl std::error::Error for FloatErr {}
+
+impl serde::ser::Error for FloatErr {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        Self(msg.to_string())
+    }
 }
 
-impl<'a> IndentFormatter<'a> {
-    /// Creates an `IndentFormatter` with the given line prefix and per-level indent.
-    pub fn new(prefix: &'a str, indent: &'a str) -> Self {
-        Self {
-            prefix: prefix.as_bytes(),
-            indent: indent.as_bytes(),
-            depth: 0,
-            has_value: false,
-        }
+fn reject_float(v: f64, ty: &str) -> FloatErr {
+    if v.is_nan() {
+        FloatErr("json: unsupported value: NaN".to_string())
+    } else if v.is_infinite() {
+        let sign = if v.is_sign_positive() { '+' } else { '-' };
+        FloatErr(format!("json: unsupported value: {sign}Inf"))
+    } else {
+        FloatErr(format!("json: unsupported type: {ty}"))
+    }
+}
+
+/// Pre-pass that rejects floats (and `NaN` / `±Inf`) before `serde_json`
+/// converts non-finite floats into `null`.
+struct CheckNoFloat;
+
+macro_rules! ok_prim {
+    ($($name:ident($($arg:ty),*)),* $(,)?) => {
+        $(#[inline] fn $name(self, $(_: $arg),*) -> Result<(), FloatErr> { Ok(()) })*
+    };
+}
+
+macro_rules! ok_compound {
+    ($($name:ident($($arg:ty),*)),* $(,)?) => {
+        $(#[inline] fn $name(self, $(_: $arg),*) -> Result<Self, FloatErr> { Ok(self) })*
+    };
+}
+
+macro_rules! check_compound {
+    ($($trait:ident => $method:ident($($extra:ty),*)),* $(,)?) => {
+        $(
+            impl serde::ser::$trait for CheckNoFloat {
+                type Ok = ();
+                type Error = FloatErr;
+
+                #[inline]
+                fn $method<T: ?Sized + Serialize>(&mut self, $(_: $extra,)* v: &T) -> Result<(), FloatErr> {
+                    v.serialize(CheckNoFloat)
+                }
+
+                #[inline]
+                fn end(self) -> Result<(), FloatErr> {
+                    Ok(())
+                }
+            }
+        )*
+    };
+}
+
+check_compound!(
+    SerializeSeq => serialize_element(),
+    SerializeTuple => serialize_element(),
+    SerializeTupleStruct => serialize_field(),
+    SerializeTupleVariant => serialize_field(),
+    SerializeStruct => serialize_field(&'static str),
+    SerializeStructVariant => serialize_field(&'static str),
+);
+
+impl serde::ser::SerializeMap for CheckNoFloat {
+    type Ok = ();
+    type Error = FloatErr;
+
+    #[inline]
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, k: &T) -> Result<(), FloatErr> {
+        k.serialize(CheckNoFloat)
     }
 
-    fn write_newline_indent<W: ?Sized + io::Write>(&self, w: &mut W) -> io::Result<()> {
-        w.write_all(b"\n")?;
-        w.write_all(self.prefix)?;
-        for _ in 0..self.depth {
-            w.write_all(self.indent)?;
-        }
+    #[inline]
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, v: &T) -> Result<(), FloatErr> {
+        v.serialize(CheckNoFloat)
+    }
+
+    #[inline]
+    fn end(self) -> Result<(), FloatErr> {
         Ok(())
     }
 }
 
-impl serde_json::ser::Formatter for IndentFormatter<'_> {
-    #[inline]
-    fn begin_array<W: ?Sized + io::Write>(&mut self, w: &mut W) -> io::Result<()> {
-        self.depth += 1;
-        self.has_value = false;
-        w.write_all(b"[")
+impl serde::Serializer for CheckNoFloat {
+    type Ok = ();
+    type Error = FloatErr;
+    type SerializeSeq = Self;
+    type SerializeTuple = Self;
+    type SerializeTupleStruct = Self;
+    type SerializeTupleVariant = Self;
+    type SerializeMap = Self;
+    type SerializeStruct = Self;
+    type SerializeStructVariant = Self;
+
+    ok_prim!(
+        serialize_bool(bool),
+        serialize_i8(i8),
+        serialize_i16(i16),
+        serialize_i32(i32),
+        serialize_i64(i64),
+        serialize_i128(i128),
+        serialize_u8(u8),
+        serialize_u16(u16),
+        serialize_u32(u32),
+        serialize_u64(u64),
+        serialize_u128(u128),
+        serialize_char(char),
+        serialize_str(&str),
+        serialize_bytes(&[u8]),
+        serialize_none(),
+        serialize_unit(),
+        serialize_unit_struct(&'static str),
+        serialize_unit_variant(&'static str, u32, &'static str),
+    );
+
+    ok_compound!(
+        serialize_seq(Option<usize>),
+        serialize_tuple(usize),
+        serialize_tuple_struct(&'static str, usize),
+        serialize_tuple_variant(&'static str, u32, &'static str, usize),
+        serialize_map(Option<usize>),
+        serialize_struct(&'static str, usize),
+        serialize_struct_variant(&'static str, u32, &'static str, usize),
+    );
+
+    fn serialize_f32(self, v: f32) -> Result<(), FloatErr> {
+        Err(reject_float(v as f64, "float32"))
     }
 
-    #[inline]
-    fn end_array<W: ?Sized + io::Write>(&mut self, w: &mut W) -> io::Result<()> {
-        self.depth -= 1;
-        if self.has_value {
-            self.write_newline_indent(w)?;
-        }
-        w.write_all(b"]")
+    fn serialize_f64(self, v: f64) -> Result<(), FloatErr> {
+        Err(reject_float(v, "float64"))
     }
 
-    #[inline]
-    fn begin_array_value<W: ?Sized + io::Write>(
-        &mut self,
-        w: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        if !first {
-            w.write_all(b",")?;
-        }
-        self.write_newline_indent(w)
+    fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<(), FloatErr> {
+        v.serialize(self)
     }
 
-    #[inline]
-    fn end_array_value<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
-        self.has_value = true;
-        Ok(())
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        v: &T,
+    ) -> Result<(), FloatErr> {
+        v.serialize(self)
     }
 
-    #[inline]
-    fn begin_object<W: ?Sized + io::Write>(&mut self, w: &mut W) -> io::Result<()> {
-        self.depth += 1;
-        self.has_value = false;
-        w.write_all(b"{")
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        v: &T,
+    ) -> Result<(), FloatErr> {
+        v.serialize(self)
     }
+}
 
-    #[inline]
-    fn end_object<W: ?Sized + io::Write>(&mut self, w: &mut W) -> io::Result<()> {
-        self.depth -= 1;
-        if self.has_value {
-            self.write_newline_indent(w)?;
-        }
-        w.write_all(b"}")
-    }
-
-    #[inline]
-    fn begin_object_key<W: ?Sized + io::Write>(
-        &mut self,
-        w: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        if !first {
-            w.write_all(b",")?;
-        }
-        self.write_newline_indent(w)
-    }
-
-    #[inline]
-    fn begin_object_value<W: ?Sized + io::Write>(&mut self, w: &mut W) -> io::Result<()> {
-        w.write_all(b": ")
-    }
-
-    #[inline]
-    fn end_object_value<W: ?Sized + io::Write>(&mut self, _w: &mut W) -> io::Result<()> {
-        self.has_value = true;
-        Ok(())
-    }
+fn marshal_with<T: Serialize, F: serde_json::ser::Formatter>(
+    v: &T,
+    formatter: F,
+) -> Result<Vec<u8>, String> {
+    v.serialize(CheckNoFloat).map_err(|e| e.0)?;
+    let mut out = Vec::new();
+    let mut ser = serde_json::Serializer::with_formatter(&mut out, GoFormatter(formatter));
+    v.serialize(&mut ser).map_err(|e| e.to_string())?;
+    Ok(out)
 }
 
 /// `json.Marshal(v)` returning UTF-8 bytes.
-pub fn marshal<T: Serialize>(v: &T) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut ser = serde_json::Serializer::with_formatter(
-        &mut out,
-        GoFormatter(serde_json::ser::CompactFormatter),
-    );
-    v.serialize(&mut ser)
-        .expect("serializing to memory cannot fail");
-    out
+pub fn marshal<T: Serialize>(v: &T) -> Result<Vec<u8>, String> {
+    marshal_with(v, serde_json::ser::CompactFormatter)
 }
 
 /// `json.Marshal(v)` returning a `String`.
-pub fn marshal_string<T: Serialize>(v: &T) -> String {
-    String::from_utf8(marshal(v)).expect("Go JSON output is valid UTF-8")
+pub fn marshal_string<T: Serialize>(v: &T) -> Result<String, String> {
+    let bytes = marshal(v)?;
+    Ok(String::from_utf8(bytes).expect("Go JSON output is valid UTF-8"))
 }
 
 /// `json.MarshalIndent(v, "", "  ")` returning UTF-8 bytes.
-pub fn marshal_indent<T: Serialize>(v: &T) -> Vec<u8> {
-    marshal_indent_with(v, "", "  ")
+pub fn marshal_indent<T: Serialize>(v: &T) -> Result<Vec<u8>, String> {
+    marshal_with(v, serde_json::ser::PrettyFormatter::with_indent(b"  "))
 }
 
 /// `json.MarshalIndent(v, "", "  ")` returning a `String`.
-pub fn marshal_indent_string<T: Serialize>(v: &T) -> String {
-    String::from_utf8(marshal_indent(v)).expect("Go JSON output is valid UTF-8")
-}
-
-/// `json.MarshalIndent(v, prefix, indent)` returning UTF-8 bytes.
-pub fn marshal_indent_with<T: Serialize>(v: &T, prefix: &str, indent: &str) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut ser = serde_json::Serializer::with_formatter(
-        &mut out,
-        GoFormatter(IndentFormatter::new(prefix, indent)),
-    );
-    v.serialize(&mut ser)
-        .expect("serializing to memory cannot fail");
-    out
-}
-
-/// `json.MarshalIndent(v, prefix, indent)` returning a `String`.
-pub fn marshal_indent_with_string<T: Serialize>(v: &T, prefix: &str, indent: &str) -> String {
-    String::from_utf8(marshal_indent_with(v, prefix, indent))
-        .expect("Go JSON output is valid UTF-8")
-}
-
-/// Marshals arbitrary bytes as a Go JSON string (`json.Marshal(string(bytes))`),
-/// escaping each invalid UTF-8 byte as `\ufffd` while keeping valid `U+FFFD` literal.
-pub fn marshal_raw_string(bytes: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(bytes.len() + 2);
-    out.push(b'"');
-    let mut i = 0;
-    while i < bytes.len() {
-        let (decoded, width) = gostd::decode_rune(&bytes[i..]);
-        i += width;
-        let Some(c) = decoded else {
-            out.extend_from_slice(b"\\ufffd");
-            continue;
-        };
-        match c {
-            '"' => out.extend_from_slice(b"\\\""),
-            '\\' => out.extend_from_slice(b"\\\\"),
-            '\x08' => out.extend_from_slice(b"\\b"),
-            '\x0c' => out.extend_from_slice(b"\\f"),
-            '\n' => out.extend_from_slice(b"\\n"),
-            '\r' => out.extend_from_slice(b"\\r"),
-            '\t' => out.extend_from_slice(b"\\t"),
-            c if (c as u32) < 0x20 => {
-                use io::Write;
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            '<' => out.extend_from_slice(b"\\u003c"),
-            '>' => out.extend_from_slice(b"\\u003e"),
-            '&' => out.extend_from_slice(b"\\u0026"),
-            '\u{2028}' => out.extend_from_slice(b"\\u2028"),
-            '\u{2029}' => out.extend_from_slice(b"\\u2029"),
-            c => {
-                let mut buf = [0u8; 4];
-                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-            }
-        }
-    }
-    out.push(b'"');
-    out
+pub fn marshal_indent_string<T: Serialize>(v: &T) -> Result<String, String> {
+    let bytes = marshal_indent(v)?;
+    Ok(String::from_utf8(bytes).expect("Go JSON output is valid UTF-8"))
 }
 
 /// Go's `string(b)` conversion: invalid UTF-8 bytes become `U+FFFD` one byte at a time.
@@ -430,8 +343,7 @@ enum Ps {
     ArrayValue,
 }
 
-/// Go's `quoteChar`: formats a byte as `strconv.QuoteRune(rune(c))`.
-pub fn quote_char(c: u8) -> String {
+fn quote_char(c: u8) -> String {
     match c {
         b'\'' => "'\\''".to_string(),
         b'"' => "'\"'".to_string(),
@@ -690,8 +602,7 @@ impl Scanner {
     }
 }
 
-/// Go's `checkValid`: validates JSON syntax and returns Go's exact error wording.
-pub fn check_valid(data: &[u8]) -> Result<(), String> {
+fn check_valid(data: &[u8]) -> Result<(), String> {
     let mut s = Scanner::new();
     for &c in data {
         s.feed(c);
@@ -751,12 +662,8 @@ pub enum GoValue {
     Obj(Vec<(String, GoValue)>),
 }
 
-/// Backwards-compatible alias for [`GoValue`].
-pub type Val = GoValue;
-
 impl GoValue {
-    /// The word Go's `UnmarshalTypeError` prints for this JSON value kind.
-    pub fn kind(&self) -> &'static str {
+    fn kind(&self) -> &'static str {
         match self {
             GoValue::Null => "null",
             GoValue::Bool(_) => "bool",
@@ -768,7 +675,7 @@ impl GoValue {
     }
 }
 
-/// Validates `data` with [`check_valid`] and iteratively constructs a [`GoValue`].
+/// Validates `data` with Go's scanner and iteratively constructs a [`GoValue`].
 pub fn parse(data: &[u8]) -> Result<GoValue, String> {
     check_valid(data)?;
     Ok(Builder { d: data, i: 0 }.build())
@@ -962,8 +869,7 @@ impl Builder<'_> {
 // typed decoding: Go's field matching, slice reuse, and UnmarshalTypeError
 // ---------------------------------------------------------------------------
 
-/// Canonicalizes a rune by Go's `unicode.SimpleFold` equivalence class.
-pub fn fold_rune(c: char) -> char {
+fn fold_rune(c: char) -> char {
     match c {
         '\u{0131}' => '\u{0131}',
         '\u{212A}' => 'K',
@@ -975,13 +881,11 @@ pub fn fold_rune(c: char) -> char {
     }
 }
 
-/// Case-insensitive comparison matching Go's `encoding/json` `equalFold`.
-pub fn fold_eq(a: &str, b: &str) -> bool {
+fn fold_eq(a: &str, b: &str) -> bool {
     a.chars().map(fold_rune).eq(b.chars().map(fold_rune))
 }
 
-/// `strconv.ParseInt(s, 10, 64)` (`-0` parses as `0`).
-pub fn parse_int(s: &str) -> Option<i64> {
+fn parse_int(s: &str) -> Option<i64> {
     let (neg, digits) = match s.as_bytes().first() {
         Some(b'-') => (true, &s[1..]),
         Some(b'+') => (false, &s[1..]),
@@ -1004,58 +908,21 @@ pub fn parse_int(s: &str) -> Option<i64> {
     }
 }
 
-/// A Go slice (`[]T`) preserving spare backing-array capacity across duplicate-key re-decodes.
-#[derive(Debug, Clone)]
-pub struct GoSlice<T> {
-    backing: Vec<T>,
-    len: usize,
-    non_nil: bool,
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum PathKey {
+    Field(&'static str),
+    Elem(usize),
 }
 
-impl<T> Default for GoSlice<T> {
-    fn default() -> Self {
-        Self {
-            backing: Vec::new(),
-            len: 0,
-            non_nil: false,
-        }
-    }
-}
-
-impl<T: Clone> GoSlice<T> {
-    /// Returns `None` for a Go `nil` slice or `Some(elements)` for a non-nil slice.
-    pub fn get(&self) -> Option<Vec<T>> {
-        if self.non_nil {
-            Some(self.backing[..self.len].to_vec())
-        } else {
-            None
-        }
-    }
-
-    /// Consumes the slice into `Option<Vec<T>>`.
-    pub fn into_option(mut self) -> Option<Vec<T>> {
-        if self.non_nil {
-            self.backing.truncate(self.len);
-            Some(self.backing)
-        } else {
-            None
-        }
-    }
-}
-
-impl<T> GoSlice<T> {
-    /// Whether the slice is non-nil (distinct from `nil`, even when empty).
-    pub fn is_non_nil(&self) -> bool {
-        self.non_nil
-    }
-}
-
-/// Go's `decodeState`: tracks struct field context and retains the first type error.
+/// Go's `decodeState`: tracks struct field context, spare slice backing-array
+/// capacity across duplicate keys, and retains the first type error.
 #[derive(Default)]
 pub struct Dec {
     err: Option<String>,
     struct_name: Option<&'static str>,
     fields: Vec<&'static str>,
+    path: Vec<PathKey>,
+    slice_spares: HashMap<Vec<PathKey>, Box<dyn Any>>,
 }
 
 impl Dec {
@@ -1117,64 +984,16 @@ impl Dec {
         }
     }
 
-    /// Decodes a `[]string` field into a `GoSlice<String>` with full Go capacity reuse.
-    pub fn go_strings(&mut self, v: &GoValue, dst: &mut GoSlice<String>) {
-        self.go_slice(v, "[]string", dst, |d, item, slot| d.string(item, slot));
-    }
-
-    /// Decodes a `[]T` field into a `GoSlice<T>`, preserving spare backing-array capacity
-    /// across duplicate keys and resetting to an empty non-nil slice when the array is empty.
-    pub fn go_slice<T: Clone + Default>(
-        &mut self,
-        v: &GoValue,
-        ty: &str,
-        dst: &mut GoSlice<T>,
-        mut each: impl FnMut(&mut Dec, &GoValue, &mut T),
-    ) {
-        match v {
-            GoValue::Arr(items) => {
-                if items.is_empty() {
-                    *dst = GoSlice {
-                        backing: Vec::new(),
-                        len: 0,
-                        non_nil: true,
-                    };
-                    return;
-                }
-                let mut sl = std::mem::take(dst);
-                for (i, item) in items.iter().enumerate() {
-                    let cap = sl.backing.len();
-                    if i >= cap {
-                        let newcap = (cap + cap / 2).max(4);
-                        let mut nb: Vec<T> = sl.backing[..sl.len].to_vec();
-                        nb.resize_with(newcap, T::default);
-                        sl.backing = nb;
-                        sl.non_nil = true;
-                    }
-                    if i >= sl.len {
-                        sl.len = i + 1;
-                    }
-                    each(self, item, &mut sl.backing[i]);
-                }
-                if items.len() < sl.len {
-                    sl.len = items.len();
-                }
-                *dst = sl;
-            }
-            GoValue::Null => *dst = GoSlice::default(),
-            other => self.type_err(other.kind(), ty),
-        }
-    }
-
     /// Decodes a `[]string` field into `Option<Vec<String>>` (`None` is Go's `nil` slice),
-    /// reusing existing elements on duplicate keys when `null` elements appear.
+    /// preserving spare backing-array slots across shorter duplicate keys and leaving
+    /// elements untouched when `null` appears.
     pub fn strings(&mut self, v: &GoValue, dst: &mut Option<Vec<String>>) {
         self.slice(v, "[]string", dst, |d, it, slot| d.string(it, slot));
     }
 
-    /// Decodes a `[]T` field into `Option<Vec<T>>`, matching Go's slice-reuse rules for
-    /// duplicate keys and `null` elements.
-    pub fn slice<T: Default>(
+    /// Decodes a `[]T` field into `Option<Vec<T>>`, matching Go's `encoding/json`
+    /// slice backing-array reuse across duplicate keys and `null` elements.
+    pub fn slice<T: Default + 'static>(
         &mut self,
         v: &GoValue,
         ty: &str,
@@ -1183,23 +1002,35 @@ impl Dec {
     ) {
         match v {
             GoValue::Arr(items) => {
-                let mut out = dst.take().unwrap_or_default();
                 if items.is_empty() {
-                    out.clear();
-                    *dst = Some(out);
+                    self.slice_spares.retain(|k, _| !k.starts_with(&self.path));
+                    *dst = Some(Vec::new());
                     return;
                 }
-                if items.len() > out.len() {
-                    out.resize_with(items.len(), T::default);
-                } else {
-                    out.truncate(items.len());
+                let mut backing = dst.take().unwrap_or_default();
+                if let Some(boxed) = self.slice_spares.remove(&self.path) {
+                    if let Ok(tail) = boxed.downcast::<Vec<T>>() {
+                        backing.extend(*tail);
+                    }
                 }
-                for (slot, it) in out.iter_mut().zip(items.iter()) {
-                    each(self, it, slot);
+                if items.len() > backing.len() {
+                    backing.resize_with(items.len(), T::default);
                 }
-                *dst = Some(out);
+                for (i, it) in items.iter().enumerate() {
+                    self.path.push(PathKey::Elem(i));
+                    each(self, it, &mut backing[i]);
+                    self.path.pop();
+                }
+                let spare = backing.split_off(items.len());
+                if !spare.is_empty() {
+                    self.slice_spares.insert(self.path.clone(), Box::new(spare));
+                }
+                *dst = Some(backing);
             }
-            GoValue::Null => *dst = None,
+            GoValue::Null => {
+                self.slice_spares.retain(|k, _| !k.starts_with(&self.path));
+                *dst = None;
+            }
             other => self.type_err(other.kind(), ty),
         }
     }
@@ -1210,9 +1041,23 @@ impl Dec {
             GoValue::Obj(pairs) => {
                 let m = dst.get_or_insert_with(BTreeMap::new);
                 for (k, x) in pairs {
-                    let mut s: Option<Vec<String>> = None;
-                    self.strings(x, &mut s);
-                    m.insert(k.clone(), s.unwrap_or_default());
+                    let vals = match x {
+                        GoValue::Arr(items) => {
+                            let mut out = Vec::with_capacity(items.len());
+                            for it in items {
+                                let mut s = String::new();
+                                self.string(it, &mut s);
+                                out.push(s);
+                            }
+                            out
+                        }
+                        GoValue::Null => Vec::new(),
+                        other => {
+                            self.type_err(other.kind(), "[]string");
+                            Vec::new()
+                        }
+                    };
+                    m.insert(k.clone(), vals);
                 }
             }
             GoValue::Null => *dst = None,
@@ -1247,11 +1092,14 @@ impl Dec {
                 .find(|n| **n == k.as_str())
                 .or_else(|| names.iter().find(|n| fold_eq(n, k)));
             let Some(&name) = name else { continue };
-            let (saved_struct, saved_len) = (self.struct_name, self.fields.len());
+            let (saved_struct, saved_len, saved_path) =
+                (self.struct_name, self.fields.len(), self.path.len());
             self.fields.push(name);
+            self.path.push(PathKey::Field(name));
             self.struct_name = Some(struct_name);
             field(self, name, x);
             self.fields.truncate(saved_len);
+            self.path.truncate(saved_path);
             self.struct_name = saved_struct;
         }
     }
@@ -1311,8 +1159,8 @@ mod tests {
 
     fn build_map_case(kind: &str) -> Vec<u8> {
         match kind {
-            "empty_map" => marshal(&BTreeMap::<String, i64>::new()),
-            "empty_slice" => marshal(&Vec::<i64>::new()),
+            "empty_map" => marshal(&BTreeMap::<String, i64>::new()).unwrap(),
+            "empty_slice" => marshal(&Vec::<i64>::new()).unwrap(),
             "ascii_keys" => {
                 let mut m = BTreeMap::new();
                 m.insert("b".to_string(), 1);
@@ -1320,14 +1168,14 @@ mod tests {
                 m.insert("_".to_string(), 3);
                 m.insert("".to_string(), 4);
                 m.insert("a".to_string(), 5);
-                marshal(&m)
+                marshal(&m).unwrap()
             }
             "html_keys" => {
                 let mut m = BTreeMap::new();
                 m.insert(">".to_string(), "<");
                 m.insert("&".to_string(), "\u{2028}");
                 m.insert("<".to_string(), ">");
-                marshal(&m)
+                marshal(&m).unwrap()
             }
             "utf8_keys" => {
                 let mut m = BTreeMap::new();
@@ -1335,7 +1183,7 @@ mod tests {
                 m.insert("é".to_string(), 2);
                 m.insert("e".to_string(), 3);
                 m.insert("\u{2028}".to_string(), 4);
-                marshal(&m)
+                marshal(&m).unwrap()
             }
             "nested_containers" => {
                 #[derive(Serialize)]
@@ -1354,17 +1202,17 @@ mod tests {
                     c: vec![BTreeMap::new()],
                     d,
                 };
-                marshal(&n)
+                marshal(&n).unwrap()
             }
             other => panic!("unknown map case: {other}"),
         }
     }
 
-    fn build_indent_case(kind: &str, prefix: &str, indent: &str) -> Vec<u8> {
+    fn build_indent_case(kind: &str) -> Vec<u8> {
         match kind {
-            "empty_map" => marshal_indent_with(&BTreeMap::<String, i64>::new(), prefix, indent),
-            "empty_slice" => marshal_indent_with(&Vec::<i64>::new(), prefix, indent),
-            "nested_empty" | "nested_empty_prefix" => {
+            "empty_map" => marshal_indent(&BTreeMap::<String, i64>::new()).unwrap(),
+            "empty_slice" => marshal_indent(&Vec::<i64>::new()).unwrap(),
+            "nested_empty" => {
                 #[derive(Serialize)]
                 struct S {
                     a: BTreeMap<String, i64>,
@@ -1376,24 +1224,37 @@ mod tests {
                     b: Vec::new(),
                     c: vec![1, 2],
                 };
-                marshal_indent_with(&s, prefix, indent)
+                marshal_indent(&s).unwrap()
             }
-            "nested_mixed_html_float" | "nested_tab_indent" => {
+            "nested_mixed_html_int" => {
                 #[derive(Serialize)]
                 struct S {
                     html: String,
-                    num: f64,
+                    num: i64,
                     empty_arr: Vec<Vec<i64>>,
                 }
                 let s = S {
                     html: "<a&b>\u{2028}".to_string(),
-                    num: 1.0,
+                    num: 1,
                     empty_arr: vec![vec![]],
                 };
-                marshal_indent_with(&s, prefix, indent)
+                marshal_indent(&s).unwrap()
             }
             other => panic!("unknown indent case: {other}"),
         }
+    }
+
+    fn run_float_err_case(name: &str) -> String {
+        let res = match name {
+            "f64_nan" => marshal(&f64::NAN),
+            "f64_pos_inf" => marshal(&f64::INFINITY),
+            "f64_neg_inf" => marshal(&f64::NEG_INFINITY),
+            "f32_nan" => marshal(&f32::NAN),
+            "f32_pos_inf" => marshal(&f32::INFINITY),
+            "f32_neg_inf" => marshal(&f32::NEG_INFINITY),
+            other => panic!("unknown MFERR case: {other}"),
+        };
+        format!("ERR:{}", res.unwrap_err())
     }
 
     fn run_unm_struct_case(name: &str, raw: &[u8]) -> String {
@@ -1446,15 +1307,50 @@ mod tests {
         }
         if name.starts_with("slice_") {
             let v = parse(raw).unwrap();
-            let mut envs = GoSlice::<String>::default();
+            let mut envs: Option<Vec<String>> = None;
             let mut d = Dec::new();
             d.object(&v, "SlS", "main.SlS", &["environments"], |d, _, x| {
-                d.go_strings(x, &mut envs);
+                d.strings(x, &mut envs);
             });
             d.finish().unwrap();
-            return match envs.get() {
+            return match envs {
                 None => "NIL".to_string(),
                 Some(items) => format!("LEN={}:{}", items.len(), items.join(",")),
+            };
+        }
+        if name.starts_with("struct_slice_") {
+            #[derive(Default)]
+            struct Entry {
+                name: String,
+                runner: String,
+            }
+            let v = parse(raw).unwrap();
+            let mut matrix: Option<Vec<Entry>> = None;
+            let mut d = Dec::new();
+            d.object(&v, "PlanS", "main.PlanS", &["matrix"], |d, _, x| {
+                d.slice(x, "[]main.Entry", &mut matrix, |d, item, out| {
+                    d.object(
+                        item,
+                        "Entry",
+                        "main.Entry",
+                        &["name", "runner"],
+                        |d, f, y| match f {
+                            "name" => d.string(y, &mut out.name),
+                            _ => d.string(y, &mut out.runner),
+                        },
+                    );
+                });
+            });
+            d.finish().unwrap();
+            return match matrix {
+                None => "NIL".to_string(),
+                Some(items) => {
+                    let parts: Vec<String> = items
+                        .iter()
+                        .map(|e| format!("{}/{}", e.name, e.runner))
+                        .collect();
+                    format!("LEN={}:{}", items.len(), parts.join(","))
+                }
             };
         }
         if name == "nest_struct" {
@@ -1485,7 +1381,7 @@ mod tests {
             });
             return format!("ERR:{}", d.finish().unwrap_err());
         }
-        if name == "map_slice_dup" {
+        if name.starts_with("map_slice_") {
             let v = parse(raw).unwrap();
             let mut m: Option<BTreeMap<String, Vec<String>>> = None;
             let mut d = Dec::new();
@@ -1493,8 +1389,14 @@ mod tests {
                 d.strings_map(x, &mut m);
             });
             d.finish().unwrap();
-            let k = m.unwrap().remove("k").unwrap();
-            return format!("LEN={}:{}", k.len(), k.join(","));
+            return match m {
+                None => "NIL".to_string(),
+                Some(map) => map
+                    .iter()
+                    .map(|(k, vals)| format!("{k}=LEN={}:{}", vals.len(), vals.join(",")))
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            };
         }
         panic!("unknown unm struct case: {name}");
     }
@@ -1515,38 +1417,29 @@ mod tests {
                     let name = cols[1];
                     let inp = decode_hex(cols[2]);
                     let want = decode_hex(cols[3]);
+                    let s = std::str::from_utf8(&inp).expect("MSTR fixture is valid UTF-8");
                     assert_eq!(
-                        marshal_raw_string(&inp),
+                        marshal(&s).unwrap(),
                         want,
-                        "line {} MSTR marshal_raw_string({name})",
+                        "line {} MSTR marshal(&str) ({name})",
                         idx + 1
                     );
-                    if let Ok(s) = std::str::from_utf8(&inp) {
-                        assert_eq!(
-                            marshal(&s),
-                            want,
-                            "line {} MSTR marshal(&str) ({name})",
-                            idx + 1
-                        );
-                    }
                 }
-                "MF64" => {
+                "MFERR" => {
                     let name = cols[1];
-                    let bits = u64::from_str_radix(cols[2], 16).unwrap();
-                    let f = f64::from_bits(bits);
-                    assert_eq!(marshal_string(&f), cols[3], "line {} MF64({name})", idx + 1);
-                }
-                "MF32" => {
-                    let name = cols[1];
-                    let bits = u32::from_str_radix(cols[2], 16).unwrap();
-                    let f = f32::from_bits(bits);
-                    assert_eq!(marshal_string(&f), cols[3], "line {} MF32({name})", idx + 1);
+                    let want = String::from_utf8(decode_hex(cols[2])).unwrap();
+                    assert_eq!(
+                        run_float_err_case(name),
+                        want,
+                        "line {} MFERR({name})",
+                        idx + 1
+                    );
                 }
                 "MI64" => {
                     let name = cols[1];
                     let val: i64 = cols[2].parse().unwrap();
                     assert_eq!(
-                        marshal_string(&val),
+                        marshal_string(&val).unwrap(),
                         cols[3],
                         "line {} MI64({name})",
                         idx + 1
@@ -1556,7 +1449,7 @@ mod tests {
                     let name = cols[1];
                     let val: u64 = cols[2].parse().unwrap();
                     assert_eq!(
-                        marshal_string(&val),
+                        marshal_string(&val).unwrap(),
                         cols[3],
                         "line {} MU64({name})",
                         idx + 1
@@ -1569,13 +1462,9 @@ mod tests {
                 }
                 "MIND" => {
                     let name = cols[1];
-                    let prefix_bytes = decode_hex(cols[2]);
-                    let indent_bytes = decode_hex(cols[3]);
-                    let prefix = std::str::from_utf8(&prefix_bytes).unwrap();
-                    let indent = std::str::from_utf8(&indent_bytes).unwrap();
-                    let want = decode_hex(cols[4]);
+                    let want = decode_hex(cols[2]);
                     assert_eq!(
-                        build_indent_case(name, prefix, indent),
+                        build_indent_case(name),
                         want,
                         "line {} MIND({name})",
                         idx + 1
@@ -1637,30 +1526,53 @@ mod tests {
         assert!(count >= 100, "expected >= 100 fixture cases, got {count}");
     }
 
-    // ---- dedicated tests proving each difference between Copy A, Copy B, and Go ----
+    // ---- dedicated tests proving each behaviour and Go parity fix ----
 
     #[test]
-    fn diff_escape_html_controls_and_invalid_utf8() {
-        assert_eq!(
-            marshal_string(&"<a&b>\u{2028}\u{2029}\x08\x0c\x7f\u{fffd}"),
-            "\"\\u003ca\\u0026b\\u003e\\u2028\\u2029\\b\\f\x7f\u{fffd}\""
-        );
-        assert_eq!(
-            marshal_raw_string(b"\xff\xe2\x82a\xef\xbf\xbd"),
-            b"\"\\ufffd\\ufffd\\ufffda\xef\xbf\xbd\""
-        );
+    fn nan_and_inf_return_go_errors() {
+        for (v64, v32, want) in [
+            (f64::NAN, f32::NAN, "json: unsupported value: NaN"),
+            (
+                f64::INFINITY,
+                f32::INFINITY,
+                "json: unsupported value: +Inf",
+            ),
+            (
+                f64::NEG_INFINITY,
+                f32::NEG_INFINITY,
+                "json: unsupported value: -Inf",
+            ),
+        ] {
+            assert_eq!(marshal(&v64).unwrap_err(), want);
+            assert_eq!(marshal_string(&v64).unwrap_err(), want);
+            assert_eq!(marshal_indent(&v64).unwrap_err(), want);
+            assert_eq!(marshal_indent_string(&v64).unwrap_err(), want);
+            assert_eq!(marshal(&v32).unwrap_err(), want);
+
+            #[derive(Serialize)]
+            struct Wrap {
+                nested: Vec<Option<f64>>,
+            }
+            let w = Wrap {
+                nested: vec![Some(v64)],
+            };
+            assert_eq!(marshal(&w).unwrap_err(), want);
+            assert_eq!(marshal_indent_string(&w).unwrap_err(), want);
+        }
+        assert!(marshal(&1.5_f64).is_err());
+        assert!(marshal(&1.5_f32).is_err());
     }
 
     #[test]
-    fn diff_float_formatting_matches_go() {
-        assert_eq!(marshal_string(&0.0_f64), "0");
-        assert_eq!(marshal_string(&-0.0_f64), "-0");
-        assert_eq!(marshal_string(&1.0_f64), "1");
-        assert_eq!(marshal_string(&1e-6_f64), "0.000001");
-        assert_eq!(marshal_string(&9.999999e-7_f64), "9.999999e-7");
-        assert_eq!(marshal_string(&1e20_f64), "100000000000000000000");
-        assert_eq!(marshal_string(&1e21_f64), "1e+21");
-        assert_eq!(marshal_string(&9.999999e-7_f32), "9.999999e-7");
+    fn diff_escape_html_controls_and_go_string() {
+        assert_eq!(
+            marshal_string(&"<a&b>\u{2028}\u{2029}\x08\x0c\x7f\u{fffd}").unwrap(),
+            "\"\\u003ca\\u0026b\\u003e\\u2028\\u2029\\b\\f\x7f\u{fffd}\""
+        );
+        assert_eq!(
+            go_string(b"\xff\xe2\x82a\xef\xbf\xbd"),
+            "\u{fffd}\u{fffd}\u{fffd}a\u{fffd}"
+        );
     }
 
     #[test]
@@ -1729,7 +1641,6 @@ mod tests {
 
     #[test]
     fn diff_unicode_case_folding_and_exact_match_priority() {
-        // Kelvin (\u212a), long s (\u017f), É vs é, ẞ vs ß all fold; ß vs ss and ı vs I do not.
         assert!(fold_eq("\u{212a}", "k"));
         assert!(fold_eq("\u{017f}", "s"));
         assert!(fold_eq("É", "é"));
@@ -1752,48 +1663,64 @@ mod tests {
     #[test]
     fn diff_duplicate_slice_reuses_backing_array() {
         let v = parse(br#"{"e":["x","y"],"e":["a"],"e":[null,null]}"#).unwrap();
-        let mut sl = GoSlice::<String>::default();
+        let mut sl: Option<Vec<String>> = None;
         let mut d = Dec::new();
-        d.object(&v, "S", "main.S", &["e"], |d, _, x| {
-            d.go_strings(x, &mut sl)
-        });
+        d.object(&v, "S", "main.S", &["e"], |d, _, x| d.strings(x, &mut sl));
         d.finish().unwrap();
-        assert_eq!(sl.get(), Some(vec!["a".into(), "y".into()]));
+        assert_eq!(sl, Some(vec!["a".into(), "y".into()]));
 
         let v2 = parse(br#"{"e":["x","y"],"e":[],"e":[null]}"#).unwrap();
-        let mut sl2 = GoSlice::<String>::default();
+        let mut sl2: Option<Vec<String>> = None;
         let mut d2 = Dec::new();
-        d2.object(&v2, "S", "main.S", &["e"], |d, _, x| {
-            d.go_strings(x, &mut sl2)
-        });
+        d2.object(&v2, "S", "main.S", &["e"], |d, _, x| d.strings(x, &mut sl2));
         d2.finish().unwrap();
-        assert_eq!(sl2.get(), Some(vec!["".into()]));
+        assert_eq!(sl2, Some(vec!["".into()]));
 
-        // Option<Vec<String>> reuses elements up to current vec len on duplicate keys.
-        let v3 = parse(br#"{"e":["x","y"],"e":[null]}"#).unwrap();
-        let mut opt: Option<Vec<String>> = None;
+        let v3 = parse(br#"{"e":["x","y"],"e":null,"e":[null]}"#).unwrap();
+        let mut sl3: Option<Vec<String>> = None;
         let mut d3 = Dec::new();
-        d3.object(&v3, "S", "main.S", &["e"], |d, _, x| d.strings(x, &mut opt));
+        d3.object(&v3, "S", "main.S", &["e"], |d, _, x| d.strings(x, &mut sl3));
         d3.finish().unwrap();
-        assert_eq!(opt, Some(vec!["x".into()]));
-    }
+        assert_eq!(sl3, Some(vec!["".into()]));
 
-    #[test]
-    fn diff_marshal_indent_prefix_and_empty_containers() {
-        #[derive(Serialize)]
-        struct S {
-            a: BTreeMap<String, i64>,
-            b: Vec<i64>,
-            c: Vec<i64>,
+        #[derive(Default, Debug, PartialEq)]
+        struct Entry {
+            name: String,
+            runner: String,
         }
-        let s = S {
-            a: BTreeMap::new(),
-            b: Vec::new(),
-            c: vec![1, 2],
-        };
+        let v4 = parse(
+            br#"{"m":[{"name":"a","runner":"r1"},{"name":"b","runner":"r2"}],"m":[{"name":"c"}],"m":[null,{"runner":"r9"}]}"#,
+        )
+        .unwrap();
+        let mut entries: Option<Vec<Entry>> = None;
+        let mut d4 = Dec::new();
+        d4.object(&v4, "P", "main.P", &["m"], |d, _, x| {
+            d.slice(x, "[]main.Entry", &mut entries, |d, item, out| {
+                d.object(
+                    item,
+                    "Entry",
+                    "main.Entry",
+                    &["name", "runner"],
+                    |d, f, y| match f {
+                        "name" => d.string(y, &mut out.name),
+                        _ => d.string(y, &mut out.runner),
+                    },
+                );
+            });
+        });
+        d4.finish().unwrap();
         assert_eq!(
-            marshal_indent_with_string(&s, ">>", "  "),
-            "{\n>>  \"a\": {},\n>>  \"b\": [],\n>>  \"c\": [\n>>    1,\n>>    2\n>>  ]\n>>}"
+            entries,
+            Some(vec![
+                Entry {
+                    name: "c".into(),
+                    runner: "r1".into()
+                },
+                Entry {
+                    name: "b".into(),
+                    runner: "r9".into()
+                },
+            ])
         );
     }
 

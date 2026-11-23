@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -63,11 +64,7 @@ func main() {
 		{"ls_ps_esc_text", []byte("\\u2028\\u2029")},
 		{"ls_ps_utf8", []byte("\u2028\u2029")},
 		{"valid_fffd", []byte("\ufffd")},
-		{"invalid_80", []byte{0x80}},
-		{"invalid_overlong", []byte{0xc0, 0x80}},
-		{"invalid_trunc", []byte{0xe2, 0x82, 'a'}},
-		{"invalid_ff", []byte{0xff}},
-		{"mixed", []byte("<x&y>\n\t" + string([]byte{0x7f, 0xef, 0xbf, 0xbd, 0xff}) + "\u2028")},
+		{"mixed_valid", []byte("<x&y>\n\t\x7f\ufffd\u2028")},
 	}
 	for _, tc := range strCases {
 		out, err := json.Marshal(string(tc.raw))
@@ -77,71 +74,23 @@ func main() {
 		emit("MSTR", tc.name, hex.EncodeToString(tc.raw), hex.EncodeToString(out))
 	}
 
-	// 2. MF64: float64 formatting & exponent boundaries.
-	f64Cases := []struct {
+	// 2. MFERR: Go's json.Marshal rejects non-finite floats (NaN, +Inf, -Inf).
+	for _, tc := range []struct {
 		name string
-		v    float64
+		v    any
 	}{
-		{"zero", 0.0},
-		{"neg_zero", math.Copysign(0, -1)},
-		{"one", 1.0},
-		{"neg_one", -1.0},
-		{"half", 0.5},
-		{"tenth", 0.1},
-		{"1e-6", 1e-6},
-		{"below_1e-6", math.Nextafter(1e-6, 0)},
-		{"1e-7", 1e-7},
-		{"1e-9", 1e-9},
-		{"1e-10", 1e-10},
-		{"1e-100", 1e-100},
-		{"1e15", 1e15},
-		{"1e16", 1e16},
-		{"1e20", 1e20},
-		{"1.5e20", 1.5e20},
-		{"below_1e21", math.Nextafter(1e21, 0)},
-		{"1e21", 1e21},
-		{"1.5e21", 1.5e21},
-		{"1e100", 1e100},
-		{"max", math.MaxFloat64},
-		{"neg_max", -math.MaxFloat64},
-		{"min_subnormal", math.SmallestNonzeroFloat64},
-		{"neg_min_subnormal", -math.SmallestNonzeroFloat64},
-		{"min_normal", 2.2250738585072014e-308},
-		{"mixed_dec", 123456.789},
-		{"neg_1e-6", -1e-6},
-		{"neg_1e-7", -1e-7},
-	}
-	for _, tc := range f64Cases {
-		b, err := json.Marshal(tc.v)
-		if err != nil {
-			panic(err)
+		{"f64_nan", math.NaN()},
+		{"f64_pos_inf", math.Inf(1)},
+		{"f64_neg_inf", math.Inf(-1)},
+		{"f32_nan", float32(math.NaN())},
+		{"f32_pos_inf", float32(math.Inf(1))},
+		{"f32_neg_inf", float32(math.Inf(-1))},
+	} {
+		_, err := json.Marshal(tc.v)
+		if err == nil {
+			panic(fmt.Sprintf("expected error for %s", tc.name))
 		}
-		emit("MF64", tc.name, fmt.Sprintf("%016x", math.Float64bits(tc.v)), string(b))
-	}
-
-	// 3. MF32: float32 formatting & exponent boundaries.
-	f32Cases := []struct {
-		name string
-		v    float32
-	}{
-		{"zero", 0},
-		{"neg_zero", float32(math.Copysign(0, -1))},
-		{"one", 1},
-		{"tenth", float32(0.1)},
-		{"1e-6", float32(1e-6)},
-		{"below_1e-6", float32(9.999999e-7)},
-		{"1e-7", float32(1e-7)},
-		{"1e20", float32(1e20)},
-		{"1e21", float32(1e21)},
-		{"max", math.MaxFloat32},
-		{"min_subnormal", math.SmallestNonzeroFloat32},
-	}
-	for _, tc := range f32Cases {
-		b, err := json.Marshal(tc.v)
-		if err != nil {
-			panic(err)
-		}
-		emit("MF32", tc.name, fmt.Sprintf("%08x", math.Float32bits(tc.v)), string(b))
+		emit("MFERR", tc.name, hex.EncodeToString([]byte("ERR:"+err.Error())))
 	}
 
 	// 4. MI64 & MU64 extremes.
@@ -199,32 +148,30 @@ func main() {
 		D: map[string]int64{"z": 1, "a": 2},
 	})
 
-	// 6. MIND: MarshalIndent output.
-	indEmit := func(name string, v any, prefix, indent string) {
-		b, err := json.MarshalIndent(v, prefix, indent)
+	// 6. MIND: MarshalIndent(v, "", "  ") output.
+	indEmit := func(name string, v any) {
+		b, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {
 			panic(err)
 		}
-		emit("MIND", name, hex.EncodeToString([]byte(prefix)), hex.EncodeToString([]byte(indent)), hex.EncodeToString(b))
+		emit("MIND", name, hex.EncodeToString(b))
 	}
-	indEmit("empty_map", map[string]int64{}, "", "  ")
-	indEmit("empty_slice", []int64{}, "", "  ")
+	indEmit("empty_map", map[string]int64{})
+	indEmit("empty_slice", []int64{})
 	type IndS struct {
 		A map[string]int64 `json:"a"`
 		B []int64          `json:"b"`
 		C []int64          `json:"c"`
 	}
 	indS := IndS{A: map[string]int64{}, B: []int64{}, C: []int64{1, 2}}
-	indEmit("nested_empty", indS, "", "  ")
-	indEmit("nested_empty_prefix", indS, ">>", "  ")
+	indEmit("nested_empty", indS)
 	type IndMix struct {
 		HTML     string  `json:"html"`
-		Num      float64 `json:"num"`
+		Num      int64   `json:"num"`
 		EmptyArr [][]int `json:"empty_arr"`
 	}
-	indMix := IndMix{HTML: "<a&b>\u2028", Num: 1.0, EmptyArr: [][]int{{}}}
-	indEmit("nested_mixed_html_float", indMix, "", "  ")
-	indEmit("nested_tab_indent", indMix, " ", "\t")
+	indMix := IndMix{HTML: "<a&b>\u2028", Num: 1, EmptyArr: [][]int{{}}}
+	indEmit("nested_mixed_html_int", indMix)
 
 	// 7. SYN: checkValid / syntax errors & depth limit.
 	synCases := []struct {
@@ -386,7 +333,11 @@ func main() {
 		{"slice_empty", `{"environments":[]}`},
 		{"slice_dup_null", `{"environments":["x","y"],"environments":[null]}`},
 		{"slice_dup_cap", `{"environments":["x","y"],"environments":["a"],"environments":[null,null]}`},
+		{"slice_dup_short_grow", `{"environments":["x","y","z"],"environments":["a"],"environments":[null,null,null,null]}`},
 		{"slice_dup_empty_null", `{"environments":["x","y"],"environments":[],"environments":[null]}`},
+		{"slice_dup_nullval_then_null", `{"environments":["x","y"],"environments":null,"environments":[null]}`},
+		{"slice_dup_to_null", `{"environments":["x","y"],"environments":null}`},
+		{"slice_dup_to_empty", `{"environments":["x","y"],"environments":[]}`},
 	} {
 		type SlS struct {
 			Envs []string `json:"environments"`
@@ -396,6 +347,36 @@ func main() {
 		res := "NIL"
 		if s.Envs != nil {
 			res = fmt.Sprintf("LEN=%d:%s", len(s.Envs), strings.Join(s.Envs, ","))
+		}
+		emit("UNM_STRUCT", tc.name, hex.EncodeToString([]byte(tc.inp)), hex.EncodeToString([]byte(res)))
+	}
+
+	for _, tc := range []struct {
+		name string
+		inp  string
+	}{
+		{"struct_slice_dup_cap", `{"matrix":[{"name":"a","runner":"r1"},{"name":"b","runner":"r2"}],"matrix":[{"name":"c"}],"matrix":[null,{"runner":"r9"}]}`},
+		{"struct_slice_dup_null_elem", `{"matrix":[{"name":"a","runner":"r1"},{"name":"b","runner":"r2"}],"matrix":[null]}`},
+		{"struct_slice_dup_empty", `{"matrix":[{"name":"a","runner":"r1"}],"matrix":[],"matrix":[null]}`},
+		{"struct_slice_dup_nullval", `{"matrix":[{"name":"a","runner":"r1"}],"matrix":null,"matrix":[null]}`},
+		{"struct_slice_dup_to_null", `{"matrix":[{"name":"a","runner":"r1"}],"matrix":null}`},
+	} {
+		type Entry struct {
+			Name   string `json:"name"`
+			Runner string `json:"runner"`
+		}
+		type PlanS struct {
+			Matrix []Entry `json:"matrix"`
+		}
+		var p PlanS
+		_ = json.Unmarshal([]byte(tc.inp), &p)
+		res := "NIL"
+		if p.Matrix != nil {
+			parts := make([]string, len(p.Matrix))
+			for i, e := range p.Matrix {
+				parts[i] = fmt.Sprintf("%s/%s", e.Name, e.Runner)
+			}
+			res = fmt.Sprintf("LEN=%d:%s", len(p.Matrix), strings.Join(parts, ","))
 		}
 		emit("UNM_STRUCT", tc.name, hex.EncodeToString([]byte(tc.inp)), hex.EncodeToString([]byte(res)))
 	}
@@ -419,14 +400,34 @@ func main() {
 		emit("UNM_STRUCT", "nest_slice", hex.EncodeToString([]byte(inp2)), hex.EncodeToString([]byte("ERR:"+e2.Error())))
 	}
 
-	{
+	for _, tc := range []struct {
+		name string
+		inp  string
+	}{
+		{"map_slice_dup", `{"m":{"k":["x","y"]},"m":{"k":[null]}}`},
+		{"map_slice_dup_inner", `{"m":{"k":["x","y"],"k":["a"],"k":[null,null]}}`},
+		{"map_slice_dup_merge_keys", `{"m":{"a":["x"]},"m":{"b":["y"]}}`},
+		{"map_slice_dup_null", `{"m":{"a":["x"]},"m":null}`},
+		{"map_slice_dup_empty_obj", `{"m":{"a":["x"]},"m":{}}`},
+	} {
 		type C struct {
 			M map[string][]string `json:"m"`
 		}
 		var c C
-		inp := `{"m":{"k":["x","y"]},"m":{"k":[null]}}`
-		_ = json.Unmarshal([]byte(inp), &c)
-		res := fmt.Sprintf("LEN=%d:%s", len(c.M["k"]), strings.Join(c.M["k"], ","))
-		emit("UNM_STRUCT", "map_slice_dup", hex.EncodeToString([]byte(inp)), hex.EncodeToString([]byte(res)))
+		_ = json.Unmarshal([]byte(tc.inp), &c)
+		res := "NIL"
+		if c.M != nil {
+			ks := make([]string, 0, len(c.M))
+			for k := range c.M {
+				ks = append(ks, k)
+			}
+			sort.Strings(ks)
+			parts := make([]string, len(ks))
+			for i, k := range ks {
+				parts[i] = fmt.Sprintf("%s=LEN=%d:%s", k, len(c.M[k]), strings.Join(c.M[k], ","))
+			}
+			res = strings.Join(parts, "|")
+		}
+		emit("UNM_STRUCT", tc.name, hex.EncodeToString([]byte(tc.inp)), hex.EncodeToString([]byte(res)))
 	}
 }

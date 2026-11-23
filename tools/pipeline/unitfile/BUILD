@@ -32,6 +32,7 @@ rust_library(
     visibility = ["//tools/pipeline:__subpackages__"],
     deps = [
         "//packages/gocompat/gojson:vitruvian_gojson",
+        "@crates//:serde",
     ],
 )
 
