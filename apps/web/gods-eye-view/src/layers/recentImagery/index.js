@@ -169,6 +169,8 @@ export function createRecentImageryLayer({
   let _pendingTimer = null;
   /** A focused day still being probed: it previews once present. */
   let _followKey = null;
+  /** The automatic day was empty and a user pick has first claim on its slot. */
+  let _handoverDeferred = false;
   let _auto = null;
   let _notice = null;
   let _split = DEFAULT_SPLIT;
@@ -305,16 +307,37 @@ export function createRecentImageryLayer({
   const rank = (list) =>
     rankLatest(list.map(withAvailability), { truncated: _truncated });
 
-  /** Focus the START HERE day and preview it when the mode's slot is empty. */
-  function autoPreview() {
+  /**
+   * Focus the START HERE day and preview it when the mode's slot is empty.
+   * @param {string | null} [emptyKey] The empty automatic day handed over;
+   *   focus still on it moves too, since a followed day previews only while
+   *   it is focused.
+   */
+  function autoPreview(emptyKey = null) {
     const ranked = rank(sourcedCandidates());
     if (!ranked.candidate) return;
     const key = ranked.candidate.key;
-    if (!_focusKey) _focusKey = key;
+    if (!_focusKey || _focusKey === emptyKey) _focusKey = key;
     if (!previewSlot() || activeSlotOf(key)) return;
     _auto = { key, reason: ranked.reason, certain: ranked.certain };
     if (drapable(candidateFor(key))) _previewKey = key;
     else _followKey = key;
+  }
+
+  /** A debounced or followed pick can still take the slot until its probe settles. */
+  function pickWaiting() {
+    if (_pending) return true;
+    const followed = candidateFor(_followKey);
+    if (!followed) return false;
+    const status = thumbnails.get(followed.key)?.status;
+    return status !== 'empty' && status !== 'error';
+  }
+
+  /** A pick dropped for an empty day hands a deferred slot over now. */
+  function resumeHandover() {
+    if (!_handoverDeferred || pickWaiting()) return false;
+    syncRender();
+    return true;
   }
 
   /**
@@ -337,7 +360,12 @@ export function createRecentImageryLayer({
       _previewKey = null;
       _auto = null;
       changed = true;
-      if (wasAuto) autoPreview();
+      // A day the user picked meanwhile, still being probed or debounced,
+      // takes the slot instead of the next ranked day.
+      if (wasAuto) {
+        if (pickWaiting()) _handoverDeferred = true;
+        else autoPreview(preview.key);
+      }
     }
     // A followed day that turns out empty is dropped; an automatic one hands
     // over to the next ranked day.
@@ -347,8 +375,15 @@ export function createRecentImageryLayer({
       _followKey = null;
       if (wasAuto) {
         _auto = null;
-        autoPreview();
+        autoPreview(followed.key);
       }
+      changed = true;
+    }
+    if (_handoverDeferred && !pickWaiting()) {
+      const failedKey = _followKey || followed?.key || null;
+      _handoverDeferred = false;
+      _followKey = null;
+      autoPreview(failedKey);
       changed = true;
     }
     return changed;
@@ -568,6 +603,8 @@ export function createRecentImageryLayer({
     for (const slotId of SLOT_IDS) {
       const candidate = candidateFor(shown[slotId]);
       if (candidate && _hostInfo.collection) {
+        const { availableBoxes, emptyBoxes } =
+          thumbnails.get(candidate.key) ?? {};
         renderer.showSlot(slotId, candidate, _box, {
           alpha: _alpha,
           splitDirection: !live
@@ -575,6 +612,8 @@ export function createRecentImageryLayer({
             : (slotId === 'a') !== _swapped
               ? 'left'
               : 'right',
+          availableBoxes,
+          emptyBoxes,
         });
       } else {
         renderer.hideSlot(slotId);
@@ -582,7 +621,11 @@ export function createRecentImageryLayer({
     }
     if (!comparison) return;
     if (shown.a || shown.b) acquireComparison();
-    else if (_lease || _comparisonReady || _comparisonError)
+    // Keep the current basemap while the user's pick has first claim on the slot.
+    else if (
+      !_handoverDeferred &&
+      (_lease || _comparisonReady || _comparisonError)
+    )
       releaseComparison();
   }
 
@@ -596,12 +639,14 @@ export function createRecentImageryLayer({
     const list = stripList();
     if (!list.length) return;
     reconcileFocus();
-    thumbnails.requestOrdered(list, _box, {
-      focusIndex: Math.max(0, focusIndexIn(list)),
-      firstVisible: _visible.first,
-      lastVisible: _visible.last,
-      extra: 2,
-    });
+    const wanted = new Set(
+      thumbnails.requestOrdered(list, _box, {
+        focusIndex: Math.max(0, focusIndexIn(list)),
+        firstVisible: _visible.first,
+        lastVisible: _visible.last,
+        extra: 2,
+      }),
+    );
     for (const key of new Set([
       _assigned.a,
       _assigned.b,
@@ -609,8 +654,11 @@ export function createRecentImageryLayer({
       _followKey,
     ])) {
       const candidate = candidateFor(key);
-      if (sourceOn(candidate)) thumbnails.request(candidate, _box, 0);
+      if (!sourceOn(candidate)) continue;
+      thumbnails.request(candidate, _box, 0);
+      wanted.add(candidate.key);
     }
+    thumbnails.retain(wanted);
   }
 
   function resetCatalog() {
@@ -619,6 +667,7 @@ export function createRecentImageryLayer({
     _catalogErrors = [];
     _catalogError = null;
     _auto = null;
+    _handoverDeferred = false;
   }
 
   function cancelSearch() {
@@ -680,7 +729,9 @@ export function createRecentImageryLayer({
   function applyPreview(key) {
     clearPending();
     _followKey = null;
-    if (key === _previewKey) return false;
+    const changed = key !== _previewKey || _handoverDeferred;
+    _handoverDeferred = false;
+    if (!changed) return false;
     if (_auto?.key !== key) _auto = null;
     _previewKey = key;
     if (_enabled) syncRender();
@@ -697,7 +748,7 @@ export function createRecentImageryLayer({
     const key = activeSlotOf(candidate.key) ? null : candidate.key;
     if (key === _previewKey) return;
     if (key && !drapable(candidate)) {
-      _followKey = key;
+      if (availability(candidate) !== 'empty') _followKey = key;
       return;
     }
     _pending = { key };
@@ -706,7 +757,17 @@ export function createRecentImageryLayer({
       const pending = _pending;
       _pending = null;
       if (_destroyed || !pending) return;
-      if (pending.key && !drapable(candidateFor(pending.key))) return;
+      if (pending.key && !drapable(candidateFor(pending.key))) {
+        if (_handoverDeferred) {
+          // Its empty card may already be hidden. Let focus follow the hand-over.
+          _focusKey = pending.key;
+          _followKey = pending.key;
+          syncRender();
+          requestThumbnails();
+          notify();
+        }
+        return;
+      }
       if (applyPreview(pending.key)) notify();
     }, FOCUS_DEBOUNCE_MS);
   }
@@ -817,6 +878,15 @@ export function createRecentImageryLayer({
       const pending = candidateFor(_pending?.key);
       if (!_sources[id] && pending && sourceOf(pending.product) === id)
         clearPending();
+      // A followed pick goes too. An automatic day keeps its follow.
+      const followed = candidateFor(_followKey);
+      if (
+        !_sources[id] &&
+        followed &&
+        sourceOf(followed.product) === id &&
+        _auto?.key !== followed.key
+      )
+        _followKey = null;
     }
     return changed;
   }
@@ -843,22 +913,32 @@ export function createRecentImageryLayer({
         // A probe can take a pinned day off the map or let a followed focus
         // preview; both change more than the cards, so a full notification
         // follows the thumbnail one.
+        const previousFollow = _followKey;
+        const previousPreview = _previewKey;
         const pruned = pruneEmpty();
-        if (pruned) syncRender();
+        if (
+          pruned &&
+          (_followKey !== previousFollow || _previewKey !== previousPreview)
+        ) {
+          // The new automatic day's probe may have been cancelled off-screen.
+          requestThumbnails();
+        }
         const followed =
           Boolean(_followKey) &&
           _followKey === _focusKey &&
           drapable(candidateFor(_followKey)) &&
           applyPreview(_followKey);
-        // A pinned or previewed day that was still being probed drapes now.
         const shown = plan();
         const owned = renderer.getOwned?.() || {};
         const drapesChanged = SLOT_IDS.some(
           (slotId) => (owned[slotId]?.key || null) !== shown[slotId],
         );
-        if (drapesChanged && !pruned && !followed) syncRender();
+        // One render per probe: the key can stay the same while its halves change.
+        // A host found moved changes the divider, so the panel renders in full.
+        const moved = !followed && syncHost();
+        if (!followed) syncRender();
         notify('thumbnail');
-        if (pruned || followed || drapesChanged) notify();
+        if (pruned || followed || drapesChanged || moved) notify();
       });
       syncHost();
       if (_box && !_candidates.length) void runSearch();
@@ -1042,6 +1122,7 @@ export function createRecentImageryLayer({
       if (list[next].key === _focusKey) return;
       _focusKey = list[next].key;
       schedulePreviewFromFocus();
+      resumeHandover();
       requestThumbnails();
       notify();
     },
@@ -1080,6 +1161,7 @@ export function createRecentImageryLayer({
       if (!drapable(candidate)) {
         clearPending();
         _followKey = availability(candidate) === 'empty' ? null : candidate.key;
+        if (resumeHandover()) requestThumbnails();
         notify();
         return false;
       }
@@ -1093,14 +1175,10 @@ export function createRecentImageryLayer({
      * @returns {boolean} Whether a preview was showing or on its way.
      */
     clearPreview() {
-      const had = Boolean(_pending || _followKey || plan().preview);
-      clearPending();
-      _followKey = null;
-      if (_previewKey) {
-        _previewKey = null;
-        _auto = null;
-        if (_enabled) syncRender();
-      }
+      const had = Boolean(
+        _pending || _followKey || _handoverDeferred || plan().preview,
+      );
+      applyPreview(null);
       if (had) notify();
       return had;
     },
@@ -1130,6 +1208,7 @@ export function createRecentImageryLayer({
       // The preview belonged to the old pins; the next focus move brings it back.
       clearPending();
       _followKey = null;
+      _handoverDeferred = false;
       _previewKey = null;
       _auto = null;
       if (_enabled) {
@@ -1423,6 +1502,7 @@ export function createRecentImageryLayer({
         if ('a' in params || 'b' in params) {
           clearPending();
           _followKey = null;
+          _handoverDeferred = false;
           for (const slotId of SLOT_IDS) {
             if (slotId in params)
               _assigned[slotId] = parseCandidateKey(params[slotId])

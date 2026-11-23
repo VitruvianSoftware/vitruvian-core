@@ -21,7 +21,9 @@
  */
 
 /* Read-only badges. Feature CSS supplies meaning through explicit colors;
-   appearance variants change density/shape without interpreting status codes. */
+   appearance variants change density/shape without interpreting status codes.
+   The kit's UiBadge (.ui-badge) wears it. */
+.ui-badge,
 .gev-status-badge {
   display: inline-flex;
   align-items: center;
@@ -60,6 +62,7 @@
 }
 
 /* Explicitly beat the component display rule, including in older browsers. */
+.ui-badge[hidden],
 .gev-status-badge[hidden] {
   display: none;
 }

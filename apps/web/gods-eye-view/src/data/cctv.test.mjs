@@ -107,7 +107,9 @@ import {
 } from '../cctvFocusRequest.js';
 import {
   ACTIVE_CAMERA_COLOR,
+  CAMERA_ICON,
   IDLE_CAMERA_COLOR,
+  IDLE_CAMERA_ICON,
   LIVE_CAMERA_COLOR,
 } from '../layers/cctv/policy.js';
 import { bindFakeDraw } from '../testSupport/fakeDrawPort.mjs';
@@ -375,7 +377,7 @@ test('default COVERAGE refresh materializes the active and visible camera frustu
   }
 });
 
-test('camera icons are violet for video feeds, cyan for stills, amber when active', () => {
+test('camera icons are violet for video feeds, green for stills, amber when active', () => {
   const record = (id, feedType) => ({
     camera: { ...UNCLAMPED_CAMERA, id, feedType, groundElevationM: 0 },
     // Every catalog record is placed as it is made, and drawn there.
@@ -407,6 +409,18 @@ test('camera icons are violet for video feeds, cyan for stills, amber when activ
     assert.deepEqual(color(activeVideo), ACTIVE_CAMERA_COLOR);
     assert.equal(icons.item(activeVideo.camera.id).scale, 1.25);
     assert.equal(icons.item(idleVideo.camera.id).scale, 1);
+    const image = (record) => icons.item(record.camera.id).image;
+    const idleImage = image(idleStill);
+    assert.equal(idleImage, IDLE_CAMERA_ICON);
+    assert.equal(image(activeVideo), CAMERA_ICON);
+    assert.equal(image(idleVideo), CAMERA_ICON);
+    idleStill.camera.feedType = 'hls';
+    refreshCoverageStyles();
+    assert.equal(image(idleStill), CAMERA_ICON);
+    idleStill.camera.feedType = 'image';
+    refreshCoverageStyles();
+    assert.equal(image(idleStill), idleImage);
+
   } finally {
     _setCctvCoverageStateForTest({ enabled: false });
     unbind();
@@ -1042,11 +1056,7 @@ test('CCTV repeated in-world clicks dispatch focus only for the one real activat
   );
   assert.match(
     componentFunctionSource(cctvLayer.init),
-    /_cctvOverlayHost\.hitTest/,
-  );
-  assert.match(
-    componentFunctionSource(cctvLayer.init),
-    /sourceId: CCTV_OVERLAY_SOURCE_ID/,
+    /clickCard\?\.\(event\)/,
   );
   assert.match(
     componentFunctionSource(cctvLayer.init),
@@ -1054,7 +1064,7 @@ test('CCTV repeated in-world clicks dispatch focus only for the one real activat
   );
   assert.match(
     componentFunctionSource(cctvLayer.init),
-    /activateCctvCameraFromWorldClick\(cardId, setActiveCamera\)/,
+    /activateCctvCameraFromWorldClick\(\s*top\.entryId,/,
   );
 });
 
@@ -1179,11 +1189,8 @@ test('CCTV empty-click gate excludes every identified scene object, ADJUST, and 
   );
 
   const initSource = componentFunctionSource(cctvLayer.init);
-  assert.ok(
-    initSource.indexOf('if (pickedId !== null) return') <
-      initSource.indexOf('_cctvOverlayHost.hitTest'),
-    'every identified sibling must win before an overlapping CCTV card hit test',
-  );
+  // The real init-bound click route, including identified-object barriers,
+  // is exercised in layers/cctv/lifecycle.test.mjs.
   assert.match(initSource, /activeCameraId: _activeCameraId/);
   assert.match(initSource, /calibrationMode: _calibrationMode/);
 });

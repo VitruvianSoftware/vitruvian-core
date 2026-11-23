@@ -22,6 +22,7 @@
 
 import { createPolicyHelpers } from './policyHelpers.js';
 import { createIngestion } from './ingestion.js';
+import { createSatelliteIntents } from './satelliteIntents.js';
 import { createOrbitRendering } from './orbitRendering.js';
 import { createOverlays } from './overlays.js';
 import { createSelection } from './selection.js';
@@ -46,6 +47,7 @@ export function createRocketLaunchesLayer({ services, source }) {
   const context = { state, services, parts, source };
   parts.policyHelpers = createPolicyHelpers(context);
   parts.ingestion = createIngestion(context);
+  parts.satelliteIntents = createSatelliteIntents(context);
   parts.orbitRendering = createOrbitRendering(context);
   parts.overlays = createOverlays(context);
   parts.selection = createSelection(context);
@@ -67,6 +69,7 @@ export function createRocketLaunchesLayer({ services, source }) {
     parts.panel.commands,
     {
       subscribePanel: parts.panel.subscribePanel,
+      waitForSatelliteIntents: parts.satelliteIntents.settled,
       subscribeReplayOverlay: parts.overlays.subscribeReplayOverlay,
       satelliteParamsForSpaceMissions:
         parts.policyHelpers.satelliteParamsForSpaceMissions,

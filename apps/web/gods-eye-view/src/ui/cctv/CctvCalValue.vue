@@ -25,6 +25,7 @@ import { storeToRefs } from 'pinia';
 import { computed } from 'vue';
 import { t } from '../../i18n/index.js';
 import { useCctvStore } from '../stores/cctv.js';
+import UiButton from '../kit/UiButton.vue';
 
 // One click-to-type pose chip. The panel's delegated click starts an edit
 // in CctvControls, which publishes it; the chip then holds a number input
@@ -64,7 +65,7 @@ function onBlur(event) {
 </script>
 
 <template>
-  <button
+  <UiButton
     class="cctv-cal-value"
     :data-cal-field="field"
     :disabled="edit ? false : view?.calibration.disabled"
@@ -82,6 +83,6 @@ function onBlur(event) {
         @click.stop /></template
     ><template v-else>{{
       view?.calibration.values[field] ?? `${t(label)} --`
-    }}</template></button
+    }}</template></UiButton
   >
 </template>

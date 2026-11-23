@@ -21,6 +21,7 @@
  */
 
 import {
+  CONTEXT_INDEPENDENT_LAYER_IDS,
   contextRestoreLayerIds,
   contextSnapshotLayerIds,
   mergeContextTransitionErrors,
@@ -46,7 +47,8 @@ export async function _waitForContextLayerSettlement() {
 export function _captureContextSessionSnapshot({ excludeLayerIds = [] } = {}) {
   if (!this._dataManager || this._contextSessionSnapshot) return;
   const params = {};
-  for (const layerId of ['military-awareness', 'satellites']) {
+  // Satellites is not Context's: the mission controller owns its parameters.
+  for (const layerId of ['military-awareness']) {
     const value = this._dataManager.getLayerParams(layerId);
     if (value) params[layerId] = value;
   }
@@ -115,9 +117,11 @@ export async function _restoreContextSession({
       restoreState.enabledLayerIds,
       {
         origin: 'context-restore',
-        excludeLayerIds: settleContactsCoordinator
-          ? [...excludeLayerIds, contactsCoordinatorId]
-          : excludeLayerIds,
+        excludeLayerIds: [
+          ...excludeLayerIds,
+          ...CONTEXT_INDEPENDENT_LAYER_IDS,
+          ...(settleContactsCoordinator ? [contactsCoordinatorId] : []),
+        ],
         notificationToken,
         ...(restoreSignal ? { signal: restoreSignal } : {}),
       },

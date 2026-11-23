@@ -101,6 +101,8 @@ export const useGlobeActionsStore = defineStore('gev-globe-actions', () => {
   }
 
   const { act, owns } = owners;
+  /** Whether a connected owner answers this action at all. */
+  const answers = (name) => Boolean(owners.ownerOf(name));
 
   return {
     clearBusy,
@@ -113,5 +115,6 @@ export const useGlobeActionsStore = defineStore('gev-globe-actions', () => {
     detach,
     act,
     owns,
+    answers,
   };
 });

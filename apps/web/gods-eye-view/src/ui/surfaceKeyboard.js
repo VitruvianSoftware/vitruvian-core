@@ -31,6 +31,10 @@
  * @param {() => boolean} options.isActive Whether this surface may handle input now.
  * @param {() => void} options.onEscape Caller-owned dismissal action.
  * @param {() => HTMLElement} [options.fallbackFocus] Return target if the opener is gone.
+ * @param {boolean} [options.claimOutsideFocus=true] Tab from a control outside
+ *   the surface moves into it. False leaves Tab to the page then, for a
+ *   surface that does not hold the keyboard (focus that has nowhere to be,
+ *   on the page body, still moves in).
  * @returns {{activate: Function, deactivate: Function, destroy: Function}}
  */
 export function createSurfaceKeyboard({
@@ -39,6 +43,7 @@ export function createSurfaceKeyboard({
   isActive,
   onEscape,
   fallbackFocus,
+  claimOutsideFocus = true,
 }) {
   let active = false;
   let destroyed = false;
@@ -76,6 +81,11 @@ export function createSurfaceKeyboard({
     // Allow native scrolling when cycling to an off-screen control in a short
     // surface. Initial focus and return focus use the caller's separate policy.
     if (!root.contains(focused)) {
+      const lost =
+        !focused ||
+        focused === documentRef.body ||
+        focused === documentRef.documentElement;
+      if (!claimOutsideFocus && !lost) return;
       event.preventDefault();
       (event.shiftKey ? last : first).focus();
     } else if (event.shiftKey && focused === first) {
