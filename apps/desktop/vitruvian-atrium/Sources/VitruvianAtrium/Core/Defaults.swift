@@ -1095,6 +1095,7 @@ package enum Defaults {
         migrateClipboardSensitiveTextOptIn(in: defaults)
         migrateSwitcherWindowlessFinder(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
+        recheckBrightnessDDCHDMIConverterPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
         hideKeyboardLightControlOnce(in: defaults)
         // The "all apps" output choice now lasts one session; a saved one
@@ -1218,6 +1219,17 @@ package enum Defaults {
         }
         defaults.set(true, forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
         defaults.set(true, forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+    }
+
+    /// A monitor behind an MCDP29XX HDMI converter was probed at the
+    /// standard DDC address, which the converter accepts and drops, so it was
+    /// cached as write-only and pinned to writes that never arrive. Drop the
+    /// cache once so it is probed at the converter's address; later verdicts
+    /// stand.
+    package static func recheckBrightnessDDCHDMIConverterPaths(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked) else { return }
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked)
         defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
     }
 

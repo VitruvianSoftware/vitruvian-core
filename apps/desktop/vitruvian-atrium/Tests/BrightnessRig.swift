@@ -37,6 +37,17 @@ enum BrightnessRig {
         var maximum: UInt16
         var answersReads = true
         var acceptsWrites = true
+        /// Reached through the MCDP29XX converter behind a built-in HDMI
+        /// port: its DDC service reports that provider class, and the
+        /// converter accepts packets at the standard address and drops them.
+        var behindConverter = false
+        /// The I2C address the monitor's commands reach it on.
+        var listeningAddress: UInt32 {
+            BrightnessSupport.ddcChipAddress(
+                epicProviderClass: behindConverter ? BrightnessSupport.hdmiConverterProviderClass : nil)
+        }
+        /// Commands sent to an address the monitor does not hear.
+        private(set) var misaddressed = 0
         /// The speakers' raw level; nil for a monitor without speakers,
         /// which never answers their controls.
         var speakerLevel: UInt16?
@@ -65,6 +76,11 @@ enum BrightnessRig {
         init(current: UInt16, maximum: UInt16 = 100) {
             self.current = current
             self.maximum = maximum
+        }
+
+        func misaddress() -> Int32 {
+            misaddressed += 1
+            return 0
         }
 
         func forgetWrites() {
@@ -412,11 +428,17 @@ enum BrightnessRig {
                         return BrightnessService.ExternalService(
                             identity: BrightnessSupport.ServiceIdentity(ioDisplayLocation: display.location,
                                                                         ordinal: index + 1),
-                            service: monitor)
+                            service: monitor,
+                            chipAddress: BrightnessSupport.ddcChipAddress(
+                                epicProviderClass: monitor.behindConverter
+                                    ? BrightnessSupport.hdmiConverterProviderClass : nil))
                     }
                 },
-                writeI2C: { [unowned self] service, _, _, bytes, count in
+                writeI2C: { [unowned self] service, chip, _, bytes, count in
                     let monitor = service as! Monitor
+                    // The converter takes a packet for the wrong address and
+                    // passes nothing on.
+                    guard chip == monitor.listeningAddress else { return monitor.misaddress() }
                     let before = monitor.written.count
                     let result = monitor.write(bytes, count: count)
                     if monitor.written.count > before, let value = monitor.written.last {
@@ -424,7 +446,11 @@ enum BrightnessRig {
                     }
                     return result
                 },
-                readI2C: { service, _, _, bytes, count in (service as! Monitor).read(bytes, count: count) },
+                readI2C: { service, chip, _, bytes, count in
+                    let monitor = service as! Monitor
+                    guard chip == monitor.listeningAddress else { _ = monitor.misaddress(); return 1 }
+                    return monitor.read(bytes, count: count)
+                },
                 pause: { [unowned self] _ in self.beforePause?() },
                 uptimeMicroseconds: { [unowned self] in
                     // Read at the start and end of every DDC command.

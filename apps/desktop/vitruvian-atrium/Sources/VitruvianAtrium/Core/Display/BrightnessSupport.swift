@@ -60,6 +60,21 @@ package enum BrightnessSupport {
     package static let chipAddress: UInt32 = 0x37
     /// Sub-address DDC hosts write through.
     package static let dataAddress: UInt32 = 0x51
+    /// Address that reaches the monitor through an MCDP29XX DisplayPort to
+    /// HDMI converter, which sits behind the built-in HDMI port of at least
+    /// the M1 Max MacBook Pro. The converter accepts writes to the standard
+    /// address and passes none of them on, so they report success while the
+    /// monitor never moves. The packets themselves, checksum included, stay
+    /// the same.
+    package static let hdmiConverterChipAddress: UInt32 = 0xB7
+    /// EPIC provider class of a DDC service that sits behind that converter.
+    package static let hdmiConverterProviderClass = "AppleDCPMCDP29XX"
+
+    /// The I2C address to speak DDC on for a service, from the provider class
+    /// its registry entry reports.
+    package static func ddcChipAddress(epicProviderClass: String?) -> UInt32 {
+        epicProviderClass == hdmiConverterProviderClass ? hdmiConverterChipAddress : chipAddress
+    }
     /// VCP code for speaker volume: the same channel the monitor's own
     /// buttons use for the speakers built into it.
     package static let audioVolumeCode: UInt8 = 0x62
@@ -264,6 +279,32 @@ package enum BrightnessSupport {
         guard probesAudio, repliedThisSession,
               attempt >= 1, attempt <= ddcRetryDelays.count else { return nil }
         return ddcRetryDelays[attempt - 1]
+    }
+
+    /// Each online display has its own deadlines, even if its EDID is shared
+    /// with another panel. Opening Settings can probe early without spending
+    /// another scheduled attempt.
+    package struct ServiceDiscoveryRetries {
+        private var deadlines: [UInt32: (attempt: Int, due: TimeInterval)] = [:]
+
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
+
+        package mutating func found(_ display: UInt32) { deadlines[display] = nil }
+
+        package mutating func missing(_ display: UInt32, now: TimeInterval) -> TimeInterval? {
+            if let previous = deadlines[display], now < previous.due { return previous.due - now }
+            let attempt = deadlines[display]?.attempt ?? 0
+            guard ddcRetryDelays.indices.contains(attempt) else { return nil }
+            let delay = ddcRetryDelays[attempt]
+            deadlines[display] = (attempt + 1, now + delay)
+            return delay
+        }
+    }
+
+    package static func keepsSoftwareDimOnDiscovery(previouslySoftware: Bool,
+                                                     dimmed: Bool, pending: Double?) -> Bool {
+        previouslySoftware && (dimmed || pending.map { $0 < 0.999 } == true)
     }
 
     package static let volumeKeyRescanInterval: TimeInterval = 10
@@ -1174,6 +1215,36 @@ package enum BrightnessSupport {
             score += 1
         }
         return score
+    }
+
+    /// Native and inactive external displays also own their DDC services.
+    /// Reserve their matches even though they do not need a brightness probe.
+    package static func brightnessServices(displays: [(index: Int, identity: DisplayIdentity)],
+                                           candidates: Set<Int>, services: [ServiceIdentity]) -> [Int: Int] {
+        let scores = displays.flatMap { display in
+            services.map { service in
+                let serial = display.identity.serialNumber ?? 0
+                let conflict = serial != 0 && service.serialNumber != 0 && serial != service.serialNumber
+                let score = conflict ? 0 : matchScore(service: service, display: display.identity,
+                                                       requireIdentity: displays.count > 1)
+                return (displayIndex: display.index, serviceOrdinal: service.ordinal, score: score)
+            }
+        }
+        let usable = scores.filter { pair in
+            candidates.contains(pair.displayIndex) && pair.score > 0
+                && !scores.contains { other in
+                    other.serviceOrdinal == pair.serviceOrdinal && other.displayIndex != pair.displayIndex
+                        && other.score >= pair.score
+                }
+        }
+        let assigned = assignServices(scores: usable)
+        if assigned.isEmpty, displays.count == 1, services.count == 1, let display = displays.first,
+           candidates.contains(display.index), let service = services.first {
+            if let serial = display.identity.serialNumber, serial != 0, service.serialNumber != 0,
+               serial != service.serialNumber { return [:] }
+            return [display.index: service.ordinal]
+        }
+        return assigned
     }
 
     /// Greedy assignment, best scores first: each display and each service is
