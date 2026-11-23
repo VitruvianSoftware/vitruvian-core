@@ -5,10 +5,29 @@ import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
-/// Tracks the row under the pointer without invalidating the entire `InboxList` body on every row transition.
+/// Tracks the row under the pointer without invalidating the entire `InboxList` body on every row transition,
+/// and suppresses selection when a click targets the row's inline hover button.
 @MainActor
 private final class InboxHoverTracker {
     var roomID: String?
+    private var suppressedSelectionRoomID: String?
+
+    func suppressSelectionForCurrentClick(roomID: String) {
+        suppressedSelectionRoomID = roomID
+        DispatchQueue.main.async { [weak self] in
+            if self?.suppressedSelectionRoomID == roomID {
+                self?.suppressedSelectionRoomID = nil
+            }
+        }
+    }
+
+    func shouldSuppressSelection(for roomID: String) -> Bool {
+        if suppressedSelectionRoomID == roomID {
+            suppressedSelectionRoomID = nil
+            return true
+        }
+        return false
+    }
 }
 
 /// The chat list: the banners, a header (the space's name with Filter and Display Options, or while selecting, how
@@ -182,6 +201,7 @@ struct InboxList: View {
                                     hoverTracker.roomID = nil
                                 }
                             },
+                            onWillHoverAct: { hoverTracker.suppressSelectionForCurrentClick(roomID: row.id) },
                             hoverAct: { hoverAct(row, style.hoverAction) },
                             accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
                             decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
@@ -238,6 +258,7 @@ struct InboxList: View {
             } else if click, flags.contains(.shift), let id {
                 inbox.extendSelection(to: id)
             } else if let id {
+                guard !hoverTracker.shouldSuppressSelection(for: id) else { return }
                 inbox.select(id)
             }
         })
@@ -433,15 +454,45 @@ struct InboxHeaderButtons: View {
 
     @ViewBuilder
     private func button(_ title: String, symbol: String, keys: String, action: @escaping () -> Void) -> some View {
-        let tip = "\(title) (\(keys))"
         if inToolbar {
             Button(action: action) { Label(title, systemImage: symbol).labelStyle(.iconOnly) }
-                .help(tip)
+                .courierTooltip(title, shortcut: keys, edge: .bottom)
         } else {
-            Button(action: action) { Label(title, systemImage: symbol).labelStyle(.iconOnly) }
-                .buttonStyle(.borderless)
-                .help(tip)
+            InboxHeaderIconButton(title: title, symbol: symbol, keys: keys, action: action)
         }
+    }
+}
+
+private struct InboxHeaderIconButton: View {
+    let title: String
+    let symbol: String
+    let keys: String
+    let action: () -> Void
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .labelStyle(.iconOnly)
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: isHovering
+                        )
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .courierTooltip(title, shortcut: keys, edge: .bottom)
     }
 }
 

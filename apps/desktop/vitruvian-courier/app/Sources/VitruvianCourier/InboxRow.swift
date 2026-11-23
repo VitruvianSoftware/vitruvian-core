@@ -67,6 +67,8 @@ struct InboxRowView<HoverMenu: View>: View {
     var isHovered: Bool? = nil
     /// Reports pointer enter/exit to the parent list without forcing a full-list `@State` invalidation.
     var onHoverChange: ((Bool) -> Void)? = nil
+    /// Called on mouseDown of the row hover button so the list suppresses selecting/opening the chat.
+    var onWillHoverAct: (() -> Void)? = nil
     /// The hover button, when the setting is Archive or Mark Read/Unread.
     let hoverAct: () -> Void
     let accept: () -> Void
@@ -74,11 +76,17 @@ struct InboxRowView<HoverMenu: View>: View {
     /// The hover button's menu, when the setting is Menu.
     @ViewBuilder let hoverMenu: () -> HoverMenu
     @State private var localHovered = false
+    @State private var isHoverButtonHovered = false
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.themeAccentColor) private var themeAccent
     @Environment(\.redactNamesAndPictures) private var redactsNamesAndPictures
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     @Environment(\.courierZoomMultiplier) private var zoom
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     private var effectiveHovered: Bool {
         isHovered ?? localHovered
@@ -87,7 +95,19 @@ struct InboxRowView<HoverMenu: View>: View {
     /// The button (Settings ▸ Inbox ▸ "Button on a chat you point at") is there while the pointer is on the row,
     /// except while choosing chats.
     private var showsHoverButton: Bool {
-        effectiveHovered && !isSelecting && style.hoverAction != .nothing
+        InboxRowHoverMotion.showsHoverAction(
+            isHovered: effectiveHovered,
+            isSelecting: isSelecting,
+            hoverAction: style.hoverAction
+        )
+    }
+
+    private var showsIndicators: Bool {
+        InboxRowHoverMotion.showsIndicators(
+            isHovered: effectiveHovered,
+            isSelecting: isSelecting,
+            hoverAction: style.hoverAction
+        )
     }
 
     /// The chat's name, preview, and time font sizes, scaled together so the name is always larger than the preview.
@@ -113,81 +133,142 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: style.compact ? 8 : 10) {
-            if isSelecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? themeAccent : Color.secondary)
-                    .accessibilityLabel(isSelected ? String(localized: "Selected") : String(localized: "Not selected"))
-            }
-            avatar
-            VStack(alignment: .leading, spacing: style.compact ? 1 : 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(displayTitle)
-                        .font(.system(size: pointSizes.title, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        // The name keeps its room first; the account tag gives way before it.
-                        .layoutPriority(1)
-                    if let tag = row.accountTag { AccountTag(name: tag) }
-                    Spacer(minLength: 4)
-                    // The time keeps its place while the pointer is on the row and the hover button is drawn over it,
-                    // so the button takes the time's slot and neither the name nor the row's height moves.
-                    HStack(spacing: 3) {
-                        Text(RelativeTime.text(forMillis: row.lastTS, now: now, timeFormat: style.timeFormat))
-                            .font(.system(size: pointSizes.time))
-                            .foregroundStyle(.tertiary)
-                        if let tick = row.previewTick { PreviewTickMark(tick: tick) }
+        let rowSpacing: CGFloat = style.compact ? 8 : 10
+        let selectionTiming = InboxSelectionMotion.timing(entering: isSelecting, reduceMotion: reduceMotionEnabled)
+        let hoverAnimation: Animation = .easeInOut(duration: InboxRowHoverMotion.duration)
+        let hoverScale = max(
+            InboxRowHoverMotion.scale(isVisible: showsHoverButton, reduceMotion: reduceMotionEnabled),
+            0.001
+        )
+        let hoverOpacity = InboxRowHoverMotion.opacity(isVisible: showsHoverButton)
+        let minIndicatorHeight = round(pointSizes.preview * 1.25)
+
+        HStack(spacing: 0) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(isSelected ? themeAccent : Color.secondary)
+                .frame(width: InboxSelectionMotion.checkboxSlotWidth, alignment: .leading)
+                .padding(.trailing, rowSpacing)
+                .opacity(InboxSelectionMotion.checkboxOpacity(isSelecting: isSelecting))
+                .animation(
+                    .easeInOut(duration: selectionTiming.opacityDuration).delay(selectionTiming.opacityDelay),
+                    value: isSelecting
+                )
+                .frame(
+                    width: InboxSelectionMotion.checkboxWidth(isSelecting: isSelecting, rowSpacing: rowSpacing),
+                    alignment: .leading
+                )
+                .clipped()
+                .animation(
+                    selectionTiming.animatesWidth
+                        ? .easeInOut(duration: selectionTiming.widthDuration).delay(selectionTiming.widthDelay)
+                        : nil,
+                    value: isSelecting
+                )
+                .accessibilityHidden(!isSelecting)
+                .accessibilityLabel(
+                    isSelecting
+                        ? (isSelected ? String(localized: "Selected") : String(localized: "Not selected"))
+                        : ""
+                )
+
+            HStack(spacing: rowSpacing) {
+                avatar
+                VStack(alignment: .leading, spacing: style.compact ? 1 : 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(displayTitle)
+                            .font(.system(size: pointSizes.title, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            // The name keeps its room first; the account tag gives way before it.
+                            .layoutPriority(1)
+                        if let tag = row.accountTag { AccountTag(name: tag) }
+                        Spacer(minLength: 4)
+                        HStack(spacing: 3) {
+                            Text(RelativeTime.text(forMillis: row.lastTS, now: now, timeFormat: style.timeFormat))
+                                .font(.system(size: pointSizes.time))
+                                .foregroundStyle(.tertiary)
+                            if let tick = row.previewTick { PreviewTickMark(tick: tick) }
+                        }
+                        .fixedSize()
+                        .frame(minWidth: 24, alignment: .trailing)
                     }
-                    .fixedSize()
-                    .frame(minWidth: 24, alignment: .trailing)
-                    .opacity(showsHoverButton ? 0 : 1)
-                    .overlay(alignment: .trailing) {
-                        if showsHoverButton { hoverButton }
-                    }
-                }
-                HStack(alignment: .top, spacing: 6) {
-                    secondLine
-                        .font(.system(size: pointSizes.preview))
-                        .foregroundStyle(.secondary)
-                        // Two lines, as Beeper's rows; compact rows stay at one.
-                        .lineLimit(style.compact ? 1 : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(alignment: .center, spacing: 5) {
-                        marks
-                    }
-                    .frame(minHeight: round(pointSizes.preview * 1.25))
-                }
-                if row.request {
-                    HStack(spacing: 6) {
-                        Button(String(localized: "Accept"), action: accept)
-                            .buttonStyle(.borderedProminent)
-                        Button(String(localized: "Decline"), action: decline)
-                            .buttonStyle(.borderless)
+                    HStack(alignment: .top, spacing: 6) {
+                        secondLine
+                            .font(.system(size: pointSizes.preview))
                             .foregroundStyle(.secondary)
-                            .help(String(localized: "Hides the chat on this Mac. The person isn’t told."))
+                            // Two lines, as Beeper's rows; compact rows stay at one.
+                            .lineLimit(style.compact ? 1 : 2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if style.hoverAction != .nothing || !isSelecting {
+                            InboxRowCollapsingSlot(reveal: isSelecting ? 0 : 1) {
+                                ZStack(alignment: .trailing) {
+                                    HStack(alignment: .center, spacing: 5) {
+                                        marks
+                                    }
+                                    .opacity(showsIndicators ? 1 : 0)
+                                    .animation(hoverAnimation, value: showsHoverButton)
+                                    .accessibilityHidden(!showsIndicators)
+
+                                    if style.hoverAction != .nothing {
+                                        hoverButton
+                                            .scaleEffect(hoverScale, anchor: .center)
+                                            .opacity(hoverOpacity)
+                                            .animation(hoverAnimation, value: showsHoverButton)
+                                            .allowsHitTesting(showsHoverButton)
+                                            .accessibilityHidden(!showsHoverButton)
+                                    }
+                                }
+                                .frame(minWidth: showsHoverButton ? 24 : 0, minHeight: minIndicatorHeight, alignment: .trailing)
+                                .animation(hoverAnimation, value: showsHoverButton)
+                            }
+                            .opacity(isSelecting ? 0 : 1)
+                            .animation(
+                                .easeInOut(duration: selectionTiming.opacityDuration).delay(selectionTiming.opacityDelay),
+                                value: isSelecting
+                            )
+                            .animation(
+                                selectionTiming.animatesWidth
+                                    ? .easeInOut(duration: selectionTiming.widthDuration).delay(selectionTiming.widthDelay)
+                                    : nil,
+                                value: isSelecting
+                            )
+                            .clipped()
+                            .accessibilityHidden(isSelecting)
+                        }
                     }
-                    .controlSize(.small)
-                    .padding(.top, 2)
+                    if row.request {
+                        HStack(spacing: 6) {
+                            Button(String(localized: "Accept"), action: accept)
+                                .buttonStyle(.borderedProminent)
+                            Button(String(localized: "Decline"), action: decline)
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(.secondary)
+                                .help(String(localized: "Hides the chat on this Mac. The person isn’t told."))
+                        }
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                    }
+                    if let muted = row.mutedLine, !style.compact {
+                        Label(muted, systemImage: "bell.slash")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .labelStyle(.titleAndIcon)
+                            .lineLimit(1)
+                    }
                 }
-                if let muted = row.mutedLine, !style.compact {
-                    Label(muted, systemImage: "bell.slash")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .labelStyle(.titleAndIcon)
-                        .lineLimit(1)
+                if style.showPreviews, !row.previewMediaPath.isEmpty, row.typing.isEmpty, row.draft.isEmpty {
+                    PreviewThumbnail(path: row.previewMediaPath)
+                        .frame(width: style.compact ? 26 : 36, height: style.compact ? 26 : 36)
                 }
-            }
-            if style.showPreviews, !row.previewMediaPath.isEmpty, row.typing.isEmpty, row.draft.isEmpty {
-                PreviewThumbnail(path: row.previewMediaPath)
-                    .frame(width: style.compact ? 26 : 36, height: style.compact ? 26 : 36)
             }
         }
         .padding(.vertical, style.compact ? 1 : 4)
         .contentShape(Rectangle())
         .onHover { inside in
             localHovered = inside
+            if !inside { isHoverButtonHovered = false }
             onHoverChange?(inside)
         }
         .accessibilityElement(children: .combine)
@@ -314,33 +395,217 @@ struct InboxRowView<HoverMenu: View>: View {
     private var hoverButton: some View {
         switch style.hoverAction {
         case .archive:
-            Button(action: hoverAct) {
-                Image(systemName: row.archived ? "tray.and.arrow.up" : "archivebox")
-            }
-            .buttonStyle(.borderless)
-            .disabled(row.pinned && !row.archived)
-            .help(row.archived ? String(localized: "Unarchive")
-                : row.pinned ? String(localized: "Unpin a chat to archive it") : String(localized: "Archive"))
-            // A tooltip is not a label: without this, VoiceOver reads the symbol's name.
-            .accessibilityLabel(row.archived ? String(localized: "Unarchive") : String(localized: "Archive"))
+            let enabled = InboxRowHoverMotion.isHoverActionEnabled(
+                isPinned: row.pinned,
+                isArchived: row.archived,
+                hoverAction: .archive
+            )
+            let label = row.archived ? String(localized: "Unarchive") : String(localized: "Archive")
+            let tip = row.archived ? String(localized: "Unarchive")
+                : row.pinned ? String(localized: "Unpin a chat to archive it") : String(localized: "Archive")
+            let symbol = InboxRowHoverMotion.hoverActionSymbol(
+                isArchived: row.archived,
+                isUnread: row.isUnread,
+                hoverAction: .archive
+            ) ?? "archivebox"
+            hoverActionBadge(
+                symbol: symbol,
+                label: label,
+                tooltip: tip,
+                isEnabled: enabled
+            )
         case .toggleRead:
-            Button(action: hoverAct) {
-                Image(systemName: row.isUnread ? "envelope.open" : "envelope.badge")
-            }
-            .buttonStyle(.borderless)
-            .help(row.isUnread ? String(localized: "Mark as Read") : String(localized: "Mark as Unread"))
-            .accessibilityLabel(row.isUnread ? String(localized: "Mark as Read") : String(localized: "Mark as Unread"))
+            let label = row.isUnread ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")
+            let symbol = InboxRowHoverMotion.hoverActionSymbol(
+                isArchived: row.archived,
+                isUnread: row.isUnread,
+                hoverAction: .toggleRead
+            ) ?? "envelope.badge"
+            hoverActionBadge(
+                symbol: symbol,
+                label: label,
+                tooltip: label,
+                isEnabled: true
+            )
         case .menu:
-            Menu(content: hoverMenu) {
+            if showsHoverButton {
+                Menu(content: hoverMenu) {
+                    Image(systemName: "ellipsis.circle")
+                        .frame(width: 22, height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(isHoverButtonHovered ? Color.primary.opacity(0.08) : .clear)
+                                .animation(
+                                    reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                                    value: isHoverButtonHovered
+                                )
+                        )
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .onHover { isHoverButtonHovered = $0 }
+                .help(String(localized: "More"))
+                .accessibilityLabel(String(localized: "More"))
+            } else {
                 Image(systemName: "ellipsis.circle")
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(String(localized: "More"))
-            .accessibilityLabel(String(localized: "More"))
         default:
             EmptyView()
+        }
+    }
+
+    private func hoverActionBadge(
+        symbol: String,
+        label: String,
+        tooltip: String,
+        isEnabled: Bool
+    ) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 13))
+            .foregroundStyle(isEnabled ? .secondary : .quaternary)
+            .frame(width: 22, height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isHoverButtonHovered && isEnabled ? Color.primary.opacity(0.08) : .clear)
+                    .animation(
+                        reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                        value: isHoverButtonHovered
+                    )
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay {
+                if showsHoverButton {
+                    RowHoverClickCatcher(
+                        isEnabled: isEnabled,
+                        label: label,
+                        tooltip: tooltip,
+                        accessibilityID: "inbox.row.hoverAction.\(row.id)",
+                        onHoverChange: { isHoverButtonHovered = $0 },
+                        onWillAct: { onWillHoverAct?() },
+                        onAct: hoverAct
+                    )
+                }
+            }
+            .accessibilityLabel(label)
+    }
+}
+
+/// Collapses the right-side indicators/hover slot cleanly to zero width when entering multi-select.
+private struct InboxRowCollapsingSlot: Layout {
+    var reveal: CGFloat
+
+    var animatableData: CGFloat {
+        get { reveal }
+        set { reveal = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let natural = subview.sizeThatFits(.unspecified)
+        let clamped = min(max(reveal, 0), 1)
+        return CGSize(width: natural.width * clamped, height: natural.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        guard let subview = subviews.first else { return }
+        let natural = subview.sizeThatFits(.unspecified)
+        subview.place(
+            at: CGPoint(x: bounds.maxX, y: bounds.midY),
+            anchor: .trailing,
+            proposal: ProposedViewSize(natural)
+        )
+    }
+}
+
+/// AppKit mouse catcher for the row's hover action button so clicking it archives/toggles without forwarding `mouseDown`
+/// to the enclosing `NSTableView` (never opening or selecting the chat).
+private struct RowHoverClickCatcher: NSViewRepresentable {
+    let isEnabled: Bool
+    let label: String
+    let tooltip: String
+    let accessibilityID: String
+    let onHoverChange: (Bool) -> Void
+    let onWillAct: () -> Void
+    let onAct: () -> Void
+
+    func makeNSView(context _: Context) -> ClickCatcherNSView {
+        ClickCatcherNSView()
+    }
+
+    func updateNSView(_ view: ClickCatcherNSView, context _: Context) {
+        view.isEnabled = isEnabled
+        view.onHoverChange = onHoverChange
+        view.onWillAct = onWillAct
+        view.onAct = onAct
+        view.toolTip = tooltip
+        view.setAccessibilityElement(true)
+        view.setAccessibilityRole(.button)
+        view.setAccessibilityLabel(label)
+        view.setAccessibilityEnabled(isEnabled)
+        view.setAccessibilityIdentifier(accessibilityID)
+    }
+
+    final class ClickCatcherNSView: NSView {
+        var isEnabled = true
+        var onHoverChange: ((Bool) -> Void)?
+        var onWillAct: (() -> Void)?
+        var onAct: (() -> Void)?
+        private var isTrackingMouseDown = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard !isHidden, !isHiddenOrHasHiddenAncestor else { return nil }
+            let local = convert(point, from: superview)
+            return bounds.contains(local) ? self : nil
+        }
+
+        override func acceptsFirstMouse(for _: NSEvent?) -> Bool { true }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            for area in trackingAreas { removeTrackingArea(area) }
+            guard !bounds.isEmpty else { return }
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: bounds,
+                    options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                    owner: self,
+                    userInfo: nil
+                )
+            )
+        }
+
+        override func mouseEntered(with _: NSEvent) {
+            onHoverChange?(true)
+        }
+
+        override func mouseExited(with _: NSEvent) {
+            onHoverChange?(false)
+        }
+
+        override func mouseDown(with _: NSEvent) {
+            guard isEnabled else { return }
+            isTrackingMouseDown = true
+            onWillAct?()
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            guard isTrackingMouseDown else { return }
+            isTrackingMouseDown = false
+            guard isEnabled else { return }
+            let point = convert(event.locationInWindow, from: nil)
+            if bounds.contains(point) {
+                onAct?()
+            }
+        }
+
+        override func accessibilityPerformPress() -> Bool {
+            guard isEnabled else { return false }
+            onWillAct?()
+            onAct?()
+            return true
         }
     }
 }
