@@ -21,7 +21,7 @@
 //! emitters/python.py: the Python kit's generated part,
 //! kits/python/vitruvian_tool_kit/generated/.
 
-use crate::json::{Value, ValueExt};
+use crate::json::Value;
 use crate::model::{camel_to_snake, Definition, Enum, Kind, Method, Model, Type, LICENCE};
 use crate::pyerr::{PyErr, PyResult};
 use crate::pystr;

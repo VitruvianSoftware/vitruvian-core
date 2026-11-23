@@ -20,6 +20,12 @@ overwrite it.
 2. **Open a pull request** to vitruvian-core, changing files under
    `packages/vitruvian-sdk`. Link the issue.
 
+In the `vitruvian-sdk` mirror, `vendor/vitruvian-pycompat/` is generated from
+`packages/pycompat/vitruvian-pycompat` in `vitruvian-core` on every Copybara
+export (with `verification/cargo/conformance/Cargo.toml` rewritten to point
+there) and must not be edited in the mirror — edit
+`packages/pycompat/vitruvian-pycompat` in `vitruvian-core` instead.
+
 Everything in this folder is MIT licensed, and a contribution is too. Vitruvian
 Atrium, which links the protocol's Swift types, is GPL-3.0-or-later:
 nothing from the app's folder may be copied here.

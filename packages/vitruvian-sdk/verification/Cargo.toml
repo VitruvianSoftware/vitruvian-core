@@ -22,7 +22,7 @@
 # vitruvian-sdk mirror's CI, and a person who clones it. In vitruvian-core,
 # the package's BUILD builds the same sources and this file is not read.
 # Standard library only: no crate comes from crates.io, so Cargo.lock names
-# these three packages and nothing else.
+# these four packages (this workspace plus `vitruvian-pycompat`) and nothing else.
 #
 # From the package's folder (the mirror's root):
 #

@@ -42,3 +42,6 @@ path = "../../../conformance/src/lib.rs"
 [[bin]]
 name = "conformance"
 path = "../../../conformance/src/main.rs"
+
+[dependencies]
+vitruvian-pycompat = { path = "../../../../pycompat/vitruvian-pycompat" }

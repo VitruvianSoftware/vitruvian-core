@@ -628,6 +628,17 @@ COMPONENTS = [
         "mode": "SQUASH",
         "standalone_only": [],
         "export_only": True,
+        # The shared Python-compatible JSON crate lives outside the subtree, so
+        # the mirror gets its own copy at vendor/vitruvian-pycompat/ and the
+        # conformance crate's Cargo.toml path to it is rewritten to match.
+        "extra_exports": {"packages/pycompat/vitruvian-pycompat": "vendor/vitruvian-pycompat"},
+        "export_transformations": [
+            core.replace(
+                before = 'path = "../../../../pycompat/vitruvian-pycompat"',
+                after = 'path = "../../../vendor/vitruvian-pycompat"',
+                paths = glob(["verification/cargo/conformance/Cargo.toml"]),
+            ),
+        ],
     },
     # vitruvian-tool-github: EXPORT-ONLY mirror of apps/extensions/atrium/vitruvian-github,
     # Vitruvian GitHub for Vitruvian Atrium. The folder becomes the mirror's

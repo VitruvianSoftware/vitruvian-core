@@ -22,7 +22,7 @@
 //! kits/typescript/src/generated/.
 
 use super::python::{groups, title_opt};
-use crate::json::{Value, ValueExt};
+use crate::json::Value;
 use crate::model::{camel_to_snake, Definition, Enum, Kind, Method, Model, Type, LICENCE};
 use crate::pyerr::PyResult;
 use crate::pystr;

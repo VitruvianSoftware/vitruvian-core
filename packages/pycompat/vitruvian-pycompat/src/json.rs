@@ -48,8 +48,89 @@ impl Value {
         }
     }
 
+    /// `key in d` on an object; `false` for a missing key or a non-object.
+    pub fn has(&self, key: &str) -> bool {
+        self.get(key).is_some()
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn as_arr(&self) -> Option<&[Value]> {
+        match self {
+            Value::Arr(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    pub fn as_obj(&self) -> Option<&[(String, Value)]> {
+        match self {
+            Value::Obj(items) => Some(items),
+            _ => None,
+        }
+    }
+
     pub fn is_obj(&self) -> bool {
         matches!(self, Value::Obj(_))
+    }
+
+    pub fn is_dict(&self) -> bool {
+        matches!(self, Value::Obj(_))
+    }
+
+    pub fn is_list(&self) -> bool {
+        matches!(self, Value::Arr(_))
+    }
+
+    pub fn is_str(&self) -> bool {
+        matches!(self, Value::Str(_))
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Value::Bool(_))
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self, Value::Int(_))
+    }
+
+    /// `isinstance(value, (int, float)) and not isinstance(value, bool)`
+    pub fn is_number(&self) -> bool {
+        matches!(self, Value::Int(_) | Value::Float(_))
+    }
+
+    /// `is_number(value) and float(value).is_integer()`
+    pub fn is_whole(&self) -> bool {
+        match self {
+            Value::Int(_) => true,
+            Value::Float(f) => f.is_finite() && f.fract() == 0.0,
+            _ => false,
+        }
+    }
+
+    /// `value >= 0` for a number (`Int` or `Float`).
+    pub fn is_non_negative(&self) -> bool {
+        match self {
+            Value::Int(s) => !normalize_int(s).starts_with('-'),
+            Value::Float(f) => !f.is_nan() && *f >= 0.0,
+            _ => false,
+        }
+    }
+
+    /// `json.dumps(self, separators=(",", ":"))` (with `ensure_ascii=True`).
+    pub fn dumps_compact(&self) -> String {
+        dumps_with(self, &DumpOptions::compact())
     }
 
     /// Python truthiness.
@@ -120,7 +201,7 @@ impl Value {
     }
 }
 
-fn normalize_int(s: &str) -> String {
+pub fn normalize_int(s: &str) -> String {
     let (neg, digits) = match s.strip_prefix('-') {
         Some(d) => (true, d),
         None => (false, s),
@@ -1368,5 +1449,72 @@ mod tests {
 
         let v = loads(r#"{"b": [1, 2.0, "é"], "a": null}"#).unwrap();
         assert_eq!(dumps(&v), r#"{"b": [1, 2.0, "\u00e9"], "a": null}"#);
+    }
+
+    #[test]
+    fn value_helpers_and_dumps_compact() {
+        let obj = loads(r#"{"s": "hi", "b": true, "i": -0, "f": 2.0, "a": [1, 2]}"#).unwrap();
+        assert!(obj.has("s"));
+        assert!(!obj.has("missing"));
+        assert!(!Value::Null.has("s"));
+        assert!(obj.is_dict());
+        assert!(!obj.is_list());
+        assert_eq!(obj.as_obj().map(|items| items.len()), Some(5));
+        assert_eq!(Value::Null.as_obj(), None);
+
+        let s = obj.get("s").unwrap();
+        assert!(s.is_str());
+        assert_eq!(s.as_str(), Some("hi"));
+        assert_eq!(obj.get("i").unwrap().as_str(), None);
+
+        let b = obj.get("b").unwrap();
+        assert!(b.is_bool());
+        assert_eq!(b.as_bool(), Some(true));
+        assert!(!b.is_number());
+        assert!(!b.is_whole());
+        assert!(!b.is_non_negative());
+
+        let i = obj.get("i").unwrap();
+        assert!(i.is_int());
+        assert!(i.is_number());
+        assert!(i.is_whole());
+        assert!(i.is_non_negative());
+        assert!(!Value::Int("-1".into()).is_non_negative());
+        assert!(!Value::Int("-001".into()).is_non_negative());
+        assert!(Value::Int("-000".into()).is_non_negative());
+
+        let f = obj.get("f").unwrap();
+        assert!(f.is_number());
+        assert!(f.is_whole());
+        assert!(f.is_non_negative());
+        assert!(!Value::Float(2.5).is_whole());
+        assert!(Value::Float(-0.0).is_non_negative());
+        assert!(!Value::Float(-0.1).is_non_negative());
+        assert!(!Value::Float(f64::NAN).is_whole());
+        assert!(!Value::Float(f64::NAN).is_non_negative());
+        assert!(!Value::Float(f64::INFINITY).is_whole());
+        assert!(Value::Float(f64::INFINITY).is_non_negative());
+        assert!(!Value::Float(f64::NEG_INFINITY).is_non_negative());
+
+        let a = obj.get("a").unwrap();
+        assert!(a.is_list());
+        assert_eq!(a.as_arr().map(|items| items.len()), Some(2));
+        assert_eq!(s.as_arr(), None);
+
+        assert_eq!(normalize_int("-000"), "0");
+        assert_eq!(normalize_int("-0042"), "-42");
+        assert_eq!(normalize_int("0042"), "42");
+
+        let rich = Value::Obj(vec![
+            ("txt".into(), Value::Str("é😀\u{007f}\x08\x0c".into())),
+            ("nan".into(), Value::Float(f64::NAN)),
+            ("inf".into(), Value::Float(f64::INFINITY)),
+            ("ninf".into(), Value::Float(f64::NEG_INFINITY)),
+            ("neg_zero".into(), Value::Int("-0".into())),
+        ]);
+        assert_eq!(
+            rich.dumps_compact(),
+            r#"{"txt":"\u00e9\ud83d\ude00\u007f\b\f","nan":NaN,"inf":Infinity,"ninf":-Infinity,"neg_zero":0}"#
+        );
     }
 }

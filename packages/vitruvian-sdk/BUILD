@@ -271,8 +271,8 @@ rust_test(
 
 # bazel run //packages/vitruvian-sdk:conformance -- <a tool's folder>
 #
-# Plays the app's side of the protocol to any tool (std only, zero external
-# crates).
+# Plays the app's side of the protocol to any tool (std + vitruvian_pycompat,
+# zero external crates).
 rust_library(
     name = "conformance_lib",
     srcs = glob(
@@ -284,6 +284,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
+    deps = ["//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 rust_binary(

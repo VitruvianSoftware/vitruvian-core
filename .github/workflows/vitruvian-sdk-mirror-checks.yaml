@@ -40,6 +40,7 @@ on:
   pull_request:
     paths:
       - 'packages/vitruvian-sdk/**'
+      - 'packages/pycompat/vitruvian-pycompat/**'
       - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   workflow_dispatch:
 

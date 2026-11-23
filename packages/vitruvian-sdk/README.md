@@ -97,7 +97,10 @@ not work.
 
 This folder is published, on every change, to
 [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk),
-with a tagged release for each version.
+with a tagged release for each version. In the public `vitruvian-sdk` mirror,
+`vendor/vitruvian-pycompat/` is exported automatically from
+`packages/pycompat/vitruvian-pycompat` on every change and must not be edited
+directly in the mirror.
 
 - **The command, with Homebrew**, which builds it from source on your Mac.
   Trust our tap once (Homebrew 7 refuses to load anything from an untrusted

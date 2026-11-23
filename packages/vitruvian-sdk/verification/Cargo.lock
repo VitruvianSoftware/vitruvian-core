@@ -3,8 +3,15 @@
 version = 3
 
 [[package]]
+name = "vitruvian-pycompat"
+version = "0.0.0"
+
+[[package]]
 name = "vitruvian-sdk-conformance"
 version = "0.0.0"
+dependencies = [
+ "vitruvian-pycompat",
+]
 
 [[package]]
 name = "vitruvian-sdk-sync-templates"
