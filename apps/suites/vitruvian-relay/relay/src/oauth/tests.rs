@@ -849,7 +849,7 @@ async fn authorize_needs_code_response_type_and_a_reasonable_state() {
         .unwrap()
         .starts_with(&format!("{callback}?error=unsupported_response_type")));
     // A missing or oversized state is refused and not echoed.
-    for state in [None, Some(""), Some(&*"s".repeat(1025))] {
+    for state in [None, Some(""), Some(&*"s".repeat(8 * 1024 + 1))] {
         let r = h
             .get(&authorize_path(&with(
                 good_query(&h, "dev-1"),
@@ -861,7 +861,7 @@ async fn authorize_needs_code_response_type_and_a_reasonable_state() {
         assert_eq!(to, format!("{callback}?error=invalid_request"), "{state:?}");
     }
     // The longest allowed state starts a sign-in.
-    let long = "s".repeat(1024);
+    let long = "s".repeat(8 * 1024);
     let r = h
         .get(&authorize_path(&with(
             good_query(&h, "dev-1"),
