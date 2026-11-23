@@ -18,6 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# One package, two Rust crates (vitruvian_gocompat and vitruvian_gojson), so
+# one catalog file with one entity per crate, matching packages/pycompat.
+
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
@@ -33,6 +36,25 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     vitruvian.dev/bazel-target: //packages/gocompat:vitruvian_gocompat
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vitruvian-gojson
+  description: Serde-backed Go encoding/json serializer, scanner, iterative AST parser, and struct decoder
+  tags:
+    - rust
+    - json
+    - go-compat
+    - serde
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/source-location: url:https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/gocompat/gojson
+    vitruvian.dev/bazel-target: //packages/gocompat/gojson:vitruvian_gojson
 spec:
   type: library
   lifecycle: production
