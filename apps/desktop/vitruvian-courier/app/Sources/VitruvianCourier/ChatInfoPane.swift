@@ -1632,6 +1632,7 @@ private struct ChatInfoQuickActionButton: View {
     let title: String
     let action: () -> Void
     @Environment(\.chatInfoQuickActionProbe) private var quickActionProbe
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isHovered = false
 
     var body: some View {
@@ -1652,6 +1653,12 @@ private struct ChatInfoQuickActionButton: View {
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                    .animation(
+                        (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                            ? nil
+                            : .easeInOut(duration: HoverFillMotion.duration),
+                        value: isHovered
+                    )
             )
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }

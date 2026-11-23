@@ -1623,6 +1623,7 @@ private struct ActionBarButton<Label: View>: View {
     let action: () -> Void
     let label: Label
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     init(_ title: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
         self.title = title
@@ -1630,16 +1631,27 @@ private struct ActionBarButton<Label: View>: View {
         self.label = label()
     }
 
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     var body: some View {
         Button(action: action) {
             label
                 .frame(minWidth: 22, minHeight: 22)
-                .background(RoundedRectangle(cornerRadius: 5).fill(isHovering ? Color.primary.opacity(0.08) : .clear))
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: isHovering
+                        )
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .help(title)
+        .courierTooltip(title, edge: .top)
         .accessibilityLabel(title)
         .clickTargetProbe("bar/\(title)")
     }

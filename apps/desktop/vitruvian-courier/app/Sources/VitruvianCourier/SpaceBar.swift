@@ -271,12 +271,24 @@ private struct SpaceIcon: View {
     let select: () -> Void
     @State private var hovering = false
     @Environment(\.themeAccentColor) private var themeAccent
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         Button(action: select) {
             mark
                 .frame(width: 40, height: 40)
-                .background(RoundedRectangle(cornerRadius: 10).fill(background))
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(background)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: hovering
+                        )
+                )
                 .overlay {
                     // The open space: the same accent wash and thin edge behind every kind of icon.
                     if isShown {
@@ -307,7 +319,7 @@ private struct SpaceIcon: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(tooltip)
+        .courierTooltip(SpaceLook.title(space), shortcut: shortcut, detail: tooltipDetail, edge: .trailing)
         .accessibilityLabel(SpaceLook.title(space))
         .accessibilityValue(tooltip)
         .accessibilityAddTraits(isShown ? [.isSelected] : [])
@@ -324,6 +336,10 @@ private struct SpaceIcon: View {
             // An app-icon tile; no tooltip of its own, so the button's (name and shortcut) is the one shown.
             NetworkBadge(network: space.network, name: SpaceLook.title(space), size: 26, showsTooltip: false)
                 .opacity(isShown || hovering ? 1 : 0.88)
+                .animation(
+                    reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                    value: hovering
+                )
                 .accessibilityHidden(true)
         case .label:
             LabelIcon(color: space.color, icon: space.icon, size: 28)
@@ -357,15 +373,23 @@ private struct SpaceIcon: View {
         }
     }
 
-    /// "Inbox  ⌃1 · 12 chats", and for an account that is reconnecting, so.
-    private var tooltip: String {
-        let name = shortcut.map { "\(SpaceLook.title(space))  \($0)" } ?? SpaceLook.title(space)
-        var parts = [name, SpaceLook.count(space)]
+    private var detailParts: [String] {
+        var parts = [SpaceLook.count(space)]
         if space.unreadChats > 0 { parts.append(String(localized: "\(space.unreadChats) unread")) }
         if isStarting { parts.append(NetworkChoice.startingLabel) }
         if isReconnecting { parts.append(String(localized: "Reconnecting…")) }
         if space.muted { parts.append(String(localized: "Muted")) }
-        return parts.joined(separator: " · ")
+        return parts
+    }
+
+    private var tooltipDetail: String {
+        detailParts.joined(separator: " · ")
+    }
+
+    /// "Inbox  ⌃1 · 12 chats", and for an account that is reconnecting, so.
+    private var tooltip: String {
+        let name = shortcut.map { "\(SpaceLook.title(space))  \($0)" } ?? SpaceLook.title(space)
+        return ([name] + detailParts).joined(separator: " · ")
     }
 }
 
@@ -373,6 +397,11 @@ private struct SpaceIcon: View {
 private struct NewLabelNudge: View {
     let create: () -> Void
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         Button(action: create) {
@@ -383,12 +412,16 @@ private struct NewLabelNudge: View {
                 .background(
                     RoundedRectangle(cornerRadius: 10)
                         .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: hovering
+                        )
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(String(localized: "New label"))
+        .courierTooltip(String(localized: "New label"), edge: .trailing)
         .accessibilityLabel(String(localized: "New label"))
     }
 }
