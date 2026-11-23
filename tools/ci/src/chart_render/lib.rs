@@ -37,12 +37,15 @@ const STRING_REJECT_CONTROLS: &[(&str, &str)] = &[(
 /// `--set-string`, must refuse the render with a message naming the path, and
 /// each good value must render with a line that, trimmed, equals `expect`
 /// with `{v}` replaced by the value after its last `@` (the whole value if it
-/// has none).
+/// has none). `good_with` holds extra `path=value` pairs set (also with
+/// `--set-string`) on the good renders only, for a value that is valid only
+/// when another value changes with it.
 pub struct ValueControl {
     pub chart_dir: &'static str,
     pub path: &'static str,
     pub bad: &'static [&'static str],
     pub good: &'static [&'static str],
+    pub good_with: &'static [(&'static str, &'static str)],
     pub expect: &'static str,
 }
 
@@ -76,6 +79,7 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
             "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "main@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         ],
+        good_with: &[],
         expect: "image: ghcr.io/vitruviansoftware/vitruvian-relay@{v}",
     },
     // Below the relay's 75 s idle close (_helpers.tpl upstreamIdleTimeout).
@@ -84,6 +88,7 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
         path: "upstreamIdleTimeout",
         bad: &["75s", "90s", "2m", "1m15s", "0s", "60", "10ms", "1h"],
         good: &["60s", "74s", "1m", "1m10s", "1m14s"],
+        good_with: &[],
         expect: "connectionIdleTimeout: \"{v}\"",
     },
     // Who may sign in: with the role empty (and no user list in the CI values)
@@ -94,17 +99,20 @@ pub const VALUE_CONTROLS: &[ValueControl] = &[
         path: "oidc.requiredRole",
         bad: &[""],
         good: &["relay-user", "relay-tester"],
+        good_with: &[],
         expect: "value: \"{v}\"",
     },
     // Both checks at once must refuse too: the new relay would ignore the user
     // list without saying so. The CI values already set requiredRole, so any
-    // user list is "both". No good value: no list renders alongside a role.
+    // user list is "both". A list alone (the role cleared) is the old relay's
+    // check and renders as ALLOWED_SUBJECTS's value.
     ValueControl {
         chart_dir: "apps/suites/vitruvian-relay/relay/deploy/chart",
         path: "oidc.allowedSubjects",
         bad: &["378818267051722263"],
-        good: &[],
-        expect: "",
+        good: &["398000000000000001"],
+        good_with: &[("oidc.requiredRole", "")],
+        expect: "value: \"{v}\"",
     },
 ];
 
@@ -462,7 +470,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             if reldir != ctl.chart_dir.as_bytes() {
                 continue;
             }
-            let run_with = |v: &str| {
+            let run_with = |v: &str, extra: &[(&str, &str)]| {
                 let set_arg = cat(&[ctl.path.as_bytes(), b"=", v.as_bytes()]);
                 let mut cmd = Command::new("helm");
                 cmd.arg("template");
@@ -470,10 +478,14 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                     cmd.arg(shell_compat::os(a));
                 }
                 cmd.arg("--set-string").arg(shell_compat::os(&set_arg));
+                for &(p, x) in extra {
+                    let arg = cat(&[p.as_bytes(), b"=", x.as_bytes()]);
+                    cmd.arg("--set-string").arg(shell_compat::os(&arg));
+                }
                 capture(0, &mut cmd)
             };
             for &v in ctl.bad {
-                let r = run_with(v);
+                let r = run_with(v, &[]);
                 let combined = cat(&[&r.stdout, &r.stderr]);
                 if r.ok() {
                     fail(
@@ -503,7 +515,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                 }
             }
             for &v in ctl.good {
-                let r = run_with(v);
+                let r = run_with(v, ctl.good_with);
                 let want = expected_line(ctl.expect, v);
                 if !r.ok() {
                     fail(
@@ -613,6 +625,9 @@ mod tests {
             );
             assert!(!ctl.bad.is_empty(), "{}: no bad values", ctl.path);
             assert!(!ctl.good.is_empty(), "{}: no good values", ctl.path);
+            for &(p, _) in ctl.good_with {
+                assert!(p != ctl.path, "{}: good_with sets the path itself", ctl.path);
+            }
             for b in ctl.bad {
                 assert!(
                     !ctl.good.contains(b),
