@@ -23,8 +23,8 @@
 use std::fs;
 
 use vitruvian_jq::{
-    each, group_by, interpolate, one, sort, sort_by, tostring, unique, unique_by, Number,
-    OutputOptions, Produced, RunOptions, Value,
+    alt, any, each, first, group_by, interpolate, one, or_empty, sort, sort_by, tostring, unique,
+    unique_by, Number, OutputOptions, Produced, RunOptions, Value,
 };
 
 fn decode_hex(hex: &str) -> Vec<u8> {
@@ -172,6 +172,33 @@ fn eval_op(op: &str, v: &Value) -> Produced {
                 (Vec::new(), None)
             }
         }
+        "idx_a_or_empty" => or_empty(one(v.index("a"))),
+        "iter_idx_a_or_empty" => or_empty(each(v.iterate(), |x| one(x.index("a")))),
+        "idx_a_alt_def" => alt(one(v.index("a")), || (vec![Value::str("0")], None)),
+        "iter_idx_a_alt_def" => alt(each(v.iterate(), |x| one(x.index("a"))), || {
+            (vec![Value::str("0")], None)
+        }),
+        "prom_val" => alt(
+            one(v
+                .index("data")
+                .and_then(|d| d.index("result"))
+                .and_then(|r| r.index_num(0))
+                .and_then(|r| r.index("value"))
+                .and_then(|r| r.index_num(1))),
+            || (vec![Value::str("0")], None),
+        ),
+        "first_iter_idx_a" => first(v.iterate(), |x| one(x.index("a"))),
+        "first_att_or_empty" => or_empty(first(
+            v.index("attachments").map(|a| a.iterate_opt()),
+            |e| match e.index("fileName") {
+                Ok(fname) if fname.is_str("a") => one(e.index("id")),
+                Ok(_) => (Vec::new(), None),
+                Err(err) => (Vec::new(), Some(err)),
+            },
+        )),
+        "any_att" => any(v.index("attachments").map(|a| a.iterate_opt()), |e| {
+            Ok(e.index("fileName")?.is_str("a"))
+        }),
         other => panic!("unknown op: {other}"),
     }
 }

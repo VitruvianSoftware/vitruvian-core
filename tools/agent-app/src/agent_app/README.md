@@ -4,9 +4,7 @@
 Component package providing implementation for `tools/agent-app/src/agent_app`.
 
 ## Interface
-- `[jq.rs:J]`
 - `[jq.rs:Prog]`
-- `[jq.rs:Ran]`
 - `[jq.rs:run]`
 - `[mod.rs:HOLD_LABEL]`
 - `[mod.rs:RELEASE_HOLD_LABEL]`

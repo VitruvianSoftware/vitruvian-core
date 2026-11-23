@@ -26,7 +26,7 @@
 //! `gh` and `tar`, same output and exit codes as the script.
 //!
 //! Where it differs, on purpose:
-//!   * no `jq`: bw's JSON is read with serde_json (src/jq.rs), so "jq not
+//!   * no `jq`: bw's JSON is read with `vitruvian_jq` (src/jq.rs), so "jq not
 //!     installed" is no longer a failure;
 //!   * the new-item payload is serialised by serde_json, so a BW_ITEM with a
 //!     quote or backslash in it is escaped instead of breaking the JSON;

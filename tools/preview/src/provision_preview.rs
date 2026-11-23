@@ -28,9 +28,9 @@
 //! carries in `data` (the script's sh_binary carries the script).
 
 use crate::common::{captured, echo, inherited, log, pipeline, prog, prog_name, unbound};
-use crate::jq::{self, one, J};
 use shell_compat::{cat, err, out, subst};
 use std::process::Command;
+use vitruvian_jq::{self as jq, one, RunOptions, Value};
 
 const USAGE: &str = "Usage: {PROG} --app <name> --pr <number> [options]
 
@@ -203,15 +203,17 @@ fn main(args: &[Vec<u8>]) -> R<()> {
             let (st, o) = captured(100, &mut c);
             check(st)?;
             let neon_out = subst(o);
-            let r = jq::run(
-                &echo(&neon_out),
-                true,
-                &|v: &J| one(v.index("database_url")),
-            );
+            let r = jq::run(&echo(&neon_out), RunOptions::raw(), |v| {
+                one(v.index("database_url"))
+            });
             err(&r.stderr);
             check(r.status)?;
             database_url = subst(r.stdout);
-            let r = jq::run(&echo(&neon_out), true, &|v: &J| one(v.index("host")));
+            let r = jq::run(
+                &echo(&neon_out),
+                RunOptions::raw(),
+                |v| one(v.index("host")),
+            );
             err(&r.stderr);
             log(&["   ✓ Neon Branch ready: ".as_bytes(), &subst(r.stdout)]);
         }
@@ -354,29 +356,29 @@ fn main(args: &[Vec<u8>]) -> R<()> {
     log(&["✅ Step 4: Preview Environment Ready!".as_bytes()]);
     if shell_compat::which(b"jq").is_some() {
         let has_db = !database_url.is_empty();
-        let v = J::Obj(vec![
-            ("app".to_string(), jq::arg(&app)),
-            ("pr_number".to_string(), jq::arg(&pr)),
-            ("service_name".to_string(), jq::arg(&service_name)),
-            ("service_url".to_string(), jq::arg(&service_uri)),
-            ("preview_url".to_string(), jq::arg(&preview_url)),
+        let v = Value::Object(vec![
+            ("app".to_string(), Value::arg(&app)),
+            ("pr_number".to_string(), Value::arg(&pr)),
+            ("service_name".to_string(), Value::arg(&service_name)),
+            ("service_url".to_string(), Value::arg(&service_uri)),
+            ("preview_url".to_string(), Value::arg(&preview_url)),
             (
                 "database_branch".to_string(),
                 if has_db {
-                    jq::arg(&branch_name)
+                    Value::arg(&branch_name)
                 } else {
-                    J::Null
+                    Value::Null
                 },
             ),
             (
                 "database_url".to_string(),
                 if has_db {
-                    jq::arg(&database_url)
+                    Value::arg(&database_url)
                 } else {
-                    J::Null
+                    Value::Null
                 },
             ),
-            ("status".to_string(), J::str("ready")),
+            ("status".to_string(), Value::str("ready")),
         ]);
         out(&cat(&[jq::pretty(&v).as_bytes(), b"\n"]));
     } else {

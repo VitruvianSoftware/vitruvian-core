@@ -22,7 +22,7 @@
 //! comment for a status and creates or updates it through `gh api` -- the
 //! same body, gh calls, output and exit codes as the script.
 
-use crate::common::{discarded, echo, prog_name, unbound};
+use crate::common::{discarded, echo, head1, prog_name, unbound};
 use shell_compat::{cat, err, out, subst};
 use std::process::{Command, Stdio};
 
@@ -247,7 +247,7 @@ fn main(args: &[Vec<u8>]) -> Result<(), i32> {
     if r.status != 0 {
         return Err(r.status);
     }
-    let existing_id = subst(crate::jq::head1(&r.stdout));
+    let existing_id = subst(head1(&r.stdout));
     let field = cat(&[b"body=", &body]);
     if !existing_id.is_empty() {
         out(&cat(&[

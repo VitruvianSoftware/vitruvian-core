@@ -41,5 +41,5 @@ pub use format::{
 };
 pub use order::{compare, group_by, jq_eq, sort, sort_by, unique, unique_by};
 pub use parse::{parse_one, parse_stream, parse_stream_str, StreamItem};
-pub use run::{each, one, run, Produced, RunOptions, RunResult};
+pub use run::{alt, any, each, first, one, or_empty, run, Produced, RunOptions, RunResult};
 pub use value::{Number, Value};
