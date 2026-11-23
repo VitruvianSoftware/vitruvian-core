@@ -1605,5 +1605,29 @@ enum MixerInputVolumeContract {
         Queue.drain()
         check(removed.hasOutstandingClaims && HAL.listeners.isEmpty,
               "a late HAL callback for an absent claim cannot reinstall listeners after teardown")
+
+        // Change the device list after a manual unmute's sweep but before it
+        // can publish on main, with a topology callback delivered first.
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.levels[HAL.key(20)] = 0.75
+        let pending = HAL.muteService
+        HAL.devices = [10, 20]
+        pending.setMuted(true)
+        Queue.drain()
+        HAL.devices = [10]
+        pending.setMuted(false)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
+        Queue.main.run()
+        check(HAL.defaults.bool(forKey: DefaultsKey.micMuteActive) && HAL.muteQueue.work.count == 1,
+              "a device change during a manual request cannot queue the stale persisted state")
+        HAL.muteQueue.run()
+        HAL.devices = [10, 20]
+        Queue.drain()
+        check(!pending.isMuted
+                && !HAL.defaults.bool(forKey: DefaultsKey.micMuteActive)
+                && HAL.levels[HAL.key(10)] == 0.5
+                && HAL.levels[HAL.key(20)] == 0.75,
+              "the requested unmute reaches a device that arrives before publication")
     }
 }
