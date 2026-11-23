@@ -52,18 +52,7 @@ exports_files(
     visibility = ["//apps/antigravity/plugins:__subpackages__"],
 )
 
-# The files every plugin carries its own copy of are identical.
-rust_test(
-    name = "shared_files_test",
-    size = "small",
-    srcs = ["shared_files_test.rs"],
-    crate_root = "shared_files_test.rs",
-    data = CONFORMANCE,
-    edition = "2021",
-    env = CONFORMANCE_ENV,
-)
-
-# Canonical hooks JSON helper and generator/drift check for the four plugins.
+# Canonical hook sources and generator/drift check across Antigravity plugins.
 rust_test(
     name = "hook_json_helper_test",
     size = "small",
@@ -74,30 +63,42 @@ rust_test(
 )
 
 rust_library(
-    name = "hooks_json_gen_lib",
-    srcs = ["hooks_json_gen_lib.rs"],
-    crate_name = "hooks_json_gen",
-    crate_root = "hooks_json_gen_lib.rs",
+    name = "hooks_gen_lib",
+    srcs = ["hooks_gen_lib.rs"],
+    crate_name = "hooks_gen",
+    crate_root = "hooks_gen_lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
 rust_binary(
-    name = "hooks-json-gen",
-    srcs = ["hooks_json_gen.rs"],
+    name = "hooks-gen",
+    srcs = ["hooks_gen.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":hooks_json_gen_lib"],
+    deps = [":hooks_gen_lib"],
 )
 
 rust_test(
-    name = "hooks_json_drift_test",
+    name = "hooks_drift_test",
     size = "small",
-    crate = ":hooks_json_gen_lib",
-    data = ["hook_json_helper.rs"] + CONFORMANCE,
+    crate = ":hooks_gen_lib",
+    data = [
+        "hook_json_helper.rs",
+        "hook_rust_hook.sh",
+        "hook_rust_hook_test.sh",
+    ] + CONFORMANCE,
     edition = "2021",
     env = CONFORMANCE_ENV,
     rustc_flags = ["-Copt-level=3"],
+)
+
+# Preserved label for .github/workflows/presubmit.yaml (generated from the
+# pipeline_unit below); delegates directly to :hooks_drift_test so presubmit
+# runs drift checks without editing .github/.
+test_suite(
+    name = "shared_files_test",
+    tests = [":hooks_drift_test"],
 )
 
 # Run on every PR that touches a plugin, not only in the nightly full sweep.

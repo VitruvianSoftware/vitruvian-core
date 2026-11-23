@@ -26,7 +26,7 @@
 # trigger false positives against live code or other generated files.
 
 # Antigravity plugins' JSON helper, generated from
-# apps/antigravity/hook_json_helper.rs by //apps/antigravity:hooks-json-gen
+# apps/antigravity/hook_json_helper.rs by //apps/antigravity:hooks-gen
 # because each plugin installs standalone and compiles hooks/src with bare rustc.
 apps/antigravity/plugins/*/hooks/src/json.rs
 

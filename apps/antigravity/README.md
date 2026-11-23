@@ -25,18 +25,19 @@ catalog) does not apply to them.
 
 Each plugin's hooks are std-only Rust in `hooks/src`, run through
 `hooks/rust-hook.sh`, which builds them with `rustc` in the background and
-caches the binary. The launcher and its test are copied into every plugin and
-must stay byte-identical (`//apps/antigravity:shared_files_test`).
+caches the binary.
 
-`hooks/src/json.rs` in `hookify`, `live-context`, `ralph-loop`, and
-`security-guidance` is generated from
-[`hook_json_helper.rs`](hook_json_helper.rs) by
-`bazel run //apps/antigravity:hooks-json-gen -- --write` (do not edit the
-generated plugin copies by hand; `-- --check` and
-`//apps/antigravity:hooks_json_drift_test` fail on drift, and
-`//apps/antigravity:shared_files_test` also checks that all copies match). The
-hooks.json shape, each guard's tool list and each hook's fallback are pinned in
-`//apps/antigravity:hooks_json_test`.
+The shared plugin hook files are generated from single sources of truth by
+`bazel run //apps/antigravity:hooks-gen -- --write` (do not edit the generated
+plugin copies by hand; `-- --check` and `//apps/antigravity:hooks_drift_test`
+fail on drift):
+
+- [`hook_rust_hook.sh`](hook_rust_hook.sh) → `hooks/rust-hook.sh` in all 9 hook-bearing plugins
+- [`hook_rust_hook_test.sh`](hook_rust_hook_test.sh) → `hooks/rust-hook_test.sh` in all 9 hook-bearing plugins
+- [`hook_json_helper.rs`](hook_json_helper.rs) → `hooks/src/json.rs` in `hookify`, `live-context`, `ralph-loop`, and `security-guidance`
+
+The hooks.json shape, each guard's tool list and each hook's fallback are pinned
+in `//apps/antigravity:hooks_json_test`.
 
 - **A hook must always print a JSON answer, never nothing.** The launcher
   treats empty output as a broken binary: it deletes it, rebuilds it, and
