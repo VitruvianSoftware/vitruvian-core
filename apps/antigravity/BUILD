@@ -4,7 +4,7 @@
 
 """Checks across the Antigravity plugins under plugins/."""
 
-load("@rules_rust//rust:defs.bzl", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 PLUGINS = [
@@ -61,6 +61,43 @@ rust_test(
     data = CONFORMANCE,
     edition = "2021",
     env = CONFORMANCE_ENV,
+)
+
+# Canonical hooks JSON helper and generator/drift check for the four plugins.
+rust_test(
+    name = "hook_json_helper_test",
+    size = "small",
+    srcs = ["hook_json_helper.rs"],
+    crate_root = "hook_json_helper.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_library(
+    name = "hooks_json_gen_lib",
+    srcs = ["hooks_json_gen_lib.rs"],
+    crate_name = "hooks_json_gen",
+    crate_root = "hooks_json_gen_lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "hooks-json-gen",
+    srcs = ["hooks_json_gen.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":hooks_json_gen_lib"],
+)
+
+rust_test(
+    name = "hooks_json_drift_test",
+    size = "small",
+    crate = ":hooks_json_gen_lib",
+    data = ["hook_json_helper.rs"] + CONFORMANCE,
+    edition = "2021",
+    env = CONFORMANCE_ENV,
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # Run on every PR that touches a plugin, not only in the nightly full sweep.

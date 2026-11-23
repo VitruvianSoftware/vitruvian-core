@@ -1,3 +1,5 @@
+// Generated from apps/antigravity/hook_json_helper.rs by //apps/antigravity:hooks-json-gen. Do not edit; run `bazel run //apps/antigravity:hooks-json-gen -- --write`.
+
 // Copyright (c) 2026 VitruvianSoftware
 //
 // SPDX-License-Identifier: MIT
