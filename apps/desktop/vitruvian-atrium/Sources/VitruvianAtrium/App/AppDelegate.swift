@@ -739,14 +739,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     private func installPopoverDismissMonitor() {
         removePopoverDismissMonitor()
-        // A global monitor only sees events delivered to OTHER apps, so a click in
-        // another app or on the desktop dismisses the panel.
+        // AppKit can send the global monitor a copy of an activation click
+        // delivered to the panel. The event retains its target window number.
         popoverDismissMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] _ in
+        ) { [weak self] event in
             guard let self, self.popover.isShown else { return }
             guard !PanelInteractionState.shared.preventsPopoverDismissal else { return }
             guard self.statusController.containsStatusItem(at: NSEvent.mouseLocation) == false else { return }
+            let panelNumber = self.popover.contentViewController?.view.window?.windowNumber
+            guard !StatusItemAnchorSupport.isPanelSelfClick(eventWindowNumber: event.windowNumber,
+                                                            panelWindowNumber: panelNumber) else { return }
             self.closePopover(reason: .outsideClick)
         }
 

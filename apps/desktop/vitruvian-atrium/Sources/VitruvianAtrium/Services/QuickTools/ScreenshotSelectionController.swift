@@ -81,7 +81,9 @@ package final class ScreenshotSelectionController {
         /// Window ids with their bounds in window-server coordinates.
         package var pickableWindows: @MainActor (_ hideAtriumWindows: Bool,
                                                  _ protectedWindowIDs: Set<CGWindowID>) -> [(id: CGWindowID, bounds: CGRect)]
-        package var captureWindow: @MainActor (_ id: CGWindowID, _ scale: CGFloat) async
+        /// `preferComposited` asks for the window as the screen composites it,
+        /// video layers included, after a frozen chooser.
+        package var captureWindow: @MainActor (_ id: CGWindowID, _ scale: CGFloat, _ preferComposited: Bool) async
             -> (image: CGImage, scale: CGFloat)?
         package var captureDisplay: @MainActor (_ id: CGDirectDisplayID, _ includePointer: Bool,
                                                 _ hideAtriumWindows: Bool,
@@ -94,7 +96,7 @@ package final class ScreenshotSelectionController {
                      pointer: @escaping @MainActor () -> CGPoint,
                      captureAllDisplays: @escaping @MainActor (Bool, Bool, Set<CGWindowID>) async -> [CGDirectDisplayID: CGImage],
                      pickableWindows: @escaping @MainActor (Bool, Set<CGWindowID>) -> [(id: CGWindowID, bounds: CGRect)],
-                     captureWindow: @escaping @MainActor (CGWindowID, CGFloat) async
+                     captureWindow: @escaping @MainActor (CGWindowID, CGFloat, Bool) async
                          -> (image: CGImage, scale: CGFloat)?,
                      captureDisplay: @escaping @MainActor (CGDirectDisplayID, Bool, Bool, Set<CGWindowID>) async -> CGImage?,
                      show: @escaping @MainActor ([NSPanel], NSPanel?) -> Void) {
@@ -144,9 +146,9 @@ package final class ScreenshotSelectionController {
                                                     protectedWindowIDs: protectedWindowIDs)
         }
 
-        @MainActor private static func liveCaptureWindow(_ id: CGWindowID,
-                                                         _ scale: CGFloat) async -> (image: CGImage, scale: CGFloat)? {
-            await ScreenshotCaptureEngine.captureWindow(id, scale: scale)
+        @MainActor private static func liveCaptureWindow(_ id: CGWindowID, _ scale: CGFloat,
+                                                         _ preferComposited: Bool) async -> (image: CGImage, scale: CGFloat)? {
+            await ScreenshotCaptureEngine.captureWindow(id, scale: scale, preferComposited: preferComposited)
         }
 
         @MainActor private static func liveCaptureDisplay(
@@ -711,29 +713,37 @@ package final class ScreenshotSelectionController {
             finish(.region(region(fromView: viewRect, on: panel, windowID: nil)))
             return
         }
-        let pixelRect = ScreenshotSupport.imagePixelRect(
-            fromView: viewRect,
-            viewSize: panel.screenFrame.size,
-            imageSize: panel.frozenImageSize ?? panel.pixelSize)
-        if let frozen = panel.frozenImage {
-            guard let cropped = frozen.cropping(to: pixelRect) else {
-                finish(.failed)
-                return
-            }
-            finish(.captured(Capture(
-                image: cropped,
-                scale: panel.pixelScale,
-                anchorRect: ScreenshotSupport.cocoaRect(
-                    fromFlippedView: viewRect,
-                    screenFrame: panel.screenFrame))))
+        if panel.frozenImage != nil {
+            finishFrozenCrop(at: viewRect, on: panel)
         } else {
             captureLive(displayID: panel.displayID,
-                        pixelRect: pixelRect,
+                        pixelRect: ScreenshotSupport.imagePixelRect(
+                            fromView: viewRect,
+                            viewSize: panel.screenFrame.size,
+                            imageSize: panel.pixelSize),
                         scale: panel.pixelScale,
                         anchorRect: ScreenshotSupport.cocoaRect(
                             fromFlippedView: viewRect,
                             screenFrame: panel.screenFrame))
         }
+    }
+
+    /// A dragged rectangle selects everything visible in that part of the still.
+    private func finishFrozenCrop(at viewRect: CGRect, on panel: ScreenshotOverlayPanel) {
+        guard let frozen = panel.frozenImage,
+              let cropped = frozen.cropping(to: ScreenshotSupport.imagePixelRect(
+                  fromView: viewRect,
+                  viewSize: panel.screenFrame.size,
+                  imageSize: panel.frozenImageSize ?? panel.pixelSize)) else {
+            finish(.failed)
+            return
+        }
+        finish(.captured(Capture(
+            image: cropped,
+            scale: panel.pixelScale,
+            anchorRect: ScreenshotSupport.cocoaRect(
+                fromFlippedView: viewRect,
+                screenFrame: panel.screenFrame))))
     }
 
     package func confirmWindow(_ windowID: CGWindowID,
@@ -749,11 +759,16 @@ package final class ScreenshotSelectionController {
             finish(.region(region(fromView: frame, on: panel, windowID: windowID)))
             return
         }
+        // The desktop still may contain another app over the target or only
+        // one display's slice. Retire the opaque chooser so a video producer
+        // can resume drawing, then capture only the selected window(s).
+        let wasFrozen = panel.frozenImage != nil
+        if wasFrozen { retirePanels() }
         Task { @MainActor [weak self] in
             guard let self else { return }
             // A composite with an attached dialog may be captured at another
             // display's scale than this panel's; record the one it has.
-            guard let capture = await self.environment.captureWindow(windowID, panel.pixelScale) else {
+            guard let capture = await self.environment.captureWindow(windowID, panel.pixelScale, wasFrozen) else {
                 self.finish(.failed)
                 return
             }
@@ -1124,6 +1139,7 @@ package final class ScreenshotOverlayView: NSView {
         self.frozenImage = frozenImage
         self.loupeImage = frozenImage
         self.windows = windows
+        refreshCaptureGuide()
         refreshPointerState()
     }
 
@@ -1156,6 +1172,7 @@ package final class ScreenshotOverlayView: NSView {
         let host = PassThroughHostingView(fixedFrameRootView: CaptureGuideView(
             strings: strings,
             purpose: purpose,
+            isFrozen: frozenImage != nil,
             offersScrollingCapture: controller.offersScrollingCapture,
             offersRepeatLastRegion: controller.offersRepeatLastRegion,
             requiresDraggedRegion: controller.requiresDraggedRegion,
@@ -1274,6 +1291,7 @@ package final class ScreenshotOverlayView: NSView {
         guideHost.rootView = CaptureGuideView(
             strings: strings,
             purpose: purpose,
+            isFrozen: frozenImage != nil,
             offersScrollingCapture: controller?.offersScrollingCapture ?? false,
             offersRepeatLastRegion: controller?.offersRepeatLastRegion ?? false,
             requiresDraggedRegion: controller?.requiresDraggedRegion ?? false,
@@ -1962,6 +1980,7 @@ private struct CaptureChromeBackdrop<S: Shape>: View {
 private struct CaptureGuideView: View {
     let strings: ScreenshotFeatureStrings
     let purpose: String?
+    let isFrozen: Bool
     let offersScrollingCapture: Bool
     let offersRepeatLastRegion: Bool
     let requiresDraggedRegion: Bool
@@ -1972,6 +1991,7 @@ private struct CaptureGuideView: View {
     var body: some View {
         if let screenCaptureOptions {
             UnifiedCaptureGuideContent(strings: strings,
+                                       isFrozen: isFrozen,
                                        options: screenCaptureOptions,
                                        offersScrollingCapture: offersScrollingCapture,
                                        offersRepeatLastRegion: offersRepeatLastRegion,
@@ -1999,7 +2019,8 @@ private struct CaptureGuideView: View {
                 Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
             }
             Spacer(minLength: 8)
             HStack(spacing: 7) {
@@ -2042,6 +2063,7 @@ private struct CaptureGuideView: View {
     private var subtitle: String {
         let base = requiresDraggedRegion || scrollingCaptureEnabled
             ? strings.scrollingCaptureSelectionHint
+            : isFrozen ? strings.frozenSelectionHint
             : purpose?.isEmpty == false
             ? strings.hintDrag + "  ·  " + strings.hintClick
             : strings.hintClick
@@ -2056,6 +2078,7 @@ private struct CaptureGuideView: View {
 
 private struct UnifiedCaptureGuideContent: View {
     let strings: ScreenshotFeatureStrings
+    let isFrozen: Bool
     @ObservedObject var options: ScreenCaptureSelectionOptions
     @ObservedObject private var l10n = L10n.shared
     let offersScrollingCapture: Bool
@@ -2090,8 +2113,9 @@ private struct UnifiedCaptureGuideContent: View {
             Text(subtitle)
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .help(options.selectedTool == .text ? l10n.s.ocrCaption : subtitle)
             if options.availableTools.count > 1 {
                 CaptureKeyHint(key: options.availableTools.map(\.shortcutKey).joined(separator: " "), icon: "keyboard")
             }
@@ -2215,7 +2239,7 @@ private struct UnifiedCaptureGuideContent: View {
         switch options.selectedTool {
         case .screenshot:
             if scrollingCaptureEnabled { return strings.scrollingCaptureSelectionHint }
-            let base = strings.hintDrag + "  ·  " + strings.hintClick
+            let base = isFrozen ? strings.frozenSelectionHint : strings.hintDrag + "  ·  " + strings.hintClick
             guard offersScrollingCapture else { return base }
             return base + "  ·  " + strings.scrollingCaptureHintOff
         case .scrolling:
@@ -2224,7 +2248,7 @@ private struct UnifiedCaptureGuideContent: View {
             return FeatureStrings.recorder(l10n.language).selectionPurpose
                 + "  ·  " + strings.hintDrag + "  ·  " + strings.hintClick
         case .text:
-            return l10n.s.ocrCaption
+            return isFrozen ? l10n.s.ocrName + "  ·  " + strings.frozenSelectionHint : l10n.s.ocrCaption
         case .color:
             return l10n.s.colorPickerCaption
         }

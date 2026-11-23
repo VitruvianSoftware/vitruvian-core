@@ -31,6 +31,8 @@ enum ScreenshotSelectionRefreshContract {
         /// The scale a window capture reports, like a composite recaptured
         /// on a 2x display; `nil` echoes the scale asked for.
         var windowCaptureScale: CGFloat?
+        /// The last window capture asked for, and whether as composited.
+        var windowRequest: (id: CGWindowID, composited: Bool)?
         private var answered: Set<Int> = []
         var pointer = CGPoint(x: 50, y: 50)
         let defaults: UserDefaults
@@ -84,8 +86,9 @@ enum ScreenshotSelectionRefreshContract {
                         protectedWindowIDs: protected)
                         ? [(Self.window, CGRect(x: 0, y: 0, width: 200, height: 100))] : []
                 },
-                captureWindow: { [unowned self] _, scale in
-                    (self.picture(excluding: []), self.windowCaptureScale ?? scale)
+                captureWindow: { [unowned self] id, scale, composited in
+                    self.windowRequest = (id, composited)
+                    return (self.picture(excluding: []), self.windowCaptureScale ?? scale)
                 },
                 captureDisplay: { [unowned self] _, _, _, _ in self.picture(excluding: []) },
                 show: { _, _ in })
@@ -433,6 +436,28 @@ enum ScreenshotSelectionRefreshContract {
             }
         }
         desk.windowCaptureScale = nil
+        // A frozen desktop can include a third-party window and cannot hold
+        // both halves of a spanning window. Neither should become the source.
+        for tool in [ScreenCaptureTool.screenshot, .text] {
+            for windowFrame in [CGRect(x: 0, y: 0, width: 50, height: 50),
+                                CGRect(x: 75, y: 0, width: 70, height: 50)] {
+                guard let chooser = await started(tool) else { return }
+                let panel = chooser.panels[0]
+                desk.windowRequest = nil
+                chooser.controller.confirmWindow(11, frame: windowFrame, on: panel)
+                await drain()
+                if case .captured(let capture)? = chooser.outcome {
+                    expect(panel.ignoresMouseEvents
+                           && desk.windowRequest?.id == 11
+                           && desk.windowRequest?.composited == true
+                           && capture.anchorRect == ScreenshotSupport.cocoaRect(
+                               fromFlippedView: windowFrame, screenFrame: panel.screenFrame),
+                           "a frozen window click requests the complete isolated composited window")
+                } else {
+                    expect(false, "a frozen window click returns a scoped capture")
+                }
+            }
+        }
 
         guard let rapid = await started(.recording) else { return }
         let r3 = desk.requests.count
