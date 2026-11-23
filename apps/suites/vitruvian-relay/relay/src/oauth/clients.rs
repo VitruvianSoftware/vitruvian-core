@@ -259,6 +259,7 @@ mod tests {
     #[test]
     fn refuses_more_than_six() {
         let mut uris = six();
+        // Duplicates count toward the cap: it limits the list, not distinct URIs.
         uris.push(uris[0].clone());
         assert_eq!(parse_registration(&uris), Err(RegisterError::TooMany));
     }

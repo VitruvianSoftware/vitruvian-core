@@ -65,10 +65,18 @@ pub struct Settings {
 
 /// What the app sign-in needs: the server key and the one client id that
 /// tokens it issues carry (which must be an MCP client id).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AppSignin {
     pub keys: AppKeys,
     pub client_id: String,
+}
+
+/// Compares the client id only: key material is never compared with `==`.
+/// Settings need `PartialEq` for tests that compare two loads.
+impl PartialEq for AppSignin {
+    fn eq(&self, other: &Self) -> bool {
+        self.client_id == other.client_id
+    }
 }
 
 /// The role an invited person holds, unless `REQUIRED_ROLE` says otherwise.
@@ -217,16 +225,12 @@ impl Settings {
         let app_signin = match (opt("APP_SIGNIN_KEY"), opt("APPS_CLIENT_ID")) {
             (None, None) => None,
             (Some(key), Some(client_id)) => {
+                // Tokens it issues must pass the same audience check as every
+                // other AI app's. (It cannot be the connector's or the
+                // dashboard's id either: both are refused above if they are in
+                // MCP_CLIENT_IDS.)
                 if !mcp_client_ids.contains(&client_id) {
-                    // Tokens it issues must pass the same audience check as
-                    // every other AI app's.
                     return Err("APPS_CLIENT_ID must also be in MCP_CLIENT_IDS".into());
-                }
-                if client_id == connector_client_id || client_id == dashboard_client_id {
-                    return Err(
-                        "APPS_CLIENT_ID must not be CONNECTOR_CLIENT_ID or DASHBOARD_CLIENT_ID"
-                            .into(),
-                    );
                 }
                 Some(AppSignin {
                     keys: AppKeys::from_b64(&key)?,
@@ -548,12 +552,16 @@ mod tests {
         assert!(load(&only_id).unwrap_err().contains("together"));
 
         // A bad key is refused without echoing it.
-        for bad in ["not base64!", "AAAA"] {
+        let short = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode([6u8; 16])
+        };
+        for bad in ["not-base64-secret-value!!", short.as_str()] {
             let mut env = both.clone();
             env.insert("APP_SIGNIN_KEY", bad);
             let err = load(&env).unwrap_err();
             assert!(err.contains("APP_SIGNIN_KEY"), "{err}");
-            assert!(!err.contains(bad) || bad.len() < 5, "{err}");
+            assert!(!err.contains(bad), "the error must not echo the key: {err}");
         }
         // The key never prints.
         assert!(!format!("{on:?}").contains(&key));
@@ -562,12 +570,36 @@ mod tests {
     #[test]
     fn apps_client_must_be_an_mcp_client() {
         let key = key_b64();
+        // Not an MCP client at all (including the connector's and the
+        // dashboard's ids, which are not in the list).
         for id in ["unknown-id", "conn-id", "dash-id"] {
             let mut env = base();
             env.insert("APP_SIGNIN_KEY", &key);
             env.insert("APPS_CLIENT_ID", id);
-            assert!(load(&env).is_err(), "{id} must be refused");
+            let err = load(&env).unwrap_err();
+            assert!(
+                err.contains("APPS_CLIENT_ID must also be in"),
+                "{id}: {err}"
+            );
         }
+        // Forcing the connector's or the dashboard's id into the list does not
+        // make it usable: the existing check refuses that first.
+        for (id, name, list) in [
+            ("conn-id", "CONNECTOR_CLIENT_ID", "claude-id,conn-id"),
+            ("dash-id", "DASHBOARD_CLIENT_ID", "claude-id,dash-id"),
+        ] {
+            let mut env = base();
+            env.insert("MCP_CLIENT_IDS", list);
+            env.insert("APP_SIGNIN_KEY", &key);
+            env.insert("APPS_CLIENT_ID", id);
+            let err = load(&env).unwrap_err();
+            assert!(err.starts_with(name), "{id}: {err}");
+        }
+        // An id that is in the list is accepted.
+        let mut env = base();
+        env.insert("APP_SIGNIN_KEY", &key);
+        env.insert("APPS_CLIENT_ID", "claude-id");
+        assert!(load(&env).is_ok());
     }
 
     #[test]

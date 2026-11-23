@@ -30,7 +30,8 @@ const CLIENT_LABEL: &[u8] = b"relay-app-client";
 const SEAL_LABEL: &[u8] = b"relay-app-seal";
 
 /// The two keys derived from `APP_SIGNIN_KEY`.
-#[derive(Clone, PartialEq, Eq)]
+/// No `PartialEq`: key material is never compared with `==`.
+#[derive(Clone)]
 pub struct AppKeys {
     pub(super) mac: [u8; 32],
     seal: [u8; 32],
