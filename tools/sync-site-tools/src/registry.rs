@@ -693,7 +693,7 @@ fn additional() -> Vec<Ext> {
             needs: s("OpenCode (tested on 2.3.2)"),
             note: s(""),
             installs: vec![
-                install("OpenCode", "codex-opencode", "Add to opencode.json", "\"plugins\": [\"@vitruviansoftware/opencode-vitruvian-orchestrator\"]"),
+                install("OpenCode", "codex-opencode", "Add to opencode.json", "{ \"plugins\": [\"@vitruviansoftware/opencode-vitruvian-orchestrator\"] }"),
             ],
             claude_marketplace_source: s(""),
         },

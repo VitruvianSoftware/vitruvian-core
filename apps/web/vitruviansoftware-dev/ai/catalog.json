@@ -652,7 +652,7 @@
           "tool": "OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Add to opencode.json",
-          "command": "\"plugins\": [\"@vitruviansoftware/opencode-vitruvian-orchestrator\"]"
+          "command": "{ \"plugins\": [\"@vitruviansoftware/opencode-vitruvian-orchestrator\"] }"
         }
       ]
     },
