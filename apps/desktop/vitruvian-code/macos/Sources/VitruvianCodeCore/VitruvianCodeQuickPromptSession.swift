@@ -252,6 +252,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var awaitingWorktree = false
     private var lastTurnProviderID: UUID?
     private var lastTurnConnectionKind: AgentConnectionKind?
+    private var lastTurnWasPersistent = false
     private var lastRestartFailureMessage: String?
     private var hasReceivedTurnFinishedEvent = false
     private var turnFinishedWaiters: [CheckedContinuation<Void, Never>] = []
@@ -676,6 +677,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveState.reset()
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
+        lastTurnWasPersistent = false
         // The last conversation's subagents are not this one's.
         activeSubagents = []
         conversationID = summary.id
@@ -1169,6 +1171,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
            liveConnectionWorktree == wantsWorktree,
            (!wantsWorktree || liveWorktreePath != nil) {
             connection = reusable
+            lastTurnWasPersistent = true
             hasReceivedTurnFinishedEvent = false
             let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
             Task { @MainActor [weak self] in
@@ -1341,6 +1344,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         )
 
         if let immediate = turnConnection as? any _ImmediateAgentConnection {
+            lastTurnWasPersistent = false
             do {
                 let startedID = immediate.beginImmediateSession(sessionRequest)
                 if !startedID.isEmpty, !isCustomCommand {
@@ -1378,6 +1382,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
 
         if let persistent = turnConnection as? any PersistentAgentConnection, !isCustomCommand {
+            lastTurnWasPersistent = true
             retireLiveConnection()
             liveConnection = persistent
             liveConnectionProviderID = configuration.activeProvider.id
@@ -1793,6 +1798,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveState.reset()
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
+        lastTurnWasPersistent = false
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         elapsedSeconds = 0
@@ -2099,14 +2105,22 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             activity = step.isFinished ? nil : step.title
             guard let idx = replyIndex() else { break }
             var steps = messages[idx].toolSteps ?? []
+            let mergedStep: VitruvianCodeToolStep
             if let existing = steps.firstIndex(where: { $0.id == step.id }) {
-                steps[existing] = step
+                mergedStep = steps[existing].merging(with: step)
+                steps[existing] = mergedStep
             } else {
+                mergedStep = step
                 steps.append(step)
                 currentToolCalls += 1
                 messages[idx].toolCalls = currentToolCalls
             }
             messages[idx].toolSteps = steps
+            if activeADEPanel == .diffReview,
+               !mergedStep.diffs.isEmpty,
+               let config = lastTurnConfiguration ?? engine?.configuration {
+                refreshDiffReview(configuration: config)
+            }
         case .toolStepResult(let id, let output, let isError):
             activity = nil
             guard let idx = replyIndex(),
@@ -2953,9 +2967,72 @@ extension VitruvianCodeQuickPromptSession {
         activeADEPanel = panel
     }
 
-    /// Loads the current git diff from the working directory into `diffReviewSession`.
+    /// Source chosen for the Diff Review panel on a chat.
+    public enum DiffReviewSelection: Equatable, Sendable {
+        case agentReported([VitruvianCodeDiffFile])
+        case gitFallback
+    }
+
+    /// True when this session uses a live persistent connection (ACP or Claude SDK)
+    /// rather than a one-shot command-line invocation.
+    public func isLiveChat(for configuration: VitruvianCodeConfiguration) -> Bool {
+        if liveConnection != nil || lastTurnWasPersistent || !liveState.plan.isEmpty {
+            return true
+        }
+        if let lastKind = lastTurnConnectionKind {
+            return lastKind != .commandLine
+        }
+        if let configuredKind = configuration.activeProvider.connection {
+            return configuredKind != .commandLine
+        }
+        return false
+    }
+
+    /// Collects all agent-reported diffs from tool steps in the latest turn
+    /// (every agent message after the most recent user prompt).
+    public nonisolated static func latestTurnReportedDiffs(
+        from messages: [VitruvianCodeChatMessage]
+    ) -> [VitruvianCodeToolStep.Diff] {
+        let startIndex: Int
+        if let lastUser = messages.lastIndex(where: { $0.role == .user }) {
+            startIndex = messages.index(after: lastUser)
+        } else {
+            startIndex = messages.startIndex
+        }
+        guard startIndex < messages.endIndex else { return [] }
+        var collected: [VitruvianCodeToolStep.Diff] = []
+        for message in messages[startIndex...] where message.role == .agent {
+            for step in message.toolSteps ?? [] {
+                collected.append(contentsOf: step.diffs)
+            }
+        }
+        return collected
+    }
+
+    /// Chooses agent-reported diffs when available for a live chat, otherwise `.gitFallback`.
+    public nonisolated static func selectDiffReviewSource(
+        isLiveChat: Bool,
+        messages: [VitruvianCodeChatMessage],
+        workingDirectory: String? = nil
+    ) -> DiffReviewSelection {
+        guard isLiveChat else { return .gitFallback }
+        let diffs = latestTurnReportedDiffs(from: messages)
+        let files = VitruvianCodeDiffParser.buildDiffFiles(from: diffs, workingDirectory: workingDirectory)
+        return files.isEmpty ? .gitFallback : .agentReported(files)
+    }
+
+    /// Loads agent-reported diffs for the active live turn when available, falling back
+    /// to `git diff` from the working directory (and always using git for command-line chats).
     public func refreshDiffReview(configuration: VitruvianCodeConfiguration) {
         let dir = workingDirectory(for: configuration)
+        if case .agentReported(let files) = Self.selectDiffReviewSource(
+            isLiveChat: isLiveChat(for: configuration),
+            messages: messages,
+            workingDirectory: dir
+        ) {
+            diffReviewSession.loadFiles(files, source: .agentReported)
+            return
+        }
         let runProgram = environment.runProgram
         Task { [weak self] in
             let headDiff = await runProgram("git", ["-C", dir, "diff", "HEAD"])

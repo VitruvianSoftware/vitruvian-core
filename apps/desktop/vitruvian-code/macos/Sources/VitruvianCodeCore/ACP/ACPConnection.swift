@@ -1832,20 +1832,44 @@ public final class ACPConnection: PersistentAgentConnection {
     // MARK: - Pure Mapping Helpers
 
     private func mergeToolCall(_ incoming: ACPToolCall) -> ACPToolCall {
-        guard var previous = trackedToolCalls[incoming.toolCallId] else {
+        guard let previous = trackedToolCalls[incoming.toolCallId] else {
             trackedToolCalls[incoming.toolCallId] = incoming
             return incoming
         }
-        if let title = incoming.title { previous.title = title }
-        if let kind = incoming.kind { previous.kind = kind }
-        if let status = incoming.status { previous.status = status }
-        if let content = incoming.content { previous.content = content }
-        if let locations = incoming.locations { previous.locations = locations }
-        if let rawInput = incoming.rawInput { previous.rawInput = rawInput }
-        if let rawOutput = incoming.rawOutput { previous.rawOutput = rawOutput }
-        if let meta = incoming._meta { previous._meta = meta }
-        trackedToolCalls[incoming.toolCallId] = previous
-        return previous
+        let merged = Self.mergeToolCall(previous: previous, incoming: incoming)
+        trackedToolCalls[incoming.toolCallId] = merged
+        return merged
+    }
+
+    /// Merges an incoming ACP tool call update onto a previously tracked call without wiping
+    /// earlier locations or diffs when a subsequent update omits them.
+    static func mergeToolCall(previous: ACPToolCall, incoming: ACPToolCall) -> ACPToolCall {
+        var merged = previous
+        if let title = incoming.title { merged.title = title }
+        if let kind = incoming.kind { merged.kind = kind }
+        if let status = incoming.status { merged.status = status }
+        if let incomingContent = incoming.content, !incomingContent.isEmpty {
+            let incomingHasDiff = incomingContent.contains {
+                if case .diff = $0 { return true }
+                return false
+            }
+            if incomingHasDiff {
+                merged.content = incomingContent
+            } else {
+                let priorDiffs = (previous.content ?? []).filter {
+                    if case .diff = $0 { return true }
+                    return false
+                }
+                merged.content = priorDiffs + incomingContent
+            }
+        }
+        if let locations = incoming.locations, !locations.isEmpty {
+            merged.locations = locations
+        }
+        if let rawInput = incoming.rawInput { merged.rawInput = rawInput }
+        if let rawOutput = incoming.rawOutput { merged.rawOutput = rawOutput }
+        if let meta = incoming._meta { merged._meta = meta }
+        return merged
     }
 
     private static func isTerminalToolStatus(_ status: String?) -> Bool {
@@ -1853,7 +1877,10 @@ public final class ACPConnection: PersistentAgentConnection {
     }
 
     private static func hasStepDetails(_ update: ACPToolCall) -> Bool {
-        if update.locations != nil || update.rawInput != nil {
+        if let locations = update.locations, !locations.isEmpty {
+            return true
+        }
+        if update.rawInput != nil {
             return true
         }
         if let content = update.content {
@@ -1880,7 +1907,7 @@ public final class ACPConnection: PersistentAgentConnection {
         return outputs
     }
 
-    private static func makeToolStep(
+    static func makeToolStep(
         from call: ACPToolCall,
         terminalOutputs: [String: String] = [:]
     ) -> VitruvianCodeToolStep {
@@ -1910,22 +1937,33 @@ public final class ACPConnection: PersistentAgentConnection {
             }
         }
 
-        if let firstLocation = call.locations?.first?.path, !firstLocation.isEmpty {
-            step.filePath = firstLocation
+        let mappedLocations: [VitruvianCodeToolStep.Location] = (call.locations ?? []).compactMap { location in
+            let trimmed = location.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return VitruvianCodeToolStep.Location(path: location.path, line: location.line)
+        }
+        if !mappedLocations.isEmpty {
+            step.locations = mappedLocations
+            step.filePath = mappedLocations[0].path
         }
 
         if let contents = call.content {
+            var mappedDiffs: [VitruvianCodeToolStep.Diff] = []
             for item in contents {
                 if case .diff(let path, let oldText, let newText) = item {
-                    if step.filePath == nil && !path.isEmpty {
-                        step.filePath = path
-                    }
-                    step.diffOld = oldText
-                    step.diffNew = newText
-                    if step.kind == .other {
-                        step.kind = .edit
-                    }
-                    break
+                    mappedDiffs.append(VitruvianCodeToolStep.Diff(path: path, oldText: oldText, newText: newText))
+                }
+            }
+            if !mappedDiffs.isEmpty {
+                step.diffs = mappedDiffs
+                step.diffOld = mappedDiffs[0].oldText
+                step.diffNew = mappedDiffs[0].newText
+                if step.filePath == nil,
+                   let firstDiffPath = mappedDiffs.first(where: { !$0.path.isEmpty })?.path {
+                    step.filePath = firstDiffPath
+                }
+                if step.kind == .other {
+                    step.kind = .edit
                 }
             }
         }
