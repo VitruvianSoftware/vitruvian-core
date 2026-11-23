@@ -1079,10 +1079,10 @@ mod isolation {
         csrf: String,
     }
 
-    /// The first half of the person's part: Gemini sends them to
-    /// `/oauth/authorize` for `device`, they sign in at the identity service
-    /// (a stand-in that knows them as `sub`), and land on the consent page.
-    async fn reach_consent(relay: &Relay, app: &GeminiApp, sub: &str, device: &str) -> AtConsent {
+    /// Gemini sends the person to `/oauth/authorize` for `device`; the browser
+    /// is sent on to the identity service. The cookie that ties the sign-in to
+    /// this browser, and the state the identity service will send back.
+    async fn begin_sign_in(relay: &Relay, app: &GeminiApp, device: &str) -> (String, String) {
         let challenge =
             b64url(ring::digest::digest(&ring::digest::SHA256, VERIFIER.as_bytes()).as_ref());
         let query: Vec<String> = [
@@ -1111,16 +1111,28 @@ mod isolation {
         assert!(to_identity.starts_with(ISSUER), "{to_identity}");
         let state = query_param(&to_identity, "state").expect("state is sent");
         let cookie = set_cookie_pair(&start, "vr_oauth").expect("the sign-in is tied to a browser");
+        (cookie, state)
+    }
 
+    /// The person signs in at the identity service (a stand-in that knows
+    /// them as `sub`) and the browser is sent back to the relay's callback.
+    async fn come_back(relay: &Relay, sub: &str, cookie: &str, state: &str) -> Reply {
         relay.tokens.give_token(&relay.apps_token(sub));
-        let back = send(
+        send(
             relay.addr,
             "GET",
             &format!("/oauth/callback?code=the-code&state={state}"),
-            &[("cookie", cookie.clone())],
+            &[("cookie", cookie.to_string())],
             "",
         )
-        .await;
+        .await
+    }
+
+    /// The first half of the person's part: sign in for `device` as `sub` and
+    /// land on the consent page.
+    async fn reach_consent(relay: &Relay, app: &GeminiApp, sub: &str, device: &str) -> AtConsent {
+        let (cookie, state) = begin_sign_in(relay, app, device).await;
+        let back = come_back(relay, sub, &cookie, &state).await;
         assert_eq!(back.status, 303, "{}", back.body);
         assert_eq!(back.header("location").as_deref(), Some("/oauth/consent"));
         let page = send(
@@ -1165,17 +1177,21 @@ mod isolation {
         .await
     }
 
-    /// Allow, then trade the code for a token as Gemini does; the token.
-    async fn allow_and_redeem(relay: &Relay, app: &GeminiApp, browser: &AtConsent) -> String {
+    /// Allow; the code the app is sent back with.
+    async fn allow_for_code(relay: &Relay, app: &GeminiApp, browser: &AtConsent) -> String {
         let r = decide(relay, Some(&browser.cookie), &browser.csrf, "allow").await;
         assert_eq!(r.status, 303, "{}", r.body);
         let to = r.header("location").unwrap();
         assert!(to.starts_with(&app.redirect_uri), "{to}");
         assert_eq!(query_param(&to, "state").as_deref(), Some(APP_STATE));
-        let code = query_param(&to, "code").expect("a code");
+        query_param(&to, "code").expect("a code")
+    }
+
+    /// The app trades `code` for a token, as Gemini does.
+    async fn redeem_code(relay: &Relay, app: &GeminiApp, code: &str) -> Reply {
         let form: Vec<String> = [
             ("grant_type", "authorization_code"),
-            ("code", code.as_str()),
+            ("code", code),
             ("redirect_uri", app.redirect_uri.as_str()),
             ("code_verifier", VERIFIER),
             ("client_id", app.client_id.as_str()),
@@ -1184,7 +1200,7 @@ mod isolation {
         .iter()
         .map(|(k, v)| format!("{k}={}", form_encode(v)))
         .collect();
-        let r = send(
+        send(
             relay.addr,
             "POST",
             "/oauth/token",
@@ -1194,7 +1210,13 @@ mod isolation {
             )],
             &form.join("&"),
         )
-        .await;
+        .await
+    }
+
+    /// Allow, then trade the code for a token; the token.
+    async fn allow_and_redeem(relay: &Relay, app: &GeminiApp, browser: &AtConsent) -> String {
+        let code = allow_for_code(relay, app, browser).await;
+        let r = redeem_code(relay, app, &code).await;
         assert_eq!(r.status, 200, "{}", r.body);
         r.json()["access_token"]
             .as_str()
@@ -1412,8 +1434,11 @@ mod isolation {
         assert!(!page.body.contains(&alices.csrf));
 
         // Alice's own browser is untouched and can still finish: exactly one
-        // code, which her app can redeem, and not a second.
-        let token = allow_and_redeem(&w.relay, &gemini, &alices).await;
+        // code, which her app can redeem once and not twice.
+        let code = allow_for_code(&w.relay, &gemini, &alices).await;
+        let first = redeem_code(&w.relay, &gemini, &code).await;
+        assert_eq!(first.status, 200, "{}", first.body);
+        let token = first.json()["access_token"].as_str().unwrap().to_string();
         let own = post(
             w.relay.addr,
             &format!("/mcp/app/{}", w.alice.laptop.id),
@@ -1423,7 +1448,49 @@ mod isolation {
         )
         .await;
         assert_eq!(own.status, 200, "{}", own.body);
-        let again = decide(&w.relay, Some(&alices.cookie), &alices.csrf, "allow").await;
-        assert!(again.header("location").is_none(), "{}", again.body);
+        let again = redeem_code(&w.relay, &gemini, &code).await;
+        assert_eq!(again.status, 400, "{}", again.body);
+        assert_eq!(again.json()["error"], "invalid_grant", "{}", again.body);
+        assert!(again.json().get("access_token").is_none());
+
+        // Deciding the same consent a second time is refused and issues
+        // nothing more.
+        let second = decide(&w.relay, Some(&alices.cookie), &alices.csrf, "allow").await;
+        assert_eq!(second.status, 403, "{}", second.body);
+        assert!(second.header("location").is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn alice_cannot_sign_in_an_app_to_bobs_computer() {
+        let w = world().await;
+        let gemini = register_gemini(&w.relay).await;
+        let nowhere = nobody();
+        let mut answers = Vec::new();
+        for device in [&w.bob.laptop.id, &nowhere] {
+            let (cookie, state) = begin_sign_in(&w.relay, &gemini, device).await;
+            let back = come_back(&w.relay, ALICE, &cookie, &state).await;
+            // No consent page, no way on to the app.
+            assert_eq!(back.status, 404, "{}", back.body);
+            assert!(back.header("location").is_none());
+            assert!(!back.body.contains("Allow"), "{}", back.body);
+            // Nothing is waiting for her to allow, so there is nothing to
+            // decide and no code.
+            let page = send(
+                w.relay.addr,
+                "GET",
+                "/oauth/consent",
+                &[("cookie", cookie.clone())],
+                "",
+            )
+            .await;
+            assert_ne!(page.status, 200, "{}", page.body);
+            assert!(!page.body.contains("name=\"csrf\""), "{}", page.body);
+            answers.push((back.status, back.body.replace(device.as_str(), "<id>")));
+        }
+        assert_eq!(
+            answers[0], answers[1],
+            "Alice's answer about Bob's computer differs from her answer about one that does not exist"
+        );
+        assert_bobs_laptop_untouched(&w).await;
     }
 }
