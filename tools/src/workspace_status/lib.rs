@@ -117,11 +117,12 @@ pub fn check_repo_config_and_head(dir: &Path) -> Result<String, i32> {
 
     let ci_empty = env::var("CI").unwrap_or_default().is_empty();
     let gha_empty = env::var("GITHUB_ACTIONS").unwrap_or_default().is_empty();
-    let claude_remote = env::var("CLAUDE_CODE_REMOTE").unwrap_or_default() == "true";
+    let cloud_session = env::var("VITRUVIAN_CLOUD_SESSION").unwrap_or_default() == "true"
+        || env::var("CLAUDE_CODE_REMOTE").unwrap_or_default() == "true";
     let allow_primary =
         env::var("VITRUVIAN_ALLOW_PRIMARY_BRANCH").unwrap_or_else(|_| "0".into()) == "1";
 
-    if inside == "true" && ci_empty && gha_empty && !claude_remote && !allow_primary {
+    if inside == "true" && ci_empty && gha_empty && !cloud_session && !allow_primary {
         if !git_dir.is_empty() && git_dir == git_common_dir {
             let branch = sym_ref.strip_prefix("refs/heads/").unwrap_or("(detached)");
             if branch != "main" {

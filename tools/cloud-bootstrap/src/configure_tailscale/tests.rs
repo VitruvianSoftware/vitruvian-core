@@ -526,3 +526,22 @@ fn hook_already_connected_does_not_rejoin() {
         );
     }
 }
+
+#[test]
+fn hook_runs_under_vitruvian_cloud_session() {
+    let h = Hooks::new();
+    for (which, hook) in &h.hooks {
+        let (rc, up) = h.run(
+            hook,
+            &[
+                ("VITRUVIAN_CLOUD_SESSION", "true"),
+                ("TS_AUTHKEY", "tskey-neutral"),
+            ],
+        );
+        assert_eq!(rc, 0, "{which}");
+        assert!(
+            up.contains("--authkey=tskey-neutral"),
+            "{which}: expected tailscale up under VITRUVIAN_CLOUD_SESSION=true, got: {up}"
+        );
+    }
+}
