@@ -634,10 +634,7 @@ fn jq_programs() {
     let (_, e, st) = jq_out(&Prog::Repos, "{}", false);
     assert_eq!(
         (e.as_str(), st),
-        (
-            "jq: error (at <stdin>:0): Cannot iterate over null (null)\n",
-            5
-        )
+        ("jq: error (at <stdin>:0): Cannot iterate over null\n", 5)
     );
 }
 
@@ -678,6 +675,96 @@ fn jq_secret_paths_never_quote_values() {
             );
         }
     }
+}
+
+#[test]
+fn jq_errors_never_leak_secret_values() {
+    let bare_url = br#""postgres://user:SECRET-MARKER-123@host/db""#.as_slice();
+    let bare_short = br#""SECRET-MARKER-123""#.as_slice();
+    let num = b"42".as_slice();
+    let null = b"null".as_slice();
+    let arr_url = br#"["postgres://user:SECRET-MARKER-123@host/db"]"#.as_slice();
+    let repos_url = br#"{"repositories":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+    let repos_short = br#"{"repositories":"SECRET-MARKER-123"}"#.as_slice();
+    let repos_num = br#"{"repositories":42}"#.as_slice();
+    let repos_null = br#"{"repositories":null}"#.as_slice();
+    let repos_arr = br#"{"repositories":["postgres://user:SECRET-MARKER-123@host/db"]}"#.as_slice();
+    let owner_url = br#"{"owner":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+
+    let assert_clean = |prog: &Prog, inp: &[u8], want_status: i32| -> String {
+        let r = jq::run(prog, inp, matches!(prog, Prog::Field(_)));
+        let err = r.stderr_string();
+        assert_eq!(
+            r.status,
+            want_status,
+            "input={:?}, stderr={err}",
+            String::from_utf8_lossy(inp)
+        );
+        for needle in ["SECRET-MARKER-123", "SECRET-M", "postgres://user:"] {
+            assert!(
+                !err.contains(needle),
+                "leaked {needle:?} in stderr for {:?}: {err}",
+                String::from_utf8_lossy(inp)
+            );
+        }
+        err
+    };
+
+    for (inp, want_err) in [
+        (
+            bare_url,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            bare_short,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            num,
+            "jq: error (at <stdin>:0): Cannot iterate over number\n",
+        ),
+        (null, "jq: error (at <stdin>:0): Cannot iterate over null\n"),
+    ] {
+        let err = assert_clean(&Prog::Installations, inp, 5);
+        assert_eq!(err, want_err);
+    }
+    assert_clean(&Prog::Installations, arr_url, 5);
+
+    for (inp, want_err) in [
+        (
+            repos_url,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            repos_short,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            repos_num,
+            "jq: error (at <stdin>:0): Cannot iterate over number\n",
+        ),
+        (
+            repos_null,
+            "jq: error (at <stdin>:0): Cannot iterate over null\n",
+        ),
+    ] {
+        let err = assert_clean(&Prog::Repos, inp, 5);
+        assert_eq!(err, want_err);
+    }
+    for inp in [bare_url, bare_short, num, null, repos_arr] {
+        assert_clean(&Prog::Repos, inp, 5);
+    }
+
+    for prog in [Prog::Field("token"), Prog::Field("pem")] {
+        for inp in [bare_url, bare_short, num] {
+            assert_clean(&prog, inp, 5);
+        }
+        assert_clean(&prog, null, 1);
+    }
+    for inp in [bare_url, bare_short, num, owner_url] {
+        assert_clean(&Prog::Convert("k.pem"), inp, 5);
+    }
+    assert_clean(&Prog::Convert("k.pem"), null, 0);
 }
 
 #[test]
@@ -1117,4 +1204,19 @@ fn client_creds_json_keeps_id_and_secret_only() {
 fn client_creds_json_rejects_a_response_without_a_secret() {
     let err = super::client_creds_json(br#"{"client_id":"Iv23abc"}"#).unwrap_err();
     assert!(err.contains("client_secret"), "{err}");
+}
+
+#[test]
+fn write_client_creds_creates_0600_file_and_refuses_overwrite() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = gate_scratch("client-creds-mode");
+    let creds = d.join("out.creds.json");
+    let creds_b = b(&creds);
+    let resp = br#"{"client_id":"Iv23abc","client_secret":"s3cret"}"#;
+    super::write_client_creds(&creds_b, resp).unwrap();
+    assert_eq!(
+        std::fs::metadata(&creds).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(super::write_client_creds(&creds_b, resp).is_err());
 }

@@ -35,7 +35,6 @@ use shell_compat as sh;
 use std::ffi::c_int;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
@@ -719,27 +718,14 @@ impl Tool {
             return Err(die(b"manifest conversion failed -- the code is single-use and expires in 1h; redo the browser step"));
         }
         let resp = sh::subst(o);
-        let old = sh::umask(0o077);
-        let opened = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o666)
-            .open(sh::path(outp));
-        let mut f = match opened {
-            Ok(f) => f,
-            Err(e) => {
-                sh::redirect_error(line::CONVERT_PEM, outp, &e);
-                return Err(die(b"response contained no pem"));
-            }
-        };
         let (pem, pst) = jq(&jq::Prog::Field("pem"), &resp, true);
-        let _ = f.write_all(&pem);
-        drop(f);
+        if let Err(e) = sh::write_secret_file_new(outp, &pem) {
+            sh::redirect_error(line::CONVERT_PEM, outp, &e);
+            return Err(die(b"response contained no pem"));
+        }
         if pst != 0 {
             return Err(die(b"response contained no pem"));
         }
-        sh::umask(old);
         if !credp.is_empty() {
             write_client_creds(credp, &resp)?;
         }
@@ -2685,7 +2671,7 @@ pub fn parse_pr_enrichment(graphql_json: &[u8]) -> Option<PrEnrichment> {
     let mut approved_by = Vec::new();
     let mut changes_requested_by = Vec::new();
     if let Ok(nodes) = node.index("latestReviews").and_then(|r| r.index("nodes")) {
-        if let Ok(items) = nodes.iterate() {
+        if let Ok(items) = nodes.iterate_redacted() {
             for item in items {
                 let state = match item.index("state") {
                     Ok(Value::String(s)) => s,
@@ -3400,13 +3386,7 @@ pub fn client_creds_json(resp: &[u8]) -> Result<Vec<u8>, String> {
 
 fn write_client_creds(path: &[u8], resp: &[u8]) -> Res {
     let body = client_creds_json(resp).map_err(|e| die(e.as_bytes()))?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(sh::path(path))
-        .map_err(|e| die(format!("cannot write credentials: {e}").as_bytes()))?;
-    f.write_all(&body)
+    sh::write_secret_file_new(path, &body)
         .map_err(|e| die(format!("cannot write credentials: {e}").as_bytes()))?;
     err(&cat(&[
         b"agent-app: client id and secret written to ",

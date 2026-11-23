@@ -32,8 +32,8 @@ pub mod run;
 pub mod value;
 
 pub use error::{
-    cannot_index_number, cannot_index_string, cannot_iterate, format_parse_error,
-    format_runtime_error,
+    cannot_index_number, cannot_index_string, cannot_iterate, cannot_iterate_redacted,
+    format_parse_error, format_runtime_error,
 };
 pub use format::{
     compact, compact_sorted, dump_string, dump_trunc, format_value, interpolate, pretty,
