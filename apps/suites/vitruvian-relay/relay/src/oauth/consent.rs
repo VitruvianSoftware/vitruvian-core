@@ -60,12 +60,14 @@ use crate::store::{StoreError, UNAVAILABLE_MESSAGE};
 pub(crate) const BINDING_COOKIE: &str = "vr_oauth";
 const BINDING_PATH: &str = "/oauth/";
 const BINDING_SECS: u64 = 10 * 60;
-/// The app's `state` may be this long (bytes, after decoding).
-const MAX_STATE_BYTES: usize = 1024;
+/// The app's `state` may be this long (bytes, after decoding). Gemini's is
+/// over 1 KiB, so this leaves it plenty of room.
+const MAX_STATE_BYTES: usize = 8 * 1024;
 /// RFC 7636: a challenge is 43 to 128 characters.
 const CHALLENGE_LEN: std::ops::RangeInclusive<usize> = 43..=128;
-/// Longest query string `/oauth/authorize` reads; a real one is under 2 KiB.
-const MAX_QUERY_BYTES: usize = 8 * 1024;
+/// Longest query string `/oauth/authorize` reads: room for the longest
+/// `state`, percent-encoded, and the other parameters.
+const MAX_QUERY_BYTES: usize = 16 * 1024;
 /// Largest consent form (a token and a choice).
 const MAX_FORM_BYTES: usize = 4 * 1024;
 /// The name the consent page gives the app that registers itself.
@@ -306,7 +308,12 @@ pub(super) async fn authorize(app: &Arc<App>, req: &Request<Incoming>) -> Respon
         return error_to_app(&callback, "unsupported_response_type", state);
     }
     let Some(state) = state.filter(|s| state_ok(s)) else {
-        app.log("app_authorize_refused", json!({"why": "state"}));
+        // The length only: the value is the app's and stays out of the log.
+        let state_bytes = get("state").map_or(0, str::len);
+        app.log(
+            "app_authorize_refused",
+            json!({"why": "state", "state_bytes": state_bytes}),
+        );
         return error_to_app(&callback, "invalid_request", None);
     };
     let challenge = get("code_challenge").filter(|c| challenge_ok(c));
@@ -321,6 +328,7 @@ pub(super) async fn authorize(app: &Arc<App>, req: &Request<Incoming>) -> Respon
         return error_to_app(&callback, "invalid_target", Some(state));
     };
 
+    app.log("app_authorize_started", json!({"state_bytes": state.len()}));
     let started = app.pending.begin(
         AuthRequest {
             client_id,
@@ -798,9 +806,9 @@ mod tests {
     #[test]
     fn state_is_present_short_and_survives_decoding() {
         assert!(state_ok("abc"));
-        assert!(state_ok(&"s".repeat(1024)));
+        assert!(state_ok(&"s".repeat(MAX_STATE_BYTES)));
         assert!(!state_ok(""));
-        assert!(!state_ok(&"s".repeat(1025)));
+        assert!(!state_ok(&"s".repeat(MAX_STATE_BYTES + 1)));
         assert!(!state_ok("bad\u{FFFD}"));
     }
 
