@@ -463,6 +463,8 @@ pub struct Link<T, A, K> {
     /// Holds the Mac awake while `rules.keep_awake` is on; a reload that
     /// flips the setting starts or stops it. Started by the caller.
     pub awake: Arc<Awake>,
+    /// The key at start. Each `hello` signs with the key saved at that moment
+    /// ([`Link::current_key`]), so a new `vrelay login` needs no restart.
     pub key: Arc<Ed25519KeyPair>,
     pub timing: Timing,
     pub clock: Clock,
@@ -2516,16 +2518,36 @@ impl<T: Tools, A: Asker, K: TokenSource> Link<T, A, K> {
         }
     }
 
+    /// The saved key, read off the async threads (it may be the Keychain).
+    /// If there is none or it cannot be read, the key from start: the relay
+    /// then refuses a stale signature and the link retries.
+    async fn current_key(&self) -> Arc<Ed25519KeyPair> {
+        let dir = self.dir.clone();
+        match tokio::task::spawn_blocking(move || crate::keys::load_saved(&dir)).await {
+            Ok(Ok(Some(key))) => Arc::new(key),
+            Ok(Ok(None)) => self.key.clone(),
+            Ok(Err(e)) => {
+                (self.log)(&format!("could not read the device key: {e}"));
+                self.key.clone()
+            }
+            Err(e) => {
+                (self.log)(&format!("could not read the device key: {e}"));
+                self.key.clone()
+            }
+        }
+    }
+
     async fn hello(&self, shared: &Shared<T, A>, device_id: &str, token: &str) -> Hello {
         let all = self.tools.list().await;
         let tools = shared.rules.lock().unwrap().visible(&all);
+        let key = self.current_key().await;
         let ts = (self.clock)();
         Hello {
             device_id: device_id.to_string(),
             connector_version: env!("CARGO_PKG_VERSION").to_string(),
             protocol: PROTOCOL,
             ts,
-            sig: sign_hello(&self.key, device_id, ts, token),
+            sig: sign_hello(&key, device_id, ts, token),
             tools,
         }
     }

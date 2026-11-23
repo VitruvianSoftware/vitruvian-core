@@ -766,6 +766,31 @@ async fn sends_hello_with_visible_tools_only() {
     assert!(now_unix().abs_diff(hello.ts) < 5);
 }
 
+/// `vrelay logout` then `login` replaces the key under a running agent. Its
+/// next connection must sign with the new key, or the relay refuses it with
+/// "bad signature" until someone restarts the agent.
+#[tokio::test(flavor = "multi_thread")]
+async fn signs_with_the_key_saved_now_after_a_new_login() {
+    let mut relay = FakeRelay::start().await;
+    let dir = registered("l-new-key");
+    let _run = start(&dir, &relay.url(), parts());
+    let (c, _) = relay.welcome().await;
+    crate::state::write_private(&crate::state::key_path(&dir), &[9; 32]).unwrap();
+    drop(c);
+    let (c, hello) = relay.welcome().await;
+    let token = c.auth.strip_prefix("Bearer ").unwrap();
+    let new_key = load_or_create(&dir).unwrap();
+    let sig =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &hello.sig).unwrap();
+    let msg = hello_message("dev-1", hello.ts, &sha256_hex(token));
+    ring::signature::UnparsedPublicKey::new(
+        &ring::signature::ED25519,
+        ring::signature::KeyPair::public_key(&new_key).as_ref(),
+    )
+    .verify(msg.as_bytes(), &sig)
+    .expect("the second hello is signed with the new key");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn repeated_call_id_runs_once() {
     let mut relay = FakeRelay::start().await;
