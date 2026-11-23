@@ -57,7 +57,7 @@ mod tests {
     use vitruvian_jq::{parse_one, Value};
 
     fn num(s: &str) -> String {
-        match parse_one(s.as_bytes()).unwrap() {
+        match &parse_one(s.as_bytes()).unwrap() {
             Value::Number(n) => n.fmt_jq(),
             Value::Null => "null".into(),
             other => panic!("{other:?}"),
