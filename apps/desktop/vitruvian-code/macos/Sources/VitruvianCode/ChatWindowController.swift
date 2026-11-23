@@ -276,7 +276,10 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
                 // The folder picker counts as a click outside the panel,
                 // which hides it; this brings it back.
                 showWindow: { [weak self] in self?.show() },
-                offersClearAll: true))
+                offersClearAll: true,
+                // The LaunchAgent a schedule exports starts this program with
+                // `--run-automation <id>`, which `HeadlessAutomation` handles.
+                automationExecutablePath: Bundle.main.executablePath))
     }
 
     /// The screen a fresh panel opens on: the one with the keyboard focus,

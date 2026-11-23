@@ -540,10 +540,24 @@ bot's four values stay as they are.
 If bypass is switched off, the app uses auto-accept edits, or approval
 required if that is also blocked, and shows a notice, as T3 Code does.
 
-**Unattended runs** (worktree and automation runs). An approval request
-raises a system notification and waits for the user, as in T3 Code. Nothing
-is denied automatically. A prompt that goes silent is caught by the agy
-silent-prompt timeout (section 2).
+**Unattended runs** (scheduled automations, started with
+`--run-automation <id>` and no window). A run uses the approval mode the app
+has saved and never a higher one; with no saved settings it uses approval
+required. An approval or a question that mode lets through is denied, a
+system notification names the task (and nothing else of it), and the run
+ends as failed. It does not wait for an answer, because a notification cannot
+carry one back to a process that has no window. This differs from T3 Code,
+which waits, because T3 Code's runs have a window to answer in. A prompt that
+goes silent is caught by the agy silent-prompt timeout (section 2), and every
+run has a time limit that stops the connection and its process group.
+
+A task saved before this existed has `liveRunsEnabled` false. A LaunchAgent
+that an earlier version exported for it has been starting the agent program
+with an unknown flag, not the app, and the app must not start running such a
+task on its own: the run logs that the task needs re-enabling and stops, and
+switching the task off and on again lets it run. In a git repository the run
+happens in a new worktree and only there: if the worktree cannot be made the
+run fails.
 
 **A repository's own Claude settings.** The helper loads Claude's user, project and
 local settings (`settingSources: ["user", "project", "local"]`). So a repository's own
@@ -960,7 +974,7 @@ the peak resident memory of one connection.
 | `macos/Sources/VitruvianCodeUI/AgentPlanView.swift`, `AgentTerminalView.swift`, `AgentSettingsBar.swift` (new) | Live plan. Terminal output with a Stop button, shown only where the policy offers terminals. Pickers from the agent's list, plus the mode and the plan switch | Plans, terminals, settings |
 | `macos/Sources/VitruvianCodeUI/VitruvianCodeToolStepViews.swift`, `VitruvianCodeComposerPopovers.swift` | Tool kind, status, clickable locations and live diffs. The agent's slash menu, @-mention embeds, and image paste and drop | Tool cards, commands, attachments |
 | `macos/Sources/VitruvianCodeUI/VitruvianCodeChatView.swift`, `VitruvianCodeChatControls.swift` | Stop calls `cancel()`. Adds the usage meter, notice banners, compaction and the Compact/Keep chip, the usage-limit wait, the error card with **Retry** and **Use command line for this chat**, and the notification for a waiting unattended run (through `macos/Sources/VitruvianCode/BackgroundNotifications.swift`) | The remaining rows of "What ACP gives us" |
-| `macos/Sources/VitruvianCodeCore/VitruvianCodeWorktreeEngine.swift`, `VitruvianCodeOrchestrationAndAutomation.swift` | Worktree and automation runs create the worktree and start an `AgentConnection` in it, replacing `-w` on live connections | Worktree mode (section 7) |
+| `macos/Sources/VitruvianCodeCore/VitruvianCodeWorktreeEngine.swift`, `VitruvianCodeOrchestrationAndAutomation.swift` | Worktree and automation runs create the worktree and start an `AgentConnection` in it, replacing `-w` on live connections. Scheduled automations do this; orchestration `dispatchReady` still only records state and launches nothing, because a run has no repository, provider or owner for a worker's connection yet | Worktree mode (section 7) |
 | `macos/Sources/VitruvianCodeUI/VitruvianCodeTimelineScrubber.swift`, `VitruvianCodeDiffReviewAndDesignViews.swift` | Read plans, tools and diffs from `AgentEvent` | One event type |
 | Strings files from step 2 | Strings for every new view | Translations |
 | `macos/Tests/AgentCardSnapshotTests.swift` (new), `BubbleSnapshotTests.swift`, `TimelineSnapshotTests.swift`, `WorktreeLiveConnectionTests.swift` (new) | Snapshots of each view, light and dark. A worktree run starts a connection in its worktree | Visual and behaviour checks |
@@ -1030,7 +1044,7 @@ release.
     | A notice | It shows as a banner |
     | Hit a usage limit | The wait is shown |
     | A terminal, for an agent that offers one | Output streams and Stop ends the command |
-    | Worktree run that needs approval | A system notification appears |
+    | Worktree run that needs approval | A system notification appears, and the run ends as failed |
 
 *   **Step 6:** one mirror release through the catalog, then the same
     click-through in the installed extension.

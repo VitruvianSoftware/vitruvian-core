@@ -2279,3 +2279,45 @@ extension VitruvianCodeEngine {
         }
     }
 }
+
+// MARK: - Unattended runs
+
+extension VitruvianCodeEngine {
+    /// The settings a scheduled run uses, read from the saved `.env` and the
+    /// provider the host remembers, without starting any program or touching
+    /// the engine's own state. With no saved settings at all the mode is
+    /// approval required, not the empty configuration's full access: a run
+    /// with nobody there never gets more than the user has saved.
+    public func savedConfigurationForUnattendedRun() -> VitruvianCodeConfiguration {
+        let text = environment.readFile(envFilePath)
+        let saysSomething = text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        var configuration = withChosenProvider(text.map(VitruvianCodeEnvFile.parse) ?? VitruvianCodeConfiguration())
+        if !saysSomething { configuration.approvalMode = .standard }
+        return configuration
+    }
+
+    /// The runner for `--run-automation`: this engine's saved tasks, providers,
+    /// settings and connection factory, a worktree manager of its own, and
+    /// `notifier` for a run that needs the user.
+    public func makeAutomationRunner(
+        notifier: any VitruvianCodeUnattendedNotifier,
+        timeLimit: TimeInterval = VitruvianCodeAutomationRunner.defaultTimeLimit,
+        log: @escaping (String) -> Void
+    ) -> VitruvianCodeAutomationRunner {
+        VitruvianCodeAutomationRunner(
+            automations: session.automationManager,
+            providerByID: { [weak self] id in self?.providers.first { $0.id == id } },
+            configuration: savedConfigurationForUnattendedRun(),
+            planSwitch: host.planMode,
+            agentPath: { [weak self] provider in self?.locateProgram(of: provider) },
+            makeConnection: environment.makeConnection,
+            runGit: environment.runProgramChecked,
+            processEnvironment: environment.processEnvironment,
+            stateDirectory: stateDirectory,
+            notifier: notifier,
+            strings: host.strings,
+            timeLimit: timeLimit,
+            log: log
+        )
+    }
+}

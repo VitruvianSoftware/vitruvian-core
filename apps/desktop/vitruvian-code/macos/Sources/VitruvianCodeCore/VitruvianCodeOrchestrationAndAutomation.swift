@@ -412,11 +412,19 @@ public struct VitruvianCodeScheduledTask: Identifiable, Equatable, Sendable, Cod
     public var isEnabled: Bool
     public var lastRunAt: Date?
     public var lastRunSucceeded: Bool?
+    /// Whether a scheduled firing may actually start an agent. A task saved
+    /// before unattended runs existed decodes as false: a LaunchAgent that
+    /// an earlier version exported for it has done nothing since, and must
+    /// not start running an agent on the user's Mac the day this version is
+    /// installed. A task made after that, or switched back on by the user,
+    /// is true.
+    public var liveRunsEnabled: Bool
 
     public init(id: UUID = UUID(), name: String, prompt: String, workingDirectory: String,
                 providerID: UUID, model: String = "", useWorktree: Bool = false,
                 schedule: VitruvianCodeAutomationSchedule, isEnabled: Bool = true,
-                lastRunAt: Date? = nil, lastRunSucceeded: Bool? = nil) {
+                lastRunAt: Date? = nil, lastRunSucceeded: Bool? = nil,
+                liveRunsEnabled: Bool = true) {
         self.id = id
         self.name = name
         self.prompt = prompt
@@ -428,6 +436,30 @@ public struct VitruvianCodeScheduledTask: Identifiable, Equatable, Sendable, Cod
         self.isEnabled = isEnabled
         self.lastRunAt = lastRunAt
         self.lastRunSucceeded = lastRunSucceeded
+        self.liveRunsEnabled = liveRunsEnabled
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, prompt, workingDirectory, providerID, model, useWorktree, schedule
+        case isEnabled, lastRunAt, lastRunSucceeded, liveRunsEnabled
+    }
+
+    /// Data saved before `liveRunsEnabled` existed has no such key, and that
+    /// means false: see the property.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        workingDirectory = try container.decode(String.self, forKey: .workingDirectory)
+        providerID = try container.decode(UUID.self, forKey: .providerID)
+        model = try container.decode(String.self, forKey: .model)
+        useWorktree = try container.decode(Bool.self, forKey: .useWorktree)
+        schedule = try container.decode(VitruvianCodeAutomationSchedule.self, forKey: .schedule)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        lastRunAt = try container.decodeIfPresent(Date.self, forKey: .lastRunAt)
+        lastRunSucceeded = try container.decodeIfPresent(Bool.self, forKey: .lastRunSucceeded)
+        liveRunsEnabled = try container.decodeIfPresent(Bool.self, forKey: .liveRunsEnabled) ?? false
     }
 
     /// When the task should next run. A task that has never run counts
@@ -503,6 +535,9 @@ public final class VitruvianCodeAutomationManager: ObservableObject {
     public func setEnabled(_ enabled: Bool, id: UUID) {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[index].isEnabled = enabled
+        // Switching a task on is the user's word that it may run: this is
+        // how a task saved by an earlier version starts running.
+        if enabled { tasks[index].liveRunsEnabled = true }
         save()
     }
 

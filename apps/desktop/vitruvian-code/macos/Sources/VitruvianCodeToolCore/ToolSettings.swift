@@ -362,7 +362,9 @@ public final class ToolSettings: VitruvianCodeHost {
                               configOptionUnavailable: Words.text("configOptionUnavailable", language),
                               mentionOutsideWorkspaceFormat: Words.text("mentionOutsideWorkspaceFormat", language),
                               turnInterrupted: Words.text("turnInterrupted", language),
-                              connectionLockedFormat: Words.text("connectionLockedFormat", language))
+                              connectionLockedFormat: Words.text("connectionLockedFormat", language),
+                              automationNeedsYouTitle: Words.text("automationNeedsYouTitle", language),
+                              automationNeedsYouBodyFormat: Words.text("automationNeedsYouBodyFormat", language))
     }
 
     public func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {
