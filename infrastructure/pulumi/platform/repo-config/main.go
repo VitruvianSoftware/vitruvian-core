@@ -550,11 +550,17 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
+	cacheLimitGB, err := manageActionsCacheLimit(ctx, cfg, repoOwner, repoName, repo)
+	if err != nil {
+		return err
+	}
+
 	// Surface the resolved owner so `pulumi stack output` records which
 	// account these settings were applied to.
 	ctx.Export("repoOwner", pulumi.String(repoOwner))
 	ctx.Export("repoName", repo.Name)
 	ctx.Export("defaultBranch", pulumi.String(defaultBranch))
+	ctx.Export("actionsCacheSizeLimitGB", pulumi.Int(cacheLimitGB))
 
 	return nil
 }

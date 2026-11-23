@@ -29,6 +29,11 @@ config:
   # before every agent authors PRs under its own App re-creates the wedge
   # described above. See docs/guides/creating-an-agent-github-app.md step 6.
   vitruvian-core-repo-config:requiredApprovals: "0"
+  # GitHub Actions cache storage limit in GB, reconciled via
+  # PUT /repos/{owner}/{repo}/actions/cache/storage-limit (max_cache_size_gb,
+  # actions_cache_limit.go). Raising above GitHub's 10 GB free default requires a
+  # valid payment method on the organization/account before applying.
+  vitruvian-core-repo-config:actionsCacheSizeLimitGB: "15"
   vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
   # Stage-5 multi-env on business unit 2. Every environment federates the SHARED
