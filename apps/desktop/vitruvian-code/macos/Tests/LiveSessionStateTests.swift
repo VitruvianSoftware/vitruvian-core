@@ -334,11 +334,11 @@ final class LiveSessionStateTests: XCTestCase {
 
     func testApprovalSyncFailureFailsClosedWithoutSendingPrompt() async throws {
         let connections = LiveStateLockedBox<[LiveStateMockConnection]>([])
-        var failSyncOnFirst = true
+        var failFreshOnSecond = false
         let env = makeSessionEnvironment(makeConnection: { spec in
             let conn = LiveStateMockConnection(spec: spec)
-            conn.failSyncMode = failSyncOnFirst
-            failSyncOnFirst = false
+            conn.failSyncMode = failFreshOnSecond
+            failFreshOnSecond = false
             connections.withValue { $0.append(conn) }
             return conn
         })
@@ -347,38 +347,210 @@ final class LiveSessionStateTests: XCTestCase {
         session.takeCheckpoint = { _ in nil }
         let yoloConfig = VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: Self.agyACPProvider)
 
-        // Turn 1 starts in .yolo
+        // Turn 1 starts in .yolo and calls syncMode before prompt
         session.send("Turn 1", configuration: yoloConfig, agentPath: "/fake/agy")
         try await waitUntil("conn1 prompt 1") { connections.value.first?.promptCalls.count == 1 }
         let conn1 = connections.value[0]
+        XCTAssertEqual(conn1.syncedModes.count, 1)
+        XCTAssertEqual(conn1.syncedModes.first?.0, .yolo)
+        XCTAssertEqual(conn1.syncedModes.first?.1, false)
         conn1.emit(.finished(status: "completed", response: "OK", error: nil, conversationID: "s-sync-fail"))
         conn1.finishPrompt(with: .endTurn)
         try await waitUntil("turn 1 done") { !session.isRunning }
-        XCTAssertEqual(conn1.syncedModes.count, 0)
 
-        // Turn 2 downgrades to .standard, syncMode throws -> prompt must NOT be sent, conn1 discarded & stopped
+        // Turn 2 (reused path) downgrades to .standard, syncMode throws -> prompt must NOT be sent, conn1 discarded & stopped
+        conn1.failSyncMode = true
         session.chatApprovalMode = .standard
         session.send("Turn 2 must fail closed", configuration: yoloConfig, agentPath: "/fake/agy")
         try await waitUntil("turn 2 fails") { !session.isRunning }
 
-        XCTAssertEqual(conn1.syncedModes.count, 1)
-        XCTAssertEqual(conn1.syncedModes.first?.0, .standard)
-        XCTAssertEqual(conn1.syncedModes.first?.1, false)
-        XCTAssertEqual(conn1.promptCalls.count, 1, "prompt must NOT be sent when mode sync fails")
+        XCTAssertEqual(conn1.syncedModes.count, 2)
+        XCTAssertEqual(conn1.syncedModes.last?.0, .standard)
+        XCTAssertEqual(conn1.syncedModes.last?.1, false)
+        XCTAssertEqual(conn1.promptCalls.count, 1, "prompt must NOT be sent when reused-connection mode sync fails")
         XCTAssertEqual(conn1.stopCount, 1)
         XCTAssertNotNil(session.lastFailedPrompt)
         XCTAssertTrue(session.messages.contains { $0.role == .agent && $0.isError })
 
-        // Turn 3 starts a fresh connection with lastSyncedMode reset cleanly
-        session.send("Turn 3", configuration: yoloConfig, agentPath: "/fake/agy")
-        try await waitUntil("conn2 starts and prompts") {
-            connections.value.count == 2 && connections.value[1].promptCalls.count == 1
+        // Turn 3 (fresh path) syncMode throws -> prompt must NOT be sent, conn2 discarded & stopped
+        failFreshOnSecond = true
+        session.send("Turn 3 fresh fail closed", configuration: yoloConfig, agentPath: "/fake/agy")
+        try await waitUntil("turn 3 fails") {
+            connections.value.count == 2 && !session.isRunning
         }
         let conn2 = connections.value[1]
-        conn2.emit(.finished(status: "completed", response: "Recovered", error: nil, conversationID: "s-sync-fail"))
-        conn2.finishPrompt(with: .endTurn)
-        try await waitUntil("turn 3 done") { !session.isRunning }
+        XCTAssertEqual(conn2.syncedModes.count, 1)
+        XCTAssertEqual(conn2.promptCalls.count, 0, "prompt must NOT be sent when fresh-connection mode sync fails")
+        XCTAssertEqual(conn2.stopCount, 1)
+
+        // Turn 4 starts a clean fresh connection
+        session.send("Turn 4", configuration: yoloConfig, agentPath: "/fake/agy")
+        try await waitUntil("conn3 starts and prompts") {
+            connections.value.count == 3 && connections.value[2].promptCalls.count == 1
+        }
+        let conn3 = connections.value[2]
+        conn3.emit(.finished(status: "completed", response: "Recovered", error: nil, conversationID: "s-sync-fail"))
+        conn3.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 4 done") { !session.isRunning }
         await session.stopAll()
+    }
+
+    func testPermissionRaceDuringStartupSyncsBackToAskBeforePrompt() async throws {
+        let agent = ScriptedACPAgent()
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let bundled = BundledNode(
+                nodeURL: URL(fileURLWithPath: "/usr/bin/true"),
+                helperURL: URL(fileURLWithPath: "/usr/bin/true")
+            )
+            return ClaudeSDKConnection(
+                spec: spec,
+                environment: VitruvianCodeEngine.Environment.live,
+                bundledNode: { bundled },
+                versionProbe: { "2.1.400" },
+                processFactory: agent.makeProcessFactory()
+            )
+        })
+
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let askConfig = VitruvianCodeConfiguration(
+            workingDirectory: "/tmp",
+            approvalMode: .standard,
+            activeProvider: Self.claudeSDKProvider
+        )
+
+        // 1. Send Turn 1 in Ask (.standard)
+        session.send("Turn 1 sent in Ask", configuration: askConfig, agentPath: "/usr/bin/true")
+        let initReq = try await agent.clientMessage(at: 0, timeout: 3.0)
+        XCTAssertEqual(initReq.objectValue?["method"]?.stringValue, "initialize")
+
+        // 2. Switch to Bypass (.yolo) while startup is in flight
+        session.chatApprovalMode = .yolo
+        try await agent.sendToClient(.object([
+            "jsonrpc": .string("2.0"),
+            "id": initReq.objectValue?["id"] ?? .int(0),
+            "result": .object(["protocolVersion": .int(1)]),
+        ]))
+
+        // start() applies the LIVE mode (bypassPermissions) during session/new
+        let newReq = try await agent.clientMessage(at: 1, timeout: 3.0)
+        XCTAssertEqual(newReq.objectValue?["method"]?.stringValue, "session/new")
+        let newMetaMode = newReq.objectValue?["params"]?.objectValue?["_meta"]?.objectValue?["vitruvian"]?.objectValue?["modeId"]?.stringValue
+        XCTAssertEqual(newMetaMode, "bypassPermissions")
+        try await agent.sendToClient(.object([
+            "jsonrpc": .string("2.0"),
+            "id": newReq.objectValue?["id"] ?? .int(1),
+            "result": .object([
+                "sessionId": .string("claude-race-1"),
+                "modes": .object([
+                    "currentModeId": .string("bypassPermissions"),
+                    "availableModes": .array([
+                        .object(["id": .string("default"), "name": .string("Default")]),
+                        .object(["id": .string("acceptEdits"), "name": .string("Accept Edits")]),
+                        .object(["id": .string("plan"), "name": .string("Plan")]),
+                        .object(["id": .string("bypassPermissions"), "name": .string("Bypass")]),
+                    ]),
+                ]),
+                "configOptions": .array([
+                    .object([
+                        "id": .string("mode"),
+                        "name": .string("Mode"),
+                        "category": .string("mode"),
+                        "type": .string("select"),
+                        "currentValue": .string("bypassPermissions"),
+                        "options": .array([
+                            .object(["value": .string("default"), "name": .string("Default")]),
+                            .object(["value": .string("acceptEdits"), "name": .string("Accept Edits")]),
+                            .object(["value": .string("plan"), "name": .string("Plan")]),
+                            .object(["value": .string("bypassPermissions"), "name": .string("Bypass")]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+
+        // 3. Before Turn 1's prompt, syncMode MUST sync back to Ask ("default")
+        let setModeReq = try await agent.clientMessage(at: 2, timeout: 3.0)
+        XCTAssertEqual(setModeReq.objectValue?["method"]?.stringValue, "session/set_config_option")
+        XCTAssertEqual(setModeReq.objectValue?["params"]?.objectValue?["value"]?.stringValue, "default")
+        try await agent.sendToClient(.object([
+            "jsonrpc": .string("2.0"),
+            "id": setModeReq.objectValue?["id"] ?? .int(2),
+            "result": .object([
+                "configOptions": .array([
+                    .object([
+                        "id": .string("mode"),
+                        "name": .string("Mode"),
+                        "category": .string("mode"),
+                        "type": .string("select"),
+                        "currentValue": .string("default"),
+                        "options": .array([
+                            .object(["value": .string("default"), "name": .string("Default")]),
+                            .object(["value": .string("acceptEdits"), "name": .string("Accept Edits")]),
+                            .object(["value": .string("plan"), "name": .string("Plan")]),
+                            .object(["value": .string("bypassPermissions"), "name": .string("Bypass")]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+
+        let prompt1Req = try await agent.clientMessage(at: 3, timeout: 3.0)
+        XCTAssertEqual(prompt1Req.objectValue?["method"]?.stringValue, "session/prompt")
+        try await agent.sendToClient(.object([
+            "jsonrpc": .string("2.0"),
+            "id": prompt1Req.objectValue?["id"] ?? .int(3),
+            "result": .object(["stopReason": .string("end_turn")]),
+        ]))
+        try await waitUntil("turn 1 finishes") { !session.isRunning }
+
+        // 4. Switch back to Ask and send Turn 2 on the reused connection
+        session.chatApprovalMode = .standard
+        session.send("Turn 2 in Ask", configuration: askConfig, agentPath: "/usr/bin/true")
+        let prompt2Req = try await agent.clientMessage(at: 4, timeout: 3.0)
+        XCTAssertEqual(prompt2Req.objectValue?["method"]?.stringValue, "session/prompt")
+        try await agent.sendToClient(.object([
+            "jsonrpc": .string("2.0"),
+            "id": prompt2Req.objectValue?["id"] ?? .int(4),
+            "result": .object(["stopReason": .string("end_turn")]),
+        ]))
+        try await waitUntil("turn 2 finishes") { !session.isRunning }
+
+        let allMessages = await agent.allClientMessages()
+        let setModes = allMessages.filter { $0.objectValue?["method"]?.stringValue == "session/set_config_option" }
+        XCTAssertEqual(setModes.last?.objectValue?["params"]?.objectValue?["value"]?.stringValue, "default")
+        await session.stopAll()
+
+        // Also confirm syncMode runs unconditionally on every turn (no lastSyncedMode cache)
+        let mockConnections = LiveStateLockedBox<[LiveStateMockConnection]>([])
+        let mockEnv = makeSessionEnvironment(makeConnection: { spec in
+            let conn = LiveStateMockConnection(spec: spec)
+            mockConnections.withValue { $0.append(conn) }
+            return conn
+        })
+        let mockSession = VitruvianCodeQuickPromptSession(environment: mockEnv, host: LiveStateMockHost())
+        mockSession.takeCheckpoint = { _ in nil }
+        let agyAsk = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.agyACPProvider)
+
+        mockSession.send("Mock 1", configuration: agyAsk, agentPath: "/fake/agy")
+        try await waitUntil("mock 1 prompts") { mockConnections.value.first?.promptCalls.count == 1 }
+        let mockConn = mockConnections.value[0]
+        mockConn.emit(.finished(status: "completed", response: "OK 1", error: nil, conversationID: "s-uncond"))
+        mockConn.finishPrompt(with: .endTurn)
+        try await waitUntil("mock 1 done") { !mockSession.isRunning }
+
+        mockSession.send("Mock 2", configuration: agyAsk, agentPath: "/fake/agy")
+        try await waitUntil("mock 2 prompts") { mockConn.promptCalls.count == 2 }
+        mockConn.emit(.finished(status: "completed", response: "OK 2", error: nil, conversationID: "s-uncond"))
+        mockConn.finishPrompt(with: .endTurn)
+        try await waitUntil("mock 2 done") { !mockSession.isRunning }
+
+        XCTAssertEqual(mockConn.syncedModes.count, 2)
+        XCTAssertEqual(mockConn.syncedModes[0].0, .standard)
+        XCTAssertEqual(mockConn.syncedModes[0].1, false)
+        XCTAssertEqual(mockConn.syncedModes[1].0, .standard)
+        XCTAssertEqual(mockConn.syncedModes[1].1, false)
+        await mockSession.stopAll()
     }
 
     // MARK: - 2. Stop During Startup
@@ -517,7 +689,6 @@ final class LiveSessionStateTests: XCTestCase {
         XCTAssertEqual(session.messages.last?.text, VitruvianCodeHostStrings().replyStopped)
 
         // 2. Next prompt works (either reusing conn1 or starting a clean connection) and then test Stop during syncMode
-        conn1.holdSyncMode = true
         session.send("Second", configuration: config, agentPath: "/fake/agy")
         try await waitUntil("prompt 2 completes start") {
             let active = connections.value.last!
@@ -529,9 +700,10 @@ final class LiveSessionStateTests: XCTestCase {
         try await waitUntil("turn 2 finishes") { !session.isRunning }
 
         // Downgrade mode so turn 3 enters syncMode, then Stop while syncMode is suspended
+        activeConn.holdSyncMode = true
         session.chatApprovalMode = .standard
         session.send("Third", configuration: config, agentPath: "/fake/agy")
-        try await waitUntil("syncMode entered") { activeConn.syncedModes.count == 1 }
+        try await waitUntil("syncMode entered") { activeConn.syncedModes.count == 2 }
         session.stop()
         activeConn.releaseSyncMode()
         try await waitUntil("turn 3 ends stopped") { !session.isRunning }
@@ -605,7 +777,7 @@ final class LiveSessionStateTests: XCTestCase {
             XCTFail("Expected .failed on bad git worktree add, got \(badRef.setupStatus)")
         }
 
-        // 2. Failing setup command must produce .failed
+        // 2. Failing setup command must produce .failed and clean up automatically
         let badSetup = await manager.createWorktree(
             taskName: "bad-setup",
             baseRepositoryPath: repoDir.path,
@@ -615,7 +787,8 @@ final class LiveSessionStateTests: XCTestCase {
             runGit: strictRunner
         )
         XCTAssertEqual(badSetup.setupStatus, .failed("Setup command failed: exit 1"))
-        _ = await manager.removeWorktree(id: badSetup.id, force: true, deleteBranch: true, runGit: strictRunner)
+        let removedFailed = await manager.removeWorktree(id: badSetup.id, force: true, deleteBranch: true, runGit: strictRunner)
+        XCTAssertFalse(removedFailed, "failed setup worktree must already be removed")
 
         // 3. Valid worktree + passing setup -> .ready, listed in porcelain, and cleanly removed
         let good = await manager.createWorktree(
@@ -788,7 +961,7 @@ final class LiveSessionStateTests: XCTestCase {
         session.resume(VitruvianCodeSessionSummary(id: "other", title: "Other", preview: "Hi", steps: 1, modified: nil), configuration: config)
         XCTAssertEqual(session.cliSlashCommands, [])
 
-        // 3. Cleared when connection changes (`stopConnection` / `resetLiveConnectionState`)
+        // 3. Cleared when provider or connection kind changes (`clearingSlashCommands: true`)
         session.send("Turn 3", configuration: config, agentPath: "/fake/agy")
         try await waitUntil("conn3 prompts") { connections.value.count == 3 && connections.value[2].promptCalls.count == 1 }
         let conn3 = connections.value[2]
@@ -798,9 +971,305 @@ final class LiveSessionStateTests: XCTestCase {
         conn3.finishPrompt(with: .endTurn)
         try await waitUntil("turn 3 done") { !session.isRunning }
 
-        session.resetLiveConnectionState(keepingWorktree: true)
+        session.resetLiveConnectionState(keepingWorktree: true, clearingSlashCommands: true)
         XCTAssertEqual(session.cliSlashCommands, [])
         await session.stopAll()
+    }
+
+    func testSlashCommandsKeptOnIdleShutdownAndCrashClearedOnChatOrProviderChange() async throws {
+        let connections = LiveStateLockedBox<[LiveStateMockConnection]>([])
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let conn = LiveStateMockConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        })
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        session.idleConnectionTimeout = 0.05
+        let agyConfig = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.agyACPProvider)
+
+        session.send("Turn 1", configuration: agyConfig, agentPath: "/fake/agy")
+        try await waitUntil("conn1 prompts") { connections.value.first?.promptCalls.count == 1 }
+        let conn1 = connections.value[0]
+        conn1.emit(.slashCommands(["review", "compact"]))
+        try await waitUntil("slash commands received") { session.cliSlashCommands == ["review", "compact"] }
+        conn1.emit(.finished(status: "completed", response: "OK", error: nil, conversationID: "s-keep-slash"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("idle shutdown stops conn1") { !session.isRunning && conn1.stopCount == 1 }
+
+        XCTAssertEqual(session.cliSlashCommands, ["review", "compact"], "idle shutdown must keep slash commands")
+
+        // Next turn restarts same provider & connection kind, then crashes -> slash commands still remain
+        session.send("Turn 2", configuration: agyConfig, agentPath: "/fake/agy")
+        try await waitUntil("conn2 prompts") { connections.value.count == 2 && connections.value[1].promptCalls.count == 1 }
+        let conn2 = connections.value[1]
+        conn2.emit(.connectionFailed(AgentFailure(kind: .exited, message: "crashed")))
+        conn2.finishPrompt(with: .error)
+        await conn2.stop()
+        try await waitUntil("turn 2 crash handled") { !session.isRunning }
+
+        XCTAssertEqual(session.cliSlashCommands, ["review", "compact"], "connection crash must keep slash commands")
+
+        // Switching provider/connection kind clears slash commands
+        let claudeConfig = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.claudeSDKProvider)
+        session.send("Turn 3 different provider", configuration: claudeConfig, agentPath: "/usr/bin/true")
+        try await waitUntil("conn3 starts") { connections.value.count == 3 }
+        XCTAssertEqual(session.cliSlashCommands, [], "changing provider/connection kind must clear slash commands")
+        let conn3 = connections.value[2]
+        conn3.emit(.finished(status: "completed", response: "OK", error: nil, conversationID: "s-keep-slash-2"))
+        conn3.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 3 done") { !session.isRunning }
+        await session.stopAll()
+    }
+
+    func testForcedFreshSessionInWorktreeShowsTranscriptNoticeAndResetsLiveState() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wt-fresh-notice-\(UUID().uuidString)", isDirectory: true)
+        let repoDir = tempRoot.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: repoDir.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let connections = LiveStateLockedBox<[LiveStateMockConnection]>([])
+        let env = makeSessionEnvironment(
+            makeConnection: { spec in
+                let conn = LiveStateMockConnection(spec: spec)
+                connections.withValue { $0.append(conn) }
+                return conn
+            },
+            runProgramChecked: { name, args in
+                if name == "git", args.contains("worktree"), args.contains("add"),
+                   let pathArg = args.last(where: { $0.contains("repo-worktrees") }) {
+                    try? FileManager.default.createDirectory(atPath: pathArg, withIntermediateDirectories: true)
+                    return ""
+                }
+                return nil
+            }
+        )
+
+        let expectedNotice = VitruvianCodeHostStrings().worktreeFreshSessionNotice
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(
+            workingDirectory: repoDir.path,
+            approvalMode: .standard,
+            activeProvider: Self.agyACPProvider
+        )
+
+        // Case A: Mid-chat worktree toggle ON forces fresh session, resets liveState, and adds visible transcript notice
+        session.send("Turn 1 base", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("conn1 prompts") { connections.value.first?.promptCalls.count == 1 }
+        let conn1 = connections.value[0]
+        conn1.emit(.planReplaced([PlanEntry(content: "Base plan", status: .inProgress)]))
+        conn1.emit(.notice(severity: "info", title: "Base notice", detail: nil))
+        conn1.emit(.started(conversationID: "base-sess-1"))
+        conn1.emit(.finished(status: "completed", response: "OK 1", error: nil, conversationID: "base-sess-1"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 1 done with liveState") {
+            !session.isRunning && session.liveState.notices.count == 1
+        }
+
+        session.worktreeMode = true
+        session.send("Turn 2 in worktree", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("conn2 starts") { connections.value.count == 2 && connections.value[1].startCalls.count == 1 }
+        let conn2 = connections.value[1]
+        XCTAssertNil(conn2.startCalls.first?.resumeSessionID)
+        XCTAssertEqual(session.liveState, AgentLiveState(), "forced fresh session must reset liveState")
+
+        let noticeIdx = try XCTUnwrap(session.messages.firstIndex { $0.role == .agent && !$0.isError && $0.text == expectedNotice })
+        let baseReplyIdx = try XCTUnwrap(session.messages.firstIndex { $0.text == "OK 1" })
+        let turn2UserIdx = try XCTUnwrap(session.messages.firstIndex { $0.role == .user && $0.text == "Turn 2 in worktree" })
+        XCTAssertGreaterThan(noticeIdx, baseReplyIdx)
+        XCTAssertLessThan(noticeIdx, turn2UserIdx)
+
+        conn2.emit(.finished(status: "completed", response: "OK 2", error: nil, conversationID: "wt-sess-2"))
+        conn2.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 2 done") { !session.isRunning }
+        await session.stopAll()
+
+        // Case B: Opening a saved chat with worktree ON and sending a prompt forces fresh session + shows notice
+        let resumedSession = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        resumedSession.takeCheckpoint = { _ in nil }
+        resumedSession.worktreeMode = true
+        resumedSession.resume(
+            VitruvianCodeSessionSummary(id: "saved-chat-99", title: "Saved Chat", preview: "Earlier message", steps: 2, modified: nil),
+            configuration: config
+        )
+        XCTAssertEqual(resumedSession.conversationID, "saved-chat-99")
+        let resumedMsgCount = resumedSession.messages.count
+        XCTAssertGreaterThan(resumedMsgCount, 0)
+
+        resumedSession.send("Continue in worktree", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("conn3 starts") { connections.value.count == 3 && connections.value[2].startCalls.count == 1 }
+        let conn3 = connections.value[2]
+        XCTAssertNil(conn3.startCalls.first?.resumeSessionID, "reopened chat with worktree ON must start a fresh session")
+        XCTAssertEqual(resumedSession.liveState, AgentLiveState())
+        let resumedNoticeIdx = try XCTUnwrap(
+            resumedSession.messages.firstIndex { $0.role == .agent && !$0.isError && $0.text == expectedNotice }
+        )
+        let resumedTurnUserIdx = try XCTUnwrap(
+            resumedSession.messages.firstIndex { $0.role == .user && $0.text == "Continue in worktree" }
+        )
+        XCTAssertGreaterThanOrEqual(resumedNoticeIdx, resumedMsgCount)
+        XCTAssertLessThan(resumedNoticeIdx, resumedTurnUserIdx)
+
+        conn3.emit(.finished(status: "completed", response: "OK 3", error: nil, conversationID: "wt-sess-3"))
+        conn3.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 3 done") { !resumedSession.isRunning }
+        await resumedSession.stopAll()
+    }
+
+    func testFailedWorktreeSetupRemovesOnlyCreatedWorktreeAndBranch() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wt-setup-clean-\(UUID().uuidString)", isDirectory: true)
+        let repoDir = tempRoot.appendingPathComponent("repo", isDirectory: true)
+        let wtsDir = tempRoot.appendingPathComponent("wts", isDirectory: true)
+        try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let initOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "init"], requireZeroExit: true)
+        let emailOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "config", "user.email", "test@example.com"], requireZeroExit: true)
+        let nameOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "config", "user.name", "Test"], requireZeroExit: true)
+        let commitOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "commit", "--allow-empty", "-m", "init"], requireZeroExit: true)
+        XCTAssertNotNil(initOut)
+        XCTAssertNotNil(emailOut)
+        XCTAssertNotNil(nameOut)
+        XCTAssertNotNil(commitOut)
+
+        let strictRunner: VitruvianCodeWorktreeManager.ProgramRunner = { name, args in
+            await VitruvianCodeEngine.runProgram(named: name, arguments: args, requireZeroExit: true)
+        }
+        let manager = VitruvianCodeWorktreeManager()
+
+        let keeper = await manager.createWorktree(
+            taskName: "keeper",
+            baseRepositoryPath: repoDir.path,
+            worktreesRoot: wtsDir.path,
+            provider: Self.agyACPProvider,
+            runGit: strictRunner
+        )
+        XCTAssertEqual(keeper.setupStatus, .ready)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keeper.worktreePath))
+
+        let broken = await manager.createWorktree(
+            taskName: "broken-setup",
+            baseRepositoryPath: repoDir.path,
+            worktreesRoot: wtsDir.path,
+            provider: Self.agyACPProvider,
+            config: VitruvianCodeWorktreeConfig(setup: ["exit 1"]),
+            runGit: strictRunner
+        )
+        XCTAssertEqual(broken.setupStatus, .failed("Setup command failed: exit 1"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: broken.worktreePath), "failed setup worktree dir must be removed")
+        let brokenBranchOut = await VitruvianCodeEngine.runProgram(
+            named: "git",
+            arguments: ["-C", repoDir.path, "branch", "--list", broken.branchName],
+            requireZeroExit: true
+        )
+        XCTAssertEqual(brokenBranchOut?.trimmingCharacters(in: .whitespacesAndNewlines), "", "failed setup branch must be deleted")
+
+        let listed = await manager.listPorcelainWorktrees(baseRepositoryPath: repoDir.path, runGit: strictRunner)
+        let canonicalBroken = URL(fileURLWithPath: broken.worktreePath).resolvingSymlinksInPath().path
+        XCTAssertFalse(listed.contains { URL(fileURLWithPath: $0.worktreePath).resolvingSymlinksInPath().path == canonicalBroken })
+        XCTAssertEqual(manager.worktrees.map(\.id), [keeper.id])
+
+        // Existing keeper worktree and its branch must remain untouched
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keeper.worktreePath))
+        let keeperBranchOut = await VitruvianCodeEngine.runProgram(
+            named: "git",
+            arguments: ["-C", repoDir.path, "branch", "--list", keeper.branchName],
+            requireZeroExit: true
+        )
+        XCTAssertTrue(keeperBranchOut?.contains(keeper.branchName) == true)
+    }
+
+    func testStopDuringWorktreeCreationRemovesOnlyCreatedWorktreeAndBranch() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wt-stop-clean-\(UUID().uuidString)", isDirectory: true)
+        let repoDir = tempRoot.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let initOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "init"], requireZeroExit: true)
+        let emailOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "config", "user.email", "test@example.com"], requireZeroExit: true)
+        let nameOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "config", "user.name", "Test"], requireZeroExit: true)
+        let commitOut = await VitruvianCodeEngine.runProgram(named: "git", arguments: ["-C", repoDir.path, "commit", "--allow-empty", "-m", "init"], requireZeroExit: true)
+        XCTAssertNotNil(initOut)
+        XCTAssertNotNil(emailOut)
+        XCTAssertNotNil(nameOut)
+        XCTAssertNotNil(commitOut)
+
+        let strictRunner: VitruvianCodeWorktreeManager.ProgramRunner = { name, args in
+            await VitruvianCodeEngine.runProgram(named: name, arguments: args, requireZeroExit: true)
+        }
+
+        let gate = LiveStateWorktreeGate()
+        let connectionAttempts = LiveStateLockedBox(0)
+        let createdPathBox = LiveStateLockedBox<String?>(nil)
+        let env = makeSessionEnvironment(
+            makeConnection: { spec in
+                connectionAttempts.withValue { $0 += 1 }
+                return LiveStateMockConnection(spec: spec)
+            },
+            runProgramChecked: { name, args in
+                let result = await VitruvianCodeEngine.runProgram(named: name, arguments: args, requireZeroExit: true)
+                if name == "git", args.contains("worktree"), args.contains("add"),
+                   let pathArg = args.first(where: { $0.contains("repo-worktrees") }) {
+                    createdPathBox.withValue { $0 = pathArg }
+                    await gate.enterAndWaitForRelease()
+                }
+                return result
+            }
+        )
+
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let keeper = await session.worktreeManager.createWorktree(
+            taskName: "keeper",
+            baseRepositoryPath: repoDir.path,
+            provider: Self.agyACPProvider,
+            runGit: strictRunner
+        )
+        XCTAssertEqual(keeper.setupStatus, .ready)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keeper.worktreePath))
+
+        session.worktreeMode = true
+        let config = VitruvianCodeConfiguration(
+            workingDirectory: repoDir.path,
+            approvalMode: .standard,
+            activeProvider: Self.agyACPProvider
+        )
+        session.send("Start in worktree", configuration: config, agentPath: "/fake/agy")
+
+        await gate.waitUntilEntered()
+        let createdPath = try XCTUnwrap(createdPathBox.value)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: createdPath), "git worktree add must have created the directory on disk")
+
+        session.stop()
+        try await waitUntil("turn stopped") { !session.isRunning }
+        XCTAssertNil(session.liveWorktreePath)
+
+        await gate.release()
+        try await waitUntil("just-created worktree removed on stop") {
+            session.worktreeManager.worktrees.map(\.id) == [keeper.id]
+                && !FileManager.default.fileExists(atPath: createdPath)
+        }
+
+        XCTAssertEqual(connectionAttempts.value, 0)
+        let removedBranchOut = await VitruvianCodeEngine.runProgram(
+            named: "git",
+            arguments: ["-C", repoDir.path, "branch", "--list", "nexus/antigravity-cli/chat-1"],
+            requireZeroExit: true
+        )
+        XCTAssertEqual(removedBranchOut?.trimmingCharacters(in: .whitespacesAndNewlines), "", "created worktree branch must be deleted")
+
+        // Keeper worktree and its branch must remain untouched
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keeper.worktreePath))
+        let keeperBranchOut = await VitruvianCodeEngine.runProgram(
+            named: "git",
+            arguments: ["-C", repoDir.path, "branch", "--list", keeper.branchName],
+            requireZeroExit: true
+        )
+        XCTAssertTrue(keeperBranchOut?.contains(keeper.branchName) == true)
     }
 
     // MARK: - 5. AgentLiveState
@@ -952,6 +1421,31 @@ final class LiveSessionStateTests: XCTestCase {
             runProgram: runProgram,
             runProgramChecked: runProgramChecked
         )
+    }
+}
+
+private actor LiveStateWorktreeGate {
+    private var entered = false
+    private var enterContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { enterContinuation = $0 }
+    }
+
+    func enterAndWaitForRelease() async {
+        entered = true
+        let enter = enterContinuation
+        enterContinuation = nil
+        enter?.resume()
+        await withCheckedContinuation { releaseContinuation = $0 }
+    }
+
+    func release() {
+        let cont = releaseContinuation
+        releaseContinuation = nil
+        cont?.resume()
     }
 }
 

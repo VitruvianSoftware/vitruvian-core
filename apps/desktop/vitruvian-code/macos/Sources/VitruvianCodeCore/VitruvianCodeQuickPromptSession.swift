@@ -239,10 +239,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private let environment: VitruvianCodeEngine.Environment
     /// The app's settings, text and notices. Asked each time, never kept.
     private let host: any VitruvianCodeHost
-    private struct SyncedModeState: Equatable {
-        let approvalMode: VitruvianCodeApprovalMode
-        let planMode: Bool
-    }
 
     private var connection: (any AgentConnection)?
     private var liveConnection: (any PersistentAgentConnection)?
@@ -252,7 +248,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var liveEventDrainTask: Task<Void, Never>?
     private var idleShutdownTask: Task<Void, Never>?
     private var pendingConnectionStops: [UUID: Task<Void, Never>] = [:]
-    private var lastSyncedMode: SyncedModeState?
     public private(set) var liveWorktreePath: String?
     private var awaitingWorktree = false
     private var lastTurnProviderID: UUID?
@@ -1176,10 +1171,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             connection = reusable
             hasReceivedTurnFinishedEvent = false
             let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
-            let targetMode = SyncedModeState(
-                approvalMode: configuration.approvalMode,
-                planMode: modes.plan
-            )
             Task { @MainActor [weak self] in
                 guard let self, current == self.turn else { return }
                 if self.stoppedByUser {
@@ -1188,13 +1179,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     return
                 }
                 do {
-                    if self.lastSyncedMode != targetMode {
-                        try await reusable.syncMode(
-                            approvalMode: targetMode.approvalMode,
-                            planSwitch: targetMode.planMode
-                        )
-                        self.lastSyncedMode = targetMode
-                    }
+                    try await reusable.syncMode(
+                        approvalMode: configuration.approvalMode,
+                        planSwitch: modes.plan
+                    )
                     guard current == self.turn else { return }
                     if self.stoppedByUser {
                         self.agentDidExit(0, turn: current)
@@ -1238,17 +1226,29 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
         if wantsWorktree, liveWorktreePath == nil {
             awaitingWorktree = true
-            let shouldStartFresh = conversationID != nil
+            let shouldStartFresh = (conversationID?.isEmpty == false) || isResumed
             Task { @MainActor [weak self] in
-                guard let self, current == self.turn else { return }
+                guard let self, current == self.turn, self.isRunning, !self.stoppedByUser else { return }
                 let worktree = await self.worktreeManager.createWorktree(
                     taskName: "chat-\(current)",
                     baseRepositoryPath: directory,
                     provider: configuration.activeProvider,
                     runGit: self.environment.runProgramChecked
                 )
-                self.awaitingWorktree = false
-                guard current == self.turn, self.isRunning, !self.stoppedByUser else { return }
+                if current == self.turn {
+                    self.awaitingWorktree = false
+                }
+                guard current == self.turn, self.isRunning, !self.stoppedByUser else {
+                    if case .ready = worktree.setupStatus {
+                        _ = await self.worktreeManager.removeWorktree(
+                            id: worktree.id,
+                            force: true,
+                            deleteBranch: true,
+                            runGit: self.environment.runProgramChecked
+                        )
+                    }
+                    return
+                }
                 guard case .ready = worktree.setupStatus else {
                     let detail: String
                     if case .failed(let reason) = worktree.setupStatus, !reason.isEmpty {
@@ -1306,17 +1306,17 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         forceFreshSession: Bool = false,
         turn current: Int
     ) {
-        if !isCustomCommand {
-            if lastTurnProviderID != nil,
-               lastTurnProviderID != configuration.activeProvider.id
-                   || lastTurnConnectionKind != configuration.activeProvider.connection {
-                cliSlashCommands = []
-            }
-            lastTurnProviderID = configuration.activeProvider.id
-            lastTurnConnectionKind = configuration.activeProvider.connection
-            if forceFreshSession {
-                conversationID = nil
-            }
+        if lastTurnProviderID != nil,
+           lastTurnProviderID != configuration.activeProvider.id
+               || lastTurnConnectionKind != configuration.activeProvider.connection {
+            cliSlashCommands = []
+        }
+        lastTurnProviderID = configuration.activeProvider.id
+        lastTurnConnectionKind = configuration.activeProvider.connection
+        if !isCustomCommand, forceFreshSession {
+            conversationID = nil
+            liveState.reset()
+            insertFreshSessionNotice(strings.worktreeFreshSessionNotice)
         }
         let spec = AgentConnectionSpec(
             provider: configuration.activeProvider,
@@ -1383,7 +1383,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             liveConnectionProviderID = configuration.activeProvider.id
             liveConnectionKind = configuration.activeProvider.connection
             liveConnectionWorktree = (liveWorktreePath != nil && resolvedDirectory == liveWorktreePath)
-            lastSyncedMode = nil
             hasReceivedTurnFinishedEvent = false
 
             let drainTask = Task { @MainActor [weak self] in
@@ -1432,10 +1431,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     self.consecutiveRestartFailures = 0
                     self.isConnectionLockedAfterFailures = false
                     self.lastRestartFailureMessage = nil
-                    self.lastSyncedMode = SyncedModeState(
-                        approvalMode: configuration.approvalMode,
-                        planMode: modes.plan
-                    )
                     if !startedID.isEmpty {
                         self.assignConversationID(startedID)
                         if !self.isFollowerActive {
@@ -1476,6 +1471,16 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 }
 
                 do {
+                    try await persistent.syncMode(
+                        approvalMode: configuration.approvalMode,
+                        planSwitch: modes.plan
+                    )
+                    guard current == self.turn else { return }
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        self.scheduleIdleConnectionShutdown()
+                        return
+                    }
                     let stopReason = try await persistent.prompt(blocks)
                     await self.waitForTurnFinishedEvent()
                     guard current == self.turn else { return }
@@ -1828,8 +1833,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnectionProviderID = nil
         liveConnectionKind = nil
         liveConnectionWorktree = nil
-        lastSyncedMode = nil
-        cliSlashCommands = []
         liveEventDrainTask?.cancel()
         liveEventDrainTask = nil
 
@@ -1864,11 +1867,29 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     }
 
     /// Tears down the open connection and clears any failed-restart lockout (e.g. on New Chat or connection change).
-    public func resetLiveConnectionState(keepingWorktree: Bool = false) {
+    public func resetLiveConnectionState(
+        keepingWorktree: Bool = false,
+        clearingSlashCommands: Bool = false
+    ) {
         stopConnection(keepingWorktree: keepingWorktree)
+        if clearingSlashCommands {
+            cliSlashCommands = []
+        }
         consecutiveRestartFailures = 0
         isConnectionLockedAfterFailures = false
         lastRestartFailureMessage = nil
+    }
+
+    private func insertFreshSessionNotice(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let notice = VitruvianCodeChatMessage(role: .agent, text: trimmed, createdAt: Date())
+        if let replyID, let replyIdx = messages.firstIndex(where: { $0.id == replyID }) {
+            let insertIndex = (replyIdx > 0 && messages[replyIdx - 1].role == .user) ? replyIdx - 1 : replyIdx
+            messages.insert(notice, at: insertIndex)
+        } else {
+            messages.append(notice)
+        }
     }
 
     private func discardLiveConnection(_ target: (any PersistentAgentConnection)?) {
@@ -1879,8 +1900,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnectionProviderID = nil
         liveConnectionKind = nil
         liveConnectionWorktree = nil
-        lastSyncedMode = nil
-        cliSlashCommands = []
         liveEventDrainTask = nil
     }
 

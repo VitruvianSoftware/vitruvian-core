@@ -144,6 +144,8 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var deleteSession: String
     /// Creating an isolated git worktree for a chat failed.
     public var worktreeCreationFailed: String
+    /// Starting a fresh session in a worktree drops earlier conversation context.
+    public var worktreeFreshSessionNotice: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -173,7 +175,8 @@ public struct VitruvianCodeHostStrings: Sendable {
                  commandExitedPrefix: String = "Process exited with code ",
                  commandNoOutput: String = "No output from provider",
                  deleteSession: String = "Delete",
-                 worktreeCreationFailed: String = "Could not create a git worktree for this chat.") {
+                 worktreeCreationFailed: String = "Could not create a git worktree for this chat.",
+                 worktreeFreshSessionNotice: String = "Starting a new session in the worktree. The agent won’t remember earlier messages in this chat.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -203,6 +206,7 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.commandNoOutput = commandNoOutput
         self.deleteSession = deleteSession
         self.worktreeCreationFailed = worktreeCreationFailed
+        self.worktreeFreshSessionNotice = worktreeFreshSessionNotice
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {

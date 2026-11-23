@@ -905,7 +905,7 @@ final class AntigravityACPTests: XCTestCase {
         }
         XCTAssertEqual(connections.value.count, 1, "must reuse single connection")
         XCTAssertEqual(conn.startCalls.count, 1, "mode change must not restart connection")
-        XCTAssertEqual(conn.syncedPlanModes, [true])
+        XCTAssertEqual(conn.syncedPlanModes, [false, true])
         XCTAssertEqual(modeSnapshots[0].0, .standard)
         XCTAssertEqual(modeSnapshots[0].1, false)
         XCTAssertEqual(modeSnapshots[1].0, .yolo)

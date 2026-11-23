@@ -543,7 +543,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         configuration = next
         agentPath = locateProgram(of: provider)
         if provider.id != previous.id || provider.route != previous.route || provider.connection != previous.connection {
-            session.resetLiveConnectionState(keepingWorktree: true)
+            session.resetLiveConnectionState(keepingWorktree: true, clearingSlashCommands: true)
         }
         syncAvailableModels()
         session.refreshSessions(configuration: configuration)
@@ -583,7 +583,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         configuration = updated
         agentPath = locateProgram(of: next)
         if next.id != previous.id || next.route != previous.route || next.connection != previous.connection {
-            session.resetLiveConnectionState(keepingWorktree: true)
+            session.resetLiveConnectionState(keepingWorktree: true, clearingSlashCommands: true)
         }
         syncAvailableModels()
         // Another provider, or the same one now run another way, has other

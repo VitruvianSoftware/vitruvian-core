@@ -168,6 +168,7 @@ final class ToolSettingsTests: XCTestCase {
         settings.language = "de"
         XCTAssertEqual(settings.strings.untitledSession, Words.text("untitledSession", "de"))
         XCTAssertEqual(settings.strings.missingAgent, Words.text("missingAgent", "de"))
+        XCTAssertEqual(settings.strings.worktreeFreshSessionNotice, Words.text("worktreeFreshSessionNotice", "de"))
         XCTAssertEqual(settings.strings.doneTitleSuffix, VitruvianCodeHostStrings().doneTitleSuffix, "the rest is the shared English")
         var approvals = 0
         settings.onApproval = { _ in approvals += 1 }
