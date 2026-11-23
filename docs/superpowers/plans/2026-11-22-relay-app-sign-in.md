@@ -109,7 +109,7 @@ status: active
 
 **Files:** Modify `infrastructure/pulumi/platform/zitadel-apps-relay/{main.go,main_test.go,README.md}`, `apps/suites/vitruvian-relay/relay/deploy/chart/{values.yaml,templates/deployment.yaml,templates/httproute.yaml,templates/_helpers.tpl}`, `tools/ci/chart-render/vitruvian-relay.values.yaml`, `tools/ci/src/chart_render/lib.rs`, `apps/suites/vitruvian-relay/connector/src/{auth.rs,main.rs}`, `relay/src/dashboard/pages.rs`. Create `gitops/argocd/platform/relay/relay-app-signin-sealed.yaml`.
 
-- [ ] **Step 1:** Add failing tests: Go `TestAppsClientIsPublicWithRoleAssertion` (PKCE, callback exactly `https://relay.vitruviansoftware.dev/oauth/callback`, exported as `appsClientId`); connector `login_prints_the_app_url_for_gemini`; dashboard `device_row_shows_app_url`.
+- [ ] **Step 1:** Add failing tests: Go `TestAppsClientIsPublicWithRoleAssertion` (PKCE, callback exactly `https://relay.vitruviansoftware.dev/oauth/callback`, `AccessTokenRoleAssertion: true`, `IdTokenUserinfoAssertion: true` so the consent page can name the person, exported as `appsClientId`); connector `login_prints_the_app_url_for_gemini`; dashboard `device_row_shows_app_url`.
 - [ ] **Step 2:** Run `bazel test` on those packages. Expected: FAIL.
 - [ ] **Step 3:** Implement. Chart switch `appSignin.enabled` defaults false; when on it needs `oidc.appsClientId` and `appSignin.secretName`, and the route adds `/oauth/` and `/mcp/app/`. Seal a generated 32-byte key with the repo's sealing target; never print it.
 - [ ] **Step 4:** Run `bazel test` on those packages and `bazel run //tools/ci:chart_render`. Expected: PASS.
@@ -119,4 +119,4 @@ status: active
 
 - [ ] **Step 1:** Land the PR. Run `zitadel-apps-relay-apply` as preview; apply only with +1 client and no replace or delete.
 - [ ] **Step 2:** Land a values PR with the new image digest, `appSignin.enabled: true`, `oidc.appsClientId`, and that id added to `mcpClientIds` and to `mcpClientLabels` as Gemini.
-- [ ] **Step 3:** Verify every "Done when" item in the spec on the live relay.
+- [ ] **Step 3:** Verify every "Done when" item in the spec on the live relay, including that the live consent page shows the person's name and email rather than their subject id.
