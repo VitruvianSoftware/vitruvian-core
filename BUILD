@@ -363,6 +363,10 @@ exports_files(
 # not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
 # gazelle:exclude packages/pulumi/examples
+# packages/pycompat/vitruvian-pycompat/testdata holds the standalone golden-fixture
+# generator invoked manually against Python 3.12; keep gazelle from generating a
+# py_binary BUILD file there (vitruvian_pycompat_test reads testdata/json_golden.jsonl directly).
+# gazelle:exclude packages/pycompat/vitruvian-pycompat/testdata
 # packages/jq/scripts holds the standalone parity-case generator invoked manually
 # against local jq 1.8.2; keep gazelle from generating a py_binary BUILD file there.
 # gazelle:exclude packages/jq/scripts
