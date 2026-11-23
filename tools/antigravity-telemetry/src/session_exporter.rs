@@ -672,9 +672,13 @@ impl TranscriptScanner {
         let Ok(text) = String::from_utf8(text) else {
             return J::empty_obj();
         };
-        let Ok(J::Obj(raw)) = J::parse(&text) else {
+        let Ok(mut parsed) = J::parse(&text) else {
             return J::empty_obj();
         };
+        let J::Obj(pairs) = &mut parsed else {
+            return J::empty_obj();
+        };
+        let raw = std::mem::take(pairs);
         let mut migrated = J::empty_obj();
         for (k, v) in raw {
             match v {

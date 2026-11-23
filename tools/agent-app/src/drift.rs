@@ -583,9 +583,10 @@ pub fn check(
     }
 
     for inst in &installations {
-        let slug = match field(inst, "app_slug") {
+        let mut app_slug = field(inst, "app_slug");
+        let slug = match &mut app_slug {
             v if !v.truthy() => String::new(),
-            Value::Str(s) => s,
+            Value::Str(s) => std::mem::take(s),
             other => {
                 return Err(Crash::new(
                     "TypeError",
