@@ -23,7 +23,9 @@
 //! derived from a server key, and tokens are sealed with it.
 
 pub mod clients;
+mod consent;
 mod http;
+pub mod pending;
 pub mod seal;
 #[cfg(test)]
 mod tests;
@@ -31,4 +33,5 @@ mod tests;
 pub use clients::{parse_registration, production_callback, RegisterError};
 pub(crate) use http::app_protected_resource_metadata;
 pub use http::{handle, wants};
+pub use pending::{IssuedCode, Pending};
 pub use seal::AppKeys;

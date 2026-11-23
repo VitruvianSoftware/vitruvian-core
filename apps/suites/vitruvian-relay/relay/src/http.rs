@@ -326,7 +326,10 @@ struct Session {
 
 pub struct App {
     pub(crate) settings: Settings,
-    mcp_verifier: Arc<Verifier>,
+    /// Checks the AI apps' tokens, role included. The app sign-in checks the
+    /// token it gets from the identity service with it too, so a person who
+    /// was never invited never reaches the consent page.
+    pub(crate) mcp_verifier: Arc<Verifier>,
     connector_verifier: Arc<Verifier>,
     /// Pinned to the dashboard's own client id: its token works only on
     /// `/auth/*`, and no other token works there.
@@ -350,6 +353,13 @@ pub struct App {
     /// Registrations per source address (see [`crate::oauth`]): 10 a minute,
     /// a burst of 10. Bounded, as the endpoint is open to the internet.
     pub(crate) register_limit: RateLimit,
+    /// Sign-ins started at `/oauth/authorize` per source address: 30 a
+    /// minute, a burst of 30. Each one holds an entry in [`Self::pending`],
+    /// which is bounded, so this keeps one address from pushing out
+    /// everyone else's sign-ins.
+    pub(crate) authorize_limit: RateLimit,
+    /// App sign-ins in progress, consents waiting and codes handed out.
+    pub(crate) pending: crate::oauth::Pending,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
     pub(crate) timing: Timing,
@@ -398,6 +408,8 @@ impl App {
             key_changes: Mutex::new(HashMap::new()),
             registry,
             register_limit: RateLimit::new(10, 10),
+            authorize_limit: RateLimit::new(30, 30),
+            pending: crate::oauth::Pending::default(),
             sessions: Mutex::new(HashMap::new()),
             timing,
             log,

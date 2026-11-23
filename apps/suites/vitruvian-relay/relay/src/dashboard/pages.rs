@@ -296,6 +296,21 @@ pub fn sign_in_page(ctx: Ctx<'_>, signed_out: bool, end_session_url: &str) -> St
     )
 }
 
+/// The page frame (header, stylesheet, footer) around `main`, for a page
+/// that is not part of a dashboard session: no navigation and no sign-out
+/// button. `main` must already be escaped.
+pub(crate) fn page_shell(title: &str, main: &str) -> String {
+    layout(
+        Ctx {
+            csrf: None,
+            now: UNIX_EPOCH,
+        },
+        Nav::None,
+        title,
+        main,
+    )
+}
+
 /// A page that only says something: an error, or a dead end, with a way on.
 pub fn message_page(ctx: Ctx<'_>, title: &str, text: &str, link: (&str, &str)) -> String {
     let main = format!(

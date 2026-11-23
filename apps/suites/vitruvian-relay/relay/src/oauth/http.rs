@@ -35,6 +35,7 @@ use hyper::body::Incoming;
 use serde_json::{json, Value};
 
 use super::clients::parse_registration;
+use super::consent;
 use crate::http::{header_str, json_response, not_found, read_body, text, App, Body};
 
 /// The one scope an app asks for and the relay's tokens carry.
@@ -51,7 +52,10 @@ const UNKNOWN_CLIENT: &str = "unknown";
 enum Route {
     Metadata,
     Register,
-    /// `/oauth/{authorize,callback,consent,token}`: built in later tasks.
+    Authorize,
+    Callback,
+    Consent,
+    /// `/oauth/token`: built in a later task.
     NotYet,
 }
 
@@ -59,9 +63,10 @@ fn route(path: &str) -> Option<Route> {
     match path {
         METADATA_PATH => Some(Route::Metadata),
         "/oauth/register" => Some(Route::Register),
-        "/oauth/authorize" | "/oauth/callback" | "/oauth/consent" | "/oauth/token" => {
-            Some(Route::NotYet)
-        }
+        "/oauth/authorize" => Some(Route::Authorize),
+        "/oauth/callback" => Some(Route::Callback),
+        "/oauth/consent" => Some(Route::Consent),
+        "/oauth/token" => Some(Route::NotYet),
         _ => None,
     }
 }
@@ -86,6 +91,13 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
         (Route::Metadata, _) => wrong_method("GET"),
         (Route::Register, &Method::POST) => register(&app, req).await,
         (Route::Register, _) => wrong_method("POST"),
+        (Route::Authorize, &Method::GET) => consent::authorize(&app, &req).await,
+        (Route::Authorize, _) => wrong_method("GET"),
+        (Route::Callback, &Method::GET) => consent::callback(&app, &req).await,
+        (Route::Callback, _) => wrong_method("GET"),
+        (Route::Consent, &Method::GET) => consent::consent_page(&app, &req),
+        (Route::Consent, &Method::POST) => consent::consent_decide(&app, req).await,
+        (Route::Consent, _) => wrong_method("GET, POST"),
         (Route::NotYet, _) => text(StatusCode::NOT_IMPLEMENTED, "not implemented"),
     }
 }
@@ -131,7 +143,7 @@ pub(crate) fn app_protected_resource_metadata(app: &App, device_id: &str) -> Val
 /// whole one, so per-address would give one person endless buckets). A
 /// missing or malformed header shares one bucket rather than getting a
 /// fresh one per value.
-fn client_key(req: &Request<Incoming>) -> String {
+pub(super) fn client_key(req: &Request<Incoming>) -> String {
     let ip = header_str(req, header::HeaderName::from_static("cf-connecting-ip"))
         .and_then(|v| v.trim().parse::<IpAddr>().ok());
     match ip {
