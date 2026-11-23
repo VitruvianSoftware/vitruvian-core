@@ -232,6 +232,14 @@ impl Settings {
                 if !mcp_client_ids.contains(&client_id) {
                     return Err("APPS_CLIENT_ID must also be in MCP_CLIENT_IDS".into());
                 }
+                // Apps-client tokens are refused on /mcp/d/, so sharing Claude's
+                // id would lock Claude out of every call.
+                if mcp_client_labels
+                    .iter()
+                    .any(|(label, id)| label == "Claude" && *id == client_id)
+                {
+                    return Err("APPS_CLIENT_ID must not be the Claude client".into());
+                }
                 Some(AppSignin {
                     keys: AppKeys::from_b64(&key)?,
                     client_id,
@@ -565,6 +573,19 @@ mod tests {
         }
         // The key never prints.
         assert!(!format!("{on:?}").contains(&key));
+    }
+
+    #[test]
+    fn apps_client_must_not_be_claudes_client() {
+        let key = key_b64();
+        let mut env = base();
+        env.insert("MCP_CLIENT_LABELS", "Claude=claude-id");
+        env.insert("APP_SIGNIN_KEY", &key);
+        env.insert("APPS_CLIENT_ID", "claude-id");
+        let err = load(&env).unwrap_err();
+        assert!(err.contains("must not be the Claude client"), "{err}");
+        env.insert("APPS_CLIENT_ID", "chatgpt-id");
+        assert!(load(&env).is_ok());
     }
 
     #[test]
