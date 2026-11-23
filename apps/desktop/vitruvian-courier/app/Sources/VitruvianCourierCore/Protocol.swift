@@ -1061,6 +1061,20 @@ public struct SetPinnedParams: ProtocolType, Equatable {
     }
 }
 
+public struct ReorderPinsParams: ProtocolType, Equatable {
+    public static let protocolName = "ReorderPinsParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]
+
+    public init(roomIDs: [String]) {
+        self.roomIDs = roomIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+    }
+}
+
 public struct ArchiveParams: ProtocolType, Equatable {
     public static let protocolName = "ArchiveParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
@@ -5659,6 +5673,7 @@ public enum ProtocolMethods {
         "labels.update": .userInitiatedMutation,
         "labels.delete": .userInitiatedMutation,
         "room.setPinned": .userInitiatedMutation,
+        "room.reorderPins": .userInitiatedMutation,
         "room.setArchived": .userInitiatedMutation,
         "room.setLowPriority": .userInitiatedMutation,
         "room.setHidden": .userInitiatedMutation,
@@ -5776,6 +5791,7 @@ public enum ProtocolMethods {
         "labels.update": (LabelUpdateParams.self, Empty.self),
         "labels.delete": (LabelIDParams.self, Empty.self),
         "room.setPinned": (SetPinnedParams.self, Empty.self),
+        "room.reorderPins": (ReorderPinsParams.self, Empty.self),
         "room.setArchived": (ArchiveParams.self, RoomsChanged.self),
         "room.setLowPriority": (RoomsFlagParams.self, RoomsChanged.self),
         "room.setReadAloud": (SetReadAloudParams.self, RoomsChanged.self),
@@ -5884,7 +5900,7 @@ public enum ProtocolMethods {
         RowMember.self,
         Reminder.self, InboxListParams.self, InboxResult.self, Space.self, SpacesResult.self, SpaceLayoutParams.self,
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
-        SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetReadAloudParams.self, SetLabelParams.self,
+        SetPinnedParams.self, ReorderPinsParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetReadAloudParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
         AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, MarkReadParams.self,
         ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self, LoadOlderResult.self, ArticleParams.self, ArticleResult.self,
