@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	ec2f7d8ca732c489403813e90ec88460c9d7fcd2	tree	1b9d771e8179511ec1db486251e7e9268ded6060
+# base	1f105a68afeb9ef633b0ce25259f2af61420ce08	tree	24b73665fd87bcb34fa0b2c18d3259263f87e691
 # path	change	why
 .dockerignore	modified	Legacy local-context filter (superseded for repo-root builds by Dockerfile.dockerignore). Upstream ships its own for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
