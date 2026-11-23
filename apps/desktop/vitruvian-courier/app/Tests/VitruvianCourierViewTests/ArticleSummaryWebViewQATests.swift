@@ -28,8 +28,9 @@ final class ArticleSummaryWebViewQATests: XCTestCase {
                 let head = String(decoding: data ?? Data(), as: UTF8.self)
                 let path = head.split(separator: " ").dropFirst().first.map(String.init) ?? "?"
                 counter.add(path)
-                let body = path.hasSuffix(".css") ? ".chip{color:red}" : "x"
-                let type = path.hasSuffix(".css") ? "text/css" : "image/gif"
+                let file = path.split(separator: "?").first.map(String.init) ?? path
+                let body = file.hasSuffix(".css") ? ".chip{color:red}" : "x"
+                let type = file.hasSuffix(".css") ? "text/css" : "image/gif"
                 let reply = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
             }
@@ -41,12 +42,15 @@ final class ArticleSummaryWebViewQATests: XCTestCase {
         return (listener, try XCTUnwrap(listener.port?.rawValue))
     }
 
-    private func page(port: UInt16) -> String {
+    /// `who` tags every URL the page asks for (`?who=control`), so a request is counted against the web view that made
+    /// it: the control's image can still arrive after it has settled on a slow machine, and must not count against the
+    /// subject.
+    private func page(port: UInt16, who: String) -> String {
         """
         <style>.container{display:flex;padding:8px}.chip{display:inline-block;border:solid 1px #d2d2d2;border-radius:16px;padding:5px 16px}</style>
-        <link rel="stylesheet" href="http://127.0.0.1:\(port)/remote.css">
+        <link rel="stylesheet" href="http://127.0.0.1:\(port)/remote.css?who=\(who)">
         <div class="container"><svg width="20" height="20"><circle cx="10" cy="10" r="8" fill="#4285f4"/></svg>
-        <img src="http://127.0.0.1:\(port)/logo.gif" width="20" height="20">
+        <img src="http://127.0.0.1:\(port)/logo.gif?who=\(who)" width="20" height="20">
         <a class="chip" href="https://www.google.com/search?q=bridge">bridge opens early</a></div>
         """
     }
@@ -86,24 +90,24 @@ final class ArticleSummaryWebViewQATests: XCTestCase {
         // sees nothing the test can't tell anything (the sandbox may not allow it).
         let control = SuggestionsWebView(frame: NSRect(x: 0, y: 0, width: 296, height: 44),
                                          configuration: SearchSuggestionsPolicy.makeConfiguration())
-        control.loadHTMLString("<!doctype html><html><body>\(page(port: port))</body></html>", baseURL: nil)
+        control.loadHTMLString("<!doctype html><html><body>\(page(port: port, who: "control"))</body></html>", baseURL: nil)
         await settle(control)
-        let controlHits = counter.seen.count
+        let controlHits = counter.seen.filter { $0.hasSuffix("who=control") }.count
         try XCTSkipIf(controlHits == 0, "the web view could not reach the loopback server here, so blocking can't be shown")
 
         // Subject: the app's block-everything rules (compiled in a store of our own: the shared store isn't writable in
         // a test sandbox), added to the app's configuration.
         let list = try await compileBlockEverything()
-        let before = counter.seen.count
         let configuration = SearchSuggestionsPolicy.makeConfiguration()
         configuration.userContentController.add(list)
         let view = SuggestionsWebView(frame: NSRect(x: 0, y: 0, width: 296, height: 44), configuration: configuration)
         let loaded = LoadWaiter()
         view.navigationDelegate = loaded
-        view.loadHTMLString("<!doctype html><html><body>\(page(port: port))</body></html>", baseURL: nil)
+        view.loadHTMLString("<!doctype html><html><body>\(page(port: port, who: "subject"))</body></html>", baseURL: nil)
         try await loaded.finished()
         await settle(view)
-        XCTAssertEqual(counter.seen.count, before, "the page made requests: \(counter.seen.dropFirst(before))")
+        let subjectHits = counter.seen.filter { $0.hasSuffix("who=subject") }
+        XCTAssertEqual(subjectHits, [], "the page made requests: \(subjectHits)")
         let scrollHeight = try await view.evaluateJavaScript("document.documentElement.scrollHeight") as? Int ?? 0
         XCTAssertGreaterThan(scrollHeight, 0)
 
