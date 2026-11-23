@@ -483,6 +483,15 @@ struct VitruvianCodeMessageBubble: View {
     }
 
     var body: some View {
+        if let compaction = message.compaction {
+            AgentCompactionRowView(compaction: compaction, strings: strings)
+        } else {
+            bubbleBody
+        }
+    }
+
+    @ViewBuilder
+    private var bubbleBody: some View {
         let isUser = message.role == .user
         HStack(alignment: .top, spacing: 8) {
             if isUser { Spacer(minLength: 40) }
@@ -639,6 +648,20 @@ struct VitruvianCodeMessageBubble: View {
                                     .strokeBorder(isUser ? VitruvianCodeTheme.warmCoral.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
                             )
                     )
+                }
+
+                if !isUser && message.stopReason == "interrupted" {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.slash.fill")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.orange)
+                        Text(strings.turnInterrupted)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.orange.opacity(0.12)))
                 }
 
                 Button(action: copyContent) {

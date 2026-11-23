@@ -2102,7 +2102,19 @@ public struct AgentFailure: Equatable, Sendable, Codable {
         case auth
         case protocolError = "protocol_error"
         case exited
+        case helperCrashed = "helper_crashed"
+        case agentCrashed = "agent_crashed"
         case timedOut = "timed_out"
+
+        /// True when the failure represents a process crash or unexpected termination.
+        public var isCrash: Bool {
+            switch self {
+            case .exited, .helperCrashed, .agentCrashed:
+                return true
+            case .startupFailed, .auth, .protocolError, .timedOut:
+                return false
+            }
+        }
     }
 
     public let kind: Kind

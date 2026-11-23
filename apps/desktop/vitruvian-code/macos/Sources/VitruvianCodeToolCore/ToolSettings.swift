@@ -78,12 +78,13 @@ public final class ToolSettings: VitruvianCodeHost {
         public var chosenModels: [String: String] = [:]
         public var sessionPreferences = VitruvianCodeSessionPreferences()
         public var chatModes: [String: String] = [:]
+        public var chatConnections: [String: String] = [:]
 
         public init() {}
 
         private enum CodingKeys: String, CodingKey {
             case botDirectory, autoStart, planMode, worktreeMode, timelineOnLeft, chosenProvider, savedProviders, promptHistory
-            case hiddenClaudeSessions, chosenModels, sessionPreferences, chatModes
+            case hiddenClaudeSessions, chosenModels, sessionPreferences, chatModes, chatConnections
         }
 
         /// Every key may be missing: a file an earlier version wrote lacks
@@ -104,6 +105,7 @@ public final class ToolSettings: VitruvianCodeHost {
             sessionPreferences = try container.decodeIfPresent(VitruvianCodeSessionPreferences.self,
                                                                forKey: .sessionPreferences) ?? VitruvianCodeSessionPreferences()
             chatModes = try container.decodeIfPresent([String: String].self, forKey: .chatModes) ?? [:]
+            chatConnections = try container.decodeIfPresent([String: String].self, forKey: .chatConnections) ?? [:]
         }
     }
 
@@ -307,6 +309,15 @@ public final class ToolSettings: VitruvianCodeHost {
         }
     }
 
+    public var chatConnections: [String: String] {
+        get { values.chatConnections }
+        set {
+            guard values.chatConnections != newValue else { return }
+            values.chatConnections = newValue
+            save()
+        }
+    }
+
     /// In memory only, never saved: the hidden Connection picker belongs to
     /// the standalone app, and this is off at every launch.
     public var showsConnectionSetting = false
@@ -349,7 +360,9 @@ public final class ToolSettings: VitruvianCodeHost {
                               worktreeFreshSessionNotice: Words.text("worktreeFreshSessionNotice", language),
                               configOptionUpdateFailed: Words.text("configOptionUpdateFailed", language),
                               configOptionUnavailable: Words.text("configOptionUnavailable", language),
-                              mentionOutsideWorkspaceFormat: Words.text("mentionOutsideWorkspaceFormat", language))
+                              mentionOutsideWorkspaceFormat: Words.text("mentionOutsideWorkspaceFormat", language),
+                              turnInterrupted: Words.text("turnInterrupted", language),
+                              connectionLockedFormat: Words.text("connectionLockedFormat", language))
     }
 
     public func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {

@@ -88,8 +88,9 @@ let package = Package(
             ],
             path: "Sources/VitruvianCodeTool",
             // The tool folder may hold 256 MB, and Node alone takes 215. Local symbols
-            // are 18 MB of this program and nothing reads them at run time.
-            linkerSettings: [.unsafeFlags(["-Xlinker", "-x"], .when(configuration: .release))]
+            // (`-x`) and the debug map (`-S`) are about half of this program, and
+            // nothing reads them at run time. `-x` alone leaves the debug map in.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-x", "-Xlinker", "-S"], .when(configuration: .release))]
         ),
         .executableTarget(
             name: "VitruvianCode",

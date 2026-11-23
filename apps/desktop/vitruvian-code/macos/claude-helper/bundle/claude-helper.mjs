@@ -42719,7 +42719,9 @@ function createMappingState() {
     unkeyedStreamedThinkingScopes: /* @__PURE__ */ new Set(),
     emittedToolCallIds: /* @__PURE__ */ new Set(),
     authErrorDetected: false,
-    lastAssistantStopReason: null
+    lastAssistantStopReason: null,
+    activeCompactionId: null,
+    compactionSeq: 0
   };
 }
 function resetTurnMappingState(state) {
@@ -42731,6 +42733,7 @@ function resetTurnMappingState(state) {
   state.emittedToolCallIds.clear();
   state.authErrorDetected = false;
   state.lastAssistantStopReason = null;
+  state.activeCompactionId = null;
 }
 function isPlainRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43185,6 +43188,110 @@ function mapSystemInitMessage(sessionId, message, options) {
     )
   ];
 }
+function extractCompactionSummary(raw) {
+  if (!isPlainRecord2(raw.compact_metadata)) {
+    return void 0;
+  }
+  const meta2 = raw.compact_metadata;
+  const explicit = nonEmptyString(meta2.summary);
+  if (explicit) {
+    return explicit;
+  }
+  const preTokens = typeof meta2.pre_tokens === "number" && Number.isFinite(meta2.pre_tokens) && meta2.pre_tokens > 0 ? Math.round(meta2.pre_tokens) : void 0;
+  const postTokens = typeof meta2.post_tokens === "number" && Number.isFinite(meta2.post_tokens) && meta2.post_tokens > 0 ? Math.round(meta2.post_tokens) : void 0;
+  if (preTokens !== void 0 && postTokens !== void 0) {
+    return `${preTokens} -> ${postTokens} tokens`;
+  }
+  if (preTokens !== void 0) {
+    return `${preTokens} tokens compacted`;
+  }
+  return void 0;
+}
+function mapSystemCompactionMessage(sessionId, message, state) {
+  const raw = message;
+  if (raw.subtype === "status") {
+    if (raw.status === "compacting") {
+      if (state.activeCompactionId !== null) {
+        return [];
+      }
+      const compactionId = nonEmptyString(raw.uuid) ?? `compaction-${++state.compactionSeq}`;
+      state.activeCompactionId = compactionId;
+      return [
+        {
+          sessionId,
+          update: {
+            sessionUpdate: "compaction_update",
+            compactionId,
+            status: "running"
+          }
+        }
+      ];
+    }
+    if (raw.compact_result !== void 0 || raw.status === null && raw.permissionMode === void 0) {
+      if (state.activeCompactionId === null) {
+        return [];
+      }
+      const compactionId = state.activeCompactionId;
+      const compactResult = raw.compact_result;
+      const compactError = nonEmptyString(raw.compact_error);
+      if (compactResult === "success") {
+        return [
+          {
+            sessionId,
+            update: {
+              sessionUpdate: "compaction_update",
+              compactionId,
+              status: "completed"
+            }
+          }
+        ];
+      }
+      if (compactResult === "failed") {
+        state.activeCompactionId = null;
+        return [
+          {
+            sessionId,
+            update: {
+              sessionUpdate: "compaction_update",
+              compactionId,
+              status: "failed",
+              ...compactError ? { summary: compactError } : {}
+            }
+          }
+        ];
+      }
+      state.activeCompactionId = null;
+      return [
+        {
+          sessionId,
+          update: {
+            sessionUpdate: "compaction_update",
+            compactionId,
+            status: "interrupted"
+          }
+        }
+      ];
+    }
+    return [];
+  }
+  if (raw.subtype === "compact_boundary") {
+    const compactionId = state.activeCompactionId ?? nonEmptyString(raw.uuid) ?? `compaction-${++state.compactionSeq}`;
+    state.activeCompactionId = null;
+    const summary = extractCompactionSummary(raw);
+    return [
+      {
+        sessionId,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId,
+          status: "completed",
+          ...summary ? { summary } : {}
+        }
+      }
+    ];
+  }
+  return [];
+}
 function mapSdkMessageToNotifications(sessionId, message, state, options) {
   switch (message.type) {
     case "stream_event":
@@ -43199,7 +43306,7 @@ function mapSdkMessageToNotifications(sessionId, message, state, options) {
       if (message.subtype === "init") {
         return mapSystemInitMessage(sessionId, message, options);
       }
-      return [];
+      return mapSystemCompactionMessage(sessionId, message, state);
     default:
       return [];
   }

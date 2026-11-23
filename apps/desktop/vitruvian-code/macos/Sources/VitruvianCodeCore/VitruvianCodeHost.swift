@@ -55,6 +55,8 @@ public protocol VitruvianCodeHost: AnyObject {
     var sessionPreferences: VitruvianCodeSessionPreferences { get set }
     /// Approval mode and plan switch saved per conversation ID (`"<mode>"` or `"<mode>|plan"`).
     var chatModes: [String: String] { get set }
+    /// Per-conversation connection override (`AgentConnectionKind.rawValue`) keyed by conversation ID.
+    var chatConnections: [String: String] { get set }
     /// Whether the hidden per-provider Connection picker is shown in Settings.
     var showsConnectionSetting: Bool { get set }
     /// User-facing text, in the app's language right now.
@@ -77,6 +79,11 @@ public extension VitruvianCodeHost {
     }
 
     var chatModes: [String: String] {
+        get { [:] }
+        set {}
+    }
+
+    var chatConnections: [String: String] {
         get { [:] }
         set {}
     }
@@ -152,6 +159,10 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var configOptionUnavailable: String
     /// An `@`-mentioned file path resolved outside the working directory and was omitted.
     public var mentionOutsideWorkspaceFormat: String
+    /// Shown on a live turn interrupted mid-turn by a connection/process exit.
+    public var turnInterrupted: String
+    /// Shown when a live connection locks after repeated consecutive start failures.
+    public var connectionLockedFormat: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -185,7 +196,9 @@ public struct VitruvianCodeHostStrings: Sendable {
                  worktreeFreshSessionNotice: String = "Starting a new session. The agent won’t remember earlier messages in this chat.",
                  configOptionUpdateFailed: String = "Could not update setting.",
                  configOptionUnavailable: String = "Send a message to reconnect before changing settings.",
-                 mentionOutsideWorkspaceFormat: String = "Skipped %@: outside the working folder.") {
+                 mentionOutsideWorkspaceFormat: String = "Skipped %@: outside the working folder.",
+                 turnInterrupted: String = "Interrupted",
+                 connectionLockedFormat: String = "Live connection failed %@ times in a row and is locked for this chat. Start a new chat or use the command line.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -219,6 +232,8 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.configOptionUpdateFailed = configOptionUpdateFailed
         self.configOptionUnavailable = configOptionUnavailable
         self.mentionOutsideWorkspaceFormat = mentionOutsideWorkspaceFormat
+        self.turnInterrupted = turnInterrupted
+        self.connectionLockedFormat = connectionLockedFormat
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {
@@ -281,6 +296,13 @@ public struct VitruvianCodeHostStrings: Sendable {
             return mentionOutsideWorkspaceFormat.replacingCharacters(in: range, with: path)
         }
         return "\(mentionOutsideWorkspaceFormat) \(path)"
+    }
+
+    public func connectionLocked(count: Int) -> String {
+        if let range = connectionLockedFormat.range(of: "%@") {
+            return connectionLockedFormat.replacingCharacters(in: range, with: "\(count)")
+        }
+        return "\(connectionLockedFormat) (\(count))"
     }
 }
 
