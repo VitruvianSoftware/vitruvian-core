@@ -6168,3 +6168,7 @@ test("post and board report an error when there is no flow, instead of seq 0 and
   expect(read.isError).toBe(true);
   expect(String(read.result)).toMatch(/no orchestrator flow/i);
 });
+
+test("deliberate failure for #5224 (removed before merge)", () => {
+  expect(1).toBe(2);
+});
