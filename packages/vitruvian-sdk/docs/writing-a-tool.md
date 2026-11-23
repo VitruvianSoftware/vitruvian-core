@@ -370,7 +370,7 @@ tool builds against the kit in this repository instead, and fetches
 nothing for Go.
 
 The Go kit needs Go 1.22 or later and nothing outside Go's standard library.
-The Rust kit needs Rust 1.75 or later and two crates, `serde` and
+The Rust kit needs Rust 1.98 or later and two crates, `serde` and
 `serde_json`: Rust has no JSON of its own. Either way the program is one
 file with nothing to install beside it.
 

@@ -57,7 +57,7 @@ A minor release may add fields to the protocol's types, as this one added
 literal with `..Default::default()`; a literal that names every field stops
 compiling when one is added.
 
-Rust 1.75 or later. Two dependencies, `serde` and `serde_json`: Rust has no
+Rust 1.98 or later. Two dependencies, `serde` and `serde_json`: Rust has no
 JSON in its standard library. MIT licence.
 
 ## Subdirectories & Boundaries
