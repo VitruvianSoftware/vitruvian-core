@@ -647,6 +647,7 @@ async fn start_connector_as(
         &DeviceInfo {
             device_id: device_id.clone(),
             mcp_url: format!("{PUBLIC_URL}/mcp/d/{device_id}"),
+            app_mcp_url: None,
         },
     )
     .unwrap();

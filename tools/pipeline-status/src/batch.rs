@@ -16,6 +16,7 @@
 //! API failure is never read as "zero runs".
 
 use crate::evaluate::{assess, parse_utc, Evaluation};
+use vitruvian_jq::{parse_one, Value};
 
 /// How many of the newest pushes to search for the one holding the commit.
 pub const MAX_PUSHES: usize = 15;
@@ -46,13 +47,12 @@ pub enum Outcome {
 /// The pushes in an activity response, newest first as GitHub sends them. A
 /// body that is not a list of pushes (an error object, junk) is an error.
 pub fn parse_activity(json: &str) -> Result<Vec<Push>, String> {
-    let doc: serde_json::Value =
-        serde_json::from_str(json).map_err(|e| format!("activity response is not JSON: {e}"))?;
+    let doc =
+        parse_one(json.as_bytes()).map_err(|e| format!("activity response is not JSON: {e}"))?;
     let items = doc
         .as_array()
         .ok_or_else(|| "activity response is not a list".to_string())?;
-    let field =
-        |v: &serde_json::Value, k: &str| v.get(k).and_then(|x| x.as_str()).map(String::from);
+    let field = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(String::from);
     items
         .iter()
         .map(|v| {
@@ -68,15 +68,15 @@ pub fn parse_activity(json: &str) -> Result<Vec<Push>, String> {
 /// The commit SHAs a compare response holds. Errors when the response is not a
 /// compare, or lists fewer commits than the range has.
 pub fn parse_range(json: &str) -> Result<Vec<String>, String> {
-    let doc: serde_json::Value =
-        serde_json::from_str(json).map_err(|e| format!("compare response is not JSON: {e}"))?;
+    let doc =
+        parse_one(json.as_bytes()).map_err(|e| format!("compare response is not JSON: {e}"))?;
     let commits = doc
         .get("commits")
-        .and_then(|c| c.as_array())
+        .and_then(Value::as_array)
         .ok_or_else(|| "compare response has no commits list".to_string())?;
     let total = doc
         .get("total_commits")
-        .and_then(|t| t.as_u64())
+        .and_then(Value::as_u64)
         .unwrap_or(commits.len() as u64);
     if total as usize > commits.len() {
         return Err(format!(
@@ -86,17 +86,16 @@ pub fn parse_range(json: &str) -> Result<Vec<String>, String> {
     }
     Ok(commits
         .iter()
-        .filter_map(|c| c.get("sha").and_then(|s| s.as_str()).map(String::from))
+        .filter_map(|c| c.get("sha").and_then(Value::as_str).map(String::from))
         .collect())
 }
 
 /// A runs listing is usable only if GitHub answered with one: an error body
 /// (`{"message": ...}`) parses fine and would otherwise read as no runs.
 pub fn check_runs_response(json: &str) -> Result<(), String> {
-    let doc: serde_json::Value =
-        serde_json::from_str(json).map_err(|e| format!("runs response is not JSON: {e}"))?;
+    let doc = parse_one(json.as_bytes()).map_err(|e| format!("runs response is not JSON: {e}"))?;
     match doc.get("workflow_runs") {
-        Some(r) if r.is_array() => Ok(()),
+        Some(r) if r.as_array().is_some() => Ok(()),
         _ => Err("runs response has no workflow_runs list".to_string()),
     }
 }

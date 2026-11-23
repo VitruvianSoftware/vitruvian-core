@@ -21,7 +21,7 @@
 //! `vrelay` commands. Installing it is `scripts:install`.
 
 use vitruvian_relay_connector::auth::{
-    computer_name, fresh_token, login, parse_login_args, register_this_mac,
+    computer_name, fresh_token, login, login_summary, parse_login_args, register_this_mac,
 };
 use vitruvian_relay_connector::awake::Awake;
 use vitruvian_relay_connector::bridge::{Bridge, BridgeCommand};
@@ -57,11 +57,7 @@ fn cmd_login(cfg: &Config, name: Option<String>) -> Result<()> {
         name.as_deref(),
         computer_name().as_deref(),
     )?;
-    println!("Signed in. This Mac is registered with the relay.");
-    println!();
-    println!("To use it from Claude, add a custom connector with:");
-    println!("  MCP URL:    {}", device.mcp_url);
-    println!("  Client ID:  {}", cfg.claude_client_id);
+    print!("{}", login_summary(&cfg.claude_client_id, &device));
     Ok(())
 }
 

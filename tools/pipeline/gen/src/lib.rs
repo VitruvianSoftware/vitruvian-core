@@ -27,7 +27,6 @@
 pub mod actionpins;
 pub mod dag;
 pub mod flags;
-pub mod gojson;
 pub mod gostr;
 pub mod matrix;
 pub mod render;

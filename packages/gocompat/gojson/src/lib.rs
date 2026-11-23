@@ -1060,6 +1060,22 @@ impl Dec {
         }
     }
 
+    /// Decodes a `map[string]string` field (Go allocates a fresh zero string per map entry).
+    pub fn string_map(&mut self, v: &GoValue, dst: &mut Option<BTreeMap<String, String>>) {
+        match v {
+            GoValue::Obj(pairs) => {
+                let m = dst.get_or_insert_with(BTreeMap::new);
+                for (k, x) in pairs {
+                    let mut s = String::new();
+                    self.string(x, &mut s);
+                    m.insert(k.clone(), s);
+                }
+            }
+            GoValue::Null => *dst = None,
+            other => self.type_err(other.kind(), "map[string]string"),
+        }
+    }
+
     /// Decodes a `map[string][]string` field (Go allocates a fresh zero slice per map entry).
     pub fn strings_map(&mut self, v: &GoValue, dst: &mut Option<BTreeMap<String, Vec<String>>>) {
         match v {
@@ -1423,6 +1439,27 @@ mod tests {
                     .join("|"),
             };
         }
+        if name.starts_with("map_str_") {
+            let v = parse(raw).unwrap();
+            let mut m: Option<BTreeMap<String, String>> = None;
+            let mut d = Dec::new();
+            d.object(&v, "SM", "main.SM", &["m"], |d, _, x| {
+                d.string_map(x, &mut m);
+            });
+            if let Err(e) = d.finish() {
+                return format!("ERR:{e}");
+            }
+            return match m {
+                None => "NIL".to_string(),
+                Some(map) => format!(
+                    "MAP:{}",
+                    map.iter()
+                        .map(|(k, val)| format!("{k}={val}"))
+                        .collect::<Vec<_>>()
+                        .join("|")
+                ),
+            };
+        }
         panic!("unknown unm struct case: {name}");
     }
 
@@ -1756,6 +1793,54 @@ mod tests {
                     runner: "r9".into()
                 },
             ])
+        );
+    }
+
+    #[test]
+    fn diff_string_map_merges_resets_and_errors() {
+        let v = parse(br#"{"m":{"a":"1","b":"2"},"m":{"b":null,"c":"3"},"e":{}}"#).unwrap();
+        let (mut m, mut e) = (None, None);
+        let mut d = Dec::new();
+        d.object(&v, "SM", "main.SM", &["m", "e"], |d, k, x| match k {
+            "m" => d.string_map(x, &mut m),
+            _ => d.string_map(x, &mut e),
+        });
+        d.finish().unwrap();
+        let map = m.unwrap();
+        assert_eq!(map.get("a").map(String::as_str), Some("1"));
+        assert_eq!(map.get("b").map(String::as_str), Some(""));
+        assert_eq!(map.get("c").map(String::as_str), Some("3"));
+        assert_eq!(e, Some(BTreeMap::new()));
+
+        let v2 = parse(br#"{"m":{"a":"1"},"m":null}"#).unwrap();
+        let mut m2 = None;
+        let mut d2 = Dec::new();
+        d2.object(&v2, "SM", "main.SM", &["m"], |d, _, x| {
+            d.string_map(x, &mut m2)
+        });
+        d2.finish().unwrap();
+        assert_eq!(m2, None);
+
+        let v3 = parse(br#"{"m":123}"#).unwrap();
+        let mut m3 = None;
+        let mut d3 = Dec::new();
+        d3.object(&v3, "SM", "main.SM", &["m"], |d, _, x| {
+            d.string_map(x, &mut m3)
+        });
+        assert_eq!(
+            d3.finish().unwrap_err(),
+            "json: cannot unmarshal number into Go struct field SM.m of type map[string]string"
+        );
+
+        let v4 = parse(br#"{"m":{"a":1}}"#).unwrap();
+        let mut m4 = None;
+        let mut d4 = Dec::new();
+        d4.object(&v4, "SM", "main.SM", &["m"], |d, _, x| {
+            d.string_map(x, &mut m4)
+        });
+        assert_eq!(
+            d4.finish().unwrap_err(),
+            "json: cannot unmarshal number into Go struct field SM.m of type string"
         );
     }
 

@@ -30,8 +30,8 @@ func TestClientSpecsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 5 {
-		t.Fatalf("want connector, claude, their two -v2 siblings and the dashboard, got %d clients", len(specs))
+	if len(specs) != 6 {
+		t.Fatalf("want connector, claude, their two -v2 siblings, the dashboard and apps, got %d clients", len(specs))
 	}
 	conn, claude := specs[0], specs[1]
 	if conn.Key != "connector" || conn.AppType != "OIDC_APP_TYPE_NATIVE" || len(conn.RedirectURIs) != 0 {
@@ -57,7 +57,7 @@ func TestClientSpecsChatGPT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 7 || specs[2].Key != "chatgpt" {
+	if len(specs) != 8 || specs[2].Key != "chatgpt" {
 		t.Fatalf("want a chatgpt client third, got %+v", specs)
 	}
 	want := []string{"https://chatgpt.com/connector/oauth/abc123", "https://chatgpt.com/connector_platform_oauth_redirect"}
@@ -72,7 +72,7 @@ func TestClientSpecsGemini(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 7 || specs[2].Key != "gemini" {
+	if len(specs) != 8 || specs[2].Key != "gemini" {
 		t.Fatalf("want a gemini client third, got %+v", specs)
 	}
 	g := specs[2]
@@ -330,6 +330,75 @@ func TestRoleAssertingSiblings(t *testing.T) {
 		isOld := sp.Key == "connector" || sp.Key == "claude" || sp.Key == "chatgpt" || sp.Key == "gemini"
 		if sp.AccessTokenRoleAssertion == isOld {
 			t.Errorf("%s: roleAssertion=%v is wrong", sp.Key, sp.AccessTokenRoleAssertion)
+		}
+	}
+}
+
+// The apps client is what the relay itself signs people in with when an AI app
+// (Gemini today) connects through the relay's own OAuth endpoints. It is public
+// with PKCE, and its id token must carry the person's name and email so the
+// consent page can say who is approving.
+func TestAppsClientIsPublicWithRoleAssertion(t *testing.T) {
+	const want = "https://relay.vitruviansoftware.dev/oauth/callback"
+	if appsCallback != want {
+		t.Fatalf("apps callback is %q, want %q", appsCallback, want)
+	}
+	got, err := parseRedirectURIs(appsCallback, relayHost, appsCallbackPaths)
+	if err != nil || !reflect.DeepEqual(got, []string{want}) {
+		t.Fatalf("the pinned callback must pass: got %v %v", got, err)
+	}
+	bad := []string{
+		"https://relay.vitruviansoftware.dev/auth/callback",              // the dashboard's
+		"https://relay.vitruviansoftware.dev/oauth/callback/x",           // extra segment
+		"https://relay.vitruviansoftware.dev/oauth/callbackx",            // look-alike path
+		"https://relay.vitruviansoftware.dev/oauth/callback?next=/admin", // query
+		"http://relay.vitruviansoftware.dev/oauth/callback",              // not https
+		"https://relay.vitruviansoftware.dev.evil.example/oauth/callback",
+	}
+	for _, raw := range bad {
+		if _, err := parseRedirectURIs(raw, relayHost, appsCallbackPaths); err == nil {
+			t.Errorf("%q: want refusal, got none", raw)
+		}
+	}
+
+	specs, err := clientSpecs("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a *clientSpec
+	for i := range specs {
+		if specs[i].Key == "apps" {
+			a = &specs[i]
+		}
+	}
+	if a == nil {
+		t.Fatal("no apps client")
+	}
+	if a.ExportKey != "apps" {
+		t.Errorf("export key %q: the output must be appsClientId", a.ExportKey)
+	}
+	if !reflect.DeepEqual(a.RedirectURIs, []string{want}) {
+		t.Errorf("apps redirects: got %v", a.RedirectURIs)
+	}
+	if len(a.PostLogoutURIs) != 0 {
+		t.Errorf("apps has no sign-out page: %v", a.PostLogoutURIs)
+	}
+	if a.AppType != "OIDC_APP_TYPE_WEB" || a.AuthMethod != authNone {
+		t.Errorf("apps must be a public web client with PKCE: %+v", a)
+	}
+	if !reflect.DeepEqual(a.GrantTypes, []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"}) {
+		t.Errorf("apps grants: %v", a.GrantTypes)
+	}
+	if !a.AccessTokenRoleAssertion {
+		t.Error("apps access tokens must carry the role claim the relay checks")
+	}
+	if !a.IDTokenUserinfoAssertion {
+		t.Error("apps id tokens must carry name and email for the consent page")
+	}
+	// Moving the id-token switch on any other client would change its plan.
+	for _, sp := range specs {
+		if sp.Key != "apps" && sp.IDTokenUserinfoAssertion {
+			t.Errorf("%s: id-token userinfo assertion must stay off", sp.Key)
 		}
 	}
 }
