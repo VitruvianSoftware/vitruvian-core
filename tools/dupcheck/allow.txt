@@ -29,6 +29,10 @@
 # apps/antigravity/hook_json_helper.rs by //apps/antigravity:hooks-gen
 # because each plugin installs standalone and compiles hooks/src with bare rustc.
 apps/antigravity/plugins/*/hooks/src/json.rs
+# sync-site-tools keeps its private JSON on purpose. It needs Python's exact
+# comparison, printing and lone-surrogate behaviour, which pycompat does not
+# provide. Moving it (#5396, closed) added 73 lines of code instead of removing any.
+tools/sync-site-tools/src/json.rs
 
 # Orchestrator plugin copies: three files (orchestrator-core.mjs, prices.mjs,
 # tier-defaults.mjs) in each of the three plugin copies (antigravity,
