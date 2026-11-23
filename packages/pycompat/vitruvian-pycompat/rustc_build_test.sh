@@ -46,3 +46,11 @@ bash "$build" "$out/appset" appset_render \
 bash "$build" --test "$out/appset" appset_render tools/gitops/appset-render/src/lib.rs -O
 "$out/appset/appset_render-test" >/dev/null
 echo "PASS appset_render and its tests build with plain rustc and run"
+
+bash "$build" "$out/pipeline" pipeline_status \
+	tools/pipeline-status/src/lib.rs tools/pipeline-status/src/main.rs -O
+test -f "$out/pipeline/libvitruvian_jq.rlib"
+test -x "$out/pipeline/pipeline_status"
+bash "$build" --test "$out/pipeline" pipeline_status tools/pipeline-status/src/lib.rs -O
+"$out/pipeline/pipeline_status-test" >/dev/null
+echo "PASS pipeline_status and its tests build with plain rustc (linking vitruvian_jq) and run"

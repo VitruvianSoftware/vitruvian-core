@@ -363,6 +363,9 @@ exports_files(
 # not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
 # gazelle:exclude packages/pulumi/examples
+# packages/jq/scripts holds the standalone parity-case generator invoked manually
+# against local jq 1.8.2; keep gazelle from generating a py_binary BUILD file there.
+# gazelle:exclude packages/jq/scripts
 # apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
 # Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/vitruvian-devx
 # and apps/desktop/vitruvian-courier (Go modules). The other apps are listed one by one
