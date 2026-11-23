@@ -233,7 +233,7 @@ mod tests {
         assert!(!obj.has("missing"));
         assert_eq!(obj.get("a").unwrap().as_str(), Some("hi"));
         assert_eq!(obj.get("b").unwrap().as_str(), None);
-        assert_eq!(obj.as_obj().map(Vec::len), Some(2));
+        assert_eq!(ValueExt::as_obj(&obj).map(Vec::len), Some(2));
         assert_eq!(Value::Null.as_obj(), None);
 
         assert!(Value::Int("0".into()).is_number());

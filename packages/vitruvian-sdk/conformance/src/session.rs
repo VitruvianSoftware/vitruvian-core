@@ -576,7 +576,8 @@ impl<L: Transport> Run<L> {
             if kind == MsgKind::Request {
                 self.serve(&message, refuse_all)?;
             } else if matches!(kind, MsgKind::Result | MsgKind::Failure) {
-                let msg_id = message.get("id").unwrap_or(&Value::Null);
+                let null = Value::Null;
+                let msg_id = message.get("id").unwrap_or(&null);
                 if !json::py_eq(msg_id, request_id) {
                     return Err(Failure::new(format!(
                         "an answer to a request that was not waiting: {}",
@@ -641,7 +642,8 @@ impl<L: Transport> Run<L> {
                 message.py_repr()
             )));
         }
-        let result = message.get("result").unwrap_or(&Value::Null);
+        let null = Value::Null;
+        let result = message.get("result").unwrap_or(&null);
         let proto_ver = result
             .get("protocolVersion")
             .and_then(|v| v.as_str())

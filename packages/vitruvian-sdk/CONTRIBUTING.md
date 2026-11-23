@@ -20,6 +20,12 @@ overwrite it.
 2. **Open a pull request** to vitruvian-core, changing files under
    `packages/vitruvian-sdk`. Link the issue.
 
+In the `vitruvian-sdk` mirror, `vendor/vitruvian-pycompat/` is generated from
+`packages/pycompat/vitruvian-pycompat` in `vitruvian-core` on every Copybara
+export (with `verification/cargo/conformance/Cargo.toml` rewritten to point
+there) and must not be edited in the mirror — edit
+`packages/pycompat/vitruvian-pycompat` in `vitruvian-core` instead.
+
 Everything in this folder is MIT licensed, and a contribution is too. Vitruvian
 Atrium, which links the protocol's Swift types, is GPL-3.0-or-later:
 nothing from the app's folder may be copied here.
@@ -107,6 +113,14 @@ One version for the whole SDK. release-please keeps it, in vitruvian-core:
   `vX.Y.Z` (Swift) and `go/vX.Y.Z` (Go), builds `vitruvian-tool` for Apple
   silicon and Intel, attaches it and the source to a GitHub release, and
   writes the Homebrew formula.
+- Changes that touch only `packages/pycompat/vitruvian-pycompat` are exported to
+  `vendor/vitruvian-pycompat/` in `vitruvian-sdk` automatically, **but do not cut
+  a new SDK version on their own**: `release-please` only cuts an SDK release
+  for commits that change files under `packages/vitruvian-sdk/` (a
+  `Releases: vitruvian-sdk` line in the pull request description does not change
+  this). To ship a `vitruvian-pycompat` fix in a tagged SDK release, include a
+  change under `packages/vitruvian-sdk/` (such as a conformance test covering the
+  fix) in a `fix(vitruvian-sdk):` pull request, or follow up with one.
 
 ## Listing a tool
 

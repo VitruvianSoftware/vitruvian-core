@@ -4,6 +4,7 @@
 # Hand-written: the Rust targets below are not gazelle's to own.
 # gazelle:ignore
 
+load("@aspect_rules_py//py:defs.bzl", "py_binary")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # The export version maps in copy.bara.sky rewrite in-tree references to
@@ -61,4 +62,26 @@ exports_files(
         "//apps/web/mini-party:__pkg__",
         "//tools/registry-trust:__pkg__",
     ],
+)
+
+# Assembles the exported vitruvian-sdk mirror tree from copy.bara.sky and runs
+# the mirror's Cargo checks against it (including the vendored pycompat path).
+py_binary(
+    name = "sdk_export_check",
+    srcs = ["sdk_export_check.py"],
+    data = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+        "@rules_rust//rust/toolchain:current_rustdoc_files",
+    ],
+    env = {
+        "REAL_CARGO": "$(rootpaths @rules_rust//rust/toolchain:current_cargo_files)",
+        "REAL_RUSTC": "$(rootpaths @rules_rust//rust/toolchain:current_rustc_files)",
+        "REAL_RUSTDOC": "$(rootpaths @rules_rust//rust/toolchain:current_rustdoc_files)",
+    },
+    main = "sdk_export_check.py",
+    visibility = ["//visibility:public"],
 )
