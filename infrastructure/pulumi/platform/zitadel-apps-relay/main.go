@@ -52,6 +52,13 @@
 // sign-in (authorization code with PKCE, no secret) and checks the same role
 // claim as the MCP endpoint. Its callback is on the relay's own host.
 //
+// The apps client is for AI apps that connect through the relay's own OAuth
+// endpoints (Gemini today). Those apps sign people in with the relay, and the
+// relay signs them in here (authorization code with PKCE, no secret, callback
+// on the relay's own host). Its id token carries name and email so the relay's
+// consent page can say who is approving. The relay only uses it once its
+// app sign-in switch is on, so creating it changes nothing live.
+//
 // WHY ITS OWN PROJECT: Zitadel's audience scope is per project, so sharing a
 // project with another app would blur that boundary. But note what the sibling
 // vitruvian-slack-mcp stack established: in this instance `aud` is caller-authored (any
@@ -112,6 +119,9 @@ const (
 const (
 	dashboardCallback = "https://" + relayHost + "/auth/callback"
 	dashboardLogout   = "https://" + relayHost + "/"
+	// appsCallback is where the relay receives the code when it signs people in
+	// on behalf of an AI app.
+	appsCallback = "https://" + relayHost + "/oauth/callback"
 )
 
 // pathRule allows one callback path shape: either exactly Exact, or Prefix
@@ -148,6 +158,8 @@ var (
 	geminiCallbackPaths = []pathRule{{Prefix: "/r/user_bound_custom-mcp-"}}
 	// The relay dashboard has exactly one callback.
 	dashboardCallbackPaths = []pathRule{{Exact: "/auth/callback"}}
+	// The apps client has exactly one callback too.
+	appsCallbackPaths = []pathRule{{Exact: "/oauth/callback"}}
 )
 
 // clientSpec is everything about one OIDC client that this stack decides.
@@ -168,6 +180,10 @@ type clientSpec struct {
 	// AccessTokenRoleAssertion puts the user's roles into the access token.
 	// Only read when the client is created (the provider ignores later changes).
 	AccessTokenRoleAssertion bool
+	// IDTokenUserinfoAssertion puts the user's name and email into the id
+	// token. Off for every client but apps, so existing plans do not move.
+	// Only read when the client is created (the provider ignores later changes).
+	IDTokenUserinfoAssertion bool
 }
 
 const (
@@ -251,6 +267,21 @@ func clientSpecs(chatgptRaw, geminiRaw string) ([]clientSpec, error) {
 		AuthMethod:               authNone,
 		PostLogoutURIs:           []string{dashboardLogout},
 		AccessTokenRoleAssertion: true,
+	})
+	// Same pinned-callback check for the apps client.
+	apps, err := parseRedirectURIs(appsCallback, relayHost, appsCallbackPaths)
+	if err != nil {
+		return nil, err
+	}
+	specs = append(specs, clientSpec{
+		Key:                      "apps",
+		ExportKey:                "apps",
+		AppType:                  "OIDC_APP_TYPE_WEB",
+		GrantTypes:               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"},
+		RedirectURIs:             apps,
+		AuthMethod:               authNone,
+		AccessTokenRoleAssertion: true,
+		IDTokenUserinfoAssertion: true,
 	})
 	return specs, nil
 }
@@ -469,7 +500,7 @@ func main() {
 				DevMode:                  pulumi.Bool(false),
 				AccessTokenRoleAssertion: pulumi.Bool(s.AccessTokenRoleAssertion),
 				IdTokenRoleAssertion:     pulumi.Bool(false),
-				IdTokenUserinfoAssertion: pulumi.Bool(false),
+				IdTokenUserinfoAssertion: pulumi.Bool(s.IDTokenUserinfoAssertion),
 			}
 			// Set only where there is one, so the existing clients' plans do not move.
 			if len(s.PostLogoutURIs) > 0 {

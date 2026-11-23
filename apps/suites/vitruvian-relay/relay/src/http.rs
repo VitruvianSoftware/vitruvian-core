@@ -25,6 +25,7 @@
 //!   GET    /.well-known/oauth-protected-resource             RFC 9728 metadata for the relay
 //!   GET    /.well-known/oauth-protected-resource/mcp/d/{id}  metadata for one device's URL
 //!   POST   /mcp/d/{id}                                       MCP over Streamable HTTP (JSON answers)
+//!   POST   /mcp/app/{id}, and the oauth routes ([`crate::oauth`])  the same, for apps that register themselves (off unless APP_SIGNIN_KEY is set)
 //!                                                            (2026-07-28 requests stand alone; older ones use initialize + Mcp-Session-Id)
 //!   GET    /mcp/d/{id}, DELETE /mcp/d/{id}                   405: no SSE stream or session delete in P1
 //!   POST   /devices                                          register this person's device (connector token)
@@ -75,6 +76,7 @@ use crate::devices::{
     clean_device_name, DeviceRecord, NewDevice, DEFAULT_DEVICE_NAME, DEVICE_NAME_MAX,
 };
 use crate::mcp::{era, needs_session, Answer, Era, Mcp};
+use crate::oauth;
 use crate::parked::Delivery;
 use crate::ratelimit::{RateLimit, CALLS_PER_MINUTE_PER_USER, RATE_BURST};
 use crate::registry::{ConnectionId, Registry, ACK_TIMEOUT, RECONNECT_GRACE};
@@ -324,7 +326,10 @@ struct Session {
 
 pub struct App {
     pub(crate) settings: Settings,
-    mcp_verifier: Arc<Verifier>,
+    /// Checks the AI apps' tokens, role included. The app sign-in checks the
+    /// token it gets from the identity service with it too, so a person who
+    /// was never invited never reaches the consent page.
+    pub(crate) mcp_verifier: Arc<Verifier>,
     connector_verifier: Arc<Verifier>,
     /// Pinned to the dashboard's own client id: its token works only on
     /// `/auth/*`, and no other token works there.
@@ -345,6 +350,21 @@ pub struct App {
     /// device ever changed.
     key_changes: Mutex<HashMap<String, (u64, Instant, Change)>>,
     pub(crate) registry: Registry,
+    /// Registrations per source address (see [`crate::oauth`]): 60 a minute,
+    /// a burst of 30. Roomy because many people share one Google address;
+    /// bounded, as the endpoint is open to the internet.
+    pub(crate) register_limit: RateLimit,
+    /// Sign-ins started at `/oauth/authorize` per source address: 30 a
+    /// minute, a burst of 30. Each one holds an entry in [`Self::pending`],
+    /// which is bounded, so this keeps one address from pushing out
+    /// everyone else's sign-ins.
+    pub(crate) authorize_limit: RateLimit,
+    /// Calls to `/oauth/token` per source address: 600 a minute, a burst of
+    /// 120 (Google's apps share addresses). Each one may start a call to the identity service, which has only
+    /// a few places ([`crate::dashboard::Dashboard::exchange`]).
+    pub(crate) token_limit: RateLimit,
+    /// App sign-ins in progress, consents waiting and codes handed out.
+    pub(crate) pending: crate::oauth::Pending,
     mcp: Mcp,
     sessions: Mutex<HashMap<String, Session>>,
     pub(crate) timing: Timing,
@@ -392,6 +412,10 @@ impl App {
             key_generation: AtomicU64::new(0),
             key_changes: Mutex::new(HashMap::new()),
             registry,
+            register_limit: RateLimit::new(60, 30),
+            authorize_limit: RateLimit::new(30, 30),
+            token_limit: RateLimit::new(600, 120),
+            pending: crate::oauth::Pending::default(),
             sessions: Mutex::new(HashMap::new()),
             timing,
             log,
@@ -572,7 +596,11 @@ impl App {
 
 // ------------------------------------------------------------------ helpers
 
-fn respond(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Response<Body> {
+pub(crate) fn respond(
+    status: StatusCode,
+    content_type: &str,
+    body: impl Into<Bytes>,
+) -> Response<Body> {
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
@@ -581,11 +609,11 @@ fn respond(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Re
         .expect("static response parts are valid")
 }
 
-fn json_response(status: StatusCode, v: &Value) -> Response<Body> {
+pub(crate) fn json_response(status: StatusCode, v: &Value) -> Response<Body> {
     respond(status, "application/json", v.to_string())
 }
 
-fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
+pub(crate) fn text(status: StatusCode, msg: &'static str) -> Response<Body> {
     respond(status, "text/plain", msg)
 }
 
@@ -703,13 +731,26 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
     let path = req.uri().path().to_string();
     let method = req.method().clone();
 
-    if let Some(device_id) = path.strip_prefix("/mcp/d/") {
-        if !valid_device_id(device_id) {
+    // `/mcp/d/` is for apps that sign in at Zitadel (Claude); `/mcp/app/` is
+    // the same service for apps that register themselves with the relay
+    // (Gemini), and exists only when that is turned on.
+    let mcp_route = match (path.strip_prefix("/mcp/d/"), path.strip_prefix("/mcp/app/")) {
+        (Some(id), _) => Some((id, false)),
+        (None, Some(id)) => Some((id, true)),
+        (None, None) => None,
+    };
+    if let Some((device_id, for_apps)) = mcp_route {
+        if !valid_device_id(device_id) || (for_apps && app.settings.app_signin.is_none()) {
             return not_found();
         }
+        let metadata_url = if for_apps {
+            app.settings.app_metadata_url(device_id)
+        } else {
+            app.settings.device_metadata_url(device_id)
+        };
         let device_id = device_id.to_string();
         return match method {
-            Method::POST => mcp_post(app, req, device_id).await,
+            Method::POST => mcp_post(app, req, device_id, metadata_url, for_apps).await,
             Method::GET | Method::DELETE => {
                 let mut r = text(StatusCode::METHOD_NOT_ALLOWED, "POST only");
                 r.headers_mut()
@@ -736,6 +777,22 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
             _ => not_found(),
         };
     }
+    if let Some(device_id) = path
+        .strip_prefix(PRM)
+        .and_then(|p| p.strip_prefix("/mcp/app/"))
+    {
+        // As above, and only when the app sign-in is on.
+        return match (method, valid_device_id(device_id), &app.settings.app_signin) {
+            (Method::GET, true, Some(_)) => json_response(
+                StatusCode::OK,
+                &oauth::app_protected_resource_metadata(&app, device_id),
+            ),
+            _ => not_found(),
+        };
+    }
+    if oauth::wants(&method, &path) {
+        return oauth::handle(app, req).await;
+    }
     if dashboard::wants(&method, &path) {
         return dashboard::handle(app, req).await;
     }
@@ -758,14 +815,39 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
 
 // ---------------------------------------------------------------------- MCP
 
-async fn mcp_post(app: Arc<App>, req: Request<Incoming>, device_id: String) -> Response<Body> {
+async fn mcp_post(
+    app: Arc<App>,
+    req: Request<Incoming>,
+    device_id: String,
+    metadata_url: String,
+    for_apps: bool,
+) -> Response<Body> {
     let tracker = req.extensions().get::<Arc<WriteTracker>>().cloned();
-    let metadata_url = app.settings.device_metadata_url(&device_id);
     let caller =
         match authenticate(&app.mcp_verifier, header_str(&req, header::AUTHORIZATION)).await {
             Ok((caller, _token)) => caller,
             Err(r) => return refusal(&app, "mcp", &metadata_url, r),
         };
+    // A token the relay issued to a self-registered app is for `/mcp/app/`
+    // only. On Claude's URL it is refused as any client that is not allowed
+    // there is. (Claude's own token also works on `/mcp/app/`, as it did
+    // before: it is the same person's token, checked the same way.)
+    if !for_apps
+        && app
+            .settings
+            .app_signin
+            .as_ref()
+            .is_some_and(|s| s.client_id == caller.client_id)
+    {
+        return refusal(
+            &app,
+            "mcp",
+            &metadata_url,
+            Refused::Token(AuthError::ClientNotAllowed {
+                client_id: Some(caller.client_id.clone()),
+            }),
+        );
+    }
     // Someone else's device answers exactly like a missing one.
     let found = app.owned_device(&caller.subject, &device_id).await;
     match &found {
@@ -1007,11 +1089,16 @@ async fn register_device(app: Arc<App>, req: Request<Incoming>) -> Response<Body
     registered(&app, &device_id)
 }
 
+/// The answer to a registration. `app_mcp_url` is there only when app sign-in
+/// is on (the address Gemini is given); the connector prints it if present, and
+/// a connector that does not know the field ignores it.
 fn registered(app: &App, device_id: &str) -> Response<Body> {
-    json_response(
-        StatusCode::OK,
-        &json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(device_id)}),
-    )
+    let mut body =
+        json!({"device_id": device_id, "mcp_url": app.settings.device_mcp_url(device_id)});
+    if app.settings.app_signin.is_some() {
+        body["app_mcp_url"] = json!(app.settings.app_mcp_url(device_id));
+    }
+    json_response(StatusCode::OK, &body)
 }
 
 /// The answer when the store could not do what a request needed: the

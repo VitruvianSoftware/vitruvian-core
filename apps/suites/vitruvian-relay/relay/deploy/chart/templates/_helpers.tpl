@@ -62,6 +62,21 @@ and so does both (the current relay ignores the list without a word).
 {{- end -}}
 
 {{/*
+The apps client's id, for app sign-in (appSignin.enabled). The relay refuses to
+start without it, and also unless it is one of oidc.mcpClientIds (tokens it
+issues must pass the same audience check as every other AI app's), so both are
+refused here, at render time, rather than as a crash loop.
+*/}}
+{{- define "vitruvian-relay.appsClientId" -}}
+{{- $id := required "oidc.appsClientId is required when appSignin.enabled is true (zitadel-apps-relay output appsClientId)" .Values.oidc.appsClientId | toString -}}
+{{- $ids := splitList "," (.Values.oidc.mcpClientIds | toString | replace " " "") -}}
+{{- if not (has $id $ids) -}}
+{{- fail (printf "oidc.appsClientId %q must also be listed in oidc.mcpClientIds: the relay refuses to start otherwise" $id) -}}
+{{- end -}}
+{{ $id }}
+{{- end -}}
+
+{{/*
 MCP_CLIENT_LABELS: the mcpClientLabels map as Label=<client id>, comma
 separated, in label order (so the render is stable).
 */}}

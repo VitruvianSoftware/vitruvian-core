@@ -22,6 +22,8 @@
 
 use std::path::PathBuf;
 
+use crate::oauth::AppKeys;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
     pub port: u16,
@@ -55,6 +57,26 @@ pub struct Settings {
     /// Overrides where the dashboard's sign-in code is exchanged. Unset in
     /// production (`{issuer}/oauth/v2/token`); set for local runs and tests.
     pub token_uri: Option<String>,
+    /// Sign-in for AI apps that register themselves (Gemini). None unless both
+    /// `APP_SIGNIN_KEY` and `APPS_CLIENT_ID` are set; then every `/oauth/*`
+    /// and `/mcp/app/*` path answers 404.
+    pub app_signin: Option<AppSignin>,
+}
+
+/// What the app sign-in needs: the server key and the one client id that
+/// tokens it issues carry (which must be an MCP client id).
+#[derive(Debug, Clone)]
+pub struct AppSignin {
+    pub keys: AppKeys,
+    pub client_id: String,
+}
+
+/// Compares the client id only: key material is never compared with `==`.
+/// Settings need `PartialEq` for tests that compare two loads.
+impl PartialEq for AppSignin {
+    fn eq(&self, other: &Self) -> bool {
+        self.client_id == other.client_id
+    }
 }
 
 /// The role an invited person holds, unless `REQUIRED_ROLE` says otherwise.
@@ -200,6 +222,33 @@ impl Settings {
                 check_endpoint_url(name, url)?;
             }
         }
+        let app_signin = match (opt("APP_SIGNIN_KEY"), opt("APPS_CLIENT_ID")) {
+            (None, None) => None,
+            (Some(key), Some(client_id)) => {
+                // Tokens it issues must pass the same audience check as every
+                // other AI app's. (It cannot be the connector's or the
+                // dashboard's id either: both are refused above if they are in
+                // MCP_CLIENT_IDS.)
+                if !mcp_client_ids.contains(&client_id) {
+                    return Err("APPS_CLIENT_ID must also be in MCP_CLIENT_IDS".into());
+                }
+                // Apps-client tokens are refused on /mcp/d/, so sharing Claude's
+                // id would lock Claude out of every call.
+                if mcp_client_labels
+                    .iter()
+                    .any(|(label, id)| label == "Claude" && *id == client_id)
+                {
+                    return Err("APPS_CLIENT_ID must not be the Claude client".into());
+                }
+                Some(AppSignin {
+                    keys: AppKeys::from_b64(&key)?,
+                    client_id,
+                })
+            }
+            _ => {
+                return Err("APP_SIGNIN_KEY and APPS_CLIENT_ID must be set together".into());
+            }
+        };
         Ok(Settings {
             port,
             public_url,
@@ -214,6 +263,7 @@ impl Settings {
             database_ca_file: opt("DATABASE_CA_FILE").map(PathBuf::from),
             jwks_uri,
             token_uri,
+            app_signin,
         })
     }
 
@@ -272,6 +322,24 @@ impl Settings {
             "{}/.well-known/oauth-protected-resource/mcp/d/{device_id}",
             self.public_url
         )
+    }
+
+    /// The URL a self-registering AI app is given for one device.
+    pub fn app_mcp_url(&self, device_id: &str) -> String {
+        format!("{}/mcp/app/{device_id}", self.public_url)
+    }
+
+    /// Where that device's protected-resource metadata is served for apps.
+    pub fn app_metadata_url(&self, device_id: &str) -> String {
+        format!(
+            "{}/.well-known/oauth-protected-resource/mcp/app/{device_id}",
+            self.public_url
+        )
+    }
+
+    /// Where Zitadel sends a person back to after signing in for an app.
+    pub fn apps_callback_url(&self) -> String {
+        format!("{}/oauth/callback", self.public_url)
     }
 
     /// The relay's own metadata, for clients that look at the bare path first.
@@ -453,6 +521,123 @@ mod tests {
         assert_eq!(s.mcp_client_label("other"), None);
         assert_eq!(s.mcp_client_id_of("claude"), Some("claude-id"));
         assert_eq!(s.token_url(), "http://127.0.0.1:9/token");
+    }
+
+    fn key_b64() -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode([5u8; 32])
+    }
+
+    #[test]
+    fn config_needs_both_or_neither() {
+        // Neither: the feature is off and nothing else changes.
+        let off = load(&base()).unwrap();
+        assert_eq!(off.app_signin, None);
+
+        let key = key_b64();
+        let mut both = base();
+        both.insert("APP_SIGNIN_KEY", &key);
+        both.insert("APPS_CLIENT_ID", "chatgpt-id");
+        let on = load(&both).unwrap();
+        let app = on.app_signin.as_ref().expect("both set turns it on");
+        assert_eq!(app.client_id, "chatgpt-id");
+        assert_eq!(
+            Settings {
+                app_signin: None,
+                ..on.clone()
+            },
+            off
+        );
+
+        let mut only_key = base();
+        only_key.insert("APP_SIGNIN_KEY", &key);
+        let err = load(&only_key).unwrap_err();
+        assert!(err.contains("together"), "{err}");
+        assert!(!err.contains(&key));
+
+        let mut only_id = base();
+        only_id.insert("APPS_CLIENT_ID", "chatgpt-id");
+        assert!(load(&only_id).unwrap_err().contains("together"));
+
+        // A bad key is refused without echoing it.
+        let short = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode([6u8; 16])
+        };
+        for bad in ["not-base64-secret-value!!", short.as_str()] {
+            let mut env = both.clone();
+            env.insert("APP_SIGNIN_KEY", bad);
+            let err = load(&env).unwrap_err();
+            assert!(err.contains("APP_SIGNIN_KEY"), "{err}");
+            assert!(!err.contains(bad), "the error must not echo the key: {err}");
+        }
+        // The key never prints.
+        assert!(!format!("{on:?}").contains(&key));
+    }
+
+    #[test]
+    fn apps_client_must_not_be_claudes_client() {
+        let key = key_b64();
+        let mut env = base();
+        env.insert("MCP_CLIENT_LABELS", "Claude=claude-id");
+        env.insert("APP_SIGNIN_KEY", &key);
+        env.insert("APPS_CLIENT_ID", "claude-id");
+        let err = load(&env).unwrap_err();
+        assert!(err.contains("must not be the Claude client"), "{err}");
+        env.insert("APPS_CLIENT_ID", "chatgpt-id");
+        assert!(load(&env).is_ok());
+    }
+
+    #[test]
+    fn apps_client_must_be_an_mcp_client() {
+        let key = key_b64();
+        // Not an MCP client at all (including the connector's and the
+        // dashboard's ids, which are not in the list).
+        for id in ["unknown-id", "conn-id", "dash-id"] {
+            let mut env = base();
+            env.insert("APP_SIGNIN_KEY", &key);
+            env.insert("APPS_CLIENT_ID", id);
+            let err = load(&env).unwrap_err();
+            assert!(
+                err.contains("APPS_CLIENT_ID must also be in"),
+                "{id}: {err}"
+            );
+        }
+        // Forcing the connector's or the dashboard's id into the list does not
+        // make it usable: the existing check refuses that first.
+        for (id, name, list) in [
+            ("conn-id", "CONNECTOR_CLIENT_ID", "claude-id,conn-id"),
+            ("dash-id", "DASHBOARD_CLIENT_ID", "claude-id,dash-id"),
+        ] {
+            let mut env = base();
+            env.insert("MCP_CLIENT_IDS", list);
+            env.insert("APP_SIGNIN_KEY", &key);
+            env.insert("APPS_CLIENT_ID", id);
+            let err = load(&env).unwrap_err();
+            assert!(err.starts_with(name), "{id}: {err}");
+        }
+        // An id that is in the list is accepted.
+        let mut env = base();
+        env.insert("APP_SIGNIN_KEY", &key);
+        env.insert("APPS_CLIENT_ID", "claude-id");
+        assert!(load(&env).is_ok());
+    }
+
+    #[test]
+    fn app_urls_hang_off_the_public_url() {
+        let s = load(&base()).unwrap();
+        assert_eq!(
+            s.app_mcp_url("dev1"),
+            "https://relay.example.dev/mcp/app/dev1"
+        );
+        assert_eq!(
+            s.app_metadata_url("dev1"),
+            "https://relay.example.dev/.well-known/oauth-protected-resource/mcp/app/dev1"
+        );
+        assert_eq!(
+            s.apps_callback_url(),
+            "https://relay.example.dev/oauth/callback"
+        );
     }
 
     #[test]
