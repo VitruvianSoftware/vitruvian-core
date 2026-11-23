@@ -604,18 +604,18 @@ b023c7707a1b3ece148821f979f28aef965e91de	50ebacece6edbafcd54b1ff677932ca07d50b61
 d9c7f4a77e809405facd4d71289ec58a29e46380	9d7521623f95293c37c5d2d90552bab4fce72f98	2026-11-11	skipped	upstream's 3.4.4 version bump, changelog and support-invitation pin; the fork versions through release-please	chore: prepare 3.4.4 stable
 ce1276470d2b1115c8c3398f34e82079905fffba	4e8dce8acc24f13e5408bb58b3c33a72e14f2ad4	2026-11-11	skipped	touches only upstream-only paths	chore: reopen changelog after 3.4.4
 89d2626089d693bf0462ba29ea5d047d80c9da2e	2b8580701196a8a2a3cada820438acb7af3d7623	2026-11-13	ported	#4779	chore(agents): update AI price list
-10a32ecb39a918b1e06371c75152e3ea296c7e19	693d489d9e98e4f447ed0a246f0d67eaddd9908f	2026-11-18	pending	-	fix(menu-panel): prevent clicks on the panel from dismissing it (#4020)
-a2998ce075848a1a6c6d8f56957cc41d2f43cf09	8afb015a3a459505e4ab8082e53e46606a88c908	2026-11-19	pending	-	fix(window-layout): ignore the option-key tiling setting on its own (#4204)
-6b4ebcb35ab82084c64b7820e7239f80c94f22a9	915354677185567014ce22b52983fa75fbe548c7	2026-11-19	pending	-	fix(audio-priority): keep one entry for AirPlay devices that reconnect (#4174)
-c149f58b939e0dc4c1eb78730a26bd4c63af930c	80fe359593cf2f439ba5a100ab79bd459fdfb262	2026-11-18	pending	-	fix(mic-mute): stop re-asserting on inputs that will not stay muted (#4107)
-4976d85aae3b8520fbc3507563f9f3188532a6f9	25072a8f701f7e4e37db73ed8a3fac8ec3cfe343	2026-11-18	pending	-	fix(mixer): key apps by their real pid so pid -1 apps get their own rows (#4063)
-c7141c329a1789e8903be697ca9f566b63d01e2f	55ddeeb83c2730566f7a8dc71e680744ac1e8c2e	2026-11-18	pending	-	perf(mic-mute): coalesce listener sweeps and skip unchanged writes (#4212)
-e0d110e3643d054e5d308b3886b239186c685fc6	fc64beb491c24ad3bb09633689786f3571013416	2026-11-19	pending	-	fix(shelf): start a drag without reading file metadata on the main thread (#4041)
-bc362dd697483194b233ce6fe8760e68fd5d39cc	ef68a62d037f5a00ee48257c7b89aabd97f120bc	2026-11-18	pending	-	test(mic-mute): exercise device changes during pending requests
-1d452037813fc1946a9dab41ad6a6e653871ea86	9698eda0492a5f4fadc6f64c463074ef8342a150	2026-11-19	pending	-	perf(screenshots): stop the editor holding pixels it no longer needs (#4079)
-1dca33396d27b4017310a2a21c82ac834b91aa44	3940d013665d7d7c6ed1d12b70d1122e246ca91a	2026-11-19	pending	-	fix(screenshots): capture composited video in the selected window (#4206)
+10a32ecb39a918b1e06371c75152e3ea296c7e19	693d489d9e98e4f447ed0a246f0d67eaddd9908f	2026-11-18	ported	#5419	fix(menu-panel): prevent clicks on the panel from dismissing it (#4020)
+a2998ce075848a1a6c6d8f56957cc41d2f43cf09	8afb015a3a459505e4ab8082e53e46606a88c908	2026-11-19	ported	#5419	fix(window-layout): ignore the option-key tiling setting on its own (#4204)
+6b4ebcb35ab82084c64b7820e7239f80c94f22a9	915354677185567014ce22b52983fa75fbe548c7	2026-11-19	ported	#5419	fix(audio-priority): keep one entry for AirPlay devices that reconnect (#4174)
+c149f58b939e0dc4c1eb78730a26bd4c63af930c	80fe359593cf2f439ba5a100ab79bd459fdfb262	2026-11-18	ported	#5419	fix(mic-mute): stop re-asserting on inputs that will not stay muted (#4107)
+4976d85aae3b8520fbc3507563f9f3188532a6f9	25072a8f701f7e4e37db73ed8a3fac8ec3cfe343	2026-11-18	ported	#5419	fix(mixer): key apps by their real pid so pid -1 apps get their own rows (#4063)
+c7141c329a1789e8903be697ca9f566b63d01e2f	55ddeeb83c2730566f7a8dc71e680744ac1e8c2e	2026-11-18	ported	#5419	perf(mic-mute): coalesce listener sweeps and skip unchanged writes (#4212)
+e0d110e3643d054e5d308b3886b239186c685fc6	fc64beb491c24ad3bb09633689786f3571013416	2026-11-19	ported	#5419	fix(shelf): start a drag without reading file metadata on the main thread (#4041)
+bc362dd697483194b233ce6fe8760e68fd5d39cc	ef68a62d037f5a00ee48257c7b89aabd97f120bc	2026-11-18	ported	#5419	test(mic-mute): exercise device changes during pending requests
+1d452037813fc1946a9dab41ad6a6e653871ea86	9698eda0492a5f4fadc6f64c463074ef8342a150	2026-11-19	ported	#5419	perf(screenshots): stop the editor holding pixels it no longer needs (#4079)
+1dca33396d27b4017310a2a21c82ac834b91aa44	3940d013665d7d7c6ed1d12b70d1122e246ca91a	2026-11-19	ported	#5419	fix(screenshots): capture composited video in the selected window (#4206)
 876c6692750447ef46a57f91e22d059d51d6fddd	c60f37d7a39724d4c8ddd8f8a1392d95271f2738	2026-11-18	skipped	touches only upstream-only paths	docs: record audio, window management and screenshot fixes
-c446b3f0f6a2ce7f8ee6849956141415bf23b80e	0eed9aacd0bb6093a0785e2b10924506fa33cae8	2026-11-18	pending	-	fix(uninstall): stop skipping siblings of symbolic links when scanning (#4227)
+c446b3f0f6a2ce7f8ee6849956141415bf23b80e	0eed9aacd0bb6093a0785e2b10924506fa33cae8	2026-11-18	ported	#5419	fix(uninstall): stop skipping siblings of symbolic links when scanning (#4227)
 e2e61044b5a9d0dbace11662f2ad037f184a2198	719bca26a8a24970e25973657bb128628e4ec55e	2026-11-18	pending	-	fix(fan-control): retry a resume the SMC refuses right after wake (#4151)
 7ef0b3c7c875d263ac69c966a515ef58e141a060	c6c9cee6a95deb5780ab9ff527d2b4abdf964e56	2026-11-19	pending	-	fix(display): unmute speakers latched at zero and play the volume click (#4011)
 ced9bf540280e17ea61e43df340a3614a3e23202	72658d0a5312c4a63df8df67f37ec2b94e3066d1	2026-11-19	pending	-	fix(media): accept dropped files in notch workspace (#4083)
