@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.37...vitruvian-courier-v0.3.38) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-courier:** drag pinned chats to reorder them ([#5392](https://github.com/VitruvianSoftware/vitruvian-core/issues/5392)) ([0454139](https://github.com/VitruvianSoftware/vitruvian-core/commit/04541391683032093da062a71585b2d57333858d))
+
 ## [0.3.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.36...vitruvian-courier-v0.3.37) (2026-11-23)
 
 
