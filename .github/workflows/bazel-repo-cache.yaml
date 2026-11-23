@@ -189,7 +189,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          breakdown_md="${RUNNER_TEMP}/linux-archive-breakdown.md"
+          BREAKDOWN_MD="$breakdown_md" python3 - <<'PY'
           # Mapping method: combines (1) parsing the online-fill log (`Fetching repository @@...`
           # and `Fetching https://...; <size>` lines after stripping ANSI/CR) with (2) exact
           # CAS sha256 (and base64 SRI `sha256-...`) resolution against MODULE.bazel.lock,
@@ -211,6 +212,7 @@ jobs:
           ob_dir = os.environ.get("OB", "")
           fill_log = os.environ.get("FILL_LOG", "")
           summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          breakdown_path = os.environ["BREAKDOWN_MD"]
 
           archives = []
           for path in glob.glob(os.path.join(cas_root, "*", "*", "file")):
@@ -494,9 +496,13 @@ jobs:
               for s, us in sorted(dup_sha_multi_url.items()):
                   lines.append(f"- Same sha256 under multiple URLs: `{s[:12]}` -> {', '.join(f'`{u}`' for u in us)}")
 
+          report = "\n".join(lines) + "\n"
           with open(summary_path, "a", encoding="utf-8") as sf:
-              sf.write("\n".join(lines) + "\n")
+              sf.write(report)
+          with open(breakdown_path, "w", encoding="utf-8") as bf:
+              bf.write(report)
           PY
+          cat "$breakdown_md"
 
       - name: Verify offline completeness from a clean state
         shell: bash
@@ -822,7 +828,7 @@ jobs:
             echo "| C: BuildBuddy down (\`unreachable.invalid:443\` + fallback, 2 targets) | ${case_c_rc} | ${case_c_bytes} | ${case_c_note} |"
             echo "| D1: No key (downloader flag set, no header, 2 targets) | ${case_d1_rc} | ${case_d1_bytes} | ${case_d1_note} |"
             echo "| D2: No key (no downloader flag, 2 targets) | ${case_d2_rc} | ${case_d2_bytes} | ${case_d2_note} |"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Check if complete repository cache already exists
         id: cache-lookup
