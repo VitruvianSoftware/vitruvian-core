@@ -367,6 +367,9 @@ exports_files(
 # generator invoked manually against Python 3.12; keep gazelle from generating a
 # py_binary BUILD file there (vitruvian_pycompat_test reads testdata/json_golden.jsonl directly).
 # gazelle:exclude packages/pycompat/vitruvian-pycompat/testdata
+# tools/release-scope/testdata holds the CPython 3.12 parity-fixture generator, run by hand
+# with /opt/homebrew/bin/python3.12; keep gazelle from generating a py_binary BUILD file there.
+# gazelle:exclude tools/release-scope/testdata
 # packages/jq/scripts holds the standalone parity-case generator invoked manually
 # against local jq 1.8.2; keep gazelle from generating a py_binary BUILD file there.
 # gazelle:exclude packages/jq/scripts
