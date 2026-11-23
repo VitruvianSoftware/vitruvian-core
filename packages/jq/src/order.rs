@@ -37,82 +37,107 @@ fn type_rank(v: &Value) -> u8 {
     }
 }
 
-fn sorted_keys(entries: &[(String, Value)]) -> Vec<&str> {
-    let mut keys: Vec<&str> = entries.iter().map(|(k, _)| k.as_str()).collect();
-    keys.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
-    keys
-}
-
-fn field<'a>(entries: &'a [(String, Value)], key: &str) -> &'a Value {
-    entries
-        .iter()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v)
-        .unwrap_or(&Value::Null)
+fn sorted_entries(entries: &[(String, Value)]) -> Vec<(&str, &Value)> {
+    let mut out: Vec<(&str, &Value)> = entries.iter().map(|(k, v)| (k.as_str(), v)).collect();
+    out.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    out
 }
 
 /// jq's total order: `null < false < true < numbers < strings < arrays < objects`.
 /// Objects compare their sorted key lists first, then values in sorted key order.
 pub fn compare(a: &Value, b: &Value) -> Ordering {
-    let (ra, rb) = (type_rank(a), type_rank(b));
-    if ra != rb {
-        return ra.cmp(&rb);
+    enum Work<'a> {
+        Pair(&'a Value, &'a Value),
+        TieBreak(Ordering),
     }
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x.cmp_jq(y),
-        (Value::String(x), Value::String(y)) => x.as_bytes().cmp(y.as_bytes()),
-        (Value::Array(x), Value::Array(y)) => {
-            for (p, q) in x.iter().zip(y.iter()) {
-                let ord = compare(p, q);
+
+    let mut stack = vec![Work::Pair(a, b)];
+    while let Some(item) = stack.pop() {
+        let (x, y) = match item {
+            Work::TieBreak(ord) => {
                 if ord != Ordering::Equal {
                     return ord;
                 }
+                continue;
             }
-            x.len().cmp(&y.len())
+            Work::Pair(x, y) => (x, y),
+        };
+        let (rx, ry) = (type_rank(x), type_rank(y));
+        if rx != ry {
+            return rx.cmp(&ry);
         }
-        (Value::Object(x), Value::Object(y)) => {
-            let kx = sorted_keys(x);
-            let ky = sorted_keys(y);
-            for (p, q) in kx.iter().zip(ky.iter()) {
-                let ord = p.as_bytes().cmp(q.as_bytes());
+        match (x, y) {
+            (Value::Number(nx), Value::Number(ny)) => {
+                let ord = nx.cmp_jq(ny);
                 if ord != Ordering::Equal {
                     return ord;
                 }
             }
-            let len_ord = kx.len().cmp(&ky.len());
-            if len_ord != Ordering::Equal {
-                return len_ord;
-            }
-            for key in kx {
-                let ord = compare(field(x, key), field(y, key));
+            (Value::String(sx), Value::String(sy)) => {
+                let ord = sx.as_bytes().cmp(sy.as_bytes());
                 if ord != Ordering::Equal {
                     return ord;
                 }
             }
-            Ordering::Equal
+            (Value::Array(ax), Value::Array(ay)) => {
+                let len_ord = ax.len().cmp(&ay.len());
+                if len_ord != Ordering::Equal {
+                    stack.push(Work::TieBreak(len_ord));
+                }
+                for (p, q) in ax.iter().zip(ay.iter()).rev() {
+                    stack.push(Work::Pair(p, q));
+                }
+            }
+            (Value::Object(ox), Value::Object(oy)) => {
+                let kx = sorted_entries(ox);
+                let ky = sorted_entries(oy);
+                for ((pk, _), (qk, _)) in kx.iter().zip(ky.iter()) {
+                    let ord = pk.as_bytes().cmp(qk.as_bytes());
+                    if ord != Ordering::Equal {
+                        return ord;
+                    }
+                }
+                let len_ord = kx.len().cmp(&ky.len());
+                if len_ord != Ordering::Equal {
+                    return len_ord;
+                }
+                for ((_, vx), (_, vy)) in kx.into_iter().zip(ky.into_iter()).rev() {
+                    stack.push(Work::Pair(vx, vy));
+                }
+            }
+            _ => {}
         }
-        _ => Ordering::Equal,
     }
+    Ordering::Equal
 }
 
 /// jq's `==` equality: numeric value equality (`1 == 1.0`, `-0 == 0`),
 /// `nan != nan`, and key-order-independent object equality.
 pub fn jq_eq(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Null, Value::Null) => true,
-        (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::Number(x), Value::Number(y)) => x.jq_eq(y),
-        (Value::String(x), Value::String(y)) => x == y,
-        (Value::Array(x), Value::Array(y)) => {
-            x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| jq_eq(p, q))
+    let mut stack = vec![(a, b)];
+    while let Some((x, y)) = stack.pop() {
+        match (x, y) {
+            (Value::Null, Value::Null) => {}
+            (Value::Bool(bx), Value::Bool(by)) if bx == by => {}
+            (Value::Number(nx), Value::Number(ny)) if nx.jq_eq(ny) => {}
+            (Value::String(sx), Value::String(sy)) if sx == sy => {}
+            (Value::Array(ax), Value::Array(ay)) if ax.len() == ay.len() => {
+                for (p, q) in ax.iter().zip(ay.iter()).rev() {
+                    stack.push((p, q));
+                }
+            }
+            (Value::Object(ox), Value::Object(oy)) if ox.len() == oy.len() => {
+                for (k, vx) in ox.iter().rev() {
+                    let Some((_, vy)) = oy.iter().find(|(yk, _)| yk == k) else {
+                        return false;
+                    };
+                    stack.push((vx, vy));
+                }
+            }
+            _ => return false,
         }
-        (Value::Object(x), Value::Object(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.iter().any(|(yk, yv)| yk == k && jq_eq(v, yv)))
-        }
-        _ => false,
     }
+    true
 }
 
 /// `sort`: stable sort according to [`compare`].

@@ -28,6 +28,9 @@ use std::collections::HashMap;
 
 use crate::value::{Number, Value};
 
+/// Maximum parser nesting depth enforced by jq 1.8.2 (`MAX_PARSING_DEPTH` in `jv_parse.c`).
+pub const MAX_PARSING_DEPTH: usize = 10_000;
+
 /// One item in a jq JSON input stream.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StreamItem {
@@ -57,6 +60,7 @@ struct StreamParser<'a> {
     pos: usize,
     line: usize,
     col: usize,
+    depth: usize,
     stack: Vec<Container>,
     next: Option<Value>,
     token_buf: Vec<u8>,
@@ -78,6 +82,7 @@ impl<'a> StreamParser<'a> {
             pos,
             line: 1,
             col: 0,
+            depth: 0,
             stack: Vec::new(),
             next: None,
             token_buf: Vec::new(),
@@ -144,10 +149,14 @@ impl<'a> StreamParser<'a> {
     }
 
     fn handle_open(&mut self, container: Container) -> Result<(), String> {
+        if self.depth >= MAX_PARSING_DEPTH {
+            return Err(self.err("Exceeds depth limit for parsing"));
+        }
         if self.next.is_some() {
             return Err(self.err("Expected separator between values"));
         }
         self.stack.push(container);
+        self.depth += 1;
         Ok(())
     }
 
@@ -159,6 +168,7 @@ impl<'a> StreamParser<'a> {
         else {
             return Err(self.err("Unmatched ']'"));
         };
+        self.depth -= 1;
         if let Some(v) = self.next.take() {
             items.push(v);
         } else if after_comma {
@@ -190,6 +200,7 @@ impl<'a> StreamParser<'a> {
                 pending_key,
                 after_comma,
             }) => {
+                self.depth -= if pending_key.is_some() { 2 } else { 1 };
                 match (pending_key, next_val) {
                     (Some(k), Some(v)) => insert_entry(&mut entries, &mut index_by_key, k, v),
                     (Some(_), None) => return Err(self.err("Unmatched '}'")),
@@ -215,7 +226,7 @@ impl<'a> StreamParser<'a> {
 
     fn handle_colon(&mut self) -> Result<(), String> {
         let next_val = self.next.take();
-        let Some(val) = next_val else {
+        let Some(mut val) = next_val else {
             return Err(self.err("Expected string key before ':'"));
         };
         match self.stack.last_mut() {
@@ -226,8 +237,9 @@ impl<'a> StreamParser<'a> {
                     return Err(self.err("':' not as part of an object"));
                 }
                 match val {
-                    Value::String(k) => {
-                        *pending_key = Some(k);
+                    Value::String(ref mut k) => {
+                        *pending_key = Some(std::mem::take(k));
+                        self.depth += 1;
                         Ok(())
                     }
                     _ => Err(self.err("Object keys must be strings")),
@@ -256,6 +268,7 @@ impl<'a> StreamParser<'a> {
                 (Some(k), Some(v)) => {
                     insert_entry(entries, index_by_key, k, v);
                     *after_comma = true;
+                    self.depth -= 1;
                     Ok(())
                 }
                 (None, Some(_)) => Err(self.err("Objects must consist of key:value pairs")),
@@ -379,6 +392,7 @@ impl<'a> StreamParser<'a> {
                 .push(StreamItem::ParseError(self.err_eof("Unfinished JSON term")));
             return self.out;
         }
+        debug_assert_eq!(self.depth, 0);
         if let Some(v) = self.next.take() {
             self.emit_top(v, len);
         }

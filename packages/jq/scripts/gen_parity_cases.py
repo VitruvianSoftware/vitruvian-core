@@ -914,6 +914,102 @@ def build_cases() -> list[tuple[str, str, str, str, bytes]]:
             inp,
         )
 
+    # -----------------------------------------------------------------------
+    # 11. Depth limit parity cases (jq 1.8.2 MAX_PARSING_DEPTH = 10_000)
+    # -----------------------------------------------------------------------
+    def alternating(levels: int, arr_first: bool = True) -> bytes:
+        parts: list[bytes] = []
+        closers: list[bytes] = []
+        for i in range(levels):
+            is_arr = (i % 2 == 0) if arr_first else (i % 2 == 1)
+            if is_arr:
+                parts.append(b"[")
+                closers.append(b"]")
+            else:
+                parts.append(b'{"a":')
+                closers.append(b"}")
+        return b"".join(parts) + b"1" + b"".join(reversed(closers))
+
+    depth_cases = [
+        ("depth_arr_10000_ok", b"[" * 10000 + b"]" * 10000),
+        ("depth_arr_10001_err", b"[" * 10001 + b"]" * 10001),
+        ("depth_obj_5000_ok", b'{"a":' * 5000 + b"1" + b"}" * 5000),
+        ("depth_obj_5001_err", b'{"a":' * 5001 + b"1" + b"}" * 5001),
+        ("depth_mixed_alt_6667_ok", alternating(6667, arr_first=True)),
+        ("depth_mixed_alt_6668_err", alternating(6668, arr_first=True)),
+        ("depth_obj4999_arr2_ok", b'{"a":' * 4999 + b"[[]]" + b"}" * 4999),
+        ("depth_obj4999_arr3_err", b'{"a":' * 4999 + b"[[[]]]" + b"}" * 4999),
+        ("depth_arr9999_obj_ok", b"[" * 9999 + b'{"a":1}' + b"]" * 9999),
+        ("depth_arr9998_obj_arr_err", b"[" * 9998 + b'{"a":[]}' + b"]" * 9998),
+        ("depth_arr10000_val_open_err", b"[" * 10000 + b"1[" + b"]" * 10000),
+        ("depth_stream_ok_then_err", b"1 " + b"[" * 10001 + b"]" * 10001),
+        ("depth_multiline_err", b"[\n" + b"[" * 10000 + b"]" * 10001),
+        ("depth_trunc_arr_10001_err", b"[" * 10001),
+    ]
+    for cid, inp in depth_cases:
+        add(cid, "id", "compact", ["-c", "."], inp)
+
+    depth_status_cases = [
+        (
+            "depth_mixed_alt_obj_first_6667_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6667, arr_first=False),
+        ),
+        (
+            "depth_mixed_alt_obj_first_6668_err",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6668, arr_first=False),
+        ),
+        (
+            "depth_exit_e_arr_10001_err",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            b"[" * 10001 + b"]" * 10001,
+        ),
+        (
+            "depth_exit_e_alt_6668_err",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            alternating(6668, arr_first=True),
+        ),
+        (
+            "depth_stream_arr_err_then_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            b"[" * 10001 + b"]" * 10001 + b"\n1",
+        ),
+        (
+            "depth_stream_alt_err_then_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6668, arr_first=True) + b"\n1",
+        ),
+        (
+            "depth_exit_e_stream_arr_err_then_ok",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            b"[" * 10001 + b"]" * 10001 + b"\n1",
+        ),
+        (
+            "depth_exit_e_stream_alt_err_then_ok",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            alternating(6668, arr_first=True) + b"\n1",
+        ),
+    ]
+    for cid, op, flags, jq_args, inp in depth_status_cases:
+        add(cid, op, flags, jq_args, inp)
+
     assert len(cases) >= 200, f"Expected >= 200 cases, got {len(cases)}"
     return cases
 
