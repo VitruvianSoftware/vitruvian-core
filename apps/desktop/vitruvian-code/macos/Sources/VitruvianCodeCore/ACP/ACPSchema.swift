@@ -851,9 +851,22 @@ public struct ACPSessionSetupResult: Equatable, Sendable, Codable {
 
 // MARK: - Prompt, Cancel & Config Updates
 
+public struct ACPEmbeddedResource: Equatable, Sendable, Codable {
+    public var uri: String
+    public var mimeType: String?
+    public var text: String
+
+    public init(uri: String, mimeType: String? = nil, text: String) {
+        self.uri = uri
+        self.mimeType = mimeType
+        self.text = text
+    }
+}
+
 public enum ACPContentBlock: Equatable, Sendable, Codable {
     case text(String)
     case image(data: String, mimeType: String, uri: String? = nil)
+    case resource(ACPEmbeddedResource)
     case resourceLink(
         uri: String,
         name: String,
@@ -880,6 +893,13 @@ public enum ACPContentBlock: Equatable, Sendable, Codable {
                 mimeType: obj["mimeType"]?.stringValue ?? "application/octet-stream",
                 uri: obj["uri"]?.stringValue
             )
+        case "resource":
+            if let inner = obj["resource"],
+               let embedded = try? inner.decode(ACPEmbeddedResource.self) {
+                self = .resource(embedded)
+            } else {
+                self = .unknown(type: blockType, rawJSON: raw)
+            }
         case "resource_link":
             self = .resourceLink(
                 uri: obj["uri"]?.stringValue ?? "",
@@ -906,6 +926,10 @@ public enum ACPContentBlock: Equatable, Sendable, Codable {
             try container.encode(data, forKey: .data)
             try container.encode(mimeType, forKey: .mimeType)
             try container.encodeIfPresent(uri, forKey: .uri)
+        case .resource(let embedded):
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode("resource", forKey: .type)
+            try container.encode(embedded, forKey: .resource)
         case .resourceLink(let uri, let name, let mimeType, let title, let description, let size):
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode("resource_link", forKey: .type)
@@ -931,6 +955,7 @@ public enum ACPContentBlock: Equatable, Sendable, Codable {
         case data
         case mimeType
         case uri
+        case resource
         case name
         case title
         case description

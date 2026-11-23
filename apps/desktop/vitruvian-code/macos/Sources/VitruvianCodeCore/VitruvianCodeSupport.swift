@@ -2137,6 +2137,8 @@ public enum AgentEvent: Equatable, Sendable {
     case toolStepResult(id: String, output: String?, isError: Bool)
     /// Slash commands the CLI reports it accepts (names, no slash needed).
     case slashCommands([String])
+    /// Slash commands with descriptions and optional input hints reported over ACP.
+    case availableCommands([VitruvianCodeSlashCommand])
     /// A piece of the model's reasoning.
     case thinking(String)
     /// How many reasoning tokens the model has used so far this turn.
@@ -2867,6 +2869,27 @@ public struct VitruvianCodeSlashCommand: Identifiable, Equatable, Sendable {
         var result = builtIns
         for raw in names {
             let command = VitruvianCodeSlashCommand(name: raw, description: "")
+            guard !command.name.isEmpty, seen.insert(command.name).inserted else { continue }
+            result.append(command)
+        }
+        return result
+    }
+
+    /// Built-ins first, then agent-reported commands (preserving description and argument hint)
+    /// not already built in.
+    public static func merged(
+        builtIns: [VitruvianCodeSlashCommand] = builtIns,
+        commands: [VitruvianCodeSlashCommand]
+    ) -> [VitruvianCodeSlashCommand] {
+        var seen = Set(builtIns.map(\.name))
+        var result = builtIns
+        for raw in commands {
+            let command = VitruvianCodeSlashCommand(
+                name: raw.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: raw.description,
+                argumentHint: raw.argumentHint,
+                isBuiltIn: false
+            )
             guard !command.name.isEmpty, seen.insert(command.name).inserted else { continue }
             result.append(command)
         }

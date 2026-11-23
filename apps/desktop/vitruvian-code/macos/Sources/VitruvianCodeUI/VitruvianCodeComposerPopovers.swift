@@ -133,15 +133,17 @@ struct ComposerSuggestionList: View {
                         .font(.system(size: 9))
                         .foregroundStyle(VitruvianCodeTheme.warmCoral.opacity(0.85))
                         .frame(width: 14)
-                    Text("/" + command.name)
+                    Text(verbatim: "/" + command.name)
                         .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                     if let hint = command.argumentHint {
-                        Text(hint)
+                        Text(verbatim: hint)
                             .font(.system(size: 10.5, design: .monospaced))
                             .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                     if !command.description.isEmpty {
-                        Text(command.description)
+                        Text(verbatim: command.description)
                             .font(.system(size: 10.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)

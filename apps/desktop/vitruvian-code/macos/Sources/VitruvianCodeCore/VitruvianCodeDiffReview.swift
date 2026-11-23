@@ -325,28 +325,40 @@ public enum VitruvianCodeDiffParser: Sendable {
     /// Maximum file size read when anchoring agent-reported diff snippets to real line numbers.
     public static let maxAnchoredFileBytes = 2 * 1024 * 1024
 
+    /// Maximum file size embedded inline for `@`-mention ACP resource blocks (1 MB).
+    public static let maxMentionFileBytes = 1024 * 1024
+
+    /// Outcome of validating and optionally reading a regular file inside `workingDirectory`.
+    public enum SafeWorkingDirectoryFileResult: Equatable, Sendable {
+        case text(resolvedPath: String, content: String, byteCount: Int)
+        case nonTextOrOversize(resolvedPath: String, byteCount: Int)
+        case outsideWorkingDirectory
+        case notRegularFileOrMissing
+    }
+
     /// Reads a regular file inside `workingDirectory` (resolving symlinks, rejecting escapes
-    /// and files larger than `maxBytes`) so diff hunks can anchor to real line numbers.
-    static func readSafeWorkingDirectoryFile(
-        diffPath: String,
+    /// and files larger than `maxBytes`), returning full classification for diff anchoring and `@`-mentions.
+    public static func readSafeWorkingDirectoryFileResult(
+        path: String,
         workingDirectory: String?,
-        maxBytes: Int = maxAnchoredFileBytes
-    ) -> String? {
-        guard let workingDirectory, !workingDirectory.isEmpty else { return nil }
+        maxBytes: Int = maxAnchoredFileBytes,
+        readContent: Bool = true
+    ) -> SafeWorkingDirectoryFileResult {
+        guard let workingDirectory, !workingDirectory.isEmpty else { return .notRegularFileOrMissing }
         let expandedWorkdir = (workingDirectory as NSString).expandingTildeInPath
-        guard let cWorkdir = Darwin.realpath(expandedWorkdir, nil) else { return nil }
+        guard let cWorkdir = Darwin.realpath(expandedWorkdir, nil) else { return .notRegularFileOrMissing }
         defer { free(cWorkdir) }
         let resolvedWorkdir = String(cString: cWorkdir)
         let workdirPrefix = resolvedWorkdir == "/"
             ? "/"
             : (resolvedWorkdir.hasSuffix("/") ? resolvedWorkdir : resolvedWorkdir + "/")
 
-        let trimmed = diffPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               !trimmed.contains("\0"),
               !trimmed.contains("\r"),
               !trimmed.contains("\n") else {
-            return nil
+            return .notRegularFileOrMissing
         }
         let candidatePath: String
         if trimmed.hasPrefix("/") {
@@ -357,21 +369,45 @@ public enum VitruvianCodeDiffParser: Sendable {
             candidatePath = (resolvedWorkdir as NSString).appendingPathComponent(trimmed)
         }
 
-        guard let cTarget = Darwin.realpath(candidatePath, nil) else { return nil }
+        guard let cTarget = Darwin.realpath(candidatePath, nil) else {
+            var linkStat = stat()
+            if Darwin.lstat(candidatePath, &linkStat) == 0,
+               (linkStat.st_mode & S_IFMT) == S_IFLNK {
+                var targetBuffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+                let len = Darwin.readlink(candidatePath, &targetBuffer, targetBuffer.count - 1)
+                if len > 0 {
+                    let linkTarget = String(decoding: targetBuffer.prefix(len).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+                    let joined = linkTarget.hasPrefix("/")
+                        ? linkTarget
+                        : ((candidatePath as NSString).deletingLastPathComponent as NSString).appendingPathComponent(linkTarget)
+                    let normalized = (joined as NSString).standardizingPath
+                    if normalized != resolvedWorkdir && !normalized.hasPrefix(workdirPrefix) {
+                        return .outsideWorkingDirectory
+                    }
+                }
+            }
+            let standardized = (candidatePath as NSString).standardizingPath
+            if standardized != resolvedWorkdir && !standardized.hasPrefix(workdirPrefix) {
+                return .outsideWorkingDirectory
+            }
+            return .notRegularFileOrMissing
+        }
         defer { free(cTarget) }
         let resolvedPath = String(cString: cTarget)
-        guard resolvedPath.hasPrefix(workdirPrefix) else { return nil }
+        guard resolvedPath.hasPrefix(workdirPrefix) else { return .outsideWorkingDirectory }
 
         let fd = Darwin.open(resolvedPath, O_RDONLY | O_NOFOLLOW)
-        guard fd >= 0 else { return nil }
+        guard fd >= 0 else { return .notRegularFileOrMissing }
         defer { Darwin.close(fd) }
 
         var st = stat()
-        guard Darwin.fstat(fd, &st) == 0 else { return nil }
-        guard (st.st_mode & S_IFMT) == S_IFREG,
-              st.st_size >= 0,
-              Int64(st.st_size) <= Int64(maxBytes) else {
-            return nil
+        guard Darwin.fstat(fd, &st) == 0 else { return .notRegularFileOrMissing }
+        guard (st.st_mode & S_IFMT) == S_IFREG, st.st_size >= 0 else {
+            return .notRegularFileOrMissing
+        }
+        let byteCount = Int(min(st.st_size, Int64(Int.max)))
+        if !readContent || Int64(st.st_size) > Int64(maxBytes) {
+            return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: byteCount)
         }
 
         var data = Data()
@@ -383,13 +419,39 @@ public enum VitruvianCodeDiffParser: Sendable {
             }
             if n < 0 {
                 if errno == EINTR { continue }
-                return nil
+                return .notRegularFileOrMissing
             }
             if n == 0 { break }
-            if data.count + n > maxBytes { return nil }
+            if data.count + n > maxBytes {
+                return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: byteCount)
+            }
             data.append(buffer, count: n)
         }
-        return String(data: data, encoding: .utf8)
+        if data.contains(0) {
+            return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: data.count)
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: data.count)
+        }
+        return .text(resolvedPath: resolvedPath, content: text, byteCount: data.count)
+    }
+
+    /// Reads a regular file inside `workingDirectory` (resolving symlinks, rejecting escapes
+    /// and files larger than `maxBytes`) so diff hunks can anchor to real line numbers.
+    public static func readSafeWorkingDirectoryFile(
+        diffPath: String,
+        workingDirectory: String?,
+        maxBytes: Int = maxAnchoredFileBytes
+    ) -> String? {
+        guard case .text(_, let content, _) = readSafeWorkingDirectoryFileResult(
+            path: diffPath,
+            workingDirectory: workingDirectory,
+            maxBytes: maxBytes,
+            readContent: true
+        ) else {
+            return nil
+        }
+        return content
     }
 
     /// Returns the 1-based start line when `needle` appears exactly once in `haystack`.

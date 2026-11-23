@@ -151,6 +151,10 @@ public enum Words {
         "timelineToolSingularFormat",
         "timelineToolsFormat",
         "diffSourceLiveTurn",
+        "agentSettingsBarLabel",
+        "configOptionUpdateFailed",
+        "configOptionUnavailable",
+        "mentionOutsideWorkspaceFormat",
     ]
 
     public static func text(_ key: String, _ language: String) -> String {
@@ -287,6 +291,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ tool: %@",
             "timelineToolsFormat": "%@ tools: %@",
             "diffSourceLiveTurn": "Live turn",
+            "agentSettingsBarLabel": "Session settings",
+            "configOptionUpdateFailed": "Could not update setting.",
+            "configOptionUnavailable": "Send a message to reconnect before changing settings.",
+            "mentionOutsideWorkspaceFormat": "Skipped %@: outside the working folder.",
         ],
         "pt-BR": [
             "quickPromptTitle": "Prompt rápido do agente",
@@ -405,6 +413,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ ferramenta: %@",
             "timelineToolsFormat": "%@ ferramentas: %@",
             "diffSourceLiveTurn": "Turno ao vivo",
+            "agentSettingsBarLabel": "Ajustes da sessão",
+            "configOptionUpdateFailed": "Não foi possível atualizar o ajuste.",
+            "configOptionUnavailable": "Envie uma mensagem para reconectar antes de alterar os ajustes.",
+            "mentionOutsideWorkspaceFormat": "%@ ignorado: fora da pasta de trabalho.",
         ],
         "tr": [
             "quickPromptTitle": "Ajan Hızlı İstemi",
@@ -523,6 +535,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ araç: %@",
             "timelineToolsFormat": "%@ araç: %@",
             "diffSourceLiveTurn": "Canlı tur",
+            "agentSettingsBarLabel": "Oturum ayarları",
+            "configOptionUpdateFailed": "Ayar güncellenemedi.",
+            "configOptionUnavailable": "Ayarları değiştirmeden önce yeniden bağlanmak için bir mesaj gönderin.",
+            "mentionOutsideWorkspaceFormat": "%@ atlandı: çalışma klasörünün dışında.",
         ],
         "ru": [
             "quickPromptTitle": "Быстрый запрос к агенту",
@@ -641,6 +657,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ инструмент: %@",
             "timelineToolsFormat": "Инструменты (%@): %@",
             "diffSourceLiveTurn": "Текущий ход",
+            "agentSettingsBarLabel": "Настройки сеанса",
+            "configOptionUpdateFailed": "Не удалось обновить настройку.",
+            "configOptionUnavailable": "Отправьте сообщение для переподключения перед изменением настроек.",
+            "mentionOutsideWorkspaceFormat": "Пропущено %@: за пределами рабочей папки.",
         ],
         "es": [
             "quickPromptTitle": "Prompt rápido del agente",
@@ -759,6 +779,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ herramienta: %@",
             "timelineToolsFormat": "%@ herramientas: %@",
             "diffSourceLiveTurn": "Turno en vivo",
+            "agentSettingsBarLabel": "Ajustes de la sesión",
+            "configOptionUpdateFailed": "No se pudo actualizar el ajuste.",
+            "configOptionUnavailable": "Envía un mensaje para reconectar antes de cambiar los ajustes.",
+            "mentionOutsideWorkspaceFormat": "Omitido %@: fuera de la carpeta de trabajo.",
         ],
         "sk": [
             "quickPromptTitle": "Rýchla výzva agentovi",
@@ -877,6 +901,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ nástroj: %@",
             "timelineToolsFormat": "Nástroje (%@): %@",
             "diffSourceLiveTurn": "Živý krok",
+            "agentSettingsBarLabel": "Nastavenia relácie",
+            "configOptionUpdateFailed": "Nastavenie sa nepodarilo aktualizovať.",
+            "configOptionUnavailable": "Pred zmenou nastavení odošlite správu na opätovné pripojenie.",
+            "mentionOutsideWorkspaceFormat": "Preskočené %@: mimo pracovného priečinka.",
         ],
         "de": [
             "quickPromptTitle": "Agent-Schnell-Prompt",
@@ -995,6 +1023,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ Werkzeug: %@",
             "timelineToolsFormat": "%@ Werkzeuge: %@",
             "diffSourceLiveTurn": "Live-Zug",
+            "agentSettingsBarLabel": "Sitzungseinstellungen",
+            "configOptionUpdateFailed": "Einstellung konnte nicht aktualisiert werden.",
+            "configOptionUnavailable": "Sende eine Nachricht zum erneuten Verbinden, bevor du Einstellungen änderst.",
+            "mentionOutsideWorkspaceFormat": "%@ übersprungen: außerhalb des Arbeitsordners.",
         ],
         "fr": [
             "quickPromptTitle": "Prompt rapide de l’agent",
@@ -1113,6 +1145,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ outil : %@",
             "timelineToolsFormat": "%@ outils : %@",
             "diffSourceLiveTurn": "Tour en direct",
+            "agentSettingsBarLabel": "Réglages de la session",
+            "configOptionUpdateFailed": "Impossible de mettre à jour le réglage.",
+            "configOptionUnavailable": "Envoyez un message pour vous reconnecter avant de modifier les réglages.",
+            "mentionOutsideWorkspaceFormat": "%@ ignoré : hors du dossier de travail.",
         ],
         "it": [
             "quickPromptTitle": "Prompt rapido dell’agente",
@@ -1231,6 +1267,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ strumento: %@",
             "timelineToolsFormat": "%@ strumenti: %@",
             "diffSourceLiveTurn": "Turno live",
+            "agentSettingsBarLabel": "Impostazioni della sessione",
+            "configOptionUpdateFailed": "Impossibile aggiornare l’impostazione.",
+            "configOptionUnavailable": "Invia un messaggio per riconnetterti prima di modificare le impostazioni.",
+            "mentionOutsideWorkspaceFormat": "%@ ignorato: fuori dalla cartella di lavoro.",
         ],
         "ja": [
             "quickPromptTitle": "エージェントのクイックプロンプト",
@@ -1349,6 +1389,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ 個のツール: %@",
             "timelineToolsFormat": "%@ 個のツール: %@",
             "diffSourceLiveTurn": "ライブターン",
+            "agentSettingsBarLabel": "セッション設定",
+            "configOptionUpdateFailed": "設定を更新できませんでした。",
+            "configOptionUnavailable": "設定を変更する前にメッセージを送信して再接続してください。",
+            "mentionOutsideWorkspaceFormat": "%@ をスキップしました: 作業フォルダの外です。",
         ],
         "ko": [
             "quickPromptTitle": "에이전트 빠른 프롬프트",
@@ -1467,6 +1511,10 @@ public enum Words {
             "timelineToolSingularFormat": "도구 %@개: %@",
             "timelineToolsFormat": "도구 %@개: %@",
             "diffSourceLiveTurn": "실시간 턴",
+            "agentSettingsBarLabel": "세션 설정",
+            "configOptionUpdateFailed": "설정을 업데이트하지 못했습니다.",
+            "configOptionUnavailable": "설정을 변경하기 전에 메시지를 보내 다시 연결하세요.",
+            "mentionOutsideWorkspaceFormat": "%@ 건너뜀: 작업 폴더 밖에 있습니다.",
         ],
         "uk": [
             "quickPromptTitle": "Швидкий запит до агента",
@@ -1585,6 +1633,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ інструмент: %@",
             "timelineToolsFormat": "Інструменти (%@): %@",
             "diffSourceLiveTurn": "Поточний крок",
+            "agentSettingsBarLabel": "Налаштування сеансу",
+            "configOptionUpdateFailed": "Не вдалося оновити налаштування.",
+            "configOptionUnavailable": "Надішліть повідомлення, щоб перепідключитися перед зміною налаштувань.",
+            "mentionOutsideWorkspaceFormat": "Пропущено %@: поза межами робочої папки.",
         ],
         "zh-Hans": [
             "quickPromptTitle": "智能体快速提问",
@@ -1703,6 +1755,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ 个工具：%@",
             "timelineToolsFormat": "%@ 个工具：%@",
             "diffSourceLiveTurn": "实时回合",
+            "agentSettingsBarLabel": "会话设置",
+            "configOptionUpdateFailed": "无法更新设置。",
+            "configOptionUnavailable": "修改设置前请先发送一条消息以重新连接。",
+            "mentionOutsideWorkspaceFormat": "已跳过 %@：位于工作文件夹之外。",
         ],
         "zh-TW": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1821,6 +1877,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ 個工具：%@",
             "timelineToolsFormat": "%@ 個工具：%@",
             "diffSourceLiveTurn": "即時回合",
+            "agentSettingsBarLabel": "工作階段設定",
+            "configOptionUpdateFailed": "無法更新設定。",
+            "configOptionUnavailable": "變更設定前請先傳送一則訊息以重新連線。",
+            "mentionOutsideWorkspaceFormat": "已略過 %@：位於工作檔案夾之外。",
         ],
         "zh-HK": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1939,6 +1999,10 @@ public enum Words {
             "timelineToolSingularFormat": "%@ 個工具：%@",
             "timelineToolsFormat": "%@ 個工具：%@",
             "diffSourceLiveTurn": "即時回合",
+            "agentSettingsBarLabel": "會話設定",
+            "configOptionUpdateFailed": "無法更新設定。",
+            "configOptionUnavailable": "更改設定前請先傳送一則訊息以重新連線。",
+            "mentionOutsideWorkspaceFormat": "已略過 %@：位於工作資料夾之外。",
         ],
     ]
 }

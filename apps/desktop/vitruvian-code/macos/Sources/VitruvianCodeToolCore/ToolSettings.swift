@@ -346,7 +346,10 @@ public final class ToolSettings: VitruvianCodeHost {
                               replyStopped: Words.text("replyStopped", language),
                               emptyReply: Words.text("emptyReply", language),
                               worktreeCreationFailed: Words.text("worktreeCreationFailed", language),
-                              worktreeFreshSessionNotice: Words.text("worktreeFreshSessionNotice", language))
+                              worktreeFreshSessionNotice: Words.text("worktreeFreshSessionNotice", language),
+                              configOptionUpdateFailed: Words.text("configOptionUpdateFailed", language),
+                              configOptionUnavailable: Words.text("configOptionUnavailable", language),
+                              mentionOutsideWorkspaceFormat: Words.text("mentionOutsideWorkspaceFormat", language))
     }
 
     public func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {

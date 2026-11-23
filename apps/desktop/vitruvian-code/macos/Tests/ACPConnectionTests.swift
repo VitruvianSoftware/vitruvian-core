@@ -244,7 +244,7 @@ final class ACPConnectionTests: XCTestCase {
         XCTAssertTrue(
             turnEvents.contains(
                 .configOptions([
-                    AgentConfigOption(id: "mode", name: "Mode", value: .string("code"), options: ["code", "architect"]),
+                    AgentConfigOption(id: "mode", name: "Mode", value: .string("code"), options: ["code", "architect"], category: "mode"),
                     AgentConfigOption(id: "fast", name: "Fast mode", value: .bool(false), options: []),
                 ])
             )
@@ -252,7 +252,7 @@ final class ACPConnectionTests: XCTestCase {
         XCTAssertTrue(
             turnEvents.contains(
                 .configOptions([
-                    AgentConfigOption(id: "mode", name: "Mode", value: .string("architect"), options: ["code", "architect"]),
+                    AgentConfigOption(id: "mode", name: "Mode", value: .string("architect"), options: ["code", "architect"], category: "mode"),
                     AgentConfigOption(id: "fast", name: "Fast mode", value: .bool(false), options: []),
                 ])
             )
@@ -406,6 +406,15 @@ final class ACPConnectionTests: XCTestCase {
         XCTAssertEqual(
             events,
             [
+                .configOptions([
+                    AgentConfigOption(
+                        id: "model",
+                        name: "Model",
+                        value: .string("sonnet"),
+                        options: ["sonnet", "opus"],
+                        category: "model"
+                    ),
+                ]),
                 .text("Fresh reply"),
                 .finished(
                     status: "completed",
@@ -857,7 +866,18 @@ final class ACPConnectionTests: XCTestCase {
             try await connWithOptions.setConfigOption("model", .string("opus"))
         }
         try await withACPTestTimeout(seconds: 3.0) { try await driverA.value }
-        XCTAssertEqual(updatedA, [AgentConfigOption(id: "model", name: "Model", value: .string("opus"), options: ["sonnet", "opus"])])
+        XCTAssertEqual(
+            updatedA,
+            [
+                AgentConfigOption(
+                    id: "model",
+                    name: "Model",
+                    value: .string("opus"),
+                    options: ["sonnet", "opus"],
+                    category: "model"
+                ),
+            ]
+        )
         await connWithOptions.stop()
 
         // Case B: Legacy agent without `configOptions` -> `session/set_mode` only for mode.
@@ -913,7 +933,15 @@ final class ACPConnectionTests: XCTestCase {
         try await withACPTestTimeout(seconds: 3.0) { try await driverB.value }
         XCTAssertEqual(
             updatedB,
-            [AgentConfigOption(id: ACPSessionConfigState.sessionModeOptionID, name: "Mode", value: .string("plan"), options: ["code", "plan"])]
+            [
+                AgentConfigOption(
+                    id: ACPSessionConfigState.sessionModeOptionID,
+                    name: "Mode",
+                    value: .string("plan"),
+                    options: ["code", "plan"],
+                    category: "mode"
+                ),
+            ]
         )
         await legacyConn.stop()
     }

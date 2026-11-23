@@ -311,6 +311,7 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var timelineToolSingularFormat = "%@ tool: %@"
     public var timelineToolsFormat = "%@ tools: %@"
     public var diffSourceLiveTurn = "Live turn"
+    public var agentSettingsBarLabel = "Session settings"
 
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
