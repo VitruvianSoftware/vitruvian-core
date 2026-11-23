@@ -21,7 +21,10 @@
 //! `evaluate_runs_json` and the two run listings from pipeline-status.sh, as
 //! the script's jq branch computes them (jq is the branch it takes first).
 
-use crate::jq::{compare, interpolate, parse_stream, Input, Value};
+use vitruvian_jq::{
+    compact, format_parse_error, format_runtime_error, group_by, interpolate, parse_one,
+    parse_stream_str, sort_by, StreamItem, Value,
+};
 
 /// What `evaluate_runs_json` leaves: what it echoes, what it returns, and
 /// what jq said on stderr along the way.
@@ -49,54 +52,29 @@ fn any_str(v: &Value, set: &[&str]) -> bool {
     set.iter().any(|s| v.is_str(s))
 }
 
-fn jq_error(line: usize, msg: &str) -> String {
-    format!("jq: error (at <stdin>:{line}): {msg}\n")
-}
-
 /// The evaluation filter for one input value.
 fn evaluate_value(v: &Value) -> Result<String, String> {
     let runs = v.index("workflow_runs")?;
     let mut named: Vec<Value> = Vec::new();
-    for run in runs.iterate_quiet() {
+    for run in runs.iterate_opt() {
         let keep = !run.index("name")?.is_null() || !run.index("workflow_id")?.is_null();
         if keep {
             named.push(run);
         }
     }
     // group_by(.workflow_id // .name)
-    let mut keyed: Vec<(Value, Value)> = Vec::new();
-    for run in named {
+    let groups = group_by(&named, |run| {
         let id = run.index("workflow_id")?;
-        let key = if id.truthy() { id } else { run.index("name")? };
-        keyed.push((key, run));
-    }
-    keyed.sort_by(|a, b| compare(&a.0, &b.0));
-    let mut groups: Vec<Vec<Value>> = Vec::new();
-    let mut last_key: Option<Value> = None;
-    for (key, run) in keyed {
-        let same = matches!(&last_key, Some(k) if compare(k, &key) == std::cmp::Ordering::Equal);
-        if same {
-            groups.last_mut().expect("group").push(run);
-        } else {
-            groups.push(vec![run]);
-            last_key = Some(key);
-        }
-    }
+        Ok(if id.truthy() { id } else { run.index("name")? })
+    })?;
     // map(sort_by(.id // 0) | last)
-    let mut latest: Vec<Value> = Vec::new();
+    let mut latest: Vec<Value> = Vec::with_capacity(groups.len());
     for group in groups {
-        let mut by_id: Vec<(Value, Value)> = Vec::new();
-        for run in group {
+        let mut by_id = sort_by(&group, |run| {
             let id = run.index("id")?;
-            let key = if id.truthy() {
-                id
-            } else {
-                Value::Number(0.0, Some(0))
-            };
-            by_id.push((key, run));
-        }
-        by_id.sort_by(|a, b| compare(&a.0, &b.0));
-        latest.push(by_id.pop().expect("non-empty group").1);
+            Ok(if id.truthy() { id } else { Value::int(0) })
+        })?;
+        latest.push(by_id.pop().expect("non-empty group"));
     }
     if latest.is_empty() {
         return Ok("NO_RUNS|3".to_string());
@@ -134,13 +112,13 @@ where
     let input = format!("{json}\n");
     let mut lines = Vec::new();
     let mut stderr = String::new();
-    for item in parse_stream(&input) {
+    for item in parse_stream_str(&input) {
         match item {
-            Input::Value(v, line) => match filter(&v) {
+            StreamItem::Value(v, line) => match filter(&v) {
                 Ok(out) => lines.extend(out),
-                Err(msg) => stderr.push_str(&jq_error(line, &msg)),
+                Err(msg) => stderr.push_str(&format_runtime_error(line, &msg)),
             },
-            Input::ParseError(msg) => stderr.push_str(&format!("jq: parse error: {msg}\n")),
+            StreamItem::ParseError(msg) => stderr.push_str(&format_parse_error(&msg)),
         }
     }
     (lines, stderr)
@@ -173,7 +151,7 @@ where
 {
     let (lines, stderr) = run_filter(json, |v| {
         let mut out = Vec::new();
-        for run in v.index("workflow_runs")?.iterate_quiet() {
+        for run in v.index("workflow_runs")?.iterate_opt() {
             if pred(&run)? {
                 out.push(line(&run)?);
             }
@@ -236,20 +214,20 @@ pub fn list_in_flight(json: &str) -> (String, String) {
 /// the real push runs had not registered). Anything that is not an object
 /// with a `workflow_runs` array is returned untouched.
 pub fn restrict_to_push(json: &str, sha: &str, branch: &str) -> String {
-    let Ok(mut doc) = serde_json::from_str::<serde_json::Value>(json) else {
+    let Ok(mut doc) = parse_one(json.as_bytes()) else {
         return json.to_string();
     };
-    let Some(runs) = doc.get_mut("workflow_runs").and_then(|r| r.as_array_mut()) else {
+    let Some(runs) = doc.get_mut("workflow_runs").and_then(Value::as_array_mut) else {
         return json.to_string();
     };
     runs.retain(|r| {
-        r.get("event").and_then(|v| v.as_str()) == Some("push")
-            && r.get("head_branch").and_then(|v| v.as_str()) == Some(branch)
-            && r.get("head_sha").and_then(|v| v.as_str()) == Some(sha)
+        r.get("event").and_then(Value::as_str) == Some("push")
+            && r.get("head_branch").and_then(Value::as_str) == Some(branch)
+            && r.get("head_sha").and_then(Value::as_str) == Some(sha)
     });
     let n = runs.len();
-    doc["total_count"] = serde_json::Value::from(n);
-    doc.to_string()
+    doc.set("total_count", Value::uint(n as u64));
+    compact(&doc)
 }
 
 /// Seconds since the Unix epoch for `YYYY-MM-DDTHH:MM:SSZ`.
@@ -305,17 +283,17 @@ pub fn settle_remaining(json: &str, now_epoch: i64, settle_secs: i64) -> i64 {
     if settle_secs <= 0 {
         return 0;
     }
-    let Ok(doc) = serde_json::from_str::<serde_json::Value>(json) else {
+    let Ok(doc) = parse_one(json.as_bytes()) else {
         return 0;
     };
     let earliest = doc
         .get("workflow_runs")
-        .and_then(|r| r.as_array())
+        .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|r| {
             r.get("created_at")
-                .and_then(|v| v.as_str())
+                .and_then(Value::as_str)
                 .and_then(parse_utc)
         })
         .min();
@@ -439,12 +417,12 @@ mod tests {
         assert_eq!((e.stdout.as_str(), e.status), ("\n", EMPTY_RETURN_STATUS));
         assert_eq!(
             e.stderr,
-            "jq: error (at <stdin>:1): Cannot index number with string \"workflow_runs\"\n"
+            "jq: error (at <stdin>:1): Cannot index number with string (\"workflow_runs\")\n"
         );
         let e = evaluate_runs_json(r#"{"workflow_runs":[1]}"#);
         assert_eq!(
             e.stderr,
-            "jq: error (at <stdin>:1): Cannot index number with string \"name\"\n"
+            "jq: error (at <stdin>:1): Cannot index number with string (\"name\")\n"
         );
         assert_eq!(evaluate_runs_json("").status, EMPTY_RETURN_STATUS);
     }

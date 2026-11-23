@@ -109,6 +109,19 @@ spec:
             - name: MCP_CLIENT_LABELS
               value: {{ include "vitruvian-relay.mcpClientLabels" . | quote }}
             {{- end }}
+            {{- if .Values.appSignin.enabled }}
+            {{- /* App sign-in: the relay is an OAuth server for AI apps such as Gemini. */}}
+            - name: APPS_CLIENT_ID
+              value: {{ include "vitruvian-relay.appsClientId" . | quote }}
+            # 32 random bytes, base64: the key the relay seals its sign-in
+            # state and codes with. Sealed secret in the relay namespace
+            # (gitops/argocd/platform/sealed-secrets-manifests).
+            - name: APP_SIGNIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appSignin.secretName | quote }}
+                  key: {{ .Values.appSignin.secretKey | quote }}
+            {{- end }}
             {{- if .Values.persistence.enabled }}
             {{- /* The old relay's device file. */}}
             - name: DATA_DIR

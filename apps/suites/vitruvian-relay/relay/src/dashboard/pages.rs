@@ -114,6 +114,52 @@ pub struct DeviceView {
     pub last_seen: Option<SystemTime>,
     /// The address to give an AI app.
     pub mcp_url: String,
+    /// The address for Gemini, which signs in with the relay and needs no
+    /// client id or secret. Only when app sign-in is on.
+    pub app_mcp_url: Option<String>,
+}
+
+/// The address block of a computer's row: one address when app sign-in is off
+/// (as it always was), or one for Claude and one for Gemini when it is on.
+fn row_addresses(d: &DeviceView) -> String {
+    match &d.app_mcp_url {
+        None => format!(
+            "<p class=\"meta\">Address for your AI app:</p>\
+             <p><code class=\"url\">{}</code></p>",
+            esc(&d.mcp_url)
+        ),
+        Some(app) => format!(
+            "<p class=\"meta\">For Claude:</p>\
+             <p><code class=\"url\">{}</code></p>\
+             <p class=\"meta\">For Gemini:</p>\
+             <p><code class=\"url\">{}</code></p>",
+            esc(&d.mcp_url),
+            esc(app)
+        ),
+    }
+}
+
+/// The Gemini steps on a computer's page. Without app sign-in, Gemini is given
+/// the same address as Claude and a client id and secret from the person who
+/// invited you; with it, one address is all Gemini needs.
+fn gemini_steps(d: &DeviceView) -> String {
+    match &d.app_mcp_url {
+        None => format!(
+            "<li>In Gemini, add a custom connector (an MCP server).</li>\
+             <li>For the server URL, paste:<br><code class=\"url\">{}</code></li>\
+             <li>Gemini also asks for a client ID and secret. Ask the person who invited you \
+             for the ones made for Gemini.</li>\
+             <li>Sign in with the same account you used here.</li>",
+            esc(&d.mcp_url)
+        ),
+        Some(app) => format!(
+            "<li>In Gemini, add a custom connector (an MCP server).</li>\
+             <li>For the server URL, paste:<br><code class=\"url\">{}</code></li>\
+             <li>Gemini needs only this address. Leave the client ID and secret blank.</li>\
+             <li>Sign in with the same account you used here.</li>",
+            esc(app)
+        ),
+    }
 }
 
 /// One row of the activity page. Names and times only: the relay keeps no
@@ -296,6 +342,21 @@ pub fn sign_in_page(ctx: Ctx<'_>, signed_out: bool, end_session_url: &str) -> St
     )
 }
 
+/// The page frame (header, stylesheet, footer) around `main`, for a page
+/// that is not part of a dashboard session: no navigation and no sign-out
+/// button. `main` must already be escaped.
+pub(crate) fn page_shell(title: &str, main: &str) -> String {
+    layout(
+        Ctx {
+            csrf: None,
+            now: UNIX_EPOCH,
+        },
+        Nav::None,
+        title,
+        main,
+    )
+}
+
 /// A page that only says something: an error, or a dead end, with a way on.
 pub fn message_page(ctx: Ctx<'_>, title: &str, text: &str, link: (&str, &str)) -> String {
     let main = format!(
@@ -325,14 +386,13 @@ pub fn devices_page(ctx: Ctx<'_>, devices: &[DeviceView], flash: Option<Flash>) 
                     "<li class=\"card\">\
                      <div class=\"card-head\"><a class=\"name\" href=\"/devices/{id}\">{}</a>{}</div>\
                      <p class=\"meta\">{}</p>\
-                     <p class=\"meta\">Address for your AI app:</p>\
-                     <p><code class=\"url\">{}</code></p>\
+                     {}\
                      <p class=\"actions\"><a href=\"/devices/{id}\">Set up and manage</a>\
                      <a href=\"/activity?device={id}\">See its activity</a></p></li>",
                     esc(&d.name),
                     badge(d.online),
                     seen_html(d, ctx.now),
-                    esc(&d.mcp_url),
+                    row_addresses(d),
                 )
             })
             .collect();
@@ -374,12 +434,7 @@ pub fn device_page(
          <code>{}</code>. Leave the secret empty.</li>\
          <li>Choose <strong>Add</strong>, then <strong>Connect</strong>, and sign in with \
          the same account you used here.</li></ol></section>\
-         <section><h2>Add it to Gemini</h2><ol class=\"steps\">\
-         <li>In Gemini, add a custom connector (an MCP server).</li>\
-         <li>For the server URL, paste:<br><code class=\"url\">{url}</code></li>\
-         <li>Gemini also asks for a client ID and secret. Ask the person who invited you \
-         for the ones made for Gemini.</li>\
-         <li>Sign in with the same account you used here.</li></ol></section>\
+         <section><h2>Add it to Gemini</h2><ol class=\"steps\">{gemini}</ol></section>\
          <section><h2>Rename</h2>{error}\
          <form method=\"post\" action=\"/devices/{id}/rename\" class=\"inline\">\
          <input type=\"hidden\" name=\"csrf\" value=\"{csrf}\">\
@@ -402,6 +457,7 @@ pub fn device_page(
         flash_html(flash),
         seen_html(d, ctx.now),
         esc(claude_client_id),
+        gemini = gemini_steps(d),
     );
     layout(ctx, Nav::Computers, &d.name, &main)
 }

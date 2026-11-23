@@ -283,6 +283,7 @@ final class EngineClientTests: XCTestCase {
             "labels.update",
             "labels.delete",
             "room.setPinned",
+            "room.reorderPins",
             "room.setArchived",
             "room.setLowPriority",
             "room.setHidden",

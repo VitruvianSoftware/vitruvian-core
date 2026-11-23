@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.37...vitruvian-courier-v0.3.38) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-courier:** drag pinned chats to reorder them ([#5392](https://github.com/VitruvianSoftware/vitruvian-core/issues/5392)) ([0454139](https://github.com/VitruvianSoftware/vitruvian-core/commit/04541391683032093da062a71585b2d57333858d))
+
+## [0.3.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.36...vitruvian-courier-v0.3.37) (2026-11-23)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** let the Settings window be resized ([#5386](https://github.com/VitruvianSoftware/vitruvian-core/issues/5386)) ([e7edb76](https://github.com/VitruvianSoftware/vitruvian-core/commit/e7edb7616fa4aecb3aa3e57c564e5621006d2e12))
+
 ## [0.3.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.35...vitruvian-courier-v0.3.36) (2026-11-22)
 
 

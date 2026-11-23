@@ -35,7 +35,7 @@
 //! answer as one that does not exist. Every `POST` must come from the
 //! relay's own origin and carry the session's CSRF token.
 
-mod pages;
+pub(crate) mod pages;
 pub mod session;
 #[cfg(test)]
 mod tests;
@@ -319,7 +319,7 @@ pub fn form_encode(s: &str) -> String {
     out
 }
 
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -347,7 +347,7 @@ fn percent_decode(s: &str) -> String {
 
 /// `a=1&b=2`, the shape of a query string and of a form body. The first
 /// value of a repeated key wins.
-fn parse_pairs(raw: &str) -> HashMap<String, String> {
+pub(crate) fn parse_pairs(raw: &str) -> HashMap<String, String> {
     let mut out = HashMap::new();
     for pair in raw.split('&').filter(|p| !p.is_empty()) {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
@@ -370,6 +370,11 @@ fn device_view(app: &App, d: &DeviceRecord) -> DeviceView {
         online: app.registry.tools(&d.device_id).is_some(),
         last_seen: d.last_seen,
         mcp_url: app.settings.device_mcp_url(&d.device_id),
+        app_mcp_url: app
+            .settings
+            .app_signin
+            .as_ref()
+            .map(|_| app.settings.app_mcp_url(&d.device_id)),
     }
 }
 
@@ -649,28 +654,102 @@ fn login(app: &App, req: &Request<Incoming>) -> Response<Body> {
     )
 }
 
-/// Trades the sign-in code for the access token. Blocking.
-fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<String, String> {
+/// What the identity service gives back for a sign-in code.
+pub(crate) struct Tokens {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    /// The ID token, when the answer has one. Unverified: it came straight
+    /// from the identity service over TLS, which is enough to show a name
+    /// and never enough to decide anything.
+    pub id_token: Option<String>,
+    /// Seconds the access token lives, when the answer says.
+    pub expires_in: Option<u64>,
+}
+
+/// Why a code exchange did not give tokens.
+pub(crate) enum ExchangeError {
+    /// All [`MAX_EXCHANGES`] slots were taken. Nothing was sent, so the
+    /// code is not used up.
+    Busy,
+    /// The identity service refused, did not answer or answered nonsense.
+    /// What went wrong, in words with no secret in them.
+    Failed(String),
+    /// The identity service said the grant is bad (a 400 or 401), as
+    /// opposed to being down: whatever was sent will never work.
+    Refused(String),
+    /// The blocking task panicked or was cancelled.
+    Internal,
+}
+
+/// Trades the sign-in code for tokens. Blocking.
+fn exchange_code(agent: &ureq::Agent, url: &str, form: &str) -> Result<Tokens, ExchangeError> {
     let response = agent
         .post(url)
         .set("Content-Type", "application/x-www-form-urlencoded")
         .set("Accept", "application/json")
         .send_string(form)
         .map_err(|e| match e {
-            ureq::Error::Status(code, _) => format!("the token endpoint answered {code}"),
-            ureq::Error::Transport(_) => "the token endpoint did not answer".to_string(),
+            ureq::Error::Status(code @ (400 | 401), _) => {
+                ExchangeError::Refused(format!("the token endpoint answered {code}"))
+            }
+            ureq::Error::Status(code, _) => {
+                ExchangeError::Failed(format!("the token endpoint answered {code}"))
+            }
+            ureq::Error::Transport(_) => {
+                ExchangeError::Failed("the token endpoint did not answer".to_string())
+            }
         })?;
     let mut body = String::new();
     response
         .into_reader()
         .take(MAX_TOKEN_ANSWER_BYTES)
         .read_to_string(&mut body)
-        .map_err(|_| "the token answer could not be read".to_string())?;
-    serde_json::from_str::<Value>(&body)
-        .ok()
-        .and_then(|v| v.get("access_token")?.as_str().map(String::from))
-        .filter(|t| !t.is_empty())
-        .ok_or_else(|| "the token answer had no access token".to_string())
+        .map_err(|_| ExchangeError::Failed("the token answer could not be read".to_string()))?;
+    let doc = serde_json::from_str::<Value>(&body).ok();
+    let text = |key: &str| {
+        doc.as_ref()
+            .and_then(|v| v.get(key)?.as_str().map(String::from))
+            .filter(|t| !t.is_empty())
+    };
+    Ok(Tokens {
+        access_token: text("access_token").ok_or_else(|| {
+            ExchangeError::Failed("the token answer had no access token".to_string())
+        })?,
+        refresh_token: text("refresh_token"),
+        id_token: text("id_token"),
+        expires_in: doc.as_ref().and_then(|v| v.get("expires_in")?.as_u64()),
+    })
+}
+
+impl Dashboard {
+    /// Sends the form to the identity service's token endpoint, with only
+    /// [`MAX_EXCHANGES`] exchanges in flight over the whole relay: each holds
+    /// a thread and a connection for up to [`EXCHANGE_TIMEOUT`], and anyone
+    /// can start one. The dashboard's sign-in and the app sign-in share the
+    /// slots.
+    pub(crate) async fn exchange(
+        &self,
+        url: String,
+        form: String,
+    ) -> Result<Tokens, ExchangeError> {
+        let Ok(permit) = self.exchanges.clone().try_acquire_owned() else {
+            return Err(ExchangeError::Busy);
+        };
+        let agent = self.agent.clone();
+        // The permit goes with the exchange, so it is given back when the
+        // exchange ends, even if this request was dropped meanwhile.
+        let exchanged = tokio::task::spawn_blocking(move || {
+            let result = exchange_code(&agent, &url, &form);
+            drop(permit);
+            result
+        })
+        .await;
+        match exchanged {
+            Ok(Ok(tokens)) => Ok(tokens),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(ExchangeError::Internal),
+        }
+    }
 }
 
 async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
@@ -721,16 +800,6 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
         );
     };
 
-    // Only so many exchanges at once. Asked while all are busy, the person
-    // can come back to this same address: the code is not used up.
-    let Ok(permit) = app.dashboard.exchanges.clone().try_acquire_owned() else {
-        app.log("dashboard_signin_refused", json!({"why": "busy"}));
-        return said(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Signing in is busy",
-            "Signing in is busy right now; try again in a minute.",
-        );
-    };
     let form = [
         ("grant_type", "authorization_code"),
         ("code", code.as_str()),
@@ -742,18 +811,19 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
     .map(|(k, v)| format!("{k}={}", form_encode(v)))
     .collect::<Vec<_>>()
     .join("&");
-    let (agent, url) = (app.dashboard.agent.clone(), app.settings.token_url());
-    // The permit goes with the exchange, so it is given back when the
-    // exchange ends, even if this request was dropped meanwhile.
-    let exchanged = tokio::task::spawn_blocking(move || {
-        let result = exchange_code(&agent, &url, &form);
-        drop(permit);
-        result
-    })
-    .await;
-    let token = match exchanged {
-        Ok(Ok(token)) => token,
-        Ok(Err(why)) => {
+    // Only so many exchanges at once. Asked while all are busy, the person
+    // can come back to this same address: the code is not used up.
+    let token = match app.dashboard.exchange(app.settings.token_url(), form).await {
+        Ok(tokens) => tokens.access_token,
+        Err(ExchangeError::Busy) => {
+            app.log("dashboard_signin_refused", json!({"why": "busy"}));
+            return said(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Signing in is busy",
+                "Signing in is busy right now; try again in a minute.",
+            );
+        }
+        Err(ExchangeError::Failed(why) | ExchangeError::Refused(why)) => {
             app.log("dashboard_signin_failed", json!({"why": why}));
             return refused(
                 StatusCode::BAD_GATEWAY,
@@ -761,7 +831,7 @@ async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Response<Body> {
                 "The sign-in service did not give Vitruvian Relay what it needed. Try again in a minute.",
             );
         }
-        Err(_) => {
+        Err(ExchangeError::Internal) => {
             return refused(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Sign-in could not finish",

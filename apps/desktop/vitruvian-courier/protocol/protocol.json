@@ -560,6 +560,14 @@
         "pinned": { "type": "bool" }
       }
     },
+    "ReorderPinsParams": {
+      "fields": {
+        "room_ids": {
+          "type": "string[]",
+          "doc": "Pinned chats in their new order. May be empty; unknown or unpinned IDs are ignored."
+        }
+      }
+    },
     "ArchiveParams": {
       "fields": {
         "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
@@ -2791,6 +2799,12 @@
       "params": "SetPinnedParams",
       "result": "Empty",
       "errors": [-32020]
+    },
+    "room.reorderPins": {
+      "doc": "Reorder pinned chats in the pinned strip. Named pinned chats take their current pin slots in the given order; unnamed pinned chats stay in place. Unknown or unpinned IDs are ignored. Stored on this Mac only.",
+      "params": "ReorderPinsParams",
+      "result": "Empty",
+      "errors": []
     },
     "room.setArchived": {
       "doc": "Archive or unarchive chats. A new message from someone else brings an archived chat back. A pinned chat is never archived: it is left out of room_ids, and when every chat named is pinned it is -32021.",

@@ -157,13 +157,20 @@ pub(crate) fn mint_with_role(
     format!("{input}.{}", b64url(&sig))
 }
 
-/// Serves the key set on a loopback port from a plain thread.
-pub(crate) fn start_jwks_server(body: String) -> String {
+/// Serves the key set on a loopback port from a plain thread. While the
+/// returned switch is set, it hangs up on every request instead (the
+/// identity service is not answering).
+pub(crate) fn start_jwks_server(body: String) -> (String, Arc<AtomicBool>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/oauth/v2/keys", listener.local_addr().unwrap());
+    let down = Arc::new(AtomicBool::new(false));
+    let hung_up = down.clone();
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
+            if hung_up.load(Ordering::SeqCst) {
+                continue;
+            }
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut line = String::new();
             while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
@@ -176,7 +183,7 @@ pub(crate) fn start_jwks_server(body: String) -> String {
             );
         }
     });
-    url
+    (url, down)
 }
 
 /// A stand-in for the identity service's token endpoint: records the forms
@@ -203,9 +210,43 @@ impl TokenServer {
         );
     }
 
+    /// Answers every exchange with this access token and refresh token.
+    pub(crate) fn give_tokens(&self, access_token: &str, refresh_token: &str) {
+        self.give_tokens_and_id(access_token, refresh_token, None);
+    }
+
+    /// As [`Self::give_tokens`], with an ID token when there is one.
+    pub(crate) fn give_tokens_and_id(
+        &self,
+        access_token: &str,
+        refresh_token: &str,
+        id_token: Option<&str>,
+    ) {
+        let mut answer = json!({
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        });
+        if let Some(id) = id_token {
+            answer["id_token"] = json!(id);
+        }
+        *self.answer.lock().unwrap() = (200, answer.to_string());
+    }
+
     /// Answers every exchange with an error.
     pub(crate) fn refuse(&self) {
         *self.answer.lock().unwrap() = (400, json!({"error": "invalid_grant"}).to_string());
+    }
+
+    /// Answers every exchange with a bare status and no tokens (a 500, say).
+    pub(crate) fn give_status(&self, status: u16) {
+        *self.answer.lock().unwrap() = (status, json!({"error": "server_error"}).to_string());
+    }
+
+    /// Answers every exchange with exactly this status and body.
+    pub(crate) fn give_answer(&self, status: u16, body: &str) {
+        *self.answer.lock().unwrap() = (status, body.to_string());
     }
 
     /// The form bodies sent so far.
@@ -269,6 +310,8 @@ pub(crate) struct Harness {
     pub(crate) logs: Arc<Mutex<Vec<String>>>,
     pub(crate) store: Arc<MemStore>,
     pub(crate) tokens: TokenServer,
+    /// Set to make the key-set server hang up (see [`start_jwks_server`]).
+    pub(crate) jwks_down: Arc<AtomicBool>,
 }
 
 pub(crate) struct Reply {
@@ -293,8 +336,35 @@ pub(crate) async fn harness() -> Harness {
 }
 
 pub(crate) async fn harness_with(timing: Timing) -> Harness {
+    harness_env(timing, &[]).await
+}
+
+/// The client id the app sign-in tests issue tokens for.
+pub(crate) const APPS_CLIENT: &str = "apps-client";
+
+/// A relay with the app sign-in turned on (its server key and client id set,
+/// the client id also an MCP client id, as the config requires).
+pub(crate) async fn app_harness() -> Harness {
+    app_harness_with(Timing::default()).await
+}
+
+/// [`app_harness`] with its own timing.
+pub(crate) async fn app_harness_with(timing: Timing) -> Harness {
+    harness_env(
+        timing,
+        &[
+            ("APP_SIGNIN_KEY", b64(&[7u8; 32])),
+            ("APPS_CLIENT_ID", APPS_CLIENT.to_string()),
+            ("MCP_CLIENT_IDS", format!("{MCP_CLIENT},{APPS_CLIENT}")),
+        ],
+    )
+    .await
+}
+
+/// The standard environment, with `extra` set over it.
+async fn harness_env(timing: Timing, extra: &[(&str, String)]) -> Harness {
     let rsa = rsa_key();
-    let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
+    let (jwks_uri, jwks_down) = start_jwks_server(jwks(&rsa).to_string());
     let tokens = start_token_server();
     let env: std::collections::HashMap<&str, String> = [
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
@@ -312,6 +382,7 @@ pub(crate) async fn harness_with(timing: Timing) -> Harness {
         ("JWKS_URI", jwks_uri.clone()),
     ]
     .into_iter()
+    .chain(extra.iter().map(|(k, v)| (*k, v.clone())))
     .collect();
     let settings = Settings::from_lookup(|k| env.get(k).cloned()).unwrap();
     let required_role = settings.required_role.clone();
@@ -329,13 +400,14 @@ pub(crate) async fn harness_with(timing: Timing) -> Harness {
         )
         .unwrap()
     };
+    let mcp_ids = settings.mcp_client_ids.clone();
     let store = Arc::new(MemStore::new());
     let logs = Arc::new(Mutex::new(Vec::new()));
     let sink_logs = logs.clone();
     let sink: LogSink = Arc::new(move |line| sink_logs.lock().unwrap().push(line.to_string()));
     let app = App::new(
         settings,
-        verifier_for(vec![MCP_CLIENT.into()]),
+        verifier_for(mcp_ids),
         verifier_for(vec![CONNECTOR_CLIENT.into()]),
         verifier_for(vec![DASHBOARD_CLIENT.into()]),
         store.clone(),
@@ -352,6 +424,7 @@ pub(crate) async fn harness_with(timing: Timing) -> Harness {
         logs,
         store,
         tokens,
+        jwks_down,
     }
 }
 
@@ -1070,6 +1143,58 @@ async fn unknown_session_gets_404() {
         )
         .await;
     assert_eq!(r.status, StatusCode::ACCEPTED);
+}
+
+/// With app sign-in on, the answer also carries the address Gemini is given, so
+/// the connector can print it. It is a new field: old connectors ignore it.
+#[tokio::test]
+async fn register_device_returns_the_app_url_when_app_sign_in_is_on() {
+    let h = app_harness().await;
+    let key = ed25519();
+    let r = h.register(ALICE, &key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let id = r.json()["device_id"].as_str().unwrap().to_string();
+    assert_eq!(r.json()["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
+    assert_eq!(
+        r.json()["app_mcp_url"],
+        format!("{PUBLIC_URL}/mcp/app/{id}")
+    );
+    // The same computer signing in again (a new key, the same id) gets them too.
+    let again = h.reregister(ALICE, &id, &ed25519()).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.body);
+    assert_eq!(again.json()["device_id"], id);
+    assert_eq!(
+        again.json()["app_mcp_url"],
+        format!("{PUBLIC_URL}/mcp/app/{id}")
+    );
+}
+
+/// With it off the field is absent, not null or empty: the answer is exactly
+/// what it was before app sign-in existed.
+#[tokio::test]
+async fn register_device_omits_the_app_url_when_app_sign_in_is_off() {
+    let h = harness().await;
+    let key = ed25519();
+    let r = h.register(ALICE, &key).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let id = r.json()["device_id"].as_str().unwrap().to_string();
+    let body = r.json();
+    let keys: Vec<&str> = body
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys.len(), 2, "{keys:?}");
+    assert!(
+        keys.contains(&"device_id") && keys.contains(&"mcp_url"),
+        "{keys:?}"
+    );
+    assert!(!r.body.contains("app_mcp_url"), "{}", r.body);
+    assert_eq!(body["mcp_url"], format!("{PUBLIC_URL}/mcp/d/{id}"));
+    let again = h.reregister(ALICE, &id, &ed25519()).await;
+    assert_eq!(again.json()["device_id"], id);
+    assert!(!again.body.contains("app_mcp_url"), "{}", again.body);
 }
 
 #[tokio::test]

@@ -246,6 +246,85 @@ func TestPinOrderHoldsWithinOneMillisecond(t *testing.T) {
 	require.True(t, rows["!a"].PinnedAt.Before(rows["!b"].PinnedAt))
 }
 
+func TestReorderPins(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, time.Unix(1000, 0))
+	for _, id := range []string{"!a", "!b", "!c", "!d"} {
+		mkRoom(t, s, id, time.Unix(1, 0))
+		require.NoError(t, s.SetPinned(ctx, id, true))
+	}
+	mkRoom(t, s, "!u", time.Unix(10, 0)) // unpinned
+
+	initial := inboxByID(t, s)
+	slot0 := initial["!a"].PinnedAt.UnixMilli()
+	slot1 := initial["!b"].PinnedAt.UnixMilli()
+	slot2 := initial["!c"].PinnedAt.UnixMilli()
+	slot3 := initial["!d"].PinnedAt.UnixMilli()
+	require.Less(t, slot0, slot1)
+	require.Less(t, slot1, slot2)
+	require.Less(t, slot2, slot3)
+	require.Equal(t, []string{"!a", "!b", "!c", "!d", "!u"}, allPages(t, s, InboxQuery{}))
+
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	// Full reorder: !b stays in slot1 so only !d, !a, and !c publish changes.
+	require.NoError(t, s.ReorderPins(ctx, []string{"!d", "!b", "!a", "!c"}))
+	require.Equal(t, []Change{
+		{Kind: "room", RoomID: "!d"},
+		{Kind: "room", RoomID: "!a"},
+		{Kind: "room", RoomID: "!c"},
+	}, []Change{nextChange(t, ch), nextChange(t, ch), nextChange(t, ch)})
+	requireNoChange(t, ch)
+
+	rows := inboxByID(t, s)
+	require.Equal(t, slot0, rows["!d"].PinnedAt.UnixMilli())
+	require.Equal(t, slot1, rows["!b"].PinnedAt.UnixMilli())
+	require.Equal(t, slot2, rows["!a"].PinnedAt.UnixMilli())
+	require.Equal(t, slot3, rows["!c"].PinnedAt.UnixMilli())
+	require.Equal(t, []string{"!d", "!b", "!a", "!c", "!u"}, allPages(t, s, InboxQuery{}))
+
+	// Same order again is a no-op and publishes no change.
+	require.NoError(t, s.ReorderPins(ctx, []string{"!d", "!b", "!a", "!c"}))
+	requireNoChange(t, ch)
+
+	// Subset reorder leaves unnamed pins (!b) in their exact slot.
+	require.NoError(t, s.ReorderPins(ctx, []string{"!c", "!d", "!a"}))
+	require.Equal(t, []Change{
+		{Kind: "room", RoomID: "!c"},
+		{Kind: "room", RoomID: "!d"},
+		{Kind: "room", RoomID: "!a"},
+	}, []Change{nextChange(t, ch), nextChange(t, ch), nextChange(t, ch)})
+	requireNoChange(t, ch)
+
+	rows = inboxByID(t, s)
+	require.Equal(t, slot0, rows["!c"].PinnedAt.UnixMilli())
+	require.Equal(t, slot1, rows["!b"].PinnedAt.UnixMilli(), "unnamed pin keeps its slot")
+	require.Equal(t, slot2, rows["!d"].PinnedAt.UnixMilli())
+	require.Equal(t, slot3, rows["!a"].PinnedAt.UnixMilli())
+	require.Equal(t, []string{"!c", "!b", "!d", "!a", "!u"}, allPages(t, s, InboxQuery{}))
+
+	// Unknown, unpinned, and duplicate IDs are ignored; !a and !c swap slots, leaving !b and !d in place.
+	require.NoError(t, s.ReorderPins(ctx, []string{"!nope", "!u", "!a", "!c", "!a", "!u"}))
+	require.Equal(t, []Change{
+		{Kind: "room", RoomID: "!a"},
+		{Kind: "room", RoomID: "!c"},
+	}, []Change{nextChange(t, ch), nextChange(t, ch)})
+	requireNoChange(t, ch)
+
+	rows = inboxByID(t, s)
+	require.True(t, rows["!u"].PinnedAt.IsZero())
+	require.True(t, rows["!a"].PinnedAt.Before(rows["!b"].PinnedAt))
+	require.True(t, rows["!b"].PinnedAt.Before(rows["!d"].PinnedAt))
+	require.True(t, rows["!d"].PinnedAt.Before(rows["!c"].PinnedAt))
+	require.Equal(t, []string{"!a", "!b", "!d", "!c", "!u"}, allPages(t, s, InboxQuery{}))
+
+	// Empty and non-pinned lists succeed with no changes.
+	require.NoError(t, s.ReorderPins(ctx, []string{}))
+	require.NoError(t, s.ReorderPins(ctx, []string{"!nope", "!u"}))
+	requireNoChange(t, ch)
+}
+
 func TestSettersReportOnlyRealChanges(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	mkRoom(t, s, "!r", time.Unix(1, 0))
