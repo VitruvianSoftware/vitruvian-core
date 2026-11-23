@@ -1160,6 +1160,11 @@ http_jar(
     ],
 )
 
+# The Claude Code CLI that runs plugin tests (host platform only).
+claude_cli = use_repo_rule("//tools/testinfra:claude_cli.bzl", "claude_cli")
+
+claude_cli(name = "claude_cli")
+
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
 http_file(
