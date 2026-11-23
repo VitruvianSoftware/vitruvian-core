@@ -113,6 +113,48 @@ The CI render values turn the switch on (with a placeholder client id) so the
 templates and their refusals are tested; the live values do not copy that block
 until the values PR.
 
+#### Turning app sign-in on, in order
+
+1. **Merge** the change that adds app sign-in. Nothing is live yet: the switch
+   is off, so the relay behaves as before.
+2. **Confirm the `relay-app-signin` Secret exists** in the `relay` namespace
+   (the SealedSecret is applied by Argo CD, and the controller must have
+   unsealed it). The pod will not start with the switch on if it is missing.
+3. **Apply the Zitadel client** (`relay-apps`, in the `zitadel-apps-relay`
+   stack). CI does this on merge; check the `appsClientId` output exists before
+   going on.
+4. **Open the values PR** (`gitops/argocd/platform/relay/values.yaml`): turn
+   `appSignin.enabled` on, set `oidc.appsClientId`, add the same id to
+   `oidc.mcpClientIds`, and add its label (below).
+
+The label is the key under `mcpClientLabels`, and it must be a **new** one such
+as `"Gemini (app sign-in)"`. The plain `Gemini` key is taken by the v2 client
+(the one with Gemini's callbacks listed in Zitadel) until that client is
+removed, and a label can name only one client id. The dashboard shows this label
+next to the connection.
+
+```yaml
+mcpClientLabels:
+  Claude: "400571151425734985"
+  Gemini: "400571151492842651"          # v2 client, until it is removed
+  "Gemini (app sign-in)": "<appsClientId>"
+```
+
+#### Cutting off access
+
+There is no per-app revoke yet. An Allow gives that Gemini account a token for
+every computer on the person's account, so to cut access off:
+
+- **Remove the computer** in the dashboard. It takes effect on the next
+  request, and the app's refresh stops working. Removing one computer does not
+  cut off the person's others.
+- **Remove the person's `relay-user` role** in Zitadel. Refresh stops, but an
+  access token already issued keeps working until it expires: the role travels
+  inside the token, so it is not looked up again on each call.
+
+See "Known limits" in
+[the design](../../../../../docs/superpowers/specs/2026-11-22-relay-app-sign-in-design.md).
+
 ### The new hostname
 
 `relay.vitruviansoftware.dev` is published the way `storybook.`, `stats.` and

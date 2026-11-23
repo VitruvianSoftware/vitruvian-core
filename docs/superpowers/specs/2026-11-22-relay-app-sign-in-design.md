@@ -81,17 +81,34 @@ Zitadel through one new public client (`relay-apps`, PKCE, no secret, like the
 dashboard's) with one fixed callback, `<public url>/oauth/callback`.
 
 **A consent page is required.** After Zitadel, the relay shows who is signed in,
-the app, the callback's id and the computer, with Allow and Deny (CSRF-protected,
-no JavaScript, like the dashboard). Without it, an attacker with their own Gemini
-could send an invited person a link and receive access to that person's computer.
-The computer must belong to the signed-in person, or the answer is the same as
-for an unknown device.
+the app, the callback's id and the computer being connected, with Allow and Deny
+(CSRF-protected, no JavaScript, like the dashboard). The page says what Allow
+really does: it gives that Gemini account a token that works on **every computer
+on the person's account**, and lets it see their name and email. So the heading
+is "Allow Gemini to use your computers on Vitruvian Relay?" and the warning is
+"Only allow this if you just started connecting Gemini yourself. Allowing it lets
+that Gemini account use every computer on your account, and see your name and
+email." The computer is still shown, labelled "Computer being connected": it is
+the one the link named, and it must belong to the signed-in person, or the answer
+is the same as for an unknown device. Without a consent page, an attacker with
+their own Gemini could send an invited person a link and receive access to that
+person's computers.
+
+The page is tied to the browser that came back from Zitadel, not just to the one
+that started. At the callback the relay makes a new random `vr_oauth` value, sets
+it on the redirect to the page, and keeps the consent under that value. A value a
+page on a sibling subdomain planted before sign-in (cookie tossing) finds nothing
+there, so it cannot read the page or post Allow.
 
 **Tokens.** The relay's one-time code (60 s, bound to client, callback, PKCE and
 resource) is redeemed at `/token`. The access token is Zitadel's own, so the
 existing verifier checks it, with the new client id added to its allowed list.
 The refresh token is sealed (AEAD) with the client id inside, so one client
-cannot use another's. Removing someone's role takes effect as with every token.
+cannot use another's. Removing someone's role takes effect as with every token (see Known limits).
+A token issued to the apps client is for `/mcp/app/` only: on `/mcp/d/` it is
+refused as any client that is not allowed there is. (Claude's own token also
+works on `/mcp/app/`, as it did before.) At `/token`, one trailing `/` on the
+`resource` the app sends is forgiven; anything else must match exactly.
 
 **In memory.** Pending sign-ins and codes live in memory: the relay is one
 replica, and a restart mid-sign-in only means trying again. Both are bounded.
@@ -108,6 +125,19 @@ switch that defaults off. Turning it on is a values change.
   sends no code.
 - One person's token cannot reach another person's computer through `/mcp/app/`.
 - Claude's connector still works, unchanged.
+
+## Known limits
+
+- **Tokens are not bound to one computer.** The computer on the consent page is
+  the one the link named, but the token works on every computer the person has.
+  This is why the page says "your computers".
+- **No per-app revoke yet.** Removing a computer takes effect on the next
+  request and stops refresh. Removing the role stops refresh, but the current
+  access token lasts until it expires. To cut one Gemini account off without
+  touching the rest, there is nothing finer than that today.
+- **Overlapping refreshes can force a reconnect.** Zitadel's refresh token is
+  single-use and rotates. If an app refreshes twice at once, one of them can use
+  up the token the other needed, and the person has to connect again.
 
 ## Left to the builder
 

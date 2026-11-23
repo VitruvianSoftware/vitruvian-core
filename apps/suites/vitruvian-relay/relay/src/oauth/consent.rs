@@ -26,7 +26,8 @@
 //! and gets a code at their own callback, which is control of that person's
 //! computer. So **no code is ever issued without a real Allow**: pressed in
 //! the same browser that started the sign-in (the `vr_oauth` cookie, which
-//! is also what finds the waiting consent), on a page that says who is
+//! is also what finds the waiting consent: a new value made when the person
+//! comes back, so one planted beforehand finds nothing), on a page that says who is
 //! signed in, which app and which computer, carrying a form token only that
 //! page has, posted from the relay's own origin, and used once.
 //!
@@ -70,7 +71,10 @@ const MAX_FORM_BYTES: usize = 4 * 1024;
 /// The name the consent page gives the app that registers itself.
 const APP_NAME: &str = "Gemini";
 /// What the page says, word for word.
-pub(crate) const WARNING: &str = "Only allow this if you just started connecting Gemini yourself. Allowing it lets that Gemini account use this computer.";
+pub(crate) const WARNING: &str = "Only allow this if you just started connecting Gemini yourself. Allowing it lets that Gemini account use every computer on your account, and see your name and email.";
+/// The page's heading and title. An Allow is not about one computer: the
+/// token the app gets works on every computer the person has.
+const HEADING: &str = "Allow Gemini to use your computers on Vitruvian Relay?";
 
 /// Nothing loads but the relay's own stylesheet. `form-action` names the
 /// app's callback host as well as the relay: browsers apply it to the
@@ -581,8 +585,13 @@ pub(super) async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Respons
         Err(e) => return store_down(app, &e),
     };
 
+    // A new binding, made now: the one the browser sent was set (or planted
+    // by a page on a sibling subdomain, "cookie tossing") before the person
+    // signed in, so it cannot be the one that reaches the consent page.
+    // Without this, whoever planted a value could post Allow with it.
+    let bound = random_token();
     app.pending.put_consent(
-        browser,
+        &bound,
         Consent {
             request,
             who: who_is(tokens.id_token.as_deref(), &caller.subject),
@@ -597,7 +606,10 @@ pub(super) async fn callback(app: &Arc<App>, req: &Request<Incoming>) -> Respons
     );
     // Off the address that carries the sign-in code, so reloading cannot
     // replay it.
-    redirect("/oauth/consent")
+    with_cookie(
+        redirect("/oauth/consent"),
+        &binding_cookie(&bound, secure(app)),
+    )
 }
 
 // ------------------------------------------------------------------ consent
@@ -622,13 +634,13 @@ struct View {
 
 fn consent_html(v: &View) -> String {
     page_shell(
-        "Allow Gemini to use your computer?",
+        HEADING,
         &format!(
-            "<section class=\"message\"><h1>Allow {app} to use your computer?</h1>\
+            "<section class=\"message\"><h1>{heading}</h1>\
              <ul class=\"cards\"><li class=\"card\">\
              <p class=\"meta\">Signed in as</p><p><strong>{who}</strong></p>\
              <p class=\"meta\">App</p><p><strong>{app}</strong>, connection ending in <code>{tail}</code></p>\
-             <p class=\"meta\">Computer</p><p><strong>{computer}</strong></p>\
+             <p class=\"meta\">Computer being connected</p><p><strong>{computer}</strong></p>\
              </li></ul>\
              <p class=\"note bad\" role=\"alert\">{warning}</p>\
              <form method=\"post\" action=\"/oauth/consent\">\
@@ -637,6 +649,7 @@ fn consent_html(v: &View) -> String {
              <button type=\"submit\" name=\"decision\" value=\"allow\">Allow</button> \
              <button type=\"submit\" name=\"decision\" value=\"deny\">Deny</button></p>\
              </form></section>",
+            heading = esc(HEADING),
             app = APP_NAME,
             who = esc(&v.who),
             tail = esc(&v.callback_tail),

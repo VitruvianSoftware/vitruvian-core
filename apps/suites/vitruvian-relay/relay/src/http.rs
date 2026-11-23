@@ -350,16 +350,17 @@ pub struct App {
     /// device ever changed.
     key_changes: Mutex<HashMap<String, (u64, Instant, Change)>>,
     pub(crate) registry: Registry,
-    /// Registrations per source address (see [`crate::oauth`]): 10 a minute,
-    /// a burst of 10. Bounded, as the endpoint is open to the internet.
+    /// Registrations per source address (see [`crate::oauth`]): 60 a minute,
+    /// a burst of 30. Roomy because many people share one Google address;
+    /// bounded, as the endpoint is open to the internet.
     pub(crate) register_limit: RateLimit,
     /// Sign-ins started at `/oauth/authorize` per source address: 30 a
     /// minute, a burst of 30. Each one holds an entry in [`Self::pending`],
     /// which is bounded, so this keeps one address from pushing out
     /// everyone else's sign-ins.
     pub(crate) authorize_limit: RateLimit,
-    /// Calls to `/oauth/token` per source address: 60 a minute, a burst of
-    /// 30. Each one may start a call to the identity service, which has only
+    /// Calls to `/oauth/token` per source address: 600 a minute, a burst of
+    /// 120 (Google's apps share addresses). Each one may start a call to the identity service, which has only
     /// a few places ([`crate::dashboard::Dashboard::exchange`]).
     pub(crate) token_limit: RateLimit,
     /// App sign-ins in progress, consents waiting and codes handed out.
@@ -411,9 +412,9 @@ impl App {
             key_generation: AtomicU64::new(0),
             key_changes: Mutex::new(HashMap::new()),
             registry,
-            register_limit: RateLimit::new(10, 10),
+            register_limit: RateLimit::new(60, 30),
             authorize_limit: RateLimit::new(30, 30),
-            token_limit: RateLimit::new(60, 30),
+            token_limit: RateLimit::new(600, 120),
             pending: crate::oauth::Pending::default(),
             sessions: Mutex::new(HashMap::new()),
             timing,
@@ -749,7 +750,7 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
         };
         let device_id = device_id.to_string();
         return match method {
-            Method::POST => mcp_post(app, req, device_id, metadata_url).await,
+            Method::POST => mcp_post(app, req, device_id, metadata_url, for_apps).await,
             Method::GET | Method::DELETE => {
                 let mut r = text(StatusCode::METHOD_NOT_ALLOWED, "POST only");
                 r.headers_mut()
@@ -819,6 +820,7 @@ async fn mcp_post(
     req: Request<Incoming>,
     device_id: String,
     metadata_url: String,
+    for_apps: bool,
 ) -> Response<Body> {
     let tracker = req.extensions().get::<Arc<WriteTracker>>().cloned();
     let caller =
@@ -826,6 +828,26 @@ async fn mcp_post(
             Ok((caller, _token)) => caller,
             Err(r) => return refusal(&app, "mcp", &metadata_url, r),
         };
+    // A token the relay issued to a self-registered app is for `/mcp/app/`
+    // only. On Claude's URL it is refused as any client that is not allowed
+    // there is. (Claude's own token also works on `/mcp/app/`, as it did
+    // before: it is the same person's token, checked the same way.)
+    if !for_apps
+        && app
+            .settings
+            .app_signin
+            .as_ref()
+            .is_some_and(|s| s.client_id == caller.client_id)
+    {
+        return refusal(
+            &app,
+            "mcp",
+            &metadata_url,
+            Refused::Token(AuthError::ClientNotAllowed {
+                client_id: Some(caller.client_id.clone()),
+            }),
+        );
+    }
     // Someone else's device answers exactly like a missing one.
     let found = app.owned_device(&caller.subject, &device_id).await;
     match &found {

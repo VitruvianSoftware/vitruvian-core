@@ -1131,10 +1131,14 @@ mod isolation {
     /// The first half of the person's part: sign in for `device` as `sub` and
     /// land on the consent page.
     async fn reach_consent(relay: &Relay, app: &GeminiApp, sub: &str, device: &str) -> AtConsent {
-        let (cookie, state) = begin_sign_in(relay, app, device).await;
-        let back = come_back(relay, sub, &cookie, &state).await;
+        let (started, state) = begin_sign_in(relay, app, device).await;
+        let back = come_back(relay, sub, &started, &state).await;
         assert_eq!(back.status, 303, "{}", back.body);
         assert_eq!(back.header("location").as_deref(), Some("/oauth/consent"));
+        // The callback gives the browser a new value, made after sign-in, and
+        // that one (not the one it started with) is tied to the consent.
+        let cookie = set_cookie_pair(&back, "vr_oauth").expect("the callback binds the browser");
+        assert_ne!(cookie, started, "the starting value was kept");
         let page = send(
             relay.addr,
             "GET",
@@ -1396,6 +1400,69 @@ mod isolation {
             www.contains(&format!("/mcp/d/{}", w.alice.laptop.id)) && !www.contains("/mcp/app/"),
             "{www}"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_apps_token_works_on_the_app_url_and_not_on_claudes() {
+        let w = world().await;
+        let gemini = register_gemini(&w.relay).await;
+        let consent = reach_consent(&w.relay, &gemini, ALICE, &w.alice.laptop.id).await;
+        let token = allow_and_redeem(&w.relay, &gemini, &consent).await;
+
+        // On its own URL, for its own computer, the token works.
+        let on_app = post(
+            w.relay.addr,
+            &format!("/mcp/app/{}", w.alice.laptop.id),
+            &token,
+            None,
+            initialize_body(),
+        )
+        .await;
+        assert_eq!(on_app.status, 200, "{}", on_app.body);
+
+        // On Claude's URL it is refused the way any client that is not
+        // allowed there is: a 403.
+        let on_claudes = post(
+            w.relay.addr,
+            &format!("/mcp/d/{}", w.alice.laptop.id),
+            &token,
+            None,
+            initialize_body(),
+        )
+        .await;
+        assert_eq!(on_claudes.status, 403, "{}", on_claudes.body);
+        assert_eq!(on_claudes.json()["error"], "insufficient_scope");
+        assert!(on_claudes.session().is_none());
+        let www = on_claudes.header("www-authenticate").expect("a challenge");
+        assert!(www.contains("insufficient_scope"), "{www}");
+        // Same answer as a client that is not allowed anywhere.
+        let stranger = post(
+            w.relay.addr,
+            &format!("/mcp/d/{}", w.alice.laptop.id),
+            &w.relay.connector_token(ALICE),
+            None,
+            initialize_body(),
+        )
+        .await;
+        assert_eq!(on_claudes.status, stranger.status);
+        assert_eq!(on_claudes.body, stranger.body);
+
+        // Claude's own token keeps working on both URLs, as it did before
+        // the apps client existed.
+        for path in [
+            format!("/mcp/d/{}", w.alice.laptop.id),
+            format!("/mcp/app/{}", w.alice.laptop.id),
+        ] {
+            let r = post(
+                w.relay.addr,
+                &path,
+                &w.relay.mcp_token(ALICE),
+                None,
+                initialize_body(),
+            )
+            .await;
+            assert_eq!(r.status, 200, "{path}: {}", r.body);
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

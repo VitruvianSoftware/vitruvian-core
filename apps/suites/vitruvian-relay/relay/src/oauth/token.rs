@@ -343,7 +343,11 @@ async fn redeem(
     // Every check runs, so none of them tells the caller which one failed.
     let same_client = issued.client_id == client_id;
     let same_callback = issued.callback == redirect_uri;
-    let same_resource = form.get("resource").is_none_or(|r| *r == issued.resource);
+    // One trailing slash on what the app sent is forgiven (clients tidy
+    // URLs); anything else must match what the code was issued for exactly.
+    let same_resource = form
+        .get("resource")
+        .is_none_or(|r| r.strip_suffix('/').unwrap_or(r) == issued.resource);
     let proven = same_secret(&challenge_for(verifier), &issued.challenge);
     if !(same_client && same_callback && same_resource && proven) {
         return Err(Refusal::InvalidGrant);

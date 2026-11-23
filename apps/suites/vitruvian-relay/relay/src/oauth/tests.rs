@@ -258,7 +258,7 @@ async fn register_body_over_16k_is_refused() {
 async fn register_is_rate_limited_per_ip() {
     let h = app_harness().await;
     let body = gemini_body().to_string();
-    for i in 1..=10 {
+    for i in 1..=30 {
         let r = register(&h, Some("198.51.100.1"), &body).await;
         assert_eq!(r.status, StatusCode::CREATED, "call {i}");
     }
@@ -269,16 +269,16 @@ async fn register_is_rate_limited_per_ip() {
     let other = register(&h, Some("198.51.100.2"), &body).await;
     assert_eq!(other.status, StatusCode::CREATED);
     // Two addresses in one IPv6 /64 share a bucket.
-    for i in 1..=10 {
+    for i in 1..=30 {
         let r = register(&h, Some(&format!("2001:db8:1:2::{i}")), &body).await;
         assert_eq!(r.status, StatusCode::CREATED, "v6 call {i}");
     }
     let v6 = register(&h, Some("2001:db8:1:2:ffff::1"), &body).await;
     assert_eq!(v6.status, StatusCode::TOO_MANY_REQUESTS);
     // A missing header, a made-up value and an empty one share one bucket:
-    // ten requests in any mix get through and the 11th is the first refused.
+    // thirty requests in any mix get through and the 31st is the first refused.
     let junk = [None, Some("not-an-ip"), Some("")];
-    for i in 1..=10 {
+    for i in 1..=30 {
         let r = register(&h, junk[i % 3], &body).await;
         assert_eq!(r.status, StatusCode::CREATED, "unknown call {i}");
     }
@@ -287,7 +287,7 @@ async fn register_is_rate_limited_per_ip() {
         assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS, "unknown form {n}");
     }
     // An IPv4-mapped IPv6 address shares the plain IPv4 address's bucket.
-    for i in 1..=10 {
+    for i in 1..=30 {
         let ip = if i % 2 == 0 {
             "192.0.2.7"
         } else {
@@ -445,8 +445,9 @@ fn cookie_pair(set_cookie: &str) -> String {
     set_cookie.split(';').next().unwrap().to_string()
 }
 
-/// A browser part-way through: its `vr_oauth` cookie, and what it was sent
-/// to the identity service with.
+/// A browser part-way through: its `vr_oauth` cookie (the one it was given
+/// at `/oauth/authorize`, then the new one the callback gives it), and what
+/// it was sent to the identity service with.
 struct Started {
     cookie: String,
     state: String,
@@ -473,28 +474,35 @@ fn app_token(h: &Harness, sub: &str, role: Option<&str>) -> String {
 }
 
 /// The identity service sends the browser back to the callback.
-async fn come_back(h: &Harness, st: &Started, token: &str) -> Reply {
+async fn come_back(h: &Harness, st: &mut Started, token: &str) -> Reply {
     come_back_with_id(h, st, token, None).await
 }
 
-/// As [`come_back`], with an ID token in the identity service's answer.
+/// As [`come_back`], with an ID token in the identity service's answer. When
+/// the callback gives the browser a new binding, `st` takes it up, as the
+/// browser would.
 async fn come_back_with_id(
     h: &Harness,
-    st: &Started,
+    st: &mut Started,
     token: &str,
     id_token: Option<&str>,
 ) -> Reply {
     h.tokens.give_tokens_and_id(token, REFRESH, id_token);
-    h.send(
-        "GET",
-        &format!(
-            "/oauth/callback?code={ZITADEL_CODE}&state={}",
-            form_encode(&st.state)
-        ),
-        &[("cookie", st.cookie.clone())],
-        "",
-    )
-    .await
+    let r = h
+        .send(
+            "GET",
+            &format!(
+                "/oauth/callback?code={ZITADEL_CODE}&state={}",
+                form_encode(&st.state)
+            ),
+            &[("cookie", st.cookie.clone())],
+            "",
+        )
+        .await;
+    if let Some(fresh) = set_cookie(&r, "vr_oauth") {
+        st.cookie = cookie_pair(&fresh);
+    }
+    r
 }
 
 async fn consent_get(h: &Harness, cookie: &str) -> Reply {
@@ -547,8 +555,8 @@ async fn at_consent_with_id(
         .await;
     assert_eq!(reg.status, StatusCode::OK, "{}", reg.body);
     let device = reg.json()["device_id"].as_str().unwrap().to_string();
-    let st = start(h, &device).await;
-    let r = come_back_with_id(h, &st, &app_token(h, sub, Some("relay-user")), id).await;
+    let mut st = start(h, &device).await;
+    let r = come_back_with_id(h, &mut st, &app_token(h, sub, Some("relay-user")), id).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     assert_eq!(r.header("location").as_deref(), Some("/oauth/consent"));
     let page = consent_get(h, &st.cookie).await;
@@ -649,8 +657,8 @@ async fn authorize_redirects_to_zitadel_with_fixed_callback_and_own_pkce() {
 async fn authorize_uses_the_relays_challenge_when_exchanging() {
     let h = app_harness().await;
     let (device, _key) = h.new_device(ALICE).await;
-    let st = start(&h, &device).await;
-    let r = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let mut st = start(&h, &device).await;
+    let r = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     let sent = h.tokens.requests();
     assert_eq!(sent.len(), 1, "{sent:?}");
@@ -889,7 +897,7 @@ async fn a_few_addresses_cannot_flush_real_sign_ins() {
     let path = authorize_path(&good_query(&h, &device));
     let from = |ip: &str| vec![("cf-connecting-ip", ip.to_string())];
     // A real person's sign-in is waiting.
-    let real = start(&h, &device).await;
+    let mut real = start(&h, &device).await;
     // One address starts as many as it may...
     for i in 1..=20 {
         let r = h.send("GET", &path, &from("203.0.113.50"), "").await;
@@ -913,7 +921,7 @@ async fn a_few_addresses_cannot_flush_real_sign_ins() {
     // Someone else is not held up, and the real sign-in still finishes.
     let other = h.send("GET", &path, &from("203.0.113.51"), "").await;
     assert_eq!(other.status, StatusCode::SEE_OTHER);
-    let done = come_back(&h, &real, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let done = come_back(&h, &mut real, &app_token(&h, ALICE, Some("relay-user"))).await;
     assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);
 }
 
@@ -940,9 +948,9 @@ async fn only_get_starts_a_sign_in() {
 async fn callback_without_role_never_shows_consent() {
     let h = app_harness().await;
     let (device, _key) = h.new_device(ALICE).await;
-    let st = start(&h, &device).await;
+    let mut st = start(&h, &device).await;
     // Signed in, but never invited: no `relay-user` role.
-    let r = come_back(&h, &st, &app_token(&h, ALICE, None)).await;
+    let r = come_back(&h, &mut st, &app_token(&h, ALICE, None)).await;
     assert_eq!(r.status, StatusCode::FORBIDDEN, "{}", r.body);
     assert!(r.body.contains("You do not have access yet"), "{}", r.body);
     assert!(r.header("location").is_none());
@@ -952,14 +960,14 @@ async fn callback_without_role_never_shows_consent() {
     assert_eq!(page.status, StatusCode::BAD_REQUEST);
     assert!(!page.body.contains("Allow"));
     // A token for a different client (Claude's) is not accepted either.
-    let st = start(&h, &device).await;
+    let mut st = start(&h, &device).await;
     let claude = crate::http::tests::mint(&h.rsa, crate::http::tests::MCP_CLIENT, ALICE);
-    let r = come_back(&h, &st, &claude).await;
+    let r = come_back(&h, &mut st, &claude).await;
     assert_eq!(r.status, StatusCode::FORBIDDEN, "{}", r.body);
     assert_eq!(h.app.pending.counts(), (0, 0, 0));
     // A bad token is no better.
-    let st = start(&h, &device).await;
-    let r = come_back(&h, &st, "not-a-token").await;
+    let mut st = start(&h, &device).await;
+    let r = come_back(&h, &mut st, "not-a-token").await;
     assert_eq!(r.status, StatusCode::FORBIDDEN, "{}", r.body);
     assert_eq!(h.app.pending.counts(), (0, 0, 0));
 }
@@ -968,10 +976,10 @@ async fn callback_without_role_never_shows_consent() {
 async fn callback_for_someone_elses_device_looks_like_missing() {
     let h = app_harness().await;
     let (bobs, _key) = h.new_device(BOB).await;
-    let st = start(&h, &bobs).await;
-    let theirs = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
-    let st = start(&h, "no-such-device").await;
-    let missing = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let mut st = start(&h, &bobs).await;
+    let theirs = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let mut st = start(&h, "no-such-device").await;
+    let missing = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
     assert_eq!(theirs.status, StatusCode::NOT_FOUND, "{}", theirs.body);
     assert_eq!(theirs.status, missing.status);
     assert_eq!(theirs.body, missing.body, "the pages differ");
@@ -981,8 +989,8 @@ async fn callback_for_someone_elses_device_looks_like_missing() {
     // A device that was removed is the same too.
     let (gone, _key) = h.new_device(ALICE).await;
     assert!(h.app.revoke(ALICE, &gone).await.unwrap());
-    let st = start(&h, &gone).await;
-    let removed = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let mut st = start(&h, &gone).await;
+    let removed = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
     assert_eq!(removed.body, missing.body);
 }
 
@@ -990,10 +998,10 @@ async fn callback_for_someone_elses_device_looks_like_missing() {
 async fn callback_with_the_database_down_says_try_again_and_issues_nothing() {
     let h = app_harness().await;
     let (device, _key) = h.new_device(ALICE).await;
-    let st = start(&h, &device).await;
+    let mut st = start(&h, &device).await;
     h.store
         .fail_with(Some(crate::store::StoreError::Unavailable));
-    let r = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let r = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
     assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE, "{}", r.body);
     assert!(r.body.contains("try again"), "{}", r.body);
     assert!(r.header("location").is_none());
@@ -1083,8 +1091,23 @@ async fn consent_names_person_app_and_computer() {
         body.contains(&format!("<code>{}</code>", &ID[ID.len() - 8..])),
         "{body}"
     );
+    // It says the real reach of an Allow: every computer on the account.
     assert!(
-        body.contains("Only allow this if you just started connecting Gemini yourself. Allowing it lets that Gemini account use this computer."),
+        body.contains("<h1>Allow Gemini to use your computers on Vitruvian Relay?</h1>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<title>Allow Gemini to use your computers on Vitruvian Relay?"),
+        "{body}"
+    );
+    assert!(
+        body.contains("Only allow this if you just started connecting Gemini yourself. Allowing it lets that Gemini account use every computer on your account, and see your name and email."),
+        "{body}"
+    );
+    assert!(!body.contains("use this computer"), "{body}");
+    // The computer being connected is still shown, and labelled as such.
+    assert!(
+        body.contains("<p class=\"meta\">Computer being connected</p>"),
         "{body}"
     );
     // Allow and Deny are posts with a token, and nothing runs script.
@@ -1101,6 +1124,61 @@ async fn consent_names_person_app_and_computer() {
     let nobody = h.get("/oauth/consent").await;
     assert_eq!(nobody.status, StatusCode::BAD_REQUEST);
     assert!(!nobody.body.contains("Allow"));
+}
+
+#[tokio::test]
+async fn a_cookie_planted_before_sign_in_cannot_reach_consent() {
+    let h = app_harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    // `st.cookie` is what the browser held when the person went off to
+    // sign in: it is the value a sibling site could have planted.
+    let mut st = start(&h, &device).await;
+    let planted = st.cookie.clone();
+    let r = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    assert_eq!(r.header("location").as_deref(), Some("/oauth/consent"));
+    // The callback binds the consent to a value made after sign-in.
+    let new_cookie = set_cookie(&r, "vr_oauth").expect("the callback sets a new binding");
+    assert!(new_cookie.contains("HttpOnly") && new_cookie.contains("Path=/oauth/"));
+    let fresh = cookie_pair(&new_cookie);
+    assert_ne!(fresh, planted, "the same value was kept");
+    assert_eq!(fresh, st.cookie);
+
+    // The new value reads the page, which has the form token.
+    let page = consent_get(&h, &fresh).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    let csrf = csrf_in(&page.body);
+
+    // The old one finds nothing: no page, and not even the right form token
+    // gets an Allow through.
+    let old_page = consent_get(&h, &planted).await;
+    assert_eq!(
+        old_page.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        old_page.body
+    );
+    assert!(
+        !old_page.body.contains("name=\"csrf\""),
+        "{}",
+        old_page.body
+    );
+    let old_allow = decide(&h, Some(&planted), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(
+        old_allow.status,
+        StatusCode::FORBIDDEN,
+        "{}",
+        old_allow.body
+    );
+    assert!(old_allow.header("location").is_none());
+    assert_eq!(codes_held(&h), 0, "an Allow through the old value issued");
+    assert_eq!(consents_held(&h), 1, "the real consent was disturbed");
+
+    // The new one can still decide it.
+    let ok = decide(&h, Some(&fresh), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+    assert!(param(&ok.header("location").unwrap(), "code").is_some());
+    assert_eq!(codes_held(&h), 1);
 }
 
 #[tokio::test]
@@ -1181,9 +1259,9 @@ async fn allow_redirects_with_code_and_original_state() {
     // A state with characters that need encoding comes back unchanged.
     let state = "a b/c+d=e&f?g#h\u{e9}\u{1f600}~";
     let q = with(good_query(&h, &device), "state", Some(state));
-    let st = start_with(&h, &q).await;
+    let mut st = start_with(&h, &q).await;
     let token = app_token(&h, ALICE, Some("relay-user"));
-    let r = come_back(&h, &st, &token).await;
+    let r = come_back(&h, &mut st, &token).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
     let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
@@ -1386,15 +1464,15 @@ async fn the_sign_in_leaves_no_secret_in_the_logs() {
         "state",
         Some("the-apps-private-state"),
     );
-    let st = start_with(&h, &q).await;
+    let mut st = start_with(&h, &q).await;
     let token = app_token(&h, ALICE, Some("relay-user"));
-    let r = come_back(&h, &st, &token).await;
+    let r = come_back(&h, &mut st, &token).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER);
     let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
     let done = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
     let code = param(&done.header("location").unwrap(), "code").unwrap();
     // A refused attempt too.
-    let _ = come_back(&h, &st, &token).await;
+    let _ = come_back(&h, &mut st, &token).await;
     let logs = h.logs();
     assert!(logs.contains("app_consent_allowed"), "{logs}");
     for secret in [
@@ -1531,7 +1609,15 @@ async fn two_binding_cookies_are_refused_everywhere() {
         .send("GET", &path, &[("cookie", st.cookie.clone())], "")
         .await;
     assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
-    let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
+    // The callback gave the browser a new value, which is the one that
+    // reaches the page; a planted one beside it is refused the same.
+    let fresh = cookie_pair(&set_cookie(&ok, "vr_oauth").expect("the callback binds the browser"));
+    let both = [
+        format!("{fresh}; {planted}"),
+        format!("{planted}; {fresh}"),
+        format!("{fresh}; {fresh}"),
+    ];
+    let csrf = csrf_in(&consent_get(&h, &fresh).await.body);
 
     // The page and the decision likewise.
     for cookie in &both {
@@ -1545,7 +1631,7 @@ async fn two_binding_cookies_are_refused_everywhere() {
     assert_eq!(codes_held(&h), 0);
     assert_eq!(consents_held(&h), 1, "a planted cookie uses nothing up");
     // The browser with one cookie still can.
-    let ok = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    let ok = decide(&h, Some(&fresh), Some(PUBLIC_URL), Some(&csrf), "allow").await;
     assert_eq!(ok.status, StatusCode::SEE_OTHER);
 }
 
@@ -1553,8 +1639,8 @@ async fn two_binding_cookies_are_refused_everywhere() {
 async fn allow_rechecks_the_computer_and_issues_nothing_when_it_is_gone() {
     let h = app_harness().await;
     // The page the callback shows for a computer that is not there.
-    let st = start(&h, "no-such-device").await;
-    let missing = come_back(&h, &st, &app_token(&h, ALICE, Some("relay-user"))).await;
+    let mut st = start(&h, "no-such-device").await;
+    let missing = come_back(&h, &mut st, &app_token(&h, ALICE, Some("relay-user"))).await;
     assert_eq!(missing.status, StatusCode::NOT_FOUND);
 
     // Removed between the page and the press of Allow.
@@ -1684,9 +1770,9 @@ struct Issued {
 
 async fn issue_code(h: &Harness, sub: &str) -> Issued {
     let (device, _key) = h.new_device(sub).await;
-    let st = start(h, &device).await;
+    let mut st = start(h, &device).await;
     let access = app_token(h, sub, Some("relay-user"));
-    let r = come_back(h, &st, &access).await;
+    let r = come_back(h, &mut st, &access).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
     let csrf = csrf_in(&consent_get(h, &st.cookie).await.body);
     let r = decide(h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
@@ -2008,6 +2094,44 @@ async fn wrong_resource_is_invalid_grant() {
 }
 
 #[tokio::test]
+async fn one_trailing_slash_on_the_resource_is_forgiven_and_nothing_else_is() {
+    let h = app_harness().await;
+    // (what is added to the resource the code was issued for, whether it works)
+    let cases = [
+        ("", true),
+        ("/", true),
+        ("//", false),
+        ("?", false),
+        ("#", false),
+        (" ", false),
+        ("%2F", false),
+    ];
+    for (n, (extra, works)) in cases.into_iter().enumerate() {
+        // A person may connect only so many computers, so each case is a
+        // different person.
+        let issued = issue_code(&h, &format!("user-{n}")).await;
+        let sent = format!("{PUBLIC_URL}/mcp/app/{}{extra}", issued.device);
+        let r = post_token(&h, &with(redeem(&h, &issued.code), "resource", Some(&sent))).await;
+        if works {
+            assert_eq!(r.status, StatusCode::OK, "{extra:?}: {}", r.body);
+        } else {
+            error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+        }
+    }
+    // Only the sent value is trimmed: a code issued for a resource is
+    // compared as it was stored, and a different device is still refused
+    // with or without the slash.
+    let issued = issue_code(&h, "user-other").await;
+    let other = format!("{PUBLIC_URL}/mcp/app/someone-elses/");
+    let r = post_token(
+        &h,
+        &with(redeem(&h, &issued.code), "resource", Some(&other)),
+    )
+    .await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+}
+
+#[tokio::test]
 async fn refresh_token_is_sealed_not_zitadels() {
     let h = app_harness().await;
     let (issued, doc) = redeemed(&h).await;
@@ -2046,8 +2170,9 @@ async fn no_refresh_token_from_zitadel_means_none_for_the_app() {
         )
         .await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
-    let csrf = csrf_in(&consent_get(&h, &st.cookie).await.body);
-    let r = decide(&h, Some(&st.cookie), Some(PUBLIC_URL), Some(&csrf), "allow").await;
+    let bound = cookie_pair(&set_cookie(&r, "vr_oauth").expect("the callback binds the browser"));
+    let csrf = csrf_in(&consent_get(&h, &bound).await.body);
+    let r = decide(&h, Some(&bound), Some(PUBLIC_URL), Some(&csrf), "allow").await;
     let code = param(&r.header("location").unwrap(), "code").unwrap();
     let r = post_token(&h, &redeem(&h, &code)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
@@ -2358,7 +2483,7 @@ async fn token_body_over_16k_is_refused() {
 #[tokio::test]
 async fn token_is_rate_limited_per_ip_before_the_body_is_read() {
     let h = app_harness().await;
-    for i in 1..=30 {
+    for i in 1..=120 {
         let r = post_token_from(&h, Some("198.51.100.1"), &[], "grant_type=x").await;
         assert_eq!(r.status, StatusCode::UNAUTHORIZED, "call {i}: {}", r.body);
     }
@@ -2407,7 +2532,7 @@ async fn responses_are_no_store() {
         ("too big", post_token_from(&h, None, &[], &big).await),
         ("zitadel down", post_token(&h, &refresh(&h, &sealed)).await),
         ("rate limited", {
-            for _ in 0..40 {
+            for _ in 0..130 {
                 let _ = post_token_from(&h, Some("203.0.113.77"), &[], "").await;
             }
             post_token_from(&h, Some("203.0.113.77"), &[], "").await
