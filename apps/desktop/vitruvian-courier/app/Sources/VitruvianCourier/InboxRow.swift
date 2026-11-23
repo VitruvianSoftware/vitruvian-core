@@ -202,26 +202,17 @@ struct InboxRowView<HoverMenu: View>: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if style.hoverAction != .nothing || !isSelecting {
+                            // The slot is as wide as the indicators and no wider, whatever the pointer does: the
+                            // preview beside it never re-wraps or shifts on hover. The hover button is drawn over
+                            // the slot's trailing edge instead of taking width of its own.
                             InboxRowCollapsingSlot(reveal: isSelecting ? 0 : 1) {
-                                ZStack(alignment: .trailing) {
-                                    HStack(alignment: .center, spacing: 5) {
-                                        marks
-                                    }
-                                    .opacity(showsIndicators ? 1 : 0)
-                                    .animation(hoverAnimation, value: showsHoverButton)
-                                    .accessibilityHidden(!showsIndicators)
-
-                                    if style.hoverAction != .nothing {
-                                        hoverButton
-                                            .scaleEffect(hoverScale, anchor: .center)
-                                            .opacity(hoverOpacity)
-                                            .animation(hoverAnimation, value: showsHoverButton)
-                                            .allowsHitTesting(showsHoverButton)
-                                            .accessibilityHidden(!showsHoverButton)
-                                    }
+                                HStack(alignment: .center, spacing: 5) {
+                                    marks
                                 }
-                                .frame(minWidth: showsHoverButton ? 24 : 0, minHeight: minIndicatorHeight, alignment: .trailing)
+                                .opacity(showsIndicators ? 1 : 0)
                                 .animation(hoverAnimation, value: showsHoverButton)
+                                .accessibilityHidden(!showsIndicators)
+                                .frame(minHeight: minIndicatorHeight, alignment: .trailing)
                             }
                             .opacity(isSelecting ? 0 : 1)
                             .animation(
@@ -236,6 +227,22 @@ struct InboxRowView<HoverMenu: View>: View {
                             )
                             .clipped()
                             .accessibilityHidden(isSelecting)
+                            .overlay(alignment: .trailing) {
+                                if style.hoverAction != .nothing {
+                                    hoverButton
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                                .fill(.regularMaterial)
+                                                .opacity(hoverOpacity)
+                                        )
+                                        .scaleEffect(hoverScale, anchor: .center)
+                                        .opacity(hoverOpacity)
+                                        .animation(hoverAnimation, value: showsHoverButton)
+                                        .allowsHitTesting(showsHoverButton)
+                                        .accessibilityHidden(!showsHoverButton)
+                                        .fixedSize()
+                                }
+                            }
                         }
                     }
                     if row.request {

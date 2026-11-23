@@ -50,6 +50,8 @@ final class CourierTooltipPanel: NSPanel {
 /// Rounded dark/light adaptive tooltip surface with separate rounded shortcut key caps and optional detail line.
 struct CourierTooltipView: View {
     static let shadowInset: CGFloat = 12
+    /// The widest the card gets (its padding included); longer text wraps.
+    static let maxCardWidth: CGFloat = 260
 
     let content: CourierTooltipContent
     @Environment(\.colorScheme) private var colorScheme
@@ -75,51 +77,73 @@ struct CourierTooltipView: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(content.title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !keyCaps.isEmpty {
-                    HStack(spacing: 2) {
-                        ForEach(Array(keyCaps.enumerated()), id: \.offset) { _, token in
-                            Text(verbatim: token)
-                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4.5)
-                                .padding(.vertical, 1.5)
-                                .frame(minWidth: 18)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(Color.primary.opacity(0.08))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.5)
-                                )
+        // As wide as its text asks, up to `maxCardWidth`, and then as tall as the wrapped text needs: a long detail
+        // wraps and the card grows to hold it, never cutting a line off.
+        CourierTooltipWidthLimit(maxWidth: Self.maxCardWidth) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(content.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !keyCaps.isEmpty {
+                        HStack(spacing: 2) {
+                            ForEach(Array(keyCaps.enumerated()), id: \.offset) { _, token in
+                                Text(verbatim: token)
+                                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4.5)
+                                    .padding(.vertical, 1.5)
+                                    .frame(minWidth: 18)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(Color.primary.opacity(0.08))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.5)
+                                    )
+                            }
                         }
                     }
                 }
+                if let detail = content.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            if let detail = content.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .frame(maxWidth: 260, alignment: .leading)
-        .fixedSize(horizontal: true, vertical: true)
         .background(shape.fill(surfaceFill))
         .overlay(shape.strokeBorder(borderStroke, lineWidth: 0.5))
         .shadow(color: shadowColor, radius: 5, x: 0, y: 2)
         .padding(Self.shadowInset)
         .allowsHitTesting(false)
+    }
+}
+
+/// Sizes its content at its natural width, capped at `maxWidth`, and then asks for the height the content needs at
+/// that width. (A plain `frame(maxWidth:)` takes the height of the unwrapped single line, so wrapped text is cut off.)
+struct CourierTooltipWidthLimit: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let natural = subview.sizeThatFits(.unspecified).width
+        let width = min(natural, maxWidth, proposal.width ?? .infinity)
+        return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        guard let subview = subviews.first else { return }
+        subview.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
     }
 }
 
@@ -141,6 +165,8 @@ final class CourierTooltipController {
 
     internal var activePanelForTesting: CourierTooltipPanel? { panel }
     internal var isVisibleForTesting: Bool { state.isVisible && panel?.isVisible == true }
+    /// What the control under the pointer wants shown (set the moment the pointer enters, before the delay).
+    internal var currentContentForTesting: CourierTooltipContent? { currentContent }
 
     private init() {}
 

@@ -73,6 +73,100 @@ final class ComposerModelTests: XCTestCase {
         XCTAssertEqual(sender.calls, [.text(room: "!a", text: "line one\n\nline two", replyTo: nil)])
     }
 
+    /// The Send button looks ready, and `canSend` says so, only when pressing it would do something: they agree with
+    /// `submit()` for empty, blank, text, file, GIF, editing (including an edit that can't be sent) and locked.
+    func testSendButtonLooksReadyOnlyWhenSubmitWouldDoSomething() async throws {
+        final class LockBox { var locked = false }
+        let box = LockBox()
+        let defaults = TestDefaults()
+        defer { defaults.remove() }
+        let registry = HotkeyRegistry(defaults: defaults.defaults, isAppLocked: { box.locked })
+
+        let made = makeComposer(sizes: ["a.bin": 10])
+        let composer = made.composer
+        composer.hotkeys = registry
+        let gif = StickerItemWire(
+            id: "gif:1", packID: "recent", name: "Wave", mediaURL: "courier://media/1",
+            mimeType: "image/gif", usage: ["gif"]
+        )
+
+        func assertReady(_ ready: Bool, _ state: String, line: UInt = #line) {
+            XCTAssertEqual(composer.canSend, ready, "canSend while \(state)", line: line)
+            XCTAssertEqual(
+                composer.sendButtonAppearance, ready ? .activeAccent : .disabledNeutral,
+                "the button's look while \(state)", line: line
+            )
+        }
+
+        // Empty and blank: grey, and pressing does nothing.
+        assertReady(false, "empty")
+        XCTAssertNil(composer.submit())
+        for blank in ["   ", "\n\n", " \t\n "] {
+            composer.text = blank
+            assertReady(false, "only whitespace")
+            XCTAssertNil(composer.submit())
+        }
+
+        // Text: ready. Locked, the same text is not, and pressing sends nothing and keeps the text.
+        composer.text = "hello"
+        assertReady(true, "there is text")
+        box.locked = true
+        assertReady(false, "locked, with text")
+        XCTAssertNil(composer.submit())
+        XCTAssertEqual(composer.text, "hello")
+        XCTAssertEqual(made.sender.calls, [])
+        box.locked = false
+        assertReady(true, "unlocked again")
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.calls, [.text(room: "!a", text: "hello", replyTo: nil)])
+        assertReady(false, "sent and empty")
+
+        // A file alone and a staged GIF alone are enough; locked, they are not.
+        composer.attach([file("a.bin")])
+        assertReady(true, "there is a file")
+        box.locked = true
+        assertReady(false, "locked, with a file")
+        XCTAssertNil(composer.submit())
+        box.locked = false
+        composer.removeAttachment(composer.attachments[0].id)
+        assertReady(false, "the file is removed")
+        composer.pendingGIF = gif
+        assertReady(true, "a GIF is staged")
+        box.locked = true
+        assertReady(false, "locked, with a GIF")
+        box.locked = false
+        composer.pendingGIF = nil
+        assertReady(false, "the GIF is removed")
+
+        // Editing: only the text counts. An edit that is emptied can't be submitted, so it is grey, and pressing
+        // changes nothing; with words again it is ready, and locked it is not.
+        let timeline = items([event("$m", body: "old words", at: 0)])
+        composer.startEditing(message("$m", in: timeline))
+        XCTAssertEqual(composer.text, "old words")
+        assertReady(true, "editing with its words")
+        composer.text = "  \n "
+        assertReady(false, "editing with only whitespace")
+        XCTAssertNil(composer.submit())
+        XCTAssertEqual(composer.mode, .editing(eventID: "$m", original: message("$m", in: timeline).rich))
+        XCTAssertEqual(made.sender.edits, [])
+        composer.text = ""
+        assertReady(false, "editing with nothing")
+        composer.text = "new words"
+        assertReady(true, "editing with new words")
+        box.locked = true
+        assertReady(false, "locked, editing")
+        XCTAssertNil(composer.submit())
+        XCTAssertEqual(made.sender.edits, [])
+        box.locked = false
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.edits, [.init(eventID: "$m", rich: RichText(text: "new words"))])
+
+        // No chat open: nothing to send to.
+        composer.open(nil)
+        composer.text = "orphan"
+        assertReady(false, "no chat is open")
+    }
+
     func testNothingSendsWithNoChatOpen() {
         let (composer, sender) = make()
         composer.text = "Hello"

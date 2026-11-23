@@ -32,6 +32,9 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
     public private(set) var mode: EmojiPickerPresentationMode = .closed
     public private(set) var isPointerOnButton: Bool = false
     public private(set) var isPointerOnPicker: Bool = false
+    /// The picker was dismissed (click, Escape, an emoji chosen, a chat switch) while the pointer was on the button.
+    /// It does not open again on hover until the pointer has left the button, so dismissing never loops back open.
+    public private(set) var awaitsPointerExit: Bool = false
 
     public init() {}
 
@@ -49,11 +52,13 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
             case .hoverOpen:
                 return .cancelClose
             case .closed:
+                guard !awaitsPointerExit else { return .none }
                 return canOpen ? .scheduleOpen(EmojiPickerHoverMotion.openDelay) : .none
             case .pinned:
                 return .none
             }
         } else {
+            awaitsPointerExit = false
             switch mode {
             case .closed:
                 return .cancelOpen
@@ -78,7 +83,7 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
 
     /// Fires when the 0.15 s hover-open delay finishes. Returns `true` if the picker opened.
     public mutating func openDelayFired(canOpen: Bool) -> Bool {
-        guard mode == .closed, isPointerOnButton, canOpen else { return false }
+        guard mode == .closed, isPointerOnButton, !awaitsPointerExit, canOpen else { return false }
         mode = .hoverOpen
         return true
     }
@@ -101,6 +106,7 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
             return .cancelAll
         case .pinned:
             mode = .closed
+            awaitsPointerExit = isPointerOnButton
             return .cancelAll
         }
     }
@@ -116,6 +122,7 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
     public mutating func externalDismiss() -> Effect {
         mode = .closed
         isPointerOnPicker = false
+        awaitsPointerExit = isPointerOnButton
         return .cancelAll
     }
 

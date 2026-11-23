@@ -227,6 +227,48 @@ final class StreamBMotionTests: XCTestCase {
         XCTAssertEqual(hover.mode, .pinned)
     }
 
+    /// Dismissing the picker (Escape, an emoji chosen, a click on the button, a chat switch) while the pointer is still
+    /// on the button must not open it again: the pointer has to leave the button first.
+    func testEmojiPickerDoesNotReopenAfterDismissUntilPointerLeavesButton() {
+        // Hover-opened, then dismissed from outside (Escape or an emoji chosen) with the pointer still on the button.
+        var hover = EmojiPickerHoverState()
+        XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
+        XCTAssertTrue(hover.openDelayFired(canOpen: true))
+        XCTAssertEqual(hover.externalDismiss(), .cancelAll)
+        XCTAssertEqual(hover.mode, .closed)
+        XCTAssertTrue(hover.awaitsPointerExit)
+        // A second "pointer entered" for the same visit (AppKit sends one when the picker's window goes away).
+        XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .none)
+        XCTAssertFalse(hover.openDelayFired(canOpen: true))
+        XCTAssertEqual(hover.mode, .closed)
+        // Leaving, then coming back, works as it did.
+        XCTAssertEqual(hover.buttonHoverChanged(false, canOpen: true), .cancelOpen)
+        XCTAssertFalse(hover.awaitsPointerExit)
+        XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
+        XCTAssertTrue(hover.openDelayFired(canOpen: true))
+
+        // Pinned by a click, then closed by a click, with the pointer on the button the whole time.
+        var clicked = EmojiPickerHoverState()
+        _ = clicked.buttonHoverChanged(true, canOpen: true)
+        XCTAssertEqual(clicked.buttonClicked(canOpen: true), .cancelAll)
+        XCTAssertEqual(clicked.mode, .pinned)
+        XCTAssertEqual(clicked.buttonClicked(canOpen: true), .cancelAll)
+        XCTAssertEqual(clicked.mode, .closed)
+        XCTAssertEqual(clicked.buttonHoverChanged(true, canOpen: true), .none)
+        XCTAssertFalse(clicked.openDelayFired(canOpen: true))
+        _ = clicked.buttonHoverChanged(false, canOpen: true)
+        XCTAssertEqual(clicked.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
+
+        // A dismissal while the pointer is elsewhere (the usual 0.3 s close) puts nothing in the way.
+        var left = EmojiPickerHoverState()
+        _ = left.buttonHoverChanged(true, canOpen: true)
+        XCTAssertTrue(left.openDelayFired(canOpen: true))
+        _ = left.buttonHoverChanged(false, canOpen: true)
+        XCTAssertTrue(left.closeDelayFired())
+        XCTAssertFalse(left.awaitsPointerExit)
+        XCTAssertEqual(left.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
+    }
+
     // MARK: - Inbox hover archive visibility & selection checkbox motion (Items 2, 16, 18)
 
     func testInboxRowHoverArchiveVisibilityAndMotion() {

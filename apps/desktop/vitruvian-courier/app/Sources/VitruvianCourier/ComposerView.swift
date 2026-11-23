@@ -199,6 +199,8 @@ struct ComposerView: View {
             if restoreFocus { textFocusRequest += 1 }
         }
         .onDisappear { emojiHover.dismiss() }
+        // Switching chats: nothing pending from the last chat's hover may open or close anything in this one.
+        .onChange(of: composer.roomID) { _, _ in emojiHover.dismiss() }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -549,7 +551,8 @@ struct ComposerView: View {
                 .foregroundStyle(.secondary)
             Button(action: onCycleReplyNetwork) {
                 HStack(spacing: 5) {
-                    NetworkBadge(network: activeNetwork, name: displayName, size: 13)
+                    // The button's own tooltip is the only one: the badge's would be a second, on top of it.
+                    NetworkBadge(network: activeNetwork, name: displayName, size: 13, showsTooltip: false)
                     Text(displayName)
                         .font(.caption.weight(.semibold))
                     if !activeReplyAccountName.isEmpty {

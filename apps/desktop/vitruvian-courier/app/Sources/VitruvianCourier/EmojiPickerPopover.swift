@@ -18,6 +18,11 @@ struct EmojiPickerPopover: View {
     @State private var query = ""
     @State private var frequent: [String] = []
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     private static let columns: [GridItem] = Array(repeating: GridItem(.flexible(minimum: 30), spacing: 2), count: 8)
 
@@ -106,7 +111,12 @@ struct EmojiPickerPopover: View {
             ForEach(shown) { section in
                 Button {
                     onInteract?()
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(section.id, anchor: .top) }
+                    // Reduce Motion: jump to the category instead of scrolling to it.
+                    if reduceMotionEnabled {
+                        proxy.scrollTo(section.id, anchor: .top)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(section.id, anchor: .top) }
+                    }
                 } label: {
                     Image(systemName: section.category?.symbolName ?? "clock")
                         .font(.system(size: 14))
@@ -376,6 +386,7 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
     private var fadeGeneration: UInt64 = 0
 
     internal var panelForTesting: EmojiPickerPanel? { panel }
+    internal var hasPendingTimersForTesting: Bool { openTask != nil || closeTask != nil }
 
     var shouldRestoreTextFocusOnClose: Bool {
         state.mode == .pinned || panel?.isKeyWindow == true
@@ -473,9 +484,12 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             break
         case let .scheduleOpen(delay):
             openTask?.cancel()
+            let scheduledRoom = composer.roomID
             openTask = Task { @MainActor [weak self, weak composer] in
                 try? await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled, let self, let composer else { return }
+                // A chat switch in the meantime cancels the open: it must not open over the next chat.
+                guard !Task.isCancelled, let self, let composer, composer.roomID == scheduledRoom else { return }
+                self.openTask = nil
                 let canOpen = !composer.isLocked && composer.roomID != nil
                 guard self.state.openDelayFired(canOpen: canOpen) else { return }
                 self.isIconAccented = self.state.isIconAccented
@@ -497,6 +511,7 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             closeTask = Task { @MainActor [weak self, weak composer] in
                 try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled, let self, let composer else { return }
+                self.closeTask = nil
                 guard self.state.closeDelayFired() else { return }
                 self.isIconAccented = self.state.isIconAccented
                 composer.isEmojiPickerPresented = false
@@ -593,7 +608,14 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             }
         )
         .environment(\.colorScheme, isDark ? .dark : .light)
-        panel.contentView = NSHostingView(rootView: root)
+        // The hosting view is made once per opening and only given a new root after that. Pinning a hover-opened
+        // picker (a click, typing in the search box) must not rebuild it: the search text and the scroll position
+        // are the person's, and a rebuilt view would lose both.
+        if let hosting = panel.contentView as? NSHostingView<AnyView> {
+            hosting.rootView = AnyView(root)
+        } else {
+            panel.contentView = NSHostingView(rootView: AnyView(root))
+        }
     }
 
     private func hidePanel(reduceMotion: Bool) {
@@ -618,6 +640,12 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
                 self.detachAndOrderOutPanel()
             }
         })
+        // A window that is not drawing (hidden, or off screen) never runs the fade's completion: the panel must still go.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(CourierTooltipMotion.fadeDuration + 0.1))
+            guard let self, self.fadeGeneration == gen else { return }
+            self.detachAndOrderOutPanel()
+        }
     }
 
     private func ensurePanel() -> EmojiPickerPanel {
@@ -664,6 +692,8 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             }
             panel.orderOut(nil)
             panel.alphaValue = 1
+            // The next opening starts fresh: empty search, top of the list.
+            panel.contentView = nil
         }
         detachWindowObservers()
         hostWindow = nil

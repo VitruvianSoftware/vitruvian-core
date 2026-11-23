@@ -1801,9 +1801,14 @@ public final class ComposerModel: ObservableObject {
 
     // MARK: - Sending
 
-    /// There is something to send: some text that is not only spaces, a file, or a staged GIF.
+    /// Pressing Send would do something: it agrees with `submit()`, which the Send button, Return and the shift-drop
+    /// all go through. Needs a chat and a sender, and the composer neither locked nor busy scheduling. Writing a new
+    /// message, that is some text that is not only spaces, a file, or a staged GIF. Editing, only the text counts
+    /// (an edit's files and GIF are never sent), and an empty edit is refused, so Send is not ready for it.
     public var canSend: Bool {
-        roomID != nil && sender != nil && (!trimmedText.isEmpty || !attachments.isEmpty || pendingGIF != nil)
+        guard roomID != nil, sender != nil, !isLocked, !isScheduling else { return false }
+        if isEditing { return !trimmedText.isEmpty }
+        return !trimmedText.isEmpty || !attachments.isEmpty || pendingGIF != nil
     }
 
     /// There is text to send later, and nothing else: files, GIFs, and edits can't be scheduled.
