@@ -127,6 +127,17 @@ package enum ScreenshotCapturePolicy {
         }
     }
 
+    /// A display crop is safe only when that display contains the whole window
+    /// and no other display draws part of it. A shared edge contains no pixels.
+    package static func displayCoveringWindow<Display>(_ bounds: CGRect, in displays: [Display],
+                                                       frame: KeyPath<Display, CGRect>) -> Display? {
+        guard !bounds.isEmpty else { return nil }
+        let hits = displays.filter { !bounds.intersection($0[keyPath: frame]).isEmpty }
+        guard hits.count == 1, let display = hits.first,
+              display[keyPath: frame].contains(bounds) else { return nil }
+        return display
+    }
+
     /// What a sheet, alert or modal dialog stacked on the clicked window adds
     /// to its capture (issue #1098).
     ///
@@ -263,16 +274,5 @@ package enum ScreenshotCapturePolicy {
         Set(candidateWindowIDs.filter { id in
             subroles[id].map { !standardWindowSubroles.contains($0) } ?? true
         })
-    }
-
-    /// The one display a composited capture of `bounds` is cropped from: the
-    /// index of the only display frame it touches. A window straddling two
-    /// displays has no single display to crop from, while one hanging off a
-    /// lone display's edge still does, since the crop clamps the part that is
-    /// on screen. `nil` leaves the single-window routes to answer.
-    package static func attachedCaptureDisplayIndex(displayFrames: [CGRect],
-                                                    bounds: CGRect) -> Int? {
-        let hits = displayFrames.indices.filter { displayFrames[$0].intersects(bounds) }
-        return hits.count == 1 ? hits[0] : nil
     }
 }

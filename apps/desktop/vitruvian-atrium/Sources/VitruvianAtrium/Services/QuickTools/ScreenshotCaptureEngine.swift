@@ -183,32 +183,46 @@ package enum ScreenshotCaptureEngine {
     /// stacked on the window is drawn at the scale its layers were captured
     /// at, which on mixed displays can differ from the one asked for.
     package static func captureWindow(_ windowID: CGWindowID,
-                                      scale: CGFloat) async -> (image: CGImage, scale: CGFloat)? {
+                                      scale: CGFloat,
+                                      preferComposited: Bool = false) async -> (image: CGImage, scale: CGFloat)? {
         // A sheet or dialog the app stacked on the window is a window of its
         // own, and neither single-window route draws it (issue #1098). The
         // window list answers this without waiting on shareable content, so
         // the ordinary capture keeps the faster route.
         let onScreen = onScreenWindows()
-        if let target = onScreen.first(where: { $0.id == windowID }),
-           let plan = ScreenshotCapturePolicy.attachedCapturePlan(
-               target: target, frontToBack: onScreen,
-               accessibilityGranted: Permissions.accessibilityGranted,
-               confirmedIDs: { geometricPlan in
-                   accessibilityAttachedWindowIDs(
-                       targetWindowID: target.id,
-                       ownerPID: target.ownerPID,
-                       candidateWindowIDs: Array(geometricPlan.windowIDs.dropFirst()))
-               }) {
-            if let composited = await captureAttached(plan) {
+        if let target = onScreen.first(where: { $0.id == windowID }) {
+            var plan = ScreenshotCapturePolicy.attachedCapturePlan(
+                target: target, frontToBack: onScreen,
+                accessibilityGranted: Permissions.accessibilityGranted,
+                confirmedIDs: { geometricPlan in
+                    accessibilityAttachedWindowIDs(
+                        targetWindowID: target.id,
+                        ownerPID: target.ownerPID,
+                        candidateWindowIDs: Array(geometricPlan.windowIDs.dropFirst()))
+                })
+            // A filtered display capture includes the window's composited
+            // video layers without exposing pixels belonging to other apps.
+            if preferComposited && plan == nil {
+                plan = .init(windowIDs: [windowID], bounds: target.frame)
+            }
+            if let plan,
+               let composited = await captureAttached(plan) {
                 return composited
             }
             // A window spanning two displays has no single display image to
             // crop from; draw each window's own buffer at its place instead
             // of dropping the dialog on it.
-            if let composited = await composeAttached(plan, frames: Dictionary(
-                onScreen.map { ($0.id, $0.frame) }, uniquingKeysWith: { first, _ in first })) {
+            if let plan, plan.windowIDs.count > 1,
+               let composited = await composeAttached(plan, frames: Dictionary(
+                   onScreen.map { ($0.id, $0.frame) }, uniquingKeysWith: { first, _ in first })) {
                 return composited
             }
+        }
+        // The frozen chooser promised the whole isolated window. A display
+        // seam or an offscreen portion must never turn into a cropped preview.
+        if preferComposited {
+            return await captureIndependentWindow(windowID, scale: scale, requireFullFrame: true)
+                .map { ($0, scale) }
         }
         var clippedFallback: CGImage?
         let capturedImage = await WindowPreviewProvider.captureViaWindowServer(windowID)
@@ -228,7 +242,8 @@ package enum ScreenshotCaptureEngine {
 
     /// The window drawn on its own by ScreenCaptureKit, whole wherever it
     /// sits. Watch reads a window through this as well, in its capture turn.
-    package static func captureIndependentWindow(_ windowID: CGWindowID, scale: CGFloat) async -> CGImage? {
+    static func captureIndependentWindow(_ windowID: CGWindowID, scale: CGFloat,
+                                         requireFullFrame: Bool = false) async -> CGImage? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true),
             let window = content.windows.first(where: { $0.windowID == windowID })
@@ -241,10 +256,16 @@ package enum ScreenshotCaptureEngine {
         // stretch the result to the size asked for. The recorder already asks
         // for the best one; this is the only window stream here.
         configuration.captureResolution = .best
+        if requireFullFrame { configuration.ignoreGlobalClipSingleWindow = true }
         configuration.showsCursor = false
         configuration.colorSpaceName = CGColorSpace.sRGB
         let filter = SCContentFilter(desktopIndependentWindow: window)
-        return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter,
+                                                                      configuration: configuration),
+              !requireFullFrame || ScreenshotCapturePolicy.layerCoversFrame(
+                imageWidth: image.width, imageHeight: image.height, frame: window.frame, scale: scale)
+        else { return nil }
+        return image
     }
 
     /// On-screen windows front to back, as the attached-window decision needs
@@ -341,14 +362,11 @@ package enum ScreenshotCaptureEngine {
         let windows = plan.windowIDs.compactMap { id in
             content.windows.first { $0.windowID == id }
         }
-        // A window straddling two displays has no single display to crop from,
-        // while one hanging off a lone display's edge still does: the crop
-        // clamps the part that is on screen.
-        let display = ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
-            displayFrames: content.displays.map(\.frame), bounds: plan.bounds)
-            .map { content.displays[$0] }
+        // If any of the target is missing from this display, fall back to
+        // the complete window buffers. A clipped still cannot stand in.
         guard windows.count == plan.windowIDs.count,
-              let display,
+              let display = ScreenshotCapturePolicy.displayCoveringWindow(
+                plan.bounds, in: content.displays, frame: \.frame),
               let screen = NSScreen.screens.first(where: { $0.displayID == display.displayID }),
               let mainScreen = NSScreen.screens.first
         else { return nil }
