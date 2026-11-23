@@ -28,25 +28,32 @@
 # replica (the chart's own, with Recreate): the relay holds each computer's
 # connection and each sign-in session in memory.
 image:
-  digest: "7462dad5fdb34dac0580916ca444e2dbeddbe20f@sha256:4958579e274c68bd9d8ae78a7bd768e2b11557466d8288cabf098587d47b425c"
+  digest: "30868473b5bc18e5b22121f9a0518d1499968479@sha256:8b3ddcb6609b250c21fa2024fff64f1d4966b3bd556a29e0c4ac5e69cfa2649c"
 
 hostname: relay.vitruviansoftware.dev
 
 # From the zitadel-apps-relay stack's outputs (zitadel-apps-relay-apply run).
 oidc:
   projectId: "398912441632687930"
-  # claudeV2ClientId, geminiV2ClientId; add chatgptV2ClientId later
-  mcpClientIds: "400571151425734985,400571151492842651"
+  # claudeV2ClientId, geminiV2ClientId, appsClientId; add chatgptV2ClientId later
+  mcpClientIds: "400571151425734985,400571151492842651,400830462458659920"
   # connectorV2ClientId
   connectorClientId: "400571151425800521"
   # dashboardClientId
   dashboardClientId: "400571151492909385"
+  # appsClientId: the sign-in for apps that register themselves (Gemini)
+  appsClientId: "400830462458659920"
   requiredRole: "relay-user"
 
 # What the dashboard calls each AI app.
 mcpClientLabels:
   Claude: "400571151425734985"
   Gemini: "400571151492842651"
+  "Gemini (app sign-in)": "400830462458659920"
+
+# Apps that register themselves connect at /mcp/app/<device> with only the URL.
+appSignin:
+  enabled: true
 
 # The CloudNativePG cluster relay-db (gitops/argocd/platform/relay/).
 database:
