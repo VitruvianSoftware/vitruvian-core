@@ -27,7 +27,10 @@ use crate::http::tests::{app_harness, harness, Harness, Reply, ALICE, BOB, PUBLI
 
 const ID: &str = "089fb14b828289a2178722b6";
 const OTHER_ID: &str = "119fb14b828289a2178722b6";
-const JSON_CT: (&str, &str) = ("content-type", "application/json");
+
+fn json_ct() -> (&'static str, String) {
+    ("content-type", "application/json".to_string())
+}
 
 fn six(id: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -57,7 +60,7 @@ fn gemini_body() -> Value {
 }
 
 async fn register(h: &Harness, ip: Option<&str>, body: &str) -> Reply {
-    let mut headers = vec![(JSON_CT.0, JSON_CT.1.to_string())];
+    let mut headers = vec![json_ct()];
     if let Some(ip) = ip {
         headers.push(("cf-connecting-ip", ip.to_string()));
     }
@@ -127,9 +130,7 @@ async fn as_metadata_lists_register_authorize_token_s256_and_client_secret_post(
 #[tokio::test]
 async fn app_url_401_points_at_app_metadata() {
     let h = app_harness().await;
-    let r = h
-        .send("POST", "/mcp/app/dev-1", &[JSON_CT_OWNED()], "{}")
-        .await;
+    let r = h.send("POST", "/mcp/app/dev-1", &[json_ct()], "{}").await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     let challenge = r.header("www-authenticate").expect("a challenge");
     assert!(
@@ -139,19 +140,12 @@ async fn app_url_401_points_at_app_metadata() {
         "{challenge}"
     );
     // The device URL is unchanged: it still points at its own document.
-    let d = h
-        .send("POST", "/mcp/d/dev-1", &[JSON_CT_OWNED()], "{}")
-        .await;
+    let d = h.send("POST", "/mcp/d/dev-1", &[json_ct()], "{}").await;
     let challenge = d.header("www-authenticate").unwrap();
     assert!(
         challenge.contains("/.well-known/oauth-protected-resource/mcp/d/dev-1\""),
         "{challenge}"
     );
-}
-
-#[allow(non_snake_case)]
-fn JSON_CT_OWNED() -> (&'static str, String) {
-    (JSON_CT.0, JSON_CT.1.to_string())
 }
 
 #[tokio::test]
@@ -270,16 +264,66 @@ async fn register_is_rate_limited_per_ip() {
     }
     let v6 = register(&h, Some("2001:db8:1:2:ffff::1"), &body).await;
     assert_eq!(v6.status, StatusCode::TOO_MANY_REQUESTS);
-    // No usable address (or a made-up one) all land in one shared bucket.
-    for junk in [None, Some("not-an-ip"), Some("")] {
-        let _ = register(&h, junk, &body).await;
+    // A missing header, a made-up value and an empty one share one bucket:
+    // ten requests in any mix get through and the 11th is the first refused.
+    let junk = [None, Some("not-an-ip"), Some("")];
+    for i in 1..=10 {
+        let r = register(&h, junk[i % 3], &body).await;
+        assert_eq!(r.status, StatusCode::CREATED, "unknown call {i}");
     }
-    let mut refused_unknown = false;
-    for _ in 0..10 {
-        let r = register(&h, None, &body).await;
-        refused_unknown |= r.status == StatusCode::TOO_MANY_REQUESTS;
+    for (n, form) in junk.iter().enumerate() {
+        let r = register(&h, *form, &body).await;
+        assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS, "unknown form {n}");
     }
-    assert!(refused_unknown, "the unknown bucket runs out");
+    // An IPv4-mapped IPv6 address shares the plain IPv4 address's bucket.
+    for i in 1..=10 {
+        let ip = if i % 2 == 0 {
+            "192.0.2.7"
+        } else {
+            "::ffff:192.0.2.7"
+        };
+        let r = register(&h, Some(ip), &body).await;
+        assert_eq!(r.status, StatusCode::CREATED, "mapped call {i}");
+    }
+    for ip in ["192.0.2.7", "::ffff:192.0.2.7"] {
+        let r = register(&h, Some(ip), &body).await;
+        assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS, "{ip}");
+    }
+}
+
+#[tokio::test]
+async fn register_always_answers_client_secret_post() {
+    let h = app_harness().await;
+    for (n, method) in [
+        None,
+        Some("client_secret_post"),
+        Some("client_secret_basic"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut body = gemini_body();
+        match method {
+            Some(m) => body["token_endpoint_auth_method"] = json!(m),
+            None => {
+                body.as_object_mut()
+                    .unwrap()
+                    .remove("token_endpoint_auth_method");
+            }
+        }
+        let r = register(
+            &h,
+            Some(&format!("203.0.113.{}", 40 + n)),
+            &body.to_string(),
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::CREATED, "{method:?}: {}", r.body);
+        assert_eq!(
+            r.json()["token_endpoint_auth_method"],
+            "client_secret_post",
+            "{method:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -297,7 +341,7 @@ async fn feature_off_every_new_path_is_404() {
         ("POST", "/oauth/consent"),
         ("POST", "/oauth/token"),
     ] {
-        let r = h.send(method, path, &[JSON_CT_OWNED()], &body).await;
+        let r = h.send(method, path, &[json_ct()], &body).await;
         assert_eq!(r.status, StatusCode::NOT_FOUND, "{method} {path}");
         assert_eq!(r.body, "not found", "{method} {path}");
     }

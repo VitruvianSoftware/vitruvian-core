@@ -208,16 +208,19 @@ async fn register(app: &App, req: Request<Incoming>) -> Response<Body> {
     };
     let grants = allowed_list(doc.get("grant_types"), &GRANTS[..1], &GRANTS);
     let responses = allowed_list(doc.get("response_types"), &["code"], &["code"]);
-    let method = match doc.get("token_endpoint_auth_method") {
-        None => Some("client_secret_post"),
-        Some(v) => v.as_str().filter(|m| AUTH_METHODS.contains(m)),
+    // Either allowed method is accepted, and the answer is always
+    // `client_secret_post` (RFC 7591 lets the server choose; the token
+    // endpoint takes both).
+    let method_ok = match doc.get("token_endpoint_auth_method") {
+        None => true,
+        Some(v) => v.as_str().is_some_and(|m| AUTH_METHODS.contains(&m)),
     };
     let name = match doc.get("client_name") {
         None => None,
         Some(Value::String(s)) => Some(s.clone()),
         Some(_) => return error("invalid_client_metadata"),
     };
-    let (Some(grants), Some(responses), Some(method)) = (grants, responses, method) else {
+    let (Some(grants), Some(responses), true) = (grants, responses, method_ok) else {
         return error("invalid_client_metadata");
     };
     let (client_id, client_secret) = signin.keys.issue_client(&id);
@@ -233,7 +236,7 @@ async fn register(app: &App, req: Request<Incoming>) -> Response<Body> {
         "redirect_uris": uris,
         "grant_types": grants,
         "response_types": responses,
-        "token_endpoint_auth_method": method,
+        "token_endpoint_auth_method": "client_secret_post",
     });
     if let Some(name) = name {
         out["client_name"] = json!(name);

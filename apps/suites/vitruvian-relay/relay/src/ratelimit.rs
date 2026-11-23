@@ -58,7 +58,10 @@ pub const RATE_LIMITED_OUTCOME: &str = "rate_limited";
 /// Most people tracked before the idle ones are dropped.
 const PRUNE_ABOVE: usize = 1024;
 
-/// Most keys tracked at once, however many are sent.
+/// Most keys tracked at once, however many are sent. The cap applies to every
+/// limiter, including the per-person MCP one. A full map refuses only new
+/// keys, and only until idle buckets refill and are dropped; keys already
+/// tracked keep working.
 const MAX_TRACKED: usize = 10_000;
 
 /// A refused call: how long until the next one would be let through.
