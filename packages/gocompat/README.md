@@ -2,17 +2,22 @@
 
 ## What it gives you
 
-- `goexec` reproduces Go's `os/exec` and `path/filepath.Clean` behaviour for Rust ports of Go tools: `exec.LookPath`'s `PATH` walk (including `ErrDot` refusal of relative hits), launching processes with `execve(2)` without Rust's `execvp` `/bin/sh` fallback, and Go's exact `*exec.Error`, `*fs.PathError`, and syscall error text.
-- `gostd` provides the shared Go standard-library helpers used across ported tools: `decode_rune` (`utf8.DecodeRune` returning `(Option<char>, usize)` with per-byte invalid-sequence handling), Unix `clean` and `join` (`filepath.Clean`/`Join`), `errno_text` (`syscall.Errno.Error()`), and `path_error` (`*os.PathError`). When an error message contains `" (os error "` more than once, `errno_text` strips from the last occurrence (`rfind`), matching `delivery/gen` and `delivery/orchestrate` rather than `actionpins`'s earlier first-match (`find`) behaviour.
-- `unicode` provides Go 1.26.6's `unicode.ToUpper` single-rune uppercase mapping (`TO_UPPER`, `to_upper`), where one rune always maps to one rune.
+Go-compatible Rust helpers for tools ported from Go, split into two crates:
+
+- `vitruvian_gocompat` (`//packages/gocompat:vitruvian_gocompat`): standard-library-only Go helpers:
+  - `goexec` reproduces Go's `os/exec` and `path/filepath.Clean` behaviour for Rust ports of Go tools: `exec.LookPath`'s `PATH` walk (including `ErrDot` refusal of relative hits), launching processes with `execve(2)` without Rust's `execvp` `/bin/sh` fallback, and Go's exact `*exec.Error`, `*fs.PathError`, and syscall error text.
+  - `gostd` provides the shared Go standard-library helpers used across ported tools: `decode_rune` (`utf8.DecodeRune` returning `(Option<char>, usize)` with per-byte invalid-sequence handling), Unix `clean` and `join` (`filepath.Clean`/`Join`), `errno_text` (`syscall.Errno.Error()`), and `path_error` (`*os.PathError`). When an error message contains `" (os error "` more than once, `errno_text` strips from the last occurrence (`rfind`), matching `delivery/gen` and `delivery/orchestrate` rather than `actionpins`'s earlier first-match (`find`) behaviour.
+  - `unicode` provides Go 1.26.6's `unicode.ToUpper` single-rune uppercase mapping (`TO_UPPER`, `to_upper`), where one rune always maps to one rune.
+- [`vitruvian_gojson`](./gojson/README.md) (`//packages/gocompat/gojson:vitruvian_gojson`): `serde_json`-backed Go `encoding/json` compatibility — `GoFormatter` and `IndentFormatter` (`<`, `>`, `&`, `U+2028`, `U+2029` escaping, Go `float32`/`float64` formatting, `MarshalIndent` prefixes/indents, invalid UTF-8 `\ufffd` encoding), Go's scanner (`check_valid`, streaming `value_len`), iterative `parse`, and `Dec` struct decoding (exact-first then `unicode.SimpleFold` field matching, backing-array slice reuse on duplicate keys, and Go's exact `json: cannot unmarshal ...` errors).
 
 ## When to use it
 
-Use `vitruvian_gocompat` in Rust ports of Go CLI or automation tools that must resolve binaries, enforce `ErrDot`, clean/join Unix paths, decode UTF-8 runes byte-by-byte like Go, map rune case like `unicode.ToUpper`, or emit `os/exec` and syscall error messages byte-for-byte identically to the Go program they replaced.
+- Pick `vitruvian_gocompat` in Rust ports of Go CLI or automation tools that must resolve binaries, enforce `ErrDot`, clean/join Unix paths, decode UTF-8 runes byte-by-byte like Go, map rune case like `unicode.ToUpper`, or emit `os/exec` and syscall error messages byte-for-byte identically to the Go program they replaced, without linking third-party crates.
+- Pick `vitruvian_gojson` when a Bazel-built Rust tool needs Go `encoding/json` marshaling, scanner syntax errors, or struct unmarshaling rules.
 
 ## When not to use it
 
-Do not use this package in new Rust code that does not require Go standard-library parity; use `std::process::Command`, `std::path::Path`, `std::str::from_utf8`, and `char::to_uppercase` directly instead.
+Do not use this package in new Rust code that does not require Go standard-library parity; use `std::process::Command`, `std::path::Path`, `std::str::from_utf8`, `char::to_uppercase`, and `serde_json` directly instead.
 
 ## Example
 
@@ -42,6 +47,8 @@ let out_path = join(&[&dir, "github_output"]);
 std::fs::write(&out_path, data).map_err(|e| path_error("write", &out_path, &e))?;
 ```
 
+See also the [vitruvian-gojson example](./gojson/README.md#example).
+
 ## Depend on it
 
 Add `//packages/gocompat:vitruvian_gocompat` to your target's `deps` in `BUILD`, and import or re-export the modules:
@@ -50,7 +57,9 @@ Add `//packages/gocompat:vitruvian_gocompat` to your target's `deps` in `BUILD`,
 pub use vitruvian_gocompat::{goexec, gostd, unicode};
 ```
 
+For Go-compatible JSON, depend on `//packages/gocompat/gojson:vitruvian_gojson`.
+
 ## Constraints
 
-- Rust standard library only (`std` only, zero third-party crates), so any tool can link it regardless of crate hub.
-- Unix-only crate: `goexec` unconditionally uses `std::os::unix` (`faccessat`, `execve`), and `gostd`'s `clean` and `join` depend on `goexec::clean`.
+- `vitruvian_gocompat`: Rust standard library only (`std` only, zero third-party crates), so any tool can link it regardless of crate hub. Unix-only crate: `goexec` unconditionally uses `std::os::unix` (`faccessat`, `execve`), and `gostd`'s `clean` and `join` depend on `goexec::clean`.
+- `vitruvian_gojson`: depends on `//packages/gocompat:vitruvian_gocompat`, `@crates//:serde`, and `@crates//:serde_json`, and is built through Bazel only.

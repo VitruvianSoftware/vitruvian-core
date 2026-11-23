@@ -31,8 +31,7 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//tools/pipeline:__subpackages__"],
     deps = [
-        "@crates//:serde",
-        "@crates//:serde_json",
+        "//packages/gocompat/gojson:vitruvian_gojson",
     ],
 )
 
