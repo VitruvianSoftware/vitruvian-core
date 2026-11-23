@@ -354,12 +354,14 @@ sh_test(
     env = {
         "EXPECT_FAILURE_BINARY": "$(rootpath :isolation_canary_itest_bin)",
         "EXPECT_FAILURE_PREFIX": "isolation::",
-        # The tests that look at someone else's computer.
+        # The tests that look at someone else's computer (the last one through
+        # the relay's own app sign-in).
         "EXPECT_FAILURE_REQUIRED": " ".join([
             "isolation::mcp_initialize_tools_list_and_call_on_bobs_device",
             "isolation::dashboard_device_page_rename_remove_for_bobs_device",
             "isolation::hello_with_bobs_device_id",
             "isolation::check_request_on_bobs_device_endpoint",
+            "isolation::gemini_flow_reaches_only_own_computer",
         ]),
     },
     tags = ["manual"],

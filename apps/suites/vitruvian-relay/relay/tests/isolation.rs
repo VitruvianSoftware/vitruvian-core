@@ -52,8 +52,8 @@ mod isolation {
 
     use crate::pg_support::{fresh_database, Database};
     use crate::relay_support::{
-        b64, call_body, ed25519, hello, initialize_body, send, start_relay_with, tool, FakeDevice,
-        Relay, Reply, ALICE, BOB, PUBLIC_URL, WAIT,
+        b64, b64url, call_body, ed25519, hello, initialize_body, post, send, start_relay_with,
+        tool, FakeDevice, Relay, Reply, ALICE, BOB, ISSUER, PUBLIC_URL, WAIT,
     };
 
     /// What a connector is told about a computer that is not its person's.
@@ -997,5 +997,433 @@ mod isolation {
         );
         assert_eq!(w.store.devices_of(BOB).await.unwrap().len(), 2);
         assert_bobs_laptop_untouched(&w).await;
+    }
+
+    // ------------------------------------------- through the app sign-in path
+    //
+    // Gemini signs itself up with the relay, sends the person to sign in and
+    // allow it, and redeems a code for a token. Every step here is a real HTTP
+    // request to the started relay; the only stand-in is the identity service
+    // (its token endpoint, and the key set the relay checks tokens against).
+
+    /// The id Google puts in the callback it registers (a made-up one).
+    const GEMINI_ID: &str = "089fb14b828289a2178722b6";
+    const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    const APP_STATE: &str = "gemini-state-123";
+
+    fn gemini_callbacks() -> Vec<String> {
+        let mut out = Vec::new();
+        for host in [
+            "oauth-redirect",
+            "oauth-redirect-sandbox",
+            "oauth-redirect-test",
+        ] {
+            for kind in ["r", "a"] {
+                out.push(format!(
+                    "https://{host}.googleusercontent.com/{kind}/user_bound_custom-mcp-{GEMINI_ID}"
+                ));
+            }
+        }
+        out
+    }
+
+    /// The value of `key` in the query of `url`. Only for values that need no
+    /// decoding (the ones the relay makes: codes and states).
+    fn query_param(url: &str, key: &str) -> Option<String> {
+        url.split_once('?')?
+            .1
+            .split('&')
+            .find_map(|p| p.strip_prefix(&format!("{key}=")))
+            .map(String::from)
+    }
+
+    /// What registering gave the app.
+    struct GeminiApp {
+        client_id: String,
+        client_secret: String,
+        redirect_uri: String,
+    }
+
+    async fn register_gemini(relay: &Relay) -> GeminiApp {
+        let body = json!({
+            "client_name": "Google",
+            "redirect_uris": gemini_callbacks(),
+            "token_endpoint_auth_method": "client_secret_post",
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+        });
+        let r = send(
+            relay.addr,
+            "POST",
+            "/oauth/register",
+            &[
+                ("content-type", "application/json".to_string()),
+                ("cf-connecting-ip", "203.0.113.7".to_string()),
+            ],
+            &body.to_string(),
+        )
+        .await;
+        assert_eq!(r.status, 201, "{}", r.body);
+        let doc = r.json();
+        GeminiApp {
+            client_id: doc["client_id"].as_str().unwrap().to_string(),
+            client_secret: doc["client_secret"].as_str().unwrap().to_string(),
+            redirect_uri: doc["redirect_uris"][0].as_str().unwrap().to_string(),
+        }
+    }
+
+    /// A browser part-way through allowing an app: the cookie that ties its
+    /// sign-in to it, and the token the consent page's form carries.
+    struct AtConsent {
+        cookie: String,
+        csrf: String,
+    }
+
+    /// The first half of the person's part: Gemini sends them to
+    /// `/oauth/authorize` for `device`, they sign in at the identity service
+    /// (a stand-in that knows them as `sub`), and land on the consent page.
+    async fn reach_consent(relay: &Relay, app: &GeminiApp, sub: &str, device: &str) -> AtConsent {
+        let challenge =
+            b64url(ring::digest::digest(&ring::digest::SHA256, VERIFIER.as_bytes()).as_ref());
+        let query: Vec<String> = [
+            ("client_id", app.client_id.as_str()),
+            ("redirect_uri", app.redirect_uri.as_str()),
+            ("response_type", "code"),
+            ("code_challenge", challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("resource", &format!("{PUBLIC_URL}/mcp/app/{device}")),
+            ("state", APP_STATE),
+            ("scope", "mcp:tools"),
+        ]
+        .iter()
+        .map(|(k, v)| format!("{k}={}", form_encode(v)))
+        .collect();
+        let start = send(
+            relay.addr,
+            "GET",
+            &format!("/oauth/authorize?{}", query.join("&")),
+            &[("cf-connecting-ip", "203.0.113.8".to_string())],
+            "",
+        )
+        .await;
+        assert_eq!(start.status, 303, "{}", start.body);
+        let to_identity = start.header("location").unwrap();
+        assert!(to_identity.starts_with(ISSUER), "{to_identity}");
+        let state = query_param(&to_identity, "state").expect("state is sent");
+        let cookie = set_cookie_pair(&start, "vr_oauth").expect("the sign-in is tied to a browser");
+
+        relay.tokens.give_token(&relay.apps_token(sub));
+        let back = send(
+            relay.addr,
+            "GET",
+            &format!("/oauth/callback?code=the-code&state={state}"),
+            &[("cookie", cookie.clone())],
+            "",
+        )
+        .await;
+        assert_eq!(back.status, 303, "{}", back.body);
+        assert_eq!(back.header("location").as_deref(), Some("/oauth/consent"));
+        let page = send(
+            relay.addr,
+            "GET",
+            "/oauth/consent",
+            &[("cookie", cookie.clone())],
+            "",
+        )
+        .await;
+        assert_eq!(page.status, 200, "{}", page.body);
+        let csrf = page
+            .body
+            .split("name=\"csrf\" value=\"")
+            .nth(1)
+            .and_then(|a| a.split('"').next())
+            .expect("the page has a form with a token")
+            .to_string();
+        AtConsent { cookie, csrf }
+    }
+
+    /// Posts the consent form: `cookie` is the browser's, `csrf` the token it
+    /// carries.
+    async fn decide(relay: &Relay, cookie: Option<&str>, csrf: &str, decision: &str) -> Reply {
+        let mut headers = vec![
+            (
+                "content-type",
+                "application/x-www-form-urlencoded".to_string(),
+            ),
+            ("origin", PUBLIC_URL.to_string()),
+        ];
+        if let Some(c) = cookie {
+            headers.push(("cookie", c.to_string()));
+        }
+        send(
+            relay.addr,
+            "POST",
+            "/oauth/consent",
+            &headers,
+            &format!("decision={decision}&csrf={}", form_encode(csrf)),
+        )
+        .await
+    }
+
+    /// Allow, then trade the code for a token as Gemini does; the token.
+    async fn allow_and_redeem(relay: &Relay, app: &GeminiApp, browser: &AtConsent) -> String {
+        let r = decide(relay, Some(&browser.cookie), &browser.csrf, "allow").await;
+        assert_eq!(r.status, 303, "{}", r.body);
+        let to = r.header("location").unwrap();
+        assert!(to.starts_with(&app.redirect_uri), "{to}");
+        assert_eq!(query_param(&to, "state").as_deref(), Some(APP_STATE));
+        let code = query_param(&to, "code").expect("a code");
+        let form: Vec<String> = [
+            ("grant_type", "authorization_code"),
+            ("code", code.as_str()),
+            ("redirect_uri", app.redirect_uri.as_str()),
+            ("code_verifier", VERIFIER),
+            ("client_id", app.client_id.as_str()),
+            ("client_secret", app.client_secret.as_str()),
+        ]
+        .iter()
+        .map(|(k, v)| format!("{k}={}", form_encode(v)))
+        .collect();
+        let r = send(
+            relay.addr,
+            "POST",
+            "/oauth/token",
+            &[(
+                "content-type",
+                "application/x-www-form-urlencoded".to_string(),
+            )],
+            &form.join("&"),
+        )
+        .await;
+        assert_eq!(r.status, 200, "{}", r.body);
+        r.json()["access_token"]
+            .as_str()
+            .expect("a token")
+            .to_string()
+    }
+
+    /// `tools/call` on `path` with `token`, answered by `computer`.
+    async fn call_through(
+        relay: &Relay,
+        path: &str,
+        token: &str,
+        session: &str,
+        computer: &mut FakeDevice,
+        reply: &str,
+    ) -> Reply {
+        let (addr, path, token, session) = (
+            relay.addr,
+            path.to_string(),
+            token.to_string(),
+            session.to_string(),
+        );
+        let asked = tokio::spawn(async move {
+            post(
+                addr,
+                &path,
+                &token,
+                Some(&session),
+                call_body(7, "read_file", json!({"path": "/notes"})),
+            )
+            .await
+        });
+        let call = computer.next_call().await;
+        computer.reply(&call.call_id, reply);
+        asked.await.unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn gemini_flow_reaches_only_own_computer() {
+        let w = world().await;
+        let mut alices_computer = w
+            .relay
+            .connect(
+                ALICE,
+                &w.alice.laptop.id,
+                &w.alice.laptop.key,
+                vec![tool("read_file")],
+            )
+            .await;
+        let mut bobs_computer = w
+            .relay
+            .connect(
+                BOB,
+                &w.bob.laptop.id,
+                &w.bob.laptop.key,
+                vec![tool("read_file")],
+            )
+            .await;
+
+        // Alice connects Gemini to her laptop.
+        let gemini = register_gemini(&w.relay).await;
+        let consent = reach_consent(&w.relay, &gemini, ALICE, &w.alice.laptop.id).await;
+        let token = allow_and_redeem(&w.relay, &gemini, &consent).await;
+
+        // Her own computer works, end to end.
+        let own_path = format!("/mcp/app/{}", w.alice.laptop.id);
+        let r = post(w.relay.addr, &own_path, &token, None, initialize_body()).await;
+        assert_eq!(r.status, 200, "{}", r.body);
+        let session = r.session().expect("a session id");
+        let r = call_through(
+            &w.relay,
+            &own_path,
+            &token,
+            &session,
+            &mut alices_computer,
+            "alice's notes",
+        )
+        .await;
+        assert_eq!(text_of(&r), "alice's notes");
+
+        // Bob's computers answer her exactly as a computer that does not exist.
+        for theirs in [&w.bob.laptop.id, &w.bob.other.id] {
+            let nowhere = nobody();
+            let session = Some(session.as_str());
+            for (what, session, body) in [
+                ("initialize", None, initialize_body()),
+                (
+                    "tools/list",
+                    session,
+                    json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+                ),
+                (
+                    "tools/call",
+                    session,
+                    call_body(2, "read_file", json!({"path": "/bob/secret"})),
+                ),
+            ] {
+                let a = post(
+                    w.relay.addr,
+                    &format!("/mcp/app/{theirs}"),
+                    &token,
+                    session,
+                    body.clone(),
+                )
+                .await;
+                let b = post(
+                    w.relay.addr,
+                    &format!("/mcp/app/{nowhere}"),
+                    &token,
+                    session,
+                    body,
+                )
+                .await;
+                assert_same_as_missing(what, &a, theirs, &b, &nowhere);
+            }
+        }
+        assert!(
+            bobs_computer.gets_no_call(Duration::from_millis(300)).await,
+            "a call through Alice's Gemini token reached Bob's computer"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn claude_on_device_url_is_unchanged() {
+        let w = world().await;
+        let mut computer = w
+            .relay
+            .connect(
+                ALICE,
+                &w.alice.laptop.id,
+                &w.alice.laptop.key,
+                vec![tool("read_file")],
+            )
+            .await;
+
+        // The relay is an authorization server for Gemini; Claude does not
+        // notice. Its token still works on the device URL...
+        let session = w.relay.session(ALICE, &w.alice.laptop.id).await;
+        let r = call_through(
+            &w.relay,
+            &format!("/mcp/d/{}", w.alice.laptop.id),
+            &w.relay.mcp_token(ALICE),
+            &session,
+            &mut computer,
+            "alice's notes",
+        )
+        .await;
+        assert_eq!(text_of(&r), "alice's notes");
+
+        // ...and the URL still tells Claude to sign in at Zitadel.
+        let path = format!(
+            "/.well-known/oauth-protected-resource/mcp/d/{}",
+            w.alice.laptop.id
+        );
+        let prm = send(w.relay.addr, "GET", &path, &[], "").await;
+        assert_eq!(prm.status, 200, "{}", prm.body);
+        let doc = prm.json();
+        assert_eq!(
+            doc["resource"],
+            format!("{PUBLIC_URL}/mcp/d/{}", w.alice.laptop.id)
+        );
+        assert_eq!(doc["authorization_servers"], json!([ISSUER]));
+        let challenge = send(
+            w.relay.addr,
+            "POST",
+            &format!("/mcp/d/{}", w.alice.laptop.id),
+            &[
+                ("content-type", "application/json".to_string()),
+                ("accept", "application/json, text/event-stream".to_string()),
+            ],
+            &initialize_body().to_string(),
+        )
+        .await;
+        assert_eq!(challenge.status, 401, "{}", challenge.body);
+        let www = challenge.header("www-authenticate").expect("a challenge");
+        assert!(
+            www.contains(&format!("/mcp/d/{}", w.alice.laptop.id)) && !www.contains("/mcp/app/"),
+            "{www}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consent_from_another_browser_issues_nothing() {
+        let w = world().await;
+        let gemini = register_gemini(&w.relay).await;
+        // Alice's link, with her consent page open in her browser.
+        let alices = reach_consent(&w.relay, &gemini, ALICE, &w.alice.laptop.id).await;
+
+        // Someone else's browser has her page's token (say it was shown to
+        // them) but not her cookie: no cookie at all, a made-up one, and one
+        // from a sign-in they started themselves.
+        let theirs = reach_consent(&w.relay, &gemini, BOB, &w.bob.laptop.id).await;
+        let attempts = [
+            None,
+            Some("vr_oauth=made-up".to_string()),
+            Some(theirs.cookie.clone()),
+        ];
+        for cookie in attempts {
+            let r = decide(&w.relay, cookie.as_deref(), &alices.csrf, "allow").await;
+            assert!(
+                (400..500).contains(&r.status),
+                "{cookie:?}: {} {}",
+                r.status,
+                r.body
+            );
+            assert!(
+                r.header("location").is_none(),
+                "{cookie:?}: sent on to {:?}",
+                r.header("location")
+            );
+        }
+        // Nor does the page itself open without the cookie.
+        let page = send(w.relay.addr, "GET", "/oauth/consent", &[], "").await;
+        assert_ne!(page.status, 200);
+        assert!(!page.body.contains(&alices.csrf));
+
+        // Alice's own browser is untouched and can still finish: exactly one
+        // code, which her app can redeem, and not a second.
+        let token = allow_and_redeem(&w.relay, &gemini, &alices).await;
+        let own = post(
+            w.relay.addr,
+            &format!("/mcp/app/{}", w.alice.laptop.id),
+            &token,
+            None,
+            initialize_body(),
+        )
+        .await;
+        assert_eq!(own.status, 200, "{}", own.body);
+        let again = decide(&w.relay, Some(&alices.cookie), &alices.csrf, "allow").await;
+        assert!(again.header("location").is_none(), "{}", again.body);
     }
 }
