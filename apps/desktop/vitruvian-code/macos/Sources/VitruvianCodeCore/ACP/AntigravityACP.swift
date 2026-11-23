@@ -848,6 +848,7 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
     private let launchSpec: AgentProcessLaunchSpec
     private let modeProvider: ACPConnection.ModeProvider
     private let readRepair = AntigravityReadRepair()
+    private var isStarting = false
 
     public convenience init(
         spec: AgentConnectionSpec,
@@ -1039,15 +1040,27 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
     }
 
     public func start(_ request: AgentSessionRequest) async throws -> String {
+        guard inner.isConnected else {
+            throw ACPConnectionError.alreadyStopped
+        }
+        isStarting = true
+        defer { isStarting = false }
         let sessionID = try await inner.start(request)
+        guard inner.isConnected else {
+            throw ACPConnectionError.alreadyStopped
+        }
         let current = modeProvider()
         try await applySessionMode(approvalMode: current.mode, planSwitch: current.planSwitch)
         return sessionID
     }
 
+    public func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        try await applySessionMode(approvalMode: approvalMode, planSwitch: planSwitch)
+    }
+
     public func syncPlanMode(_ planSwitch: Bool) async throws {
         let current = modeProvider()
-        try await applySessionMode(approvalMode: current.mode, planSwitch: planSwitch)
+        try await syncMode(approvalMode: current.mode, planSwitch: planSwitch)
     }
 
     public func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {
@@ -1055,6 +1068,10 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
     }
 
     public func cancel() async {
+        if isStarting {
+            await inner.stop()
+            return
+        }
         await inner.cancel()
     }
 

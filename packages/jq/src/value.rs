@@ -466,7 +466,10 @@ impl fmt::Display for Number {
 
 /// A jq 1.8 JSON value, preserving object key insertion order (repeated keys keep
 /// their first position and take the last value).
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// `Drop`, `Clone`, `PartialEq`, and `Debug` are implemented iteratively so deep
+/// trees up to and beyond jq's 10,000-level nesting limit cannot overflow a
+/// 2 MiB thread stack in unoptimised builds.
 pub enum Value {
     Null,
     Bool(bool),
@@ -474,6 +477,195 @@ pub enum Value {
     String(String),
     Array(Vec<Value>),
     Object(Vec<(String, Value)>),
+}
+
+impl Drop for Value {
+    fn drop(&mut self) {
+        let mut stack = match self {
+            Value::Array(items) if !items.is_empty() => std::mem::take(items),
+            Value::Object(entries) if !entries.is_empty() => std::mem::take(entries)
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect(),
+            _ => return,
+        };
+        while let Some(mut v) = stack.pop() {
+            match &mut v {
+                Value::Array(items) if !items.is_empty() => {
+                    stack.extend(std::mem::take(items));
+                }
+                Value::Object(entries) if !entries.is_empty() => {
+                    stack.extend(std::mem::take(entries).into_iter().map(|(_, val)| val));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        enum Frame<'a> {
+            Array {
+                src: &'a [Value],
+                idx: usize,
+                out: Vec<Value>,
+            },
+            Object {
+                src: &'a [(String, Value)],
+                idx: usize,
+                out: Vec<(String, Value)>,
+            },
+        }
+
+        let mut stack: Vec<Frame<'_>> = Vec::new();
+        let mut cur: Option<&Value> = Some(self);
+        let mut ready: Option<Value> = None;
+
+        loop {
+            if let Some(node) = cur.take() {
+                match node {
+                    Value::Null => ready = Some(Value::Null),
+                    Value::Bool(b) => ready = Some(Value::Bool(*b)),
+                    Value::Number(n) => ready = Some(Value::Number(n.clone())),
+                    Value::String(s) => ready = Some(Value::String(s.clone())),
+                    Value::Array(items) if items.is_empty() => {
+                        ready = Some(Value::Array(Vec::new()));
+                    }
+                    Value::Array(items) => {
+                        stack.push(Frame::Array {
+                            src: items,
+                            idx: 0,
+                            out: Vec::with_capacity(items.len()),
+                        });
+                        cur = Some(&items[0]);
+                    }
+                    Value::Object(entries) if entries.is_empty() => {
+                        ready = Some(Value::Object(Vec::new()));
+                    }
+                    Value::Object(entries) => {
+                        stack.push(Frame::Object {
+                            src: entries,
+                            idx: 0,
+                            out: Vec::with_capacity(entries.len()),
+                        });
+                        cur = Some(&entries[0].1);
+                    }
+                }
+                continue;
+            }
+
+            let val = ready.take().expect("value ready when unwinding");
+            match stack.pop() {
+                None => return val,
+                Some(Frame::Array {
+                    src,
+                    mut idx,
+                    mut out,
+                }) => {
+                    out.push(val);
+                    idx += 1;
+                    if idx < src.len() {
+                        cur = Some(&src[idx]);
+                        stack.push(Frame::Array { src, idx, out });
+                    } else {
+                        ready = Some(Value::Array(out));
+                    }
+                }
+                Some(Frame::Object {
+                    src,
+                    mut idx,
+                    mut out,
+                }) => {
+                    out.push((src[idx].0.clone(), val));
+                    idx += 1;
+                    if idx < src.len() {
+                        cur = Some(&src[idx].1);
+                        stack.push(Frame::Object { src, idx, out });
+                    } else {
+                        ready = Some(Value::Object(out));
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        let mut stack = vec![(self, other)];
+        while let Some((a, b)) = stack.pop() {
+            match (a, b) {
+                (Value::Null, Value::Null) => {}
+                (Value::Bool(x), Value::Bool(y)) if x == y => {}
+                (Value::Number(x), Value::Number(y)) if x == y => {}
+                (Value::String(x), Value::String(y)) if x == y => {}
+                (Value::Array(xs), Value::Array(ys)) if xs.len() == ys.len() => {
+                    for (x, y) in xs.iter().zip(ys.iter()).rev() {
+                        stack.push((x, y));
+                    }
+                }
+                (Value::Object(xs), Value::Object(ys)) if xs.len() == ys.len() => {
+                    for ((kx, vx), (ky, vy)) in xs.iter().zip(ys.iter()).rev() {
+                        if kx != ky {
+                            return false;
+                        }
+                        stack.push((vx, vy));
+                    }
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+}
+
+impl Eq for Value {}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        enum Step<'a> {
+            Val(&'a Value),
+            Str(&'a str),
+            TupleKey(&'a str),
+        }
+        let mut stack = vec![Step::Val(self)];
+        while let Some(step) = stack.pop() {
+            match step {
+                Step::Str(s) => f.write_str(s)?,
+                Step::TupleKey(k) => write!(f, "({k:?}, ")?,
+                Step::Val(v) => match v {
+                    Value::Null => f.write_str("Null")?,
+                    Value::Bool(b) => write!(f, "Bool({b:?})")?,
+                    Value::Number(n) => write!(f, "Number({n:?})")?,
+                    Value::String(s) => write!(f, "String({s:?})")?,
+                    Value::Array(items) => {
+                        f.write_str("Array([")?;
+                        stack.push(Step::Str("])"));
+                        for (i, item) in items.iter().enumerate().rev() {
+                            stack.push(Step::Val(item));
+                            if i > 0 {
+                                stack.push(Step::Str(", "));
+                            }
+                        }
+                    }
+                    Value::Object(entries) => {
+                        f.write_str("Object([")?;
+                        stack.push(Step::Str("])"));
+                        for (i, (k, val)) in entries.iter().enumerate().rev() {
+                            stack.push(Step::Str(")"));
+                            stack.push(Step::Val(val));
+                            stack.push(Step::TupleKey(k));
+                            if i > 0 {
+                                stack.push(Step::Str(", "));
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Value {

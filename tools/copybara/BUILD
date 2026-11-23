@@ -4,8 +4,9 @@
 # Hand-written: the Rust targets below are not gazelle's to own.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/pytest:defs.bzl", "py_test")
 
 # The export version maps in copy.bara.sky rewrite in-tree references to
 # PUBLISHED versions for the standalone mirrors. They were hand-maintained,
@@ -62,6 +63,19 @@ exports_files(
         "//apps/web/mini-party:__pkg__",
         "//tools/registry-trust:__pkg__",
     ],
+)
+
+py_library(
+    name = "sdk_export_check_lib",
+    srcs = ["sdk_export_check.py"],
+    imports = ["."],
+)
+
+py_test(
+    name = "sdk_export_check_test",
+    size = "small",
+    srcs = ["sdk_export_check_test.py"],
+    deps = [":sdk_export_check_lib"],
 )
 
 # Assembles the exported vitruvian-sdk mirror tree from copy.bara.sky and runs

@@ -30,6 +30,7 @@ import WebKit
 @MainActor
 public struct VitruvianCodeAnnotatedDiffView: View {
     @ObservedObject private var reviewSession: VitruvianCodeDiffReviewSession
+    private let strings: VitruvianCodeChatStrings
     private let onSendBatch: (String) -> Void
     private let onRefresh: () -> Void
 
@@ -42,10 +43,12 @@ public struct VitruvianCodeAnnotatedDiffView: View {
 
     public init(
         reviewSession: VitruvianCodeDiffReviewSession,
+        strings: VitruvianCodeChatStrings = VitruvianCodeChatStrings(),
         onSendBatch: @escaping (String) -> Void,
         onRefresh: @escaping () -> Void = {}
     ) {
         self.reviewSession = reviewSession
+        self.strings = strings
         self.onSendBatch = onSendBatch
         self.onRefresh = onRefresh
     }
@@ -82,6 +85,18 @@ public struct VitruvianCodeAnnotatedDiffView: View {
             Text("\(reviewSession.files.count) files")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+
+            if reviewSession.source == .agentReported {
+                Text(strings.diffSourceLiveTurn)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(VitruvianCodeTheme.warmCoral)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(VitruvianCodeTheme.warmCoral.opacity(0.14))
+                    )
+            }
 
             let unresolvedCount = reviewSession.unresolvedAnnotations.count
             if unresolvedCount > 0 {

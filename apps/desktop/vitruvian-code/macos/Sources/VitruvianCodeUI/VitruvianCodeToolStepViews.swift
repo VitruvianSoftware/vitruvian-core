@@ -24,108 +24,19 @@
 
 
 import AppKit
+import Darwin
 import VitruvianCodeCore
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// A line diff between the text a tool replaced and the text it wrote, as the
-/// tool-step card draws it.
-public enum VitruvianCodeLineDiff {
-    public struct Line: Equatable, Sendable {
-        public enum Kind: Equatable, Sendable { case context, removed, added }
-        public let kind: Kind
-        public let text: String
-
-        public init(_ kind: Kind, _ text: String) {
-            self.kind = kind
-            self.text = text
-        }
-
-        /// The line as a unified diff writes it.
-        public var unified: String {
-            switch kind {
-            case .context: return "  " + text
-            case .removed: return "- " + text
-            case .added: return "+ " + text
-            }
-        }
-    }
-
-    /// Past this many lines on both sides the middle is not searched for
-    /// common lines; it is shown as removed and then added.
-    static let searchLimit = 400
-
-    /// The lines from `old` to `new`. A nil or empty `old` (a new file) is
-    /// every line added. Common leading and trailing lines are context; the
-    /// middle is matched line by line on its longest common subsequence.
-    public static func lines(old: String?, new: String?) -> [Line] {
-        let oldLines = split(old)
-        let newLines = split(new)
-        var prefix = 0
-        while prefix < oldLines.count, prefix < newLines.count, oldLines[prefix] == newLines[prefix] {
-            prefix += 1
-        }
-        var suffix = 0
-        while suffix < oldLines.count - prefix, suffix < newLines.count - prefix,
-            oldLines[oldLines.count - 1 - suffix] == newLines[newLines.count - 1 - suffix]
-        {
-            suffix += 1
-        }
-        let oldMiddle = Array(oldLines[prefix..<(oldLines.count - suffix)])
-        let newMiddle = Array(newLines[prefix..<(newLines.count - suffix)])
-
-        var result = oldLines[0..<prefix].map { Line(.context, $0) }
-        result += middle(oldMiddle, newMiddle)
-        result += oldLines[(oldLines.count - suffix)...].map { Line(.context, $0) }
-        return result
-    }
-
-    private static func split(_ text: String?) -> [String] {
-        guard let text, !text.isEmpty else { return [] }
-        var lines = text.components(separatedBy: "\n")
-        // A final newline ends the last line; it does not start another.
-        if lines.count > 1, lines.last == "" { lines.removeLast() }
-        return lines
-    }
-
-    private static func middle(_ old: [String], _ new: [String]) -> [Line] {
-        if old.isEmpty { return new.map { Line(.added, $0) } }
-        if new.isEmpty { return old.map { Line(.removed, $0) } }
-        guard old.count <= searchLimit, new.count <= searchLimit else {
-            return old.map { Line(.removed, $0) } + new.map { Line(.added, $0) }
-        }
-        // lengths[i][j]: the longest common subsequence of old[i...] and new[j...].
-        var lengths = Array(repeating: Array(repeating: 0, count: new.count + 1), count: old.count + 1)
-        for i in stride(from: old.count - 1, through: 0, by: -1) {
-            for j in stride(from: new.count - 1, through: 0, by: -1) {
-                lengths[i][j] = old[i] == new[j] ? lengths[i + 1][j + 1] + 1 : max(lengths[i + 1][j], lengths[i][j + 1])
-            }
-        }
-        var result: [Line] = []
-        var i = 0
-        var j = 0
-        while i < old.count, j < new.count {
-            if old[i] == new[j] {
-                result.append(Line(.context, old[i]))
-                i += 1
-                j += 1
-            } else if lengths[i + 1][j] >= lengths[i][j + 1] {
-                result.append(Line(.removed, old[i]))
-                i += 1
-            } else {
-                result.append(Line(.added, new[j]))
-                j += 1
-            }
-        }
-        result += old[i...].map { Line(.removed, $0) }
-        result += new[j...].map { Line(.added, $0) }
-        return result
-    }
-}
+public typealias VitruvianCodeLineDiff = VitruvianCodeCore.VitruvianCodeLineDiff
 
 /// The steps a reply took, each a row that opens into what the tool did.
 struct VitruvianCodeToolStepList: View {
     let steps: [VitruvianCodeToolStep]
     let strings: VitruvianCodeChatStrings
+    var workingDirectory: String? = nil
+    var openFileURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
     @State private var expanded: Set<String> = []
 
     var body: some View {
@@ -134,6 +45,8 @@ struct VitruvianCodeToolStepList: View {
                 VitruvianCodeToolStepRow(
                     step: step,
                     strings: strings,
+                    workingDirectory: workingDirectory,
+                    openFileURL: openFileURL,
                     isExpanded: expanded.contains(step.id),
                     toggle: {
                         withAnimation(.easeInOut(duration: 0.15)) {
@@ -155,6 +68,8 @@ struct VitruvianCodeToolStepList: View {
 struct VitruvianCodeToolStepRow: View {
     let step: VitruvianCodeToolStep
     let strings: VitruvianCodeChatStrings
+    var workingDirectory: String? = nil
+    var openFileURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
     let isExpanded: Bool
     let toggle: () -> Void
     @State private var hovering = false
@@ -169,6 +84,11 @@ struct VitruvianCodeToolStepRow: View {
         case .subagent: return "sparkles"
         case .other: return "gearshape"
         }
+    }
+
+    static func statusText(for step: VitruvianCodeToolStep, strings: VitruvianCodeChatStrings) -> String {
+        if !step.isFinished { return strings.toolStatusRunning }
+        return step.isError ? strings.toolStatusFailed : strings.toolStatusDone
     }
 
     var body: some View {
@@ -206,9 +126,14 @@ struct VitruvianCodeToolStepRow: View {
             .help(step.detail ?? step.title)
 
             if isExpanded && step.hasDetail {
-                VitruvianCodeToolStepDetail(step: step, strings: strings)
-                    .padding(.leading, 22)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                VitruvianCodeToolStepDetail(
+                    step: step,
+                    strings: strings,
+                    workingDirectory: workingDirectory,
+                    openFileURL: openFileURL
+                )
+                .padding(.leading, 22)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -216,25 +141,98 @@ struct VitruvianCodeToolStepRow: View {
     @ViewBuilder
     private var status: some View {
         if !step.isFinished {
-            ProgressView()
-                .controlSize(.mini)
-                .frame(width: 10, height: 10)
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 10, height: 10)
+                Text(strings.toolStatusRunning)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(strings.toolStatusRunning)
         } else if step.isError {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 9))
-                .foregroundStyle(Color.red)
+            HStack(spacing: 3) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.red)
+                Text(strings.toolStatusFailed)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.red)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(strings.toolStatusFailed)
         } else {
             Image(systemName: "checkmark")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(Color.green.opacity(0.85))
+                .accessibilityLabel(strings.toolStatusDone)
         }
     }
 }
 
-/// What a step did: the diff of an edit or a write, or a command's output.
+/// What a step did: all file locations, all diffs of edits/writes, and any output.
 struct VitruvianCodeToolStepDetail: View {
     let step: VitruvianCodeToolStep
     let strings: VitruvianCodeChatStrings
+    var workingDirectory: String? = nil
+    var openFileURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
+
+    enum LocationOpenAction: Equatable, Sendable {
+        case openAsText(URL)
+        case reveal(URL)
+        case none
+    }
+
+    /// Pure decision for opening an agent-reported tool-card location safely:
+    /// resolves symlinks first; opens regular text-conforming files (including scripts
+    /// like `.command`) in the default plain-text app so they are never executed;
+    /// reveals bundles/directories/binaries in Finder; returns `.none` if missing.
+    static func locationOpenAction(for url: URL) -> LocationOpenAction {
+        guard url.isFileURL else { return .none }
+        let cleanPath = url.path
+        guard !cleanPath.isEmpty,
+              let cResolved = Darwin.realpath(cleanPath, nil) else {
+            return .none
+        }
+        defer { free(cResolved) }
+        let resolvedURL = URL(fileURLWithPath: String(cString: cResolved))
+        guard let values = try? resolvedURL.resourceValues(
+            forKeys: [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .contentTypeKey]
+        ) else {
+            return .none
+        }
+        let isRegularFile = values.isRegularFile == true
+            && values.isDirectory != true
+            && values.isPackage != true
+        if isRegularFile {
+            let contentType = values.contentType
+                ?? UTType(filenameExtension: resolvedURL.pathExtension)
+            if let contentType, contentType.conforms(to: .text) {
+                return .openAsText(resolvedURL)
+            }
+        }
+        return .reveal(resolvedURL)
+    }
+
+    static func openToolLocationURL(_ url: URL) {
+        switch locationOpenAction(for: url) {
+        case .openAsText(let resolvedURL):
+            if let textAppURL = NSWorkspace.shared.urlForApplication(toOpen: .plainText) {
+                NSWorkspace.shared.open(
+                    [resolvedURL],
+                    withApplicationAt: textAppURL,
+                    configuration: NSWorkspace.OpenConfiguration()
+                )
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([resolvedURL])
+            }
+        case .reveal(let resolvedURL):
+            NSWorkspace.shared.activateFileViewerSelecting([resolvedURL])
+        case .none:
+            break
+        }
+    }
 
     /// One line of the 11-point monospaced text these cards draw.
     static let lineHeight: CGFloat = 15
@@ -243,28 +241,86 @@ struct VitruvianCodeToolStepDetail: View {
     /// How many lines of a diff show before it scrolls.
     static let visibleDiffLines = 16
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let path = step.filePath, !path.isEmpty {
-                Button {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 9))
-                        Text(path)
-                            .font(.system(size: 10, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                            .underline()
-                    }
-                    .foregroundStyle(VitruvianCodeTheme.warmCoral)
-                }
-                .buttonStyle(.plain)
-                .help(strings.openFile)
+    private static let schemePrefixRegex = try! NSRegularExpression(
+        pattern: #"^[A-Za-z][A-Za-z0-9+.-]*:"#
+    )
+
+    /// Resolves an untrusted agent-supplied location to a safe `file://` URL, rejecting
+    /// non-file URLs, remote hosts, control characters, and unresolvable relative paths.
+    static func safeLocationURL(
+        for location: VitruvianCodeToolStep.Location,
+        workingDirectory: String?
+    ) -> URL? {
+        let trimmed = location.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.contains("\0"),
+              !trimmed.contains("\r"),
+              !trimmed.contains("\n") else {
+            return nil
+        }
+        let candidatePath: String
+        let fullRange = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        if schemePrefixRegex.firstMatch(in: trimmed, range: fullRange) != nil {
+            guard let url = URL(string: trimmed),
+                  url.isFileURL,
+                  url.host == nil || url.host?.isEmpty == true || url.host == "localhost",
+                  !url.path.isEmpty else {
+                return nil
             }
-            if step.kind == .edit || step.kind == .write, step.diffOld != nil || step.diffNew != nil {
-                diff
+            candidatePath = url.path
+        } else {
+            candidatePath = trimmed
+        }
+        guard let resolved = VitruvianCodePathLinks.resolve(candidatePath, workingDirectory: workingDirectory),
+              !resolved.isEmpty else {
+            return nil
+        }
+        let baseURL = URL(fileURLWithPath: resolved)
+        guard baseURL.isFileURL else { return nil }
+        if let line = location.line, line > 0 {
+            var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+            components?.fragment = "L\(line)"
+            if let withLine = components?.url, withLine.isFileURL {
+                return withLine
+            }
+        }
+        return baseURL
+    }
+
+    @discardableResult
+    static func openLocation(
+        _ location: VitruvianCodeToolStep.Location,
+        workingDirectory: String?,
+        openURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
+    ) -> Bool {
+        guard let url = safeLocationURL(for: location, workingDirectory: workingDirectory),
+              url.isFileURL else {
+            return false
+        }
+        openURL(url)
+        return true
+    }
+
+    static func locationLabel(for location: VitruvianCodeToolStep.Location) -> String {
+        if let line = location.line, line > 0 {
+            return "\(location.path):\(line)"
+        }
+        return location.path
+    }
+
+    var body: some View {
+        let locations = step.effectiveLocations
+        let diffs = step.effectiveDiffs
+        VStack(alignment: .leading, spacing: 6) {
+            if !locations.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(locations.enumerated()), id: \.offset) { _, location in
+                        locationRow(location)
+                    }
+                }
+            }
+            ForEach(Array(diffs.enumerated()), id: \.offset) { _, entry in
+                diffBlock(entry)
             }
             if let output = step.output, !output.isEmpty {
                 VitruvianCodeOutputBlock(text: output, isError: step.isError, strings: strings)
@@ -272,10 +328,58 @@ struct VitruvianCodeToolStepDetail: View {
         }
     }
 
-    private var diff: some View {
-        let lines = VitruvianCodeLineDiff.lines(old: step.kind == .write ? nil : step.diffOld, new: step.diffNew)
+    @ViewBuilder
+    private func locationRow(_ location: VitruvianCodeToolStep.Location) -> some View {
+        let label = Self.locationLabel(for: location)
+        if let url = Self.safeLocationURL(for: location, workingDirectory: workingDirectory) {
+            Button {
+                openFileURL(url)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 9))
+                    Text(label)
+                        .font(.system(size: 10, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .underline()
+                }
+                .foregroundStyle(VitruvianCodeTheme.warmCoral)
+            }
+            .buttonStyle(.plain)
+            .help(strings.openFile)
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 9))
+                Text(label)
+                    .font(.system(size: 10, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func diffBlock(_ entry: VitruvianCodeToolStep.Diff) -> some View {
+        let capped = VitruvianCodeLineDiff.cappedLines(
+            old: step.kind == .write && step.diffs.isEmpty ? nil : entry.oldText,
+            new: entry.newText
+        )
+        let totalVisibleRows = capped.lines.count + (capped.truncatedCount > 0 ? 1 : 0)
         let content = VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+            if !entry.path.isEmpty {
+                Text(entry.path)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.04))
+            }
+            ForEach(Array(capped.lines.enumerated()), id: \.offset) { _, line in
                 Text(line.unified.isEmpty ? " " : line.unified)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(line.kind == .context ? Color.secondary : Color.primary)
@@ -284,10 +388,18 @@ struct VitruvianCodeToolStepDetail: View {
                     .background(Self.fill(for: line.kind))
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if capped.truncatedCount > 0 {
+                Text(AgentPlanCardState.format(strings.diffTruncatedFormat, "\(capped.truncatedCount)", ""))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: Self.lineHeight, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 2)
+            }
         }
         .padding(.vertical, 4)
         .textSelection(.enabled)
-        return VitruvianCodeCappedBlock(lineCount: lines.count, visibleLines: Self.visibleDiffLines) { content }
+        return VitruvianCodeCappedBlock(lineCount: totalVisibleRows, visibleLines: Self.visibleDiffLines) { content }
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(0.03)))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

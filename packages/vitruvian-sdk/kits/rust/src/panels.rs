@@ -369,31 +369,45 @@ macro_rules! writing {
 
 writing!(
     /// Words, from [`text`].
-    Text, Text, TextBlock
+    Text,
+    Text,
+    TextBlock
 );
 writing!(
     /// One line that stands alone, from [`row`].
-    Row, Row, RowBlock
+    Row,
+    Row,
+    RowBlock
 );
 writing!(
     /// A button, from [`button`].
-    Button, Button, ButtonBlock
+    Button,
+    Button,
+    ButtonBlock
 );
 writing!(
     /// A switch, from [`toggle`].
-    Toggle, Toggle, ToggleBlock
+    Toggle,
+    Toggle,
+    ToggleBlock
 );
 writing!(
     /// A field to type in, from [`field`].
-    Field, Field, FieldBlock
+    Field,
+    Field,
+    FieldBlock
 );
 writing!(
     /// How far something has got, from [`progress`].
-    Progress, Progress, ProgressBlock
+    Progress,
+    Progress,
+    ProgressBlock
 );
 writing!(
     /// A picture, from [`image`].
-    Image, Image, ImageBlock
+    Image,
+    Image,
+    ImageBlock
 );
 
 impl Text {

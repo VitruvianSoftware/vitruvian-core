@@ -427,6 +427,8 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
     private let versionProbe: @Sendable () async -> String?
     private let minimumClaudeVersion: String
     private var preflightDone = false
+    private var isStarting = false
+    private var startupCancelled = false
 
     public convenience init(
         spec: AgentConnectionSpec,
@@ -570,8 +572,17 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
     // MARK: - AgentConnection
 
     public func start(_ request: AgentSessionRequest) async throws -> String {
+        guard !startupCancelled, inner.isConnected else {
+            throw ACPConnectionError.alreadyStopped
+        }
+        isStarting = true
+        defer { isStarting = false }
+
         if !preflightDone {
             try await preflight()
+            guard !startupCancelled, inner.isConnected else {
+                throw ACPConnectionError.alreadyStopped
+            }
             preflightDone = true
         }
 
@@ -584,6 +595,9 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         inner.addRedactions(plan.values)
 
         let sessionID = try await inner.start(request)
+        guard !startupCancelled, inner.isConnected else {
+            throw ACPConnectionError.alreadyStopped
+        }
         let current = modeProvider()
         try await inner.setSessionMode(ClaudeSDKSupport.claudeModeID(for: current.mode, planSwitch: current.planSwitch))
         return sessionID
@@ -594,6 +608,11 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
     }
 
     public func cancel() async {
+        if isStarting {
+            startupCancelled = true
+            await inner.stop()
+            return
+        }
         await inner.cancel()
     }
 
@@ -605,9 +624,13 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         try await inner.setConfigOption(id, value)
     }
 
+    public func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        try await inner.setSessionMode(ClaudeSDKSupport.claudeModeID(for: approvalMode, planSwitch: planSwitch))
+    }
+
     public func syncPlanMode(_ planSwitch: Bool) async throws {
         let current = modeProvider()
-        try await inner.setSessionMode(ClaudeSDKSupport.claudeModeID(for: current.mode, planSwitch: planSwitch))
+        try await syncMode(approvalMode: current.mode, planSwitch: planSwitch)
     }
 
     public func stop() async {
@@ -652,7 +675,11 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         guard let claudePath, !claudePath.isEmpty else {
             throw await fail(ClaudeSDKSupport.claudeNotFoundMessage)
         }
-        guard let version = ClaudeSDKSupport.parseVersion(await versionProbe()) else {
+        let versionOutput = await versionProbe()
+        guard !startupCancelled, inner.isConnected else {
+            throw ACPConnectionError.alreadyStopped
+        }
+        guard let version = ClaudeSDKSupport.parseVersion(versionOutput) else {
             inner.recordHostLog("Could not read the version of Claude Code; carrying on without the version check.")
             return
         }

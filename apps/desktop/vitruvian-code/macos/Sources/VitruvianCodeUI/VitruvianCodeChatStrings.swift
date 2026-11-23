@@ -297,6 +297,21 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var connectionClaudeSDK = "Claude SDK"
     public var connectionClaudeACP = "Claude ACP"
 
+    // MARK: Live plan card, tool cards, timeline & diff review
+
+    public var planProgressFormat = "%@ of %@ done"
+    public var planStatusPending = "Pending"
+    public var planStatusInProgress = "In progress"
+    public var planStatusCompleted = "Completed"
+    public var planStatusOther = "Other"
+    public var toolStatusRunning = "Running"
+    public var toolStatusDone = "Done"
+    public var toolStatusFailed = "Failed"
+    public var diffTruncatedFormat = "… %@ more lines (truncated)"
+    public var timelineToolSingularFormat = "%@ tool: %@"
+    public var timelineToolsFormat = "%@ tools: %@"
+    public var diffSourceLiveTurn = "Live turn"
+
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
         askPrefix: String = "Ask ",

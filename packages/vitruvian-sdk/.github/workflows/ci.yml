@@ -24,8 +24,8 @@
 # tests the same package with Bazel; this checks what a person who clones the
 # mirror gets: SwiftPM, and Cargo (verification/Cargo.toml) for the checks.
 #
-# Rust 1.75.0, the version vitruvian-core's Bazel builds the same checks with
-# (rust.toolchain in its MODULE.bazel). The runners come with rustup.
+# Rust 1.98.1, the pinned floor version vitruvian-core's Bazel builds the same
+# checks with (rust.toolchain in its MODULE.bazel). The runners come with rustup.
 #
 # GitHub-hosted runners, free for a public repository. The Swift job uses the
 # runner's default Xcode and prints its version, because that is the Swift a
@@ -78,10 +78,10 @@ jobs:
           VITRUVIAN_HELLO_SWIFT="$RUNNER_TEMP/built/hello-swift/vitruvian-tool.json" \
             swift test --skip-build
 
-      - name: Rust 1.75.0
+      - name: Rust 1.98.1
         run: |
-          rustup toolchain install 1.75.0 --profile minimal
-          rustup default 1.75.0
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
 
       - name: The Swift samples, built, against the conformance validator
         run: |
@@ -98,10 +98,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Rust 1.75.0
+      - name: Rust 1.98.1
         run: |
-          rustup toolchain install 1.75.0 --profile minimal
-          rustup default 1.75.0
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
 
       # The examples against the schemas, the conformance validator against
       # the two reference tools and the tools that each break it in one way,

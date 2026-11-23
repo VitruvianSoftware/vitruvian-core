@@ -29,6 +29,15 @@ rust_test(
 )
 
 rust_test(
+    name = "vitruvian_jq_stack_test",
+    size = "medium",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "vitruvian_jq",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+)
+
+rust_test(
     name = "parity_test",
     size = "small",
     srcs = ["tests/parity_test.rs"],

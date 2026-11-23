@@ -265,10 +265,14 @@ public protocol AgentConnection: AnyObject {
 public protocol PersistentAgentConnection: AgentConnection {
     var isConnected: Bool { get }
     func syncPlanMode(_ planSwitch: Bool) async throws
+    func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws
 }
 
 public extension PersistentAgentConnection {
     var isConnected: Bool { true }
+    func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        try await syncPlanMode(planSwitch)
+    }
 }
 
 /// Internal fast-path adopted by `CommandLineConnection` so main-actor callers

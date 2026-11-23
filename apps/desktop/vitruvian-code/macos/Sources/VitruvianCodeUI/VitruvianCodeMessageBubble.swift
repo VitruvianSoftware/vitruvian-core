@@ -514,6 +514,10 @@ struct VitruvianCodeMessageBubble: View {
                                     ProgressView()
                                         .controlSize(.mini)
                                         .frame(width: 10, height: 10)
+                                } else if toolSteps.contains(where: { $0.isError }) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Color.red)
                                 } else {
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 10))
@@ -537,8 +541,12 @@ struct VitruvianCodeMessageBubble: View {
                         .buttonStyle(.plain)
 
                         if showingToolSteps {
-                            VitruvianCodeToolStepList(steps: toolSteps, strings: strings)
-                                .frame(maxWidth: 560, alignment: .leading)
+                            VitruvianCodeToolStepList(
+                                steps: toolSteps,
+                                strings: strings,
+                                workingDirectory: workingDirectory
+                            )
+                            .frame(maxWidth: 560, alignment: .leading)
                         }
                     }
                 }

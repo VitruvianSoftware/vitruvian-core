@@ -29,6 +29,19 @@ import SwiftUI
 /// that scrolls to it. What the rail shows is worked out here, as plain
 /// functions the tests drive; `VitruvianCodeTimelineScrubber` only draws it.
 public enum VitruvianCodeTimeline {
+    /// Snapshot of the agent's live plan progress shown on the active turn's card.
+    public struct PlanProgress: Equatable, Sendable {
+        public let completed: Int
+        public let total: Int
+        public let currentStep: String?
+
+        public init(completed: Int, total: Int, currentStep: String? = nil) {
+            self.completed = completed
+            self.total = total
+            self.currentStep = currentStep
+        }
+    }
+
     /// One prompt and the replies after it, up to the next prompt.
     public struct Turn: Identifiable, Equatable, Sendable {
         public var id: UUID { promptID }
@@ -43,6 +56,32 @@ public enum VitruvianCodeTimeline {
         public let createdAt: Date?
         /// Every shown message of the turn, the prompt first.
         public let messageIDs: [UUID]
+        /// Tool step titles in this turn (populated for live chats only).
+        public let toolStepTitles: [String]
+        /// Total number of tool steps in this turn (populated for live chats only).
+        public let toolStepCount: Int
+        /// Current live plan progress attached to the latest turn (live chats only).
+        public let planProgress: PlanProgress?
+
+        public init(
+            promptID: UUID,
+            prompt: String,
+            replySnippet: String?,
+            createdAt: Date?,
+            messageIDs: [UUID],
+            toolStepTitles: [String] = [],
+            toolStepCount: Int = 0,
+            planProgress: PlanProgress? = nil
+        ) {
+            self.promptID = promptID
+            self.prompt = prompt
+            self.replySnippet = replySnippet
+            self.createdAt = createdAt
+            self.messageIDs = messageIDs
+            self.toolStepTitles = toolStepTitles
+            self.toolStepCount = toolStepCount
+            self.planProgress = planProgress
+        }
     }
 
     /// The rail appears from this many turns on: below it there is
@@ -64,32 +103,81 @@ public enum VitruvianCodeTimeline {
 
     /// The turns of a conversation, in order. Agent messages before the
     /// first prompt (a resumed session's note, say) belong to no turn.
-    public static func turns(from messages: [VitruvianCodeChatMessage]) -> [Turn] {
+    /// Command-line chats keep `includeLiveMetadata = false`, leaving tool
+    /// and plan metadata empty so command-line cards look unchanged.
+    public static func turns(
+        from messages: [VitruvianCodeChatMessage],
+        livePlan: [PlanEntry] = [],
+        includeLiveMetadata: Bool = false
+    ) -> [Turn] {
         var turns: [Turn] = []
         var prompt: VitruvianCodeChatMessage?
         var ids: [UUID] = []
         var reply: String?
-        func close() {
+        var toolTitles: [String] = []
+        var toolCount = 0
+
+        func close(isLast: Bool) {
             guard let prompt else { return }
-            turns.append(Turn(promptID: prompt.id, prompt: oneLine(prompt.text), replySnippet: reply,
-                              createdAt: prompt.createdAt, messageIDs: ids))
+            let progress: PlanProgress?
+            if includeLiveMetadata, isLast, !livePlan.isEmpty {
+                let completed = livePlan.filter { $0.status == .completed }.count
+                let active = livePlan.first(where: { $0.status == .inProgress })?.content
+                progress = PlanProgress(completed: completed, total: livePlan.count, currentStep: active)
+            } else {
+                progress = nil
+            }
+            turns.append(
+                Turn(
+                    promptID: prompt.id,
+                    prompt: oneLine(prompt.text),
+                    replySnippet: reply,
+                    createdAt: prompt.createdAt,
+                    messageIDs: ids,
+                    toolStepTitles: includeLiveMetadata ? toolTitles : [],
+                    toolStepCount: includeLiveMetadata ? toolCount : 0,
+                    planProgress: progress
+                )
+            )
         }
+
         for message in messages where isShown(message) {
             if message.role == .user {
-                close()
+                close(isLast: false)
                 prompt = message
                 ids = [message.id]
                 reply = nil
+                toolTitles = []
+                toolCount = 0
             } else if prompt != nil {
                 ids.append(message.id)
+                if includeLiveMetadata, let steps = message.toolSteps, !steps.isEmpty {
+                    toolCount += steps.count
+                    for step in steps where !step.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        toolTitles.append(step.title)
+                    }
+                }
                 if reply == nil, !message.isError {
                     let snippet = plainSnippet(message.text)
                     if !snippet.isEmpty { reply = snippet }
                 }
             }
         }
-        close()
+        close(isLast: true)
         return turns
+    }
+
+    /// Formats tool step titles and total count for a live timeline preview card.
+    public static func toolStepsSummary(
+        titles: [String],
+        count: Int,
+        strings: VitruvianCodeChatStrings
+    ) -> String? {
+        guard count > 0 else { return nil }
+        let previewTitles = Array(titles.prefix(3))
+        let joined = previewTitles.isEmpty ? "" : previewTitles.joined(separator: ", ") + (titles.count > 3 ? "…" : "")
+        let template = count == 1 ? strings.timelineToolSingularFormat : strings.timelineToolsFormat
+        return AgentPlanCardState.format(template, "\(count)", joined)
     }
 
     /// Each shown message's turn, by the message's id.
@@ -439,18 +527,55 @@ struct VitruvianCodeTimelineScrubber: View {
 
     private func card(for index: Int) -> some View {
         let turn = turns[index]
+        let toolSummary = VitruvianCodeTimeline.toolStepsSummary(
+            titles: turn.toolStepTitles,
+            count: turn.toolStepCount,
+            strings: strings
+        )
         return VStack(alignment: .leading, spacing: 4) {
             Text(turn.prompt)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(turn.replySnippet ?? strings.timelineWaitingForReply)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .truncationMode(.tail)
-                .fixedSize(horizontal: false, vertical: true)
+            if turn.replySnippet != nil || (toolSummary == nil && turn.planProgress == nil) {
+                Text(turn.replySnippet ?? strings.timelineWaitingForReply)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let toolSummary {
+                HStack(spacing: 4) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Text(toolSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            if let progress = turn.planProgress {
+                let progressText = AgentPlanCardState.progressText(
+                    completed: progress.completed,
+                    total: progress.total,
+                    strings: strings
+                )
+                let combined = progress.currentStep.map { "\(progressText) · \($0)" } ?? progressText
+                HStack(spacing: 4) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 9))
+                        .foregroundStyle(VitruvianCodeTheme.warmCoral)
+                    Text(combined)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
             HStack(spacing: 8) {
                 Text(VitruvianCodeTimeline.position(index + 1, of: turns.count, strings: strings))
                 Spacer(minLength: 0)
