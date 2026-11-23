@@ -83,6 +83,9 @@ struct InboxList: View {
             }
         }
         .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
+        // Once the list has settled: the pinned chats and the top of the inbox are read ahead, one at a time, at low
+        // priority (see `ConversationModel.warmFirstPages`). The list's order changing starts the wait again.
+        .task(id: warmSignature) { conversation?.warmFirstPages(of: warmRoomIDs) }
         .overlay(alignment: .top) { popoverAnchors }
         .modifier(InboxToolbarHeader(inbox: inbox, title: spaceTitle, openSearch: openSearch))
     }
@@ -137,6 +140,14 @@ struct InboxList: View {
 
     // MARK: Chats
 
+    /// The chats read ahead when the list is idle: the pinned ones, then the top of the inbox.
+    private var warmRoomIDs: [String] {
+        guard inbox.isLoaded, !inbox.isSelecting else { return [] }
+        return inbox.rows.prefix(pinned.count + 10).map(\.id)
+    }
+
+    private var warmSignature: [String] { warmRoomIDs }
+
     /// Pinned chats come first in every sort. With compact pinned chats, they are the strip, not rows.
     private var pinned: [InboxRow] { inbox.rows.prefix { $0.pinned }.map { $0 } }
 
@@ -174,6 +185,8 @@ struct InboxList: View {
                             now: timeline.date, style: style,
                             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
                             onHoverChange: { inside in
+                                // At rest 80 ms: read this chat's first page ahead, so opening it shows at once.
+                                conversation?.hoverPrefetch(inside ? row.id : nil)
                                 if inside {
                                     hoverTracker.roomID = row.id
                                     // The menu offers Delete Chat… only where the network can: ask now, so it knows.

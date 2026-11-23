@@ -21,124 +21,180 @@ final class TimelineMotionTests: XCTestCase {
 
     private func start(
         _ events: [String: [[String: Any]]],
-        rows: [String: InboxRow] = [:]
+        rows: [String: InboxRow] = [:],
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) async throws -> ConversationHarness {
-        let h = try await startConversation(events, rows: rows)
+        let h = try await startConversation(events, rows: rows, sleep: sleep)
         harnesses.append(h)
         return h
     }
 
-    // MARK: - Item 1: Atomic Room Switch & Initial Bottom Layout Rules
+    // MARK: - Item 1: A chat's identity switches at once; only its messages wait
 
-    func testKeepPreviousChatVisibleTruthTable() {
-        XCTAssertTrue(
-            TimelineLoadMotion.shouldKeepPreviousChatVisible(
-                currentRoomID: "!a", isCurrentlyLoaded: true, targetRoomID: "!b", isTargetCached: false, hasClient: true
-            )
-        )
-        XCTAssertFalse(
-            TimelineLoadMotion.shouldKeepPreviousChatVisible(
-                currentRoomID: nil, isCurrentlyLoaded: false, targetRoomID: "!b", isTargetCached: false, hasClient: true
-            ),
-            "very first chat from empty still shows its initial loading state"
-        )
-        XCTAssertFalse(
-            TimelineLoadMotion.shouldKeepPreviousChatVisible(
-                currentRoomID: "!a", isCurrentlyLoaded: true, targetRoomID: "!b", isTargetCached: true, hasClient: true
-            ),
-            "cached target switches synchronously"
-        )
-        XCTAssertFalse(
-            TimelineLoadMotion.shouldKeepPreviousChatVisible(
-                currentRoomID: "!a", isCurrentlyLoaded: true, targetRoomID: "!a", isTargetCached: false, hasClient: true
-            )
-        )
-        XCTAssertFalse(
-            TimelineLoadMotion.shouldKeepPreviousChatVisible(
-                currentRoomID: "!a", isCurrentlyLoaded: true, targetRoomID: "!b", isTargetCached: false, hasClient: false
-            )
-        )
-    }
-
-    func testSwitchingToUncachedChatSwitchesHeaderTimelineAndComposerAtomically() async throws {
+    /// Straight after the selection moves, before the new chat's page can have arrived, everything that acts on a
+    /// chat points at the new one: header, composer (so send, paste, drop and the draft), the commands' target and
+    /// the scheduled strip. The old chat's messages are gone.
+    func testEveryChatTargetSwitchesInTheSameTurnAsTheSelection() async throws {
         let rowA = chatRow("!a", name: "Alice", network: "whatsapp", direct: true)
         let rowB = chatRow("!b", name: "Bob", network: "signal", direct: true)
-        let h = try await start(
-            ["!a": history(2, room: "!a"), "!b": history(2, room: "!b"), "!c": history(1, room: "!c")],
-            rows: ["!a": rowA, "!b": rowB]
-        )
-        h.rows.rows = ["!a": rowA, "!b": rowB]
-        try await h.open("!a")
-        XCTAssertEqual(h.conversation.roomID, "!a")
-        XCTAssertEqual(h.conversation.headerRow?.roomID, "!a")
-        XCTAssertEqual(h.conversation.composer.roomID, "!a")
-
-        // Opening uncached !b keeps all three (!a's header, timeline, composer) together until !b's first page arrives.
-        h.script.hold("!b")
-        h.app.selectedRoomID = "!b"
-        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!b" } }
-        XCTAssertEqual(h.conversation.roomID, "!a")
-        XCTAssertEqual(h.conversation.headerRow?.roomID, "!a")
-        XCTAssertEqual(h.conversation.composer.roomID, "!a")
-        XCTAssertEqual(h.messageIDs(h.conversation.items), ["!a$1", "!a$2"])
-        XCTAssertTrue(h.conversation.isLoaded)
-        XCTAssertTrue(h.conversation.isLoadingPendingRoom)
-        XCTAssertEqual(h.conversation.pendingRoomID, "!b")
-
-        // Switching again to !c while !b is still in flight drops !b's late answer.
-        let dropped = expectation(description: "cancelled !b dropped")
-        h.conversation.staleAnswerDropped = { dropped.fulfill() }
-        h.app.selectedRoomID = "!c"
-        try await waitUntil { h.conversation.roomID == "!c" && h.conversation.isLoaded }
-        h.server.releaseHeld(method: "room.events", room: "!b",
-                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
-        await fulfillment(of: [dropped], timeout: 5)
-        h.conversation.staleAnswerDropped = nil
-        XCTAssertEqual(h.conversation.roomID, "!c")
-        XCTAssertEqual(h.conversation.composer.roomID, "!c")
-        XCTAssertEqual(h.messageIDs(h.conversation.items), ["!c$1"])
-        XCTAssertFalse(h.conversation.isLoadingPendingRoom)
-    }
-
-    /// What the person can see is what is there when the main run loop turns, not what the model passes through
-    /// while one turn's work runs. At every turn, header, timeline and composer must all be of the same chat, and a
-    /// chat shown as loaded must have its messages.
-    func testNoRenderedStateEverMixesChatsOrShowsAnEmptyNewChat() async throws {
-        let rowA = chatRow("!a", name: "Alice", network: "whatsapp", direct: true)
-        let rowB = chatRow("!b", name: "Bob", network: "signal", direct: true)
-        let h = try await start(["!a": history(3, room: "!a"), "!b": history(3, room: "!b")],
+        let h = try await start(["!a": history(2, room: "!a"), "!b": history(2, room: "!b")],
                                 rows: ["!a": rowA, "!b": rowB])
-        h.rows.rows = ["!a": rowA, "!b": rowB]
+        let scheduled = ScheduledModel(appModel: h.app)
         try await h.open("!a")
+        h.conversation.composer.text = "half written for Alice"
 
-        struct Seen: Equatable { var room: String?; var header: String?; var composer: String?; var loaded: Bool; var ids: [String] }
-        var seen: [Seen] = []
-        let model = h.conversation
-        let sub = model.objectWillChange.sink { _ in
-            DispatchQueue.main.async {
-                seen.append(Seen(room: model.roomID, header: model.headerRow?.roomID, composer: model.composer.roomID,
-                                 loaded: model.isLoaded, ids: h.messageIDs(model.items)))
-            }
-        }
         h.script.hold("!b")
         h.app.selectedRoomID = "!b"
-        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!b" } }
+        // No waiting: this is the turn the selection moved in.
+        XCTAssertEqual(h.conversation.roomID, "!b", "commands, hotkeys and chat info act on the open chat")
+        XCTAssertEqual(h.conversation.composer.roomID, "!b", "send, paste, drop and the draft")
+        XCTAssertEqual(h.conversation.headerRow?.roomID, "!b", "the header")
+        XCTAssertEqual(scheduled.roomID, "!b", "the scheduled strip")
+        XCTAssertFalse(h.conversation.isLoaded)
+        XCTAssertTrue(h.conversation.items.isEmpty, "the old chat's messages are never shown under the new chat")
+        XCTAssertNotEqual(h.conversation.composer.text, "half written for Alice", "the old chat's draft stays with it")
+
+        // A send now goes to the new chat, though its messages have not arrived.
+        h.script.overrides["message.send"] = .result(["event_id": "$sentB"])
+        var sending: Task<Void, Never>?
+        for _ in 0 ..< 50 where sending == nil {
+            h.conversation.composer.text = "to Bob"
+            sending = h.conversation.composer.submit()
+            if sending == nil { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        XCTAssertNotNil(sending, "the composer sends")
+        await sending?.value
+        let sent = h.server.receivedParams("message.send")
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?["room_id"] as? String, "!b", "the send went to the new chat")
+        XCTAssertEqual(sent.first?["text"] as? String, "to Bob")
+    }
+
+    func testPlaceholdersWaitThenAreMessageShaped() {
+        XCTAssertEqual(TimelineLoadMotion.placeholderDelay, .milliseconds(120), "neutral for the first 120 ms")
+        let rows = TimelineLoadMotion.placeholderRows()
+        XCTAssertEqual(rows.count, 7)
+        XCTAssertEqual(rows, TimelineLoadMotion.placeholderRows(), "the same every time")
+        XCTAssertTrue(rows.contains { $0.fromMe } && rows.contains { !$0.fromMe })
+    }
+
+    // MARK: - Item 1: Reading a first page ahead of time
+
+    private func fiveChats() -> [String: [[String: Any]]] {
+        var events: [String: [[String: Any]]] = [:]
+        for room in ["!a", "!b", "!c", "!d", "!e"] { events[room] = history(3, room: room) }
+        return events
+    }
+
+    private func roomEventsRooms(_ h: ConversationHarness) -> [String] {
+        h.server.receivedParams("room.events").compactMap { $0["room_id"] as? String }
+    }
+
+    func testHoverReadsTheFirstPageAfter80msAndThenOpeningShowsItAtOnce() async throws {
+        let time = FakeTime()
+        let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+        let before = h.server.receivedMethods().count
+
+        h.conversation.hoverPrefetch("!b")
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        time.advance(0.079)
+        await Task.yield()
+        XCTAssertFalse(roomEventsRooms(h).contains("!b"), "not before the pointer has rested 80 ms")
+        time.advance(0.001)
+        try await waitUntil { h.conversation.prefetchedRoomsForTesting == ["!b"] }
+
+        // Read-only: the only thing asked of the engine was the page itself.
+        XCTAssertEqual(Array(h.server.receivedMethods().dropFirst(before)), ["room.events"])
+
+        // Opening it draws its messages in the same turn, while the newest page is read again.
+        h.script.hold("!b")
+        h.app.selectedRoomID = "!b"
+        XCTAssertTrue(h.conversation.isLoaded, "from the page read ahead, with no wait")
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["!b$1", "!b$2", "!b$3"])
+        XCTAssertEqual(h.conversation.roomID, "!b")
+        XCTAssertEqual(h.conversation.prefetchedRoomsForTesting, [], "now kept like any opened chat")
+    }
+
+    func testMovingOnOrLeavingDropsTheHoverRead() async throws {
+        let time = FakeTime()
+        let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+
+        h.conversation.hoverPrefetch("!b")
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        h.conversation.hoverPrefetch("!c") // superseded: the wait for !b is dropped
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        time.advance(0.1)
+        try await waitUntil { h.conversation.prefetchedRoomsForTesting == ["!c"] }
+        XCTAssertFalse(roomEventsRooms(h).contains("!b"))
+
+        h.conversation.hoverPrefetch("!d")
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        h.conversation.hoverPrefetch(nil) // the pointer left
+        time.advance(0.1)
+        await Task.yield()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(roomEventsRooms(h).contains("!d"))
+    }
+
+    func testALateAnswerNeverOverwritesTheChatOpenedMeanwhile() async throws {
+        let time = FakeTime()
+        let h = try await start(fiveChats(), sleep: { try await time.sleep(for: $0) })
+        try await h.open("!a")
+        h.script.hold("!b")
+        h.conversation.hoverPrefetch("!b")
+        try await waitUntil { time.pendingSleeps == [0.08] }
+        time.advance(0.1)
+        try await waitUntil { self.roomEventsRooms(h).contains("!b") } // the read ahead is in flight
+
+        h.app.selectedRoomID = "!b" // opened before its answer: it reads its own page
+        try await waitUntil { self.roomEventsRooms(h).filter { $0 == "!b" }.count == 2 }
         h.server.releaseHeld(method: "room.events", room: "!b",
                              with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
-        try await waitUntil { model.roomID == "!b" && model.isLoaded }
+        try await waitUntil { h.conversation.isLoaded }
         try await Task.sleep(for: .milliseconds(100))
-        sub.cancel()
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["!b$1", "!b$2", "!b$3"], "each message once")
+        XCTAssertEqual(h.conversation.prefetchedRoomsForTesting, [], "the late read ahead was not kept")
+    }
 
-        XCTAssertFalse(seen.isEmpty)
-        for state in seen {
-            XCTAssertTrue(state.loaded, "never an unloaded (empty) pane: \(state)")
-            XCTAssertFalse(state.ids.isEmpty, "never an empty pane: \(state)")
-            let chat = state.room
-            XCTAssertEqual(state.composer, chat, "the composer is the timeline's chat: \(state)")
-            XCTAssertTrue(state.ids.allSatisfy { $0.hasPrefix(chat ?? "?") }, "only this chat's messages: \(state)")
-            if let header = state.header { XCTAssertEqual(header, chat, "the header is the timeline's chat: \(state)") }
+    func testTheWarmUpIsBoundedSkipsHeldChatsAndOnlyReads() async throws {
+        let time = FakeTime()
+        var events: [String: [[String: Any]]] = [:]
+        let rooms = (1 ... 24).map { "!r\($0)" }
+        for room in rooms { events[room] = history(2, room: room) }
+        let h = try await start(events, sleep: { try await time.sleep(for: $0) })
+        try await h.open("!r1")
+        let before = h.server.receivedMethods().count
+
+        h.conversation.warmFirstPages(of: rooms) // the open chat is in the list: skipped
+        for _ in 0 ..< 60 {
+            if time.pendingSleeps.isEmpty { try await Task.sleep(for: .milliseconds(30)) }
+            time.advance(3)
         }
-        XCTAssertEqual(seen.last?.room, "!b")
+        try await waitUntil { h.conversation.prefetchedRoomsForTesting.count == ConversationModel.prefetchLimit - 1 }
+        XCTAssertFalse(h.conversation.prefetchedRoomsForTesting.contains("!r1"))
+        XCTAssertLessThanOrEqual(h.conversation.prefetchedRoomsForTesting.count, ConversationModel.prefetchLimit)
+        let after = Array(h.server.receivedMethods().dropFirst(before))
+        XCTAssertTrue(after.allSatisfy { $0 == "room.events" }, "read-only: \(Set(after))")
+        XCTAssertLessThanOrEqual(after.count, ConversationModel.prefetchLimit)
+    }
+
+    func testReadsAheadNeverEvictAChatThatWasOpenedAndStayWithinTheCacheLimit() async throws {
+        let time = FakeTime()
+        var events: [String: [[String: Any]]] = [:]
+        for index in 1 ... 30 { events["!r\(index)"] = history(2, room: "!r\(index)") }
+        let h = try await start(events, sleep: { try await time.sleep(for: $0) })
+        try await h.open("!r1")
+        try await h.open("!r2") // !r1 is kept now, as an opened chat
+        h.conversation.warmFirstPages(of: (3 ... 30).map { "!r\($0)" })
+        for _ in 0 ..< 60 {
+            if time.pendingSleeps.isEmpty { try await Task.sleep(for: .milliseconds(30)) }
+            time.advance(3)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(h.conversation.isCached("!r1"), "a chat opened before is not pushed out by reads ahead")
+        XCTAssertLessThanOrEqual(h.conversation.prefetchedRoomsForTesting.count, ConversationModel.prefetchLimit)
     }
 
     // MARK: - Item 6: Jump-to-Latest Motion Constants
@@ -151,6 +207,16 @@ final class TimelineMotionTests: XCTestCase {
         XCTAssertEqual(JumpToLatestMotion.delay(appearing: false, reduceMotion: false), 0, accuracy: 0.0001)
         XCTAssertEqual(JumpToLatestMotion.delay(appearing: true, reduceMotion: true), 0, accuracy: 0.0001)
         XCTAssertLessThan(JumpToLatestMotion.duration(reduceMotion: true), JumpToLatestMotion.fadeDuration)
+    }
+
+    /// The count resets to 0 as the bottom comes into view, while the button is still fading out: it keeps the words
+    /// it had, so its width does not snap.
+    func testJumpButtonKeepsItsWordsWhileFadingOut() {
+        let withCount = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 2)
+        let reset = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 0)
+        XCTAssertEqual(JumpToLatestLabel.displayed(current: reset, lastShown: withCount, isVisible: false), withCount)
+        XCTAssertEqual(JumpToLatestLabel.displayed(current: withCount, lastShown: reset, isVisible: true), withCount,
+                       "while it shows, it follows the live state")
     }
 
     // MARK: - Item 7: Sent Message Rise-In Eligibility & Transform
@@ -173,15 +239,20 @@ final class TimelineMotionTests: XCTestCase {
         XCTAssertEqual(reduced.offsetY, 0, accuracy: 0.0001)
         XCTAssertEqual(reduced.scale, 1.0, accuracy: 0.0001)
         XCTAssertFalse(reduced.usesMovementAndScale)
+    }
 
-        let pivotFlipped = SentMessageRiseMotion.bottomRightPivotOffset(
-            boundsSize: CGSize(width: 400, height: 60),
-            layerAnchorPoint: CGPoint(x: 0.5, y: 0.5),
-            isGeometryFlipped: true
-        )
-        XCTAssertEqual(pivotFlipped.pivotX, 200, accuracy: 0.001)
-        XCTAssertEqual(pivotFlipped.pivotY, 30, accuracy: 0.001)
-        XCTAssertEqual(pivotFlipped.verticalShift, 14, accuracy: 0.001)
+    /// The rise starts 14 pt below the resting place and scales about the bottom-right corner, whichever way the
+    /// layer's parent counts y.
+    func testRisePivotAndShiftFollowTheWayYPointsOnScreen() {
+        let size = CGSize(width: 400, height: 60)
+        let down = SentMessageRiseMotion.bottomRightPivotOffset(boundsSize: size, superlayerYPointsDown: true)
+        XCTAssertEqual(down.pivotX, 200, accuracy: 0.001)
+        XCTAssertEqual(down.pivotY, 30, accuracy: 0.001, "bottom is +y: below the centre")
+        XCTAssertEqual(down.verticalShift, 14, accuracy: 0.001, "lower is +y")
+        let up = SentMessageRiseMotion.bottomRightPivotOffset(boundsSize: size, superlayerYPointsDown: false)
+        XCTAssertEqual(up.pivotX, 200, accuracy: 0.001)
+        XCTAssertEqual(up.pivotY, -30, accuracy: 0.001, "bottom is -y: below the centre")
+        XCTAssertEqual(up.verticalShift, -14, accuracy: 0.001, "lower is -y")
     }
 
     func testSentMessageRiseEligibilityTrackerPlaysOnceAndRespectsGuards() {
@@ -259,69 +330,61 @@ final class TimelineMotionTests: XCTestCase {
         )
     }
 
-    // MARK: - Item 8: Stable Sending -> Sent Layout
-
-    func testStatusLineStabilityHidesEarlierSentWhileNewSendIsInFlight() {
-        XCTAssertEqual(StatusLineStability.compactLineHeight, 16)
-
-        func msg(_ id: String, status: StatusLine?, mine: Bool = true) -> TimelineItem {
-            .message(TimelineMessage(
-                id: id,
-                roomID: "!a",
-                sender: mine ? Timeline.meUserID : "@ann:example.test",
-                senderName: mine ? "me" : "Ann",
-                senderAvatarPath: "",
-                mine: mine,
-                ts: 1_000_000,
-                kind: .text,
-                body: "hi",
-                rich: RichText(text: "hi", entities: []),
-                isEdited: false,
-                editCount: 0,
-                editFailed: nil,
-                failedEditID: nil,
-                fileName: "",
-                mimeType: "",
-                byteSize: nil,
-                width: nil,
-                height: nil,
-                mediaPath: "",
-                statusLine: status,
-                countsAsUnread: false,
-                poll: nil,
-                thread: nil,
-                bookmarked: false,
-                expiresAt: nil,
-                timerChange: nil,
-                call: nil,
-                reply: nil,
-                reactions: [],
-                startsGroup: false
-            ))
-        }
-
-        // Before new send: $1 holds Sent.
-        XCTAssertEqual(StatusLineStability.receiptRowID(in: [msg("$1", status: .sent)]), "$1")
-
-        // While $2 is Sending...: $1's Sent is cleared so Sending -> Sent never shifts the gap between $1 and $2.
-        XCTAssertNil(StatusLineStability.receiptRowID(in: [msg("$1", status: .sent), msg("$2", status: .sending)]))
-        XCTAssertNil(StatusLineStability.receiptRowID(in: [msg("$1", status: .seen(by: [], at: nil)), msg("$2", status: .queued)]))
-
-        // Once $2 settles to Sent: $2 takes the receipt line while $1 stays without one.
-        XCTAssertEqual(StatusLineStability.receiptRowID(in: [msg("$1", status: .sent), msg("$2", status: .sent)]), "$2")
-
-        // Ruling 20 preserved: a failed or waiting message does not clear an older gone message's receipt line.
-        XCTAssertEqual(
-            StatusLineStability.receiptRowID(in: [msg("$1", status: .seen(by: ["Ana"], at: nil)), msg("$2", status: .waiting)]),
-            "$1"
+    /// Sending while scrolled up only jumps to the latest. Landing at the bottom afterwards, before the send has an
+    /// id, must not turn that send into one that rises.
+    func testASendBegunScrolledUpNeverRisesEvenAfterTheJumpLands() {
+        var tracker = SentMessageRiseTracker()
+        tracker.noteLocalSubmit(isLoaded: true, isAtBottom: false, isAwayFromLatest: false, isHeldAwayFromLatest: false)
+        // The jump has landed by the time the engine answers: the live state says "at the bottom".
+        XCTAssertFalse(
+            tracker.recordLocalSend(
+                eventID: "$up", isLoaded: true, isAtBottom: true, isAwayFromLatest: false, isHeldAwayFromLatest: false
+            )
         )
-        XCTAssertEqual(
-            StatusLineStability.receiptRowID(in: [msg("$1", status: .sent), msg("$2", status: .failed(reason: "err"))]),
-            "$1"
+        XCTAssertFalse(
+            tracker.consumeIfEligible(
+                eventID: "$up", isInitialRender: false, isHistoryLoad: false,
+                isAtBottom: true, isAwayFromLatest: false, isHeldAwayFromLatest: false
+            )
+        )
+
+        // A credit left over from an earlier submit at the bottom is taken back by a submit made scrolled up.
+        tracker.noteLocalSubmit(isLoaded: true, isAtBottom: true, isAwayFromLatest: false, isHeldAwayFromLatest: false)
+        tracker.noteLocalSubmit(isLoaded: true, isAtBottom: false, isAwayFromLatest: false, isHeldAwayFromLatest: false)
+        XCTAssertFalse(
+            tracker.recordLocalSend(
+                eventID: "$up2", isLoaded: true, isAtBottom: true, isAwayFromLatest: false, isHeldAwayFromLatest: false
+            )
         )
     }
 
-    func testConversationLastOutgoingIDAcrossSendingToSentTransition() async throws {
+    /// The same, through the real composer: a send from the bottom rises, a send from scrolled up does not.
+    func testComposerSendRisesFromTheBottomButNotFromScrolledUp() async throws {
+        let h = try await start(["!a": history(120, room: "!a")])
+        try await h.open("!a")
+
+        h.script.overrides["message.send"] = .result(["event_id": "$atBottom"])
+        h.conversation.composer.text = "from the bottom"
+        await h.conversation.composer.submit()?.value
+        XCTAssertTrue(h.conversation.consumeSentMessageRise(eventID: "$atBottom", isInitialRender: false, isHistoryLoad: false))
+        XCTAssertFalse(h.conversation.consumeSentMessageRise(eventID: "$atBottom", isInitialRender: false, isHistoryLoad: false),
+                       "once")
+
+        h.conversation.scrolled(toBottom: false)
+        h.script.overrides["message.send"] = .result(["event_id": "$scrolledUp"])
+        h.conversation.composer.text = "from up there"
+        await h.conversation.composer.submit()?.value
+        h.conversation.scrolled(toBottom: true) // the jump to the latest has landed
+        XCTAssertFalse(h.conversation.consumeSentMessageRise(eventID: "$scrolledUp", isInitialRender: false, isHistoryLoad: false),
+                       "scrolled up: it jumps to the latest and does not rise")
+    }
+
+    // MARK: - Item 8: Stable Sending -> Sent Layout
+
+    /// The receipt line stays on the earlier message while a newer one is queued, sending or fails, so starting or
+    /// failing a send never moves it; it moves once, when the newer message has gone.
+    func testReceiptLineStaysPutWhileANewerMessageIsInFlightOrFails() async throws {
+        XCTAssertEqual(StatusLineStability.compactLineHeight, 16)
         let m1 = textEvent(id: "$1", room: "!a", at: 1, body: "first", mine: true, status: "sent")
         let h = try await start(["!a": [m1]])
         try await h.open("!a")
@@ -330,7 +393,12 @@ final class TimelineMotionTests: XCTestCase {
         h.script.add("!a", textEvent(id: "$2", room: "!a", at: 2, body: "sending now", mine: true, status: "pending"))
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$2"])
         try await waitUntil { h.messageIDs(h.conversation.items) == ["$1", "$2"] }
-        XCTAssertNil(h.conversation.lastOutgoingID, "$1 clears its Sent label before $2 settles so the gap stays fixed")
+        XCTAssertEqual(h.conversation.lastOutgoingID, "$1", "a send starting does not move the receipt line")
+
+        h.script.add("!a", textEvent(id: "$2", room: "!a", at: 2, body: "sending now", mine: true, status: "failed"))
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$2"])
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(h.conversation.lastOutgoingID, "$1", "a failed send does not move it either")
 
         h.script.add("!a", textEvent(id: "$2", room: "!a", at: 2, body: "sending now", mine: true, status: "sent"))
         h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$2"])
@@ -375,26 +443,17 @@ final class TimelineMotionTests: XCTestCase {
 
     // MARK: - Item 20: Gentler Jump Highlight Timing
 
-    func testJumpHighlightTimingAndIntensityCurve() {
+    func testJumpHighlightTiming() {
         XCTAssertEqual(JumpHighlightMotion.duration, .milliseconds(1500))
         XCTAssertEqual(JumpHighlightMotion.totalDuration, 1.5, accuracy: 0.0001)
-        XCTAssertEqual(JumpHighlightMotion.fadeInDuration, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(JumpHighlightMotion.fadeInDuration, 0.3, accuracy: 0.0001, "20% of the time")
         XCTAssertEqual(JumpHighlightMotion.fadeOutDuration, 1.2, accuracy: 0.0001)
         XCTAssertEqual(JumpHighlightMotion.peakTintFraction, 0.40, accuracy: 0.0001)
-        XCTAssertEqual(JumpHighlightMotion.peakTintOpacity, 0.112, accuracy: 0.0001)
+        XCTAssertEqual(JumpHighlightMotion.peakTintOpacity, 0.112, accuracy: 0.0001, "40% of the 0.28 tint")
+    }
 
-        XCTAssertEqual(JumpHighlightMotion.opacity(at: 0), 0, accuracy: 0.0001)
-        // Ease-out during fade-in rises faster than linear in the first half (t = 0.15 > 0.056).
-        let midIn = JumpHighlightMotion.opacity(at: 0.15)
-        XCTAssertGreaterThan(midIn, 0.056)
-        XCTAssertLessThan(midIn, 0.112)
-        // Peak at 20% of 1.5 s (t = 0.3 s) is 40% of 0.28 = 0.112.
-        XCTAssertEqual(JumpHighlightMotion.opacity(at: 0.3), 0.112, accuracy: 0.0001)
-        // Ease-out decays smoothly back to 0 at t = 1.5 s.
-        let midOut = JumpHighlightMotion.opacity(at: 0.9)
-        XCTAssertGreaterThan(midOut, 0)
-        XCTAssertLessThan(midOut, 0.056)
-        XCTAssertEqual(JumpHighlightMotion.opacity(at: 1.5), 0, accuracy: 0.0001)
-        XCTAssertEqual(JumpHighlightMotion.opacity(at: 2.0), 0, accuracy: 0.0001)
+    func testReduceMotionHasNoTintRamp() {
+        XCTAssertTrue(JumpHighlightMotion.rampsTint(reduceMotion: false))
+        XCTAssertFalse(JumpHighlightMotion.rampsTint(reduceMotion: true))
     }
 }

@@ -47,19 +47,8 @@ final class ConversationRoomCacheTests: XCTestCase {
         try await h.open("!a")
         h.script.hold("!b")
         h.app.selectedRoomID = "!b"
-        XCTAssertEqual(h.conversation.roomID, "!a", "previous chat stays visible until !b's first page is ready")
-        XCTAssertTrue(h.conversation.isLoaded)
-        XCTAssertEqual(h.conversation.pendingRoomID, "!b")
-        XCTAssertEqual(h.messageIDs(h.conversation.items), ["!a$1"])
-        XCTAssertEqual(h.conversation.composer.roomID, "!a")
-
-        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!b" } }
-        h.server.releaseHeld(method: "room.events", room: "!b",
-                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
-        try await waitUntil { h.conversation.roomID == "!b" && h.conversation.isLoaded }
-        XCTAssertNil(h.conversation.pendingRoomID)
-        XCTAssertEqual(h.conversation.composer.roomID, "!b")
-        XCTAssertEqual(h.messageIDs(h.conversation.items), ["!b$1"])
+        XCTAssertFalse(h.conversation.isLoaded)
+        XCTAssertTrue(h.conversation.items.isEmpty, "nothing of another chat shows")
     }
 
     func testWhatCameWhileAwayIsMergedInBehindTheCachedMessages() async throws {

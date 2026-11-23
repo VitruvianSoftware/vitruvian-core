@@ -201,36 +201,17 @@ final class TimelineMotionViewTests: XCTestCase {
         }
     }
 
-    // MARK: - Item 1: Delayed Spinner Threshold (250 ms)
-
-    func testPendingRoomSpinnerWaitsQuarterSecondBeforeShowing() throws {
-        let events = [Fixture.text("$1", "Hello", mine: false, ts: 5)]
-        let harness = try mountTable(items: Fixture.items(events))
-        defer { harness.tearDown() }
-
-        XCTAssertFalse(harness.container.isPendingSpinnerVisibleForTesting)
-        harness.container.setPendingRoomLoading(true)
-        harness.pump(for: 0.10)
-        XCTAssertFalse(harness.container.isPendingSpinnerVisibleForTesting, "spinner stays hidden before 250 ms")
-
-        harness.pump(for: 0.25) { harness.container.isPendingSpinnerVisibleForTesting }
-        XCTAssertTrue(harness.container.isPendingSpinnerVisibleForTesting, "spinner appears once loading exceeds 250 ms")
-
-        harness.container.setPendingRoomLoading(false)
-        harness.pump(for: 0.05)
-        XCTAssertFalse(harness.container.isPendingSpinnerVisibleForTesting)
-    }
-
     // MARK: - Item 1: Cold Open Of A Full Page
 
     /// Fifty rows of mixed length, the size of the first page of a long chat.
-    private func fullPage() -> [TimelineItem] {
+    private func fullPageEvents() -> [Event] {
         let long = String(repeating: "A longer message that wraps over several lines in the pane. ", count: 4)
-        let events = (1 ... 50).map { i in
+        return (1 ... 50).map { i in
             Fixture.text("$p\(i)", i % 3 == 0 ? long : "Message \(i)", mine: i % 2 == 0, ts: 200 - i)
         }
-        return Fixture.items(events)
     }
+
+    private func fullPage() -> [TimelineItem] { Fixture.items(fullPageEvents()) }
 
     /// Measures (not asserts) how long the first layout of a full page takes in this build, and prints it; the result
     /// that decided where item 1's time goes is quoted in the change description.
@@ -325,46 +306,140 @@ final class TimelineMotionViewTests: XCTestCase {
         XCTAssertEqual(Set(cell.sentRiseAnimatedKeyPathsForTesting), ["opacity", "transform"])
     }
 
+    /// The rise starts 14 pt below where the bubble rests and scales about its bottom-right corner, whichever way the
+    /// layer's parent counts y. Checked in the window's own (y-up) layer space, so it fails if the shift is upward.
+    func testRiseStartsFourteenPointsBelowAndScalesAboutTheBottomRightCorner() throws {
+        let initial = (1 ... 6).map { Fixture.text("$r\($0)", "Message \($0)", mine: $0 % 2 == 0, ts: 40 - $0) }
+        let harness = try mountTable(items: Fixture.items(initial), size: NSSize(width: 600, height: 400))
+        defer { harness.tearDown() }
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$r6" })
+        let cell = try XCTUnwrap(harness.tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineCell)
+        let layer = try XCTUnwrap(cell.hostingView.layer)
+
+        cell.playSentMessageRiseAnimation(reduceMotion: false)
+        let group = try XCTUnwrap(layer.animation(forKey: "courier.sentMessageRise") as? CAAnimationGroup)
+        let rise = try XCTUnwrap((group.animations ?? []).compactMap { $0 as? CABasicAnimation }.first { $0.keyPath == "transform" })
+        let from = try XCTUnwrap((rise.fromValue as? NSValue)?.caTransform3DValue)
+
+        var root = layer
+        while let up = root.superlayer { root = up }
+        XCTAssertFalse(root.isGeometryFlipped, "the window's root layer is the right way up: lower on screen is smaller y")
+
+        let size = layer.bounds.size
+        // Of the two right-hand corners, the one lower on screen has the smaller y in the root layer.
+        func rootPoint(_ p: CGPoint) -> CGPoint { layer.convert(p, to: root) }
+        layer.removeAllAnimations()
+        let resting = [CGPoint(x: size.width, y: 0), CGPoint(x: size.width, y: size.height)].map(rootPoint)
+        let lowerIndex = resting[0].y < resting[1].y ? 0 : 1
+        let bottomRight = [CGPoint(x: size.width, y: 0), CGPoint(x: size.width, y: size.height)][lowerIndex]
+        let topLeft = [CGPoint(x: 0, y: size.height), CGPoint(x: 0, y: 0)][lowerIndex]
+        let restBottomRight = rootPoint(bottomRight)
+        let restTopLeft = rootPoint(topLeft)
+
+        layer.transform = from
+        let startBottomRight = rootPoint(bottomRight)
+        let startTopLeft = rootPoint(topLeft)
+        layer.transform = CATransform3DIdentity
+
+        XCTAssertEqual(startBottomRight.y - restBottomRight.y, -14, accuracy: 0.5,
+                       "the corner starts 14 pt lower on screen (smaller y in the y-up root)")
+        XCTAssertEqual(startBottomRight.x - restBottomRight.x, 0, accuracy: 0.5, "the bottom-right corner is the pivot")
+        let restSpan = hypot(restTopLeft.x - restBottomRight.x, restTopLeft.y - restBottomRight.y)
+        let startSpan = hypot(startTopLeft.x - startBottomRight.x, startTopLeft.y - startBottomRight.y)
+        XCTAssertEqual(startSpan / restSpan, 0.97, accuracy: 0.002, "scaled to 0.97 about that corner")
+    }
+
+    /// The production path under Reduce Motion: a send at the bottom fades in and does not move or scale.
+    func testASendAtTheBottomUnderReduceMotionOnlyFades() throws {
+        let initial = (1 ... 6).map { Fixture.text("$r\($0)", "Message \($0)", mine: $0 % 2 == 0, ts: 40 - $0) }
+        let harness = try mountTable(items: Fixture.items(initial), size: NSSize(width: 600, height: 400))
+        defer { harness.tearDown() }
+        harness.coordinator.reduceMotionOverrideForTesting = true
+        harness.bottomInsetBox.bottomSafeAreaInset = 0.5 // makes SwiftUI hand the coordinator the environment again
+        harness.pump(for: 0.1)
+
+        harness.conversation.recordLocalSendForTesting("$sent")
+        harness.conversation.setSnapshotItemsForTesting(
+            Fixture.items(initial + [Fixture.text("$sent", "Just sent", mine: true, ts: 1, status: .pending)])
+        )
+        harness.pump(for: 0.3) { harness.coordinator.entries.contains { $0.id == "$sent" } }
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == "$sent" })
+        let cell = try XCTUnwrap(harness.tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineCell)
+        XCTAssertEqual(cell.sentRiseAnimatedKeyPathsForTesting, ["opacity"])
+    }
+
+    /// Reduce Motion: the jump to the latest goes straight there, with no 0.2 s glide.
+    func testJumpToTheLatestIsImmediateUnderReduceMotion() throws {
+        let events = (1 ... 40).map { Fixture.text("$j\($0)", "Message \($0)", mine: $0 % 2 == 0, ts: 100 - $0) }
+        let harness = try mountTable(items: Fixture.items(events), size: NSSize(width: 600, height: 400))
+        defer { harness.tearDown() }
+        harness.coordinator.reduceMotionOverrideForTesting = true
+        harness.bottomInsetBox.bottomSafeAreaInset = 0.5
+        harness.pump(for: 0.1)
+        harness.scrollBy(-500)
+        harness.pump(for: 0.05)
+        XCTAssertFalse(harness.conversation.isAtBottom)
+
+        harness.conversation.jumpToBottom()
+        harness.pump(for: 0.03) // far less than the 0.2 s glide
+        let last = try frame(harness, "$j40")
+        XCTAssertEqual(last.maxY, 400 - ConversationView.timelineVerticalPadding - 0.5, accuracy: 2.0, "already at the bottom")
+    }
+
     // MARK: - Item 8: No Jump on Sending -> Sent
 
-    func testSendingToSentKeepsNewestBubbleAndGapUnchanged() throws {
-        let older = Fixture.text("$older", "Previous outgoing message", mine: true, ts: 10, status: .sent)
-        let sending = Fixture.text("$newest", "In-flight outgoing message", mine: true, ts: 2, status: .pending)
-        let harness = try mountTable(
-            items: Fixture.items([older, sending]),
-            lastOutgoingID: nil,
-            size: NSSize(width: 600, height: 400)
-        )
-        defer { harness.tearDown() }
+    private func message(_ id: String, _ status: EventStatus, ts: Int) -> Event {
+        Fixture.text(id, "Message \(id)", mine: true, ts: ts, status: status)
+    }
 
-        func rowFrameInHost(_ id: String) throws -> CGRect {
-            let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == id })
-            return harness.host.convert(harness.tableView.rect(ofRow: row), from: harness.tableView)
-        }
-
-        let olderBefore = try rowFrameInHost("$older")
-        let newestBefore = try rowFrameInHost("$newest")
-        let gapBefore = newestBefore.minY - olderBefore.maxY
-
-        // Transition newest from Sending... to Sent.
-        let sent = Fixture.text("$newest", "In-flight outgoing message", mine: true, ts: 2, status: .sent)
+    private func setItems(_ harness: TableHarness, _ events: [Event], receipt: String?) {
         harness.conversation.setSnapshotStateForTesting(
             roomID: "!motion-view-test",
-            items: Fixture.items([older, sent]),
+            items: Fixture.items(events),
             row: Fixture.row("!motion-view-test", "Motion Chat", network: "slack", direct: false, ts: 1, preview: "hi"),
             features: Fixture.features,
-            lastOutgoingID: "$newest"
+            lastOutgoingID: receipt
         )
         harness.pump(for: 0.15)
+    }
 
-        let olderAfter = try rowFrameInHost("$older")
-        let newestAfter = try rowFrameInHost("$newest")
-        let gapAfter = newestAfter.minY - olderAfter.maxY
+    private func frame(_ harness: TableHarness, _ id: String) throws -> CGRect {
+        let row = try XCTUnwrap(harness.coordinator.entries.firstIndex { $0.id == id })
+        return harness.host.convert(harness.tableView.rect(ofRow: row), from: harness.tableView)
+    }
 
-        XCTAssertEqual(olderAfter.minY, olderBefore.minY, accuracy: 0.5, "earlier bubble must not shift")
-        XCTAssertEqual(newestAfter.minY, newestBefore.minY, accuracy: 0.5, "newest bubble must not jump vertically")
-        XCTAssertEqual(newestAfter.height, newestBefore.height, accuracy: 0.5, "Sending and Sent share identical row height")
-        XCTAssertEqual(gapAfter, gapBefore, accuracy: 0.5, "gap between bubbles must remain identical across Sending -> Sent")
+    /// The newest bubble stays exactly where it is when Sending becomes Sent.
+    func testSendingToSentKeepsTheNewestBubbleWhereItIs() throws {
+        let older = message("$older", .sent, ts: 10)
+        let harness = try mountTable(
+            items: Fixture.items([older, message("$newest", .pending, ts: 2)]),
+            lastOutgoingID: "$older", size: NSSize(width: 600, height: 400)
+        )
+        defer { harness.tearDown() }
+        let sendingFrame = try frame(harness, "$newest")
+
+        setItems(harness, [older, message("$newest", .sent, ts: 2)], receipt: "$newest")
+        let sentFrame = try frame(harness, "$newest")
+        XCTAssertEqual(sentFrame.minY, sendingFrame.minY, accuracy: 0.5, "the newest bubble does not jump")
+        XCTAssertEqual(sentFrame.height, sendingFrame.height, accuracy: 0.5, "Sending and Sent are the same height")
+    }
+
+    /// The receipt line sits under the earlier message while a newer one is held, sending or fails. Starting a send
+    /// or failing one never changes the earlier message's row (the 19 pt the QA review claimed).
+    func testStartingOrFailingASendNeverShiftsTheReceiptLine() throws {
+        let older = message("$older", .sent, ts: 10)
+        let harness = try mountTable(items: Fixture.items([older]), lastOutgoingID: "$older",
+                                     size: NSSize(width: 600, height: 400))
+        defer { harness.tearDown() }
+        let withReceipt = try frame(harness, "$older")
+
+        for state in [EventStatus.queued, .pending, .waiting, .failed] {
+            setItems(harness, [older, message("$newest", state, ts: 2)], receipt: "$older")
+            let now = try frame(harness, "$older")
+            XCTAssertEqual(now.height, withReceipt.height, accuracy: 0.5,
+                           "$older keeps its receipt line (same height) while the newer message is \(state.rawValue)")
+            XCTAssertEqual(try frame(harness, "$newest").minY, now.maxY, accuracy: 0.5, "no gap opens between them")
+        }
     }
 
     // MARK: - Item 9: Short Chats Sit at the Bottom Across Resize, Composer Growth, and Older Loads
@@ -452,6 +527,53 @@ final class TimelineMotionViewTests: XCTestCase {
             try rowFrameInHost("$s1").minY, beforeTallPrependS1MinY, accuracy: 2.0,
             "crossing from short to tall keeps existing rows stationary without bounce"
         )
+    }
+
+    // MARK: - Item 9: A chat that fills the pane stays at the bottom when the pane shrinks
+
+    /// Without Liquid Glass the composer takes room from the timeline, so the timeline itself gets shorter. The
+    /// newest message must stay in view at once, not 150 ms later (this fails on the old ordering, which read "at the
+    /// bottom" after the resize had already moved the clip view).
+    func testATallChatStaysAtTheBottomAtOnceWhenThePaneShrinks() throws {
+        let harness = try mountTable(items: fullPage(), size: NSSize(width: 700, height: 600))
+        defer { harness.tearDown() }
+        let newest = try frame(harness, "$p50")
+        XCTAssertEqual(newest.maxY, 600 - ConversationView.timelineVerticalPadding, accuracy: 2.0)
+
+        // The width changes with the height, as it does when the window is dragged by its corner.
+        for (width, height) in [(CGFloat(690), CGFloat(560)), (680, 500), (670, 440)] {
+            let size = NSSize(width: width, height: height)
+            harness.window.setContentSize(size)
+            harness.host.frame = NSRect(origin: .zero, size: size)
+            harness.host.layoutSubtreeIfNeeded()
+            harness.pump(for: 0.03) // well under the 150 ms the timeline once took to notice
+            XCTAssertEqual(try frame(harness, "$p50").maxY, height - ConversationView.timelineVerticalPadding, accuracy: 2.0,
+                           "still at the bottom at \(height) pt")
+            XCTAssertTrue(harness.conversation.isAtBottom)
+        }
+    }
+
+    /// The bottom inset grows and shrinks (the composer, a typing line that eases in and out): each step keeps the
+    /// newest message flush above it, and a shrink is not mistaken for the person scrolling up.
+    func testATallChatStaysAtTheBottomWhileTheBottomInsetEasesUpAndDown() throws {
+        let harness = try mountTable(items: fullPage(), size: NSSize(width: 700, height: 600))
+        defer { harness.tearDown() }
+        let steps: [CGFloat] = [8, 20, 34, 48, 62, 76, 62, 48, 34, 20, 8, 0]
+        for inset in steps {
+            harness.bottomInsetBox.bottomSafeAreaInset = inset
+            harness.pump(for: 0.03)
+            XCTAssertEqual(
+                try frame(harness, "$p50").maxY, 600 - inset - ConversationView.timelineVerticalPadding, accuracy: 2.0,
+                "flush above an inset of \(inset)"
+            )
+        }
+        XCTAssertTrue(harness.conversation.isAtBottom)
+        // A message arriving after the shrink still follows the bottom (pinning was not cancelled).
+        var events = fullPageEvents()
+        events.append(Fixture.text("$p51", "One more", mine: false, ts: 1))
+        harness.conversation.setSnapshotItemsForTesting(Fixture.items(events))
+        harness.pump(for: 0.15)
+        XCTAssertEqual(try frame(harness, "$p51").maxY, 600 - ConversationView.timelineVerticalPadding, accuracy: 2.0)
     }
 
     // MARK: - Item 20: Highlight Duration

@@ -720,10 +720,11 @@ final class TimelineCell: NSTableCellView {
             return
         }
         let boundsSize = layer.bounds.size.width > 0 ? layer.bounds.size : hostingView.bounds.size
+        // The layer's transform is read in its superlayer's orientation, which is what decides which way is down.
         let pivot = SentMessageRiseMotion.bottomRightPivotOffset(
             boundsSize: boundsSize,
             layerAnchorPoint: layer.anchorPoint,
-            isGeometryFlipped: layer.isGeometryFlipped
+            superlayerYPointsDown: Self.yPointsDown(inSublayersOf: layer.superlayer)
         )
         var startTransform = CATransform3DIdentity
         startTransform = CATransform3DTranslate(startTransform, pivot.pivotX, pivot.pivotY + pivot.verticalShift, 0)
@@ -745,6 +746,18 @@ final class TimelineCell: NSTableCellView {
         group.timingFunction = CAMediaTimingFunction(controlPoints: cp.0, cp.1, cp.2, cp.3)
         group.isRemovedOnCompletion = true
         layer.add(group, forKey: Self.sentRiseAnimationKey)
+    }
+
+    /// Whether +y runs down the screen in `layer`'s own coordinates: each `isGeometryFlipped` on the way up turns it
+    /// over once (the window's own root layer is the right way up).
+    static func yPointsDown(inSublayersOf layer: CALayer?) -> Bool {
+        var flips = 0
+        var current = layer
+        while let each = current {
+            if each.isGeometryFlipped { flips += 1 }
+            current = each.superlayer
+        }
+        return flips % 2 == 1
     }
 
     var hasActiveSentRiseAnimationForTesting: Bool {
@@ -1050,45 +1063,22 @@ final class TimelineContainerView: NSView {
     let scrollView = TimelineScrollView()
     var timelineClipView: TimelineClipView? { scrollView.contentView as? TimelineClipView }
     var onLayout: ((CGSize) -> Void)?
+    /// Told just before and just after the scroll view is given a new frame. Resizing moves the clip view's bounds
+    /// by itself; the timeline must not read that as the person scrolling, and must know whether the newest message
+    /// was in view before the size changed.
+    var onWillResizeScrollView: (() -> Void)?
+    var onDidResizeScrollView: (() -> Void)?
     /// Told when the view enters a window (true) or leaves one (false); not for the first, windowless, state.
     var onWindowPresence: ((Bool) -> Void)?
     private var hadWindow = false
     /// The date capsule that floats under the chat's header while the person scrolls (`FloatingDayController`).
     let floatingDay = FloatingDayController()
-    private let pendingSpinner = NSProgressIndicator()
-    private var pendingSpinnerTask: Task<Void, Never>?
-    private var isPendingLoading = false
-
-    var isPendingSpinnerVisibleForTesting: Bool {
-        !pendingSpinner.isHidden
-    }
-
-    func setPendingRoomLoading(_ loading: Bool) {
-        guard loading != isPendingLoading else { return }
-        isPendingLoading = loading
-        pendingSpinnerTask?.cancel()
-        pendingSpinnerTask = nil
-        guard loading else {
-            pendingSpinner.stopAnimation(nil)
-            pendingSpinner.isHidden = true
-            return
-        }
-        pendingSpinnerTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: TimelineLoadMotion.spinnerDelay)
-            guard let self, !Task.isCancelled, self.isPendingLoading else { return }
-            self.pendingSpinner.isHidden = false
-            self.pendingSpinner.startAnimation(nil)
-            self.needsLayout = true
-        }
-    }
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil {
             hadWindow = true
             onWindowPresence?(true)
         } else if hadWindow {
-            setPendingRoomLoading(false)
             onWindowPresence?(false)
         }
     }
@@ -1113,13 +1103,6 @@ final class TimelineContainerView: NSView {
         scrollView.translatesAutoresizingMaskIntoConstraints = true
         addSubview(scrollView)
         addSubview(floatingDay.hostingView)
-
-        pendingSpinner.style = .spinning
-        pendingSpinner.controlSize = .regular
-        pendingSpinner.isDisplayedWhenStopped = false
-        pendingSpinner.isHidden = true
-        pendingSpinner.sizeToFit()
-        addSubview(pendingSpinner)
     }
 
     @available(*, unavailable)
@@ -1128,7 +1111,9 @@ final class TimelineContainerView: NSView {
     override func layout() {
         super.layout()
         if scrollView.frame != bounds {
+            onWillResizeScrollView?()
             scrollView.frame = bounds
+            onDidResizeScrollView?()
         }
         // Centred just under the chat's header: the scroll view's top inset is the header and the timeline's own
         // padding, and the capsule sits that padding's width less than a gap below the header.
@@ -1140,18 +1125,6 @@ final class TimelineContainerView: NSView {
         )
         if floatingDay.hostingView.frame != capsuleFrame {
             floatingDay.hostingView.frame = capsuleFrame
-        }
-        let spinnerSize = pendingSpinner.fittingSize
-        let usableTop = scrollView.contentInsets.top
-        let usableBottom = max(usableTop, bounds.height - scrollView.contentInsets.bottom)
-        let spinnerFrame = NSRect(
-            x: ((bounds.width - spinnerSize.width) * 0.5).rounded(),
-            y: (usableTop + (usableBottom - usableTop - spinnerSize.height) * 0.5).rounded(),
-            width: spinnerSize.width,
-            height: spinnerSize.height
-        )
-        if pendingSpinner.frame != spinnerFrame {
-            pendingSpinner.frame = spinnerFrame
         }
         onLayout?(bounds.size)
     }
@@ -1217,6 +1190,10 @@ struct TimelineTableView: NSViewRepresentable {
 
         private var measuredWidth: CGFloat = 0
         private var lastContainerHeight: CGFloat = 0
+        /// Whether the newest message was in view just before the last resize, read before the resize moved the
+        /// clip view (afterwards it no longer says).
+        private var wasAtBottomBeforeResize = false
+        private var appliedProgrammaticBeforeResize = false
         private var pendingResizeWidth: CGFloat = 0
         private var resizeDebounceWorkItem: DispatchWorkItem?
         private var heightPassGeneration = 0
@@ -1224,6 +1201,8 @@ struct TimelineTableView: NSViewRepresentable {
         private var hasPositionedInitially = false
         private var isApplyingProgrammaticUpdate = false
         private var reduceMotion = false
+        /// Tests: stands in for the system's Reduce Motion setting.
+        var reduceMotionOverrideForTesting: Bool?
         private var lastPendingRiseRevision = 0
         private var lastAtBottom = true
         private var lastObservedClipOriginY: CGFloat = 0
@@ -1315,7 +1294,6 @@ struct TimelineTableView: NSViewRepresentable {
             leavingBottomTask = nil
             stopPinningToBottom()
             pinToBottomUntil = nil
-            containerView.setPendingRoomLoading(false)
             containerView.floatingDay.reset()
             dismissSenderPopover()
             if let userScrollMonitor {
@@ -1368,6 +1346,22 @@ struct TimelineTableView: NSViewRepresentable {
             tableView.delegate = self
             tableView.onEmptySpaceClick = { [weak self] in
                 self?.parent.conversation.deselectMessage()
+            }
+            containerView.onWillResizeScrollView = { [weak self] in
+                guard let self, self.hasPositionedInitially else { return }
+                self.wasAtBottomBeforeResize = self.lastAtBottom || self.isScrolledToBottom()
+                self.appliedProgrammaticBeforeResize = self.isApplyingProgrammaticUpdate
+                self.isApplyingProgrammaticUpdate = true
+            }
+            containerView.onDidResizeScrollView = { [weak self] in
+                guard let self, self.hasPositionedInitially else { return }
+                // The newest message was in view before the resize: it still is, in the same layout pass, not a
+                // moment later (a viewport that got shorter would otherwise cover it until something re-checked).
+                if self.wasAtBottomBeforeResize, !self.parent.conversation.isAwayFromLatest {
+                    self.scrollToBottom(animated: false)
+                }
+                self.isApplyingProgrammaticUpdate = self.appliedProgrammaticBeforeResize
+                self.lastObservedClipOriginY = self.containerView.scrollView.contentView.bounds.origin.y
             }
             containerView.timelineClipView?.contentHeightProvider = { [weak self] in
                 self?.currentContentHeight() ?? 0
@@ -1481,8 +1475,8 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         func syncEnvironment(from view: TimelineTableView, environment: EnvironmentValues) {
-            reduceMotion = environment.accessibilityReduceMotion
-                || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reduceMotion = reduceMotionOverrideForTesting ?? (environment.accessibilityReduceMotion
+                || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             storedProbe = environment.conversationLayoutProbe
             let env = TimelineRowEnvironment(
                 appearance: view.resolvedAppearance ?? environment.appearancePreferences,
@@ -1721,8 +1715,11 @@ struct TimelineTableView: NSViewRepresentable {
                 scheduleWidthResize(to: clipWidth)
             } else if !hasPositionedInitially {
                 performInitialLayoutIfReady()
-            } else if heightChanged {
-                let wasAtBottom = lastAtBottom || isScrolledToBottom()
+            }
+            // A new height, with or without a new width: the newest message stays in view. (The width change is
+            // measured a moment later; it keeps the bottom itself.)
+            if heightChanged, hasPositionedInitially {
+                let wasAtBottom = wasAtBottomBeforeResize
                 let isShort = TimelineBottomAnchoring.isShortChat(
                     viewportHeight: scrollView.contentView.bounds.height,
                     topInset: scrollView.contentInsets.top,
@@ -1915,8 +1912,7 @@ struct TimelineTableView: NSViewRepresentable {
 
         func applyUpdates(from view: TimelineTableView, environment: EnvironmentValues) {
             let conversation = view.conversation
-            containerView.setPendingRoomLoading(conversation.isLoadingPendingRoom)
-            let items = conversation.items
+                let items = conversation.items
             let topControl = currentTopControl(conversation: conversation)
             let selectedID = conversation.selectedMessageID
             let highlightedID = conversation.highlightedMessageID
@@ -2391,6 +2387,10 @@ struct TimelineTableView: NSViewRepresentable {
             let wasAtTop = abs(scrollView.contentView.bounds.origin.y + oldTop) <= 1.0
             let wasAtBottom = isScrolledToBottom()
 
+            // Changing the insets can move the clip view's bounds. That is the app's own move, not the person
+            // scrolling: it must not count as one (it would take the timeline off the bottom).
+            let wasApplying = isApplyingProgrammaticUpdate
+            isApplyingProgrammaticUpdate = true
             scrollView.contentInsets = NSEdgeInsets(top: topInset, left: 0, bottom: bottomInset, right: 0)
             scrollView.scrollerInsets = NSEdgeInsets(
                 top: -ConversationView.timelineVerticalPadding,
@@ -2400,14 +2400,14 @@ struct TimelineTableView: NSViewRepresentable {
             )
 
             if adjustScrollPosition {
-                isApplyingProgrammaticUpdate = true
                 if (wasAtBottom || isCurrentShortChat()), !parent.conversation.isAwayFromLatest {
                     scrollToBottom(animated: false)
                 } else if wasAtTop {
                     scrollToTop(animated: false)
                 }
-                isApplyingProgrammaticUpdate = false
             }
+            isApplyingProgrammaticUpdate = wasApplying
+            lastObservedClipOriginY = scrollView.contentView.bounds.origin.y
             return true
         }
 
@@ -2424,7 +2424,8 @@ struct TimelineTableView: NSViewRepresentable {
             if conversation.jumpToBottomRequest != lastJumpToBottomRequest {
                 lastJumpToBottomRequest = conversation.jumpToBottomRequest
                 if hasPositionedInitially {
-                    scrollToBottom(animated: true)
+                    // Reduce Motion: straight there, no 0.2 s glide.
+                    scrollToBottom(animated: !reduceMotion)
                 }
             }
 

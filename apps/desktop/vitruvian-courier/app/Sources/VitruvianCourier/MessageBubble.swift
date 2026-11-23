@@ -402,6 +402,7 @@ struct MessageRowView: View {
     /// The highlight's tint, relative to `JumpHighlightMotion.baseTintOpacity`.
     @State private var highlight: Double = 0
     @State private var highlightTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     /// A double click set to show the menu.
     @State private var showsMenu = false
     /// Where the row's own buttons and media are (`takesOwnClick`), in the row's coordinates: a click there is theirs.
@@ -825,6 +826,13 @@ struct MessageRowView: View {
         highlightTask = nil
         guard on else {
             highlight = 0
+            return
+        }
+        // Reduce Motion: the tint is there at once and goes when the model clears the highlight; no ramp.
+        if JumpHighlightMotion.rampsTint(
+            reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        ) == false {
+            highlight = JumpHighlightMotion.peakTintFraction
             return
         }
         highlight = 0

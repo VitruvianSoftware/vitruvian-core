@@ -54,7 +54,10 @@ struct PinnedStrip: View {
                     .accessibilityAction { click(row) }
                     // A native menu, so the system's own "Ask Siri" item is left out.
                     .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row) }
-                    .onHover { inside in if inside { inbox.prefetchFeatures(for: row) } }
+                    .onHover { inside in
+                        conversation?.hoverPrefetch(inside ? row.id : nil)
+                        if inside { inbox.prefetchFeatures(for: row) }
+                    }
                     .modifier(PinnedTileDragModifier(enabled: canDrag, makeProvider: { beginDrag(rowID: row.id) }))
                     .background(GeometryReader { proxy in
                         Color.clear.preference(key: PinnedTileFramesKey.self,

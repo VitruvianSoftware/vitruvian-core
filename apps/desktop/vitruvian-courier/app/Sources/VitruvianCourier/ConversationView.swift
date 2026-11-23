@@ -22,6 +22,7 @@ struct ConversationView: View {
     let appModel: AppModel
     var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.timelineCovered) private var windowCoversTimeline
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.themeAccentHex) private var themeAccentHex
@@ -811,7 +812,11 @@ struct ConversationView: View {
                 if let request { scrollToMessage(proxy, request) }
             }
             .onChange(of: conversation.jumpToBottomRequest) { _, _ in
-                scrollToBottom(proxy, animated: true)
+                // Reduce Motion: straight there, no 0.2 s glide.
+                scrollToBottom(
+                    proxy,
+                    animated: !(accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                )
             }
             .onChange(of: conversation.items) { _, _ in
                 // New messages, a reaction or a status line are followed only by someone already at the newest
@@ -1054,11 +1059,14 @@ struct ConversationView: View {
     @ViewBuilder
     private var placeholder: some View {
         if !conversation.isLoaded {
-            // Only when nothing is kept for the chat, and only after a moment: a fast read never flashes it.
+            // Chat identity has switched already; only the messages are still on their way. Nothing shows for the
+            // first moment (a fast read never flashes), then message-shaped placeholders fade in. A failed read
+            // shows the error and retry state instead.
             if conversation.problem == nil {
-                DelayedSpinner()
+                TimelinePlaceholder()
                     .id(conversation.roomID)
                     .padding(.top, effectiveHeaderInset)
+                    .padding(.bottom, ConversationView.timelineVerticalPadding)
             }
         } else if conversation.items.isEmpty {
             Text(String(localized: "No messages yet"))
@@ -1435,22 +1443,6 @@ private struct ProblemBar: View {
     }
 }
 
-/// A spinner that shows only after `delay`, so a read that finishes sooner never flashes one.
-private struct DelayedSpinner: View {
-    var delay: Duration = .milliseconds(250)
-    @State private var isShown = false
-
-    var body: some View {
-        Group {
-            if isShown { ProgressView() } else { Color.clear }
-        }
-        .task {
-            try? await Task.sleep(for: delay)
-            if !Task.isCancelled { isShown = true }
-        }
-    }
-}
-
 /// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
 /// a dot once something new has come in. It watches `BottomState` itself, so the timeline does not have to.
 private struct JumpToLatestButton: View {
@@ -1466,6 +1458,18 @@ private struct JumpToLatestButton: View {
 
     private var isVisible: Bool { !bottom.isAtBottom || conversation.isAwayFromLatest }
 
+    private var liveLabel: JumpToLatestLabel {
+        JumpToLatestLabel(
+            isAwayFromLatest: conversation.isAwayFromLatest,
+            hasNewerWhileAway: conversation.hasNewerWhileAway,
+            newMessageCount: bottom.newMessageCount
+        )
+    }
+
+    /// What the button said the last time it was shown: it keeps these words while it fades out, so its width does
+    /// not snap to the chevron alone when the count resets as the bottom comes into view.
+    @State private var lastShownLabel = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 0)
+
     /// The fade only: 0.15 s ease-out, with a 50 ms wait when it appears. It never moves or scales, so Reduce Motion
     /// only shortens it and drops the wait.
     private var fade: Animation {
@@ -1475,15 +1479,16 @@ private struct JumpToLatestButton: View {
 
     var body: some View {
         // Always in the tree, so it can fade out as well as in; hidden, it takes no clicks and is not announced.
+        let label = JumpToLatestLabel.displayed(current: liveLabel, lastShown: lastShownLabel, isVisible: isVisible)
         Button {
             conversation.jumpToBottom()
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "chevron.down")
-                if conversation.isAwayFromLatest {
+                if label.isAwayFromLatest {
                     Text(String(localized: "Jump to latest"))
                         .font(.callout.weight(.medium))
-                    if conversation.hasNewerWhileAway {
+                    if label.hasNewerWhileAway {
                         let accentHex = appearance?.effectiveTheme(for: conversation.roomID).accentColorHex
                             ?? CourierThemePreset.classicTeal.defaultAccentHex
                         Circle()
@@ -1491,9 +1496,9 @@ private struct JumpToLatestButton: View {
                             .frame(width: 7, height: 7)
                             .accessibilityLabel(String(localized: "New messages"))
                     }
-                } else if bottom.newMessageCount > 0 {
-                    Text(bottom.newMessageCount == 1 ? String(localized: "1 new message")
-                        : String(localized: "\(bottom.newMessageCount) new messages"))
+                } else if label.newMessageCount > 0 {
+                    Text(label.newMessageCount == 1 ? String(localized: "1 new message")
+                        : String(localized: "\(label.newMessageCount) new messages"))
                         .font(.callout.weight(.medium))
                 }
             }
@@ -1522,6 +1527,12 @@ private struct JumpToLatestButton: View {
         .allowsHitTesting(isVisible)
         .accessibilityHidden(!isVisible)
         .animation(fade, value: isVisible)
+        .onChange(of: liveLabel, initial: true) { _, new in
+            if isVisible { lastShownLabel = new }
+        }
+        .onChange(of: isVisible) { _, visible in
+            if visible { lastShownLabel = liveLabel }
+        }
         .help(String(localized: "Jump to the newest message (⌘↓)"))
         .accessibilityLabel(String(localized: "Jump to the newest message"))
     }

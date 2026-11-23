@@ -537,11 +537,7 @@ final class ConversationModelTests: XCTestCase {
         h.conversation.learnUnreadCount(1, of: "!b")
         h.server.releaseHeld(method: "room.events", room: "!b",
                              with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
-        try await waitUntil {
-            h.conversation.roomID == "!b"
-                && h.conversation.isLoaded
-                && h.conversation.items.contains { $0.id == "new" }
-        }
+        try await waitUntil { h.conversation.isLoaded && h.conversation.items.contains { $0.id == "new" } }
         let idsB = h.conversation.items.map(\.id)
         XCTAssertEqual(idsB[try XCTUnwrap(idsB.firstIndex(of: "new")) + 1], "$5")
         await stop(h)
@@ -1887,8 +1883,7 @@ extension ConversationModelTests {
         XCTAssertEqual(dicts(h.server.receivedParams("room.setUnreadFrom")), dicts([["event_id": "$2"]]),
                        "the message only: the engine finds its chat")
         XCTAssertEqual(steps, ["planned, 0 marks", "done, 1 marks"])
-        XCTAssertEqual(h.app.selectedRoomID, "!b", "where the rule said to go")
-        try await waitUntil { h.conversation.roomID == "!b" && h.conversation.isLoaded }
+        XCTAssertEqual(h.conversation.roomID, "!b", "where the rule said to go")
 
         // A refusal is a toast, and nothing moves.
         try await h.open("!a")
