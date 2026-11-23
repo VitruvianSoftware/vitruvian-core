@@ -22,15 +22,39 @@
 # The digest is pinned by hand (no image updater): take a new one from the
 # vitruvian-relay-image run's summary. The connector's compiled-in defaults
 # must match this file (test defaults_match_relay_stack).
+#
+# The new relay: relay.vitruviansoftware.dev, devices and calls in Postgres
+# (relay-db), no volume, access by the relay-user role, and the dashboard. One
+# replica (the chart's own, with Recreate): the relay holds each computer's
+# connection and each sign-in session in memory.
 image:
-  digest: "96362e7e027a44199fdce8fbb9c478cab0f43596@sha256:9609d1bedea9e27c658ff00f9302d077aa033fc387dd46f3ed2ca86d8495a9ee"
+  digest: "7462dad5fdb34dac0580916ca444e2dbeddbe20f@sha256:4958579e274c68bd9d8ae78a7bd768e2b11557466d8288cabf098587d47b425c"
+
+hostname: relay.vitruviansoftware.dev
+
 # From the zitadel-apps-relay stack's outputs (zitadel-apps-relay-apply run).
 oidc:
   projectId: "398912441632687930"
-  # claudeClientId, geminiClientId (zitadel-apps-relay outputs); add chatgptClientId later
-  mcpClientIds: "398912442404439866,399781767172589504"
-  connectorClientId: "398912442404505402"
-  allowedSubjects: "378818267051722263" # James (the stack's only grant)
+  # claudeV2ClientId, geminiV2ClientId; add chatgptV2ClientId later
+  mcpClientIds: "400571151425734985,400571151492842651"
+  # connectorV2ClientId
+  connectorClientId: "400571151425800521"
+  # dashboardClientId
+  dashboardClientId: "400571151492909385"
+  requiredRole: "relay-user"
+
+# What the dashboard calls each AI app.
+mcpClientLabels:
+  Claude: "400571151425734985"
+  Gemini: "400571151492842651"
+
+# The CloudNativePG cluster relay-db (gitops/argocd/platform/relay/).
+database:
+  enabled: true
+
+# The old relay's /data volume is gone. Argo CD leaves the claim (Prune=false).
+persistence:
+  enabled: false
 
 # Keep the relay off laptop nodes. In spike C (2026-11-12) both outages came
 # while the laptop node james-mbp16 went NotReady, and the pod was there again
