@@ -309,6 +309,24 @@ async fn still_theirs(app: &App, subject: &str, device_id: &str) -> Result<(), R
     }
 }
 
+/// The token passes the check every app token passes (role included), for
+/// the apps client, and belongs to `subject`. Not good: `invalid_grant`;
+/// the identity service's keys not reachable: try again.
+async fn verify_access(app: &App, access_token: &str, subject: &str) -> Result<(), Refusal> {
+    let signin = app.settings.app_signin.as_ref().ok_or(Refusal::Server)?;
+    let checker = app.mcp_verifier.clone();
+    let token = access_token.to_string();
+    match tokio::task::spawn_blocking(move || checker.verify(&token)).await {
+        Ok(Ok(caller)) if caller.client_id == signin.client_id && caller.subject == subject => {
+            Ok(())
+        }
+        Ok(Ok(_)) => Err(Refusal::InvalidGrant),
+        Ok(Err(AuthError::IdpUnavailable { .. })) => Err(Refusal::Unavailable),
+        Ok(Err(_)) => Err(Refusal::InvalidGrant),
+        Err(_) => Err(Refusal::Server),
+    }
+}
+
 async fn redeem(
     app: &Arc<App>,
     client_id: &str,
@@ -330,6 +348,13 @@ async fn redeem(
     if !(same_client && same_callback && same_resource && proven) {
         return Err(Refusal::InvalidGrant);
     }
+    // The code was spent above, so a 503 from here on is deliberate: codes
+    // are single-use, and the app starts the sign-in again.
+    //
+    // The access token was checked when the person came back, but their role
+    // or the computer may have changed in the minutes since: check it again,
+    // and that it is still the person the code was issued to.
+    verify_access(app, &issued.access_token, &issued.subject).await?;
     still_theirs(app, &issued.subject, &issued.device_id).await?;
     let refresh_token = match &issued.refresh_token {
         Some(z) => Some(seal_refresh(
@@ -368,6 +393,11 @@ async fn refresh(
         return Err(Refusal::InvalidGrant);
     };
 
+    // Before the identity service is asked: its refresh token is single-use
+    // and rotates, so a removed computer or a database that is not answering
+    // must not use one up.
+    still_theirs(app, &subject, &device_id).await?;
+
     // Zitadel is asked as the apps' public client, within the same few
     // places every sign-in shares.
     let ask = [
@@ -389,15 +419,9 @@ async fn refresh(
     // The new token is checked as every app token is, role included, so a
     // person whose role was removed stops refreshing here, and it must be
     // the same person the app was given.
-    let checker = app.mcp_verifier.clone();
-    let access = tokens.access_token.clone();
-    match tokio::task::spawn_blocking(move || checker.verify(&access)).await {
-        Ok(Ok(caller)) if caller.client_id == signin.client_id && caller.subject == subject => {}
-        Ok(Ok(_)) => return Err(Refusal::InvalidGrant),
-        Ok(Err(AuthError::IdpUnavailable { .. })) => return Err(Refusal::Unavailable),
-        Ok(Err(_)) => return Err(Refusal::InvalidGrant),
-        Err(_) => return Err(Refusal::Server),
-    }
+    verify_access(app, &tokens.access_token, &subject).await?;
+    // And again after: the computer may have been removed while Zitadel
+    // was answering.
     still_theirs(app, &subject, &device_id).await?;
 
     // If the identity service did not rotate its refresh token, the old one

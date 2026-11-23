@@ -157,13 +157,20 @@ pub(crate) fn mint_with_role(
     format!("{input}.{}", b64url(&sig))
 }
 
-/// Serves the key set on a loopback port from a plain thread.
-pub(crate) fn start_jwks_server(body: String) -> String {
+/// Serves the key set on a loopback port from a plain thread. While the
+/// returned switch is set, it hangs up on every request instead (the
+/// identity service is not answering).
+pub(crate) fn start_jwks_server(body: String) -> (String, Arc<AtomicBool>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/oauth/v2/keys", listener.local_addr().unwrap());
+    let down = Arc::new(AtomicBool::new(false));
+    let hung_up = down.clone();
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
+            if hung_up.load(Ordering::SeqCst) {
+                continue;
+            }
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut line = String::new();
             while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
@@ -176,7 +183,7 @@ pub(crate) fn start_jwks_server(body: String) -> String {
             );
         }
     });
-    url
+    (url, down)
 }
 
 /// A stand-in for the identity service's token endpoint: records the forms
@@ -303,6 +310,8 @@ pub(crate) struct Harness {
     pub(crate) logs: Arc<Mutex<Vec<String>>>,
     pub(crate) store: Arc<MemStore>,
     pub(crate) tokens: TokenServer,
+    /// Set to make the key-set server hang up (see [`start_jwks_server`]).
+    pub(crate) jwks_down: Arc<AtomicBool>,
 }
 
 pub(crate) struct Reply {
@@ -355,7 +364,7 @@ pub(crate) async fn app_harness_with(timing: Timing) -> Harness {
 /// The standard environment, with `extra` set over it.
 async fn harness_env(timing: Timing, extra: &[(&str, String)]) -> Harness {
     let rsa = rsa_key();
-    let jwks_uri = start_jwks_server(jwks(&rsa).to_string());
+    let (jwks_uri, jwks_down) = start_jwks_server(jwks(&rsa).to_string());
     let tokens = start_token_server();
     let env: std::collections::HashMap<&str, String> = [
         ("PUBLIC_URL", PUBLIC_URL.to_string()),
@@ -415,6 +424,7 @@ async fn harness_env(timing: Timing, extra: &[(&str, String)]) -> Harness {
         logs,
         store,
         tokens,
+        jwks_down,
     }
 }
 

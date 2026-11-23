@@ -24,7 +24,7 @@
 use http::StatusCode;
 use serde_json::{json, Value};
 
-use super::production_callback;
+use super::{production_callback, IssuedCode};
 use crate::dashboard::form_encode;
 use crate::dashboard::pages::esc;
 use crate::dashboard::parse_pairs;
@@ -2479,4 +2479,115 @@ async fn the_token_endpoint_leaves_no_secret_in_the_logs() {
     ] {
         assert!(!logs.contains(secret), "{secret} is in the logs:\n{logs}");
     }
+}
+
+#[tokio::test]
+async fn refresh_checks_the_computer_before_asking_zitadel() {
+    let h = app_harness().await;
+    let (issued, doc) = redeemed(&h).await;
+    let sealed = doc["refresh_token"].as_str().unwrap().to_string();
+    let access = app_token_exp(&h, ALICE, Some("relay-user"), now_secs() + 900);
+    h.tokens.give_tokens(&access, NEW_REFRESH);
+    let asked = h.tokens.requests().len();
+
+    // The database not answering: try again, and Zitadel's single-use
+    // refresh token is not spent.
+    h.store
+        .fail_with(Some(crate::store::StoreError::Unavailable));
+    let r = post_token(&h, &refresh(&h, &sealed)).await;
+    error_of(
+        &r,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    );
+    assert_eq!(h.tokens.requests().len(), asked, "Zitadel was not called");
+    h.store.fail_with(None);
+
+    // The computer removed: refused, and Zitadel is not called either.
+    assert!(h.app.revoke(ALICE, &issued.device).await.unwrap());
+    let r = post_token(&h, &refresh(&h, &sealed)).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert_eq!(h.tokens.requests().len(), asked, "Zitadel was not called");
+}
+
+/// Puts a code in the table as if consent had just been given, with
+/// whatever access token the test wants it to carry.
+fn plant_code(h: &Harness, code: &str, access: &str, subject: &str, device: &str) {
+    h.app.pending.put_code(
+        code,
+        IssuedCode {
+            client_id: client_id(h),
+            callback: production_callback(ID),
+            challenge: challenge_for(VERIFIER),
+            resource: format!("{PUBLIC_URL}/mcp/app/{device}"),
+            access_token: access.to_string(),
+            refresh_token: Some(REFRESH.to_string()),
+            expires_in: 3600,
+            subject: subject.to_string(),
+            device_id: device.to_string(),
+        },
+        now_secs(),
+    );
+}
+
+#[tokio::test]
+async fn redemption_rechecks_the_role_and_who_the_token_is_for() {
+    let h = app_harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+
+    // Sanity: a planted code with a good token redeems.
+    let good = app_token(&h, ALICE, Some("relay-user"));
+    plant_code(&h, "good-code", &good, ALICE, &device);
+    let r = post_token(&h, &redeem(&h, "good-code")).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+
+    // The role was removed after the callback checked the token.
+    let no_role = app_token(&h, ALICE, None);
+    plant_code(&h, "no-role", &no_role, ALICE, &device);
+    let r = post_token(&h, &redeem(&h, "no-role")).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+    assert!(r.json().get("access_token").is_none());
+    assert!(r.json().get("refresh_token").is_none());
+
+    // A token for someone other than the code's person is not handed out.
+    let bobs = app_token(&h, BOB, Some("relay-user"));
+    plant_code(&h, "not-hers", &bobs, ALICE, &device);
+    let r = post_token(&h, &redeem(&h, "not-hers")).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+
+    // A token for another client is not either.
+    let other = mint_with_role(
+        &h.rsa,
+        MCP_CLIENT,
+        ALICE,
+        Some(now_secs() + 600),
+        Some("relay-user"),
+    );
+    plant_code(&h, "other-client", &other, ALICE, &device);
+    let r = post_token(&h, &redeem(&h, "other-client")).await;
+    error_of(&r, StatusCode::BAD_REQUEST, "invalid_grant");
+}
+
+#[tokio::test]
+async fn redemption_with_the_identity_service_down_is_503_and_gives_no_token() {
+    let h = app_harness().await;
+    let (device, _key) = h.new_device(ALICE).await;
+    // A token the verifier has to fetch the key set to check (a different
+    // algorithm header makes no difference to that: nothing is cached yet).
+    let access = app_token(&h, ALICE, Some("relay-user"));
+    plant_code(&h, "down-code", &access, ALICE, &device);
+    h.jwks_down.store(true, std::sync::atomic::Ordering::SeqCst);
+    let r = post_token(&h, &redeem(&h, "down-code")).await;
+    h.jwks_down
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    error_of(
+        &r,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+    );
+    assert!(r.header("retry-after").is_some());
+    assert!(r.json().get("access_token").is_none());
+    // The code was spent: the app starts the sign-in again.
+    let again = post_token(&h, &redeem(&h, "down-code")).await;
+    error_of(&again, StatusCode::BAD_REQUEST, "invalid_grant");
 }
