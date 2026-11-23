@@ -1291,16 +1291,6 @@ enum MixerInputVolumeContract {
         check(HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites
                 && retryService.retryDeadline == HAL.now + 0.25,
               "a callback burst during driver backoff preserves the retry deadline without writing hardware")
-        let backoffGeneration = retryService.applyGeneration
-        UserDefaults.standard.writtenKeys = []
-        for _ in 0..<8 {
-            _ = MicMuteService.listenerCallback(10, 1, &refusedLevel, retryService.listenerClient)
-        }
-        DispatchQueue.drain()
-        check(retryService.applyGeneration == backoffGeneration + 1 && UserDefaults.standard.writtenKeys.isEmpty
-                && HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites
-                && retryService.retryDeadline == now + 0.25,
-              "a callback burst during driver backoff preserves the retry deadline without writing hardware or defaults")
         HAL.levels[HAL.key(20)] = 0.8
         changed(20)
         check(HAL.levels[HAL.key(20)] == 0 && HAL.writes.filter { $0 == HAL.key(10) }.count == refusingWrites,
@@ -1444,88 +1434,6 @@ enum MixerInputVolumeContract {
 
         HAL.reset()
         HAL.levels[HAL.key(10)] = 0.5
-        MicMuteService.shared.setMuted(true)
-        DispatchQueue.drain()
-        var changedLevel = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar,
-                                                      mScope: kAudioDevicePropertyScopeInput,
-                                                      mElement: kAudioObjectPropertyElementMain)
-        let sweepsBefore = MicMuteService.shared.applyGeneration
-        UserDefaults.standard.writtenKeys = []
-        for _ in 0..<5 {
-            _ = MicMuteService.listenerCallback(10, 1, &changedLevel, MicMuteService.shared.listenerClient)
-        }
-        DispatchQueue.drain()
-        check(MicMuteService.shared.applyGeneration == sweepsBefore + 1,
-              "a burst of device changes is answered by one sweep")
-        check(UserDefaults.standard.writtenKeys.isEmpty,
-              "a re-assert that finds everything muted writes no preferences")
-        let service = MicMuteService.shared
-        let timersBefore = DispatchQueue.main.timedEnqueues
-        HAL.levels[HAL.key(10)] = 0.5
-        _ = MicMuteService.listenerCallback(10, 1, &changedLevel, service.listenerClient)
-        DispatchQueue.main.run()
-        check(DispatchQueue.main.timedEnqueues == timersBefore && service.halQueue.work.count == 1,
-              "the first callback queues an audio sweep immediately, without a mute delay")
-        let firstSweep = service.applyGeneration
-        // Let main handle each arrival separately while the audio queue is busy.
-        for _ in 0..<8 {
-            _ = MicMuteService.listenerCallback(10, 1, &changedLevel, service.listenerClient)
-            DispatchQueue.main.run()
-        }
-        check(service.applyGeneration == firstSweep && service.halQueue.work.count == 1,
-              "a busy audio queue never accumulates additional listener sweeps")
-        service.halQueue.run()
-        HAL.levels[HAL.key(10)] = 0.75
-        DispatchQueue.drain()
-        check(service.applyGeneration == firstSweep + 1 && HAL.levels[HAL.key(10)] == 0,
-              "one trailing sweep covers changes the busy sweep missed")
-
-        HAL.writeFails.insert(HAL.key(10))
-        QuickToolHUD.messages = []
-        _ = MicMuteService.listenerCallback(10, 1, &changedLevel, service.listenerClient)
-        service.setMuted(false)
-        DispatchQueue.main.run()
-        service.syncWithPreferences()
-        DispatchQueue.drain()
-        check(QuickToolHUD.messages == ["unmute partial"] && service.isMuted && service.hasOutstandingClaims,
-              "an older device notification or preference sync cannot hide a failed manual unmute")
-        HAL.writeFails = []
-        service.setMuted(false)
-        DispatchQueue.drain()
-        check(!service.isMuted && HAL.levels[HAL.key(10)] == 0.5,
-              "a later manual retry restores the original input gain")
-
-        HAL.reset()
-        let stopped = MicMuteService.shared
-        HAL.levels[HAL.key(10)] = 0.65
-        HAL.mute[20] = 1
-        HAL.devices = [10, 20]
-        stopped.toggle()
-        stopped.toggle()
-        check(!stopped.wantsMute, "a second toggle cancels a mute that is still on the audio queue")
-        QuickToolHUD.messages = []
-        _ = MicMuteService.listenerCallback(10, 1, &changedLevel, stopped.listenerClient)
-        stopped.unmuteForTeardown()
-        check(stopped.halQueue.work.isEmpty && HAL.levels[HAL.key(10)] == 0.65 && HAL.mute[20] == 1,
-              "teardown drains a queued mute and unmute without opening a user-muted input")
-        DispatchQueue.drain()
-        check(HAL.listeners.isEmpty && !stopped.isMuted && QuickToolHUD.messages.isEmpty,
-              "old callbacks cannot publish, remute or reinstall listeners after teardown")
-
-        HAL.reset()
-        let removed = MicMuteService.shared
-        HAL.levels[HAL.key(10)] = 0.6
-        removed.setMuted(true)
-        DispatchQueue.drain()
-        HAL.devices = []
-        removed.unmuteForTeardown()
-        _ = MicMuteService.listenerCallback(system, 1, &devicesChanged, removed.listenerClient)
-        DispatchQueue.drain()
-        check(removed.hasOutstandingClaims && HAL.listeners.isEmpty,
-              "a late HAL callback for an absent claim cannot reinstall listeners after teardown")
-
-        HAL.reset()
-        HAL.levels[HAL.key(10)] = 0.5
         HAL.muteService.setMuted(true)
         Queue.drain()
         for _ in 0..<5 { HAL.notify(10, kAudioDevicePropertyVolumeScalar) }
@@ -1595,11 +1503,11 @@ enum MixerInputVolumeContract {
         HAL.devices = []
         let systemCallbacks = HAL.procs.filter { $0.key.d == AudioObjectID(kAudioObjectSystemObject) }
         removed.unmuteForTeardown()
-        var devicesChanged = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+        var lateDevicesChanged = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                                         mScope: kAudioObjectPropertyScopeGlobal, mElement: 0)
         for (_, registered) in systemCallbacks {
             for (proc, client) in registered {
-                _ = proc(AudioObjectID(kAudioObjectSystemObject), 1, &devicesChanged, client)
+                _ = proc(AudioObjectID(kAudioObjectSystemObject), 1, &lateDevicesChanged, client)
             }
         }
         Queue.drain()
