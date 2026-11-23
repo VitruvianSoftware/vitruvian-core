@@ -556,6 +556,7 @@ public final class ComposerModel: ObservableObject {
     private var caretSerial = 0
     private var preferencesCancellable: AnyCancellable?
     private var lockCancellable: AnyCancellable?
+    private var unlockCancellable: AnyCancellable?
     private var aiStoreCancellable: AnyCancellable?
     private var talkToTypeCancellable: AnyCancellable?
     private weak var observedLifecycle: SystemLifecycleModel?
@@ -683,6 +684,17 @@ public final class ComposerModel: ObservableObject {
                     self.observedLifecycle = lifecycle
                 }
                 self.dismissAllPresentations()
+                // `canSend` and the Send button read the lock, which is not this model's own state: say it changed.
+                self.objectWillChange.send()
+            }
+        unlockCancellable = NotificationCenter.default.publisher(for: SystemLifecycleModel.didUnlockNotification)
+            .sink { [weak self] notification in
+                guard let self else { return }
+                if let lifecycle = notification.object as? SystemLifecycleModel {
+                    self.observedLifecycle = lifecycle
+                }
+                // Nothing else changes on unlock, so without this the Send button stays as the lock left it.
+                self.objectWillChange.send()
             }
         observePreferences()
     }

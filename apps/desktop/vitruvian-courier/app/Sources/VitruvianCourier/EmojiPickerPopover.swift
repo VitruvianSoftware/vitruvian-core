@@ -384,7 +384,15 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
     private var outsideClickMonitor: Any?
     private var windowObservers: [NSObjectProtocol] = []
     private var fadeGeneration: UInt64 = 0
+    /// The panel is fading out: it still holds the closed picker's view, which a reopening must not inherit.
+    private var isFadingOut = false
+    /// Where the picker was when it was last dismissed (screen coordinates).
+    private var formerPickerFrame: NSRect = .zero
+    private var rearmTask: Task<Void, Never>?
+    /// Where the pointer is (screen coordinates); tests give their own.
+    var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
 
+    internal var isWatchingPointerForTesting: Bool { rearmTask != nil }
     internal var panelForTesting: EmojiPickerPanel? { panel }
     internal var hasPendingTimersForTesting: Bool { openTask != nil || closeTask != nil }
 
@@ -395,6 +403,7 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
     deinit {
         openTask?.cancel()
         closeTask?.cancel()
+        rearmTask?.cancel()
     }
 
     func buttonHoverChanged(_ inside: Bool, composer: ComposerModel, anchor: NSView?) {
@@ -425,8 +434,10 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             presentPanel(composer: composer, pinned: true, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             installOutsideClickMonitor(composer: composer)
         } else {
+            rememberPickerFrame()
             composer.isEmojiPickerPresented = false
             hidePanel(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            watchPointerAfterDismissal()
         }
         isIconAccented = state.isIconAccented
     }
@@ -444,9 +455,11 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             )
             installOutsideClickMonitor(composer: composer)
         } else {
+            rememberPickerFrame()
             let effect = state.externalDismiss()
             apply(effect, composer: composer)
             hidePanel(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            watchPointerAfterDismissal()
         }
         isIconAccented = state.isIconAccented
     }
@@ -456,10 +469,53 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
         openTask = nil
         closeTask?.cancel()
         closeTask = nil
+        rememberPickerFrame()
         _ = state.externalDismiss()
         isIconAccented = false
         removeOutsideClickMonitor()
         detachAndOrderOutPanel()
+        watchPointerAfterDismissal()
+    }
+
+    private func rememberPickerFrame() {
+        if let panel, panel.isVisible { formerPickerFrame = panel.frame }
+    }
+
+    private func screenRectOfButton() -> NSRect? {
+        guard let anchorView, let window = anchorView.window else { return nil }
+        return window.convertToScreen(anchorView.convert(anchorView.bounds, to: nil))
+    }
+
+    /// Outside the button and outside where the picker was. A button that is gone counts as outside.
+    private func pointerIsOutsideButtonAndFormerPicker() -> Bool {
+        let point = pointerLocation()
+        if let button = screenRectOfButton(), NSMouseInRect(point, button, false) { return false }
+        if !formerPickerFrame.isEmpty, NSMouseInRect(point, formerPickerFrame, false) { return false }
+        return true
+    }
+
+    /// After a dismissal hover stays off until the pointer has been seen outside the button and the former picker
+    /// frame (in a short window the picker can cover its own button, so the button coming uncovered under a still
+    /// pointer must not open it again). Looks now, and then keeps looking until it has seen it.
+    private func watchPointerAfterDismissal() {
+        guard state.isDisarmed else { return }
+        rearmTask?.cancel()
+        rearmTask = nil
+        if pointerIsOutsideButtonAndFormerPicker() {
+            state.pointerSeenOutside()
+            return
+        }
+        rearmTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled, let self else { return }
+                if self.pointerIsOutsideButtonAndFormerPicker() {
+                    self.state.pointerSeenOutside()
+                    self.rearmTask = nil
+                    return
+                }
+            }
+        }
     }
 
     @discardableResult
@@ -543,6 +599,11 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
 
         let panel = ensurePanel()
         fadeGeneration &+= 1
+        if isFadingOut {
+            // Reopened while the last one was still fading: it starts empty, not with the last search and scroll.
+            panel.contentView = nil
+            isFadingOut = false
+        }
         panel.onBecomeKey = { [weak self, weak composer] in
             guard let self, let composer else { return }
             self.userInteracted(composer: composer)
@@ -630,6 +691,7 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
             detachAndOrderOutPanel()
             return
         }
+        isFadingOut = true
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = CourierTooltipMotion.fadeDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -686,6 +748,7 @@ final class EmojiPickerHoverCoordinator: ObservableObject {
 
     private func detachAndOrderOutPanel() {
         fadeGeneration &+= 1
+        isFadingOut = false
         if let panel {
             if let parent = panel.parent {
                 parent.removeChildWindow(panel)

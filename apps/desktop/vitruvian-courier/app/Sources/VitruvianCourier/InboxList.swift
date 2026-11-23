@@ -49,6 +49,8 @@ struct InboxList: View {
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     /// The chat the pointer is over: `x` selects it, and `InboxRowView` tracks its own hover state locally.
     @State private var hoverTracker = InboxHoverTracker()
+    /// Tests only: draws this chat's row as pointed at (a pointer can't be moved to it in a test).
+    var hoveredRowIDForTesting: String? = nil
 
     var rowStyle: RowStyle {
         RowStyle(
@@ -192,6 +194,7 @@ struct InboxList: View {
                             mergedNetworks: inbox.mergedNetworks(for: row),
                             now: timeline.date, style: style,
                             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
+                            isHovered: hoveredRowIDForTesting.map { $0 == row.id },
                             onHoverChange: { inside in
                                 if inside {
                                     hoverTracker.roomID = row.id

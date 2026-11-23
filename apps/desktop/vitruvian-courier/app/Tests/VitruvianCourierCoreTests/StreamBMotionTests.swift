@@ -221,29 +221,36 @@ final class StreamBMotionTests: XCTestCase {
         XCTAssertTrue(hover.shouldAutoFocusSearch)
 
         _ = hover.externalDismiss()
+        hover.pointerSeenOutside()
         _ = hover.buttonHoverChanged(true, canOpen: true)
         XCTAssertTrue(hover.openDelayFired(canOpen: true))
         XCTAssertEqual(hover.buttonClicked(canOpen: true), .cancelAll)
         XCTAssertEqual(hover.mode, .pinned)
     }
 
-    /// Dismissing the picker (Escape, an emoji chosen, a click on the button, a chat switch) while the pointer is still
-    /// on the button must not open it again: the pointer has to leave the button first.
-    func testEmojiPickerDoesNotReopenAfterDismissUntilPointerLeavesButton() {
-        // Hover-opened, then dismissed from outside (Escape or an emoji chosen) with the pointer still on the button.
+    /// Dismissing the picker (Escape, an emoji chosen, a click on the button, a chat switch) disarms hover: it does not
+    /// open again because the button became uncovered or entered a second time. The pointer has to be seen outside
+    /// the button and outside where the picker was, and then enter the button.
+    func testEmojiPickerDoesNotReopenAfterDismissUntilPointerHasBeenSeenOutside() {
+        // Hover-opened, then dismissed from outside (Escape or an emoji chosen) with the pointer on the button.
         var hover = EmojiPickerHoverState()
         XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
         XCTAssertTrue(hover.openDelayFired(canOpen: true))
         XCTAssertEqual(hover.externalDismiss(), .cancelAll)
         XCTAssertEqual(hover.mode, .closed)
-        XCTAssertTrue(hover.awaitsPointerExit)
+        XCTAssertTrue(hover.isDisarmed)
         // A second "pointer entered" for the same visit (AppKit sends one when the picker's window goes away).
         XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .none)
         XCTAssertFalse(hover.openDelayFired(canOpen: true))
         XCTAssertEqual(hover.mode, .closed)
-        // Leaving, then coming back, works as it did.
+        // Leaving the button is not enough: the pointer may be on the former picker, which can cover the button.
         XCTAssertEqual(hover.buttonHoverChanged(false, canOpen: true), .cancelOpen)
-        XCTAssertFalse(hover.awaitsPointerExit)
+        XCTAssertTrue(hover.isDisarmed)
+        XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .none)
+        // Seen outside both: armed, and the next entry opens it as it did.
+        _ = hover.buttonHoverChanged(false, canOpen: true)
+        hover.pointerSeenOutside()
+        XCTAssertFalse(hover.isDisarmed)
         XCTAssertEqual(hover.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
         XCTAssertTrue(hover.openDelayFired(canOpen: true))
 
@@ -254,18 +261,20 @@ final class StreamBMotionTests: XCTestCase {
         XCTAssertEqual(clicked.mode, .pinned)
         XCTAssertEqual(clicked.buttonClicked(canOpen: true), .cancelAll)
         XCTAssertEqual(clicked.mode, .closed)
+        XCTAssertTrue(clicked.isDisarmed)
         XCTAssertEqual(clicked.buttonHoverChanged(true, canOpen: true), .none)
         XCTAssertFalse(clicked.openDelayFired(canOpen: true))
-        _ = clicked.buttonHoverChanged(false, canOpen: true)
-        XCTAssertEqual(clicked.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
+        // A click on the button still works while disarmed: only hover is off.
+        XCTAssertEqual(clicked.buttonClicked(canOpen: true), .cancelAll)
+        XCTAssertEqual(clicked.mode, .pinned)
 
-        // A dismissal while the pointer is elsewhere (the usual 0.3 s close) puts nothing in the way.
+        // The usual 0.3 s close leaves the pointer outside, which the owner reports at once.
         var left = EmojiPickerHoverState()
         _ = left.buttonHoverChanged(true, canOpen: true)
         XCTAssertTrue(left.openDelayFired(canOpen: true))
         _ = left.buttonHoverChanged(false, canOpen: true)
         XCTAssertTrue(left.closeDelayFired())
-        XCTAssertFalse(left.awaitsPointerExit)
+        XCTAssertFalse(left.isDisarmed, "closing because the pointer left disarms nothing")
         XCTAssertEqual(left.buttonHoverChanged(true, canOpen: true), .scheduleOpen(0.15))
     }
 

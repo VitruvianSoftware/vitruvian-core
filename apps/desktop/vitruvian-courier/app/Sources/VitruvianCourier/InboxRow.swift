@@ -214,15 +214,18 @@ struct InboxRowView<HoverMenu: View>: View {
                                 .accessibilityHidden(!showsIndicators)
                                 .frame(minHeight: minIndicatorHeight, alignment: .trailing)
                             }
-                            .opacity(isSelecting ? 0 : 1)
-                            .animation(
-                                .easeInOut(duration: selectionTiming.opacityDuration).delay(selectionTiming.opacityDelay),
-                                value: isSelecting
-                            )
+                            // The width's animation goes right on the slot, the nearest to it, so it is the one that
+                            // governs the slot's width: with Reduce Motion it is none, and the width changes at once,
+                            // in both directions. The opacity's, outside it, only ever fades.
                             .animation(
                                 selectionTiming.animatesWidth
                                     ? .easeInOut(duration: selectionTiming.widthDuration).delay(selectionTiming.widthDelay)
                                     : nil,
+                                value: isSelecting
+                            )
+                            .opacity(isSelecting ? 0 : 1)
+                            .animation(
+                                .easeInOut(duration: selectionTiming.opacityDuration).delay(selectionTiming.opacityDelay),
                                 value: isSelecting
                             )
                             .clipped()

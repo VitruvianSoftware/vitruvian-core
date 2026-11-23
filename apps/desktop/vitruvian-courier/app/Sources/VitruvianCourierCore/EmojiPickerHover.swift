@@ -32,9 +32,11 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
     public private(set) var mode: EmojiPickerPresentationMode = .closed
     public private(set) var isPointerOnButton: Bool = false
     public private(set) var isPointerOnPicker: Bool = false
-    /// The picker was dismissed (click, Escape, an emoji chosen, a chat switch) while the pointer was on the button.
-    /// It does not open again on hover until the pointer has left the button, so dismissing never loops back open.
-    public private(set) var awaitsPointerExit: Bool = false
+    /// The picker was dismissed (click, Escape, an emoji chosen, a chat switch). Hover does not open it again until the
+    /// pointer has been seen outside the button and outside where the picker was (`pointerSeenOutside()`) and then
+    /// comes back to the button. A short window can put the picker over its own button, so "the button is under the
+    /// pointer again" is not enough to open it.
+    public private(set) var isDisarmed: Bool = false
 
     public init() {}
 
@@ -52,13 +54,12 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
             case .hoverOpen:
                 return .cancelClose
             case .closed:
-                guard !awaitsPointerExit else { return .none }
+                guard !isDisarmed else { return .none }
                 return canOpen ? .scheduleOpen(EmojiPickerHoverMotion.openDelay) : .none
             case .pinned:
                 return .none
             }
         } else {
-            awaitsPointerExit = false
             switch mode {
             case .closed:
                 return .cancelOpen
@@ -83,7 +84,7 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
 
     /// Fires when the 0.15 s hover-open delay finishes. Returns `true` if the picker opened.
     public mutating func openDelayFired(canOpen: Bool) -> Bool {
-        guard mode == .closed, isPointerOnButton, !awaitsPointerExit, canOpen else { return false }
+        guard mode == .closed, isPointerOnButton, !isDisarmed, canOpen else { return false }
         mode = .hoverOpen
         return true
     }
@@ -106,9 +107,14 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
             return .cancelAll
         case .pinned:
             mode = .closed
-            awaitsPointerExit = isPointerOnButton
+            isDisarmed = true
             return .cancelAll
         }
+    }
+
+    /// The pointer is outside the button and outside the picker's former frame: hover may open the picker again.
+    public mutating func pointerSeenOutside() {
+        isDisarmed = false
     }
 
     /// Interacting inside the picker (typing search, choosing tabs/skin tone) pins a hover-opened picker open.
@@ -122,7 +128,7 @@ public struct EmojiPickerHoverState: Equatable, Sendable {
     public mutating func externalDismiss() -> Effect {
         mode = .closed
         isPointerOnPicker = false
-        awaitsPointerExit = isPointerOnButton
+        isDisarmed = true
         return .cancelAll
     }
 

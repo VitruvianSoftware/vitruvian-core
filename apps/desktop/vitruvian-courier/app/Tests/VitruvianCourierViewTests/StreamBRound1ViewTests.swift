@@ -31,6 +31,7 @@ final class StreamBRound1ViewTests: XCTestCase {
         let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
         NSApp.perform(setter, with: previousEnhancedUserInterface ?? false, with: Self.enhancedUserInterface)
         CourierTooltipController.shared.dismiss()
+        AppLockGate.shared.resetForTesting()
         for name in suites {
             ScratchDefaults.suite(named: name)?.removePersistentDomain(forName: name)
         }
@@ -318,16 +319,19 @@ final class StreamBRound1ViewTests: XCTestCase {
 
     // MARK: - Defect 3: the send button agrees with what pressing it would do
 
-    func testRealSendButtonIsEnabledOnlyWhenPressingItWouldDoSomething() throws {
-        final class LockBox { var locked = false }
-        let box = LockBox()
+    func testRealSendButtonIsEnabledOnlyWhenPressingItWouldDoSomething() async throws {
         let defaults = try makeDefaults()
-        let registry = HotkeyRegistry(defaults: defaults, isAppLocked: { box.locked })
+        // The real lock: `lockNow()` and `unlock()` post the same notifications the app does, and nothing in this test
+        // tells the view to redraw, so the Send button must follow them by itself.
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: UnlockingBiometricService(),
+            defaults: defaults
+        )
         let (composer, preferences) = makeComposer(
             defaults: defaults,
             fileInfo: { _ in ComposerFileInfo(size: 10, isRegularFile: true) }
         )
-        composer.hotkeys = registry
         let (window, host) = hosted(
             ComposerView(
                 composer: composer,
@@ -340,7 +344,6 @@ final class StreamBRound1ViewTests: XCTestCase {
         pump(host, for: 0.3) { self.node("composer.send", in: host) != nil }
 
         func check(_ ready: Bool, _ state: String, line: UInt = #line) {
-            composer.objectWillChange.send()
             pump(host, for: 0.25)
             XCTAssertEqual(composer.canSend, ready, "canSend while \(state)", line: line)
             XCTAssertEqual(
@@ -359,9 +362,14 @@ final class StreamBRound1ViewTests: XCTestCase {
         check(false, "only whitespace")
         composer.text = "hello"
         check(true, "there is text")
-        box.locked = true
+        lifecycle.lockNow()
         check(false, "locked")
-        box.locked = false
+        let unlocked = await lifecycle.unlock()
+        XCTAssertTrue(unlocked)
+        check(true, "unlocked again, with nothing else changed")
+        lifecycle.lockNow()
+        check(false, "locked a second time")
+        _ = await lifecycle.unlock()
         composer.text = ""
         composer.attach([URL(fileURLWithPath: "/tmp/vitruvian-courier-send-state/a.bin")])
         check(true, "there is a file")
@@ -407,6 +415,13 @@ final class StreamBRound1ViewTests: XCTestCase {
         return (composer, window, host, anchor, other)
     }
 
+    private func screenRect(of view: NSView) -> NSRect {
+        guard let window = view.window else { return .zero }
+        return window.convertToScreen(view.convert(view.bounds, to: nil))
+    }
+
+    private static let farAway = NSPoint(x: -50_000, y: -50_000)
+
     private func pickerPanels(of window: NSWindow) -> [EmojiPickerPanel] {
         (window.childWindows ?? []).compactMap { $0 as? EmojiPickerPanel }
     }
@@ -434,6 +449,8 @@ final class StreamBRound1ViewTests: XCTestCase {
     func testPinningAHoverOpenedPickerKeepsItsViewAndDismissingWaitsForThePointerToLeave() throws {
         let (_, window, host, anchor, composer) = try realEmojiButtonSetup()
         let coordinator = EmojiPickerHoverCoordinator()
+        var pointer = Self.farAway
+        coordinator.pointerLocation = { pointer }
         defer {
             coordinator.dismiss()
             window.orderOut(nil)
@@ -469,7 +486,10 @@ final class StreamBRound1ViewTests: XCTestCase {
         XCTAssertEqual(coordinator.state.mode, .pinned)
         XCTAssertTrue(coordinator.panelForTesting?.contentView === secondView, "interacting must not rebuild it")
 
-        // Dismissed (Escape, an emoji chosen) while the pointer is still on the button: no reopening until it leaves.
+        // Dismissed (Escape, an emoji chosen) while the pointer is still on the button: no reopening until it has been
+        // seen away from it. (The finer cases, the picker covering its own button, are in the next test.)
+        let button = screenRect(of: anchor)
+        pointer = NSPoint(x: button.midX, y: button.midY)
         composer.isEmojiPickerPresented = false
         coordinator.syncPresented(false, composer: composer, anchor: anchor)
         coordinator.buttonHoverChanged(true, composer: composer, anchor: anchor) // AppKit's second "entered"
@@ -477,10 +497,95 @@ final class StreamBRound1ViewTests: XCTestCase {
         pump(host, for: 0.5)
         XCTAssertEqual(coordinator.state.mode, .closed)
         XCTAssertFalse(composer.isEmojiPickerPresented, "no reopen loop while the pointer stays on the button")
+        pointer = Self.farAway
+        pump(host, for: 0.4) { !coordinator.isWatchingPointerForTesting }
         coordinator.buttonHoverChanged(false, composer: composer, anchor: anchor)
         coordinator.buttonHoverChanged(true, composer: composer, anchor: anchor)
         pump(host, for: 1.0) { coordinator.state.mode == .hoverOpen }
         XCTAssertEqual(coordinator.state.mode, .hoverOpen, "after the pointer left and came back it opens again")
+    }
+
+    /// A short window can put the picker over its own button. After Escape or a pick the button is uncovered under a
+    /// pointer that has not moved: that must not open the picker again, and neither may leaving the button onto the
+    /// picker's old place and coming back. Only a pointer seen outside both, then entering the button, does.
+    func testShortWindowPickerOverItsButtonDoesNotReopenItself() throws {
+        let (_, window, host, anchor, composer) = try realEmojiButtonSetup()
+        let coordinator = EmojiPickerHoverCoordinator()
+        var pointer = Self.farAway
+        coordinator.pointerLocation = { pointer }
+        defer {
+            coordinator.dismiss()
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        coordinator.buttonHoverChanged(true, composer: composer, anchor: anchor)
+        pump(host, for: 1.0) { coordinator.state.mode == .hoverOpen }
+        XCTAssertEqual(coordinator.state.mode, .hoverOpen)
+        let panel = try XCTUnwrap(coordinator.panelForTesting)
+        let formerFrame = panel.frame
+        let button = screenRect(of: anchor)
+        // A point on the picker that is not on the button (the picker is 330 x 380 and the button 28 x 34).
+        let onPickerOnly = [
+            NSPoint(x: formerFrame.minX + 6, y: formerFrame.minY + 6),
+            NSPoint(x: formerFrame.maxX - 6, y: formerFrame.maxY - 6),
+            NSPoint(x: formerFrame.midX, y: formerFrame.midY),
+        ].first { !NSMouseInRect($0, button, false) }
+        let elsewhereOnPicker = try XCTUnwrap(onPickerOnly)
+
+        // Escape, with the pointer where the button is (under the picker, or just uncovered by its closing).
+        pointer = NSPoint(x: button.midX, y: button.midY)
+        composer.isEmojiPickerPresented = false
+        coordinator.syncPresented(false, composer: composer, anchor: anchor)
+        pump(host, for: 0.4)
+        coordinator.buttonHoverChanged(true, composer: composer, anchor: anchor) // the button is uncovered: "entered"
+        pump(host, for: 0.5)
+        XCTAssertEqual(coordinator.state.mode, .closed, "no reopening only because the button was uncovered")
+        XCTAssertTrue(coordinator.state.isDisarmed)
+
+        // Off the button but still on the picker's old place, and back onto the button: still not.
+        pointer = elsewhereOnPicker
+        coordinator.buttonHoverChanged(false, composer: composer, anchor: anchor)
+        pump(host, for: 0.3)
+        XCTAssertTrue(coordinator.state.isDisarmed, "the pointer is still on the former picker")
+        pointer = NSPoint(x: button.midX, y: button.midY)
+        coordinator.buttonHoverChanged(true, composer: composer, anchor: anchor)
+        pump(host, for: 0.5)
+        XCTAssertEqual(coordinator.state.mode, .closed)
+
+        // Outside both, seen: armed. Entering the button opens it again.
+        pointer = Self.farAway
+        pump(host, for: 0.5) { !coordinator.state.isDisarmed }
+        XCTAssertFalse(coordinator.state.isDisarmed)
+        XCTAssertFalse(coordinator.isWatchingPointerForTesting, "it stops looking once it has seen it")
+        coordinator.buttonHoverChanged(false, composer: composer, anchor: anchor)
+        coordinator.buttonHoverChanged(true, composer: composer, anchor: anchor)
+        pump(host, for: 1.0) { coordinator.state.mode == .hoverOpen }
+        XCTAssertEqual(coordinator.state.mode, .hoverOpen)
+    }
+
+    /// A picker reopened while the last one is still fading out starts empty, not with the last search and scroll.
+    func testPickerReopenedDuringItsFadeOutStartsFresh() throws {
+        let (_, window, host, anchor, composer) = try realEmojiButtonSetup()
+        let coordinator = EmojiPickerHoverCoordinator()
+        coordinator.pointerLocation = { Self.farAway }
+        defer {
+            coordinator.dismiss()
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        coordinator.buttonClicked(composer: composer, anchor: anchor)
+        let panel = try XCTUnwrap(coordinator.panelForTesting)
+        let first = try XCTUnwrap(panel.contentView)
+        composer.isEmojiPickerPresented = false
+        coordinator.syncPresented(false, composer: composer, anchor: anchor) // starts the fade-out
+        // Reopened at once, before the fade has finished.
+        coordinator.buttonClicked(composer: composer, anchor: anchor)
+        let second = try XCTUnwrap(panel.contentView)
+        XCTAssertFalse(first === second, "the reopened picker is a new view, so its search box is empty")
+        XCTAssertEqual(coordinator.state.mode, .pinned)
+        pump(host, for: 0.4) // the old fade's late completion must not take the new picker down
+        XCTAssertTrue(panel.isVisible)
+        XCTAssertTrue(panel.contentView === second)
     }
 
     func testPendingHoverOpenDoesNotOpenOverTheNextChat() throws {
@@ -601,4 +706,11 @@ final class StreamBRound1ViewTests: XCTestCase {
             XCTAssertTrue(sawButton, "hovering must draw something at the right (unread \(unread)): the check is live")
         }
     }
+}
+
+/// A device-owner check that always succeeds, so a test can lock and unlock the real lifecycle.
+private struct UnlockingBiometricService: BiometricAuthService {
+    func canEvaluateBiometricsOrWatch() -> Bool { true }
+    func canEvaluateDeviceOwnerAuthentication() -> Bool { true }
+    func authenticate(reason _: String) async throws -> Bool { true }
 }

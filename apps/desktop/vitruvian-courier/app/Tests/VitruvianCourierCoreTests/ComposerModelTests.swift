@@ -1382,6 +1382,30 @@ extension ComposerModelTests {
         XCTAssertEqual(composer.text, "")
     }
 
+    /// While a message is being scheduled, Return sends nothing, so the Send button must not look ready either.
+    func testSendIsNotReadyWhileAMessageIsBeingScheduled() async throws {
+        let sender = FakeSender()
+        let composer = ComposerModel(sender: sender, entitlement: AlwaysEntitled())
+        composer.open("!a")
+        composer.text = "later"
+        XCTAssertTrue(composer.canSend)
+        XCTAssertEqual(composer.sendButtonAppearance, .activeAccent)
+        let due = Date(timeIntervalSince1970: 1_900_000_000)
+        sender.scheduleGate.close()
+        let first = Task { try await composer.schedule(at: due, condition: .ifNoReply) }
+        await sender.scheduleGate.arrived(1)
+        XCTAssertTrue(composer.isScheduling)
+        XCTAssertNil(composer.submit(), "pressing Send while it is being scheduled does nothing")
+        XCTAssertFalse(composer.canSend, "so Send is not ready")
+        XCTAssertEqual(composer.sendButtonAppearance, .disabledNeutral)
+        sender.scheduleGate.open()
+        try await first.value
+        XCTAssertFalse(composer.isScheduling)
+        XCTAssertEqual(composer.text, "", "it was scheduled and left the box")
+        composer.text = "again"
+        XCTAssertTrue(composer.canSend, "ready again once the scheduling is done")
+    }
+
     func testToastGoesToTheHookWhenSet() async {
         var said: [String] = []
         let denied = ComposerModel(sender: FakeSender())
