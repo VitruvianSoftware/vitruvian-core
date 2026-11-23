@@ -27,4 +27,22 @@ final class SettingsWindowResizeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(window.contentMinSize.width, SettingsWindowResizer.minimumSize.width, "never narrower than the panes need")
         XCTAssertGreaterThanOrEqual(window.contentMinSize.height, SettingsWindowResizer.minimumSize.height)
     }
+
+    /// SwiftUI sets the Settings window up after the view arrives and takes the style away again; the second apply,
+    /// on the next turn of the main queue, puts it back.
+    func testTheResizableStyleIsPutBackAfterTheWindowIsSetUpAgain() {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 980, height: 600),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        defer { window.orderOut(nil) }
+        window.contentView = NSHostingView(rootView: Color.clear.background(SettingsWindowResizer()))
+        window.contentView?.layoutSubtreeIfNeeded()
+        // What the scene does after the view is in the window.
+        window.styleMask.remove(.resizable)
+        window.contentMaxSize = NSSize(width: 980, height: 600)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertGreaterThan(window.contentMaxSize.width, 10_000, "no largest size")
+    }
 }
