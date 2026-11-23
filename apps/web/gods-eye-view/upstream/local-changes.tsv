@@ -15,6 +15,7 @@ BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD co
 Dockerfile	modified	The production image, published to GHCR and deployed by gitops/argocd. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 Dockerfile.dockerignore	added	Repo-root Docker build context filter for the production Dockerfile, whitelisting workspace manifests and apps/web/gods-eye-view/.
 OWNERS	added	Monorepo code ownership.
+catalog-info.yaml	added	Backstage catalog entry, as every app in this repository has, so the developer portal lists the app with its owner and source.
 compose.yaml	modified	Points compose build at the monorepo root context with apps/web/gods-eye-view/Dockerfile.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
