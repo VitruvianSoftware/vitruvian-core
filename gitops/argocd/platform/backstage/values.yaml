@@ -28,7 +28,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:21174f1d54384e42b87d0cacda561873dcc1b43bd9153fbe19bda8e5d37689f3
+    tag: latest@sha256:a2f0f34b661757e8d6455f8054ac216e10260ae745eb6385d4f09fbef61f3843
     pullPolicy: Always
   command:
   - node
