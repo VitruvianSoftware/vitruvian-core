@@ -28,7 +28,7 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.41.2"
+        version: "1.42.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -38,20 +38,20 @@ categories:
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.41.2/VitruvianCode-1.41.2-macos.dmg
-            size: 93.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.42.0/VitruvianCode-1.42.0-macos.dmg
+            size: 93.4 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.41.2/VitruvianCode-1.41.2-arm64.dmg
-            size: 48.2 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.42.0/VitruvianCode-1.42.0-arm64.dmg
+            size: 48.4 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.41.2/VitruvianCode-1.41.2-x86_64.dmg
-            size: 49.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.42.0/VitruvianCode-1.42.0-x86_64.dmg
+            size: 50.1 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.41.2/VitruvianCode-1.41.2-macos.zip
-            size: 82.8 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.42.0/VitruvianCode-1.42.0-macos.zip
+            size: 83.2 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
@@ -120,7 +120,7 @@ categories:
 
       - id: vitruvian-courier
         name: Vitruvian Courier
-        version: "0.3.35"
+        version: "0.3.38"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
@@ -128,20 +128,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.35/VitruvianCourier-0.3.35-universal.dmg
-            size: 156.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.38/VitruvianCourier-0.3.38-universal.dmg
+            size: 156.7 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.35/VitruvianCourier-0.3.35-arm64.dmg
-            size: 75.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.38/VitruvianCourier-0.3.38-arm64.dmg
+            size: 76.0 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.35/VitruvianCourier-0.3.35-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.38/VitruvianCourier-0.3.38-x86_64.dmg
             size: 81.6 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.35/VitruvianCourier-0.3.35-universal.zip
-            size: 157.3 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.38/VitruvianCourier-0.3.38-universal.zip
+            size: 157.4 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
@@ -168,7 +168,7 @@ categories:
 
       - id: vitruvian-wand
         name: Vitruvian Wand
-        version: "0.1.1"
+        version: "0.1.2"
         summary: >-
           Turn a Google Daydream controller into a wireless air mouse. Swipe the touchpad or
           wave the controller to move the pointer, and set every button to clicks, shortcuts or
@@ -178,25 +178,25 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-wand
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.2/VitruvianWand-0.1.2-universal.dmg
             size: 14.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.2/VitruvianWand-0.1.2-arm64.dmg
             size: 6.7 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.2/VitruvianWand-0.1.2-x86_64.dmg
             size: 7.4 MB
             arch: x86_64
           - label: Linux x86_64 tar.gz
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1-linux-x86_64.tar.gz
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.2/VitruvianWand-0.1.2-linux-x86_64.tar.gz
             size: 11.7 MB
             arch: x86_64
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.1/VitruvianWand-0.1.1.apk
-            size: 9.2 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-wand-v0.1.1
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-wand-v0.1.2/VitruvianWand-0.1.2.apk
+            size: 9.3 MB
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/vitruvian-wand-v0.1.2
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-wand
 
       - id: vitruvian-watch
