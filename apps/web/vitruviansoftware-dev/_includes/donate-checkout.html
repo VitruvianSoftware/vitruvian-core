@@ -2,18 +2,24 @@
   Shared checkout attribution and analytics script for /donate/ and
   /donate/<key>/. Resolves click source (?src=, ?source=, ?utm_source=, or
   sanitized document.referrer), sets data-umami-event-source=<source> on
-  #donate-checkout-btn, and splits the Stripe Payment Link into host + slug in
-  Liquid so no verbatim donate.stripe.com URL appears in static HTML or JS.
-  Navigates with ?client_reference_id=<source> only on a trusted button click,
-  preventing passive crawlers and link-previewers from spawning Stripe sessions.
+  #donate-checkout-btn, and supports two modes:
+  1. Turnstile + Worker mode (when site.data.donation_checkout.turnstile_sitekey
+     is non-empty): renders Turnstile explicitly, posts {app, source, token} to
+     the Cloudflare Worker on trusted click, and navigates to the single-use
+     Stripe Checkout Session URL.
+  2. Payment Link fallback (while turnstile_sitekey is empty): splits the
+     Stripe Payment Link into host + slug in Liquid and navigates with
+     ?client_reference_id=<source> only on a trusted button click.
 {%- endcomment -%}
-{%- assign stripped = include.link | remove: "https://" -%}
+{%- assign stripped = include.link | default: "" | remove: "https://" -%}
 {%- assign link_parts = stripped | split: "/" -%}
 <script>
   (function () {
     var key = {{ include.key | jsonify }};
-    var host = {{ link_parts[0] | jsonify }};
-    var slug = {{ link_parts[1] | jsonify }};
+    var host = {{ link_parts[0] | default: "" | jsonify }};
+    var slug = {{ link_parts[1] | default: "" | jsonify }};
+    var endpoint = {{ include.endpoint | default: "" | jsonify }};
+    var sitekey = {{ include.sitekey | default: "" | jsonify }};
 
     function sanitize(raw) {
       return String(raw || "")
@@ -46,10 +52,93 @@
 
     var source = resolveSource();
     var btn = document.getElementById("donate-checkout-btn");
+    var errEl = document.getElementById("donate-error");
+    var useTurnstile = Boolean(sitekey && endpoint && endpoint.indexOf("https://") === 0);
+    var turnstileToken = "";
+    var widgetId = null;
+
+    function showError(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    }
+
+    function clearError() {
+      if (!errEl) return;
+      errEl.textContent = "";
+      errEl.hidden = true;
+    }
+
+    function renderTurnstile() {
+      if (!useTurnstile || !window.turnstile || widgetId !== null) return;
+      var container = document.getElementById("donate-turnstile");
+      if (!container) return;
+      var theme = document.documentElement.getAttribute("data-theme") || "dark";
+      widgetId = window.turnstile.render(container, {
+        sitekey: sitekey,
+        action: "donate",
+        theme: theme === "light" ? "light" : "dark",
+        callback: function (token) {
+          turnstileToken = token || "";
+          clearError();
+          if (btn) btn.disabled = !turnstileToken;
+        },
+        "expired-callback": function () {
+          turnstileToken = "";
+          if (btn) btn.disabled = true;
+        },
+        "error-callback": function () {
+          turnstileToken = "";
+          if (btn) btn.disabled = true;
+          showError("Human verification could not be completed. Please try again.");
+        }
+      });
+    }
+
+    if (useTurnstile) {
+      window.vitruvianDonateTurnstileReady = renderTurnstile;
+      if (window.turnstile) {
+        renderTurnstile();
+      }
+    }
+
     if (btn) {
       if (source) btn.setAttribute("data-umami-event-source", source);
       btn.addEventListener("click", function (e) {
         if (e && e.isTrusted === false) return;
+
+        if (useTurnstile) {
+          if (!turnstileToken) return;
+          var token = turnstileToken;
+          turnstileToken = "";
+          btn.disabled = true;
+          clearError();
+
+          fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ app: key, source: source, token: token })
+          })
+            .then(function (resp) {
+              return resp.json().then(function (data) {
+                return { ok: resp.ok, data: data };
+              });
+            })
+            .then(function (res) {
+              if (!res.ok || !res.data || typeof res.data.url !== "string" || res.data.url.indexOf("https://checkout.stripe.com/") !== 0) {
+                throw new Error("checkout failed");
+              }
+              window.location.assign(res.data.url);
+            })
+            .catch(function () {
+              showError("Unable to start Stripe Checkout right now. Please complete verification and try again.");
+              if (window.turnstile && widgetId !== null) {
+                window.turnstile.reset(widgetId);
+              }
+            });
+          return;
+        }
+
         if (!host || !slug) return;
         btn.disabled = true;
         var target = "https://" + host + "/" + slug;
@@ -62,7 +151,15 @@
       });
     }
 
-    window.addEventListener("pageshow", function () {
+    window.addEventListener("pageshow", function (e) {
+      if (useTurnstile) {
+        turnstileToken = "";
+        if (btn) btn.disabled = true;
+        if (e && e.persisted && window.turnstile && widgetId !== null) {
+          window.turnstile.reset(widgetId);
+        }
+        return;
+      }
       if (btn) btn.disabled = false;
     });
 

@@ -245,3 +245,74 @@ func TestDonateCheckoutBlocksPassiveCrawlers(t *testing.T) {
 		}
 	}
 }
+
+// Donate checkout pages stay wired to the Turnstile widget and Cloudflare
+// Worker custom domain declared in Pulumi.production.yaml.
+func TestDonateCheckoutTurnstileWiring(t *testing.T) {
+	prodRaw, err := os.ReadFile("../../Pulumi.production.yaml")
+	if err != nil {
+		t.Fatalf("read Pulumi.production.yaml: %v", err)
+	}
+	var prodDoc struct {
+		Config map[string]yaml.Node `yaml:"config"`
+	}
+	if err := yaml.Unmarshal(prodRaw, &prodDoc); err != nil {
+		t.Fatalf("parse Pulumi.production.yaml: %v", err)
+	}
+	cwNode, ok := prodDoc.Config["vitruvian-stripe:checkoutWorker"]
+	if !ok {
+		t.Fatal("Pulumi.production.yaml missing vitruvian-stripe:checkoutWorker")
+	}
+	var cw struct {
+		CustomDomain string `yaml:"customDomain"`
+	}
+	if err := cwNode.Decode(&cw); err != nil {
+		t.Fatalf("decode checkoutWorker: %v", err)
+	}
+	wantEndpoint := "https://" + cw.CustomDomain + "/checkout"
+
+	cfgRaw, err := os.ReadFile(siteDir + "_data/donation_checkout.yml")
+	if err != nil {
+		t.Fatalf("read _data/donation_checkout.yml: %v", err)
+	}
+	var cfg struct {
+		Endpoint         string `yaml:"endpoint"`
+		TurnstileSitekey string `yaml:"turnstile_sitekey"`
+	}
+	if err := yaml.Unmarshal(cfgRaw, &cfg); err != nil {
+		t.Fatalf("parse _data/donation_checkout.yml: %v", err)
+	}
+	if cfg.Endpoint != wantEndpoint {
+		t.Errorf("_data/donation_checkout.yml endpoint = %q, want %q", cfg.Endpoint, wantEndpoint)
+	}
+
+	thanksRaw, err := os.ReadFile(siteDir + "donate/thanks/index.html")
+	if err != nil {
+		t.Fatalf("read donate/thanks/index.html: %v", err)
+	}
+	if !strings.Contains(string(thanksRaw), "\npermalink: /donate/thanks/\n") {
+		t.Error("donate/thanks/index.html must declare permalink: /donate/thanks/")
+	}
+
+	cardRaw, err := os.ReadFile(siteDir + "_includes/donate-card.html")
+	if err != nil {
+		t.Fatalf("read _includes/donate-card.html: %v", err)
+	}
+	card := string(cardRaw)
+	for _, want := range []string{`id="donate-turnstile"`, "challenges.cloudflare.com/turnstile/v0/api.js"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("_includes/donate-card.html missing %q", want)
+		}
+	}
+
+	scriptRaw, err := os.ReadFile(siteDir + "_includes/donate-checkout.html")
+	if err != nil {
+		t.Fatalf("read _includes/donate-checkout.html: %v", err)
+	}
+	script := string(scriptRaw)
+	for _, want := range []string{"window.turnstile.reset", "https://checkout.stripe.com/"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("_includes/donate-checkout.html missing %q", want)
+		}
+	}
+}

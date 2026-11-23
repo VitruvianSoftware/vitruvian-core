@@ -45,6 +45,7 @@ import (
 	"github.com/pulumi/pulumi-terraform-provider/sdks/go/stripe/stripe"
 
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/account"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/checkoutworker"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/donations"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/stripekey"
 )
@@ -65,28 +66,45 @@ func main() {
 		if err := don.Validate(); err != nil {
 			return err
 		}
+		var cw checkoutworker.Settings
+		cfg.RequireObject("checkoutWorker", &cw)
+		if err := cw.Validate(acct.Mode); err != nil {
+			return err
+		}
+
+		stripeKey := stripekey.Resolve(cfg, acct.Mode)
 
 		// Explicit provider: the key is checked against the stack's mode
 		// before Stripe sees a single request.
 		provider, err := stripe.NewProvider(ctx, "stripe", &stripe.ProviderArgs{
-			ApiKey: stripekey.Resolve(cfg, acct.Mode),
+			ApiKey: stripeKey,
 		})
 		if err != nil {
 			return err
 		}
 
-		links, err := donationLine(ctx, provider, acct, don)
+		links, priceID, err := donationLine(ctx, provider, acct, don)
 		if err != nil {
 			return err
 		}
 		ctx.Export("donationLinks", links)
+
+		if _, err := checkoutworker.Provision(ctx, checkoutworker.ProvisionArgs{
+			Mode:         acct.Mode,
+			Settings:     cw,
+			Donations:    don,
+			PriceID:      priceID,
+			StripeAPIKey: stripeKey,
+		}); err != nil {
+			return err
+		}
 		return nil
 	})
 }
 
 // donationLine creates the donations product, its pay-what-you-want price and
-// one Payment Link per app, and returns app key -> link URL.
-func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct account.Settings, s donations.Settings) (pulumi.StringMap, error) {
+// one Payment Link per app, and returns app key -> link URL and the shared price ID.
+func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct account.Settings, s donations.Settings) (pulumi.StringMap, pulumi.IDOutput, error) {
 	// Payment Links cannot be deleted in Stripe (the provider's delete only
 	// deactivates them) and a replacement mints a new URL. In live mode,
 	// refuse both unless someone removes the protection on purpose.
@@ -104,7 +122,7 @@ func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct ac
 		Metadata:    common,
 	}, append(opts, pulumi.Protect(live))...)
 	if err != nil {
-		return nil, err
+		return nil, pulumi.IDOutput{}, err
 	}
 
 	price, err := stripe.NewPrice(ctx, "donations-pay-what-you-want", &stripe.PriceArgs{
@@ -121,7 +139,7 @@ func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct ac
 		Metadata: common,
 	}, opts...)
 	if err != nil {
-		return nil, err
+		return nil, pulumi.IDOutput{}, err
 	}
 
 	links := pulumi.StringMap{}
@@ -151,12 +169,12 @@ func donationLine(ctx *pulumi.Context, provider pulumi.ProviderResource, acct ac
 			Metadata: md,
 		}, append(opts, pulumi.Protect(live))...)
 		if err != nil {
-			return nil, fmt.Errorf("payment link for %s: %w", app.Key, err)
+			return nil, pulumi.IDOutput{}, fmt.Errorf("payment link for %s: %w", app.Key, err)
 		}
 		links[app.Key] = link.Url
 	}
 
 	ctx.Export("donationsProductId", product.ID())
 	ctx.Export("donationsPriceId", price.ID())
-	return links, nil
+	return links, price.ID(), nil
 }

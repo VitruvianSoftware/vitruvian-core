@@ -108,6 +108,7 @@ records here must declare named records, never "the zone".
 | Records | Written by |
 | --- | --- |
 | apex CNAME, `www` CNAME, and the `_github-pages-challenge-vitruviansoftware` TXT | `repo-config`, `internal/site_domain` (protected; the apex and TXT were hand-made before 2026-10-12, `www` was created by it) |
+| `donate-api`, `donate-api.dev` | `infrastructure/pulumi/platform/stripe` (`internal/checkoutworker` via Cloudflare Workers Custom Domain) |
 | `tabula`, `tabula.dev`, `tabula.staging`, `tabula-api`, `tabula-api.dev`, `tabula-api.staging` | the vitruvian-tabs Pulumi stacks (`apps/suites/vitruvian-tabs/infra`) |
 | three apex `google-site-verification` TXT, marked "do not delete" | `//tools/ci:ensure_site_verification` |
 | `backstage`, `storybook` (with their `heritage=external-dns` ownership TXT) | external-dns in the cluster |
