@@ -53,7 +53,7 @@ public struct VitruvianCodeAutomationAndOrchestrationView: View {
                 mobileSnapshots: [VitruvianCodeMobileSessionSnapshot] = [],
                 defaultProviderID: UUID,
                 executablePath: String,
-                reEnableText: String = "Re-enable to run",
+                reEnableText: String = "Turn off and on, then export again",
                 initialTab: Tab = .runs,
                 onRemoteHostsChange: @escaping ([VitruvianCodeRemoteHost]) -> Void = { _ in },
                 onWake: @escaping (VitruvianCodeHibernatedSessionRecord) -> Void = { _ in },
