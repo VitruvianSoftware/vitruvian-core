@@ -252,9 +252,35 @@ fn json_error_to_crash(err: pyjson::JsonError) -> Crash {
     }
 }
 
+/// Maximum JSON/plist nesting depth accepted by `catalog`.
+///
+/// Cap is 50 (a deliberate change from CPython 3.12's 9,997,
+/// `vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH`) so recursive walkers in
+/// `catalog` cannot overflow a 2 MiB thread stack in an unoptimised build.
+///
+/// Measured 2026-11-23:
+/// - Real input maximum depth is 8 (`catalog/catalog.schema.json`: 8,
+///   `catalog/tools.json`: 6, `catalog/testdata/tools.json`: 6,
+///   `catalog/sources.json`: 3, `catalog/testdata/sources.json`: 3,
+///   `catalog/android/vitruvian-remote.json`: 2,
+///   `apps/desktop/vitruvian-atrium/Resources/Info.plist`: 2,
+///   `catalog/testdata/Info.plist`: 1).
+/// - Lowest measured walker stack limit on a 2 MiB thread (unoptimised):
+///   `schema::Validator::descend` with combinator + `$ref` is safe at 85 and
+///   overflows at 86 (simple `$ref` safe at 129, overflows at 130;
+///   `plist::load` safe at 590, overflows at 591; `bump::dumps` safe at
+///   1,094 for objects and 1,163 for arrays).
+pub const MAX_DEPTH: usize = 50;
+
 /// `json.loads(text)` for a str.
 pub fn loads(text: &str) -> Res<Value> {
-    pyjson::loads_with(text, &pyjson::LoadOptions::default()).map_err(json_error_to_crash)
+    pyjson::loads_with(
+        text,
+        &pyjson::LoadOptions {
+            max_depth: Some(MAX_DEPTH),
+        },
+    )
+    .map_err(json_error_to_crash)
 }
 
 /// `json.loads(data)` for bytes: the encoding found the way `json` finds
@@ -715,17 +741,17 @@ mod tests {
     }
 
     #[test]
-    fn depth_9997_is_safe_on_2mb_thread_and_9998_errors() {
+    fn depth_cap_is_safe_on_2mb_thread_and_cap_plus_one_errors() {
         let handle = std::thread::Builder::new()
             .stack_size(2 * 1024 * 1024)
             .spawn(|| {
-                let d = pyjson::CPYTHON_312_MAX_DEPTH;
-                for (open, close, leaf) in [
-                    ("[", "]", "1"),
-                    ("{\"a\":", "}", "1"),
-                    ("[{\"a\":", "}]", "1"),
+                let d = MAX_DEPTH;
+                for (open, close, leaf, step) in [
+                    ("[", "]", "1", 1),
+                    ("{\"a\":", "}", "1", 1),
+                    ("[{\"a\":", "}]", "1", 2),
                 ] {
-                    let reps = if open.len() == 1 { d } else { d / 2 };
+                    let reps = d / step;
                     let doc = format!("{}{}{}", open.repeat(reps), leaf, close.repeat(reps));
                     let v = loads(&doc).unwrap();
                     let v2 = v.clone();
@@ -742,9 +768,45 @@ mod tests {
                     drop(v);
                 }
                 let arr_over = format!("{}1{}", "[".repeat(d + 1), "]".repeat(d + 1));
-                assert_eq!(loads(&arr_over).unwrap_err().class, "RecursionError");
-                let obj_over = format!("{}\"a\":1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
-                assert_eq!(loads(&obj_over).unwrap_err().class, "RecursionError");
+                let err = loads(&arr_over).unwrap_err();
+                assert_eq!(err.class, "RecursionError");
+                assert!(err.msg.contains("maximum recursion depth exceeded"));
+                let obj_over = format!("{}1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
+                let err = loads(&obj_over).unwrap_err();
+                assert_eq!(err.class, "RecursionError");
+                assert!(err.msg.contains("maximum recursion depth exceeded"));
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn loads_bytes_depth_cap_on_2mb_thread() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let d = MAX_DEPTH;
+                let ok_arr = format!("{}1{}", "[".repeat(d), "]".repeat(d));
+                assert!(loads_bytes(ok_arr.as_bytes()).is_ok());
+                let mut bom_arr = b"\xef\xbb\xbf".to_vec();
+                bom_arr.extend_from_slice(ok_arr.as_bytes());
+                assert!(loads_bytes(&bom_arr).is_ok());
+                let ok_obj = format!("{}1{}", "{\"a\":".repeat(d), "}".repeat(d));
+                let utf16le: Vec<u8> = ok_obj
+                    .encode_utf16()
+                    .flat_map(|u| u.to_le_bytes())
+                    .collect();
+                assert!(loads_bytes(&utf16le).is_ok());
+
+                let over_arr = format!("{}1{}", "[".repeat(d + 1), "]".repeat(d + 1));
+                let err = loads_bytes(over_arr.as_bytes()).unwrap_err();
+                assert_eq!(err.class, "RecursionError");
+                assert!(err.msg.contains("maximum recursion depth exceeded"));
+
+                let over_obj = format!("{}1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
+                let err = loads_bytes(over_obj.as_bytes()).unwrap_err();
+                assert_eq!(err.class, "RecursionError");
+                assert!(err.msg.contains("maximum recursion depth exceeded"));
             })
             .unwrap();
         handle.join().unwrap();

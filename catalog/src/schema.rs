@@ -626,4 +626,35 @@ mod tests {
             vec![": True is not of type 'integer'"]
         );
     }
+
+    #[test]
+    fn recursive_ref_depth_cap_on_2mb_thread() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let d = json::MAX_DEPTH;
+                let inst_s = format!("{}1{}", "{\"a\":".repeat(d), "}".repeat(d));
+                let inst = loads(&inst_s).unwrap();
+
+                let simple_ref = loads(
+                    r##"{"$defs":{"n":{"type":["object","integer"],"properties":{"a":{"$ref":"#/$defs/n"}}}},"$ref":"#/$defs/n"}"##,
+                )
+                .unwrap();
+                assert!(Validator::new(&simple_ref).iter_errors(&inst).is_empty());
+
+                let combinator_ref = loads(
+                    r##"{"$defs":{"n":{"anyOf":[{"type":"integer"},{"type":"object","properties":{"a":{"$ref":"#/$defs/n"}}}]}},"$ref":"#/$defs/n"}"##,
+                )
+                .unwrap();
+                assert!(Validator::new(&combinator_ref)
+                    .iter_errors(&inst)
+                    .is_empty());
+
+                let over = format!("{}1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
+                let err = loads(&over).unwrap_err();
+                assert_eq!(err.class, "RecursionError");
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
 }

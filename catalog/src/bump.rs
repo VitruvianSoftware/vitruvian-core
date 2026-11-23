@@ -2212,4 +2212,26 @@ mod tests {
         );
         assert_eq!(version_of(&row, "v1.20.0"), None);
     }
+
+    #[test]
+    fn dumps_depth_cap_on_2mb_thread() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let d = json::MAX_DEPTH;
+                for (open, close) in [("[", "]"), ("{\"a\":", "}")] {
+                    let doc = format!("{}1{}", open.repeat(d), close.repeat(d));
+                    let v = json::loads(&doc).unwrap();
+                    let rendered = dumps(&v, 0);
+                    let reparsed = json::loads(&rendered).unwrap();
+                    assert!(json::py_eq(&v, &reparsed));
+
+                    let over = format!("{}1{}", open.repeat(d + 1), close.repeat(d + 1));
+                    let err = json::loads(&over).unwrap_err();
+                    assert_eq!(err.class, "RecursionError");
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
 }
