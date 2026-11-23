@@ -454,11 +454,20 @@ final class MarkdownConversionTests: XCTestCase {
         // times the time (a save that grows with the square would take about sixty-four). A ratio, not a fixed number
         // of milliseconds, because the CI machines run this two to ten times slower than a Mac on a desk. The limit sits
         // between the two: CI once measured a sound draft at 14 for 1,000 against 8,000 characters, so the drafts start at
-        // 2,000, where fixed costs no longer hide the square, and the limit is 24.
+        // 2,000, where fixed costs no longer hide the square, and the limit is 24. A ratio over it is measured once more
+        // and the lower one counts: CI later measured a sound draft at 24.7 (#5349), from one slow stretch on a shared
+        // runner, while a draft that grows with the square sits near 64 on every try, so a second try clears only noise.
         for chunk in ["*a ", "_a ", "~~a ", "`a `` ", "**a *b _c "] {
-            let small = keystrokeTime(chunk, size: 2_000)
-            let large = keystrokeTime(chunk, size: 16_000)
-            let ratio = large / max(small, 0.000_05)
+            var small = keystrokeTime(chunk, size: 2_000)
+            var large = keystrokeTime(chunk, size: 16_000)
+            var ratio = large / max(small, 0.000_05)
+            if ratio >= 24 {
+                print("QA-TIMING model keystroke in \(chunk.debugDescription): ratio \(String(format: "%.1f", ratio)) on the first try, measuring again")
+                let small2 = keystrokeTime(chunk, size: 2_000)
+                let large2 = keystrokeTime(chunk, size: 16_000)
+                let ratio2 = large2 / max(small2, 0.000_05)
+                if ratio2 < ratio { (small, large, ratio) = (small2, large2, ratio2) }
+            }
             print("QA-TIMING model keystroke in \(chunk.debugDescription): 2000 chars \(String(format: "%.2f", small * 1000)) ms, 16000 chars \(String(format: "%.2f", large * 1000)) ms, ratio \(String(format: "%.1f", ratio))")
             XCTAssertLessThan(ratio, 24, "a keystroke in \(chunk.debugDescription) grows faster than the draft")
             XCTAssertLessThan(large, 1.0, "a keystroke in a 16000-char draft of \(chunk.debugDescription)")
