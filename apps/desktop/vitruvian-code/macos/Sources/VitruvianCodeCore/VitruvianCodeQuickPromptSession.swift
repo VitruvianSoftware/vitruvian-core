@@ -683,6 +683,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
         lastTurnWasPersistent = false
+        diffReviewGeneration &+= 1
+        diffReviewTask?.cancel()
+        diffReviewTask = nil
         // The last conversation's subagents are not this one's.
         activeSubagents = []
         conversationID = summary.id
