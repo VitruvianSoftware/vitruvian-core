@@ -675,6 +675,29 @@ fn additional() -> Vec<Ext> {
     let ecos = |items: &[&str]| items.iter().map(|&c| s(c)).collect::<Vec<_>>();
     vec![
         Ext {
+            id: s("vitruvian-orchestrator-opencode"),
+            name: s("vitruvian-orchestrator"),
+            kind: s("plugin"),
+            category: s("Agent Plugin"),
+            status: s("released"),
+            summary: s("A lead agent plans the work, specialist agents do it, and a live sidebar shows the plan, the board and the spend in OpenCode."),
+            repo: s("https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode"),
+            mirror_repo: s("https://github.com/VitruvianSoftware/vitruvian-orchestrator-opencode"),
+            source: s("apps/opencode/plugins/vitruvian-orchestrator"),
+            ecosystems: ecos(&["codex-opencode"]),
+            capabilities: caps(&["Live Sidebar", "2 Skills"]),
+            skills: caps(&["orchestrate", "team-setup"]),
+            hooks: vec![],
+            rules: vec![],
+            keywords: list_of_str(&["opencode", "agents", "orchestration"]),
+            needs: s("OpenCode (tested on 2.3.2)"),
+            note: s(""),
+            installs: vec![
+                install("OpenCode", "codex-opencode", "Add to opencode.json", "\"plugins\": [\"@vitruviansoftware/opencode-vitruvian-orchestrator\"]"),
+            ],
+            claude_marketplace_source: s(""),
+        },
+        Ext {
             id: s("vitruvian-roborock-mcp"),
             name: s("vitruvian-roborock-mcp"),
             kind: s("plugin"),
@@ -1122,6 +1145,7 @@ mod tests {
                 "gh-watch",
                 "alpha",
                 "zeta",
+                "vitruvian-orchestrator-opencode",
                 "vitruvian-roborock-mcp",
                 "vitruvian-code",
                 "vitruvian-slack-mcp",

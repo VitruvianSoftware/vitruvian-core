@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: completed
 ---
 
 # Orchestrator: publish the three plugins (step 5 of 5)
