@@ -673,4 +673,24 @@ mod tests {
         );
         assert_eq!(root(None, &s("/r/tools/sync-site-tools/sync")), s("/r"));
     }
+
+    #[test]
+    fn methods_table_preserves_lone_surrogate_repr_in_uses() {
+        let tmp = std::env::temp_dir().join(format!("sync-site-tools-uses-{}", std::process::id()));
+        let methods_path = tmp.join("packages/vitruvian-sdk/protocol/methods.json");
+        std::fs::create_dir_all(methods_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &methods_path,
+            r#"{"methods": [{"method": "x.y", "sender": "host", "kind": "request", "uses": ["\ud800"]}]}"#,
+        )
+        .unwrap();
+        let table = methods_table(&PyStr::from(tmp.to_str().unwrap())).unwrap();
+        let _ = std::fs::remove_dir_all(&tmp);
+        let bytes = table.encode_utf8().unwrap();
+        let rendered = String::from_utf8(bytes).unwrap();
+        assert!(
+            rendered.contains("| `x.y` | host | request | `['\\ud800']` |"),
+            "unexpected table:\n{rendered}"
+        );
+    }
 }

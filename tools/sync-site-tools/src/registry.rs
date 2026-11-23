@@ -317,8 +317,7 @@ pub fn inspect_capabilities(plugin_dir: &PyStr) -> Result<Caps, PyErr> {
         // `except Exception`: any failure to read or parse it.
         match pyfs::read_text(&hooks_json).and_then(|text| json::loads(&text)) {
             Ok(Value::Obj(ref pairs)) => {
-                let mut keys: Vec<PyStr> =
-                    pairs.iter().map(|(k, _)| PyStr::from(k.as_str())).collect();
+                let mut keys: Vec<PyStr> = pairs.iter().map(|(k, _)| k.clone()).collect();
                 keys.sort();
                 caps.hooks = keys;
             }
@@ -489,7 +488,7 @@ pub fn discover_plugin_dir(
                 // GitHub subpath).
                 s_py(&str_cat(
                     &["agy plugin install "],
-                    &if repo_url.py_str() == MONOREPO_URL {
+                    &if repo_url.py_str() == PyStr::from(MONOREPO_URL) {
                         install_target.clone()
                     } else {
                         repo_url.to_pystr()
@@ -1083,7 +1082,12 @@ mod tests {
         let commands: Vec<String> = after
             .installs
             .iter()
-            .map(|inst| inst.subscript("command").unwrap().py_str())
+            .map(|inst| {
+                inst.subscript("command")
+                    .unwrap()
+                    .py_str()
+                    .to_string_lossy()
+            })
             .collect();
         assert_eq!(
             commands,
@@ -1107,7 +1111,7 @@ mod tests {
         let ids: Vec<String> = discover_all(&tmp.root())
             .unwrap()
             .iter()
-            .map(|ext| ext.id.py_str())
+            .map(|ext| ext.id.py_str().to_string_lossy())
             .collect();
         assert_eq!(
             ids,

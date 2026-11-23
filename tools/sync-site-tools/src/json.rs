@@ -18,20 +18,236 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Thin adapter over `vitruvian_pycompat::json` and `vitruvian_pycompat::pyerr`
-//! preserving `tools/sync-site-tools`'s `PyStr`/`PyErr` signatures, CPython 3.12
-//! 4300-digit integer limit, bounded nesting, and Python object semantics
-//! (`subscript`, `py_get`, `iterate`, `truthy`, `py_eq`, `py_lt`, `to_pystr`,
-//! `to_pyrepr`).
+//! Thin adapter over `vitruvian_pycompat::json::loads_codepoints` preserving
+//! `tools/sync-site-tools`'s `PyStr` code points (including lone surrogates),
+//! `PyErr` exceptions, CPython 3.12 4300-digit integer limit, bounded nesting,
+//! and Python object semantics (`subscript`, `py_get`, `iterate`, `truthy`,
+//! `py_eq`, `py_lt`, `py_str`, `py_repr`).
 
-use vitruvian_pycompat::json::{dedup, dumps_with, JsonErrorKind, DEFAULT_INT_MAX_STR_DIGITS};
-use vitruvian_pycompat::pyerr::{self, Crash};
+use vitruvian_pycompat::json::{
+    loads_codepoints, CodepointLoadOptions, CodepointValue, JsonErrorKind,
+    DEFAULT_INT_MAX_STR_DIGITS,
+};
 
-pub use vitruvian_pycompat::json::{DumpOptions, Value};
+pub use vitruvian_pycompat::json::DumpOptions;
 pub use vitruvian_pycompat::pystr::repr_float as float_repr;
 
 use crate::pyerr::PyErr;
+use crate::pyops;
 use crate::pystr::PyStr;
+
+#[derive(Debug)]
+pub enum Value {
+    Null,
+    Bool(bool),
+    Int(String),
+    Float(f64),
+    Str(PyStr),
+    Arr(Vec<Value>),
+    Obj(Vec<(PyStr, Value)>),
+}
+
+enum CloneFrame<'a> {
+    Arr {
+        out: Vec<Value>,
+        rem: std::slice::Iter<'a, Value>,
+    },
+    Obj {
+        out: Vec<(PyStr, Value)>,
+        key: PyStr,
+        rem: std::slice::Iter<'a, (PyStr, Value)>,
+    },
+}
+
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        let mut cur = self;
+        let mut stack: Vec<CloneFrame<'_>> = Vec::new();
+        loop {
+            let mut cloned = match cur {
+                Value::Null => Value::Null,
+                Value::Bool(b) => Value::Bool(*b),
+                Value::Int(s) => Value::Int(s.clone()),
+                Value::Float(f) => Value::Float(*f),
+                Value::Str(s) => Value::Str(s.clone()),
+                Value::Arr(items) => {
+                    let mut iter = items.iter();
+                    match iter.next() {
+                        None => Value::Arr(Vec::new()),
+                        Some(first) => {
+                            stack.push(CloneFrame::Arr {
+                                out: Vec::with_capacity(items.len()),
+                                rem: iter,
+                            });
+                            cur = first;
+                            continue;
+                        }
+                    }
+                }
+                Value::Obj(pairs) => {
+                    let mut iter = pairs.iter();
+                    match iter.next() {
+                        None => Value::Obj(Vec::new()),
+                        Some((k, first)) => {
+                            stack.push(CloneFrame::Obj {
+                                out: Vec::with_capacity(pairs.len()),
+                                key: k.clone(),
+                                rem: iter,
+                            });
+                            cur = first;
+                            continue;
+                        }
+                    }
+                }
+            };
+
+            loop {
+                match stack.last_mut() {
+                    None => return cloned,
+                    Some(CloneFrame::Arr { out, rem }) => {
+                        out.push(cloned);
+                        if let Some(next) = rem.next() {
+                            cur = next;
+                            break;
+                        }
+                        let Some(CloneFrame::Arr { out, .. }) = stack.pop() else {
+                            unreachable!();
+                        };
+                        cloned = Value::Arr(out);
+                    }
+                    Some(CloneFrame::Obj { out, key, rem }) => {
+                        out.push((std::mem::take(key), cloned));
+                        if let Some((next_k, next_v)) = rem.next() {
+                            *key = next_k.clone();
+                            cur = next_v;
+                            break;
+                        }
+                        let Some(CloneFrame::Obj { out, .. }) = stack.pop() else {
+                            unreachable!();
+                        };
+                        cloned = Value::Obj(out);
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        let mut stack = vec![(self, other)];
+        while let Some((a, b)) = stack.pop() {
+            match (a, b) {
+                (Value::Null, Value::Null) => {}
+                (Value::Bool(x), Value::Bool(y)) if x == y => {}
+                (Value::Int(x), Value::Int(y)) if x == y => {}
+                (Value::Float(x), Value::Float(y)) if x == y => {}
+                (Value::Str(x), Value::Str(y)) if x == y => {}
+                (Value::Arr(x), Value::Arr(y)) if x.len() == y.len() => {
+                    for (p, q) in x.iter().zip(y.iter()) {
+                        stack.push((p, q));
+                    }
+                }
+                (Value::Obj(x), Value::Obj(y)) if x.len() == y.len() => {
+                    for ((kx, vx), (ky, vy)) in x.iter().zip(y.iter()) {
+                        if kx != ky {
+                            return false;
+                        }
+                        stack.push((vx, vy));
+                    }
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+}
+
+impl Drop for Value {
+    fn drop(&mut self) {
+        let mut stack: Vec<Value> = Vec::new();
+        match self {
+            Value::Arr(items) if !items.is_empty() => stack.append(items),
+            Value::Obj(pairs) if !pairs.is_empty() => {
+                for (_k, v) in std::mem::take(pairs) {
+                    stack.push(v);
+                }
+            }
+            _ => return,
+        }
+        while let Some(mut node) = stack.pop() {
+            match &mut node {
+                Value::Arr(items) if !items.is_empty() => stack.append(items),
+                Value::Obj(pairs) if !pairs.is_empty() => {
+                    for (_k, v) in std::mem::take(pairs) {
+                        stack.push(v);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl Value {
+    /// `d.get(key)` on an object; `None` for a missing key or a non-object.
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        let key_cp = PyStr::from(key);
+        match self {
+            Value::Obj(pairs) => pairs
+                .iter()
+                .rev()
+                .find(|(k, _)| *k == key_cp)
+                .map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    pub fn is_obj(&self) -> bool {
+        matches!(self, Value::Obj(_))
+    }
+
+    /// Python truthiness.
+    pub fn truthy(&self) -> bool {
+        match self {
+            Value::Null => false,
+            Value::Bool(b) => *b,
+            Value::Int(s) => s.trim_start_matches('-').chars().any(|c| c != '0'),
+            Value::Float(f) => *f != 0.0,
+            Value::Str(s) => !s.is_empty(),
+            Value::Arr(a) => !a.is_empty(),
+            Value::Obj(o) => !o.is_empty(),
+        }
+    }
+
+    /// The Python type name, for error messages.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Null => "NoneType",
+            Value::Bool(_) => "bool",
+            Value::Int(_) => "int",
+            Value::Float(_) => "float",
+            Value::Str(_) => "str",
+            Value::Arr(_) => "list",
+            Value::Obj(_) => "dict",
+        }
+    }
+
+    /// `str(value)`, preserving lone surrogates.
+    pub fn py_str(&self) -> PyStr {
+        match self {
+            Value::Str(text) => text.clone(),
+            other => other.py_repr(),
+        }
+    }
+
+    /// `repr(value)`, escaping lone surrogates as `\ud800`..`\udfff`.
+    pub fn py_repr(&self) -> PyStr {
+        let mut out = PyStr::new();
+        format_iter(self, FormatMode::Repr, &mut out);
+        out
+    }
+}
 
 /// `f"{value:.1f}"` of a float.
 pub fn format_fixed1(f: f64) -> String {
@@ -39,11 +255,11 @@ pub fn format_fixed1(f: f64) -> String {
 }
 
 pub fn s(text: &str) -> Value {
-    Value::Str(text.to_string())
+    Value::Str(PyStr::from(text))
 }
 
 pub fn s_py(text: &PyStr) -> Value {
-    Value::Str(text.to_string_lossy())
+    Value::Str(text.clone())
 }
 
 pub fn int(value: i64) -> Value {
@@ -51,12 +267,13 @@ pub fn int(value: i64) -> Value {
 }
 
 pub fn obj(pairs: Vec<(&str, Value)>) -> Value {
-    let mut out: Vec<(String, Value)> = Vec::with_capacity(pairs.len());
+    let mut out: Vec<(PyStr, Value)> = Vec::with_capacity(pairs.len());
     for (k, v) in pairs {
-        if let Some(slot) = out.iter_mut().find(|(ek, _)| ek == k) {
+        let key = PyStr::from(k);
+        if let Some(slot) = out.iter_mut().find(|(ek, _)| *ek == key) {
             slot.1 = v;
         } else {
-            out.push((k.to_string(), v));
+            out.push((key, v));
         }
     }
     Value::Obj(out)
@@ -113,17 +330,99 @@ pub fn int_div_pow2(text: &str, power: u32) -> Option<f64> {
     }
 }
 
-fn crash_to_pyerr(crash: Crash) -> PyErr {
-    PyErr::exc(&crash.class, &crash.msg)
+enum ConvertFrame {
+    Arr {
+        out: Vec<Value>,
+        rem: std::vec::IntoIter<CodepointValue>,
+    },
+    Obj {
+        out: Vec<(PyStr, Value)>,
+        key: PyStr,
+        rem: std::vec::IntoIter<(Vec<u32>, CodepointValue)>,
+    },
+}
+
+fn from_codepoints(mut current: CodepointValue) -> Value {
+    let mut stack: Vec<ConvertFrame> = Vec::new();
+    loop {
+        let mut produced = match &mut current {
+            CodepointValue::Null => Value::Null,
+            CodepointValue::Bool(b) => Value::Bool(*b),
+            CodepointValue::Int(text) => Value::Int(std::mem::take(text)),
+            CodepointValue::Float(x) => Value::Float(*x),
+            CodepointValue::Str(cps) => Value::Str(PyStr(std::mem::take(cps))),
+            CodepointValue::Arr(items) => {
+                let mut iter = std::mem::take(items).into_iter();
+                match iter.next() {
+                    None => Value::Arr(Vec::new()),
+                    Some(first) => {
+                        stack.push(ConvertFrame::Arr {
+                            out: Vec::with_capacity(iter.len() + 1),
+                            rem: iter,
+                        });
+                        current = first;
+                        continue;
+                    }
+                }
+            }
+            CodepointValue::Obj(entries) => {
+                let mut iter = std::mem::take(entries).into_iter();
+                match iter.next() {
+                    None => Value::Obj(Vec::new()),
+                    Some((key, first)) => {
+                        stack.push(ConvertFrame::Obj {
+                            out: Vec::with_capacity(iter.len() + 1),
+                            key: PyStr(key),
+                            rem: iter,
+                        });
+                        current = first;
+                        continue;
+                    }
+                }
+            }
+        };
+
+        loop {
+            match stack.last_mut() {
+                None => return produced,
+                Some(ConvertFrame::Arr { out, rem }) => {
+                    out.push(produced);
+                    if let Some(next) = rem.next() {
+                        current = next;
+                        break;
+                    }
+                    let Some(ConvertFrame::Arr { out, .. }) = stack.pop() else {
+                        unreachable!();
+                    };
+                    produced = Value::Arr(out);
+                }
+                Some(ConvertFrame::Obj { out, key, rem }) => {
+                    out.push((std::mem::take(key), produced));
+                    if let Some((next_key, next_val)) = rem.next() {
+                        *key = PyStr(next_key);
+                        current = next_val;
+                        break;
+                    }
+                    let Some(ConvertFrame::Obj { out, .. }) = stack.pop() else {
+                        unreachable!();
+                    };
+                    produced = Value::Obj(out);
+                }
+            }
+        }
+    }
 }
 
 /// `json.loads(text)`.
 pub fn loads(text: &PyStr) -> Result<Value, PyErr> {
-    vitruvian_pycompat::json::loads_with_limits(
-        &text.to_string_lossy(),
-        None,
-        Some(DEFAULT_INT_MAX_STR_DIGITS),
+    loads_codepoints(
+        text.chars(),
+        &CodepointLoadOptions {
+            max_depth: None,
+            max_int_digits: Some(DEFAULT_INT_MAX_STR_DIGITS),
+        },
     )
+    .map(from_codepoints)
     .map_err(|e| match e.kind() {
         JsonErrorKind::Recursion => {
             PyErr::exc("RecursionError", e.recursion_message().unwrap_or(&e.msg))
@@ -133,16 +432,226 @@ pub fn loads(text: &PyStr) -> Result<Value, PyErr> {
     })
 }
 
+fn encode_string(text: &PyStr, ensure_ascii: bool, out: &mut PyStr) {
+    out.push_char('"' as u32);
+    for &c in text.chars() {
+        match c {
+            0x22 => out.push_str("\\\""),
+            0x5C => out.push_str("\\\\"),
+            0x0A => out.push_str("\\n"),
+            0x0D => out.push_str("\\r"),
+            0x09 => out.push_str("\\t"),
+            0x08 => out.push_str("\\b"),
+            0x0C => out.push_str("\\f"),
+            _ if c < 0x20 => out.push_str(&format!("\\u{:04x}", c)),
+            _ if ensure_ascii && c > 0x7E => {
+                if c > 0xFFFF {
+                    let v = c - 0x10000;
+                    out.push_str(&format!(
+                        "\\u{:04x}\\u{:04x}",
+                        0xD800 | ((v >> 10) & 0x3FF),
+                        0xDC00 | (v & 0x3FF)
+                    ));
+                } else {
+                    out.push_str(&format!("\\u{:04x}", c));
+                }
+            }
+            _ => out.push_char(c),
+        }
+    }
+    out.push_char('"' as u32);
+}
+
+fn float_json(f: f64) -> String {
+    if f.is_nan() {
+        "NaN".to_string()
+    } else if f.is_infinite() {
+        if f > 0.0 { "Infinity" } else { "-Infinity" }.to_string()
+    } else {
+        float_repr(f)
+    }
+}
+
+#[derive(Copy, Clone)]
+enum FormatMode {
+    Repr,
+    Json {
+        ensure_ascii: bool,
+        indent: Option<usize>,
+    },
+}
+
+enum FormatFrame<'a> {
+    Arr {
+        items: &'a [Value],
+        next: usize,
+    },
+    Obj {
+        entries: Vec<(&'a PyStr, &'a Value)>,
+        next: usize,
+    },
+}
+
+fn push_spaces(count: usize, out: &mut PyStr) {
+    for _ in 0..count {
+        out.push_char(' ' as u32);
+    }
+}
+
+fn write_sep(i: usize, indent: Option<usize>, level: usize, out: &mut PyStr) {
+    match indent {
+        None => {
+            if i > 0 {
+                out.push_str(", ");
+            }
+        }
+        Some(width) => {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("\n");
+            push_spaces(width * level, out);
+        }
+    }
+}
+
+fn write_close_indent(indent: Option<usize>, level: usize, out: &mut PyStr) {
+    if let Some(width) = indent {
+        out.push_str("\n");
+        push_spaces(width * level, out);
+    }
+}
+
+fn write_key(k: &PyStr, mode: FormatMode, out: &mut PyStr) {
+    match mode {
+        FormatMode::Repr => out.push(&k.repr()),
+        FormatMode::Json { ensure_ascii, .. } => encode_string(k, ensure_ascii, out),
+    }
+}
+
+fn format_iter(root: &Value, mode: FormatMode, out: &mut PyStr) {
+    let indent = match mode {
+        FormatMode::Repr => None,
+        FormatMode::Json { indent, .. } => indent,
+    };
+    let mut stack: Vec<FormatFrame<'_>> = Vec::new();
+    let mut cur = root;
+    loop {
+        loop {
+            match cur {
+                Value::Null => {
+                    out.push_str(match mode {
+                        FormatMode::Repr => "None",
+                        FormatMode::Json { .. } => "null",
+                    });
+                    break;
+                }
+                Value::Bool(true) => {
+                    out.push_str(match mode {
+                        FormatMode::Repr => "True",
+                        FormatMode::Json { .. } => "true",
+                    });
+                    break;
+                }
+                Value::Bool(false) => {
+                    out.push_str(match mode {
+                        FormatMode::Repr => "False",
+                        FormatMode::Json { .. } => "false",
+                    });
+                    break;
+                }
+                Value::Int(s) => {
+                    out.push_str(&pyops::format_normalized_int(s));
+                    break;
+                }
+                Value::Float(f) => {
+                    match mode {
+                        FormatMode::Repr => out.push_str(&float_repr(*f)),
+                        FormatMode::Json { .. } => out.push_str(&float_json(*f)),
+                    }
+                    break;
+                }
+                Value::Str(text) => {
+                    write_key(text, mode, out);
+                    break;
+                }
+                Value::Arr(items) => {
+                    if items.is_empty() {
+                        out.push_str("[]");
+                        break;
+                    }
+                    out.push_str("[");
+                    stack.push(FormatFrame::Arr { items, next: 1 });
+                    write_sep(0, indent, stack.len(), out);
+                    cur = &items[0];
+                }
+                Value::Obj(pairs) => {
+                    let entries = pyops::dedup_obj(pairs);
+                    if entries.is_empty() {
+                        out.push_str("{}");
+                        break;
+                    }
+                    out.push_str("{");
+                    let (k, v) = entries[0];
+                    stack.push(FormatFrame::Obj { entries, next: 1 });
+                    write_sep(0, indent, stack.len(), out);
+                    write_key(k, mode, out);
+                    out.push_str(": ");
+                    cur = v;
+                }
+            }
+        }
+
+        loop {
+            let level = stack.len();
+            let Some(top) = stack.last_mut() else {
+                return;
+            };
+            match top {
+                FormatFrame::Arr { items, next } => {
+                    if *next < items.len() {
+                        let i = *next;
+                        *next += 1;
+                        write_sep(i, indent, level, out);
+                        cur = &items[i];
+                        break;
+                    }
+                    stack.pop();
+                    write_close_indent(indent, stack.len(), out);
+                    out.push_str("]");
+                }
+                FormatFrame::Obj { entries, next } => {
+                    if *next < entries.len() {
+                        let i = *next;
+                        *next += 1;
+                        write_sep(i, indent, level, out);
+                        let (k, v) = entries[i];
+                        write_key(k, mode, out);
+                        out.push_str(": ");
+                        cur = v;
+                        break;
+                    }
+                    stack.pop();
+                    write_close_indent(indent, stack.len(), out);
+                    out.push_str("}");
+                }
+            }
+        }
+    }
+}
+
 /// `json.dumps(value, ensure_ascii=..., indent=...)`.
 pub fn dumps(value: &Value, ensure_ascii: bool, indent: Option<usize>) -> PyStr {
-    PyStr::from(dumps_with(
+    let mut out = PyStr::new();
+    format_iter(
         value,
-        &DumpOptions {
-            indent,
+        FormatMode::Json {
             ensure_ascii,
-            ..DumpOptions::default()
+            indent,
         },
-    ))
+        &mut out,
+    );
+    out
 }
 
 /// Python-object operations expected by `tools/sync-site-tools` over `Value`.
@@ -163,15 +672,15 @@ pub trait ValueExt {
 
 impl ValueExt for Value {
     fn subscript(&self, key: &str) -> Result<&Value, PyErr> {
-        pyerr::index_ref(self, key).map_err(crash_to_pyerr)
+        pyops::index_ref(self, key)
     }
 
     fn py_get(&self, key: &str) -> Result<Option<&Value>, PyErr> {
-        pyerr::get_ref(self, key).map_err(crash_to_pyerr)
+        pyops::get_ref(self, key)
     }
 
     fn get_or(&self, key: &str, default: Value) -> Result<Value, PyErr> {
-        pyerr::get_or(self, key, default).map_err(crash_to_pyerr)
+        pyops::get_or(self, key, default)
     }
 
     fn get_value(&self, key: &str) -> Result<Value, PyErr> {
@@ -179,45 +688,31 @@ impl ValueExt for Value {
     }
 
     fn iterate(&self) -> Result<Vec<Value>, PyErr> {
-        pyerr::iterate(self).map_err(crash_to_pyerr)
+        pyops::iterate(self)
     }
 
     fn check_hashable(&self) -> Result<(), PyErr> {
-        pyerr::check_hashable(self).map_err(crash_to_pyerr)
+        pyops::check_hashable(self)
     }
 
     fn eq_str(&self, text: &str) -> bool {
-        matches!(self, Value::Str(own) if own == text)
+        matches!(self, Value::Str(own) if *own == PyStr::from(text))
     }
 
-    /// `PyObject_RichCompareBool(self, other, Py_EQ)`. `json.loads` returns one
-    /// singleton `NaN` object, so `NaN` compares equal to `NaN` here.
     fn py_eq(&self, other: &Value) -> bool {
-        match (self, other) {
-            (Value::Float(x), Value::Float(y)) if x.is_nan() && y.is_nan() => true,
-            (Value::Arr(a), Value::Arr(b)) => {
-                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.py_eq(y))
-            }
-            (Value::Obj(a), Value::Obj(b)) => {
-                let (a, b) = (dedup(a), dedup(b));
-                a.len() == b.len()
-                    && a.iter()
-                        .all(|(k, v)| b.iter().any(|(k2, v2)| k == k2 && v.py_eq(v2)))
-            }
-            _ => vitruvian_pycompat::json::py_eq(self, other),
-        }
+        pyops::py_eq(self, other)
     }
 
     fn py_lt(&self, other: &Value) -> Result<bool, PyErr> {
-        pyerr::lt(self, other).map_err(crash_to_pyerr)
+        pyops::lt(self, other)
     }
 
     fn to_pystr(&self) -> PyStr {
-        PyStr::from(self.py_str())
+        self.py_str()
     }
 
     fn to_pyrepr(&self) -> PyStr {
-        PyStr::from(self.py_repr())
+        self.py_repr()
     }
 }
 
@@ -329,6 +824,41 @@ mod tests {
             w.to_pyrepr().to_string_lossy(),
             "[1, 2.5, 0, -0.0, inf, -inf, nan, True, None, [], {'k': ['x']}]"
         );
+    }
+
+    #[test]
+    fn lone_surrogates_round_trip_without_replacement() {
+        let v = load(r#"["\ud800", "x\udfffy"]"#).unwrap();
+        assert_eq!(
+            v,
+            Value::Arr(vec![
+                Value::Str(PyStr(vec![0xD800])),
+                Value::Str(PyStr(vec!['x' as u32, 0xDFFF, 'y' as u32])),
+            ])
+        );
+        assert_eq!(v.to_pyrepr().to_string_lossy(), r"['\ud800', 'x\udfffy']");
+        assert_eq!(
+            dumps(&v, true, None).to_string_lossy(),
+            r#"["\ud800", "x\udfffy"]"#
+        );
+        let dumped = dumps(&v, false, None);
+        assert_eq!(
+            dumped.chars(),
+            &[
+                '[' as u32, '"' as u32, 0xD800, '"' as u32, ',' as u32, ' ' as u32, '"' as u32,
+                'x' as u32, 0xDFFF, 'y' as u32, '"' as u32, ']' as u32,
+            ]
+        );
+        let err = dumped.encode_utf8().unwrap_err();
+        assert_eq!(
+            err.last_line(),
+            "UnicodeEncodeError: 'utf-8' codec can't encode character '\\ud800' in position 2: surrogates not allowed"
+        );
+
+        let raw_py = PyStr(vec!['a' as u32, 0xD800, 'b' as u32]);
+        let wrapped = s_py(&raw_py);
+        assert_eq!(wrapped.to_pystr(), raw_py);
+        assert_eq!(wrapped.to_pyrepr().to_string_lossy(), r"'a\ud800b'");
     }
 
     #[test]
@@ -526,6 +1056,165 @@ mod tests {
                     stderr.ends_with(&format!("{arr_err}\n")),
                     "unexpected stderr: {stderr:?}"
                 );
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    fn build_deep_arr(depth: usize, mut leaf: Value) -> Value {
+        for _ in 0..depth {
+            leaf = Value::Arr(vec![leaf]);
+        }
+        leaf
+    }
+
+    fn build_deep_obj(depth: usize, mut leaf: Value) -> Value {
+        for _ in 0..depth {
+            leaf = Value::Obj(vec![(PyStr::from("a"), leaf)]);
+        }
+        leaf
+    }
+
+    fn build_deep_mixed(depth: usize, mut leaf: Value) -> Value {
+        for k in (0..depth).rev() {
+            if k % 2 == 0 {
+                leaf = Value::Obj(vec![(PyStr::from("a"), leaf)]);
+            } else {
+                leaf = Value::Arr(vec![leaf]);
+            }
+        }
+        leaf
+    }
+
+    fn build_deep_mixed_json(depth: usize, leaf: &str) -> String {
+        let mut out = String::new();
+        for k in 0..depth {
+            if k % 2 == 0 {
+                out.push_str(r#"{"a":"#);
+            } else {
+                out.push('[');
+            }
+        }
+        out.push_str(leaf);
+        for k in (0..depth).rev() {
+            if k % 2 == 0 {
+                out.push('}');
+            } else {
+                out.push(']');
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn deep_loads_and_from_codepoints_2mib_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(|| {
+                const DEPTH: usize = vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH;
+                let arr_doc = format!("{}1{}", "[".repeat(DEPTH), "]".repeat(DEPTH));
+                let obj_doc = format!("{}{}{}", r#"{"a":"#.repeat(DEPTH), "1", "}".repeat(DEPTH));
+                let mixed_doc = build_deep_mixed_json(DEPTH, "1");
+
+                let a = loads(&PyStr::from(arr_doc)).unwrap();
+                assert_eq!(a, build_deep_arr(DEPTH, int(1)));
+                let o = loads(&PyStr::from(obj_doc)).unwrap();
+                assert_eq!(o, build_deep_obj(DEPTH, int(1)));
+                let m = loads(&PyStr::from(mixed_doc)).unwrap();
+                assert_eq!(m, build_deep_mixed(DEPTH, int(1)));
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn deep_py_repr_and_py_str_2mib_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(|| {
+                const DEPTH: usize = vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH;
+                let a = build_deep_arr(DEPTH, int(1));
+                let r_a = a.py_repr().to_string_lossy();
+                assert_eq!(r_a, format!("{}1{}", "[".repeat(DEPTH), "]".repeat(DEPTH)));
+                assert_eq!(a.py_str(), a.to_pyrepr());
+                assert_eq!(a.to_pystr(), a.py_repr());
+
+                let o = build_deep_obj(DEPTH, s_py(&PyStr(vec![0xD800])));
+                let r_o = o.to_pyrepr().to_string_lossy();
+                assert!(r_o.starts_with(&"{'a': ".repeat(16)));
+                assert!(r_o.contains(r"'\ud800'"));
+                assert_eq!(o.to_pystr().to_string_lossy(), r_o);
+
+                let m = build_deep_mixed(DEPTH, int(1));
+                let r_m = m.py_repr().to_string_lossy();
+                assert!(r_m.starts_with("{'a': [{'a': ["));
+                assert_eq!(m.py_str().to_string_lossy(), r_m);
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn deep_dumps_2mib_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(|| {
+                const DEPTH: usize = vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH;
+                let a = build_deep_arr(DEPTH, int(1));
+                let d_a = dumps(&a, false, None).to_string_lossy();
+                assert_eq!(d_a, format!("{}1{}", "[".repeat(DEPTH), "]".repeat(DEPTH)));
+
+                let o = build_deep_obj(DEPTH, int(1));
+                let want_o = format!("{}{}{}", r#"{"a": "#.repeat(DEPTH), "1", "}".repeat(DEPTH));
+                assert_eq!(dumps(&o, true, None).to_string_lossy(), want_o);
+
+                let m = build_deep_mixed(DEPTH, s_py(&PyStr(vec![0xD800])));
+                let d_m = dumps(&m, true, None).to_string_lossy();
+                assert!(d_m.starts_with(r#"{"a": [{"a": ["#));
+                assert!(d_m.contains(r#""\ud800""#));
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn deep_clone_and_eq_2mib_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(|| {
+                const DEPTH: usize = vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH;
+                for (same, diff) in [
+                    (build_deep_arr(DEPTH, int(1)), build_deep_arr(DEPTH, int(2))),
+                    (build_deep_obj(DEPTH, int(1)), build_deep_obj(DEPTH, int(2))),
+                    (
+                        build_deep_mixed(DEPTH, int(1)),
+                        build_deep_mixed(DEPTH, int(2)),
+                    ),
+                ] {
+                    let cloned = same.clone();
+                    assert_eq!(same, cloned);
+                    assert_ne!(same, diff);
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn deep_truthy_and_accessors_2mib_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(|| {
+                const DEPTH: usize = vitruvian_pycompat::json::CPYTHON_312_MAX_DEPTH;
+                let a = build_deep_arr(DEPTH, int(1));
+                assert!(a.truthy());
+                assert_eq!(a.iterate().unwrap().len(), 1);
+
+                let o = build_deep_obj(DEPTH, int(1));
+                assert!(o.truthy());
+                assert!(o.get("a").is_some());
+                assert!(o.get_or("a", Value::Null).unwrap().truthy());
+                assert_eq!(o.iterate().unwrap(), vec![s("a")]);
             })
             .unwrap();
         handle.join().unwrap();

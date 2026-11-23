@@ -272,4 +272,25 @@ mod tests {
             "TypeError: '<' not supported between instances of 'str' and 'int'"
         );
     }
+
+    #[test]
+    fn lone_surrogate_in_id_raises_unicode_encode_error_with_exact_position() {
+        let mut tool = entry();
+        if let Value::Obj(ref mut pairs) = tool {
+            for (k, v) in pairs.iter_mut() {
+                if *k == PyStr::from("id") {
+                    *v = json::loads(&PyStr::from(r#""x\ud800y""#)).unwrap();
+                }
+            }
+        }
+        let catalog = json::obj(vec![
+            ("generated", json::s("2026-11-02T10:00:00Z")),
+            ("tools", Value::Arr(vec![tool])),
+        ]);
+        let err = render(&catalog, &PyStr::from("KEY=")).unwrap_err();
+        assert_eq!(
+            err.last_line(),
+            "UnicodeEncodeError: 'utf-8' codec can't encode character '\\ud800' in position 186: surrogates not allowed"
+        );
+    }
 }
