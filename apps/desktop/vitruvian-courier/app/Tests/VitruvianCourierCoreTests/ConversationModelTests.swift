@@ -537,7 +537,11 @@ final class ConversationModelTests: XCTestCase {
         h.conversation.learnUnreadCount(1, of: "!b")
         h.server.releaseHeld(method: "room.events", room: "!b",
                              with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
-        try await waitUntil { h.conversation.isLoaded && h.conversation.items.contains { $0.id == "new" } }
+        try await waitUntil {
+            h.conversation.roomID == "!b"
+                && h.conversation.isLoaded
+                && h.conversation.items.contains { $0.id == "new" }
+        }
         let idsB = h.conversation.items.map(\.id)
         XCTAssertEqual(idsB[try XCTUnwrap(idsB.firstIndex(of: "new")) + 1], "$5")
         await stop(h)
@@ -1639,30 +1643,30 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
-    func testHighlightClearsAfterThreeSeconds() async throws {
-        XCTAssertEqual(ConversationModel.highlightDuration, .seconds(3))
+    func testHighlightClearsAfterOneAndAHalfSeconds() async throws {
+        XCTAssertEqual(ConversationModel.highlightDuration, .milliseconds(1500))
         let time = FakeTime()
         let h = try await start(["!a": history(120)], time: time)
         h.app.open(.message(roomID: "!a", eventID: "$30"))
         try await waitUntil { h.conversation.highlightedMessageID == "$30" }
-        try await waitUntil { time.pendingSleeps == [3] }
-        time.advance(2.9)
+        try await waitUntil { time.pendingSleeps == [1.5] }
+        time.advance(1.4)
         await Task.yield()
         XCTAssertEqual(h.conversation.highlightedMessageID, "$30")
         time.advance(0.1)
         try await waitUntil { h.conversation.highlightedMessageID == nil }
         XCTAssertEqual(h.conversation.scrollToMessageRequest?.messageID, "$30", "only the tint goes")
 
-        // A second jump has its own three seconds: the first one's end doesn't cut it short.
+        // A second jump has its own 1.5 seconds: the first one's end doesn't cut it short.
         h.app.open(.message(roomID: "!a", eventID: "$40"))
-        try await waitUntil { h.conversation.highlightedMessageID == "$40" && time.pendingSleeps == [3] }
-        time.advance(2)
+        try await waitUntil { h.conversation.highlightedMessageID == "$40" && time.pendingSleeps == [1.5] }
+        time.advance(1.0)
         h.app.open(.message(roomID: "!a", eventID: "$45"))
-        try await waitUntil { h.conversation.highlightedMessageID == "$45" && time.pendingSleeps == [3] }
-        time.advance(1)
+        try await waitUntil { h.conversation.highlightedMessageID == "$45" && time.pendingSleeps == [1.5] }
+        time.advance(0.6)
         await Task.yield()
         XCTAssertEqual(h.conversation.highlightedMessageID, "$45")
-        time.advance(2)
+        time.advance(0.9)
         try await waitUntil { h.conversation.highlightedMessageID == nil }
         await stop(h)
     }
@@ -1883,7 +1887,8 @@ extension ConversationModelTests {
         XCTAssertEqual(dicts(h.server.receivedParams("room.setUnreadFrom")), dicts([["event_id": "$2"]]),
                        "the message only: the engine finds its chat")
         XCTAssertEqual(steps, ["planned, 0 marks", "done, 1 marks"])
-        XCTAssertEqual(h.conversation.roomID, "!b", "where the rule said to go")
+        XCTAssertEqual(h.app.selectedRoomID, "!b", "where the rule said to go")
+        try await waitUntil { h.conversation.roomID == "!b" && h.conversation.isLoaded }
 
         // A refusal is a toast, and nothing moves.
         try await h.open("!a")

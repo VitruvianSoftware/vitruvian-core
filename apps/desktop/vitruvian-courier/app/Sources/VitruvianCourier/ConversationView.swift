@@ -1457,42 +1457,73 @@ private struct JumpToLatestButton: View {
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var bottom: BottomState
     let appearance: AppearancePreferences?
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotion: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private var isVisible: Bool { !bottom.isAtBottom || conversation.isAwayFromLatest }
+
+    /// The fade only: 0.15 s ease-out, with a 50 ms wait when it appears. It never moves or scales, so Reduce Motion
+    /// only shortens it and drops the wait.
+    private var fade: Animation {
+        .easeOut(duration: JumpToLatestMotion.duration(reduceMotion: reduceMotion))
+            .delay(JumpToLatestMotion.delay(appearing: isVisible, reduceMotion: reduceMotion))
+    }
 
     var body: some View {
-        if !bottom.isAtBottom || conversation.isAwayFromLatest {
-            Button {
-                conversation.jumpToBottom()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.down")
-                    if conversation.isAwayFromLatest {
-                        Text(String(localized: "Jump to latest"))
-                            .font(.callout.weight(.medium))
-                        if conversation.hasNewerWhileAway {
-                            let accentHex = appearance?.effectiveTheme(for: conversation.roomID).accentColorHex
-                                ?? CourierThemePreset.classicTeal.defaultAccentHex
-                            Circle()
-                                .fill(Color(hex: accentHex) ?? Color.accentColor)
-                                .frame(width: 7, height: 7)
-                                .accessibilityLabel(String(localized: "New messages"))
-                        }
-                    } else if bottom.newMessageCount > 0 {
-                        Text(bottom.newMessageCount == 1 ? String(localized: "1 new message")
-                            : String(localized: "\(bottom.newMessageCount) new messages"))
-                            .font(.callout.weight(.medium))
+        // Always in the tree, so it can fade out as well as in; hidden, it takes no clicks and is not announced.
+        Button {
+            conversation.jumpToBottom()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.down")
+                if conversation.isAwayFromLatest {
+                    Text(String(localized: "Jump to latest"))
+                        .font(.callout.weight(.medium))
+                    if conversation.hasNewerWhileAway {
+                        let accentHex = appearance?.effectiveTheme(for: conversation.roomID).accentColorHex
+                            ?? CourierThemePreset.classicTeal.defaultAccentHex
+                        Circle()
+                            .fill(Color(hex: accentHex) ?? Color.accentColor)
+                            .frame(width: 7, height: 7)
+                            .accessibilityLabel(String(localized: "New messages"))
                     }
+                } else if bottom.newMessageCount > 0 {
+                    Text(bottom.newMessageCount == 1 ? String(localized: "1 new message")
+                        : String(localized: "\(bottom.newMessageCount) new messages"))
+                        .font(.callout.weight(.medium))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(.regularMaterial))
-                .overlay(Capsule().strokeBorder(.quaternary))
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
             }
-            .buttonStyle(.plain)
-            .padding(14)
-            .help(String(localized: "Jump to the newest message (⌘↓)"))
-            .accessibilityLabel(String(localized: "Jump to the newest message"))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(
+                        colorScheme == .dark
+                            ? JumpToLatestMotion.surfaceFillOpacityDark
+                            : JumpToLatestMotion.surfaceFillOpacityLight
+                    )))
+            )
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 0.5))
+            .shadow(
+                color: .black.opacity(colorScheme == .dark
+                    ? JumpToLatestMotion.shadowOpacityDark
+                    : JumpToLatestMotion.shadowOpacityLight),
+                radius: JumpToLatestMotion.shadowRadius,
+                y: JumpToLatestMotion.shadowYOffset
+            )
         }
+        .buttonStyle(.plain)
+        .padding(14)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
+        .animation(fade, value: isVisible)
+        .help(String(localized: "Jump to the newest message (⌘↓)"))
+        .accessibilityLabel(String(localized: "Jump to the newest message"))
     }
 }
 

@@ -282,7 +282,7 @@ public final class ConversationModel: ObservableObject {
     /// The reactions offered on hover, the default first.
     public static let quickReactions = ["❤️", "👍", "😂", "😮", "😢", "🙏"]
     /// How long a message the chat was opened at stays highlighted.
-    public static let highlightDuration: Duration = .seconds(3)
+    public static let highlightDuration: Duration = JumpHighlightMotion.duration
     /// Steady pointer hover delay before the sender hover card opens.
     public static let senderHoverDelay: Duration = .milliseconds(500)
 
@@ -295,6 +295,11 @@ public final class ConversationModel: ObservableObject {
 
     /// The open chat; nil when none is.
     @Published public private(set) var roomID: String?
+    /// Target chat while switching to an uncached chat whose first page is still loading behind the current chat.
+    @Published public private(set) var pendingRoomID: String?
+    public var isLoadingPendingRoom: Bool { pendingRoomID != nil }
+    /// Incremented if a local `onSent` callback arrives after `apply` already inserted its message row.
+    @Published public private(set) var pendingRiseRevision = 0
     /// The open chat's row, retained on the conversation itself so switching the inbox list to another space
     /// (Reminders, Low Priority, Requests, Archive, or another network) never strips the open chat's header or
     /// composer recipient placeholder.
@@ -709,6 +714,18 @@ public final class ConversationModel: ObservableObject {
     /// answer lands first does it, so a refetch that overtakes the resync's own read cannot keep them.
     private var dropPending = false
 
+    private struct PendingRoomSwitch {
+        let serial: Int
+        let roomID: String
+        let merged: MergedChat?
+        let targetEventID: String?
+        var unreadAtOpen: Int
+        var learnedRow: InboxRow?
+    }
+    private var pendingSwitchSerial = 0
+    private var pendingSwitch: PendingRoomSwitch?
+    private var sentRiseTracker = SentMessageRiseTracker()
+
     // Reading.
     private var needsRead = false
     /// My messages sent from this chat's composers (the chat's or its thread pane's) that haven't gone yet: when one
@@ -775,9 +792,23 @@ public final class ConversationModel: ObservableObject {
         composer.savedDraft = savedDraft
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
-        composer.onSubmit = { [weak self] in self?.jumpToBottom() }
+        composer.onSubmit = { [weak self] in
+            guard let self else { return }
+            self.sentRiseTracker.noteLocalSubmit(
+                isLoaded: self.isLoaded,
+                isAtBottom: self.isAtBottom,
+                isAwayFromLatest: self.isAwayFromLatest,
+                isHeldAwayFromLatest: self.isHeldAwayFromLatest
+            )
+            self.jumpToBottom()
+        }
+        composer.onSent = { [weak self] room, eventID in
+            self?.sent(eventID, in: room, fromMainComposer: true)
+        }
+        thread.composer.onSent = { [weak self] room, eventID in
+            self?.sent(eventID, in: room, fromMainComposer: false)
+        }
         for target in [composer, thread.composer] {
-            target.onSent = { [weak self] room, eventID in self?.sent(eventID, in: room) }
             target.chatContext = { [weak self] in self?.aiChatContext ?? AIChatContext(title: "", messages: []) }
             target.onSummarizeChat = { [weak self] in self?.summarizeChat() }
             target.onOpenAISettings = { [weak self] in self?.onOpenAISettings() }
@@ -972,6 +1003,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens `room` directly on this conversation model (used by detached chat and space windows).
     public func openDetachedRoom(_ room: String?) {
+        cancelPendingSwitch()
         open(room)
     }
 
@@ -984,6 +1016,8 @@ public final class ConversationModel: ObservableObject {
         lastOutgoingID: String? = nil,
         hasOlder: Bool = false
     ) {
+        cancelPendingSwitch()
+        sentRiseTracker.resetForRoomSwitchOrReopen()
         self.roomID = roomID
         self.items = items
         self.hasOlder = hasOlder
@@ -996,6 +1030,39 @@ public final class ConversationModel: ObservableObject {
         } else {
             handOnChat()
         }
+    }
+
+    /// Records a synthetic local send from the main chat composer, for view tests without an engine.
+    public func recordLocalSendForTesting(_ eventID: String) {
+        sentRiseTracker.noteLocalSubmit(
+            isLoaded: isLoaded,
+            isAtBottom: isAtBottom,
+            isAwayFromLatest: isAwayFromLatest,
+            isHeldAwayFromLatest: isHeldAwayFromLatest
+        )
+        let animateNow = sentRiseTracker.recordLocalSend(
+            eventID: eventID,
+            isLoaded: isLoaded,
+            isAtBottom: isAtBottom,
+            isAwayFromLatest: isAwayFromLatest,
+            isHeldAwayFromLatest: isHeldAwayFromLatest
+        )
+        if animateNow {
+            pendingRiseRevision += 1
+        }
+    }
+
+    /// Consumes a one-shot sent-message rise eligibility ticket for `eventID` when rendering a live message row at
+    /// the bottom of the timeline.
+    public func consumeSentMessageRise(eventID: String, isInitialRender: Bool, isHistoryLoad: Bool) -> Bool {
+        sentRiseTracker.consumeIfEligible(
+            eventID: eventID,
+            isInitialRender: isInitialRender,
+            isHistoryLoad: isHistoryLoad,
+            isAtBottom: isAtBottom,
+            isAwayFromLatest: isAwayFromLatest,
+            isHeldAwayFromLatest: isHeldAwayFromLatest
+        )
     }
 
     /// Updates loaded timeline items and `hasOlder` in snapshot/view tests without an engine.
@@ -1040,20 +1107,63 @@ public final class ConversationModel: ObservableObject {
         if !events.isEmpty { rebuild() }
     }
 
+    private func cancelPendingSwitch() {
+        pendingSwitchSerial += 1
+        pendingSwitch = nil
+        pendingRoomID = nil
+    }
+
     private func open(_ room: String?) {
-        if let room, let merged = appModel.mergedChats[room] {
-            if roomID == merged.mergeID { return }
+        guard let room else {
+            cancelPendingSwitch()
+            activeReplyRoomID = nil
+            activeReplyNetwork = nil
+            reset(nil, at: nil, inPlace: false)
+            pendingPrivateReply = nil
+            composer.open(nil)
+            thread.close()
+            unreadThreads = []
+            features = .noFeatures
+            typingLine = nil
+            return
+        }
+        if let merged = appModel.mergedChats[room] {
+            if roomID == merged.mergeID {
+                cancelPendingSwitch()
+                return
+            }
             openMergedChat(merged)
             return
         }
-        activeReplyRoomID = nil
-        activeReplyNetwork = nil
         var target: String?
-        if let room, let pending = appModel.pendingMessage, pending.roomID == room,
+        if let pending = appModel.pendingMessage, pending.roomID == room,
            pending.serial > takenPendingSerial {
             takenPendingSerial = pending.serial
             target = pending.eventID
         }
+        if room == roomID, isLoaded, target == nil {
+            cancelPendingSwitch()
+            if pendingPrivateReply?.roomID == room { putInPrivateReply() }
+            return
+        }
+        let isTargetCached = (target == nil && roomCache[room] != nil)
+        if TimelineLoadMotion.shouldKeepPreviousChatVisible(
+            currentRoomID: roomID,
+            isCurrentlyLoaded: isLoaded,
+            targetRoomID: room,
+            isTargetCached: isTargetCached,
+            hasClient: appModel.client != nil
+        ) {
+            beginPendingRoomSwitch(to: room, merged: nil, targetEventID: target)
+            return
+        }
+        cancelPendingSwitch()
+        performImmediateOpen(room, target: target)
+    }
+
+    private func performImmediateOpen(_ room: String, target: String?) {
+        activeReplyRoomID = nil
+        activeReplyNetwork = nil
         reset(room, at: target, inPlace: false)
         if pendingPrivateReply?.roomID != room { pendingPrivateReply = nil }
         composer.open(room)
@@ -1061,7 +1171,7 @@ public final class ConversationModel: ObservableObject {
         unreadThreads = []
         readUnreadThreads()
         features = .noFeatures
-        let row = room.flatMap(chat)
+        let row = chat(room)
         learnChat(row, of: room)
         // The row may be a moment behind the engine: when it says someone is typing, read it again.
         typingLine = row?.typingLine
@@ -1074,6 +1184,26 @@ public final class ConversationModel: ObservableObject {
     /// Incoming messages on other rooms in the merge refresh the timeline without switching `activeReplyRoomID`.
     public func openMergedChat(_ merged: MergedChat) {
         appModel.mergedChats[merged.mergeID] = merged
+        if roomID == merged.mergeID {
+            cancelPendingSwitch()
+            return
+        }
+        let isTargetCached = roomCache[merged.mergeID] != nil
+        if TimelineLoadMotion.shouldKeepPreviousChatVisible(
+            currentRoomID: roomID,
+            isCurrentlyLoaded: isLoaded,
+            targetRoomID: merged.mergeID,
+            isTargetCached: isTargetCached,
+            hasClient: appModel.client != nil
+        ) {
+            beginPendingRoomSwitch(to: merged.mergeID, merged: merged, targetEventID: nil)
+            return
+        }
+        cancelPendingSwitch()
+        performImmediateOpenMergedChat(merged)
+    }
+
+    private func performImmediateOpenMergedChat(_ merged: MergedChat) {
         let initialRoom = (!merged.lastRoomID.isEmpty && merged.roomIDs.contains(merged.lastRoomID))
             ? merged.lastRoomID
             : (merged.roomIDs.first ?? "")
@@ -1094,6 +1224,193 @@ public final class ConversationModel: ObservableObject {
         typingLine = nil
         startReading()
         readFeatures()
+    }
+
+    private func beginPendingRoomSwitch(to nextRoom: String, merged: MergedChat?, targetEventID: String?) {
+        guard let client = appModel.client else { return }
+        cancelPendingSwitch()
+        let serial = pendingSwitchSerial
+        let initialUnread = unreadCount(nextRoom)
+        pendingRoomID = nextRoom
+        pendingSwitch = PendingRoomSwitch(
+            serial: serial,
+            roomID: nextRoom,
+            merged: merged,
+            targetEventID: targetEventID,
+            unreadAtOpen: initialUnread,
+            learnedRow: nil
+        )
+        Task { [weak self] in
+            let params: RoomEventsParams
+            if let merged {
+                params = RoomEventsParams(mergeID: merged.mergeID, limit: Self.pageSize)
+            } else if let targetEventID {
+                params = RoomEventsParams(roomID: nextRoom, around: targetEventID, limit: Self.pageSize)
+            } else {
+                params = RoomEventsParams(roomID: nextRoom, limit: Self.pageSize)
+            }
+
+            var loadedPage: EventsPage?
+            var fallbackMessageGone = false
+            do {
+                loadedPage = try await client.call("room.events", params)
+            } catch EngineError.rpc(.notFound, _, _) where targetEventID != nil {
+                guard let self, self.pendingSwitch?.serial == serial,
+                      client === self.appModel.client else { return }
+                fallbackMessageGone = true
+                loadedPage = try? await client.call("room.events", RoomEventsParams(roomID: nextRoom, limit: Self.pageSize))
+            } catch {
+                guard let self else { return }
+                guard self.pendingSwitch?.serial == serial, client === self.appModel.client else {
+                    self.staleAnswerDropped?()
+                    return
+                }
+                let pending = self.pendingSwitch
+                self.pendingSwitch = nil
+                self.pendingRoomID = nil
+                self.commitFailedPendingSwitch(
+                    to: nextRoom,
+                    merged: merged,
+                    targetEventID: targetEventID,
+                    learnedRow: pending?.learnedRow
+                )
+                return
+            }
+
+            guard let page = loadedPage else {
+                guard let self else { return }
+                guard self.pendingSwitch?.serial == serial, client === self.appModel.client else {
+                    self.staleAnswerDropped?()
+                    return
+                }
+                let pending = self.pendingSwitch
+                self.pendingSwitch = nil
+                self.pendingRoomID = nil
+                self.commitFailedPendingSwitch(
+                    to: nextRoom,
+                    merged: merged,
+                    targetEventID: targetEventID,
+                    learnedRow: pending?.learnedRow
+                )
+                return
+            }
+
+            await ImagePixelSizeReader.shared.warm(events: page.events)
+            guard let self else { return }
+            guard self.pendingSwitch?.serial == serial, client === self.appModel.client else {
+                self.staleAnswerDropped?()
+                return
+            }
+            let pending = self.pendingSwitch
+            self.pendingSwitch = nil
+            self.pendingRoomID = nil
+            self.commitLoadedPendingSwitch(
+                to: nextRoom,
+                merged: merged,
+                targetEventID: targetEventID,
+                page: page,
+                fallbackMessageGone: fallbackMessageGone,
+                pendingUnread: pending?.unreadAtOpen ?? initialUnread,
+                learnedRow: pending?.learnedRow
+            )
+        }
+    }
+
+    private func commitFailedPendingSwitch(
+        to nextRoom: String,
+        merged: MergedChat?,
+        targetEventID: String?,
+        learnedRow: InboxRow?
+    ) {
+        if let merged {
+            let initialRoom = (!merged.lastRoomID.isEmpty && merged.roomIDs.contains(merged.lastRoomID))
+                ? merged.lastRoomID
+                : (merged.roomIDs.first ?? "")
+            activeReplyRoomID = initialRoom.isEmpty ? nil : initialRoom
+            activeReplyNetwork = networkForMergedRoom(initialRoom, in: merged)
+            reset(merged.mergeID, at: nil, inPlace: false)
+            composer.open(activeReplyRoomID)
+            openChatRow = learnedRow ?? chat(merged.mergeID)
+                ?? Self.synthesizedRow(for: merged, activeNetwork: activeReplyNetwork ?? "")
+        } else {
+            activeReplyRoomID = nil
+            activeReplyNetwork = nil
+            reset(nextRoom, at: targetEventID, inPlace: false)
+            composer.open(nextRoom)
+            if let learnedRow { learnChat(learnedRow, of: nextRoom) }
+            else { learnChat(chat(nextRoom), of: nextRoom) }
+        }
+        if pendingPrivateReply?.roomID != nextRoom { pendingPrivateReply = nil }
+        thread.close()
+        unreadThreads = []
+        features = .noFeatures
+        problem = .loadFailed
+    }
+
+    private func commitLoadedPendingSwitch(
+        to nextRoom: String,
+        merged: MergedChat?,
+        targetEventID: String?,
+        page: EventsPage,
+        fallbackMessageGone: Bool,
+        pendingUnread: Int,
+        learnedRow: InboxRow?
+    ) {
+        let appliedTarget = fallbackMessageGone ? nil : targetEventID
+        if let merged {
+            let initialRoom = (!merged.lastRoomID.isEmpty && merged.roomIDs.contains(merged.lastRoomID))
+                ? merged.lastRoomID
+                : (merged.roomIDs.first ?? "")
+            activeReplyRoomID = initialRoom.isEmpty ? nil : initialRoom
+            activeReplyNetwork = networkForMergedRoom(initialRoom, in: merged)
+            reset(merged.mergeID, at: nil, inPlace: false)
+            if pendingPrivateReply?.roomID != merged.mergeID { pendingPrivateReply = nil }
+            composer.open(activeReplyRoomID)
+            thread.close()
+            unreadThreads = []
+            features = .noFeatures
+            network = activeReplyNetwork ?? ""
+            let trimmedName = merged.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            otherPerson = trimmedName.isEmpty ? nil : trimmedName
+            isDirectChat = true
+            openChatRow = learnedRow ?? chat(merged.mergeID)
+                ?? Self.synthesizedRow(for: merged, activeNetwork: activeReplyNetwork ?? "")
+            handOnChat()
+            typingLine = nil
+        } else {
+            activeReplyRoomID = nil
+            activeReplyNetwork = nil
+            reset(nextRoom, at: appliedTarget, inPlace: false)
+            if pendingPrivateReply?.roomID != nextRoom { pendingPrivateReply = nil }
+            composer.open(nextRoom)
+            thread.close()
+            unreadThreads = []
+            features = .noFeatures
+            let row = learnedRow ?? chat(nextRoom)
+            learnChat(row, of: nextRoom)
+            typingLine = row?.typingLine
+            unreadAtOpen = max(unreadAtOpen, pendingUnread)
+        }
+
+        if isShowingChatInfo || (openChatRow == nil && !nextRoom.hasPrefix("merge:")) {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+        if !nextRoom.hasPrefix("merge:") {
+            readUnreadThreads()
+        }
+        if typingLine != nil { readTyping() }
+        readFeatures()
+
+        if let target = appliedTarget {
+            applyWindow(page, at: target, reveal: true)
+        } else {
+            if fallbackMessageGone {
+                messageGoneOnNewest = true
+            }
+            apply(page, dropOlder: false)
+            saveSnapshot()
+            pagesApplied += 1
+        }
     }
 
     /// Cycles the active reply room across the rooms of the open merged chat and persists `last_room_id` via `merge.update`.
@@ -1162,6 +1479,10 @@ public final class ConversationModel: ObservableObject {
     /// The open chat's row, looked up after it opened (the inbox didn't list it): its network and, one-to-one, the
     /// other person's name reach the composers. Another chat's row changes nothing.
     public func learnChat(_ row: InboxRow) {
+        if pendingSwitch?.roomID == row.roomID {
+            pendingSwitch?.learnedRow = row
+            return
+        }
         guard row.roomID == roomID else { return }
         learnChat(row, of: row.roomID)
     }
@@ -1402,6 +1723,12 @@ public final class ConversationModel: ObservableObject {
     /// once if the newest page is in, else when it lands; in a window around a message, reaching the newest one
     /// reads the count again anyway. A count that is no higher than the one it opened with changes nothing.
     public func learnUnreadCount(_ count: Int, of room: String) {
+        if pendingSwitch?.roomID == room {
+            if count > (pendingSwitch?.unreadAtOpen ?? 0) {
+                pendingSwitch?.unreadAtOpen = count
+            }
+            return
+        }
         guard room == roomID, anchorID == nil, count > unreadAtOpen else { return }
         unreadAtOpen = count
         guard !firstNewest, !dividerOnNewest else { return } // the newest page still to come places it
@@ -1411,7 +1738,13 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func pendingMessageArrived(_ pending: PendingMessage) {
-        guard pending.serial > takenPendingSerial, let room = roomID, pending.roomID == room else { return }
+        guard pending.serial > takenPendingSerial else { return }
+        if let pendingSwitch, pendingSwitch.roomID == pending.roomID {
+            takenPendingSerial = pending.serial
+            beginPendingRoomSwitch(to: pending.roomID, merged: pendingSwitch.merged, targetEventID: pending.eventID)
+            return
+        }
+        guard let room = roomID, pending.roomID == room else { return }
         takenPendingSerial = pending.serial
         // Opened again at a message, in place: what is on screen stays until the page around it is in, and the
         // composer (its text, its reply) is untouched.
@@ -1422,6 +1755,9 @@ public final class ConversationModel: ObservableObject {
 
     /// Forgets what is loaded, and every read in flight, for `room` opened at its newest message or at `target`.
     private func reset(_ room: String?, at target: String?, inPlace: Bool) {
+        if room != roomID || !inPlace {
+            sentRiseTracker.resetForRoomSwitchOrReopen()
+        }
         saveSnapshot()
         generation += 1
         pageEpoch += 1
@@ -1556,9 +1892,17 @@ public final class ConversationModel: ObservableObject {
     /// a message reads the page around it again instead (highlighting it only if it was still opening).
     private func reload(from client: EngineClient) async {
         guard client === appModel.client else { return }
+        let pendingTarget = pendingSwitch.map { ($0.roomID, $0.merged, $0.targetEventID, $0.unreadAtOpen, $0.learnedRow) }
+        cancelPendingSwitch()
         clearRoomCache()
         memberLookupAttempted.removeAll()
         KnownGroupMembersStore.shared.clear(in: appModel)
+        if let pendingTarget {
+            beginPendingRoomSwitch(to: pendingTarget.0, merged: pendingTarget.1, targetEventID: pendingTarget.2)
+            let currentUnread = pendingSwitch?.unreadAtOpen ?? 0
+            pendingSwitch?.unreadAtOpen = max(currentUnread, pendingTarget.3)
+            pendingSwitch?.learnedRow = pendingTarget.4
+        }
         guard let room = roomID else { return }
         learnChat(chat(room), of: room)
         readFeatures()
@@ -1799,6 +2143,14 @@ public final class ConversationModel: ObservableObject {
             if attention.isLooking { markRead() }
             countReplies()
         } else {
+            for event in fresh where event.mine || event.sender == Timeline.meUserID {
+                sentRiseTracker.noteNewlyInsertedMineMessage(
+                    eventID: event.eventID,
+                    isAtBottom: isAtBottom,
+                    isAwayFromLatest: isAwayFromLatest,
+                    isHeldAwayFromLatest: isHeldAwayFromLatest
+                )
+            }
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
                 holdsRead = false // a new message: the chat is read as usual again
@@ -1840,11 +2192,7 @@ public final class ConversationModel: ObservableObject {
         if nextItems != items {
             items = nextItems
         }
-        lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
-            // The one Timeline put Sent, Delivered or Seen under: my newest that went, not a note, not deleted.
-            if case let .message(message) = item, message.mine, !message.isNote, message.kind != .deleted,
-               message.statusLine?.hasGone == true { message.id } else { nil }
-        }.first
+        lastOutgoingID = StatusLineStability.receiptRowID(in: items)
         if let selected = selectedMessageID, messagesByID[selected] == nil {
             selectedMessageID = nil
         }
@@ -2011,6 +2359,7 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func applyWindow(_ page: EventsPage, at eventID: String, reveal: Bool) {
+        sentRiseTracker.noteHistoryLoaded()
         // A reply that stays in its thread isn't in the chat's timeline: the engine centred the page on its root
         // (Ruling 23). The chat shows the root, and the thread pane the reply.
         var shown = eventID
@@ -2201,6 +2550,7 @@ public final class ConversationModel: ObservableObject {
     /// Reads the next older page, when the view scrolls to the top.
     public func loadOlder() {
         guard let room = roomID, let cursor = olderCursor, !isLoadingOlder, let client = appModel.client else { return }
+        sentRiseTracker.noteHistoryLoaded()
         isLoadingOlder = true
         olderFailed = false
         let owner = generation
@@ -2354,7 +2704,19 @@ public final class ConversationModel: ObservableObject {
     }
 
     /// A message of mine was sent from one of this chat's composers.
-    private func sent(_ eventID: String, in room: String) {
+    private func sent(_ eventID: String, in room: String, fromMainComposer: Bool) {
+        if fromMainComposer, matchesOpenRoom(room) {
+            let animateNow = sentRiseTracker.recordLocalSend(
+                eventID: eventID,
+                isLoaded: isLoaded,
+                isAtBottom: isAtBottom,
+                isAwayFromLatest: isAwayFromLatest,
+                isHeldAwayFromLatest: isHeldAwayFromLatest
+            )
+            if animateNow {
+                pendingRiseRevision += 1
+            }
+        }
         guard room == roomID, !repliesRead.contains(eventID) else { return }
         mySends.insert(eventID)
         countReplies() // the page that shows it gone may have come first
@@ -2457,7 +2819,11 @@ public final class ConversationModel: ObservableObject {
     public func scrolled(toBottom: Bool) {
         guard isAtBottom != toBottom else { return }
         bottom.isAtBottom = toBottom
-        if toBottom { bottom.newMessageCount = 0 }
+        if toBottom {
+            bottom.newMessageCount = 0
+        } else {
+            sentRiseTracker.noteScrolledAwayFromBottom()
+        }
     }
 
     /// ⌘↓, the jump button ("Jump to latest" while away), and sending: scroll to the newest message. While the

@@ -399,8 +399,9 @@ struct MessageRowView: View {
     @State private var cardChip: String?
     @State private var openCard: Task<Void, Never>?
     @State private var cardSize: CGSize = .zero
-    /// The highlight's tint, from 1 to 0.
+    /// The highlight's tint, relative to `JumpHighlightMotion.baseTintOpacity`.
     @State private var highlight: Double = 0
+    @State private var highlightTask: Task<Void, Never>?
     /// A double click set to show the menu.
     @State private var showsMenu = false
     /// Where the row's own buttons and media are (`takesOwnClick`), in the row's coordinates: a click there is theirs.
@@ -525,7 +526,7 @@ struct MessageRowView: View {
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
         .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(JumpHighlightMotion.baseTintOpacity * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
         .onHover { pointer.rowHover($0); pointerMoved() }
@@ -686,8 +687,17 @@ struct MessageRowView: View {
             if activeDetectedDate != nil { activeDetectedDate = nil }
             if linkOpenedAt != nil { linkOpenedAt = nil }
             if lastRowClick != nil { lastRowClick = nil }
-            let targetHighlight: Double = isHighlighted ? 1 : 0
-            if highlight != targetHighlight { fadeHighlight(isHighlighted) }
+            highlightTask?.cancel()
+            highlightTask = nil
+            if isHighlighted {
+                fadeHighlight(true)
+            } else if highlight != 0 {
+                highlight = 0
+            }
+        }
+        .onDisappear {
+            highlightTask?.cancel()
+            highlightTask = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
             showsMenu = false
@@ -808,19 +818,29 @@ struct MessageRowView: View {
         }
     }
 
-    /// Full at once, then fading out over `ConversationModel.highlightDuration`, which is as long as the model keeps
-    /// the message highlighted.
+    /// Fades in to 40% of the base tint over the first 20% of `JumpHighlightMotion.totalDuration` (0.3 s ease-out),
+    /// then fades out over the remaining 80% (1.2 s ease-out).
     private func fadeHighlight(_ on: Bool) {
+        highlightTask?.cancel()
+        highlightTask = nil
         guard on else {
             highlight = 0
             return
         }
-        highlight = 1
-        let parts = ConversationModel.highlightDuration.components
-        let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
-        // On the next turn, so the full tint is drawn before it starts to fade.
-        DispatchQueue.main.async {
-            withAnimation(.easeIn(duration: seconds)) { highlight = 0 }
+        highlight = 0
+        highlightTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeInDuration)) {
+                highlight = JumpHighlightMotion.peakTintFraction
+            }
+            let fadeInMS = Int((JumpHighlightMotion.fadeInDuration * 1000).rounded())
+            try? await Task.sleep(for: .milliseconds(fadeInMS))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeOutDuration)) {
+                highlight = 0
+            }
+            highlightTask = nil
         }
     }
 
@@ -1376,6 +1396,7 @@ struct MessageRowView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
+                .frame(height: StatusLineStability.compactLineHeight, alignment: .trailing)
         case let .notSent(cause):
             HStack(spacing: 8) {
                 Label(String(localized: "Not sent"), systemImage: "exclamationmark.circle.fill")
@@ -1389,18 +1410,23 @@ struct MessageRowView: View {
             .padding(.horizontal, 4)
         case .sending:
             HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
+                ProgressView()
+                    .controlSize(.mini)
+                    .scaleEffect(0.75)
+                    .frame(width: 12, height: 12)
                 Text(String(localized: "Sending…"))
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
+            .frame(height: StatusLineStability.compactLineHeight, alignment: .trailing)
         case .sent:
             if showsSent {
                 Text(String(localized: "Sent"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
+                    .frame(height: StatusLineStability.compactLineHeight, alignment: .trailing)
             }
         case .waiting:
             // Every waiting message has this line (Timeline.build): it goes when the chat's account is back.
@@ -1433,6 +1459,7 @@ struct MessageRowView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
+                    .frame(minHeight: StatusLineStability.compactLineHeight, alignment: .trailing)
             }
         case let .failed(reason):
             HStack(spacing: 8) {
