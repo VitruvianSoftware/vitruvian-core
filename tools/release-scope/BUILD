@@ -55,6 +55,7 @@ alias(
 rust_test(
     name = "release_scope_lib_test",
     size = "small",
+    compile_data = ["testdata/cpython312_json_parity.json"],
     crate = ":release_scope_lib",
     data = [
         "aliases.json",
@@ -74,6 +75,6 @@ test_suite(
 # builds this check with plain rustc the way its workflow does.
 filegroup(
     name = "rust_sources",
-    srcs = glob(["src/**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]) + ["testdata/cpython312_json_parity.json"],
     visibility = ["//packages/pycompat/vitruvian-pycompat:__pkg__"],
 )
