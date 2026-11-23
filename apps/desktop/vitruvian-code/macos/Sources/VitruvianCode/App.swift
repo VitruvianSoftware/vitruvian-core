@@ -43,7 +43,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// The program's entry. `--run-automation <id>` (a LaunchAgent that a schedule
+/// exported starts the app this way) runs one task with no window and exits;
+/// anything else is the menu bar app.
 @main
+@MainActor
+enum VitruvianCodeLauncher {
+    static func main() {
+        let arguments = ProcessInfo.processInfo.arguments
+        switch VitruvianCodeAutomationLaunch.parse(arguments: arguments) {
+        case .none:
+            VitruvianCodeApp.main()
+        case .invalid(let reason):
+            FileHandle.standardError.write(Data("VitruvianCode: \(reason)\n".utf8))
+            exit(2)
+        case .run(let id):
+            HeadlessAutomation.start(taskID: id, arguments: arguments)
+        }
+    }
+}
+
 struct VitruvianCodeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()

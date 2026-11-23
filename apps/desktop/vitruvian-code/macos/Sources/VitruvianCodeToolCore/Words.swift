@@ -174,6 +174,9 @@ public enum Words {
         "connectionLockedTitle",
         "connectionLockedExplanation",
         "connectionLockedFormat",
+        "automationNeedsYouTitle",
+        "automationNeedsYouBodyFormat",
+        "automationNeedsReEnable",
     ]
 
     public static func text(_ key: String, _ language: String) -> String {
@@ -333,6 +336,9 @@ public enum Words {
             "connectionLockedTitle": "Live connection locked",
             "connectionLockedExplanation": "This live connection failed 3 times in a row. Start a new chat or switch this chat to the command line.",
             "connectionLockedFormat": "Live connection failed %@ times in a row and is locked for this chat. Start a new chat or use the command line.",
+            "automationNeedsYouTitle": "Automation needs you",
+            "automationNeedsYouBodyFormat": "%@ stopped because it needed an approval or an answer. Nothing was approved, so the run failed.",
+            "automationNeedsReEnable": "Re-enable to run",
         ],
         "pt-BR": [
             "quickPromptTitle": "Prompt rápido do agente",
@@ -474,6 +480,9 @@ public enum Words {
             "connectionLockedTitle": "Conexão ativa bloqueada",
             "connectionLockedExplanation": "Esta conexão ativa falhou 3 vezes seguidas. Inicie um novo chat ou mude este chat para a linha de comando.",
             "connectionLockedFormat": "A conexão ativa falhou %@ vezes seguidas e está bloqueada neste chat. Inicie um novo chat ou use a linha de comando.",
+            "automationNeedsYouTitle": "A automação precisa de você",
+            "automationNeedsYouBodyFormat": "%@ parou porque precisava de uma aprovação ou de uma resposta. Nada foi aprovado, então a execução falhou.",
+            "automationNeedsReEnable": "Reative para executar",
         ],
         "tr": [
             "quickPromptTitle": "Ajan Hızlı İstemi",
@@ -615,6 +624,9 @@ public enum Words {
             "connectionLockedTitle": "Canlı bağlantı kilitlendi",
             "connectionLockedExplanation": "Bu canlı bağlantı art arda 3 kez başarısız oldu. Yeni bir sohbet başlatın veya bu sohbeti komut satırına geçirin.",
             "connectionLockedFormat": "Canlı bağlantı art arda %@ kez başarısız oldu ve bu sohbet için kilitlendi. Yeni bir sohbet başlatın veya komut satırını kullanın.",
+            "automationNeedsYouTitle": "Otomasyon sizi bekliyor",
+            "automationNeedsYouBodyFormat": "%@, bir onay veya yanıt gerektirdiği için durdu. Hiçbir şey onaylanmadı, bu yüzden çalıştırma başarısız oldu.",
+            "automationNeedsReEnable": "Çalışması için yeniden etkinleştirin",
         ],
         "ru": [
             "quickPromptTitle": "Быстрый запрос к агенту",
@@ -756,6 +768,9 @@ public enum Words {
             "connectionLockedTitle": "Живое подключение заблокировано",
             "connectionLockedExplanation": "Живое подключение не удалось 3 раза подряд. Начните новый чат или переключите этот чат на командную строку.",
             "connectionLockedFormat": "Живое подключение не удалось %@ раз подряд и заблокировано для этого чата. Начните новый чат или используйте командную строку.",
+            "automationNeedsYouTitle": "Автоматизации нужно ваше участие",
+            "automationNeedsYouBodyFormat": "%@ остановлена: потребовалось подтверждение или ответ. Ничего не было подтверждено, поэтому запуск завершился ошибкой.",
+            "automationNeedsReEnable": "Включите снова, чтобы запускать",
         ],
         "es": [
             "quickPromptTitle": "Prompt rápido del agente",
@@ -897,6 +912,9 @@ public enum Words {
             "connectionLockedTitle": "Conexión en vivo bloqueada",
             "connectionLockedExplanation": "Esta conexión en vivo falló 3 veces seguidas. Inicia un nuevo chat o cambia este chat a la línea de comandos.",
             "connectionLockedFormat": "La conexión en vivo falló %@ veces seguidas y está bloqueada para este chat. Inicia un nuevo chat o usa la línea de comandos.",
+            "automationNeedsYouTitle": "La automatización te necesita",
+            "automationNeedsYouBodyFormat": "%@ se detuvo porque necesitaba una aprobación o una respuesta. No se aprobó nada, así que la ejecución falló.",
+            "automationNeedsReEnable": "Vuelve a activarla para ejecutarla",
         ],
         "sk": [
             "quickPromptTitle": "Rýchla výzva agentovi",
@@ -1038,6 +1056,9 @@ public enum Words {
             "connectionLockedTitle": "Živé pripojenie uzamknuté",
             "connectionLockedExplanation": "Toto živé pripojenie zlyhalo 3-krát po sebe. Začnite nový čet alebo prepnite tento čet na príkazový riadok.",
             "connectionLockedFormat": "Živé pripojenie zlyhalo %@-krát po sebe a je pre tento čet uzamknuté. Začnite nový čet alebo použite príkazový riadok.",
+            "automationNeedsYouTitle": "Automatizácia vás potrebuje",
+            "automationNeedsYouBodyFormat": "%@ sa zastavila, pretože potrebovala schválenie alebo odpoveď. Nič sa neschválilo, preto spustenie zlyhalo.",
+            "automationNeedsReEnable": "Znova povoľte, aby sa spustila",
         ],
         "de": [
             "quickPromptTitle": "Agent-Schnell-Prompt",
@@ -1179,6 +1200,9 @@ public enum Words {
             "connectionLockedTitle": "Live-Verbindung gesperrt",
             "connectionLockedExplanation": "Diese Live-Verbindung ist 3-mal hintereinander fehlgeschlagen. Starte einen neuen Chat oder wechsle diesen Chat zur Befehlszeile.",
             "connectionLockedFormat": "Die Live-Verbindung ist %@-mal hintereinander fehlgeschlagen und für diesen Chat gesperrt. Starte einen neuen Chat oder verwende die Befehlszeile.",
+            "automationNeedsYouTitle": "Automatisierung braucht Sie",
+            "automationNeedsYouBodyFormat": "%@ wurde angehalten, weil eine Genehmigung oder eine Antwort nötig war. Nichts wurde genehmigt, daher ist der Lauf fehlgeschlagen.",
+            "automationNeedsReEnable": "Zum Ausführen erneut aktivieren",
         ],
         "fr": [
             "quickPromptTitle": "Prompt rapide de l’agent",
@@ -1320,6 +1344,9 @@ public enum Words {
             "connectionLockedTitle": "Connexion active verrouillée",
             "connectionLockedExplanation": "Cette connexion active a échoué 3 fois de suite. Démarrez une nouvelle discussion ou passez celle-ci en ligne de commande.",
             "connectionLockedFormat": "La connexion active a échoué %@ fois de suite et est verrouillée pour cette discussion. Démarrez une nouvelle discussion ou utilisez la ligne de commande.",
+            "automationNeedsYouTitle": "L’automatisation a besoin de vous",
+            "automationNeedsYouBodyFormat": "%@ s’est arrêtée car elle avait besoin d’une approbation ou d’une réponse. Rien n’a été approuvé, l’exécution a donc échoué.",
+            "automationNeedsReEnable": "Réactivez pour l’exécuter",
         ],
         "it": [
             "quickPromptTitle": "Prompt rapido dell’agente",
@@ -1461,6 +1488,9 @@ public enum Words {
             "connectionLockedTitle": "Connessione attiva bloccata",
             "connectionLockedExplanation": "Questa connessione attiva non è riuscita 3 volte di seguito. Avvia una nuova chat o passa questa chat alla riga di comando.",
             "connectionLockedFormat": "La connessione attiva non è riuscita %@ volte di seguito ed è bloccata per questa chat. Avvia una nuova chat o usa la riga di comando.",
+            "automationNeedsYouTitle": "L’automazione ha bisogno di te",
+            "automationNeedsYouBodyFormat": "%@ si è fermata perché serviva un’approvazione o una risposta. Non è stato approvato nulla, quindi l’esecuzione è fallita.",
+            "automationNeedsReEnable": "Riattiva per eseguire",
         ],
         "ja": [
             "quickPromptTitle": "エージェントのクイックプロンプト",
@@ -1602,6 +1632,9 @@ public enum Words {
             "connectionLockedTitle": "ライブ接続がロックされました",
             "connectionLockedExplanation": "このライブ接続が 3 回連続で失敗しました。新しいチャットを開始するか、このチャットをコマンドラインに切り替えてください。",
             "connectionLockedFormat": "ライブ接続が %@ 回連続で失敗したため、このチャットではロックされています。新しいチャットを開始するか、コマンドラインを使用してください。",
+            "automationNeedsYouTitle": "オートメーションの確認が必要です",
+            "automationNeedsYouBodyFormat": "%@ は承認または回答が必要だったため停止しました。何も承認されなかったため、実行は失敗しました。",
+            "automationNeedsReEnable": "実行するには再度有効にしてください",
         ],
         "ko": [
             "quickPromptTitle": "에이전트 빠른 프롬프트",
@@ -1743,6 +1776,9 @@ public enum Words {
             "connectionLockedTitle": "실시간 연결 잠김",
             "connectionLockedExplanation": "이 실시간 연결이 연속 3회 실패했습니다. 새 채팅을 시작하거나 이 채팅을 명령줄로 전환하세요.",
             "connectionLockedFormat": "실시간 연결이 연속 %@회 실패하여 이 채팅에서 잠겼습니다. 새 채팅을 시작하거나 명령줄을 사용하세요.",
+            "automationNeedsYouTitle": "자동화에 확인이 필요합니다",
+            "automationNeedsYouBodyFormat": "%@ 작업이 승인 또는 답변이 필요해서 중지되었습니다. 아무것도 승인되지 않아 실행이 실패했습니다.",
+            "automationNeedsReEnable": "실행하려면 다시 켜세요",
         ],
         "uk": [
             "quickPromptTitle": "Швидкий запит до агента",
@@ -1884,6 +1920,9 @@ public enum Words {
             "connectionLockedTitle": "Живе підключення заблоковано",
             "connectionLockedExplanation": "Це живе підключення не вдалося 3 рази поспіль. Почніть новий чат або перемкніть цей чат на командний рядок.",
             "connectionLockedFormat": "Живе підключення не вдалося %@ рази поспіль і заблоковано для цього чату. Почніть новий чат або використовуйте командний рядок.",
+            "automationNeedsYouTitle": "Автоматизації потрібна ваша участь",
+            "automationNeedsYouBodyFormat": "%@ зупинено: знадобилося підтвердження або відповідь. Нічого не підтверджено, тому запуск завершився помилкою.",
+            "automationNeedsReEnable": "Увімкніть знову, щоб запускати",
         ],
         "zh-Hans": [
             "quickPromptTitle": "智能体快速提问",
@@ -2025,6 +2064,9 @@ public enum Words {
             "connectionLockedTitle": "实时连接已锁定",
             "connectionLockedExplanation": "此实时连接已连续失败 3 次。请开始新对话或将此对话切换为命令行。",
             "connectionLockedFormat": "实时连接已连续失败 %@ 次并在此对话中锁定。请开始新对话或使用命令行。",
+            "automationNeedsYouTitle": "自动化需要你处理",
+            "automationNeedsYouBodyFormat": "%@ 已停止，因为它需要批准或回答。没有批准任何操作，因此本次运行失败。",
+            "automationNeedsReEnable": "重新启用后才会运行",
         ],
         "zh-TW": [
             "quickPromptTitle": "代理程式快速提問",
@@ -2166,6 +2208,9 @@ public enum Words {
             "connectionLockedTitle": "即時連線已鎖定",
             "connectionLockedExplanation": "此即時連線已連續失敗 3 次。請開始新對話或將此對話切換為命令列。",
             "connectionLockedFormat": "即時連線已連續失敗 %@ 次並在此對話中鎖定。請開始新對話或使用命令列。",
+            "automationNeedsYouTitle": "自動化需要你處理",
+            "automationNeedsYouBodyFormat": "%@ 已停止，因為它需要核准或回答。沒有核准任何操作，因此這次執行失敗。",
+            "automationNeedsReEnable": "重新啟用後才會執行",
         ],
         "zh-HK": [
             "quickPromptTitle": "代理程式快速提問",
@@ -2307,6 +2352,9 @@ public enum Words {
             "connectionLockedTitle": "即時連線已鎖定",
             "connectionLockedExplanation": "呢個即時連線已經連續失敗 3 次。請開始新傾偈或者將呢個傾偈切換去命令列。",
             "connectionLockedFormat": "即時連線已經連續失敗 %@ 次並喺呢個傾偈中鎖定。請開始新傾偈或者使用命令列。",
+            "automationNeedsYouTitle": "自動化需要你處理",
+            "automationNeedsYouBodyFormat": "%@ 已停止，因為佢需要批准或者回答。冇批准任何操作，所以今次運行失敗。",
+            "automationNeedsReEnable": "重新啟用先會執行",
         ],
     ]
 }

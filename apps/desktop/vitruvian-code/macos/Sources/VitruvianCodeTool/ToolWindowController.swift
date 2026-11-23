@@ -238,6 +238,7 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.useCommandLineForChat, "useCommandLineForChat"), (\.helperCrashTitle, "helperCrashTitle"),
         (\.claudeCrashTitle, "claudeCrashTitle"), (\.turnInterrupted, "turnInterrupted"),
         (\.connectionLockedTitle, "connectionLockedTitle"), (\.connectionLockedExplanation, "connectionLockedExplanation"),
+        (\.automationNeedsReEnable, "automationNeedsReEnable"),
     ]
 
     private func ensurePanel() -> NSPanel {

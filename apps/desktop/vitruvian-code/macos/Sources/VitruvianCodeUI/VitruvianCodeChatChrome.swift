@@ -46,6 +46,11 @@ public struct VitruvianCodeChatChrome {
     /// it, and the standalone app still offers it; an app whose drawer
     /// never did passes false.
     public var offersClearAll: Bool
+    /// The program a LaunchAgent for a scheduled automation starts, with
+    /// `--run-automation <id>`. Only an app that handles that flag sets it;
+    /// nil hides "Export LaunchAgent", so a plist is never written for a
+    /// program that would ignore it.
+    public var automationExecutablePath: String?
 
     public init(backdrop: AnyView = AnyView(Color.clear),
                 isEmbedded: Bool = false,
@@ -54,7 +59,8 @@ public struct VitruvianCodeChatChrome {
                 dockToNotch: (() -> Void)? = nil,
                 dockToNotchHelp: String = "",
                 errorScheme: String = "vitruvian-code-error",
-                offersClearAll: Bool = true) {
+                offersClearAll: Bool = true,
+                automationExecutablePath: String? = nil) {
         self.backdrop = backdrop
         self.isEmbedded = isEmbedded
         self.isPinned = isPinned
@@ -63,6 +69,7 @@ public struct VitruvianCodeChatChrome {
         self.dockToNotchHelp = dockToNotchHelp
         self.errorScheme = errorScheme
         self.offersClearAll = offersClearAll
+        self.automationExecutablePath = automationExecutablePath
     }
 }
 

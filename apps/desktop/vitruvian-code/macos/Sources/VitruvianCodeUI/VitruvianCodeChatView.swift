@@ -1953,7 +1953,8 @@ public struct VitruvianCodeChatView: View {
                 hibernation: session.hibernationManager,
                 remoteHosts: session.remoteHosts,
                 defaultProviderID: engine.activeProvider.id,
-                executablePath: engine.agentPath ?? "/usr/local/bin/vitruvian-code-tool",
+                executablePath: chrome.automationExecutablePath ?? "",
+                reEnableText: strings.automationNeedsReEnable,
                 onRemoteHostsChange: { updated in
                     session.remoteHosts = updated
                 },

@@ -38,6 +38,7 @@ public struct VitruvianCodeAutomationAndOrchestrationView: View {
     private let mobileSnapshots: [VitruvianCodeMobileSessionSnapshot]
     private let defaultProviderID: UUID
     private let executablePath: String
+    private let reEnableText: String
     private let onRemoteHostsChange: ([VitruvianCodeRemoteHost]) -> Void
     private let onWake: (VitruvianCodeHibernatedSessionRecord) -> Void
     private let onExportLaunchAgent: (VitruvianCodeScheduledTask, String) -> Void
@@ -52,6 +53,7 @@ public struct VitruvianCodeAutomationAndOrchestrationView: View {
                 mobileSnapshots: [VitruvianCodeMobileSessionSnapshot] = [],
                 defaultProviderID: UUID,
                 executablePath: String,
+                reEnableText: String = "Re-enable to run",
                 initialTab: Tab = .runs,
                 onRemoteHostsChange: @escaping ([VitruvianCodeRemoteHost]) -> Void = { _ in },
                 onWake: @escaping (VitruvianCodeHibernatedSessionRecord) -> Void = { _ in },
@@ -62,6 +64,7 @@ public struct VitruvianCodeAutomationAndOrchestrationView: View {
         self.mobileSnapshots = mobileSnapshots
         self.defaultProviderID = defaultProviderID
         self.executablePath = executablePath
+        self.reEnableText = reEnableText
         self.onRemoteHostsChange = onRemoteHostsChange
         self.onWake = onWake
         self.onExportLaunchAgent = onExportLaunchAgent
@@ -89,6 +92,7 @@ public struct VitruvianCodeAutomationAndOrchestrationView: View {
                         VitruvianCodeAutomationsPane(automations: automations,
                                                   defaultProviderID: defaultProviderID,
                                                   executablePath: executablePath,
+                                                  reEnableText: reEnableText,
                                                   onExportLaunchAgent: onExportLaunchAgent)
                     case .remote:
                         VitruvianCodeRemoteAndMobilePane(hosts: $hosts,
@@ -332,6 +336,7 @@ private struct VitruvianCodeAutomationsPane: View {
     @ObservedObject var automations: VitruvianCodeAutomationManager
     let defaultProviderID: UUID
     let executablePath: String
+    let reEnableText: String
     let onExportLaunchAgent: (VitruvianCodeScheduledTask, String) -> Void
 
     @State var name = ""
@@ -401,6 +406,11 @@ private struct VitruvianCodeAutomationsPane: View {
                     if task.useWorktree {
                         VitruvianCodeControlRoomBadge(text: "Worktree", tint: .blue)
                     }
+                    if task.isEnabled && !task.liveRunsEnabled {
+                        // Saved before scheduled runs could start an agent: it
+                        // stays quiet until the user switches it off and on.
+                        VitruvianCodeControlRoomBadge(text: reEnableText, tint: .orange)
+                    }
                     Spacer()
                     Toggle("Enabled", isOn: Binding(
                         get: { task.isEnabled },
@@ -423,12 +433,14 @@ private struct VitruvianCodeAutomationsPane: View {
                         Text("· next \(next, style: .relative)")
                     }
                     Spacer()
-                    Button {
-                        onExportLaunchAgent(task, automations.launchdPlistXML(for: task, executablePath: executablePath))
-                    } label: {
-                        Label("Export LaunchAgent", systemImage: "square.and.arrow.up")
+                    if !executablePath.isEmpty {
+                        Button {
+                            onExportLaunchAgent(task, automations.launchdPlistXML(for: task, executablePath: executablePath))
+                        } label: {
+                            Label("Export LaunchAgent", systemImage: "square.and.arrow.up")
+                        }
+                        .controlSize(.small)
                     }
-                    .controlSize(.small)
                     Button(role: .destructive) {
                         automations.remove(id: task.id)
                     } label: {

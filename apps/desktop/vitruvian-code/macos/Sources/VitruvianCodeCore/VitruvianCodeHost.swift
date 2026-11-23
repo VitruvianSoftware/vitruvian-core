@@ -163,6 +163,11 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var turnInterrupted: String
     /// Shown when a live connection locks after repeated consecutive start failures.
     public var connectionLockedFormat: String
+    /// A scheduled run with no window needed an approval or an answer. It
+    /// was denied and the run failed. The body holds the task's name at `%@`
+    /// and nothing else of the task.
+    public var automationNeedsYouTitle: String
+    public var automationNeedsYouBodyFormat: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -198,7 +203,9 @@ public struct VitruvianCodeHostStrings: Sendable {
                  configOptionUnavailable: String = "Send a message to reconnect before changing settings.",
                  mentionOutsideWorkspaceFormat: String = "Skipped %@: outside the working folder.",
                  turnInterrupted: String = "Interrupted",
-                 connectionLockedFormat: String = "Live connection failed %@ times in a row and is locked for this chat. Start a new chat or use the command line.") {
+                 connectionLockedFormat: String = "Live connection failed %@ times in a row and is locked for this chat. Start a new chat or use the command line.",
+                 automationNeedsYouTitle: String = "Automation needs you",
+                 automationNeedsYouBodyFormat: String = "%@ stopped because it needed an approval or an answer. Nothing was approved, so the run failed.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -234,6 +241,8 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.mentionOutsideWorkspaceFormat = mentionOutsideWorkspaceFormat
         self.turnInterrupted = turnInterrupted
         self.connectionLockedFormat = connectionLockedFormat
+        self.automationNeedsYouTitle = automationNeedsYouTitle
+        self.automationNeedsYouBodyFormat = automationNeedsYouBodyFormat
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {
@@ -296,6 +305,18 @@ public struct VitruvianCodeHostStrings: Sendable {
             return mentionOutsideWorkspaceFormat.replacingCharacters(in: range, with: path)
         }
         return "\(mentionOutsideWorkspaceFormat) \(path)"
+    }
+
+    /// The notification for a scheduled run that needed the user: only the
+    /// task's name is in it.
+    public func automationNeedsYou(taskName: String) -> (title: String, body: String) {
+        let body: String
+        if let range = automationNeedsYouBodyFormat.range(of: "%@") {
+            body = automationNeedsYouBodyFormat.replacingCharacters(in: range, with: taskName)
+        } else {
+            body = "\(taskName): \(automationNeedsYouBodyFormat)"
+        }
+        return (automationNeedsYouTitle, body)
     }
 
     public func connectionLocked(count: Int) -> String {

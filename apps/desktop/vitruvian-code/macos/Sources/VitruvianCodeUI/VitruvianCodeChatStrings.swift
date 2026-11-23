@@ -333,6 +333,9 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var turnInterrupted = "Interrupted"
     public var connectionLockedTitle = "Live connection locked"
     public var connectionLockedExplanation = "This live connection failed 3 times in a row. Start a new chat or switch this chat to the command line."
+    /// On a scheduled automation saved before scheduled runs could start an
+    /// agent: it runs again once switched off and on.
+    public var automationNeedsReEnable = "Re-enable to run"
 
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
