@@ -626,7 +626,11 @@ mod tests {
             assert!(!ctl.bad.is_empty(), "{}: no bad values", ctl.path);
             assert!(!ctl.good.is_empty(), "{}: no good values", ctl.path);
             for &(p, _) in ctl.good_with {
-                assert!(p != ctl.path, "{}: good_with sets the path itself", ctl.path);
+                assert!(
+                    p != ctl.path,
+                    "{}: good_with sets the path itself",
+                    ctl.path
+                );
             }
             for b in ctl.bad {
                 assert!(
