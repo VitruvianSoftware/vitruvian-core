@@ -4029,7 +4029,7 @@ package final class NotchService: ObservableObject {
     /// The island's geometry on a display, before its menus are measured.
     private func baseGeometry(for screen: NotchDisplayInfo) -> NotchGeometry {
         NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaTop,
-                      cameraWidth: screen.cameraWidth,
+                      cameraWidth: screen.cameraWidth, physicalCameraX: screen.physicalCameraX,
                       layout: NotchSize(rawValue: defaults[Preferences.notchSize]) ?? .spacious,
                       menuBarHeight: menuBarMeasurements.height(
                          displayID: screen.id, frame: screen.frame,
@@ -4124,6 +4124,16 @@ package final class NotchService: ObservableObject {
             self?.fullscreenEnvironmentDidChange()
         }
         observe(workspace, NSWorkspace.didActivateApplicationNotification) { [weak self] in self?.applicationDidActivate() }
+        // A status item can come or go with its app; the old clearance may
+        // cover one, so it is withdrawn until the bar is measured again.
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            observe(workspace, name) { [weak self] in
+                guard let self, self.menuSpace.isRunning else { return }
+                self.applyMenuSpace(nil)
+                self.menuSpace.invalidate()
+                self.menuSpace.read()
+            }
+        }
     }
 
     /// AppStorage can notify during drawing. A preference import or a group
