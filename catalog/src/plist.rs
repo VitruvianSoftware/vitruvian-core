@@ -183,7 +183,7 @@ impl<'a> X<'a> {
                         }
                     }
                 }
-                Value::Dict(crate::json::Dict(items))
+                Value::Obj(items)
             }
             "array" => {
                 let mut items = Vec::new();
@@ -197,7 +197,7 @@ impl<'a> X<'a> {
                         items.push(self.value()?);
                     }
                 }
-                Value::List(items)
+                Value::Arr(items)
             }
             "string" | "date" | "data" => Value::Str(text(self)?),
             "integer" => {
@@ -208,7 +208,7 @@ impl<'a> X<'a> {
                 } else {
                     t.parse::<i128>().map_err(|e| e.to_string())?
                 };
-                Value::Int(n)
+                crate::json::int(n)
             }
             "real" => Value::Float(
                 text(self)?
@@ -253,6 +253,7 @@ pub fn load(data: &[u8]) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::json::ValueExt;
 
     #[test]
     fn reads_the_apps_info_plist() {

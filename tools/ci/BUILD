@@ -213,7 +213,6 @@ rust_test(
         "//:composite_actions",
         "//:github_files",
         "//:workflow_files",
-        "//catalog:srcs",
         "//tools/gomod:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rust_toolchain",

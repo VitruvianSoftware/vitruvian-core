@@ -57,3 +57,13 @@ infrastructure/pulumi/foundation/**
 # remains checked.
 infrastructure/pulumi/platform/*/sdks/**
 packages/pulumi/library/go/pkg/*/sdk/**
+
+# macagent metrics keeps its private JSON parser on purpose: its callers need a
+# strict RFC 8259 parser on a hot path and it ships in a public mirror.
+apps/mobile/vitruvian-remote/macagent/metrics/src/json.rs
+
+# registry-trust keeps its private JSON on purpose: keeping Value::Date (used by
+# toml.rs), Crash, loads_bytes and iterative depth-9,997-safe adapters over
+# pycompat grew json.rs from 616 to 714 non-test lines (whole src 3,991 to
+# 4,089), failing the 25% reduction rule.
+tools/registry-trust/src/json.rs

@@ -22,12 +22,12 @@
 //! scripts use them (`d.get`, `d[k]`, `==`, `in`, `sorted`, `set`), over
 //! json.rs's object model.
 
-use crate::json::{self, Value};
+use crate::json::{self, DictExt, Value, ValueExt};
 use crate::pyerr::{Crash, Res};
 
 /// `v.get(key)`.
 pub fn get<'a>(v: &'a Value, key: &str) -> Res<Option<&'a Value>> {
-    v.get(key)
+    v.py_get(key)
 }
 
 /// `v.get(key, default)`.
@@ -100,8 +100,8 @@ pub fn contains(container: &Value, needle: &Value) -> Res<bool> {
 
 /// `d[key] = value`: a key already there keeps its place.
 pub fn set_item(d: &mut Value, key: &str, value: Value) {
-    if let Value::Dict(items) = d {
-        items.insert(key, value);
+    if let Value::Obj(items) = d {
+        items.dict_insert(key, value);
     }
 }
 
@@ -122,5 +122,5 @@ pub fn s(text: impl Into<String>) -> Value {
 }
 
 pub fn int(n: i128) -> Value {
-    Value::Int(n)
+    json::int(n)
 }

@@ -643,6 +643,8 @@ fn pr_skip_filters_list_every_input_their_checks_read() {
         "            osvscan:",
         &[
             "tools/osv-scan/**",
+            "packages/jq/**",
+            "packages/pycompat/vitruvian-pycompat/**",
             "tools/ci/src/**",
             "tools/tools.lock.json",
         ],

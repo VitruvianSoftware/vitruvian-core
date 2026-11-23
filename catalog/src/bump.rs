@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use crate::argparse::{Kind, Opt, Parser};
 use crate::crypto::sha256;
 use crate::here::TempDir;
-use crate::json::{self, Dict, Value};
+use crate::json::{self, Dict, DictExt, Value, ValueExt};
 use crate::pyerr::{self, Crash, Res};
 use crate::pyre::{self, Regex};
 use crate::rules::{self, SemVer};
@@ -99,7 +99,7 @@ pub fn notice(message: &str) {
 /// `load_sources(path)`.
 pub fn load_sources(path: &str) -> Res<Value> {
     let data = json::loads(&pyerr::read_text(path)?)?;
-    let rows = py::get_or(&data, "sources", Value::List(vec![]))?;
+    let rows = py::get_or(&data, "sources", Value::Arr(vec![]))?;
     for row in rows.py_iter()? {
         for key in ["id", "repo", "tagPrefix", "asset", "uploader"] {
             let v = row.get_v(key)?;
@@ -343,7 +343,7 @@ pub fn binary_problems(
         }
     }
     if row.get_v("universal")?.truthy() {
-        let runtime = manifest.get_or("runtime", Value::Dict(Dict::new()))?;
+        let runtime = manifest.get_or("runtime", Value::Obj(Dict::new()))?;
         let program = runtime.get_or("exec", json::s(""))?;
         json::key(&program)?;
         let listed = match &program {
@@ -416,7 +416,7 @@ pub fn checked_zip(
         )));
     }
     let mut assets: Vec<(json::Key, Value)> = Vec::new();
-    for a in meta.get_or("assets", Value::List(vec![]))?.py_iter()? {
+    for a in meta.get_or("assets", Value::Arr(vec![]))?.py_iter()? {
         let k = json::key(&a.get_v("name")?)?;
         match assets.iter_mut().find(|(ek, _)| *ek == k) {
             Some(slot) => slot.1 = a,
@@ -448,7 +448,7 @@ pub fn checked_zip(
         let up = if up.truthy() {
             up
         } else {
-            Value::Dict(Dict::new())
+            Value::Obj(Dict::new())
         };
         let who = up.get_v("login")?;
         if !json::py_eq(&who, &uploader) {
@@ -492,7 +492,7 @@ pub fn checked_zip(
         side.ok_or_else(|| Stop::Unavailable(format!("{}.sha256 could not be downloaded", name)))?;
     let sha = sha256::hexdigest(&data);
     let size = asset.get_v("size")?;
-    if !json::py_eq(&Value::Int(data.len() as i128), &size) {
+    if !json::py_eq(&json::int(data.len() as i128), &size) {
         reasons.push(format!(
             "{} is {} bytes, GitHub says {}",
             name,
@@ -591,10 +591,10 @@ fn d_get<'a>(d: &'a Value, key: &str) -> Option<&'a Value> {
 /// `from_manifest(entry, manifest)`: sets what an entry copies from its
 /// manifest; the names of the fields that changed.
 pub fn from_manifest(entry: &mut Value, manifest: &Value) -> Res<Vec<String>> {
-    let contributes = manifest.get_or("contributes", Value::Dict(Dict::new()))?;
+    let contributes = manifest.get_or("contributes", Value::Obj(Dict::new()))?;
     let mut commands = Vec::new();
     for c in contributes
-        .get_or("commands", Value::List(vec![]))?
+        .get_or("commands", Value::Arr(vec![]))?
         .py_iter()?
     {
         commands.push(json::dict(vec![
@@ -609,33 +609,33 @@ pub fn from_manifest(entry: &mut Value, manifest: &Value) -> Res<Vec<String>> {
         ("summary", manifest.get_v("description")?),
         (
             "uses",
-            Value::List(manifest.get_or("uses", Value::List(vec![]))?.py_iter()?),
+            Value::Arr(manifest.get_or("uses", Value::Arr(vec![]))?.py_iter()?),
         ),
-        ("commands", Value::List(commands)),
+        ("commands", Value::Arr(commands)),
     ];
     if d_get(entry, "panels").is_some() {
         let mut panels = Vec::new();
         for p in contributes
-            .get_or("panels", Value::List(vec![]))?
+            .get_or("panels", Value::Arr(vec![]))?
             .py_iter()?
         {
             panels.push(p.get_v("placement")?);
         }
-        wanted.push(("panels", Value::List(panels)));
+        wanted.push(("panels", Value::Arr(panels)));
     }
     let mut changed = Vec::new();
     for (field, value) in wanted {
         let same = if field == "uses" {
-            let mine = entry.get_or("uses", Value::List(vec![]))?.py_iter()?;
+            let mine = entry.get_or("uses", Value::Arr(vec![]))?.py_iter()?;
             let a = json::py_sorted(&mine)?;
             let b = json::py_sorted(value.as_list().unwrap())?;
-            json::py_eq(&Value::List(a), &Value::List(b))
+            json::py_eq(&Value::Arr(a), &Value::Arr(b))
         } else {
             json::py_eq(&entry.get_v(field)?, &value)
         };
         if !same {
-            if let Value::Dict(d) = entry {
-                d.insert(field, value);
+            if let Value::Obj(d) = entry {
+                d.dict_insert(field, value);
             }
             changed.push(field.to_string());
         }
@@ -654,8 +654,8 @@ fn ticks(items: &[Value]) -> String {
 /// `for_a_person(old, new, manifest)`: why the pull request waits.
 pub fn for_a_person(old: &Value, new: &Value, manifest: &Value) -> Res<Vec<String>> {
     let mut reasons = Vec::new();
-    let old_uses = old.get_or("uses", Value::List(vec![]))?;
-    let new_uses = new.get_or("uses", Value::List(vec![]))?;
+    let old_uses = old.get_or("uses", Value::Arr(vec![]))?;
+    let new_uses = new.get_or("uses", Value::Arr(vec![]))?;
     let mut added = Vec::new();
     for u in new_uses.py_iter()? {
         if !old_uses.py_contains(&u)? {
@@ -679,13 +679,13 @@ pub fn for_a_person(old: &Value, new: &Value, manifest: &Value) -> Res<Vec<Strin
     }
     let ids = |v: &Value| -> Res<Vec<Value>> {
         let mut out = Vec::new();
-        for c in v.get_or("commands", Value::List(vec![]))?.py_iter()? {
+        for c in v.get_or("commands", Value::Arr(vec![]))?.py_iter()? {
             out.push(c.at("id")?.clone());
         }
         Ok(out)
     };
-    let old_ids = Value::List(ids(old)?);
-    let new_ids = Value::List(ids(new)?);
+    let old_ids = Value::Arr(ids(old)?);
+    let new_ids = Value::Arr(ids(new)?);
     let added: Vec<Value> = new_ids
         .as_list()
         .unwrap()
@@ -732,7 +732,7 @@ pub fn for_a_person(old: &Value, new: &Value, manifest: &Value) -> Res<Vec<Strin
     }
     if d_get(old, "panels").is_none()
         && manifest
-            .get_or("contributes", Value::Dict(Dict::new()))?
+            .get_or("contributes", Value::Obj(Dict::new()))?
             .get_v("panels")?
             .truthy()
     {
@@ -752,11 +752,11 @@ pub fn floor_notes(manifest: &Value, floor: &Value) -> Res<Vec<String>> {
     let checks: [&dyn Fn() -> Res<bool>; 4] = [
         &|| Ok(json::py_eq(&m.get_v("protocol")?, &json::s("2"))),
         &|| {
-            m.get_or("contributes", Value::Dict(Dict::new()))?
+            m.get_or("contributes", Value::Obj(Dict::new()))?
                 .contains_str("status")
         },
         &|| {
-            for p in m.get_or("preferences", Value::List(vec![]))?.py_iter()? {
+            for p in m.get_or("preferences", Value::Arr(vec![]))?.py_iter()? {
                 if p.contains_str("options")? {
                     return Ok(true);
                 }
@@ -764,8 +764,8 @@ pub fn floor_notes(manifest: &Value, floor: &Value) -> Res<Vec<String>> {
             Ok(false)
         },
         &|| {
-            Ok(m.get_or("contributes", Value::Dict(Dict::new()))?
-                .get_or("status", Value::Dict(Dict::new()))?
+            Ok(m.get_or("contributes", Value::Obj(Dict::new()))?
+                .get_or("status", Value::Obj(Dict::new()))?
                 .get_v("activity")?
                 .truthy())
         },
@@ -828,7 +828,7 @@ pub fn dumps(value: &Value, indent: usize) -> String {
     let pad = "  ".repeat(indent);
     let inner = "  ".repeat(indent + 1);
     match value {
-        Value::Dict(d) => {
+        Value::Obj(d) => {
             if d.is_empty() {
                 return "{}".into();
             }
@@ -845,9 +845,9 @@ pub fn dumps(value: &Value, indent: usize) -> String {
                 .collect();
             format!("{{\n{}\n{}}}", items.join(",\n"), pad)
         }
-        Value::List(l) => {
+        Value::Arr(l) => {
             if l.iter()
-                .all(|v| !matches!(v, Value::Dict(_) | Value::List(_)))
+                .all(|v| !matches!(v, Value::Obj(_) | Value::Arr(_)))
             {
                 let items: Vec<String> = l.iter().map(|v| json::dumps(v, None, false)).collect();
                 return format!("[{}]", items.join(", "));
@@ -1048,7 +1048,7 @@ pub fn bump(
     let download = json::dict(vec![
         ("url", json::s(&url)),
         ("sha256", json::s(&sha)),
-        ("size", Value::Int(size as i128)),
+        ("size", json::int(size as i128)),
     ]);
     if version == previous && matches!(previous_v, Value::Str(_)) {
         if json::py_eq(entry.at("download")?, &download) {
@@ -1065,17 +1065,17 @@ pub fn bump(
     }
 
     let mut new = entry.clone();
-    if let Value::Dict(d) = &mut new {
-        d.insert("version", json::s(&version));
-        d.insert("download", download);
+    if let Value::Obj(d) = &mut new {
+        d.dict_insert("version", json::s(&version));
+        d.dict_insert("download", download);
     }
     let changed = from_manifest(&mut new, &manifest)?;
-    if let Value::Dict(c) = &mut catalog {
-        if let Some(Value::List(tools)) = c.get_mut("tools") {
+    if let Value::Obj(c) = &mut catalog {
+        if let Some(Value::Arr(tools)) = c.dict_get_mut("tools") {
             tools[index] = new.clone();
         }
-        let next = next_generated(&c.at("generated")?.clone(), now)?;
-        c.insert("generated", json::s(next));
+        let next = next_generated(&c.dict_at("generated")?.clone(), now)?;
+        c.dict_insert("generated", json::s(next));
     }
 
     let mut problems = schema_problems(root, &catalog)?;
@@ -1260,7 +1260,7 @@ pub fn plan(
         };
         let zip_name = asset_name(&row, &version);
         let mut names = Vec::new();
-        for a in release.get_or("assets", Value::List(vec![]))?.py_iter()? {
+        for a in release.get_or("assets", Value::Arr(vec![]))?.py_iter()? {
             names.push(json::key(&a.get_v("name")?)?);
         }
         if !names.contains(&json::Key::Str(zip_name.clone())) {
@@ -1554,7 +1554,7 @@ impl GitHub for Gh {
             ]),
             &format!("read #{}", number),
         )?;
-        for c in pull.get_or("comments", Value::List(vec![]))?.py_iter()? {
+        for c in pull.get_or("comments", Value::Arr(vec![]))?.py_iter()? {
             if c.get_or("body", json::s(""))?.contains_str(mark)? {
                 return Ok(false);
             }
@@ -1608,7 +1608,7 @@ fn splitlines(text: &str) -> Vec<String> {
 
 /// `foreign(compare, tool_id, version)`.
 pub fn foreign(compare: &Value, tool_id: &str, version: &str) -> Res<Vec<String>> {
-    let commits = compare.get_or("commits", Value::List(vec![]))?.py_iter()?;
+    let commits = compare.get_or("commits", Value::Arr(vec![]))?.py_iter()?;
     let mine = trailer(tool_id, version);
     let mut marked = Vec::new();
     for c in &commits {
@@ -1666,7 +1666,7 @@ pub fn older(pulls: &Value, tool_id: &str, version: &str) -> Res<Vec<String>> {
 pub fn arm(pull: &Value, compare: &Value, tested_sha: &str, check: &str) -> Res<String> {
     let armed = !pull.get_v("autoMergeRequest")?.is_null();
     let mut labels = Vec::new();
-    for label in pull.get_or("labels", Value::List(vec![]))?.py_iter()? {
+    for label in pull.get_or("labels", Value::Arr(vec![]))?.py_iter()? {
         let k = json::key(label.at("name")?)?;
         if !labels.contains(&k) {
             labels.push(k);
@@ -1703,7 +1703,7 @@ pub fn arm(pull: &Value, compare: &Value, tested_sha: &str, check: &str) -> Res<
     let author = if author.truthy() {
         author
     } else {
-        Value::Dict(Dict::new())
+        Value::Obj(Dict::new())
     };
     let login = author.get_v("login")?;
     if !APP_AUTHORS.iter().any(|a| str_is(&login, a)) {
@@ -1864,10 +1864,7 @@ pub fn refusal(sources: &Value, tool_id: &str, tag: &str, reasons: &[String]) ->
         ("tag", json::s(tag)),
         ("version", json::s(&version)),
         ("message", json::s(reasons.join("; "))),
-        (
-            "reasons",
-            Value::List(reasons.iter().map(json::s).collect()),
-        ),
+        ("reasons", Value::Arr(reasons.iter().map(json::s).collect())),
         ("issue_title", json::s(refused_title(tool_id, &version))),
         ("issue_body", json::s(lines.join("\n") + "\n")),
     ]))
@@ -2104,7 +2101,7 @@ fn run(command: &str, args: &crate::argparse::Values) -> Res<i32> {
         let found = plan(&catalog, &sources, &Gh, &|s| {
             std::thread::sleep(std::time::Duration::from_secs(s))
         })?;
-        let text = json::dumps_plain(&Value::List(found));
+        let text = json::dumps_plain(&Value::Arr(found));
         if let Some(out) = v("out").filter(|o| !o.is_empty()) {
             pyerr::write_bytes(&pypath::norm(&out), (text.clone() + "\n").as_bytes())?;
         }

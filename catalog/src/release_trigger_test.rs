@@ -29,7 +29,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::json::{self, Dict, Value};
+use crate::json::{self, Dict, DictExt, Value, ValueExt};
 use crate::{here, py};
 
 const THIS_REPO: &str = "VitruvianSoftware/vitruvian-core";
@@ -43,7 +43,7 @@ fn push_trigger_problem(workflow: &Value) -> Option<String> {
         Some(v) if v != &Value::Null => v,
         _ => return Some("catalog-bump has no push trigger".to_string()),
     };
-    let expected_branches = Value::List(vec![py::s("main")]);
+    let expected_branches = Value::Arr(vec![py::s("main")]);
     if push.field("branches") != Some(&expected_branches) {
         let b = push.field("branches").cloned().unwrap_or(Value::Null);
         return Some(format!(
@@ -51,7 +51,7 @@ fn push_trigger_problem(workflow: &Value) -> Option<String> {
             b.py_repr()
         ));
     }
-    let expected_paths = Value::List(vec![py::s("catalog/tools.json")]);
+    let expected_paths = Value::Arr(vec![py::s("catalog/tools.json")]);
     if push.field("paths") != Some(&expected_paths) {
         let p = push.field("paths").cloned().unwrap_or(Value::Null);
         return Some(format!(
@@ -106,13 +106,13 @@ fn parse_scalar(raw: &str) -> Value {
     if s.starts_with('[') && s.ends_with(']') {
         let inner = s[1..s.len() - 1].trim();
         if inner.is_empty() {
-            return Value::List(Vec::new());
+            return Value::Arr(Vec::new());
         }
         let items = inner.split(',').map(|item| parse_scalar(item)).collect();
-        return Value::List(items);
+        return Value::Arr(items);
     }
     if let Ok(n) = s.parse::<i128>() {
-        return Value::Int(n);
+        return json::int(n);
     }
     Value::Str(s.to_string())
 }
@@ -140,7 +140,7 @@ fn split_key_val(text: &str) -> Option<(&str, &str)> {
 
 fn parse_yaml_block(lines: &[(usize, String)], pos: &mut usize, min_indent: usize) -> Value {
     if *pos >= lines.len() || lines[*pos].0 < min_indent {
-        return Value::Dict(Dict::new());
+        return Value::Obj(Dict::new());
     }
     let block_indent = lines[*pos].0;
     if lines[*pos].1.starts_with("- ") || lines[*pos].1 == "-" {
@@ -157,9 +157,9 @@ fn parse_yaml_block(lines: &[(usize, String)], pos: &mut usize, min_indent: usiz
             } else if let Some((k, v)) = split_key_val(after_dash) {
                 let mut d = Dict::new();
                 if v.is_empty() {
-                    d.insert(k, parse_yaml_block(lines, pos, block_indent + 1));
+                    d.dict_insert(k, parse_yaml_block(lines, pos, block_indent + 1));
                 } else {
-                    d.insert(k, parse_scalar(v));
+                    d.dict_insert(k, parse_scalar(v));
                 }
                 while *pos < lines.len() && lines[*pos].0 > block_indent {
                     let sub_indent = lines[*pos].0;
@@ -167,20 +167,20 @@ fn parse_yaml_block(lines: &[(usize, String)], pos: &mut usize, min_indent: usiz
                     if let Some((sk, sv)) = split_key_val(&sub_line) {
                         *pos += 1;
                         if sv.is_empty() {
-                            d.insert(sk, parse_yaml_block(lines, pos, sub_indent + 1));
+                            d.dict_insert(sk, parse_yaml_block(lines, pos, sub_indent + 1));
                         } else {
-                            d.insert(sk, parse_scalar(sv));
+                            d.dict_insert(sk, parse_scalar(sv));
                         }
                     } else {
                         *pos += 1;
                     }
                 }
-                list.push(Value::Dict(d));
+                list.push(Value::Obj(d));
             } else {
                 list.push(parse_scalar(after_dash));
             }
         }
-        Value::List(list)
+        Value::Arr(list)
     } else {
         let mut dict = Dict::new();
         while *pos < lines.len() && lines[*pos].0 == block_indent {
@@ -199,17 +199,17 @@ fn parse_yaml_block(lines: &[(usize, String)], pos: &mut usize, min_indent: usiz
                         block_text.push_str(&lines[*pos].1);
                         *pos += 1;
                     }
-                    dict.insert(k, Value::Str(block_text));
+                    dict.dict_insert(k, Value::Str(block_text));
                 } else if v.is_empty() {
-                    dict.insert(k, parse_yaml_block(lines, pos, block_indent + 1));
+                    dict.dict_insert(k, parse_yaml_block(lines, pos, block_indent + 1));
                 } else {
-                    dict.insert(k, parse_scalar(v));
+                    dict.dict_insert(k, parse_scalar(v));
                 }
             } else {
                 *pos += 1;
             }
         }
-        Value::Dict(dict)
+        Value::Obj(dict)
     }
 }
 
@@ -260,7 +260,7 @@ impl Fixture {
         let sources_text = std::fs::read_to_string(here_dir.join("sources.json")).unwrap();
         let sources_val = json::loads(&sources_text).unwrap();
         let rows = match sources_val.field("sources") {
-            Some(Value::List(l)) => l.clone(),
+            Some(Value::Arr(l)) => l.clone(),
             _ => panic!("expected sources list"),
         };
         let bump = load_workflow(&workflows_dir.join("catalog-bump.yaml"));
@@ -295,7 +295,7 @@ impl Fixture {
             .field("on")
             .and_then(|on| on.field("workflow_run"))
             .cloned()
-            .unwrap_or_else(|| Value::Dict(Dict::new()))
+            .unwrap_or_else(|| Value::Obj(Dict::new()))
     }
 }
 
@@ -345,7 +345,7 @@ fn test_catalog_bump_starts_when_each_of_them_finishes() {
         .collect();
     let trigger = f.trigger();
     let workflows: BTreeSet<String> = match trigger.field("workflows") {
-        Some(Value::List(l)) => l.iter().map(|v| v.py_str()).collect(),
+        Some(Value::Arr(l)) => l.iter().map(|v| v.py_str()).collect(),
         _ => BTreeSet::new(),
     };
     assert_eq!(
@@ -354,11 +354,11 @@ fn test_catalog_bump_starts_when_each_of_them_finishes() {
     );
     assert_eq!(
         trigger.field("types"),
-        Some(&Value::List(vec![py::s("completed")]))
+        Some(&Value::Arr(vec![py::s("completed")]))
     );
     assert_eq!(
         trigger.field("branches"),
-        Some(&Value::List(vec![py::s("main")]))
+        Some(&Value::Arr(vec![py::s("main")]))
     );
 }
 
@@ -418,9 +418,9 @@ fn test_the_hourly_backup_stays() {
         .field("on")
         .and_then(|on| on.field("schedule"))
         .cloned()
-        .unwrap_or(Value::List(vec![]));
-    let crons: Vec<String> = match schedule {
-        Value::List(l) => l
+        .unwrap_or(Value::Arr(vec![]));
+    let crons: Vec<String> = match &schedule {
+        Value::Arr(l) => l
             .iter()
             .filter_map(|s| s.field("cron").map(|c| c.py_str()))
             .collect(),
@@ -440,7 +440,7 @@ fn test_every_run_shares_one_lane() {
         .bump
         .field("concurrency")
         .cloned()
-        .unwrap_or_else(|| Value::Dict(Dict::new()));
+        .unwrap_or_else(|| Value::Obj(Dict::new()));
     assert_eq!(
         concurrency.field("group"),
         Some(&py::s("catalog-bump")),
@@ -462,38 +462,38 @@ fn test_a_catalog_change_on_main_starts_it() {
 fn test_the_push_check_bites() {
     let f = Fixture::load();
     let mut gone = f.bump.clone();
-    if let Some(Value::Dict(on)) = gone.field_mut("on") {
-        on.0.retain(|(k, _)| k != "push");
+    if let Some(Value::Obj(on)) = gone.field_mut("on") {
+        on.retain(|(k, _)| k != "push");
     }
     assert!(push_trigger_problem(&gone).is_some());
 
     let mut unfiltered = f.bump.clone();
-    if let Some(Value::Dict(on)) = unfiltered.field_mut("on") {
-        if let Some(Value::Dict(push)) = on.get_mut("push") {
-            push.0.retain(|(k, _)| k != "paths");
+    if let Some(Value::Obj(on)) = unfiltered.field_mut("on") {
+        if let Some(Value::Obj(push)) = on.dict_get_mut("push") {
+            push.retain(|(k, _)| k != "paths");
         }
     }
     assert!(push_trigger_problem(&unfiltered).is_some());
 
     let mut wider = f.bump.clone();
-    if let Some(Value::Dict(on)) = wider.field_mut("on") {
-        on.insert(
+    if let Some(Value::Obj(on)) = wider.field_mut("on") {
+        on.dict_insert(
             "push",
             py::obj(vec![
-                ("branches", Value::List(vec![py::s("main")])),
-                ("paths", Value::List(vec![py::s("catalog/**")])),
+                ("branches", Value::Arr(vec![py::s("main")])),
+                ("paths", Value::Arr(vec![py::s("catalog/**")])),
             ]),
         );
     }
     assert!(push_trigger_problem(&wider).is_some());
 
     let mut branchless = f.bump.clone();
-    if let Some(Value::Dict(on)) = branchless.field_mut("on") {
-        on.insert(
+    if let Some(Value::Obj(on)) = branchless.field_mut("on") {
+        on.dict_insert(
             "push",
             py::obj(vec![(
                 "paths",
-                Value::List(vec![py::s("catalog/tools.json")]),
+                Value::Arr(vec![py::s("catalog/tools.json")]),
             )]),
         );
     }
@@ -504,7 +504,7 @@ fn test_the_push_check_bites() {
 fn test_the_trigger_list_is_exact() {
     let f = Fixture::load();
     let keys: BTreeSet<String> = match f.bump.field("on") {
-        Some(Value::Dict(on)) => on.keys().cloned().collect(),
+        Some(Value::Obj(on)) => on.dict_keys().cloned().collect(),
         _ => BTreeSet::new(),
     };
     let expected: BTreeSet<String> = ["workflow_run", "push", "schedule", "workflow_dispatch"]

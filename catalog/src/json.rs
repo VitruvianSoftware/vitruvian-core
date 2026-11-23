@@ -18,104 +18,66 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! JSON as Python's `json` module reads and writes it, and the parts of
-//! Python's object model the catalog's scripts lean on: dicts that keep
-//! their order, `repr`, `==` (where `1 == 1.0 == True`), `<`, hashing,
-//! truthiness, `in` and iteration.
-//!
-//! Reading uses a scanner that follows CPython's `json` module: it gives
-//! the same value, or the same JSONDecodeError message, position and all.
+//! JSON as Python's `json` module reads and writes it, backed by
+//! `vitruvian_pycompat::json` (`Value`, `py_eq`, `loads_with`, `dumps_with`),
+//! keeping UTF-16/32 `loads_bytes`, `py_lt`/`py_sorted`, `schema_equal`,
+//! `Key`, and catalog's `Crash`-returning object helpers.
 
 use std::cmp::Ordering;
 
-use crate::pyerr::{Crash, Res};
-use crate::pystr;
+use vitruvian_pycompat::json as pyjson;
 
-#[derive(Clone, Debug)]
-pub enum Value {
-    Null,
-    Bool(bool),
-    Int(i128),
-    Float(f64),
-    Str(String),
-    List(Vec<Value>),
-    Dict(Dict),
-}
+pub use vitruvian_pycompat::json::{py_eq, Value};
+
+use crate::pyerr::{Crash, Res};
 
 /// A dict: keys in the order they were first set.
-#[derive(Clone, Debug, Default)]
-pub struct Dict(pub Vec<(String, Value)>);
+pub type Dict = Vec<(String, Value)>;
 
-impl Dict {
-    pub fn new() -> Dict {
-        Dict(Vec::new())
+pub type DictKeysIter<'a> =
+    std::iter::Map<std::slice::Iter<'a, (String, Value)>, fn(&(String, Value)) -> &String>;
+
+pub trait DictExt {
+    fn dict_get(&self, key: &str) -> Option<&Value>;
+    fn dict_get_mut(&mut self, key: &str) -> Option<&mut Value>;
+    fn dict_contains(&self, key: &str) -> bool;
+    fn dict_insert(&mut self, key: impl Into<String>, value: Value);
+    fn dict_keys(&self) -> DictKeysIter<'_>;
+    fn dict_at(&self, key: &str) -> Res<&Value>;
+}
+
+impl DictExt for Dict {
+    fn dict_get(&self, key: &str) -> Option<&Value> {
+        self.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
-    pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    fn dict_get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
-        self.0.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
-    }
-
-    pub fn contains(&self, key: &str) -> bool {
-        self.0.iter().any(|(k, _)| k == key)
+    fn dict_contains(&self, key: &str) -> bool {
+        self.iter().any(|(k, _)| k == key)
     }
 
     /// `d[key] = value`: an existing key keeps its place.
-    pub fn insert(&mut self, key: impl Into<String>, value: Value) {
+    fn dict_insert(&mut self, key: impl Into<String>, value: Value) {
         let key = key.into();
-        match self.get_mut(&key) {
+        match self.dict_get_mut(&key) {
             Some(slot) => *slot = value,
-            None => self.0.push((key, value)),
+            None => self.push((key, value)),
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &(String, Value)> {
-        self.0.iter()
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.0.iter().map(|(k, _)| k)
+    fn dict_keys(&self) -> DictKeysIter<'_> {
+        fn first((k, _): &(String, Value)) -> &String {
+            k
+        }
+        self.iter().map(first as fn(&(String, Value)) -> &String)
     }
 
     /// `d[key]`, or the KeyError.
-    pub fn at(&self, key: &str) -> Res<&Value> {
-        self.get(key).ok_or_else(|| Crash::key_error(key))
-    }
-}
-
-impl<'a> IntoIterator for &'a Dict {
-    type Item = &'a (String, Value);
-    type IntoIter = std::slice::Iter<'a, (String, Value)>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-/// Structural equality (order of keys counts), for tests; Python's `==`
-/// is `py_eq`.
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        match (self, other) {
-            (Value::Null, Value::Null) => true,
-            (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
-            (Value::Str(a), Value::Str(b)) => a == b,
-            (Value::List(a), Value::List(b)) => a == b,
-            (Value::Dict(a), Value::Dict(b)) => a.0 == b.0,
-            _ => false,
-        }
+    fn dict_at(&self, key: &str) -> Res<&Value> {
+        self.dict_get(key).ok_or_else(|| Crash::key_error(key))
     }
 }
 
@@ -123,90 +85,79 @@ impl PartialEq for Value {
 pub fn dict(pairs: Vec<(&str, Value)>) -> Value {
     let mut d = Dict::new();
     for (k, v) in pairs {
-        d.insert(k, v);
+        d.dict_insert(k, v);
     }
-    Value::Dict(d)
+    Value::Obj(d)
 }
 
 pub fn s(text: impl Into<String>) -> Value {
     Value::Str(text.into())
 }
 
-impl Value {
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Value::Null => "NoneType",
-            Value::Bool(_) => "bool",
-            Value::Int(_) => "int",
-            Value::Float(_) => "float",
-            Value::Str(_) => "str",
-            Value::List(_) => "list",
-            Value::Dict(_) => "dict",
-        }
-    }
+pub fn int(n: i128) -> Value {
+    Value::Int(n.to_string())
+}
 
-    pub fn as_str(&self) -> Option<&str> {
+pub trait ValueExt {
+    fn as_dict(&self) -> Option<&Dict>;
+    fn as_list(&self) -> Option<&Vec<Value>>;
+    fn is_null(&self) -> bool;
+    fn py_get(&self, key: &str) -> Res<Option<&Value>>;
+    fn get_or(&self, key: &str, default: Value) -> Res<Value>;
+    fn get_v(&self, key: &str) -> Res<Value>;
+    fn at(&self, key: &str) -> Res<&Value>;
+    fn repr(&self) -> String;
+    fn py_iter(&self) -> Res<Vec<Value>>;
+    fn py_contains(&self, item: &Value) -> Res<bool>;
+    fn contains_str(&self, text: &str) -> Res<bool>;
+    fn field(&self, key: &str) -> Option<&Value>;
+    fn field_mut(&mut self, key: &str) -> Option<&mut Value>;
+    fn num_f64(&self) -> Option<f64>;
+}
+
+impl ValueExt for Value {
+    fn as_dict(&self) -> Option<&Dict> {
         match self {
-            Value::Str(s) => Some(s),
+            Value::Obj(d) => Some(d),
             _ => None,
         }
     }
 
-    pub fn as_dict(&self) -> Option<&Dict> {
+    fn as_list(&self) -> Option<&Vec<Value>> {
         match self {
-            Value::Dict(d) => Some(d),
+            Value::Arr(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn as_list(&self) -> Option<&Vec<Value>> {
-        match self {
-            Value::List(l) => Some(l),
-            _ => None,
-        }
-    }
-
-    pub fn is_null(&self) -> bool {
+    fn is_null(&self) -> bool {
         matches!(self, Value::Null)
-    }
-
-    /// `bool(value)`.
-    pub fn truthy(&self) -> bool {
-        match self {
-            Value::Null => false,
-            Value::Bool(b) => *b,
-            Value::Int(i) => *i != 0,
-            Value::Float(f) => *f != 0.0,
-            Value::Str(s) => !s.is_empty(),
-            Value::List(l) => !l.is_empty(),
-            Value::Dict(d) => !d.is_empty(),
-        }
     }
 
     /// `value.get(key)`: None when absent; AttributeError when `value` is
     /// not a dict.
-    pub fn get(&self, key: &str) -> Res<Option<&Value>> {
+    fn py_get(&self, key: &str) -> Res<Option<&Value>> {
         match self {
-            Value::Dict(d) => Ok(d.get(key)),
+            Value::Obj(d) => Ok(d.dict_get(key)),
             other => Err(Crash::no_get(other)),
         }
     }
 
     /// `value.get(key, default)`, cloned.
-    pub fn get_or(&self, key: &str, default: Value) -> Res<Value> {
-        Ok(self.get(key)?.cloned().unwrap_or(default))
+    fn get_or(&self, key: &str, default: Value) -> Res<Value> {
+        Ok(self.py_get(key)?.cloned().unwrap_or(default))
     }
 
     /// `value.get(key)`, cloned, None for absent.
-    pub fn get_v(&self, key: &str) -> Res<Value> {
+    fn get_v(&self, key: &str) -> Res<Value> {
         self.get_or(key, Value::Null)
     }
 
     /// `value[key]` for a str key.
-    pub fn at(&self, key: &str) -> Res<&Value> {
+    fn at(&self, key: &str) -> Res<&Value> {
         match self {
-            Value::Dict(d) => d.at(key),
-            Value::List(_) => Err(Crash::new(
+            Value::Obj(d) => d.dict_at(key),
+            Value::Arr(_) => Err(Crash::new(
                 "TypeError",
                 "list indices must be integers or slices, not str",
             )),
@@ -218,72 +169,28 @@ impl Value {
         }
     }
 
-    /// `repr(value)`.
-    pub fn repr(&self) -> String {
-        let mut out = String::new();
-        self.repr_into(&mut out);
-        out
-    }
-
-    fn repr_into(&self, out: &mut String) {
-        match self {
-            Value::Null => out.push_str("None"),
-            Value::Bool(true) => out.push_str("True"),
-            Value::Bool(false) => out.push_str("False"),
-            Value::Int(i) => out.push_str(&i.to_string()),
-            Value::Float(f) => out.push_str(&pystr::repr_float(*f)),
-            Value::Str(s) => out.push_str(&pystr::repr_str(s)),
-            Value::List(l) => {
-                out.push('[');
-                for (i, v) in l.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    v.repr_into(out);
-                }
-                out.push(']');
-            }
-            Value::Dict(d) => {
-                out.push('{');
-                for (i, (k, v)) in d.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    out.push_str(&pystr::repr_str(k));
-                    out.push_str(": ");
-                    v.repr_into(out);
-                }
-                out.push('}');
-            }
-        }
-    }
-
-    /// `str(value)`, as an f-string puts it.
-    pub fn py_str(&self) -> String {
-        match self {
-            Value::Str(s) => s.clone(),
-            other => other.repr(),
-        }
+    fn repr(&self) -> String {
+        self.py_repr()
     }
 
     /// `list(value)`: a list's items, a dict's keys, a str's characters.
-    pub fn py_iter(&self) -> Res<Vec<Value>> {
+    fn py_iter(&self) -> Res<Vec<Value>> {
         match self {
-            Value::List(l) => Ok(l.clone()),
-            Value::Dict(d) => Ok(d.keys().map(|k| Value::Str(k.clone())).collect()),
+            Value::Arr(l) => Ok(l.clone()),
+            Value::Obj(d) => Ok(d.dict_keys().map(|k| Value::Str(k.clone())).collect()),
             Value::Str(t) => Ok(t.chars().map(|c| Value::Str(c.to_string())).collect()),
             other => Err(Crash::not_iterable(other)),
         }
     }
 
     /// `item in value`.
-    pub fn py_contains(&self, item: &Value) -> Res<bool> {
+    fn py_contains(&self, item: &Value) -> Res<bool> {
         match self {
-            Value::List(l) => Ok(l.iter().any(|v| py_eq(v, item))),
-            Value::Dict(d) => {
+            Value::Arr(l) => Ok(l.iter().any(|v| py_eq(v, item))),
+            Value::Obj(d) => {
                 key(item)?;
                 Ok(match item {
-                    Value::Str(k) => d.contains(k),
+                    Value::Str(k) => d.dict_contains(k),
                     _ => false,
                 })
             }
@@ -305,32 +212,25 @@ impl Value {
     }
 
     /// `text in value`.
-    pub fn contains_str(&self, text: &str) -> Res<bool> {
+    fn contains_str(&self, text: &str) -> Res<bool> {
         self.py_contains(&Value::Str(text.to_string()))
     }
 
-    /// A dict's value for `key`; None for an absent key or a non-dict.
-    pub fn field(&self, key: &str) -> Option<&Value> {
+    fn field(&self, key: &str) -> Option<&Value> {
+        self.get(key)
+    }
+
+    fn field_mut(&mut self, key: &str) -> Option<&mut Value> {
         match self {
-            Value::Dict(d) => d.get(key),
+            Value::Obj(d) => d.dict_get_mut(key),
             _ => None,
         }
     }
 
-    pub fn field_mut(&mut self, key: &str) -> Option<&mut Value> {
+    /// Numeric value as `f64` for `Int`/`Float` only (not `Bool`).
+    fn num_f64(&self) -> Option<f64> {
         match self {
-            Value::Dict(d) => d.get_mut(key),
-            _ => None,
-        }
-    }
-
-    pub fn py_repr(&self) -> String {
-        self.repr()
-    }
-
-    pub fn as_f64(&self) -> Option<f64> {
-        match self {
-            Value::Int(i) => Some(*i as f64),
+            Value::Int(s) => s.parse::<f64>().ok(),
             Value::Float(f) => Some(*f),
             _ => None,
         }
@@ -339,33 +239,35 @@ impl Value {
 
 // --- reading -----------------------------------------------------------------
 
+fn json_error_to_crash(err: pyjson::JsonError) -> Crash {
+    match err.kind() {
+        pyjson::JsonErrorKind::Recursion => Crash::new(
+            "RecursionError",
+            err.recursion_message().unwrap_or(&err.msg),
+        ),
+        pyjson::JsonErrorKind::IntDigitLimit => Crash::new("ValueError", err.msg),
+        pyjson::JsonErrorKind::Decode => {
+            Crash::new("json.decoder.JSONDecodeError", err.python_str())
+        }
+    }
+}
+
 /// `json.loads(text)` for a str.
 pub fn loads(text: &str) -> Res<Value> {
-    if text.starts_with('\u{feff}') {
-        return Err(decode_error(
-            "Unexpected UTF-8 BOM (decode using utf-8-sig)",
-            &text.chars().collect::<Vec<_>>(),
-            0,
-        ));
-    }
-    let chars: Vec<char> = text.chars().collect();
-    Scanner {
-        s: &chars,
-        depth: 0,
-    }
-    .decode()
+    pyjson::loads_with(text, &pyjson::LoadOptions::default()).map_err(json_error_to_crash)
 }
 
 /// `json.loads(data)` for bytes: the encoding found the way `json` finds
 /// it (a BOM, or where the NUL bytes are), then as for a str.
 pub fn loads_bytes(data: &[u8]) -> Res<Value> {
     let text = decode_detected(data)?;
-    let chars: Vec<char> = text.chars().collect();
-    Scanner {
-        s: &chars,
-        depth: 0,
+    if text.starts_with('\u{feff}') {
+        return Err(Crash::new(
+            "json.decoder.JSONDecodeError",
+            "Expecting value: line 1 column 1 (char 0)",
+        ));
     }
-    .decode()
+    loads(&text)
 }
 
 fn decode_detected(b: &[u8]) -> Res<String> {
@@ -423,13 +325,13 @@ fn decode_utf16(b: &[u8], big: bool, codec: &str) -> Res<String> {
             "UnicodeDecodeError",
             format!(
                 "'{}' codec can't decode byte 0x{:02x} in position {}: truncated data",
-                codec.replace('-', "-"),
+                codec,
                 b[b.len() - 1],
                 b.len() - 1
             ),
         ));
     }
-    Ok(char::decode_utf16(units.into_iter())
+    Ok(char::decode_utf16(units)
         .map(|r| r.unwrap_or('\u{FFFD}'))
         .collect())
 }
@@ -473,308 +375,19 @@ fn decode_utf32(b: &[u8], big: bool, codec: &str) -> Res<String> {
     Ok(out)
 }
 
-/// `json.JSONDecodeError(msg, doc, pos)`, as str() shows it.
-fn decode_error(msg: &str, s: &[char], pos: usize) -> Crash {
-    let lineno = s[..pos].iter().filter(|c| **c == '\n').count() + 1;
-    let colno = match s[..pos].iter().rposition(|c| *c == '\n') {
-        Some(nl) => pos - nl,
-        None => pos + 1,
-    };
-    Crash::new(
-        "json.decoder.JSONDecodeError",
-        format!("{}: line {} column {} (char {})", msg, lineno, colno, pos),
-    )
-}
-
-/// CPython's `_json` scanner.
-struct Scanner<'a> {
-    s: &'a [char],
-    depth: usize,
-}
-
-enum Scan {
-    Value(Value, usize),
-    /// StopIteration(idx): no value starts here.
-    Stop(usize),
-}
-
-impl<'a> Scanner<'a> {
-    fn ws(&self, mut i: usize) -> usize {
-        while i < self.s.len() && matches!(self.s[i], ' ' | '\t' | '\n' | '\r') {
-            i += 1;
-        }
-        i
-    }
-
-    fn decode(&mut self) -> Res<Value> {
-        let start = self.ws(0);
-        match self.scan_once(start)? {
-            Scan::Stop(at) => Err(decode_error("Expecting value", self.s, at)),
-            Scan::Value(v, end) => {
-                let end = self.ws(end);
-                if end != self.s.len() {
-                    return Err(decode_error("Extra data", self.s, end));
-                }
-                Ok(v)
-            }
-        }
-    }
-
-    fn starts(&self, i: usize, word: &str) -> bool {
-        let w: Vec<char> = word.chars().collect();
-        i + w.len() <= self.s.len() && self.s[i..i + w.len()] == w[..]
-    }
-
-    fn scan_once(&mut self, i: usize) -> Res<Scan> {
-        if i >= self.s.len() {
-            return Ok(Scan::Stop(i));
-        }
-        match self.s[i] {
-            '"' => {
-                let (text, end) = self.scanstring(i + 1)?;
-                Ok(Scan::Value(Value::Str(text), end))
-            }
-            '{' => self.nested(i, true),
-            '[' => self.nested(i, false),
-            'n' if self.starts(i, "null") => Ok(Scan::Value(Value::Null, i + 4)),
-            't' if self.starts(i, "true") => Ok(Scan::Value(Value::Bool(true), i + 4)),
-            'f' if self.starts(i, "false") => Ok(Scan::Value(Value::Bool(false), i + 5)),
-            'N' if self.starts(i, "NaN") => Ok(Scan::Value(Value::Float(f64::NAN), i + 3)),
-            'I' if self.starts(i, "Infinity") => {
-                Ok(Scan::Value(Value::Float(f64::INFINITY), i + 8))
-            }
-            '-' if self.starts(i, "-Infinity") => {
-                Ok(Scan::Value(Value::Float(f64::NEG_INFINITY), i + 9))
-            }
-            _ => Ok(self.number(i)),
-        }
-    }
-
-    fn nested(&mut self, i: usize, object: bool) -> Res<Scan> {
-        self.depth += 1;
-        if self.depth > 990 {
-            return Err(Crash::new(
-                "RecursionError",
-                "maximum recursion depth exceeded while decoding a JSON document",
-            ));
-        }
-        let r = if object {
-            self.object(i + 1)
-        } else {
-            self.array(i + 1)
-        };
-        self.depth -= 1;
-        r
-    }
-
-    fn number(&self, start: usize) -> Scan {
-        let s = self.s;
-        let digit = |i: usize| i < s.len() && s[i].is_ascii_digit();
-        let mut i = start;
-        if i < s.len() && s[i] == '-' {
-            i += 1;
-        }
-        if i < s.len() && ('1'..='9').contains(&s[i]) {
-            i += 1;
-            while digit(i) {
-                i += 1;
-            }
-        } else if i < s.len() && s[i] == '0' {
-            i += 1;
-        } else {
-            return Scan::Stop(start);
-        }
-        let mut is_float = false;
-        if i + 1 < s.len() && s[i] == '.' && digit(i + 1) {
-            is_float = true;
-            i += 2;
-            while digit(i) {
-                i += 1;
-            }
-        }
-        if i < s.len() && (s[i] == 'e' || s[i] == 'E') {
-            let mut e = i + 1;
-            if e < s.len() && (s[e] == '-' || s[e] == '+') {
-                e += 1;
-            }
-            if digit(e) {
-                while digit(e) {
-                    e += 1;
-                }
-                is_float = true;
-                i = e;
-            }
-        }
-        let text: String = s[start..i].iter().collect();
-        if is_float {
-            return Scan::Value(Value::Float(text.parse().unwrap_or(f64::NAN)), i);
-        }
-        match text.parse::<i128>() {
-            Ok(n) => Scan::Value(Value::Int(n), i),
-            // Past i128: Python keeps every digit; this keeps a float.
-            Err(_) => Scan::Value(Value::Float(text.parse().unwrap_or(f64::NAN)), i),
-        }
-    }
-
-    fn hex4(&self, at: usize) -> Option<u32> {
-        let mut v = 0u32;
-        for k in 0..4 {
-            v = v * 16 + self.s.get(at + k)?.to_digit(16)?;
-        }
-        Some(v)
-    }
-
-    /// `scanstring(s, end)`: the text and the index after its closing quote.
-    fn scanstring(&self, end: usize) -> Res<(String, usize)> {
-        let s = self.s;
-        let len = s.len();
-        let begin = end - 1;
-        let mut out = String::new();
-        let mut next = end;
-        loop {
-            // Find the end of the run of plain characters.
-            let mut c = '\0';
-            while next < len {
-                c = s[next];
-                if c == '"' || c == '\\' {
-                    break;
-                }
-                if (c as u32) <= 0x1f {
-                    return Err(decode_error("Invalid control character at", s, next));
-                }
-                out.push(c);
-                next += 1;
-            }
-            if next >= len {
-                return Err(decode_error("Unterminated string starting at", s, begin));
-            }
-            if c == '"' {
-                return Ok((out, next + 1));
-            }
-            // A backslash.
-            next += 1;
-            if next == len {
-                return Err(decode_error("Unterminated string starting at", s, begin));
-            }
-            let c = s[next];
-            if c != 'u' {
-                let end = next + 1;
-                let ch = match c {
-                    '"' => '"',
-                    '\\' => '\\',
-                    '/' => '/',
-                    'b' => '\u{8}',
-                    'f' => '\u{c}',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    _ => return Err(decode_error("Invalid \\escape", s, end - 2)),
-                };
-                out.push(ch);
-                next = end;
-            } else {
-                next += 1;
-                let end = next + 4;
-                if end >= len {
-                    return Err(decode_error("Invalid \\uXXXX escape", s, next - 1));
-                }
-                let mut cp = match self.hex4(next) {
-                    Some(v) => v,
-                    None => return Err(decode_error("Invalid \\uXXXX escape", s, end - 5)),
-                };
-                let mut after = end;
-                if (0xD800..0xDC00).contains(&cp)
-                    && end + 6 < len
-                    && s[end] == '\\'
-                    && s[end + 1] == 'u'
-                {
-                    let low = match self.hex4(end + 2) {
-                        Some(v) => v,
-                        None => return Err(decode_error("Invalid \\uXXXX escape", s, end + 6 - 5)),
-                    };
-                    if (0xDC00..0xE000).contains(&low) {
-                        cp = 0x10000 + (((cp - 0xD800) << 10) | (low - 0xDC00));
-                        after = end + 6;
-                    }
-                }
-                out.push(char::from_u32(cp).unwrap_or('\u{FFFD}'));
-                next = after;
-            }
-        }
-    }
-
-    fn object(&mut self, start: usize) -> Res<Scan> {
-        let s = self.s;
-        let mut d = Dict::new();
-        let mut i = self.ws(start);
-        if i < s.len() && s[i] == '}' {
-            return Ok(Scan::Value(Value::Dict(d), i + 1));
-        }
-        loop {
-            if i >= s.len() || s[i] != '"' {
-                return Err(decode_error(
-                    "Expecting property name enclosed in double quotes",
-                    s,
-                    i,
-                ));
-            }
-            let (k, after) = self.scanstring(i + 1)?;
-            i = self.ws(after);
-            if i >= s.len() || s[i] != ':' {
-                return Err(decode_error("Expecting ':' delimiter", s, i));
-            }
-            i = self.ws(i + 1);
-            match self.scan_once(i)? {
-                Scan::Stop(at) => return Ok(Scan::Stop(at)),
-                Scan::Value(v, end) => {
-                    d.insert(k, v);
-                    i = self.ws(end);
-                }
-            }
-            if i < s.len() && s[i] == '}' {
-                return Ok(Scan::Value(Value::Dict(d), i + 1));
-            }
-            if i >= s.len() || s[i] != ',' {
-                return Err(decode_error("Expecting ',' delimiter", s, i));
-            }
-            i = self.ws(i + 1);
-        }
-    }
-
-    fn array(&mut self, start: usize) -> Res<Scan> {
-        let s = self.s;
-        let mut out = Vec::new();
-        let mut i = self.ws(start);
-        if i < s.len() && s[i] == ']' {
-            return Ok(Scan::Value(Value::List(out), i + 1));
-        }
-        loop {
-            match self.scan_once(i)? {
-                Scan::Stop(at) => return Ok(Scan::Stop(at)),
-                Scan::Value(v, end) => {
-                    out.push(v);
-                    i = self.ws(end);
-                }
-            }
-            if i < s.len() && s[i] == ']' {
-                return Ok(Scan::Value(Value::List(out), i + 1));
-            }
-            if i >= s.len() || s[i] != ',' {
-                return Err(decode_error("Expecting ',' delimiter", s, i));
-            }
-            i = self.ws(i + 1);
-        }
-    }
-}
-
 // --- writing -----------------------------------------------------------------
 
 /// `json.dumps(value, ensure_ascii=..., indent=...)` with the default
 /// separators for that indent.
 pub fn dumps(v: &Value, indent: Option<usize>, ensure_ascii: bool) -> String {
-    let mut out = String::new();
-    write_value(v, indent, ensure_ascii, 0, &mut out);
-    out
+    pyjson::dumps_with(
+        v,
+        &pyjson::DumpOptions {
+            indent,
+            ensure_ascii,
+            ..pyjson::DumpOptions::default()
+        },
+    )
 }
 
 /// `json.dumps(value, ensure_ascii=False)`.
@@ -787,139 +400,54 @@ pub fn dumps_plain(v: &Value) -> String {
     dumps(v, None, true)
 }
 
-fn newline(indent: Option<usize>, level: usize, out: &mut String) {
-    if let Some(n) = indent {
-        out.push('\n');
-        for _ in 0..n * level {
-            out.push(' ');
-        }
-    }
-}
-
-fn write_value(v: &Value, indent: Option<usize>, ascii: bool, level: usize, out: &mut String) {
-    let item_sep = if indent.is_some() { "," } else { ", " };
-    match v {
-        Value::Null => out.push_str("null"),
-        Value::Bool(true) => out.push_str("true"),
-        Value::Bool(false) => out.push_str("false"),
-        Value::Int(i) => out.push_str(&i.to_string()),
-        Value::Float(f) => out.push_str(&float_json(*f)),
-        Value::Str(s) => out.push_str(&quote(s, ascii)),
-        Value::List(l) => {
-            if l.is_empty() {
-                out.push_str("[]");
-                return;
-            }
-            out.push('[');
-            for (i, x) in l.iter().enumerate() {
-                if i > 0 {
-                    out.push_str(item_sep);
-                }
-                newline(indent, level + 1, out);
-                write_value(x, indent, ascii, level + 1, out);
-            }
-            newline(indent, level, out);
-            out.push(']');
-        }
-        Value::Dict(d) => {
-            if d.is_empty() {
-                out.push_str("{}");
-                return;
-            }
-            out.push('{');
-            for (i, (k, x)) in d.iter().enumerate() {
-                if i > 0 {
-                    out.push_str(item_sep);
-                }
-                newline(indent, level + 1, out);
-                out.push_str(&quote(k, ascii));
-                out.push_str(": ");
-                write_value(x, indent, ascii, level + 1, out);
-            }
-            newline(indent, level, out);
-            out.push('}');
-        }
-    }
-}
-
 /// `float.__repr__` as `json` writes it, with its names for the
 /// non-finite.
 pub fn float_json(f: f64) -> String {
-    if f.is_nan() {
-        "NaN".into()
-    } else if f.is_infinite() {
-        if f > 0.0 {
-            "Infinity".into()
-        } else {
-            "-Infinity".into()
-        }
-    } else {
-        pystr::repr_float(f)
-    }
+    dumps(&Value::Float(f), None, true)
 }
 
 /// A JSON string, escaped as `json.dumps` escapes it.
 pub fn quote(s: &str, ascii: bool) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c if ascii && (c as u32) > 0x7e => {
-                let cp = c as u32;
-                if cp == 0x7f {
-                    out.push(c);
-                } else if cp < 0x10000 {
-                    out.push_str(&format!("\\u{:04x}", cp));
-                } else {
-                    let v = cp - 0x10000;
-                    out.push_str(&format!(
-                        "\\u{:04x}\\u{:04x}",
-                        0xD800 | (v >> 10),
-                        0xDC00 | (v & 0x3FF)
-                    ));
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
+    dumps(&Value::Str(s.to_string()), None, ascii)
 }
 
 // --- Python's comparisons ----------------------------------------------------
 
 enum Num {
-    I(i128),
+    I(String),
     F(f64),
 }
 
 fn num(v: &Value) -> Option<Num> {
     match v {
-        Value::Bool(b) => Some(Num::I(*b as i128)),
-        Value::Int(i) => Some(Num::I(*i)),
+        Value::Bool(b) => Some(Num::I(if *b { "1" } else { "0" }.into())),
+        Value::Int(s) => Some(Num::I(pyjson::normalize_int(s))),
         Value::Float(f) => Some(Num::F(*f)),
         _ => None,
     }
 }
 
-fn num_cmp(a: &Num, b: &Num) -> Option<Ordering> {
-    match (a, b) {
-        (Num::I(x), Num::I(y)) => Some(x.cmp(y)),
-        (Num::I(x), Num::F(y)) => int_float_cmp(*x, *y),
-        (Num::F(x), Num::I(y)) => int_float_cmp(*y, *x).map(Ordering::reverse),
-        (Num::F(x), Num::F(y)) => x.partial_cmp(y),
+fn cmp_int_str(a: &str, b: &str) -> Ordering {
+    let neg_a = a.starts_with('-');
+    let neg_b = b.starts_with('-');
+    if neg_a != neg_b {
+        return if neg_a {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        };
+    }
+    let da = a.strip_prefix('-').unwrap_or(a);
+    let db = b.strip_prefix('-').unwrap_or(b);
+    let mag = da.len().cmp(&db.len()).then_with(|| da.cmp(db));
+    if neg_a {
+        mag.reverse()
+    } else {
+        mag
     }
 }
 
-fn int_float_cmp(i: i128, f: f64) -> Option<Ordering> {
+fn int_str_float_cmp(i: &str, f: f64) -> Option<Ordering> {
     if f.is_nan() {
         return None;
     }
@@ -930,16 +458,9 @@ fn int_float_cmp(i: i128, f: f64) -> Option<Ordering> {
             Ordering::Greater
         });
     }
-    // Exact: compare the integer with the float's floor, then its fraction.
     let fl = f.floor();
-    if fl >= 1.7e38 {
-        return Some(Ordering::Less);
-    }
-    if fl <= -1.7e38 {
-        return Some(Ordering::Greater);
-    }
-    let fi = fl as i128;
-    match i.cmp(&fi) {
+    let fi = pyjson::normalize_int(&format!("{:.0}", fl));
+    match cmp_int_str(i, &fi) {
         Ordering::Equal => {
             if f > fl {
                 Some(Ordering::Less)
@@ -951,68 +472,94 @@ fn int_float_cmp(i: i128, f: f64) -> Option<Ordering> {
     }
 }
 
-/// Python's `a == b` for JSON values.
-pub fn py_eq(a: &Value, b: &Value) -> bool {
-    if let (Some(x), Some(y)) = (num(a), num(b)) {
-        return num_cmp(&x, &y) == Some(Ordering::Equal);
-    }
+fn num_cmp(a: &Num, b: &Num) -> Option<Ordering> {
     match (a, b) {
-        (Value::Null, Value::Null) => true,
-        (Value::Str(x), Value::Str(y)) => x == y,
-        (Value::List(x), Value::List(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| py_eq(p, q))
-        }
-        (Value::Dict(x), Value::Dict(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).map_or(false, |w| py_eq(v, w)))
-        }
-        _ => false,
+        (Num::I(x), Num::I(y)) => Some(cmp_int_str(x, y)),
+        (Num::I(x), Num::F(y)) => int_str_float_cmp(x, *y),
+        (Num::F(x), Num::I(y)) => int_str_float_cmp(y, *x).map(Ordering::reverse),
+        (Num::F(x), Num::F(y)) => x.partial_cmp(y),
     }
 }
 
 /// jsonschema's `equal`: as `==`, except that a bool is never a number.
 pub fn schema_equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Str(x), Value::Str(y)) => x == y,
-        (Value::Str(_), _) | (_, Value::Str(_)) => false,
-        (Value::List(x), Value::List(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| schema_equal(p, q))
+    let mut stack = vec![(a, b)];
+    while let Some((ca, cb)) = stack.pop() {
+        match (ca, cb) {
+            (Value::Str(x), Value::Str(y)) => {
+                if x != y {
+                    return false;
+                }
+            }
+            (Value::Str(_), _) | (_, Value::Str(_)) => return false,
+            (Value::Bool(x), Value::Bool(y)) => {
+                if x != y {
+                    return false;
+                }
+            }
+            (Value::Bool(_), _) | (_, Value::Bool(_)) => return false,
+            (Value::Arr(x), Value::Arr(y)) => {
+                if x.len() != y.len() {
+                    return false;
+                }
+                stack.extend(x.iter().zip(y));
+            }
+            (Value::Obj(x), Value::Obj(y)) => {
+                if x.len() != y.len() {
+                    return false;
+                }
+                for (k, v) in x {
+                    match y.dict_get(k) {
+                        Some(w) => stack.push((v, w)),
+                        None => return false,
+                    }
+                }
+            }
+            _ => {
+                if !py_eq(ca, cb) {
+                    return false;
+                }
+            }
         }
-        (Value::Dict(x), Value::Dict(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).map_or(false, |w| schema_equal(v, w)))
-        }
-        (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::Bool(_), _) | (_, Value::Bool(_)) => false,
-        _ => py_eq(a, b),
     }
+    true
 }
 
 /// Python's `a < b`, or the TypeError it raises.
-pub fn py_lt(a: &Value, b: &Value) -> Res<bool> {
-    if let (Some(x), Some(y)) = (num(a), num(b)) {
-        return Ok(num_cmp(&x, &y) == Some(Ordering::Less));
-    }
-    match (a, b) {
-        (Value::Str(x), Value::Str(y)) => Ok(x < y),
-        (Value::List(x), Value::List(y)) => {
-            for (p, q) in x.iter().zip(y) {
-                if !py_eq(p, q) {
-                    return py_lt(p, q);
+pub fn py_lt(mut a: &Value, mut b: &Value) -> Res<bool> {
+    loop {
+        if let (Some(x), Some(y)) = (num(a), num(b)) {
+            return Ok(num_cmp(&x, &y) == Some(Ordering::Less));
+        }
+        match (a, b) {
+            (Value::Str(x), Value::Str(y)) => return Ok(x < y),
+            (Value::Arr(x), Value::Arr(y)) => {
+                let mut diff = None;
+                for (p, q) in x.iter().zip(y) {
+                    if !py_eq(p, q) {
+                        diff = Some((p, q));
+                        break;
+                    }
+                }
+                match diff {
+                    Some((p, q)) => {
+                        a = p;
+                        b = q;
+                    }
+                    None => return Ok(x.len() < y.len()),
                 }
             }
-            Ok(x.len() < y.len())
+            _ => {
+                return Err(Crash::new(
+                    "TypeError",
+                    format!(
+                        "'<' not supported between instances of '{}' and '{}'",
+                        a.type_name(),
+                        b.type_name()
+                    ),
+                ))
+            }
         }
-        _ => Err(Crash::new(
-            "TypeError",
-            format!(
-                "'<' not supported between instances of '{}' and '{}'",
-                a.type_name(),
-                b.type_name()
-            ),
-        )),
     }
 }
 
@@ -1043,7 +590,7 @@ pub fn py_sorted(values: &[Value]) -> Res<Vec<Value>> {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     None,
-    Int(i128),
+    Int(String),
     Float(u64),
     Str(String),
 }
@@ -1051,11 +598,11 @@ pub enum Key {
 pub fn key(v: &Value) -> Res<Key> {
     match v {
         Value::Null => Ok(Key::None),
-        Value::Bool(b) => Ok(Key::Int(*b as i128)),
-        Value::Int(i) => Ok(Key::Int(*i)),
+        Value::Bool(b) => Ok(Key::Int(if *b { "1" } else { "0" }.into())),
+        Value::Int(s) => Ok(Key::Int(pyjson::normalize_int(s))),
         Value::Float(f) => {
-            if f.fract() == 0.0 && f.abs() < 1.7e38 {
-                Ok(Key::Int(*f as i128))
+            if f.is_finite() && f.fract() == 0.0 {
+                Ok(Key::Int(pyjson::normalize_int(&format!("{:.0}", f))))
             } else {
                 Ok(Key::Float(f.to_bits()))
             }
@@ -1133,6 +680,7 @@ mod tests {
             "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
         );
         assert!(loads_bytes(b"\xef\xbb\xbf{}").is_ok());
+        assert!(loads_bytes(b"\xef\xbb\xbf\xef\xbb\xbf{}").is_err());
         assert_eq!(
             loads_bytes(b"\xff").unwrap_err().msg,
             "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"
@@ -1150,21 +698,55 @@ mod tests {
             dumps(&v, Some(2), false),
             "{\n  \"a\": [\n    1,\n    2.0,\n    \"é\"\n  ],\n  \"b\": {},\n  \"c\": []\n}"
         );
-        assert_eq!(quote("\u{1F600}\u{7f}", true), "\"\\ud83d\\ude00\u{7f}\"");
+        // CPython 3.12 escapes 0x7f as \u007f when ensure_ascii=True.
+        assert_eq!(quote("\u{1F600}\u{7f}", true), "\"\\ud83d\\ude00\\u007f\"");
     }
 
     #[test]
     fn python_equality_and_order() {
-        assert!(py_eq(&Value::Int(1), &Value::Float(1.0)));
-        assert!(py_eq(&Value::Bool(true), &Value::Int(1)));
-        assert!(!schema_equal(&Value::Bool(true), &Value::Int(1)));
+        assert!(py_eq(&int(1), &Value::Float(1.0)));
+        assert!(py_eq(&Value::Bool(true), &int(1)));
+        assert!(!schema_equal(&Value::Bool(true), &int(1)));
         assert!(py_lt(&s("a"), &s("b")).unwrap());
-        assert!(py_lt(&s("a"), &Value::Int(1)).is_err());
+        assert!(py_lt(&s("a"), &int(1)).is_err());
         let sorted = py_sorted(&[s("b"), s("a"), s("c")]).unwrap();
-        assert_eq!(Value::List(sorted).repr(), "['a', 'b', 'c']");
-        assert_eq!(
-            key(&Value::Float(2.0)).unwrap(),
-            key(&Value::Int(2)).unwrap()
-        );
+        assert_eq!(Value::Arr(sorted).repr(), "['a', 'b', 'c']");
+        assert_eq!(key(&Value::Float(2.0)).unwrap(), key(&int(2)).unwrap());
+    }
+
+    #[test]
+    fn depth_9997_is_safe_on_2mb_thread_and_9998_errors() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let d = pyjson::CPYTHON_312_MAX_DEPTH;
+                for (open, close, leaf) in [
+                    ("[", "]", "1"),
+                    ("{\"a\":", "}", "1"),
+                    ("[{\"a\":", "}]", "1"),
+                ] {
+                    let reps = if open.len() == 1 { d } else { d / 2 };
+                    let doc = format!("{}{}{}", open.repeat(reps), leaf, close.repeat(reps));
+                    let v = loads(&doc).unwrap();
+                    let v2 = v.clone();
+                    assert!(py_eq(&v, &v2));
+                    assert!(schema_equal(&v, &v2));
+                    if matches!(v, Value::Arr(_)) {
+                        assert!(!py_lt(&v, &v2).unwrap());
+                    } else {
+                        assert!(py_lt(&v, &v2).is_err());
+                    }
+                    assert!(!v.repr().is_empty());
+                    assert!(!dumps(&v, None, true).is_empty());
+                    drop(v2);
+                    drop(v);
+                }
+                let arr_over = format!("{}1{}", "[".repeat(d + 1), "]".repeat(d + 1));
+                assert_eq!(loads(&arr_over).unwrap_err().class, "RecursionError");
+                let obj_over = format!("{}\"a\":1{}", "{\"a\":".repeat(d + 1), "}".repeat(d + 1));
+                assert_eq!(loads(&obj_over).unwrap_err().class, "RecursionError");
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 }

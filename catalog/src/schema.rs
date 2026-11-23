@@ -24,8 +24,8 @@
 //! each schema's keywords in the order the schema writes them, `$ref`
 //! among them.
 
-use crate::json::Value;
-use crate::{py, pyre};
+use crate::json::{self, Value, ValueExt};
+use crate::pyre;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
@@ -67,8 +67,8 @@ pub struct Validator<'a> {
 
 fn is_type(v: &Value, t: &str) -> bool {
     match t {
-        "object" => matches!(v, Value::Dict(_)),
-        "array" => matches!(v, Value::List(_)),
+        "object" => matches!(v, Value::Obj(_)),
+        "array" => matches!(v, Value::Arr(_)),
         "string" => matches!(v, Value::Str(_)),
         "boolean" => matches!(v, Value::Bool(_)),
         "null" => matches!(v, Value::Null),
@@ -85,30 +85,11 @@ fn is_type(v: &Value, t: &str) -> bool {
 /// jsonschema's `equal`: like ==, except that True is not 1 and False is
 /// not 0, at any depth.
 fn equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::Bool(_), _) | (_, Value::Bool(_)) => false,
-        (Value::List(x), Value::List(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| equal(p, q))
-        }
-        (Value::Dict(x), Value::Dict(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| match y.iter().find(|(yk, _)| yk == k) {
-                        Some((_, w)) => equal(v, w),
-                        None => false,
-                    })
-        }
-        _ => py::eq(a, b),
-    }
+    json::schema_equal(a, b)
 }
 
 fn as_f64(v: &Value) -> Option<f64> {
-    match v {
-        Value::Int(s) => Some(*s as f64),
-        Value::Float(f) => Some(*f),
-        _ => None,
-    }
+    v.num_f64()
 }
 
 fn len_limit(v: &Value) -> Option<usize> {
@@ -133,8 +114,8 @@ impl<'a> Validator<'a> {
         for part in pointer.split('/').skip(1) {
             let part = part.replace("~1", "/").replace("~0", "~");
             at = match at {
-                Value::Dict(_) => at.field(&part)?,
-                Value::List(items) => items.get(part.parse::<usize>().ok()?)?,
+                Value::Obj(_) => at.field(&part)?,
+                Value::Arr(items) => items.get(part.parse::<usize>().ok()?)?,
                 _ => return None,
             };
         }
@@ -163,7 +144,7 @@ impl<'a> Validator<'a> {
                 });
                 return;
             }
-            Value::Dict(items) => items,
+            Value::Obj(items) => items,
             _ => return,
         };
         for (keyword, value) in items {
@@ -179,7 +160,7 @@ impl<'a> Validator<'a> {
                 "type" => {
                     let types: Vec<String> = match value {
                         Value::Str(t) => vec![t.clone()],
-                        Value::List(ts) => ts.iter().map(|t| t.py_str()).collect(),
+                        Value::Arr(ts) => ts.iter().map(|t| t.py_str()).collect(),
                         _ => vec![],
                     };
                     if !types.iter().any(|t| is_type(instance, t)) {
@@ -199,7 +180,7 @@ impl<'a> Validator<'a> {
                 }
                 "enum" => {
                     let options = match value {
-                        Value::List(o) => o.clone(),
+                        Value::Arr(o) => o.clone(),
                         _ => vec![],
                     };
                     if options.iter().all(|o| !equal(o, instance)) {
@@ -211,7 +192,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "required" => {
-                    if let (Value::Dict(_), Value::List(names)) = (instance, value) {
+                    if let (Value::Obj(_), Value::Arr(names)) = (instance, value) {
                         for name in names {
                             if let Value::Str(n) = name {
                                 if instance.field(n).is_none() {
@@ -226,7 +207,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "properties" => {
-                    if let (Value::Dict(_), Value::Dict(props)) = (instance, value) {
+                    if let (Value::Obj(_), Value::Obj(props)) = (instance, value) {
                         for (name, sub) in props {
                             if let Some(v) = instance.field(name) {
                                 path.push(Step::Key(name.clone()));
@@ -237,7 +218,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "patternProperties" => {
-                    if let (Value::Dict(fields), Value::Dict(patterns)) = (instance, value) {
+                    if let (Value::Obj(fields), Value::Obj(patterns)) = (instance, value) {
                         for (pattern, sub) in patterns {
                             let re = match pyre::compile(pattern) {
                                 Ok(r) => r,
@@ -254,10 +235,10 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "additionalProperties" => {
-                    if let Value::Dict(fields) = instance {
-                        let extras = self.additional(&fields.0, &items.0);
+                    if let Value::Obj(fields) = instance {
+                        let extras = self.additional(fields, items);
                         match value {
-                            Value::Dict(_) => {
+                            Value::Obj(_) => {
                                 for k in &extras {
                                     path.push(Step::Key(k.clone()));
                                     self.descend(instance.field(k).unwrap(), value, path, out);
@@ -273,7 +254,7 @@ impl<'a> Validator<'a> {
                                 {
                                     let mut pats: Vec<String> =
                                         match schema.field("patternProperties") {
-                                            Some(Value::Dict(p)) => {
+                                            Some(Value::Obj(p)) => {
                                                 p.iter().map(|(k, _)| k.clone()).collect()
                                             }
                                             _ => vec![],
@@ -301,16 +282,16 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "propertyNames" => {
-                    if let Value::Dict(fields) = instance {
+                    if let Value::Obj(fields) = instance {
                         for (k, _) in fields {
                             self.descend(&Value::Str(k.clone()), value, path, out);
                         }
                     }
                 }
                 "items" => {
-                    if let Value::List(elements) = instance {
+                    if let Value::Arr(elements) = instance {
                         let prefix = match schema.field("prefixItems") {
-                            Some(Value::List(p)) => p.len(),
+                            Some(Value::Arr(p)) => p.len(),
                             _ => 0,
                         };
                         if value == &Value::Bool(false) && elements.len() > prefix {
@@ -318,7 +299,7 @@ impl<'a> Validator<'a> {
                             let rest = if extra == 1 {
                                 elements[prefix].clone()
                             } else {
-                                Value::List(elements[prefix..].to_vec())
+                                Value::Arr(elements[prefix..].to_vec())
                             };
                             add(
                                 out,
@@ -341,7 +322,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "prefixItems" => {
-                    if let (Value::List(elements), Value::List(subs)) = (instance, value) {
+                    if let (Value::Arr(elements), Value::Arr(subs)) = (instance, value) {
                         for (i, (e, sub)) in elements.iter().zip(subs).enumerate() {
                             path.push(Step::Index(i));
                             self.descend(e, sub, path, out);
@@ -388,7 +369,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "minItems" | "maxItems" => {
-                    if let (Value::List(a), Some(limit)) = (instance, len_limit(value)) {
+                    if let (Value::Arr(a), Some(limit)) = (instance, len_limit(value)) {
                         if keyword == "minItems" && a.len() < limit {
                             let words = if limit == 1 {
                                 "should be non-empty"
@@ -408,7 +389,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "minProperties" | "maxProperties" => {
-                    if let (Value::Dict(o), Some(limit)) = (instance, len_limit(value)) {
+                    if let (Value::Obj(o), Some(limit)) = (instance, len_limit(value)) {
                         if keyword == "minProperties" && o.len() < limit {
                             let words = if limit == 1 {
                                 "should be non-empty"
@@ -428,7 +409,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "uniqueItems" => {
-                    if let Value::List(a) = instance {
+                    if let Value::Arr(a) = instance {
                         if value.truthy() && !unique(a) {
                             add(
                                 out,
@@ -460,14 +441,14 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "allOf" => {
-                    if let Value::List(subs) = value {
+                    if let Value::Arr(subs) = value {
                         for sub in subs {
                             self.descend(instance, sub, path, out);
                         }
                     }
                 }
                 "anyOf" => {
-                    if let Value::List(subs) = value {
+                    if let Value::Arr(subs) = value {
                         if !subs.iter().any(|s| self.valid(instance, s)) {
                             add(
                                 out,
@@ -481,7 +462,7 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "oneOf" => {
-                    if let Value::List(subs) = value {
+                    if let Value::Arr(subs) = value {
                         let good: Vec<&Value> =
                             subs.iter().filter(|s| self.valid(instance, s)).collect();
                         if good.is_empty() {
@@ -531,12 +512,12 @@ impl<'a> Validator<'a> {
                     }
                 }
                 "dependentRequired" => {
-                    if let (Value::Dict(_), Value::Dict(deps)) = (instance, value) {
+                    if let (Value::Obj(_), Value::Obj(deps)) = (instance, value) {
                         for (prop, needs) in deps {
                             if instance.field(prop).is_none() {
                                 continue;
                             }
-                            if let Value::List(needs) = needs {
+                            if let Value::Arr(needs) = needs {
                                 for each in needs {
                                     if let Value::Str(n) = each {
                                         if instance.field(n).is_none() {
@@ -569,7 +550,7 @@ impl<'a> Validator<'a> {
             .map(|(_, v)| v);
         let patterns: Vec<pyre::Regex> = match schema.iter().find(|(k, _)| k == "patternProperties")
         {
-            Some((_, Value::Dict(p))) => p
+            Some((_, Value::Obj(p))) => p
                 .iter()
                 .filter_map(|(k, _)| pyre::compile(k).ok())
                 .collect(),
@@ -579,7 +560,7 @@ impl<'a> Validator<'a> {
             .iter()
             .filter(|(k, _)| {
                 let listed =
-                    matches!(props, Some(Value::Dict(_)) if props.unwrap().field(k).is_some());
+                    matches!(props, Some(Value::Obj(_)) if props.unwrap().field(k).is_some());
                 !listed && !patterns.iter().any(|re| re.search(k).is_some())
             })
             .map(|(k, _)| k.clone())

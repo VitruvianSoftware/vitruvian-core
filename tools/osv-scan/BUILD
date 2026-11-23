@@ -28,6 +28,13 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    deps = ["//packages/jq:vitruvian_jq"],
+)
+
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//packages/pycompat/vitruvian-pycompat:__pkg__"],
 )
 
 rust_binary(

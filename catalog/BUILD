@@ -43,7 +43,10 @@ filegroup(
 filegroup(
     name = "srcs",
     srcs = glob(["src/**/*.rs"]),
-    visibility = ["//tools/ci:__pkg__"],
+    visibility = [
+        "//packages/pycompat/vitruvian-pycompat:__pkg__",
+        "//tools/ci:__pkg__",
+    ],
 )
 
 rust_library(
@@ -55,6 +58,7 @@ rust_library(
     crate_name = "catalog",
     edition = "2021",
     visibility = ["//visibility:public"],
+    deps = ["//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat"],
 )
 
 rust_test(
