@@ -52,6 +52,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   warm-linux:
@@ -629,207 +630,6 @@ jobs:
 
           echo "Offline completeness verified (control check exited ${control_rc})."
 
-      - name: BuildBuddy Remote Asset API experiment (verify-only)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && env.MODE == 'verify' }}
-        continue-on-error: true
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          IFS=' ' read -r -a targets <<< "$TARGETS"
-          CASE_TARGETS=(
-            "@maven//:org_hamcrest_hamcrest_core"
-            "@@aspect_rules_py++tomltool+toml2json_aarch64_osx_libsystem//file:file"
-          )
-          HAMCREST_SHA="66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9"
-          TOML2JSON_SHA="9adc44d976e8f5baf5a6d613ceb3db6e5f56b2e22e75ac56521fdce62f227d88"
-
-          dir_bytes() {
-            if [ -d "$1" ]; then
-              du -sb "$1" | cut -f1
-            else
-              echo "0"
-            fi
-          }
-
-          xfer_note() {
-            local log_path="$1"
-            local hits
-            hits="$(grep -Ei 'Remote Cache|download.*bytes|upload.*bytes|bytes downloaded|bytes uploaded' "$log_path" | tail -n 5 | tr '\n' ';' || true)"
-            if [ -n "$hits" ]; then
-              printf '%s' "$hits"
-            else
-              printf 'not printed in Bazel --nobuild output'
-            fi
-          }
-
-          case_a_rc="SKIPPED"
-          case_a_bytes="0"
-          case_a_note="no BUILDBUDDY_API_KEY"
-          case_b_rc="SKIPPED"
-          case_b_bytes="0"
-          case_b_proof="skipped (no BUILDBUDDY_API_KEY)"
-          case_b_note="no BUILDBUDDY_API_KEY"
-
-          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
-            # Case A (warm): full Linux set via BuildBuddy remote downloader + local fallback
-            A_OB="${RUNNER_TEMP}/rd-case-a-ob"
-            A_REPO="${RUNNER_TEMP}/rd-case-a-repo"
-            A_CONTENTS="${RUNNER_TEMP}/rd-case-a-contents"
-            A_LOG="${RUNNER_TEMP}/rd-case-a.log"
-            rm -rf "$A_OB" "$A_REPO" "$A_CONTENTS"
-            mkdir -p "$A_OB" "$A_REPO" "$A_CONTENTS"
-            set +e
-            bazel --output_base="$A_OB" build --nobuild \
-              --remote_cache=grpcs://remote.buildbuddy.io \
-              --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
-              --experimental_remote_downloader_local_fallback \
-              --remote_header="x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
-              --repository_cache="$A_REPO" \
-              --repo_contents_cache="$A_CONTENTS" \
-              "${targets[@]}" 2>&1 | tee "$A_LOG"
-            case_a_rc="${PIPESTATUS[0]}"
-            # Ensure both Case B probe artifacts are warmed in BuildBuddy even if Linux //... skips Darwin toml2json
-            if [ ! -f "${A_REPO}/content_addressable/sha256/${HAMCREST_SHA}/file" ] || [ ! -f "${A_REPO}/content_addressable/sha256/${TOML2JSON_SHA}/file" ]; then
-              bazel --output_base="$A_OB" build --nobuild \
-                --remote_cache=grpcs://remote.buildbuddy.io \
-                --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
-                --experimental_remote_downloader_local_fallback \
-                --remote_header="x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
-                --repository_cache="$A_REPO" \
-                --repo_contents_cache="$A_CONTENTS" \
-                "${CASE_TARGETS[@]}" 2>&1 | tee -a "$A_LOG"
-            fi
-            set -e
-            case_a_bytes="$(dir_bytes "$A_REPO")"
-            case_a_note="$(xfer_note "$A_LOG")"
-            bazel --output_base="$A_OB" shutdown || true
-            rm -rf "$A_OB" "$A_REPO" "$A_CONTENTS"
-
-            # Case B (origin blocked): rewrite both origin URLs to https://unreachable.invalid/...
-            B_OB="${RUNNER_TEMP}/rd-case-b-ob"
-            B_REPO="${RUNNER_TEMP}/rd-case-b-repo"
-            B_CONTENTS="${RUNNER_TEMP}/rd-case-b-contents"
-            B_CFG="${RUNNER_TEMP}/rd-case-b-downloader.cfg"
-            B_LOG="${RUNNER_TEMP}/rd-case-b.log"
-            rm -rf "$B_OB" "$B_REPO" "$B_CONTENTS"
-            mkdir -p "$B_OB" "$B_REPO" "$B_CONTENTS"
-            cp tools/downloader.cfg "$B_CFG"
-            {
-              echo ""
-              echo "# Test-only origin-block rewrites (verify mode)"
-              echo 'rewrite repo1\.maven\.org/(.*hamcrest-core-1\.3\.jar) https://unreachable.invalid/$1'
-              echo 'rewrite maven\.google\.com/(.*hamcrest-core-1\.3\.jar) https://unreachable.invalid/$1'
-              echo 'rewrite github\.com/(.*toml2json_darwin_arm64) https://unreachable.invalid/$1'
-            } >> "$B_CFG"
-            set +e
-            bazel --output_base="$B_OB" build --nobuild --keep_going \
-              --downloader_config="$B_CFG" \
-              --remote_cache=grpcs://remote.buildbuddy.io \
-              --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
-              --experimental_remote_downloader_local_fallback \
-              --remote_header="x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
-              --repository_cache="$B_REPO" \
-              --repo_contents_cache="$B_CONTENTS" \
-              "${CASE_TARGETS[@]}" 2>&1 | tee "$B_LOG"
-            case_b_rc="${PIPESTATUS[0]}"
-            set -e
-            case_b_bytes="$(dir_bytes "$B_REPO")"
-            case_b_note="$(xfer_note "$B_LOG")"
-            ham_hit="no"
-            toml_hit="no"
-            [ -f "${B_REPO}/content_addressable/sha256/${HAMCREST_SHA}/file" ] && ham_hit="yes"
-            [ -f "${B_REPO}/content_addressable/sha256/${TOML2JSON_SHA}/file" ] && toml_hit="yes"
-            case_b_proof="hamcrest_sha_present=${ham_hit}, toml2json_sha_present=${toml_hit}; origins rewritten to https://unreachable.invalid/..."
-            if [ "$case_b_rc" -ne 0 ]; then
-              err_snip="$(grep -E 'ERROR:|unreachable\.invalid|hamcrest|toml2json' "$B_LOG" | tail -n 5 | tr '\n' ';' || true)"
-              case_b_proof="${case_b_proof}; errors: ${err_snip}"
-            fi
-            bazel --output_base="$B_OB" shutdown || true
-            rm -rf "$B_OB" "$B_REPO" "$B_CONTENTS" "$B_CFG"
-          fi
-
-          # Case C (BuildBuddy down, fallback): unreachable grpcs host + local fallback enabled
-          C_OB="${RUNNER_TEMP}/rd-case-c-ob"
-          C_REPO="${RUNNER_TEMP}/rd-case-c-repo"
-          C_CONTENTS="${RUNNER_TEMP}/rd-case-c-contents"
-          C_LOG="${RUNNER_TEMP}/rd-case-c.log"
-          rm -rf "$C_OB" "$C_REPO" "$C_CONTENTS"
-          mkdir -p "$C_OB" "$C_REPO" "$C_CONTENTS"
-          set +e
-          bazel --output_base="$C_OB" build --nobuild \
-            --remote_cache=grpcs://unreachable.invalid:443 \
-            --experimental_remote_downloader=grpcs://unreachable.invalid:443 \
-            --experimental_remote_downloader_local_fallback \
-            --remote_retries=1 \
-            --remote_timeout=5s \
-            --repository_cache="$C_REPO" \
-            --repo_contents_cache="$C_CONTENTS" \
-            "${CASE_TARGETS[@]}" 2>&1 | tee "$C_LOG"
-          case_c_rc="${PIPESTATUS[0]}"
-          set -e
-          case_c_bytes="$(dir_bytes "$C_REPO")"
-          case_c_note="$(xfer_note "$C_LOG")"
-          bazel --output_base="$C_OB" shutdown || true
-          rm -rf "$C_OB" "$C_REPO" "$C_CONTENTS"
-
-          # Case D1 (no key, fork-PR shape with downloader flag set and NO key header)
-          D1_OB="${RUNNER_TEMP}/rd-case-d1-ob"
-          D1_REPO="${RUNNER_TEMP}/rd-case-d1-repo"
-          D1_CONTENTS="${RUNNER_TEMP}/rd-case-d1-contents"
-          D1_LOG="${RUNNER_TEMP}/rd-case-d1.log"
-          rm -rf "$D1_OB" "$D1_REPO" "$D1_CONTENTS"
-          mkdir -p "$D1_OB" "$D1_REPO" "$D1_CONTENTS"
-          set +e
-          bazel --output_base="$D1_OB" build --nobuild \
-            --remote_cache=grpcs://remote.buildbuddy.io \
-            --experimental_remote_downloader=grpcs://remote.buildbuddy.io \
-            --experimental_remote_downloader_local_fallback \
-            --remote_retries=1 \
-            --remote_timeout=15s \
-            --repository_cache="$D1_REPO" \
-            --repo_contents_cache="$D1_CONTENTS" \
-            "${CASE_TARGETS[@]}" 2>&1 | tee "$D1_LOG"
-          case_d1_rc="${PIPESTATUS[0]}"
-          set -e
-          case_d1_bytes="$(dir_bytes "$D1_REPO")"
-          case_d1_note="$(xfer_note "$D1_LOG")"
-          bazel --output_base="$D1_OB" shutdown || true
-          rm -rf "$D1_OB" "$D1_REPO" "$D1_CONTENTS"
-
-          # Case D2 (no key, fork-PR shape without downloader flag)
-          D2_OB="${RUNNER_TEMP}/rd-case-d2-ob"
-          D2_REPO="${RUNNER_TEMP}/rd-case-d2-repo"
-          D2_CONTENTS="${RUNNER_TEMP}/rd-case-d2-contents"
-          D2_LOG="${RUNNER_TEMP}/rd-case-d2.log"
-          rm -rf "$D2_OB" "$D2_REPO" "$D2_CONTENTS"
-          mkdir -p "$D2_OB" "$D2_REPO" "$D2_CONTENTS"
-          set +e
-          bazel --output_base="$D2_OB" build --nobuild \
-            --repository_cache="$D2_REPO" \
-            --repo_contents_cache="$D2_CONTENTS" \
-            "${CASE_TARGETS[@]}" 2>&1 | tee "$D2_LOG"
-          case_d2_rc="${PIPESTATUS[0]}"
-          set -e
-          case_d2_bytes="$(dir_bytes "$D2_REPO")"
-          case_d2_note="$(xfer_note "$D2_LOG")"
-          bazel --output_base="$D2_OB" shutdown || true
-          rm -rf "$D2_OB" "$D2_REPO" "$D2_CONTENTS"
-
-          {
-            echo ""
-            echo "#### BuildBuddy Remote Asset API experiment (verify-only)"
-            echo ""
-            echo "| Case | Exit code | Fresh repo cache (bytes) | Transfer / notes |"
-            echo "|---|---:|---:|---|"
-            echo "| A: Warm (BuildBuddy downloader + key, Linux \`//...\`) | ${case_a_rc} | ${case_a_bytes} | ${case_a_note} |"
-            echo "| B: Origin blocked (\`unreachable.invalid\` rewrite, 2 targets) | ${case_b_rc} | ${case_b_bytes} | ${case_b_proof}; ${case_b_note} |"
-            echo "| C: BuildBuddy down (\`unreachable.invalid:443\` + fallback, 2 targets) | ${case_c_rc} | ${case_c_bytes} | ${case_c_note} |"
-            echo "| D1: No key (downloader flag set, no header, 2 targets) | ${case_d1_rc} | ${case_d1_bytes} | ${case_d1_note} |"
-            echo "| D2: No key (no downloader flag, 2 targets) | ${case_d2_rc} | ${case_d2_bytes} | ${case_d2_note} |"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: Check if complete repository cache already exists
         id: cache-lookup
         if: github.event_name != 'pull_request'
@@ -867,6 +667,15 @@ jobs:
               json.dump(data, f, indent=2)
               f.write("\n")
           PY
+
+      - name: Check Actions cache capacity before saving
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .github/actions/setup-bazel/cache_capacity_guard.py
 
       - name: Save complete repository cache (archives only)
         if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
@@ -1150,6 +959,15 @@ jobs:
               json.dump(data, f, indent=2)
               f.write("\n")
           PY
+
+      - name: Check Actions cache capacity before saving
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .github/actions/setup-bazel/cache_capacity_guard.py
 
       - name: Save complete repository cache (archives only)
         if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'

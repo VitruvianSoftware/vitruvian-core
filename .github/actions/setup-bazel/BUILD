@@ -19,3 +19,13 @@ py_test(
     args = ["$(rootpath runner_cache_check_test.py)"],
     data = ["action.yml"],
 )
+
+py_test(
+    name = "cache_capacity_guard_test",
+    size = "small",
+    srcs = [
+        "cache_capacity_guard.py",
+        "cache_capacity_guard_test.py",
+    ],
+    args = ["$(rootpath cache_capacity_guard_test.py)"],
+)

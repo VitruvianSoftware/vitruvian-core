@@ -1090,12 +1090,18 @@ struct StepMeta {
     uses: String,
     if_expr: Option<String>,
     key: Option<String>,
+    name: Option<String>,
+    continue_on_error: Option<String>,
+    runs_capacity_guard: bool,
+    job_index: usize,
 }
 
-/// Every step's `uses:`, `if:`, and `with.key:` across a workflow or composite action.
+/// Every step's `uses:`, `if:`, `with.key:`, `name:`, and `continue-on-error:`
+/// across a workflow or composite action.
 fn composite_steps(content: &str) -> Vec<StepMeta> {
     let mut steps: Vec<StepMeta> = Vec::new();
     let mut step_indent: Option<usize> = None;
+    let mut job_index: usize = 0;
     for raw in content.lines() {
         let line = raw.trim_end_matches('\r');
         let s = strip(line);
@@ -1113,16 +1119,27 @@ fn composite_steps(content: &str) -> Vec<StepMeta> {
                     || rest.starts_with("env:")
                     || rest.starts_with("with:")
                     || rest.starts_with("shell:")
+                    || rest.starts_with("continue-on-error:")
                 {
                     step_indent = Some(ind);
-                    steps.push(StepMeta::default());
-                    apply_step_key(steps.last_mut().unwrap(), rest);
+                    steps.push(StepMeta {
+                        job_index,
+                        ..StepMeta::default()
+                    });
+                    let last = steps.last_mut().unwrap();
+                    if rest.contains("cache_capacity_guard.py") {
+                        last.runs_capacity_guard = true;
+                    }
+                    apply_step_key(last, rest);
                     continue;
                 }
             }
         }
         if let (Some(si), Some(last)) = (step_indent, steps.last_mut()) {
             if ind > si {
+                if s.contains("cache_capacity_guard.py") {
+                    last.runs_capacity_guard = true;
+                }
                 if ind == si + 2 {
                     apply_step_key(last, s);
                 } else if ind == si + 4 && s.starts_with("key:") {
@@ -1130,6 +1147,7 @@ fn composite_steps(content: &str) -> Vec<StepMeta> {
                 }
             } else if ind <= si && !s.starts_with("- ") {
                 step_indent = None;
+                job_index += 1;
             }
         }
     }
@@ -1143,6 +1161,10 @@ fn apply_step_key(step: &mut StepMeta, kv: &str) {
         step.if_expr = Some(v.split(" #").next().unwrap_or("").trim().to_string());
     } else if let Some(v) = kv.strip_prefix("key:") {
         step.key = Some(v.trim().to_string());
+    } else if let Some(v) = kv.strip_prefix("name:") {
+        step.name = Some(unquote(v.split(" #").next().unwrap_or("")).to_string());
+    } else if let Some(v) = kv.strip_prefix("continue-on-error:") {
+        step.continue_on_error = Some(v.split(" #").next().unwrap_or("").trim().to_string());
     }
 }
 
@@ -1171,37 +1193,68 @@ pub(crate) fn repo_cache_warm_workflow_problems(content: &str) -> Vec<(String, S
         }
     }
 
-    let save_steps: Vec<&StepMeta> = steps
+    let save_indices: Vec<usize> = steps
         .iter()
-        .filter(|s| s.uses.starts_with("actions/cache/save@"))
+        .enumerate()
+        .filter(|(_, s)| s.uses.starts_with("actions/cache/save@"))
+        .map(|(i, _)| i)
         .collect();
-    if save_steps.is_empty() {
+    if save_indices.len() < 2 {
         problems.push((
-            "no actions/cache/save step".to_string(),
-            "actions/cache/save with -repository-full- key".to_string(),
-            "bazel-repo-cache.yaml must save the verified repository cache".to_string(),
+            format!("{} actions/cache/save step(s)", save_indices.len()),
+            "2 actions/cache/save steps (warm-linux and warm-macos) with -repository-full- key".to_string(),
+            "bazel-repo-cache.yaml must save the verified repository cache for both warm-linux and warm-macos".to_string(),
         ));
-    } else {
-        for s in &save_steps {
-            let if_ok = s.if_expr.as_deref().is_some_and(|e| {
-                e.contains("github.event_name != 'pull_request'")
-                    && e.contains("cache-hit != 'true'")
-            });
-            if !if_ok {
-                problems.push((
-                    format!("save if: {}", s.if_expr.as_deref().unwrap_or("unset")),
-                    "if: github.event_name != 'pull_request' && ...cache-hit != 'true'".to_string(),
-                    "pull_request runs must be verify-only and cache hits must never overwrite"
-                        .to_string(),
-                ));
-            }
-            if !s.key.as_deref().is_some_and(has_full_repo_hash_key) {
-                problems.push((
-                    format!("save key: {}", s.key.as_deref().unwrap_or("unset")),
-                    "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
-                    "warm workflow must save under the `-repository-full-` key matching setup-bazel".to_string(),
-                ));
-            }
+    }
+    for &idx in &save_indices {
+        let s = &steps[idx];
+        let if_ok = s.if_expr.as_deref().is_some_and(|e| {
+            e.contains("github.event_name != 'pull_request'") && e.contains("cache-hit != 'true'")
+        });
+        if !if_ok {
+            problems.push((
+                format!("save if: {}", s.if_expr.as_deref().unwrap_or("unset")),
+                "if: github.event_name != 'pull_request' && ...cache-hit != 'true'".to_string(),
+                "pull_request runs must be verify-only and cache hits must never overwrite"
+                    .to_string(),
+            ));
+        }
+        if !s.key.as_deref().is_some_and(has_full_repo_hash_key) {
+            problems.push((
+                format!("save key: {}", s.key.as_deref().unwrap_or("unset")),
+                "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
+                "warm workflow must save under the `-repository-full-` key matching setup-bazel".to_string(),
+            ));
+        }
+        let guard_ok = idx > 0 && {
+            let guard = &steps[idx - 1];
+            guard.job_index == s.job_index
+                && guard.name.as_deref() == Some("Check Actions cache capacity before saving")
+                && guard.runs_capacity_guard
+                && guard.continue_on_error.as_deref() != Some("true")
+                && guard.if_expr.as_deref().is_some_and(|e| {
+                    e.contains("github.event_name != 'pull_request'")
+                        && e.contains("cache-hit != 'true'")
+                })
+        };
+        if !guard_ok {
+            let found = if idx == 0 || steps[idx - 1].job_index != s.job_index {
+                "no preceding guard step in job".to_string()
+            } else {
+                let g = &steps[idx - 1];
+                format!(
+                    "preceding step {:?} (runs_guard={}, continue_on_error={:?}, if={:?})",
+                    g.name.as_deref().unwrap_or("<unnamed>"),
+                    g.runs_capacity_guard,
+                    g.continue_on_error,
+                    g.if_expr
+                )
+            };
+            problems.push((
+                found,
+                "Check Actions cache capacity before saving (cache_capacity_guard.py) immediately before actions/cache/save".to_string(),
+                "every save step in bazel-repo-cache.yaml must be immediately preceded by the fail-safe capacity guard step".to_string(),
+            ));
         }
     }
 
@@ -2230,11 +2283,40 @@ jobs:
           lookup-only: true
           path: ${{ env.REPO }}
           key: setup-bazel-1-linux-x64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+      - name: Check Actions cache capacity before saving
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          python3 .github/actions/setup-bazel/cache_capacity_guard.py
       - if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
         uses: actions/cache/save@abc # v6
         with:
           path: ${{ env.REPO }}
           key: setup-bazel-1-linux-x64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+  warm-macos:
+    steps:
+      - uses: bazel-contrib/setup-bazel@abc # 0.19.2
+        with:
+          repository-cache: false
+          cache-save: false
+          bazelisk-cache: false
+      - id: cache-lookup
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@abc # v6
+        with:
+          lookup-only: true
+          path: ${{ env.REPO }}
+          key: setup-bazel-1-darwin-arm64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+      - name: Check Actions cache capacity before saving
+        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          python3 .github/actions/setup-bazel/cache_capacity_guard.py
+      - if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@abc # v6
+        with:
+          path: ${{ env.REPO }}
+          key: setup-bazel-1-darwin-arm64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
 ";
 
     #[test]
@@ -2270,6 +2352,29 @@ jobs:
         assert!(repo_cache_warm_workflow_problems(&setup_saves)
             .iter()
             .any(|p| p.0 == "cache-save: true"));
+
+        let no_guard = WARM_WORKFLOW_GOOD.replacen(
+            "      - name: Check Actions cache capacity before saving\n        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'\n        shell: bash\n        run: |\n          python3 .github/actions/setup-bazel/cache_capacity_guard.py\n",
+            "",
+            1,
+        );
+        assert!(repo_cache_warm_workflow_problems(&no_guard)
+            .iter()
+            .any(|p| p.1.contains("Check Actions cache capacity before saving")));
+
+        let continue_guard = WARM_WORKFLOW_GOOD.replacen(
+            "        shell: bash",
+            "        continue-on-error: true\n        shell: bash",
+            1,
+        );
+        assert!(repo_cache_warm_workflow_problems(&continue_guard)
+            .iter()
+            .any(|p| p.1.contains("Check Actions cache capacity before saving")));
+
+        let wrong_script = WARM_WORKFLOW_GOOD.replacen("cache_capacity_guard.py", "echo ok", 1);
+        assert!(repo_cache_warm_workflow_problems(&wrong_script)
+            .iter()
+            .any(|p| p.1.contains("Check Actions cache capacity before saving")));
     }
 
     #[test]
