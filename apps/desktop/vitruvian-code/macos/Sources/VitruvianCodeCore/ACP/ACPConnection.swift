@@ -224,6 +224,7 @@ public final class ACPConnection: PersistentAgentConnection {
     private var activePromptCollectedText = ""
     private var activePromptCompletionWaiters: [CheckedContinuation<Void, Never>] = []
     private var trackedToolCalls: [String: ACPToolCall] = [:]
+    private var deniedToolCallIDs: Set<String> = []
     private var activeSubagentOrder: [String] = []
     private var activeSubagentsByID: [String: VitruvianCodeActiveSubagent] = [:]
     private var inactivityTimerTask: Task<Void, Never>?
@@ -625,6 +626,7 @@ public final class ACPConnection: PersistentAgentConnection {
         activePromptInactivityTimedOut = false
         activePromptCollectedText = ""
         trackedToolCalls.removeAll()
+        deniedToolCallIDs.removeAll()
         hooks.onPromptStarted?()
         let outcomeChecker = await hooks.promptOutcomeWatcher?(sessionID)
         resetPromptInactivityTimer()
@@ -939,6 +941,7 @@ public final class ACPConnection: PersistentAgentConnection {
         cancelGraceTask?.cancel()
         cancelGraceTask = nil
         cancelAllPendingInteractions()
+        deniedToolCallIDs.removeAll()
 
         if capabilities.closeSession, !sessionID.isEmpty, let acpTransport = transport {
             _ = try? await acpTransport.request(
@@ -1087,17 +1090,20 @@ public final class ACPConnection: PersistentAgentConnection {
         case .toolCall(let call):
             let merged = mergeToolCall(call)
             let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: activeNotification.sessionId)
-            let step = Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)
+            let wasDenied = deniedToolCallIDs.contains(merged.toolCallId)
+            let isError = Self.isErrorToolStatus(merged.status) || wasDenied
+            let step = Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs, forceError: wasDenied)
             emit(.toolStep(step))
             if Self.isTerminalToolStatus(merged.status) {
                 trackedToolCalls.removeValue(forKey: merged.toolCallId)
+                deniedToolCallIDs.remove(merged.toolCallId)
                 emit(
                     .toolStepResult(
                         id: merged.toolCallId,
                         output: VitruvianCodeToolStep.truncatedOutput(
                             Self.extractToolOutput(from: merged, terminalOutputs: terminalOutputs)
                         ),
-                        isError: merged.status == "failed"
+                        isError: isError
                     )
                 )
             }
@@ -1106,22 +1112,25 @@ public final class ACPConnection: PersistentAgentConnection {
             let hadPrior = trackedToolCalls[update.toolCallId] != nil
             let merged = mergeToolCall(update)
             let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: activeNotification.sessionId)
+            let wasDenied = deniedToolCallIDs.contains(merged.toolCallId)
+            let isError = Self.isErrorToolStatus(merged.status) || wasDenied
             if Self.isTerminalToolStatus(merged.status) {
-                if !hadPrior || Self.hasStepDetails(update) {
-                    emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)))
+                if !hadPrior || Self.hasStepDetails(update) || wasDenied {
+                    emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs, forceError: wasDenied)))
                 }
                 trackedToolCalls.removeValue(forKey: merged.toolCallId)
+                deniedToolCallIDs.remove(merged.toolCallId)
                 emit(
                     .toolStepResult(
                         id: merged.toolCallId,
                         output: VitruvianCodeToolStep.truncatedOutput(
                             Self.extractToolOutput(from: merged, terminalOutputs: terminalOutputs)
                         ),
-                        isError: merged.status == "failed"
+                        isError: isError
                     )
                 )
             } else {
-                emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)))
+                emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs, forceError: wasDenied)))
             }
 
         case .plan(let entries):
@@ -1379,6 +1388,9 @@ public final class ACPConnection: PersistentAgentConnection {
             approvalPolicy: policy.approvalPolicy,
             options: mappedOptions
         ) {
+            if Self.isDeniedPermissionOutcome(automaticOutcome, options: mappedOptions) {
+                deniedToolCallIDs.insert(request.toolCall.toolCallId)
+            }
             resetPromptInactivityTimer()
             return ACPRequestPermissionResult(outcome: automaticOutcome)
         }
@@ -1407,6 +1419,9 @@ public final class ACPConnection: PersistentAgentConnection {
             }
             pendingPermissions[interactionID] = continuation
             emit(.approval(approvalRequest))
+        }
+        if Self.isDeniedPermissionOutcome(result.outcome, options: mappedOptions) {
+            deniedToolCallIDs.insert(request.toolCall.toolCallId)
         }
         resetPromptInactivityTimer()
         return result
@@ -1646,6 +1661,7 @@ public final class ACPConnection: PersistentAgentConnection {
         cancelGraceTask?.cancel()
         cancelGraceTask = nil
         cancelAllPendingInteractions()
+        deniedToolCallIDs.removeAll()
         recordLogLine("[acp] \(reason)")
 
         await clientTerminals.closeAll()
@@ -1872,8 +1888,33 @@ public final class ACPConnection: PersistentAgentConnection {
         return merged
     }
 
+    static func isDeniedPermissionOutcome(
+        _ outcome: ACPPermissionOutcome,
+        options: [AgentPermissionOption]
+    ) -> Bool {
+        switch outcome {
+        case .cancelled:
+            return true
+        case .selected(let optionId):
+            guard let chosen = options.first(where: { $0.id == optionId }) else {
+                return false
+            }
+            return chosen.kind == .rejectOnce || chosen.kind == .rejectAlways
+        }
+    }
+
+    private static func isErrorToolStatus(_ status: String?) -> Bool {
+        switch status {
+        case "failed", "cancelled", "canceled", "denied", "rejected":
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func isTerminalToolStatus(_ status: String?) -> Bool {
-        status == "completed" || status == "failed"
+        guard let status else { return false }
+        return status == "completed" || isErrorToolStatus(status)
     }
 
     private static func hasStepDetails(_ update: ACPToolCall) -> Bool {
@@ -1909,7 +1950,8 @@ public final class ACPConnection: PersistentAgentConnection {
 
     static func makeToolStep(
         from call: ACPToolCall,
-        terminalOutputs: [String: String] = [:]
+        terminalOutputs: [String: String] = [:],
+        forceError: Bool = false
     ) -> VitruvianCodeToolStep {
         let name = nonEmpty(call.title) ?? nonEmpty(call.kind) ?? "tool"
         let inputDict = call.rawInput?.objectValue?.mapValues(\.foundationObject)
@@ -1919,7 +1961,7 @@ public final class ACPConnection: PersistentAgentConnection {
             input: inputDict,
             isFinished: isTerminalToolStatus(call.status),
             output: extractToolOutput(from: call, terminalOutputs: terminalOutputs),
-            isError: call.status == "failed"
+            isError: forceError || isErrorToolStatus(call.status)
         )
 
         if let acpKind = call.kind {

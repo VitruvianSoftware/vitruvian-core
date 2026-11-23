@@ -24,127 +24,19 @@
 
 
 import AppKit
+import Darwin
 import VitruvianCodeCore
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// A line diff between the text a tool replaced and the text it wrote, as the
-/// tool-step card draws it.
-public enum VitruvianCodeLineDiff {
-    public struct Line: Equatable, Sendable {
-        public enum Kind: Equatable, Sendable { case context, removed, added }
-        public let kind: Kind
-        public let text: String
-
-        public init(_ kind: Kind, _ text: String) {
-            self.kind = kind
-            self.text = text
-        }
-
-        /// The line as a unified diff writes it.
-        public var unified: String {
-            switch kind {
-            case .context: return "  " + text
-            case .removed: return "- " + text
-            case .added: return "+ " + text
-            }
-        }
-    }
-
-    /// Past this many lines on both sides the middle is not searched for
-    /// common lines; it is shown as removed and then added.
-    static let searchLimit = 400
-
-    /// Maximum diff lines drawn inside a single tool-step card before truncating.
-    public static let maxDisplayedLines = 200
-
-    /// Computes line diff entries capped at `limit` lines, returning the hidden remainder count.
-    public static func cappedLines(
-        old: String?,
-        new: String?,
-        limit: Int = maxDisplayedLines
-    ) -> (lines: [Line], truncatedCount: Int) {
-        let all = lines(old: old, new: new)
-        let effectiveLimit = max(1, limit)
-        guard all.count > effectiveLimit else {
-            return (all, 0)
-        }
-        return (Array(all.prefix(effectiveLimit)), all.count - effectiveLimit)
-    }
-
-    /// The lines from `old` to `new`. A nil or empty `old` (a new file) is
-    /// every line added. Common leading and trailing lines are context; the
-    /// middle is matched line by line on its longest common subsequence.
-    public static func lines(old: String?, new: String?) -> [Line] {
-        let oldLines = split(old)
-        let newLines = split(new)
-        var prefix = 0
-        while prefix < oldLines.count, prefix < newLines.count, oldLines[prefix] == newLines[prefix] {
-            prefix += 1
-        }
-        var suffix = 0
-        while suffix < oldLines.count - prefix, suffix < newLines.count - prefix,
-            oldLines[oldLines.count - 1 - suffix] == newLines[newLines.count - 1 - suffix]
-        {
-            suffix += 1
-        }
-        let oldMiddle = Array(oldLines[prefix..<(oldLines.count - suffix)])
-        let newMiddle = Array(newLines[prefix..<(newLines.count - suffix)])
-
-        var result = oldLines[0..<prefix].map { Line(.context, $0) }
-        result += middle(oldMiddle, newMiddle)
-        result += oldLines[(oldLines.count - suffix)...].map { Line(.context, $0) }
-        return result
-    }
-
-    private static func split(_ text: String?) -> [String] {
-        guard let text, !text.isEmpty else { return [] }
-        var lines = text.components(separatedBy: "\n")
-        // A final newline ends the last line; it does not start another.
-        if lines.count > 1, lines.last == "" { lines.removeLast() }
-        return lines
-    }
-
-    private static func middle(_ old: [String], _ new: [String]) -> [Line] {
-        if old.isEmpty { return new.map { Line(.added, $0) } }
-        if new.isEmpty { return old.map { Line(.removed, $0) } }
-        guard old.count <= searchLimit, new.count <= searchLimit else {
-            return old.map { Line(.removed, $0) } + new.map { Line(.added, $0) }
-        }
-        // lengths[i][j]: the longest common subsequence of old[i...] and new[j...].
-        var lengths = Array(repeating: Array(repeating: 0, count: new.count + 1), count: old.count + 1)
-        for i in stride(from: old.count - 1, through: 0, by: -1) {
-            for j in stride(from: new.count - 1, through: 0, by: -1) {
-                lengths[i][j] = old[i] == new[j] ? lengths[i + 1][j + 1] + 1 : max(lengths[i + 1][j], lengths[i][j + 1])
-            }
-        }
-        var result: [Line] = []
-        var i = 0
-        var j = 0
-        while i < old.count, j < new.count {
-            if old[i] == new[j] {
-                result.append(Line(.context, old[i]))
-                i += 1
-                j += 1
-            } else if lengths[i + 1][j] >= lengths[i][j + 1] {
-                result.append(Line(.removed, old[i]))
-                i += 1
-            } else {
-                result.append(Line(.added, new[j]))
-                j += 1
-            }
-        }
-        result += old[i...].map { Line(.removed, $0) }
-        result += new[j...].map { Line(.added, $0) }
-        return result
-    }
-}
+public typealias VitruvianCodeLineDiff = VitruvianCodeCore.VitruvianCodeLineDiff
 
 /// The steps a reply took, each a row that opens into what the tool did.
 struct VitruvianCodeToolStepList: View {
     let steps: [VitruvianCodeToolStep]
     let strings: VitruvianCodeChatStrings
     var workingDirectory: String? = nil
-    var openFileURL: (URL) -> Void = { _ = VitruvianCodeMessageBubble.open($0) }
+    var openFileURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
     @State private var expanded: Set<String> = []
 
     var body: some View {
@@ -177,7 +69,7 @@ struct VitruvianCodeToolStepRow: View {
     let step: VitruvianCodeToolStep
     let strings: VitruvianCodeChatStrings
     var workingDirectory: String? = nil
-    var openFileURL: (URL) -> Void = { _ = VitruvianCodeMessageBubble.open($0) }
+    var openFileURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
     let isExpanded: Bool
     let toggle: () -> Void
     @State private var hovering = false
@@ -284,7 +176,63 @@ struct VitruvianCodeToolStepDetail: View {
     let step: VitruvianCodeToolStep
     let strings: VitruvianCodeChatStrings
     var workingDirectory: String? = nil
-    var openFileURL: (URL) -> Void = { _ = VitruvianCodeMessageBubble.open($0) }
+    var openFileURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
+
+    enum LocationOpenAction: Equatable, Sendable {
+        case openAsText(URL)
+        case reveal(URL)
+        case none
+    }
+
+    /// Pure decision for opening an agent-reported tool-card location safely:
+    /// resolves symlinks first; opens regular text-conforming files (including scripts
+    /// like `.command`) in the default plain-text app so they are never executed;
+    /// reveals bundles/directories/binaries in Finder; returns `.none` if missing.
+    static func locationOpenAction(for url: URL) -> LocationOpenAction {
+        guard url.isFileURL else { return .none }
+        let cleanPath = url.path
+        guard !cleanPath.isEmpty,
+              let cResolved = Darwin.realpath(cleanPath, nil) else {
+            return .none
+        }
+        defer { free(cResolved) }
+        let resolvedURL = URL(fileURLWithPath: String(cString: cResolved))
+        guard let values = try? resolvedURL.resourceValues(
+            forKeys: [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .contentTypeKey]
+        ) else {
+            return .none
+        }
+        let isRegularFile = values.isRegularFile == true
+            && values.isDirectory != true
+            && values.isPackage != true
+        if isRegularFile {
+            let contentType = values.contentType
+                ?? UTType(filenameExtension: resolvedURL.pathExtension)
+            if let contentType, contentType.conforms(to: .text) {
+                return .openAsText(resolvedURL)
+            }
+        }
+        return .reveal(resolvedURL)
+    }
+
+    static func openToolLocationURL(_ url: URL) {
+        switch locationOpenAction(for: url) {
+        case .openAsText(let resolvedURL):
+            if let textAppURL = NSWorkspace.shared.urlForApplication(toOpen: .plainText) {
+                NSWorkspace.shared.open(
+                    [resolvedURL],
+                    withApplicationAt: textAppURL,
+                    configuration: NSWorkspace.OpenConfiguration()
+                )
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([resolvedURL])
+            }
+        case .reveal(let resolvedURL):
+            NSWorkspace.shared.activateFileViewerSelecting([resolvedURL])
+        case .none:
+            break
+        }
+    }
 
     /// One line of the 11-point monospaced text these cards draw.
     static let lineHeight: CGFloat = 15
@@ -343,7 +291,7 @@ struct VitruvianCodeToolStepDetail: View {
     static func openLocation(
         _ location: VitruvianCodeToolStep.Location,
         workingDirectory: String?,
-        openURL: (URL) -> Void = { _ = VitruvianCodeMessageBubble.open($0) }
+        openURL: (URL) -> Void = { VitruvianCodeToolStepDetail.openToolLocationURL($0) }
     ) -> Bool {
         guard let url = safeLocationURL(for: location, workingDirectory: workingDirectory),
               url.isFileURL else {

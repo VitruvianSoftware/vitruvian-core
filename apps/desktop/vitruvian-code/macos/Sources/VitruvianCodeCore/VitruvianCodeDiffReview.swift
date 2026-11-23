@@ -20,6 +20,7 @@
 
 import Combine
 import CoreGraphics
+import Darwin
 import Foundation
 
 // MARK: - Annotate AI Diffs
@@ -321,10 +322,97 @@ public enum VitruvianCodeDiffParser: Sendable {
         return (oldStart, newStart)
     }
 
+    /// Maximum file size read when anchoring agent-reported diff snippets to real line numbers.
+    public static let maxAnchoredFileBytes = 2 * 1024 * 1024
+
+    /// Reads a regular file inside `workingDirectory` (resolving symlinks, rejecting escapes
+    /// and files larger than `maxBytes`) so diff hunks can anchor to real line numbers.
+    static func readSafeWorkingDirectoryFile(
+        diffPath: String,
+        workingDirectory: String?,
+        maxBytes: Int = maxAnchoredFileBytes
+    ) -> String? {
+        guard let workingDirectory, !workingDirectory.isEmpty else { return nil }
+        let expandedWorkdir = (workingDirectory as NSString).expandingTildeInPath
+        guard let cWorkdir = Darwin.realpath(expandedWorkdir, nil) else { return nil }
+        defer { free(cWorkdir) }
+        let resolvedWorkdir = String(cString: cWorkdir)
+        let workdirPrefix = resolvedWorkdir == "/"
+            ? "/"
+            : (resolvedWorkdir.hasSuffix("/") ? resolvedWorkdir : resolvedWorkdir + "/")
+
+        let trimmed = diffPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.contains("\0"),
+              !trimmed.contains("\r"),
+              !trimmed.contains("\n") else {
+            return nil
+        }
+        let candidatePath: String
+        if trimmed.hasPrefix("/") {
+            candidatePath = trimmed
+        } else if trimmed.hasPrefix("~/") {
+            candidatePath = (trimmed as NSString).expandingTildeInPath
+        } else {
+            candidatePath = (resolvedWorkdir as NSString).appendingPathComponent(trimmed)
+        }
+
+        guard let cTarget = Darwin.realpath(candidatePath, nil) else { return nil }
+        defer { free(cTarget) }
+        let resolvedPath = String(cString: cTarget)
+        guard resolvedPath.hasPrefix(workdirPrefix) else { return nil }
+
+        let fd = Darwin.open(resolvedPath, O_RDONLY | O_NOFOLLOW)
+        guard fd >= 0 else { return nil }
+        defer { Darwin.close(fd) }
+
+        var st = stat()
+        guard Darwin.fstat(fd, &st) == 0 else { return nil }
+        guard (st.st_mode & S_IFMT) == S_IFREG,
+              st.st_size >= 0,
+              Int64(st.st_size) <= Int64(maxBytes) else {
+            return nil
+        }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 16_384)
+        while true {
+            let n = buffer.withUnsafeMutableBytes { ptr -> Int in
+                guard let base = ptr.baseAddress else { return -1 }
+                return Darwin.read(fd, base, ptr.count)
+            }
+            if n < 0 {
+                if errno == EINTR { continue }
+                return nil
+            }
+            if n == 0 { break }
+            if data.count + n > maxBytes { return nil }
+            data.append(buffer, count: n)
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Returns the 1-based start line when `needle` appears exactly once in `haystack`.
+    static func uniqueStartLine(of needle: [String], in haystack: [String]) -> Int? {
+        guard !needle.isEmpty, needle.count <= haystack.count else { return nil }
+        var matchIndex: Int?
+        let lastStart = haystack.count - needle.count
+        for idx in 0...lastStart {
+            if haystack[idx..<(idx + needle.count)].elementsEqual(needle) {
+                if matchIndex != nil {
+                    return nil
+                }
+                matchIndex = idx
+            }
+        }
+        return matchIndex.map { $0 + 1 }
+    }
+
     /// Converts live agent-reported diffs into `VitruvianCodeDiffFile` entries grouped by file path.
     public static func buildDiffFiles(
         from diffs: [VitruvianCodeToolStep.Diff],
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        maxAnchoredFileBytes: Int = maxAnchoredFileBytes
     ) -> [VitruvianCodeDiffFile] {
         var order: [String] = []
         var grouped: [String: [VitruvianCodeToolStep.Diff]] = [:]
@@ -359,6 +447,20 @@ public enum VitruvianCodeDiffParser: Sendable {
             grouped[key]?.append(diff)
         }
 
+        var cachedFileLines: [String: [String]?] = [:]
+        func fileLines(for rawPath: String) -> [String]? {
+            if let cached = cachedFileLines[rawPath] {
+                return cached
+            }
+            let loaded = readSafeWorkingDirectoryFile(
+                diffPath: rawPath,
+                workingDirectory: workingDirectory,
+                maxBytes: maxAnchoredFileBytes
+            ).map { VitruvianCodeLineDiff.splitLines($0) }
+            cachedFileLines[rawPath] = loaded
+            return loaded
+        }
+
         var files: [VitruvianCodeDiffFile] = []
         for path in order {
             let entries = grouped[path] ?? []
@@ -369,10 +471,27 @@ public enum VitruvianCodeDiffParser: Sendable {
             var lineCounter = 0
 
             for (hunkIndex, diff) in entries.enumerated() {
-                let oldLines = splitDiffLines(diff.oldText)
-                let newLines = splitDiffLines(diff.newText)
-                let ops = computeDiffOperations(old: oldLines, new: newLines)
-                let header = "@@ -1,\(oldLines.count) +1,\(newLines.count) @@"
+                let oldLines = VitruvianCodeLineDiff.splitLines(diff.oldText)
+                let newLines = VitruvianCodeLineDiff.splitLines(diff.newText)
+                let diffLines = VitruvianCodeLineDiff.lines(old: diff.oldText, new: diff.newText)
+
+                let anchoredStart: Int?
+                if newLines.isEmpty {
+                    anchoredStart = nil
+                } else {
+                    anchoredStart = fileLines(for: diff.path).flatMap {
+                        uniqueStartLine(of: newLines, in: $0)
+                    }
+                }
+
+                let header: String
+                if let startLine = anchoredStart {
+                    let oldStart = oldLines.isEmpty ? 0 : startLine
+                    header = "@@ -\(oldStart),\(oldLines.count) +\(startLine),\(newLines.count) @@"
+                } else {
+                    header = "@@ -?,\(oldLines.count) +?,\(newLines.count) @@"
+                }
+
                 lineCounter += 1
                 var hunkLines: [VitruvianCodeDiffLine] = [
                     VitruvianCodeDiffLine(
@@ -383,46 +502,46 @@ public enum VitruvianCodeDiffParser: Sendable {
                         content: header
                     )
                 ]
-                var oldNo = 1
-                var newNo = 1
-                for op in ops {
+                var oldNo = anchoredStart
+                var newNo = anchoredStart
+                for diffLine in diffLines {
                     lineCounter += 1
-                    switch op {
-                    case .context(let text):
+                    switch diffLine.kind {
+                    case .context:
                         hunkLines.append(
                             VitruvianCodeDiffLine(
                                 id: "\(path):h\(hunkIndex):l\(lineCounter)",
                                 kind: .context,
                                 oldLineNumber: oldNo,
                                 newLineNumber: newNo,
-                                content: text
+                                content: diffLine.text
                             )
                         )
-                        oldNo += 1
-                        newNo += 1
-                    case .deletion(let text):
+                        oldNo = oldNo.map { $0 + 1 }
+                        newNo = newNo.map { $0 + 1 }
+                    case .removed:
                         hunkLines.append(
                             VitruvianCodeDiffLine(
                                 id: "\(path):h\(hunkIndex):l\(lineCounter)",
                                 kind: .deletion,
                                 oldLineNumber: oldNo,
                                 newLineNumber: nil,
-                                content: text
+                                content: diffLine.text
                             )
                         )
-                        oldNo += 1
+                        oldNo = oldNo.map { $0 + 1 }
                         removedCount += 1
-                    case .addition(let text):
+                    case .added:
                         hunkLines.append(
                             VitruvianCodeDiffLine(
                                 id: "\(path):h\(hunkIndex):l\(lineCounter)",
                                 kind: .addition,
                                 oldLineNumber: nil,
                                 newLineNumber: newNo,
-                                content: text
+                                content: diffLine.text
                             )
                         )
-                        newNo += 1
+                        newNo = newNo.map { $0 + 1 }
                         addedCount += 1
                     }
                 }
@@ -448,72 +567,6 @@ public enum VitruvianCodeDiffParser: Sendable {
             )
         }
         return files
-    }
-
-    private enum DiffOp {
-        case context(String)
-        case deletion(String)
-        case addition(String)
-    }
-
-    private static func splitDiffLines(_ text: String?) -> [String] {
-        guard let text, !text.isEmpty else { return [] }
-        var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-        if lines.count > 1, lines.last == "" {
-            lines.removeLast()
-        }
-        return lines
-    }
-
-    private static func computeDiffOperations(old: [String], new: [String]) -> [DiffOp] {
-        var prefix = 0
-        while prefix < old.count, prefix < new.count, old[prefix] == new[prefix] {
-            prefix += 1
-        }
-        var suffix = 0
-        while suffix < old.count - prefix, suffix < new.count - prefix,
-              old[old.count - 1 - suffix] == new[new.count - 1 - suffix] {
-            suffix += 1
-        }
-        let oldMid = Array(old[prefix..<(old.count - suffix)])
-        let newMid = Array(new[prefix..<(new.count - suffix)])
-        var ops: [DiffOp] = old[0..<prefix].map { .context($0) }
-        if oldMid.isEmpty {
-            ops += newMid.map { .addition($0) }
-        } else if newMid.isEmpty {
-            ops += oldMid.map { .deletion($0) }
-        } else if oldMid.count <= 400, newMid.count <= 400 {
-            var lengths = Array(repeating: Array(repeating: 0, count: newMid.count + 1), count: oldMid.count + 1)
-            for i in stride(from: oldMid.count - 1, through: 0, by: -1) {
-                for j in stride(from: newMid.count - 1, through: 0, by: -1) {
-                    lengths[i][j] = oldMid[i] == newMid[j]
-                        ? lengths[i + 1][j + 1] + 1
-                        : max(lengths[i + 1][j], lengths[i][j + 1])
-                }
-            }
-            var i = 0
-            var j = 0
-            while i < oldMid.count, j < newMid.count {
-                if oldMid[i] == newMid[j] {
-                    ops.append(.context(oldMid[i]))
-                    i += 1
-                    j += 1
-                } else if lengths[i + 1][j] >= lengths[i][j + 1] {
-                    ops.append(.deletion(oldMid[i]))
-                    i += 1
-                } else {
-                    ops.append(.addition(newMid[j]))
-                    j += 1
-                }
-            }
-            ops += oldMid[i...].map { .deletion($0) }
-            ops += newMid[j...].map { .addition($0) }
-        } else {
-            ops += oldMid.map { .deletion($0) }
-            ops += newMid.map { .addition($0) }
-        }
-        ops += old[(old.count - suffix)...].map { .context($0) }
-        return ops
     }
 }
 
