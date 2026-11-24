@@ -1878,15 +1878,35 @@ public struct VitruvianCodeContextUsage: Equatable, Sendable, Codable {
     }
 
     /// The window a model is likely to have when nothing reports it: a
-    /// million for Gemini and the 1M variants, 128k for the local and
-    /// smaller open models, 200k for the rest (Claude, GLM, GPT).
+    /// million for Gemini, the 1M variants and every current Claude model,
+    /// 128k for the local and smaller open models, 200k for the rest (GLM,
+    /// GPT, and Claude models before the 4.6 generation, Haiku 4.5 included).
     public static func defaultContextWindow(for model: String?, provider: VitruvianCodeCLIProvider) -> Int {
         let name = (model ?? "").lowercased()
         if name.contains("1m") || name.contains("gemini") { return 1_000_000 }
         if name.contains("deepseek") || name.contains("llama") || provider.route == .ollama { return 128_000 }
         // Antigravity runs Gemini unless a model says otherwise.
         if name.isEmpty, provider.route == .antigravity { return 1_000_000 }
+        if isClaudeModel(name, provider: provider) {
+            return isClaudeBefore46(name) ? 200_000 : 1_000_000
+        }
         return 200_000
+    }
+
+    /// A Claude model by name or alias, or the Claude provider's default.
+    private static func isClaudeModel(_ name: String, provider: VitruvianCodeCLIProvider) -> Bool {
+        if name.contains("claude") { return true }
+        if ["opus", "sonnet", "haiku", "fable", "mythos"].contains(where: { name.contains($0) }) { return true }
+        return provider.route == .claude && (name.isEmpty || name == "default")
+    }
+
+    /// Claude models released before the 4.6 generation, which have 200k:
+    /// the 3.x family and 4.0, 4.1 and 4.5 (Haiku 4.5 included).
+    private static func isClaudeBefore46(_ name: String) -> Bool {
+        if name.contains("claude-3") { return true }
+        let old = ["-4-5", "-4-1", "-4-0", "-4-2025", "opus-4@", "sonnet-4@"]
+        if old.contains(where: { name.contains($0) }) { return true }
+        return name.hasSuffix("-4") && (name.contains("opus") || name.contains("sonnet"))
     }
 
     static func compact(_ tokens: Int) -> String {

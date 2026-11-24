@@ -256,6 +256,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// the live fields it survives an idle shutdown, so a chat that was moved
     /// to another folder while idle still starts fresh there.
     private var lastLaunchDirectory: String?
+    /// The folder a reopened conversation ran in, with the folder setting at
+    /// the time it was reopened. A conversation belongs to its folder, as a
+    /// T3 Code thread belongs to its project, so it goes on running there
+    /// until the person picks another folder (the setting changes).
+    private var resumedDirectory: (path: String, configured: String)?
     private var liveEventDrainTask: Task<Void, Never>?
     private var idleShutdownTask: Task<Void, Never>?
     private var pendingConnectionStops: [UUID: Task<Void, Never>] = [:]
@@ -737,6 +742,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // The last conversation's subagents are not this one's.
         activeSubagents = []
         conversationID = summary.id
+        let folder = summary.workspace.trimmingCharacters(in: .whitespaces)
+        resumedDirectory = !folder.isEmpty && environment.fileExists(folder)
+            ? (folder, configuration.workingDirectory)
+            : nil
         restoreChatModes(for: summary.id)
         restoreChatConnectionOverride(for: summary.id)
         let effectiveTitle = summary.title.isEmpty
@@ -2039,6 +2048,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         activity = nil
         replyID = nil
         conversationID = nil
+        resumedDirectory = nil
         clearChatModesForNewChat()
         clearChatConnectionOverrideForNewChat()
         sessionAllowedTools = []
@@ -2268,8 +2278,19 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         checkpointTimeline.clear()
     }
 
-    /// The bot's folder setting, `~` expanded; home when unset or gone.
+    /// The person picked a folder: it wins over the one a reopened
+    /// conversation ran in, even when it is the folder already set.
+    public func forgetResumedFolder() {
+        resumedDirectory = nil
+    }
+
+    /// The bot's folder setting, `~` expanded; home when unset or gone. A
+    /// reopened conversation keeps the folder it ran in until the setting
+    /// changes.
     public func workingDirectory(for configuration: VitruvianCodeConfiguration) -> String {
+        if let resumed = resumedDirectory, resumed.configured == configuration.workingDirectory {
+            return resumed.path
+        }
         let configured = configuration.workingDirectory.trimmingCharacters(in: .whitespaces)
         guard !configured.isEmpty else { return environment.home }
         let expanded = VitruvianCodeSupport.botDirectory(configured: configured, home: environment.home)
