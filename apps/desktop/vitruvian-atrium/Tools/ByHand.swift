@@ -19,7 +19,11 @@
 import AppKit
 import ApplicationServices
 
-let bundleID = "com.vitruviansoftware.vitruvian"
+guard let target = ByHandRules.target(Array(CommandLine.arguments.dropFirst())) else {
+    FileHandle.standardError.write(Data((ByHandRules.usage + "\n").utf8))
+    exit(64)
+}
+let bundleID = target.bundleID
 typealias Words = ByHandRules.Words
 
 enum Exit: Int32 {
@@ -531,7 +535,7 @@ func launchApp() {
 
 // MARK: - The command
 
-guard let command = ByHandRules.parse(Array(CommandLine.arguments.dropFirst())) else {
+guard let command = ByHandRules.parse(target.words) else {
     stop(.usage, ByHandRules.usage)
 }
 

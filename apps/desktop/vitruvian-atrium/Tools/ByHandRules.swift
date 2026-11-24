@@ -216,7 +216,10 @@ enum ByHandRules {
         from the shell, to do the checks by hand of
         docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md.
 
-          bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- <command>
+          bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- [--bundle-id ID] <command>
+
+        With --bundle-id it drives the running app with that bundle id instead,
+        such as a test copy of another menu-bar app.
 
         It drives the app that is running, the person's own: say so before you
         start. It finds the app by its bundle id, needs the terminal it runs
@@ -267,6 +270,20 @@ enum ByHandRules {
         offered, or the app refused; 2 Vitruvian Atrium is not running; 3 this
         terminal has no Accessibility; 64 the command line is wrong.
         """
+
+    /// The app this command drives: Vitruvian Atrium unless the command line
+    /// starts with `--bundle-id ID`, so the same command can drive a test copy
+    /// of another menu-bar app (Vitruvian Code's click-through, 2026-11-23,
+    /// runs a copy under its own bundle id, which the screen tools cannot see).
+    /// Returns the bundle id and the words that are left. Nil when
+    /// `--bundle-id` has no id after it.
+    static let defaultBundleID = "com.vitruviansoftware.vitruvian"
+
+    static func target(_ arguments: [String]) -> (bundleID: String, words: [String])? {
+        guard arguments.first == "--bundle-id" else { return (defaultBundleID, arguments) }
+        guard arguments.count >= 2, !arguments[1].isEmpty, !arguments[1].hasPrefix("--") else { return nil }
+        return (arguments[1], Array(arguments.dropFirst(2)))
+    }
 
     /// Reads the command line, without the program's own name. Nil when it
     /// is not one of the commands above, or has a word too many or too few.
