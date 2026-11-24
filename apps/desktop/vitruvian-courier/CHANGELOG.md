@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.39](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.38...vitruvian-courier-v0.3.39) (2026-11-24)
+
+
+### Features
+
+* **vitruvian-courier:** drag pinned chats in full-row mode ([#5426](https://github.com/VitruvianSoftware/vitruvian-core/issues/5426)) ([e0e2e1b](https://github.com/VitruvianSoftware/vitruvian-core/commit/e0e2e1ba5f6bcedcbca4eb60fcef74d8b0e4e308))
+
 ## [0.3.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.37...vitruvian-courier-v0.3.38) (2026-11-23)
 
 
