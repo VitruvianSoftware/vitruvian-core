@@ -267,6 +267,44 @@ final class LiveComposerControlsTests: XCTestCase {
         await session.stopAll()
     }
 
+    /// Design section 8: Auto (Claude decides for itself what is safe to run) is offered per chat on
+    /// the Claude SDK connection only, and never becomes the global default.
+    func testAutoIsOfferedForAClaudeSDKChatOnlyAndNeverBecomesTheGlobalDefault() {
+        XCTAssertEqual(ChatApprovalModeBadge.choices(connection: .claudeSDK), [.yolo, .auto, .acceptEdits, .standard, .plan])
+        for connection: AgentConnectionKind? in [.acp, .claudeACP, .commandLine, nil] {
+            XCTAssertFalse(ChatApprovalModeBadge.choices(connection: connection).contains(.auto),
+                           "Auto is Claude SDK only, not \(String(describing: connection))")
+        }
+
+        let rig = ComposerRig()
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: rig.host)
+        func choose(_ provider: VitruvianCodeCLIProvider) {
+            rig.host.savedProviders = [provider]
+            rig.host.chosenProviderID = provider.id
+            var config = engine.configuration
+            config.approvalMode = .standard
+            engine.updateChatConfiguration(config)
+            XCTAssertEqual(engine.session.effectiveConnectionKind(for: engine.configuration.activeProvider), provider.connection)
+        }
+        var sdk = VitruvianCodeCLIProvider.claude
+        sdk.connection = .claudeSDK
+        choose(sdk)
+
+        ChatApprovalModeBadge.applySelection(.auto, session: engine.session, engine: engine)
+        XCTAssertEqual(engine.session.chatApprovalMode, .auto, "Auto is this chat's own mode")
+        XCTAssertEqual(engine.configuration.approvalMode, .standard, "the global default is untouched")
+        XCTAssertFalse(VitruvianCodeApprovalMode.globalChoices.contains(.auto))
+
+        // On another connection the choice does nothing: never the chat's, never the global one.
+        for other in [Self.liveACPProvider, Self.commandLineProvider] {
+            engine.session.newChat()
+            choose(other)
+            ChatApprovalModeBadge.applySelection(.auto, session: engine.session, engine: engine)
+            XCTAssertNil(engine.session.chatApprovalMode)
+            XCTAssertEqual(engine.configuration.approvalMode, .standard)
+        }
+    }
+
     // MARK: - 4. Slash command metadata mapping
 
     func testSlashCommandMetadataMappingPreservesDescriptionsHintsAndPlainText() async throws {

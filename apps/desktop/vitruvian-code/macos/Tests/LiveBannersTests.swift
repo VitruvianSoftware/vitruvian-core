@@ -715,6 +715,58 @@ final class LiveBannersTests: XCTestCase {
         await session.stopAll()
     }
 
+    // MARK: - 6. Failed starts
+
+    /// A start that fails before the agent connects is a failed live start: the chat shows the
+    /// error card with Retry and "Use command line for this chat", not the plain failed-turn bar.
+    func testAProgramThatIsNotInstalledOffersRetryAndTheCommandLine() {
+        let env = makeEnvironment { spec in LiveBannersMockConnection(spec: spec) }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveBannersMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.claudeSDKProvider)
+
+        session.send("Hello", configuration: config, agentPath: nil)
+
+        let failure = session.lastLiveFailure
+        XCTAssertNotNil(failure, "a start that never connected must raise the live error card")
+        XCTAssertEqual(failure?.source, .generic)
+        XCTAssertEqual(failure?.isLocked, false)
+        XCTAssertEqual(session.lastFailedPrompt, "Hello", "Retry needs the prompt that failed")
+        XCTAssertTrue(failure?.message.contains("in PATH") == true, "the card names the missing program")
+        XCTAssertNotEqual(session.chatConnectionOverride, .commandLine, "the card is shown for a live chat")
+    }
+
+    func testACommandLineChatKeepsThePlainFailedTurnBarForAMissingProgram() {
+        let env = makeEnvironment { spec in LiveBannersMockConnection(spec: spec) }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveBannersMockHost())
+        session.takeCheckpoint = { _ in nil }
+        var provider = Self.claudeSDKProvider
+        provider.connection = .commandLine
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: provider)
+
+        session.send("Hello", configuration: config, agentPath: nil)
+
+        XCTAssertNil(session.lastLiveFailure)
+    }
+
+    func testAStartThatThrowsRaisesTheLiveErrorCardWithTheProgramError() async throws {
+        let env = makeEnvironment { spec in
+            let conn = LiveBannersMockConnection(spec: spec)
+            conn.failStart = true
+            return conn
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveBannersMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.claudeSDKProvider)
+
+        session.send("Hello", configuration: config, agentPath: "/fake/claude")
+        try await waitUntil("start failed") { !session.isRunning && session.consecutiveRestartFailures == 1 }
+
+        XCTAssertNotNil(session.lastLiveFailure)
+        XCTAssertEqual(session.lastFailedPrompt, "Hello")
+        await session.stopAll()
+    }
+
     // MARK: - Helpers
 
     private func uiSource(_ name: String) throws -> String {
