@@ -44,6 +44,13 @@ def _resolve_action_path() -> Path:
     return Path(__file__).resolve().parent / "action.yml"
 
 
+def _resolve_go_cache_workflow_path() -> Path:
+    env_path = os.environ.get("GO_CACHE_WORKFLOW_PATH")
+    if env_path and os.path.isfile(env_path):
+        return Path(env_path)
+    return Path(__file__).resolve().parents[3] / ".github/workflows/go-cache.yaml"
+
+
 def test_build_cache_key_matches_setup_go_format():
     linux_key = cache_key.build_cache_key(
         runner_os="Linux",
@@ -145,10 +152,99 @@ def test_main_writes_key_and_cache_paths_in_exact_order(tmp_path: Path, monkeypa
 def test_composite_action_wiring():
     text = _resolve_action_path().read_text(encoding="utf-8")
     assert "cache: false" in text
+    assert "mode:" in text
+    assert "SETUP_GO_MODE: ${{ inputs.mode }}" in text
     assert "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" in text
     assert "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" in text
-    assert "github.ref != 'refs/heads/main'" in text
-    assert "github.ref == 'refs/heads/main'" in text
+    assert (
+        "(github.ref != 'refs/heads/main' || inputs.mode == 'restore') && steps.cache-key.outputs.key != ''"
+        in text
+    )
+    assert (
+        "github.ref == 'refs/heads/main' && inputs.mode != 'restore' && steps.cache-key.outputs.key != ''"
+        in text
+    )
     gomod_idx = text.index("steps.cache-key.outputs.gomodcache")
     gocache_idx = text.index("steps.cache-key.outputs.gocache")
     assert gomod_idx < gocache_idx
+
+
+def _run_main_with_go_version(
+    tmp_path: Path, monkeypatch, go_version: str, mode: str = "auto"
+):
+    go_mod = tmp_path / "go.mod"
+    go_mod.write_text("module example.com/test\n\ngo 1.26.10\n", encoding="utf-8")
+    out_file = tmp_path / "github_output.txt"
+    out_file.unlink(missing_ok=True)
+
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("RUNNER_OS", "Linux")
+    monkeypatch.setenv("RUNNER_ARCH", "X64")
+    monkeypatch.setenv("ImageOS", "ubuntu26")
+    monkeypatch.setenv("GO_VERSION", go_version)
+    monkeypatch.setenv("SETUP_GO_MODE", mode)
+    monkeypatch.setenv("GOMODCACHE_OUT", "/home/runner/go/pkg/mod")
+    monkeypatch.setenv("GOCACHE_OUT", "/home/runner/.cache/go-build")
+    monkeypatch.delenv("CACHE_DEPENDENCY_PATH", raising=False)
+
+    rc = cache_key.main(["--github-output", str(out_file)])
+    return rc, out_file
+
+
+def test_go_version_rejects_newline_and_writes_no_output(
+    tmp_path: Path, monkeypatch, capsys
+):
+    for bad in ("1.26.10\n", "1.26.10\nevil=1", "1.26.10\r", "1.26.10\r\nevil=1"):
+        rc, out_file = _run_main_with_go_version(tmp_path, monkeypatch, bad)
+        assert rc != 0
+        assert not out_file.exists() or out_file.read_text(encoding="utf-8") == ""
+        err = capsys.readouterr().err
+        assert "Invalid GO_VERSION" in err
+
+
+def test_go_version_rejects_spaces_and_empty(tmp_path: Path, monkeypatch, capsys):
+    for bad in ("", "   ", " 1.26.10", "1.26.10 ", "1.26 10", "1.26.10;id"):
+        rc, out_file = _run_main_with_go_version(tmp_path, monkeypatch, bad)
+        assert rc != 0
+        assert not out_file.exists() or out_file.read_text(encoding="utf-8") == ""
+        err = capsys.readouterr().err
+        assert "Invalid GO_VERSION" in err
+
+
+def test_go_version_accepts_valid_and_validates_mode(tmp_path: Path, monkeypatch):
+    rc, out_file = _run_main_with_go_version(
+        tmp_path, monkeypatch, "1.26.10", mode="save"
+    )
+    assert rc == 0
+    text = out_file.read_text(encoding="utf-8")
+    assert "key=setup-go-Linux-x64-ubuntu26-go-1.26.10-" in text
+
+    rc_bad_mode, out_bad = _run_main_with_go_version(
+        tmp_path, monkeypatch, "1.26.10", mode="invalid"
+    )
+    assert rc_bad_mode != 0
+    assert not out_bad.exists() or out_bad.read_text(encoding="utf-8") == ""
+
+
+def test_go_cache_warm_workflow_wiring():
+    text = _resolve_go_cache_workflow_path().read_text(encoding="utf-8")
+    non_comment = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "push:" in non_comment
+    assert "branches: [main]" in non_comment
+    assert "schedule:" in non_comment
+    assert "workflow_dispatch:" in non_comment
+    assert "queued" not in non_comment
+    for job_id in (
+        "warm-go-lint-devx:",
+        "warm-go-test-infra:",
+        "warm-example-build:",
+        "warm-pagerduty:",
+        "warm-stripe:",
+        "warm-sentry:",
+    ):
+        assert job_id in non_comment
+    assert non_comment.count("uses: ./.github/actions/setup-go") == 6
+    assert non_comment.count("mode: save") == 6
+    assert non_comment.count("github.ref == 'refs/heads/main'") == 6

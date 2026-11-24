@@ -32,6 +32,29 @@ py_test(
     # pytest skips directories whose name starts with a dot (.github), so name
     # the file, or it collects nothing and fails with exit code 5.
     args = ["$(rootpath setup_go_cache_key_test.py)"],
-    data = ["action.yml"],
-    env = {"SETUP_GO_ACTION_PATH": "$(rootpath action.yml)"},
+    data = [
+        "action.yml",
+        "//:.github/workflows/go-cache.yaml",
+    ],
+    env = {
+        "SETUP_GO_ACTION_PATH": "$(rootpath action.yml)",
+        "GO_CACHE_WORKFLOW_PATH": "$(rootpath //:.github/workflows/go-cache.yaml)",
+    },
+)
+
+py_test(
+    name = "setup_go_key_repro_test",
+    size = "small",
+    srcs = [
+        "cache_key.py",
+        "setup_go_key_repro_test.py",
+    ],
+    args = [
+        "-s",
+        "$(rootpath setup_go_key_repro_test.py)",
+    ],
+    tags = [
+        "local",
+        "manual",
+    ],
 )

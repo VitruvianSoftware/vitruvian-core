@@ -40,6 +40,10 @@ inputs:
     description: Dependency file glob(s) for the Go cache key (defaults to go.mod at workspace root).
     required: false
     default: ""
+  mode:
+    description: "Cache mode: 'auto' (default: restore on non-main, restore+save on main), 'restore' (restore only), or 'save' (main only: restore+save)."
+    required: false
+    default: "auto"
 
 outputs:
   go-version:
@@ -47,7 +51,7 @@ outputs:
     value: ${{ steps.setup-go.outputs.go-version }}
   cache-hit:
     description: Whether an exact-key Go cache hit occurred.
-    value: ${{ github.ref == 'refs/heads/main' && steps.cache-save.outputs.cache-hit || steps.cache-restore.outputs.cache-hit }}
+    value: ${{ github.ref == 'refs/heads/main' && inputs.mode != 'restore' && steps.cache-save.outputs.cache-hit || steps.cache-restore.outputs.cache-hit }}
   GOMODCACHE:
     description: The value of `go env GOMODCACHE`.
     value: ${{ steps.cache-key.outputs.gomodcache }}
@@ -75,13 +79,14 @@ runs:
         GOMODCACHE_OUT: ${{ steps.setup-go.outputs.GOMODCACHE }}
         GOCACHE_OUT: ${{ steps.setup-go.outputs.GOCACHE }}
         CACHE_DEPENDENCY_PATH: ${{ inputs.cache-dependency-path }}
+        SETUP_GO_MODE: ${{ inputs.mode }}
       run: |
         set -euo pipefail
         python3 "${GITHUB_ACTION_PATH}/cache_key.py" --github-output "${GITHUB_OUTPUT}"
 
     - name: Restore Go cache (read-only)
       id: cache-restore
-      if: github.ref != 'refs/heads/main' && steps.cache-key.outputs.key != ''
+      if: (github.ref != 'refs/heads/main' || inputs.mode == 'restore') && steps.cache-key.outputs.key != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: |
@@ -91,7 +96,7 @@ runs:
 
     - name: Restore and save Go cache (main only)
       id: cache-save
-      if: github.ref == 'refs/heads/main' && steps.cache-key.outputs.key != ''
+      if: github.ref == 'refs/heads/main' && inputs.mode != 'restore' && steps.cache-key.outputs.key != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: |

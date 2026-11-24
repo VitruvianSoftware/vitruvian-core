@@ -32,6 +32,12 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+DEFAULT_DEPENDENCY_PATH = "go.mod"
+
+GO_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+(\.[0-9]+)?([a-z0-9.]*)?$")
+
+VALID_MODES = frozenset({"auto", "restore", "save"})
+
 RUNNER_ARCH_TO_NODE = {
     "X64": "x64",
     "ARM64": "arm64",
@@ -297,6 +303,29 @@ def resolve_go_cache_paths(
     return gomodcache, gocache
 
 
+def validate_go_version(raw_value: str) -> str:
+    """Validate GO_VERSION is a single-line Go version string."""
+    if "\n" in raw_value or "\r" in raw_value:
+        raise ValueError(
+            f"Invalid GO_VERSION {raw_value!r}: must be a single line with no newline or carriage return"
+        )
+    if not raw_value or not GO_VERSION_RE.match(raw_value):
+        raise ValueError(
+            f"Invalid GO_VERSION {raw_value!r}: must match {GO_VERSION_RE.pattern}"
+        )
+    return raw_value
+
+
+def validate_mode(raw_mode: str) -> str:
+    """Validate SETUP_GO_MODE is one of auto, restore, or save."""
+    mode = raw_mode.strip() or "auto"
+    if mode not in VALID_MODES:
+        raise ValueError(
+            f"Invalid SETUP_GO_MODE {raw_mode!r}: expected one of auto, restore, save"
+        )
+    return mode
+
+
 def _write_github_output(output_path: Path, values: dict[str, str]) -> None:
     with output_path.open("a", encoding="utf-8") as fh:
         for k, v in values.items():
@@ -312,8 +341,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    try:
+        validate_mode(os.environ.get("SETUP_GO_MODE", ""))
+        go_version = validate_go_version(os.environ.get("GO_VERSION", ""))
+    except ValueError as exc:
+        print(f"::error::{exc}", file=sys.stderr)
+        return 1
+
     workspace = Path(os.environ.get("GITHUB_WORKSPACE") or ".").resolve()
-    dep_pattern = os.environ.get("CACHE_DEPENDENCY_PATH", "").strip() or "go.mod"
+    dep_pattern = (
+        os.environ.get("CACHE_DEPENDENCY_PATH", "").strip() or DEFAULT_DEPENDENCY_PATH
+    )
     file_hash, count = glob_hash_files(dep_pattern, workspace)
 
     gomodcache, gocache = resolve_go_cache_paths(
@@ -335,7 +373,6 @@ def main(argv: list[str] | None = None) -> int:
     runner_os = os.environ.get("RUNNER_OS", "").strip()
     arch = node_arch(os.environ.get("RUNNER_ARCH", ""))
     image_os = os.environ.get("ImageOS")
-    go_version = os.environ.get("GO_VERSION", "").strip()
     key = build_cache_key(runner_os, arch, image_os, go_version, file_hash)
 
     print(f"Go cache key ({count} dependency file(s)): {key}")
