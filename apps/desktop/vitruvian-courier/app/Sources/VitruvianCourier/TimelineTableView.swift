@@ -2398,7 +2398,10 @@ struct TimelineTableView: NSViewRepresentable {
                 return (explicitAnchorID, screenMinY)
             }
 
-            if let visible = visibleAnchor(preferMessage: false) {
+            // A message, not the date line: older messages from the same day go in below that line, so the line stays
+            // at the very top while everything else moves down, and holding it in place let the rows jump (then be
+            // pulled back a moment later).
+            if let visible = visibleAnchor(preferMessage: true) {
                 return visible
             }
 

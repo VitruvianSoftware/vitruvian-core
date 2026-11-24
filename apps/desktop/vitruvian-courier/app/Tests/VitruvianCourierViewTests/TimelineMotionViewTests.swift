@@ -690,7 +690,18 @@ final class TimelineMotionViewTests: XCTestCase {
 
         let manyOlder = (1 ... 25).map { Fixture.text("$old\($0)", "History #\($0)", mine: false, ts: 100 - $0) }
         let beforeTallPrependS1MinY = try rowFrameInHost("$s1").minY
+        let rowsBefore = try XCTUnwrap(harness.host.first(TimelineNSTableView.self)).numberOfRows
         harness.conversation.setSnapshotItemsForTesting(Fixture.items(manyOlder + twoOlder + events))
+        // The moment the rows are in, not after a settle: a jump that is pulled back later is still a jump on screen.
+        let arrival = Date()
+        while try XCTUnwrap(harness.host.first(TimelineNSTableView.self)).numberOfRows == rowsBefore,
+              Date().timeIntervalSince(arrival) < 2 {
+            harness.pump(for: 0.005)
+        }
+        XCTAssertEqual(
+            try rowFrameInHost("$s1").minY, beforeTallPrependS1MinY, accuracy: 2.0,
+            "older messages arriving keep existing rows where they are, from the first moment"
+        )
         harness.pump(for: 0.2)
         XCTAssertEqual(
             try rowFrameInHost("$s1").minY, beforeTallPrependS1MinY, accuracy: 2.0,
