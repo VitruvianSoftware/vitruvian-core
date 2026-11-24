@@ -110,6 +110,23 @@ jobs:
           # The checkout used persist-credentials: false; hand git the App token.
           gh auth setup-git
 
+          # The update was built from the checkout. If main has since changed
+          # these files, pushing it would undo that change; next week retries.
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          moved=0
+          git diff --quiet HEAD refs/remotes/origin/main -- tools/testinfra/claude_cli.bzl || moved=$?
+          case "$moved" in
+            0) ;;
+            1)
+              echo "::notice::main changed the pin during this run; left alone for the next run."
+              exit 0
+              ;;
+            *)
+              echo "::error::Could not compare the checkout with main (git diff exit $moved)."
+              exit 1
+              ;;
+          esac
+
           # Leave the branch alone if it holds commits this workflow did not write.
           remote_sha=""
           found=0
@@ -152,16 +169,36 @@ jobs:
           # Nothing to do if an open pull request already proposes exactly this
           # pin: re-pushing would only reset CI and clear any armed auto-merge.
           # A closed one is reopened as a new pull request below.
+          # Only when main has not changed the pin since the branch was cut:
+          # otherwise the old commit would conflict, so it is rebuilt on main.
           if [ -n "$existing" ] && [ -n "$remote_sha" ]; then
-            remote_pin="$RUNNER_TEMP/claude-cli-pin-remote.bzl"
-            git show "$remote_sha:tools/testinfra/claude_cli.bzl" > "$remote_pin"
-            if cmp -s "$remote_pin" tools/testinfra/claude_cli.bzl; then
-              echo "PR #${existing} already proposes $VERSION; left alone."
-              exit 0
-            fi
+            base="$(git merge-base refs/remotes/origin/main "$remote_sha")"
+            same=0
+            git diff --quiet "$remote_sha" -- tools/testinfra/claude_cli.bzl || same=$?
+            base_current=0
+            git diff --quiet "$base" refs/remotes/origin/main -- tools/testinfra/claude_cli.bzl || base_current=$?
+            case "$same:$base_current" in
+              0:0)
+                failing="$(gh pr view "$existing" --json statusCheckRollup --jq '[(.statusCheckRollup // [])[] | ((.conclusion // .state) // "") | select(test("^(FAILURE|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE|ERROR)$"))] | length')"
+                if [ "$failing" != "0" ]; then
+                  echo "::warning::PR #${existing} is unchanged but has $failing failing check(s); re-run them or close the PR to rebuild it."
+                fi
+                echo "PR #${existing} already proposes $VERSION; left alone."
+                exit 0
+                ;;
+              [01]:[01]) ;;
+              *)
+                echo "::error::Could not compare the pin with $branch (git diff exits $same, $base_current)."
+                exit 1
+                ;;
+            esac
           fi
-          if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
-            gh pr merge "$existing" --disable-auto
+          if [ -n "$existing" ]; then
+            # Captured first: inside an if test a failed gh would read as "not armed".
+            auto_merge="$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+            if [ "$auto_merge" = "true" ]; then
+              gh pr merge "$existing" --disable-auto
+            fi
           fi
 
           {
