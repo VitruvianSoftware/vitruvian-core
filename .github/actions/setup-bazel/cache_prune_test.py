@@ -3,8 +3,11 @@
 
 """Tests for cache_prune.py."""
 
+import http.server
+import json
 import os
 import sys
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -186,3 +189,196 @@ def test_main_refuses_non_main_ref(tmp_path, capsys):
     assert "::warning::" in captured.out
     assert "non-main ref" in captured.out
     assert "non-main ref" in summary.read_text(encoding="utf-8")
+
+
+class _MockGitHubCacheServer:
+    def __init__(self, handler_fn):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                status, body = handler_fn("GET", self.path, self.headers)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(body).encode("utf-8"))
+
+            def do_DELETE(self):
+                status, body = handler_fn("DELETE", self.path, self.headers)
+                self.send_response(status)
+                if body is not None:
+                    self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                if body is not None:
+                    self.wfile.write(json.dumps(body).encode("utf-8"))
+
+            def log_message(self, format, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return f"http://127.0.0.1:{self.port}"
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_main_warns_and_exits_0_on_delete_failure(tmp_path, capsys):
+    new_key = f"setup-bazel-1-linux-x64-repository-full-{NEW_HASH}"
+    requests = []
+
+    def handle(method, path, _headers):
+        requests.append((method, path))
+        if method == "GET" and "key=" in path:
+            return 200, {
+                "total_count": 1,
+                "actions_caches": [
+                    {"id": 100, "key": new_key, "size_in_bytes": 6_000_000_000}
+                ],
+            }
+        if method == "GET":
+            return 200, {
+                "total_count": len(_sample_all_entries()),
+                "actions_caches": _sample_all_entries(),
+            }
+        if method == "DELETE" and path == "/repos/o/r/actions/caches/101":
+            return 500, {"message": "Delete failed"}
+        if method == "DELETE" and path == "/repos/o/r/actions/caches/102":
+            return 204, None
+        return 404, {"message": "Not Found"}
+
+    summary = tmp_path / "summary.md"
+    sleeps = []
+    with _MockGitHubCacheServer(handle) as api_url:
+        rc = prune.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "linux-x64",
+                "--lock-hash",
+                NEW_HASH,
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--summary-file",
+                str(summary),
+                "--max-confirm-attempts",
+                "2",
+                "--retry-delay-seconds",
+                "0.1",
+            ],
+            sleep_fn=sleeps.append,
+        )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "::warning::" in captured.out
+    assert "Failed to delete cache id=101" in captured.out
+    assert requests[0][0] == "GET" and "key=" in requests[0][1]
+    assert requests[1] == ("GET", "/repos/o/r/actions/caches?per_page=100")
+    assert [r for r in requests if r[0] == "DELETE"] == [
+        ("DELETE", "/repos/o/r/actions/caches/101"),
+        ("DELETE", "/repos/o/r/actions/caches/102"),
+    ]
+
+
+def test_main_warns_and_exits_0_on_post_confirm_list_failure(tmp_path, capsys):
+    new_key = f"setup-bazel-1-linux-x64-repository-full-{NEW_HASH}"
+    requests = []
+
+    def handle(method, path, _headers):
+        requests.append((method, path))
+        if method == "GET" and "key=" in path:
+            return 200, {
+                "total_count": 1,
+                "actions_caches": [
+                    {"id": 100, "key": new_key, "size_in_bytes": 6_000_000_000}
+                ],
+            }
+        if method == "GET":
+            return 500, {"message": "List failed"}
+        return 500, {"message": "Unexpected"}
+
+    summary = tmp_path / "summary.md"
+    with _MockGitHubCacheServer(handle) as api_url:
+        rc = prune.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "linux-x64",
+                "--lock-hash",
+                NEW_HASH,
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--summary-file",
+                str(summary),
+                "--max-confirm-attempts",
+                "2",
+                "--retry-delay-seconds",
+                "0.1",
+            ],
+            sleep_fn=lambda _s: None,
+        )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "::warning::" in captured.out
+    assert "Failed to list caches for pruning" in captured.out
+    assert not any(m == "DELETE" for m, _p in requests)
+    assert "warning(s)" in summary.read_text(encoding="utf-8")
+
+
+def test_main_warns_and_exits_0_when_confirm_fails_with_api_error(tmp_path, capsys):
+    requests = []
+
+    def handle(method, path, _headers):
+        requests.append((method, path))
+        return 500, {"message": "API blip"}
+
+    summary = tmp_path / "summary.md"
+    sleeps = []
+    with _MockGitHubCacheServer(handle) as api_url:
+        rc = prune.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "linux-x64",
+                "--lock-hash",
+                NEW_HASH,
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--summary-file",
+                str(summary),
+                "--max-confirm-attempts",
+                "2",
+                "--retry-delay-seconds",
+                "0.5",
+            ],
+            sleep_fn=sleeps.append,
+        )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "::warning::" in captured.out
+    assert "deleting nothing" in captured.out
+    assert sleeps == [0.5]
+    assert all(m == "GET" and "key=" in p for m, p in requests)
+    assert not any(m == "DELETE" for m, _p in requests)
+    assert "deleting nothing" in summary.read_text(encoding="utf-8")

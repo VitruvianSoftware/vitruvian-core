@@ -97,6 +97,13 @@ exports_files(
     visibility = ["//apps/web/oauth-user-inspector:__pkg__"],
 )
 
+# Exported so setup-bazel's bazelisk_cache_key_test verifies the live
+# bazelisk Actions cache key hash computed from .bazelversion.
+exports_files(
+    [".bazelversion"],
+    visibility = ["//.github/actions/setup-bazel:__pkg__"],
+)
+
 # agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
 # worktrees under it), but a file named from this package still resolves.
 # //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.

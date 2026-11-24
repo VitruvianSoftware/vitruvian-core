@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,6 +25,8 @@ import urllib.request
 BYTES_PER_GB = 1_000_000_000
 LEGACY_PARTIAL_REPO_KEY_RE = re.compile(r"^setup-bazel-1-.+-repository-[0-9a-fA-F]+$")
 _NEXT_LINK_RE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
+DEFAULT_API_READ_ATTEMPTS = 3
+DEFAULT_API_READ_BACKOFF_SECONDS = (2.0, 4.0)
 
 
 def full_repo_cache_prefix(platform):
@@ -354,7 +357,31 @@ def _parse_args(argv):
     return p.parse_args(argv)
 
 
-def main(argv=None):
+def _retry_api_read(
+    fn,
+    attempts=DEFAULT_API_READ_ATTEMPTS,
+    backoff_seconds=DEFAULT_API_READ_BACKOFF_SECONDS,
+    sleep_fn=time.sleep,
+):
+    """Run a read-only API call with retries and backoff on transient errors."""
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts:
+                delay = (
+                    backoff_seconds[attempt - 1]
+                    if attempt - 1 < len(backoff_seconds)
+                    else backoff_seconds[-1]
+                )
+                if delay > 0:
+                    sleep_fn(delay)
+    raise last_exc
+
+
+def main(argv=None, sleep_fn=time.sleep):
     args = _parse_args(argv)
     summary_file = args.summary_file
 
@@ -373,13 +400,15 @@ def main(argv=None):
         )
         return 1
 
+    def skip_save(msg):
+        _write_output(args.output_file, "allow_save", "false")
+        print(f"::warning::{msg}", flush=True)
+        _write_summary(summary_file, [msg])
+        return 0
+
     _, limit_error = parse_limit_gb_var(args.limit_gb)
     if limit_error is not None:
-        _write_output(args.output_file, "allow_save", "false")
-        skip_msg = f"Cache save skipped ({args.platform}): {limit_error}."
-        print(f"::warning::{skip_msg}", flush=True)
-        _write_summary(summary_file, [skip_msg])
-        return 0
+        return skip_save(f"Cache save skipped ({args.platform}): {limit_error}.")
 
     if not args.repo or "/" not in args.repo:
         return fail_early(
@@ -399,17 +428,27 @@ def main(argv=None):
         )
 
     try:
-        total_active_bytes = fetch_usage(args.api_url, args.repo, args.token)
+        total_active_bytes = _retry_api_read(
+            lambda: fetch_usage(args.api_url, args.repo, args.token),
+            sleep_fn=sleep_fn,
+        )
     except Exception as exc:
-        return fail_early(
-            f"Failed to read Actions cache usage from GET /repos/{args.repo}/actions/cache/usage ({exc}); save is aborted."
+        return skip_save(
+            f"Cache save skipped ({args.platform}): failed to read Actions cache usage "
+            f"from GET /repos/{args.repo}/actions/cache/usage after "
+            f"{DEFAULT_API_READ_ATTEMPTS} attempts ({exc})."
         )
 
     try:
-        caches = fetch_all_caches(args.api_url, args.repo, args.token)
+        caches = _retry_api_read(
+            lambda: fetch_all_caches(args.api_url, args.repo, args.token),
+            sleep_fn=sleep_fn,
+        )
     except Exception as exc:
-        return fail_early(
-            f"Failed to list Actions caches from GET /repos/{args.repo}/actions/caches ({exc}); save is aborted."
+        return skip_save(
+            f"Cache save skipped ({args.platform}): failed to list Actions caches "
+            f"from GET /repos/{args.repo}/actions/caches after "
+            f"{DEFAULT_API_READ_ATTEMPTS} attempts ({exc})."
         )
 
     ok, report = evaluate_capacity(

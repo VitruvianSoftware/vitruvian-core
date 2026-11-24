@@ -1530,13 +1530,41 @@ pub(crate) fn repo_cache_warm_composite_problems(content: &str) -> Vec<(String, 
         ));
     }
 
-    for v in yaml_values_of(content, "cache-save") {
-        if v != "false" {
-            problems.push((
-                format!("cache-save: {}", v),
-                "cache-save: false".to_string(),
-                "setup-bazel inside bazel-repo-cache-warm must not auto-save; only the verified actions/cache/save step may write".to_string(),
-            ));
+    let cache_saves = yaml_values_of(content, "cache-save");
+    if cache_saves.is_empty() {
+        problems.push((
+            "cache-save: unset".to_string(),
+            "cache-save: ${{ inputs.mode == 'save' }}".to_string(),
+            "bazel-repo-cache-warm must set cache-save: ${{ inputs.mode == 'save' }} so only main save jobs refresh the bazelisk cache".to_string(),
+        ));
+    } else {
+        for v in cache_saves {
+            let norm: String = v.split_whitespace().collect::<Vec<_>>().join(" ");
+            if norm != "${{ inputs.mode == 'save' }}" {
+                problems.push((
+                    format!("cache-save: {}", v),
+                    "cache-save: ${{ inputs.mode == 'save' }}".to_string(),
+                    "bazel-repo-cache-warm must set cache-save: ${{ inputs.mode == 'save' }} so verify jobs never save and save jobs keep bazelisk fresh".to_string(),
+                ));
+            }
+        }
+    }
+    let bazelisk_caches = yaml_values_of(content, "bazelisk-cache");
+    if bazelisk_caches.is_empty() {
+        problems.push((
+            "bazelisk-cache: unset".to_string(),
+            "bazelisk-cache: true".to_string(),
+            "bazel-repo-cache-warm must enable bazelisk-cache: true so the bazelisk binary cache stays fresh".to_string(),
+        ));
+    } else {
+        for v in bazelisk_caches {
+            if v != "true" {
+                problems.push((
+                    format!("bazelisk-cache: {}", v),
+                    "bazelisk-cache: true".to_string(),
+                    "bazel-repo-cache-warm must keep bazelisk-cache: true so the bazelisk binary cache stays fresh".to_string(),
+                ));
+            }
         }
     }
     for v in yaml_values_of(content, "repository-cache") {
@@ -2777,8 +2805,8 @@ runs:
     - uses: bazel-contrib/setup-bazel@abc # 0.19.2
       with:
         repository-cache: false
-        cache-save: false
-        bazelisk-cache: false
+        cache-save: ${{ inputs.mode == 'save' }}
+        bazelisk-cache: true
     - run: bazel --output_base=\"$OB\" build --nobuild --repository_cache=\"$REPO\" --repo_contents_cache=\"$CONTENTS\" //...
     - run: bazel --output_base=\"$OB2\" build --nobuild --repository_disable_download --repository_cache=\"$REPO\" --repo_contents_cache=\"$CONTENTS2\" //...
     - id: cache-lookup
@@ -2892,10 +2920,38 @@ runs:
             .iter()
             .any(|p| p.0 == "missing --repository_disable_download"));
 
-        let setup_saves = WARM_COMPOSITE_GOOD.replace("cache-save: false", "cache-save: true");
+        let setup_saves = WARM_COMPOSITE_GOOD.replace(
+            "cache-save: ${{ inputs.mode == 'save' }}",
+            "cache-save: true",
+        );
         assert!(repo_cache_warm_composite_problems(&setup_saves)
             .iter()
             .any(|p| p.0 == "cache-save: true"));
+
+        let setup_never_saves = WARM_COMPOSITE_GOOD.replace(
+            "cache-save: ${{ inputs.mode == 'save' }}",
+            "cache-save: false",
+        );
+        assert!(repo_cache_warm_composite_problems(&setup_never_saves)
+            .iter()
+            .any(|p| p.0 == "cache-save: false"));
+
+        let setup_cache_save_unset =
+            WARM_COMPOSITE_GOOD.replace("        cache-save: ${{ inputs.mode == 'save' }}\n", "");
+        assert!(repo_cache_warm_composite_problems(&setup_cache_save_unset)
+            .iter()
+            .any(|p| p.0 == "cache-save: unset"));
+
+        let bazelisk_disabled =
+            WARM_COMPOSITE_GOOD.replace("bazelisk-cache: true", "bazelisk-cache: false");
+        assert!(repo_cache_warm_composite_problems(&bazelisk_disabled)
+            .iter()
+            .any(|p| p.0 == "bazelisk-cache: false"));
+
+        let bazelisk_unset = WARM_COMPOSITE_GOOD.replace("        bazelisk-cache: true\n", "");
+        assert!(repo_cache_warm_composite_problems(&bazelisk_unset)
+            .iter()
+            .any(|p| p.0 == "bazelisk-cache: unset"));
 
         let continue_guard = WARM_COMPOSITE_GOOD.replace(
             "      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py",

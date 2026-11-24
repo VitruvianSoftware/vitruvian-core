@@ -382,40 +382,77 @@ def test_main_allows_when_limit_var_sufficient_with_superseded_and_pagination(
     assert "allow_save=true" in output.read_text(encoding="utf-8")
 
 
-def test_main_refuses_without_token_or_on_usage_error(tmp_path):
+def test_main_retries_transient_usage_error_then_allows_save(tmp_path, capsys):
+    usage_calls = []
+
+    def handle(path, _headers):
+        if path == "/repos/o/r/actions/cache/usage":
+            usage_calls.append(path)
+            if len(usage_calls) == 1:
+                return 500, {}, {"message": "Transient Error"}
+            return 200, {}, {"active_caches_size_in_bytes": 1_000_000_000}
+        if path.startswith("/repos/o/r/actions/caches"):
+            return 200, {}, {"total_count": 0, "actions_caches": []}
+        return 404, {}, {"message": "Not Found"}
+
     summary = tmp_path / "summary.md"
     output = tmp_path / "output.txt"
-    rc_no_tok = guard.main(
-        [
-            "--repo",
-            "o/r",
-            "--archive-bytes",
-            "100",
-            "--limit-gb",
-            "15",
-            "--token",
-            "",
-            "--summary-file",
-            str(summary),
-            "--output-file",
-            str(output),
-        ]
-    )
-    assert rc_no_tok == 1
-    assert "allow_save=false" in output.read_text(encoding="utf-8")
+    sleeps = []
+    with _MockGitHubServer(handle) as api_url:
+        rc = guard.main(
+            [
+                "--repo",
+                "o/r",
+                "--archive-bytes",
+                "6000000000",
+                "--platform",
+                "linux-x64",
+                "--lock-hash",
+                CURRENT_HASH,
+                "--limit-gb",
+                "15",
+                "--api-url",
+                api_url,
+                "--token",
+                "secret-tok",
+                "--summary-file",
+                str(summary),
+                "--output-file",
+                str(output),
+            ],
+            sleep_fn=sleeps.append,
+        )
 
-    def handle_usage_500(path, _headers):
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert len(usage_calls) == 2
+    assert sleeps == [2.0]
+    assert "::warning::" not in captured.out
+    assert "ALLOWED" in captured.out
+    assert "allow_save=true" in output.read_text(encoding="utf-8")
+
+
+def test_main_skips_with_warning_on_persistent_usage_error(tmp_path, capsys):
+    usage_calls = []
+
+    def handle(path, _headers):
         if path == "/repos/o/r/actions/cache/usage":
+            usage_calls.append(path)
             return 500, {}, {"message": "Internal Error"}
         return 200, {}, {}
 
-    with _MockGitHubServer(handle_usage_500) as api_url:
-        rc_usage_err = guard.main(
+    summary = tmp_path / "summary.md"
+    output = tmp_path / "output.txt"
+    sleeps = []
+    with _MockGitHubServer(handle) as api_url:
+        rc = guard.main(
             [
                 "--repo",
                 "o/r",
                 "--archive-bytes",
                 "100",
+                "--platform",
+                "linux-x64",
                 "--limit-gb",
                 "15",
                 "--api-url",
@@ -426,6 +463,102 @@ def test_main_refuses_without_token_or_on_usage_error(tmp_path):
                 str(summary),
                 "--output-file",
                 str(output),
-            ]
+            ],
+            sleep_fn=sleeps.append,
         )
-    assert rc_usage_err == 1
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert len(usage_calls) == 3
+    assert sleeps == [2.0, 4.0]
+    assert "::warning::" in captured.out
+    assert "skipped" in captured.out.lower()
+    summary_lines = summary.read_text(encoding="utf-8").strip().splitlines()
+    assert len(summary_lines) == 1
+    assert "skipped" in summary_lines[0].lower()
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
+
+
+def test_main_skips_with_warning_on_persistent_list_caches_error(tmp_path, capsys):
+    caches_calls = []
+
+    def handle(path, _headers):
+        if path == "/repos/o/r/actions/cache/usage":
+            return 200, {}, {"active_caches_size_in_bytes": 1_000_000_000}
+        if path.startswith("/repos/o/r/actions/caches"):
+            caches_calls.append(path)
+            return 502, {}, {"message": "Bad Gateway"}
+        return 404, {}, {"message": "Not Found"}
+
+    summary = tmp_path / "summary.md"
+    output = tmp_path / "output.txt"
+    sleeps = []
+    with _MockGitHubServer(handle) as api_url:
+        rc = guard.main(
+            [
+                "--repo",
+                "o/r",
+                "--archive-bytes",
+                "100",
+                "--platform",
+                "linux-x64",
+                "--limit-gb",
+                "15",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--summary-file",
+                str(summary),
+                "--output-file",
+                str(output),
+            ],
+            sleep_fn=sleeps.append,
+        )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert len(caches_calls) == 3
+    assert sleeps == [2.0, 4.0]
+    assert "::warning::" in captured.out
+    assert "skipped" in captured.out.lower()
+    summary_lines = summary.read_text(encoding="utf-8").strip().splitlines()
+    assert len(summary_lines) == 1
+    assert "skipped" in summary_lines[0].lower()
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("repo", "token", "archive_bytes"),
+    [
+        ("", "tok", "100"),
+        ("noslash", "tok", "100"),
+        ("o/r", "", "100"),
+        ("o/r", "tok", ""),
+        ("o/r", "tok", "not-a-number"),
+        ("o/r", "tok", "-5"),
+    ],
+)
+def test_main_exits_1_on_wiring_bugs(tmp_path, capsys, repo, token, archive_bytes):
+    summary = tmp_path / "summary.md"
+    output = tmp_path / "output.txt"
+    rc = guard.main(
+        [
+            "--repo",
+            repo,
+            "--archive-bytes",
+            archive_bytes,
+            "--limit-gb",
+            "15",
+            "--token",
+            token,
+            "--summary-file",
+            str(summary),
+            "--output-file",
+            str(output),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "::error::" in captured.err
+    assert "allow_save=false" in output.read_text(encoding="utf-8")

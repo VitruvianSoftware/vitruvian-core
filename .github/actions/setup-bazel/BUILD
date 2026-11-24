@@ -40,3 +40,14 @@ py_test(
     ],
     args = ["$(rootpath cache_prune_test.py)"],
 )
+
+py_test(
+    name = "bazelisk_cache_key_test",
+    size = "small",
+    srcs = [
+        "bazelisk_cache_key_test.py",
+    ],
+    args = ["$(rootpath bazelisk_cache_key_test.py)"],
+    data = ["//:.bazelversion"],
+    env = {"BAZELVERSION_PATH": "$(rootpath //:.bazelversion)"},
+)

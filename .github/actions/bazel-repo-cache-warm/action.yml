@@ -91,12 +91,12 @@ runs:
       if: inputs.platform-os == 'darwin'
       uses: ./.github/actions/select-xcode
 
-    - name: Install Bazelisk (no cache restore or save)
+    - name: Install Bazelisk (bazelisk cache only; save in save mode)
       uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
       with:
         repository-cache: false
-        cache-save: false
-        bazelisk-cache: false
+        cache-save: ${{ inputs.mode == 'save' }}
+        bazelisk-cache: true
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps

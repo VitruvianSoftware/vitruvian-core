@@ -88,7 +88,7 @@ def confirm_and_prune_superseded_caches(
     for attempt in range(1, max_confirm_attempts + 1):
         try:
             entries = api.list_caches(key=new_key)
-        except (urllib.error.URLError, OSError, ValueError, RuntimeError) as exc:
+        except Exception as exc:
             last_error = str(exc)
             entries = []
         if any(isinstance(e, dict) and e.get("key") == new_key for e in entries):
@@ -110,7 +110,18 @@ def confirm_and_prune_superseded_caches(
             ),
         }
 
-    all_entries = api.list_caches()
+    try:
+        all_entries = api.list_caches()
+    except Exception as exc:
+        return {
+            "confirmed": True,
+            "new_key": new_key,
+            "deleted": [],
+            "errors": [
+                f"Failed to list caches for pruning after confirming {new_key!r}: {exc}"
+            ],
+            "warning": None,
+        }
     deleted = []
     errors = []
     for entry in all_entries:
@@ -177,7 +188,7 @@ def _parse_args(argv):
     return p.parse_args(argv)
 
 
-def main(argv=None):
+def main(argv=None, sleep_fn=time.sleep):
     args = _parse_args(argv)
 
     if args.ref != "refs/heads/main":
@@ -215,6 +226,7 @@ def main(argv=None):
         current_lock_hash=args.lock_hash,
         max_confirm_attempts=args.max_confirm_attempts,
         retry_delay_seconds=args.retry_delay_seconds,
+        sleep_fn=sleep_fn,
     )
 
     if not result["confirmed"]:
@@ -232,6 +244,13 @@ def main(argv=None):
         msg = (
             f"Confirmed {result['new_key']}; pruned {len(result['deleted'])} "
             f"superseded {args.platform} cache(s): {summary_items}."
+        )
+        if result["errors"]:
+            msg += f" ({len(result['errors'])} warning(s))"
+    elif result["errors"]:
+        msg = (
+            f"Confirmed {result['new_key']}; pruning finished with "
+            f"{len(result['errors'])} warning(s)."
         )
     else:
         msg = (
