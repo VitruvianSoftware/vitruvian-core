@@ -139,6 +139,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     @Published public private(set) var isRunning = false
     /// True while at least one tool approval card in the conversation is awaiting a decision.
     @Published public private(set) var hasPendingApproval = false
+    /// The chat's MCP status panel while it is open; nil when closed.
+    @Published public private(set) var mcpStatusPanel: AgentMCPStatusPanel?
     /// The tool the agent is using right now, if any.
     @Published public private(set) var activity: String?
     @Published public private(set) var conversationID: String?
@@ -1632,6 +1634,13 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     self.consecutiveRestartFailures = 0
                     self.isConnectionLockedAfterFailures = false
                     self.lastRestartFailureMessage = nil
+                    // A new live session may have loaded other servers: an open panel follows.
+                    if self.mcpStatusPanel != nil {
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            await self.refreshMCPStatus(configuration: configuration)
+                        }
+                    }
                     if !startedID.isEmpty {
                         self.assignConversationID(startedID)
                         if !self.isFollowerActive {
@@ -2051,6 +2060,70 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         case .dismiss: break
         }
         return action
+    }
+
+    // MARK: - MCP status
+
+    /// Which agent's MCP servers this chat's panel shows, or nil when it has none (a
+    /// command-line chat): the control is hidden then.
+    public func mcpStatusAgent(configuration: VitruvianCodeConfiguration) -> AgentMCPStatusAgent? {
+        let provider = effectiveProvider(for: configuration.activeProvider)
+        return AgentMCPStatusAgent.of(provider, kind: provider.connection)
+    }
+
+    /// Opens the panel and reads the agent's servers.
+    public func openMCPStatus(configuration: VitruvianCodeConfiguration) async {
+        guard let agent = mcpStatusAgent(configuration: configuration) else { return }
+        mcpStatusPanel = AgentMCPStatusPanel(agent: agent, isLoading: true)
+        await refreshMCPStatus(configuration: configuration)
+    }
+
+    public func closeMCPStatus() {
+        mcpStatusPanel = nil
+    }
+
+    /// Reads the agent's servers again into the open panel. Claude reports them for its live
+    /// session (`_vitruvian/mcpStatus`); agy reports none over ACP, so its own config file is
+    /// read, read-only.
+    public func refreshMCPStatus(configuration: VitruvianCodeConfiguration) async {
+        guard mcpStatusPanel != nil else { return }
+        guard let agent = mcpStatusAgent(configuration: configuration) else {
+            mcpStatusPanel = nil
+            return
+        }
+        var panel = AgentMCPStatusPanel(agent: agent, servers: mcpStatusPanel?.servers ?? [], isLoading: true)
+        mcpStatusPanel = panel
+        switch agent {
+        case .agy:
+            panel.servers = AgentMCPStatusReader.agyRows(
+                geminiHome: (environment.home as NSString).appendingPathComponent(".gemini"),
+                fileExists: environment.fileExists,
+                readFile: environment.readFile
+            )
+        case .claude:
+            if let reporter = liveConnection as? any AgentMCPStatusReporting, liveConnection?.isConnected == true {
+                do {
+                    let statuses = try await reporter.mcpStatus()
+                    panel.servers = AgentMCPStatusReader.rows(
+                        fromClaude: statuses,
+                        workingDirectory: liveConnectionDirectory ?? workingDirectory(for: configuration),
+                        home: environment.home,
+                        configDirectory: configuration.activeProvider.claudeConfigDirectory
+                            ?? environment.processEnvironment[ClaudeSDKSupport.configDirectoryKey]
+                    )
+                } catch {
+                    panel.servers = []
+                    panel.problem = .failed(error.localizedDescription)
+                }
+            } else {
+                panel.servers = []
+                panel.problem = .notConnected
+            }
+        }
+        panel.isLoading = false
+        // Closed while it was reading: stay closed.
+        guard mcpStatusPanel != nil else { return }
+        mcpStatusPanel = panel
     }
 
     public func newChat() {
