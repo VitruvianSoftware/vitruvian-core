@@ -102,10 +102,106 @@ pub fn run(
     Ok((code, combined))
 }
 
+/// One slice of the mutations: mutation `i` (in `MUTATIONS` order) belongs
+/// to shard `i % count`. The whole list is `Shard::ALL`.
+///
+/// The list outgrew one CI job: 584 mutations at about 105 s each is some
+/// 17 hours, and a macOS job may run for 5.5. Each scheduled run takes one
+/// shard, so every mutation still runs, a shard at a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shard {
+    pub index: usize,
+    pub count: usize,
+}
+
+impl Shard {
+    pub const ALL: Shard = Shard { index: 0, count: 1 };
+
+    /// Reads `K/N`, with `0 <= K < N`.
+    pub fn parse(text: &str) -> Result<Shard, String> {
+        let (k, n) = text
+            .split_once('/')
+            .ok_or_else(|| format!("--shard takes K/N, not {:?}", text))?;
+        let index: usize = k
+            .trim()
+            .parse()
+            .map_err(|_| format!("--shard: {:?} is not a number", k))?;
+        let count: usize = n
+            .trim()
+            .parse()
+            .map_err(|_| format!("--shard: {:?} is not a number", n))?;
+        if count == 0 || index >= count {
+            return Err(format!(
+                "--shard {}/{}: K must be at least 0 and less than N",
+                index, count
+            ));
+        }
+        Ok(Shard { index, count })
+    }
+
+    pub fn holds(&self, position: usize) -> bool {
+        position % self.count == self.index
+    }
+
+    pub fn select<'a>(&self, mutations: &'a [Mutation]) -> Vec<&'a Mutation> {
+        mutations
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.holds(*i))
+            .map(|(_, m)| m)
+            .collect()
+    }
+}
+
+/// The lines of a test run that say what failed: each failed check
+/// (`File.swift:LINE: message`), each suite marked FAILED, and how the test
+/// binary ended. The run's raw tail is mostly Bazel's progress on stderr,
+/// which buries these (the 2026-11-22 run showed none of them).
+pub fn failure_lines(output: &str) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for line in output.lines() {
+        let line = line.trim_end();
+        let is_check = line.contains(".swift:")
+            && line
+                .split(".swift:")
+                .nth(1)
+                .map(|rest| {
+                    let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+                    digits > 0 && rest[digits..].starts_with(": ")
+                })
+                .unwrap_or(false)
+            && !line.contains("warning:")
+            && !line.contains("error:")
+            && !line.contains("note:");
+        let is_suite = line.contains(": FAILED (");
+        let is_end = line.contains("the test binary was killed by signal")
+            || line.contains("the test binary exited with status")
+            || line.contains("suites reported a result")
+            || line.contains("Fatal error")
+            || line.contains("uncaught exception")
+            || line.starts_with("crash report:");
+        if (is_check || is_suite || is_end) && !lines.iter().any(|l| l == line) {
+            lines.push(line.to_string());
+        }
+    }
+    lines
+}
+
+fn tail(text: &str, chars: usize) -> String {
+    let skip = text.chars().count().saturating_sub(chars);
+    text.chars().skip(skip).collect()
+}
+
+/// Whether a mutated run failed the way its mutation says it must.
+pub fn detected(status: i32, output: &str, diagnostic: &str) -> bool {
+    status == 3 && output.contains("TESTS FAILED") && output.contains(diagnostic)
+}
+
 pub fn run_mutation_suite(
     workspace: &Path,
     root: &Path,
     bazel_flags: &[String],
+    shard: Shard,
 ) -> Result<(), String> {
     let paths: std::collections::BTreeSet<&str> = MUTATIONS.iter().map(|m| m.relative).collect();
     let output = Command::new("git")
@@ -130,21 +226,31 @@ pub fn run_mutation_suite(
         ));
     }
 
+    let selected = shard.select(MUTATIONS);
+    if shard != Shard::ALL {
+        println!(
+            "Shard {}/{}: {} of {} mutations",
+            shard.index,
+            shard.count,
+            selected.len(),
+            MUTATIONS.len()
+        );
+    }
+
     println!("Checking the unmodified baseline…");
     let (status, output_text) = run(workspace, bazel_flags, &[], 3600)?;
     if status != 0 || !output_text.contains("TESTS OK") {
-        let tail: String = output_text
-            .chars()
-            .rev()
-            .take(12000)
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect();
-        return Err(format!("Baseline failed:\n{}", tail));
+        return Err(format!(
+            "Baseline failed:\n{}\n{}",
+            failure_lines(&output_text).join("\n"),
+            tail(&output_text, 12000)
+        ));
     }
 
-    for m in MUTATIONS {
+    // Keep going past a mutation that is not caught, so one run names every
+    // weak test in its shard rather than one a week.
+    let mut missed: Vec<String> = Vec::new();
+    for m in &selected {
         let path = root.join(m.relative);
         let original = std::fs::read_to_string(&path)
             .map_err(|e| format!("failed to read {}: {}", m.relative, e))?;
@@ -167,29 +273,37 @@ pub fn run_mutation_suite(
             .map_err(|e| format!("failed to restore {}: {}", m.relative, e))?;
 
         let (status, output_text) = result?;
-        if status != 3
-            || !output_text.contains("TESTS FAILED")
-            || !output_text.contains(m.diagnostic)
-        {
-            let tail: String = output_text
-                .chars()
-                .rev()
-                .take(12000)
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect();
-            return Err(format!(
-                "Mutation was not caught by its intended assertion: {}\n{}",
-                m.name, tail
-            ));
+        if detected(status, &output_text, m.diagnostic) {
+            println!("DETECTED: {}", m.name);
+            continue;
         }
-        println!("DETECTED: {}", m.name);
+        let failures = failure_lines(&output_text);
+        println!("NOT CAUGHT: {}", m.name);
+        println!("  expected a failure containing: {}", m.diagnostic);
+        println!("  bazel exit status: {}", status);
+        if failures.is_empty() {
+            println!("  no failed check was reported; the end of the run:");
+            println!("{}", tail(&output_text, 4000));
+        } else {
+            println!("  what failed instead:");
+            for line in &failures {
+                println!("    {}", line);
+            }
+        }
+        missed.push(m.name.to_string());
     }
 
+    if !missed.is_empty() {
+        return Err(format!(
+            "{} of {} mutations were not caught by their intended assertion:\n  {}",
+            missed.len(),
+            selected.len(),
+            missed.join("\n  ")
+        ));
+    }
     println!(
         "MUTATION CHECKS OK ({} regressions detected)",
-        MUTATIONS.len()
+        selected.len()
     );
     Ok(())
 }
@@ -215,9 +329,23 @@ pub fn run_cli(args: &[String]) -> i32 {
                 .to_path_buf()
         });
     let root = workspace.join("apps/desktop/vitruvian-atrium");
-    let bazel_flags: Vec<String> = args.to_vec();
+    let mut shard = Shard::ALL;
+    let mut bazel_flags: Vec<String> = Vec::new();
+    for arg in args {
+        if let Some(value) = arg.strip_prefix("--shard=") {
+            match Shard::parse(value) {
+                Ok(s) => shard = s,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return 1;
+                }
+            }
+        } else {
+            bazel_flags.push(arg.clone());
+        }
+    }
 
-    match run_mutation_suite(&workspace, &root, &bazel_flags) {
+    match run_mutation_suite(&workspace, &root, &bazel_flags, shard) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("{}", e);
@@ -418,5 +546,93 @@ mod tests {
         for m in MUTATIONS {
             assert!(seen.insert(m.name), "duplicate mutation name: {}", m.name);
         }
+    }
+
+    #[test]
+    fn shard_parse_accepts_k_of_n() {
+        assert_eq!(Shard::parse("0/1"), Ok(Shard::ALL));
+        assert_eq!(Shard::parse("3/4"), Ok(Shard { index: 3, count: 4 }));
+    }
+
+    #[test]
+    fn shard_parse_refuses_out_of_range_and_garbage() {
+        for bad in ["4/4", "0/0", "1", "a/2", "1/b", "-1/2", ""] {
+            assert!(Shard::parse(bad).is_err(), "accepted {:?}", bad);
+        }
+    }
+
+    #[test]
+    fn shards_cover_every_mutation_exactly_once() {
+        for count in [1, 2, 4, 7] {
+            let mut seen = std::collections::HashMap::new();
+            for index in 0..count {
+                for m in (Shard { index, count }).select(MUTATIONS) {
+                    *seen.entry(m.name).or_insert(0) += 1;
+                }
+            }
+            assert_eq!(seen.len(), MUTATIONS.len(), "{} shards miss some", count);
+            assert!(
+                seen.values().all(|&n| n == 1),
+                "{} shards repeat some",
+                count
+            );
+        }
+    }
+
+    #[test]
+    fn shards_are_even() {
+        let count = 4;
+        let sizes: Vec<usize> = (0..count)
+            .map(|index| Shard { index, count }.select(MUTATIONS).len())
+            .collect();
+        assert!(sizes.iter().max().unwrap() - sizes.iter().min().unwrap() <= 1);
+    }
+
+    #[test]
+    fn cli_refuses_a_bad_shard() {
+        assert_eq!(run_cli(&["--shard=5/4".to_string()]), 1);
+    }
+
+    #[test]
+    fn failure_lines_keep_checks_suites_and_endings() {
+        let output = "\
+(15:56:21) INFO: From Compiling Swift module //apps/desktop/vitruvian-atrium:VitruvianAtriumServices:
+Sources/VitruvianAtrium/Services/PointerTapRunLoop.swift:51:13: warning: mutation of captured var
+recording: FAILED (212 checks, 3.10s)
+/private/var/tmp/Tests/RecorderWriterTests.swift:34: recorder writer fixture failed: boom
+/private/var/tmp/Tests/RecorderWriterTests.swift:34: recorder writer fixture failed: boom
+the test binary was killed by signal 6
+TESTS FAILED: the failed checks are listed under their suites above
+(15:56:34) [47 / 48] 1 / 1 tests, 1 failed;  1 action
+";
+        assert_eq!(
+            failure_lines(output),
+            vec![
+                "recording: FAILED (212 checks, 3.10s)",
+                "/private/var/tmp/Tests/RecorderWriterTests.swift:34: recorder writer fixture failed: boom",
+                "the test binary was killed by signal 6",
+            ]
+        );
+    }
+
+    #[test]
+    fn detected_needs_status_3_the_summary_and_the_diagnostic() {
+        let out = "x.swift:1: writer dropped required microphone fixture sample\nTESTS FAILED: …";
+        let diag = "writer dropped required microphone fixture sample";
+        assert!(detected(3, out, diag));
+        assert!(!detected(1, out, diag));
+        assert!(!detected(3, "TESTS FAILED", diag));
+        assert!(!detected(
+            3,
+            "writer dropped required microphone fixture sample",
+            diag
+        ));
+    }
+
+    #[test]
+    fn tail_keeps_the_last_characters() {
+        assert_eq!(tail("abcdef", 3), "def");
+        assert_eq!(tail("ab", 3), "ab");
+        assert_eq!(tail("é€ab", 3), "€ab");
     }
 }

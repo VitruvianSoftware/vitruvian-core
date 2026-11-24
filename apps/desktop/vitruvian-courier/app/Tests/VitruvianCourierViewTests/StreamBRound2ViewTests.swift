@@ -62,6 +62,8 @@ final class StreamBRound2ViewTests: XCTestCase {
         let row: InboxRow
         let style: RowStyle
         let width: CGFloat
+        /// False forces motion on, whatever the machine says (CI's Macs run with Reduce Motion on); nil follows it.
+        var reduceMotionOverride: Bool?
 
         var body: some View {
             InboxRowView(
@@ -79,6 +81,7 @@ final class StreamBRound2ViewTests: XCTestCase {
             .padding(.horizontal, 12)
             .frame(width: width, alignment: .leading)
             .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.courierReduceMotionOverride, reduceMotionOverride)
         }
     }
 
@@ -122,7 +125,8 @@ final class StreamBRound2ViewTests: XCTestCase {
             for width in stride(from: 280, through: 336, by: 4) {
                 let w = CGFloat(width)
                 let box = SelectingBox()
-                let host = NSHostingView(rootView: SelectingRow(box: box, row: row, style: style, width: w))
+                let host = NSHostingView(rootView: SelectingRow(box: box, row: row, style: style, width: w,
+                                                                 reduceMotionOverride: reduceMotion ? nil : false))
                 let window = NSWindow(
                     contentRect: NSRect(x: -10_000, y: -10_000, width: w, height: 140),
                     styleMask: [.borderless], backing: .buffered, defer: false

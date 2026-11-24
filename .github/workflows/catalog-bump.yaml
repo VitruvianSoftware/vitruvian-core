@@ -165,7 +165,9 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-          sparse-checkout: catalog
+          sparse-checkout: |
+            catalog
+            packages/pycompat/vitruvian-pycompat
 
       - name: Which releases are newer than the catalog
         id: plan
@@ -183,9 +185,8 @@ jobs:
             fi
             jq -cn --arg id "$ID" --arg tag "$TAG" '[{id: $id, tag: $tag}]' > "$plan"
           else
-            rustc --edition 2021 --crate-type lib --crate-name catalog catalog/src/lib.rs -o "$RUNNER_TEMP/libcatalog.rlib"
-            rustc --edition 2021 catalog/src/bin/bump.rs -L "$RUNNER_TEMP" --extern catalog="$RUNNER_TEMP/libcatalog.rlib" -o "$RUNNER_TEMP/bump"
-            "$RUNNER_TEMP/bump" plan --out "$plan"
+            bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" catalog catalog/src/lib.rs catalog/src/bin/bump.rs
+            "$RUNNER_TEMP/catalog" plan --out "$plan"
           fi
           echo "matrix=$(jq -c . "$plan")" >> "$GITHUB_OUTPUT"
 

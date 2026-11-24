@@ -386,27 +386,21 @@ enum ScreenshotFeatureTests {
         suite.expect(ScreenshotCapturePolicy.attachedCapturePlan(
             target: capturedWindow, frontToBack: [sheet]) == nil,
                "a window missing from the list does not treat everything as stacked on it")
-        // The composite is cropped from one display, in window-server points.
-        let leftDisplay = CGRect(x: 0, y: 0, width: 1_000, height: 800)
-        let rightDisplay = CGRect(x: 1_000, y: 0, width: 1_000, height: 800)
-        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
-            displayFrames: [leftDisplay, rightDisplay], bounds: capturedWindow.frame) == 0
-                && ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
-                    displayFrames: [leftDisplay, rightDisplay],
-                    bounds: CGRect(x: 1_200, y: 100, width: 300, height: 200)) == 1,
-               "a window on one display is composited from that display")
-        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
-            displayFrames: [leftDisplay, rightDisplay],
-            bounds: CGRect(x: 900, y: 100, width: 300, height: 200)) == nil,
-               "the one-display crop declines a window straddling two displays instead of taking a one-display slice")
-        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
-            displayFrames: [leftDisplay],
-            bounds: CGRect(x: 900, y: 100, width: 300, height: 200)) == 0,
-               "a window hanging off a lone display's edge is still composited from it, clamped")
-        suite.expect(ScreenshotCapturePolicy.attachedCaptureDisplayIndex(
-            displayFrames: [leftDisplay, rightDisplay],
-            bounds: CGRect(x: 3_000, y: 100, width: 300, height: 200)) == nil,
-               "a window on no display has nothing to be cropped from")
+        let leftDisplay = CGRect(x: -1200, y: 0, width: 1200, height: 900)
+        let rightDisplay = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+        let displays = [leftDisplay, rightDisplay]
+        func display(for window: CGRect) -> CGRect? {
+            ScreenshotCapturePolicy.displayCoveringWindow(window, in: displays, frame: \.self)
+        }
+        suite.expect(display(for: CGRect(x: -40, y: 40, width: 100, height: 80)) == nil,
+                     "a window straddling two displays declines the one-display crop")
+        suite.expect(display(for: CGRect(x: -1210, y: 40, width: 100, height: 80)) == nil,
+                     "a window partly offscreen declines the one-display crop")
+        suite.expect(display(for: CGRect(x: -100, y: 40, width: 100, height: 80)) == leftDisplay
+                     && display(for: rightDisplay) == rightDisplay,
+                     "a whole window touching the seam still fits its display without losing an edge")
+        suite.expect(display(for: CGRect(x: 1650, y: 30, width: 90, height: 70)) == nil,
+                     "an offscreen window has no display crop")
 
         let geometricAttachment = ScreenshotCapturePolicy.AttachedCapturePlan(
             windowIDs: [1, 6, 2], bounds: capturedWindow.frame)

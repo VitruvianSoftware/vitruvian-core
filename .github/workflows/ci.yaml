@@ -531,6 +531,7 @@ jobs:
               - 'apps/desktop/vitruvian-speaker/**'
               - 'apps/mobile/vitruvian-remote/macmenu/**'
               - 'packages/peripherals/**'
+              - 'packages/pycompat/vitruvian-pycompat/**'
               - 'packages/sentry-lite/**'
               - 'packages/vitruvian-sdk/**'
               - 'tools/**'
@@ -1067,9 +1068,8 @@ jobs:
           BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 --crate-type lib --crate-name osv_scan tools/osv-scan/src/lib.rs -o "$RUNNER_TEMP/libosv_scan.rlib"
-          rustc --edition 2021 tools/osv-scan/src/main.rs -L "$RUNNER_TEMP" --extern osv_scan="$RUNNER_TEMP/libosv_scan.rlib" -o "$RUNNER_TEMP/osv-scan"
-          "$RUNNER_TEMP/osv-scan"
+          bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" osv_scan tools/osv-scan/src/lib.rs tools/osv-scan/src/main.rs
+          "$RUNNER_TEMP/osv_scan"
 
   changes:
     # Decides ONCE, on one runner, whether each small path-gated job below has
@@ -1289,6 +1289,8 @@ jobs:
               - '**/osv-scanner.toml'
               - '**/requirements*.txt'
               - 'tools/osv-scan/**'
+              - 'packages/jq/**'
+              - 'packages/pycompat/vitruvian-pycompat/**'
               - 'tools/ci/src/**'
               - 'tools/shell-compat/**'
               - 'tools/tools.lock.json'

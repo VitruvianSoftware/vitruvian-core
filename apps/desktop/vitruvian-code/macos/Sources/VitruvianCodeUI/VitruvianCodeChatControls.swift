@@ -730,7 +730,7 @@ struct ActiveSubagentBannerView: View {
 
 /// The look the header's small menu badges share: provider, model, effort,
 /// approval.
-private struct HeaderBadgeLabel<Content: View>: View {
+struct HeaderBadgeLabel<Content: View>: View {
     let isHovered: Bool
     var tint: Color? = nil
     @ViewBuilder let content: () -> Content
@@ -898,14 +898,31 @@ struct ChatApprovalModeBadge: View {
         }
     }
 
-    private func choose(_ mode: VitruvianCodeApprovalMode) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            session.planMode = mode == .plan
+    @MainActor
+    static func applySelection(
+        _ mode: VitruvianCodeApprovalMode,
+        session: VitruvianCodeQuickPromptSession,
+        engine: VitruvianCodeEngine
+    ) {
+        let wantsPlan = (mode == .plan)
+        if session.planMode != wantsPlan {
+            session.planMode = wantsPlan
         }
-        guard mode != .plan, engine.configuration.approvalMode != mode else { return }
+        guard mode != .plan else { return }
+        if session.isLiveChat(for: engine.configuration) {
+            session.chatApprovalMode = mode
+            return
+        }
+        guard engine.configuration.approvalMode != mode else { return }
         var next = engine.configuration
         next.approvalMode = mode
         engine.updateChatConfiguration(next)
+    }
+
+    private func choose(_ mode: VitruvianCodeApprovalMode) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            Self.applySelection(mode, session: session, engine: engine)
+        }
     }
 }
 

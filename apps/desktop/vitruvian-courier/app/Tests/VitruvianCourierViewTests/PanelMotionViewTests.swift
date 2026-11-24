@@ -595,6 +595,8 @@ final class PanelMotionViewTests: XCTestCase {
         let (window, host) = show(
             SkeletonRows(compact: false) { events.values.append($0) }
                 .environment(\.windowShowsContentProbe, probe)
+                // Motion on, whatever the machine says: CI's Macs run with Reduce Motion on.
+                .environment(\.courierReduceMotionOverride, false)
                 .frame(width: 280, height: 420),
             size: NSSize(width: 280, height: 420)
         )
@@ -632,6 +634,7 @@ final class PanelMotionViewTests: XCTestCase {
                 if gate.shown {
                     SkeletonRows(compact: true) { events.values.append($0) }
                         .environment(\.windowShowsContentProbe, probe)
+                        .environment(\.courierReduceMotionOverride, false)
                         .frame(width: 280, height: 300)
                 } else {
                     Color.clear.frame(width: 280, height: 300)

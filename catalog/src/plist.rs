@@ -151,9 +151,16 @@ impl<'a> X<'a> {
         }
     }
 
-    fn value(&mut self) -> Result<Value, String> {
+    fn value(&mut self, depth: usize) -> Result<Value, String> {
         self.misc()?;
         let (name, closed) = self.open()?;
+        if matches!(name.as_str(), "dict" | "array") && depth >= crate::json::MAX_DEPTH {
+            return Err(format!(
+                "maximum recursion depth ({}) exceeded while decoding a plist {}",
+                crate::json::MAX_DEPTH,
+                name
+            ));
+        }
         let text = |me: &mut Self| -> Result<String, String> {
             if closed {
                 Ok(String::new())
@@ -176,14 +183,14 @@ impl<'a> X<'a> {
                             return Err(format!("unexpected element {} in dict", k));
                         }
                         let key = if kc { String::new() } else { self.text("key")? };
-                        let v = self.value()?;
+                        let v = self.value(depth + 1)?;
                         match items.iter_mut().find(|(ek, _)| *ek == key) {
                             Some(slot) => slot.1 = v,
                             None => items.push((key, v)),
                         }
                     }
                 }
-                Value::Dict(crate::json::Dict(items))
+                Value::Obj(items)
             }
             "array" => {
                 let mut items = Vec::new();
@@ -194,10 +201,10 @@ impl<'a> X<'a> {
                             self.skip_until(">")?;
                             break;
                         }
-                        items.push(self.value()?);
+                        items.push(self.value(depth + 1)?);
                     }
                 }
-                Value::List(items)
+                Value::Arr(items)
             }
             "string" | "date" | "data" => Value::Str(text(self)?),
             "integer" => {
@@ -208,7 +215,7 @@ impl<'a> X<'a> {
                 } else {
                     t.parse::<i128>().map_err(|e| e.to_string())?
                 };
-                Value::Int(n)
+                crate::json::int(n)
             }
             "real" => Value::Float(
                 text(self)?
@@ -241,18 +248,19 @@ pub fn load(data: &[u8]) -> Result<Value, String> {
         // plistlib also takes a bare value with no <plist>.
         x.i = 0;
         x.misc()?;
-        return x.value();
+        return x.value(0);
     }
     if closed {
         return Err("no value in the plist".into());
     }
-    let v = x.value()?;
+    let v = x.value(0)?;
     Ok(v)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::json::ValueExt;
 
     #[test]
     fn reads_the_apps_info_plist() {
@@ -268,5 +276,63 @@ mod tests {
         .unwrap();
         assert_eq!(v.py_repr(), "{'a&b': [3, True, ''], 'r': 1.5}");
         assert!(load(b"<plist><dict><key>x</dict></plist>").is_err());
+    }
+
+    #[test]
+    fn depth_cap_is_safe_on_2mb_thread_and_cap_plus_one_errors() {
+        let handle = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let d = crate::json::MAX_DEPTH;
+                let arr_ok = format!(
+                    "<plist>{}<integer>1</integer>{}</plist>",
+                    "<array>".repeat(d),
+                    "</array>".repeat(d)
+                );
+                assert!(load(arr_ok.as_bytes()).is_ok());
+
+                let dict_ok = format!(
+                    "<plist>{}<integer>1</integer>{}</plist>",
+                    "<dict><key>a</key>".repeat(d),
+                    "</dict>".repeat(d)
+                );
+                assert!(load(dict_ok.as_bytes()).is_ok());
+
+                let bare_ok = format!(
+                    "{}<integer>1</integer>{}",
+                    "<array>".repeat(d),
+                    "</array>".repeat(d)
+                );
+                assert!(load(bare_ok.as_bytes()).is_ok());
+
+                for bad in [
+                    format!(
+                        "<plist>{}<integer>1</integer>{}</plist>",
+                        "<array>".repeat(d + 1),
+                        "</array>".repeat(d + 1)
+                    ),
+                    format!(
+                        "<plist>{}<integer>1</integer>{}</plist>",
+                        "<dict><key>a</key>".repeat(d + 1),
+                        "</dict>".repeat(d + 1)
+                    ),
+                    format!(
+                        "<plist>{}<array/>{}</plist>",
+                        "<array>".repeat(d),
+                        "</array>".repeat(d)
+                    ),
+                    format!(
+                        "{}<integer>1</integer>{}",
+                        "<array>".repeat(d + 1),
+                        "</array>".repeat(d + 1)
+                    ),
+                ] {
+                    let err = load(bad.as_bytes()).unwrap_err();
+                    assert!(err.contains("maximum recursion depth"), "got: {}", err);
+                    assert!(err.contains(&d.to_string()), "got: {}", err);
+                }
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 }

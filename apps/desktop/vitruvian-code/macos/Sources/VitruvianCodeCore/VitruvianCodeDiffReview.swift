@@ -20,6 +20,7 @@
 
 import Combine
 import CoreGraphics
+import Darwin
 import Foundation
 
 // MARK: - Annotate AI Diffs
@@ -320,6 +321,321 @@ public enum VitruvianCodeDiffParser: Sendable {
         }
         return (oldStart, newStart)
     }
+
+    /// Maximum file size read when anchoring agent-reported diff snippets to real line numbers.
+    public static let maxAnchoredFileBytes = 2 * 1024 * 1024
+
+    /// Maximum file size embedded inline for `@`-mention ACP resource blocks (1 MB).
+    public static let maxMentionFileBytes = 1024 * 1024
+
+    /// Outcome of validating and optionally reading a regular file inside `workingDirectory`.
+    public enum SafeWorkingDirectoryFileResult: Equatable, Sendable {
+        case text(resolvedPath: String, content: String, byteCount: Int)
+        case nonTextOrOversize(resolvedPath: String, byteCount: Int)
+        case outsideWorkingDirectory
+        case notRegularFileOrMissing
+    }
+
+    /// Reads a regular file inside `workingDirectory` (resolving symlinks, rejecting escapes
+    /// and files larger than `maxBytes`), returning full classification for diff anchoring and `@`-mentions.
+    public static func readSafeWorkingDirectoryFileResult(
+        path: String,
+        workingDirectory: String?,
+        maxBytes: Int = maxAnchoredFileBytes,
+        readContent: Bool = true
+    ) -> SafeWorkingDirectoryFileResult {
+        guard let workingDirectory, !workingDirectory.isEmpty else { return .notRegularFileOrMissing }
+        let expandedWorkdir = (workingDirectory as NSString).expandingTildeInPath
+        guard let cWorkdir = Darwin.realpath(expandedWorkdir, nil) else { return .notRegularFileOrMissing }
+        defer { free(cWorkdir) }
+        let resolvedWorkdir = String(cString: cWorkdir)
+        let workdirPrefix = resolvedWorkdir == "/"
+            ? "/"
+            : (resolvedWorkdir.hasSuffix("/") ? resolvedWorkdir : resolvedWorkdir + "/")
+
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.contains("\0"),
+              !trimmed.contains("\r"),
+              !trimmed.contains("\n") else {
+            return .notRegularFileOrMissing
+        }
+        let candidatePath: String
+        if trimmed.hasPrefix("/") {
+            candidatePath = trimmed
+        } else if trimmed.hasPrefix("~/") {
+            candidatePath = (trimmed as NSString).expandingTildeInPath
+        } else {
+            candidatePath = (resolvedWorkdir as NSString).appendingPathComponent(trimmed)
+        }
+
+        guard let cTarget = Darwin.realpath(candidatePath, nil) else {
+            var linkStat = stat()
+            if Darwin.lstat(candidatePath, &linkStat) == 0,
+               (linkStat.st_mode & S_IFMT) == S_IFLNK {
+                var targetBuffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+                let len = Darwin.readlink(candidatePath, &targetBuffer, targetBuffer.count - 1)
+                if len > 0 {
+                    let linkTarget = String(decoding: targetBuffer.prefix(len).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+                    let joined = linkTarget.hasPrefix("/")
+                        ? linkTarget
+                        : ((candidatePath as NSString).deletingLastPathComponent as NSString).appendingPathComponent(linkTarget)
+                    let normalized = (joined as NSString).standardizingPath
+                    if normalized != resolvedWorkdir && !normalized.hasPrefix(workdirPrefix) {
+                        return .outsideWorkingDirectory
+                    }
+                }
+            }
+            let standardized = (candidatePath as NSString).standardizingPath
+            if standardized != resolvedWorkdir && !standardized.hasPrefix(workdirPrefix) {
+                return .outsideWorkingDirectory
+            }
+            return .notRegularFileOrMissing
+        }
+        defer { free(cTarget) }
+        let resolvedPath = String(cString: cTarget)
+        guard resolvedPath.hasPrefix(workdirPrefix) else { return .outsideWorkingDirectory }
+
+        let fd = Darwin.open(resolvedPath, O_RDONLY | O_NOFOLLOW)
+        guard fd >= 0 else { return .notRegularFileOrMissing }
+        defer { Darwin.close(fd) }
+
+        var st = stat()
+        guard Darwin.fstat(fd, &st) == 0 else { return .notRegularFileOrMissing }
+        guard (st.st_mode & S_IFMT) == S_IFREG, st.st_size >= 0 else {
+            return .notRegularFileOrMissing
+        }
+        let byteCount = Int(min(st.st_size, Int64(Int.max)))
+        if !readContent || Int64(st.st_size) > Int64(maxBytes) {
+            return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: byteCount)
+        }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 16_384)
+        while true {
+            let n = buffer.withUnsafeMutableBytes { ptr -> Int in
+                guard let base = ptr.baseAddress else { return -1 }
+                return Darwin.read(fd, base, ptr.count)
+            }
+            if n < 0 {
+                if errno == EINTR { continue }
+                return .notRegularFileOrMissing
+            }
+            if n == 0 { break }
+            if data.count + n > maxBytes {
+                return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: byteCount)
+            }
+            data.append(buffer, count: n)
+        }
+        if data.contains(0) {
+            return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: data.count)
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            return .nonTextOrOversize(resolvedPath: resolvedPath, byteCount: data.count)
+        }
+        return .text(resolvedPath: resolvedPath, content: text, byteCount: data.count)
+    }
+
+    /// Reads a regular file inside `workingDirectory` (resolving symlinks, rejecting escapes
+    /// and files larger than `maxBytes`) so diff hunks can anchor to real line numbers.
+    public static func readSafeWorkingDirectoryFile(
+        diffPath: String,
+        workingDirectory: String?,
+        maxBytes: Int = maxAnchoredFileBytes
+    ) -> String? {
+        guard case .text(_, let content, _) = readSafeWorkingDirectoryFileResult(
+            path: diffPath,
+            workingDirectory: workingDirectory,
+            maxBytes: maxBytes,
+            readContent: true
+        ) else {
+            return nil
+        }
+        return content
+    }
+
+    /// Returns the 1-based start line when `needle` appears exactly once in `haystack`.
+    static func uniqueStartLine(of needle: [String], in haystack: [String]) -> Int? {
+        guard !needle.isEmpty, needle.count <= haystack.count else { return nil }
+        var matchIndex: Int?
+        let lastStart = haystack.count - needle.count
+        for idx in 0...lastStart {
+            if haystack[idx..<(idx + needle.count)].elementsEqual(needle) {
+                if matchIndex != nil {
+                    return nil
+                }
+                matchIndex = idx
+            }
+        }
+        return matchIndex.map { $0 + 1 }
+    }
+
+    /// Converts live agent-reported diffs into `VitruvianCodeDiffFile` entries grouped by file path.
+    public static func buildDiffFiles(
+        from diffs: [VitruvianCodeToolStep.Diff],
+        workingDirectory: String? = nil,
+        maxAnchoredFileBytes: Int = maxAnchoredFileBytes
+    ) -> [VitruvianCodeDiffFile] {
+        var order: [String] = []
+        var grouped: [String: [VitruvianCodeToolStep.Diff]] = [:]
+
+        let normalizedWorkdir: String? = {
+            guard let workingDirectory, !workingDirectory.isEmpty else { return nil }
+            let standardized = (workingDirectory as NSString).standardizingPath
+            return standardized.hasSuffix("/") ? standardized : standardized + "/"
+        }()
+
+        func displayPath(for rawPath: String) -> String {
+            let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return "untitled" }
+            if let prefix = normalizedWorkdir, trimmed.hasPrefix(prefix) {
+                let relative = String(trimmed.dropFirst(prefix.count))
+                return relative.isEmpty ? trimmed : relative
+            }
+            return trimmed
+        }
+
+        for diff in diffs {
+            if diff.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               (diff.oldText ?? "").isEmpty,
+               diff.newText.isEmpty {
+                continue
+            }
+            let key = displayPath(for: diff.path)
+            if grouped[key] == nil {
+                order.append(key)
+                grouped[key] = []
+            }
+            grouped[key]?.append(diff)
+        }
+
+        var cachedFileLines: [String: [String]?] = [:]
+        func fileLines(for rawPath: String) -> [String]? {
+            if let cached = cachedFileLines[rawPath] {
+                return cached
+            }
+            let loaded = readSafeWorkingDirectoryFile(
+                diffPath: rawPath,
+                workingDirectory: workingDirectory,
+                maxBytes: maxAnchoredFileBytes
+            ).map { VitruvianCodeLineDiff.splitLines($0) }
+            cachedFileLines[rawPath] = loaded
+            return loaded
+        }
+
+        var files: [VitruvianCodeDiffFile] = []
+        for path in order {
+            let entries = grouped[path] ?? []
+            guard !entries.isEmpty else { continue }
+            var hunks: [VitruvianCodeDiffHunk] = []
+            var addedCount = 0
+            var removedCount = 0
+            var lineCounter = 0
+
+            for (hunkIndex, diff) in entries.enumerated() {
+                let oldLines = VitruvianCodeLineDiff.splitLines(diff.oldText)
+                let newLines = VitruvianCodeLineDiff.splitLines(diff.newText)
+                let diffLines = VitruvianCodeLineDiff.lines(old: diff.oldText, new: diff.newText)
+
+                let anchoredStart: Int?
+                if newLines.isEmpty {
+                    anchoredStart = nil
+                } else {
+                    anchoredStart = fileLines(for: diff.path).flatMap {
+                        uniqueStartLine(of: newLines, in: $0)
+                    }
+                }
+
+                let header: String
+                if let startLine = anchoredStart {
+                    let oldStart = oldLines.isEmpty ? 0 : startLine
+                    header = "@@ -\(oldStart),\(oldLines.count) +\(startLine),\(newLines.count) @@"
+                } else {
+                    header = "@@ -?,\(oldLines.count) +?,\(newLines.count) @@"
+                }
+
+                lineCounter += 1
+                var hunkLines: [VitruvianCodeDiffLine] = [
+                    VitruvianCodeDiffLine(
+                        id: "\(path):h\(hunkIndex):l\(lineCounter)",
+                        kind: .header,
+                        oldLineNumber: nil,
+                        newLineNumber: nil,
+                        content: header
+                    )
+                ]
+                var oldNo = anchoredStart
+                var newNo = anchoredStart
+                for diffLine in diffLines {
+                    lineCounter += 1
+                    switch diffLine.kind {
+                    case .context:
+                        hunkLines.append(
+                            VitruvianCodeDiffLine(
+                                id: "\(path):h\(hunkIndex):l\(lineCounter)",
+                                kind: .context,
+                                oldLineNumber: oldNo,
+                                newLineNumber: newNo,
+                                content: diffLine.text
+                            )
+                        )
+                        oldNo = oldNo.map { $0 + 1 }
+                        newNo = newNo.map { $0 + 1 }
+                    case .removed:
+                        hunkLines.append(
+                            VitruvianCodeDiffLine(
+                                id: "\(path):h\(hunkIndex):l\(lineCounter)",
+                                kind: .deletion,
+                                oldLineNumber: oldNo,
+                                newLineNumber: nil,
+                                content: diffLine.text
+                            )
+                        )
+                        oldNo = oldNo.map { $0 + 1 }
+                        removedCount += 1
+                    case .added:
+                        hunkLines.append(
+                            VitruvianCodeDiffLine(
+                                id: "\(path):h\(hunkIndex):l\(lineCounter)",
+                                kind: .addition,
+                                oldLineNumber: nil,
+                                newLineNumber: newNo,
+                                content: diffLine.text
+                            )
+                        )
+                        newNo = newNo.map { $0 + 1 }
+                        addedCount += 1
+                    }
+                }
+                hunks.append(
+                    VitruvianCodeDiffHunk(
+                        id: "\(path)#hunk-\(hunkIndex)",
+                        header: header,
+                        lines: hunkLines
+                    )
+                )
+            }
+
+            let oldPath = entries.allSatisfy { $0.oldText == nil } ? "/dev/null" : path
+            files.append(
+                VitruvianCodeDiffFile(
+                    id: path,
+                    oldPath: oldPath,
+                    newPath: path,
+                    hunks: hunks,
+                    addedCount: addedCount,
+                    removedCount: removedCount
+                )
+            )
+        }
+        return files
+    }
+}
+
+/// Source of the files currently loaded in `VitruvianCodeDiffReviewSession`.
+public enum VitruvianCodeDiffSource: Equatable, Sendable {
+    case agentReported
+    case git
 }
 
 /// A line-anchored review comment attached to a diff range.
@@ -362,17 +678,26 @@ public struct VitruvianCodeDiffAnnotation: Identifiable, Equatable, Sendable, Co
 public final class VitruvianCodeDiffReviewSession: ObservableObject {
     @Published public private(set) var files: [VitruvianCodeDiffFile]
     @Published public private(set) var annotations: [VitruvianCodeDiffAnnotation]
+    @Published public private(set) var source: VitruvianCodeDiffSource
 
     public init(
         files: [VitruvianCodeDiffFile] = [],
-        annotations: [VitruvianCodeDiffAnnotation] = []
+        annotations: [VitruvianCodeDiffAnnotation] = [],
+        source: VitruvianCodeDiffSource = .git
     ) {
         self.files = files
         self.annotations = annotations
+        self.source = source
     }
 
     public func loadDiff(_ rawDiff: String) {
         self.files = VitruvianCodeDiffParser.parseUnifiedDiff(rawDiff)
+        self.source = .git
+    }
+
+    public func loadFiles(_ files: [VitruvianCodeDiffFile], source: VitruvianCodeDiffSource) {
+        self.files = files
+        self.source = source
     }
 
     @discardableResult

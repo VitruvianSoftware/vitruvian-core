@@ -20,6 +20,7 @@
 
 import Foundation
 import UserNotifications
+import VitruvianCodeCore
 
 // MARK: - Background Completion Notifications
 
@@ -64,6 +65,27 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         UNUserNotificationCenter.current().add(request)
     }
     
+    /// The category of a notification from a scheduled run that stopped to ask
+    /// for the user. It has no click action of its own: the run has already
+    /// ended, so there is nothing for the app to come back to.
+    static let unattendedCategory = "UNATTENDED_RUN_NEEDS_USER"
+
+    /// Posts a notification for a scheduled run with no window, and returns
+    /// once the system has taken it, so that a process that exits straight
+    /// after does not lose it. The title and body are the caller's words: the
+    /// run's own notice, which holds the task's name and nothing else of it.
+    func notifyUnattended(title: String, body: String) async {
+        let center = UNUserNotificationCenter.current()
+        _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = String(body.prefix(200))
+        content.sound = .default
+        content.categoryIdentifier = Self.unattendedCategory
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
     /// Called when the user clicks a notification — reopen the Quick Prompt window.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -97,5 +119,13 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound, .list])
+    }
+}
+
+/// How a scheduled run with no window reaches the user.
+@MainActor
+final class UnattendedRunNotifier: VitruvianCodeUnattendedNotifier {
+    func notify(title: String, body: String) async {
+        await BackgroundNotificationManager.shared.notifyUnattended(title: title, body: body)
     }
 }

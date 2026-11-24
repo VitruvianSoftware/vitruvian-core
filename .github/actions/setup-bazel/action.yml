@@ -135,31 +135,28 @@ runs:
           /usr/share/swift
           /usr/local/share/powershell
 
-    # Every job RESTORES the caches; only GitHub-hosted jobs on main SAVE them.
+    # This action is RESTORE-ONLY for the Bazel repository cache.
     #
-    # An Actions cache is readable only from the ref that saved it and from the
-    # default branch. A merge-queue entry runs on a throwaway
-    # gh-readonly-queue/main/pr-<n>-<sha> branch that GitHub deletes when the
-    # entry leaves the queue, so a cache saved there can never be read again,
-    # and a pull-request cache is read only by that PR's next push. Both still
-    # count against the repo's single 10 GiB budget, and GitHub makes room by
-    # evicting the oldest entries -- main's, which is what every other ref
-    # falls back to. One queue entry held 6.2 GiB of such dead cache on
-    # 2026-10-31 (repository 3.9 + llvm 2.2 + bazelisk), more than half the
-    # budget.
+    # No regular CI job — including jobs on main, merge-queue runs, pull
+    # requests, or _copybara-export.yaml — ever writes the repository cache.
+    # Only .github/workflows/bazel-repo-cache.yaml saves repository cache
+    # entries, and only after filling archives cleanly and proving offline
+    # completeness with `--repository_disable_download`.
     #
-    # Self-hosted runners (the vitruvian-queue pool) are excluded even on main:
-    # their upload measured ~1.8 MB/s against ~300-365 MB/s from GitHub-hosted
-    # runners. On 2026-10-31 two merge-queue Conformance Check runs (41178618061,
-    # 41178619555) passed in 6 minutes, then spent 38 minutes in this action's
-    # post step uploading a 5.7 GB repository cache and hit the 45-minute job
-    # timeout, which cancelled a required check and dropped PRs #4085 and #4090
-    # from the queue. A post step cannot be given its own timeout, so the only
-    # safe save is one that cannot be slow. GitHub-hosted jobs on main (ci.yaml's
-    # build-test and friends) keep the entries warm for everyone.
+    # Why: an Actions cache saved on a throwaway merge-queue or PR branch is
+    # unreadable elsewhere while still consuming the repo's 10 GiB budget and
+    # evicting main's entries; self-hosted runners upload too slowly (~1.8 MB/s)
+    # and hit job timeouts; and allowing partial jobs (such as Copybara export)
+    # to race-save first on main poisoned exact-key hits with incomplete
+    # entries. Restoring checks the exact `-repository-full-<hash>` key, then the
+    # `-repository-full-` prefix, and falls back LAST to the same-platform
+    # legacy `-repository-` prefix so a full entry always wins when one exists
+    # while keeping the legacy cache usable until a full entry is saved.
     #
-    # tools/conformance (CACHESAVE) fails if this guard is dropped, or if a
-    # workflow calls bazel-contrib/setup-bazel directly instead of this action.
+    # tools/conformance (CACHESAVE) fails if this action ever re-enables
+    # `repository-cache` or `cache-save` on bazel-contrib/setup-bazel, if a
+    # workflow calls bazel-contrib/setup-bazel directly outside
+    # bazel-repo-cache.yaml, or if the `-repository-full-` key prefix drifts.
     #
     # GOPROXY: if proxy.golang.org fails to answer, fetch the Go module
     # straight from its source repository instead of failing the job (#4187).
@@ -185,48 +182,25 @@ runs:
     #
     # tools/conformance (GOPROXY) fails if this line loses the pipe fallback.
     #
-    # The repository cache is restored by setup-bazel only where it is also
-    # saved (GitHub-hosted jobs on main, the same guard as cache-save);
-    # GitHub-hosted jobs off main restore it with actions/cache/restore, in the
-    # step below. Self-hosted runners (vitruvian-queue) skip the Actions cache
-    # download altogether: they mount the persistent ReadWriteMany
-    # vitruvian-queue-cache PVC at /home/runner/.cache/bazel-repo and point
-    # --repository_cache at it in "Use the restored repository cache" below, so
-    # ephemeral runner pods do not pull the 5.55 GB archive over WAN on every
-    # job.
+    # Every GitHub-hosted job (including main) restores the archive-only
+    # repository cache via actions/cache/restore below. Self-hosted runners
+    # (vitruvian-queue) skip the Actions cache download altogether: they mount
+    # the persistent ReadWriteMany vitruvian-queue-cache PVC at
+    # /home/runner/.cache/bazel-repo and point --repository_cache at it in
+    # "Use the restored repository cache" below, so ephemeral runner pods do
+    # not pull multi-GiB archives over WAN on every job.
     #
-    # setup-bazel 0.19.1 never exits its main step after an aborted download:
-    # it logs "Failed to restore repository cache", but the stalled HTTP
-    # request keeps node alive, so the step sits until the job's timeout. On
-    # 2026-11-06 that happened twice in the merge queue on vitruvian-queue
-    # runners (run 42277456783 job lint-naming: the 3.6 GB download stopped at
-    # 47.5% at 19:15:48, the job was cancelled at its 15-minute limit at
-    # 19:27:23; run 42280417088 the same), cancelling a required check and
-    # dropping PR #4380 from the queue. 3 of 17 queue-runner restores in the
-    # last 40 queue CI runs were aborted; the queue runners download it at
-    # ~10 MB/s (median 318 s, max 481 s), against ~60 s on hosted runners.
-    # actions/cache/restore ends with process.exit for exactly this case ("node
-    # will stay alive if any promises are not resolved, which is a possibility
-    # if HTTP requests are dangling"), and SEGMENT_DOWNLOAD_TIMEOUT_MINS gives
-    # up on a stalled download, so a bad download is a cache miss: Bazel then
-    # fetches what it needs itself.
+    # setup-bazel 0.19.x is kept with `repository-cache: false` and
+    # `cache-save: false`: earlier versions hung after an aborted download
+    # instead of exiting, whereas actions/cache/restore honors
+    # SEGMENT_DOWNLOAD_TIMEOUT_MINS and `continue-on-error: true`, so a stalled
+    # or missing restore becomes a cache miss and Bazel downloads what it needs.
     #
-    # The key is setup-bazel's own (setup-bazel-<cache-version>-<platform>-
-    # <arch>-repository-<hash of MODULE.bazel and the WORKSPACE files>), so it
-    # reads the entries main saves; the restore-keys prefix matches the newest
-    # one if the hash differs.
-    #
-    # tools/conformance (CACHESAVE) fails if setup-bazel restores the
-    # repository cache outside that guard, if actions/cache/restore runs on
-    # self-hosted runners or main, or if this restore loses its timeout.
-    #
-    # The path must be the same string setup-bazel saves under, an absolute
-    # $HOME/.cache/bazel-repo: an Actions cache entry's version is a hash of
-    # its paths, so `~/.cache/bazel-repo` found nothing, not even by prefix
-    # (checked in this PR's first run).
+    # The path must stay the absolute `$HOME/.cache/bazel-repo` string that
+    # bazel-repo-cache.yaml saves under (an Actions cache entry's version hashes
+    # its path strings, so `~/.cache/bazel-repo` would miss).
     - name: Where setup-bazel keeps the repository cache
       id: repo-cache
-      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
       shell: bash
       run: |
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
@@ -282,15 +256,16 @@ runs:
           || echo "::warning title=Runner cache check::stopped early (exit $?); the job goes on"
 
     - name: Restore the Bazel repository cache
-      if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}
+      if: ${{ runner.environment == 'github-hosted' }}
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: "4"
       with:
         path: ${{ steps.repo-cache.outputs.path }}
-        key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-${{ hashFiles('MODULE.bazel', 'WORKSPACE.bazel', 'WORKSPACE.bzlmod', 'WORKSPACE') }}
+        key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
         restore-keys: |
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
 
     - uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
@@ -302,17 +277,18 @@ runs:
         # touched it failed with "Failed to open ... as a zip file:
         # Input/output error" right after "Failed to restore bazelisk cache".
         bazelisk-cache: ${{ runner.environment != 'self-hosted' }}
-        repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
-        cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+        repository-cache: false
+        cache-save: false
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
           common --repo_env=GOPROXY=https://proxy.golang.org|direct
 
-    # Without its repository cache setup-bazel leaves --repository_cache out
-    # of ~/.bazelrc, so point Bazel at the folder restored above. setup-bazel
-    # writes the file without a final newline, hence the leading one.
+    # setup-bazel itself runs with repository-cache: false (restore-only), so
+    # point Bazel at the repository cache path above for every job: hosted jobs
+    # read the restored archive cache (or download on a miss), and self-hosted
+    # runners read their mounted PVC. setup-bazel writes ~/.bazelrc without a
+    # final newline, hence the leading one.
     - name: Use the restored repository cache
-      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
       shell: bash
       run: printf '\ncommon --repository_cache=%s\n' "${{ steps.repo-cache.outputs.path }}" >> "${HOME}/.bazelrc"

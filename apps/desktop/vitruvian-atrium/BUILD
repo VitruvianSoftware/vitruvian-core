@@ -665,7 +665,10 @@ rust_library(
 # test meant to catch it. It edits the checkout in place and drives
 # `bazel test` itself, so it is run rather than tested, on macOS:
 #   bazel run --config=macos-app //apps/desktop/vitruvian-atrium:mutation_checks
-# .github/workflows/vitruvian-atrium-mutation-checks.yaml runs it weekly.
+# `-- --shard=K/N` runs only mutations i with i % N == K; the whole list takes
+# far longer than one CI job may run. It reports every mutation not caught,
+# not only the first. .github/workflows/vitruvian-atrium-mutation-checks.yaml
+# runs one shard a week.
 rust_binary(
     name = "mutation_checks",
     srcs = ["bazel/src/mutation_checks/main.rs"],

@@ -25,11 +25,10 @@
 //! Behaviour is the scripts', byte for byte: arguments, usage text, log
 //! lines, the commands run (curl, gcloud, kubectl, gh) and their argv,
 //! output, and exit codes, including the bash `set -euo pipefail` corners.
-//! The jq the scripts pipe JSON through is [`jq`], over serde_json; the ports
+//! The jq the scripts pipe JSON through uses `vitruvian_jq`; the ports
 //! need no jq on PATH.
 
 pub mod common;
-pub mod jq;
 pub mod neon_branch;
 pub mod pr_comment;
 pub mod provision_preview;

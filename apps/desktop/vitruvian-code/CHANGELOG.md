@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.43.0...vitruvian-code-v1.44.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-code:** run scheduled automations through live connections ([#5439](https://github.com/VitruvianSoftware/vitruvian-core/issues/5439)) ([4a8aeee](https://github.com/VitruvianSoftware/vitruvian-core/commit/4a8aeee56271c47853e30d9ffc7bcb6bc5c34ac9))
+
+## [1.43.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.42.0...vitruvian-code-v1.43.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-code:** notices, compaction, usage-limit wait and error cards ([#5428](https://github.com/VitruvianSoftware/vitruvian-core/issues/5428)) ([d4ae788](https://github.com/VitruvianSoftware/vitruvian-core/commit/d4ae78872e5e5ba8ddeb34736ba8c8f28106eeec))
+* **vitruvian-code:** settings bar, per-chat modes, slash details and file mentions ([#5417](https://github.com/VitruvianSoftware/vitruvian-core/issues/5417)) ([154b0ae](https://github.com/VitruvianSoftware/vitruvian-core/commit/154b0aeed6ff2e36eab3dcb73a566c2b50ed5f7f))
+
+## [1.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.41.2...vitruvian-code-v1.42.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-code:** show the agent's plan, every tool change and live diffs ([#5416](https://github.com/VitruvianSoftware/vitruvian-core/issues/5416)) ([4a0857f](https://github.com/VitruvianSoftware/vitruvian-core/commit/4a0857f4cd60b3898bd5a76111b9b7b0350166e5))
+
+
+### Bug Fixes
+
+* **vitruvian-code:** make live chats safe to stop, switch modes and use worktrees ([#5412](https://github.com/VitruvianSoftware/vitruvian-core/issues/5412)) ([a3fa4dc](https://github.com/VitruvianSoftware/vitruvian-core/commit/a3fa4dcde32e049fc15a87a6dbf1019853629dfa))
+
 ## [1.41.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.41.1...vitruvian-code-v1.41.2) (2026-11-22)
 
 

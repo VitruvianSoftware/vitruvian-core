@@ -17,9 +17,13 @@ package struct NotchDisplayInfo: Equatable {
     package var isBuiltIn: Bool
     /// The display the menu bar is on when displays share Spaces.
     package var hasMenuBar: Bool
+    /// Where the camera housing starts, from the menu bar's left half; nil
+    /// when the display does not say, and the housing is taken as centred.
+    package var physicalCameraX: CGFloat?
 
     package init(id: CGDirectDisplayID, frame: CGRect, visibleFrame: CGRect, safeAreaTop: CGFloat,
-                 cameraWidth: CGFloat, backingScale: CGFloat, isBuiltIn: Bool, hasMenuBar: Bool) {
+                 cameraWidth: CGFloat, backingScale: CGFloat, isBuiltIn: Bool, hasMenuBar: Bool,
+                 physicalCameraX: CGFloat? = nil) {
         self.id = id
         self.frame = frame
         self.visibleFrame = visibleFrame
@@ -28,6 +32,7 @@ package struct NotchDisplayInfo: Equatable {
         self.backingScale = backingScale
         self.isBuiltIn = isBuiltIn
         self.hasMenuBar = hasMenuBar
+        self.physicalCameraX = physicalCameraX
     }
 
     @MainActor
@@ -40,6 +45,7 @@ package struct NotchDisplayInfo: Equatable {
                   safeAreaTop: screen.safeAreaInsets.top, cameraWidth: cameraWidth,
                   backingScale: screen.backingScaleFactor,
                   isBuiltIn: CGDisplayIsBuiltin(screen.notchDisplayID) != 0,
-                  hasMenuBar: NSScreen.withMenuBar == screen)
+                  hasMenuBar: NSScreen.withMenuBar == screen,
+                  physicalCameraX: screen.auxiliaryTopLeftArea?.maxX)
     }
 }

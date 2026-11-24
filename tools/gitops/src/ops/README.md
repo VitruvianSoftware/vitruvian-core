@@ -26,12 +26,12 @@ Component package providing implementation for `tools/gitops/src/ops`.
 - `[common.rs:default_kubeconfig]`
 
 ## Invariants
-- [bw_backup.rs:410]: `format!("ERROR: item created but attachment '{}' did not persist \u{2014} Bit...`
+- [bw_backup.rs:423]: `assert!(!msg.contains("FAKE-SECRET-VALUE-1"), "secret leaked: {msg}");`
 - [crypto.rs:213]: `assert!(b64decode(b"c2V*").is_err());`
 - [crypto.rs:214]: `assert!(b64decode(b"c2V").is_err());`
-- [jq.rs:426]: `assert!(!field_r(b"nope", "status").1);`
-- [jq.rs:427]: `assert!(!field_r(br#""s""#, "status").1);`
-- [jq.rs:442]: `assert!(has_attachment(item, "k.json"));`
+- [jq.rs:144]: `assert!(!field_r(b"nope", "status").1);`
+- [jq.rs:145]: `assert!(!field_r(br#""s""#, "status").1);`
+- [jq.rs:163]: `assert!(has_attachment(item, "k.json"));`
 - [mod.rs:134]: `assert!(seen.insert(*name), "duplicate tool {}", name);`
 - [mod.rs:135]: `assert!(name`
 - [mod.rs:138]: `assert!(script.ends_with(".sh"));`

@@ -249,6 +249,9 @@ package enum DefaultsKey {
     // The read checksum fix needs its own recheck even if the paired-request
     // migration already ran and cached the monitor as write-only again.
     package static let brightnessDDCReadChecksumRechecked = "brightnessDDCReadChecksumRechecked"
+    // Monitors behind an MCDP29XX HDMI converter were probed at an address
+    // it swallows; recheck them once now that it is addressed.
+    package static let brightnessDDCHDMIConverterRechecked = "brightnessDDCHDMIConverterRechecked"
     /// A beta already installed the companion for this Command Bar user, once.
     package static let notchMascotBetaInstalled = "notchMascotBetaInstalled"
     // Per-monitor connection paths a person has told this app to dim in

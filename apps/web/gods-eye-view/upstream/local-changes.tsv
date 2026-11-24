@@ -8,13 +8,14 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	624c229bc2a86fc1e47ed34c95fc7cefa2ac1676	tree	0629f67b790b64e62a0e66aaf8f14d52c8e589bb
+# base	1f105a68afeb9ef633b0ce25259f2af61420ce08	tree	24b73665fd87bcb34fa0b2c18d3259263f87e691
 # path	change	why
 .dockerignore	modified	Legacy local-context filter (superseded for repo-root builds by Dockerfile.dockerignore). Upstream ships its own for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
 Dockerfile	modified	The production image, published to GHCR and deployed by gitops/argocd. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 Dockerfile.dockerignore	added	Repo-root Docker build context filter for the production Dockerfile, whitelisting workspace manifests and apps/web/gods-eye-view/.
 OWNERS	added	Monorepo code ownership.
+catalog-info.yaml	added	Backstage catalog entry, as every app in this repository has, so the developer portal lists the app with its owner and source.
 compose.yaml	modified	Points compose build at the monorepo root context with apps/web/gods-eye-view/Dockerfile.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
@@ -77,6 +78,7 @@ src/sentry.ts	added	TypeScript re-exports and interface for client-side Sentry.
 src/main.js	modified	Initializes client-side Sentry error monitoring and captures startup failures.
 src/ui/styles/provider-settings.css	modified	Adds styles for key-setup-sentry-test diagnostic button.
 src/ui/views/ProviderSettingsView.vue	modified	Adds Sentry diagnostic test button to trigger client and server exceptions.
+src/ui/kit/missionsRadioControls.test.mjs	modified	Counts five UiButtons in ProviderSettingsView.vue, not four: the Sentry test button that view adds here is a UiButton.
 README.md	modified	Monorepo README contract (#4586): the generated Interface/Invariants/Side Effects/Verification sections every component README carries here. Upstream has none.
 pinokio/README.md	added	Monorepo README contract (#4586): the generated Interface/Invariants/Side Effects/Verification sections every component README carries here. Upstream has none.
 scripts/README.md	added	Monorepo README contract (#4586): the generated Interface/Invariants/Side Effects/Verification sections every component README carries here. Upstream has none.

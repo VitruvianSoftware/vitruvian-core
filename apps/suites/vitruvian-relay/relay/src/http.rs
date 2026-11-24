@@ -75,7 +75,9 @@ use crate::dashboard::{self, Dashboard};
 use crate::devices::{
     clean_device_name, DeviceRecord, NewDevice, DEFAULT_DEVICE_NAME, DEVICE_NAME_MAX,
 };
-use crate::mcp::{era, needs_session, Answer, Era, Mcp};
+use crate::mcp::{
+    era, method_label, named_version, needs_session, protocol_label, Answer, Era, Mcp,
+};
 use crate::oauth;
 use crate::parked::Delivery;
 use crate::ratelimit::{RateLimit, CALLS_PER_MINUTE_PER_USER, RATE_BURST};
@@ -749,8 +751,25 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
             app.settings.device_metadata_url(device_id)
         };
         let device_id = device_id.to_string();
-        return match method {
-            Method::POST => mcp_post(app, req, device_id, metadata_url, for_apps).await,
+        let http = match method {
+            Method::POST => "POST",
+            Method::GET => "GET",
+            Method::DELETE => "DELETE",
+            _ => "other",
+        };
+        let mut seen = McpSeen::default();
+        let resp = match method {
+            Method::POST => {
+                mcp_post(
+                    app.clone(),
+                    req,
+                    device_id.clone(),
+                    metadata_url,
+                    for_apps,
+                    &mut seen,
+                )
+                .await
+            }
             Method::GET | Method::DELETE => {
                 let mut r = text(StatusCode::METHOD_NOT_ALLOWED, "POST only");
                 r.headers_mut()
@@ -759,6 +778,21 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
             }
             _ => text(StatusCode::METHOD_NOT_ALLOWED, "POST only"),
         };
+        if for_apps {
+            app.log(
+                "app_mcp_request",
+                json!({
+                    "device_id": device_id,
+                    "http": http,
+                    "status": resp.status().as_u16(),
+                    "method": seen.method,
+                    "protocol": seen.protocol,
+                    "tools": seen.tools,
+                    "rpc_error": seen.rpc_error,
+                }),
+            );
+        }
+        return resp;
     }
     if let Some(device_id) = path
         .strip_prefix(PRM)
@@ -815,12 +849,23 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> Response<Body> {
 
 // ---------------------------------------------------------------------- MCP
 
+/// What one MCP request was, for its log line: fixed labels and counts, never
+/// its arguments, results or anything else the client wrote.
+#[derive(Default)]
+struct McpSeen {
+    method: Option<&'static str>,
+    protocol: Option<&'static str>,
+    tools: Option<usize>,
+    rpc_error: Option<i64>,
+}
+
 async fn mcp_post(
     app: Arc<App>,
     req: Request<Incoming>,
     device_id: String,
     metadata_url: String,
     for_apps: bool,
+    seen: &mut McpSeen,
 ) -> Response<Body> {
     let tracker = req.extensions().get::<Arc<WriteTracker>>().cloned();
     let caller =
@@ -890,6 +935,11 @@ async fn mcp_post(
         }
     };
     let method = msg.get("method").and_then(Value::as_str);
+    seen.method = Some(method_label(method));
+    seen.protocol = Some(protocol_label(named_version(
+        &msg,
+        protocol_header.as_deref(),
+    )));
     if store_down {
         app.log(
             "mcp_refused",
@@ -929,6 +979,10 @@ async fn mcp_post(
     {
         None => respond(StatusCode::ACCEPTED, "text/plain", ""),
         Some(Answer { value: v, delivery }) => {
+            seen.rpc_error = v["error"]["code"].as_i64();
+            if method == Some("tools/list") {
+                seen.tools = v["result"]["tools"].as_array().map(Vec::len);
+            }
             // The stateless revision answers an unknown method with 404; the
             // older ones keep 200 with the JSON-RPC error.
             let status = if era == Era::Modern && v["error"]["code"] == -32601 {

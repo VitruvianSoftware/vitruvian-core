@@ -183,6 +183,12 @@ public struct VitruvianCodeChatView: View {
                     Divider().opacity(0.3)
                 } else {
                     conversation
+                    if !session.liveState.plan.isEmpty {
+                        AgentPlanView(entries: session.liveState.plan, strings: strings)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 6)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                     Divider().opacity(0.3)
                 }
                 ModeToggleStrip(
@@ -193,11 +199,66 @@ public struct VitruvianCodeChatView: View {
                     strings: strings,
                     undoTurn: session.canUndoLastTurn ? { session.undoLastTurn(note: strings.undoTurnNote) } : nil
                 )
+                if !AgentSettingsBarLogic.visibleOptions(from: session.liveState.configOptions).isEmpty {
+                    AgentSettingsBar(
+                        options: session.liveState.configOptions,
+                        isDisabled: session.isRunning || session.isUpdatingLiveConfigOption,
+                        errorMessage: session.liveConfigOptionError,
+                        strings: strings
+                    ) { id, value in
+                        Task { await session.setLiveConfigOption(id: id, value: value) }
+                    }
+                }
                 if !session.activeSubagents.isEmpty {
                     ActiveSubagentBannerView(subagents: session.activeSubagents, strings: strings)
                         .padding(.horizontal, 14)
                         .padding(.bottom, 4)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if !AgentBannerLogic.visibleNotices(
+                    from: session.liveState.notices,
+                    dismissedIDs: session.liveState.dismissedNoticeIDs
+                ).isEmpty {
+                    AgentBannerView(
+                        notices: session.liveState.notices,
+                        dismissedIDs: session.liveState.dismissedNoticeIDs,
+                        strings: strings,
+                        onDismiss: { session.dismissNotice(id: $0) }
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if let limit = session.liveState.usageLimit {
+                    AgentUsageLimitBannerView(
+                        limit: limit,
+                        strings: strings,
+                        onResume: {
+                            _ = session.resumeAfterUsageLimit(
+                                configuration: engine.configuration,
+                                agentPath: engine.agentPath
+                            )
+                        },
+                        onDismiss: { session.dismissUsageLimit() }
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if session.shouldShowCompactionChip(for: engine.configuration) {
+                    AgentCompactionChipView(
+                        strings: strings,
+                        onCompact: {
+                            session.compactFromSuggestion(
+                                configuration: engine.configuration,
+                                agentPath: engine.agentPath
+                            )
+                        },
+                        onKeep: { session.keepContextWithoutCompacting() }
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 if let queued = session.queuedPrompt {
                     QueuedPromptBanner(text: queued, strings: strings,
@@ -400,13 +461,13 @@ public struct VitruvianCodeChatView: View {
 
     private func hintText(_ text: String, detail: String) -> some View {
         HStack(spacing: 4) {
-            Text(text)
+            Text(verbatim: text)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(VitruvianCodeTheme.warmCoral.opacity(0.85))
                 .lineLimit(1)
                 .truncationMode(.middle)
             if !detail.isEmpty {
-                Text(detail).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(1)
+                Text(verbatim: detail).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(1)
             }
             Text(strings.completeKey)
                 .font(.system(size: 9, weight: .medium, design: .rounded))
@@ -1275,7 +1336,12 @@ public struct VitruvianCodeChatView: View {
     }
 
     private var conversation: some View {
-        let turns = VitruvianCodeTimeline.turns(from: session.messages)
+        let isLive = session.isLiveChat(for: engine.configuration)
+        let turns = VitruvianCodeTimeline.turns(
+            from: session.messages,
+            livePlan: isLive ? session.liveState.plan : [],
+            includeLiveMetadata: isLive
+        )
         let showsTimeline = VitruvianCodeTimeline.showsRail(turnCount: turns.count)
         let turnOf = showsTimeline ? VitruvianCodeTimeline.turnIndexByMessage(turns) : [:]
         return ZStack(alignment: .bottomTrailing) {
@@ -1301,33 +1367,49 @@ public struct VitruvianCodeChatView: View {
                         })?.id
                         ForEach(session.messages) { message in
                             if Self.isShown(message) {
-                                VitruvianCodeMessageBubble(
-                                    message: message,
-                                    strings: strings,
-                                    errorScheme: chrome.errorScheme,
-                                    onDecision: { decision in
-                                        session.decideApproval(messageID: message.id, decision: decision)
-                                    },
-                                    onApprovalOption: { optionID in
-                                        session.decideApproval(messageID: message.id, optionID: optionID)
-                                    },
-                                    onAnswerQuestion: { answers in
-                                        session.answerQuestion(messageID: message.id, answers: answers)
-                                    },
-                                    onSkipQuestion: {
-                                        session.skipQuestion(messageID: message.id)
-                                    },
-                                    isFirstPendingQuestion: message.id == firstPendingQuestionID && caret == nil,
-                                    isStreaming: session.isRunning && message.id == streamingReplyID,
-                                    workingDirectory: conversationDirectory
-                                )
-                                // The timeline scrolls to a prompt by its id.
-                                .id(message.id)
-                                .background(timelineAnchor(turn: turnOf[message.id]))
+                                if let compaction = message.compaction {
+                                    AgentCompactionRowView(compaction: compaction, strings: strings)
+                                        .id(message.id)
+                                        .background(timelineAnchor(turn: turnOf[message.id]))
+                                } else {
+                                    VitruvianCodeMessageBubble(
+                                        message: message,
+                                        strings: strings,
+                                        errorScheme: chrome.errorScheme,
+                                        onDecision: { decision in
+                                            session.decideApproval(messageID: message.id, decision: decision)
+                                        },
+                                        onApprovalOption: { optionID in
+                                            session.decideApproval(messageID: message.id, optionID: optionID)
+                                        },
+                                        onAnswerQuestion: { answers in
+                                            session.answerQuestion(messageID: message.id, answers: answers)
+                                        },
+                                        onSkipQuestion: {
+                                            session.skipQuestion(messageID: message.id)
+                                        },
+                                        isFirstPendingQuestion: message.id == firstPendingQuestionID && caret == nil,
+                                        isStreaming: session.isRunning && message.id == streamingReplyID,
+                                        workingDirectory: conversationDirectory
+                                    )
+                                    // The timeline scrolls to a prompt by its id.
+                                    .id(message.id)
+                                    .background(timelineAnchor(turn: turnOf[message.id]))
+                                }
                             }
                         }
                         if session.isRunning { progress }
-                        if session.lastFailedPrompt != nil {
+                        if let liveFailure = session.lastLiveFailure,
+                           session.chatConnectionOverride != .commandLine,
+                           session.lastFailedPrompt != nil || liveFailure.isLocked {
+                            AgentErrorCardView(
+                                failure: liveFailure,
+                                strings: strings,
+                                onRetry: { engine.retryQuickPrompt() },
+                                onUseCommandLine: { engine.useCommandLineForCurrentChat() },
+                                onDismiss: { session.dismissFailedTurn() }
+                            )
+                        } else if session.lastFailedPrompt != nil {
                             HStack(spacing: 6) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.caption)
@@ -1767,6 +1849,7 @@ public struct VitruvianCodeChatView: View {
         case .diffReview:
             VitruvianCodeAnnotatedDiffView(
                 reviewSession: session.diffReviewSession,
+                strings: strings,
                 onSendBatch: { payload in
                     session.activeADEPanel = nil
                     session.send(payload, configuration: engine.configuration, agentPath: engine.agentPath)
@@ -1870,7 +1953,8 @@ public struct VitruvianCodeChatView: View {
                 hibernation: session.hibernationManager,
                 remoteHosts: session.remoteHosts,
                 defaultProviderID: engine.activeProvider.id,
-                executablePath: engine.agentPath ?? "/usr/local/bin/vitruvian-code-tool",
+                executablePath: chrome.automationExecutablePath ?? "",
+                reEnableText: strings.automationNeedsReEnable,
                 onRemoteHostsChange: { updated in
                     session.remoteHosts = updated
                 },

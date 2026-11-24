@@ -60,10 +60,10 @@ jobs:
           go vet ./...
           go test -race -count=1 ./...
       # The validator, built with the Rust vitruvian-core's Bazel uses.
-      - name: Rust 1.75.0
+      - name: Rust 1.98.1
         run: |
-          rustup toolchain install 1.75.0 --profile minimal
-          rustup default 1.75.0
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
       - name: The Go sample through the conformance validator
         run: |
           mkdir -p "$RUNNER_TEMP/hello-go/bin"
@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: ["1.75", "stable"]
+        rust: ["1.98.1", "stable"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,7 +91,7 @@ jobs:
           rustup default "$RUST"
       # Formatting is one style, the stable rustfmt's: the kit is formatted
       # with it, and an older rustfmt wraps macro arguments differently
-      # (the 1.75 job failed on that alone, 2026-10-13). The floor's job
+      # (the floor job would fail on that alone). The pinned 1.98.1 floor job
       # proves the kit builds and passes on the oldest Rust an author may use.
       - name: Test the kit
         working-directory: kits/rust

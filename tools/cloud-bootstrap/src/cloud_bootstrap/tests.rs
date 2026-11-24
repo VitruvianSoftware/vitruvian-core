@@ -1523,16 +1523,31 @@ fn cli_contract() {
         &["auth"],
         &[
             ("CLAUDE_CODE_REMOTE", "".into()),
+            ("VITRUVIAN_CLOUD_SESSION", "".into()),
             ("VITRUVIAN_PROFILE", "pinned".into()),
         ],
     );
     assert_eq!(rc, 0);
     assert_contains("a local run does nothing", &out, "not a cloud session");
     assert!(w.argv().is_empty(), "a local run still called gcloud");
+    let (out, rc) = w.exec(
+        &["auth", "--profile", "nocreds"],
+        &[
+            ("CLAUDE_CODE_REMOTE", "".into()),
+            ("VITRUVIAN_CLOUD_SESSION", "true".into()),
+        ],
+    );
+    assert_eq!(rc, 0);
+    assert_contains(
+        "VITRUVIAN_CLOUD_SESSION=true runs without CLAUDE_CODE_REMOTE",
+        &out,
+        "declares no GCP identity",
+    );
     let (out, _) = w.exec(
         &["auth", "--force", "--profile", "nocreds", "--bogus"],
         &[
             ("CLAUDE_CODE_REMOTE", "".into()),
+            ("VITRUVIAN_CLOUD_SESSION", "".into()),
             ("VITRUVIAN_PROFILE", "pinned".into()),
         ],
     );

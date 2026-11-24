@@ -40,6 +40,9 @@ on:
   pull_request:
     paths:
       - 'packages/vitruvian-sdk/**'
+      - 'packages/pycompat/vitruvian-pycompat/**'
+      - 'tools/copybara/copy.bara.sky'
+      - 'tools/copybara/sdk_export_check.py'
       - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   workflow_dispatch:
 
@@ -54,7 +57,7 @@ permissions:
 jobs:
   cargo:
     name: cargo (Rust 1.98.1)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     defaults:
       run:
@@ -84,3 +87,22 @@ jobs:
           cp ../../target/release/tool "$RUNNER_TEMP/hello-rust/bin/tool"
           cp samples/hello-rust/vitruvian-tool.json "$RUNNER_TEMP/hello-rust/"
           cargo run --locked --manifest-path verification/Cargo.toml --bin conformance -- "$RUNNER_TEMP/hello-rust" --expect-refusal
+
+  exported-layout:
+    name: cargo exported layout (Rust 1.98.1)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+          cargo --version
+
+      - name: Assemble exported mirror layout and run Cargo checks
+        # Runs the same Cargo steps the public mirror runs; the mirror has no Bazel, so this deliberately does not go through Bazel.
+        run: python3 tools/copybara/sdk_export_check.py

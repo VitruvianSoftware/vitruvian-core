@@ -42,7 +42,8 @@ export class VoiceCardControls {
   /**
    * @param {object} options
    * @param {object} options.ui The voice control presenter.
-   * @param {number} [options.idleMs]
+   * @param {number|null} [options.idleMs] How long an idle card stays shown;
+   *   null keeps it until the next turn, Stop or a dismissal.
    * @param {Function} [options.setTimer]
    * @param {Function} [options.clearTimer]
    */
@@ -125,6 +126,7 @@ export class VoiceCardControls {
 
   scheduleIdle() {
     this.cancelIdle();
+    if (this.idleMs === null) return;
     this.hideTimer = this.setTimer(() => {
       this.hideTimer = null;
       if (this.destroyed) return;

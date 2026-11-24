@@ -1,0 +1,75 @@
+<!--
+ Copyright (c) 2026 VitruvianSoftware
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+
+<script setup>
+import { computed } from 'vue';
+import {
+  LINK_SCHEMES,
+  LOGO_SCHEMES,
+  safeUrl,
+  splitLink,
+} from '../../render/creditMarkup.js';
+
+// One credit: its logo or its text, linked when it has a link. A credit is
+// plain data (`src/render/contract/credits.d.ts`): its text is set as text,
+// and a link or logo is kept only for a safe scheme.
+const props = defineProps({
+  credit: { type: Object, required: true },
+});
+
+const href = computed(() =>
+  props.credit.href ? safeUrl(props.credit.href, LINK_SCHEMES) : null,
+);
+// A logo is drawn in place of the text, which names it (its alt text).
+const logo = computed(() =>
+  props.credit.logoUrl ? safeUrl(props.credit.logoUrl, LOGO_SCHEMES) : null,
+);
+// Only the credit's linked words are the link, as the source wrote it.
+const parts = computed(() =>
+  href.value && !logo.value && props.credit.linkText
+    ? splitLink(props.credit)
+    : null,
+);
+</script>
+
+<template>
+  <span v-if="parts" class="gev-credit"
+    >{{ parts[0]
+    }}<a :href="href" target="_blank" rel="noopener noreferrer">{{
+      parts[1]
+    }}</a
+    >{{ parts[2] }}</span
+  ><component
+    :is="href ? 'a' : 'span'"
+    v-else
+    class="gev-credit"
+    :href="href || undefined"
+    :target="href ? '_blank' : undefined"
+    :rel="href ? 'noopener noreferrer' : undefined"
+    ><img
+      v-if="logo"
+      class="gev-credit-logo"
+      :src="logo"
+      :alt="credit.text"
+    /><template v-else>{{ credit.text }}</template></component
+  >
+</template>

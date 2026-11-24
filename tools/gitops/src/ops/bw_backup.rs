@@ -20,7 +20,7 @@
 
 //! sealed_secrets_keys.sh and argocd-secret.sh: back up, restore and verify
 //! a cluster secret as a Bitwarden attachment. bw's JSON (and the key list
-//! kubectl prints) is read with serde_json where the scripts piped it
+//! kubectl prints) is read with `vitruvian_jq` where the scripts piped it
 //! through jq, so neither port needs jq. argocd-secret still runs python3
 //! for the one YAML edit (stripping server-managed metadata with PyYAML),
 //! with the script's own program.
@@ -28,9 +28,10 @@
 use std::process::Stdio;
 
 use shell_compat as sc;
+use vitruvian_jq::{cannot_iterate_redacted, dump_string, parse_stream, pretty, StreamItem, Value};
 
 use super::common::*;
-use super::jq::{self, J};
+use super::jq;
 
 /// `bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo unknown`.
 fn bw_status() -> Vec<u8> {
@@ -109,8 +110,8 @@ fn item_id(item: &[u8]) -> (i32, Vec<u8>) {
 fn new_item_json(item: &[u8], notes: &str) -> String {
     format!(
         "{{\n  \"type\": 2,\n  \"secureNote\": {{\n    \"type\": 0\n  }},\n  \"name\": {},\n  \"notes\": {}\n}}\n",
-        jq::string_literal(&String::from_utf8_lossy(item)),
-        jq::string_literal(notes)
+        dump_string(&String::from_utf8_lossy(item)),
+        dump_string(notes)
     )
 }
 
@@ -258,19 +259,25 @@ fn key_count(f: &[u8]) -> Vec<u8> {
 
 /// The jq that strips server-managed metadata from the captured key list.
 fn strip_key_list(input: &[u8]) -> Result<String, (i32, String)> {
-    let vals = jq::parse_stream(input).map_err(|_| {
-        (
-            2,
-            "jq: error (at <stdin>:0): Cannot parse input".to_string(),
-        )
-    })?;
+    let mut vals = Vec::new();
+    for item in parse_stream(input) {
+        match item {
+            StreamItem::Value(v, _) => vals.push(v),
+            StreamItem::ParseError(_) => {
+                return Err((
+                    2,
+                    "jq: error (at <stdin>:0): Cannot parse input".to_string(),
+                ))
+            }
+        }
+    }
     let mut out = String::new();
     for mut v in vals {
         if let Some(md) = v.get_mut("metadata") {
-            md.del("resourceVersion");
+            let _ = md.del_key("resourceVersion");
         }
         match v.get_mut("items") {
-            Some(J::Arr(items)) => {
+            Some(Value::Array(items)) => {
                 for it in items.iter_mut() {
                     if let Some(md) = it.get_mut("metadata") {
                         for k in [
@@ -280,28 +287,36 @@ fn strip_key_list(input: &[u8]) -> Result<String, (i32, String)> {
                             "generation",
                             "managedFields",
                         ] {
-                            md.del(k);
+                            let _ = md.del_key(k);
                         }
                         if let Some(ann) = md.get_mut("annotations") {
-                            ann.del("kubectl.kubernetes.io/last-applied-configuration");
+                            let _ = ann.del_key("kubectl.kubernetes.io/last-applied-configuration");
                         }
                     }
                 }
             }
-            Some(J::Null) | None => {
+            Some(Value::Null) | None => {
                 return Err((
                     5,
-                    "jq: error (at <stdin>:0): Cannot iterate over null".into(),
+                    format!(
+                        "jq: error (at <stdin>:0): {}",
+                        cannot_iterate_redacted(&Value::Null)
+                    ),
                 ))
             }
-            Some(_) => {
+            // Keep value-free: `items` can live inside a Secret List payload.
+            Some(other) => {
                 return Err((
                     5,
-                    "jq: error (at <stdin>:0): Cannot iterate over this value".into(),
+                    format!(
+                        "jq: error (at <stdin>:0): {}",
+                        cannot_iterate_redacted(other)
+                    ),
                 ))
             }
         }
-        out.push_str(&jq::pretty(&v));
+        out.push_str(&pretty(&v));
+        out.push('\n');
     }
     Ok(out)
 }
@@ -323,11 +338,11 @@ fn sealed_run(args: &[Vec<u8>]) -> Res<i32> {
     let item = sc::env_or("SS_BW_ITEM", b"dev-local sealed-secrets controller keys");
     let file = "sealed-secrets-keys.json";
 
-    // jq is no longer needed: bw's JSON is read with serde_json.
+    // jq is no longer needed: bw's JSON is read with vitruvian_jq.
     need_tools(&["kubectl", "bw"], true)?;
     ensure_session(false, true, (59, 63))?;
 
-    sc::umask(0o077);
+    let _umask = sc::UmaskGuard::new(0o077);
     let tmpd = match mktemp_dir_named("sskeys") {
         Ok(d) => TempDir(d),
         Err(e) => {
@@ -355,7 +370,7 @@ fn sealed_run(args: &[Vec<u8>]) -> Res<i32> {
                 Ok(t) => t.clone(),
                 Err(_) => String::new(),
             };
-            sc::write_file(&f, text.as_bytes(), 0o600).map_err(|e| {
+            sc::write_secret_file(&f, text.as_bytes()).map_err(|e| {
                 sc::redirect_error(99, &f, &e);
                 1
             })?;
@@ -601,6 +616,7 @@ fn argocd_run(args: &[Vec<u8>]) -> Res<i32> {
     need_tools(&["kubectl", "bw", "python3"], true)?;
     ensure_session(true, false, (62, 66))?;
 
+    let _umask = sc::UmaskGuard::new(0o077);
     let tmpd = match mktemp_dir_named("argocdsec") {
         Ok(d) => TempDir(d),
         Err(e) => {
@@ -615,18 +631,15 @@ fn argocd_run(args: &[Vec<u8>]) -> Res<i32> {
 
     match sub.as_slice() {
         b"backup" => {
-            let o = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(sc::path(&f))
-                .map_err(|e| {
-                    sc::redirect_error(104, &f, &e);
-                    1
-                })?;
-            let mut get = kubectl(&k, &[b"-n", &ns, b"get", b"secret", secret, b"-o", b"yaml"]);
-            get.stdout(o);
-            let st = run(104, &mut get, false);
+            let (st, yaml) = output(
+                104,
+                kubectl(&k, &[b"-n", &ns, b"get", b"secret", secret, b"-o", b"yaml"]),
+                false,
+            );
+            sc::write_secret_file(&f, &yaml).map_err(|e| {
+                sc::redirect_error(104, &f, &e);
+                1
+            })?;
             if st != 0 {
                 return Err(st);
             }
@@ -791,5 +804,48 @@ mod tests {
         assert!(out.contains("\"keep\": \"y\""));
         assert!(out.contains("\"metadata\": {}"));
         assert!(strip_key_list(br#"{"kind":"List"}"#).is_err());
+    }
+
+    #[test]
+    fn strip_key_list_errors_never_leak_secret_values() {
+        for (bad, want) in [
+            (
+                br#"{"kind":"List","items":"FAKE-SECRET-VALUE-1"}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over string",
+            ),
+            (
+                br#"{"kind":"List","items":"postgres://user:SECRET-MARKER-123@host/db"}"#
+                    .as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over string",
+            ),
+            (
+                br#"{"kind":"List","items":42}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over number",
+            ),
+            (
+                br#"{"kind":"List","items":null}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over null",
+            ),
+            (
+                br#"{"kind":"List"}"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot iterate over null",
+            ),
+            (
+                br#"{"tls.key":"FAKE-SECRET-VALUE-1"#.as_slice(),
+                "jq: error (at <stdin>:0): Cannot parse input",
+            ),
+        ] {
+            let (code, msg) = strip_key_list(bad).unwrap_err();
+            assert_eq!(code, if want.contains("parse") { 2 } else { 5 });
+            assert_eq!(msg, want);
+            for needle in [
+                "FAKE-SECRET-VALUE-1",
+                "SECRET-MARKER-123",
+                "SECRET-M",
+                "postgres://user:",
+            ] {
+                assert!(!msg.contains(needle), "secret leaked: {msg}");
+            }
+        }
     }
 }

@@ -22,8 +22,7 @@
 //! [`TcpStream`] and `https://` through `curl` (`-q -sS -K -`), because the
 //! Rust standard library has no TLS.
 //!
-//! Security model (from `tools/sentry/src/http.rs` and
-//! `tools/registry-trust/src/http.rs`):
+//! Security model:
 //! - Invokes `curl` with a static argv list (`["-q", "-sS", "-K", "-"]`),
 //!   never through a shell. `-q` comes first so user `~/.curlrc` files cannot
 //!   alter TLS verification or proxy settings.

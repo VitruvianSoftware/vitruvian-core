@@ -297,6 +297,46 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var connectionClaudeSDK = "Claude SDK"
     public var connectionClaudeACP = "Claude ACP"
 
+    // MARK: Live plan card, tool cards, timeline & diff review
+
+    public var planProgressFormat = "%@ of %@ done"
+    public var planStatusPending = "Pending"
+    public var planStatusInProgress = "In progress"
+    public var planStatusCompleted = "Completed"
+    public var planStatusOther = "Other"
+    public var toolStatusRunning = "Running"
+    public var toolStatusDone = "Done"
+    public var toolStatusFailed = "Failed"
+    public var diffTruncatedFormat = "… %@ more lines (truncated)"
+    public var timelineToolSingularFormat = "%@ tool: %@"
+    public var timelineToolsFormat = "%@ tools: %@"
+    public var diffSourceLiveTurn = "Live turn"
+    public var agentSettingsBarLabel = "Session settings"
+
+    // MARK: Live banners, compaction, usage limit & failure cards
+
+    public var dismissNotice = "Dismiss"
+    public var compactingContext = "Compacting context…"
+    public var contextCompacted = "Context compacted"
+    public var compactionFailed = "Context compaction failed"
+    public var compactionStopped = "Context compaction stopped"
+    public var compactionSuggestion = "Context is getting large"
+    public var compactAction = "Compact"
+    public var keepAction = "Keep"
+    public var usageLimitReached = "Usage limit reached"
+    public var usageLimitResetsAtPrefix = "Resets at "
+    public var usageLimitReady = "Limit reset, ready to resume"
+    public var usageLimitResume = "Resume"
+    public var useCommandLineForChat = "Use command line for this chat"
+    public var helperCrashTitle = "Claude helper crashed"
+    public var claudeCrashTitle = "Claude exited unexpectedly"
+    public var turnInterrupted = "Interrupted"
+    public var connectionLockedTitle = "Live connection locked"
+    public var connectionLockedExplanation = "This live connection failed 3 times in a row. Start a new chat or switch this chat to the command line."
+    /// On a scheduled automation saved before scheduled runs could start an
+    /// agent: it runs again once switched off and on.
+    public var automationNeedsReEnable = "Turn off and on, then export again"
+
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
         askPrefix: String = "Ask ",

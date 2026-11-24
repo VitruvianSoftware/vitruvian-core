@@ -81,11 +81,12 @@ struct InboxRowView<HoverMenu: View>: View {
     @Environment(\.themeAccentColor) private var themeAccent
     @Environment(\.redactNamesAndPictures) private var redactsNamesAndPictures
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
 
     @Environment(\.courierZoomMultiplier) private var zoom
 
     private var reduceMotionEnabled: Bool {
-        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        reduceMotionOverride ?? (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     private var effectiveHovered: Bool {

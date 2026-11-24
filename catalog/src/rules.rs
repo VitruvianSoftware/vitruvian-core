@@ -127,7 +127,7 @@ pub fn semver(v: &Value) -> Res<Option<SemVer>> {
 
 /// `generated(catalog)`: when the list was written, or None.
 pub fn generated(catalog: &Value) -> Option<Stamp> {
-    match catalog.get("generated").ok().flatten() {
+    match catalog.get("generated") {
         Some(Value::Str(s)) => timefmt::parse(s),
         _ => None,
     }
@@ -330,7 +330,7 @@ pub fn problems(catalog: &Value) -> Res<Vec<String>> {
         found.push("generated is not a time in UTC, written 2026-11-02T10:00:00Z".to_string());
     }
     let mut seen: Vec<Value> = Vec::new();
-    let tools = py::get_or(catalog, "tools", Value::List(vec![]))?;
+    let tools = py::get_or(catalog, "tools", Value::Arr(vec![]))?;
     let mut ids: Vec<Value> = Vec::new();
     for tool in py::iterate(&tools)? {
         ids.push(py::get_null(&tool, "id")?);
@@ -348,17 +348,17 @@ pub fn problems(catalog: &Value) -> Res<Vec<String>> {
                 found.push(format!("{}: {} is not a version like 1.2.0", place, field));
             }
         }
-        let download = py::get_or(tool, "download", Value::Dict(json::Dict::new()))?;
+        let download = py::get_or(tool, "download", Value::Obj(json::Dict::new()))?;
         found.extend(url_problems(&place, &py::get_null(&download, "url")?)?);
         let mut commands = Vec::new();
-        for command in py::iterate(&py::get_or(tool, "commands", Value::List(vec![]))?)? {
+        for command in py::iterate(&py::get_or(tool, "commands", Value::Arr(vec![]))?)? {
             commands.push(py::get_null(&command, "id")?);
         }
         if commands.len() != py::set_len(&commands)? {
             found.push(format!("{}: two commands share an id", place));
         }
         // A former id the catalog still lists would be two entries' tool.
-        for former in py::iterate(&py::get_or(tool, "replaces", Value::List(vec![]))?)? {
+        for former in py::iterate(&py::get_or(tool, "replaces", Value::Arr(vec![]))?)? {
             if py::eq(&former, &id) {
                 found.push(format!("{}: replaces its own id", place));
             } else if ids.iter().any(|other| py::eq(other, &former)) {
@@ -377,7 +377,7 @@ pub fn problems(catalog: &Value) -> Res<Vec<String>> {
 /// the same id in `base`.
 pub fn changed(base: &Value, head: &Value) -> Res<Vec<Value>> {
     let mut before: Vec<(Value, Value)> = Vec::new();
-    for tool in py::iterate(&py::get_or(base, "tools", Value::List(vec![]))?)? {
+    for tool in py::iterate(&py::get_or(base, "tools", Value::Arr(vec![]))?)? {
         let id = py::index(&tool, "id")?.clone();
         py::hashable(&id)?;
         match before.iter_mut().find(|(k, _)| py::eq(k, &id)) {
@@ -386,7 +386,7 @@ pub fn changed(base: &Value, head: &Value) -> Res<Vec<Value>> {
         }
     }
     let mut out = Vec::new();
-    for tool in py::iterate(&py::get_or(head, "tools", Value::List(vec![]))?)? {
+    for tool in py::iterate(&py::get_or(head, "tools", Value::Arr(vec![]))?)? {
         let id = py::index(&tool, "id")?.clone();
         py::hashable(&id)?;
         let same = before
@@ -515,31 +515,31 @@ pub fn set_mode(_path: &Path, _mode: u32) -> std::io::Result<()> {
 /// `[{"id": c.get("id"), "title": c.get("title")} for c in ...]` over a
 /// manifest's `contributes.commands`.
 pub fn manifest_commands(manifest: &Value) -> Res<Value> {
-    let contributes = py::get_or(manifest, "contributes", Value::Dict(json::Dict::new()))?;
+    let contributes = py::get_or(manifest, "contributes", Value::Obj(json::Dict::new()))?;
     let mut out = Vec::new();
-    for c in py::iterate(&py::get_or(&contributes, "commands", Value::List(vec![]))?)? {
+    for c in py::iterate(&py::get_or(&contributes, "commands", Value::Arr(vec![]))?)? {
         out.push(py::obj(vec![
             ("id", py::get_null(&c, "id")?),
             ("title", py::get_null(&c, "title")?),
         ]));
     }
-    Ok(Value::List(out))
+    Ok(Value::Arr(out))
 }
 
 /// `[p.get("placement") for p in manifest.get("contributes", {}).get("panels", [])]`.
 pub fn manifest_panels(manifest: &Value) -> Res<Value> {
-    let contributes = py::get_or(manifest, "contributes", Value::Dict(json::Dict::new()))?;
+    let contributes = py::get_or(manifest, "contributes", Value::Obj(json::Dict::new()))?;
     let mut out = Vec::new();
-    for p in py::iterate(&py::get_or(&contributes, "panels", Value::List(vec![]))?)? {
+    for p in py::iterate(&py::get_or(&contributes, "panels", Value::Arr(vec![]))?)? {
         out.push(py::get_null(&p, "placement")?);
     }
-    Ok(Value::List(out))
+    Ok(Value::Arr(out))
 }
 
 /// `manifest_problems(entry, manifest)`: where the tool's own manifest and
 /// the catalog's copy of it disagree.
 pub fn manifest_problems(entry: &Value, manifest: &Value) -> Res<Vec<String>> {
-    let sorted_list = |v: Value| -> Res<Value> { Ok(Value::List(py::sorted(&py::iterate(&v)?)?)) };
+    let sorted_list = |v: Value| -> Res<Value> { Ok(Value::Arr(py::sorted(&py::iterate(&v)?)?)) };
     let mut pairs: Vec<(&str, Value, Value)> = vec![
         (
             "id",
@@ -572,13 +572,13 @@ pub fn manifest_problems(entry: &Value, manifest: &Value) -> Res<Vec<String>> {
             py::get_null(entry, "summary")?,
         ),
     ];
-    let theirs_uses = sorted_list(py::get_or(manifest, "uses", Value::List(vec![]))?)?;
-    let ours_uses = sorted_list(py::get_or(entry, "uses", Value::List(vec![]))?)?;
+    let theirs_uses = sorted_list(py::get_or(manifest, "uses", Value::Arr(vec![]))?)?;
+    let ours_uses = sorted_list(py::get_or(entry, "uses", Value::Arr(vec![]))?)?;
     pairs.push(("uses", theirs_uses, ours_uses));
     pairs.push((
         "commands",
         manifest_commands(manifest)?,
-        py::get_or(entry, "commands", Value::List(vec![]))?,
+        py::get_or(entry, "commands", Value::Arr(vec![]))?,
     ));
     if py::contains(entry, &py::s("panels"))? {
         pairs.push((

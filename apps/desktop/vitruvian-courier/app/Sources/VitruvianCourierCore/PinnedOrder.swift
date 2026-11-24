@@ -20,6 +20,17 @@ public enum PinnedOrder {
         return updated
     }
 
+    /// Returns `order` after a list's move: the items at `offsets` land, in order, before the item that was at
+    /// `destination` (`order.count` is the end). Offsets out of range are ignored.
+    public static func moving(fromOffsets offsets: IndexSet, toOffset destination: Int, in order: [String]) -> [String] {
+        let valid = offsets.filter(order.indices.contains)
+        let moved = valid.map { order[$0] }
+        var rest = order.indices.filter { !valid.contains($0) }.map { order[$0] }
+        let clamped = min(max(destination, 0), order.count)
+        rest.insert(contentsOf: moved, at: clamped - valid.filter { $0 < clamped }.count)
+        return rest
+    }
+
     /// Returns `rows` ordered by `draftOrder` when present.
     ///
     /// Named rows appear first in `draftOrder`'s order (deduplicated); unknown IDs in `draftOrder` are ignored;

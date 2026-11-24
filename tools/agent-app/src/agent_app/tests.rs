@@ -21,8 +21,9 @@
 //! Unit tests for agent_app: the argument rules, the encodings and the jq
 //! programs.
 
-use super::jq::{self, Prog, J};
+use super::jq::{self, Prog};
 use super::*;
+use vitruvian_jq::{compact, parse_one, Value};
 
 fn v(args: &[&str]) -> Vec<Vec<u8>> {
     args.iter().map(|a| a.as_bytes().to_vec()).collect()
@@ -633,27 +634,137 @@ fn jq_programs() {
     let (_, e, st) = jq_out(&Prog::Repos, "{}", false);
     assert_eq!(
         (e.as_str(), st),
-        (
-            "jq: error (at <stdin>:0): Cannot iterate over null (null)\n",
-            5
-        )
+        ("jq: error (at <stdin>:0): Cannot iterate over null\n", 5)
     );
 }
 
 #[test]
 fn jq_keeps_document_order_and_escapes() {
-    let v: J = serde_json::from_str(r#"{"z":1,"a":"\u0001é\"","z":2}"#).unwrap();
-    assert_eq!(v.compact(), "{\"z\":2,\"a\":\"\\u0001é\\\"\"}");
-    let v: J = serde_json::from_str("\"aaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
+    let v = parse_one(r#"{"z":1,"a":"\u0001é\"","z":2}"#.as_bytes()).unwrap();
+    assert_eq!(compact(&v), "{\"z\":2,\"a\":\"\\u0001é\\\"\"}");
+    let v = parse_one(b"\"aaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
     assert_eq!(
         v.iterate().unwrap_err(),
         "Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaaaaa\")"
     );
-    let v: J = serde_json::from_str("\"aaaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
+    let v = parse_one(b"\"aaaaaaaaaaaaaaaaaaaaaaaaaaaa\"").unwrap();
     assert_eq!(
         v.iterate().unwrap_err(),
-        "Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaa...)"
+        "Cannot iterate over string (\"aaaaaaaaaaaaaaaaaaaaaaaa...\")"
     );
+}
+
+#[test]
+fn jq_secret_paths_never_quote_values() {
+    for prog in [
+        Prog::Field("pem"),
+        Prog::Field("token"),
+        Prog::Convert("k.pem"),
+    ] {
+        for input in [
+            br#""FAKE-SECRET-VALUE-1""#.as_slice(),
+            br#"["FAKE-SECRET-VALUE-1"]"#.as_slice(),
+            br#"{"pem":"FAKE-SECRET-VALUE-1"#.as_slice(),
+        ] {
+            let r = jq::run(&prog, input, true);
+            assert_eq!(r.status, 5);
+            assert!(
+                !r.stderr_string().contains("FAKE-SECRET-VALUE-1"),
+                "secret leaked in stderr: {}",
+                r.stderr_string()
+            );
+        }
+    }
+}
+
+#[test]
+fn jq_errors_never_leak_secret_values() {
+    let bare_url = br#""postgres://user:SECRET-MARKER-123@host/db""#.as_slice();
+    let bare_short = br#""SECRET-MARKER-123""#.as_slice();
+    let num = b"42".as_slice();
+    let null = b"null".as_slice();
+    let arr_url = br#"["postgres://user:SECRET-MARKER-123@host/db"]"#.as_slice();
+    let repos_url = br#"{"repositories":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+    let repos_short = br#"{"repositories":"SECRET-MARKER-123"}"#.as_slice();
+    let repos_num = br#"{"repositories":42}"#.as_slice();
+    let repos_null = br#"{"repositories":null}"#.as_slice();
+    let repos_arr = br#"{"repositories":["postgres://user:SECRET-MARKER-123@host/db"]}"#.as_slice();
+    let owner_url = br#"{"owner":"postgres://user:SECRET-MARKER-123@host/db"}"#.as_slice();
+
+    let assert_clean = |prog: &Prog, inp: &[u8], want_status: i32| -> String {
+        let r = jq::run(prog, inp, matches!(prog, Prog::Field(_)));
+        let err = r.stderr_string();
+        assert_eq!(
+            r.status,
+            want_status,
+            "input={:?}, stderr={err}",
+            String::from_utf8_lossy(inp)
+        );
+        for needle in ["SECRET-MARKER-123", "SECRET-M", "postgres://user:"] {
+            assert!(
+                !err.contains(needle),
+                "leaked {needle:?} in stderr for {:?}: {err}",
+                String::from_utf8_lossy(inp)
+            );
+        }
+        err
+    };
+
+    for (inp, want_err) in [
+        (
+            bare_url,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            bare_short,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            num,
+            "jq: error (at <stdin>:0): Cannot iterate over number\n",
+        ),
+        (null, "jq: error (at <stdin>:0): Cannot iterate over null\n"),
+    ] {
+        let err = assert_clean(&Prog::Installations, inp, 5);
+        assert_eq!(err, want_err);
+    }
+    assert_clean(&Prog::Installations, arr_url, 5);
+
+    for (inp, want_err) in [
+        (
+            repos_url,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            repos_short,
+            "jq: error (at <stdin>:0): Cannot iterate over string\n",
+        ),
+        (
+            repos_num,
+            "jq: error (at <stdin>:0): Cannot iterate over number\n",
+        ),
+        (
+            repos_null,
+            "jq: error (at <stdin>:0): Cannot iterate over null\n",
+        ),
+    ] {
+        let err = assert_clean(&Prog::Repos, inp, 5);
+        assert_eq!(err, want_err);
+    }
+    for inp in [bare_url, bare_short, num, null, repos_arr] {
+        assert_clean(&Prog::Repos, inp, 5);
+    }
+
+    for prog in [Prog::Field("token"), Prog::Field("pem")] {
+        for inp in [bare_url, bare_short, num] {
+            assert_clean(&prog, inp, 5);
+        }
+        assert_clean(&prog, null, 1);
+    }
+    for inp in [bare_url, bare_short, num, owner_url] {
+        assert_clean(&Prog::Convert("k.pem"), inp, 5);
+    }
+    assert_clean(&Prog::Convert("k.pem"), null, 0);
 }
 
 #[test]
@@ -1012,25 +1123,28 @@ fn enrich_pr_view_json_surfaces_merge_queue_and_ruleset_approvals() {
         "autoMergeRequest".to_string(),
     ];
     let enriched = enrich_pr_view_json(gh_out, &requested, false, Some(&enr)).unwrap();
-    let v: J = serde_json::from_slice(&enriched).unwrap();
+    let v = parse_one(&enriched).unwrap();
     // Unrequested `id` is stripped, while `mergeQueueEntry` and `approvedBy` are added.
-    assert_eq!(v.index("id").unwrap(), J::Null);
+    assert_eq!(v.index("id").unwrap(), Value::Null);
     assert_eq!(
         v.index("mergeQueueEntry")
             .unwrap()
             .index("position")
             .unwrap(),
-        J::Uint(3)
+        Value::uint(3)
     );
     assert_eq!(
         v.index("mergeQueueEntry").unwrap().index("state").unwrap(),
-        J::Str("AWAITING_CHECKS".to_string())
+        Value::str("AWAITING_CHECKS")
     );
     assert_eq!(
         v.index("approvedBy").unwrap(),
-        J::Arr(vec![J::Str("ipv1337".to_string())])
+        Value::Array(vec![Value::str("ipv1337")])
     );
-    assert!(matches!(v.index("reviewDecisionNote").unwrap(), J::Str(_)));
+    assert!(matches!(
+        v.index("reviewDecisionNote").unwrap(),
+        Value::String(_)
+    ));
 }
 
 #[test]
@@ -1090,4 +1204,19 @@ fn client_creds_json_keeps_id_and_secret_only() {
 fn client_creds_json_rejects_a_response_without_a_secret() {
     let err = super::client_creds_json(br#"{"client_id":"Iv23abc"}"#).unwrap_err();
     assert!(err.contains("client_secret"), "{err}");
+}
+
+#[test]
+fn write_client_creds_creates_0600_file_and_refuses_overwrite() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = gate_scratch("client-creds-mode");
+    let creds = d.join("out.creds.json");
+    let creds_b = b(&creds);
+    let resp = br#"{"client_id":"Iv23abc","client_secret":"s3cret"}"#;
+    super::write_client_creds(&creds_b, resp).unwrap();
+    assert_eq!(
+        std::fs::metadata(&creds).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(super::write_client_creds(&creds_b, resp).is_err());
 }

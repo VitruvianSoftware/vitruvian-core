@@ -55,6 +55,8 @@ public protocol VitruvianCodeHost: AnyObject {
     var sessionPreferences: VitruvianCodeSessionPreferences { get set }
     /// Approval mode and plan switch saved per conversation ID (`"<mode>"` or `"<mode>|plan"`).
     var chatModes: [String: String] { get set }
+    /// Per-conversation connection override (`AgentConnectionKind.rawValue`) keyed by conversation ID.
+    var chatConnections: [String: String] { get set }
     /// Whether the hidden per-provider Connection picker is shown in Settings.
     var showsConnectionSetting: Bool { get set }
     /// User-facing text, in the app's language right now.
@@ -77,6 +79,11 @@ public extension VitruvianCodeHost {
     }
 
     var chatModes: [String: String] {
+        get { [:] }
+        set {}
+    }
+
+    var chatConnections: [String: String] {
         get { [:] }
         set {}
     }
@@ -142,6 +149,25 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var commandNoOutput: String
     /// The menu item that deletes a conversation.
     public var deleteSession: String
+    /// Creating an isolated git worktree for a chat failed.
+    public var worktreeCreationFailed: String
+    /// Starting a fresh session in a worktree drops earlier conversation context.
+    public var worktreeFreshSessionNotice: String
+    /// Updating a live session config option failed.
+    public var configOptionUpdateFailed: String
+    /// Live session config options require an active connection.
+    public var configOptionUnavailable: String
+    /// An `@`-mentioned file path resolved outside the working directory and was omitted.
+    public var mentionOutsideWorkspaceFormat: String
+    /// Shown on a live turn interrupted mid-turn by a connection/process exit.
+    public var turnInterrupted: String
+    /// Shown when a live connection locks after repeated consecutive start failures.
+    public var connectionLockedFormat: String
+    /// A scheduled run with no window needed an approval or an answer. It
+    /// was denied and the run failed. The body holds the task's name at `%@`
+    /// and nothing else of the task.
+    public var automationNeedsYouTitle: String
+    public var automationNeedsYouBodyFormat: String
 
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
@@ -170,7 +196,16 @@ public struct VitruvianCodeHostStrings: Sendable {
                  commandNotFoundSuffix: String = "' in PATH. Is it installed?",
                  commandExitedPrefix: String = "Process exited with code ",
                  commandNoOutput: String = "No output from provider",
-                 deleteSession: String = "Delete") {
+                 deleteSession: String = "Delete",
+                 worktreeCreationFailed: String = "Could not create a git worktree for this chat.",
+                 worktreeFreshSessionNotice: String = "Starting a new session. The agent won’t remember earlier messages in this chat.",
+                 configOptionUpdateFailed: String = "Could not update setting.",
+                 configOptionUnavailable: String = "Send a message to reconnect before changing settings.",
+                 mentionOutsideWorkspaceFormat: String = "Skipped %@: outside the working folder.",
+                 turnInterrupted: String = "Interrupted",
+                 connectionLockedFormat: String = "Live connection failed %@ times in a row and is locked for this chat. Start a new chat or use the command line.",
+                 automationNeedsYouTitle: String = "Automation needs you",
+                 automationNeedsYouBodyFormat: String = "%@ stopped because it needed an approval or an answer. Nothing was approved, so the run failed.") {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.agentFailed = agentFailed
@@ -199,6 +234,15 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.commandExitedPrefix = commandExitedPrefix
         self.commandNoOutput = commandNoOutput
         self.deleteSession = deleteSession
+        self.worktreeCreationFailed = worktreeCreationFailed
+        self.worktreeFreshSessionNotice = worktreeFreshSessionNotice
+        self.configOptionUpdateFailed = configOptionUpdateFailed
+        self.configOptionUnavailable = configOptionUnavailable
+        self.mentionOutsideWorkspaceFormat = mentionOutsideWorkspaceFormat
+        self.turnInterrupted = turnInterrupted
+        self.connectionLockedFormat = connectionLockedFormat
+        self.automationNeedsYouTitle = automationNeedsYouTitle
+        self.automationNeedsYouBodyFormat = automationNeedsYouBodyFormat
     }
 
     public func invalidCommandTemplate(_ template: String) -> String {
@@ -254,6 +298,32 @@ public struct VitruvianCodeHostStrings: Sendable {
 
     public func doneTitle(provider: String) -> String {
         "\(provider)\(doneTitleSuffix)"
+    }
+
+    public func mentionOutsideWorkspace(_ path: String) -> String {
+        if let range = mentionOutsideWorkspaceFormat.range(of: "%@") {
+            return mentionOutsideWorkspaceFormat.replacingCharacters(in: range, with: path)
+        }
+        return "\(mentionOutsideWorkspaceFormat) \(path)"
+    }
+
+    /// The notification for a scheduled run that needed the user: only the
+    /// task's name is in it.
+    public func automationNeedsYou(taskName: String) -> (title: String, body: String) {
+        let body: String
+        if let range = automationNeedsYouBodyFormat.range(of: "%@") {
+            body = automationNeedsYouBodyFormat.replacingCharacters(in: range, with: taskName)
+        } else {
+            body = "\(taskName): \(automationNeedsYouBodyFormat)"
+        }
+        return (automationNeedsYouTitle, body)
+    }
+
+    public func connectionLocked(count: Int) -> String {
+        if let range = connectionLockedFormat.range(of: "%@") {
+            return connectionLockedFormat.replacingCharacters(in: range, with: "\(count)")
+        }
+        return "\(connectionLockedFormat) (\(count))"
     }
 }
 

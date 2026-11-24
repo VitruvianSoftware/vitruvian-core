@@ -2769,8 +2769,7 @@ pub static LETTER: &[(u32, u32)] = &[
 mod tests {
     use super::*;
 
-    // Exact copy of `tools/gitops/appset-render/src/unicode_tables.rs::LETTER`
-    // as a flat `[lo0, hi0, ...]` slice, preserved for the exhaustive
+    // Legacy flat `[lo0, hi0, ...]` letter table, preserved for the exhaustive
     // equivalence test.
     #[rustfmt::skip]
     const OLD_APPSET_RENDER_LETTER: &[u32] = &[

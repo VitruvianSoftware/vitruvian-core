@@ -1003,6 +1003,45 @@ enum FeatureCatalogTests {
             "missing application-domain resolutions fail closed")
         let installerFixture = FileManager.default.temporaryDirectory
             .appendingPathComponent("vitru-installer-\(UUID().uuidString)", isDirectory: true)
+        do {
+            let fm = FileManager.default
+            defer { try? fm.removeItem(at: installerFixture) }
+            let excluded = installerFixture.appendingPathComponent("build", isDirectory: true)
+            let scratch = installerFixture.appendingPathComponent("scratch", isDirectory: true)
+            try fm.createDirectory(at: excluded, withIntermediateDirectories: true)
+            let alias = installerFixture.appendingPathComponent("linked-build")
+            try fm.createSymbolicLink(at: alias, withDestinationURL: excluded)
+            let marker = excluded.appendingPathComponent(".vitruvian-no-install")
+            try Data().write(to: marker)
+            func offers(_ relative: String, browsable: Bool? = true) -> Bool {
+                DiskImageInstallerSupport.offersInstall(volumeIsBrowsable: browsable,
+                    imageURL: installerFixture.appendingPathComponent(relative), temporaryDirectories: [scratch])
+            }
+            suite.expect(!offers("build/nested/App.dmg") && !offers("linked-build/App.dmg")
+                         && !offers("scratch/App.dmg"), "excluded and temporary directories include their descendants and aliases")
+            suite.expect(offers("build-backup/App.dmg") && offers("scratchpad/App.dmg") && offers("Desktop/App.dmg"),
+                         "similarly named siblings and manual images remain available")
+            suite.expect(!offers("Desktop/App.dmg", browsable: false) && !offers("Desktop/App.dmg", browsable: nil),
+                         "hidden mounts and mounts with unknown visibility are not offered")
+            try fm.removeItem(at: marker)
+            suite.expect(offers("build/nested/App.dmg"), "removing a folder exclusion restores its manual installs")
+            let downloads = installerFixture.appendingPathComponent("Downloads", isDirectory: true)
+            let untagged = installerFixture.appendingPathComponent("Desktop/App.dmg")
+            try fm.createDirectory(at: untagged.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: untagged)
+            suite.expect(DiskImageInstallerSupport.hasDownloadOrigin(downloads.appendingPathComponent("App.dmg"),
+                                                                     downloadsURL: downloads)
+                         && !DiskImageInstallerSupport.hasDownloadOrigin(untagged, downloadsURL: downloads)
+                         && !DiskImageInstallerSupport.hasDownloadOrigin(
+                            installerFixture.appendingPathComponent("Downloads-old/App.dmg"), downloadsURL: downloads),
+                         "an image counts as downloaded only inside Downloads or with a quarantine tag")
+            suite.expect(DiskImageInstallerSupport.downloadTrashPreference(true, hasDownloadOrigin: true) == true
+                         && DiskImageInstallerSupport.downloadTrashPreference(false, hasDownloadOrigin: true) == false
+                         && DiskImageInstallerSupport.downloadTrashPreference(true, hasDownloadOrigin: false) == nil,
+                         "the cleanup choice for an image that was not downloaded is not saved")
+        } catch {
+            suite.expect(false, "could not create the disk image exclusion fixture: \(error)")
+        }
         let installerFM = InstallerFileManager(root: installerFixture)
         let installerApp = URL(fileURLWithPath: "/Volumes/Installer/Example.app")
         let missingUserDestination = installerFM.userApplications!
@@ -1963,6 +2002,8 @@ enum FeatureCatalogTests {
             suite.expect(FeatureStrings.backup(language).description.contains(
                 FeatureStrings.scratchpad(language).pageTitle),
                    "every backup description accounts for the Scratchpad text (\(language.rawValue))")
+            expectFormat(FeatureStrings.backup(language).configFileConfirmFormat, ["@"],
+                         "\(language.rawValue) settings file confirmation names the path")
             suite.expect(FeatureStrings.appUpdates(language).updateSelectedFormat.contains("%d")
                     && FeatureStrings.appUpdates(language).lastCheckFormat.contains("%@")
                     && FeatureStrings.appUpdates(language).nextCheckFormat.contains("%@")
@@ -2612,6 +2653,16 @@ enum FeatureCatalogTests {
                "DDC read request's checksum covers the source address")
         suite.expect(Array(BrightnessSupport.writePacket(code: 0x10, value: 100)[3...4]) == [0x00, 0x64],
                "DDC values split into high and low bytes")
+        // A Dell P2715Q on the built-in HDMI port of an M1 Max MacBook Pro
+        // took writes at 0x37 without changing, and answered a luminance read
+        // only at 0xB7, with the same packets.
+        suite.expect(BrightnessSupport.ddcChipAddress(epicProviderClass: "AppleDCPMCDP29XX") == 0xB7,
+               "DDC behind the built-in HDMI port's converter goes to the converter's address")
+        suite.expect(BrightnessSupport.ddcChipAddress(epicProviderClass: nil) == 0x37
+                && BrightnessSupport.ddcChipAddress(epicProviderClass: "AppleDCPDPTXProxy") == 0x37,
+               "every other DDC service keeps the standard address")
+        suite.expect(!SettingsBackupSupport.exportKeys().contains(DefaultsKey.brightnessDDCHDMIConverterRechecked),
+               "the HDMI converter recheck marker stays on the Mac that ran it")
 
         var ddcReply: [UInt8] = [0x6E, 0x88, 0x02, 0x00, 0x10, 0x00, 0x00, 0x64, 0x00, 0x32]
         ddcReply.append(ddcReply.reduce(UInt8(0x50)) { $0 ^ $1 })

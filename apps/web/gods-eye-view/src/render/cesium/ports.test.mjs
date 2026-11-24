@@ -34,6 +34,7 @@ import { createNativeClick } from './nativeClick.js';
 test('capabilities follow what the scene supports', () => {
   const effects = [
     'followFrame',
+    'pointVisibility',
     'followAutodetect',
     'cameraChangeThreshold',
     'columns',
@@ -50,12 +51,22 @@ test('capabilities follow what the scene supports', () => {
     'splitSwipe',
     'imageHooks',
     'imageryFrames',
+    'imageryDecoded',
     'surfaceIdentity',
     'surfaceShading',
     'vectorBase',
   ];
   const globe = { show: true };
-  const draw = ['models', 'modelAtmosphere', 'quads', 'meshes', 'fields'];
+  const draw = [
+    'models',
+    'modelParts',
+    'modelAtmosphere',
+    'modelNodes',
+    'quads',
+    'meshes',
+    'fields',
+    'lineBreaks',
+  ];
   assert.deepEqual(cesiumCapabilities({}), [...draw, ...effects]);
   // A scene with a globe reads its visibility back.
   assert.deepEqual(cesiumCapabilities({ globe }), [

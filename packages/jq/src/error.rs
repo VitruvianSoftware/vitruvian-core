@@ -44,6 +44,20 @@ pub fn cannot_iterate(v: &Value) -> String {
     format!("Cannot iterate over {} ({})", v.kind(), dump_trunc(v))
 }
 
+/// Formats `Cannot iterate over <kind>` without quoting the failing value.
+///
+/// Deliberate exception to jq 1.8.2: jq 1.8.2 prints
+/// `Cannot iterate over <kind> (<truncated value>)` (for example,
+/// `Cannot iterate over string ("postgres://user:SECRET-M...")`). Tools that
+/// handle credentials or secret payloads must use this helper (or
+/// [`Value::iterate_redacted`]) instead of [`cannot_iterate`] so a bare-string
+/// response from a credential endpoint cannot leak usernames, passwords,
+/// tokens, or keys to stderr or CI logs. Non-secret tools keep [`cannot_iterate`]
+/// for jq 1.8.2 parity.
+pub fn cannot_iterate_redacted(v: &Value) -> String {
+    format!("Cannot iterate over {}", v.kind())
+}
+
 /// Formats `jq: error (at <stdin>:<line>): <msg>\n`.
 pub fn format_runtime_error(line: usize, msg: &str) -> String {
     format!("jq: error (at <stdin>:{line}): {msg}\n")
@@ -78,6 +92,26 @@ mod tests {
         assert_eq!(
             cannot_iterate(&Value::Null),
             "Cannot iterate over null (null)"
+        );
+    }
+
+    #[test]
+    fn cannot_iterate_redacted_omits_values() {
+        assert_eq!(
+            cannot_iterate_redacted(&Value::Null),
+            "Cannot iterate over null"
+        );
+        assert_eq!(
+            cannot_iterate_redacted(&Value::Bool(true)),
+            "Cannot iterate over boolean"
+        );
+        assert_eq!(
+            cannot_iterate_redacted(&Value::int(42)),
+            "Cannot iterate over number"
+        );
+        assert_eq!(
+            cannot_iterate_redacted(&Value::str("postgres://user:SECRET-MARKER-123@host/db")),
+            "Cannot iterate over string"
         );
     }
 }

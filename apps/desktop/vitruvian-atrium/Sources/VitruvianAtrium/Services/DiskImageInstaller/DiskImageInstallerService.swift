@@ -28,14 +28,17 @@ package final class DiskImageInstallerService {
         let appURL: URL
         let imageURL: URL
         let imageIdentity: FileIdentity
+        let hasDownloadOrigin: Bool
         let displayName: String
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(mountURL: URL, appURL: URL, imageURL: URL, imageIdentity: FileIdentity, displayName: String) {
+        package init(mountURL: URL, appURL: URL, imageURL: URL, imageIdentity: FileIdentity,
+                     hasDownloadOrigin: Bool = true, displayName: String) {
             self.mountURL = mountURL
             self.appURL = appURL
             self.imageURL = imageURL
             self.imageIdentity = imageIdentity
+            self.hasDownloadOrigin = hasDownloadOrigin
             self.displayName = displayName
         }
     }
@@ -143,6 +146,10 @@ package final class DiskImageInstallerService {
               let imageURL = DiskImageInstallerSupport.imageURL(mountedAt: mountURL,
                                                                  hdiutilInfo: info.output),
               !Self.isHomebrewImage(imageURL),
+              DiskImageInstallerSupport.offersInstall(
+                volumeIsBrowsable: (try? mountURL.resourceValues(forKeys: [.volumeIsBrowsableKey]))?
+                    .volumeIsBrowsable,
+                imageURL: imageURL, temporaryDirectories: [fm.temporaryDirectory, URL(fileURLWithPath: "/tmp")]),
               let imageIdentity = Self.fileIdentity(at: imageURL),
               let entries = try? fm.contentsOfDirectory(at: mountURL,
                                                         includingPropertiesForKeys: [
@@ -174,6 +181,8 @@ package final class DiskImageInstallerService {
                          appURL: appURL,
                          imageURL: imageURL,
                          imageIdentity: imageIdentity,
+                         hasDownloadOrigin: DiskImageInstallerSupport.hasDownloadOrigin(
+                            imageURL, downloadsURL: fm.urls(for: .downloadsDirectory, in: .userDomainMask).first),
                          displayName: DiskImageInstallerSupport.displayName(preferred: preferredName,
                                                                             appURL: appURL))
     }
@@ -186,7 +195,8 @@ package final class DiskImageInstallerService {
         let strings = FeatureStrings.diskImageInstaller(L10n.shared.language)
         NSApp.activate(ignoringOtherApps: true)
         installPrompt = Self.presentInstallPrompt(
-            appURL: candidate.appURL, displayName: candidate.displayName, strings: strings,
+            appURL: candidate.appURL, displayName: candidate.displayName,
+            hasDownloadOrigin: candidate.hasDownloadOrigin, strings: strings,
             defaults: .standard, answer: { [weak self] choice in
                 guard let self else { return }
                 self.installPrompt = nil
@@ -215,7 +225,9 @@ package final class DiskImageInstallerService {
     }
 
     /// Opens the install prompt for the app at `appURL`, its options read from
-    /// `defaults` and saved there when the person installs. `answer` gets the
+    /// `defaults` and saved there when the person installs. An image that
+    /// neither carries a quarantine tag nor sits in Downloads starts with the
+    /// cleanup option off and does not change its saved choice. `answer` gets the
     /// choice, or nil for Cancel. `show` puts the alert's window on screen.
     ///
     /// Not runModal: this runs inside a main-queue block (the hop after the
@@ -224,6 +236,7 @@ package final class DiskImageInstallerService {
     /// Its modal panel mode also stops default-mode timers (issue #1665).
     @discardableResult
     package static func presentInstallPrompt(appURL: URL, displayName: String,
+                                             hasDownloadOrigin: Bool = true,
                                              strings: DiskImageInstallerStrings, defaults: UserDefaults,
                                              show: ((NSWindow) -> Void)? = nil,
                                              answer: @escaping (InstallChoice?) -> Void) -> NonModalAlert {
@@ -234,7 +247,9 @@ package final class DiskImageInstallerService {
         alert.addButton(withTitle: L10n.shared.s.uninstallerCancel)
 
         let trashDownload = NSButton(checkboxWithTitle: strings.trashDownloadOption, target: nil, action: nil)
-        trashDownload.state = defaults[Preferences.diskImageInstallerTrashesDownload] ? .on : .off
+        trashDownload.state = DiskImageInstallerSupport.downloadTrashPreference(
+            defaults[Preferences.diskImageInstallerTrashesDownload], hasDownloadOrigin: hasDownloadOrigin) == true
+            ? .on : .off
         let revealApp = NSButton(checkboxWithTitle: strings.revealAppOption, target: nil, action: nil)
         revealApp.state = defaults[Preferences.diskImageInstallerRevealsApp] ? .on : .off
         let destinationPrompt = DiskImageInstallDestinationPrompt(alert: alert, strings: strings,
@@ -259,7 +274,10 @@ package final class DiskImageInstallerService {
             let choice = InstallChoice(trashesDownload: trashDownload.state == .on,
                                        revealsApp: revealApp.state == .on,
                                        usesUserApplications: userApplications.state == .on)
-            defaults[Preferences.diskImageInstallerTrashesDownload] = choice.trashesDownload
+            if let preference = DiskImageInstallerSupport.downloadTrashPreference(
+                choice.trashesDownload, hasDownloadOrigin: hasDownloadOrigin) {
+                defaults[Preferences.diskImageInstallerTrashesDownload] = preference
+            }
             defaults[Preferences.diskImageInstallerRevealsApp] = choice.revealsApp
             defaults[Preferences.diskImageInstallerUseUserApplications] = choice.usesUserApplications
             answer(choice)

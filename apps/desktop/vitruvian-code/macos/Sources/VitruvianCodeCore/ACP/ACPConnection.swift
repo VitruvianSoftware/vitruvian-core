@@ -129,6 +129,8 @@ public final class ACPConnection: PersistentAgentConnection {
         /// Notifications other than `session/update` (the helper's `_vitruvian/usageLimit`),
         /// turned into events. Returns nothing for a notification it does not know.
         public var onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])?
+        /// Custom failure builder when the launched process exits unexpectedly.
+        public var onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)?
 
         public init(
             initializeMeta: [String: ACPJSONValue]? = nil,
@@ -148,10 +150,12 @@ public final class ACPConnection: PersistentAgentConnection {
             promptInactivityTimeout: TimeInterval? = nil,
             cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
             postInitializeRequests: (@MainActor @Sendable (ACPInitializeResult) -> [(method: String, params: ACPJSONValue)])? = nil,
-            onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil
+            onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil,
+            onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)? = nil
         ) {
             self.postInitializeRequests = postInitializeRequests
             self.onExtensionNotification = onExtensionNotification
+            self.onUnexpectedExitFailure = onUnexpectedExitFailure
             self.initializeMeta = initializeMeta
             self.prepareInitialize = prepareInitialize
             self.onInitialized = onInitialized
@@ -212,6 +216,7 @@ public final class ACPConnection: PersistentAgentConnection {
     private var clientFiles: ACPClientFiles?
     private var configState = ACPSessionConfigState()
     private var isLoadingSessionReplay = false
+    private var isStarting = false
     private var isStopping = false
     private var isStopped = false
     private var hasEmittedTerminalFailure = false
@@ -223,6 +228,7 @@ public final class ACPConnection: PersistentAgentConnection {
     private var activePromptCollectedText = ""
     private var activePromptCompletionWaiters: [CheckedContinuation<Void, Never>] = []
     private var trackedToolCalls: [String: ACPToolCall] = [:]
+    private var deniedToolCallIDs: Set<String> = []
     private var activeSubagentOrder: [String] = []
     private var activeSubagentsByID: [String: VitruvianCodeActiveSubagent] = [:]
     private var inactivityTimerTask: Task<Void, Never>?
@@ -304,7 +310,7 @@ public final class ACPConnection: PersistentAgentConnection {
     // MARK: - AgentConnection
 
     public func start(_ request: AgentSessionRequest) async throws -> String {
-        guard !isStopped else {
+        guard !isStopped, !isStopping else {
             throw ACPConnectionError.alreadyStopped
         }
         if !sessionID.isEmpty, transport != nil {
@@ -322,6 +328,9 @@ public final class ACPConnection: PersistentAgentConnection {
             }
             return copy
         }()
+
+        isStarting = true
+        defer { isStarting = false }
 
         do {
             let initialAdditionalDirs = Self.mergedDirectories(
@@ -385,6 +394,9 @@ public final class ACPConnection: PersistentAgentConnection {
                 params: initParams,
                 timeout: sessionSetupTimeout
             )
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
+            }
 
             self.initializeResult = initResult
             self.agentVersion = initResult.agentInfo?.version
@@ -415,6 +427,9 @@ public final class ACPConnection: PersistentAgentConnection {
                     params: request.params,
                     timeout: sessionSetupTimeout
                 )
+            }
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
             }
 
             let mcpServers = Self.encodeMCPServers(request.mcpServers, allowHTTP: resolvedCapabilities.mcpHTTP)
@@ -523,6 +538,10 @@ public final class ACPConnection: PersistentAgentConnection {
                 }
             }
 
+            guard !isStopping, !isStopped else {
+                throw ACPConnectionError.alreadyStopped
+            }
+
             let establishedID = (setupResult.sessionId ?? fallbackSessionID ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !establishedID.isEmpty else {
@@ -545,6 +564,10 @@ public final class ACPConnection: PersistentAgentConnection {
             self.capabilities = resolvedCapabilities
 
             self.sessionID = establishedID
+            let initialOptions = configState.agentConfigOptions
+            if !initialOptions.isEmpty {
+                emit(.configOptions(initialOptions))
+            }
             flushBufferedLogs()
             return establishedID
         } catch {
@@ -564,29 +587,31 @@ public final class ACPConnection: PersistentAgentConnection {
                 recordLogLine("[acp] startup failed: \(failure.message)")
                 emitTerminalPromptFailure(failure)
             }
-            isStopping = true
-            isStopped = true
-            hasFinalizedLogTarget = true
-            await clientTerminals.closeAll()
-            // End the process group before closing the transport: an outgoing
-            // write blocked on a full stdin pipe holds the transport actor, so
-            // closing it first would wait forever. The group's exit fails that
-            // write and frees the actor.
-            if let launchedProcess {
-                await launchedProcess.terminate(terminationGrace)
+            if !isStopped {
+                isStopping = true
+                isStopped = true
+                hasFinalizedLogTarget = true
+                await clientTerminals.closeAll()
+                // End the process group before closing the transport: an outgoing
+                // write blocked on a full stdin pipe holds the transport actor, so
+                // closing it first would wait forever. The group's exit fails that
+                // write and frees the actor.
+                if let launchedProcess {
+                    await launchedProcess.terminate(terminationGrace)
+                }
+                if let acpTransport = transport {
+                    await acpTransport.close(reason: "ACP startup failed")
+                }
+                for _ in 0..<5 {
+                    await Task.yield()
+                }
+                flushBufferedLogs(allowFallbackSessionID: true)
+                exitMonitorTask?.cancel()
+                exitMonitorTask = nil
+                stderrDrainTask?.cancel()
+                stderrDrainTask = nil
+                eventsContinuation.finish()
             }
-            if let acpTransport = transport {
-                await acpTransport.close(reason: "ACP startup failed")
-            }
-            for _ in 0..<5 {
-                await Task.yield()
-            }
-            flushBufferedLogs(allowFallbackSessionID: true)
-            exitMonitorTask?.cancel()
-            exitMonitorTask = nil
-            stderrDrainTask?.cancel()
-            stderrDrainTask = nil
-            eventsContinuation.finish()
             throw error
         }
     }
@@ -599,8 +624,19 @@ public final class ACPConnection: PersistentAgentConnection {
             throw ACPConnectionError.alreadyStopped
         }
 
-        let contentBlocks = blocks.map { block in
-            Self.encodePromptBlock(block, supportsImages: capabilities.images)
+        let supportsImages = capabilities.images
+        let supportsEmbeddedContext = capabilities.embeddedContext
+        let workdir = clientFiles?.workingDirectory ?? launchSpec.workingDirectory
+        let contentBlocks = await Task.detached(priority: .userInitiated) {
+            Self.encodePromptBlocks(
+                blocks,
+                supportsImages: supportsImages,
+                supportsEmbeddedContext: supportsEmbeddedContext,
+                workingDirectory: workdir
+            )
+        }.value
+        guard !isStopped else {
+            throw ACPConnectionError.alreadyStopped
         }
         let params = ACPPromptParams(sessionId: sessionID, prompt: contentBlocks)
 
@@ -609,6 +645,7 @@ public final class ACPConnection: PersistentAgentConnection {
         activePromptInactivityTimedOut = false
         activePromptCollectedText = ""
         trackedToolCalls.removeAll()
+        deniedToolCallIDs.removeAll()
         hooks.onPromptStarted?()
         let outcomeChecker = await hooks.promptOutcomeWatcher?(sessionID)
         resetPromptInactivityTimer()
@@ -750,6 +787,10 @@ public final class ACPConnection: PersistentAgentConnection {
                 return .cancelled
             }
 
+            if case ACPTransportError.rpcError = error {
+                throw error
+            }
+
             // Give the exit monitor a brief turn to observe process termination if the pipe closed first.
             if !hasEmittedTerminalFailure, let launchedProcess {
                 for _ in 0..<20 where !hasEmittedTerminalFailure && !isStopping {
@@ -758,7 +799,8 @@ public final class ACPConnection: PersistentAgentConnection {
                 }
                 if !hasEmittedTerminalFailure && !isStopping {
                     let detail = recentStderrDetail()
-                    let failure = AgentFailure(
+                    let syntheticExit = AgentProcessExit(exitCode: -1, signal: nil)
+                    let failure = hooks.onUnexpectedExitFailure?(syntheticExit, detail) ?? AgentFailure(
                         kind: .exited,
                         message: "Agent process exited unexpectedly.",
                         detail: detail
@@ -777,6 +819,10 @@ public final class ACPConnection: PersistentAgentConnection {
     }
 
     public func cancel() async {
+        if isStarting {
+            await stop()
+            return
+        }
         guard isPromptActive, let acpTransport = transport, !sessionID.isEmpty else {
             return
         }
@@ -853,10 +899,14 @@ public final class ACPConnection: PersistentAgentConnection {
         lastKnownModeID = modeID
     }
 
+    public func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        let target = (planSwitch || approvalMode == .plan) ? "plan" : "default"
+        try await setSessionMode(target)
+    }
+
     public func syncPlanMode(_ planSwitch: Bool) async throws {
         let current = modeProvider()
-        let target = (planSwitch || current.mode == .plan) ? "plan" : "default"
-        try await setSessionMode(target)
+        try await syncMode(approvalMode: current.mode, planSwitch: planSwitch)
     }
 
     public func setConfigOption(
@@ -915,6 +965,7 @@ public final class ACPConnection: PersistentAgentConnection {
         cancelGraceTask?.cancel()
         cancelGraceTask = nil
         cancelAllPendingInteractions()
+        deniedToolCallIDs.removeAll()
 
         if capabilities.closeSession, !sessionID.isEmpty, let acpTransport = transport {
             _ = try? await acpTransport.request(
@@ -1063,17 +1114,20 @@ public final class ACPConnection: PersistentAgentConnection {
         case .toolCall(let call):
             let merged = mergeToolCall(call)
             let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: activeNotification.sessionId)
-            let step = Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)
+            let wasDenied = deniedToolCallIDs.contains(merged.toolCallId)
+            let isError = Self.isErrorToolStatus(merged.status) || wasDenied
+            let step = Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs, forceError: wasDenied)
             emit(.toolStep(step))
             if Self.isTerminalToolStatus(merged.status) {
                 trackedToolCalls.removeValue(forKey: merged.toolCallId)
+                deniedToolCallIDs.remove(merged.toolCallId)
                 emit(
                     .toolStepResult(
                         id: merged.toolCallId,
                         output: VitruvianCodeToolStep.truncatedOutput(
                             Self.extractToolOutput(from: merged, terminalOutputs: terminalOutputs)
                         ),
-                        isError: merged.status == "failed"
+                        isError: isError
                     )
                 )
             }
@@ -1082,22 +1136,25 @@ public final class ACPConnection: PersistentAgentConnection {
             let hadPrior = trackedToolCalls[update.toolCallId] != nil
             let merged = mergeToolCall(update)
             let terminalOutputs = await collectTerminalOutputs(for: merged, sessionId: activeNotification.sessionId)
+            let wasDenied = deniedToolCallIDs.contains(merged.toolCallId)
+            let isError = Self.isErrorToolStatus(merged.status) || wasDenied
             if Self.isTerminalToolStatus(merged.status) {
-                if !hadPrior || Self.hasStepDetails(update) {
-                    emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)))
+                if !hadPrior || Self.hasStepDetails(update) || wasDenied {
+                    emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs, forceError: wasDenied)))
                 }
                 trackedToolCalls.removeValue(forKey: merged.toolCallId)
+                deniedToolCallIDs.remove(merged.toolCallId)
                 emit(
                     .toolStepResult(
                         id: merged.toolCallId,
                         output: VitruvianCodeToolStep.truncatedOutput(
                             Self.extractToolOutput(from: merged, terminalOutputs: terminalOutputs)
                         ),
-                        isError: merged.status == "failed"
+                        isError: isError
                     )
                 )
             } else {
-                emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs)))
+                emit(.toolStep(Self.makeToolStep(from: merged, terminalOutputs: terminalOutputs, forceError: wasDenied)))
             }
 
         case .plan(let entries):
@@ -1111,12 +1168,9 @@ public final class ACPConnection: PersistentAgentConnection {
             emit(.planReplaced(mapped))
 
         case .availableCommandsUpdate(let commands):
-            let names = commands.compactMap { cmd -> String? in
-                let raw = cmd.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                let stripped = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
-                return stripped.isEmpty ? nil : stripped
-            }
-            emit(.slashCommands(names))
+            let mapped = Self.mapAvailableCommands(commands)
+            emit(.slashCommands(mapped.map(\.name)))
+            emit(.availableCommands(mapped))
 
         case .currentModeUpdate(let modeId):
             configState.applyCurrentModeUpdate(modeId)
@@ -1355,6 +1409,9 @@ public final class ACPConnection: PersistentAgentConnection {
             approvalPolicy: policy.approvalPolicy,
             options: mappedOptions
         ) {
+            if Self.isDeniedPermissionOutcome(automaticOutcome, options: mappedOptions) {
+                deniedToolCallIDs.insert(request.toolCall.toolCallId)
+            }
             resetPromptInactivityTimer()
             return ACPRequestPermissionResult(outcome: automaticOutcome)
         }
@@ -1383,6 +1440,9 @@ public final class ACPConnection: PersistentAgentConnection {
             }
             pendingPermissions[interactionID] = continuation
             emit(.approval(approvalRequest))
+        }
+        if Self.isDeniedPermissionOutcome(result.outcome, options: mappedOptions) {
+            deniedToolCallIDs.insert(request.toolCall.toolCallId)
         }
         resetPromptInactivityTimer()
         return result
@@ -1440,12 +1500,13 @@ public final class ACPConnection: PersistentAgentConnection {
         } else {
             statusDesc = "status \(exit.terminationStatus)"
         }
+        let stderr = recentStderrDetail()
         let message = "Agent process exited unexpectedly (\(statusDesc))."
         recordLogLine("[acp] \(message)")
-        let failure = AgentFailure(
+        let failure = hooks.onUnexpectedExitFailure?(exit, stderr) ?? AgentFailure(
             kind: .exited,
             message: message,
-            detail: recentStderrDetail()
+            detail: stderr
         )
         emitTerminalPromptFailure(failure)
         if let acpTransport = transport {
@@ -1495,6 +1556,17 @@ public final class ACPConnection: PersistentAgentConnection {
         }
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         return AgentFailure(kind: .startupFailed, message: message, detail: detail)
+    }
+
+    func emitExternalTerminalFailure(_ failure: AgentFailure, duringPrompt: Bool) {
+        guard !hasEmittedTerminalFailure else { return }
+        if duringPrompt && !isPromptActive {
+            isPromptActive = true
+            defer { isPromptActive = false }
+            emitTerminalPromptFailure(failure)
+        } else {
+            emitTerminalPromptFailure(failure)
+        }
     }
 
     private func emitTerminalPromptFailure(_ failure: AgentFailure) {
@@ -1622,6 +1694,7 @@ public final class ACPConnection: PersistentAgentConnection {
         cancelGraceTask?.cancel()
         cancelGraceTask = nil
         cancelAllPendingInteractions()
+        deniedToolCallIDs.removeAll()
         recordLogLine("[acp] \(reason)")
 
         await clientTerminals.closeAll()
@@ -1808,28 +1881,80 @@ public final class ACPConnection: PersistentAgentConnection {
     // MARK: - Pure Mapping Helpers
 
     private func mergeToolCall(_ incoming: ACPToolCall) -> ACPToolCall {
-        guard var previous = trackedToolCalls[incoming.toolCallId] else {
+        guard let previous = trackedToolCalls[incoming.toolCallId] else {
             trackedToolCalls[incoming.toolCallId] = incoming
             return incoming
         }
-        if let title = incoming.title { previous.title = title }
-        if let kind = incoming.kind { previous.kind = kind }
-        if let status = incoming.status { previous.status = status }
-        if let content = incoming.content { previous.content = content }
-        if let locations = incoming.locations { previous.locations = locations }
-        if let rawInput = incoming.rawInput { previous.rawInput = rawInput }
-        if let rawOutput = incoming.rawOutput { previous.rawOutput = rawOutput }
-        if let meta = incoming._meta { previous._meta = meta }
-        trackedToolCalls[incoming.toolCallId] = previous
-        return previous
+        let merged = Self.mergeToolCall(previous: previous, incoming: incoming)
+        trackedToolCalls[incoming.toolCallId] = merged
+        return merged
+    }
+
+    /// Merges an incoming ACP tool call update onto a previously tracked call without wiping
+    /// earlier locations or diffs when a subsequent update omits them.
+    static func mergeToolCall(previous: ACPToolCall, incoming: ACPToolCall) -> ACPToolCall {
+        var merged = previous
+        if let title = incoming.title { merged.title = title }
+        if let kind = incoming.kind { merged.kind = kind }
+        if let status = incoming.status { merged.status = status }
+        if let incomingContent = incoming.content, !incomingContent.isEmpty {
+            let incomingHasDiff = incomingContent.contains {
+                if case .diff = $0 { return true }
+                return false
+            }
+            if incomingHasDiff {
+                merged.content = incomingContent
+            } else {
+                let priorDiffs = (previous.content ?? []).filter {
+                    if case .diff = $0 { return true }
+                    return false
+                }
+                merged.content = priorDiffs + incomingContent
+            }
+        }
+        if let locations = incoming.locations, !locations.isEmpty {
+            merged.locations = locations
+        }
+        if let rawInput = incoming.rawInput { merged.rawInput = rawInput }
+        if let rawOutput = incoming.rawOutput { merged.rawOutput = rawOutput }
+        if let meta = incoming._meta { merged._meta = meta }
+        return merged
+    }
+
+    static func isDeniedPermissionOutcome(
+        _ outcome: ACPPermissionOutcome,
+        options: [AgentPermissionOption]
+    ) -> Bool {
+        switch outcome {
+        case .cancelled:
+            return true
+        case .selected(let optionId):
+            guard let chosen = options.first(where: { $0.id == optionId }) else {
+                return false
+            }
+            return chosen.kind == .rejectOnce || chosen.kind == .rejectAlways
+        }
+    }
+
+    private static func isErrorToolStatus(_ status: String?) -> Bool {
+        switch status {
+        case "failed", "cancelled", "canceled", "denied", "rejected":
+            return true
+        default:
+            return false
+        }
     }
 
     private static func isTerminalToolStatus(_ status: String?) -> Bool {
-        status == "completed" || status == "failed"
+        guard let status else { return false }
+        return status == "completed" || isErrorToolStatus(status)
     }
 
     private static func hasStepDetails(_ update: ACPToolCall) -> Bool {
-        if update.locations != nil || update.rawInput != nil {
+        if let locations = update.locations, !locations.isEmpty {
+            return true
+        }
+        if update.rawInput != nil {
             return true
         }
         if let content = update.content {
@@ -1856,9 +1981,10 @@ public final class ACPConnection: PersistentAgentConnection {
         return outputs
     }
 
-    private static func makeToolStep(
+    static func makeToolStep(
         from call: ACPToolCall,
-        terminalOutputs: [String: String] = [:]
+        terminalOutputs: [String: String] = [:],
+        forceError: Bool = false
     ) -> VitruvianCodeToolStep {
         let name = nonEmpty(call.title) ?? nonEmpty(call.kind) ?? "tool"
         let inputDict = call.rawInput?.objectValue?.mapValues(\.foundationObject)
@@ -1868,7 +1994,7 @@ public final class ACPConnection: PersistentAgentConnection {
             input: inputDict,
             isFinished: isTerminalToolStatus(call.status),
             output: extractToolOutput(from: call, terminalOutputs: terminalOutputs),
-            isError: call.status == "failed"
+            isError: forceError || isErrorToolStatus(call.status)
         )
 
         if let acpKind = call.kind {
@@ -1886,22 +2012,33 @@ public final class ACPConnection: PersistentAgentConnection {
             }
         }
 
-        if let firstLocation = call.locations?.first?.path, !firstLocation.isEmpty {
-            step.filePath = firstLocation
+        let mappedLocations: [VitruvianCodeToolStep.Location] = (call.locations ?? []).compactMap { location in
+            let trimmed = location.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return VitruvianCodeToolStep.Location(path: location.path, line: location.line)
+        }
+        if !mappedLocations.isEmpty {
+            step.locations = mappedLocations
+            step.filePath = mappedLocations[0].path
         }
 
         if let contents = call.content {
+            var mappedDiffs: [VitruvianCodeToolStep.Diff] = []
             for item in contents {
                 if case .diff(let path, let oldText, let newText) = item {
-                    if step.filePath == nil && !path.isEmpty {
-                        step.filePath = path
-                    }
-                    step.diffOld = oldText
-                    step.diffNew = newText
-                    if step.kind == .other {
-                        step.kind = .edit
-                    }
-                    break
+                    mappedDiffs.append(VitruvianCodeToolStep.Diff(path: path, oldText: oldText, newText: newText))
+                }
+            }
+            if !mappedDiffs.isEmpty {
+                step.diffs = mappedDiffs
+                step.diffOld = mappedDiffs[0].oldText
+                step.diffNew = mappedDiffs[0].newText
+                if step.filePath == nil,
+                   let firstDiffPath = mappedDiffs.first(where: { !$0.path.isEmpty })?.path {
+                    step.filePath = firstDiffPath
+                }
+                if step.kind == .other {
+                    step.kind = .edit
                 }
             }
         }
@@ -1961,10 +2098,55 @@ public final class ACPConnection: PersistentAgentConnection {
         return nonEmpty(call.title) ?? ""
     }
 
-    private static func encodePromptBlock(
+    static func mapAvailableCommands(_ commands: [ACPAvailableCommand]) -> [VitruvianCodeSlashCommand] {
+        func normalizedPlainText(_ value: String?) -> String {
+            guard let value else { return "" }
+            return value
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }
+        return commands.compactMap { cmd -> VitruvianCodeSlashCommand? in
+            let raw = cmd.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stripped = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+            guard !stripped.isEmpty else { return nil }
+            let description = normalizedPlainText(cmd.description)
+            let rawHint = normalizedPlainText(cmd.input?.hint)
+            return VitruvianCodeSlashCommand(
+                name: stripped,
+                description: description,
+                argumentHint: rawHint.isEmpty ? nil : rawHint,
+                isBuiltIn: false
+            )
+        }
+    }
+
+    nonisolated static func encodePromptBlocks(
+        _ blocks: [PromptBlock],
+        supportsImages: Bool,
+        supportsEmbeddedContext: Bool,
+        workingDirectory: String?,
+        maxResourceBytes: Int = VitruvianCodeDiffParser.maxMentionFileBytes
+    ) -> [ACPContentBlock] {
+        blocks.compactMap { block in
+            encodePromptBlock(
+                block,
+                supportsImages: supportsImages,
+                supportsEmbeddedContext: supportsEmbeddedContext,
+                workingDirectory: workingDirectory,
+                maxResourceBytes: maxResourceBytes
+            )
+        }
+    }
+
+    private nonisolated static func encodePromptBlock(
         _ block: PromptBlock,
-        supportsImages: Bool
-    ) -> ACPContentBlock {
+        supportsImages: Bool,
+        supportsEmbeddedContext: Bool,
+        workingDirectory: String?,
+        maxResourceBytes: Int
+    ) -> ACPContentBlock? {
         switch block {
         case .text(let text):
             return .text(text)
@@ -1985,10 +2167,72 @@ public final class ACPConnection: PersistentAgentConnection {
                 mimeType: mime,
                 size: size
             )
+
+        case .resource(let path):
+            let outcome = VitruvianCodeDiffParser.readSafeWorkingDirectoryFileResult(
+                path: path,
+                workingDirectory: workingDirectory,
+                maxBytes: maxResourceBytes,
+                readContent: supportsEmbeddedContext
+            )
+            switch outcome {
+            case .text(let resolvedPath, let content, _):
+                let fileURL = URL(fileURLWithPath: resolvedPath)
+                return .resource(
+                    ACPEmbeddedResource(
+                        uri: fileURL.absoluteString,
+                        mimeType: textMimeType(forExtension: fileURL.pathExtension),
+                        text: content
+                    )
+                )
+            case .nonTextOrOversize(let resolvedPath, let byteCount):
+                let fileURL = URL(fileURLWithPath: resolvedPath)
+                return .resourceLink(
+                    uri: fileURL.absoluteString,
+                    name: fileURL.lastPathComponent,
+                    mimeType: resourceLinkMimeType(forExtension: fileURL.pathExtension),
+                    size: byteCount
+                )
+            case .outsideWorkingDirectory, .notRegularFileOrMissing:
+                return nil
+            }
         }
     }
 
-    private static func mimeType(forExtension ext: String) -> String {
+    private nonisolated static func textMimeType(forExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "md", "markdown": return "text/markdown"
+        case "json", "jsonc", "json5": return "application/json"
+        case "swift": return "text/x-swift"
+        case "ts", "tsx": return "text/typescript"
+        case "js", "jsx", "mjs", "cjs": return "text/javascript"
+        case "py": return "text/x-python"
+        case "rs": return "text/x-rust"
+        case "go": return "text/x-go"
+        case "yaml", "yml": return "text/yaml"
+        case "toml": return "text/toml"
+        case "html", "htm": return "text/html"
+        case "css": return "text/css"
+        case "xml": return "application/xml"
+        case "sh", "bash", "zsh": return "text/x-shellscript"
+        default: return "text/plain"
+        }
+    }
+
+    private nonisolated static func resourceLinkMimeType(forExtension ext: String) -> String {
+        let lower = ext.lowercased()
+        let imageMime = mimeType(forExtension: lower)
+        if imageMime != "application/octet-stream" {
+            return imageMime
+        }
+        let textMime = textMimeType(forExtension: lower)
+        if textMime != "text/plain" || ["txt", "log", "csv", "tsv", "env", "ini", "cfg", "conf"].contains(lower) {
+            return textMime
+        }
+        return "application/octet-stream"
+    }
+
+    private nonisolated static func mimeType(forExtension ext: String) -> String {
         switch ext.lowercased() {
         case "png": return "image/png"
         case "jpg", "jpeg": return "image/jpeg"

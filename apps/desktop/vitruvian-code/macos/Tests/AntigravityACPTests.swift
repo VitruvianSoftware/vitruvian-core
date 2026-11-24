@@ -82,6 +82,45 @@ final class AntigravityACPTests: XCTestCase {
             ]
         )
 
+        let expectedInitialConfigOptions: [AgentConfigOption] = [
+            AgentConfigOption(
+                id: "model",
+                name: "Model",
+                value: .string("gemini-4-carbon"),
+                options: [
+                    "gemini-4-carbon",
+                    "gemini-4-argon",
+                    "gemini-4-hydrogen",
+                    "gemini-pro-orchestrator",
+                    "gemini-pro-orchestrator-argon",
+                    "gemini-3.8-flash",
+                    "claude-opus-5-5",
+                    "claude-sonnet-5-5",
+                    "gpt-oss-120b-medium",
+                ],
+                category: "model"
+            ),
+            AgentConfigOption(
+                id: "thought_level",
+                name: "Thinking Level",
+                value: .string("medium"),
+                options: ["low", "medium", "high"],
+                category: "thought_level"
+            ),
+            AgentConfigOption(
+                id: "mode",
+                name: "Mode",
+                value: .string("default"),
+                options: ["default", "accept-edits", "auto", "plan"],
+                category: "mode"
+            ),
+        ]
+        let expectedAgyCommands: [VitruvianCodeSlashCommand] = [
+            VitruvianCodeSlashCommand(name: "compact", description: "Compact conversation history", isBuiltIn: false),
+            VitruvianCodeSlashCommand(name: "clear", description: "Clear conversation context", isBuiltIn: false),
+            VitruvianCodeSlashCommand(name: "help", description: "Show help information", isBuiltIn: false),
+        ]
+
         do {
             let events = try await replayFixture(
                 named: "agy-prompt-text-thinking.ndjson",
@@ -92,7 +131,9 @@ final class AntigravityACPTests: XCTestCase {
             XCTAssertEqual(
                 events,
                 [
+                    .configOptions(expectedInitialConfigOptions),
                     .slashCommands(["compact", "clear", "help"]),
+                    .availableCommands(expectedAgyCommands),
                     .contextUsage(VitruvianCodeContextUsage(inputTokens: 0, cachedTokens: 0, outputTokens: 0, contextWindow: 1_048_576)),
                     .sessionInfo(title: "Logic Puzzle Fruit Box Solution", updatedAt: nil),
                     .thinking(
@@ -132,6 +173,7 @@ final class AntigravityACPTests: XCTestCase {
             XCTAssertEqual(
                 events,
                 [
+                    .configOptions(expectedInitialConfigOptions),
                     .approval(
                         VitruvianCodeApprovalRequest(
                             id: "call-exec-1",
@@ -183,6 +225,7 @@ final class AntigravityACPTests: XCTestCase {
             XCTAssertEqual(
                 events,
                 [
+                    .configOptions(expectedInitialConfigOptions),
                     .question(
                         AgentQuestion(
                             requestID: "perm-1",
@@ -228,7 +271,9 @@ final class AntigravityACPTests: XCTestCase {
             XCTAssertEqual(
                 events,
                 [
+                    .configOptions(expectedInitialConfigOptions),
                     .slashCommands(["compact", "clear", "help"]),
+                    .availableCommands(expectedAgyCommands),
                     .contextUsage(VitruvianCodeContextUsage(inputTokens: 0, cachedTokens: 0, outputTokens: 0, contextWindow: 1_048_576)),
                     .sessionInfo(title: "History of Unix Pipes", updatedAt: nil),
                     .thinking(
@@ -258,7 +303,9 @@ final class AntigravityACPTests: XCTestCase {
             XCTAssertEqual(
                 events,
                 [
+                    .configOptions(expectedInitialConfigOptions),
                     .slashCommands(["compact", "clear", "help"]),
+                    .availableCommands(expectedAgyCommands),
                     .sessionInfo(title: "Math Calculation and Favorite Number", updatedAt: nil),
                     .text("The backup number you told"),
                     .text(" me in your first message was 42."),
@@ -905,7 +952,7 @@ final class AntigravityACPTests: XCTestCase {
         }
         XCTAssertEqual(connections.value.count, 1, "must reuse single connection")
         XCTAssertEqual(conn.startCalls.count, 1, "mode change must not restart connection")
-        XCTAssertEqual(conn.syncedPlanModes, [true])
+        XCTAssertEqual(conn.syncedPlanModes, [false, true])
         XCTAssertEqual(modeSnapshots[0].0, .standard)
         XCTAssertEqual(modeSnapshots[0].1, false)
         XCTAssertEqual(modeSnapshots[1].0, .yolo)

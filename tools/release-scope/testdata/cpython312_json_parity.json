@@ -1,0 +1,1403 @@
+{
+  "python_version": "3.12.16 (main, Oct 25 2026, 18:24:37) [Clang 21.0.0 (clang-2100.3.34.2)]",
+  "cases": [
+    {
+      "input": "",
+      "repr": "''",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": " ",
+      "repr": "' '",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\t",
+      "repr": "'\\t'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\n",
+      "repr": "'\\n'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 2 column 1 (char 1)"
+    },
+    {
+      "input": "\r\n",
+      "repr": "'\\r\\n'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 2 column 1 (char 2)"
+    },
+    {
+      "input": "   \t\n\r  ",
+      "repr": "'   \\t\\n\\r  '",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 2 column 4 (char 8)"
+    },
+    {
+      "input": "\ufeff",
+      "repr": "'\\ufeff'",
+      "class": "JSONDecodeError",
+      "message": "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\ufeff1",
+      "repr": "'\\ufeff1'",
+      "class": "JSONDecodeError",
+      "message": "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\ufeff{}",
+      "repr": "'\\ufeff{}'",
+      "class": "JSONDecodeError",
+      "message": "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\ufeff[]",
+      "repr": "'\\ufeff[]'",
+      "class": "JSONDecodeError",
+      "message": "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\ufeff\n{}",
+      "repr": "'\\ufeff\\n{}'",
+      "class": "JSONDecodeError",
+      "message": "Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
+    },
+    {
+      "input": " \ufeff{}",
+      "repr": "' \\ufeff{}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{\ufeff}",
+      "repr": "'{\\ufeff}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "n",
+      "repr": "'n'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "nu",
+      "repr": "'nu'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "nul",
+      "repr": "'nul'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "nullx",
+      "repr": "'nullx'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "t",
+      "repr": "'t'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "tr",
+      "repr": "'tr'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "tru",
+      "repr": "'tru'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "truex",
+      "repr": "'truex'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "f",
+      "repr": "'f'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "fa",
+      "repr": "'fa'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "fal",
+      "repr": "'fal'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "fals",
+      "repr": "'fals'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "falsex",
+      "repr": "'falsex'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "True",
+      "repr": "'True'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "False",
+      "repr": "'False'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "None",
+      "repr": "'None'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "undefined",
+      "repr": "'undefined'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "Na",
+      "repr": "'Na'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "NaNx",
+      "repr": "'NaNx'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "nan",
+      "repr": "'nan'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "Inf",
+      "repr": "'Inf'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "Infinit",
+      "repr": "'Infinit'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "infinity",
+      "repr": "'infinity'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "-Inf",
+      "repr": "'-Inf'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "-Infinit",
+      "repr": "'-Infinit'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "-infinity",
+      "repr": "'-infinity'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "+Infinity",
+      "repr": "'+Infinity'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "+NaN",
+      "repr": "'+NaN'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "+1",
+      "repr": "'+1'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "-",
+      "repr": "'-'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "-a",
+      "repr": "'-a'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "--1",
+      "repr": "'--1'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": ".5",
+      "repr": "'.5'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "-.5",
+      "repr": "'-.5'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "01",
+      "repr": "'01'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "-01",
+      "repr": "'-01'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "00",
+      "repr": "'00'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1.",
+      "repr": "'1.'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1.e1",
+      "repr": "'1.e1'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1e",
+      "repr": "'1e'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1e+",
+      "repr": "'1e+'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1e-",
+      "repr": "'1e-'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1e+a",
+      "repr": "'1e+a'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1.2.3",
+      "repr": "'1.2.3'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "0x10",
+      "repr": "'0x10'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "1_000",
+      "repr": "'1_000'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "NaN1",
+      "repr": "'NaN1'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "Infinity1",
+      "repr": "'Infinity1'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "]",
+      "repr": "']'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "}",
+      "repr": "'}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": ",",
+      "repr": "','",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": ":",
+      "repr": "':'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "'a'",
+      "repr": "\"'a'\"",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "abc",
+      "repr": "'abc'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "null x",
+      "repr": "'null x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "true false",
+      "repr": "'true false'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "false 1",
+      "repr": "'false 1'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 7 (char 6)"
+    },
+    {
+      "input": "0 1",
+      "repr": "'0 1'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "1.5 2.5",
+      "repr": "'1.5 2.5'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "NaN x",
+      "repr": "'NaN x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "Infinity x",
+      "repr": "'Infinity x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 10 (char 9)"
+    },
+    {
+      "input": "-Infinity x",
+      "repr": "'-Infinity x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 11 (char 10)"
+    },
+    {
+      "input": "\"a\" \"b\"",
+      "repr": "'\"a\" \"b\"'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "[] []",
+      "repr": "'[] []'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "{} x",
+      "repr": "'{} x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "{}\n x",
+      "repr": "'{}\\n x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 2 column 2 (char 4)"
+    },
+    {
+      "input": "{}\r\n  x",
+      "repr": "'{}\\r\\n  x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 2 column 3 (char 6)"
+    },
+    {
+      "input": "[\"\u00e9\"] x",
+      "repr": "'[\"\u00e9\"] x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 7 (char 6)"
+    },
+    {
+      "input": "[\"\ud83d\ude00\"] x",
+      "repr": "'[\"\ud83d\ude00\"] x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 7 (char 6)"
+    },
+    {
+      "input": "{\"a\": 1, \"a\": 2} x",
+      "repr": "'{\"a\": 1, \"a\": 2} x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 18 (char 17)"
+    },
+    {
+      "input": "1\n\n  y",
+      "repr": "'1\\n\\n  y'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 3 column 3 (char 5)"
+    },
+    {
+      "input": "[",
+      "repr": "'['",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "[ ",
+      "repr": "'[ '",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "[\n ",
+      "repr": "'[\\n '",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 2 column 2 (char 3)"
+    },
+    {
+      "input": "[1",
+      "repr": "'[1'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "[1,",
+      "repr": "'[1,'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "[1, ",
+      "repr": "'[1, '",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "[1,]",
+      "repr": "'[1,]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "[1, ]",
+      "repr": "'[1, ]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "[,]",
+      "repr": "'[,]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "[,1]",
+      "repr": "'[,1]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "[1,,2]",
+      "repr": "'[1,,2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "[1 2]",
+      "repr": "'[1 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "[1\n2]",
+      "repr": "'[1\\n2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 2 column 1 (char 3)"
+    },
+    {
+      "input": "[\n1,\n\"x\" 2]",
+      "repr": "'[\\n1,\\n\"x\" 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 3 column 5 (char 9)"
+    },
+    {
+      "input": "[\r\n1,\r\n\"x\" 2]",
+      "repr": "'[\\r\\n1,\\r\\n\"x\" 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 3 column 5 (char 11)"
+    },
+    {
+      "input": "[\"\u00e9\" 2]",
+      "repr": "'[\"\u00e9\" 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "[\"\ud83d\ude00\" 2]",
+      "repr": "'[\"\ud83d\ude00\" 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "[\r\n1,\r\n\"\u00e9\" 2]",
+      "repr": "'[\\r\\n1,\\r\\n\"\u00e9\" 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 3 column 5 (char 11)"
+    },
+    {
+      "input": "[1:2]",
+      "repr": "'[1:2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "[1}",
+      "repr": "'[1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "[[1]",
+      "repr": "'[[1]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "[1]]",
+      "repr": "'[1]]'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "[NaN 1]",
+      "repr": "'[NaN 1]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "[Infinity,]",
+      "repr": "'[Infinity,]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 11 (char 10)"
+    },
+    {
+      "input": "[-Infinity 2]",
+      "repr": "'[-Infinity 2]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 12 (char 11)"
+    },
+    {
+      "input": "[tru]",
+      "repr": "'[tru]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "[1, 2, tru",
+      "repr": "'[1, 2, tru'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 8 (char 7)"
+    },
+    {
+      "input": "{",
+      "repr": "'{'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{ ",
+      "repr": "'{ '",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "{\n ",
+      "repr": "'{\\n '",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 2 column 2 (char 3)"
+    },
+    {
+      "input": "{,}",
+      "repr": "'{,}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{a: 1}",
+      "repr": "'{a: 1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{'a': 1}",
+      "repr": "\"{'a': 1}\"",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{1: 2}",
+      "repr": "'{1: 2}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{null: 1}",
+      "repr": "'{null: 1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{true: 1}",
+      "repr": "'{true: 1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{[]: 1}",
+      "repr": "'{[]: 1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "{\"a\"",
+      "repr": "'{\"a\"'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ':' delimiter: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "{\"a\"}",
+      "repr": "'{\"a\"}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ':' delimiter: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "{\"a\" 1}",
+      "repr": "'{\"a\" 1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ':' delimiter: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "{\"a\":",
+      "repr": "'{\"a\":'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "{\"a\": ",
+      "repr": "'{\"a\": '",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 7 (char 6)"
+    },
+    {
+      "input": "{\"a\":}",
+      "repr": "'{\"a\":}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "{\"a\": 1",
+      "repr": "'{\"a\": 1'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 8 (char 7)"
+    },
+    {
+      "input": "{\"a\": 1,",
+      "repr": "'{\"a\": 1,'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "{\"a\": 1, ",
+      "repr": "'{\"a\": 1, '",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 10 (char 9)"
+    },
+    {
+      "input": "{\"a\": 1,}",
+      "repr": "'{\"a\": 1,}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "{\"a\": 1, }",
+      "repr": "'{\"a\": 1, }'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 10 (char 9)"
+    },
+    {
+      "input": "{\"a\": 1 \"b\": 2}",
+      "repr": "'{\"a\": 1 \"b\": 2}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "{\"a\": 1, \"a\": 2,}",
+      "repr": "'{\"a\": 1, \"a\": 2,}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 17 (char 16)"
+    },
+    {
+      "input": "{\"a\": 1, b: 2}",
+      "repr": "'{\"a\": 1, b: 2}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting property name enclosed in double quotes: line 1 column 10 (char 9)"
+    },
+    {
+      "input": "{\"a\": 1, \"b\" 2}",
+      "repr": "'{\"a\": 1, \"b\" 2}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ':' delimiter: line 1 column 14 (char 13)"
+    },
+    {
+      "input": "{\"a\": 1, \"b\":}",
+      "repr": "'{\"a\": 1, \"b\":}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 14 (char 13)"
+    },
+    {
+      "input": "{\"a\": [1, 2], \"b\": {\"c\":}}",
+      "repr": "'{\"a\": [1, 2], \"b\": {\"c\":}}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 25 (char 24)"
+    },
+    {
+      "input": "{\"a\":\n tru}",
+      "repr": "'{\"a\":\\n tru}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 2 column 2 (char 7)"
+    },
+    {
+      "input": "{\"\u00e9\":\n 1 2}",
+      "repr": "'{\"\u00e9\":\\n 1 2}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 2 column 4 (char 9)"
+    },
+    {
+      "input": "{\"\ud83d\ude00\" 1}",
+      "repr": "'{\"\ud83d\ude00\" 1}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ':' delimiter: line 1 column 6 (char 5)"
+    },
+    {
+      "input": "{\"a\":1}x",
+      "repr": "'{\"a\":1}x'",
+      "class": "JSONDecodeError",
+      "message": "Extra data: line 1 column 8 (char 7)"
+    },
+    {
+      "input": "{\"a\":1, \"b\":2",
+      "repr": "'{\"a\":1, \"b\":2'",
+      "class": "JSONDecodeError",
+      "message": "Expecting ',' delimiter: line 1 column 14 (char 13)"
+    },
+    {
+      "input": "{\"devices\": [}",
+      "repr": "'{\"devices\": [}'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 14 (char 13)"
+    },
+    {
+      "input": "{\"k\": \"v",
+      "repr": "'{\"k\": \"v'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 7 (char 6)"
+    },
+    {
+      "input": "\"",
+      "repr": "'\"'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"a",
+      "repr": "'\"a'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"abc",
+      "repr": "'\"abc'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "[\"abc",
+      "repr": "'[\"abc'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\u00e9",
+      "repr": "'\"\u00e9'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"\ud83d\ude00",
+      "repr": "'\"\ud83d\ude00'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"\\",
+      "repr": "'\"\\\\'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"ab\\",
+      "repr": "'\"ab\\\\'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"\\\"",
+      "repr": "'\"\\\\\"'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"a\\\\b",
+      "repr": "'\"a\\\\\\\\b'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"\\\\u0041",
+      "repr": "'\"\\\\\\\\u0041'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\"\\n",
+      "repr": "'\"\\\\n'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "{\"a\": \"\\",
+      "repr": "'{\"a\": \"\\\\'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 7 (char 6)"
+    },
+    {
+      "input": "{\"\\",
+      "repr": "'{\"\\\\'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "[\"\\\"",
+      "repr": "'[\"\\\\\"'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\a\"",
+      "repr": "'\"\\\\a\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\x\"",
+      "repr": "'\"\\\\x\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\x41\"",
+      "repr": "'\"\\\\x41\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\'\"",
+      "repr": "'\"\\\\\\'\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\0\"",
+      "repr": "'\"\\\\0\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\1\"",
+      "repr": "'\"\\\\1\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\v\"",
+      "repr": "'\"\\\\v\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\ \"",
+      "repr": "'\"\\\\ \"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\N\"",
+      "repr": "'\"\\\\N\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\U00000041\"",
+      "repr": "'\"\\\\U00000041\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\\n\"",
+      "repr": "'\"\\\\\\n\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\\r\"",
+      "repr": "'\"\\\\\\r\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\\t\"",
+      "repr": "'\"\\\\\\t\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\\u00e9\"",
+      "repr": "'\"\\\\\u00e9\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"ab\\q\"",
+      "repr": "'\"ab\\\\q\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "\"\u00e9\\z\"",
+      "repr": "'\"\u00e9\\\\z\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\ud83d\ude00\\z\"",
+      "repr": "'\"\ud83d\ude00\\\\z\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "{\"\\x\": 1}",
+      "repr": "'{\"\\\\x\": 1}'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "[\"ok\", \"\\k\"]",
+      "repr": "'[\"ok\", \"\\\\k\"]'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\\\\\x\"",
+      "repr": "'\"\\\\\\\\\\\\x\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "\"\\u\"",
+      "repr": "'\"\\\\u\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u1\"",
+      "repr": "'\"\\\\u1\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u12\"",
+      "repr": "'\"\\\\u12\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u123\"",
+      "repr": "'\"\\\\u123\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u123g\"",
+      "repr": "'\"\\\\u123g\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\uZZZZ\"",
+      "repr": "'\"\\\\uZZZZ\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u-001\"",
+      "repr": "'\"\\\\u-001\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u+001\"",
+      "repr": "'\"\\\\u+001\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u 001\"",
+      "repr": "'\"\\\\u 001\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u",
+      "repr": "'\"\\\\u'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u0",
+      "repr": "'\"\\\\u0'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u00",
+      "repr": "'\"\\\\u00'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u004",
+      "repr": "'\"\\\\u004'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\u0041",
+      "repr": "'\"\\\\u0041'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"ab\\u0041",
+      "repr": "'\"ab\\\\u0041'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 5 (char 4)"
+    },
+    {
+      "input": "\"\\ud800",
+      "repr": "'\"\\\\ud800'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\\ud800\\u\"",
+      "repr": "'\"\\\\ud800\\\\u\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u",
+      "repr": "'\"\\\\ud800\\\\u'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u12\"",
+      "repr": "'\"\\\\ud800\\\\u12\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u12",
+      "repr": "'\"\\\\ud800\\\\u12'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u123\"",
+      "repr": "'\"\\\\ud800\\\\u123\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u123g\"",
+      "repr": "'\"\\\\ud800\\\\u123g\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u123g",
+      "repr": "'\"\\\\ud800\\\\u123g'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\u0041",
+      "repr": "'\"\\\\ud800\\\\u0041'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "\"\\ud800\\udc00",
+      "repr": "'\"\\\\ud800\\\\udc00'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 9 (char 8)"
+    },
+    {
+      "input": "{\"\\u12\": 1}",
+      "repr": "'{\"\\\\u12\": 1}'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "{\"\\u0041",
+      "repr": "'{\"\\\\u0041'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "\"\u0000\"",
+      "repr": "'\"\\x00\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\u0001\"",
+      "repr": "'\"\\x01\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\b\"",
+      "repr": "'\"\\x08\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\t\"",
+      "repr": "'\"\\t\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\n\"",
+      "repr": "'\"\\n\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"a\nb\"",
+      "repr": "'\"a\\nb\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\r\"",
+      "repr": "'\"\\r\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\u001b\"",
+      "repr": "'\"\\x1b\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\u001f\"",
+      "repr": "'\"\\x1f\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\u00e9\u0000\"",
+      "repr": "'\"\u00e9\\x00\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\ud83d\ude00\n\"",
+      "repr": "'\"\ud83d\ude00\\n\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "{\"a\tb\": 1}",
+      "repr": "'{\"a\\tb\": 1}'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 1 column 4 (char 3)"
+    },
+    {
+      "input": "[\"x\",\n \"y\u0007z\"]",
+      "repr": "'[\"x\",\\n \"y\\x07z\"]'",
+      "class": "JSONDecodeError",
+      "message": "Invalid control character at: line 2 column 4 (char 9)"
+    },
+    {
+      "input": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "repr": "'10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "-10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "repr": "'-10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+      "repr": "'99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "-99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+      "repr": "'-99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "[1, 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000]",
+      "repr": "'[1, 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000]'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "{\"k\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+      "repr": "'{\"k\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 x",
+      "repr": "'10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 x'",
+      "class": "ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit"
+    },
+    {
+      "input": "\ud800",
+      "repr": "'\\ud800'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "\udfff",
+      "repr": "'\\udfff'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 1 (char 0)"
+    },
+    {
+      "input": "[\ud800]",
+      "repr": "'[\\ud800]'",
+      "class": "JSONDecodeError",
+      "message": "Expecting value: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\\ud800\"",
+      "repr": "'\"\\\\\\ud800\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\escape: line 1 column 2 (char 1)"
+    },
+    {
+      "input": "\"\\u\ud800000\"",
+      "repr": "'\"\\\\u\\ud800000\"'",
+      "class": "JSONDecodeError",
+      "message": "Invalid \\uXXXX escape: line 1 column 3 (char 2)"
+    },
+    {
+      "input": "\"\ud800",
+      "repr": "'\"\\ud800'",
+      "class": "JSONDecodeError",
+      "message": "Unterminated string starting at: line 1 column 1 (char 0)"
+    }
+  ]
+}

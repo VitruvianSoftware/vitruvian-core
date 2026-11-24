@@ -79,6 +79,8 @@ enum ShelfDropRoutingContract {
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 32, cameraWidth: 180)
         var surfaceSize: CGSize { geometry.expandedSize(module: .files) }
         var opened: [NotchModule] = []
+        /// A media card open in the island takes file drags itself.
+        var directMediaDrop = false
         /// Announcements that the drop's destinations change, as `objectWillChange`.
         var changes = 0
 
@@ -94,6 +96,7 @@ enum ShelfDropRoutingContract {
                 acceptsUserInteraction: { [unowned self] in self.acceptsUserInteraction },
                 capturing: { [unowned self] in self.captureControls != nil },
                 showsFiles: { [unowned self] in self.modules.contains(.files) },
+                directMediaDrop: { [unowned self] in self.directMediaDrop },
                 mediaArea: { [unowned self] in
                     NotchFileToolsSupport.mediaDropArea(in: self.geometry, size: self.surfaceSize)
                 },
@@ -148,7 +151,29 @@ enum ShelfDropRoutingContract {
 enum ShelfDropRoutingTests {
     private typealias Context = ShelfDropRoutingContract
 
+    /// An open media card in the island takes file drags directly, so the
+    /// island leaves them to it; other drags still reach the shelf.
+    private static func directMediaDropChecks(_ suite: TestSuite) {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        Context.Features.shelf.isAvailable = true
+        Context.Switches.standard.enabled = true
+        let notch = Context.Notch()
+        notch.opened = []
+        board.clearContents()
+        board.writeObjects([URL(fileURLWithPath: "/tmp/dropped.mov") as NSURL])
+        suite.expect(notch.fileDrop.canAccept(board), "without a media card the island takes a file drag")
+        notch.directMediaDrop = true
+        notch.beginFileDrop(board)
+        suite.expect(!notch.fileDrop.canAccept(board) && notch.opened.isEmpty && !notch.accept(board),
+                     "an open media card in the island takes file drags itself")
+        board.clearContents()
+        board.setString("note", forType: .string)
+        suite.expect(notch.fileDrop.canAccept(board), "a drag without files still reaches the shelf")
+    }
+
     static func run(_ suite: TestSuite) {
+        directMediaDropChecks(suite)
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
         for promised in [false, true] {

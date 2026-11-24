@@ -34,7 +34,10 @@ import { createTesting } from './testing.js';
 import { createEvidence } from './evidence.js';
 import { createQueries } from './queries.js';
 import { followsClock } from './policy.js';
-import { createSnapshotTimeline } from '../../time/snapshotTimeline.js';
+import {
+  createSnapshotTimeline,
+  snapshotAnswer,
+} from '../../time/snapshotTimeline.js';
 import { worldClock } from '../../time/worldClock.js';
 /** Compose one vessel layer with application-owned scene services. */
 export function createVesselLayer({ source, services, options = {} } = {}) {
@@ -80,6 +83,7 @@ export function createVesselLayer({ source, services, options = {} } = {}) {
       layer.source = source;
     },
     followsClock: () => followsClock(vesselState),
+    timedAnswer: snapshotAnswer,
     reloadAtClock: () => vesselState.timeline.reload(),
   });
   // Vessels follow the world clock while the source declares a timeline.
@@ -99,9 +103,7 @@ export function createVesselLayer({ source, services, options = {} } = {}) {
       state.feed.count = state.records.all.length;
       state.feed.lastUpdate = null;
     },
-    resumeLive: () => {
-      void parts.ingestion.loadLivePositions(vesselState.state.viewer);
-    },
+    resumeLive: () => parts.ingestion.resumeLive(vesselState.state.viewer),
   });
   Object.assign(
     layer,

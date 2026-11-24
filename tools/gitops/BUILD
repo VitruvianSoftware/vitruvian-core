@@ -41,7 +41,8 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 # directory), holding two things:
 #   - fedora-power-cycle in Rust, standard library only;
 #   - src/ops/: the 13 GitOps tools below in Rust. JSON (bw, kubectl,
-#     Prometheus, Tempo, ArgoCD) is read and written with serde_json; the bash
+#     Prometheus, Tempo, ArgoCD) is read and written with vitruvian_jq /
+#     vitruvian_pycompat (and serde_json for typed creds); the bash
 #     behaviours they rely on come from //tools/shell-compat.
 # Optimised in every build mode.
 rust_library(
@@ -58,9 +59,9 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//packages/jq:vitruvian_jq",
         "//packages/pycompat/vitruvian-pycompat:vitruvian_pycompat",
         "//tools/shell-compat:shell_compat",
-        "@crates//:serde",
         "@crates//:serde_json",
     ],
 )
@@ -81,6 +82,16 @@ rust_test(
     size = "small",
     crate = ":fedora_power_cycle_lib",
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "backup_file_modes_test",
+    size = "small",
+    srcs = ["tests/backup_file_modes.rs"],
+    data = [":gitops-cli"],
+    edition = "2021",
+    env = {"GITOPS_CLI_BIN": "$(rootpath :gitops-cli)"},
     rustc_flags = ["-Copt-level=3"],
 )
 

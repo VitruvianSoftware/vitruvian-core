@@ -450,6 +450,8 @@ public final class CommandLineConnection: AgentConnection, _ImmediateAgentConnec
                 if seenPaths.insert(url.standardizedFileURL.path).inserted {
                     attachments.append(VitruvianCodeAttachment(url: url, isImage: true))
                 }
+            case .resource:
+                break
             case .text(let value):
                 if index != lastTextIndex,
                    value.hasPrefix("@/"),

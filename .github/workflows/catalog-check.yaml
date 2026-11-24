@@ -50,6 +50,7 @@ on:
   pull_request:
     paths:
       - catalog/**
+      - packages/pycompat/vitruvian-pycompat/**
       - packages/vitruvian-sdk/Package.swift
       - packages/vitruvian-sdk/Sources/**
       - .github/workflows/catalog-check.yaml
@@ -73,6 +74,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             catalog
+            packages/pycompat/vitruvian-pycompat
             packages/vitruvian-sdk
             .github/actions/select-xcode
 
@@ -97,9 +99,8 @@ jobs:
           if ! git show "HEAD^1:catalog/tools.json" > "$base" 2>/dev/null; then
             echo '{"tools": []}' > "$base"
           fi
-          rustc --edition 2021 -O --crate-type lib --crate-name catalog catalog/src/lib.rs -o "$RUNNER_TEMP/libcatalog.rlib"
-          rustc --edition 2021 -O catalog/src/bin/check_downloads.rs -L "$RUNNER_TEMP" --extern catalog="$RUNNER_TEMP/libcatalog.rlib" -o "$RUNNER_TEMP/check-downloads"
-          "$RUNNER_TEMP/check-downloads" --base "$base" --head catalog/tools.json \
+          bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" catalog catalog/src/lib.rs catalog/src/bin/check_downloads.rs -O
+          "$RUNNER_TEMP/catalog" --base "$base" --head catalog/tools.json \
             --validate "$VITRUVIAN_TOOL_BIN"
 
   # A push to a bump branch, before anything else runs on it: when the new
@@ -122,6 +123,7 @@ jobs:
           # //catalog:bump, and the composite action that mints the App token.
           sparse-checkout: |
             catalog
+            packages/pycompat/vitruvian-pycompat
             .github/actions
 
       # Pull requests only: it turns auto-merge off, labels, comments and
@@ -144,9 +146,8 @@ jobs:
           BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 --crate-type lib --crate-name catalog catalog/src/lib.rs -o "$RUNNER_TEMP/libcatalog.rlib"
-          rustc --edition 2021 catalog/src/bin/bump.rs -L "$RUNNER_TEMP" --extern catalog="$RUNNER_TEMP/libcatalog.rlib" -o "$RUNNER_TEMP/bump"
-          "$RUNNER_TEMP/bump" automerge --pr "$PR" --tested-sha "$TESTED" --check pushed --base "$BASE"
+          bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" catalog catalog/src/lib.rs catalog/src/bin/bump.rs
+          "$RUNNER_TEMP/catalog" automerge --pr "$PR" --tested-sha "$TESTED" --check pushed --base "$BASE"
 
   # Arms auto-merge on a catalog-bump pull request once the downloads passed
   # on the commit the branch still holds, when the branch holds only
@@ -174,6 +175,7 @@ jobs:
           # //catalog:bump, and the composite action that mints the App token.
           sparse-checkout: |
             catalog
+            packages/pycompat/vitruvian-pycompat
             .github/actions
 
       # The App's full token: arming auto-merge needs the right to merge
@@ -196,6 +198,5 @@ jobs:
           BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 --crate-type lib --crate-name catalog catalog/src/lib.rs -o "$RUNNER_TEMP/libcatalog.rlib"
-          rustc --edition 2021 catalog/src/bin/bump.rs -L "$RUNNER_TEMP" --extern catalog="$RUNNER_TEMP/libcatalog.rlib" -o "$RUNNER_TEMP/bump"
-          "$RUNNER_TEMP/bump" automerge --pr "$PR" --tested-sha "$TESTED" --check "$CHECK" --base "$BASE"
+          bash packages/pycompat/vitruvian-pycompat/rustc-build.sh "$RUNNER_TEMP" catalog catalog/src/lib.rs catalog/src/bin/bump.rs
+          "$RUNNER_TEMP/catalog" automerge --pr "$PR" --tested-sha "$TESTED" --check "$CHECK" --base "$BASE"

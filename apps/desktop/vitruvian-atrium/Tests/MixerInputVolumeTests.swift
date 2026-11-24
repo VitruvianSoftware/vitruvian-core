@@ -20,6 +20,13 @@ enum MixerInputVolumeContract {
         static let main = Queue()
         nonisolated(unsafe) static var queues: [Queue] = [main]
         var work: [() -> Void] = []
+        /// Work queued to run after a delay; a test fires it with `runTimers`.
+        var delayed: [() -> Void] = []
+        func runTimers() {
+            let pending = delayed
+            delayed.removeAll()
+            for item in pending { item() }
+        }
         func run() { if !work.isEmpty { work.removeFirst()() } }
         static func make() -> Queue {
             let queue = Queue()
@@ -39,7 +46,8 @@ enum MixerInputVolumeContract {
                            sync: { [self] body in
                                while !work.isEmpty { run() }
                                body()
-                           })
+                           },
+                           after: { [self] _, work in delayed.append(work) })
         }
     }
     /// What the mute shows: the island's microphone notice and the HUD.
@@ -83,6 +91,8 @@ enum MixerInputVolumeContract {
         nonisolated(unsafe) static var uids: [UInt32: String] = [:]
         nonisolated(unsafe) static var aggregates: Set<UInt32> = []
         nonisolated(unsafe) static var running: Set<UInt32> = []
+        /// Virtual drivers: their transport type reads as virtual.
+        nonisolated(unsafe) static var virtual: Set<UInt32> = []
         static func key(_ d: UInt32, _ e: UInt32 = 0, _ s: UInt32 = kAudioDevicePropertyVolumeScalar)
             -> Key
         {
@@ -96,6 +106,8 @@ enum MixerInputVolumeContract {
         /// Devices with no input stream: speakers, which are not microphones.
         nonisolated(unsafe) static var outputOnly: Set<UInt32> = []
         nonisolated(unsafe) static var clock: CFAbsoluteTime = 0
+        /// The mute's uptime, which only a test moves.
+        nonisolated(unsafe) static var now: TimeInterval = 0
         nonisolated(unsafe) static var suite = ""
         nonisolated(unsafe) static var defaults = Foundation.UserDefaults()
         nonisolated(unsafe) static var inputQueue = Queue()
@@ -122,7 +134,8 @@ enum MixerInputVolumeContract {
                 },
                 retractMicrophoneNotice: { Feedback.retractions += 1 },
                 hud: { _, message in Feedback.messages.append(message) },
-                reactMascot: { Feedback.reactions.append($0) }))
+                reactMascot: { Feedback.reactions.append($0) },
+                uptime: { now }))
         }
 
         @MainActor static func makeManager() -> AudioInputDeviceManager {
@@ -174,6 +187,7 @@ enum MixerInputVolumeContract {
             current = 10
             uids = [:]
             aggregates = []
+            virtual = []
             running = []
             streamChannels = [:]
             streamReadFails = false
@@ -262,8 +276,13 @@ enum MixerInputVolumeContract {
                 p.storeBytes(of: UInt32(1), as: UInt32.self)
             case kAudioDevicePropertyIsHidden: p.storeBytes(of: UInt32(0), as: UInt32.self)
             case kAudioDevicePropertyTransportType:
-                guard aggregates.contains(d) else { return -1 }
-                p.storeBytes(of: kAudioDeviceTransportTypeAggregate, as: UInt32.self)
+                if virtual.contains(d) {
+                    p.storeBytes(of: kAudioDeviceTransportTypeVirtual, as: UInt32.self)
+                } else if aggregates.contains(d) {
+                    p.storeBytes(of: kAudioDeviceTransportTypeAggregate, as: UInt32.self)
+                } else {
+                    return -1
+                }
             case kAudioDevicePropertyDeviceIsRunningSomewhere:
                 p.storeBytes(of: UInt32(running.contains(d) ? 1 : 0), as: UInt32.self)
             case kAudioDevicePropertyMute:
@@ -1247,5 +1266,172 @@ enum MixerInputVolumeContract {
         check(HAL.mute[10] == 0 && HAL.levels[HAL.key(10)] == 0 && HAL.muteElements[legacyFirstMute] == 1
                 && !HAL.muteService.hasOutstandingClaims,
               "a pending legacy unmute restores only the claimed main switch when the microphone returns")
+
+        func changed(_ device: UInt32) {
+            HAL.notify(device, kAudioDevicePropertyVolumeScalar)
+            Queue.drain()
+        }
+
+        HAL.reset()
+        HAL.now = 20
+        HAL.virtual = [10]
+        HAL.levels[HAL.key(10)] = 1
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        for _ in 0..<10 {
+            HAL.levels[HAL.key(10)] = 1
+            changed(10)
+        }
+        check(HAL.writes.filter { $0 == HAL.key(10) }.count == 3,
+              "a virtual driver that resets after successful readback cannot loop on its own notifications")
+        HAL.now += 0.25
+        HAL.muteQueue.runTimers()
+        check(HAL.levels[HAL.key(10)] == 0, "a virtual driver that recovers without notifying is silenced")
+        HAL.muteService.setMuted(false)
+        Queue.drain()
+        HAL.now += 1
+        HAL.muteQueue.runTimers()
+        check(HAL.levels[HAL.key(10)] == 1, "an explicit unmute cancels a pending virtual driver retry")
+
+        HAL.reset()
+        HAL.now = 30
+        HAL.virtual = [10]
+        HAL.levels[HAL.key(10)] = 1
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        for _ in 0..<3 {
+            HAL.levels[HAL.key(10)] = 1
+            changed(10)
+        }
+        let runningKey = HAL.key(10, 0, kAudioDevicePropertyDeviceIsRunningSomewhere)
+        check(HAL.listeners.contains(runningKey) && HAL.muteService.retryDeadline != nil,
+              "a virtual driver in backoff keeps its recording-start listener")
+        HAL.running = [10]
+        HAL.notify(10, kAudioDevicePropertyDeviceIsRunningSomewhere)
+        Queue.drain()
+        for _ in 0..<5 {
+            HAL.levels[HAL.key(10)] = 1
+            changed(10)
+            check(HAL.levels[HAL.key(10)] == 0, "a recording virtual input is immediately silenced")
+        }
+        check(HAL.muteService.retryDeadline == nil,
+              "starting capture bypasses a previously idle virtual input's backoff")
+
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.afterWrite = { HAL.levels[HAL.key(10)] = 0.5 }
+        HAL.notify(10, kAudioDevicePropertyVolumeScalar)
+        Queue.drain()
+        check(HAL.listeners.contains(HAL.key(10)),
+              "a gain raised again right after the re-mute keeps the microphone watched")
+
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.muteService.setMuted(true)
+        Queue.drain()
+        for _ in 0..<5 { HAL.notify(10, kAudioDevicePropertyVolumeScalar) }
+        check(Queue.main.work.count == 1, "a burst of device changes is answered by one handoff")
+        Queue.drain()
+        let service = HAL.muteService
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.notify(10, kAudioDevicePropertyVolumeScalar)
+        Queue.main.run()
+        check(Queue.main.work.isEmpty && HAL.muteQueue.work.count == 1,
+              "the first callback queues an audio sweep immediately, without a mute delay")
+        // Let main handle each arrival separately while the audio queue is busy.
+        for _ in 0..<8 {
+            HAL.notify(10, kAudioDevicePropertyVolumeScalar)
+            Queue.main.run()
+        }
+        check(HAL.muteQueue.work.count == 1,
+              "a busy audio queue never accumulates additional listener sweeps")
+        HAL.muteQueue.run()
+        HAL.levels[HAL.key(10)] = 0.75
+        Queue.drain()
+        check(HAL.levels[HAL.key(10)] == 0 && HAL.muteQueue.work.isEmpty,
+              "one trailing sweep covers changes the busy sweep missed")
+
+        HAL.writeFails.insert(HAL.key(10))
+        Feedback.messages = []
+        HAL.notify(10, kAudioDevicePropertyVolumeScalar)
+        service.setMuted(false)
+        Queue.main.run()
+        service.syncWithPreferences()
+        Queue.drain()
+        check(Feedback.messages == [text.micUnmutePartialHUD] && service.isMuted && service.hasOutstandingClaims,
+              "an older device notification or preference sync cannot hide a failed manual unmute")
+        HAL.writeFails = []
+        service.setMuted(false)
+        Queue.drain()
+        check(!service.isMuted && HAL.levels[HAL.key(10)] == 0.5,
+              "a later manual retry restores the original input gain")
+
+        HAL.reset()
+        let stopped = HAL.muteService
+        HAL.levels[HAL.key(10)] = 0.65
+        HAL.mute[20] = 1
+        HAL.devices = [10, 20]
+        stopped.toggle()
+        stopped.toggle()
+        Feedback.messages = []
+        let pendingCallbacks = HAL.procs
+        stopped.unmuteForTeardown()
+        check(HAL.muteQueue.work.isEmpty && HAL.levels[HAL.key(10)] == 0.65 && HAL.mute[20] == 1,
+              "teardown drains a queued mute and unmute without opening a user-muted input")
+        // A delivery already in flight when teardown unregistered its listener.
+        var anyChange = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar,
+                                                   mScope: kAudioObjectPropertyScopeGlobal, mElement: 0)
+        for (key, registered) in pendingCallbacks {
+            for (proc, client) in registered { _ = proc(key.d, 1, &anyChange, client) }
+        }
+        Queue.drain()
+        check(HAL.listeners.isEmpty && !stopped.isMuted && Feedback.messages.isEmpty,
+              "old callbacks cannot publish, remute or reinstall listeners after teardown")
+
+        HAL.reset()
+        let removed = HAL.muteService
+        HAL.levels[HAL.key(10)] = 0.6
+        removed.setMuted(true)
+        Queue.drain()
+        HAL.devices = []
+        let systemCallbacks = HAL.procs.filter { $0.key.d == AudioObjectID(kAudioObjectSystemObject) }
+        removed.unmuteForTeardown()
+        var lateDevicesChanged = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                                        mScope: kAudioObjectPropertyScopeGlobal, mElement: 0)
+        for (_, registered) in systemCallbacks {
+            for (proc, client) in registered {
+                _ = proc(AudioObjectID(kAudioObjectSystemObject), 1, &lateDevicesChanged, client)
+            }
+        }
+        Queue.drain()
+        check(removed.hasOutstandingClaims && HAL.listeners.isEmpty,
+              "a late HAL callback for an absent claim cannot reinstall listeners after teardown")
+
+        // Change the device list after a manual unmute's sweep but before it
+        // can publish on main, with a topology callback delivered first.
+        HAL.reset()
+        HAL.levels[HAL.key(10)] = 0.5
+        HAL.levels[HAL.key(20)] = 0.75
+        let pending = HAL.muteService
+        HAL.devices = [10, 20]
+        pending.setMuted(true)
+        Queue.drain()
+        HAL.devices = [10]
+        pending.setMuted(false)
+        HAL.notify(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices)
+        Queue.main.run()
+        check(HAL.defaults.bool(forKey: DefaultsKey.micMuteActive) && HAL.muteQueue.work.count == 1,
+              "a device change during a manual request cannot queue the stale persisted state")
+        HAL.muteQueue.run()
+        HAL.devices = [10, 20]
+        Queue.drain()
+        check(!pending.isMuted
+                && !HAL.defaults.bool(forKey: DefaultsKey.micMuteActive)
+                && HAL.levels[HAL.key(10)] == 0.5
+                && HAL.levels[HAL.key(20)] == 0.75,
+              "the requested unmute reaches a device that arrives before publication")
     }
 }

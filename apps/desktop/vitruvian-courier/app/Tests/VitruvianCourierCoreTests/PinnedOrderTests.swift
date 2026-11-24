@@ -24,6 +24,22 @@ final class PinnedOrderTests: XCTestCase {
         XCTAssertEqual(PinnedOrder.moving("a", onto: "a", in: ["a"]), ["a"])
     }
 
+    func testAListMoveLandsBeforeTheDestinationRow() {
+        let order = ["a", "b", "c", "d"]
+        // Down: "a" dropped between "c" and "d".
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [0], toOffset: 3, in: order), ["b", "c", "a", "d"])
+        // Up, to the top and to the very end.
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [3], toOffset: 0, in: order), ["d", "a", "b", "c"])
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [0], toOffset: 4, in: order), ["b", "c", "d", "a"])
+        // Dropped where it already was, on either side of itself: nothing changes.
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [1], toOffset: 1, in: order), order)
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [1], toOffset: 2, in: order), order)
+        // Several at once keep their order; bad input changes nothing it shouldn't.
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [0, 2], toOffset: 4, in: order), ["b", "d", "a", "c"])
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [9], toOffset: 1, in: order), order)
+        XCTAssertEqual(PinnedOrder.moving(fromOffsets: [3], toOffset: 99, in: order), order)
+    }
+
     func testOrderedAppliesDraftDeduplicatesIgnoresUnknownAndKeepsUnmentioned() {
         let items = [Item(id: "a"), Item(id: "b"), Item(id: "c"), Item(id: "d")]
 

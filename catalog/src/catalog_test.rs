@@ -23,7 +23,7 @@
 //! Run by `bazel test //catalog:catalog_test`, on every pull request. The check
 //! that fetches each changed entry's download is .github/workflows/catalog-check.yaml.
 
-use crate::json::{self, Value};
+use crate::json::{self, DictExt, Value, ValueExt};
 use crate::schema::Validator;
 use crate::{here, py, pyre, rules};
 
@@ -51,9 +51,9 @@ fn good() -> Value {
 
 fn catalog_with(tools: Vec<Value>) -> Value {
     py::obj(vec![
-        ("version", Value::Int(1)),
+        ("version", json::int(1)),
         ("generated", py::s("2026-10-12T00:00:00Z")),
-        ("tools", Value::List(tools)),
+        ("tools", Value::Arr(tools)),
     ])
 }
 
@@ -64,12 +64,12 @@ fn entry(changes: &[(&str, Value)]) -> Value {
         let mut target = &mut tool;
         for key in &keys[..keys.len() - 1] {
             target = match target {
-                Value::Dict(d) => d.get_mut(key).unwrap(),
+                Value::Obj(d) => d.dict_get_mut(key).unwrap(),
                 _ => panic!("expected dict at {}", key),
             };
         }
         match target {
-            Value::Dict(d) => d.insert(*keys.last().unwrap(), value.clone()),
+            Value::Obj(d) => d.dict_insert(*keys.last().unwrap(), value.clone()),
             _ => panic!("expected dict"),
         }
     }
@@ -192,11 +192,11 @@ fn test_each_rule_refuses() {
         ),
         (
             "an empty download",
-            entry(&[("download__size", Value::Int(0))]),
+            entry(&[("download__size", json::int(0))]),
         ),
         (
             "a download over 256 MB",
-            entry(&[("download__size", Value::Int(268_435_457))]),
+            entry(&[("download__size", json::int(268_435_457))]),
         ),
         (
             "a service the protocol has not",
@@ -254,8 +254,8 @@ fn test_each_rule_refuses() {
     let twice = catalog_with(vec![good(), good()]);
     assert!(refused(&schema, &twice).join(" ").contains("listed twice"));
     let mut undated = catalog_with(vec![good()]);
-    if let Value::Dict(ref mut d) = undated {
-        d.insert("generated", py::s("yesterday"));
+    if let Value::Obj(ref mut d) = undated {
+        d.dict_insert("generated", py::s("yesterday"));
     }
     assert!(!refused(&schema, &undated).is_empty());
 }
@@ -325,16 +325,15 @@ fn test_every_entry_is_updated_by_a_release_or_by_hand() {
     let text = std::fs::read_to_string(here::catalog_dir().join("sources.json")).unwrap();
     let sources = json::loads(&text).unwrap();
     let mut rows: Vec<String> = Vec::new();
-    for row in py::iterate(&py::get_or(&sources, "sources", Value::List(vec![])).unwrap()).unwrap()
-    {
+    for row in py::iterate(&py::get_or(&sources, "sources", Value::Arr(vec![])).unwrap()).unwrap() {
         rows.push(py::get_null(&row, "id").unwrap().py_str());
     }
     let manual: Vec<String> = match sources.field("manual") {
-        Some(Value::Dict(d)) => d.keys().map(|k| k.to_string()).collect(),
+        Some(Value::Obj(d)) => d.dict_keys().map(|k| k.to_string()).collect(),
         _ => Vec::new(),
     };
     let mut entries: Vec<String> = Vec::new();
-    for tool in py::iterate(&py::get_or(&catalog, "tools", Value::List(vec![])).unwrap()).unwrap() {
+    for tool in py::iterate(&py::get_or(&catalog, "tools", Value::Arr(vec![])).unwrap()).unwrap() {
         entries.push(py::get_null(&tool, "id").unwrap().py_str());
     }
     let orphans: Vec<&String> = entries

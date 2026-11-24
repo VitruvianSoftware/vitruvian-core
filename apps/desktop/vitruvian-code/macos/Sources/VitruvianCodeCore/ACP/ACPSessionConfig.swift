@@ -112,7 +112,8 @@ public struct ACPSessionConfigState: Equatable, Sendable {
                 id: Self.sessionModeOptionID,
                 name: "Mode",
                 value: .string(modeState.currentModeId),
-                options: modeState.availableModes.map(\.id)
+                options: modeState.availableModes.map(\.id),
+                category: "mode"
             ),
         ]
     }
@@ -175,7 +176,8 @@ public struct ACPSessionConfigState: Equatable, Sendable {
                 id: option.id,
                 name: option.name,
                 value: .bool(flag),
-                options: []
+                options: [],
+                category: option.category
             )
         case "select":
             guard case .string(let current) = option.currentValue else { return nil }
@@ -183,7 +185,8 @@ public struct ACPSessionConfigState: Equatable, Sendable {
                 id: option.id,
                 name: option.name,
                 value: .string(current),
-                options: option.flattenedSelectOptions.map(\.value)
+                options: option.flattenedSelectOptions.map(\.value),
+                category: option.category
             )
         default:
             return nil

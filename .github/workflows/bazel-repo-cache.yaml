@@ -1,0 +1,156 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Bazel Repository Cache
+
+# The ONLY workflow that saves the Bazel repository download cache.
+#
+# Verify jobs run on pull_request and non-main branches with actions: read and
+# never save or delete. Save jobs hold actions: write and run ONLY on main
+# (push, schedule, or workflow_dispatch). Both share ./.github/actions/bazel-repo-cache-warm.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - ".bazelversion"
+      - ".github/actions/setup-bazel/**"
+      - ".github/actions/bazel-repo-cache-warm/**"
+      - ".github/workflows/bazel-repo-cache.yaml"
+  pull_request:
+    paths:
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - ".bazelversion"
+      - ".github/actions/setup-bazel/**"
+      - ".github/actions/bazel-repo-cache-warm/**"
+      - ".github/workflows/bazel-repo-cache.yaml"
+  schedule:
+    # Daily, off the hour, to refresh evicted entries without overwriting hits.
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  warm-linux-verify:
+    name: warm-linux-verify
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: bazel-repo-cache-linux-verify-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          mode: verify
+          platform-os: linux
+          platform-arch: x64
+          # Target list source: .github/workflows/periodic-full-sweep.yaml (bazel build //...,
+          # bazel test //...). ci.yaml's build-test runs //tools/ci:affected_targets
+          # (dynamic affected-target selection with a //... fallback), so the full-sweep
+          # pattern is the exact Linux CI build universe.
+          targets: //...
+
+  warm-linux-save:
+    name: warm-linux-save
+    needs: warm-macos-save
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: bazel-repo-cache-save-linux
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          mode: save
+          platform-os: linux
+          platform-arch: x64
+          targets: //...
+          cache-limit-gb: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  warm-macos-verify:
+    name: warm-macos-verify
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: bazel-repo-cache-macos-verify-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          mode: verify
+          platform-os: darwin
+          platform-arch: arm64
+          bazel-flags: --config=macos-app
+          # Target list source: .github/workflows/ci.yaml (macos-build job,
+          # every target pattern passed to bazel build/test/run with --config=macos-app).
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
+
+  warm-macos-save:
+    name: warm-macos-save
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: bazel-repo-cache-save-macos
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          mode: save
+          platform-os: darwin
+          platform-arch: arm64
+          bazel-flags: --config=macos-app
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
+          cache-limit-gb: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

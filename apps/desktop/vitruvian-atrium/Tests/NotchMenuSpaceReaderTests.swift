@@ -21,6 +21,8 @@ enum NotchMenuSpaceReaderTests {
         var tick: (() -> Void)?
         var schedules = 0
         var cancels = 0
+        var timeouts: [(delay: TimeInterval, work: () -> Void)] = []
+        var timeoutCancels = 0
 
         var environment: NotchMenuSpaceReader.Environment {
             NotchMenuSpaceReader.Environment(
@@ -38,6 +40,10 @@ enum NotchMenuSpaceReaderTests {
                         self.cancels += 1
                         self.tick = nil
                     }
+                },
+                after: { [unowned self] delay, work in
+                    self.timeouts.append((delay, work))
+                    return { [unowned self] in self.timeoutCancels += 1 }
                 })
         }
 
@@ -146,9 +152,24 @@ enum NotchMenuSpaceReaderTests {
         system.deliver()
         suite.expect(applied.count == 6, "the fresh read reaches the island")
 
+        suite.expect(!system.timeouts.isEmpty && system.timeouts.allSatisfy { $0.delay == NotchMenuSpaceReader.readTimeout }
+                     && system.timeoutCancels == system.timeouts.count,
+                     "every read arms a timeout, and its answer arriving cancels it")
+
+        system.tick?()
+        system.timeouts.removeLast().work()
+        suite.expect(applied.count == 7 && applied.last == .some(nil),
+                     "a read that outlasts the timeout stops trusting the old room")
+        system.measure()
+        system.deliver()
+        suite.expect(applied.count == 8 && applied.last == .some(80), "the late answer still reaches the island")
+        system.timeouts.removeLast().work()
+        suite.expect(applied.count == 8, "a timeout that fires after its answer does nothing")
+
         system.owner = nil
         system.tick?()
-        suite.expect(system.background.isEmpty, "with no menu bar owner there is nothing to read")
+        suite.expect(system.background.isEmpty && applied.count == 9 && applied.last == .some(nil),
+                     "with no menu bar owner there is nothing to read, and no room to leave")
         system.owner = 42
         hasSubject = false
         system.tick?()

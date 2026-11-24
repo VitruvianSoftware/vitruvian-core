@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.104.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.103.0...vitruvian-atrium-v3.104.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 47, DDC via HDMI converter, script-mounted disk images and macOS 27 status items ([#5435](https://github.com/VitruvianSoftware/vitruvian-core/issues/5435)) ([24c2ad1](https://github.com/VitruvianSoftware/vitruvian-core/commit/24c2ad1aa6329a78488288ba5dfaa2e6f0b00b73))
+
+## [3.103.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.102.0...vitruvian-atrium-v3.103.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 46, fan resume retry, latched monitor speakers and 2 more ([#5431](https://github.com/VitruvianSoftware/vitruvian-core/issues/5431)) ([8217448](https://github.com/VitruvianSoftware/vitruvian-core/commit/82174489624e986d0ad3a9f0e1a36369fb130131))
+
+## [3.102.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.2...vitruvian-atrium-v3.102.0) (2026-11-23)
+
+
+### Features
+
+* **vitruvian-atrium:** port upstream batch 45, mic-mute backoff, screenshot memory and 9 more ([#5419](https://github.com/VitruvianSoftware/vitruvian-core/issues/5419)) ([5899e1b](https://github.com/VitruvianSoftware/vitruvian-core/commit/5899e1b64e212692818e895fe7cc5b4d7e4299b8))
+
 ## [3.101.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.101.1...vitruvian-atrium-v3.101.2) (2026-11-17)
 
 

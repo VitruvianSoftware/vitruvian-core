@@ -191,7 +191,8 @@ pub fn message_problems(protocol_dir: &Path) -> Vec<String> {
         if accepted && kind == "result" {
             if let Some(r) = row {
                 let res_def = r.get("result").and_then(|v| v.as_str()).unwrap_or("");
-                let res_val = message.get("result").unwrap_or(&Value::Null);
+                let null = Value::Null;
+                let res_val = message.get("result").unwrap_or(&null);
                 accepted = schema::is_valid_with_root(&part_ref(res_def), res_val, &schema_val);
             }
         }
@@ -521,7 +522,8 @@ pub fn session_problems_with(
                         .and_then(|r| r.get("result"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let res_val = message.get("result").unwrap_or(&Value::Null);
+                    let null = Value::Null;
+                    let res_val = message.get("result").unwrap_or(&null);
                     if let Some(err) = schema::first_error(&part_ref(res_def), res_val, &schema_val)
                     {
                         problems.push(format!(

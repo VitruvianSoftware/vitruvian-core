@@ -873,18 +873,18 @@ pub fn check_sweep_backstop(ctx: &Context) {
 }
 
 // ---------------------------------------------------------------------------
-// CHECK: Actions cache saves only from GitHub-hosted jobs on main
+// CHECK: Bazel repository cache saves only in bazel-repo-cache.yaml;
+//        setup-bazel and other workflows restore only; LLVM saves on hosted main
 // ---------------------------------------------------------------------------
 //
-// On 2026-10-31 two merge-queue Conformance Check runs passed in 6 minutes,
-// then spent 38 minutes in setup-bazel's post step uploading a 5.7 GB
-// repository cache from a self-hosted queue runner (~1.8 MB/s) and hit the
-// job timeout, cancelling a required check. A cache saved on a merge-queue ref
-// is unreadable by any other ref, and every save evicts main's entries from
-// the shared 10 GiB budget. The fix restricts saving to GitHub-hosted jobs on
-// main in the two shared composites; this check keeps it that way.
+// Only `.github/workflows/bazel-repo-cache.yaml` (and its composite
+// `.github/actions/bazel-repo-cache-warm/action.yml`) may save the Bazel
+// repository cache. `.github/actions/setup-bazel/action.yml` is strictly
+// restore-only (`cache-save: false`, `repository-cache: false`) so no partial
+// job (e.g. Copybara export), PR branch, merge-queue ref, or slow self-hosted
+// runner ever poisons or evicts the shared repository cache.
 
-/// The guard every cache save must carry: main only, GitHub-hosted only.
+/// The guard the LLVM cache composite must carry: main only, GitHub-hosted only.
 pub(crate) fn cache_save_expr_guarded(expr: &str) -> bool {
     let e: String = expr.split_whitespace().collect::<Vec<_>>().join(" ");
     e.contains("github.ref == 'refs/heads/main'")
@@ -913,35 +913,137 @@ pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
 }
 
 /// The guard on `setup-bazel/action.yml`'s `actions/cache/restore` step:
-/// GitHub-hosted non-main jobs only (self-hosted queue runners mount the
-/// persistent `vitruvian-queue-cache` PVC instead of downloading the multi-GB
-/// archive over WAN on every job).
+/// every GitHub-hosted job (including main) restores the `full-` entry;
+/// self-hosted queue runners mount their persistent `vitruvian-queue-cache`
+/// PVC instead of downloading over WAN.
 pub(crate) fn repo_restore_step_guarded(expr: &str) -> bool {
     let norm: String = expr.split_whitespace().collect::<Vec<_>>().join(" ");
     let bare = norm.trim_start_matches("${{").trim_end_matches("}}").trim();
-    bare == "runner.environment == 'github-hosted' && github.ref != 'refs/heads/main'"
-        || bare == "github.ref != 'refs/heads/main' && runner.environment == 'github-hosted'"
+    bare == "runner.environment == 'github-hosted'"
 }
 
-/// What is wrong with how `setup-bazel/action.yml` restores the repository
-/// cache, as (found, want, why) triples; empty when nothing is.
-///
-/// setup-bazel 0.19.1 never exits its main step after an aborted cache
-/// download (the stalled request keeps node alive), so on a slow runner a bad
-/// download sat until the job's timeout: twice in the merge queue on
-/// 2026-11-06, cancelling a required check (PR #4380). setup-bazel may restore
-/// the repository cache only where it also saves it, GitHub-hosted jobs on
-/// main; hosted non-main jobs use actions/cache/restore, which exits when it is
-/// done and gives up on a stalled download after SEGMENT_DOWNLOAD_TIMEOUT_MINS;
-/// self-hosted runners use their persistent local PVC (`vitruvian-queue-cache`).
+fn has_full_repo_hash_key(key: &str) -> bool {
+    key.contains("-repository-full-")
+        && key.contains("hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion')")
+}
+
+fn restore_keys_lines(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_rk = false;
+    let mut rk_indent = 0usize;
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if let Some(rest) = s.strip_prefix("restore-keys:") {
+            let inline = rest.trim();
+            if inline != "|" && inline != ">" && !inline.is_empty() {
+                out.push(inline.to_string());
+                in_rk = false;
+            } else {
+                in_rk = true;
+                rk_indent = ind;
+            }
+            continue;
+        }
+        if in_rk {
+            if ind > rk_indent {
+                out.push(s.to_string());
+            } else {
+                in_rk = false;
+            }
+        }
+    }
+    out
+}
+
+fn is_bazel_repo_cache_path(path_val: &str) -> bool {
+    let lower = path_val.to_ascii_lowercase();
+    lower.contains("bazel-repo")
+        || lower.contains("bazel_repo")
+        || lower.contains("repo-cache")
+        || lower.contains("repo_cache")
+        || path_val.contains("env.REPO")
+        || path_val.contains("$REPO")
+        || path_val.contains("${REPO}")
+}
+
+/// True when any step uses `actions/cache@` or `actions/cache/save@` with a Bazel
+/// repository cache `path:`. Restores (`actions/cache/restore@`) and saves of
+/// unrelated paths (e.g. LLVM, PlatformIO, pipeline-rdeps-map) return false.
+pub(crate) fn saves_bazel_repo_cache(content: &str) -> bool {
+    const STEP_KEYS: &[&str] = &[
+        "name:",
+        "id:",
+        "if:",
+        "uses:",
+        "run:",
+        "with:",
+        "env:",
+        "shell:",
+        "continue-on-error:",
+        "working-directory:",
+        "timeout-minutes:",
+    ];
+    let (mut step_has_save, mut step_has_repo_path, mut path_block_indent) = (false, false, None);
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if let Some(p_ind) = path_block_indent {
+            if ind > p_ind {
+                step_has_repo_path |= is_bazel_repo_cache_path(s);
+                continue;
+            }
+            path_block_indent = None;
+        }
+        let kv = match s.strip_prefix("- ") {
+            Some(rest) if STEP_KEYS.iter().any(|p| rest.starts_with(p)) => {
+                if step_has_save && step_has_repo_path {
+                    return true;
+                }
+                step_has_save = false;
+                step_has_repo_path = false;
+                rest
+            }
+            Some(rest) => rest,
+            None => s,
+        };
+        if let Some(v) = kv.strip_prefix("uses:") {
+            let u = v.split('#').next().unwrap_or("").trim();
+            step_has_save |=
+                u.starts_with("actions/cache@") || u.starts_with("actions/cache/save@");
+        } else if let Some(v) = kv.strip_prefix("path:") {
+            let val = v.split('#').next().unwrap_or("").trim();
+            if val == "|" || val == ">" || val.is_empty() {
+                path_block_indent = Some(ind);
+            } else {
+                step_has_repo_path |= is_bazel_repo_cache_path(val);
+            }
+        }
+    }
+    step_has_save && step_has_repo_path
+}
+
+/// What is wrong with how `.github/actions/setup-bazel/action.yml` restores
+/// the repository cache (restore-only), as (found, want, why) triples.
 pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String, String)> {
     let mut problems = Vec::new();
     match yaml_value_of(content, "repository-cache") {
-        Some(v) if cache_save_expr_guarded(&v) => {}
+        Some(v) if v == "false" => {}
         found => problems.push((
-            format!("repository-cache: {}", found.as_deref().unwrap_or("unset (true)")),
-            "repository-cache: main && github-hosted".to_string(),
-            "setup-bazel would restore the repository cache on queue and PR runs, where an aborted download hangs the step until the job times out (2026-11-06, PR #4380)".to_string(),
+            format!(
+                "repository-cache: {}",
+                found.as_deref().unwrap_or("unset (true)")
+            ),
+            "repository-cache: false".to_string(),
+            "setup-bazel is restore-only; letting bazel-contrib/setup-bazel touch the repository cache restores legacy keys, saves partial caches, or hangs on stalled downloads".to_string(),
         )),
     }
     let lines: Vec<&str> = content
@@ -949,6 +1051,27 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
         .map(strip)
         .filter(|l| !l.starts_with('#'))
         .collect();
+    let cache_saves: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| l.strip_prefix("cache-save:").map(str::trim))
+        .collect();
+    if cache_saves.is_empty() {
+        problems.push((
+            "cache-save: unset (true)".to_string(),
+            "cache-save: false".to_string(),
+            "setup-bazel must never save caches; only .github/workflows/bazel-repo-cache.yaml may save the repository cache".to_string(),
+        ));
+    } else {
+        for v in cache_saves {
+            if v != "false" {
+                problems.push((
+                    format!("cache-save: {}", v),
+                    "cache-save: false".to_string(),
+                    "setup-bazel must never save caches; only .github/workflows/bazel-repo-cache.yaml may save the repository cache".to_string(),
+                ));
+            }
+        }
+    }
     let steps = composite_steps(content);
     let restore_steps: Vec<&(String, Option<String>)> = steps
         .iter()
@@ -958,17 +1081,41 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
         problems.push((
             "no actions/cache/restore step".to_string(),
             "actions/cache/restore of ~/.cache/bazel-repo".to_string(),
-            "queue and PR runs would start with no repository cache at all".to_string(),
+            "GitHub-hosted jobs would start with no repository cache at all".to_string(),
         ));
     } else {
         match restore_steps[0].1.as_deref() {
             Some(if_expr) if repo_restore_step_guarded(if_expr) => {}
             found => problems.push((
                 format!("restore if: {}", found.unwrap_or("unset (always)")),
-                "restore if: runner.environment == 'github-hosted' && github.ref != 'refs/heads/main'".to_string(),
-                "actions/cache/restore must run only on GitHub-hosted non-main jobs; self-hosted queue runners mount the persistent vitruvian-queue-cache PVC and must not download the 5.55 GB archive over WAN".to_string(),
+                "restore if: ${{ runner.environment == 'github-hosted' }}".to_string(),
+                "actions/cache/restore must run on all GitHub-hosted jobs (including main) and skip self-hosted queue runners that mount the persistent vitruvian-queue-cache PVC".to_string(),
             )),
         }
+    }
+    let key_val = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("key:").map(str::trim));
+    match key_val {
+        Some(k) if has_full_repo_hash_key(k) => {}
+        found => problems.push((
+            format!("restore key: {}", found.unwrap_or("unset")),
+            "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
+            "setup-bazel must restore the verified `-repository-full-` key keyed on MODULE.bazel, MODULE.bazel.lock, and .bazelversion, never the old partial `-repository-` key".to_string(),
+        )),
+    }
+    let rk_lines = restore_keys_lines(content);
+    let rk_valid = rk_lines.len() == 2
+        && rk_lines[0].ends_with("-repository-full-")
+        && rk_lines[1].ends_with("-repository-")
+        && !rk_lines[1].contains("-repository-full-")
+        && rk_lines[0].strip_suffix("full-") == Some(rk_lines[1].as_str());
+    if !rk_valid {
+        problems.push((
+            format!("restore-keys: {:?}", rk_lines),
+            "[<platform>-repository-full-, <platform>-repository-]".to_string(),
+            "restore-keys must list the `-repository-full-` prefix first and the same-platform legacy `-repository-` fallback last so full entries always win".to_string(),
+        ));
     }
     if lines
         .iter()
@@ -976,8 +1123,8 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
     {
         problems.push((
             "path: ~/...".to_string(),
-            "path: $HOME/.cache/bazel-repo, absolute, as setup-bazel saves it".to_string(),
-            "an Actions cache entry's version is a hash of its path strings, so `~/` never matches what main saved: every restore misses".to_string(),
+            "path: $HOME/.cache/bazel-repo, absolute, as bazel-repo-cache.yaml saves it".to_string(),
+            "an Actions cache entry's version is a hash of its path strings, so `~/` never matches what bazel-repo-cache.yaml saved: every restore misses".to_string(),
         ));
     }
     let timeout = lines
@@ -993,11 +1140,14 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
     match timeout {
         Some(Some(minutes)) if (1..=5).contains(&minutes) => {}
         found => problems.push((
-            format!("SEGMENT_DOWNLOAD_TIMEOUT_MINS: {}", match found {
-                None => "unset (10)".to_string(),
-                Some(None) => "not a number".to_string(),
-                Some(Some(m)) => m.to_string(),
-            }),
+            format!(
+                "SEGMENT_DOWNLOAD_TIMEOUT_MINS: {}",
+                match found {
+                    None => "unset (10)".to_string(),
+                    Some(None) => "not a number".to_string(),
+                    Some(Some(m)) => m.to_string(),
+                }
+            ),
             "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1 to 5".to_string(),
             "a stalled download would hold the restore past the 15-minute jobs' timeout before it gives up".to_string(),
         )),
@@ -1110,72 +1260,79 @@ pub fn check_cache_save(ctx: &Context) {
     let actions_dir = format!("{}/.github/actions", ctx.root);
     let mut ok = true;
 
-    // 1. The two shared composites carry the guard.
-    let guarded: &[(&str, &str)] = &[
-        ("setup-bazel/action.yml", "cache-save"),
-        ("llvm-cache-restore/action.yml", "MAY_SAVE"),
-    ];
-    for (file, key) in guarded {
-        let rel = format!(".github/actions/{}", file);
-        let content = match fs::read_to_string(format!("{}/{}", actions_dir, file)) {
-            Ok(c) => c,
-            Err(_) => {
-                ctx.emit_fail(
-                    "cachesave", &rel, "missing", "guarded save",
-                    "the shared cache composite is gone, so nothing bounds where its caches are saved",
-                    "restore the composite, or move this check to wherever the caches are now set up",
-                );
-                ok = false;
-                continue;
-            }
-        };
-        match yaml_value_of(&content, key) {
-            Some(v) if cache_save_expr_guarded(&v) => {}
-            found => {
-                ctx.emit_fail(
-                    "cachesave", &rel, found.as_deref().unwrap_or("unset"),
-                    "main && github-hosted",
-                    "caches would be saved from merge-queue/PR refs or self-hosted runners: unreadable elsewhere, evicts main's entries, and a slow upload can time out a required check (2026-10-31 queue incident)",
-                    &format!("set '{}: ${{{{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}}}'", key),
-                );
-                ok = false;
-            }
-        }
-    }
-
-    // 1a. setup-bazel restores the repository cache only where it saves it;
-    //     actions/cache/restore, bounded, does it everywhere else.
+    // 1. setup-bazel/action.yml is restore-only (never saves; restores -repository-full- on hosted runners).
     let setup_rel = ".github/actions/setup-bazel/action.yml";
-    if let Ok(content) = fs::read_to_string(format!("{}/setup-bazel/action.yml", actions_dir)) {
-        for (found, want, why) in repository_restore_problems(&content) {
+    match fs::read_to_string(format!("{}/setup-bazel/action.yml", actions_dir)) {
+        Ok(content) => {
+            for (found, want, why) in repository_restore_problems(&content) {
+                ctx.emit_fail(
+                    "cachesave", setup_rel, &found, &want, &why,
+                    "keep setup-bazel restore-only (cache-save: false, repository-cache: false) and restore -repository-full- on GitHub-hosted runners",
+                );
+                ok = false;
+            }
+            if saves_bazel_repo_cache(&content) {
+                ctx.emit_fail(
+                    "cachesave",
+                    setup_rel,
+                    "actions/cache save of bazel-repo",
+                    "actions/cache/restore only",
+                    "setup-bazel must never save the Bazel repository cache",
+                    "remove actions/cache or actions/cache/save of bazel-repo",
+                );
+                ok = false;
+            }
+        }
+        Err(_) => {
             ctx.emit_fail(
-                "cachesave", setup_rel, &found, &want, &why,
-                "restore the repository cache with actions/cache/restore (SEGMENT_DOWNLOAD_TIMEOUT_MINS 1-5) and give setup-bazel's repository-cache the cache-save guard",
+                "cachesave",
+                setup_rel,
+                "missing",
+                "restore-only setup-bazel",
+                "the shared setup-bazel composite is missing",
+                "restore .github/actions/setup-bazel/action.yml",
             );
             ok = false;
         }
     }
 
-    // 1b. MAY_SAVE only matters if the restore steps act on it. The `mode`
-    //     step folds it into `readonly`; the read+write actions/cache step
-    //     must run only when readonly is false and the read-only one only
-    //     when it is true. Pointing the read+write step back at
-    //     `inputs.restore-only` would leave MAY_SAVE in place and saving
-    //     from every ref and runner again.
+    // 1a. llvm-cache-restore/action.yml saves only on GitHub-hosted main.
     let llvm_rel = ".github/actions/llvm-cache-restore/action.yml";
-    if let Ok(content) =
-        fs::read_to_string(format!("{}/llvm-cache-restore/action.yml", actions_dir))
-    {
-        for problem in llvm_restore_branch_problems(&content) {
+    match fs::read_to_string(format!("{}/llvm-cache-restore/action.yml", actions_dir)) {
+        Ok(content) => {
+            match yaml_value_of(&content, "MAY_SAVE") {
+                Some(v) if cache_save_expr_guarded(&v) => {}
+                found => {
+                    ctx.emit_fail(
+                        "cachesave", llvm_rel, found.as_deref().unwrap_or("unset"),
+                        "main && github-hosted",
+                        "LLVM caches would be saved from merge-queue/PR refs or self-hosted runners",
+                        "set 'MAY_SAVE: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}'",
+                    );
+                    ok = false;
+                }
+            }
+            for problem in llvm_restore_branch_problems(&content) {
+                ctx.emit_fail(
+                    "cachesave", llvm_rel, &problem.0, &problem.1, &problem.2,
+                    "branch both restore steps on steps.mode.outputs.readonly: `!= 'true'` on actions/cache, `== 'true'` on actions/cache/restore",
+                );
+                ok = false;
+            }
+        }
+        Err(_) => {
             ctx.emit_fail(
-                "cachesave", llvm_rel, &problem.0, &problem.1, &problem.2,
-                "branch both restore steps on steps.mode.outputs.readonly: `!= 'true'` on actions/cache, `== 'true'` on actions/cache/restore",
+                "cachesave", llvm_rel, "missing", "guarded save",
+                "the shared LLVM cache composite is gone, so nothing bounds where its caches are saved",
+                "restore .github/actions/llvm-cache-restore/action.yml",
             );
             ok = false;
         }
     }
 
-    // 2. Nobody bypasses the shared setup action.
+    // 2. No other workflow or action bypasses setup-bazel or saves the Bazel repository cache.
+    let warm_rel = ".github/workflows/bazel-repo-cache.yaml";
+    let warm_comp_rel = ".github/actions/bazel-repo-cache-warm/action.yml";
     let mut files = list_workflows(&ctx.workflows_dir);
     if let Ok(rd) = fs::read_dir(&actions_dir) {
         for entry in rd.flatten() {
@@ -1192,15 +1349,33 @@ pub fn check_cache_save(ctx: &Context) {
         }
     }
     for f in &files {
+        let rel = ctx.rel(f);
+        if rel == warm_rel || rel == warm_comp_rel {
+            continue;
+        }
         let content = match fs::read_to_string(f) {
             Ok(c) => c,
             Err(_) => continue,
         };
         if uses_setup_bazel_directly(&content) {
             ctx.emit_fail(
-                "cachesave", &ctx.rel(f), "bazel-contrib/setup-bazel", "./.github/actions/setup-bazel",
-                "calls setup-bazel directly, which saves its caches from every ref and runner by default",
-                "use './.github/actions/setup-bazel' instead, which carries the save guard",
+                "cachesave",
+                &rel,
+                "bazel-contrib/setup-bazel",
+                "./.github/actions/setup-bazel",
+                "calls setup-bazel directly instead of the restore-only composite action",
+                "use './.github/actions/setup-bazel' instead",
+            );
+            ok = false;
+        }
+        if saves_bazel_repo_cache(&content) {
+            ctx.emit_fail(
+                "cachesave",
+                &rel,
+                "actions/cache save of bazel-repo",
+                "only bazel-repo-cache.yaml / bazel-repo-cache-warm",
+                "only bazel-repo-cache.yaml and its warm composite may save the Bazel repository cache",
+                "remove actions/cache or actions/cache/save on the Bazel repo cache path; use actions/cache/restore",
             );
             ok = false;
         }
@@ -1208,8 +1383,8 @@ pub fn check_cache_save(ctx: &Context) {
 
     if ok {
         ctx.emit_ok(
-            "cachesave", ".github/actions", "guarded", "main && github-hosted",
-            "setup-bazel and the LLVM cache save only from GitHub-hosted jobs on main; no workflow bypasses them",
+            "cachesave", ".github", "bazel-repo-cache.yaml only", "-repository-full-",
+            "only bazel-repo-cache.yaml saves the Bazel repository cache; setup-bazel and all other workflows restore only",
         );
     }
 }
@@ -1819,16 +1994,20 @@ runs:
   using: composite
   steps:
     - name: Restore the Bazel repository cache
-      if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}
+      if: ${{ runner.environment == 'github-hosted' }}
       uses: actions/cache/restore@abc # v6
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
       with:
         path: ${{ steps.repo-cache.outputs.path }}
-    - uses: bazel-contrib/setup-bazel@abc # 0.19.1
+        key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        restore-keys: |
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.2
       with:
-        repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
-        cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+        repository-cache: false
+        cache-save: false
 ";
 
     #[test]
@@ -1837,28 +2016,77 @@ runs:
     }
 
     #[test]
-    fn repository_restore_rejects_self_hosted_wan_restore() {
+    fn repository_restore_rejects_old_state_and_save_regressions() {
+        let old_state = "\
+runs:
+  using: composite
+  steps:
+    - name: Restore the Bazel repository cache
+      if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}
+      uses: actions/cache/restore@abc # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
+      with:
+        path: ${{ steps.repo-cache.outputs.path }}
+        key: setup-bazel-1-linux-x64-repository-${{ hashFiles('MODULE.bazel', 'WORKSPACE.bazel', 'WORKSPACE.bzlmod', 'WORKSPACE') }}
+        restore-keys: |
+          setup-bazel-1-linux-x64-repository-
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.2
+      with:
+        repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+        cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+";
+        assert_eq!(repository_restore_problems(old_state).len(), 5);
+
+        let swapped_rk = SETUP_BAZEL_GOOD.replace(
+            "          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-\n          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-",
+            "          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-\n          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-",
+        );
+        assert!(repository_restore_problems(&swapped_rk)
+            .iter()
+            .any(|p| p.0.starts_with("restore-keys:")));
+
+        let missing_legacy_rk = SETUP_BAZEL_GOOD.replace(
+            "          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-\n",
+            "",
+        );
+        assert!(repository_restore_problems(&missing_legacy_rk)
+            .iter()
+            .any(|p| p.0.starts_with("restore-keys:")));
+
         let self_hosted_too = SETUP_BAZEL_GOOD.replace(
-            "if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}",
+            "if: ${{ runner.environment == 'github-hosted' }}",
             "if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}",
         );
         assert_eq!(
             repository_restore_problems(&self_hosted_too)[0].0,
             "restore if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}"
         );
-        let disabled = SETUP_BAZEL_GOOD.replace(
-            "if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}",
-            "if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' && false }}",
-        );
+
+        let regain_save = SETUP_BAZEL_GOOD.replace("cache-save: false", "cache-save: true");
         assert_eq!(
-            repository_restore_problems(&disabled)[0].0,
-            "restore if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' && false }}"
+            repository_restore_problems(&regain_save)[0].0,
+            "cache-save: true"
         );
     }
 
     #[test]
+    fn saves_bazel_repo_cache_checks_path_and_action() {
+        assert!(saves_bazel_repo_cache(
+            "- uses: actions/cache/save@abc\n  with:\n    path: ~/.cache/bazel-repo\n"
+        ));
+        assert!(saves_bazel_repo_cache(
+            "- uses: actions/cache/save@abc\n  with:\n    path: ${{ env.REPO }}\n"
+        ));
+        assert!(saves_bazel_repo_cache("- uses: actions/cache@abc\n  with:\n    path: |\n      ${{ steps.repo-cache.outputs.path }}\n"));
+        assert!(!saves_bazel_repo_cache(
+            "- uses: actions/cache/restore@abc\n  with:\n    path: ~/.cache/bazel-repo\n"
+        ));
+        assert!(!saves_bazel_repo_cache("- uses: actions/cache@abc\n  with:\n    path: ~/.platformio\n- uses: actions/cache/save@abc\n  with:\n    path: ${{ runner.temp }}/pipeline-rdeps-map.json\n"));
+    }
+
+    #[test]
     fn repository_restore_rejects_the_incident_shape() {
-        // The 2026-11-06 shape: setup-bazel restores it everywhere, nothing else does.
         let incident = "\
     - uses: bazel-contrib/setup-bazel@abc # 0.19.1
       with:
@@ -1869,13 +2097,21 @@ runs:
             .into_iter()
             .map(|p| p.0)
             .collect();
-        assert_eq!(
-            found,
-            vec![
-                "repository-cache: true".to_string(),
-                "no actions/cache/restore step".to_string(),
-                "SEGMENT_DOWNLOAD_TIMEOUT_MINS: unset (10)".to_string(),
-            ]
+        assert!(
+            found.contains(&"repository-cache: true".to_string()),
+            "{found:?}"
+        );
+        assert!(
+            found.iter().any(|f| f.starts_with("cache-save:")),
+            "{found:?}"
+        );
+        assert!(
+            found.contains(&"no actions/cache/restore step".to_string()),
+            "{found:?}"
+        );
+        assert!(
+            found.contains(&"SEGMENT_DOWNLOAD_TIMEOUT_MINS: unset (10)".to_string()),
+            "{found:?}"
         );
     }
 
@@ -1889,16 +2125,13 @@ runs:
             repository_restore_problems(&slow)[0].0,
             "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 12"
         );
-        // This PR's first run: `~/` never matched main's entries.
         let tilde = SETUP_BAZEL_GOOD.replace(
             "${{ steps.repo-cache.outputs.path }}",
             "~/.cache/bazel-repo",
         );
         assert_eq!(repository_restore_problems(&tilde)[0].0, "path: ~/...");
-        let unguarded = SETUP_BAZEL_GOOD.replace(
-            "repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}",
-            "repository-cache: true",
-        );
+        let unguarded =
+            SETUP_BAZEL_GOOD.replace("repository-cache: false", "repository-cache: true");
         assert_eq!(
             repository_restore_problems(&unguarded)[0].0,
             "repository-cache: true"

@@ -53,6 +53,8 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
     public var thinkingTokens: Int?
     /// How long the model spent reasoning before it answered.
     public var thinkingDurationMs: Int?
+    /// Live compaction item rendered as a compact timeline row.
+    public var compaction: AgentLiveState.Compaction?
     /// When the message was written: now, for one the chat sends or
     /// receives; the record's own time, for one read back from a saved
     /// transcript that keeps one; nil when nothing says.
@@ -80,6 +82,7 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
         contextUsage: VitruvianCodeContextUsage? = nil,
         thinkingTokens: Int? = nil,
         thinkingDurationMs: Int? = nil,
+        compaction: AgentLiveState.Compaction? = nil,
         createdAt: Date? = nil
     ) {
         self.id = id
@@ -103,6 +106,7 @@ public struct VitruvianCodeChatMessage: Identifiable, Equatable {
         self.contextUsage = contextUsage
         self.thinkingTokens = thinkingTokens
         self.thinkingDurationMs = thinkingDurationMs
+        self.compaction = compaction
         self.createdAt = createdAt
     }
 }
@@ -239,15 +243,20 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private let environment: VitruvianCodeEngine.Environment
     /// The app's settings, text and notices. Asked each time, never kept.
     private let host: any VitruvianCodeHost
+
     private var connection: (any AgentConnection)?
     private var liveConnection: (any PersistentAgentConnection)?
     private var liveConnectionProviderID: UUID?
     private var liveConnectionKind: AgentConnectionKind?
+    private var liveConnectionWorktree: Bool?
     private var liveEventDrainTask: Task<Void, Never>?
     private var idleShutdownTask: Task<Void, Never>?
     private var pendingConnectionStops: [UUID: Task<Void, Never>] = [:]
-    private var lastSyncedPlanMode: Bool?
     public private(set) var liveWorktreePath: String?
+    private var awaitingWorktree = false
+    private var lastTurnProviderID: UUID?
+    private var lastTurnConnectionKind: AgentConnectionKind?
+    private var lastTurnWasPersistent = false
     private var lastRestartFailureMessage: String?
     private var hasReceivedTurnFinishedEvent = false
     private var turnFinishedWaiters: [CheckedContinuation<Void, Never>] = []
@@ -256,16 +265,48 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var replyID: UUID?
     /// When this turn's first thought arrived, for the "Thought for" timer.
     private var thinkingStartedAt: Date?
+    /// Structured live session state from non-message `AgentEvent` updates.
+    @Published public private(set) var liveState = AgentLiveState()
+    /// Per-chat connection override (e.g. `.commandLine` chosen from the error card),
+    /// persisted by conversation ID in `host.chatConnections` and cleared on New Chat.
+    @Published public private(set) var chatConnectionOverride: AgentConnectionKind? = nil
+    /// True after the user clicks Keep on the idle compaction chip until the next compaction.
+    @Published public private(set) var compactionChipDismissed: Bool = false
+    /// Most recent live-connection failure for the error card (nil for command-line chats).
+    @Published public private(set) var lastLiveFailure: AgentLiveFailure? = nil
+    private var turnStartedPrompt = false
+    /// The files and picked mentions that went with the last turn, kept so that a
+    /// Retry, a Resume or "Use command line" sends them again with the failed prompt.
+    private var lastTurnAttachments: [VitruvianCodeAttachment] = []
+    private var lastTurnPickedMentions: [String] = []
+    private var turnReceivedUsageLimit = false
+    private var turnFailure: AgentFailure? = nil
+    /// Inline error shown on the live settings bar when updating a config option fails.
+    @Published public private(set) var liveConfigOptionError: String?
+    /// True while a `setLiveConfigOption` call is awaiting agent confirmation.
+    @Published public private(set) var isUpdatingLiveConfigOption = false
     /// Slash commands the CLI last reported; merged with the built-ins.
     @Published public private(set) var cliSlashCommands: [String] = []
+    /// Slash commands with descriptions and hints reported over ACP; takes precedence when non-empty.
+    @Published public private(set) var agentSlashCommands: [VitruvianCodeSlashCommand] = []
     /// Every `/` command the composer offers.
     public var slashCommands: [VitruvianCodeSlashCommand] {
-        VitruvianCodeSlashCommand.merged(cli: cliSlashCommands)
+        if !agentSlashCommands.isEmpty {
+            return VitruvianCodeSlashCommand.merged(commands: agentSlashCommands)
+        }
+        return VitruvianCodeSlashCommand.merged(cli: cliSlashCommands)
     }
     /// The commands that match the draft, empty unless it is a lone `/word`.
     public var matchingSlashCommands: [VitruvianCodeSlashCommand] {
         VitruvianCodeSlashCommand.matching(draft, in: slashCommands)
     }
+    /// Workspace paths explicitly chosen from the `@` popover for the current draft.
+    private var pickedMentions: [String] = []
+    /// This chat's successful non-mode `setLiveConfigOption` choices (id to value). A new
+    /// connection starts on the agent's defaults, so these are re-applied before its first prompt.
+    private var rememberedConfigChoices: [String: AgentConfigValue] = [:]
+    /// Counts `config_options` events handled, so a new connection's first list can be awaited.
+    private var configOptionsEventCount = 0
     /// Files and screenshots that go with the next turn. They are handed to
     /// the agent when the turn starts, and the list is empty again then.
     @Published public var attachments: [VitruvianCodeAttachment] = []
@@ -347,6 +388,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     public let checkpointTimeline = VitruvianCodeCheckpointTimeline()
     /// Interactive diff review session with line-level annotations.
     public let diffReviewSession = VitruvianCodeDiffReviewSession()
+    private var diffReviewGeneration: UInt64 = 0
+    private var diffReviewTask: Task<Void, Never>?
+    internal var diffReviewFilesBuilder: @Sendable ([VitruvianCodeToolStep.Diff], String?) -> [VitruvianCodeDiffFile] = { diffs, workdir in
+        VitruvianCodeDiffParser.buildDiffFiles(from: diffs, workingDirectory: workdir)
+    }
     /// Unified Agent Inbox & Fleet Telemetry center.
     public let inboxCenter = VitruvianCodeInboxCenter()
     /// 8-rule background agent hibernation manager.
@@ -657,6 +703,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     public func resume(_ summary: VitruvianCodeSessionSummary, configuration: VitruvianCodeConfiguration = VitruvianCodeConfiguration()) {
         // A turn still waiting for its model is dropped, not ended.
         awaitingModel = false
+        awaitingWorktree = false
         resetLiveConnectionState()
         turn += 1
         connection = nil
@@ -665,10 +712,26 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         replyID = nil
         sessionAllowedTools = []
         lastFailedPrompt = nil
+        cliSlashCommands = []
+        agentSlashCommands = []
+        pickedMentions = []
+        liveConfigOptionError = nil
+        isUpdatingLiveConfigOption = false
+        liveState.reset()
+        compactionChipDismissed = false
+        lastLiveFailure = nil
+        rememberedConfigChoices = [:]
+        lastTurnProviderID = nil
+        lastTurnConnectionKind = nil
+        lastTurnWasPersistent = false
+        diffReviewGeneration &+= 1
+        diffReviewTask?.cancel()
+        diffReviewTask = nil
         // The last conversation's subagents are not this one's.
         activeSubagents = []
         conversationID = summary.id
         restoreChatModes(for: summary.id)
+        restoreChatConnectionOverride(for: summary.id)
         let effectiveTitle = summary.title.isEmpty
             ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
             : summary.title
@@ -800,6 +863,44 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if chatApprovalMode != nil || chatPlanMode != nil {
             persistCurrentChatMode()
         }
+        if chatConnectionOverride != nil {
+            persistCurrentChatConnectionOverride()
+        }
+    }
+
+    /// Effective connection kind for this chat (`chatConnectionOverride` wins over provider setting).
+    public func effectiveConnectionKind(for provider: VitruvianCodeCLIProvider) -> AgentConnectionKind? {
+        chatConnectionOverride ?? provider.connection
+    }
+
+    private func effectiveProvider(for provider: VitruvianCodeCLIProvider) -> VitruvianCodeCLIProvider {
+        var copy = provider
+        copy.connection = effectiveConnectionKind(for: provider)
+        return copy
+    }
+
+    private func persistCurrentChatConnectionOverride() {
+        guard let id = conversationID, !id.isEmpty else { return }
+        var stored = host.chatConnections
+        if let override = chatConnectionOverride {
+            guard stored[id] != override.rawValue else { return }
+            stored[id] = override.rawValue
+        } else if stored.removeValue(forKey: id) == nil {
+            return
+        }
+        host.chatConnections = stored
+    }
+
+    private func restoreChatConnectionOverride(for id: String) {
+        if let raw = host.chatConnections[id], let kind = AgentConnectionKind(rawValue: raw) {
+            chatConnectionOverride = kind
+        } else {
+            chatConnectionOverride = nil
+        }
+    }
+
+    private func clearChatConnectionOverrideForNewChat() {
+        chatConnectionOverride = nil
     }
 
     /// Builds `PromptBlock`s for a turn: attachments first (`.image(path:)` for images,
@@ -857,8 +958,12 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // What goes with this turn is taken now, and the composer is clear
         // of it: the next prompt starts with no attachments and no fork.
         let turnAttachments = attachments
+        let turnPickedMentions = pickedMentions
+        lastTurnAttachments = turnAttachments
+        lastTurnPickedMentions = turnPickedMentions
         let fork = forkNextTurn && conversationID != nil
         attachments = []
+        pickedMentions = []
         forkNextTurn = false
 
         var effectiveConfig = configuration
@@ -902,6 +1007,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // Whatever is run as Ollama needs a model, not the built-in provider alone.
         guard effectiveConfig.activeProvider.route == .ollama, model.isEmpty else {
             launch(text, configuration: effectiveConfig, agentPath: agentPath, modes: modes,
+                   pickedMentions: turnPickedMentions,
                    ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel, turn: current)
             return
         }
@@ -915,6 +1021,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             guard let self, self.awaitingModel, current == self.turn else { return }
             self.awaitingModel = false
             self.launch(text, configuration: effectiveConfig, agentPath: agentPath, modes: modes,
+                        pickedMentions: turnPickedMentions,
                         ollamaDefaultModel: VitruvianCodeSupport.ollamaDefaultModel(fromList: listing), turn: current)
         }
     }
@@ -932,6 +1039,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stoppedByUser = false
         reportedError = false
         reportedErrorText = nil
+        turnStartedPrompt = false
+        turnReceivedUsageLimit = false
+        turnFailure = nil
+        lastLiveFailure = nil
+        _ = liveState.clearUsageLimitIfExpired(now: Date())
         currentToolCalls = 0
         awaitingAnswers = []
         turnInputClosed = false
@@ -1112,16 +1224,24 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         configuration: VitruvianCodeConfiguration,
         agentPath: String,
         modes: AgentTurnModes,
+        pickedMentions: [String] = [],
         ollamaDefaultModel: String,
         isCustomCommand: Bool = false,
         fullPromptForFailure: String? = nil,
         turn current: Int
     ) {
         if !isCustomCommand, isConnectionLockedAfterFailures {
-            let lockMessage = lastRestartFailureMessage
-                ?? "Live connection failed \(Self.maxConsecutiveRestartFailures) times in a row. Start a new chat or change the connection to retry."
+            let lockReason = strings.connectionLocked(count: Self.maxConsecutiveRestartFailures)
+            let lockMessage = lastRestartFailureMessage.map { "\(lockReason) (\($0))" } ?? lockReason
             reportedError = true
             reportedErrorText = lockMessage
+            lastLiveFailure = AgentLiveFailure(
+                message: lastRestartFailureMessage ?? lockMessage,
+                detail: nil,
+                source: lastLiveFailure?.source ?? .generic,
+                isLocked: true,
+                restartFailureCount: consecutiveRestartFailures
+            )
             if currentReplyText.isEmpty { removeReply() }
             messages.append(VitruvianCodeChatMessage(role: .agent, text: lockMessage, isError: true, createdAt: Date()))
             connection = nil
@@ -1141,21 +1261,73 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             discardLiveConnection(existing)
         }
 
+        let effectiveProv = effectiveProvider(for: configuration.activeProvider)
+        let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
+        let directory = workingDirectory(for: configuration)
+        let usesDefaultCommandLine = (effectiveProv.connection ?? .commandLine) == .commandLine
+            && !environment.hasCustomMakeConnection
+        let wantsWorktree = !isCustomCommand
+            && !usesDefaultCommandLine
+            && modes.worktree
+            && VitruvianCodeSupport.isGitRepo(at: URL(fileURLWithPath: directory))
+
         if !isCustomCommand,
            let reusable = liveConnection,
            reusable.isConnected,
-           liveConnectionProviderID == configuration.activeProvider.id,
-           liveConnectionKind == configuration.activeProvider.connection {
+           liveConnectionProviderID == effectiveProv.id,
+           liveConnectionKind == effectiveProv.connection,
+           liveConnectionWorktree == wantsWorktree,
+           (!wantsWorktree || liveWorktreePath != nil) {
             connection = reusable
+            lastTurnWasPersistent = true
             hasReceivedTurnFinishedEvent = false
-            let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+            let mentionDirectory = liveWorktreePath ?? directory
+            let baseBlocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+            let hasMentionCandidates = !VitruvianCodeMention.extractCandidates(
+                in: text,
+                pickedMentions: pickedMentions
+            ).isEmpty
             Task { @MainActor [weak self] in
                 guard let self, current == self.turn else { return }
-                do {
-                    if self.lastSyncedPlanMode != modes.plan {
-                        try await reusable.syncPlanMode(modes.plan)
-                        self.lastSyncedPlanMode = modes.plan
+                let blocks: [PromptBlock]
+                if hasMentionCandidates {
+                    let mentionResolution = await Task.detached(priority: .userInitiated) {
+                        Self.resolveLiveMentions(
+                            in: text,
+                            pickedMentions: pickedMentions,
+                            workingDirectory: mentionDirectory
+                        )
+                    }.value
+                    guard current == self.turn else { return }
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        self.scheduleIdleConnectionShutdown()
+                        return
                     }
+                    for blockedPath in mentionResolution.blockedPaths {
+                        self.insertFreshSessionNotice(self.strings.mentionOutsideWorkspace(blockedPath))
+                    }
+                    blocks = baseBlocks + mentionResolution.resourcePaths.map { PromptBlock.resource(path: $0) }
+                } else {
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        self.scheduleIdleConnectionShutdown()
+                        return
+                    }
+                    blocks = baseBlocks
+                }
+                do {
+                    try await reusable.syncMode(
+                        approvalMode: configuration.approvalMode,
+                        planSwitch: modes.plan
+                    )
+                    guard current == self.turn else { return }
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        self.scheduleIdleConnectionShutdown()
+                        return
+                    }
+                    self.turnStartedPrompt = true
                     let stopReason = try await reusable.prompt(blocks)
                     await self.waitForTurnFinishedEvent()
                     guard current == self.turn else { return }
@@ -1168,6 +1340,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     self.discardLiveConnection(reusable)
                     await reusable.stop()
                     guard current == self.turn else { return }
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        return
+                    }
                     self.launchDidFail(
                         error: error,
                         isCustomCommand: false,
@@ -1178,39 +1354,63 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             return
         }
 
-        let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
-        let directory = workingDirectory(for: configuration)
-        let usesDefaultCommandLine = (configuration.activeProvider.connection ?? .commandLine) == .commandLine
-            && !environment.hasCustomMakeConnection
+        var forceFreshSession = false
+        if !isCustomCommand {
+            retireLiveConnection()
+            if !wantsWorktree && liveWorktreePath != nil {
+                liveWorktreePath = nil
+                forceFreshSession = true
+            }
+        }
 
-        if !isCustomCommand,
-           !usesDefaultCommandLine,
-           modes.worktree,
-           liveWorktreePath == nil,
-           VitruvianCodeSupport.isGitRepo(at: URL(fileURLWithPath: directory)) {
+        if wantsWorktree, liveWorktreePath == nil {
+            awaitingWorktree = true
+            let shouldStartFresh = (conversationID?.isEmpty == false) || isResumed
             Task { @MainActor [weak self] in
-                guard let self, current == self.turn else { return }
+                guard let self, current == self.turn, self.isRunning, !self.stoppedByUser else { return }
                 let worktree = await self.worktreeManager.createWorktree(
                     taskName: "chat-\(current)",
                     baseRepositoryPath: directory,
                     provider: configuration.activeProvider,
-                    runGit: self.environment.runProgram
+                    runGit: self.environment.runProgramChecked
                 )
-                guard current == self.turn, self.isRunning else { return }
-                if case .ready = worktree.setupStatus {
-                    self.liveWorktreePath = worktree.worktreePath
+                if current == self.turn {
+                    self.awaitingWorktree = false
                 }
-                let resolvedDir = self.liveWorktreePath ?? directory
+                guard current == self.turn, self.isRunning, !self.stoppedByUser else {
+                    if case .ready = worktree.setupStatus {
+                        _ = await self.worktreeManager.removeWorktree(
+                            id: worktree.id,
+                            force: true,
+                            deleteBranch: true,
+                            runGit: self.environment.runProgramChecked
+                        )
+                    }
+                    return
+                }
+                guard case .ready = worktree.setupStatus else {
+                    let detail: String
+                    if case .failed(let reason) = worktree.setupStatus, !reason.isEmpty {
+                        detail = "\(self.strings.worktreeCreationFailed) (\(reason))"
+                    } else {
+                        detail = self.strings.worktreeCreationFailed
+                    }
+                    self.failTurnBeforeLaunch(reason: detail)
+                    return
+                }
+                self.liveWorktreePath = worktree.worktreePath
                 self.launchResolved(
                     text,
-                    resolvedDirectory: resolvedDir,
+                    resolvedDirectory: worktree.worktreePath,
                     configuration: configuration,
                     turnConfiguration: turnConfiguration,
                     agentPath: agentPath,
                     modes: modes,
+                    pickedMentions: pickedMentions,
                     ollamaDefaultModel: ollamaDefaultModel,
                     isCustomCommand: false,
                     fullPromptForFailure: fullPromptForFailure,
+                    forceFreshSession: shouldStartFresh,
                     turn: current
                 )
             }
@@ -1225,9 +1425,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             turnConfiguration: turnConfiguration,
             agentPath: agentPath,
             modes: modes,
+            pickedMentions: pickedMentions,
             ollamaDefaultModel: ollamaDefaultModel,
             isCustomCommand: isCustomCommand,
             fullPromptForFailure: fullPromptForFailure,
+            forceFreshSession: forceFreshSession,
             turn: current
         )
     }
@@ -1239,13 +1441,31 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         turnConfiguration: VitruvianCodeConfiguration,
         agentPath: String,
         modes: AgentTurnModes,
+        pickedMentions: [String] = [],
         ollamaDefaultModel: String,
         isCustomCommand: Bool,
         fullPromptForFailure: String?,
+        forceFreshSession: Bool = false,
         turn current: Int
     ) {
+        let effectiveProv = effectiveProvider(for: configuration.activeProvider)
+        if lastTurnProviderID != nil,
+           lastTurnProviderID != effectiveProv.id
+               || lastTurnConnectionKind != effectiveProv.connection {
+            cliSlashCommands = []
+            agentSlashCommands = []
+            rememberedConfigChoices = [:]
+        }
+        lastTurnProviderID = effectiveProv.id
+        lastTurnConnectionKind = effectiveProv.connection
+        if !isCustomCommand, forceFreshSession {
+            conversationID = nil
+            liveState.reset()
+            insertFreshSessionNotice(strings.worktreeFreshSessionNotice)
+        }
         let spec = AgentConnectionSpec(
-            provider: configuration.activeProvider,
+            kind: effectiveProv.connection ?? .commandLine,
+            provider: effectiveProv,
             configuration: turnConfiguration,
             agentPath: agentPath,
             workingDirectory: resolvedDirectory,
@@ -1254,7 +1474,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             environment: environment.processEnvironment,
             liveModeProvider: { [weak self] in
                 guard let self else { return (turnConfiguration.approvalMode, modes.plan) }
-                let base = self.engine?.configuration ?? configuration
+                let base = self.engine?.configuration ?? self.lastTurnConfiguration ?? configuration
                 return (self.effectiveApprovalMode(for: base), self.effectivePlanMode)
             }
         )
@@ -1267,6 +1487,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         )
 
         if let immediate = turnConnection as? any _ImmediateAgentConnection {
+            lastTurnWasPersistent = false
             do {
                 let startedID = immediate.beginImmediateSession(sessionRequest)
                 if !startedID.isEmpty, !isCustomCommand {
@@ -1304,11 +1525,12 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
 
         if let persistent = turnConnection as? any PersistentAgentConnection, !isCustomCommand {
-            discardLiveConnection(nil)
+            lastTurnWasPersistent = true
+            retireLiveConnection()
             liveConnection = persistent
-            liveConnectionProviderID = configuration.activeProvider.id
-            liveConnectionKind = configuration.activeProvider.connection
-            lastSyncedPlanMode = modes.plan
+            liveConnectionProviderID = effectiveProv.id
+            liveConnectionKind = effectiveProv.connection
+            liveConnectionWorktree = (liveWorktreePath != nil && resolvedDirectory == liveWorktreePath)
             hasReceivedTurnFinishedEvent = false
 
             let drainTask = Task { @MainActor [weak self] in
@@ -1322,9 +1544,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 guard let self else { return }
                 self.markTurnFinishedEventReceived()
                 if self.liveConnection === persistent {
-                    self.liveConnection = nil
-                    self.liveEventDrainTask = nil
-                    self.lastSyncedPlanMode = nil
+                    self.discardLiveConnection(persistent)
                     if self.pendingConnectionStops.isEmpty {
                         self.cancelPendingApprovalCards()
                     }
@@ -1338,11 +1558,19 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     await persistent.stop()
                     return
                 }
+                if self.stoppedByUser {
+                    self.discardLiveConnection(persistent)
+                    drainTask.cancel()
+                    await persistent.stop()
+                    self.agentDidExit(0, turn: current)
+                    return
+                }
                 let request = AgentSessionRequest(
                     workingDirectory: resolvedDirectory,
                     resumeSessionID: self.conversationID
                 )
 
+                let configEventsBeforeStart = self.configOptionsEventCount
                 do {
                     let startedID = try await persistent.start(request)
                     guard current == self.turn else {
@@ -1352,17 +1580,31 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     self.consecutiveRestartFailures = 0
                     self.isConnectionLockedAfterFailures = false
                     self.lastRestartFailureMessage = nil
-                    self.lastSyncedPlanMode = modes.plan
                     if !startedID.isEmpty {
                         self.assignConversationID(startedID)
                         if !self.isFollowerActive {
                             self.startTranscriptFollower(provider: configuration.activeProvider)
                         }
                     }
+                    if self.stoppedByUser {
+                        if !persistent.isConnected {
+                            self.discardLiveConnection(persistent)
+                            await persistent.stop()
+                            await drainTask.value
+                        }
+                        self.agentDidExit(0, turn: current)
+                        self.scheduleIdleConnectionShutdown()
+                        return
+                    }
                 } catch {
                     self.discardLiveConnection(persistent)
                     await persistent.stop()
                     await drainTask.value
+                    if self.stoppedByUser {
+                        guard current == self.turn else { return }
+                        self.agentDidExit(0, turn: current)
+                        return
+                    }
                     self.consecutiveRestartFailures += 1
                     if self.consecutiveRestartFailures >= Self.maxConsecutiveRestartFailures {
                         self.isConnectionLockedAfterFailures = true
@@ -1378,7 +1620,44 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 }
 
                 do {
-                    let stopReason = try await persistent.prompt(blocks)
+                    try await persistent.syncMode(
+                        approvalMode: configuration.approvalMode,
+                        planSwitch: modes.plan
+                    )
+                    try await self.reapplyRememberedConfig(
+                        on: persistent,
+                        eventsBeforeStart: configEventsBeforeStart
+                    )
+                    guard current == self.turn else { return }
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        self.scheduleIdleConnectionShutdown()
+                        return
+                    }
+                    let persistentBlocks: [PromptBlock]
+                    if !VitruvianCodeMention.extractCandidates(in: text, pickedMentions: pickedMentions).isEmpty {
+                        let mentionResolution = await Task.detached(priority: .userInitiated) {
+                            Self.resolveLiveMentions(
+                                in: text,
+                                pickedMentions: pickedMentions,
+                                workingDirectory: resolvedDirectory
+                            )
+                        }.value
+                        guard current == self.turn else { return }
+                        if self.stoppedByUser {
+                            self.agentDidExit(0, turn: current)
+                            self.scheduleIdleConnectionShutdown()
+                            return
+                        }
+                        for blockedPath in mentionResolution.blockedPaths {
+                            self.insertFreshSessionNotice(self.strings.mentionOutsideWorkspace(blockedPath))
+                        }
+                        persistentBlocks = blocks + mentionResolution.resourcePaths.map { PromptBlock.resource(path: $0) }
+                    } else {
+                        persistentBlocks = blocks
+                    }
+                    self.turnStartedPrompt = true
+                    let stopReason = try await persistent.prompt(persistentBlocks)
                     await self.waitForTurnFinishedEvent()
                     guard current == self.turn else { return }
                     if stopReason == .cancelled {
@@ -1391,6 +1670,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     await persistent.stop()
                     await drainTask.value
                     guard current == self.turn else { return }
+                    if self.stoppedByUser {
+                        self.agentDidExit(0, turn: current)
+                        return
+                    }
                     self.launchDidFail(
                         error: error,
                         isCustomCommand: false,
@@ -1435,6 +1718,16 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 drain.cancel()
                 return
             }
+            if self.stoppedByUser {
+                await turnConnection.stop()
+                _ = await drain.value
+                if isCustomCommand {
+                    self.commandDidExit(15, outcome: .stopped, printed: "", turn: current)
+                } else {
+                    self.agentDidExit(0, turn: current)
+                }
+                return
+            }
             do {
                 let startedID = try await turnConnection.start(sessionRequest)
                 guard current == self.turn else {
@@ -1443,6 +1736,18 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 }
                 if !startedID.isEmpty, !isCustomCommand {
                     self.assignConversationID(startedID)
+                }
+                if self.stoppedByUser {
+                    await turnConnection.stop()
+                    let drained = await drain.value
+                    guard current == self.turn else { return }
+                    if isCustomCommand {
+                        let printed = drained.printed.trimmingCharacters(in: .whitespacesAndNewlines)
+                        self.commandDidExit(15, outcome: .stopped, printed: printed, turn: current)
+                    } else {
+                        self.agentDidExit(0, turn: current)
+                    }
+                    return
                 }
                 let stopReason = try await turnConnection.prompt(blocks)
                 // The connection ends its stream when the turn ends. Take in
@@ -1485,6 +1790,15 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 await turnConnection.stop()
                 let drained = await drain.value
                 guard current == self.turn else { return }
+                if self.stoppedByUser {
+                    if isCustomCommand {
+                        let printed = drained.printed.trimmingCharacters(in: .whitespacesAndNewlines)
+                        self.commandDidExit(15, outcome: .stopped, printed: printed, turn: current)
+                    } else {
+                        self.agentDidExit(0, turn: current)
+                    }
+                    return
+                }
                 self.launchDidFail(
                     error: error,
                     drained: drained,
@@ -1529,21 +1843,70 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         } else if reportedError {
             // The connection already emitted `.connectionFailed(failure)` with its
             // original `failure.message` in a bubble of its own; remove the empty
-            // placeholder reply rather than appending a generic second error bubble.
-            if currentReplyText.isEmpty {
+            // placeholder reply rather than appending a generic second error bubble,
+            // unless the turn was interrupted mid-prompt (in which case keep the reply
+            // marked `"interrupted"` so the conversation shows the interrupted state).
+            if turnStartedPrompt && lastTurnWasPersistent && !stoppedByUser, let idx = replyIndex() {
+                messages[idx].stopReason = "interrupted"
+            } else if currentReplyText.isEmpty {
                 removeReply()
             }
             reason = reportedErrorText ?? strings.agentFailed
             lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
         } else {
-            reason = strings.agentFailed
-            replace(reply: reason, isError: true)
+            if turnStartedPrompt && lastTurnWasPersistent && !stoppedByUser, let idx = replyIndex() {
+                messages[idx].stopReason = "interrupted"
+                let desc = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                reason = desc.isEmpty ? strings.agentFailed : desc
+            } else {
+                reason = strings.agentFailed
+                replace(reply: reason, isError: true)
+            }
             lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
+        }
+        if !isCustomCommand && lastTurnWasPersistent {
+            let source: AgentLiveFailure.Source
+            if let turnFailure {
+                switch turnFailure.kind {
+                case .helperCrashed: source = .helperCrash
+                case .agentCrashed: source = .claudeCrash
+                case .exited: source = turnStartedPrompt ? .interrupted : .generic
+                default: source = .generic
+                }
+            } else {
+                source = turnStartedPrompt ? .interrupted : .generic
+            }
+            lastLiveFailure = AgentLiveFailure(
+                message: reason,
+                detail: turnFailure?.detail,
+                source: source,
+                isLocked: isConnectionLockedAfterFailures,
+                restartFailureCount: consecutiveRestartFailures
+            )
+        } else {
+            lastLiveFailure = nil
         }
         replyID = nil
         // A turn that could not start is a failed turn to the host, in
         // the bubble's words: with the chat out of sight the bubble is
         // seen by nobody, and the app would otherwise say nothing.
+        report(VitruvianCodeTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                    failureDetail: reason))
+    }
+
+    private func failTurnBeforeLaunch(reason: String) {
+        connection = nil
+        isRunning = false
+        expirePendingQuestionCards()
+        refreshPendingApproval()
+        stopTranscriptFollower()
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        reportedError = true
+        reportedErrorText = reason
+        replace(reply: reason, isError: true)
+        lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
+        replyID = nil
         report(VitruvianCodeTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
                                     failureDetail: reason))
     }
@@ -1574,6 +1937,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             // the turn ends here, as a stopped one. The model's name, when
             // it arrives, finds nothing waiting for it.
             awaitingModel = false
+            agentDidExit(0, turn: turn)
+        }
+        if awaitingWorktree {
+            awaitingWorktree = false
             agentDidExit(0, turn: turn)
         }
     }
@@ -1614,6 +1981,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     public func newChat() {
         // A turn still waiting for its model is dropped, not ended.
         awaitingModel = false
+        awaitingWorktree = false
         resetLiveConnectionState()
         stopTranscriptFollower()
         activeSubagents = []
@@ -1625,15 +1993,31 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         replyID = nil
         conversationID = nil
         clearChatModesForNewChat()
+        clearChatConnectionOverrideForNewChat()
         sessionAllowedTools = []
         sessionTitle = nil
         isResumed = false
         lastFailedPrompt = nil
+        cliSlashCommands = []
+        agentSlashCommands = []
+        pickedMentions = []
+        liveConfigOptionError = nil
+        isUpdatingLiveConfigOption = false
+        liveState.reset()
+        compactionChipDismissed = false
+        lastLiveFailure = nil
+        rememberedConfigChoices = [:]
+        lastTurnProviderID = nil
+        lastTurnConnectionKind = nil
+        lastTurnWasPersistent = false
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         elapsedSeconds = 0
         messages = []
         mode = .compact
+        diffReviewGeneration &+= 1
+        diffReviewTask?.cancel()
+        diffReviewTask = nil
         resetComposerExtras()
     }
 
@@ -1668,7 +2052,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         connection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
-        lastSyncedPlanMode = nil
+        liveConnectionWorktree = nil
         liveEventDrainTask?.cancel()
         liveEventDrainTask = nil
 
@@ -1703,11 +2087,33 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     }
 
     /// Tears down the open connection and clears any failed-restart lockout (e.g. on New Chat or connection change).
-    public func resetLiveConnectionState(keepingWorktree: Bool = false) {
+    public func resetLiveConnectionState(
+        keepingWorktree: Bool = false,
+        clearingSlashCommands: Bool = false
+    ) {
         stopConnection(keepingWorktree: keepingWorktree)
+        if clearingSlashCommands {
+            cliSlashCommands = []
+            agentSlashCommands = []
+        }
+        liveConfigOptionError = nil
+        isUpdatingLiveConfigOption = false
+        lastLiveFailure = nil
         consecutiveRestartFailures = 0
         isConnectionLockedAfterFailures = false
         lastRestartFailureMessage = nil
+    }
+
+    private func insertFreshSessionNotice(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let notice = VitruvianCodeChatMessage(role: .agent, text: trimmed, createdAt: Date())
+        if let replyID, let replyIdx = messages.firstIndex(where: { $0.id == replyID }) {
+            let insertIndex = (replyIdx > 0 && messages[replyIdx - 1].role == .user) ? replyIdx - 1 : replyIdx
+            messages.insert(notice, at: insertIndex)
+        } else {
+            messages.append(notice)
+        }
     }
 
     private func discardLiveConnection(_ target: (any PersistentAgentConnection)?) {
@@ -1717,8 +2123,21 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
-        lastSyncedPlanMode = nil
+        liveConnectionWorktree = nil
         liveEventDrainTask = nil
+    }
+
+    private func retireLiveConnection() {
+        guard let old = liveConnection else { return }
+        let drainTask = liveEventDrainTask
+        discardLiveConnection(old)
+        drainTask?.cancel()
+        let token = UUID()
+        let stopTask = Task { @MainActor [weak self] in
+            await old.stop()
+            self?.pendingConnectionStops.removeValue(forKey: token)
+        }
+        pendingConnectionStops[token] = stopTask
     }
 
     private func scheduleIdleConnectionShutdown() {
@@ -1793,6 +2212,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private func resetComposerExtras() {
         queuedPrompt = nil
         forkNextTurn = false
+        pickedMentions = []
         undoCheckpoint = nil
         undoCheckpointDirectory = nil
         checkpointTimeline.clear()
@@ -1904,25 +2324,50 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             activity = step.isFinished ? nil : step.title
             guard let idx = replyIndex() else { break }
             var steps = messages[idx].toolSteps ?? []
+            let mergedStep: VitruvianCodeToolStep
             if let existing = steps.firstIndex(where: { $0.id == step.id }) {
-                steps[existing] = step
+                mergedStep = steps[existing].merging(with: step)
+                steps[existing] = mergedStep
             } else {
+                mergedStep = step
                 steps.append(step)
                 currentToolCalls += 1
                 messages[idx].toolCalls = currentToolCalls
             }
             messages[idx].toolSteps = steps
+            if activeADEPanel == .diffReview,
+               mergedStep.isFinished,
+               !mergedStep.isError,
+               !mergedStep.diffs.isEmpty,
+               let config = lastTurnConfiguration ?? engine?.configuration {
+                refreshDiffReview(configuration: config)
+            }
         case .toolStepResult(let id, let output, let isError):
             activity = nil
             guard let idx = replyIndex(),
                   var steps = messages[idx].toolSteps,
                   let at = steps.firstIndex(where: { $0.id == id }) else { break }
+            let startIndex = messages.lastIndex(where: { $0.role == .user }).map { messages.index(after: $0) } ?? messages.startIndex
+            let wasDenied = messages[startIndex...].contains { msg in
+                msg.role == .agent && msg.approvalRequest?.id == id && msg.approvalRequest?.status == .denied
+            }
+            let effectiveIsError = isError || wasDenied
             steps[at].isFinished = true
             steps[at].output = output ?? steps[at].output
-            steps[at].isError = isError
+            steps[at].isError = effectiveIsError
             messages[idx].toolSteps = steps
+            if activeADEPanel == .diffReview,
+               !effectiveIsError,
+               !steps[at].diffs.isEmpty,
+               let config = lastTurnConfiguration ?? engine?.configuration {
+                refreshDiffReview(configuration: config)
+            }
         case .slashCommands(let names):
             cliSlashCommands = names
+            agentSlashCommands = []
+        case .availableCommands(let commands):
+            agentSlashCommands = commands
+            cliSlashCommands = commands.map(\.name)
         case .thinking(let delta):
             if thinkingStartedAt == nil { thinkingStartedAt = Date() }
             guard let idx = replyIndex() else { break }
@@ -1968,7 +2413,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     }
                 }
                 messages[idx].toolCalls = currentToolCalls
-                messages[idx].stopReason = status
+                if !(messages[idx].stopReason == "interrupted" && status == "error") {
+                    messages[idx].stopReason = status
+                }
             }
             if let error, !reportedError {
                 reportedError = true
@@ -1980,11 +2427,33 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             activity = nil
             turnInputClosed = true
             awaitingAnswers = []
+            turnFailure = failure
             for index in messages.indices where messages[index].approvalRequest?.status == .pending {
                 messages[index].approvalRequest?.status = .denied
             }
             expirePendingQuestionCards()
             refreshPendingApproval()
+            // A turn the user stopped is never "interrupted" or crashed, whatever the connection does after.
+            let isInterruptedMidTurn = isRunning && turnStartedPrompt && failure.kind.isCrash && !stoppedByUser
+            if isInterruptedMidTurn, let idx = replyIndex() {
+                messages[idx].stopReason = "interrupted"
+            }
+            let failureSource: AgentLiveFailure.Source
+            switch failure.kind {
+            case .helperCrashed: failureSource = .helperCrash
+            case .agentCrashed: failureSource = .claudeCrash
+            case .exited: failureSource = isInterruptedMidTurn ? .interrupted : .generic
+            default: failureSource = .generic
+            }
+            if !stoppedByUser {
+                lastLiveFailure = AgentLiveFailure(
+                    message: failure.message,
+                    detail: failure.detail,
+                    source: failureSource,
+                    isLocked: isConnectionLockedAfterFailures,
+                    restartFailureCount: consecutiveRestartFailures
+                )
+            }
             if !reportedError {
                 reportedError = true
                 reportedErrorText = failure.message
@@ -2050,13 +2519,21 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 worktreeName: worktreeMode ? "worktree" : nil
             )
             host.turnNeedsApproval(questionNotice)
+        case .compaction:
+            liveState.apply(event)
+            compactionChipDismissed = false
+            if let latest = liveState.compaction {
+                upsertCompactionMessage(latest)
+            }
+        case .usageLimit:
+            turnReceivedUsageLimit = true
+            liveState.apply(event)
         case .planReplaced,
              .configOptions,
-             .compaction,
              .notice,
-             .sessionInfo,
-             .usageLimit:
-            break
+             .sessionInfo:
+            if case .configOptions = event { configOptionsEventCount += 1 }
+            liveState.apply(event)
         }
     }
 
@@ -2228,7 +2705,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         } else if currentReplyText.isEmpty {
             if reportedError {
                 // agy said what went wrong in a bubble of its own.
-                removeReply()
+                if turnStartedPrompt && lastTurnWasPersistent, let idx = replyIndex() {
+                    messages[idx].stopReason = "interrupted"
+                } else {
+                    removeReply()
+                }
                 lastFailedPrompt = messages.last(where: { $0.role == .user })?.text
             } else if status != 0 {
                 let detail = ([strings.agentFailed] + noise).joined(separator: "\n")
@@ -2247,6 +2728,35 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             } else {
                 endedCleanly = true
             }
+        }
+        if endedCleanly {
+            lastLiveFailure = nil
+            lastFailedPrompt = nil
+            if !turnReceivedUsageLimit {
+                liveState.clearUsageLimit()
+            }
+        } else if !lastTurnWasPersistent {
+            lastLiveFailure = nil
+        } else if hadError && !stoppedByUser && lastLiveFailure == nil {
+            let reason = failureDetail ?? strings.agentFailed
+            let source: AgentLiveFailure.Source
+            if let turnFailure {
+                switch turnFailure.kind {
+                case .helperCrashed: source = .helperCrash
+                case .agentCrashed: source = .claudeCrash
+                case .exited: source = turnStartedPrompt ? .interrupted : .generic
+                default: source = .generic
+                }
+            } else {
+                source = .generic
+            }
+            lastLiveFailure = AgentLiveFailure(
+                message: reason,
+                detail: turnFailure?.detail,
+                source: source,
+                isLocked: isConnectionLockedAfterFailures,
+                restartFailureCount: consecutiveRestartFailures
+            )
         }
         report(VitruvianCodeTurnNotice(providerName: providerName, text: completedReply,
                                     failed: hadError, endedCleanly: endedCleanly,
@@ -2511,6 +3021,46 @@ public enum VitruvianCodeMention {
         let kept = draft.dropLast(query.count + 1)
         return kept + "@" + path + " "
     }
+
+    /// Extracts file-mention paths: only mentions the user picked in the @ popover that are
+    /// still in `text` at a token boundary. Typed or pasted `@paths` stay plain text, so
+    /// pasted content can never pull a file (for example `@.env`) into the prompt.
+    public static func extractCandidates(in text: String, pickedMentions: [String] = []) -> [String] {
+        var candidates: [String] = []
+        var seen = Set<String>()
+
+        func appendCandidate(_ raw: String) {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { return }
+            candidates.append(trimmed)
+        }
+
+        let boundaryPunctuation = CharacterSet(charactersIn: ".,;:!?)]}\"'")
+        for picked in pickedMentions where !picked.isEmpty {
+            let marker = "@" + picked
+            var searchStart = text.startIndex
+            while let range = text.range(of: marker, range: searchStart..<text.endIndex) {
+                let validStart = range.lowerBound == text.startIndex
+                    || text[text.index(before: range.lowerBound)].unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) }
+                let validEnd: Bool
+                if range.upperBound == text.endIndex {
+                    validEnd = true
+                } else {
+                    let nextChar = text[range.upperBound]
+                    validEnd = nextChar.unicodeScalars.allSatisfy {
+                        CharacterSet.whitespacesAndNewlines.contains($0) || boundaryPunctuation.contains($0)
+                    }
+                }
+                if validStart && validEnd {
+                    appendCandidate(picked)
+                    break
+                }
+                searchStart = range.upperBound
+            }
+        }
+
+        return candidates
+    }
 }
 
 extension VitruvianCodeQuickPromptSession {
@@ -2758,19 +3308,375 @@ extension VitruvianCodeQuickPromptSession {
         activeADEPanel = panel
     }
 
-    /// Loads the current git diff from the working directory into `diffReviewSession`.
+    /// Source chosen for the Diff Review panel on a chat.
+    public enum DiffReviewSelection: Equatable, Sendable {
+        case agentReported([VitruvianCodeDiffFile])
+        case gitFallback
+    }
+
+    /// True when this session uses a live persistent connection (ACP or Claude SDK)
+    /// rather than a one-shot command-line invocation.
+    public func isLiveChat(for configuration: VitruvianCodeConfiguration) -> Bool {
+        if chatConnectionOverride == .commandLine {
+            return false
+        }
+        if liveConnection != nil
+            || lastTurnWasPersistent
+            || !liveState.plan.isEmpty
+            || !liveState.configOptions.isEmpty {
+            return true
+        }
+        if let lastKind = lastTurnConnectionKind {
+            return lastKind != .commandLine
+        }
+        if let configuredKind = effectiveConnectionKind(for: configuration.activeProvider) {
+            return configuredKind != .commandLine
+        }
+        return false
+    }
+
+    // MARK: - Live Banners, Compaction, Usage Limit & Failure Recovery
+
+    /// Dismisses a single notice banner by ID without mutating `liveState.notices`.
+    public func dismissNotice(id: Int) {
+        liveState.dismissNotice(id: id)
+    }
+
+    private func upsertCompactionMessage(_ compaction: AgentLiveState.Compaction) {
+        if let idx = messages.lastIndex(where: { $0.compaction?.id == compaction.id }) {
+            messages[idx].compaction = compaction
+            return
+        }
+        let row = VitruvianCodeChatMessage(role: .agent, text: "", compaction: compaction, createdAt: Date())
+        if let replyID,
+           let replyIdx = messages.firstIndex(where: { $0.id == replyID }),
+           messages[replyIdx].text.isEmpty,
+           (messages[replyIdx].toolSteps ?? []).isEmpty,
+           messages[replyIdx].approvalRequest == nil,
+           messages[replyIdx].question == nil {
+            messages.insert(row, at: replyIdx)
+        } else {
+            messages.append(row)
+        }
+    }
+
+    /// True when the idle Compact/Keep suggestion chip should appear above the composer.
+    public func shouldShowCompactionChip(for configuration: VitruvianCodeConfiguration) -> Bool {
+        let isClaude = configuration.activeProvider.route == .claude
+        let isCompacting = liveState.compactions.contains(where: \.isInProgress)
+        let usage = currentContextUsage(provider: configuration.activeProvider, model: configuration.model)
+        return AgentCompactionSuggestion.shouldShow(
+            isIdle: !isRunning,
+            isLiveChat: isLiveChat(for: configuration),
+            isClaude: isClaude,
+            isCompacting: isCompacting,
+            isDismissed: compactionChipDismissed,
+            contextUsage: usage
+        )
+    }
+
+    /// Hides the Compact/Keep chip for this chat until the next compaction occurs.
+    public func keepContextWithoutCompacting() {
+        compactionChipDismissed = true
+    }
+
+    /// Sends `/compact` to compact context while preserving whatever the user typed in the draft.
+    public func compactFromSuggestion(configuration: VitruvianCodeConfiguration, agentPath: String?) {
+        guard !isRunning else { return }
+        let typed = draft
+        send("/compact", configuration: configuration, agentPath: agentPath)
+        draft = typed
+    }
+
+    /// Dismisses the active usage-limit banner without sending anything.
+    public func dismissUsageLimit() {
+        liveState.clearUsageLimit()
+    }
+
+    /// Clears the active usage-limit banner if its reset time has already passed.
+    public func clearExpiredUsageLimit(now: Date = Date()) {
+        _ = liveState.clearUsageLimitIfExpired(now: now)
+    }
+
+    /// Explicit user-triggered resume after a usage limit's reset time has passed.
+    /// Never called automatically; returns false when the limit has not reset yet.
+    @discardableResult
+    public func resumeAfterUsageLimit(
+        configuration: VitruvianCodeConfiguration,
+        agentPath: String?,
+        now: Date = Date()
+    ) -> Bool {
+        guard !isRunning,
+              let limit = liveState.usageLimit,
+              AgentUsageLimitState.canResume(limit, now: now) else {
+            return false
+        }
+        liveState.clearUsageLimit()
+        if let failed = lastFailedPrompt, !failed.isEmpty {
+            lastFailedPrompt = nil
+            resend(failed, configuration: configuration, agentPath: agentPath)
+        } else if let waiting = queuedPrompt, !waiting.isEmpty {
+            queuedPrompt = nil
+            send(waiting, configuration: configuration, agentPath: agentPath)
+        }
+        return true
+    }
+
+    /// Dismisses the error card's failed prompt state (keeps lock state when locked).
+    public func dismissFailedTurn() {
+        lastFailedPrompt = nil
+        if !isConnectionLockedAfterFailures {
+            lastLiveFailure = nil
+        }
+    }
+
+    /// Sets a per-chat override to use the command-line connection for this chat only
+    /// (leaving the provider's saved setting untouched) and re-sends the failed prompt once.
+    public func useCommandLineForThisChat(
+        configuration: VitruvianCodeConfiguration,
+        agentPath: String?
+    ) {
+        guard !isRunning else { return }
+        let promptToSend = lastFailedPrompt
+        lastFailedPrompt = nil
+        chatConnectionOverride = .commandLine
+        persistCurrentChatConnectionOverride()
+        resetLiveConnectionState(keepingWorktree: true)
+        lastTurnWasPersistent = false
+        lastTurnConnectionKind = .commandLine
+        if let prompt = promptToSend, !prompt.isEmpty {
+            resend(prompt, configuration: configuration, agentPath: agentPath)
+        }
+    }
+
+    /// Retries the failed prompt once, with the files that went with it. Does nothing while a
+    /// turn runs, so a second click cannot send it again or overlap the first.
+    public func retryFailedPrompt(configuration: VitruvianCodeConfiguration, agentPath: String?) {
+        guard !isRunning, let prompt = lastFailedPrompt, !prompt.isEmpty else { return }
+        resend(prompt, configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Sends a failed prompt again with its own attachments and picked mentions, leaving
+    /// whatever the user has meanwhile put in the composer where it is.
+    private func resend(_ prompt: String, configuration: VitruvianCodeConfiguration, agentPath: String?) {
+        guard !isRunning else { return }
+        let composerAttachments = attachments
+        let composerMentions = pickedMentions
+        let composerDraft = draft
+        attachments = lastTurnAttachments
+        pickedMentions = lastTurnPickedMentions
+        send(prompt, configuration: configuration, agentPath: agentPath)
+        attachments = composerAttachments
+        pickedMentions = composerMentions
+        draft = composerDraft
+    }
+
+    private struct ConfigReapplyError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    /// Puts this chat's remembered settings (model, effort, ...) back on a connection that just
+    /// started on the agent's defaults, before the first prompt on it. A choice the agent no
+    /// longer offers is dropped. If an offered choice cannot be applied, this throws, so the turn
+    /// fails instead of silently running on a different model.
+    private func reapplyRememberedConfig(
+        on persistent: any PersistentAgentConnection,
+        eventsBeforeStart: Int
+    ) async throws {
+        guard !rememberedConfigChoices.isEmpty, persistent.capabilities.configOptions else { return }
+        // The new agent's own list arrives on the event stream; judge offers by it, not by the old one.
+        var waited = 0
+        while configOptionsEventCount == eventsBeforeStart, waited < 200, !stoppedByUser {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+            waited += 1
+        }
+        guard configOptionsEventCount != eventsBeforeStart else { return }
+        for id in rememberedConfigChoices.keys.sorted() {
+            guard !stoppedByUser, let value = rememberedConfigChoices[id] else { return }
+            guard let option = liveState.configOptions.first(where: { $0.id == id }),
+                  Self.option(option, offers: value) else {
+                rememberedConfigChoices[id] = nil
+                continue
+            }
+            if option.value == value { continue }
+            do {
+                let updated = try await persistent.setConfigOption(id, value)
+                if !updated.isEmpty { liveState.apply(.configOptions(updated)) }
+            } catch {
+                liveConfigOptionError = strings.configOptionUpdateFailed
+                throw ConfigReapplyError(message: strings.configOptionUpdateFailed)
+            }
+        }
+    }
+
+    private nonisolated static func option(_ option: AgentConfigOption, offers value: AgentConfigValue) -> Bool {
+        switch value {
+        case .string(let text): return option.options.contains(text)
+        case .bool:
+            if case .bool = option.value { return true }
+            return false
+        }
+    }
+
+    /// Updates a live session config option (model, effort, etc.) on the open connection.
+    /// Never starts a connection early, never mutates optimistically before confirmation,
+    /// and refuses mode/permission options (those go only through the mode picker).
+    @discardableResult
+    public func setLiveConfigOption(id: String, value: AgentConfigValue) async -> Bool {
+        guard !isRunning, !isUpdatingLiveConfigOption else { return false }
+        liveConfigOptionError = nil
+        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedID.isEmpty,
+              trimmedID != ACPSessionConfigState.sessionModeOptionID,
+              trimmedID.lowercased() != "mode" else {
+            return false
+        }
+        if let existing = liveState.configOptions.first(where: { $0.id == trimmedID }),
+           existing.category?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "mode" {
+            return false
+        }
+        guard let active = liveConnection, active.isConnected else {
+            liveConfigOptionError = strings.configOptionUnavailable
+            return false
+        }
+        isUpdatingLiveConfigOption = true
+        defer { isUpdatingLiveConfigOption = false }
+        do {
+            let updated = try await active.setConfigOption(trimmedID, value)
+            guard liveConnection === active else { return false }
+            if !updated.isEmpty {
+                liveState.apply(.configOptions(updated))
+            }
+            rememberedConfigChoices[trimmedID] = value
+            liveConfigOptionError = nil
+            return true
+        } catch {
+            guard liveConnection === active else { return false }
+            liveConfigOptionError = strings.configOptionUpdateFailed
+            return false
+        }
+    }
+
+    /// Resolves `@`-mentioned file paths against `workingDirectory` off the main thread for live connections,
+    /// separating valid working-directory files from paths that escape `workingDirectory`.
+    public nonisolated static func resolveLiveMentions(
+        in text: String,
+        pickedMentions: [String],
+        workingDirectory: String
+    ) -> (resourcePaths: [String], blockedPaths: [String]) {
+        let candidates = VitruvianCodeMention.extractCandidates(in: text, pickedMentions: pickedMentions)
+        guard !candidates.isEmpty else { return ([], []) }
+        var resourcePaths: [String] = []
+        var seenResources = Set<String>()
+        var blockedPaths: [String] = []
+        var seenBlocked = Set<String>()
+        for candidate in candidates {
+            let outcome = VitruvianCodeDiffParser.readSafeWorkingDirectoryFileResult(
+                path: candidate,
+                workingDirectory: workingDirectory,
+                maxBytes: VitruvianCodeDiffParser.maxMentionFileBytes,
+                readContent: false
+            )
+            switch outcome {
+            case .text(let resolvedPath, _, _), .nonTextOrOversize(let resolvedPath, _):
+                if seenResources.insert(resolvedPath).inserted {
+                    resourcePaths.append(resolvedPath)
+                }
+            case .outsideWorkingDirectory:
+                if seenBlocked.insert(candidate).inserted {
+                    blockedPaths.append(candidate)
+                }
+            case .notRegularFileOrMissing:
+                break
+            }
+        }
+        return (resourcePaths, blockedPaths)
+    }
+
+    /// Collects agent-reported diffs from finished, non-error, non-denied tool steps in
+    /// the latest turn (every agent message after the most recent user prompt).
+    public nonisolated static func latestTurnReportedDiffs(
+        from messages: [VitruvianCodeChatMessage]
+    ) -> [VitruvianCodeToolStep.Diff] {
+        let startIndex: Int
+        if let lastUser = messages.lastIndex(where: { $0.role == .user }) {
+            startIndex = messages.index(after: lastUser)
+        } else {
+            startIndex = messages.startIndex
+        }
+        guard startIndex < messages.endIndex else { return [] }
+        let blockedApprovalStepIDs: Set<String> = Set(
+            messages[startIndex...].compactMap { message -> String? in
+                guard message.role == .agent,
+                      let req = message.approvalRequest,
+                      req.status == .denied || req.status == .pending else {
+                    return nil
+                }
+                return req.id
+            }
+        )
+        var collected: [VitruvianCodeToolStep.Diff] = []
+        for message in messages[startIndex...] where message.role == .agent {
+            for step in message.toolSteps ?? [] {
+                guard step.isFinished,
+                      !step.isError,
+                      !blockedApprovalStepIDs.contains(step.id) else {
+                    continue
+                }
+                collected.append(contentsOf: step.diffs)
+            }
+        }
+        return collected
+    }
+
+    /// Chooses agent-reported diffs when available for a live chat, otherwise `.gitFallback`.
+    public nonisolated static func selectDiffReviewSource(
+        isLiveChat: Bool,
+        messages: [VitruvianCodeChatMessage],
+        workingDirectory: String? = nil
+    ) -> DiffReviewSelection {
+        guard isLiveChat else { return .gitFallback }
+        let diffs = latestTurnReportedDiffs(from: messages)
+        let files = VitruvianCodeDiffParser.buildDiffFiles(from: diffs, workingDirectory: workingDirectory)
+        return files.isEmpty ? .gitFallback : .agentReported(files)
+    }
+
+    internal func waitForDiffReviewRefresh() async {
+        await diffReviewTask?.value
+    }
+
+    /// Loads agent-reported diffs for the active live turn when available, falling back
+    /// to `git diff` from the working directory (and always using git for command-line chats).
     public func refreshDiffReview(configuration: VitruvianCodeConfiguration) {
+        diffReviewGeneration &+= 1
+        let generation = diffReviewGeneration
+        diffReviewTask?.cancel()
         let dir = workingDirectory(for: configuration)
+        let isLive = isLiveChat(for: configuration)
+        let reportedDiffs = isLive ? Self.latestTurnReportedDiffs(from: messages) : []
+        let buildFiles = diffReviewFilesBuilder
         let runProgram = environment.runProgram
-        Task { [weak self] in
+        diffReviewTask = Task { [weak self] in
+            if !reportedDiffs.isEmpty {
+                let files = await Task.detached(priority: .userInitiated) {
+                    buildFiles(reportedDiffs, dir)
+                }.value
+                guard let self, self.diffReviewGeneration == generation else { return }
+                if !files.isEmpty {
+                    self.diffReviewSession.loadFiles(files, source: .agentReported)
+                    return
+                }
+            }
             let headDiff = await runProgram("git", ["-C", dir, "diff", "HEAD"])
+            guard let self, self.diffReviewGeneration == generation else { return }
             let resolvedDiff: String
             if let headDiff, !headDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 resolvedDiff = headDiff
             } else {
                 resolvedDiff = await runProgram("git", ["-C", dir, "diff"]) ?? ""
             }
-            guard let self else { return }
+            guard self.diffReviewGeneration == generation else { return }
             self.diffReviewSession.loadDiff(resolvedDiff)
         }
     }
@@ -2803,13 +3709,14 @@ extension VitruvianCodeQuickPromptSession {
             ? (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Solve the current task" : draft)
             : raceSession.prompt
         let runProgram = environment.runProgram
+        let runProgramChecked = environment.runProgramChecked
         Task { [weak self] in
             guard let self else { return }
             await self.raceSession.startRace(
                 prompt: promptText,
                 specs: specs,
                 baseDirectory: baseDir,
-                runGit: runProgram
+                runGit: runProgramChecked
             )
             for contender in self.raceSession.contenders where contender.status == .running {
                 let contenderID = contender.id
@@ -2860,10 +3767,10 @@ extension VitruvianCodeQuickPromptSession {
 
     /// Picks the winning contender in Multi-Agent Race Mode and switches the workspace to its worktree.
     public func pickRaceWinner(id: UUID) {
-        let runProgram = environment.runProgram
+        let runProgramChecked = environment.runProgramChecked
         Task { [weak self] in
             guard let self else { return }
-            if let winner = await self.raceSession.pickWinner(id: id, runGit: runProgram),
+            if let winner = await self.raceSession.pickWinner(id: id, runGit: runProgramChecked),
                let engine = self.engine {
                 var next = engine.configuration
                 next.workingDirectory = winner.worktree.worktreePath
@@ -3043,6 +3950,9 @@ extension VitruvianCodeQuickPromptSession {
     /// Puts the chosen file in place of the `@` being typed.
     public func completeMention(with path: String) {
         draft = VitruvianCodeMention.replacingActiveQuery(in: draft, with: path)
+        if !pickedMentions.contains(path) {
+            pickedMentions.append(path)
+        }
     }
 
     /// Puts the chosen command in the composer: `/name ` ready for an

@@ -82,6 +82,8 @@ export interface MappingState {
   readonly emittedToolCallIds: Set<string>;
   authErrorDetected: boolean;
   lastAssistantStopReason: string | null;
+  activeCompactionId: string | null;
+  compactionSeq: number;
 }
 
 export interface MapSdkMessageOptions {
@@ -102,6 +104,8 @@ export function createMappingState(): MappingState {
     emittedToolCallIds: new Set<string>(),
     authErrorDetected: false,
     lastAssistantStopReason: null,
+    activeCompactionId: null,
+    compactionSeq: 0,
   };
 }
 
@@ -114,6 +118,7 @@ export function resetTurnMappingState(state: MappingState): void {
   state.emittedToolCallIds.clear();
   state.authErrorDetected = false;
   state.lastAssistantStopReason = null;
+  state.activeCompactionId = null;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -747,6 +752,142 @@ function mapSystemInitMessage(
   ];
 }
 
+function extractCompactionSummary(
+  raw: Record<string, unknown>,
+): string | undefined {
+  if (!isPlainRecord(raw.compact_metadata)) {
+    return undefined;
+  }
+  const meta = raw.compact_metadata;
+  const explicit = nonEmptyString(meta.summary);
+  if (explicit) {
+    return explicit;
+  }
+  const preTokens =
+    typeof meta.pre_tokens === "number" &&
+    Number.isFinite(meta.pre_tokens) &&
+    meta.pre_tokens > 0
+      ? Math.round(meta.pre_tokens)
+      : undefined;
+  const postTokens =
+    typeof meta.post_tokens === "number" &&
+    Number.isFinite(meta.post_tokens) &&
+    meta.post_tokens > 0
+      ? Math.round(meta.post_tokens)
+      : undefined;
+  if (preTokens !== undefined && postTokens !== undefined) {
+    return `${preTokens} -> ${postTokens} tokens`;
+  }
+  if (preTokens !== undefined) {
+    return `${preTokens} tokens compacted`;
+  }
+  return undefined;
+}
+
+/**
+ * Maps SDK `system` compaction status and boundary messages into ACP `compaction_update` notifications.
+ * Follows T3 `ClaudeAdapterV2.ts:11465-11610`.
+ */
+function mapSystemCompactionMessage(
+  sessionId: string,
+  message: SDKMessage,
+  state: MappingState,
+): SessionNotification[] {
+  const raw = message as unknown as Record<string, unknown>;
+  if (raw.subtype === "status") {
+    if (raw.status === "compacting") {
+      if (state.activeCompactionId !== null) {
+        return [];
+      }
+      const compactionId =
+        nonEmptyString(raw.uuid) ?? `compaction-${++state.compactionSeq}`;
+      state.activeCompactionId = compactionId;
+      return [
+        {
+          sessionId,
+          update: {
+            sessionUpdate: "compaction_update",
+            compactionId,
+            status: "running",
+          } as unknown as SessionUpdate,
+        },
+      ];
+    }
+
+    if (
+      raw.compact_result !== undefined ||
+      (raw.status === null && raw.permissionMode === undefined)
+    ) {
+      if (state.activeCompactionId === null) {
+        return [];
+      }
+      const compactionId = state.activeCompactionId;
+      const compactResult = raw.compact_result;
+      const compactError = nonEmptyString(raw.compact_error);
+      if (compactResult === "success") {
+        return [
+          {
+            sessionId,
+            update: {
+              sessionUpdate: "compaction_update",
+              compactionId,
+              status: "completed",
+            } as unknown as SessionUpdate,
+          },
+        ];
+      }
+      if (compactResult === "failed") {
+        state.activeCompactionId = null;
+        return [
+          {
+            sessionId,
+            update: {
+              sessionUpdate: "compaction_update",
+              compactionId,
+              status: "failed",
+              ...(compactError ? { summary: compactError } : {}),
+            } as unknown as SessionUpdate,
+          },
+        ];
+      }
+      state.activeCompactionId = null;
+      return [
+        {
+          sessionId,
+          update: {
+            sessionUpdate: "compaction_update",
+            compactionId,
+            status: "interrupted",
+          } as unknown as SessionUpdate,
+        },
+      ];
+    }
+    return [];
+  }
+
+  if (raw.subtype === "compact_boundary") {
+    const compactionId =
+      state.activeCompactionId ??
+      nonEmptyString(raw.uuid) ??
+      `compaction-${++state.compactionSeq}`;
+    state.activeCompactionId = null;
+    const summary = extractCompactionSummary(raw);
+    return [
+      {
+        sessionId,
+        update: {
+          sessionUpdate: "compaction_update",
+          compactionId,
+          status: "completed",
+          ...(summary ? { summary } : {}),
+        } as unknown as SessionUpdate,
+      },
+    ];
+  }
+
+  return [];
+}
+
 /** Pure mapper from a single Claude Agent SDK message to ACP `session/update` notifications. */
 export function mapSdkMessageToNotifications(
   sessionId: string,
@@ -767,7 +908,7 @@ export function mapSdkMessageToNotifications(
       if (message.subtype === "init") {
         return mapSystemInitMessage(sessionId, message, options);
       }
-      return [];
+      return mapSystemCompactionMessage(sessionId, message, state);
     default:
       return [];
   }

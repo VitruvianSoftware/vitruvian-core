@@ -187,6 +187,8 @@ struct InboxList: View {
     private var list: some View {
         let offset = preferences.regularPinnedRows ? 0 : pinned.count
         let rows = Array(inbox.rows.dropFirst(offset))
+        let pinnedRows = preferences.regularPinnedRows ? pinned : []
+        let otherRows = Array(rows.dropFirst(pinnedRows.count))
         let style = rowStyle
         return ScrollViewReader { scroll in
             // The times are read against "now", which moves on: draw again every minute.
@@ -196,39 +198,13 @@ struct InboxList: View {
                         NewChatPlaceholderRow(draft: draft, style: style)
                             .tag(InboxModel.newChatRowID)
                     }
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        InboxRowView(
-                            row: row,
-                            displayTitleOverride: inbox.displayTitle(for: row),
-                            requestHandle: inbox.requestHandle(for: row),
-                            networkName: inbox.networkName(row.network),
-                            mergedNetworks: inbox.mergedNetworks(for: row),
-                            now: timeline.date, style: style,
-                            isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
-                            isHovered: hoveredRowIDForTesting.map { $0 == row.id },
-                            onHoverChange: { inside in
-                                // At rest 80 ms: read this chat's first page ahead, so opening it shows at once.
-                                conversation?.hoverPrefetch(row.id, inside: inside)
-                                if inside {
-                                    hoverTracker.roomID = row.id
-                                    // The menu offers Delete Chat… only where the network can: ask now, so it knows.
-                                    inbox.prefetchFeatures(for: row)
-                                } else if hoverTracker.roomID == row.id {
-                                    hoverTracker.roomID = nil
-                                }
-                            },
-                            onWillHoverAct: { hoverTracker.suppressSelectionForCurrentClick(roomID: row.id) },
-                            hoverAct: { hoverAct(row, style.hoverAction) },
-                            accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
-                            decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
-                                ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.id),
-                                                showsKeys: false, conversation: conversation)
-                            }
-                            // A native menu, so the system's own "Ask Siri" item is left out.
-                            .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row.id) }
-                            .tag(row.id)
-                            // Within the last 20 chats loaded: read the next page.
-                            .onAppear { inbox.rowAppeared(at: index + offset) }
+                    // Only pinned rows move, and only among themselves: each group is its own ForEach.
+                    ForEach(Array(pinnedRows.enumerated()), id: \.element.id) { index, row in
+                        chatRow(row, listIndex: index + offset, now: timeline.date, style: style)
+                    }
+                    .onMove(perform: pinnedRowMove(pinnedRows))
+                    ForEach(Array(otherRows.enumerated()), id: \.element.id) { index, row in
+                        chatRow(row, listIndex: index + offset + pinnedRows.count, now: timeline.date, style: style)
                     }
                 }
                 .listStyle(.inset)
@@ -248,6 +224,53 @@ struct InboxList: View {
             .onChange(of: inbox.startNewChatDraft != nil) { _, isCreating in
                 if isCreating { scroll.scrollTo(InboxModel.newChatRowID, anchor: .top) }
             }
+        }
+    }
+
+    private func chatRow(_ row: InboxRow, listIndex: Int, now: Date, style: RowStyle) -> some View {
+        InboxRowView(
+            row: row,
+            displayTitleOverride: inbox.displayTitle(for: row),
+            requestHandle: inbox.requestHandle(for: row),
+            networkName: inbox.networkName(row.network),
+            mergedNetworks: inbox.mergedNetworks(for: row),
+            now: now, style: style,
+            isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
+            isHovered: hoveredRowIDForTesting.map { $0 == row.id },
+            onHoverChange: { inside in
+                // At rest 80 ms: read this chat's first page ahead, so opening it shows at once.
+                conversation?.hoverPrefetch(row.id, inside: inside)
+                if inside {
+                    hoverTracker.roomID = row.id
+                    // The menu offers Delete Chat… only where the network can: ask now, so it knows.
+                    inbox.prefetchFeatures(for: row)
+                } else if hoverTracker.roomID == row.id {
+                    hoverTracker.roomID = nil
+                }
+            },
+            onWillHoverAct: { hoverTracker.suppressSelectionForCurrentClick(roomID: row.id) },
+            hoverAct: { hoverAct(row, style.hoverAction) },
+            accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
+            decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
+                ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.id),
+                                showsKeys: false, conversation: conversation)
+            }
+            // A native menu, so the system's own "Ask Siri" item is left out.
+            .chatRowContextMenu(inbox: inbox, spaces: spaces, ui: ui, conversation: conversation) { menuIDs(row.id) }
+            .tag(row.id)
+            // Within the last 20 chats loaded: read the next page.
+            .onAppear { inbox.rowAppeared(at: listIndex) }
+    }
+
+    /// Dragging a full-row pinned chat, as Beeper's "Use regular style for pinned chats" allows. Nil (no drag) while
+    /// selecting, while locked, or with nothing to reorder, as in the pinned strip.
+    private func pinnedRowMove(_ pinnedRows: [InboxRow]) -> ((IndexSet, Int) -> Void)? {
+        guard !inbox.isSelecting, !inbox.isLocked, pinnedRows.count > 1 else { return nil }
+        let order = pinnedRows.map(\.id)
+        return { offsets, destination in
+            let next = PinnedOrder.moving(fromOffsets: offsets, toOffset: destination, in: order)
+            guard next != order else { return }
+            Task { await inbox.reorderPinned(next) }
         }
     }
 

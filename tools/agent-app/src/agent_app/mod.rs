@@ -23,7 +23,7 @@
 //! landed gate (argument for argument), its output, exit codes and files.
 //!
 //! What the script does with jq on its own machine (convert, installations,
-//! repos, token) is done here with serde_json (see jq.rs); the filters it
+//! repos, token) is done here with `vitruvian_jq` (see jq.rs); the filters it
 //! hands to `gh --jq` are handed to gh unchanged.
 
 pub mod jq;
@@ -35,7 +35,6 @@ use shell_compat as sh;
 use std::ffi::c_int;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
@@ -719,27 +718,14 @@ impl Tool {
             return Err(die(b"manifest conversion failed -- the code is single-use and expires in 1h; redo the browser step"));
         }
         let resp = sh::subst(o);
-        let old = sh::umask(0o077);
-        let opened = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o666)
-            .open(sh::path(outp));
-        let mut f = match opened {
-            Ok(f) => f,
-            Err(e) => {
-                sh::redirect_error(line::CONVERT_PEM, outp, &e);
-                return Err(die(b"response contained no pem"));
-            }
-        };
         let (pem, pst) = jq(&jq::Prog::Field("pem"), &resp, true);
-        let _ = f.write_all(&pem);
-        drop(f);
+        if let Err(e) = sh::write_secret_file_new(outp, &pem) {
+            sh::redirect_error(line::CONVERT_PEM, outp, &e);
+            return Err(die(b"response contained no pem"));
+        }
         if pst != 0 {
             return Err(die(b"response contained no pem"));
         }
-        sh::umask(old);
         if !credp.is_empty() {
             write_client_creds(credp, &resp)?;
         }
@@ -2654,30 +2640,30 @@ pub fn rewrite_pr_view_json_args(args: &[Vec<u8>]) -> Option<PrViewJsonRewrite> 
 }
 
 pub fn extract_json_str(json: &[u8], key: &str) -> Option<String> {
-    let v: jq::J = serde_json::from_slice(json).ok()?;
-    match v.index(key).ok()? {
-        jq::J::Str(s) if !s.is_empty() => Some(s),
-        _ => None,
-    }
+    let v = vitruvian_jq::parse_one(json).ok()?;
+    v.index(key)
+        .ok()?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 pub fn parse_pr_enrichment(graphql_json: &[u8]) -> Option<PrEnrichment> {
-    let root: jq::J = serde_json::from_slice(graphql_json).ok()?;
+    use vitruvian_jq::Value;
+    let root = vitruvian_jq::parse_one(graphql_json).ok()?;
     let node = root.index("data").ok()?.index("node").ok()?;
-    if matches!(node, jq::J::Null) {
+    if node.is_null() {
         return None;
     }
     let merge_queue_entry = match node.index("mergeQueueEntry").ok()? {
-        mq @ jq::J::Obj(_) => {
-            let pos = match mq.index("position").ok()? {
-                jq::J::Uint(n) => n,
-                jq::J::Int(n) if n >= 0 => n as u64,
-                _ => 0,
-            };
-            let state = match mq.index("state").ok()? {
-                jq::J::Str(s) => s,
-                _ => "UNKNOWN".to_string(),
-            };
+        mq @ Value::Object(_) => {
+            let pos = mq.index("position").ok()?.as_u64().unwrap_or(0);
+            let state = mq
+                .index("state")
+                .ok()?
+                .as_str()
+                .unwrap_or("UNKNOWN")
+                .to_string();
             Some(MergeQueueEntry {
                 position: pos,
                 state,
@@ -2688,15 +2674,22 @@ pub fn parse_pr_enrichment(graphql_json: &[u8]) -> Option<PrEnrichment> {
     let mut approved_by = Vec::new();
     let mut changes_requested_by = Vec::new();
     if let Ok(nodes) = node.index("latestReviews").and_then(|r| r.index("nodes")) {
-        if let Ok(items) = nodes.iterate() {
+        if let Ok(items) = nodes.iterate_redacted() {
             for item in items {
-                let state = match item.index("state") {
-                    Ok(jq::J::Str(s)) => s,
-                    _ => continue,
+                let Some(state) = item
+                    .index("state")
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_string))
+                else {
+                    continue;
                 };
-                let login = match item.index("author").and_then(|a| a.index("login")) {
-                    Ok(jq::J::Str(s)) if !s.is_empty() => s,
-                    _ => continue,
+                let Some(login) = item
+                    .index("author")
+                    .and_then(|a| a.index("login"))
+                    .ok()
+                    .and_then(|v| v.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+                else {
+                    continue;
                 };
                 if state == "APPROVED" && !approved_by.contains(&login) {
                     approved_by.push(login);
@@ -2713,7 +2706,7 @@ pub fn parse_pr_enrichment(graphql_json: &[u8]) -> Option<PrEnrichment> {
     })
 }
 
-fn upsert_kv(kvs: &mut Vec<(String, jq::J)>, key: &str, val: jq::J) {
+fn upsert_kv(kvs: &mut Vec<(String, vitruvian_jq::Value)>, key: &str, val: vitruvian_jq::Value) {
     if let Some((_, slot)) = kvs.iter_mut().find(|(k, _)| k == key) {
         *slot = val;
     } else {
@@ -2727,7 +2720,9 @@ pub fn enrich_pr_view_json(
     id_was_requested: bool,
     enrichment: Option<&PrEnrichment>,
 ) -> Option<Vec<u8>> {
-    let jq::J::Obj(mut kvs) = serde_json::from_slice::<jq::J>(gh_json).ok()? else {
+    use vitruvian_jq::Value;
+    let mut root = vitruvian_jq::parse_one(gh_json).ok()?;
+    let Some(kvs) = root.as_object_mut() else {
         return None;
     };
     if !id_was_requested {
@@ -2737,83 +2732,93 @@ pub fn enrich_pr_view_json(
         let wants_queue = requested_fields.iter().any(|f| f == "mergeQueueEntry");
         if wants_queue || enr.merge_queue_entry.is_some() {
             let mq_val = match &enr.merge_queue_entry {
-                Some(entry) => jq::J::Obj(vec![
-                    ("position".to_string(), jq::J::Uint(entry.position)),
-                    ("state".to_string(), jq::J::Str(entry.state.clone())),
+                Some(entry) => Value::Object(vec![
+                    ("position".to_string(), Value::uint(entry.position)),
+                    ("state".to_string(), Value::String(entry.state.clone())),
                 ]),
-                None => jq::J::Null,
+                None => Value::Null,
             };
-            upsert_kv(&mut kvs, "mergeQueueEntry", mq_val);
+            upsert_kv(kvs, "mergeQueueEntry", mq_val);
         }
         let empty_review_decision = kvs
             .iter()
-            .any(|(k, v)| k == "reviewDecision" && matches!(v, jq::J::Str(s) if s.is_empty()));
+            .any(|(k, v)| k == "reviewDecision" && matches!(v, Value::String(s) if s.is_empty()));
         if empty_review_decision {
             let approved = enr
                 .approved_by
                 .iter()
-                .map(|l| jq::J::Str(l.clone()))
+                .map(|l| Value::String(l.clone()))
                 .collect();
-            upsert_kv(&mut kvs, "approvedBy", jq::J::Arr(approved));
+            upsert_kv(kvs, "approvedBy", Value::Array(approved));
             if !enr.changes_requested_by.is_empty() {
                 let cr = enr
                     .changes_requested_by
                     .iter()
-                    .map(|l| jq::J::Str(l.clone()))
+                    .map(|l| Value::String(l.clone()))
                     .collect();
-                upsert_kv(&mut kvs, "changesRequestedBy", jq::J::Arr(cr));
+                upsert_kv(kvs, "changesRequestedBy", Value::Array(cr));
             }
             upsert_kv(
-                &mut kvs,
+                kvs,
                 "reviewDecisionNote",
-                jq::J::Str(
+                Value::String(
                     "gh pr view returns empty reviewDecision under GitHub Rulesets; see approvedBy"
                         .to_string(),
                 ),
             );
         }
     }
-    Some(format!("{}\n", jq::J::Obj(kvs).raw()).into_bytes())
+    Some(format!("{}\n", vitruvian_jq::raw(&root)).into_bytes())
 }
 
 pub fn format_pr_status(gh_json: &[u8], enrichment: Option<&PrEnrichment>) -> Option<Vec<u8>> {
-    let v: jq::J = serde_json::from_slice(gh_json).ok()?;
-    let number = match v.index("number").ok()? {
-        jq::J::Uint(n) => n.to_string(),
-        jq::J::Int(n) => n.to_string(),
+    use vitruvian_jq::Value;
+    let v = vitruvian_jq::parse_one(gh_json).ok()?;
+    let number_val = v.index("number").ok()?;
+    let number = match &number_val {
+        Value::Number(n) => n
+            .as_i64()
+            .map(|i| i.to_string())
+            .or_else(|| n.as_u64().map(|u| u.to_string()))
+            .unwrap_or_else(|| "?".to_string()),
         _ => "?".to_string(),
     };
-    let title = match v.index("title").ok()? {
-        jq::J::Str(s) => s,
-        _ => String::new(),
-    };
-    let state = match v.index("state").ok()? {
-        jq::J::Str(s) => s,
-        _ => "UNKNOWN".to_string(),
-    };
-    let is_draft = matches!(v.index("isDraft"), Ok(jq::J::Bool(true)));
-    let merge_state = match v.index("mergeStateStatus").ok()? {
-        jq::J::Str(s) => s,
-        _ => "UNKNOWN".to_string(),
-    };
-    let review_decision = match v.index("reviewDecision").ok()? {
-        jq::J::Str(s) => s,
-        _ => String::new(),
-    };
-    let url = match v.index("url").ok()? {
-        jq::J::Str(s) => s,
-        _ => String::new(),
-    };
+    let title = v.index("title").ok()?.as_str().unwrap_or("").to_string();
+    let state = v
+        .index("state")
+        .ok()?
+        .as_str()
+        .unwrap_or("UNKNOWN")
+        .to_string();
+    let is_draft = matches!(v.index("isDraft"), Ok(Value::Bool(true)));
+    let merge_state = v
+        .index("mergeStateStatus")
+        .ok()?
+        .as_str()
+        .unwrap_or("UNKNOWN")
+        .to_string();
+    let review_decision = v
+        .index("reviewDecision")
+        .ok()?
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let url = v.index("url").ok()?.as_str().unwrap_or("").to_string();
     let queue_line = if let Some(mq) = enrichment.and_then(|e| e.merge_queue_entry.as_ref()) {
         format!(
             "IN MERGE QUEUE (position {}, state {})",
             mq.position, mq.state
         )
-    } else if let Ok(am @ jq::J::Obj(_)) = v.index("autoMergeRequest") {
-        let method = match am.index("mergeMethod") {
-            Ok(jq::J::Str(s)) => s,
-            _ => "SQUASH".to_string(),
-        };
+    } else if let Some(am) = v
+        .index("autoMergeRequest")
+        .ok()
+        .filter(|val| val.as_object().is_some())
+    {
+        let method = am
+            .index("mergeMethod")
+            .ok()
+            .and_then(|m| m.as_str().map(str::to_string))
+            .unwrap_or_else(|| "SQUASH".to_string());
         format!("auto-merge armed ({})", method)
     } else {
         "not queued".to_string()
@@ -3398,13 +3403,7 @@ pub fn client_creds_json(resp: &[u8]) -> Result<Vec<u8>, String> {
 
 fn write_client_creds(path: &[u8], resp: &[u8]) -> Res {
     let body = client_creds_json(resp).map_err(|e| die(e.as_bytes()))?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(sh::path(path))
-        .map_err(|e| die(format!("cannot write credentials: {e}").as_bytes()))?;
-    f.write_all(&body)
+    sh::write_secret_file_new(path, &body)
         .map_err(|e| die(format!("cannot write credentials: {e}").as_bytes()))?;
     err(&cat(&[
         b"agent-app: client id and secret written to ",

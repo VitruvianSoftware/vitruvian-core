@@ -653,6 +653,23 @@ enum SwitcherModelFeatureTests {
                        "the checksum recheck runs once and keeps later write-only verdicts")
             }
 
+            migrationDefaults.removeObject(forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked)
+            migrationDefaults.set(["hdmi|port"], forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+            migrationDefaults.set(["manual|port"], forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+            Defaults.recheckBrightnessDDCHDMIConverterPaths(in: migrationDefaults)
+            suite.expect(migrationDefaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths) == nil
+                   && migrationDefaults.bool(forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked)
+                   && migrationDefaults.stringArray(forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+                   == ["manual|port"],
+                   "a monitor cached as write-only behind the HDMI converter is probed again, manual choices kept")
+            migrationDefaults.set(["hdmi|port"], forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+            Defaults.recheckBrightnessDDCHDMIConverterPaths(in: migrationDefaults)
+            suite.expect(migrationDefaults.stringArray(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+                   == ["hdmi|port"],
+                   "the HDMI converter recheck runs once and keeps later write-only verdicts")
+            migrationDefaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+            migrationDefaults.removeObject(forKey: DefaultsKey.brightnessForcedSoftwarePaths)
+
             migrationDefaults.set("microphone,panel", forKey: DefaultsKey.notchHiddenControls)
             Defaults.hideScratchpadControlOnce(in: migrationDefaults)
             suite.expect(migrationDefaults.string(forKey: DefaultsKey.notchHiddenControls)
@@ -2969,6 +2986,15 @@ enum SwitcherModelFeatureTests {
         suite.expect(StatusItemAnchorSupport.panelActivationSource(after: PanelActivationChange<Int>.activeSpaceChanged,
                                                                    current: 501, isOwnApp: ownApp) == nil,
                "a desktop switch while the panel is open drops the remembered app")
+
+        suite.expect(StatusItemAnchorSupport.isPanelSelfClick(eventWindowNumber: 26, panelWindowNumber: 26),
+               "the panel's activation click does not dismiss it")
+        suite.expect(!StatusItemAnchorSupport.isPanelSelfClick(eventWindowNumber: 31, panelWindowNumber: 26),
+               "clicking an overlapping window still dismisses the panel")
+        suite.expect(!StatusItemAnchorSupport.isPanelSelfClick(eventWindowNumber: 0, panelWindowNumber: 0),
+               "an event without an identified window cannot claim the panel's click")
+        suite.expect(!StatusItemAnchorSupport.isPanelSelfClick(eventWindowNumber: 26, panelWindowNumber: nil),
+               "an unavailable panel cannot claim another window's click")
 
         MenuPanelRecoveryTests.run { suite.expect($0, $1) }
         MenuPanelKeyTests.run(suite)

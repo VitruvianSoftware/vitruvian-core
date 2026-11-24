@@ -194,6 +194,9 @@ the repo variables directly):
 | `.github/workflows/_repo-config-preview.yaml` | PR touching `infrastructure/pulumi/platform/repo-config/**` | `REPO_CONFIG_PREVIEW_ENABLED=true` | posts a cleaned-up `pulumi preview --diff` comment |
 | `.github/workflows/_repo-config-apply.yaml` | push to the default branch touching the same path | `REPO_CONFIG_AUTO_APPLY=true` | runs `pulumi up` |
 
+Manual apply (`workflow_dispatch`) runs from `main` only; a dispatch from
+another branch is skipped.
+
 > **Large merges skip the auto-apply.** GitHub matches a push against a
 > workflow's `paths` filter using only the first 300 changed files. A merge that
 > changes more (the 2026-11-12 brand rename, #4631, changed about 5,800) can touch
@@ -218,6 +221,33 @@ and reach the Pulumi Cloud backend via `PULUMI_ACCESS_TOKEN` (secret).
 > `Issues: write` and `Dependabot secrets: write` to the existing App (Developer
 > settings → GitHub Apps → *…-pulumi* → Permissions) and **re-approve** the
 > installation, or the auto-apply will `403` when creating the labels/secret.
+
+### Actions cache storage limit (`ACTIONS_CACHE_LIMIT_CONFIRMED_GB`)
+
+Because `pulumi-github` has no resource for the repository Actions cache storage
+limit, `.github/workflows/_repo-config-apply.yaml` reconciles it after
+`pulumi up` via `set_actions_cache_limit.sh` (step: **Set the Actions cache
+storage limit**, placed after the Sponsor button step and before the Pulumi
+digest step so a refusal cannot skip the earlier settings steps):
+
+- **Value file:** `infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt`
+  holds the desired limit in GB as a single positive integer (currently `15`).
+- **Apply & read-back:** `set_actions_cache_limit.sh` uses the same minted
+  GitHub App token (`GH_TOKEN`), `PUT`s `{"max_cache_size_gb": N}` to
+  `/repos/${REPO}/actions/cache/storage-limit`, and polls `GET` on the same
+  endpoint for up to 60 seconds until `max_cache_size_gb` matches `N`.
+- **Failure handling:** On every failure after the `PUT` is attempted — whether
+  the `PUT` is refused (such as HTTP `402` for a missing/invalid organization
+  payment method above the free 10 GB limit, or HTTP `403` for insufficient App
+  permissions) or the read-back never matches — the script makes one `GET` for
+  the live limit. If that `GET` returns a valid positive integer, it sets
+  `ACTIONS_CACHE_LIMIT_CONFIRMED_GB` to that live value (never a stale requested
+  value). If the `GET` also fails, it leaves `ACTIONS_CACHE_LIMIT_CONFIRMED_GB`
+  unchanged. Either way, the script exits non-zero.
+- **Confirmed variable:** Only after `GET` confirms `max_cache_size_gb == N`
+  does the script set repository variable `ACTIONS_CACHE_LIMIT_CONFIRMED_GB=N`
+  via `gh variable set`. The Bazel download-cache workflow (#5433) reads this
+  variable.
 
 ## Interface
 - `[stripe_environments.go:Error]`

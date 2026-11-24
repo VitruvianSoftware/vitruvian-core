@@ -764,6 +764,252 @@ def build_cases() -> list[tuple[str, str, str, str, bytes]]:
     for name, inp in round3_eof_sep:
         add(f"parse_{name}", "id", "compact", ["-c", "."], inp)
 
+    # -----------------------------------------------------------------------
+    # 10. Combinators: or_empty, alt, first, any
+    # -----------------------------------------------------------------------
+    for name, inp in [
+        ("empty_obj", b"{}"),
+        ("false", b'{"a":false}'),
+        ("zero", b'{"a":0}'),
+        ("empty_str", b'{"a":""}'),
+        ("ok", b'{"a":"ok"}'),
+        ("err_str", b'"str"'),
+        ("err_then_ok", b'[1] {"a":"ok"}'),
+        ("ok_then_err", b'{"a":"ok"} [1]'),
+    ]:
+        add(
+            f"or_empty_c_{name}",
+            "idx_a_or_empty",
+            "compact",
+            ["-c", ".a // empty"],
+            inp,
+        )
+        add(f"or_empty_r_{name}", "idx_a_or_empty", "raw", ["-r", ".a // empty"], inp)
+
+    for name, inp in [
+        ("empty_arr", b"[]"),
+        ("all_falsy", b'[{"a":false},{"a":null}]'),
+        ("mixed", b'[{"a":false},{"a":1},{"a":null},{"a":2}]'),
+        ("falsy_then_err", b'[{"a":false},5]'),
+        ("falsy_truthy_err", b'[{"a":false},{"a":1},5]'),
+        ("err_then_truthy", b'[5,{"a":1}]'),
+    ]:
+        add(
+            f"iter_or_empty_{name}",
+            "iter_idx_a_or_empty",
+            "compact",
+            ["-c", "(.[] | .a) // empty"],
+            inp,
+        )
+
+    for name, inp in [
+        ("empty_obj", b"{}"),
+        ("false", b'{"a":false}'),
+        ("null", b'{"a":null}'),
+        ("zero", b'{"a":0}'),
+        ("empty_str", b'{"a":""}'),
+        ("str_1", b'{"a":"1"}'),
+        ("err_str", b'"str"'),
+        ("err_then_null", b'5 {"a":null}'),
+        ("null_then_err", b'{"a":null} 5'),
+    ]:
+        add(f"alt_c_{name}", "idx_a_alt_def", "compact", ["-c", '.a // "0"'], inp)
+        add(f"alt_r_{name}", "idx_a_alt_def", "raw", ["-r", '.a // "0"'], inp)
+
+    for name, inp in [
+        ("empty_arr", b"[]"),
+        ("all_falsy", b'[{"a":false},{"a":null}]'),
+        ("mixed", b'[{"a":false},{"a":1},{"a":2}]'),
+        ("falsy_then_err", b'[{"a":false},5]'),
+        ("falsy_truthy_err", b'[{"a":false},{"a":1},5]'),
+    ]:
+        add(
+            f"iter_alt_{name}",
+            "iter_idx_a_alt_def",
+            "compact",
+            ["-c", '(.[] | .a) // "0"'],
+            inp,
+        )
+
+    for name, inp in [
+        ("hit", b'{"data":{"result":[{"value":[0,"1"]}]}}'),
+        ("empty", b'{"data":{"result":[]}}'),
+        ("false_val", b'{"data":{"result":[{"value":[0,false]}]}}'),
+        ("bad_data", b'{"data":"bad"}'),
+        ("err_str", b'"str"'),
+    ]:
+        add(
+            f"prom_val_{name}",
+            "prom_val",
+            "raw",
+            ["-r", '.data.result[0].value[1] // "0"'],
+            inp,
+        )
+
+    for name, inp in [
+        ("empty", b"[]"),
+        ("two_hits", b'[{"a":1},{"a":2}]'),
+        ("false_before_err", b'[{"a":false},5]'),
+        ("null_before_err", b'[{"a":null},5]'),
+        ("err_before_hit", b'[5,{"a":1}]'),
+        ("err_top", b'"str"'),
+    ]:
+        add(
+            f"first_iter_{name}",
+            "first_iter_idx_a",
+            "compact",
+            ["-c", "first(.[] | .a)"],
+            inp,
+        )
+
+    for name, inp in [
+        (
+            "short_circuit_after_hit",
+            b'{"attachments":[{"fileName":"b","id":"0"},{"fileName":"a","id":"1"},"x"]}',
+        ),
+        ("err_before_hit", b'{"attachments":["x",{"fileName":"a","id":"1"}]}'),
+        (
+            "first_hit_false",
+            b'{"attachments":[{"fileName":"a","id":false},{"fileName":"a","id":"2"}]}',
+        ),
+        (
+            "first_hit_null",
+            b'{"attachments":[{"fileName":"a","id":null},{"fileName":"a","id":"2"}]}',
+        ),
+        ("non_iter_attachments", b'{"attachments":5}'),
+        ("err_top_str", b'"str"'),
+        ("empty_stream", b""),
+    ]:
+        add(
+            f"first_att_or_empty_{name}",
+            "first_att_or_empty",
+            "raw",
+            ["-r", 'first(.attachments[]? | select(.fileName=="a") | .id) // empty'],
+            inp,
+        )
+
+    for name, inp in [
+        ("hit_before_err", b'{"attachments":[{"fileName":"a"},"x"]}'),
+        ("err_before_hit", b'{"attachments":["x",{"fileName":"a"}]}'),
+        ("miss", b'{"attachments":[{"fileName":"b"}]}'),
+        ("non_iter", b'{"attachments":5}'),
+        ("empty_obj", b"{}"),
+        ("err_top_str", b'"str"'),
+        ("empty_stream", b""),
+        ("err_then_true", b'{"attachments":["x"]} {"attachments":[{"fileName":"a"}]}'),
+        ("true_then_err", b'{"attachments":[{"fileName":"a"}]} {"attachments":["x"]}'),
+    ]:
+        add(
+            f"any_att_c_{name}",
+            "any_att",
+            "compact",
+            ["-c", 'any(.attachments[]?; .fileName == "a")'],
+            inp,
+        )
+        add(
+            f"any_att_ce_{name}",
+            "any_att",
+            "compact_exit",
+            ["-ce", 'any(.attachments[]?; .fileName == "a")'],
+            inp,
+        )
+
+    # -----------------------------------------------------------------------
+    # 11. Depth limit parity cases (jq 1.8.2 MAX_PARSING_DEPTH = 10_000)
+    # -----------------------------------------------------------------------
+    def alternating(levels: int, arr_first: bool = True) -> bytes:
+        parts: list[bytes] = []
+        closers: list[bytes] = []
+        for i in range(levels):
+            is_arr = (i % 2 == 0) if arr_first else (i % 2 == 1)
+            if is_arr:
+                parts.append(b"[")
+                closers.append(b"]")
+            else:
+                parts.append(b'{"a":')
+                closers.append(b"}")
+        return b"".join(parts) + b"1" + b"".join(reversed(closers))
+
+    depth_cases = [
+        ("depth_arr_10000_ok", b"[" * 10000 + b"]" * 10000),
+        ("depth_arr_10001_err", b"[" * 10001 + b"]" * 10001),
+        ("depth_obj_5000_ok", b'{"a":' * 5000 + b"1" + b"}" * 5000),
+        ("depth_obj_5001_err", b'{"a":' * 5001 + b"1" + b"}" * 5001),
+        ("depth_mixed_alt_6667_ok", alternating(6667, arr_first=True)),
+        ("depth_mixed_alt_6668_err", alternating(6668, arr_first=True)),
+        ("depth_obj4999_arr2_ok", b'{"a":' * 4999 + b"[[]]" + b"}" * 4999),
+        ("depth_obj4999_arr3_err", b'{"a":' * 4999 + b"[[[]]]" + b"}" * 4999),
+        ("depth_arr9999_obj_ok", b"[" * 9999 + b'{"a":1}' + b"]" * 9999),
+        ("depth_arr9998_obj_arr_err", b"[" * 9998 + b'{"a":[]}' + b"]" * 9998),
+        ("depth_arr10000_val_open_err", b"[" * 10000 + b"1[" + b"]" * 10000),
+        ("depth_stream_ok_then_err", b"1 " + b"[" * 10001 + b"]" * 10001),
+        ("depth_multiline_err", b"[\n" + b"[" * 10000 + b"]" * 10001),
+        ("depth_trunc_arr_10001_err", b"[" * 10001),
+    ]
+    for cid, inp in depth_cases:
+        add(cid, "id", "compact", ["-c", "."], inp)
+
+    depth_status_cases = [
+        (
+            "depth_mixed_alt_obj_first_6667_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6667, arr_first=False),
+        ),
+        (
+            "depth_mixed_alt_obj_first_6668_err",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6668, arr_first=False),
+        ),
+        (
+            "depth_exit_e_arr_10001_err",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            b"[" * 10001 + b"]" * 10001,
+        ),
+        (
+            "depth_exit_e_alt_6668_err",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            alternating(6668, arr_first=True),
+        ),
+        (
+            "depth_stream_arr_err_then_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            b"[" * 10001 + b"]" * 10001 + b"\n1",
+        ),
+        (
+            "depth_stream_alt_err_then_ok",
+            "id",
+            "compact",
+            ["-c", "."],
+            alternating(6668, arr_first=True) + b"\n1",
+        ),
+        (
+            "depth_exit_e_stream_arr_err_then_ok",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            b"[" * 10001 + b"]" * 10001 + b"\n1",
+        ),
+        (
+            "depth_exit_e_stream_alt_err_then_ok",
+            "id",
+            "compact_exit",
+            ["-ce", "."],
+            alternating(6668, arr_first=True) + b"\n1",
+        ),
+    ]
+    for cid, op, flags, jq_args, inp in depth_status_cases:
+        add(cid, op, flags, jq_args, inp)
+
     assert len(cases) >= 200, f"Expected >= 200 cases, got {len(cases)}"
     return cases
 

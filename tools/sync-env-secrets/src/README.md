@@ -15,7 +15,7 @@ Component package providing implementation for `tools/sync-env-secrets/src`.
 - `[lib.rs:run]`
 
 ## Invariants
-- [jq.rs:267]: `assert!(String::from_utf8(status(b"{").stderr)`
+- [jq.rs:132]: `assert!(status(b"{").stderr_string().starts_with("jq: parse error: "));`
 
 ## Side Effects
 - None

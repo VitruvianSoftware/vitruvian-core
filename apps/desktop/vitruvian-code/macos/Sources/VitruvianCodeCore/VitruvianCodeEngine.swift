@@ -122,6 +122,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         /// starts with `#!/usr/bin/env node` looks its interpreter up in).
         public var runProgramWithEnvironment: @Sendable (_ name: String, _ arguments: [String],
                                                         _ environment: [String: String]) async -> String?
+        /// Runs a program to its end and gives back what it printed to standard output only
+        /// when it exits with status 0; nil if it could not start, timed out, or exited non-zero.
+        public var runProgramChecked: @Sendable (_ name: String, _ arguments: [String]) async -> String?
         /// Runs a provider's own command in `directory`, as the program at
         /// `path` with exactly these arguments: no shell reads them. What
         /// it prints and what it writes to standard error are delivered
@@ -177,6 +180,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                      runProgram: @escaping @Sendable (String, [String]) async -> String? = { _, _ in nil },
                      // Left out, the environment is ignored and `runProgram` answers.
                      runProgramWithEnvironment: (@Sendable (String, [String], [String: String]) async -> String?)? = nil,
+                     // Left out, `runProgram` answers so existing test doubles stay compatible.
+                     runProgramChecked: (@Sendable (String, [String]) async -> String?)? = nil,
                      // Left out, no command can be started, and a turn that
                      // needs one fails saying so.
                      launchCommand: @escaping (String, [String], String, [String: String],
@@ -219,6 +224,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.runProgramWithEnvironment = runProgramWithEnvironment ?? { name, arguments, _ in
                 await runProgram(name, arguments)
             }
+            self.runProgramChecked = runProgramChecked ?? runProgram
             self.launchCommand = launchCommand
             self.runSqlite = runSqlite
             self.runSqliteOffMain = runSqliteOffMain
@@ -269,6 +275,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 },
                 runProgram: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1) },
                 runProgramWithEnvironment: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1, environment: $2) },
+                runProgramChecked: { await VitruvianCodeEngine.runProgram(named: $0, arguments: $1, requireZeroExit: true) },
                 launchCommand: VitruvianCodeEngine.launchCommandProcess,
                 runSqlite: { VitruvianCodeEngine.runSqliteProcess($0, $1, $2) },
                 runSqliteOffMain: { database, sql, readsRows in
@@ -536,7 +543,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         configuration = next
         agentPath = locateProgram(of: provider)
         if provider.id != previous.id || provider.route != previous.route || provider.connection != previous.connection {
-            session.resetLiveConnectionState(keepingWorktree: true)
+            session.resetLiveConnectionState(keepingWorktree: true, clearingSlashCommands: true)
         }
         syncAvailableModels()
         session.refreshSessions(configuration: configuration)
@@ -576,7 +583,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         configuration = updated
         agentPath = locateProgram(of: next)
         if next.id != previous.id || next.route != previous.route || next.connection != previous.connection {
-            session.resetLiveConnectionState(keepingWorktree: true)
+            session.resetLiveConnectionState(keepingWorktree: true, clearingSlashCommands: true)
         }
         syncAvailableModels()
         // Another provider, or the same one now run another way, has other
@@ -1037,7 +1044,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     /// parameter only so a test can use a short one.
     nonisolated public static func runProgram(named name: String, arguments: [String],
                                               environment: [String: String]? = nil,
-                                              timeLimit: TimeInterval = 20) async -> String? {
+                                              timeLimit: TimeInterval = 20,
+                                              requireZeroExit: Bool = false) async -> String? {
         let files = FileManager.default
         let path = VitruvianCodeSupport.executablePath(
             named: name,
@@ -1109,7 +1117,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 process.waitUntilExit()
                 watchdog.cancel()
                 if claimAnswer(answered) {
-                    continuation.resume(returning: String(data: data, encoding: .utf8))
+                    if requireZeroExit && (process.terminationReason != .exit || process.terminationStatus != 0) {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(returning: String(data: data, encoding: .utf8))
+                    }
                 }
             }
         }
@@ -1240,8 +1252,12 @@ extension VitruvianCodeEngine {
 
     /// Retries the last failed prompt if any.
     public func retryQuickPrompt() {
-        guard let prompt = session.lastFailedPrompt else { return }
-        session.send(prompt, configuration: configuration, agentPath: agentPath)
+        session.retryFailedPrompt(configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Switches this chat only to the command-line connection and re-sends the failed prompt once.
+    public func useCommandLineForCurrentChat() {
+        session.useCommandLineForThisChat(configuration: configuration, agentPath: agentPath)
     }
 
     /// Reads agy, claude or OpenCode conversation index; empty when provider has none.
@@ -2261,5 +2277,47 @@ extension VitruvianCodeEngine {
             let updateSql = "UPDATE ItemTable SET value = '\(safeValue)' WHERE key = 'Anthropic.claude-code';"
             runSqlite(database: dbPath, sql: updateSql)
         }
+    }
+}
+
+// MARK: - Unattended runs
+
+extension VitruvianCodeEngine {
+    /// The settings a scheduled run uses, read from the saved `.env` and the
+    /// provider the host remembers, without starting any program or touching
+    /// the engine's own state. With no saved settings at all the mode is
+    /// approval required, not the empty configuration's full access: a run
+    /// with nobody there never gets more than the user has saved.
+    public func savedConfigurationForUnattendedRun() -> VitruvianCodeConfiguration {
+        let text = environment.readFile(envFilePath)
+        let saysSomething = text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        var configuration = withChosenProvider(text.map(VitruvianCodeEnvFile.parse) ?? VitruvianCodeConfiguration())
+        if !saysSomething { configuration.approvalMode = .standard }
+        return configuration
+    }
+
+    /// The runner for `--run-automation`: this engine's saved tasks, providers,
+    /// settings and connection factory, a worktree manager of its own, and
+    /// `notifier` for a run that needs the user.
+    public func makeAutomationRunner(
+        notifier: any VitruvianCodeUnattendedNotifier,
+        timeLimit: TimeInterval = VitruvianCodeAutomationRunner.defaultTimeLimit,
+        log: @escaping (String) -> Void
+    ) -> VitruvianCodeAutomationRunner {
+        VitruvianCodeAutomationRunner(
+            automations: session.automationManager,
+            providerByID: { [weak self] id in self?.providers.first { $0.id == id } },
+            configuration: savedConfigurationForUnattendedRun(),
+            planSwitch: host.planMode,
+            agentPath: { [weak self] provider in self?.locateProgram(of: provider) },
+            makeConnection: environment.makeConnection,
+            runGit: environment.runProgramChecked,
+            processEnvironment: environment.processEnvironment,
+            stateDirectory: stateDirectory,
+            notifier: notifier,
+            strings: host.strings,
+            timeLimit: timeLimit,
+            log: log
+        )
     }
 }
