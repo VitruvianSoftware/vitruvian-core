@@ -117,6 +117,7 @@ func handed(_ app: App) -> [String: JSONValue] {
     return values
 }
 
+ToolTrace.mark("started")
 let kit = Kit()
 let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
@@ -184,6 +185,7 @@ for command in VitruvianCodeTool.Command.all + VitruvianCodeTool.Command.ade {
     tool.command(command) { _ in try CommandAnswer.handle(command) { try codeTool.run(command: $0) } }
 }
 tool.onStart = { app in
+    ToolTrace.mark("hello")
     let language = app.language
     let values = handed(app)
     // A loop, not `filter { }`: a closure written here is taken as the main

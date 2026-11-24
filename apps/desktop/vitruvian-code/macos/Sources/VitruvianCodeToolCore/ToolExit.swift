@@ -70,14 +70,20 @@ public enum ToolExit {
         stop: @escaping @Sendable @MainActor () async -> Void,
         end: @Sendable (Int32) -> Void
     ) {
+        ToolTrace.mark("loop returned")
+        ToolTrace.heartbeat("leaving")
         let stopped = DispatchSemaphore(value: 0)
         Task { @MainActor in
+            ToolTrace.mark("stop began on the main thread")
             await stop()
+            ToolTrace.mark("stop finished")
             stopped.signal()
         }
         if stopped.wait(timeout: .now() + max(0, deadline)) == .timedOut {
-            children.killAll()
+            let killed = children.killAll()
+            ToolTrace.mark("deadline hit; killed \(killed)")
         }
+        ToolTrace.mark("ending with \(status)")
         end(status)
     }
 }

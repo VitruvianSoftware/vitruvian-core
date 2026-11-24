@@ -27,8 +27,12 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitStatus, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn resolve_env(key: &str) -> PathBuf {
     let raw = std::env::var(key).unwrap_or_else(|_| panic!("{} not set", key));
@@ -61,6 +65,53 @@ fn copy_dir_deref(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn wall() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or_default()
+}
+
+/// Runs `program` and returns its status and every line it wrote, on either
+/// output, in the order they arrived, each stamped with the wall clock at
+/// arrival. The conformance script writes a line per check as it finishes
+/// one, so the stamp of the line before `shutdown` is when it was sent.
+fn run_stamped(
+    program: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+) -> std::io::Result<(ExitStatus, Vec<String>)> {
+    let mut child = Command::new(program)
+        .args(args)
+        .envs(env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let lines = Arc::new(Mutex::new(Vec::new()));
+    let mut readers = Vec::new();
+    let outputs: Vec<(&str, Box<dyn Read + Send>)> = vec![
+        ("out", Box::new(child.stdout.take().expect("piped"))),
+        ("err", Box::new(child.stderr.take().expect("piped"))),
+    ];
+    for (which, output) in outputs {
+        let lines = Arc::clone(&lines);
+        readers.push(thread::spawn(move || {
+            for line in BufReader::new(output).lines() {
+                let Ok(line) = line else { break };
+                let stamped = format!("[{} {:.3}] {}", which, wall(), line);
+                lines.lock().unwrap().push(stamped);
+            }
+        }));
+    }
+    let status = child.wait()?;
+    for reader in readers {
+        let _ = reader.join();
+    }
+    let lines = std::mem::take(&mut *lines.lock().unwrap());
+    Ok((status, lines))
+}
+
 #[test]
 fn conformance_test() {
     let manifest_path = resolve_env("MANIFEST_PATH");
@@ -90,6 +141,10 @@ fn conformance_test() {
         "CFFIXED_USER_HOME".into(),
         home.to_string_lossy().to_string(),
     );
+    // The tool marks each step of its end on standard error, with the wall
+    // clock; the lines below are stamped with the same clock when they
+    // arrive, so a shutdown that runs late shows where the time went.
+    env.insert("VITRUVIAN_TOOL_TRACE".into(), "1".into());
 
     let validate_abs = fs::canonicalize(&validate_bin).unwrap_or_else(|_| validate_bin.clone());
     let conformance_abs =
@@ -115,23 +170,14 @@ fn conformance_test() {
 
     let mut failed = 0;
     for (name, args) in &checks {
-        let done = Command::new(&args[0])
-            .args(&args[1..])
-            .envs(&env)
-            .output()
+        let (status, lines) = run_stamped(&args[0], &args[1..], &env)
             .unwrap_or_else(|e| panic!("{}: cannot run: {}", name, e));
+        println!("--- {}: exit {}", name, status.code().unwrap_or(-1));
+        for line in &lines {
+            println!("{}", line);
+        }
 
-        let stdout = String::from_utf8_lossy(&done.stdout);
-        let stderr = String::from_utf8_lossy(&done.stderr);
-        println!(
-            "--- {}: exit {}\n{}{}",
-            name,
-            done.status.code().unwrap_or(-1),
-            stdout,
-            stderr
-        );
-
-        if !done.status.success() {
+        if !status.success() {
             failed += 1;
         }
     }
