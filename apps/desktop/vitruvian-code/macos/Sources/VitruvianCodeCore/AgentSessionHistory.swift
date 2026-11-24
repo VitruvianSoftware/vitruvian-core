@@ -84,6 +84,10 @@ public enum AgentSessionHistory {
     public static let maxPages = 10
     /// Rows kept, the same number the transcript reader's query takes (`LIMIT 200`).
     public static let maxSessions = 200
+    /// How long the agent's answer is reused before agy is started again for it.
+    public static let cacheLifetime: TimeInterval = 60
+    /// Longest a listing may run, T3 Code's `MANAGEMENT_TIMEOUT` (`probe.ts`).
+    public static let timeout: TimeInterval = 60
     /// Longest title kept, as T3 Code bounds it.
     static let maxTitleLength = 1_024
 

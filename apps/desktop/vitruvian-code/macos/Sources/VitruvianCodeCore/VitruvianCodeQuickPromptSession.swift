@@ -353,12 +353,23 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// The drawer's sessions as the provider listed them, before the
     /// user's pins and names (`sessionPreferences`) are applied.
     private var listedSessions: [VitruvianCodeSessionSummary] = []
-    /// Bumped on every refresh, so an agent's list that comes back after a
-    /// newer refresh (or a switch of agent or folder) is dropped.
-    private var sessionHistoryGeneration = 0
-    private var sessionHistoryTask: Task<Void, Never>?
-    /// Agents (provider and program) that said they have no `session/list`:
-    /// not started again for it until the app restarts.
+    /// The list the drawer wants now: which agent and folder, and the
+    /// transcript rows shown for it. An agent's answer is shown only when it
+    /// is for this, so one that comes back after a switch of agent or folder
+    /// is dropped.
+    private var sessionHistoryWanted: (key: String, directory: String, transcriptRows: [VitruvianCodeSessionSummary])?
+    /// The agent and folder a listing is running for. One at a time: a
+    /// refresh while it runs starts nothing and takes its answer.
+    private var sessionHistoryInFlight: String?
+    /// The agent's last list and when it came, so reopening the drawer soon
+    /// after does not start agy again (`sessionHistoryCacheLifetime`).
+    private var sessionHistoryCache: (key: String, listed: [AgentListedSession], at: Date)?
+    /// How long the agent's list is reused before it is asked again.
+    public var sessionHistoryCacheLifetime: TimeInterval = AgentSessionHistory.cacheLifetime
+    /// How long a listing may run before its process is stopped and today's list kept.
+    public var sessionHistoryTimeout: TimeInterval = AgentSessionHistory.timeout
+    /// The clock the cache is read with; a test sets its own.
+    public var sessionHistoryNow: () -> Date = { Date() }
     private var sessionListUnsupported: Set<String> = []
     /// Pins and renamed titles of the drawer's sessions. The host keeps
     /// them; they are read each time, never kept here.
@@ -476,7 +487,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             return
         }
         sessionFilter = ""
-        refreshSessions(configuration: configuration)
+        refreshSessions(configuration: configuration, mayStartAgent: true)
         mode = .sessions
     }
 
@@ -488,29 +499,45 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// own list (titles, times, folders) replaces that one when it answers
     /// (`AgentSessionHistory`). If it does not offer the list, or the request
     /// fails, the transcript list stays.
-    public func refreshSessions(configuration: VitruvianCodeConfiguration) {
+    ///
+    /// Starting agy only to list costs a lot: measured on agy 1.5.16, 2 to 12
+    /// seconds, about 0.9 to 1.5 GB for agy itself, and every MCP server in the
+    /// user's agy settings. So an agent process is started for it only when
+    /// `mayStartAgent` is set, which opening the drawer does. Any other refresh
+    /// asks an open chat's connection or reuses the cached answer, or keeps the
+    /// transcript list.
+    public func refreshSessions(configuration: VitruvianCodeConfiguration, mayStartAgent: Bool = false) {
         let directory = sessionsDirectory(for: configuration)
         let transcriptRows = environment.listSessions(directory, configuration.activeProvider,
                                                       host.hiddenClaudeSessionIDs)
         listedSessions = transcriptRows
         sessions = sessionPreferences.apply(to: listedSessions)
-        refreshSessionsFromAgent(configuration: configuration, directory: directory, transcriptRows: transcriptRows)
+        refreshSessionsFromAgent(configuration: configuration, directory: directory, transcriptRows: transcriptRows,
+                                 mayStartAgent: mayStartAgent)
     }
 
     /// Asks the agent for its own session list, on the chat's open connection
     /// when that is the same agent and offers it, otherwise on a connection
-    /// started only for the question and stopped after it, as T3 Code lists
-    /// native sessions (`probe.ts`, `listAcpRegistrySessions`).
+    /// started only for the question, as T3 Code lists native sessions
+    /// (`probe.ts`, `listAcpRegistrySessions`). Limits on the started one:
+    /// its answer is reused for `sessionHistoryCacheLifetime`; only one runs at
+    /// a time; its whole process group is stopped as soon as every page has
+    /// come, or after `sessionHistoryTimeout`.
     private func refreshSessionsFromAgent(configuration: VitruvianCodeConfiguration, directory: String,
-                                          transcriptRows: [VitruvianCodeSessionSummary]) {
-        sessionHistoryGeneration &+= 1
-        let generation = sessionHistoryGeneration
-        sessionHistoryTask?.cancel()
-        sessionHistoryTask = nil
+                                          transcriptRows: [VitruvianCodeSessionSummary], mayStartAgent: Bool) {
         let provider = configuration.activeProvider
         let agentPath = engine?.agentPath ?? lastTurnAgentPath
-        let key = provider.id.uuidString + "|" + (agentPath ?? "")
-        guard !sessionListUnsupported.contains(key) else { return }
+        let agentKey = provider.id.uuidString + "|" + (agentPath ?? "")
+        let key = agentKey + "|" + directory
+        sessionHistoryWanted = (key, directory, transcriptRows)
+        guard !sessionListUnsupported.contains(agentKey) else { return }
+
+        if let cached = sessionHistoryCache, cached.key == key,
+           sessionHistoryNow().timeIntervalSince(cached.at) < sessionHistoryCacheLifetime {
+            showAgentSessions(cached.listed, directory: directory, transcriptRows: transcriptRows)
+            return
+        }
+        guard sessionHistoryInFlight == nil else { return }
 
         let lister: any AgentSessionListing
         let ownsLister: Bool
@@ -519,6 +546,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             lister = listing
             ownsLister = false
         } else {
+            guard mayStartAgent else { return }
             let spec = AgentConnectionSpec(
                 kind: provider.connection ?? .commandLine,
                 provider: provider,
@@ -531,8 +559,15 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             lister = made
             ownsLister = true
         }
-        let home = environment.home
-        sessionHistoryTask = Task { @MainActor [weak self] in
+        sessionHistoryInFlight = key
+        let timeout = sessionHistoryTimeout
+        Task { @MainActor [weak self] in
+            // A listing that runs too long is stopped, which ends its request.
+            let watchdog: Task<Void, Never>? = ownsLister ? Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await lister.stop()
+            } : nil
             let outcome: Result<[AgentListedSession], any Error>
             do {
                 outcome = .success(try await AgentSessionHistory.fetchAll(
@@ -540,19 +575,30 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             } catch {
                 outcome = .failure(error)
             }
+            watchdog?.cancel()
             if ownsLister { await lister.stop() }
-            guard let self, !Task.isCancelled, generation == self.sessionHistoryGeneration else { return }
+            guard let self else { return }
+            self.sessionHistoryInFlight = nil
             switch outcome {
             case .success(let listed):
-                self.listedSessions = AgentSessionHistory.summaries(
-                    listed: listed, directory: directory, home: home, transcriptRows: transcriptRows)
-                self.sessions = self.sessionPreferences.apply(to: self.listedSessions)
+                self.sessionHistoryCache = (key, listed, self.sessionHistoryNow())
+                guard let wanted = self.sessionHistoryWanted, wanted.key == key else { return }
+                self.showAgentSessions(listed, directory: wanted.directory, transcriptRows: wanted.transcriptRows)
             case .failure(let error):
+                // Not offered: not asked again. Anything else (signed out, a
+                // crash, the timeout): today's list stays, without a message.
                 if case ACPConnectionError.sessionListNotAdvertised = error {
-                    self.sessionListUnsupported.insert(key)
+                    self.sessionListUnsupported.insert(agentKey)
                 }
             }
         }
+    }
+
+    private func showAgentSessions(_ listed: [AgentListedSession], directory: String,
+                                   transcriptRows: [VitruvianCodeSessionSummary]) {
+        listedSessions = AgentSessionHistory.summaries(
+            listed: listed, directory: directory, home: environment.home, transcriptRows: transcriptRows)
+        sessions = sessionPreferences.apply(to: listedSessions)
     }
 
     /// Applies the agent's `session_info_update` for the open conversation to its

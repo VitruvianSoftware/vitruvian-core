@@ -152,6 +152,34 @@ final class AgentSessionHistoryTests: XCTestCase {
         await connection.stop()
     }
 
+    /// Off unless `VITRUVIAN_MEASURE_AGY_LIST` is set: lists the real agy's sessions
+    /// through the live code path (`Environment.live`'s `makeSessionLister`,
+    /// `fetchAll`, `stop`) and prints how long it took. Used to measure the cost
+    /// of opening the list with no chat open; a sampler outside watches `ps`.
+    func testMeasureRealAgyListing() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["VITRUVIAN_MEASURE_AGY_LIST"] != nil else {
+            throw XCTSkip("Set VITRUVIAN_MEASURE_AGY_LIST to list the installed agy's sessions.")
+        }
+        let state = NSTemporaryDirectory() + "agy-list-measure-\(UUID().uuidString)"
+        let environment = VitruvianCodeEngine.Environment.live(stateDirectoryOverride: state)
+        let folder = env["VITRUVIAN_MEASURE_AGY_CWD"] ?? environment.home
+        let spec = AgentConnectionSpec(kind: .acp, provider: Self.agyACPProvider,
+                                       workingDirectory: folder,
+                                       environment: environment.processEnvironment)
+        for run in 1...3 {
+            let started = Date()
+            guard let lister = environment.makeSessionLister(spec) else { return XCTFail("no lister") }
+            let listed = try await AgentSessionHistory.fetchAll(from: lister, cwd: folder)
+            let listedAt = Date().timeIntervalSince(started)
+            await lister.stop()
+            let stoppedAt = Date().timeIntervalSince(started)
+            print(String(format: "AGY-LIST-MEASURE run=%d sessions=%d listed=%.2fs stopped=%.2fs",
+                         run, listed.count, listedAt, stoppedAt))
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+    }
+
     // MARK: - Paging
 
     func testFetchAllFollowsCursorsAndStopsWhenOneRepeats() async throws {
@@ -287,7 +315,7 @@ final class AgentSessionHistoryTests: XCTestCase {
         let session = makeSession(rig: rig, lister: { spec in specs.append(spec); return lister })
         let config = VitruvianCodeConfiguration(workingDirectory: "/projects/app", activeProvider: Self.agyACPProvider)
 
-        session.refreshSessions(configuration: config)
+        session.refreshSessions(configuration: config, mayStartAgent: true)
         // Today's list shows at once; the agent's replaces it when it answers.
         XCTAssertEqual(session.sessions.map(\.id), ["t-2", "t-1"])
         try await waitUntil("agent list shown") { session.sessions.map(\.id) == ["a-9", "t-2"] }
@@ -321,10 +349,10 @@ final class AgentSessionHistoryTests: XCTestCase {
         let session = makeSession(rig: rig, lister: { _ in made += 1; return lister })
         let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
 
-        session.refreshSessions(configuration: config)
+        session.refreshSessions(configuration: config, mayStartAgent: true)
         try await waitUntil("lister stopped") { lister.stopCount == 1 }
         XCTAssertEqual(session.sessions, transcriptRows)
-        session.refreshSessions(configuration: config)
+        session.refreshSessions(configuration: config, mayStartAgent: true)
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(made, 1)
         XCTAssertEqual(session.sessions, transcriptRows)
@@ -338,32 +366,118 @@ final class AgentSessionHistoryTests: XCTestCase {
         let session = makeSession(rig: rig, lister: { _ in made += 1; return lister })
         let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
 
-        session.refreshSessions(configuration: config)
+        session.refreshSessions(configuration: config, mayStartAgent: true)
         try await waitUntil("first lister stopped") { lister.stopCount == 1 }
         XCTAssertEqual(session.sessions, transcriptRows)
-        session.refreshSessions(configuration: config)
+        session.refreshSessions(configuration: config, mayStartAgent: true)
         try await waitUntil("second lister stopped") { lister.stopCount == 2 }
         XCTAssertEqual(made, 2)
         XCTAssertEqual(session.sessions, transcriptRows)
     }
 
-    func testALateAnswerForAnOlderRefreshIsDropped() async throws {
+    func testOnlyOneListingRunsAtATimeAndItsAnswerIsUsed() async throws {
+        let rig = ComposerRig()
+        rig.sessions = transcriptRows
+        let slow = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "agent-1")])])
+        slow.hold = true
+        var made = 0
+        let session = makeSession(rig: rig, lister: { _ in made += 1; return slow })
+        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
+
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        try await waitUntil("asked") { slow.requests.count == 1 }
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        XCTAssertEqual(made, 1)
+        slow.release()
+        try await waitUntil("answer shown") { session.sessions.map(\.id) == ["agent-1"] }
+        XCTAssertEqual(slow.stopCount, 1)
+    }
+
+    func testAnAnswerForAnotherFolderIsDropped() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
         let slow = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "stale")])])
         slow.hold = true
-        let fast = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "fresh")])])
-        var listers = [slow, fast]
-        let session = makeSession(rig: rig, lister: { _ in listers.removeFirst() })
+        var made = 0
+        let session = makeSession(rig: rig, lister: { _ in made += 1; return slow })
+        session.refreshSessions(configuration: VitruvianCodeConfiguration(workingDirectory: "/one",
+                                                                          activeProvider: Self.agyACPProvider),
+                                mayStartAgent: true)
+        try await waitUntil("asked") { slow.requests.count == 1 }
+        session.refreshSessions(configuration: VitruvianCodeConfiguration(workingDirectory: "/two",
+                                                                          activeProvider: Self.agyACPProvider),
+                                mayStartAgent: true)
+        XCTAssertEqual(made, 1)
+        slow.release()
+        try await waitUntil("slow stopped") { slow.stopCount == 1 }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(session.sessions, transcriptRows)
+    }
+
+    func testTheAgentsAnswerIsReusedForAMinute() async throws {
+        let rig = ComposerRig()
+        rig.sessions = transcriptRows
+        var made = 0
+        var listers: [FakeSessionLister] = []
+        let session = makeSession(rig: rig, lister: { _ in
+            made += 1
+            let lister = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "a-\(made)")])])
+            listers.append(lister)
+            return lister
+        })
+        var now = Date(timeIntervalSince1970: 1_900_000_000)
+        session.sessionHistoryNow = { now }
+        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
+
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        try await waitUntil("first answer") { session.sessions.map(\.id) == ["a-1"] }
+        now += 59
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        // Shown again from the cache, with no new process.
+        XCTAssertEqual(session.sessions.map(\.id), ["a-1"])
+        XCTAssertEqual(made, 1)
+        now += 2
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        try await waitUntil("asked again") { session.sessions.map(\.id) == ["a-2"] }
+        XCTAssertEqual(made, 2)
+    }
+
+    func testAListingThatRunsTooLongIsStoppedAndTodaysListKept() async throws {
+        let rig = ComposerRig()
+        rig.sessions = transcriptRows
+        let stuck = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "late")])])
+        stuck.hold = true
+        var made = 0
+        let session = makeSession(rig: rig, lister: { _ in made += 1; return stuck })
+        session.sessionHistoryTimeout = 0.05
+        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
+
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        try await waitUntil("stopped by the timeout") { stuck.stopCount >= 1 }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(session.sessions, transcriptRows)
+        // The slot is free again: the next open asks again.
+        stuck.hold = false
+        session.refreshSessions(configuration: config, mayStartAgent: true)
+        XCTAssertEqual(made, 2)
+    }
+
+    func testOnlyOpeningTheDrawerStartsAnAgentForTheList() async throws {
+        let rig = ComposerRig()
+        rig.sessions = transcriptRows
+        let lister = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "agent-1")])])
+        var made = 0
+        let session = makeSession(rig: rig, lister: { _ in made += 1; return lister })
         let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
 
         session.refreshSessions(configuration: config)
-        try await waitUntil("slow asked") { slow.requests.count == 1 }
-        session.refreshSessions(configuration: config)
-        try await waitUntil("fresh shown") { session.sessions.map(\.id) == ["fresh"] }
-        slow.release()
-        try await waitUntil("slow stopped") { slow.stopCount == 1 }
-        XCTAssertEqual(session.sessions.map(\.id), ["fresh"])
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(made, 0)
+        XCTAssertEqual(session.sessions, transcriptRows)
+        session.toggleSessions(configuration: config)
+        try await waitUntil("drawer asks") { session.sessions.map(\.id) == ["agent-1"] }
+        XCTAssertEqual(made, 1)
     }
 
     func testSessionInfoFromTheOpenChatUpdatesItsRow() async throws {
@@ -410,6 +524,7 @@ private final class FakeSessionLister: AgentSessionListing {
     func listSessionPage(cwd: String?, cursor: String?) async throws -> AgentSessionPage {
         requests.append((cwd, cursor))
         if hold { await withCheckedContinuation { held = $0 } }
+        if stopped { throw ACPConnectionError.alreadyStopped }
         if let error { throw error }
         return pages[cursor] ?? AgentSessionPage()
     }
@@ -419,7 +534,16 @@ private final class FakeSessionLister: AgentSessionListing {
         held = nil
     }
 
-    func stop() async { stopCount += 1 }
+    private var stopped = false
+
+    /// Like a real connection: stopping ends a request still waiting.
+    func stop() async {
+        stopCount += 1
+        if held != nil {
+            stopped = true
+            release()
+        }
+    }
 }
 
 @MainActor
