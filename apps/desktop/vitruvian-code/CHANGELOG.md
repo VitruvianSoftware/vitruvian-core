@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.0...vitruvian-code-v1.45.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** end the tool within two seconds of shutdown ([#5491](https://github.com/VitruvianSoftware/vitruvian-core/issues/5491)) ([e96909a](https://github.com/VitruvianSoftware/vitruvian-core/commit/e96909a8371c87720e16795fc6d5006ecd65fbfc))
+
 ## [1.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.2...vitruvian-code-v1.45.0) (2026-11-24)
 
 
