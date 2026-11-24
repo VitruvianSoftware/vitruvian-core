@@ -86,5 +86,4 @@ py_test(
     env = {
         "BAZEL_REPO_CACHE_WORKFLOW_PATH": "$(rootpath //:.github/workflows/bazel-repo-cache.yaml)",
     },
-    deps = ["@pip//pyyaml"],
 )

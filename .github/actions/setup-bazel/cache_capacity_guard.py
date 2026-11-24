@@ -122,20 +122,15 @@ def select_pre_save_deletions(
         candidates.append((priority, -size, cache_id, key, size))
 
     candidates.sort()
-    ordered_replaced = [
-        {"id": cid, "key": key, "size_in_bytes": size}
-        for _prio, _neg_size, cid, key, size in candidates
-    ]
-
-    total_replaced = sum(item["size_in_bytes"] for item in ordered_replaced)
+    total_replaced = sum(item[4] for item in candidates)
     if total_active_bytes - total_replaced + archive_bytes > limit_bytes:
         return False, [], direct_peak
 
     planned = []
     deleted_bytes = 0
-    for item in ordered_replaced:
-        planned.append(item)
-        deleted_bytes += item["size_in_bytes"]
+    for _prio, _neg_size, cid, key, size in candidates:
+        planned.append({"id": cid, "key": key, "size_in_bytes": size})
+        deleted_bytes += size
         if total_active_bytes - deleted_bytes + archive_bytes <= limit_bytes:
             break
 
@@ -152,30 +147,21 @@ def prepare_capacity_for_save(
     delete_fn=None,
 ):
     """Evaluate pre-save capacity and delete only the minimum needed replaceable entries."""
-    _require_non_negative_int(total_active_bytes, "total_active_bytes")
-    _require_non_negative_int(archive_bytes, "archive_bytes")
-
     plat_label = platform or "unknown"
     limit_gb, limit_error = parse_limit_gb_var(limit_gb_raw)
     report = {
         "usage_before_bytes": total_active_bytes,
         "archive_bytes": archive_bytes,
-        "limit_gb": limit_gb,
         "limit_bytes": None,
-        "limit_error": limit_error,
-        "deleted": [],
         "deleted_bytes": 0,
         "delete_errors": [],
         "real_peak_bytes": total_active_bytes + archive_bytes,
-        "reason": "",
         "message": "",
     }
 
-    if limit_error is not None or limit_gb is None:
-        detail = limit_error or "ACTIONS_CACHE_LIMIT_CONFIRMED_GB is not set"
-        report["reason"] = "invalid_limit_var"
+    if limit_error is not None:
         report["message"] = (
-            f"Cache save skipped ({plat_label}): {detail}; deleting nothing."
+            f"Cache save skipped ({plat_label}): {limit_error}; deleting nothing."
         )
         return False, report
 
@@ -191,7 +177,6 @@ def prepare_capacity_for_save(
         current_lock_hash=current_lock_hash,
     )
     if not fits:
-        report["reason"] = "insufficient_capacity"
         report["message"] = (
             f"Cache save skipped ({plat_label}): usage {total_active_bytes} B + archive "
             f"{archive_bytes} B exceeds limit {limit_bytes} B ({limit_gb} GB) even after "
@@ -202,13 +187,13 @@ def prepare_capacity_for_save(
     if planned and delete_fn is None:
         raise ValueError("delete_fn is required when pre-save deletions are needed")
 
-    deleted = []
+    deleted = 0
     deleted_bytes = 0
     delete_errors = []
     for item in planned:
         try:
             delete_fn(item["id"])
-            deleted.append((item["id"], item["key"], item["size_in_bytes"]))
+            deleted += 1
             deleted_bytes += item["size_in_bytes"]
         except Exception as exc:
             delete_errors.append(
@@ -216,13 +201,11 @@ def prepare_capacity_for_save(
             )
 
     real_peak_bytes = max(0, total_active_bytes - deleted_bytes) + archive_bytes
-    report["deleted"] = deleted
     report["deleted_bytes"] = deleted_bytes
     report["delete_errors"] = delete_errors
     report["real_peak_bytes"] = real_peak_bytes
 
     if real_peak_bytes > limit_bytes:
-        report["reason"] = "delete_failed_insufficient_capacity"
         report["message"] = (
             f"Cache save skipped ({plat_label}): pre-save peak {real_peak_bytes} B "
             f"still exceeds limit {limit_bytes} B ({limit_gb} GB) after "
@@ -230,33 +213,14 @@ def prepare_capacity_for_save(
         )
         return False, report
 
-    report["reason"] = "ok"
+    suffix = (
+        f" after deleting {deleted} entry(s) (-{deleted_bytes} B)." if deleted else "."
+    )
     report["message"] = (
         f"Pre-save check passed ({plat_label}): real peak {real_peak_bytes} B "
-        f"({real_peak_bytes / BYTES_PER_GB:.2f} GB) <= limit {limit_bytes} B ({limit_gb} GB)"
-        + (
-            f" after deleting {len(deleted)} entry(s) (-{deleted_bytes} B)."
-            if deleted
-            else "."
-        )
+        f"({real_peak_bytes / BYTES_PER_GB:.2f} GB) <= limit {limit_bytes} B ({limit_gb} GB){suffix}"
     )
     return True, report
-
-
-def _github_get_json(url, token):
-    """Execute a read-only GitHub REST GET request and return `(headers, json)`."""
-    req = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "vitruvian-core-cache-capacity-guard",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.headers, json.loads(resp.read().decode("utf-8"))
 
 
 class GitHubCacheApi:
@@ -267,10 +231,29 @@ class GitHubCacheApi:
         self.repo = repo
         self.token = token
 
+    def _request(self, method, url, read_json=False):
+        req = urllib.request.Request(
+            url,
+            method=method,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.token}",
+                "User-Agent": "vitruvian-core-cache-capacity-guard",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read()
+            if read_json:
+                return resp.headers, json.loads(raw.decode("utf-8"))
+            return resp.headers, None
+
     def get_usage(self):
         """Read `active_caches_size_in_bytes` from `GET /repos/{repo}/actions/cache/usage`."""
-        _, payload = _github_get_json(
-            f"{self.api_url}/repos/{self.repo}/actions/cache/usage", self.token
+        _, payload = self._request(
+            "GET",
+            f"{self.api_url}/repos/{self.repo}/actions/cache/usage",
+            read_json=True,
         )
         if not isinstance(payload, dict):
             raise ValueError("cache/usage response must be a JSON object")
@@ -288,7 +271,7 @@ class GitHubCacheApi:
             url += f"&key={urllib.parse.quote(key, safe='')}"
         entries = []
         while url:
-            headers, payload = _github_get_json(url, self.token)
+            headers, payload = self._request("GET", url, read_json=True)
             if not isinstance(payload, dict) or not isinstance(
                 payload.get("actions_caches"), list
             ):
@@ -301,18 +284,9 @@ class GitHubCacheApi:
 
     def delete_cache(self, cache_id):
         """Delete a cache entry by numeric id via `DELETE /repos/{repo}/actions/caches/{id}`."""
-        req = urllib.request.Request(
-            f"{self.api_url}/repos/{self.repo}/actions/caches/{cache_id}",
-            method="DELETE",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.token}",
-                "User-Agent": "vitruvian-core-cache-capacity-guard",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
+        self._request(
+            "DELETE", f"{self.api_url}/repos/{self.repo}/actions/caches/{cache_id}"
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            resp.read()
 
 
 def _write_lines(path, lines):
@@ -336,20 +310,15 @@ def _retry_api_read(
         except Exception as exc:
             last_exc = exc
             if attempt < attempts:
-                delay = (
-                    backoff_seconds[attempt - 1]
-                    if attempt - 1 < len(backoff_seconds)
-                    else backoff_seconds[-1]
-                )
+                delay = backoff_seconds[min(attempt - 1, len(backoff_seconds) - 1)]
                 if delay > 0:
                     sleep_fn(delay)
     raise last_exc
 
 
-def _parse_args(argv):
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
-    p.add_argument("--archive-bytes", default=os.environ.get("ARCHIVE_BYTES", ""))
+def add_common_args(parser, default_platform_fallback=""):
+    """Add shared GitHub Actions cache CLI arguments for guard and prune."""
+    parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
     default_platform = (
         "-".join(
             part
@@ -359,21 +328,29 @@ def _parse_args(argv):
             )
             if part
         )
-        or "unknown"
+        or default_platform_fallback
     )
-    p.add_argument("--platform", default=default_platform)
-    p.add_argument("--lock-hash", default=os.environ.get("LOCK_HASH", ""))
-    p.add_argument("--ref", default=os.environ.get("GITHUB_REF", ""))
+    parser.add_argument("--platform", default=default_platform)
+    parser.add_argument("--lock-hash", default=os.environ.get("LOCK_HASH", ""))
+    parser.add_argument("--ref", default=os.environ.get("GITHUB_REF", ""))
+    parser.add_argument(
+        "--api-url",
+        default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+    )
+    parser.add_argument("--token", default=os.environ.get("GH_TOKEN", ""))
+    parser.add_argument(
+        "--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", "")
+    )
+
+
+def _parse_args(argv):
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    add_common_args(p, default_platform_fallback="unknown")
+    p.add_argument("--archive-bytes", default=os.environ.get("ARCHIVE_BYTES", ""))
     p.add_argument(
         "--limit-gb",
         default=os.environ.get("ACTIONS_CACHE_LIMIT_CONFIRMED_GB", ""),
     )
-    p.add_argument(
-        "--api-url",
-        default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
-    )
-    p.add_argument("--token", default=os.environ.get("GH_TOKEN", ""))
-    p.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
     p.add_argument("--output-file", default=os.environ.get("GITHUB_OUTPUT", ""))
     return p.parse_args(argv)
 

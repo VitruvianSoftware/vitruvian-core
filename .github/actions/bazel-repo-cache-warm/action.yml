@@ -20,11 +20,11 @@
 
 # Shared composite for .github/workflows/bazel-repo-cache.yaml.
 #
-# Runs the clean-state archive fill, informational breakdown (Linux verify),
-# offline completeness proof (--repository_disable_download) plus vacuity
-# control check, and — only when inputs.mode == 'save' — capacity check,
-# archive-only actions/cache/save, confirmation readback, and pruning of
-# superseded and legacy same-platform repository entries.
+# Runs the clean-state archive fill, offline completeness proof
+# (`--repository_disable_download`) plus vacuity control check, and — only when
+# inputs.mode == 'save' — capacity check, archive-only actions/cache/save,
+# confirmation readback, and pruning of superseded and legacy same-platform
+# repository entries.
 
 name: Warm and verify Bazel repository cache
 description: Warm, offline-verify, and (in save mode on main) guard, save, confirm, and prune the Bazel repository archive cache.
@@ -64,6 +64,7 @@ runs:
         MODE_INPUT: ${{ inputs.mode }}
         PLATFORM_OS_INPUT: ${{ inputs.platform-os }}
         PLATFORM_ARCH_INPUT: ${{ inputs.platform-arch }}
+        LOCK_HASH_INPUT: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
       run: |
         set -euo pipefail
         case "$MODE_INPUT" in
@@ -77,6 +78,8 @@ runs:
           echo "MODE=$MODE_INPUT"
           echo "PLATFORM_OS=$PLATFORM_OS_INPUT"
           echo "PLATFORM_ARCH=$PLATFORM_ARCH_INPUT"
+          echo "PLATFORM=${PLATFORM_OS_INPUT}-${PLATFORM_ARCH_INPUT}"
+          echo "LOCK_HASH=$LOCK_HASH_INPUT"
         } >> "$GITHUB_ENV"
 
     - name: Free up runner disk space
@@ -200,12 +203,6 @@ runs:
           exit 1
         fi
         mkdir -p "$OB2" "$CONTENTS2"
-        for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-          if [ -e "$p" ] || [ -L "$p" ]; then
-            echo "::error::verify contents directory '$CONTENTS2' is not empty before bazel commands (found '${p##*/}')"
-            exit 1
-          fi
-        done
 
         bazel --output_base="$OB" shutdown || true
         rm -rf "$OB" "$CONTENTS"
@@ -324,13 +321,11 @@ runs:
       with:
         lookup-only: true
         path: ${{ env.REPO }}
-        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
 
     - name: Write COMPLETE.json marker
       if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true'
       shell: bash
-      env:
-        LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
       run: |
         set -euo pipefail
         if [ -e "${REPO}/contents" ]; then
@@ -345,7 +340,7 @@ runs:
         data = {
             "lock_hash": os.environ["LOCK_HASH"],
             "commit": os.environ["GITHUB_SHA"],
-            "platform": f"{os.environ['PLATFORM_OS']}-{os.environ['PLATFORM_ARCH']}",
+            "platform": os.environ["PLATFORM"],
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "archive_size": os.environ["ARCHIVE_SIZE"],
             "archive_bytes": int(os.environ["ARCHIVE_BYTES"]),
@@ -362,8 +357,6 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         ACTIONS_CACHE_LIMIT_CONFIRMED_GB: ${{ inputs.cache-limit-gb }}
-        LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-        PLATFORM: ${{ inputs.platform-os }}-${{ inputs.platform-arch }}
       run: |
         set -euo pipefail
         python3 .github/actions/setup-bazel/cache_capacity_guard.py --platform "$PLATFORM"
@@ -375,7 +368,7 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ env.REPO }}
-        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
 
     - name: Back off before repository cache upload retry 2
       if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.cache-save-1.outcome != 'success'
@@ -389,7 +382,7 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ env.REPO }}
-        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
 
     - name: Back off before repository cache upload retry 3
       if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.cache-save-1.outcome != 'success' && steps.cache-save-2.outcome != 'success'
@@ -403,7 +396,7 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ env.REPO }}
-        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
 
     - name: Warn if repository cache upload failed after retries
       id: cache-save-warn
@@ -419,8 +412,6 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-        PLATFORM: ${{ inputs.platform-os }}-${{ inputs.platform-arch }}
       run: |
         set -euo pipefail
         python3 .github/actions/setup-bazel/cache_prune.py --platform "$PLATFORM"

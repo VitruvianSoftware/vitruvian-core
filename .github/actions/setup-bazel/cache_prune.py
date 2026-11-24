@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cache_capacity_guard import (
     GitHubCacheApi,
     _write_lines,
+    add_common_args,
     full_repo_cache_prefix,
     is_legacy_partial_repo_cache_key,
     is_superseded_full_repo_cache_key,
@@ -83,8 +84,6 @@ def confirm_and_prune_superseded_caches(
         if not isinstance(entry, dict):
             continue
         key = entry.get("key")
-        if key == new_key:
-            continue
         if not (
             is_superseded_full_repo_cache_key(key, platform, current_lock_hash)
             or is_legacy_partial_repo_cache_key(key, platform)
@@ -113,27 +112,7 @@ def confirm_and_prune_superseded_caches(
 
 def _parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
-    default_platform = (
-        "-".join(
-            part
-            for part in (
-                os.environ.get("PLATFORM_OS", ""),
-                os.environ.get("PLATFORM_ARCH", ""),
-            )
-            if part
-        )
-        or ""
-    )
-    p.add_argument("--platform", default=default_platform)
-    p.add_argument("--lock-hash", default=os.environ.get("LOCK_HASH", ""))
-    p.add_argument("--ref", default=os.environ.get("GITHUB_REF", ""))
-    p.add_argument(
-        "--api-url",
-        default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
-    )
-    p.add_argument("--token", default=os.environ.get("GH_TOKEN", ""))
-    p.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
+    add_common_args(p)
     p.add_argument("--max-confirm-attempts", type=int, default=5)
     p.add_argument("--retry-delay-seconds", type=float, default=2.0)
     return p.parse_args(argv)
@@ -148,26 +127,15 @@ def main(argv=None, sleep_fn=time.sleep):
         _write_lines(args.summary_file, [msg])
         return 0
 
+    err_msg = None
     if not args.repo or "/" not in args.repo:
-        print(
-            f"::error::GITHUB_REPOSITORY/--repo is missing or invalid ({args.repo!r}).",
-            file=sys.stderr,
-            flush=True,
-        )
-        return 1
-    if not args.token:
-        print(
-            "::error::GH_TOKEN/--token is empty; cannot confirm or prune caches.",
-            file=sys.stderr,
-            flush=True,
-        )
-        return 1
-    if not args.platform or not args.lock_hash:
-        print(
-            f"::error::platform ({args.platform!r}) and lock-hash ({args.lock_hash!r}) are required.",
-            file=sys.stderr,
-            flush=True,
-        )
+        err_msg = f"GITHUB_REPOSITORY/--repo is missing or invalid ({args.repo!r})."
+    elif not args.token:
+        err_msg = "GH_TOKEN/--token is empty; cannot confirm or prune caches."
+    elif not args.platform or not args.lock_hash:
+        err_msg = f"platform ({args.platform!r}) and lock-hash ({args.lock_hash!r}) are required."
+    if err_msg is not None:
+        print(f"::error::{err_msg}", file=sys.stderr, flush=True)
         return 1
 
     api = GitHubCacheApi(args.api_url, args.repo, args.token)
@@ -188,26 +156,18 @@ def main(argv=None, sleep_fn=time.sleep):
     for err in result["errors"]:
         print(f"::warning::{err}", flush=True)
 
+    n_err = len(result["errors"])
     if result["deleted"]:
-        summary_items = ", ".join(
-            f"{key} (id={cid})" for cid, key, _size in result["deleted"]
-        )
+        items = ", ".join(f"{k} (id={cid})" for cid, k, _s in result["deleted"])
+        msg = f"Confirmed {result['new_key']}; pruned {len(result['deleted'])} superseded/legacy {args.platform} cache(s): {items}."
+        if n_err:
+            msg += f" ({n_err} warning(s))"
+    elif n_err:
         msg = (
-            f"Confirmed {result['new_key']}; pruned {len(result['deleted'])} "
-            f"superseded/legacy {args.platform} cache(s): {summary_items}."
-        )
-        if result["errors"]:
-            msg += f" ({len(result['errors'])} warning(s))"
-    elif result["errors"]:
-        msg = (
-            f"Confirmed {result['new_key']}; pruning finished with "
-            f"{len(result['errors'])} warning(s)."
+            f"Confirmed {result['new_key']}; pruning finished with {n_err} warning(s)."
         )
     else:
-        msg = (
-            f"Confirmed {result['new_key']}; no superseded or legacy {args.platform} "
-            f"caches to prune."
-        )
+        msg = f"Confirmed {result['new_key']}; no superseded or legacy {args.platform} caches to prune."
 
     print(msg, flush=True)
     _write_lines(args.summary_file, [msg])
