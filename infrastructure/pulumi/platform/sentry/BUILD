@@ -24,6 +24,14 @@ load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 # Applied in CI by .github/workflows/sentry-apply.yaml over the Headscale mesh
 # (Envoy Gateway https-sentry NodePort :31103), with `sentry-production`
 # holding SENTRY_TOKEN + HEADSCALE_CI_AUTHKEY.
+exports_files(
+    [
+        "go.mod",
+        "go.sum",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 pulumi_project(
     name = "sentry",
     dir = "infrastructure/pulumi/platform/sentry",

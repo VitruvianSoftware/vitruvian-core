@@ -225,8 +225,9 @@ final class TimelineTableRound2QATests: XCTestCase {
         try sendClick(at: savedOverhangPoint)
         XCTAssertEqual(state.replies, ["$m2", "$m2"])
 
-        let emptyY = m2Frame.maxY + 45
-        XCTAssertLessThan(emptyY, host.bounds.height)
+        let m1Frame = try XCTUnwrap(state.frames["$m1"])
+        let emptyY = m1Frame.minY - 45
+        XCTAssertGreaterThan(emptyY, 0)
         try sendClick(at: CGPoint(x: 300, y: emptyY))
         XCTAssertNil(state.selected, "empty-space click after overhang forwarding must deselect")
 
@@ -405,7 +406,9 @@ final class TimelineTableRound2QATests: XCTestCase {
         pump(host, for: 0.15)
 
         // Subsequent normal clicks on empty space and rows must continue to work cleanly.
-        try sendClick(at: CGPoint(x: 300, y: wideFrame.maxY + 45))
+        let emptyAfterDragY = codeFrame.minY - 45
+        XCTAssertGreaterThan(emptyAfterDragY, 0)
+        try sendClick(at: CGPoint(x: 300, y: emptyAfterDragY))
         XCTAssertNil(state.selected, "empty-space click after drag must deselect")
         try sendClick(at: CGPoint(x: wideFrame.midX, y: wideFrame.midY))
         XCTAssertEqual(state.selected, "$wide", "row click after drag must still select $wide")

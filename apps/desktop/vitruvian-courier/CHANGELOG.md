@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.40](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.39...vitruvian-courier-v0.3.40) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** make local MCP endpoint stateless across restarts ([#5463](https://github.com/VitruvianSoftware/vitruvian-core/issues/5463)) ([cbe1e06](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbe1e06de5b60ebd33aa6f8f261905d5293a78a1))
+
 ## [0.3.39](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.38...vitruvian-courier-v0.3.39) (2026-11-24)
 
 

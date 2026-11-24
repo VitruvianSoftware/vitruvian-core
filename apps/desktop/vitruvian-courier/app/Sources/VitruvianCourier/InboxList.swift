@@ -5,10 +5,29 @@ import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
-/// Tracks the row under the pointer without invalidating the entire `InboxList` body on every row transition.
+/// Tracks the row under the pointer without invalidating the entire `InboxList` body on every row transition,
+/// and suppresses selection when a click targets the row's inline hover button.
 @MainActor
 private final class InboxHoverTracker {
     var roomID: String?
+    private var suppressedSelectionRoomID: String?
+
+    func suppressSelectionForCurrentClick(roomID: String) {
+        suppressedSelectionRoomID = roomID
+        DispatchQueue.main.async { [weak self] in
+            if self?.suppressedSelectionRoomID == roomID {
+                self?.suppressedSelectionRoomID = nil
+            }
+        }
+    }
+
+    func shouldSuppressSelection(for roomID: String) -> Bool {
+        if suppressedSelectionRoomID == roomID {
+            suppressedSelectionRoomID = nil
+            return true
+        }
+        return false
+    }
 }
 
 /// The chat list: the banners, a header (the space's name with Filter and Display Options, or while selecting, how
@@ -30,6 +49,8 @@ struct InboxList: View {
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     /// The chat the pointer is over: `x` selects it, and `InboxRowView` tracks its own hover state locally.
     @State private var hoverTracker = InboxHoverTracker()
+    /// Tests only: draws this chat's row as pointed at (a pointer can't be moved to it in a test).
+    var hoveredRowIDForTesting: String? = nil
 
     var rowStyle: RowStyle {
         RowStyle(
@@ -83,6 +104,9 @@ struct InboxList: View {
             }
         }
         .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
+        // Once the list has settled: the pinned chats and the top of the inbox are read ahead, one at a time, at low
+        // priority (see `ConversationModel.warmFirstPages`). The list's order changing starts the wait again.
+        .task(id: warmSignature) { conversation?.warmFirstPages(of: warmRoomIDs) }
         .overlay(alignment: .top) { popoverAnchors }
         .modifier(InboxToolbarHeader(inbox: inbox, title: spaceTitle, openSearch: openSearch))
     }
@@ -137,6 +161,14 @@ struct InboxList: View {
 
     // MARK: Chats
 
+    /// The chats read ahead when the list is idle: the pinned ones, then the top of the inbox.
+    private var warmRoomIDs: [String] {
+        guard inbox.isLoaded, !inbox.isSelecting else { return [] }
+        return inbox.rows.prefix(pinned.count + 10).map(\.id)
+    }
+
+    private var warmSignature: [String] { warmRoomIDs }
+
     /// Pinned chats come first in every sort. With compact pinned chats, they are the strip, not rows.
     private var pinned: [InboxRow] { inbox.rows.prefix { $0.pinned }.map { $0 } }
 
@@ -177,6 +209,7 @@ struct InboxList: View {
                 }
                 .listStyle(.inset)
                 .courierSidebarList()
+                .courierScrollEdgeFade(refreshToken: rows.count)
                 .contextMenu(forSelectionType: String.self, menu: { _ in EmptyView() }, primaryAction: { ids in
                     if let id = ids.first, id != InboxModel.newChatRowID,
                        let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
@@ -203,7 +236,10 @@ struct InboxList: View {
             mergedNetworks: inbox.mergedNetworks(for: row),
             now: now, style: style,
             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
+            isHovered: hoveredRowIDForTesting.map { $0 == row.id },
             onHoverChange: { inside in
+                // At rest 80 ms: read this chat's first page ahead, so opening it shows at once.
+                conversation?.hoverPrefetch(row.id, inside: inside)
                 if inside {
                     hoverTracker.roomID = row.id
                     // The menu offers Delete Chat… only where the network can: ask now, so it knows.
@@ -212,6 +248,7 @@ struct InboxList: View {
                     hoverTracker.roomID = nil
                 }
             },
+            onWillHoverAct: { hoverTracker.suppressSelectionForCurrentClick(roomID: row.id) },
             hoverAct: { hoverAct(row, style.hoverAction) },
             accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
             decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
@@ -261,6 +298,7 @@ struct InboxList: View {
             } else if click, flags.contains(.shift), let id {
                 inbox.extendSelection(to: id)
             } else if let id {
+                guard !hoverTracker.shouldSuppressSelection(for: id) else { return }
                 inbox.select(id)
             }
         })
@@ -371,11 +409,87 @@ struct EmptyStateView: View {
     }
 }
 
-/// Grey rows while the first page is read.
-private struct SkeletonRows: View {
+/// Grey rows while the first page is read, with a soft 1 s linear shimmer. The shimmer runs only while the rows are
+/// on screen (in a window that is showing them) and Reduce Motion is off; otherwise the rows are plain grey.
+struct SkeletonRows: View {
     let compact: Bool
+    /// Told when the shimmer starts or stops; a seam for tests, which cannot see a running animation.
+    var onShimmerActivityChange: ((Bool) -> Void)?
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.windowShowsContentProbe) private var windowProbe
+    @State private var workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    @State private var isVisible = false
+    @State private var windowShowsContent = false
+    @State private var startDate: Date?
+
+    init(compact: Bool, onShimmerActivityChange: ((Bool) -> Void)? = nil) {
+        self.compact = compact
+        self.onShimmerActivityChange = onShimmerActivityChange
+    }
+
+    private var reduceMotionEnabled: Bool {
+        reduceMotionOverride ?? (accessibilityReduceMotion || workspaceReduceMotion)
+    }
+
+    private var isShimmering: Bool {
+        SkeletonShimmerMotion.shouldAnimate(isVisible: isVisible && windowShowsContent, reduceMotion: reduceMotionEnabled)
+    }
 
     var body: some View {
+        skeletonShapes
+            .foregroundStyle(Color.primary.opacity(SkeletonShimmerMotion.baseOpacity))
+            .overlay {
+                if isShimmering {
+                    TimelineView(.animation) { context in
+                        GeometryReader { geo in
+                            let elapsed = startDate.map { context.date.timeIntervalSince($0) } ?? 0
+                            let phase = SkeletonShimmerMotion.phase(elapsed: elapsed)
+                            let bandWidth = SkeletonShimmerMotion.bandWidth(containerWidth: geo.size.width)
+                            LinearGradient(
+                                colors: [
+                                    .clear,
+                                    Color.primary.opacity(SkeletonShimmerMotion.highlightOpacity),
+                                    .clear,
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: bandWidth, height: geo.size.height)
+                            .offset(x: SkeletonShimmerMotion.bandOffsetX(phase: phase, containerWidth: geo.size.width))
+                        }
+                    }
+                    .mask(skeletonShapes)
+                    .allowsHitTesting(false)
+                }
+            }
+            .background(WindowShowsContentReader(probe: windowProbe) { windowShowsContent = $0 })
+            .accessibilityLabel(String(localized: "Loading chats"))
+            .onAppear {
+                isVisible = true
+                workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+            .onDisappear {
+                isVisible = false
+                startDate = nil
+                // Gone from the tree: the overlay (and its clock) go with it; say so, as `onChange` will not.
+                onShimmerActivityChange?(false)
+            }
+            .onChange(of: isShimmering) { _, active in
+                // The clock starts when the shimmer does, so each run begins at the left edge.
+                startDate = active ? Date() : nil
+                onShimmerActivityChange?(active)
+            }
+            .onReceive(
+                NSWorkspace.shared.notificationCenter.publisher(
+                    for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+                )
+            ) { _ in
+                workspaceReduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+    }
+
+    private var skeletonShapes: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 16) {
             ForEach(0 ..< 8, id: \.self) { index in
                 HStack(spacing: 10) {
@@ -393,10 +507,8 @@ private struct SkeletonRows: View {
             }
             Spacer(minLength: 0)
         }
-        .foregroundStyle(Color.primary.opacity(0.08))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityLabel(String(localized: "Loading chats"))
     }
 }
 
@@ -456,15 +568,45 @@ struct InboxHeaderButtons: View {
 
     @ViewBuilder
     private func button(_ title: String, symbol: String, keys: String, action: @escaping () -> Void) -> some View {
-        let tip = "\(title) (\(keys))"
         if inToolbar {
             Button(action: action) { Label(title, systemImage: symbol).labelStyle(.iconOnly) }
-                .help(tip)
+                .courierTooltip(title, shortcut: keys, edge: .bottom)
         } else {
-            Button(action: action) { Label(title, systemImage: symbol).labelStyle(.iconOnly) }
-                .buttonStyle(.borderless)
-                .help(tip)
+            InboxHeaderIconButton(title: title, symbol: symbol, keys: keys, action: action)
         }
+    }
+}
+
+private struct InboxHeaderIconButton: View {
+    let title: String
+    let symbol: String
+    let keys: String
+    let action: () -> Void
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .labelStyle(.iconOnly)
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: isHovering
+                        )
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .courierTooltip(title, shortcut: keys, edge: .bottom)
     }
 }
 

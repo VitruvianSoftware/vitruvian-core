@@ -23,6 +23,14 @@ load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/stripe:{setup,preview,config}`.
 # No :up from a laptop (AGENTS.md): the delivery() unit below applies it.
+exports_files(
+    [
+        "go.mod",
+        "go.sum",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 pulumi_project(
     name = "stripe",
     dir = "infrastructure/pulumi/platform/stripe",

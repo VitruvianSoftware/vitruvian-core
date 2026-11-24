@@ -15,6 +15,8 @@ import Foundation
 public final class ScheduledModel: ObservableObject {
     /// The open chat's, soonest first (by due time, then as scheduled).
     @Published public private(set) var scheduled: [ScheduledMessage] = []
+    /// Increments when a newly queued scheduled message arrives for the currently open chat after its initial load.
+    @Published public private(set) var queuedEventCount: Int = 0
     /// Active scheduled message being edited in `ScheduledEditSheet`.
     @Published public var editingMessage: ScheduledMessage?
     /// Active scheduled message being rescheduled in `ScheduledRescheduleSheet`.
@@ -30,6 +32,7 @@ public final class ScheduledModel: ObservableObject {
     /// Goes up with each read: an answer older than the newest one shown, or for another chat, is dropped.
     private var serial = 0
     private var shownSerial = 0
+    internal private(set) var hasLoadedRoom = false
 
     public init(appModel: AppModel, followsAppSelection: Bool = true) {
         self.appModel = appModel
@@ -78,6 +81,7 @@ public final class ScheduledModel: ObservableObject {
 
     private func open(_ room: String?) {
         roomID = room
+        hasLoadedRoom = false
         scheduled = []
         read()
     }
@@ -97,8 +101,17 @@ public final class ScheduledModel: ObservableObject {
             }
             guard let self, room == self.roomID, client === self.appModel.client,
                   mine > self.shownSerial else { return }
+            let sorted = collected.sorted { ($0.dueAt, $0.outboxID) < ($1.dueAt, $1.outboxID) }
+            let previousIDs = Set(self.scheduled.map(\.outboxID))
+            let currentIDs = Set(sorted.map(\.outboxID))
+            let shouldSignalQueued = self.hasLoadedRoom
+                && ScheduledStripMotion.hasNewlyQueuedMessage(previousIDs: previousIDs, currentIDs: currentIDs)
             self.shownSerial = mine
-            self.scheduled = collected.sorted { ($0.dueAt, $0.outboxID) < ($1.dueAt, $1.outboxID) }
+            self.hasLoadedRoom = true
+            self.scheduled = sorted
+            if shouldSignalQueued {
+                self.queuedEventCount += 1
+            }
         }
     }
 
