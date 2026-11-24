@@ -239,6 +239,20 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.claudeCrashTitle, "claudeCrashTitle"), (\.turnInterrupted, "turnInterrupted"),
         (\.connectionLockedTitle, "connectionLockedTitle"), (\.connectionLockedExplanation, "connectionLockedExplanation"),
         (\.automationNeedsReEnable, "automationNeedsReEnable"),
+        (\.signInNeededTitle, "signInNeededTitle"),
+        (\.signInWithFormat, "signInWithFormat"),
+        (\.signInSheetTitleFormat, "signInSheetTitleFormat"),
+        (\.signInCommandCaption, "signInCommandCaption"),
+        (\.signInVariablesPrefix, "signInVariablesPrefix"),
+        (\.signInRefusedPrefix, "signInRefusedPrefix"),
+        (\.signInRun, "signInRun"),
+        (\.signInCancel, "signInCancel"),
+        (\.signInClose, "signInClose"),
+        (\.signInRunning, "signInRunning"),
+        (\.signInFailedFormat, "signInFailedFormat"),
+        (\.signInCouldNotStart, "signInCouldNotStart"),
+        (\.signInCancelled, "signInCancelled"),
+        (\.signInReplyPlaceholder, "signInReplyPlaceholder"),
     ]
 
     private func ensurePanel() -> NSPanel {

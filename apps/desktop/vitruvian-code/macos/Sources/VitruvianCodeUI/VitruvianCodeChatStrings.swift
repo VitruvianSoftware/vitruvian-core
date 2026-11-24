@@ -337,6 +337,23 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     /// agent: it runs again once switched off and on.
     public var automationNeedsReEnable = "Turn off and on, then export again"
 
+    // MARK: Sign-in from the failure card (ACPAuth)
+
+    public var signInNeededTitle = "Sign-in needed"
+    public var signInWithFormat = "Sign in with %@"
+    public var signInSheetTitleFormat = "Sign in to %@"
+    public var signInCommandCaption = "Vitruvian Code runs this command for you. Finish any step it opens in your browser. Your login stays with the agent."
+    public var signInVariablesPrefix = "Settings it gets: "
+    public var signInRefusedPrefix = "Left out for safety: "
+    public var signInRun = "Run"
+    public var signInCancel = "Cancel"
+    public var signInClose = "Close"
+    public var signInRunning = "Waiting for sign-in to finish…"
+    public var signInFailedFormat = "Sign-in did not finish (status %@). Nothing was retried."
+    public var signInCouldNotStart = "The sign-in command could not start."
+    public var signInCancelled = "Sign-in cancelled. Nothing was retried."
+    public var signInReplyPlaceholder = "Type a reply to the command and press Return"
+
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
         askPrefix: String = "Ask ",

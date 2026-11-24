@@ -897,6 +897,7 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
             promptInactivityTimeout: promptInactivityTimeout,
             cancelGraceTimeout: cancelGraceTimeout,
             sessionSetupTimeout: sessionSetupTimeout,
+            signInMethodID: spec.signInMethodID,
             processFactory: processFactory
         )
     }
@@ -914,6 +915,7 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
         cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
         sessionSetupTimeout: TimeInterval = ACPTransport.defaultSessionSetupTimeout,
         terminationGrace: TimeInterval = AgentProcess.defaultTerminationGrace,
+        signInMethodID: String? = nil,
         processFactory: @escaping ACPConnection.ProcessFactory = ACPLaunchedProcess.live
     ) {
         // Ensure CLI arguments never pass `--dangerously-skip-permissions`, `yolo`, or `auto_edit`.
@@ -1022,7 +1024,8 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
             promptOutcomeWatcher: promptOutcomeWatcher,
             promptContextUsageProvider: promptContextUsageProvider,
             promptInactivityTimeout: promptInactivityTimeout,
-            cancelGraceTimeout: cancelGraceTimeout
+            cancelGraceTimeout: cancelGraceTimeout,
+            authenticateMethodID: signInMethodID
         )
 
         self.inner = ACPConnection(

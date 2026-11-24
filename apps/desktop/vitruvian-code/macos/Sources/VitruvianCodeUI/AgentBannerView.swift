@@ -78,6 +78,12 @@ public enum AgentBannerLogic: Sendable {
     public static func verbatimText(_ text: String) -> Text {
         Text(verbatim: text)
     }
+
+    /// `template` with its first `%@` replaced by `value`.
+    public static func format(_ template: String, _ value: String) -> String {
+        guard let range = template.range(of: "%@") else { return template }
+        return template.replacingCharacters(in: range, with: value)
+    }
 }
 
 /// Stack above the composer showing up to 3 newest undismissed notices from `liveState.notices`.
@@ -420,23 +426,34 @@ public struct AgentErrorCardView: View {
     public let onRetry: () -> Void
     public let onUseCommandLine: () -> Void
     public let onDismiss: () -> Void
+    /// Signs in with one of `failure.signInMethods` (`ACPAuth`).
+    public let onSignIn: ((AgentSignInMethod) -> Void)?
 
     public init(
         failure: AgentLiveFailure,
         strings: VitruvianCodeChatStrings,
         onRetry: @escaping () -> Void,
         onUseCommandLine: @escaping () -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        onSignIn: ((AgentSignInMethod) -> Void)? = nil
     ) {
         self.failure = failure
         self.strings = strings
         self.onRetry = onRetry
         self.onUseCommandLine = onUseCommandLine
         self.onDismiss = onDismiss
+        self.onSignIn = onSignIn
+    }
+
+    /// The sign-in buttons the card shows: one per method, when the agent asked for sign-in.
+    public var signInMethodsShown: [AgentSignInMethod] {
+        guard onSignIn != nil, failure.needsSignIn, !failure.isLocked else { return [] }
+        return failure.signInMethods
     }
 
     private var iconName: String {
         if failure.isLocked { return "lock.fill" }
+        if failure.needsSignIn { return "key.fill" }
         switch failure.source {
         case .interrupted: return "bolt.slash.fill"
         case .generic, .helperCrash, .claudeCrash: return "exclamationmark.triangle.fill"
@@ -449,6 +466,7 @@ public struct AgentErrorCardView: View {
 
     private var headerTitle: String {
         if failure.isLocked { return strings.connectionLockedTitle }
+        if failure.needsSignIn { return strings.signInNeededTitle }
         switch failure.source {
         case .helperCrash: return strings.helperCrashTitle
         case .claudeCrash: return strings.claudeCrashTitle
@@ -497,6 +515,34 @@ public struct AgentErrorCardView: View {
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !signInMethodsShown.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(signInMethodsShown) { method in
+                        Button {
+                            onSignIn?(method)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.crop.circle")
+                                    .font(.caption)
+                                Text(AgentBannerLogic.format(strings.signInWithFormat, method.name))
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(VitruvianCodeTheme.warmCoral)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help(method.description ?? AgentBannerLogic.format(strings.signInWithFormat, method.name))
+                    }
+                    Spacer(minLength: 0)
+                }
             }
 
             HStack(spacing: 8) {

@@ -326,6 +326,15 @@ public struct VitruvianCodeChatView: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+        // A terminal sign-in from the failure card (`ACPAuth`). Closing the sheet ends the program.
+        .sheet(item: Binding(
+            get: { session.signInRun },
+            set: { if $0 == nil { Task { await session.closeSignIn() } } }
+        )) { run in
+            AgentSignInSheetView(run: run, strings: strings) {
+                Task { await session.closeSignIn() }
+            }
+        }
         .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted) { providers in
             attachDroppedItems(providers, to: session)
         }
@@ -1408,7 +1417,8 @@ public struct VitruvianCodeChatView: View {
                                 strings: strings,
                                 onRetry: { engine.retryQuickPrompt() },
                                 onUseCommandLine: { engine.useCommandLineForCurrentChat() },
-                                onDismiss: { session.dismissFailedTurn() }
+                                onDismiss: { session.dismissFailedTurn() },
+                                onSignIn: { method in engine.signInForCurrentChat(with: method) }
                             )
                         } else if session.lastFailedPrompt != nil {
                             HStack(spacing: 6) {

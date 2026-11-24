@@ -305,19 +305,32 @@ public struct ACPElicitationCapabilities: Equatable, Sendable, Codable {
     }
 }
 
+/// `clientCapabilities.auth`: `terminal` lets an agent advertise `type: "terminal"` sign-in
+/// methods, which the client runs as the agent's own program (ACP: protocol/initialization).
+public struct ACPClientAuthCapabilities: Equatable, Sendable, Codable {
+    public var terminal: Bool?
+
+    public init(terminal: Bool? = nil) {
+        self.terminal = terminal
+    }
+}
+
 public struct ACPClientCapabilities: Equatable, Sendable, Codable {
     public var fs: ACPFileSystemCapabilities?
     public var terminal: Bool?
     public var elicitation: ACPElicitationCapabilities?
+    public var auth: ACPClientAuthCapabilities?
 
     public init(
         fs: ACPFileSystemCapabilities? = nil,
         terminal: Bool? = nil,
-        elicitation: ACPElicitationCapabilities? = nil
+        elicitation: ACPElicitationCapabilities? = nil,
+        auth: ACPClientAuthCapabilities? = nil
     ) {
         self.fs = fs
         self.terminal = terminal
         self.elicitation = elicitation
+        self.auth = auth
     }
 }
 
@@ -469,15 +482,47 @@ public struct ACPAgentCapabilities: Equatable, Sendable, Codable {
     }
 }
 
+/// One sign-in method from `initialize`'s `authMethods`. `type` is absent or `agent` for a
+/// method the agent runs itself (the client sends `authenticate`), `terminal` for one the
+/// client runs as the agent's own program with `args` and `env` added, and `env_var` for the
+/// older form that names variables to set. ACP: protocol/authentication.
 public struct ACPAuthMethod: Equatable, Sendable, Codable {
     public var id: String
     public var name: String
     public var description: String?
+    public var type: String?
+    public var args: [String]?
+    public var env: [String: String]?
 
-    public init(id: String, name: String, description: String? = nil) {
+    public init(
+        id: String,
+        name: String,
+        description: String? = nil,
+        type: String? = nil,
+        args: [String]? = nil,
+        env: [String: String]? = nil
+    ) {
         self.id = id
         self.name = name
         self.description = description
+        self.type = type
+        self.args = args
+        self.env = env
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? self.id
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.type = try container.decodeIfPresent(String.self, forKey: .type)
+        // A malformed `args` or `env` drops only that field, not the whole `initialize` reply.
+        self.args = try? container.decodeIfPresent([String].self, forKey: .args)
+        self.env = try? container.decodeIfPresent([String: String].self, forKey: .env)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description, type, args, env
     }
 }
 
