@@ -1503,8 +1503,18 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         let turnConnection = environment.makeConnection(spec)
         connection = turnConnection
         let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+        // The app's MCP servers and the project's `.mcp.json`, read at every start. A
+        // command-line run gets none (`AgentMCPTarget.none`): its agent reads its own config.
+        let mcp = isCustomCommand ? AgentMCPServers.SessionServers() : AgentMCPServers.sessionServers(
+            host: host,
+            environment: environment,
+            workingDirectory: resolvedDirectory,
+            target: AgentMCPTarget.of(effectiveProv, kind: effectiveProv.connection)
+        )
         let sessionRequest = AgentSessionRequest(
             workingDirectory: resolvedDirectory,
+            mcpServers: mcp.servers,
+            mcpSecrets: mcp.secrets,
             resumeSessionID: isCustomCommand ? nil : conversationID
         )
 
@@ -1591,6 +1601,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 }
                 let request = AgentSessionRequest(
                     workingDirectory: resolvedDirectory,
+                    mcpServers: mcp.servers,
+                    mcpSecrets: mcp.secrets,
                     resumeSessionID: self.conversationID
                 )
 

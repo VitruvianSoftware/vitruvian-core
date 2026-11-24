@@ -356,6 +356,60 @@ final class VitruvianCodeToolTests: XCTestCase {
         XCTAssertNil(engine.session.conversationID, "a new chat has no conversation yet")
     }
 
+    func testTheSettingsPanelAddsEditsAndRemovesAnMCPServerAndNeverSendsASecretBack() throws {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        let first = tool.settingsPage()
+        XCTAssertTrue(first.blocks.contains { $0.id == "mcpAdd" }, "the list and Add are on the page")
+        _ = tool.settingsEvent(PanelEvent(block: "mcpAdd", kind: .tap))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpName", kind: .change, value: .string("docs")))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpCommand", kind: .change, value: .string("npx")))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpArguments", kind: .change, value: .string("-y docs-mcp")))
+        guard case .page(let typed) = tool.settingsEvent(PanelEvent(block: "mcpSecret", kind: .submit,
+                                                                    value: .string("DOCS_TOKEN=docs-secret-1"))) else {
+            return XCTFail("no page")
+        }
+        let typedText = String(decoding: try JSONEncoder().encode(typed), as: UTF8.self)
+        XCTAssertFalse(typedText.contains("docs-secret-1"), "the secret never goes back to the app")
+        XCTAssertTrue(typedText.contains("DOCS_TOKEN"), "its name is listed")
+        guard case .page(let saved) = tool.settingsEvent(PanelEvent(block: "mcpSaveServer", kind: .tap)) else {
+            return XCTFail("no page")
+        }
+        XCTAssertNil(tool.mcpDraft, "saved, the editor closes")
+        let server = try XCTUnwrap(settings.mcpSettings?.servers.first)
+        XCTAssertEqual(server.name, "docs")
+        XCTAssertEqual(server.arguments, ["-y", "docs-mcp"])
+        let secretsFile = try XCTUnwrap(rig.files[(rig.state as NSString).appendingPathComponent(AgentSecrets.fileName)])
+        XCTAssertTrue(secretsFile.contains("docs-secret-1"), "kept in the private file")
+        XCTAssertFalse(String(decoding: try Data(contentsOf: folder.appendingPathComponent(ToolSettings.fileName)), as: UTF8.self)
+            .contains("docs-secret-1"), "not in settings.json")
+        guard case .list(let rows)? = saved.blocks.first(where: { $0.id == "mcpServers" })?.content else {
+            return XCTFail("no list")
+        }
+        XCTAssertEqual(rows.rows.map(\.id), [server.id.uuidString])
+
+        // A second server with the same name is refused and said why.
+        _ = tool.settingsEvent(PanelEvent(block: "mcpAdd", kind: .tap))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpName", kind: .change, value: .string("docs")))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpCommand", kind: .change, value: .string("x")))
+        guard case .page(let refused) = tool.settingsEvent(PanelEvent(block: "mcpSaveServer", kind: .tap)) else {
+            return XCTFail("no page")
+        }
+        XCTAssertTrue(String(decoding: try JSONEncoder().encode(refused), as: UTF8.self)
+            .contains("Another server already has this name."))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpCancel", kind: .tap))
+
+        // Editing: turn it off, then remove it.
+        _ = tool.settingsEvent(PanelEvent(block: "mcpServers", kind: .tap, value: .string(server.id.uuidString)))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpEnabled", kind: .toggle, value: .bool(false)))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpSaveServer", kind: .tap))
+        XCTAssertEqual(settings.mcpSettings?.servers.first?.isEnabled, false)
+        _ = tool.settingsEvent(PanelEvent(block: "mcpServers", kind: .tap, value: .string(server.id.uuidString)))
+        _ = tool.settingsEvent(PanelEvent(block: "mcpRemove", kind: .tap))
+        XCTAssertEqual(settings.mcpSettings?.servers, [])
+    }
+
     func testTheTokenIsNeverSentBackAndAnEmptyAnswerLeavesIt() throws {
         rig.installBot()
         let tool = tool()

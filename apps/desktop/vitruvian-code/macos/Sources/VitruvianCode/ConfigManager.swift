@@ -355,6 +355,66 @@ class ConfigManager: ObservableObject {
         engine.providersChanged()
     }
 
+    // MARK: - MCP servers
+
+    /// What saving an MCP server did.
+    enum MCPSaveResult: Equatable {
+        case saved
+        case problem(AgentMCPServerDraft.Problem)
+        /// Its secrets could not be written to the private file.
+        case failed
+    }
+
+    /// The app's MCP servers, imported from Claude Code on first use. Kept through the host,
+    /// like the providers, so the chat reads the same list at its next start.
+    var mcpServers: [AgentMCPServer] { engine.mcpSettings?.servers ?? [] }
+
+    /// The names of a server's stored secrets for its transport. Never a value.
+    func mcpSecretNames(for server: AgentMCPServer) -> [String] {
+        let keys = engine.agentSecrets.mcpSecretKeys(for: server.id)
+        return server.transport == .stdio ? keys.environment : keys.headers
+    }
+
+    /// Saves `draft`, keeping the stored secrets named in `keep` and adding `added`. When every
+    /// stored secret is kept and none is added, the stored ones are left as they are.
+    func saveMCPServer(_ draft: AgentMCPServerDraft, keep: Set<String>, added: [String: String]) -> MCPSaveResult {
+        guard var settings = engine.mcpSettings else { return .failed }
+        var draft = draft
+        let secrets = engine.agentSecrets
+        if let id = draft.id, let server = settings.servers.first(where: { $0.id == id }) {
+            let stored = secrets.mcpSecrets(for: id)
+            let storedForTransport = server.transport == .stdio ? stored.environment : stored.headers
+            let unchanged = server.transport == draft.transport && added.isEmpty
+                && keep == Set(storedForTransport.keys)
+            if !unchanged {
+                let kept = server.transport == draft.transport ? storedForTransport.filter { keep.contains($0.key) } : [:]
+                draft.secrets = kept.merging(added) { _, new in new }
+            }
+        } else if !added.isEmpty {
+            draft.secrets = added
+        }
+        if let problem = draft.problem(in: settings) { return .problem(problem) }
+        guard draft.save(into: &settings, secrets: secrets) != nil else { return .failed }
+        objectWillChange.send()
+        engine.mcpSettings = settings
+        return .saved
+    }
+
+    func setMCPServer(_ id: UUID, enabled: Bool) {
+        guard var settings = engine.mcpSettings,
+              let index = settings.servers.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
+        settings.servers[index].isEnabled = enabled
+        engine.mcpSettings = settings
+    }
+
+    func removeMCPServer(_ id: UUID) {
+        guard var settings = engine.mcpSettings else { return }
+        objectWillChange.send()
+        AgentMCPServerDraft.remove(id, from: &settings, secrets: engine.agentSecrets)
+        engine.mcpSettings = settings
+    }
+
     // MARK: - Load .env
 
     /// Called once, at launch, and fills every field. The engine reads

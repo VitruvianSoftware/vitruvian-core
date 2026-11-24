@@ -149,6 +149,10 @@ public final class VitruvianCodeTool {
     public private(set) var awaitingApproval = false
     /// The `.env` as the person is editing it in the settings panel.
     public private(set) var draft = VitruvianCodeConfiguration()
+    /// The MCP server being edited in the settings panel, its problem, and whether its last save failed.
+    public private(set) var mcpDraft: AgentMCPServerDraft?
+    private var mcpProblem: AgentMCPServerDraft.Problem?
+    private var mcpSaveFailed = false
     private var watching: Set<AnyCancellable> = []
     private var started = false
 
@@ -336,9 +340,91 @@ public final class VitruvianCodeTool {
             guard draft != parts.engine.configuration else { return .keep }
             if parts.engine.save(draft) { draft = parts.engine.configuration }
         default:
-            return .keep
+            guard mcpEvent(event) else { return .keep }
         }
         return .page(settingsTree())
+    }
+
+    /// An event of the MCP part of the settings panel; false when it is none of its blocks or
+    /// changes nothing.
+    private func mcpEvent(_ event: PanelEvent) -> Bool {
+        let engine = parts.engine
+        switch event.block {
+        case Pages.Block.mcpServers?:
+            guard let id = event.row.flatMap(UUID.init(uuidString:)),
+                  let server = engine.mcpSettings?.servers.first(where: { $0.id == id }) else { return false }
+            mcpDraft = AgentMCPServerDraft(server)
+        case Pages.Block.mcpAdd?:
+            mcpDraft = AgentMCPServerDraft()
+        case Pages.Block.mcpCancel?:
+            mcpDraft = nil
+        case Pages.Block.mcpName?:
+            mcpDraft?.name = event.text ?? mcpDraft?.name ?? ""
+        case Pages.Block.mcpTransport?:
+            guard let raw = event.row ?? event.text, let transport = AgentMCPServer.Transport(rawValue: raw),
+                  mcpDraft != nil, mcpDraft?.transport != transport else { return false }
+            mcpDraft?.transport = transport
+            // What was kept for the other transport does not carry over (`AgentMCPServerDraft.save`).
+            if mcpDraft?.secrets != nil { mcpDraft?.secrets = [:] }
+        case Pages.Block.mcpCommand?:
+            mcpDraft?.command = event.text ?? mcpDraft?.command ?? ""
+        case Pages.Block.mcpArguments?:
+            mcpDraft?.argumentsLine = event.text ?? mcpDraft?.argumentsLine ?? ""
+        case Pages.Block.mcpURL?:
+            mcpDraft?.url = event.text ?? mcpDraft?.url ?? ""
+        case Pages.Block.mcpSecret?:
+            // The page never holds a secret: an empty answer is no change.
+            guard var draft = mcpDraft, let text = event.text, let entry = Pages.secretEntry(text) else { return false }
+            var secrets = draft.secrets ?? storedSecrets(of: draft)
+            secrets[entry.name] = entry.value
+            draft.secrets = secrets
+            mcpDraft = draft
+        case Pages.Block.mcpClearSecrets?:
+            guard mcpDraft != nil else { return false }
+            mcpDraft?.secrets = [:]
+        case Pages.Block.mcpEnabled?:
+            guard mcpDraft != nil, let isOn = event.isOn else { return false }
+            mcpDraft?.isEnabled = isOn
+        case Pages.Block.mcpSaveServer?:
+            guard let draft = mcpDraft, var settings = engine.mcpSettings else { return false }
+            mcpProblem = draft.problem(in: settings)
+            mcpSaveFailed = false
+            guard mcpProblem == nil else { return true }
+            if draft.save(into: &settings, secrets: engine.agentSecrets) != nil {
+                engine.mcpSettings = settings
+                mcpDraft = nil
+            } else {
+                mcpSaveFailed = true
+            }
+            return true
+        case Pages.Block.mcpRemove?:
+            guard let id = mcpDraft?.id, var settings = engine.mcpSettings else { return false }
+            AgentMCPServerDraft.remove(id, from: &settings, secrets: engine.agentSecrets)
+            engine.mcpSettings = settings
+            mcpDraft = nil
+        default:
+            return false
+        }
+        mcpProblem = nil
+        mcpSaveFailed = false
+        return true
+    }
+
+    /// The draft's stored secrets for its transport, by name.
+    private func storedSecrets(of draft: AgentMCPServerDraft) -> [String: String] {
+        guard let id = draft.id else { return [:] }
+        let stored = parts.engine.agentSecrets.mcpSecrets(for: id)
+        return draft.transport == .stdio ? stored.environment : stored.headers
+    }
+
+    /// What the MCP part of the settings panel shows now.
+    private func mcpPage() -> Pages.MCP? {
+        guard let settings = parts.engine.mcpSettings else { return nil }
+        var page = Pages.MCP(servers: settings.servers, draft: mcpDraft, problem: mcpProblem, saveFailed: mcpSaveFailed)
+        if let draft = mcpDraft {
+            page.secretNames = (draft.secrets ?? storedSecrets(of: draft)).keys.sorted()
+        }
+        return page
     }
 
     // MARK: - The slot
@@ -374,7 +460,8 @@ public final class VitruvianCodeTool {
     private func settingsTree() -> UITree {
         Pages.settings(status(), draft: draft, saved: parts.engine.configuration,
                        logLines: parts.engine.logLines, language: language,
-                       supportsChoice: parts.link.supports(.choice), supportsSections: parts.link.supports(.sections))
+                       supportsChoice: parts.link.supports(.choice), supportsSections: parts.link.supports(.sections),
+                       mcp: mcpPage())
     }
 
     /// What the pages show, read off the engine now.

@@ -794,6 +794,90 @@ final class ACPConnectionTests: XCTestCase {
         XCTAssertTrue(logContents.contains("fatal auth error for ***"))
     }
 
+    // MARK: - MCP servers on session/new
+
+    /// agy has no secrets channel: its MCP servers' secrets go in the `session/new` body, with
+    /// the rest of each server, and nowhere else: not the launch, and not the chat's log.
+    func testAgySessionNewCarriesTheMCPServersWithTheirSecretsAndTheLogHidesThem() async throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("acp-mcp-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        let docsSecret = "docs-\(UUID().uuidString)"
+        let bearer = "Bearer tok-\(UUID().uuidString)"
+        let agent = ScriptedACPAgent()
+        let connection = ACPConnection(
+            launchSpec: Self.defaultSpec,
+            policy: .antigravity(version: "1.5.10"),
+            stateFolderURL: tempRoot,
+            processFactory: agent.makeProcessFactory()
+        )
+        let driver = Task {
+            try await agent.playSteps([
+                .expectClientRequest(method: "initialize"),
+                .agentSend(.object([
+                    "jsonrpc": .string("2.0"),
+                    "id": .string("$id"),
+                    "result": .object([
+                        "protocolVersion": .int(1),
+                        "agentCapabilities": .object(["mcpCapabilities": .object(["http": .bool(true)])]),
+                    ]),
+                ])),
+                .expectClientRequest(method: "session/new"),
+                .agentSend(.object([
+                    "jsonrpc": .string("2.0"),
+                    "id": .string("$id"),
+                    "result": .object(["sessionId": .string("sess-mcp")]),
+                ])),
+            ])
+        }
+        _ = try await withACPTestTimeout(seconds: 3.0) {
+            try await connection.start(AgentSessionRequest(
+                workingDirectory: "/workspace",
+                mcpServers: [
+                    .stdio(name: "docs", command: "docs-mcp", arguments: ["--stdio"], environment: ["DOCS_ROOT": "/d"]),
+                    .http(name: "remote", url: "https://mcp.example.com/v1"),
+                ],
+                mcpSecrets: [
+                    "docs": .init(environment: ["DOCS_TOKEN": docsSecret]),
+                    "remote": .init(headers: ["Authorization": bearer]),
+                ]
+            ))
+        }
+        try await withACPTestTimeout(seconds: 3.0) { try await driver.value }
+
+        let sessionNew = try await agent.clientMessage(at: 1)
+        let servers = try XCTUnwrap(sessionNew.objectValue?["params"]?.objectValue?["mcpServers"]?.arrayValue)
+        XCTAssertEqual(servers.count, 2)
+        let docs = try XCTUnwrap(servers.first { $0.objectValue?["name"]?.stringValue == "docs" }?.objectValue)
+        XCTAssertEqual(docs["command"]?.stringValue, "docs-mcp")
+        let env = (docs["env"]?.arrayValue ?? []).compactMap { $0.objectValue }
+            .reduce(into: [String: String]()) { $0[$1["name"]?.stringValue ?? ""] = $1["value"]?.stringValue }
+        XCTAssertEqual(env, ["DOCS_ROOT": "/d", "DOCS_TOKEN": docsSecret])
+        let remote = try XCTUnwrap(servers.first { $0.objectValue?["name"]?.stringValue == "remote" }?.objectValue)
+        XCTAssertEqual(remote["type"]?.stringValue, "http")
+        XCTAssertEqual(remote["headers"]?.arrayValue?.first?.objectValue?["value"]?.stringValue, bearer)
+
+        // Not in the launch: the process started before the session was asked for.
+        let spec = await agent.launchSpec()
+        let launched = try XCTUnwrap(spec)
+        for secret in [docsSecret, bearer] {
+            XCTAssertFalse(launched.arguments.joined(separator: " ").contains(secret), "launch arguments")
+            XCTAssertFalse(launched.environment.values.contains { $0.contains(secret) }, "launch environment")
+        }
+
+        // Not in the log: an agent that echoes one on stderr is written with it hidden.
+        try await agent.writeStderrLine("connecting docs with \(docsSecret) and \(bearer)")
+        let logFile = tempRoot.appendingPathComponent("logs/chat-sess-mcp.log")
+        var log = ""
+        for _ in 0..<200 where !log.contains("connecting docs") {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            log = (try? String(contentsOf: logFile, encoding: .utf8)) ?? ""
+        }
+        XCTAssertTrue(log.contains("connecting docs with *** and ***"), log)
+        XCTAssertFalse(log.contains(docsSecret) || log.contains(bearer), log)
+        await connection.stop()
+    }
+
     func testSetConfigOptionSendsSetConfigOptionOrFallsBackToSetModeForModeOnly() async throws {
         // Case A: Agent advertises `configOptions` -> `session/set_config_option`.
         let agentWithOptions = ScriptedACPAgent()

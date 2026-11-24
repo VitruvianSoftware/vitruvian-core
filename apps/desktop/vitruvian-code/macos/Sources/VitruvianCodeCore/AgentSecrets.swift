@@ -108,6 +108,33 @@ public struct AgentSecrets {
         var version: Int = 1
         /// Provider ID (the UUID string) to environment variable name to value.
         var providers: [String: [String: String]] = [:]
+        /// MCP server ID (the UUID string) to its secret environment values and headers.
+        var mcpServers: [String: StoredMCPSecrets] = [:]
+
+        init() {}
+
+        /// A file written before MCP servers were kept here has no `mcpServers`: it is read
+        /// with none, not thrown away as unreadable.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+            providers = try container.decodeIfPresent([String: [String: String]].self, forKey: .providers) ?? [:]
+            mcpServers = try container.decodeIfPresent([String: StoredMCPSecrets].self, forKey: .mcpServers) ?? [:]
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(version, forKey: .version)
+            try container.encode(providers, forKey: .providers)
+            if !mcpServers.isEmpty { try container.encode(mcpServers, forKey: .mcpServers) }
+        }
+
+        private enum CodingKeys: String, CodingKey { case version, providers, mcpServers }
+    }
+
+    private struct StoredMCPSecrets: Codable {
+        var env: [String: String] = [:]
+        var headers: [String: String] = [:]
     }
 
     private enum Loaded {
@@ -154,7 +181,7 @@ public struct AgentSecrets {
     }
 
     /// True for a name an environment variable can have: not empty, no `=` and no NUL.
-    public static func isValidKey(_ key: String) -> Bool {
+    nonisolated public static func isValidKey(_ key: String) -> Bool {
         !key.isEmpty && !key.contains("=") && !key.contains("\0")
     }
 
@@ -195,5 +222,51 @@ public struct AgentSecrets {
             stored.providers[providerID.uuidString] = mine
         }
         return save(stored)
+    }
+
+    // MARK: - MCP servers
+
+    /// True for a name an MCP server's environment value or header can have: a valid
+    /// environment name with no line break.
+    nonisolated public static func isValidMCPKey(_ key: String) -> Bool {
+        isValidKey(key) && !key.contains("\n") && !key.contains("\r")
+    }
+
+    /// The MCP server's secret environment values and headers. Empty when it has none or the file
+    /// cannot be read.
+    public func mcpSecrets(for serverID: UUID) -> AgentSessionRequest.MCPServerSecrets {
+        guard case .stored(let stored) = load(), let entry = stored.mcpServers[serverID.uuidString] else {
+            return AgentSessionRequest.MCPServerSecrets()
+        }
+        return AgentSessionRequest.MCPServerSecrets(environment: entry.env, headers: entry.headers)
+    }
+
+    /// The names of the MCP server's secret environment values and headers, sorted. Never a value.
+    public func mcpSecretKeys(for serverID: UUID) -> (environment: [String], headers: [String]) {
+        let secrets = mcpSecrets(for: serverID)
+        return (secrets.environment.keys.sorted(), secrets.headers.keys.sorted())
+    }
+
+    /// Replaces the MCP server's secrets with `secrets`; empty secrets remove its entry. False when
+    /// a name is not a valid one, a value holds a NUL, the file is there but unreadable (it is left
+    /// as it is), or the write failed.
+    @discardableResult
+    public func setMCPSecrets(_ secrets: AgentSessionRequest.MCPServerSecrets, for serverID: UUID) -> Bool {
+        let pairs = Array(secrets.environment) + Array(secrets.headers)
+        guard pairs.allSatisfy({ Self.isValidMCPKey($0.key) && !$0.value.contains("\0") }),
+              case .stored(var stored) = load() else { return false }
+        if secrets.environment.isEmpty && secrets.headers.isEmpty {
+            guard stored.mcpServers[serverID.uuidString] != nil else { return true }
+            stored.mcpServers.removeValue(forKey: serverID.uuidString)
+        } else {
+            stored.mcpServers[serverID.uuidString] = StoredMCPSecrets(env: secrets.environment, headers: secrets.headers)
+        }
+        return save(stored)
+    }
+
+    /// Removes the MCP server's secrets. True when they are gone afterwards.
+    @discardableResult
+    public func removeMCPSecrets(for serverID: UUID) -> Bool {
+        setMCPSecrets(AgentSessionRequest.MCPServerSecrets(), for: serverID)
     }
 }

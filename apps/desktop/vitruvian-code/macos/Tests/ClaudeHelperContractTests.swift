@@ -293,6 +293,42 @@ final class ClaudeHelperContractTests: XCTestCase {
         messages.compactMap { $0.objectValue }.filter { $0["method"]?.stringValue == method }
     }
 
+    /// Claude's MCP secrets go to the helper in `_vitruvian/secrets` alone: `session/new`
+    /// carries the servers without them.
+    func testClaudesMCPSecretsAreOnlyInTheSecretsMessage() async throws {
+        let agent = ScriptedACPAgent()
+        let peer = playHelper(agent)
+        defer { peer.cancel() }
+        let connection = makeConnection(agent: agent, providerSecrets: [:])
+        let work = root.appendingPathComponent("work").path
+        let docsSecret = "docs-\(UUID().uuidString)"
+        let bearer = "Bearer tok-\(UUID().uuidString)"
+        _ = try await connection.start(
+            AgentSessionRequest(
+                workingDirectory: work,
+                mcpServers: [
+                    .stdio(name: "local-docs", command: "/usr/local/bin/docs-mcp", arguments: ["--stdio"]),
+                    .http(name: "remote-mcp", url: "https://mcp.example.com/v1"),
+                ],
+                mcpSecrets: [
+                    "local-docs": .init(environment: ["DOCS_ACCESS_KEY": docsSecret]),
+                    "remote-mcp": .init(headers: ["Authorization": bearer]),
+                ]
+            )
+        )
+        let sent = await agent.allClientMessages()
+        let secrets = try XCTUnwrap(requests(sent, method: ClaudeSDKSupport.secretsMethod).first)
+        let secretsText = ACPJSONValue.object(secrets).serializedJSONString()
+        XCTAssertTrue(secretsText.contains(docsSecret) && secretsText.contains(bearer), "the helper gets them")
+        let sessionNew = try XCTUnwrap(requests(sent, method: "session/new").first)
+        XCTAssertEqual(sessionNew["params"]?.objectValue?["mcpServers"]?.arrayValue?.count, 2, "the servers are there")
+        for message in sent where message.objectValue?["method"]?.stringValue != ClaudeSDKSupport.secretsMethod {
+            let text = message.serializedJSONString()
+            XCTAssertFalse(text.contains(docsSecret) || text.contains(bearer), text)
+        }
+        await connection.stop()
+    }
+
     func testEveryMessageTheSwiftSideSendsHasTheShapeOfItsExample() async throws {
         let agent = ScriptedACPAgent()
         let peer = playHelper(agent)

@@ -163,6 +163,20 @@ final class StandaloneHost: VitruvianCodeHost, ObservableObject {
         set { AppPreferences.defaults.set(newValue, forKey: "chatConnections") }
     }
 
+    /// The MCP server list, as JSON under its own key. Its secrets are never here: they are
+    /// in `AgentSecrets`' private file.
+    var mcpSettings: AgentMCPSettings? {
+        get {
+            guard let data = AppPreferences.defaults.data(forKey: "mcpServers") else { return AgentMCPSettings() }
+            return (try? JSONDecoder().decode(AgentMCPSettings.self, from: data)) ?? AgentMCPSettings()
+        }
+        set {
+            objectWillChange.send()
+            guard let newValue, let data = try? JSONEncoder().encode(newValue) else { return }
+            AppPreferences.defaults.set(data, forKey: "mcpServers")
+        }
+    }
+
     /// Kept on this instance only: Settings sets it while it is open (Option
     /// held at open) and it is off at every launch.
     var showsConnectionSetting = false {

@@ -432,7 +432,13 @@ public final class ACPConnection: PersistentAgentConnection {
                 throw ACPConnectionError.alreadyStopped
             }
 
-            let mcpServers = Self.encodeMCPServers(request.mcpServers, allowHTTP: resolvedCapabilities.mcpHTTP)
+            // ACP has no other channel for an MCP server's secrets: they go in the session
+            // request's body, never a command line or an environment, and the log hides them.
+            addRedactions(request.mcpSecrets.values.flatMap { Array($0.environment.values) + Array($0.headers.values) })
+            let mcpServers = Self.encodeMCPServers(
+                Self.mergingSecrets(request.mcpSecrets, into: request.mcpServers),
+                allowHTTP: resolvedCapabilities.mcpHTTP
+            )
             let supportsAdditionalDirs = agentCaps?.sessionCapabilities?.supportsAdditionalDirectories == true
             let extraDirsSource: [String] = supportsAdditionalDirs
                 ? initialAdditionalDirs
@@ -2284,6 +2290,26 @@ public final class ACPConnection: PersistentAgentConnection {
         case .allowAlways: return .allowAlways
         case .rejectOnce: return .rejectOnce
         case .rejectAlways: return .rejectAlways
+        }
+    }
+
+    /// The servers with their secret environment values and headers put back, a secret winning
+    /// over a plain value of the same name.
+    static func mergingSecrets(
+        _ secrets: [String: AgentSessionRequest.MCPServerSecrets],
+        into servers: [AgentSessionRequest.MCPServer]
+    ) -> [AgentSessionRequest.MCPServer] {
+        guard !secrets.isEmpty else { return servers }
+        return servers.map { server in
+            switch server {
+            case .stdio(let name, let command, let arguments, let environment):
+                guard let secret = secrets[name] else { return server }
+                return .stdio(name: name, command: command, arguments: arguments,
+                              environment: environment.merging(secret.environment) { _, secret in secret })
+            case .http(let name, let url, let headers):
+                guard let secret = secrets[name] else { return server }
+                return .http(name: name, url: url, headers: headers.merging(secret.headers) { _, secret in secret })
+            }
         }
     }
 

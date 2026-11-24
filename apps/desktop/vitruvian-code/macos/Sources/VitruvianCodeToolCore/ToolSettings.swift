@@ -79,12 +79,14 @@ public final class ToolSettings: VitruvianCodeHost {
         public var sessionPreferences = VitruvianCodeSessionPreferences()
         public var chatModes: [String: String] = [:]
         public var chatConnections: [String: String] = [:]
+        /// The MCP server list; its secrets are in `AgentSecrets`' private file, never here.
+        public var mcpSettings = AgentMCPSettings()
 
         public init() {}
 
         private enum CodingKeys: String, CodingKey {
             case botDirectory, autoStart, planMode, worktreeMode, timelineOnLeft, chosenProvider, savedProviders, promptHistory
-            case hiddenClaudeSessions, chosenModels, sessionPreferences, chatModes, chatConnections
+            case hiddenClaudeSessions, chosenModels, sessionPreferences, chatModes, chatConnections, mcpSettings
         }
 
         /// Every key may be missing: a file an earlier version wrote lacks
@@ -106,6 +108,7 @@ public final class ToolSettings: VitruvianCodeHost {
                                                                forKey: .sessionPreferences) ?? VitruvianCodeSessionPreferences()
             chatModes = try container.decodeIfPresent([String: String].self, forKey: .chatModes) ?? [:]
             chatConnections = try container.decodeIfPresent([String: String].self, forKey: .chatConnections) ?? [:]
+            mcpSettings = try container.decodeIfPresent(AgentMCPSettings.self, forKey: .mcpSettings) ?? AgentMCPSettings()
         }
     }
 
@@ -314,6 +317,15 @@ public final class ToolSettings: VitruvianCodeHost {
         set {
             guard values.chatConnections != newValue else { return }
             values.chatConnections = newValue
+            save()
+        }
+    }
+
+    public var mcpSettings: AgentMCPSettings? {
+        get { values.mcpSettings }
+        set {
+            guard let newValue, values.mcpSettings != newValue else { return }
+            values.mcpSettings = newValue
             save()
         }
     }

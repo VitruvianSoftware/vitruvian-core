@@ -317,6 +317,9 @@ struct SettingsView: View {
                     .foregroundStyle(.blue)
                 }
             }
+
+                    // ── MCP servers ──
+                    MCPServersSection(configManager: configManager)
                 }
                 .formStyle(.grouped)
                 .tabItem { Label("Providers", systemImage: "network") }
@@ -598,6 +601,266 @@ struct ProviderRow: View {
             }
         }
         .padding(.vertical, 3)
+    }
+}
+
+// MARK: - MCP servers
+
+/// The app's MCP servers: imported from Claude Code on first use, or added here. Each has an
+/// on/off switch, Edit and a bin, like the provider rows above. agy and Claude get the enabled
+/// ones, and the project's `.mcp.json`, when a live chat starts.
+struct MCPServersSection: View {
+    @ObservedObject var configManager: ConfigManager
+    /// The server being edited, or a new one; nil shows the list alone.
+    @State private var editing: AgentMCPServerDraft?
+
+    var body: some View {
+        Section(header: Text("MCP Servers")) {
+            Text("Given to agy and Claude when a live chat starts. A project’s .mcp.json is added too, and wins when a name is the same.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            let servers = configManager.mcpServers
+            if servers.isEmpty {
+                Text("No MCP servers yet.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(servers) { server in
+                    MCPServerRow(
+                        server: server,
+                        isEnabled: Binding(
+                            get: { server.isEnabled },
+                            set: { configManager.setMCPServer(server.id, enabled: $0) }
+                        ),
+                        onEdit: { editing = AgentMCPServerDraft(server) },
+                        onDelete: { configManager.removeMCPServer(server.id) }
+                    )
+                }
+            }
+
+            if let draft = editing {
+                MCPServerEditor(
+                    configManager: configManager,
+                    draft: draft,
+                    storedSecretNames: draft.id
+                        .flatMap { id in servers.first { $0.id == id } }
+                        .map { configManager.mcpSecretNames(for: $0) } ?? [],
+                    onDone: { editing = nil }
+                )
+                .id(draft.id?.uuidString ?? "new")
+            } else {
+                Button("+ Add MCP Server") {
+                    editing = AgentMCPServerDraft()
+                }
+                .controlSize(.small)
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+            }
+        }
+    }
+}
+
+struct MCPServerRow: View {
+    let server: AgentMCPServer
+    @Binding var isEnabled: Bool
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: server.transport == .http ? "globe" : "terminal")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+
+                Text(server.name)
+                    .font(.system(size: 12, weight: isEnabled ? .semibold : .regular))
+                    .foregroundStyle(isEnabled ? .primary : .secondary)
+
+                if server.source == .claudeCode {
+                    Text("from Claude Code")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.secondary.opacity(0.12)))
+                }
+
+                Spacer()
+
+                Toggle("Enabled", isOn: $isEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+
+                Button("Edit", action: onEdit)
+                    .controlSize(.mini)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(server.summary)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(.leading, 22)
+                .help(server.summary)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+/// Adds or edits one MCP server. Stored secret values are never read back into the form: their
+/// names are listed with a bin, and new ones are typed into a secure field.
+struct MCPServerEditor: View {
+    @ObservedObject var configManager: ConfigManager
+    @State var draft: AgentMCPServerDraft
+    let storedSecretNames: [String]
+    let onDone: () -> Void
+
+    @State private var keep: Set<String> = []
+    @State private var added: [String: String] = [:]
+    @State private var newSecretName = ""
+    @State private var newSecretValue = ""
+    @State private var message: String?
+
+    init(configManager: ConfigManager, draft: AgentMCPServerDraft, storedSecretNames: [String], onDone: @escaping () -> Void) {
+        self.configManager = configManager
+        _draft = State(initialValue: draft)
+        self.storedSecretNames = storedSecretNames
+        self.onDone = onDone
+        _keep = State(initialValue: Set(storedSecretNames))
+    }
+
+    private var secretKind: String { draft.transport == .stdio ? "Environment" : "Headers" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            labeled("Name") {
+                TextField("e.g. filesystem", text: $draft.name)
+            }
+            labeled("Type") {
+                Picker("", selection: $draft.transport) {
+                    Text("Local program (stdio)").tag(AgentMCPServer.Transport.stdio)
+                    Text("Remote server (HTTP)").tag(AgentMCPServer.Transport.http)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+            switch draft.transport {
+            case .stdio:
+                labeled("Command") {
+                    TextField("npx", text: $draft.command)
+                }
+                labeled("Arguments") {
+                    TextField("-y @modelcontextprotocol/server-filesystem .", text: $draft.argumentsLine)
+                }
+            case .http:
+                labeled("URL") {
+                    TextField("https://example.com/mcp", text: $draft.url)
+                }
+            }
+            labeled(secretKind) {
+                VStack(alignment: .leading, spacing: 4) {
+                    let original = draft.id == nil ? [] : storedSecretNames
+                    ForEach(original.filter { keep.contains($0) } + added.keys.sorted(), id: \.self) { name in
+                        HStack {
+                            Text(name).font(.system(size: 11, design: .monospaced))
+                            Text("••••••••").font(.caption).foregroundStyle(.tertiary)
+                            Spacer()
+                            Button {
+                                keep.remove(name)
+                                added.removeValue(forKey: name)
+                            } label: {
+                                Image(systemName: "minus.circle").font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    HStack {
+                        TextField("NAME", text: $newSecretName)
+                            .frame(maxWidth: 140)
+                        SecureField("value", text: $newSecretValue)
+                        Button("Add") {
+                            let name = newSecretName.trimmingCharacters(in: .whitespaces)
+                            guard !name.isEmpty else { return }
+                            added[name] = newSecretValue
+                            newSecretName = ""
+                            newSecretValue = ""
+                        }
+                        .controlSize(.small)
+                        .disabled(newSecretName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    Text("Kept in a private file only you can read, and never shown again.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Toggle("Enabled", isOn: $draft.isEnabled)
+                .padding(.leading, 84)
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.leading, 84)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: onDone)
+                    .controlSize(.small)
+                Button(draft.id == nil ? "Add" : "Save") {
+                    switch configManager.saveMCPServer(draft, keep: keep, added: added) {
+                    case .saved:
+                        onDone()
+                    case .problem(let problem):
+                        message = Self.text(for: problem)
+                    case .failed:
+                        message = "The server’s secrets could not be saved."
+                    }
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .textFieldStyle(.roundedBorder)
+        .font(.caption)
+        .padding(.vertical, 4)
+        .onChange(of: draft.transport) { _ in
+            // Environment values mean nothing to an HTTP server, nor headers to a stdio one.
+            keep = []
+            added = [:]
+        }
+    }
+
+    private func labeled<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .top) {
+            Text(title)
+                .frame(width: 80, alignment: .trailing)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    static func text(for problem: AgentMCPServerDraft.Problem) -> String {
+        switch problem {
+        case .emptyName: return "Give the server a name."
+        case .duplicateName: return "Another server already has this name."
+        case .missingCommand: return "Enter the command to run."
+        case .invalidURL: return "Enter an http or https URL."
+        case .invalidSecretName: return "A secret’s name can’t be empty or contain = or a line break."
+        }
     }
 }
 

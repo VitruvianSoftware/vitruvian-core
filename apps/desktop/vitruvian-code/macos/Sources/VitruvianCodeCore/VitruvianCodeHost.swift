@@ -59,6 +59,9 @@ public protocol VitruvianCodeHost: AnyObject {
     var chatConnections: [String: String] { get set }
     /// Whether the hidden per-provider Connection picker is shown in Settings.
     var showsConnectionSetting: Bool { get set }
+    /// The app's own MCP server list (`AgentMCPServers`). Nil for an app that keeps none:
+    /// its live sessions then get no servers from the app.
+    var mcpSettings: AgentMCPSettings? { get set }
     /// User-facing text, in the app's language right now.
     var strings: VitruvianCodeHostStrings { get }
     /// A turn paused for the user to approve a tool.
@@ -90,6 +93,11 @@ public extension VitruvianCodeHost {
 
     var showsConnectionSetting: Bool {
         get { false }
+        set {}
+    }
+
+    var mcpSettings: AgentMCPSettings? {
+        get { nil }
         set {}
     }
 }

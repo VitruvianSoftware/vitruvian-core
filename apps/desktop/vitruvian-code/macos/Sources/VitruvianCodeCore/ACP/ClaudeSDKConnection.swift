@@ -640,9 +640,13 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         hookState.secretsParams = plan.params
         inner.addRedactions(plan.values)
 
+        // The MCP secrets went to the helper in `_vitruvian/secrets` alone: `session/new` carries
+        // the servers without them.
+        var withoutSecrets = request
+        withoutSecrets.mcpSecrets = [:]
         let sessionID: String
         do {
-            sessionID = try await inner.start(request)
+            sessionID = try await inner.start(withoutSecrets)
         } catch {
             if case ACPTransportError.rpcError(let rpc) = error,
                ClaudeSDKSupport.isClaudeCrashMessage(rpc.message) {

@@ -358,6 +358,16 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     public let session: VitruvianCodeQuickPromptSession
     private let environment: Environment
     private let host: any VitruvianCodeHost
+
+    /// The app's MCP server list, after the first-use import from `~/.claude.json`; nil when the
+    /// host keeps none. Settings reads and edits it here.
+    public var mcpSettings: AgentMCPSettings? {
+        get { AgentMCPServers.settings(host: host, environment: environment) }
+        set { host.mcpSettings = newValue }
+    }
+
+    /// The private file the MCP servers' (and providers') secrets are kept in.
+    public var agentSecrets: AgentSecrets { AgentSecrets(environment: environment) }
     /// The bot this app launched, as opposed to one adopted from the PID file.
     private var managedPID: Int32?
     private var pollTimer: Timer?
