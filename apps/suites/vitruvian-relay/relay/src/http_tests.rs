@@ -1169,6 +1169,135 @@ async fn register_device_returns_the_app_url_when_app_sign_in_is_on() {
     );
 }
 
+/// Each request on the app route leaves one line saying what kind it was and
+/// how it ended, so a client that signs in but never uses its tools can be
+/// told apart from one that never asks. Nothing the client wrote is in it.
+#[tokio::test]
+async fn app_route_logs_each_request_by_kind_without_its_content() {
+    const MARKER: &str = "client-chose-this-text";
+    let h = app_harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let path = format!("/mcp/app/{device}");
+    let post = |session: Option<String>, body: Value| {
+        let headers = h.mcp_headers(ALICE, session.as_deref());
+        let path = path.clone();
+        let h = &h;
+        async move { h.send("POST", &path, &headers, &body.to_string()).await }
+    };
+
+    let init = post(
+        None,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+               "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                          "clientInfo": {"name": MARKER, "version": "0"}}}),
+    )
+    .await;
+    let session = init.header("mcp-session-id").expect("session id");
+    post(
+        Some(session.clone()),
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+    )
+    .await;
+    post(
+        Some(session),
+        json!({"jsonrpc": "2.0", "id": 3, "method": MARKER}),
+    )
+    .await;
+    h.send("POST", &path, &[("accept", ACCEPT.into())], "{}")
+        .await;
+
+    let logs = h.logs();
+    let lines: Vec<Value> = logs
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|l| l["event"] == "app_mcp_request")
+        .collect();
+    assert_eq!(lines.len(), 4, "{logs}");
+    assert_eq!(lines[0]["method"], "initialize");
+    assert_eq!(lines[0]["protocol"], "2025-06-18");
+    assert_eq!(lines[0]["status"], 200);
+    assert_eq!(lines[1]["method"], "tools/list");
+    assert_eq!(lines[1]["tools"], 1, "the relay's own tool: {logs}");
+    assert_eq!(lines[2]["method"], "other");
+    assert_eq!(lines[2]["rpc_error"], -32601);
+    assert_eq!(lines[3]["status"], 401);
+    assert!(lines[3]["method"].is_null());
+    assert!(!logs.contains(MARKER), "the log holds client text:\n{logs}");
+
+    // Claude's route is unchanged.
+    let before = logs.matches("app_mcp_request").count();
+    h.session(&device, ALICE).await;
+    assert_eq!(h.logs().matches("app_mcp_request").count(), before);
+}
+
+/// The other ways a request on the app route can go: each still leaves a line
+/// that says what happened, and a version the relay does not know stays a label.
+#[tokio::test]
+async fn app_route_logs_refusals_and_the_stateless_protocol() {
+    const MARKER: &str = "client-chose-this-version";
+    let h = app_harness().await;
+    let (device, _) = h.new_device(ALICE).await;
+    let path = format!("/mcp/app/{device}");
+    let headers = h.mcp_headers(ALICE, None);
+    let meta = |v: &str| json!({"_meta": {"io.modelcontextprotocol/protocolVersion": v}});
+
+    // A stream request, which this server does not offer.
+    let r = h.send("GET", &path, &headers, "").await;
+    assert_eq!(r.status, StatusCode::METHOD_NOT_ALLOWED);
+    // The stateless revision, with no session.
+    let r = h
+        .send(
+            "POST",
+            &path,
+            &headers,
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                    "params": meta("2026-07-28")})
+            .to_string(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    // A version nobody knows.
+    let r = h
+        .send(
+            "POST",
+            &path,
+            &headers,
+            &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list",
+                    "params": meta(MARKER)})
+            .to_string(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    // A session that ended.
+    let gone = h.mcp_headers(ALICE, Some("ended-session"));
+    let r = h
+        .send(
+            "POST",
+            &path,
+            &gone,
+            &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}).to_string(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+
+    let logs = h.logs();
+    let lines: Vec<Value> = logs
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|l| l["event"] == "app_mcp_request")
+        .collect();
+    assert_eq!(lines.len(), 4, "{logs}");
+    assert_eq!(lines[0]["http"], "GET");
+    assert_eq!(lines[0]["status"], 405);
+    assert_eq!(lines[1]["protocol"], "2026-07-28");
+    assert_eq!(lines[1]["tools"], 1);
+    assert_eq!(lines[2]["protocol"], "other");
+    assert_eq!(lines[2]["status"], 400);
+    assert_eq!(lines[3]["method"], "tools/list");
+    assert_eq!(lines[3]["status"], 404);
+    assert!(!logs.contains(MARKER), "the log holds client text:\n{logs}");
+}
+
 /// With it off the field is absent, not null or empty: the answer is exactly
 /// what it was before app sign-in existed.
 #[tokio::test]

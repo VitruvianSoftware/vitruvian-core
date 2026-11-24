@@ -191,6 +191,49 @@ fn text_result(text: &str, is_error: bool) -> Value {
     json!({"content": [{"type": "text", "text": text}], "isError": is_error})
 }
 
+/// A request's method as a fixed label for the logs. Whatever else a client
+/// sends is `other`, so a log line never repeats text it chose.
+pub fn method_label(method: Option<&str>) -> &'static str {
+    const KNOWN: &[&str] = &[
+        "initialize",
+        "notifications/initialized",
+        "notifications/cancelled",
+        "server/discover",
+        "ping",
+        "tools/list",
+        "tools/call",
+        "resources/list",
+        "resources/templates/list",
+        "prompts/list",
+    ];
+    match method {
+        None => "none",
+        Some(m) => KNOWN.iter().find(|k| **k == m).copied().unwrap_or("other"),
+    }
+}
+
+/// The protocol revision a request names: its header, its `_meta`, or the
+/// version `initialize` asks for.
+pub fn named_version<'a>(req: &'a Value, header: Option<&'a str>) -> Option<&'a str> {
+    let params = req.get("params");
+    header
+        .or_else(|| params?.get("_meta")?.get(META_VERSION)?.as_str())
+        .or_else(|| params?.get("protocolVersion")?.as_str())
+}
+
+/// The protocol revision a client named, as a fixed label for the logs.
+pub fn protocol_label(version: Option<&str>) -> &'static str {
+    match version {
+        None => "none",
+        Some(v) => LEGACY_VERSIONS
+            .iter()
+            .chain(MODERN_VERSIONS)
+            .find(|k| **k == v)
+            .copied()
+            .unwrap_or("other"),
+    }
+}
+
 /// True for the methods that need no session: `initialize` makes one, and
 /// `server/discover` describes the server without one.
 pub fn needs_session(method: Option<&str>) -> bool {
