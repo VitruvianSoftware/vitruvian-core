@@ -83,7 +83,11 @@ fn run() -> Result<ExitCode, String> {
         }
         Plan::Update { from, to } => {
             let new = render_pin(&text, &target)?;
-            std::fs::write(&pin_path, new).map_err(|e| format!("{}: {e}", pin_path.display()))?;
+            // Write beside the pin and rename over it, so a crash never leaves
+            // a half-written file.
+            let tmp = pin_path.with_extension("bzl.tmp");
+            std::fs::write(&tmp, new).map_err(|e| format!("{}: {e}", tmp.display()))?;
+            std::fs::rename(&tmp, &pin_path).map_err(|e| format!("{}: {e}", pin_path.display()))?;
             println!("Claude Code CLI pin: {from} -> {to} ({PIN_REL}).");
             Ok(ExitCode::SUCCESS)
         }

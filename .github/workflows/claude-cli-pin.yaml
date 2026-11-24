@@ -122,6 +122,9 @@ jobs:
                 exit 1
               fi
               git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main" "$remote_sha"
+              # Capture first so a failed rev-list stops the job instead of
+              # looking like "no foreign commits".
+              branch_commits="$(git rev-list "refs/remotes/origin/main..$remote_sha")"
               foreign=()
               while IFS= read -r sha; do
                 [ -z "$sha" ] && continue
@@ -129,7 +132,7 @@ jobs:
                 if [ "$trailer" != "true" ]; then
                   foreign+=("${sha:0:9}")
                 fi
-              done < <(git rev-list "refs/remotes/origin/main..$remote_sha")
+              done <<< "$branch_commits"
               if [ "${#foreign[@]}" -gt 0 ]; then
                 printf -v foreign_list '%s, ' "${foreign[@]}"
                 foreign_list="${foreign_list%, }"
@@ -143,6 +146,13 @@ jobs:
               exit 1
               ;;
           esac
+
+          # Nothing to do if the branch already proposes exactly this pin:
+          # re-pushing would only reset CI and clear any armed auto-merge.
+          if [ -n "$remote_sha" ] && git show "$remote_sha:tools/testinfra/claude_cli.bzl" | cmp -s - tools/testinfra/claude_cli.bzl; then
+            echo "$branch already proposes $VERSION; left alone."
+            exit 0
+          fi
 
           existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
