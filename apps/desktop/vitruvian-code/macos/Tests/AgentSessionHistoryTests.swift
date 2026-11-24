@@ -57,21 +57,29 @@ final class AgentSessionHistoryTests: XCTestCase {
         .object(["jsonrpc": .string("2.0"), "id": .string("$id"), "result": result])
     }
 
+
+    private static let newSessionSteps: [ACPFixtureStep] = [
+        .expectClientRequest(method: "session/new"),
+        .agentSend(reply(.object(["sessionId": .string("s-open")]))),
+    ]
+
     // MARK: - The ACP client
 
-    /// agy 1.5.16's real exchange (ids and titles replaced): `session/list` needs
-    /// sign-in first, the list comes back with folders, titles and times, and no
-    /// session is opened to get it.
-    func testAgyListsItsSessionsWithoutOpeningOneAndSignsInWhenAsked() async throws {
+    /// agy 1.5.16's real `session/list` exchange (ids and titles replaced), asked
+    /// over an open chat connection: agy wants `authenticate` first, then lists
+    /// folders, titles and times.
+    func testAgyListsOverAnOpenConnectionAndSignsInWhenAsked() async throws {
         let agent = ScriptedACPAgent()
-        let connection = AntigravityACPConnection(
+        let connection = ACPConnection(
             launchSpec: Self.agentSpec,
-            modeProvider: { (.standard, false) },
+            hooks: ACPConnection.Hooks(authMethodID: AntigravityACPSupport.authMethodID),
             processFactory: agent.makeProcessFactory()
         )
         let steps = ACPFixtureLoader.loadSteps(named: "session-list-agy.ndjson")
         let driver = Task { try await agent.playSteps(steps) }
-
+        _ = try await withACPTestTimeout(seconds: 5.0) {
+            try await connection.start(AgentSessionRequest(workingDirectory: "/workspace/app"))
+        }
         let page = try await withACPTestTimeout(seconds: 5.0) {
             try await connection.listSessionPage(cwd: "/workspace/app", cursor: nil)
         }
@@ -86,16 +94,31 @@ final class AgentSessionHistoryTests: XCTestCase {
         XCTAssertEqual(page.sessions.first?.title, "Fix the login redirect")
         XCTAssertEqual(page.sessions.first?.updatedAt, "2026-11-23T17:01:24Z")
         XCTAssertNil(page.nextCursor)
-        XCTAssertTrue(connection.capabilities.listSessions)
 
         let methods = await agent.allClientMessages().compactMap { $0.objectValue?["method"]?.stringValue }
-        XCTAssertEqual(methods, ["initialize", "session/list", "authenticate", "session/list"])
-        let listParams = try await agent.clientMessage(at: 1).objectValue?["params"]?.objectValue
+        XCTAssertEqual(methods, ["initialize", "session/new", "session/list", "authenticate", "session/list"])
+        let listParams = try await agent.clientMessage(at: 2).objectValue?["params"]?.objectValue
         XCTAssertEqual(listParams?["cwd"]?.stringValue, "/workspace/app")
         XCTAssertNil(listParams?["cursor"])
-        let authParams = try await agent.clientMessage(at: 2).objectValue?["params"]?.objectValue
+        let authParams = try await agent.clientMessage(at: 3).objectValue?["params"]?.objectValue
         XCTAssertEqual(authParams?["methodId"]?.stringValue, AntigravityACPSupport.authMethodID)
         await connection.stop()
+    }
+
+    /// Listing never starts the agent: a connection with no process throws and launches nothing.
+    func testListingANotStartedConnectionStartsNoProcess() async throws {
+        let launches = HistoryCounter()
+        let connection = ACPConnection(launchSpec: Self.agentSpec, processFactory: { _ in
+            launches.increment()
+            throw ACPConnectionError.notStarted
+        })
+        do {
+            _ = try await connection.listSessionPage(cwd: "/w", cursor: nil)
+            XCTFail("Expected notStarted")
+        } catch ACPConnectionError.notStarted {
+            // expected
+        }
+        XCTAssertEqual(launches.value, 0)
     }
 
     func testCursorIsSentAndNextCursorReturned() async throws {
@@ -105,6 +128,7 @@ final class AgentSessionHistoryTests: XCTestCase {
             try await agent.playSteps([
                 .expectClientRequest(method: "initialize"),
                 .agentSend(Self.initializeResult(list: true)),
+            ] + Self.newSessionSteps + [
                 .expectClientRequest(method: "session/list"),
                 .agentSend(Self.reply(.object([
                     "sessions": .array([
@@ -115,6 +139,9 @@ final class AgentSessionHistoryTests: XCTestCase {
                 ]))),
             ])
         }
+        _ = try await withACPTestTimeout(seconds: 3.0) {
+            try await connection.start(AgentSessionRequest(workingDirectory: "/w"))
+        }
         let page = try await withACPTestTimeout(seconds: 3.0) {
             try await connection.listSessionPage(cwd: nil, cursor: "page-2")
         }
@@ -122,7 +149,7 @@ final class AgentSessionHistoryTests: XCTestCase {
         // The entry without an id is dropped, not the page.
         XCTAssertEqual(page, AgentSessionPage(sessions: [AgentListedSession(id: "s-2", cwd: "/w")],
                                               nextCursor: "page-3"))
-        let params = try await agent.clientMessage(at: 1).objectValue?["params"]?.objectValue
+        let params = try await agent.clientMessage(at: 2).objectValue?["params"]?.objectValue
         XCTAssertEqual(params?["cursor"]?.stringValue, "page-2")
         XCTAssertNil(params?["cwd"])
         await connection.stop()
@@ -135,49 +162,22 @@ final class AgentSessionHistoryTests: XCTestCase {
             try await agent.playSteps([
                 .expectClientRequest(method: "initialize"),
                 .agentSend(Self.initializeResult(list: false)),
-            ])
+            ] + Self.newSessionSteps)
         }
+        _ = try await withACPTestTimeout(seconds: 3.0) {
+            try await connection.start(AgentSessionRequest(workingDirectory: "/w"))
+        }
+        try await withACPTestTimeout(seconds: 3.0) { try await driver.value }
         do {
-            _ = try await withACPTestTimeout(seconds: 3.0) {
-                try await connection.listSessionPage(cwd: "/w", cursor: nil)
-            }
+            _ = try await connection.listSessionPage(cwd: "/w", cursor: nil)
             XCTFail("Expected sessionListNotAdvertised")
         } catch ACPConnectionError.sessionListNotAdvertised {
             // expected
         }
-        try await withACPTestTimeout(seconds: 3.0) { try await driver.value }
         try? await Task.sleep(nanoseconds: 50_000_000)
         let methods = await agent.allClientMessages().compactMap { $0.objectValue?["method"]?.stringValue }
-        XCTAssertEqual(methods, ["initialize"])
+        XCTAssertEqual(methods, ["initialize", "session/new"])
         await connection.stop()
-    }
-
-    /// Off unless `VITRUVIAN_MEASURE_AGY_LIST` is set: lists the real agy's sessions
-    /// through the live code path (`Environment.live`'s `makeSessionLister`,
-    /// `fetchAll`, `stop`) and prints how long it took. Used to measure the cost
-    /// of opening the list with no chat open; a sampler outside watches `ps`.
-    func testMeasureRealAgyListing() async throws {
-        let env = ProcessInfo.processInfo.environment
-        guard env["VITRUVIAN_MEASURE_AGY_LIST"] != nil else {
-            throw XCTSkip("Set VITRUVIAN_MEASURE_AGY_LIST to list the installed agy's sessions.")
-        }
-        let state = NSTemporaryDirectory() + "agy-list-measure-\(UUID().uuidString)"
-        let environment = VitruvianCodeEngine.Environment.live(stateDirectoryOverride: state)
-        let folder = env["VITRUVIAN_MEASURE_AGY_CWD"] ?? environment.home
-        let spec = AgentConnectionSpec(kind: .acp, provider: Self.agyACPProvider,
-                                       workingDirectory: folder,
-                                       environment: environment.processEnvironment)
-        for run in 1...3 {
-            let started = Date()
-            guard let lister = environment.makeSessionLister(spec) else { return XCTFail("no lister") }
-            let listed = try await AgentSessionHistory.fetchAll(from: lister, cwd: folder)
-            let listedAt = Date().timeIntervalSince(started)
-            await lister.stop()
-            let stoppedAt = Date().timeIntervalSince(started)
-            print(String(format: "AGY-LIST-MEASURE run=%d sessions=%d listed=%.2fs stopped=%.2fs",
-                         run, listed.count, listedAt, stoppedAt))
-            try await Task.sleep(nanoseconds: 2_000_000_000)
-        }
     }
 
     // MARK: - Paging
@@ -282,18 +282,36 @@ final class AgentSessionHistoryTests: XCTestCase {
                                     modified: Date(timeIntervalSince1970: 1_800_000_100)),
     ]
 
-    private func makeSession(rig: ComposerRig,
-                             lister: (@MainActor (AgentConnectionSpec) -> (any AgentSessionListing)?)?,
-                             makeConnection: ((AgentConnectionSpec) -> any AgentConnection)? = nil)
+    /// A session whose live connections are `HistoryMockConnection`s, counted in `box`.
+    private func makeSession(rig: ComposerRig, box: HistoryMockBox,
+                             configure: @escaping @MainActor (HistoryMockConnection) -> Void = { _ in })
         -> VitruvianCodeQuickPromptSession {
         var environment = rig.environment
-        if let lister { environment.makeSessionLister = lister }
-        if let makeConnection { environment.makeConnection = makeConnection }
+        environment.makeConnection = { _ in
+            MainActor.assumeIsolated {
+                let connection = HistoryMockConnection()
+                configure(connection)
+                box.items.append(connection)
+                return connection
+            }
+        }
         environment.fileExists = { _ in true }
         environment.isExecutable = { _ in true }
         let session = VitruvianCodeQuickPromptSession(environment: environment, host: rig.host)
         session.takeCheckpoint = { _ in nil }
         return session
+    }
+
+    /// Opens a live chat and lets its first turn end, so the connection stays open.
+    private func openLiveChat(_ session: VitruvianCodeQuickPromptSession, box: HistoryMockBox,
+                              config: VitruvianCodeConfiguration) async throws -> HistoryMockConnection {
+        session.send("Hello", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("prompt sent") { box.items.first?.promptCount == 1 }
+        let connection = box.items[0]
+        connection.emit(.finished(status: "completed", response: "Hi", error: nil, conversationID: "new-1"))
+        connection.finish()
+        try await waitUntil("turn done") { !session.isRunning }
+        return connection
     }
 
     private func waitUntil(_ description: String, condition: @escaping @MainActor () -> Bool) async throws {
@@ -302,248 +320,188 @@ final class AgentSessionHistoryTests: XCTestCase {
         }
     }
 
-    func testListComesFromTheAgentWhenAdvertisedAndAReopenedChatKeepsItsFolder() async throws {
+    private static func config(_ folder: String = "/projects/app") -> VitruvianCodeConfiguration {
+        VitruvianCodeConfiguration(workingDirectory: folder, activeProvider: agyACPProvider)
+    }
+
+    func testWithNoLiveConnectionNoProcessStartsAndTheListIsTodays() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let lister = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [
-            AgentListedSession(id: "t-2", cwd: "/projects/app/web", title: "Agent's own title",
-                               updatedAt: "2026-11-24T08:00:00Z"),
-            AgentListedSession(id: "a-9", cwd: "/projects/app", title: "Only the agent knows",
-                               updatedAt: "2026-11-24T09:00:00Z"),
-        ])])
-        var specs: [AgentConnectionSpec] = []
-        let session = makeSession(rig: rig, lister: { spec in specs.append(spec); return lister })
-        let config = VitruvianCodeConfiguration(workingDirectory: "/projects/app", activeProvider: Self.agyACPProvider)
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box)
+        session.refreshSessions(configuration: Self.config())
+        session.toggleSessions(configuration: Self.config())
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(box.items.isEmpty)
+        XCTAssertEqual(session.sessions, transcriptRows)
+    }
 
-        session.refreshSessions(configuration: config, mayStartAgent: true)
+    func testTheLiveConnectionsListIsUsedAndAReopenedChatKeepsItsFolder() async throws {
+        let rig = ComposerRig()
+        rig.sessions = transcriptRows
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { connection in
+            connection.pages = [nil: AgentSessionPage(sessions: [
+                AgentListedSession(id: "t-2", cwd: "/projects/app/web", title: "Agent's own title",
+                                   updatedAt: "2026-11-24T08:00:00Z"),
+                AgentListedSession(id: "a-9", cwd: "/projects/app", title: "Only the agent knows",
+                                   updatedAt: "2026-11-24T09:00:00Z"),
+            ])]
+        }
+        let live = try await openLiveChat(session, box: box, config: Self.config())
+
+        session.refreshSessions(configuration: Self.config())
         // Today's list shows at once; the agent's replaces it when it answers.
         XCTAssertEqual(session.sessions.map(\.id), ["t-2", "t-1"])
         try await waitUntil("agent list shown") { session.sessions.map(\.id) == ["a-9", "t-2"] }
         XCTAssertEqual(session.sessions.map(\.title), ["Only the agent knows", "Agent's own title"])
         XCTAssertEqual(session.sessions.map(\.workspace), ["/projects/app", "/projects/app/web"])
         XCTAssertEqual(session.sessions[1].preview, "hello")
-        XCTAssertEqual(lister.requests.map(\.cwd), ["/projects/app"])
-        XCTAssertEqual(specs.first?.provider.id, Self.agyACPProvider.id)
-        // A connection started only for the list is stopped after it.
-        XCTAssertEqual(lister.stopCount, 1)
+        XCTAssertEqual(live.listRequests.map(\.cwd), ["/projects/app"])
+        // Asked over the chat's own connection: none started, and it stays open.
+        XCTAssertEqual(box.items.count, 1)
+        XCTAssertTrue(live.isConnected)
 
-        // The listed folder feeds the reopened chat's folder.
-        session.resume(session.sessions[1], configuration: config)
-        XCTAssertEqual(session.workingDirectory(for: config), "/projects/app/web")
+        session.resume(session.sessions[1], configuration: Self.config())
+        XCTAssertEqual(session.workingDirectory(for: Self.config()), "/projects/app/web")
         XCTAssertEqual(session.sessionTitle, "Agent's own title")
     }
 
-    func testWithoutAListerTheListIsTodays() {
+    func testALiveConnectionWithoutTheListIsNotAsked() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let session = makeSession(rig: rig, lister: nil)
-        session.refreshSessions(configuration: VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider))
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { $0.capabilities.listSessions = false }
+        let live = try await openLiveChat(session, box: box, config: Self.config())
+        session.refreshSessions(configuration: Self.config())
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(live.listRequests.isEmpty)
         XCTAssertEqual(session.sessions, transcriptRows)
     }
 
-    func testAnAgentWithoutTheListFallsBackAndIsNotAskedAgain() async throws {
+    func testAnotherAgentsLiveConnectionIsNotAsked() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let lister = FakeSessionLister(pages: [:], error: ACPConnectionError.sessionListNotAdvertised)
-        var made = 0
-        let session = makeSession(rig: rig, lister: { _ in made += 1; return lister })
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
-
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("lister stopped") { lister.stopCount == 1 }
-        XCTAssertEqual(session.sessions, transcriptRows)
-        session.refreshSessions(configuration: config, mayStartAgent: true)
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box)
+        let live = try await openLiveChat(session, box: box, config: Self.config())
+        session.refreshSessions(configuration: VitruvianCodeConfiguration(workingDirectory: "/projects/app",
+                                                                          activeProvider: .claude))
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(made, 1)
+        XCTAssertTrue(live.listRequests.isEmpty)
+        XCTAssertEqual(session.sessions, transcriptRows)
+    }
+
+    func testAnAgentThatSaysItHasNoListFallsBackAndIsNotAskedAgain() async throws {
+        let rig = ComposerRig()
+        rig.sessions = transcriptRows
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { $0.listError = ACPConnectionError.sessionListNotAdvertised }
+        let live = try await openLiveChat(session, box: box, config: Self.config())
+        session.refreshSessions(configuration: Self.config())
+        try await waitUntil("asked once") { live.listRequests.count == 1 }
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        session.refreshSessions(configuration: Self.config())
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertEqual(live.listRequests.count, 1)
         XCTAssertEqual(session.sessions, transcriptRows)
     }
 
     func testAFailedListKeepsTodaysListAndAsksAgainNextTime() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let lister = FakeSessionLister(pages: [:], error: ACPTransportError.connectionClosed("agent exited"))
-        var made = 0
-        let session = makeSession(rig: rig, lister: { _ in made += 1; return lister })
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
-
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("first lister stopped") { lister.stopCount == 1 }
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { $0.listError = ACPTransportError.connectionClosed("gone") }
+        let live = try await openLiveChat(session, box: box, config: Self.config())
+        session.refreshSessions(configuration: Self.config())
+        try await waitUntil("asked once") { live.listRequests.count == 1 }
+        try? await Task.sleep(nanoseconds: 30_000_000)
         XCTAssertEqual(session.sessions, transcriptRows)
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("second lister stopped") { lister.stopCount == 2 }
-        XCTAssertEqual(made, 2)
+        session.refreshSessions(configuration: Self.config())
+        try await waitUntil("asked again") { live.listRequests.count == 2 }
+        try? await Task.sleep(nanoseconds: 30_000_000)
         XCTAssertEqual(session.sessions, transcriptRows)
     }
 
-    func testOnlyOneListingRunsAtATimeAndItsAnswerIsUsed() async throws {
+    func testOneRequestAtATimeAndItsAnswerIsUsed() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let slow = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "agent-1")])])
-        slow.hold = true
-        var made = 0
-        let session = makeSession(rig: rig, lister: { _ in made += 1; return slow })
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
-
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("asked") { slow.requests.count == 1 }
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        XCTAssertEqual(made, 1)
-        slow.release()
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { connection in
+            connection.pages = [nil: AgentSessionPage(sessions: [AgentListedSession(id: "agent-1")])]
+            connection.holdList = true
+        }
+        let live = try await openLiveChat(session, box: box, config: Self.config())
+        session.refreshSessions(configuration: Self.config())
+        try await waitUntil("asked") { live.listRequests.count == 1 }
+        session.refreshSessions(configuration: Self.config())
+        session.refreshSessions(configuration: Self.config())
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(live.listRequests.count, 1)
+        live.releaseList()
         try await waitUntil("answer shown") { session.sessions.map(\.id) == ["agent-1"] }
-        XCTAssertEqual(slow.stopCount, 1)
     }
 
     func testAnAnswerForAnotherFolderIsDropped() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let slow = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "stale")])])
-        slow.hold = true
-        var made = 0
-        let session = makeSession(rig: rig, lister: { _ in made += 1; return slow })
-        session.refreshSessions(configuration: VitruvianCodeConfiguration(workingDirectory: "/one",
-                                                                          activeProvider: Self.agyACPProvider),
-                                mayStartAgent: true)
-        try await waitUntil("asked") { slow.requests.count == 1 }
-        session.refreshSessions(configuration: VitruvianCodeConfiguration(workingDirectory: "/two",
-                                                                          activeProvider: Self.agyACPProvider),
-                                mayStartAgent: true)
-        XCTAssertEqual(made, 1)
-        slow.release()
-        try await waitUntil("slow stopped") { slow.stopCount == 1 }
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { connection in
+            connection.pages = [nil: AgentSessionPage(sessions: [AgentListedSession(id: "stale")])]
+            connection.holdList = true
+        }
+        let live = try await openLiveChat(session, box: box, config: Self.config("/one"))
+        session.refreshSessions(configuration: Self.config("/one"))
+        try await waitUntil("asked") { live.listRequests.count == 1 }
+        session.refreshSessions(configuration: Self.config("/two"))
+        live.releaseList()
+        try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(session.sessions, transcriptRows)
-    }
-
-    func testTheAgentsAnswerIsReusedForAMinute() async throws {
-        let rig = ComposerRig()
-        rig.sessions = transcriptRows
-        var made = 0
-        var listers: [FakeSessionLister] = []
-        let session = makeSession(rig: rig, lister: { _ in
-            made += 1
-            let lister = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "a-\(made)")])])
-            listers.append(lister)
-            return lister
-        })
-        var now = Date(timeIntervalSince1970: 1_900_000_000)
-        session.sessionHistoryNow = { now }
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
-
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("first answer") { session.sessions.map(\.id) == ["a-1"] }
-        now += 59
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        // Shown again from the cache, with no new process.
-        XCTAssertEqual(session.sessions.map(\.id), ["a-1"])
-        XCTAssertEqual(made, 1)
-        now += 2
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("asked again") { session.sessions.map(\.id) == ["a-2"] }
-        XCTAssertEqual(made, 2)
-    }
-
-    func testAListingThatRunsTooLongIsStoppedAndTodaysListKept() async throws {
-        let rig = ComposerRig()
-        rig.sessions = transcriptRows
-        let stuck = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "late")])])
-        stuck.hold = true
-        var made = 0
-        let session = makeSession(rig: rig, lister: { _ in made += 1; return stuck })
-        session.sessionHistoryTimeout = 0.05
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
-
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        try await waitUntil("stopped by the timeout") { stuck.stopCount >= 1 }
-        try? await Task.sleep(nanoseconds: 20_000_000)
-        XCTAssertEqual(session.sessions, transcriptRows)
-        // The slot is free again: the next open asks again.
-        stuck.hold = false
-        session.refreshSessions(configuration: config, mayStartAgent: true)
-        XCTAssertEqual(made, 2)
-    }
-
-    func testOnlyOpeningTheDrawerStartsAnAgentForTheList() async throws {
-        let rig = ComposerRig()
-        rig.sessions = transcriptRows
-        let lister = FakeSessionLister(pages: [nil: AgentSessionPage(sessions: [AgentListedSession(id: "agent-1")])])
-        var made = 0
-        let session = makeSession(rig: rig, lister: { _ in made += 1; return lister })
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
-
-        session.refreshSessions(configuration: config)
-        try? await Task.sleep(nanoseconds: 20_000_000)
-        XCTAssertEqual(made, 0)
-        XCTAssertEqual(session.sessions, transcriptRows)
-        session.toggleSessions(configuration: config)
-        try await waitUntil("drawer asks") { session.sessions.map(\.id) == ["agent-1"] }
-        XCTAssertEqual(made, 1)
     }
 
     func testSessionInfoFromTheOpenChatUpdatesItsRow() async throws {
         let rig = ComposerRig()
         rig.sessions = transcriptRows
-        let connections = HistoryMockBox()
-        let session = makeSession(rig: rig, lister: nil, makeConnection: { spec in
-            let connection = HistoryMockConnection()
-            connections.items.append(connection)
-            return connection
-        })
-        let config = VitruvianCodeConfiguration(activeProvider: Self.agyACPProvider)
+        let box = HistoryMockBox()
+        let session = makeSession(rig: rig, box: box) { $0.capabilities.listSessions = false }
+        let config = Self.config()
         session.refreshSessions(configuration: config)
         session.resume(transcriptRows[1], configuration: config)
         session.send("Continue", configuration: config, agentPath: "/fake/agy")
-        try await waitUntil("prompt sent") { connections.items.first?.promptCount == 1 }
+        try await waitUntil("prompt sent") { box.items.first?.promptCount == 1 }
 
-        connections.items[0].emit(.sessionInfo(title: "Live title from agy", updatedAt: "2026-11-24T11:00:00Z"))
+        box.items[0].emit(.sessionInfo(title: "Live title from agy", updatedAt: "2026-11-24T11:00:00Z"))
         try await waitUntil("row retitled") {
             session.sessions.first(where: { $0.id == "t-1" })?.title == "Live title from agy"
         }
         XCTAssertEqual(session.sessions.first(where: { $0.id == "t-1" })?.modified,
                        AgentSessionHistory.parseDate("2026-11-24T11:00:00Z"))
         XCTAssertEqual(session.sessions.first(where: { $0.id == "t-2" })?.title, "From transcript two")
-        connections.items[0].finish()
+        box.items[0].finish()
     }
 }
 
-/// A lister that answers from a table of pages, or fails, and counts its stops.
+/// A lister that answers from a table of pages (for `fetchAll`).
 @MainActor
 private final class FakeSessionLister: AgentSessionListing {
     let pages: [String?: AgentSessionPage]
-    let error: (any Error)?
     var requests: [(cwd: String?, cursor: String?)] = []
-    var stopCount = 0
-    var hold = false
-    private var held: CheckedContinuation<Void, Never>?
 
-    init(pages: [String?: AgentSessionPage], error: (any Error)? = nil) {
+    init(pages: [String?: AgentSessionPage]) {
         self.pages = pages
-        self.error = error
     }
 
     func listSessionPage(cwd: String?, cursor: String?) async throws -> AgentSessionPage {
         requests.append((cwd, cursor))
-        if hold { await withCheckedContinuation { held = $0 } }
-        if stopped { throw ACPConnectionError.alreadyStopped }
-        if let error { throw error }
         return pages[cursor] ?? AgentSessionPage()
     }
+}
 
-    func release() {
-        held?.resume()
-        held = nil
-    }
-
-    private var stopped = false
-
-    /// Like a real connection: stopping ends a request still waiting.
-    func stop() async {
-        stopCount += 1
-        if held != nil {
-            stopped = true
-            release()
-        }
-    }
+private final class HistoryCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
 }
 
 @MainActor
@@ -551,15 +509,22 @@ private final class HistoryMockBox {
     var items: [HistoryMockConnection] = []
 }
 
+/// A chat's live connection that can also answer `session/list`.
 @MainActor
-private final class HistoryMockConnection: PersistentAgentConnection {
-    var capabilities = AgentCapabilities(resumeSession: true)
+private final class HistoryMockConnection: PersistentAgentConnection, AgentSessionListing {
+    var capabilities = AgentCapabilities(resumeSession: true, listSessions: true)
     let events: AsyncStream<AgentEvent>
     private let continuation: AsyncStream<AgentEvent>.Continuation
     private var promptContinuation: CheckedContinuation<AgentStopReason, any Error>?
     private(set) var promptCount = 0
     private var stopped = false
     var isConnected: Bool { !stopped }
+
+    var pages: [String?: AgentSessionPage] = [:]
+    var listError: (any Error)?
+    var holdList = false
+    private var heldList: CheckedContinuation<Void, Never>?
+    private(set) var listRequests: [(cwd: String?, cursor: String?)] = []
 
     init() {
         var captured: AsyncStream<AgentEvent>.Continuation!
@@ -585,5 +550,17 @@ private final class HistoryMockConnection: PersistentAgentConnection {
     func finish() {
         promptContinuation?.resume(returning: .endTurn)
         promptContinuation = nil
+    }
+
+    func listSessionPage(cwd: String?, cursor: String?) async throws -> AgentSessionPage {
+        listRequests.append((cwd, cursor))
+        if holdList { await withCheckedContinuation { heldList = $0 } }
+        if let listError { throw listError }
+        return pages[cursor] ?? AgentSessionPage()
+    }
+
+    func releaseList() {
+        heldList?.resume()
+        heldList = nil
     }
 }

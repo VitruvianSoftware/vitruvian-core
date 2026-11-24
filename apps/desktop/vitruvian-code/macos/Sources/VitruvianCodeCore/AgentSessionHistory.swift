@@ -56,38 +56,40 @@ public struct AgentSessionPage: Equatable, Sendable {
     }
 }
 
-/// A connection that can ask its agent for the agent's own past sessions. A
-/// connection that has no session yet starts its process to ask; whoever made
-/// it for that stops it afterwards.
+/// An open connection that can ask its agent for the agent's own past sessions.
+/// Asking never starts a process: only a chat's live connection is asked.
 @MainActor
 public protocol AgentSessionListing: AnyObject {
     /// Throws `ACPConnectionError.sessionListNotAdvertised` when the agent does not offer it.
     func listSessionPage(cwd: String?, cursor: String?) async throws -> AgentSessionPage
-    func stop() async
 }
 
 /// The chat's "Recent sessions" list, read from the agent where it offers that.
 ///
-/// Each agent owns its own history. Where the agent advertises `session/list`,
-/// the rows (which sessions, their titles, times and folders) come from it, and
-/// `session_info_update` keeps an open row current. Where it does not, the
-/// transcript readers (`Environment.listSessions`) give today's list unchanged.
-/// Nothing is stored: every refresh asks again.
+/// Each agent owns its own history. When a chat's live connection to the agent
+/// is open and advertises `session/list`, the rows (which sessions, their
+/// titles, times and folders) come from it, and `session_info_update` keeps an
+/// open row current. Otherwise the transcript readers (`Environment.listSessions`)
+/// give today's list unchanged. Nothing is stored: every refresh asks again.
 ///
-/// Follows T3 Code at `d6e5f2e0`: `packages/provider-acp-registry/src/server/probe.ts`
-/// (`listAcpRegistrySessions`: initialize, `session/list` with `cwd` and `cursor`,
-/// at most 256 entries, entries without an id dropped) and
+/// No agent process is ever started just to list. Measured on agy 1.5.16, that
+/// took 2 to 12 seconds, 0.9 to 1.5 GB for agy itself, and started every MCP
+/// server in the user's agy settings, for a list the transcript readers give
+/// at once. T3 Code at `d6e5f2e0` does not list agy sessions over ACP either:
+/// `apps/server/src/provider/AntigravityProvider.ts` sets no
+/// `acpSessionManagement`, which only registry agents have
+/// (`packages/provider-acp-registry/src/server/driver.ts`).
+///
+/// The request and row rules follow T3 Code's `listAcpRegistrySessions`
+/// (`packages/provider-acp-registry/src/server/probe.ts`: `session/list` with
+/// `cwd` and `cursor`, entries without an id dropped) and
 /// `packages/provider-acp/src/server/runtimeModel.ts` (`session_info_update`:
-/// trimmed title and time, a null clears).
+/// trimmed title and time).
 public enum AgentSessionHistory {
     /// Pages followed in one refresh, so an agent that keeps handing out cursors cannot hold the list.
     public static let maxPages = 10
     /// Rows kept, the same number the transcript reader's query takes (`LIMIT 200`).
     public static let maxSessions = 200
-    /// How long the agent's answer is reused before agy is started again for it.
-    public static let cacheLifetime: TimeInterval = 60
-    /// Longest a listing may run, T3 Code's `MANAGEMENT_TIMEOUT` (`probe.ts`).
-    public static let timeout: TimeInterval = 60
     /// Longest title kept, as T3 Code bounds it.
     static let maxTitleLength = 1_024
 
@@ -201,17 +203,6 @@ public enum AgentSessionHistory {
         let firstLine = raw.split(separator: "\n").first.map(String.init) ?? ""
         let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : String(trimmed.prefix(maxTitleLength))
-    }
-
-    /// The connection the live app lists an agent's sessions with, or nil when that
-    /// agent's connection offers no `session/list`. Only agy on ACP qualifies today:
-    /// agy advertises `sessionCapabilities.list` (1.5.16), while the Claude helper
-    /// does not (`claude-helper/src/agent.ts`) and command lines have no protocol.
-    @MainActor
-    public static func liveLister(spec: AgentConnectionSpec,
-                                  environment: VitruvianCodeEngine.Environment) -> (any AgentSessionListing)? {
-        guard spec.provider.route == .antigravity, spec.provider.connection == .acp else { return nil }
-        return AntigravityACPConnection(spec: spec, environment: environment)
     }
 }
 

@@ -1,5 +1,7 @@
 {"direction":"client","method":"initialize"}
 {"direction":"agent","send":{"jsonrpc":"2.0","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"load_session":true,"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true},"sessionCapabilities":{"resume":{},"close":{},"load":{},"list":{},"additionalDirectories":{}},"session_capabilities":{"resume":{},"close":{},"load":{},"list":{},"additionalDirectories":{}},"auth":{"logout":{}},"_meta":{"antigravity":{"tier":true,"systemPrompt":{"append":true}}}},"agentInfo":{"name":"Antigravity ACP Server","version":"1.5.16"},"authMethods":[{"id":"oauth-personal","name":"Log in with Google","description":"Log in with your Google account"},{"id":"gemini-api-key","name":"Gemini API key","description":"Use an API key with Gemini Developer API"}]},"id":"$id"}}
+{"direction":"client","method":"session/new"}
+{"direction":"agent","send":{"jsonrpc":"2.0","result":{"sessionId":"0b7f3c1e-0000-4a5b-9c6d-00000000000a"},"id":"$id"}}
 {"direction":"client","method":"session/list"}
 {"direction":"agent","send":{"jsonrpc":"2.0","error":{"code":-32000,"message":"Authentication required"},"id":"$id"}}
 {"direction":"client","method":"authenticate"}
