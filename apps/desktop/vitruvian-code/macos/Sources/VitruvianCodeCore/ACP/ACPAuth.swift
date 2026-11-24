@@ -34,7 +34,8 @@ import Foundation
 // * an **agent** method (no `type`, or `agent`): the next connection sends ACP `authenticate`
 //   with its ID right after `initialize`, then opens the session and retries the turn;
 // * a **terminal** method: the app runs the agent's own program with the method's `args` added,
-//   as separate arguments (never a shell line), and shows what it prints in a sheet. Exit
+//   as separate arguments (never a shell line), in a pseudo-terminal as T3 Code does, and shows
+//   what it prints in a sheet. Exit
 //   status 0 is success: the app reconnects and retries the turn. Anything else, or Cancel, is
 //   a failure and nothing is retried (ACP: protocol/authentication).
 //
@@ -44,7 +45,8 @@ import Foundation
 // run with the chat's `CLAUDE_CONFIG_DIR` as T3 Code's docs say (`docs/user/providers-claude.md`).
 //
 // Credentials stay with the agent: the app never reads, keeps or shows a token. The sign-in
-// program gets only a short list of the app's own variables (home, user, PATH, locale) plus
+// program gets only a short list of the app's own variables (home, user, PATH, locale, proxy
+// and certificate settings) plus
 // what the method names, so no stored API key or token reaches it, and nothing it prints is
 // logged. The app never types into its prompts: the user does any browser step, and the
 // sheet's reply field sends only what the user types.
@@ -54,7 +56,7 @@ import Foundation
 public struct AgentSignInCommand: Equatable, Sendable, Codable {
     public var executable: String
     public var arguments: [String]
-    /// The whole environment the program gets: the app's short list plus the method's own.
+    /// The whole environment the program gets: the app's short list, `TERM`, and the method's own.
     public var environment: [String: String]
     public var workingDirectory: String?
     /// The variables the method set, by name, so the sheet can show them before it runs.
@@ -132,8 +134,16 @@ public enum ACPAuth {
     /// token or other secret the app or the agent was started with.
     public static let inheritedVariables: Set<String> = [
         "HOME", "USER", "LOGNAME", "SHELL", "PATH", "TMPDIR",
-        "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "TERM", "__CF_USER_TEXT_ENCODING",
+        "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "__CF_USER_TEXT_ENCODING",
+        // What a sign-in needs to reach the network from behind a proxy or a company CA.
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+        "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+        "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
     ]
+
+    /// The terminal type the sign-in program sees, as node-pty's `name` gives T3 Code's
+    /// (`apps/server/src/terminal/NodePtyAdapter.ts`).
+    public static let terminalType = "xterm-256color"
 
     /// A method may not set these: they change which programs run or what they load, and ACP
     /// says not to apply them without the user's approval.
@@ -204,6 +214,7 @@ public enum ACPAuth {
         for (key, value) in base where inheritedVariables.contains(key) {
             environment[key] = value
         }
+        environment["TERM"] = terminalType
         var refused: [String] = []
         for (key, value) in method {
             if isRefusedMethodVariable(key) {
@@ -274,9 +285,9 @@ public enum ACPAuth {
         return result
     }
 
-    /// Runs a sign-in command as a real child process in its own process group.
+    /// Runs a sign-in command in a pseudo-terminal, in its own session and process group.
     public static let liveLauncher: ACPSignInLauncher = { spec in
-        try ACPLiveSignInProcess(spec)
+        try ACPPtySignInProcess(spec)
     }
 }
 
@@ -295,42 +306,180 @@ public protocol ACPSignInProcess: AnyObject, Sendable {
 
 public typealias ACPSignInLauncher = @Sendable (AgentProcessLaunchSpec) throws -> any ACPSignInProcess
 
-/// `AgentProcess` (argv only, `posix_spawn`, own process group) behind `ACPSignInProcess`.
-public final class ACPLiveSignInProcess: ACPSignInProcess {
-    public let process: AgentProcess
+/// Why a pseudo-terminal sign-in program could not start.
+public enum ACPSignInProcessError: Error, Equatable, Sendable, LocalizedError {
+    case terminalUnavailable(Int32)
+    case spawnFailed(executable: String, errno: Int32)
+
+    public var errorDescription: String? {
+        switch self {
+        case .terminalUnavailable(let code):
+            return "Could not open a terminal for sign-in (\(String(cString: strerror(code))))."
+        case .spawnFailed(let executable, let code):
+            return "Failed to launch \(executable): \(String(cString: strerror(code)))."
+        }
+    }
+}
+
+/// A sign-in program in a pseudo-terminal, as T3 Code runs one (`node-pty` behind
+/// `packages/shared/src/PtyAdapter.ts`, `apps/server/src/terminal/NodePtyAdapter.ts`, spawned
+/// 80 by 24 from `packages/provider-acp-registry/src/server/auth.ts`). Sign-in tools check
+/// `isatty`, print prompts with no newline and read single keys, so pipes are not enough.
+///
+/// The program is started with `posix_spawn` and its argv as given: no shell. It gets a new
+/// session (`POSIX_SPAWN_SETSID`), so it leads its own process group, and opens the terminal's
+/// far end as standard input, which makes it its controlling terminal; standard output and
+/// standard error are that same terminal. `terminate()` ends the whole group.
+public final class ACPPtySignInProcess: ACPSignInProcess, @unchecked Sendable {
+    public static let columns: UInt16 = 80
+    public static let rows: UInt16 = 24
+
+    public let pid: pid_t
+    public var processGroupID: pid_t { pid }
     public let output: AsyncStream<Data>
 
+    private let masterFD: Int32
+    private let lock = NSLock()
+    private var exit: AgentProcessExit?
+    private var exitWaiters: [CheckedContinuation<AgentProcessExit, Never>] = []
+    private var masterClosed = false
+
     public init(_ spec: AgentProcessLaunchSpec) throws {
-        let process = try AgentProcess(spec)
-        self.process = process
-        let stdout = process.stdout
-        let stderr = process.stderr
+        let master = posix_openpt(O_RDWR | O_NOCTTY)
+        guard master >= 0 else { throw ACPSignInProcessError.terminalUnavailable(errno) }
+        guard grantpt(master) == 0, unlockpt(master) == 0, let namePointer = ptsname(master) else {
+            let code = errno
+            Darwin.close(master)
+            throw ACPSignInProcessError.terminalUnavailable(code)
+        }
+        let slavePath = String(cString: namePointer)
+        _ = fcntl(master, F_SETFD, FD_CLOEXEC)
+        var size = winsize(ws_row: Self.rows, ws_col: Self.columns, ws_xpixel: 0, ws_ypixel: 0)
+        _ = ioctl(master, TIOCSWINSZ, &size)
+
+        var attr: posix_spawnattr_t?
+        posix_spawnattr_init(&attr)
+        defer { posix_spawnattr_destroy(&attr) }
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT))
+
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        // Opened by the new session's leader, without O_NOCTTY: the terminal becomes its
+        // controlling terminal, so `/dev/tty` works too.
+        posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, slavePath, O_RDWR, 0)
+        posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO)
+        posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO)
+        if let directory = spec.workingDirectory, !directory.isEmpty {
+            posix_spawn_file_actions_addchdir_np(&actions, directory)
+        }
+
+        var argv: [UnsafeMutablePointer<CChar>?] = ([spec.executable] + spec.arguments).map { strdup($0) }
+        argv.append(nil)
+        defer { for pointer in argv { free(pointer) } }
+        var envp: [UnsafeMutablePointer<CChar>?] = spec.environment.map { strdup("\($0.key)=\($0.value)") }
+        envp.append(nil)
+        defer { for pointer in envp { free(pointer) } }
+
+        var child: pid_t = 0
+        let rc = spec.executable.contains("/")
+            ? posix_spawn(&child, spec.executable, &actions, &attr, &argv, &envp)
+            : posix_spawnp(&child, spec.executable, &actions, &attr, &argv, &envp)
+        guard rc == 0 else {
+            Darwin.close(master)
+            throw ACPSignInProcessError.spawnFailed(executable: spec.executable, errno: rc)
+        }
+        self.pid = child
+        self.masterFD = master
+
         self.output = AsyncStream { continuation in
-            let task = Task.detached {
-                await withTaskGroup(of: Void.self) { group in
-                    group.addTask { for await chunk in stdout { continuation.yield(chunk) } }
-                    group.addTask { for await chunk in stderr { continuation.yield(chunk) } }
+            Thread.detachNewThread {
+                var buffer = [UInt8](repeating: 0, count: 16_384)
+                while true {
+                    let count = buffer.withUnsafeMutableBytes { Darwin.read(master, $0.baseAddress, $0.count) }
+                    if count > 0 {
+                        continuation.yield(Data(buffer[0..<count]))
+                    } else if count < 0 && errno == EINTR {
+                        continue
+                    } else {
+                        // EIO once every holder of the far end has closed it.
+                        break
+                    }
                 }
                 continuation.finish()
             }
-            continuation.onTermination = { _ in task.cancel() }
+        }
+
+        Thread.detachNewThread { [self] in
+            var status: Int32 = 0
+            while Darwin.waitpid(child, &status, 0) < 0 && errno == EINTR {}
+            let low = status & 0x7f
+            let ended = low == 0
+                ? AgentProcessExit(exitCode: (status >> 8) & 0xff)
+                : AgentProcessExit(exitCode: nil, signal: low)
+            let waiters: [CheckedContinuation<AgentProcessExit, Never>] = lock.withLock {
+                exit = ended
+                defer { exitWaiters.removeAll() }
+                return exitWaiters
+            }
+            for waiter in waiters { waiter.resume(returning: ended) }
         }
     }
 
-    public func sendInput(_ data: Data) {
-        process.sendInput(data)
+    deinit {
+        closeMaster()
     }
 
-    public func waitForExit() async -> AgentProcessExit {
-        while true {
-            if let exit = try? await process.waitForExit(timeout: 3_600) {
-                return exit
+    public func sendInput(_ data: Data) {
+        let closed = lock.withLock { masterClosed }
+        guard !closed else { return }
+        data.withUnsafeBytes { raw in
+            var offset = 0
+            while offset < raw.count {
+                let written = Darwin.write(masterFD, raw.baseAddress! + offset, raw.count - offset)
+                if written > 0 { offset += written } else if errno != EINTR { break }
             }
         }
     }
 
+    public func waitForExit() async -> AgentProcessExit {
+        await withCheckedContinuation { waiter in
+            let ended: AgentProcessExit? = lock.withLock {
+                if let exit { return exit }
+                exitWaiters.append(waiter)
+                return nil
+            }
+            if let ended { waiter.resume(returning: ended) }
+        }
+    }
+
+    /// `SIGHUP` and `SIGTERM` to the whole group, then `SIGKILL` to anything left after a second.
+    /// The terminal stays open until this object goes, so output already written is still read;
+    /// the reader ends once nothing holds the far end.
     public func terminate() async {
-        await process.terminate()
+        let group = pid
+        _ = Darwin.kill(-group, SIGHUP)
+        _ = Darwin.kill(-group, SIGTERM)
+        let deadline = ProcessInfo.processInfo.systemUptime + AgentProcess.defaultTerminationGrace
+        while AgentProcess.processGroupExists(group) && ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        if AgentProcess.processGroupExists(group) {
+            _ = Darwin.kill(-group, SIGKILL)
+            let killDeadline = ProcessInfo.processInfo.systemUptime + 0.5
+            while AgentProcess.processGroupExists(group) && ProcessInfo.processInfo.systemUptime < killDeadline {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+    }
+
+    private func closeMaster() {
+        let shouldClose = lock.withLock { () -> Bool in
+            if masterClosed { return false }
+            masterClosed = true
+            return true
+        }
+        if shouldClose { Darwin.close(masterFD) }
     }
 }
 

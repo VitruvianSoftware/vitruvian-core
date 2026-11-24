@@ -244,6 +244,39 @@ final class ACPAuthTests: XCTestCase {
         XCTAssertEqual(run.output.trimmingCharacters(in: .whitespacesAndNewlines), "$HOME a;b *")
     }
 
+    /// A stand-in for a sign-in tool that needs a terminal: it refuses to run unless its input and
+    /// output are terminals and `/dev/tty` opens, prints a prompt with no newline, and reads a reply.
+    private static let needsATerminal = AgentSignInCommand(
+        executable: "/bin/sh",
+        arguments: ["-c", #"test -t 0 && test -t 1 && (: </dev/tty) || { echo "not a terminal"; exit 9; }; printf "Paste code: "; read code; echo "got [$code] TERM=$TERM""#],
+        environment: ACPAuth.signInEnvironment(base: ["PATH": "/usr/bin:/bin"], method: [:]).environment
+    )
+
+    func testATerminalSignInRunsInAPseudoTerminal() async throws {
+        let run = try XCTUnwrap(ACPSignInRun(method: AgentSignInMethod(id: "tty", name: "TTY", kind: .terminal(Self.needsATerminal))))
+        run.start()
+        try await waitUntil("the prompt with no newline") { run.output.contains("Paste code: ") }
+        XCTAssertEqual(run.state, .running)
+        run.send("ABCD-1234")
+        let state = try await withACPTestTimeout(seconds: 5) { await run.waitUntilFinished() }
+        XCTAssertEqual(state, .succeeded, run.output)
+        XCTAssertTrue(run.output.contains("got [ABCD-1234] TERM=xterm-256color"), run.output)
+        XCTAssertFalse(run.output.contains("not a terminal"), run.output)
+        XCTAssertFalse(run.output.contains("\r"), "the terminal's carriage returns are taken out")
+    }
+
+    func testTheSameProgramFailsUnderPipes() async throws {
+        // The check above means something only if the stand-in really needs a terminal.
+        let process = try AgentProcess(AgentProcessLaunchSpec(
+            executable: Self.needsATerminal.executable,
+            arguments: Self.needsATerminal.arguments,
+            environment: Self.needsATerminal.environment
+        ))
+        process.closeInput()
+        let exit = try await process.waitForExit(timeout: 5)
+        XCTAssertEqual(exit.exitCode, 9)
+    }
+
     func testOutputStreamsIntoTheRunAsItIsPrinted() async throws {
         let fake = FakeSignInProcess()
         let run = try XCTUnwrap(ACPSignInRun(method: Self.terminalMethod, launcher: { _ in fake }))
@@ -322,13 +355,13 @@ final class ACPAuthTests: XCTestCase {
         // A stand-in sign-in program that leaves a second process in its group.
         let command = AgentSignInCommand(executable: "/bin/sh", arguments: ["-c", "sleep 30 & sleep 30"], environment: [:])
         let method = AgentSignInMethod(id: "slow", name: "Slow", kind: .terminal(command))
-        let launched = LockedBox<ACPLiveSignInProcess?>(nil)
+        let launched = LockedBox<ACPPtySignInProcess?>(nil)
 
         let (session, connections) = makeSession()
         let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.liveProvider)
         try await failFirstTurnWithSignIn(session, connections, config: config, methods: [method])
         session.signInLauncher = { spec in
-            let process = try ACPLiveSignInProcess(spec)
+            let process = try ACPPtySignInProcess(spec)
             launched.withValue { $0 = process }
             return process
         }
@@ -336,7 +369,7 @@ final class ACPAuthTests: XCTestCase {
         let run = try XCTUnwrap(session.signInRun)
         run.start()
         let process = try XCTUnwrap(launched.value)
-        let group = process.process.processGroupID
+        let group = process.processGroupID
         try await waitUntil("both sleeps run") { Self.processCount(inGroup: group) >= 2 }
 
         await run.cancel()
@@ -392,7 +425,7 @@ final class ACPAuthTests: XCTestCase {
             XCTAssertFalse(command.arguments.contains { $0.contains(secret) }, "argv holds no secret")
             XCTAssertFalse(command.environment.values.contains { $0.contains(secret) }, "the environment holds no secret")
         }
-        XCTAssertEqual(Set(command.environment.keys), ["HOME", "PATH", "DEMO_LOGIN_MODE"],
+        XCTAssertEqual(Set(command.environment.keys), ["HOME", "PATH", "TERM", "DEMO_LOGIN_MODE"],
                        "only the app's short list and the method's own variable")
         XCTAssertEqual(command.environment["PATH"], "/usr/bin:/bin", "the method cannot change PATH")
         XCTAssertEqual(command.refusedVariableNames, ["DYLD_INSERT_LIBRARIES", "NODE_OPTIONS", "PATH"])
@@ -416,6 +449,30 @@ final class ACPAuthTests: XCTestCase {
         for value in ["tok-printed-by-agent", "typed-by-user-code", "browser-mode-value", "--login", "/usr/bin:/bin", "/Users/someone"] {
             XCTAssertFalse(log.contains(value), "the log holds \(value): \(log)")
         }
+    }
+
+    func testNetworkSettingsAndTERMPassButNoSecretDoes() {
+        var base: [String: String] = [
+            "HOME": "/Users/someone", "TMPDIR": "/var/folders/x/T/",
+            "ANTHROPIC_API_KEY": "sk-ant-api", "ANTHROPIC_AUTH_TOKEN": "sk-ant-token",
+            "OPENAI_API_KEY": "sk-openai", "GH_TOKEN": "ghp_x", "AWS_SECRET_ACCESS_KEY": "aws-secret",
+            "TERM": "dumb",
+        ]
+        let network = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
+                       "no_proxy", "all_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS"]
+        for name in network { base[name] = "value-of-\(name)" }
+        let environment = ACPAuth.signInEnvironment(base: base, method: [:]).environment
+        for name in network {
+            XCTAssertEqual(environment[name], "value-of-\(name)", name)
+        }
+        XCTAssertEqual(environment["TMPDIR"], "/var/folders/x/T/")
+        XCTAssertEqual(environment["TERM"], "xterm-256color", "the pseudo-terminal's type, not the app's")
+        for secret in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "GH_TOKEN", "AWS_SECRET_ACCESS_KEY"] {
+            XCTAssertNil(environment[secret], secret)
+        }
+        let claude = ACPAuth.claudeSignInMethods(claudePath: "/bin/claude", helperEnvironment: base, workingDirectory: nil)
+        XCTAssertNil(claude.first?.command?.environment["ANTHROPIC_AUTH_TOKEN"])
+        XCTAssertEqual(claude.first?.command?.environment["HTTPS_PROXY"], "value-of-HTTPS_PROXY")
     }
 
     // MARK: - Claude on the Agent SDK
