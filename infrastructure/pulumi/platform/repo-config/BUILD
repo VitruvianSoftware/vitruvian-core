@@ -56,6 +56,13 @@ _CACHE_LIMIT_CASES = [
     "org_higher_never_lowered",
     "org_get_refused_repo_confirmed",
     "org_get_refused_repo_refused",
+    "org_get_malformed_null",
+    "org_get_malformed_zero",
+    "org_get_malformed_alpha",
+    "org_get_malformed_empty",
+    "org_get_malformed_multiline",
+    "org_get_malformed_negative",
+    "org_get_stderr_ignored",
 ]
 
 [

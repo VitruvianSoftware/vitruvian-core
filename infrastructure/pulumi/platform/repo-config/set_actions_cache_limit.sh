@@ -65,11 +65,26 @@ org_failed=0
 skip_repo_put=0
 org_limit_gb=""
 
+cleanup_org_get_err_file() {
+	if [ -n "${org_get_err_file:-}" ]; then
+		rm -f "${org_get_err_file}"
+	fi
+}
+org_get_err_file="$(mktemp)"
+trap cleanup_org_get_err_file EXIT
+org_get_ok=0
 if org_get_out="$("$GH" api \
 	-H "Accept: application/vnd.github+json" \
 	-H "X-GitHub-Api-Version: 2022-11-28" \
 	"orgs/${org}/actions/cache/storage-limit" \
-	--jq '.max_cache_size_gb' 2>&1)" && [[ -n "${org_get_out}" && "${org_get_out}" != *$'\n'* && "${org_get_out}" =~ ^[1-9][0-9]*$ ]]; then
+	--jq '.max_cache_size_gb' 2>"${org_get_err_file}")"; then
+	org_get_ok=1
+fi
+org_get_err="$(<"${org_get_err_file}")"
+rm -f "${org_get_err_file}"
+org_get_err_file=""
+
+if [ "${org_get_ok}" -eq 1 ] && [[ -n "${org_get_out}" && "${org_get_out}" != *$'\n'* && "${org_get_out}" =~ ^[1-9][0-9]*$ ]]; then
 	org_limit_gb="${org_get_out}"
 	if [ "${org_limit_gb}" -lt "${limit_gb}" ]; then
 		if printf '%s' "${put_body}" | "$GH" api --method PUT \
@@ -111,7 +126,15 @@ if org_get_out="$("$GH" api \
 		fi
 	fi
 else
-	echo "::warning::Could not read organization ${org} Actions cache storage limit; continuing to repository limit for ${REPO}" >&2
+	if [ -n "${org_get_err}" ]; then
+		cr=$'\r'
+		nl=$'\n'
+		org_get_err_detail="${org_get_err//"${cr}"/ }"
+		org_get_err_detail="${org_get_err_detail//"${nl}"/ }"
+		echo "::warning::Could not read organization ${org} Actions cache storage limit (${org_get_err_detail}); continuing to repository limit for ${REPO}" >&2
+	else
+		echo "::warning::Could not read organization ${org} Actions cache storage limit; continuing to repository limit for ${REPO}" >&2
+	fi
 fi
 
 put_failed=0

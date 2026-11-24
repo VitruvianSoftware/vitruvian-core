@@ -144,6 +144,9 @@ case "${cmd}" in
             if [[ "${endpoint}" == orgs/* ]]; then
                 case "${FAKE_ORG_GET_MODE:-ok}" in
                     ok)
+                        if [ -n "${FAKE_ORG_GET_STDERR:-}" ]; then
+                            printf '%s\n' "${FAKE_ORG_GET_STDERR}" >&2
+                        fi
                         if [ -n "${ORG_STATE_FILE:-}" ] && [ -f "${ORG_STATE_FILE}" ]; then
                             cat "${ORG_STATE_FILE}"
                         else
@@ -162,6 +165,12 @@ case "${cmd}" in
                         ;;
                     invalid)
                         echo "${FAKE_ORG_GET_VALUE:-null}"
+                        exit 0
+                        ;;
+                    malformed)
+                        if [ -n "${FAKE_ORG_GET_VALUE-}" ]; then
+                            printf '%s\n' "${FAKE_ORG_GET_VALUE}"
+                        fi
                         exit 0
                         ;;
                     *)
@@ -270,6 +279,35 @@ run_case() {
 		VAR_LOG="${var_log}" \
 		ORG_STATE_FILE="${case_dir}/org_state" \
 		bash "${script}" >"${case_dir}/stdout" 2>"${case_dir}/stderr"
+}
+
+assert_org_malformed_case() {
+	local val="$1"
+	local org_put_count warn_count org_warn_count err_count stderr_lines
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=malformed
+	export FAKE_ORG_GET_VALUE="${val}"
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org GET returns '${val}', stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls for malformed org output '${val}', got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	if grep -qE 'integer expression expected|syntax error|line [0-9]+:' "${case_dir}/stderr"; then
+		fail "unexpected bash error on stderr for '${val}': $(cat "${case_dir}/stderr")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	org_warn_count="$(grep -c '^::warning::Could not read organization VitruvianSoftware Actions cache storage limit' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	stderr_lines="$(wc -l <"${case_dir}/stderr" | tr -d ' ')"
+	if [ "${warn_count}" -ne 1 ] || [ "${org_warn_count}" -ne 1 ] || [ "${err_count}" -ne 0 ] || [ "${stderr_lines}" -ne 1 ]; then
+		fail "expected exactly 1 org ::warning line and 0 ::error lines for '${val}', got warn=${warn_count} org_warn=${org_warn_count} err=${err_count} lines=${stderr_lines}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
 }
 
 limit_file="${case_dir}/limit.txt"
@@ -553,6 +591,46 @@ org_get_refused_repo_refused)
 	fi
 	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 10'
 	assert_var_set 10
+	;;
+org_get_malformed_null)
+	assert_org_malformed_case "null"
+	;;
+org_get_malformed_zero)
+	assert_org_malformed_case "0"
+	;;
+org_get_malformed_alpha)
+	assert_org_malformed_case "abc"
+	;;
+org_get_malformed_empty)
+	assert_org_malformed_case ""
+	;;
+org_get_malformed_multiline)
+	assert_org_malformed_case $'15\n20'
+	;;
+org_get_malformed_negative)
+	assert_org_malformed_case "-3"
+	;;
+org_get_stderr_ignored)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=15
+	export FAKE_ORG_GET_STDERR="warning: deprecated endpoint"
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org GET emits stderr alongside stdout 15, stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org limit equals 15 with stderr, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	if [ "${warn_count}" -ne 0 ] || [ "${err_count}" -ne 0 ] || [ -s "${case_dir}/stderr" ]; then
+		fail "expected empty stderr (0 warnings, 0 errors), got warn=${warn_count} err=${err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
 	;;
 *)
 	echo "unknown case: ${case_name}" >&2
