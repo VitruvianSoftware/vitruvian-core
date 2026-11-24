@@ -68,6 +68,13 @@ zitadel-apps-relay-apply.yaml action
 # rename left that PR conflicting with main.
 site-sync-downloads.yaml
 
+# Bumps the Claude Code CLI that runs the orchestrator plugin tests
+# (tools/testinfra/claude_cli.bzl) to npm's latest and opens (or refreshes) its
+# pull request, which the merge queue still tests. No inputs. Added 2026-11-24
+# at James's request ("add it to the workflow allowlist too"), so an agent can
+# run it without waiting for the weekly Tuesday schedule.
+claude-cli-pin.yaml
+
 # Delivers one Vitruvian Tabs unit into one environment. Added 2026-11-12 at
 # James's request ("Yes, deploy them"): the rename commit's deploy of
 # build-stack and identity was cancelled and never re-run, so delivery-drift
