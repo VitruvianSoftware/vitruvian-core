@@ -114,9 +114,7 @@ struct MainWindow: View {
                 }
             }
             .overlay {
-                if commandBar.isPresented {
-                    CommandBarOverlay(model: commandBar)
-                }
+                CommandBarOverlayHost(model: commandBar)
             }
             .overlay {
                 ConfettiOverlayView(triggerCount: appearance.confettiTriggerCount)
@@ -199,7 +197,7 @@ struct MainWindow: View {
                 .onDisappear {
                     ui.isMainWindowKey = false
                     search.close()
-                    commandBar.close()
+                    commandBar.closeImmediately()
                     conversation.composer.voiceRecorder.cancelImmediately()
                     conversation.thread.composer.voiceRecorder.cancelImmediately()
                     conversation.composer.isStickerPickerPresented = false

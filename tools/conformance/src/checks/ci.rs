@@ -1076,7 +1076,7 @@ pub(crate) fn non_main_cache_write_problems(c: &str) -> Vec<(&'static str, &'sta
             if u.starts_with("actions/setup-node@") && !cache.is_empty() && !g {
                 p.push(("setup-node cache on", "package-manager-cache: false"));
             }
-            // #5458 lands setup-go cache: false across ci.yaml; enforce explicit cache: true until merged.
+            // An unset cache (setup-go defaults to true) is caught by raw_setup_go_problems.
             if u.starts_with("actions/setup-go@") && cache == "true" && !g {
                 p.push(("setup-go cache: true", "cache: false"));
             }
@@ -1289,6 +1289,164 @@ pub(crate) fn raw_setup_go_problems(content: &str) -> Vec<(usize, String)> {
         }
     }
     flush(&mut uses_line, &mut cache_val, &mut problems);
+    problems
+}
+
+fn is_go_cache_path(path_val: &str) -> bool {
+    let lower = path_val.to_ascii_lowercase();
+    lower.contains("gomodcache")
+        || lower.contains("gocache")
+        || lower.contains("/go/pkg/mod")
+        || lower.contains("/go-build")
+        || lower.contains("go-cache")
+}
+
+fn go_save_if_guarded(expr: &str) -> bool {
+    let norm = expr
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace('"', "'");
+    let bare = norm.trim_start_matches("${{").trim_end_matches("}}").trim();
+    bare.contains("github.ref == 'refs/heads/main'") && !bare.contains("||")
+}
+
+/// Validate that any `actions/cache@` or `actions/cache/save@` step caching a
+/// Go path is guarded by `github.ref == 'refs/heads/main'`. Whether
+/// `actions/setup-go` itself caches is `raw_setup_go_problems`' job (it reports
+/// the line and exempts the main-only composite), so it is not repeated here.
+pub(crate) fn go_cache_save_problems(content: &str) -> Vec<(String, String, String)> {
+    const STEP_KEYS: &[&str] = &[
+        "name:",
+        "id:",
+        "if:",
+        "uses:",
+        "run:",
+        "with:",
+        "env:",
+        "shell:",
+        "continue-on-error:",
+        "working-directory:",
+        "timeout-minutes:",
+    ];
+    #[derive(Default)]
+    struct Step {
+        uses: String,
+        if_expr: Option<String>,
+        has_go_path: bool,
+        active: bool,
+    }
+    let flush = |step: &mut Step, problems: &mut Vec<(String, String, String)>| {
+        if !step.active {
+            return;
+        }
+        if (step.uses.starts_with("actions/cache@") || step.uses.starts_with("actions/cache/save@"))
+            && step.has_go_path
+            && !step.if_expr.as_deref().is_some_and(go_save_if_guarded)
+        {
+            let found = step
+                .if_expr
+                .as_deref()
+                .map(|v| format!("if: {v}"))
+                .unwrap_or_else(|| "no if:".to_string());
+            problems.push((
+                found,
+                "if: github.ref == 'refs/heads/main'".to_string(),
+                "Go cache save step is not restricted to refs/heads/main".to_string(),
+            ));
+        }
+        *step = Step::default();
+    };
+
+    let mut problems = Vec::new();
+    let mut step = Step::default();
+    let mut step_indent: Option<usize> = None;
+    let mut with_indent: Option<usize> = None;
+    let mut block_indent: Option<(usize, bool)> = None; // (indent, is_path_block)
+
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if let Some((b_ind, is_path)) = block_indent {
+            if ind > b_ind {
+                if is_path {
+                    step.has_go_path |= is_go_cache_path(s);
+                }
+                continue;
+            }
+            block_indent = None;
+        }
+        if let Some(si) = step_indent {
+            if ind < si {
+                flush(&mut step, &mut problems);
+                step_indent = None;
+                with_indent = None;
+            }
+        }
+        if let Some(wi) = with_indent {
+            if ind <= wi {
+                with_indent = None;
+            }
+        }
+        if let Some(rest) = s.strip_prefix("- ") {
+            if STEP_KEYS.iter().any(|p| rest.starts_with(p))
+                && (step_indent.is_none() || step_indent == Some(ind))
+            {
+                flush(&mut step, &mut problems);
+                step_indent = Some(ind);
+                with_indent = None;
+                step.active = true;
+                let kv = rest;
+                if let Some(v) = kv.strip_prefix("uses:") {
+                    step.uses = v.split('#').next().unwrap_or("").trim().to_string();
+                } else if let Some(v) = kv.strip_prefix("if:") {
+                    step.if_expr = Some(v.split(" #").next().unwrap_or("").trim().to_string());
+                } else if kv.starts_with("with:") {
+                    with_indent = Some(ind);
+                } else if let Some(v) = kv.strip_prefix("run:") {
+                    let val = v.trim();
+                    if val == "|" || val == ">" || val.is_empty() {
+                        block_indent = Some((ind + 2, false));
+                    }
+                }
+                continue;
+            }
+        }
+        if !step.active {
+            continue;
+        }
+        let si = step_indent.unwrap_or(0);
+        if ind == si + 2 {
+            if let Some(v) = s.strip_prefix("uses:") {
+                step.uses = v.split('#').next().unwrap_or("").trim().to_string();
+            } else if let Some(v) = s.strip_prefix("if:") {
+                step.if_expr = Some(v.split(" #").next().unwrap_or("").trim().to_string());
+            } else if s.starts_with("with:") {
+                with_indent = Some(ind);
+            } else if let Some(v) = s.strip_prefix("run:") {
+                let val = v.trim();
+                if val == "|" || val == ">" || val.is_empty() {
+                    block_indent = Some((ind, false));
+                }
+            }
+        } else if let Some(wi) = with_indent {
+            if ind > wi {
+                if let Some(v) = s.strip_prefix("path:") {
+                    let val = v.split('#').next().unwrap_or("").trim();
+                    if val == "|" || val == ">" || val.is_empty() {
+                        block_indent = Some((ind, true));
+                    } else {
+                        step.has_go_path |= is_go_cache_path(val);
+                    }
+                }
+            }
+        }
+    }
+    flush(&mut step, &mut problems);
     problems
 }
 
@@ -1666,6 +1824,19 @@ pub fn check_cache_save(ctx: &Context) {
                     want,
                     "cache write runs on non-main ref",
                     "guard cache writes with github.ref == 'refs/heads/main' or use actions/cache/restore",
+                );
+                ok = false;
+            }
+        }
+        if rel != ".github/actions/pins/action.yml" {
+            for (found, want, why) in go_cache_save_problems(&content) {
+                ctx.emit_fail(
+                    "cachesave",
+                    &rel,
+                    &found,
+                    &want,
+                    &why,
+                    "use ./.github/actions/setup-go, or guard the Go cache save with github.ref == 'refs/heads/main'",
                 );
                 ok = false;
             }
@@ -2925,5 +3096,60 @@ jobs:
         assert!(!rows.contains("good.yaml"), "{rows}");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn go_cache_save_problems_catches_unguarded_go_cache_saves() {
+        let good = "\
+runs:
+  using: composite
+  steps:
+    - id: setup-go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version-file: go.mod
+        cache: false
+    - if: github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ${{ steps.cache-key.outputs.gomodcache }}
+          ${{ steps.cache-key.outputs.gocache }}
+    - if: github.ref == 'refs/heads/main' && steps.cache-key.outputs.key != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ${{ steps.cache-key.outputs.gomodcache }}
+          ${{ steps.cache-key.outputs.gocache }}
+";
+        assert_eq!(go_cache_save_problems(good), Vec::new());
+
+        // setup-go's own cache setting belongs to raw_setup_go_problems; this
+        // rule must not report it a second time.
+        let unconfigured_setup_go = good.replace("        cache: false\n", "");
+        assert_eq!(go_cache_save_problems(&unconfigured_setup_go), Vec::new());
+        assert_eq!(raw_setup_go_problems(&unconfigured_setup_go).len(), 1);
+
+        let cache_true = good.replace("cache: false", "cache: true");
+        assert_eq!(go_cache_save_problems(&cache_true), Vec::new());
+        assert_eq!(raw_setup_go_problems(&cache_true).len(), 1);
+
+        let unguarded_save = good.replace("github.ref == 'refs/heads/main' && ", "");
+        assert_eq!(go_cache_save_problems(&unguarded_save).len(), 1);
+
+        let or_escape = good.replace(
+            "github.ref == 'refs/heads/main' && steps.cache-key.outputs.key != ''",
+            "github.ref == 'refs/heads/main' || github.event_name == 'pull_request'",
+        );
+        assert_eq!(go_cache_save_problems(&or_escape).len(), 1);
+
+        let four_space = "\
+        steps:
+            - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+              with:
+                  go-version: \"1.26.10\"
+                  cache: false
+";
+        assert_eq!(go_cache_save_problems(four_space), Vec::new());
     }
 }

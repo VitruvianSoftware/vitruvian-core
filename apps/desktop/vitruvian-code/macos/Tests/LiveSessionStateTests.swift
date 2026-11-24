@@ -1022,6 +1022,67 @@ final class LiveSessionStateTests: XCTestCase {
         await session.stopAll()
     }
 
+    /// A reopened conversation belongs to the folder it ran in: its next turn resumes the session
+    /// there, whatever folder is set now. Picking a folder (even the one already set) or changing
+    /// the setting moves it on, and a new chat follows the setting again.
+    func testAReopenedChatRunsInItsOwnFolderUntilAFolderIsPicked() async throws {
+        let connections = LiveStateLockedBox<[LiveStateMockConnection]>([])
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let conn = LiveStateMockConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        })
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let folderB = VitruvianCodeConfiguration(
+            workingDirectory: "/tmp/folder-b", approvalMode: .standard, activeProvider: Self.claudeSDKProvider)
+        var folderC = folderB
+        folderC.workingDirectory = "/tmp/folder-c"
+
+        session.resume(VitruvianCodeSessionSummary(id: "old-a", title: "Old", preview: "Hi", steps: 1, modified: nil,
+                                                workspace: "/tmp/folder-a"),
+                       configuration: folderB)
+        XCTAssertEqual(session.workingDirectory(for: folderB), "/tmp/folder-a", "the folder shown is the chat's own")
+
+        session.send("Again", configuration: folderB, agentPath: "/fake/claude")
+        try await waitUntil("conn1 prompts") { connections.value.first?.promptCalls.count == 1 }
+        let conn1 = connections.value[0]
+        XCTAssertEqual(conn1.startCalls.first?.workingDirectory, "/tmp/folder-a")
+        XCTAssertEqual(conn1.startCalls.first?.resumeSessionID, "old-a", "the session is resumed in its own folder")
+        conn1.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "old-a"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 1 done") { !session.isRunning }
+
+        // The person picks the folder that was already set: it wins, and the chat starts over there.
+        session.forgetResumedFolder()
+        XCTAssertEqual(session.workingDirectory(for: folderB), "/tmp/folder-b")
+        session.send("In B", configuration: folderB, agentPath: "/fake/claude")
+        try await waitUntil("conn2 prompts") { connections.value.count == 2 && connections.value[1].promptCalls.count == 1 }
+        XCTAssertEqual(connections.value[1].startCalls.first?.workingDirectory, "/tmp/folder-b")
+        XCTAssertNil(connections.value[1].startCalls.first?.resumeSessionID)
+        connections.value[1].emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "new-b"))
+        connections.value[1].finishPrompt(with: .endTurn)
+        try await waitUntil("turn 2 done") { !session.isRunning }
+
+        // A changed setting also moves a reopened chat on.
+        session.resume(VitruvianCodeSessionSummary(id: "old-a", title: "Old", preview: "Hi", steps: 1, modified: nil,
+                                                workspace: "/tmp/folder-a"),
+                       configuration: folderB)
+        XCTAssertEqual(session.workingDirectory(for: folderC), "/tmp/folder-c")
+
+        // A new chat follows the setting.
+        session.resume(VitruvianCodeSessionSummary(id: "old-a", title: "Old", preview: "Hi", steps: 1, modified: nil,
+                                                workspace: "/tmp/folder-a"),
+                       configuration: folderB)
+        session.newChat()
+        XCTAssertEqual(session.workingDirectory(for: folderB), "/tmp/folder-b")
+
+        // A chat whose folder is unknown keeps the setting.
+        session.resume(VitruvianCodeSessionSummary(id: "old-x", title: "X", preview: "Hi", steps: 1, modified: nil),
+                       configuration: folderB)
+        XCTAssertEqual(session.workingDirectory(for: folderB), "/tmp/folder-b")
+    }
+
     /// Changing a live chat's folder must not keep talking to the session started in the old one:
     /// the agent would go on writing there. The old connection is dropped, a new one starts in the
     /// new folder with no old session to resume, and the chat says so.

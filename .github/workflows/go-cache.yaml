@@ -1,0 +1,236 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Go Module Cache
+
+# Main-only Go module cache warmer.
+#
+# Several CI and delivery jobs that restore via ./.github/actions/setup-go skip
+# on push to main (ci.yaml queue-already-passed skips all jobs on queued.hit,
+# and delivery-pagerduty / delivery-stripe / sentry-apply run only when their
+# own paths change). This workflow warms and saves every distinct Go cache key
+# on main without a queued.hit gate.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "go.work"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".github/actions/setup-go/**"
+      - ".github/workflows/go-cache.yaml"
+  schedule:
+    # Daily, off the hour, to refresh evicted entries without overwriting hits.
+    - cron: "37 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm-go-lint-devx:
+    name: warm-go-lint-devx
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    concurrency:
+      group: go-cache-warm-go-lint-devx
+      cancel-in-progress: false
+    env:
+      GOWORK: "off"
+      GOPROXY: "https://proxy.golang.org|direct"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup-go
+        uses: ./.github/actions/setup-go
+        with:
+          mode: save
+          go-version-file: apps/cli/vitruvian-devx/go.mod
+          cache-dependency-path: apps/cli/vitruvian-devx/go.sum
+      - name: Warm Go module cache
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          (cd apps/cli/vitruvian-devx && go mod download)
+          mkdir -p "$(go env GOCACHE)"
+
+  warm-go-test-infra:
+    name: warm-go-test-infra
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    concurrency:
+      group: go-cache-warm-go-test-infra
+      cancel-in-progress: false
+    env:
+      GOWORK: "off"
+      GOPROXY: "https://proxy.golang.org|direct"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup-go
+        uses: ./.github/actions/setup-go
+        with:
+          mode: save
+          go-version-file: go.mod
+          cache-dependency-path: |
+            infrastructure/pulumi/**/go.sum
+            apps/*/*/infra/**/go.sum
+            packages/pulumi/examples/**/go.sum
+      - name: Warm Go module cache
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          while IFS= read -r sum; do
+            dir="$(dirname "$sum")"
+            if [ -f "$dir/go.mod" ]; then
+              (cd "$dir" && go mod download)
+            fi
+          done < <(find infrastructure/pulumi apps/*/*/infra packages/pulumi/examples -name go.sum -not -path '*/vendor/*' -not -path '*/node_modules/*' | sort)
+          mkdir -p "$(go env GOCACHE)"
+
+  warm-example-build:
+    name: warm-example-build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    concurrency:
+      group: go-cache-warm-example-build
+      cancel-in-progress: false
+    env:
+      GOWORK: "off"
+      GOPROXY: "https://proxy.golang.org|direct"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup-go
+        uses: ./.github/actions/setup-go
+        with:
+          mode: save
+          go-version-file: go.mod
+      - name: Warm Go module cache
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          while IFS= read -r mod; do
+            dir="$(dirname "$mod")"
+            (cd "$dir" && go mod download)
+          done < <(find packages/pulumi/examples -name go.mod -not -path '*/vendor/*' -not -path '*/node_modules/*' | sort)
+          mkdir -p "$(go env GOCACHE)"
+
+  warm-pagerduty:
+    name: warm-pagerduty
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    concurrency:
+      group: go-cache-warm-pagerduty
+      cancel-in-progress: false
+    env:
+      GOWORK: "off"
+      GOPROXY: "https://proxy.golang.org|direct"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup-go
+        uses: ./.github/actions/setup-go
+        with:
+          mode: save
+          go-version-file: infrastructure/pulumi/platform/pagerduty/go.mod
+          cache-dependency-path: infrastructure/pulumi/platform/pagerduty/go.sum
+      - name: Warm Go module cache
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          (cd infrastructure/pulumi/platform/pagerduty && go mod download)
+          mkdir -p "$(go env GOCACHE)"
+
+  warm-stripe:
+    name: warm-stripe
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    concurrency:
+      group: go-cache-warm-stripe
+      cancel-in-progress: false
+    env:
+      GOWORK: "off"
+      GOPROXY: "https://proxy.golang.org|direct"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup-go
+        uses: ./.github/actions/setup-go
+        with:
+          mode: save
+          go-version-file: infrastructure/pulumi/platform/stripe/go.mod
+          cache-dependency-path: infrastructure/pulumi/platform/stripe/go.sum
+      - name: Warm Go module cache
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          (cd infrastructure/pulumi/platform/stripe && go mod download)
+          mkdir -p "$(go env GOCACHE)"
+
+  warm-sentry:
+    name: warm-sentry
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    concurrency:
+      group: go-cache-warm-sentry
+      cancel-in-progress: false
+    env:
+      GOWORK: "off"
+      GOPROXY: "https://proxy.golang.org|direct"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup-go
+        uses: ./.github/actions/setup-go
+        with:
+          mode: save
+          go-version-file: infrastructure/pulumi/platform/sentry/go.mod
+          cache-dependency-path: |
+            infrastructure/pulumi/platform/sentry/go.sum
+            infrastructure/pulumi/platform/sentry-pagerduty/go.sum
+      - name: Warm Go module cache
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          (cd infrastructure/pulumi/platform/sentry && go mod download)
+          (cd infrastructure/pulumi/platform/sentry-pagerduty && go mod download)
+          mkdir -p "$(go env GOCACHE)"

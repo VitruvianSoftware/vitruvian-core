@@ -370,12 +370,19 @@ final class ComposerToolsTests: XCTestCase {
 
         let (composer, _) = makeComposer()
         XCTAssertEqual(composer.sendButtonAppearance, .disabledNeutral)
+        XCTAssertEqual(composer.sendButtonAppearance.fillStyle, .quietGray)
+        XCTAssertEqual(composer.sendButtonAppearance.arrowStyle, .muted)
+        XCTAssertLessThan(composer.sendButtonAppearance.fillOpacity, 0.5)
 
         composer.text = "   "
         XCTAssertEqual(composer.sendButtonAppearance, .disabledNeutral)
+        XCTAssertEqual(composer.sendButtonAppearance.fillStyle, .quietGray)
 
         composer.text = "Hello"
         XCTAssertEqual(composer.sendButtonAppearance, .activeAccent)
+        XCTAssertEqual(composer.sendButtonAppearance.fillStyle, .solidAccent)
+        XCTAssertEqual(composer.sendButtonAppearance.arrowStyle, .white)
+        XCTAssertEqual(composer.sendButtonAppearance.fillOpacity, 1.0)
 
         composer.text = ""
         composer.pendingGIF = StickerItemWire(
@@ -387,5 +394,8 @@ final class ComposerToolsTests: XCTestCase {
             usage: ["gif"]
         )
         XCTAssertEqual(composer.sendButtonAppearance, .activeAccent)
+        XCTAssertEqual(ComposerSendButtonAppearance.colorEaseDuration, 0.12, accuracy: 0.0001)
+        XCTAssertEqual(ComposerSendButtonAppearance.colorAnimationDuration(reduceMotion: false), 0.12, accuracy: 0.0001)
+        XCTAssertEqual(ComposerSendButtonAppearance.colorAnimationDuration(reduceMotion: true), 0)
     }
 }

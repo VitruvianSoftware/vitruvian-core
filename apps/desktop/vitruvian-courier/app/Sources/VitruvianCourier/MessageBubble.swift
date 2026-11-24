@@ -399,8 +399,6 @@ struct MessageRowView: View {
     @State private var cardChip: String?
     @State private var openCard: Task<Void, Never>?
     @State private var cardSize: CGSize = .zero
-    /// The highlight's tint, from 1 to 0.
-    @State private var highlight: Double = 0
     /// A double click set to show the menu.
     @State private var showsMenu = false
     /// Where the row's own buttons and media are (`takesOwnClick`), in the row's coordinates: a click there is theirs.
@@ -525,8 +523,7 @@ struct MessageRowView: View {
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
         .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
-        .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
+        .background(JumpHighlightTint(isHighlighted: isHighlighted, rowID: message.id))
         .contentShape(Rectangle())
         .onHover { pointer.rowHover($0); pointerMoved() }
         .onChange(of: isSelected) { _, _ in pointer.selectionChanged() }
@@ -686,8 +683,6 @@ struct MessageRowView: View {
             if activeDetectedDate != nil { activeDetectedDate = nil }
             if linkOpenedAt != nil { linkOpenedAt = nil }
             if lastRowClick != nil { lastRowClick = nil }
-            let targetHighlight: Double = isHighlighted ? 1 : 0
-            if highlight != targetHighlight { fadeHighlight(isHighlighted) }
         }
         .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
             showsMenu = false
@@ -805,22 +800,6 @@ struct MessageRowView: View {
             actions.deselect()
         } else {
             actions.select(message.id)
-        }
-    }
-
-    /// Full at once, then fading out over `ConversationModel.highlightDuration`, which is as long as the model keeps
-    /// the message highlighted.
-    private func fadeHighlight(_ on: Bool) {
-        guard on else {
-            highlight = 0
-            return
-        }
-        highlight = 1
-        let parts = ConversationModel.highlightDuration.components
-        let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
-        // On the next turn, so the full tint is drawn before it starts to fade.
-        DispatchQueue.main.async {
-            withAnimation(.easeIn(duration: seconds)) { highlight = 0 }
         }
     }
 
@@ -1376,6 +1355,7 @@ struct MessageRowView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
+                .frame(height: StatusLineStability.compactLineHeight, alignment: .trailing)
         case let .notSent(cause):
             HStack(spacing: 8) {
                 Label(String(localized: "Not sent"), systemImage: "exclamationmark.circle.fill")
@@ -1389,18 +1369,23 @@ struct MessageRowView: View {
             .padding(.horizontal, 4)
         case .sending:
             HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
+                ProgressView()
+                    .controlSize(.mini)
+                    .scaleEffect(0.75)
+                    .frame(width: 12, height: 12)
                 Text(String(localized: "Sending…"))
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
+            .frame(height: StatusLineStability.compactLineHeight, alignment: .trailing)
         case .sent:
             if showsSent {
                 Text(String(localized: "Sent"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
+                    .frame(height: StatusLineStability.compactLineHeight, alignment: .trailing)
             }
         case .waiting:
             // Every waiting message has this line (Timeline.build): it goes when the chat's account is back.
@@ -1433,6 +1418,7 @@ struct MessageRowView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
+                    .frame(minHeight: StatusLineStability.compactLineHeight, alignment: .trailing)
             }
         case let .failed(reason):
             HStack(spacing: 8) {
@@ -1637,6 +1623,7 @@ private struct ActionBarButton<Label: View>: View {
     let action: () -> Void
     let label: Label
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     init(_ title: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
         self.title = title
@@ -1644,16 +1631,27 @@ private struct ActionBarButton<Label: View>: View {
         self.label = label()
     }
 
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     var body: some View {
         Button(action: action) {
             label
                 .frame(minWidth: 22, minHeight: 22)
-                .background(RoundedRectangle(cornerRadius: 5).fill(isHovering ? Color.primary.opacity(0.08) : .clear))
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: isHovering
+                        )
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .help(title)
+        .courierTooltip(title, edge: .top)
         .accessibilityLabel(title)
         .clickTargetProbe("bar/\(title)")
     }
@@ -2491,5 +2489,73 @@ public struct GIFAttachmentView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(gif.caption ?? (message.fileName.isEmpty ? String(localized: "GIF") : message.fileName))
+    }
+}
+
+
+/// The yellow tint behind the message a chat was opened at (a search result, a jump to a quoted message). It fades in
+/// to 40% of the tint over the first 20% of `JumpHighlightMotion.totalDuration` (0.3 s, ease-out) and out over the
+/// rest (1.2 s, ease-out). Under Reduce Motion it is at its peak at once and goes when the model clears the
+/// highlight: no ramp. A row that is reused for another message starts over.
+struct JumpHighlightTint: View {
+    let isHighlighted: Bool
+    /// The message the row shows now.
+    let rowID: String
+    /// Tests: stands in for the system's Reduce Motion setting.
+    var reduceMotionOverride: Bool?
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    /// The tint, relative to `JumpHighlightMotion.baseTintOpacity`.
+    @State private var tint: Double = 0
+    @State private var task: Task<Void, Never>?
+
+    init(isHighlighted: Bool, rowID: String, reduceMotionOverride: Bool? = nil) {
+        self.isHighlighted = isHighlighted
+        self.rowID = rowID
+        self.reduceMotionOverride = reduceMotionOverride
+    }
+
+    private var reduceMotion: Bool {
+        reduceMotionOverride ?? (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.yellow.opacity(JumpHighlightMotion.baseTintOpacity * tint))
+            .onChange(of: isHighlighted, initial: true) { _, on in start(on) }
+            .onChange(of: rowID) { _, _ in start(isHighlighted) }
+            .onDisappear { stop() }
+    }
+
+    private func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    private func start(_ on: Bool) {
+        stop()
+        guard on else {
+            tint = 0
+            return
+        }
+        guard JumpHighlightMotion.rampsTint(reduceMotion: reduceMotion) else {
+            tint = JumpHighlightMotion.peakTintFraction
+            return
+        }
+        tint = 0
+        task = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeInDuration)) {
+                tint = JumpHighlightMotion.peakTintFraction
+            }
+            let fadeInMS = Int((JumpHighlightMotion.fadeInDuration * 1000).rounded())
+            try? await Task.sleep(for: .milliseconds(fadeInMS))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: JumpHighlightMotion.fadeOutDuration)) {
+                tint = 0
+            }
+            task = nil
+        }
     }
 }

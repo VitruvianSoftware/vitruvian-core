@@ -23,6 +23,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/localapi"
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/rpc"
+	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/search"
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/sqlite"
 )
 
@@ -263,71 +265,75 @@ func TestIdleConnectionsAreClosed(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF, "the server closed the idle connection (not the read deadline)")
 }
 
-// The SDK's long-lived GET stream is a response still being written, not an idle connection: the idle timeout
-// leaves it open.
-func TestStreamOutlivesTheIdleTimeout(t *testing.T) {
+func TestClientSurvivesServerRestart(t *testing.T) {
 	w := storeOnly(t)
-	w.api.SetIdleTimeout(100 * time.Millisecond)
-	w.listen(t, localapi.Config{Enabled: true})
 	_, secret := w.token(t, false)
+	port := w.api.Status().Port
+	url := w.url
 
-	// No kept-alive connections for the posts: with a 100 ms idle timeout, one could be closed by the server just as
-	// the client reuses it, which is a race of the test's tiny timeout, not what is tested here.
-	watch := &streamWatch{base: bearer{secret, &http.Transport{DisableKeepAlives: true}}}
-	c := mcp.NewClient(&mcp.Implementation{Name: "stream-test", Version: "1"}, nil)
+	c := mcp.NewClient(&mcp.Implementation{Name: "restart-test", Version: "1"}, nil)
 	sess, err := c.Connect(context.Background(), &mcp.StreamableClientTransport{
-		Endpoint: w.url, HTTPClient: &http.Client{Transport: watch}, MaxRetries: -1,
+		Endpoint:   url,
+		HTTPClient: &http.Client{Transport: bearer{secret, &http.Transport{DisableKeepAlives: true}}},
+		MaxRetries: -1,
 	}, nil)
 	require.NoError(t, err)
-	defer sess.Close()
-	require.Eventually(t, watch.open, 5*time.Second, 10*time.Millisecond, "the client opens its GET stream")
-	time.Sleep(500 * time.Millisecond) // five idle timeouts
-	require.False(t, watch.ended(), "the stream is still open")
-	require.Equal(t, 1, watch.gets(), "and was never re-opened")
 	ok(t, sess, "search_docs", map[string]any{"query": "x", "language": "go"}, nil)
+
+	// Simulate Vitruvian Courier restarting on the same port (wiping any in-memory session state).
+	w.api.Close()
+	api2 := localapi.New(w.s, rpc.NewDispatcher(rpc.Deps{Store: w.s, Search: search.New(w.s)}), w.pub, zerolog.Nop())
+	st := api2.Apply(context.Background(), localapi.Config{Enabled: true, Port: port})
+	require.True(t, st.Listening, st.Error)
+	t.Cleanup(api2.Close)
+
+	ok(t, sess, "search_docs", map[string]any{"query": "x", "language": "go"}, nil)
+	require.NoError(t, sess.Close())
 }
 
-// streamWatch notes when a GET (the event stream) is answered and when its body ends.
-type streamWatch struct {
-	base http.RoundTripper
-	mu   sync.Mutex
-	n    int
-	done bool
-}
+func TestStatelessMCPContract(t *testing.T) {
+	w := storeOnly(t)
+	_, secret := w.token(t, false)
+	auth := "Bearer " + secret
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
 
-func (s *streamWatch) RoundTrip(r *http.Request) (*http.Response, error) {
-	resp, err := s.base.RoundTrip(r)
-	if err != nil || r.Method != http.MethodGet || resp.StatusCode != http.StatusOK {
-		return resp, err
-	}
-	s.mu.Lock()
-	s.n++
-	s.mu.Unlock()
-	resp.Body = &watchedBody{ReadCloser: resp.Body, w: s}
-	return resp, nil
-}
+	// initialize succeeds without issuing a session ID.
+	req, err := http.NewRequest(http.MethodPost, w.url, strings.NewReader(initialize))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Empty(t, resp.Header.Get("Mcp-Session-Id"))
 
-func (s *streamWatch) open() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.n > 0 }
-func (s *streamWatch) gets() int  { s.mu.Lock(); defer s.mu.Unlock(); return s.n }
-func (s *streamWatch) ended() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.done
-}
+	// Standalone GET SSE stream is not offered in stateless mode (405 Allow: POST).
+	req, err = http.NewRequest(http.MethodGet, w.url, nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+	require.Equal(t, http.MethodPost, resp.Header.Get("Allow"))
 
-type watchedBody struct {
-	io.ReadCloser
-	w *streamWatch
-}
-
-func (b *watchedBody) Read(p []byte) (int, error) {
-	n, err := b.ReadCloser.Read(p)
-	if err != nil {
-		b.w.mu.Lock()
-		b.w.done = true
-		b.w.mu.Unlock()
-	}
-	return n, err
+	// Stale Mcp-Session-Id headers from pre-restart stateful clients are ignored rather than rejected with 404.
+	req, err = http.NewRequest(http.MethodPost, w.url, strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Mcp-Session-Id", "STALE123")
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 type syncBuffer struct {
