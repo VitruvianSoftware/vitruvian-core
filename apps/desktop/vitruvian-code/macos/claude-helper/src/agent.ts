@@ -57,6 +57,7 @@ import {
   type ModelInfo,
   type Options as SdkQueryOptions,
   type Query as SdkQuery,
+  type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 
@@ -436,8 +437,32 @@ function buildSdkEnv(
   return {
     ...baseEnv,
     ...(secretEnv ?? {}),
+    // Applied after the user's own env so a stray value there cannot turn
+    // the plan off. Both are needed: claude 2.1.331 only offers `TodoWrite`
+    // (which the helper maps to the app's plan) when tasks are disabled; with
+    // tasks on it offers TaskCreate/TaskUpdate/TaskList/TaskGet instead, and
+    // the plan never shows.
     CLAUDE_CODE_ENABLE_TODO_TOOLS: "1",
+    CLAUDE_CODE_ENABLE_TASKS: "0",
   };
+}
+
+/**
+ * True for a `result` that ends a turn the app did not ask for. When a session
+ * is resumed, Claude Code first runs a turn for the stale background-task
+ * notification of the previous process and ends it with an empty `result`
+ * (`origin.kind` "task-notification", zero turns) before the user's own prompt
+ * runs. Settling the prompt on that one loses the real reply.
+ */
+function isUnsolicitedResult(message: SDKMessage): boolean {
+  if (message.type !== "result") {
+    return false;
+  }
+  const origin = (message as { readonly origin?: unknown }).origin;
+  if (typeof origin !== "object" || origin === null) {
+    return false;
+  }
+  return (origin as { readonly kind?: unknown }).kind === "task-notification";
 }
 
 function namedPairsToRecord(
@@ -1398,6 +1423,7 @@ export class ClaudeHelperAgent {
 
         if (
           sdkMessage.type === "result" &&
+          !isUnsolicitedResult(sdkMessage) &&
           session.activeTurn &&
           !session.closed &&
           session.query === sdkQuery

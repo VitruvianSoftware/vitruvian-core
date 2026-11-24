@@ -38,6 +38,7 @@ import {
   createMappingState,
   mapSdkMessageToNotifications,
   mapToolKind,
+  resetTurnMappingState,
 } from "../src/mapping.js";
 
 const SCHEMA_URI = "https://vitruviansoftware.dev/schemas/claude-helper.json";
@@ -618,6 +619,137 @@ describe("SDK -> ACP mapping", () => {
         },
       },
     ]);
+  });
+
+  describe("context meter (usage_update)", () => {
+    function callWithUsage(
+      id: string,
+      usage: Record<string, number>,
+      parentToolUseId: string | null = null,
+    ): SDKAssistantMessage {
+      const message = makeAssistantMessage(
+        [{ type: "tool_use", id: `toolu_${id}`, name: "Read", input: {} }],
+        { id, parentToolUseId },
+      );
+      (message.message as unknown as { usage: unknown }).usage = usage;
+      return message;
+    }
+
+    function usageUpdates(
+      notes: ReturnType<typeof mapSdkMessageToNotifications>,
+    ): Array<Record<string, unknown>> {
+      return notes
+        .map((n) => n.update as unknown as Record<string, unknown>)
+        .filter((u) => u.sessionUpdate === "usage_update");
+    }
+
+    test("reports the latest model call's context, not the turn's sum", () => {
+      const state = createMappingState();
+      resetTurnMappingState(state);
+      // One small turn, 4 model calls: every call resends the ~90k history.
+      const calls = [
+        { input_tokens: 3, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 600, output_tokens: 120 },
+        { input_tokens: 1, cache_read_input_tokens: 90_600, cache_creation_input_tokens: 900, output_tokens: 80 },
+        { input_tokens: 1, cache_read_input_tokens: 91_500, cache_creation_input_tokens: 700, output_tokens: 60 },
+        { input_tokens: 2, cache_read_input_tokens: 92_200, cache_creation_input_tokens: 400, output_tokens: 150 },
+      ];
+      for (const [i, usage] of calls.entries()) {
+        mapSdkMessageToNotifications(
+          SESSION_ID,
+          callWithUsage(`msg_call_${i}`, usage),
+          state,
+        );
+      }
+      // A subagent's own call is a different window and must not size this one.
+      mapSdkMessageToNotifications(
+        SESSION_ID,
+        callWithUsage(
+          "msg_sub",
+          { input_tokens: 9, cache_read_input_tokens: 400_000, cache_creation_input_tokens: 0, output_tokens: 5 },
+          "toolu_task",
+        ),
+        state,
+      );
+
+      // The result's usage is what the SDK sums over the whole turn.
+      const notes = mapSdkMessageToNotifications(
+        SESSION_ID,
+        makeSuccessResult({
+          num_turns: 5,
+          usage: {
+            input_tokens: 7,
+            output_tokens: 410,
+            cache_read_input_tokens: 364_300,
+            cache_creation_input_tokens: 2_600,
+          } as unknown as SDKResultMessage["usage"],
+        }),
+        state,
+      );
+
+      const updates = usageUpdates(notes);
+      expect(updates).toHaveLength(1);
+      expect(updates[0]).toMatchObject({
+        used: 2 + 92_200 + 400 + 150,
+        inputTokens: 2,
+        cachedTokens: 92_600,
+        outputTokens: 150,
+      });
+      expect((updates[0] as { used: number }).used).toBeLessThan(100_000);
+    });
+
+    test("a turn with no model call sends no usage_update, so the meter keeps its value", () => {
+      const state = createMappingState();
+      resetTurnMappingState(state);
+      // `/context` and `/compact` run locally: the result reports all zeros.
+      const notes = mapSdkMessageToNotifications(
+        SESSION_ID,
+        makeSuccessResult({
+          num_turns: 0,
+          total_cost_usd: 0,
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          } as unknown as SDKResultMessage["usage"],
+        }),
+        state,
+      );
+      expect(usageUpdates(notes)).toEqual([]);
+    });
+
+    test("the next turn starts from its own calls, not the previous turn's", () => {
+      const state = createMappingState();
+      resetTurnMappingState(state);
+      mapSdkMessageToNotifications(
+        SESSION_ID,
+        callWithUsage("msg_big", {
+          input_tokens: 1,
+          cache_read_input_tokens: 475_000,
+          cache_creation_input_tokens: 0,
+          output_tokens: 1,
+        }),
+        state,
+      );
+      // After /compact the first real call reports the new, smaller context.
+      resetTurnMappingState(state);
+      mapSdkMessageToNotifications(
+        SESSION_ID,
+        callWithUsage("msg_small", {
+          input_tokens: 1,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 12_000,
+          output_tokens: 20,
+        }),
+        state,
+      );
+      const notes = mapSdkMessageToNotifications(
+        SESSION_ID,
+        makeSuccessResult({ num_turns: 2 }),
+        state,
+      );
+      expect(usageUpdates(notes)[0]).toMatchObject({ used: 12_021 });
+    });
   });
 
   test("classifies stop reasons, SDK errors, and auth_required (-32000)", () => {

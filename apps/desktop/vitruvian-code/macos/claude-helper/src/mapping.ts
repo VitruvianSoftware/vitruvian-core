@@ -84,6 +84,21 @@ export interface MappingState {
   lastAssistantStopReason: string | null;
   activeCompactionId: string | null;
   compactionSeq: number;
+  /**
+   * The newest root model call this turn: what it sent and got back. Claude
+   * Code resends the whole conversation on every call, so the latest call
+   * alone is the context size; the `result` message's `usage` is the sum over
+   * every call of the turn and would count the history once per call.
+   */
+  lastCallUsage: CallUsage | null;
+}
+
+/** One model call's token counts, as the SDK reports them on an assistant message. */
+interface CallUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
 }
 
 export interface MapSdkMessageOptions {
@@ -106,6 +121,7 @@ export function createMappingState(): MappingState {
     lastAssistantStopReason: null,
     activeCompactionId: null,
     compactionSeq: 0,
+    lastCallUsage: null,
   };
 }
 
@@ -119,6 +135,7 @@ export function resetTurnMappingState(state: MappingState): void {
   state.authErrorDetected = false;
   state.lastAssistantStopReason = null;
   state.activeCompactionId = null;
+  state.lastCallUsage = null;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -417,6 +434,11 @@ function mapAssistantMessage(
     if (stopReason) {
       state.lastAssistantStopReason = stopReason;
     }
+    // Only the main agent's calls size the context; a subagent has its own window.
+    const callUsage = readCallUsage(message.message);
+    if (callUsage) {
+      state.lastCallUsage = callUsage;
+    }
   }
 
   const msgId = nonEmptyString(message.message?.id);
@@ -634,6 +656,23 @@ function nonNegativeInt(value: unknown): number {
     : 0;
 }
 
+/** Token counts of one assistant message; null for a call that reports none (synthetic messages). */
+function readCallUsage(message: unknown): CallUsage | null {
+  if (!isPlainRecord(message) || !isPlainRecord(message.usage)) {
+    return null;
+  }
+  const usage = message.usage;
+  const call: CallUsage = {
+    inputTokens: nonNegativeInt(usage.input_tokens),
+    outputTokens: nonNegativeInt(usage.output_tokens),
+    cacheReadTokens: nonNegativeInt(usage.cache_read_input_tokens),
+    cacheWriteTokens: nonNegativeInt(usage.cache_creation_input_tokens),
+  };
+  return call.inputTokens + call.cacheReadTokens + call.cacheWriteTokens > 0
+    ? call
+    : null;
+}
+
 function resolveContextWindowSize(
   modelUsage: Record<string, ModelUsage> | undefined,
 ): number {
@@ -654,36 +693,34 @@ function resolveContextWindowSize(
   return maxWindow > 0 ? maxWindow : DEFAULT_CONTEXT_WINDOW_TOKENS;
 }
 
-/** Maps SDK `result` usage into an ACP `usage_update` notification. */
+/**
+ * Maps a turn's end into an ACP `usage_update` carrying the context size: the
+ * newest model call's tokens, never the turn's sum. A turn with no model call
+ * (a local command such as `/context`, or a background-task wake-up) reports
+ * zeros, and sending those would blank the app's meter, so it sends nothing
+ * and the app keeps the last real size.
+ */
 function mapResultUsageNotification(
   sessionId: string,
   message: SDKResultMessage,
+  state: MappingState,
 ): SessionNotification[] {
-  const usageRecord = isPlainRecord(message.usage) ? message.usage : undefined;
-  const modelUsageEntries = isPlainRecord(message.modelUsage)
-    ? Object.values(message.modelUsage)
-    : [];
-
-  let inputTokens = usageRecord ? nonNegativeInt(usageRecord.input_tokens) : 0;
-  let outputTokens = usageRecord
-    ? nonNegativeInt(usageRecord.output_tokens)
-    : 0;
-  let cacheReadTokens = usageRecord
-    ? nonNegativeInt(usageRecord.cache_read_input_tokens)
-    : 0;
-  let cacheWriteTokens = usageRecord
-    ? nonNegativeInt(usageRecord.cache_creation_input_tokens)
-    : 0;
-
-  if (!usageRecord && modelUsageEntries.length > 0) {
-    for (const entry of modelUsageEntries) {
-      if (!isPlainRecord(entry)) continue;
-      inputTokens += nonNegativeInt(entry.inputTokens);
-      outputTokens += nonNegativeInt(entry.outputTokens);
-      cacheReadTokens += nonNegativeInt(entry.cacheReadInputTokens);
-      cacheWriteTokens += nonNegativeInt(entry.cacheCreationInputTokens);
-    }
+  // A one-call turn has no assistant message to read only when the stream
+  // dropped it; then the result's own usage is that one call.
+  const call =
+    state.lastCallUsage ??
+    (message.num_turns <= 1
+      ? readCallUsage({ usage: message.usage })
+      : null);
+  if (!call) {
+    return [];
   }
+  const {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+  } = call;
 
   const cachedTokens = cacheReadTokens + cacheWriteTokens;
   const used = inputTokens + outputTokens + cachedTokens;
@@ -903,7 +940,7 @@ export function mapSdkMessageToNotifications(
     case "user":
       return mapUserMessage(sessionId, message);
     case "result":
-      return mapResultUsageNotification(sessionId, message);
+      return mapResultUsageNotification(sessionId, message, state);
     case "system":
       if (message.subtype === "init") {
         return mapSystemInitMessage(sessionId, message, options);

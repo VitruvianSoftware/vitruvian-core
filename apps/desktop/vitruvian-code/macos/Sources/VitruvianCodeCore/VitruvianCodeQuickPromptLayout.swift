@@ -782,7 +782,23 @@ public struct VitruvianCodeSessionSummary: Identifiable, Equatable, Sendable {
             }
         }
 
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isClaudeInternalRecord(trimmed) ? "" : trimmed
+    }
+
+    /// The opening tags of the records Claude Code writes into its transcript
+    /// for its own interface: the caveat before a slash command, the command
+    /// itself (`/model sonnet`), its output, `!` shell output, and a
+    /// background-task notice. They are not something the user typed or the
+    /// agent said (T3 Code's session scanner drops them the same way).
+    private static let claudeInternalRecordTags = [
+        "<local-command-caveat>", "<local-command-stdout>", "<local-command-stderr>",
+        "<command-name>", "<command-message>", "<command-args>",
+        "<bash-stdout>", "<bash-stderr>", "<task-notification>",
+    ]
+
+    static func isClaudeInternalRecord(_ text: String) -> Bool {
+        claudeInternalRecordTags.contains { text.hasPrefix($0) }
     }
 
     private static func normalizePath(_ raw: String) -> String {
