@@ -1172,6 +1172,126 @@ pub(crate) fn non_main_cache_write_problems(c: &str) -> Vec<(&'static str, &'sta
     }
 }
 
+/// Plain-line check: every `uses: actions/setup-go@` step must set
+/// `cache: false` in its `with:` block (defaults to true in v7).
+pub(crate) fn raw_setup_go_problems(content: &str) -> Vec<(usize, String)> {
+    const STEP_KEYS: &[&str] = &[
+        "name:",
+        "id:",
+        "if:",
+        "uses:",
+        "run:",
+        "with:",
+        "env:",
+        "shell:",
+        "continue-on-error:",
+        "working-directory:",
+        "timeout-minutes:",
+    ];
+    let mut problems = Vec::new();
+    let mut step_indent: Option<usize> = None;
+    let mut with_indent: Option<usize> = None;
+    let mut block_indent: Option<usize> = None;
+    let mut uses_line: Option<usize> = None;
+    let mut cache_val: Option<String> = None;
+
+    let flush =
+        |u_line: &mut Option<usize>, c_val: &mut Option<String>, out: &mut Vec<(usize, String)>| {
+            if let Some(line_no) = u_line.take() {
+                if c_val.as_deref() != Some("false") {
+                    let found = c_val
+                        .as_deref()
+                        .map(|v| format!("cache: {v}"))
+                        .unwrap_or_else(|| "cache: unset (true)".to_string());
+                    out.push((line_no, found));
+                }
+            }
+            *c_val = None;
+        };
+
+    for (idx, raw) in content.lines().enumerate() {
+        let line_no = idx + 1;
+        let line = raw.trim_end_matches('\r');
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if let Some(bi) = block_indent {
+            if ind > bi {
+                continue;
+            }
+            block_indent = None;
+        }
+        if let Some(si) = step_indent {
+            if ind < si {
+                flush(&mut uses_line, &mut cache_val, &mut problems);
+                step_indent = None;
+                with_indent = None;
+            } else if ind == si {
+                flush(&mut uses_line, &mut cache_val, &mut problems);
+                with_indent = None;
+                if !s.starts_with("- ") {
+                    step_indent = None;
+                }
+            } else if with_indent.is_some_and(|wi| ind <= wi) {
+                with_indent = None;
+            }
+        }
+        if let Some(rest) = s.strip_prefix("- ") {
+            if STEP_KEYS.iter().any(|k| rest.starts_with(k))
+                && (step_indent.is_none() || step_indent == Some(ind))
+            {
+                step_indent = Some(ind);
+                with_indent = None;
+                if let Some(v) = rest.strip_prefix("uses:") {
+                    let val = unquote(v.split('#').next().unwrap_or("").trim());
+                    if val.starts_with("actions/setup-go@") {
+                        uses_line = Some(line_no);
+                    }
+                } else if rest.starts_with("with:") {
+                    with_indent = Some(ind + 2);
+                } else if let Some(v) = rest.strip_prefix("run:") {
+                    let t = v.trim();
+                    if t.is_empty() || t.starts_with('|') || t.starts_with('>') {
+                        block_indent = Some(ind + 2);
+                    }
+                }
+                continue;
+            }
+        }
+        if let Some(si) = step_indent {
+            if ind == si + 2 {
+                if let Some(v) = s.strip_prefix("uses:") {
+                    let val = unquote(v.split('#').next().unwrap_or("").trim());
+                    if val.starts_with("actions/setup-go@") {
+                        uses_line = Some(line_no);
+                    }
+                } else if s.starts_with("with:") {
+                    with_indent = Some(ind);
+                } else if let Some(v) = s.strip_prefix("run:") {
+                    let t = v.trim();
+                    if t.is_empty() || t.starts_with('|') || t.starts_with('>') {
+                        block_indent = Some(ind);
+                    }
+                }
+            } else if with_indent.is_some_and(|wi| ind > wi) {
+                if let Some(v) = s.strip_prefix("cache:") {
+                    let val = unquote(v.split('#').next().unwrap_or("").trim());
+                    cache_val = Some(val.to_string());
+                } else if let Some((_, rhs)) = s.split_once(':') {
+                    let t = rhs.split('#').next().unwrap_or("").trim();
+                    if t.starts_with('|') || t.starts_with('>') {
+                        block_indent = Some(ind);
+                    }
+                }
+            }
+        }
+    }
+    flush(&mut uses_line, &mut cache_val, &mut problems);
+    problems
+}
+
 /// What is wrong with how `.github/actions/setup-bazel/action.yml` restores
 /// the repository cache (restore-only), as (found, want, why) triples.
 pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String, String)> {
@@ -1477,10 +1597,6 @@ pub fn check_cache_save(ctx: &Context) {
     let mut files = list_workflows(&ctx.workflows_dir);
     if let Ok(rd) = fs::read_dir(&actions_dir) {
         for entry in rd.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name == "setup-bazel" {
-                continue;
-            }
             for f in ["action.yml", "action.yaml"] {
                 let p = entry.path().join(f);
                 if p.is_file() {
@@ -1489,15 +1605,34 @@ pub fn check_cache_save(ctx: &Context) {
             }
         }
     }
+    files.sort();
     for f in &files {
         let rel = ctx.rel(f);
-        if rel == warm_rel || rel == warm_comp_rel {
-            continue;
-        }
         let content = match fs::read_to_string(f) {
             Ok(c) => c,
             Err(_) => continue,
         };
+        if rel != ".github/actions/setup-go/action.yml" && rel != ".github/actions/pins/action.yml"
+        {
+            for (line, found) in raw_setup_go_problems(&content) {
+                let loc = format!("{}:{}", rel, line);
+                ctx.emit_fail(
+                    "cachesave",
+                    &loc,
+                    &found,
+                    "cache: false",
+                    &format!(
+                        "{} uses actions/setup-go without cache: false (defaults to true and writes Go cache from non-main refs)",
+                        loc
+                    ),
+                    "set cache: false in with:, or use ./.github/actions/setup-go (the main-only composite)",
+                );
+                ok = false;
+            }
+        }
+        if rel == setup_rel || rel == warm_rel || rel == warm_comp_rel {
+            continue;
+        }
         if uses_setup_bazel_directly(&content) {
             ctx.emit_fail(
                 "cachesave",
@@ -2658,5 +2793,137 @@ on:
         assert!(non_main_cache_write_problems(main_only).is_empty());
         let escape = "on: pull_request\njobs:\n  b:\n    steps:\n      - uses: docker/build-push-action@a\n        with:\n          cache-to: ${{ github.ref == 'refs/heads/main' && 'a' || 'type=gha' }}\n";
         assert_eq!(non_main_cache_write_problems(escape).len(), 1);
+    }
+
+    #[test]
+    fn raw_setup_go_problems_enforces_cache_false() {
+        let no_with = "\
+jobs:
+  b:
+    steps:
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+";
+        assert_eq!(
+            raw_setup_go_problems(no_with),
+            vec![(4, "cache: unset (true)".to_string())]
+        );
+
+        let with_no_cache = "\
+jobs:
+  b:
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+";
+        assert_eq!(
+            raw_setup_go_problems(with_no_cache),
+            vec![(5, "cache: unset (true)".to_string())]
+        );
+
+        let four_space_no_cache = "\
+jobs:
+    b:
+        steps:
+            - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+              with:
+                  go-version: \"1.26.10\"
+";
+        assert_eq!(
+            raw_setup_go_problems(four_space_no_cache),
+            vec![(4, "cache: unset (true)".to_string())]
+        );
+
+        let cache_false = "\
+jobs:
+  b:
+    steps:
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+";
+        assert_eq!(raw_setup_go_problems(cache_false), Vec::new());
+
+        let four_space_quoted_false = "\
+jobs:
+    b:
+        steps:
+            - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+              with:
+                  go-version: \"1.26.10\"
+                  cache: 'false'
+";
+        assert_eq!(raw_setup_go_problems(four_space_quoted_false), Vec::new());
+
+        let cache_true = "\
+jobs:
+  b:
+    steps:
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+";
+        assert_eq!(
+            raw_setup_go_problems(cache_true),
+            vec![(4, "cache: true".to_string())]
+        );
+
+        let ignored_comment_and_run = "\
+jobs:
+  b:
+    steps:
+      # - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
+      - run: |
+          cat <<'EOF'
+          - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5
+          EOF
+";
+        assert_eq!(raw_setup_go_problems(ignored_comment_and_run), Vec::new());
+    }
+
+    #[test]
+    fn check_cache_save_flags_raw_setup_go_and_exempts_composite_and_pins() {
+        let root =
+            std::env::temp_dir().join(format!("conformance_setup_go_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".github/workflows")).unwrap();
+        std::fs::create_dir_all(root.join(".github/actions/setup-go")).unwrap();
+        std::fs::create_dir_all(root.join(".github/actions/pins")).unwrap();
+
+        std::fs::write(
+            root.join(".github/actions/setup-go/action.yml"),
+            "runs:\n  using: composite\n  steps:\n    - uses: actions/setup-go@abc\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join(".github/actions/pins/action.yml"),
+            "runs:\n  using: composite\n  steps:\n    - uses: actions/setup-go@abc\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join(".github/workflows/good.yaml"),
+            "on: pull_request\njobs:\n  b:\n    steps:\n      - uses: actions/setup-go@abc\n        with:\n          cache: false\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join(".github/workflows/bad.yaml"),
+            "on: pull_request\njobs:\n  b:\n    steps:\n      - uses: actions/setup-go@abc\n",
+        )
+        .unwrap();
+
+        let ctx = Context::for_root(root.to_str().unwrap());
+        check_cache_save(&ctx);
+        let rows = ctx.rows.get("CACHESAVE");
+        assert!(rows.contains(".github/workflows/bad.yaml:5"), "{rows}");
+        assert!(rows.contains("cache: false"), "{rows}");
+        assert!(rows.contains("./.github/actions/setup-go"), "{rows}");
+        assert!(!rows.contains("setup-go/action.yml"), "{rows}");
+        assert!(!rows.contains("pins/action.yml"), "{rows}");
+        assert!(!rows.contains("good.yaml"), "{rows}");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
